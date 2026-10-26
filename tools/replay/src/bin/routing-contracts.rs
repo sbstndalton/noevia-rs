@@ -79,7 +79,9 @@ fn replay(core: &Path, corpus: &Path, out: &Path, name: &str, front: bool) -> Re
         .arg("--state-out")
         .arg(&state);
     if front {
-        c.arg("--expect-state").arg(out.join("node-state.json"));
+        c.arg("--native-move-state")
+            .arg("--expect-state")
+            .arg(out.join("node-state.json"));
     }
     let output = bounded(c)?;
     print!("{}", String::from_utf8_lossy(&output.stdout));

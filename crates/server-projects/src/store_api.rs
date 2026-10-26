@@ -138,6 +138,7 @@ pub fn write(
     existing_dir(&dir)?;
     let file = dir.join(which.name());
     let _held = lock::acquire(&file).map_err(StoreError::from)?;
+    crate::chat_move::fence(&dir)?;
     let now = snapshot(&file)?;
     if now.version != version {
         return Err(WriteError::Conflict(now));

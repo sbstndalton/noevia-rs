@@ -62,6 +62,13 @@
 //! The body limit is [`BODY_LIMIT`]; a request's file work runs on the blocking pool.
 
 use axum::body::{Body, Bytes};
+// Slice7 foundation adds secret-authenticated POST /v1/chat/grant-context {user,chat}
+// and POST /v1/chat/move {user,chat,projectId:null|string,frame?}. Holders are tagged
+// free/project(id)/absent; generations are canonical decimal strings, bound to the start id.
+// A prepared move fences list writers until strict recovery completes. These internal operations
+// do NOT change public route ownership or make older Node grants generation-aware; that paired
+// migration must be reviewed before the public move switch is enabled.
+
 use axum::extract::{DefaultBodyLimit, State};
 use axum::http::{HeaderMap, Response, StatusCode};
 use axum::routing::post;
@@ -69,6 +76,7 @@ use axum::Router;
 use js_json::{wtf16, JValue};
 use serde_json::{json, Value};
 use server_projects::chat_delete::{self, DeleteError, Kind};
+use server_projects::chat_move::{self, Holder, MoveError};
 use server_projects::journal;
 use server_projects::store::StoreError;
 use server_projects::store_api::{self, StoreFile, WriteError};
@@ -410,6 +418,86 @@ async fn handle_chat_delete(store: Store, headers: HeaderMap, raw: Bytes) -> Res
     done.unwrap_or_else(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error"))
 }
 
+fn move_error(problem: MoveError) -> Response<Body> {
+    match problem {
+        MoveError::Store(StoreError::Busy) => {
+            let mut response = store_error(&StoreError::Busy);
+            response
+                .headers_mut()
+                .insert("retry-after", axum::http::HeaderValue::from_static("1"));
+            response
+        }
+        MoveError::Store(e) => store_error(&e),
+        MoveError::Invalid => error(StatusCode::BAD_REQUEST, "invalid chat move or start id"),
+        MoveError::NotFound => error(StatusCode::NOT_FOUND, "no such chat or project"),
+        MoveError::Ambiguous => reply(
+            StatusCode::CONFLICT,
+            &json!({"error":"ambiguous canonical chat identity","code":"CHAT_ID_AMBIGUOUS"}),
+        ),
+        MoveError::Capacity => reply(
+            StatusCode::CONFLICT,
+            &json!({"error":"the move would evict chat metadata","code":"CHAT_DESTINATION_FULL"}),
+        ),
+    }
+}
+
+fn chat_move_op(store: &Store, body: &JValue, moving: bool) -> Response<Body> {
+    let (Some(user), Some(chat)) = (body.get("user").as_str(), body.get("chat").as_str()) else {
+        return error(StatusCode::BAD_REQUEST, "user and chat required");
+    };
+    if !moving {
+        return match chat_move::grant_context(&store.data_dir, user, chat, &store.start_id) {
+            Ok(context) => reply(StatusCode::OK, &context.json()),
+            Err(e) => move_error(e),
+        };
+    }
+    let destination = match body.get("projectId") {
+        JValue::Null => Holder::Free,
+        JValue::Str(id) => Holder::Project(id.clone()),
+        _ => return error(StatusCode::BAD_REQUEST, "projectId (or null) required"),
+    };
+    let patch = match body.get("frame") {
+        JValue::Undefined => None,
+        value => Some(value),
+    };
+    match chat_move::move_chat(
+        &store.data_dir,
+        user,
+        chat,
+        destination,
+        patch,
+        &store.start_id,
+    ) {
+        Ok(moved) => reply(
+            StatusCode::OK,
+            &json!({"from":moved.from.json(),"to":moved.to.json(),"generation":moved.generation}),
+        ),
+        Err(e) => move_error(e),
+    }
+}
+
+async fn handle_chat_move(
+    store: Store,
+    headers: HeaderMap,
+    raw: Bytes,
+    moving: bool,
+) -> Response<Body> {
+    if !authorised(&store, &headers) {
+        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+    }
+    tokio::task::spawn_blocking(move || {
+        let Ok(text) = std::str::from_utf8(&raw) else {
+            return error(StatusCode::BAD_REQUEST, "invalid JSON");
+        };
+        match wtf16::parse(text) {
+            Ok(body @ JValue::Obj(_)) => chat_move_op(&store, &body, moving),
+            _ => error(StatusCode::BAD_REQUEST, "invalid JSON"),
+        }
+    })
+    .await
+    .unwrap_or_else(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error"))
+}
+
 async fn handle_changes(store: Store, headers: HeaderMap, raw: Bytes) -> Response<Body> {
     if !authorised(&store, &headers) {
         return error(StatusCode::UNAUTHORIZED, "unauthorised");
@@ -456,6 +544,53 @@ fn history_route(op: Op) -> axum::routing::MethodRouter<Store> {
 
 pub fn router(store: Store) -> Router {
     Router::new()
+        .route("/v1/source-jobs/recover", source_route(SourceOp::Recover))
+        .route("/v1/source-jobs/start", source_route(SourceOp::Start))
+        .route("/v1/source-jobs/abandon", source_route(SourceOp::Abandon))
+        .route("/v1/source-jobs/progress", source_route(SourceOp::Progress))
+        .route("/v1/source-jobs/finish", source_route(SourceOp::Finish))
+        .route("/v1/source-jobs/read", source_route(SourceOp::Read))
+        .route(
+            "/v1/research-jobs/recover",
+            research_route(ResearchOp::Recover),
+        )
+        .route("/v1/research-jobs/start", research_route(ResearchOp::Start))
+        .route(
+            "/v1/research-jobs/abandon",
+            research_route(ResearchOp::Abandon),
+        )
+        .route("/v1/research-jobs/event", research_route(ResearchOp::Event))
+        .route(
+            "/v1/research-jobs/cancel",
+            research_route(ResearchOp::Cancel),
+        )
+        .route(
+            "/v1/research-jobs/finish",
+            research_route(ResearchOp::Finish),
+        )
+        .route(
+            "/v1/research-jobs/report",
+            research_route(ResearchOp::Report),
+        )
+        .route(
+            "/v1/research-jobs/prepare",
+            research_route(ResearchOp::Prepare),
+        )
+        .route(
+            "/v1/research-jobs/artifact",
+            research_route(ResearchOp::Artifact),
+        )
+        .route("/v1/research-jobs/clear", research_route(ResearchOp::Clear))
+        .route("/v1/research-jobs/read", research_route(ResearchOp::Read))
+        .route("/v1/research-jobs/list", research_route(ResearchOp::List))
+        .route(
+            "/v1/chat/grant-context",
+            post(|State(s): State<Store>, h: HeaderMap, b: Bytes| handle_chat_move(s, h, b, false)),
+        )
+        .route(
+            "/v1/chat/move",
+            post(|State(s): State<Store>, h: HeaderMap, b: Bytes| handle_chat_move(s, h, b, true)),
+        )
         .route("/v1/history/read", history_route(Op::Read))
         .route("/v1/history/write", history_route(Op::Write))
         .route("/v1/history/append-if-last", history_route(Op::Append))
@@ -489,4 +624,485 @@ pub async fn serve(
     let _ = axum::serve(listener, router(store))
         .with_graceful_shutdown(shutdown)
         .await;
+}
+
+// noevia-source-jobs-store/1: secret-authenticated internal calls only. Node executes work;
+// Rust alone persists source-kind journals.
+#[derive(Clone, Copy)]
+enum SourceOp {
+    Recover,
+    Start,
+    Abandon,
+    Progress,
+    Finish,
+    Read,
+}
+
+fn source_error(e: server_projects::source_jobs::Error) -> Response<Body> {
+    use server_projects::source_jobs::Error as E;
+    match e {
+        E::BadRequest => error(StatusCode::BAD_REQUEST, "invalid source job request"),
+        E::Gone => error(StatusCode::GONE, "account no longer exists"),
+        E::NotFound => error(StatusCode::NOT_FOUND, "source job or project not found"),
+        E::Busy => reply(
+            StatusCode::SERVICE_UNAVAILABLE,
+            &json!({"error":"The source job store is busy.","code":"PROJECTS_BUSY"}),
+        ),
+        E::Stale => error(StatusCode::CONFLICT, "stale source job owner or run"),
+        E::TooMany => error(
+            StatusCode::TOO_MANY_REQUESTS,
+            "Source processing is busy; wait for the current operation and retry.",
+        ),
+        E::Corrupt => reply(
+            StatusCode::SERVICE_UNAVAILABLE,
+            &json!({"error":"Source job state unknown; review required","code":"JOBS_UNKNOWN"}),
+        ),
+        E::Io => error(StatusCode::INTERNAL_SERVER_ERROR, "source job store failed"),
+    }
+}
+
+async fn handle_source_jobs(
+    store: Store,
+    headers: HeaderMap,
+    raw: Bytes,
+    op: SourceOp,
+) -> Response<Body> {
+    if !authorised(&store, &headers) {
+        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+    }
+    let Ok(body) = server_projects::source_jobs::parse_js(&raw) else {
+        return error(StatusCode::BAD_REQUEST, "invalid JSON");
+    };
+    let Some(user) = body.get("user").and_then(Value::as_str).map(str::to_owned) else {
+        return error(StatusCode::BAD_REQUEST, "user required");
+    };
+    let done = tokio::task::spawn_blocking(move || {
+        use server_projects::source_jobs as jobs;
+        let required = |key: &str| body.get(key).and_then(Value::as_str).map(str::to_owned);
+        let ctx = jobs::Context {
+            data_dir: &store.data_dir,
+            start_id: &store.start_id,
+        };
+        if matches!(op, SourceOp::Read) {
+            let (Some(project), Some(id)) = (required("projectId"), required("id")) else {
+                return error(StatusCode::BAD_REQUEST, "projectId and id required");
+            };
+            return match jobs::read(ctx, &user, &project, &id) {
+                Ok(Some(job)) => match jobs::stringify_js(&job) {
+                    Ok(text) => reply_text(StatusCode::OK, text),
+                    Err(e) => source_error(e),
+                },
+                Ok(None) => error(StatusCode::NOT_FOUND, "source job or project not found"),
+                Err(e) => source_error(e),
+            };
+        }
+        let (Some(start), Some(born), Some(owner)) =
+            (required("start"), required("born"), required("owner"))
+        else {
+            return error(StatusCode::BAD_REQUEST, "start, born and owner required");
+        };
+        let result = match op {
+            SourceOp::Recover => {
+                jobs::recover(ctx, &user, &start, &born, &owner).map(|count| json!({"count":count}))
+            }
+            SourceOp::Start => match (required("projectId"), required("request")) {
+                (Some(project), Some(request)) => {
+                    jobs::start(ctx, &user, &start, &born, &owner, &project, &request)
+                        .map(|(id, run)| json!({"id":id,"run":run}))
+                }
+                _ => Err(jobs::Error::BadRequest),
+            },
+            SourceOp::Abandon => match required("request") {
+                Some(request) => jobs::abandon(ctx, &user, &start, &born, &owner, &request)
+                    .map(|()| json!({"ok":true})),
+                None => Err(jobs::Error::BadRequest),
+            },
+            SourceOp::Progress => match (
+                required("id"),
+                required("run"),
+                required("stage"),
+                body.get("n").and_then(Value::as_u64),
+            ) {
+                (Some(id), Some(run), Some(stage), Some(n)) => jobs::progress(
+                    ctx,
+                    &user,
+                    &start,
+                    &born,
+                    &owner,
+                    jobs::ProgressUpdate {
+                        id: &id,
+                        run: &run,
+                        stage: &stage,
+                        n,
+                    },
+                )
+                .map(|()| json!({"ok":true})),
+                _ => Err(jobs::Error::BadRequest),
+            },
+            SourceOp::Finish => match (
+                required("id"),
+                required("run"),
+                body.get("ok").and_then(Value::as_bool),
+            ) {
+                (Some(id), Some(run), Some(ok)) => jobs::finish(
+                    ctx,
+                    &user,
+                    &start,
+                    &born,
+                    &owner,
+                    jobs::CompletionUpdate {
+                        id: &id,
+                        run: &run,
+                        ok,
+                        result: body.get("result").unwrap_or(&Value::Null),
+                        error: required("error").as_deref(),
+                    },
+                )
+                .map(|()| json!({"ok":true})),
+                _ => Err(jobs::Error::BadRequest),
+            },
+            SourceOp::Read => return error(StatusCode::BAD_REQUEST, "invalid source job request"),
+        };
+        match result {
+            Ok(value) => reply(StatusCode::OK, &value),
+            Err(e) => source_error(e),
+        }
+    })
+    .await;
+    done.unwrap_or_else(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error"))
+}
+
+fn source_route(op: SourceOp) -> axum::routing::MethodRouter<Store> {
+    post(move |State(s): State<Store>, h: HeaderMap, b: Bytes| handle_source_jobs(s, h, b, op))
+}
+
+// Internal-only, paired research journal capability. Node remains the model/file executor.
+#[derive(Clone, Copy)]
+enum ResearchOp {
+    Recover,
+    Start,
+    Abandon,
+    Event,
+    Cancel,
+    Finish,
+    Report,
+    Prepare,
+    Artifact,
+    Clear,
+    Read,
+    List,
+}
+
+fn research_error(e: server_projects::research_jobs::Error) -> Response<Body> {
+    use server_projects::research_jobs::Error as E;
+    match e {
+        E::BadRequest => error(StatusCode::BAD_REQUEST, "invalid research job request"),
+        E::Gone => error(StatusCode::GONE, "account no longer exists"),
+        E::NotFound => error(StatusCode::NOT_FOUND, "research job or project not found"),
+        E::Busy => reply(
+            StatusCode::SERVICE_UNAVAILABLE,
+            &json!({"error":"The research job store is busy.","code":"PROJECTS_BUSY"}),
+        ),
+        E::Stale => error(
+            StatusCode::CONFLICT,
+            "stale research job owner, run or operation",
+        ),
+        E::TooMany => error(
+            StatusCode::CONFLICT,
+            "A research job is already running in this project. Wait for it or cancel it.",
+        ),
+        E::Corrupt => reply(
+            StatusCode::SERVICE_UNAVAILABLE,
+            &json!({"error":"Research job state unknown; review required","code":"JOBS_UNKNOWN"}),
+        ),
+        E::Io => error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "research job store failed",
+        ),
+    }
+}
+
+async fn handle_research_jobs(
+    store: Store,
+    headers: HeaderMap,
+    raw: Bytes,
+    op: ResearchOp,
+) -> Response<Body> {
+    if !authorised(&store, &headers) {
+        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+    }
+    let Ok(body) = server_projects::research_jobs::parse_js(&raw) else {
+        return error(StatusCode::BAD_REQUEST, "invalid JSON");
+    };
+    let Some(user) = body.get("user").and_then(Value::as_str).map(str::to_owned) else {
+        return error(StatusCode::BAD_REQUEST, "user required");
+    };
+    let done = tokio::task::spawn_blocking(move || {
+        use server_projects::research_jobs as jobs;
+        let required = |key: &str| body.get(key).and_then(Value::as_str).map(str::to_owned);
+        let ctx = jobs::Context {
+            data_dir: &store.data_dir,
+            start_id: &store.start_id,
+        };
+        if matches!(op, ResearchOp::Read | ResearchOp::List) {
+            let Some(project) = required("projectId") else {
+                return error(StatusCode::BAD_REQUEST, "projectId required");
+            };
+            let answer = if matches!(op, ResearchOp::Read) {
+                let Some(id) = required("id") else {
+                    return error(StatusCode::BAD_REQUEST, "id required");
+                };
+                match jobs::read(ctx, &user, &project, &id) {
+                    Ok(Some(v)) => Ok(v),
+                    Ok(None) => {
+                        return error(StatusCode::NOT_FOUND, "research job or project not found")
+                    }
+                    Err(e) => Err(e),
+                }
+            } else {
+                jobs::list(ctx, &user, &project).map(|v| json!({"jobs":v}))
+            };
+            return match answer {
+                Ok(v) => match jobs::stringify_js(&v) {
+                    Ok(text) => reply_text(StatusCode::OK, text),
+                    Err(e) => research_error(e),
+                },
+                Err(e) => research_error(e),
+            };
+        }
+        let (Some(start), Some(born), Some(owner)) =
+            (required("start"), required("born"), required("owner"))
+        else {
+            return error(StatusCode::BAD_REQUEST, "start, born and owner required");
+        };
+        let answer = match op {
+            ResearchOp::Recover => jobs::recover(
+                ctx,
+                jobs::Owner {
+                    user: &user,
+                    start: &start,
+                    born: &born,
+                    owner: &owner,
+                },
+            )
+            .map(|count| json!({"count":count})),
+            ResearchOp::Start => match (
+                required("projectId"),
+                required("request"),
+                required("question"),
+                required("mode"),
+                body.get("questions"),
+            ) {
+                (Some(project), Some(request), Some(question), Some(mode), Some(questions)) => {
+                    jobs::start(
+                        ctx,
+                        jobs::Owner {
+                            user: &user,
+                            start: &start,
+                            born: &born,
+                            owner: &owner,
+                        },
+                        &project,
+                        &request,
+                        &question,
+                        &mode,
+                        questions,
+                    )
+                    .map(|(id, run)| json!({"id":id,"run":run}))
+                }
+                _ => Err(jobs::Error::BadRequest),
+            },
+            ResearchOp::Abandon => match required("request") {
+                Some(request) => jobs::abandon(
+                    ctx,
+                    jobs::Owner {
+                        user: &user,
+                        start: &start,
+                        born: &born,
+                        owner: &owner,
+                    },
+                    &request,
+                )
+                .map(|()| json!({"ok":true})),
+                None => Err(jobs::Error::BadRequest),
+            },
+            ResearchOp::Event => match (
+                required("id"),
+                required("run"),
+                body.get("n").and_then(Value::as_u64),
+                required("kind"),
+                body.get("data"),
+            ) {
+                (Some(id), Some(run), Some(n), Some(kind), Some(data)) => jobs::event(
+                    ctx,
+                    jobs::Owner {
+                        user: &user,
+                        start: &start,
+                        born: &born,
+                        owner: &owner,
+                    },
+                    &id,
+                    &run,
+                    n,
+                    &kind,
+                    data,
+                )
+                .map(|()| json!({"ok":true})),
+                _ => Err(jobs::Error::BadRequest),
+            },
+            ResearchOp::Cancel => match (required("projectId"), required("id"), required("run")) {
+                (Some(project), Some(id), Some(run)) => jobs::cancel(
+                    ctx,
+                    jobs::Owner {
+                        user: &user,
+                        start: &start,
+                        born: &born,
+                        owner: &owner,
+                    },
+                    &project,
+                    &id,
+                    &run,
+                ),
+                _ => Err(jobs::Error::BadRequest),
+            },
+            ResearchOp::Finish => match (
+                required("id"),
+                required("run"),
+                body.get("ok").and_then(Value::as_bool),
+            ) {
+                (Some(id), Some(run), Some(ok)) => jobs::finish(
+                    ctx,
+                    jobs::Owner {
+                        user: &user,
+                        start: &start,
+                        born: &born,
+                        owner: &owner,
+                    },
+                    &id,
+                    &run,
+                    ok,
+                    body.get("result").unwrap_or(&Value::Null),
+                    required("error").as_deref(),
+                )
+                .map(|()| json!({"ok":true})),
+                _ => Err(jobs::Error::BadRequest),
+            },
+            ResearchOp::Report => match (required("id"), required("run"), body.get("result")) {
+                (Some(id), Some(run), Some(result)) => jobs::report(
+                    ctx,
+                    jobs::Owner {
+                        user: &user,
+                        start: &start,
+                        born: &born,
+                        owner: &owner,
+                    },
+                    &id,
+                    &run,
+                    result,
+                )
+                .map(|()| json!({"ok":true})),
+                _ => Err(jobs::Error::BadRequest),
+            },
+            ResearchOp::Prepare | ResearchOp::Artifact => match (
+                required("projectId"),
+                required("id"),
+                required("run"),
+                required("name"),
+                required("hash"),
+                body.get("bytes").and_then(Value::as_u64),
+                required("target"),
+            ) {
+                (
+                    Some(project),
+                    Some(id),
+                    Some(run),
+                    Some(name),
+                    Some(hash),
+                    Some(bytes),
+                    target,
+                ) => {
+                    let answer = if matches!(op, ResearchOp::Prepare) {
+                        jobs::prepare_file(
+                            ctx,
+                            jobs::Owner {
+                                user: &user,
+                                start: &start,
+                                born: &born,
+                                owner: &owner,
+                            },
+                            &project,
+                            &id,
+                            &run,
+                            jobs::FileIntent {
+                                name: &name,
+                                hash: &hash,
+                                bytes,
+                                target: target.as_deref().unwrap_or(""),
+                            },
+                        )
+                    } else {
+                        jobs::artifact(
+                            ctx,
+                            jobs::Owner {
+                                user: &user,
+                                start: &start,
+                                born: &born,
+                                owner: &owner,
+                            },
+                            &project,
+                            &id,
+                            &run,
+                            jobs::Artifact {
+                                name: &name,
+                                hash: &hash,
+                                bytes,
+                            },
+                        )
+                    };
+                    answer.map(|()| json!({"ok":true}))
+                }
+                _ => Err(jobs::Error::BadRequest),
+            },
+            ResearchOp::Clear => match (
+                required("projectId"),
+                required("id"),
+                required("run"),
+                required("name"),
+                required("hash"),
+            ) {
+                (Some(project), Some(id), Some(run), Some(name), Some(hash)) => jobs::clear_file(
+                    ctx,
+                    jobs::Owner {
+                        user: &user,
+                        start: &start,
+                        born: &born,
+                        owner: &owner,
+                    },
+                    &project,
+                    &id,
+                    &run,
+                    &name,
+                    &hash,
+                )
+                .map(|()| json!({"ok":true})),
+                _ => Err(jobs::Error::BadRequest),
+            },
+            ResearchOp::Read | ResearchOp::List => {
+                return error(StatusCode::BAD_REQUEST, "invalid research job request")
+            }
+        };
+        match answer {
+            Ok(v) => match jobs::stringify_js(&v) {
+                Ok(text) => reply_text(StatusCode::OK, text),
+                Err(e) => research_error(e),
+            },
+            Err(e) => research_error(e),
+        }
+    })
+    .await;
+    done.unwrap_or_else(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error"))
+}
+
+fn research_route(op: ResearchOp) -> axum::routing::MethodRouter<Store> {
+    post(move |State(s): State<Store>, h: HeaderMap, b: Bytes| handle_research_jobs(s, h, b, op))
 }
