@@ -102,6 +102,7 @@ const PROJECT_ROUTES: &[&str] = &[
     FREE_CHATS,
     CHAT_CONTEXT_WINDOW,
     CHAT_HISTORY,
+    CHAT_MOVE,
     FREE_CHAT,
     PROJECT_CHAT,
 ];
@@ -118,6 +119,7 @@ const CHAT_CONTEXT_WINDOW: &str = "/api/chats/{chatId}/context-window";
 /// A chat's transcript and interrupted partial reply (GET, slice 2) and its save (POST, slice 5;
 /// routes.toml), always answered here (sbstndalton/noevia#1071); Node refuses both.
 const CHAT_HISTORY: &str = "/api/chats/{chatId}/history";
+const CHAT_MOVE: &str = "/api/chats/{chatId}/move";
 
 /// One chat's delete (DELETE only; routes.toml), the whole cascade one Rust store operation
 /// (crates/server-projects `chat_delete`, sbstndalton/noevia#1071 slice 6); Node refuses both.
@@ -609,7 +611,7 @@ mod tests {
             ("PUT", "/api/chats/c1/context"),
             ("DELETE", "/api/chats/c1/context"),
             ("PUT", "/api/chats/c1/history"),
-            ("POST", "/api/chats/c1/move"),
+            ("GET", "/api/chats/c1/move"),
             ("GET", "/api/diary/context"),
         ] {
             assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
@@ -643,10 +645,21 @@ mod tests {
             ("PUT", "/api/freechats"),
             ("DELETE", "/api/freechats"),
             ("HEAD", "/api/freechats"),
-            ("POST", "/api/chats/c1/move"),
+            ("GET", "/api/chats/c1/move"),
             ("GET", "/api/workspace"),
         ] {
             assert_eq!(dispatch_under(m, p, both), None, "{m} {p}");
+        }
+    }
+
+    #[test]
+    fn chat_move_is_rusts_for_post_only() {
+        assert_eq!(
+            dispatch("POST", "/api/chats/c1/move"),
+            Some(Native::Projects)
+        );
+        for method in ["GET", "HEAD", "PUT", "PATCH", "DELETE"] {
+            assert_eq!(dispatch(method, "/api/chats/c1/move"), None);
         }
     }
 
@@ -678,7 +691,7 @@ mod tests {
         for (m, p) in [
             ("POST", "/api/chats/c1/context-window"),
             ("DELETE", "/api/chats/c1/context-window"),
-            ("POST", "/api/chats/c1/move"),
+            ("GET", "/api/chats/c1/move"),
         ] {
             assert_eq!(dispatch_under(m, p, off), None, "{m} {p}");
         }
@@ -699,7 +712,7 @@ mod tests {
         for (m, p) in [
             ("PUT", "/api/chats/c1/history"),
             ("DELETE", "/api/chats/c1/history"),
-            ("POST", "/api/chats/c1/move"),
+            ("GET", "/api/chats/c1/move"),
         ] {
             assert_eq!(dispatch_under(m, p, off), None, "{m} {p}");
         }

@@ -16,6 +16,7 @@
 //!                          comparison (repeatable); for wall-clock-dependent values
 //!   --state-out FILE       write the data dir snapshot (tree + cowork.db) after the replay
 //!   --expect-state FILE    diff the snapshot against FILE (one written by --state-out)
+//!   --native-move-state    REQUIRED for managed Rust front state replay; validates authoritative move state
 //!   --state-ignore PATH    leave a path (or `*suffix`) out of the snapshot (repeatable)
 //!   --report FILE          write the outcomes as JSON
 //!   --stop-on-first        stop at the first exchange that differs
@@ -47,7 +48,7 @@ impl Args {
             let Some(name) = k.strip_prefix("--") else {
                 return Err(format!("unexpected argument {k}"));
             };
-            if name == "stop-on-first" || name == "allow-remote" {
+            if name == "stop-on-first" || name == "allow-remote" || name == "native-move-state" {
                 a.switches.push(name.to_string());
                 continue;
             }
@@ -146,8 +147,10 @@ fn start_server(
     base: &http::Base,
     data: &Path,
     ready: Duration,
+    native_start: Option<&str>,
 ) -> Result<Server, String> {
     let mut c = Command::new("sh");
+    c.env_remove("NOEVIA_REPLAY_NATIVE_MOVE_START");
     c.arg("-c")
         .arg(cmd)
         .env("UI_DATA_DIR", data)
@@ -164,6 +167,9 @@ fn start_server(
             .split_once('=')
             .ok_or_else(|| format!("--server-env {kv}: expected K=V"))?;
         c.env(k, v);
+    }
+    if let Some(start) = native_start {
+        c.env("NOEVIA_REPLAY_NATIVE_MOVE_START", start);
     }
     let mut server = Server(c.spawn().map_err(|e| format!("start server: {e}"))?);
     let deadline = Instant::now() + ready;
@@ -252,6 +258,29 @@ fn run(a: &Args) -> Result<bool, String> {
     } else {
         a.one("data-dir").map(PathBuf::from)
     };
+    let native_moves = a.switches.iter().any(|s| s == "native-move-state");
+    if !native_moves
+        && a.one("server-cmd")
+            .is_some_and(|s| s.contains("replay-front.sh"))
+    {
+        return Err("the shared native front requires --native-move-state".into());
+    }
+    let native_start = if native_moves {
+        use sha2::{Digest, Sha256};
+        let id = format!(
+            "{:x}",
+            Sha256::digest(format!("{}:{:?}", std::process::id(), SystemTime::now()).as_bytes())
+        );
+        Some(id.chars().take(32).collect::<String>())
+    } else {
+        None
+    };
+    if native_moves
+        && (a.one("server-cmd").is_none()
+            || (a.one("state-out").is_none() && a.one("expect-state").is_none()))
+    {
+        return Err("native-move-state requires managed server and persisted-state replay".into());
+    }
     let server = match a.one("server-cmd") {
         Some(cmd) => {
             let data = work
@@ -263,6 +292,7 @@ fn run(a: &Args) -> Result<bool, String> {
                 &base,
                 data,
                 a.secs("ready-timeout", 60)?,
+                native_start.as_deref(),
             )?)
         }
         None => None,
@@ -289,6 +319,7 @@ fn run(a: &Args) -> Result<bool, String> {
             .collect(),
         data_dir: work.clone(),
         now: REQUEST_TS.to_string(),
+        native_move_state: native_moves,
     };
     let outcomes = replay::replay(
         &corpus,
@@ -313,14 +344,27 @@ fn run(a: &Args) -> Result<bool, String> {
             .into_iter()
             .map(str::to_string)
             .collect();
-        let snap = state::snapshot(dir, "cowork.db", &ignore, &b);
+        let mut snap = state::snapshot(dir, "cowork.db", &ignore, &b);
+        let projection = if let Some(start) = native_start.as_deref() {
+            let proven = replay::native_moves::validate(dir, &outcomes, start, &b)?;
+            snap.as_object_mut()
+                .ok_or("invalid snapshot object")?
+                .insert(
+                    "nativeMoveStateProof".into(),
+                    replay::native_moves::evidence(dir, &outcomes, start)?,
+                );
+            println!("NATIVE MOVE STATE: {} account-root authoritative files validated; full snapshot retained",proven.len());
+            Some(replay::native_moves::project(&snap, &proven)?)
+        } else {
+            None
+        };
         if let Some(p) = a.one("state-out") {
             write_json(p, &snap)?;
         }
         if let Some(p) = a.one("expect-state") {
             let text = std::fs::read_to_string(p).map_err(|e| format!("read {p}: {e}"))?;
             let expected: Value = serde_json::from_str(&text).map_err(|e| format!("{p}: {e}"))?;
-            let diffs = state::compare(&expected, &snap);
+            let diffs = state::compare(&expected, projection.as_ref().unwrap_or(&snap));
             for d in &diffs {
                 println!("STATE {}: expected {} got {}", d.at, d.expected, d.actual);
             }
@@ -397,7 +441,7 @@ mod tests {
         let pid_file = dir.join("child.pid");
         let cmd = format!("sleep 30 & echo $! > '{}'; wait", pid_file.display());
         let base = http::Base::parse("http://127.0.0.1:9").unwrap();
-        let err = start_server(&cmd, &[], &base, &dir, Duration::from_secs(1))
+        let err = start_server(&cmd, &[], &base, &dir, Duration::from_secs(1), None)
             .err()
             .unwrap();
         assert!(err.contains("not ready"), "{err}");

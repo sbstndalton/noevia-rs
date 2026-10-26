@@ -261,7 +261,8 @@ methods = ["GET", "POST"]
 
 [[route]]
 path = "/api/chats/{chatId}/move"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/code/active"
