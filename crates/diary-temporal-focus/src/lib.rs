@@ -3,7 +3,7 @@
 use chrono::{Datelike, NaiveDate, Weekday};
 use regex::{Captures, Regex};
 use std::sync::OnceLock;
-use unicode_normalization::{char::is_combining_mark, UnicodeNormalization};
+use unicode_normalization::{char::canonical_combining_class, UnicodeNormalization};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TimeAnchor {
     pub day: NaiveDate,
@@ -86,7 +86,7 @@ fn decimal_value(c: char) -> Option<u32> {
     let cp = u32::from(c);
     DECIMAL_ZEROES
         .iter()
-        .find_map(|zero| (cp >= *zero && cp < *zero + 10).then_some(cp - *zero))
+        .find_map(|zero| (cp >= *zero && cp < *zero + 10).then(|| cp - *zero))
 }
 fn decimal_number(s: &str) -> Option<u32> {
     s.chars().try_fold(0u32, |value, c| {
@@ -147,10 +147,15 @@ fn boundary(s: &str, i: usize) -> bool {
         return false;
     }
     let prefix = s.get(..i).unwrap_or("");
-    let token = prefix
-        .rsplit(|c: char| !c.is_alphabetic())
-        .next()
-        .unwrap_or("");
+    // Python [^\W\d_]+ uses general-category letters and nondecimal
+    // numbers, not the broader derived Alphabetic property (which includes
+    // combining marks such as U+0345).
+    static TOKEN: OnceLock<Option<Regex>> = OnceLock::new();
+    let token = TOKEN
+        .get_or_init(|| Regex::new(r"[\p{L}\p{Nl}\p{No}]+$").ok())
+        .as_ref()
+        .and_then(|pattern| pattern.find(prefix))
+        .map_or("", |m| m.as_str());
     let mut folded = String::new();
     for c in token.to_lowercase().chars() {
         folded.push_str(match c {
@@ -168,7 +173,10 @@ fn boundary(s: &str, i: usize) -> bool {
             }
         });
     }
-    let key: String = folded.nfkd().filter(|c| !is_combining_mark(*c)).collect();
+    let key: String = folded
+        .nfkd()
+        .filter(|c| canonical_combining_class(*c) == 0)
+        .collect();
     !(T.contains(&key.as_str())
         || M.iter().any(|m| m.get(..3) == Some(key.as_str()))
         || key == "sept")
@@ -232,18 +240,28 @@ pub fn time_anchor(message: &str) -> Option<TimeAnchor> {
     None
 }
 fn candidate_date(s: &str) -> Option<NaiveDate> {
-    if let Ok(day) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
-        if day.year() > 0 {
-            return Some(day);
-        }
+    // Chrono also accepts unpadded/signed/whitespace forms that Python's
+    // date.fromisoformat rejects. Validate the exact supported ASCII layouts
+    // before asking Chrono to validate the calendar date.
+    let bytes = s.as_bytes();
+    let extended = bytes.len() == 10
+        && bytes.get(4) == Some(&b'-')
+        && bytes.get(7) == Some(&b'-')
+        && bytes
+            .iter()
+            .enumerate()
+            .all(|(i, b)| i == 4 || i == 7 || b.is_ascii_digit());
+    let basic = bytes.len() == 8 && bytes.iter().all(u8::is_ascii_digit);
+    if extended || basic {
+        return NaiveDate::parse_from_str(s, if extended { "%Y-%m-%d" } else { "%Y%m%d" })
+            .ok()
+            .filter(|day| (1..=9999).contains(&day.year()));
     }
-    if let Ok(day) = NaiveDate::parse_from_str(s, "%Y%m%d") {
-        if day.year() > 0 {
-            return Some(day);
-        }
+    let year_text = s.get(..4)?;
+    if !year_text.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
     }
-
-    let year = s.get(..4)?.parse::<i32>().ok()?;
+    let year = year_text.parse::<i32>().ok()?;
     if year < 1 {
         return None;
     }
@@ -276,7 +294,7 @@ fn candidate_date(s: &str) -> Option<NaiveDate> {
         None => Weekday::Mon,
         _ => return None,
     };
-    NaiveDate::from_isoywd_opt(year, week, weekday)
+    NaiveDate::from_isoywd_opt(year, week, weekday).filter(|day| (1..=9999).contains(&day.year()))
 }
 /// Stable cutoff. Missing/invalid candidate dates survive; before is exclusive and other anchors inclusive.
 pub fn apply_cutoff<U>(a: Option<TimeAnchor>, v: Vec<Candidate<U>>) -> Cutoff<U> {
@@ -385,6 +403,29 @@ mod tests {
     }
 
     #[test]
+    fn unsupported_decimal_and_nondigit_inputs_do_not_panic() {
+        // CPython 3.12 / Unicode 15 does not recognize Garay digits. The
+        // newer regex Unicode tables can match them, but conversion must reject
+        // them without evaluating subtraction outside an accepted digit block.
+        for c in ['x', ' ', '\u{0000}', '\u{10d40}', '\u{10d42}'] {
+            assert_eq!(decimal_value(c), None);
+        }
+        for zero in DECIMAL_ZEROES {
+            for digit in 0..10 {
+                let c = char::from_u32(zero + digit);
+                assert!(c.is_some(), "decimal table contains an invalid code point");
+                if let Some(c) = c {
+                    assert_eq!(decimal_value(c), Some(digit));
+                }
+            }
+        }
+        assert_eq!(
+            time_anchor("As of January \u{10d42}\u{10d40}, 2030, what happened?"),
+            None
+        );
+    }
+
+    #[test]
     fn python_date_rejects_year_zero_for_anchors_and_candidates() {
         assert_eq!(time_anchor("As of 0000-01-01, what?"), None);
         assert!(time_anchor("As of 0001-01-01, what?").is_some());
@@ -401,6 +442,58 @@ mod tests {
         );
         assert_eq!(candidate_date("2030W01-1"), None);
         assert_eq!(candidate_date("2030-W011"), None);
+    }
+
+    #[test]
+    fn title_boundaries_match_pinned_python312_edges() {
+        let fixture: Value =
+            serde_json::from_str(include_str!("../tests/python312-title-boundary-edges.json"))
+                .unwrap_or(Value::Null);
+        let cases = fixture.get("cases").and_then(Value::as_array);
+        assert!(cases.is_some(), "boundary oracle must contain cases");
+        let Some(cases) = cases else { return };
+        for case in cases {
+            let query = case.get("query").and_then(Value::as_str).unwrap_or("");
+            let actual = time_anchor(query)
+                .map(|a| {
+                    serde_json::json!({
+                        "day": a.day.to_string(), "inclusive": a.inclusive
+                    })
+                })
+                .unwrap_or(Value::Null);
+            assert_eq!(Some(&actual), case.get("anchor"), "{query:?}");
+        }
+    }
+
+    #[test]
+    fn candidate_dates_match_pinned_python312_edges() {
+        let fixture: Value =
+            serde_json::from_str(include_str!("../tests/python312-candidate-date-edges.json"))
+                .unwrap_or(Value::Null);
+        let cases = fixture.get("cases").and_then(Value::as_array);
+        assert!(cases.is_some(), "candidate-date oracle must contain cases");
+        let Some(cases) = cases else { return };
+        for case in cases {
+            let input = case.get("input").and_then(Value::as_str).unwrap_or("");
+            let expected = case.get("day").and_then(Value::as_str);
+            let actual = candidate_date(input).map(|d| d.to_string());
+            assert_eq!(actual.as_deref(), expected, "{input:?}");
+        }
+        let Some(anchor) = NaiveDate::from_ymd_opt(2020, 1, 1) else {
+            return;
+        };
+        let out = apply_cutoff(
+            Some(TimeAnchor {
+                day: anchor,
+                inclusive: true,
+            }),
+            vec![Candidate {
+                id: 1,
+                day: Some("2030-1-20".to_owned()),
+            }],
+        );
+        assert_eq!(out.kept.len(), 1);
+        assert!(out.removed.is_empty());
     }
 
     #[test]

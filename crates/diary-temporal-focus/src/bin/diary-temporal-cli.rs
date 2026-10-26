@@ -291,6 +291,20 @@ mod tests {
     }
 
     #[test]
+    fn unsupported_unicode_anchor_returns_valid_noanchor_frame() {
+        let actual = run(&frame(json!({"version":1,"op":"anchor",
+            "query":"As of January \u{10d42}\u{10d40}, 2030, what happened?"})));
+        assert!(actual.is_ok());
+        let body = serde_json::to_vec(&json!({"version":1,"op":"anchor","anchor":null}))
+            .unwrap_or_default();
+        let mut expected = S.to_vec();
+        expected.extend((body.len() as u64).to_be_bytes());
+        expected.extend(body);
+        expected.extend(E);
+        assert_eq!(actual, Ok(expected));
+    }
+
+    #[test]
     fn anchor_none() {
         assert!(run(b"").is_err());
         assert!(time_anchor("no date").is_none())
