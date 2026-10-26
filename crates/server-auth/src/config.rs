@@ -47,17 +47,7 @@ impl Drop for AuthConfig {
 /// features.cjs `parseEnv`: blank/unset is `None`; 1/true/on/yes and 0/false/off/no (trimmed, any
 /// case); anything else is an error (Node refuses to start).
 pub fn parse_feature_env(raw: Option<&str>) -> Result<Option<bool>, String> {
-    let Some(raw) = raw else { return Ok(None) };
-    let units: Vec<u16> = raw.encode_utf16().collect();
-    let trimmed = String::from_utf16_lossy(policy_leaves::js_trim(&units));
-    if trimmed.is_empty() {
-        return Ok(None);
-    }
-    match trimmed.to_lowercase().as_str() {
-        "1" | "true" | "on" | "yes" => Ok(Some(true)),
-        "0" | "false" | "off" | "no" => Ok(Some(false)),
-        _ => Err("Invalid boolean in feature env var: expected true/false".into()),
-    }
+    server_features::parse_env(raw).map_err(str::to_owned)
 }
 
 impl AuthConfig {
@@ -98,13 +88,13 @@ impl AuthConfig {
     /// value, else the stored admin choice (`settings['feature:nativeClientAuth']`, exactly
     /// `'true'`/`'false'`), else off.
     pub fn native_client_auth(&self, stored: Option<&str>) -> bool {
-        if !self.trust_proxy {
-            return false;
-        }
-        match self.native_client_auth_env {
-            Some(v) => v,
-            None => stored == Some("true"),
-        }
+        server_features::evaluate(
+            server_features::Feature::NativeClientAuth,
+            self.native_client_auth_env,
+            stored,
+            self.trust_proxy,
+        )
+        .enabled
     }
 }
 

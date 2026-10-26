@@ -20,38 +20,65 @@ use axum::body::Body;
 use axum::http::{HeaderName, HeaderValue, Request, Response, StatusCode};
 use axum::response::IntoResponse;
 use server_projects::{
-    assets, chat_delete, chats, context, context_window, free_chats, history, retention, Ctx, Reply,
+    assets, chat_delete, chat_move, chats, context, context_window, free_chats, history, retention,
+    Ctx, Reply,
 };
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Route {
     /// POST /api/projects/{id}/assets
-    Upload { project: String },
+    Upload {
+        project: String,
+    },
     /// GET or DELETE /api/projects/{id}/assets/{assetId}
-    One { project: String, asset: String },
+    One {
+        project: String,
+        asset: String,
+    },
     /// GET /api/projects/{id}/chats
-    Chats { project: String },
+    Chats {
+        project: String,
+    },
     /// POST /api/projects/{id}/chats
-    SaveChats { project: String },
+    SaveChats {
+        project: String,
+    },
     /// GET /api/freechats
     FreeChats,
     /// POST /api/freechats
     SaveFreeChats,
     /// GET (`create: false`) or POST /api/chats/{chatId}/context (#1264, permanently native under #1071)
-    Context { chat: String, create: bool },
+    Context {
+        chat: String,
+        create: bool,
+    },
     /// GET /api/chats/{chatId}/context-window (sbstndalton/noevia#1071, no switch)
-    ContextWindow { chat: String },
+    ContextWindow {
+        chat: String,
+    },
     /// GET /api/chats/{chatId}/history (sbstndalton/noevia#1071 slice 2, no switch)
-    History { chat: String },
+    History {
+        chat: String,
+    },
     /// POST /api/chats/{chatId}/history (sbstndalton/noevia#1071 slice 5, no switch)
-    SaveHistory { chat: String },
+    SaveHistory {
+        chat: String,
+    },
     /// GET /api/account/retention (sbstndalton/noevia#1071, no switch; `PUT` is Node's)
     Retention,
+    MoveChat {
+        chat: String,
+    },
     /// DELETE /api/freechats/{id} (sbstndalton/noevia#1071 slice 6)
-    DeleteFreeChat { chat: String },
+    DeleteFreeChat {
+        chat: String,
+    },
     /// DELETE /api/projects/{id}/chats/{chatId} (sbstndalton/noevia#1071 slice 6)
-    DeleteChat { project: String, chat: String },
+    DeleteChat {
+        project: String,
+        chat: String,
+    },
 }
 
 /// Node's matchers, `^\/api\/projects\/([^/]+)\/assets$`, `...\/assets\/([^/]+)$` and
@@ -90,6 +117,9 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
             }),
             // routes/chat-lists.cjs `/^\/api\/chats\/([^/]+)\/history$/` for GET and POST.
             ("GET", [chat, "history"]) if !chat.is_empty() => Some(Route::History {
+                chat: (*chat).to_string(),
+            }),
+            ("POST", [chat, "move"]) if !chat.is_empty() => Some(Route::MoveChat {
                 chat: (*chat).to_string(),
             }),
             ("POST", [chat, "history"]) if !chat.is_empty() => Some(Route::SaveHistory {
@@ -269,6 +299,7 @@ pub async fn serve(
         Route::Upload { .. } => Some(assets::BODY_LIMIT),
         Route::SaveChats { .. } | Route::SaveFreeChats => Some(chats::BODY_LIMIT),
         Route::SaveHistory { .. } => Some(history::BODY_LIMIT),
+        Route::MoveChat { .. } => Some(chat_move::BODY_LIMIT),
         Route::One { .. }
         | Route::Chats { .. }
         | Route::FreeChats
@@ -283,6 +314,9 @@ pub async fn serve(
         Some(limit) => match crate::account_routes::read_body(body, limit).await {
             Ok(b) => Some(b),
             // routes/chat-lists.cjs answers a history save it could not read so.
+            Err(()) if matches!(route, Route::MoveChat { .. }) => {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid JSON", true);
+            }
             Err(()) if matches!(route, Route::SaveHistory { .. }) => {
                 return reply::error(StatusCode::BAD_REQUEST, "could not read the chat", true)
             }
@@ -301,6 +335,7 @@ pub async fn serve(
             | Route::SaveChats { .. }
             | Route::SaveFreeChats
             | Route::SaveHistory { .. }
+            | Route::MoveChat { .. }
             | Route::Context { .. }
             | Route::DeleteFreeChat { .. }
             | Route::DeleteChat { .. }
@@ -341,6 +376,9 @@ pub async fn serve(
                 history::post(ctx, &chat, &b.bytes, b.over, &start_id)
             }
             (Route::Retention, _) => retention::get(ctx),
+            (Route::MoveChat { chat }, Some(b)) => {
+                chat_move::post(ctx, &chat, &b.bytes, b.over, &start_id)
+            }
             (Route::DeleteFreeChat { chat }, _) => chat_delete::delete_free_route(ctx, &chat),
             (Route::DeleteChat { project, chat }, _) => {
                 chat_delete::delete_project_route(ctx, &project, &chat)
@@ -349,7 +387,8 @@ pub async fn serve(
                 Route::Upload { .. }
                 | Route::SaveChats { .. }
                 | Route::SaveFreeChats
-                | Route::SaveHistory { .. },
+                | Route::SaveHistory { .. }
+                | Route::MoveChat { .. },
                 None,
             ) => Reply::internal(),
         })

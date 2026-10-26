@@ -354,6 +354,7 @@ mod contract_tests {
                 ..Corpus::default()
             };
             let opts = Options {
+                native_move_state: false,
                 base: http::Base {
                     host: "127.0.0.1".into(),
                     port,
