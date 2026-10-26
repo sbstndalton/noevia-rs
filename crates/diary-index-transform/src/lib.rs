@@ -64,8 +64,62 @@ fn py_rstrip_period(s: &str) -> &str {
     s.trim_end_matches('.')
 }
 
+mod unicode15;
+
+fn in_ranges(c: char, ranges: &[(u32, u32)]) -> bool {
+    let cp = u32::from(c);
+    let index = ranges.partition_point(|(_, end)| *end < cp);
+    ranges.get(index).is_some_and(|(start, _)| *start <= cp)
+}
+
+fn lower_scalar(c: char, out: &mut String) {
+    let entry = unicode15::LOWER
+        .binary_search_by_key(&u32::from(c), |(cp, _)| *cp)
+        .ok()
+        .and_then(|index| unicode15::LOWER.get(index));
+    if let Some((_, lower)) = entry {
+        out.push_str(lower);
+    } else {
+        out.push(c);
+    }
+}
+
 fn py_lower(s: &str) -> String {
-    s.to_lowercase()
+    let mut out = String::with_capacity(s.len());
+    if !s.contains('Σ') {
+        for c in s.chars() {
+            lower_scalar(c, &mut out);
+        }
+        return out;
+    }
+    // CPython's language-neutral Final_Sigma rule uses the nearest
+    // non-Case_Ignorable character on either side. Two linear passes avoid
+    // quadratic scans across long runs of combining marks or apostrophes.
+    let chars: Vec<char> = s.chars().collect();
+    let mut following_cased = vec![false; chars.len()];
+    let mut next_cased = false;
+    for (&c, following) in chars.iter().zip(following_cased.iter_mut()).rev() {
+        *following = next_cased;
+        if !in_ranges(c, unicode15::IGNORABLE) {
+            next_cased = in_ranges(c, unicode15::CASED);
+        }
+    }
+    let mut previous_cased = false;
+    for (&c, following) in chars.iter().zip(following_cased) {
+        if c == 'Σ' {
+            out.push(if previous_cased && !following {
+                'ς'
+            } else {
+                'σ'
+            });
+        } else {
+            lower_scalar(c, &mut out);
+        }
+        if !in_ranges(c, unicode15::IGNORABLE) {
+            previous_cased = in_ranges(c, unicode15::CASED);
+        }
+    }
+    out
 }
 
 fn line_break(c: char) -> bool {
@@ -541,4 +595,26 @@ pub fn apply_index_edits(
     next.render()?;
     *idx = next;
     Ok(changed)
+}
+
+#[cfg(test)]
+mod unicode_tests {
+    include!("../tests/oracles/unicode_contexts.rs");
+
+    #[test]
+    fn pinned_lower_all_scalars_and_context_boundaries() {
+        for cp in 0..=0x10ffff {
+            if let Some(c) = char::from_u32(cp) {
+                let expected = super::unicode15::LOWER
+                    .binary_search_by_key(&cp, |(key, _)| *key)
+                    .ok()
+                    .and_then(|index| super::unicode15::LOWER.get(index))
+                    .map_or_else(|| c.to_string(), |(_, lower)| (*lower).to_owned());
+                assert_eq!(super::py_lower(&c.to_string()), expected, "U+{cp:04X}");
+            }
+        }
+        for &(input, expected) in CONTEXTS {
+            assert_eq!(super::py_lower(input), expected, "{input:?}");
+        }
+    }
 }

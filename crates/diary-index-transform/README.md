@@ -42,3 +42,12 @@ Regenerate on the development host using the project build wrapper:
   --source /path/to/noevia-services/diary/agent/corpus.py
 ~/bin/devrun cargo test -j2 -p diary-index-transform
 ```
+
+Lowercase matching is pinned to CPython 3.12.15 / Unicode 15.0.0,
+including the contextual Final_Sigma rule. It never adopts newer host Unicode
+casing, which could otherwise match a different bullet. Regenerate the static
+tables and whole-string context oracle with `tests/generate_unicode_lower.py`
+under that exact interpreter through the build wrapper; then run Cargo fmt.
+The generator alone reads CPython's Cased and Case_Ignorable property API;
+production Rust has no Python/FFI dependency. Tests cover every Unicode scalar,
+property-range boundaries and newly cased characters unknown to Unicode 15.

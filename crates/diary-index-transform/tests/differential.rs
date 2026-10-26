@@ -249,3 +249,11 @@ fn cpython_contextual_greek_lowercase_matching() -> Result<(), Box<dyn std::erro
     }
     Ok(())
 }
+
+#[test]
+fn unicode_newer_than_shipped_python_does_not_retarget_edits() {
+    // Unicode 16 added Garay casing; shipped Python 3.12 / Unicode 15
+    // leaves these distinct characters unchanged.
+    assert!(match_indices(&["- [ ] \u{10d50}".to_owned()], "\u{10d70}").is_empty());
+    assert!(match_indices(&["- [ ] \u{1c89}".to_owned()], "\u{1c8a}").is_empty());
+}
