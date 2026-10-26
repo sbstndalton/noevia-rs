@@ -88,10 +88,14 @@ impl Config {
             deadline: Duration::from_secs(45),
         })
     }
-    /// A shorter deadline is useful in synthetic cancellation tests.
-    pub fn with_deadline(mut self, deadline: Duration) -> Self {
+    /// A shorter deadline is useful in synthetic cancellation tests. Refuse
+    /// disabled or unrepresentable limits before this config can serve traffic.
+    pub fn with_deadline(mut self, deadline: Duration) -> Result<Self, &'static str> {
+        if deadline.is_zero() || Instant::now().checked_add(deadline).is_none() {
+            return Err("DAV deadline must be positive and representable");
+        }
         self.deadline = deadline;
-        self
+        Ok(self)
     }
 }
 
@@ -748,7 +752,13 @@ impl<B: Backend> DavService<B> {
             }
             entries.extend(children);
         }
-        let deadline = Instant::now() + self.config.deadline;
+        let Some(deadline) = Instant::now().checked_add(self.config.deadline) else {
+            return reply(
+                StatusCode::GATEWAY_TIMEOUT,
+                "Property read timed out",
+                false,
+            );
+        };
         let mut rows = String::new();
         for entry in &entries {
             if Instant::now() >= deadline {
@@ -1109,6 +1119,15 @@ fn encode(value: &str) -> String {
 mod tests {
     use super::*;
     use std::net::Ipv4Addr;
+
+    #[test]
+    fn invalid_deadlines_refuse_before_serving() -> Result<(), &'static str> {
+        let config = Config::new("http://localhost", Scope::Lan, None)?;
+        assert!(config.clone().with_deadline(Duration::ZERO).is_err());
+        assert!(config.clone().with_deadline(Duration::MAX).is_err());
+        assert!(config.with_deadline(Duration::from_millis(20)).is_ok());
+        Ok(())
+    }
 
     #[test]
     fn stale_rate_peers_are_pruned_before_capacity_refusal() -> Result<(), &'static str> {

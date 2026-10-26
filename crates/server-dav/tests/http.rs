@@ -634,7 +634,7 @@ async fn propfind_xml_depth_list_and_deadline_are_bounded() -> TestResult {
     let backend = Synthetic::new();
     let (addr, task) = serve(
         Arc::clone(&backend),
-        lan()?.with_deadline(Duration::from_millis(20)),
+        lan()?.with_deadline(Duration::from_millis(20))?,
     )
     .await?;
     let body = b"<propfind xmlns=\"DAV:\"><prop><getetag/><getlastmodified/><x:custom xmlns:x=\"urn:test\"/></prop></propfind>";
@@ -877,7 +877,7 @@ async fn timed_out_write_is_ambiguous_and_cancelled() -> TestResult {
     backend.change(|s| s.slow_write = true);
     let (addr, task) = serve(
         Arc::clone(&backend),
-        lan()?.with_deadline(Duration::from_millis(20)),
+        lan()?.with_deadline(Duration::from_millis(20))?,
     )
     .await?;
     let answer = request(
@@ -941,7 +941,7 @@ async fn revocation_during_backend_write_is_enforced_at_mutation() -> TestResult
     backend.change(|s| s.slow_write = true);
     let (addr, task) = serve(
         Arc::clone(&backend),
-        lan()?.with_deadline(Duration::from_millis(250)),
+        lan()?.with_deadline(Duration::from_millis(250))?,
     )
     .await?;
     let started = backend.1.notified();
