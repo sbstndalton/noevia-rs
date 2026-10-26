@@ -161,7 +161,10 @@ impl Authenticator {
 
     /// `features.enabled('nativeClientAuth')`, read from the settings Node keeps.
     pub fn native_client_auth(&self, r: &Reader<'_>) -> Result<bool, StoreError> {
-        let stored = setting(r, "feature:nativeClientAuth")?;
+        let stored = setting(
+            r,
+            server_features::spec(server_features::Feature::NativeClientAuth).setting,
+        )?;
         Ok(self.config.native_client_auth(stored.as_deref()))
     }
 

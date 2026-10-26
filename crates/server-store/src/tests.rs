@@ -251,6 +251,10 @@ fn settings_are_written_per_owned_key_only() {
     writer
         .write(|w| {
             assert_eq!(w.set_setting("public_origin", "https://a.test")?, 1);
+            assert_eq!(
+                w.set_setting("previous_origins", r#"["https://old.test"]"#)?,
+                1
+            );
             assert_eq!(w.insert_setting_if_absent("passkey_decoy_key", "k1")?, 1);
             assert_eq!(w.insert_setting_if_absent("passkey_decoy_key", "k2")?, 0);
             w.set_setting("setup_code_hash", "h")?;
@@ -266,13 +270,24 @@ fn settings_are_written_per_owned_key_only() {
     assert_eq!(get("public_origin").as_deref(), Some("https://a.test"));
     assert_eq!(get("passkey_decoy_key").as_deref(), Some("k1"));
     assert_eq!(get("setup_code_hash"), None);
-    for key in [
-        "feature:x",
-        "instance_id",
-        "previous_origins",
-        "reasoning_effort_default",
-        "",
-    ] {
+    assert_eq!(
+        get("previous_origins").as_deref(),
+        Some(r#"["https://old.test"]"#)
+    );
+    assert_eq!(
+        writer
+            .write(|w| w.delete_setting_if("previous_origins", "[]"))
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        writer
+            .write(|w| w.delete_setting_if("previous_origins", r#"["https://old.test"]"#))
+            .unwrap(),
+        1
+    );
+    assert_eq!(get("previous_origins"), None);
+    for key in ["feature:x", "instance_id", "reasoning_effort_default", ""] {
         let res = writer.write(|w| w.set_setting(key, "evil"));
         assert!(matches!(res, Err(StoreError::NotOwned(_))), "{key}");
         let res = writer.write(|w| w.delete_setting_if(key, "true"));
