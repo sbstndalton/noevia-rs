@@ -723,10 +723,20 @@ async fn handle_source_jobs(
                 required("stage"),
                 body.get("n").and_then(Value::as_u64),
             ) {
-                (Some(id), Some(run), Some(stage), Some(n)) => {
-                    jobs::progress(ctx, &user, &start, &born, &owner, &id, &run, &stage, n)
-                        .map(|()| json!({"ok":true}))
-                }
+                (Some(id), Some(run), Some(stage), Some(n)) => jobs::progress(
+                    ctx,
+                    &user,
+                    &start,
+                    &born,
+                    &owner,
+                    jobs::ProgressUpdate {
+                        id: &id,
+                        run: &run,
+                        stage: &stage,
+                        n,
+                    },
+                )
+                .map(|()| json!({"ok":true})),
                 _ => Err(jobs::Error::BadRequest),
             },
             SourceOp::Finish => match (
@@ -740,11 +750,13 @@ async fn handle_source_jobs(
                     &start,
                     &born,
                     &owner,
-                    &id,
-                    &run,
-                    ok,
-                    body.get("result").unwrap_or(&Value::Null),
-                    required("error").as_deref(),
+                    jobs::CompletionUpdate {
+                        id: &id,
+                        run: &run,
+                        ok,
+                        result: body.get("result").unwrap_or(&Value::Null),
+                        error: required("error").as_deref(),
+                    },
                 )
                 .map(|()| json!({"ok":true})),
                 _ => Err(jobs::Error::BadRequest),

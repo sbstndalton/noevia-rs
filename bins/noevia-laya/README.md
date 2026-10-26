@@ -1,9 +1,15 @@
 # Native Laya front (S4, issue1326)
 
-Build `cargo build --locked -p noevia-laya --features native-laya`. The selector
-`NOEVIA_LAYA_IMPL=python|rust` defaults to Python and preserves the exact legacy
-`python /service/server.py` exec. Rust selection without the compiled feature
-fails before a listener or child starts. Native failures never invoke Python HTTP.
+Build with cargo build --locked -p noevia-laya --features native-laya. This
+launcher owns native HTTP when NOEVIA_LAYA_IMPL is absent or rust. Any other
+value, including the retired python selection, fails closed. A build without
+the compiled native-laya feature refuses startup before a listener or child
+starts. Native failures never invoke Python HTTP. The retained Python engine
+worker still runs only as /service/server.py --engine-worker.
+
+This is the Rust launcher source change for noevia#1071. The service image,
+its pinned Rust commit, image qualification and installed selector remain
+separate integration work; this source change alone establishes no live mode.
 
 Rust owns private port8040, GET `/health`, POST `/v1/decisions`, validation,
 admission, deadlines, process supervision and bounded I/O. Fixed Python worker
