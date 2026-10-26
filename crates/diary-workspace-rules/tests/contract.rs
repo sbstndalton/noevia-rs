@@ -171,3 +171,71 @@ fn operation_bounds_match_inclusive_python_caps() {
     assert!(check_tree_bounds(501, 0, 0).is_err());
     assert!(check_tree_bounds(0, 0, 50 * 1024 * 1024 + 1).is_err());
 }
+
+#[test]
+fn python312_unicode_uuid_prefix_edges() {
+    let data: Value = serde_json::from_str(include_str!("fixtures/python312-edges.json")).unwrap();
+    for row in data["identity"].as_array().unwrap() {
+        assert_eq!(
+            normalize_uuid(string(&row["input"])).ok().as_deref(),
+            row["expected"].as_str(),
+            "{row}"
+        );
+    }
+}
+
+#[test]
+fn python312_legacy_base64_edges() {
+    let data: Value = serde_json::from_str(include_str!("fixtures/python312-edges.json")).unwrap();
+    for row in data["base64"].as_array().unwrap() {
+        let encoded = string(&row["encoded"]).as_bytes();
+        let actual = decode_legacy(encoded, string(&row["operation"]));
+        assert_eq!(actual.is_ok(), row["valid"].as_bool().unwrap(), "{row}");
+        if let Ok(actual) = actual {
+            assert_eq!(
+                actual.raw,
+                STANDARD.decode(string(&row["raw"])).unwrap(),
+                "{row}"
+            );
+            assert_eq!(
+                actual.encoded, encoded,
+                "legacy bytes must not be normalized"
+            );
+        }
+    }
+}
+
+#[test]
+fn legacy_tail_bits_do_not_relax_strict_writer_bytes() {
+    let id = "12345678-1234-1234-1234-123456789abc";
+    let canonical = encode_writer(&NewCapsule {
+        id,
+        path: "notes/a.md",
+        raw: &[0],
+        state: TrashState::Trashed,
+        trashed_at: 1.0,
+        restored_at: None,
+    })
+    .unwrap();
+    let altered = String::from_utf8(canonical.clone())
+        .unwrap()
+        .replace("\"data\": \"AA==\"", "\"data\": \"AB==\"");
+    assert_ne!(canonical, altered.as_bytes());
+    assert_eq!(decode_legacy(altered.as_bytes(), id).unwrap().raw, vec![0]);
+    assert!(decode_strict(&canonical, id).is_ok());
+    assert!(decode_strict(altered.as_bytes(), id).is_err());
+}
+
+#[test]
+fn python312_linux_preserved_timestamp_edges() {
+    let data: Value =
+        serde_json::from_str(include_str!("fixtures/python312-linux-clock.json")).unwrap();
+    for row in data["cases"].as_array().unwrap() {
+        let bits = u64::from_str_radix(string(&row["bits"]), 16).unwrap();
+        let actual = replaced_name("notes/a.md", f64::from_bits(bits)).ok();
+        let expected = row["stamp"]
+            .as_str()
+            .map(|stamp| format!("notes/a (replaced {stamp}).md"));
+        assert_eq!(actual, expected, "{row}");
+    }
+}

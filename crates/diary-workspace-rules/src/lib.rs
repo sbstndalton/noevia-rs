@@ -5,7 +5,11 @@
 //! Legacy capsule reads intentionally accept the shipped Python decoder's fields;
 //! new writer bytes use a separate checked API.
 
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use base64::{
+    alphabet,
+    engine::general_purpose::{GeneralPurpose, GeneralPurposeConfig, STANDARD},
+    Engine as _,
+};
 use regex::Regex;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
@@ -14,6 +18,14 @@ pub const MAX_FILE: usize = 512 * 1024;
 pub const MAX_ENTRIES: usize = 500;
 pub const MAX_BYTES: usize = 50 * 1024 * 1024;
 pub const TRASH_PREFIX: &str = ".noevia-trash/";
+
+// CPython validate=True enforces alphabet/padding placement but accepts
+// nonzero unused tail bits. Keep that legacy read behavior; new writes and
+// decode_strict still require the canonical writer bytes.
+const LEGACY_BASE64: GeneralPurpose = GeneralPurpose::new(
+    &alphabet::STANDARD,
+    GeneralPurposeConfig::new().with_decode_allow_trailing_bits(true),
+);
 
 /// Python `_bounded`: no subtree bodies are read by `stat`, but mutation
 /// callers pass their already loaded byte count here before planning writes.
@@ -160,20 +172,48 @@ pub fn folder_version(files: &[FileVersion], dirs: &[String], full: &str) -> Str
     sha256(lines.join("\n").as_bytes())
 }
 
+// The shipped Linux CPython/glibc formatter prints a signed decimal year
+// without Chrono's padding/sign rules. Its composed gmtime/strftime domain is
+// bounded by gmtime's tm_year offset and strftime's Python-to-C year argument.
+// Gregorian civil-from-days arithmetic keeps that full domain without reading
+// a clock, timezone, locale or platform runtime.
+fn preserved_timestamp(now: f64) -> Result<String> {
+    if !now.is_finite() {
+        return Err(Error::InvalidTimestamp);
+    }
+    let floored = now.floor();
+    let time_t_range = (i64::MIN as f64)..(-(i64::MIN as f64));
+    if !time_t_range.contains(&floored) {
+        return Err(Error::InvalidTimestamp);
+    }
+    let seconds = floored as i64;
+    let shifted_days = seconds.div_euclid(86_400) + 719_468;
+    let era = shifted_days.div_euclid(146_097);
+    let day_of_era = shifted_days.rem_euclid(146_097);
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let march_month = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * march_month + 2) / 5 + 1;
+    let month = march_month + if march_month < 10 { 3 } else { -9 };
+    let year = era * 400 + year_of_era + i64::from(month <= 2);
+    if !(i64::from(i32::MIN) + 1_900..=i64::from(i32::MAX)).contains(&year) {
+        return Err(Error::InvalidTimestamp);
+    }
+    let day_seconds = seconds.rem_euclid(86_400);
+    Ok(format!(
+        "{year}-{month:02}-{day:02} {:02}.{:02}.{:02}",
+        day_seconds / 3_600,
+        day_seconds / 60 % 60,
+        day_seconds % 60,
+    ))
+}
+
 /// Python `_replaced_name`: preserve the parent folder and timestamp suffix
 /// while shortening a near-500-codepoint file name for a Trash restore beside
 /// its current version. Caller supplies the original relative path and clock.
 pub fn replaced_name(relative: &str, now: f64) -> Result<String> {
-    if !now.is_finite() {
-        return Err(Error::InvalidTimestamp);
-    }
-    let seconds = now.floor();
-    if seconds < i64::MIN as f64 || seconds > i64::MAX as f64 {
-        return Err(Error::InvalidTimestamp);
-    }
-    let date =
-        chrono::DateTime::from_timestamp(seconds as i64, 0).ok_or(Error::InvalidTimestamp)?;
-    let suffix = format!(" (replaced {}).md", date.format("%Y-%m-%d %H.%M.%S"));
+    let suffix = format!(" (replaced {}).md", preserved_timestamp(now)?);
     let budget = 500usize.saturating_sub(suffix.chars().count());
     let mut stem = if relative.to_lowercase().ends_with(".md") {
         relative
@@ -320,12 +360,21 @@ pub fn normalize_uuid(value: &str) -> Result<String> {
     }
     let unsigned = cleaned.trim_matches(python_space);
     let unsigned = unsigned.strip_prefix('+').unwrap_or(unsigned);
-    let (unsigned, prefixed) = match unsigned
+    // Python normalizes Unicode decimal digits before recognizing the radix
+    // prefix, including a Unicode zero immediately before ASCII x/X.
+    let normalized = unsigned
+        .chars()
+        .map(|c| match decimal_digit(c) {
+            Some(digit) => char::from_digit(digit, 10).unwrap_or(c),
+            None => c,
+        })
+        .collect::<String>();
+    let (unsigned, prefixed) = match normalized
         .strip_prefix("0x")
-        .or_else(|| unsigned.strip_prefix("0X"))
+        .or_else(|| normalized.strip_prefix("0X"))
     {
         Some(digits) => (digits, true),
-        None => (unsigned, false),
+        None => (normalized.as_str(), false),
     };
     let unsigned = if prefixed {
         unsigned.strip_prefix('_').unwrap_or(unsigned)
@@ -344,9 +393,7 @@ pub fn normalize_uuid(value: &str) -> Result<String> {
         if c == '_' {
             continue;
         }
-        if let Some(digit) = decimal_digit(c) {
-            compact.push(char::from_digit(digit, 16).ok_or(Error::InvalidId)?);
-        } else if c.is_ascii_hexdigit() {
+        if c.is_ascii_hexdigit() {
             compact.push(c);
         } else {
             return Err(Error::InvalidId);
@@ -398,7 +445,7 @@ pub fn decode_legacy(data: &[u8], operation: &str) -> Result<LegacyCapsule> {
         .get("data")
         .and_then(Value::as_str)
         .ok_or(Error::InvalidCapsule)?;
-    let raw = STANDARD
+    let raw = LEGACY_BASE64
         .decode(encoded)
         .map_err(|_| Error::InvalidCapsule)?;
     if raw.len() > MAX_FILE
