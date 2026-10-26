@@ -81,6 +81,7 @@ pub const FEATURES: &[&str] = &[
     server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER,
     "rust-auth",
     "rust-web-address-read",
+    "rust-web-address-write",
     "rust-projects",
     "start-id",
     #[cfg(feature = "rust-project-chats")]
