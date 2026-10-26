@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import time
+assert sys.version_info[:2] == (3, 12), "Use shipped CPython 3.12 for integer-generation compatibility"
 sys.path.insert(0,str(Path(sys.argv[1])/"diary"))
 from agent import managed_storage as managed
 from agent import workspace_import as reference
@@ -84,6 +85,27 @@ with tempfile.TemporaryDirectory(prefix="synthetic-managed-import-") as director
         with rust.db() as db:
             assert db.execute("SELECT typeof(updated) FROM files WHERE path LIKE 'Imports/%'").fetchall()[0][0]=="real"
             assert db.execute("SELECT typeof(value) FROM meta WHERE key='snapshot_time'").fetchone()[0]=="text"
+        count+=1
+
+    # Invalid generations must reject and roll back in both actual implementations.
+    generation_fixture=json.loads(Path(__file__).with_name("generation-cases.json").read_text())
+    assert sys.get_int_max_str_digits()==generation_fixture["integer_digits_limit"]
+    invalid_generations=[chr(code) for code in generation_fixture["unsupported_zeros"]]
+    invalid_generations += [chr(code)+"12" for code in range(0x1c,0x20)]
+    invalid_generations += ["1"+"0"*4300,"9"*4300]
+    for i,generation in enumerate(invalid_generations):
+        rust=target(root/f"invalid-generation-rust-{i}",generation)
+        python=target(root/f"invalid-generation-python-{i}",generation)
+        before_rust,before_python=state(rust),state(python)
+        assert run(packet(rust,body),3)==b"unavailable: generation\n"
+        try:
+            reference.apply(python,body,"Copy",reference.fingerprint(body,"Imports/Copy"))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Python accepted an invalid generation")
+        assert state(rust)==before_rust
+        assert state(python)==before_python
         count+=1
 
     # Receipt-before-conflict makes retry harmless after imported content changed.

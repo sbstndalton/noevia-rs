@@ -125,3 +125,70 @@ fn schema_and_clock_failures_rollback_without_repair() {
         Err(Error::Conflict)
     );
 }
+
+#[test]
+fn rejected_python_generations_preserve_the_complete_transaction() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("generation-cases.json")).unwrap();
+    let unsupported = fixture["unsupported_zeros"].as_array().unwrap();
+    assert_eq!(unsupported.len(), 8);
+    let mut invalid: Vec<String> = unsupported
+        .iter()
+        .map(|code| {
+            char::from_u32(code.as_u64().unwrap() as u32)
+                .unwrap()
+                .to_string()
+        })
+        .collect();
+    invalid.extend((0x1c..=0x1f).map(|code| format!("{}12", char::from_u32(code).unwrap())));
+    invalid.extend([format!("1{}", "0".repeat(4300)), "9".repeat(4300)]);
+    for generation in invalid {
+        let (_dir, request) = database();
+        let db = Connection::open(&request.db_path).unwrap();
+        db.execute_batch(
+            "INSERT INTO files VALUES ('keep.md',X'6b656570','digest',1.0);
+             INSERT INTO directories VALUES ('Keep');
+             INSERT INTO workspace_index_outbox VALUES ('keep.md');
+             INSERT INTO workspace_imports VALUES ('prior-receipt','Imports/Prior');
+             INSERT INTO backups(destination) VALUES ('synthetic-backup');",
+        )
+        .unwrap();
+        db.execute(
+            "UPDATE meta SET value=? WHERE key='generation'",
+            [&generation],
+        )
+        .unwrap();
+        let snapshot = || {
+            [
+                "files",
+                "directories",
+                "workspace_imports",
+                "workspace_index_outbox",
+                "meta",
+                "backups",
+            ]
+            .map(|table| {
+                let mut statement = db
+                    .prepare(&format!("SELECT * FROM {table} ORDER BY 1"))
+                    .unwrap();
+                let columns = statement.column_count();
+                statement
+                    .query_map([], |row| {
+                        (0..columns)
+                            .map(|column| row.get::<_, rusqlite::types::Value>(column))
+                            .collect::<Result<Vec<_>, _>>()
+                    })
+                    .unwrap()
+                    .collect::<Result<Vec<_>, _>>()
+                    .unwrap()
+            })
+        };
+        let before = snapshot();
+        assert_eq!(
+            apply_with_clock(&request, include_bytes!("workspace.zip"), || Ok(1000.0)),
+            Err(Error::Generation),
+            "{generation:?}"
+        );
+        assert_eq!(snapshot(), before, "{generation:?}");
+    }
+}
