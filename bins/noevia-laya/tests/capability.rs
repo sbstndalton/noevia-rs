@@ -28,7 +28,7 @@ fn actual_compiled_front_serves_with_merged_synthetic_engine_and_stops() {
     .unwrap();
     std::fs::set_permissions(&python, std::fs::Permissions::from_mode(0o700)).unwrap();
     let child = Command::new(env!("CARGO_BIN_EXE_noevia-laya"))
-        .env("NOEVIA_LAYA_IMPL", "rust")
+        .env_remove("NOEVIA_LAYA_IMPL")
         .env("PATH", directory.path())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -147,11 +147,11 @@ fn actual_compiled_front_serves_with_merged_synthetic_engine_and_stops() {
     }
 }
 #[test]
-fn actual_binary_capability_refusal_and_legacy_exec() {
+fn actual_binary_refuses_legacy_http_and_missing_native_capability() {
     let directory = tempfile::tempdir().unwrap();
     let marker = directory.path().join("spawned");
-    // Existing shell is test glue, not a production selector. Its executable
-    // observes the exact legacy argv and writes a synthetic proof marker.
+    // This synthetic interpreter records whether the retained engine worker
+    // was requested; invoking the old Python HTTP server is never allowed.
     let python = directory.path().join("python");
     std::fs::write(
         &python,
@@ -171,63 +171,43 @@ fn actual_binary_capability_refusal_and_legacy_exec() {
         .output()
         .unwrap();
     assert!(!result.status.success());
-    assert!(String::from_utf8_lossy(&result.stderr).contains("must be UTF-8 python or rust"));
+    assert!(String::from_utf8_lossy(&result.stderr).contains("must be UTF-8 rust"));
     assert!(!marker.exists(), "invalid selector executed interpreter");
-    if !cfg!(feature = "native-laya") {
+
+    for selector in ["python", "unknown", "", "Rust"] {
         let result = Command::new(binary)
-            .env("NOEVIA_LAYA_IMPL", "rust")
+            .env("NOEVIA_LAYA_IMPL", selector)
             .env("PATH", directory.path())
             .output()
             .unwrap();
         assert!(!result.status.success());
-        assert!(String::from_utf8_lossy(&result.stderr).contains("native-laya feature required"));
-        assert!(!marker.exists());
-        // The diagnostic is reached before child spawning and listener bind;
-        // refusal must also be independent of an occupied service port.
-        let listener = std::net::TcpListener::bind("127.0.0.1:8040");
-        let result = Command::new(binary)
-            .env("NOEVIA_LAYA_IMPL", "rust")
-            .env("PATH", directory.path())
-            .output()
-            .unwrap();
-        assert!(String::from_utf8_lossy(&result.stderr).contains("native-laya feature required"));
-        drop(listener);
-    } else {
-        let result = Command::new(binary)
-            .env("NOEVIA_LAYA_IMPL", "rust")
-            .env("PATH", directory.path())
-            .output()
-            .unwrap();
-        assert!(!result.status.success());
-        assert!(!String::from_utf8_lossy(&result.stderr).contains("feature required"));
-        assert_eq!(
-            std::fs::read_to_string(&marker).unwrap(),
-            "/service/server.py --engine-worker",
-            "native failure fell back to the legacy HTTP owner"
-        );
-        std::fs::remove_file(&marker).unwrap();
+        assert!(String::from_utf8_lossy(&result.stderr).contains("must be rust when set"));
+        assert!(!marker.exists(), "invalid selector executed interpreter");
     }
-    for selector in [None, Some("python")] {
+
+    for selector in [None, Some("rust")] {
         let mut command = Command::new(binary);
         command
-            .env("PATH", directory.path())
-            .env_remove("NOEVIA_LAYA_IMPL");
+            .env_remove("NOEVIA_LAYA_IMPL")
+            .env("PATH", directory.path());
         if let Some(selector) = selector {
             command.env("NOEVIA_LAYA_IMPL", selector);
         }
         let result = command.output().unwrap();
-        assert_eq!(result.status.code(), Some(17));
-        assert_eq!(
-            std::fs::read_to_string(&marker).unwrap(),
-            "/service/server.py"
-        );
-        std::fs::remove_file(&marker).unwrap();
+        assert!(!result.status.success());
+        if cfg!(feature = "native-laya") {
+            assert!(!String::from_utf8_lossy(&result.stderr).contains("feature required"));
+            assert_eq!(
+                std::fs::read_to_string(&marker).unwrap(),
+                "/service/server.py --engine-worker",
+                "native failure fell back to the legacy HTTP owner"
+            );
+            std::fs::remove_file(&marker).unwrap();
+        } else {
+            assert!(
+                String::from_utf8_lossy(&result.stderr).contains("native-laya feature required")
+            );
+            assert!(!marker.exists(), "featureless binary spawned interpreter");
+        }
     }
-    let result = Command::new(binary)
-        .env("NOEVIA_LAYA_IMPL", "unknown")
-        .env("PATH", directory.path())
-        .output()
-        .unwrap();
-    assert!(!result.status.success());
-    assert!(!marker.exists());
 }

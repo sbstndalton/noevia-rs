@@ -79,6 +79,12 @@ fn replay_probe(front: &str) -> std::process::Output {
         .env("NOEVIA_RUST_USAGE", "1")
         .env("NOEVIA_RUST_SAMPLING_SETTINGS", "1")
         .env("NOEVIA_RUST_REASONING_SETTINGS", "1")
+        // Direct wrapper probes stand in for replay, which normally provides this
+        // fresh proof-bound start ID before the wrapper checks route capabilities.
+        .env(
+            "NOEVIA_REPLAY_NATIVE_MOVE_START",
+            "00000000000000000000000000000001",
+        )
         .stdin(Stdio::null())
         .output()
         .expect("run replay capability refusal")
