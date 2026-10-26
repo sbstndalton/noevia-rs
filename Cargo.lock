@@ -608,6 +608,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "diary-workspace-import-apply"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "ryu",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "workspace-restore-verify",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
