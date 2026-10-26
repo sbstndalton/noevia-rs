@@ -551,6 +551,39 @@ pub fn router(store: Store) -> Router {
         .route("/v1/source-jobs/finish", source_route(SourceOp::Finish))
         .route("/v1/source-jobs/read", source_route(SourceOp::Read))
         .route(
+            "/v1/research-jobs/recover",
+            research_route(ResearchOp::Recover),
+        )
+        .route("/v1/research-jobs/start", research_route(ResearchOp::Start))
+        .route(
+            "/v1/research-jobs/abandon",
+            research_route(ResearchOp::Abandon),
+        )
+        .route("/v1/research-jobs/event", research_route(ResearchOp::Event))
+        .route(
+            "/v1/research-jobs/cancel",
+            research_route(ResearchOp::Cancel),
+        )
+        .route(
+            "/v1/research-jobs/finish",
+            research_route(ResearchOp::Finish),
+        )
+        .route(
+            "/v1/research-jobs/report",
+            research_route(ResearchOp::Report),
+        )
+        .route(
+            "/v1/research-jobs/prepare",
+            research_route(ResearchOp::Prepare),
+        )
+        .route(
+            "/v1/research-jobs/artifact",
+            research_route(ResearchOp::Artifact),
+        )
+        .route("/v1/research-jobs/clear", research_route(ResearchOp::Clear))
+        .route("/v1/research-jobs/read", research_route(ResearchOp::Read))
+        .route("/v1/research-jobs/list", research_route(ResearchOp::List))
+        .route(
             "/v1/chat/grant-context",
             post(|State(s): State<Store>, h: HeaderMap, b: Bytes| handle_chat_move(s, h, b, false)),
         )
@@ -741,4 +774,335 @@ async fn handle_source_jobs(
 
 fn source_route(op: SourceOp) -> axum::routing::MethodRouter<Store> {
     post(move |State(s): State<Store>, h: HeaderMap, b: Bytes| handle_source_jobs(s, h, b, op))
+}
+
+// Internal-only, paired research journal capability. Node remains the model/file executor.
+#[derive(Clone, Copy)]
+enum ResearchOp {
+    Recover,
+    Start,
+    Abandon,
+    Event,
+    Cancel,
+    Finish,
+    Report,
+    Prepare,
+    Artifact,
+    Clear,
+    Read,
+    List,
+}
+
+fn research_error(e: server_projects::research_jobs::Error) -> Response<Body> {
+    use server_projects::research_jobs::Error as E;
+    match e {
+        E::BadRequest => error(StatusCode::BAD_REQUEST, "invalid research job request"),
+        E::Gone => error(StatusCode::GONE, "account no longer exists"),
+        E::NotFound => error(StatusCode::NOT_FOUND, "research job or project not found"),
+        E::Busy => reply(
+            StatusCode::SERVICE_UNAVAILABLE,
+            &json!({"error":"The research job store is busy.","code":"PROJECTS_BUSY"}),
+        ),
+        E::Stale => error(
+            StatusCode::CONFLICT,
+            "stale research job owner, run or operation",
+        ),
+        E::TooMany => error(
+            StatusCode::CONFLICT,
+            "A research job is already running in this project. Wait for it or cancel it.",
+        ),
+        E::Corrupt => reply(
+            StatusCode::SERVICE_UNAVAILABLE,
+            &json!({"error":"Research job state unknown; review required","code":"JOBS_UNKNOWN"}),
+        ),
+        E::Io => error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "research job store failed",
+        ),
+    }
+}
+
+async fn handle_research_jobs(
+    store: Store,
+    headers: HeaderMap,
+    raw: Bytes,
+    op: ResearchOp,
+) -> Response<Body> {
+    if !authorised(&store, &headers) {
+        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+    }
+    let Ok(body) = server_projects::research_jobs::parse_js(&raw) else {
+        return error(StatusCode::BAD_REQUEST, "invalid JSON");
+    };
+    let Some(user) = body.get("user").and_then(Value::as_str).map(str::to_owned) else {
+        return error(StatusCode::BAD_REQUEST, "user required");
+    };
+    let done = tokio::task::spawn_blocking(move || {
+        use server_projects::research_jobs as jobs;
+        let required = |key: &str| body.get(key).and_then(Value::as_str).map(str::to_owned);
+        let ctx = jobs::Context {
+            data_dir: &store.data_dir,
+            start_id: &store.start_id,
+        };
+        if matches!(op, ResearchOp::Read | ResearchOp::List) {
+            let Some(project) = required("projectId") else {
+                return error(StatusCode::BAD_REQUEST, "projectId required");
+            };
+            let answer = if matches!(op, ResearchOp::Read) {
+                let Some(id) = required("id") else {
+                    return error(StatusCode::BAD_REQUEST, "id required");
+                };
+                match jobs::read(ctx, &user, &project, &id) {
+                    Ok(Some(v)) => Ok(v),
+                    Ok(None) => {
+                        return error(StatusCode::NOT_FOUND, "research job or project not found")
+                    }
+                    Err(e) => Err(e),
+                }
+            } else {
+                jobs::list(ctx, &user, &project).map(|v| json!({"jobs":v}))
+            };
+            return match answer {
+                Ok(v) => match jobs::stringify_js(&v) {
+                    Ok(text) => reply_text(StatusCode::OK, text),
+                    Err(e) => research_error(e),
+                },
+                Err(e) => research_error(e),
+            };
+        }
+        let (Some(start), Some(born), Some(owner)) =
+            (required("start"), required("born"), required("owner"))
+        else {
+            return error(StatusCode::BAD_REQUEST, "start, born and owner required");
+        };
+        let answer = match op {
+            ResearchOp::Recover => jobs::recover(
+                ctx,
+                jobs::Owner {
+                    user: &user,
+                    start: &start,
+                    born: &born,
+                    owner: &owner,
+                },
+            )
+            .map(|count| json!({"count":count})),
+            ResearchOp::Start => match (
+                required("projectId"),
+                required("request"),
+                required("question"),
+                required("mode"),
+                body.get("questions"),
+            ) {
+                (Some(project), Some(request), Some(question), Some(mode), Some(questions)) => {
+                    jobs::start(
+                        ctx,
+                        jobs::Owner {
+                            user: &user,
+                            start: &start,
+                            born: &born,
+                            owner: &owner,
+                        },
+                        &project,
+                        &request,
+                        &question,
+                        &mode,
+                        questions,
+                    )
+                    .map(|(id, run)| json!({"id":id,"run":run}))
+                }
+                _ => Err(jobs::Error::BadRequest),
+            },
+            ResearchOp::Abandon => match required("request") {
+                Some(request) => jobs::abandon(
+                    ctx,
+                    jobs::Owner {
+                        user: &user,
+                        start: &start,
+                        born: &born,
+                        owner: &owner,
+                    },
+                    &request,
+                )
+                .map(|()| json!({"ok":true})),
+                None => Err(jobs::Error::BadRequest),
+            },
+            ResearchOp::Event => match (
+                required("id"),
+                required("run"),
+                body.get("n").and_then(Value::as_u64),
+                required("kind"),
+                body.get("data"),
+            ) {
+                (Some(id), Some(run), Some(n), Some(kind), Some(data)) => jobs::event(
+                    ctx,
+                    jobs::Owner {
+                        user: &user,
+                        start: &start,
+                        born: &born,
+                        owner: &owner,
+                    },
+                    &id,
+                    &run,
+                    n,
+                    &kind,
+                    data,
+                )
+                .map(|()| json!({"ok":true})),
+                _ => Err(jobs::Error::BadRequest),
+            },
+            ResearchOp::Cancel => match (required("projectId"), required("id"), required("run")) {
+                (Some(project), Some(id), Some(run)) => jobs::cancel(
+                    ctx,
+                    jobs::Owner {
+                        user: &user,
+                        start: &start,
+                        born: &born,
+                        owner: &owner,
+                    },
+                    &project,
+                    &id,
+                    &run,
+                ),
+                _ => Err(jobs::Error::BadRequest),
+            },
+            ResearchOp::Finish => match (
+                required("id"),
+                required("run"),
+                body.get("ok").and_then(Value::as_bool),
+            ) {
+                (Some(id), Some(run), Some(ok)) => jobs::finish(
+                    ctx,
+                    jobs::Owner {
+                        user: &user,
+                        start: &start,
+                        born: &born,
+                        owner: &owner,
+                    },
+                    &id,
+                    &run,
+                    ok,
+                    body.get("result").unwrap_or(&Value::Null),
+                    required("error").as_deref(),
+                )
+                .map(|()| json!({"ok":true})),
+                _ => Err(jobs::Error::BadRequest),
+            },
+            ResearchOp::Report => match (required("id"), required("run"), body.get("result")) {
+                (Some(id), Some(run), Some(result)) => jobs::report(
+                    ctx,
+                    jobs::Owner {
+                        user: &user,
+                        start: &start,
+                        born: &born,
+                        owner: &owner,
+                    },
+                    &id,
+                    &run,
+                    result,
+                )
+                .map(|()| json!({"ok":true})),
+                _ => Err(jobs::Error::BadRequest),
+            },
+            ResearchOp::Prepare | ResearchOp::Artifact => match (
+                required("projectId"),
+                required("id"),
+                required("run"),
+                required("name"),
+                required("hash"),
+                body.get("bytes").and_then(Value::as_u64),
+                required("target"),
+            ) {
+                (
+                    Some(project),
+                    Some(id),
+                    Some(run),
+                    Some(name),
+                    Some(hash),
+                    Some(bytes),
+                    target,
+                ) => {
+                    let answer = if matches!(op, ResearchOp::Prepare) {
+                        jobs::prepare_file(
+                            ctx,
+                            jobs::Owner {
+                                user: &user,
+                                start: &start,
+                                born: &born,
+                                owner: &owner,
+                            },
+                            &project,
+                            &id,
+                            &run,
+                            jobs::FileIntent {
+                                name: &name,
+                                hash: &hash,
+                                bytes,
+                                target: target.as_deref().unwrap_or(""),
+                            },
+                        )
+                    } else {
+                        jobs::artifact(
+                            ctx,
+                            jobs::Owner {
+                                user: &user,
+                                start: &start,
+                                born: &born,
+                                owner: &owner,
+                            },
+                            &project,
+                            &id,
+                            &run,
+                            jobs::Artifact {
+                                name: &name,
+                                hash: &hash,
+                                bytes,
+                            },
+                        )
+                    };
+                    answer.map(|()| json!({"ok":true}))
+                }
+                _ => Err(jobs::Error::BadRequest),
+            },
+            ResearchOp::Clear => match (
+                required("projectId"),
+                required("id"),
+                required("run"),
+                required("name"),
+                required("hash"),
+            ) {
+                (Some(project), Some(id), Some(run), Some(name), Some(hash)) => jobs::clear_file(
+                    ctx,
+                    jobs::Owner {
+                        user: &user,
+                        start: &start,
+                        born: &born,
+                        owner: &owner,
+                    },
+                    &project,
+                    &id,
+                    &run,
+                    &name,
+                    &hash,
+                )
+                .map(|()| json!({"ok":true})),
+                _ => Err(jobs::Error::BadRequest),
+            },
+            ResearchOp::Read | ResearchOp::List => {
+                return error(StatusCode::BAD_REQUEST, "invalid research job request")
+            }
+        };
+        match answer {
+            Ok(v) => match jobs::stringify_js(&v) {
+                Ok(text) => reply_text(StatusCode::OK, text),
+                Err(e) => research_error(e),
+            },
+            Err(e) => research_error(e),
+        }
+    })
+    .await;
+    done.unwrap_or_else(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error"))
+}
+
+fn research_route(op: ResearchOp) -> axum::routing::MethodRouter<Store> {
+    post(move |State(s): State<Store>, h: HeaderMap, b: Bytes| handle_research_jobs(s, h, b, op))
 }
