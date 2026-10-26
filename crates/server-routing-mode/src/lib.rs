@@ -7,7 +7,7 @@ use server_store::{Reader, RustRoutingMode, StoreError, Writer};
 pub const BODY_LIMIT: usize = 1024 * 1024;
 pub const FILE: &str = "routing-mode.json";
 pub const KEY: &str = "routing_modes_allowed";
-pub const FEATURE_KEY: &str = "feature:routingModes";
+pub const FEATURE_KEY: &str = server_features::spec(server_features::Feature::RoutingModes).setting;
 pub const MODES: [&str; 3] = ["local", "cloud", "hybrid"];
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Error {
@@ -24,23 +24,32 @@ pub fn js_trim(s: &str) -> &str {
     s.trim_matches(|c| matches!(c,'\u{9}'..='\u{d}'|'\u{20}'|'\u{a0}'|'\u{1680}'|'\u{2000}'..='\u{200a}'|'\u{2028}'|'\u{2029}'|'\u{202f}'|'\u{205f}'|'\u{3000}'|'\u{feff}'))
 }
 pub fn feature_env(raw: Option<&str>) -> Result<Option<bool>, Error> {
-    let Some(s) = raw.map(js_trim).filter(|s| !s.is_empty()) else {
-        return Ok(None);
-    };
-    match s.to_ascii_lowercase().as_str() {
-        "1" | "true" | "on" | "yes" => Ok(Some(true)),
-        "0" | "false" | "off" | "no" => Ok(Some(false)),
-        _ => Err(err(
-            503,
-            "Invalid boolean in feature env var: expected true/false",
-        )),
-    }
+    server_features::parse_env(raw).map_err(|message| err(503, message))
 }
 pub fn enabled(reader: &Reader<'_>, env: Option<bool>) -> Result<bool, StoreError> {
-    if let Some(v) = env {
-        return Ok(v);
+    if let Some(value) = env {
+        return Ok(server_features::evaluate(
+            server_features::Feature::RoutingModes,
+            Some(value),
+            None,
+            true,
+        )
+        .enabled);
     }
-    Ok(reader.row("SELECT CASE WHEN typeof(value)='text' AND value='true' THEN 1 ELSE 0 END FROM settings WHERE key='feature:routingModes'",[],|r|r.get::<_,bool>(0))?.unwrap_or(false))
+    let stored = reader
+        .row(
+            "SELECT CASE WHEN typeof(value)='text' AND value IN ('true','false') THEN value ELSE NULL END FROM settings WHERE key=?1",
+            [FEATURE_KEY],
+            |r| r.get::<_, Option<String>>(0),
+        )?
+        .flatten();
+    Ok(server_features::evaluate(
+        server_features::Feature::RoutingModes,
+        env,
+        stored.as_deref(),
+        true,
+    )
+    .enabled)
 }
 pub fn allowed(reader: &Reader<'_>) -> Result<Vec<String>, StoreError> {
     // Bound allocation at SQL boundary; do not materialize an unbounded settings value.

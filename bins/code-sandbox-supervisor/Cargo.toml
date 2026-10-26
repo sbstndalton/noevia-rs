@@ -1,0 +1,20 @@
+[package]
+name = "code-sandbox-supervisor"
+version = "0.1.0"
+description = "Native process supervisor for the isolated Code sandbox"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+sandbox-bridge = { path = "../../crates/sandbox-bridge" }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "process", "signal", "sync", "time"] }
+nix = { version = "0.30", features = ["signal", "process"] }
+
+[dev-dependencies]
+tempfile = "3"

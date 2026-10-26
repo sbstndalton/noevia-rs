@@ -1,0 +1,227 @@
+{
+  "python": "3.12.15",
+  "unicode": "15.0.0",
+  "oracle": "services6c1eb5891c75b6fb9f04c4484ba39da80a5b4b9e agent.entity_focus.time_anchor",
+  "cases": [
+    {
+      "query": "Dr. Before January 20, 2030, what?",
+      "anchor": null
+    },
+    {
+      "query": "Dr. As of January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": true
+      }
+    },
+    {
+      "query": "Drͅ. Before January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": false
+      }
+    },
+    {
+      "query": "Drͅ. As of January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": true
+      }
+    },
+    {
+      "query": "Dŕ. Before January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": false
+      }
+    },
+    {
+      "query": "Dŕ. As of January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": true
+      }
+    },
+    {
+      "query": "Drः. Before January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": false
+      }
+    },
+    {
+      "query": "Drः. As of January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": true
+      }
+    },
+    {
+      "query": "Dr⃝. Before January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": false
+      }
+    },
+    {
+      "query": "Dr⃝. As of January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": true
+      }
+    },
+    {
+      "query": "DrⅠ. Before January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": false
+      }
+    },
+    {
+      "query": "DrⅠ. As of January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": true
+      }
+    },
+    {
+      "query": "Dr². Before January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": false
+      }
+    },
+    {
+      "query": "Dr². As of January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": true
+      }
+    },
+    {
+      "query": "Dŕ. Before January 20, 2030, what?",
+      "anchor": null
+    },
+    {
+      "query": "Dŕ. As of January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": true
+      }
+    },
+    {
+      "query": "Dṙ. Before January 20, 2030, what?",
+      "anchor": null
+    },
+    {
+      "query": "Dṙ. As of January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": true
+      }
+    },
+    {
+      "query": "Sept. Before January 20, 2030, what?",
+      "anchor": null
+    },
+    {
+      "query": "Sept. As of January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": true
+      }
+    },
+    {
+      "query": "Septͅ. Before January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": false
+      }
+    },
+    {
+      "query": "Septͅ. As of January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": true
+      }
+    },
+    {
+      "query": "Sept́. Before January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": false
+      }
+    },
+    {
+      "query": "Sept́. As of January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": true
+      }
+    },
+    {
+      "query": "Septः. Before January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": false
+      }
+    },
+    {
+      "query": "Septः. As of January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": true
+      }
+    },
+    {
+      "query": "SeptⅠ. Before January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": false
+      }
+    },
+    {
+      "query": "SeptⅠ. As of January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": true
+      }
+    },
+    {
+      "query": "Sept². Before January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": false
+      }
+    },
+    {
+      "query": "Sept². As of January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": true
+      }
+    },
+    {
+      "query": "ſir. Before January 20, 2030, what?",
+      "anchor": null
+    },
+    {
+      "query": "ſir. As of January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": true
+      }
+    },
+    {
+      "query": "Prof. Before January 20, 2030, what?",
+      "anchor": null
+    },
+    {
+      "query": "Prof. As of January 20, 2030, what?",
+      "anchor": {
+        "day": "2030-01-20",
+        "inclusive": true
+      }
+    }
+  ]
+}
