@@ -44,6 +44,14 @@ fn flag_off_answers_404_before_any_row_schema_or_key() {
     assert_eq!(run(&d, A, None, true), (404, OFF.into(), 0));
     set_flag(&db, "false");
     assert_eq!(run(&d, A, None, true), (404, OFF.into(), 0));
+    set_flag(&db, "True");
+    assert_eq!(run(&d, A, None, true), (404, OFF.into(), 0));
+    // The same bytes as "true" in a BLOB never enable Node's TEXT-only flag.
+    db.execute_batch(
+        "INSERT OR REPLACE INTO settings(key,value) VALUES('feature:chatgptOAuth',x'74727565')",
+    )
+    .unwrap();
+    assert_eq!(run(&d, A, None, true), (404, OFF.into(), 0));
     set_flag(&db, "true");
     assert_eq!(run(&d, A, Some(false), true), (404, OFF.into(), 0));
 }

@@ -2,7 +2,8 @@
 //! `diary/agent/workspace_restore.py` `_verify` (noevia#982). It is the gate in front of the
 //! isolated operator restore, the ZIP restore preview and the in-app ZIP import: an untrusted
 //! upload of up to 272 MiB is accepted only when it is exactly a `noevia-workspace-v1` export.
-//! Nothing here touches the filesystem or the network; the caller restores from Python's result.
+//! Nothing here touches the filesystem or the network. Digest-only verification remains compatible;
+//! verify_archive also exposes checked contents/settings for callers that must not parse ZIP again.
 //!
 //! Every check `_verify` makes is made here, in the same order, with the same refusal class
 //! (`Reject::code`, mapped back to Python's message by the Diary):
@@ -59,7 +60,10 @@
 #![forbid(unsafe_code)]
 
 mod crc;
+mod decode;
 mod zip;
+
+pub use decode::{DECODE_V1_END, DECODE_V1_MAGIC, MAX_DECODE_METADATA};
 
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -171,6 +175,47 @@ impl Verified {
         h.update(format!("T\0{}\0{}\0", self.files.len(), self.bytes).as_bytes());
         hex(&h.finalize())
     }
+}
+
+/// A fully verified archive. Contents and settings become accessible only after ALL checks
+/// succeed. Immutable accessors keep the listing, data and fingerprint bound together.
+pub struct VerifiedArchive {
+    listing: Verified,
+    settings: Value,
+    fingerprint: String,
+    contents: Vec<Vec<u8>>,
+}
+
+impl VerifiedArchive {
+    pub fn listing(&self) -> &Verified {
+        &self.listing
+    }
+
+    /// The manifest's settings value, or an empty object when absent (Python's default).
+    /// This is intentionally not restricted to an object: existing archives allow any JSON value.
+    pub fn settings(&self) -> &Value {
+        &self.settings
+    }
+
+    /// SHA-256 of the exact original archive bytes, not a reserialized manifest.
+    pub fn fingerprint(&self) -> &str {
+        &self.fingerprint
+    }
+
+    /// Files in the same sorted order as listing().files; each byte sequence passed CRC,
+    /// declared-size and manifest SHA-256 checks. No ZIP parsing by callers is required.
+    pub fn files(&self) -> impl ExactSizeIterator<Item = (&VerifiedFile, &[u8])> {
+        self.listing
+            .files
+            .iter()
+            .zip(self.contents.iter().map(Vec::as_slice))
+    }
+}
+
+/// Validate once and retain the verified file bytes and settings. Bounded by MAX_ARCHIVE,
+/// MAX_TOTAL and MAX_MANIFEST; source bytes are never base64 encoded or inflated a second time.
+pub fn verify_archive(body: &[u8]) -> Result<VerifiedArchive, Reject> {
+    verify_inner(body, true)
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -285,6 +330,11 @@ fn json_text(b: &[u8]) -> Option<String> {
 
 /// Verify `body` like `_verify`; see the crate docs for every check.
 pub fn verify(body: &[u8]) -> Result<Verified, Reject> {
+    // Use the identical validation path without retaining all source bytes for digest-only users.
+    verify_inner(body, false).map(|archive| archive.listing)
+}
+
+fn verify_inner(body: &[u8], retain: bool) -> Result<VerifiedArchive, Reject> {
     if body.len() > MAX_ARCHIVE {
         return Err(Reject::ArchiveTooLarge);
     }
@@ -358,7 +408,7 @@ pub fn verify(body: &[u8]) -> Result<Verified, Reject> {
             return Err(Reject::DuplicateDirectory);
         }
     }
-    let mut files: Vec<VerifiedFile> = Vec::new();
+    let mut files: Vec<(VerifiedFile, Vec<u8>)> = Vec::new();
     let mut file_set: HashSet<&str> = HashSet::new();
     for row in rows {
         let row = row.as_object().ok_or(Reject::FileRecord)?;
@@ -383,11 +433,14 @@ pub fn verify(body: &[u8]) -> Result<Verified, Reject> {
             return Err(Reject::Checksum);
         }
         file_set.insert(path);
-        files.push(VerifiedFile {
-            path: path.to_owned(),
-            bytes,
-            sha256: digest,
-        });
+        files.push((
+            VerifiedFile {
+                path: path.to_owned(),
+                bytes,
+                sha256: digest,
+            },
+            if retain { data } else { Vec::new() },
+        ));
     }
     for path in file_set.iter().chain(dirs.iter()) {
         let mut parent = *path;
@@ -406,7 +459,7 @@ pub fn verify(body: &[u8]) -> Result<Verified, Reject> {
     if expected.len() != names.len() || !names.iter().all(|n| expected.contains(*n)) {
         return Err(Reject::EntriesMismatch);
     }
-    let total: u64 = files.iter().map(|f| f.bytes).sum();
+    let total: u64 = files.iter().map(|(f, _)| f.bytes).sum();
     let (count, declared) = match (int(manifest.get("fileCount")), int(manifest.get("bytes"))) {
         (Some(c), Some(b)) => (c, b),
         _ => return Err(Reject::TotalsInvalid),
@@ -414,12 +467,29 @@ pub fn verify(body: &[u8]) -> Result<Verified, Reject> {
     if total > MAX_TOTAL || count != files.len() as i128 || declared != i128::from(total) {
         return Err(Reject::TotalsMismatch);
     }
-    files.sort_by(|a, b| a.path.cmp(&b.path));
+    files.sort_by(|(a, _), (b, _)| a.path.cmp(&b.path));
+    let (files, contents) = files.into_iter().unzip();
     let mut directories: Vec<String> = dirs.into_iter().map(str::to_owned).collect();
     directories.sort();
-    Ok(Verified {
-        files,
-        directories,
-        bytes: total,
+    Ok(VerifiedArchive {
+        listing: Verified {
+            files,
+            directories,
+            bytes: total,
+        },
+        settings: if retain {
+            manifest
+                .get("settings")
+                .cloned()
+                .unwrap_or_else(|| Value::Object(Default::default()))
+        } else {
+            Value::Null
+        },
+        fingerprint: if retain {
+            sha256_hex(body)
+        } else {
+            String::new()
+        },
+        contents,
     })
 }
