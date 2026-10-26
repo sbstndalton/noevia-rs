@@ -743,13 +743,20 @@ async fn static_bundle_like_static_files_cjs() {
         "/about",
         "/privacy",
         "/device",
-        "/.well-known/webauthn",
         "/a/%2e%2e/index.html",
         "/a//b",
     ] {
         let (res, _c) = call(front, "GET", p, &[], b"").await;
         assert!(res.headers().get("x-upstream").is_some(), "{p}");
     }
+    // Related origins are now a Rust-owned GET; without Node's database they fail closed
+    // here, never fall through to its old callback.
+    let (res, _c) = call(front, "GET", "/.well-known/webauthn", &[], b"").await;
+    assert_eq!(res.status(), 503);
+    assert!(res.headers().get("x-upstream").is_none());
+    let (res, _c) = call(front, "HEAD", "/.well-known/webauthn", &[], b"").await;
+    assert!(res.headers().get("x-upstream").is_some());
+
     // A changed file is picked up (cache keyed on mtime and size).
     std::fs::write(dist.join("theme.js"), "t2()").unwrap();
     let (res, _c) = call(front, "GET", "/theme.js", &[], b"").await;
