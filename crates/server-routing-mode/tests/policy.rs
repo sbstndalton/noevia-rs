@@ -144,4 +144,8 @@ fn dedicated_sql_capability_and_audit_partial_commit() {
         );
         assert!(store.read(|r| rm::enabled(r, Some(true))).unwrap());
     }
+    // A byte-identical BLOB is not Node's exact TEXT setting.
+    db.execute_batch("INSERT OR REPLACE INTO settings VALUES('feature:routingModes',x'74727565')")
+        .unwrap();
+    assert!(!store.read(|r| rm::enabled(r, None)).unwrap());
 }

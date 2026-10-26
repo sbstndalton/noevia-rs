@@ -16,6 +16,8 @@ path = "src/main.rs"
 
 [dependencies]
 workspace-restore-verify = { path = "../../crates/workspace-restore-verify" }
+rustix = { version = "1", features = ["fs"] }
+serde_json = "1"
 
 [dev-dependencies]
 serde_json = "1"
