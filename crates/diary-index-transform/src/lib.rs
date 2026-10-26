@@ -457,7 +457,7 @@ pub struct EditOp {
 
 fn edit_text(op: &EditOp) -> &str {
     match &op.replacement {
-        None => &op.text,
+        None => py_strip(&op.text),
         Some(None) => "None",
         Some(Some(value)) => value,
     }

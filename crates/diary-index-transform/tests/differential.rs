@@ -257,3 +257,30 @@ fn unicode_newer_than_shipped_python_does_not_retarget_edits() {
     assert!(match_indices(&["- [ ] \u{10d50}".to_owned()], "\u{10d70}").is_empty());
     assert!(match_indices(&["- [ ] \u{1c89}".to_owned()], "\u{1c8a}").is_empty());
 }
+
+#[test]
+fn missing_question_replacement_uses_trimmed_search_text() -> Result<(), Box<dyn std::error::Error>>
+{
+    for (replacement, expected) in [
+        (None, "- [ ] Plan A"),
+        (Some(None), "- [ ] None"),
+        (Some(Some(String::new())), "- [ ] "),
+        (Some(Some(" Plan B ".to_owned())), "- [ ]  Plan B "),
+    ] {
+        let mut idx = parse_index(Some("## Open Questions\n- [ ] Plan A\n"))?;
+        let before = idx.clone();
+        let op = EditOp {
+            action: "edit".to_owned(),
+            text: "\u{2003} Plan A \t".to_owned(),
+            replacement,
+            date: None,
+        };
+        let changed = apply_index_edits(&mut idx, &[op], &[], "2026-09-01")?;
+        assert_eq!(
+            idx.section("Open Questions"),
+            Some([expected.to_owned()].as_slice())
+        );
+        assert_eq!(changed, idx != before);
+    }
+    Ok(())
+}
