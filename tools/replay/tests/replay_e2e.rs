@@ -147,6 +147,7 @@ fn rand_suffix() -> u32 {
 
 fn opts(port: u16) -> Options {
     Options {
+        native_move_state: false,
         base: http::Base::parse(&format!("http://127.0.0.1:{port}")).unwrap(),
         timeout: Duration::from_secs(5),
         ignore_headers: Vec::new(),
@@ -234,4 +235,118 @@ fn ignored_body_paths_match_on_segment_boundaries() {
     assert!(!replay::body_ignored("body/hoursTotal", &ig));
     assert!(!replay::body_ignored("body/peakHour/count", &ig));
     assert!(!replay::body_ignored("status", &ig));
+}
+
+#[test]
+fn shared_native_front_cannot_forget_the_required_persisted_state_mode() {
+    let result = std::process::Command::new(env!("CARGO_BIN_EXE_replay"))
+        .args([
+            "run",
+            "--corpus",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../../contracts/http/corpus"),
+            "--base",
+            "http://127.0.0.1:18021",
+            "--server-cmd",
+            "exec sh tools/front/replay-front.sh unused unused",
+        ])
+        .output()
+        .unwrap();
+    assert!(!result.status.success());
+    assert!(
+        String::from_utf8_lossy(&result.stderr).contains("requires --native-move-state"),
+        "{:?}",
+        result
+    );
+}
+
+#[test]
+fn every_native_replay_invocation_requires_a_persisted_proof_including_negative_controls() {
+    fn valid(source: &str) -> bool {
+        let mut command = String::new();
+        let mut commands = Vec::new();
+        for line in source.lines() {
+            if line.contains("target/debug/replay run") {
+                command = line.to_string();
+            } else if !command.is_empty() {
+                command.push_str(line);
+            }
+            if !command.is_empty() && !line.trim_end().ends_with('\\') {
+                commands.push(std::mem::take(&mut command));
+            }
+        }
+        commands
+            .iter()
+            .filter(|c| c.contains("replay-front.sh"))
+            .all(|c| {
+                c.contains("--native-move-state")
+                    && (c.contains("--state-out ") || c.contains("--expect-state "))
+            })
+    }
+    let sources = [
+        include_str!("../../../.github/workflows/ci.yml"),
+        include_str!("../../../.github/workflows/chatgpt-status.yml"),
+        include_str!("../../../.github/workflows/export.yml"),
+        include_str!("../../../.github/workflows/project-writes.yml"),
+        include_str!("../../../.github/workflows/stats.yml"),
+        include_str!("../../../.github/workflows/storage-reads.yml"),
+        include_str!("../../front/reasoning-contracts.sh"),
+    ];
+    for source in sources {
+        assert!(valid(source));
+    }
+    let stats = include_str!("../../../.github/workflows/stats.yml");
+    assert!(!valid(&stats.replace(
+        "--state-out \"$RUNNER_TEMP/stats-proof-state.json\"",
+        ""
+    )));
+    assert!(!valid(&stats.replace("--native-move-state ", "")));
+    assert!(stats.contains("test ! -e \"$RUNNER_TEMP/stats-proof-state.json\""));
+    assert!(stats.contains("proof = state['nativeMoveStateProof']"));
+    assert!(stats.contains("set -euo pipefail"));
+    assert!(stats.contains("assert stats and len(stats) == len(bad)"));
+}
+
+#[test]
+fn deliberate_stats_difference_cannot_mask_missing_or_invalid_native_proof() {
+    let workflow = include_str!("../../../.github/workflows/stats.yml");
+    let after=workflow.split("python3 - \"$RUNNER_TEMP/stats-proof.json\" \"$RUNNER_TEMP/stats-proof-state.json\" <<'PY'\n").nth(1).unwrap();
+    let verifier = after
+        .split("\n          PY")
+        .next()
+        .unwrap()
+        .lines()
+        .map(|line| line.strip_prefix("          ").unwrap_or(line))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let dir = tempfile::tempdir().unwrap();
+    let report = dir.path().join("report.json");
+    let state = dir.path().join("state.json");
+    std::fs::write(&report,serde_json::json!([{"method":"GET","path":"/api/stats","diffs":[{"at":"body/inference/up"}],"error":null,"status":200,"expectedStatus":200}]).to_string()).unwrap();
+    let check = || {
+        std::process::Command::new("python3")
+            .arg("-c")
+            .arg(&verifier)
+            .arg(&report)
+            .arg(&state)
+            .output()
+            .unwrap()
+            .status
+            .success()
+    };
+    assert!(
+        !check(),
+        "valid intentional HTTP difference cannot hide missing state output"
+    );
+    let valid = serde_json::json!({"nativeMoveStateProof":{"actualStart":"a".repeat(32),"accountFiles":{"users/qa/chat-move-state.json":{"pending":null,"generations":{"free-alpha":"2"}}}}});
+    std::fs::write(&state, valid.to_string()).unwrap();
+    assert!(check());
+    for bad in [
+        serde_json::json!({}),
+        serde_json::json!({"nativeMoveStateProof":{"actualStart":"a".repeat(32),"accountFiles":{}}}),
+        serde_json::json!({"nativeMoveStateProof":{"actualStart":"a".repeat(32),"accountFiles":{"qa":{"pending":null,"generations":{"free-alpha":"0"}}}}}),
+        serde_json::json!({"nativeMoveStateProof":{"actualStart":"a".repeat(32),"accountFiles":{"qa":{"pending":{"unsafe":true},"generations":{"free-alpha":"2"}}}}}),
+    ] {
+        std::fs::write(&state, bad.to_string()).unwrap();
+        assert!(!check());
+    }
 }
