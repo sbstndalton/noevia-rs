@@ -1,7 +1,9 @@
 //! Controlled-mode implementation under construction.
-//! Only bounded operation-body admission exists here so far. No control route,
-//! readiness, live-session, forwarding, lifecycle or production-mode change is enabled.
+//! Bounded bodies, native session and replay primitives exist here so far.
+//! No control route, Ready serialization, forwarding/drain or production mode is enabled.
 pub mod wire;
 
 // Session core is not wired to routing or forwarding yet.
 pub mod session;
+
+pub mod replay;
