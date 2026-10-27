@@ -70,6 +70,7 @@ struct Entry {
     expires: Instant,
     deadline_ms: u64,
     outcome: Outcome,
+    report_scope: Option<[u8; 32]>,
     charge: usize,
 }
 /// One owner serializes access with controller mutation admission. No live entry
@@ -164,6 +165,7 @@ impl Replay {
                 expires,
                 deadline_ms,
                 outcome: Outcome::Pending,
+                report_scope: None,
                 charge: MAX_RESPONSE_BYTES,
             },
         );
@@ -178,11 +180,45 @@ impl Replay {
     pub fn complete(&mut self, ticket: Ticket, status: u16, body: Vec<u8>) -> Result<(), Error> {
         self.complete_at(ticket, status, body, Instant::now())
     }
+    pub(super) fn complete_scoped(
+        &mut self,
+        ticket: Ticket,
+        status: u16,
+        body: Vec<u8>,
+        scope: [u8; 32],
+    ) -> Result<(), Error> {
+        self.complete_tagged_at(ticket, status, body, Some(scope), Instant::now())
+    }
+    /// Acknowledged report privacy deletion keeps the execution fence intact.
+    /// Future retries are explicitly unavailable, never successful empty output.
+    pub(super) fn redact_reports(&mut self, scope: [u8; 32]) {
+        for e in self
+            .entries
+            .values_mut()
+            .filter(|e| e.report_scope == Some(scope))
+        {
+            if matches!(e.outcome, Outcome::Cached(_)) {
+                self.charge = self.charge.saturating_sub(e.charge);
+                e.charge = 0;
+                e.outcome = Outcome::Unavailable;
+            }
+        }
+    }
     fn complete_at(
         &mut self,
         ticket: Ticket,
         status: u16,
         body: Vec<u8>,
+        now: Instant,
+    ) -> Result<(), Error> {
+        self.complete_tagged_at(ticket, status, body, None, now)
+    }
+    fn complete_tagged_at(
+        &mut self,
+        ticket: Ticket,
+        status: u16,
+        body: Vec<u8>,
+        scope: Option<[u8; 32]>,
         now: Instant,
     ) -> Result<(), Error> {
         self.purge_at(now, None)?;
@@ -201,6 +237,7 @@ impl Replay {
         }
         e.charge = body.len();
         self.charge = self.charge.checked_add(e.charge).ok_or(Error::Result)?;
+        e.report_scope = scope;
         e.outcome = Outcome::Cached(Cached {
             status,
             body: Arc::from(body.into_boxed_slice()),
@@ -461,6 +498,31 @@ mod tests {
             .err(),
             Some(Error::Capacity)
         );
+        Ok(())
+    }
+    #[test]
+    fn acknowledged_scoped_body_redaction_preserves_fences_and_unrelated_results(
+    ) -> Result<(), Error> {
+        let mut r = Replay::new();
+        let a = ticket(r.begin(ID, MAC, 2000, 1000)?)?;
+        r.complete_scoped(a, 200, b"report".to_vec(), [1; 32])?;
+        let other = "0".repeat(32);
+        let b = ticket(r.begin(&other, MAC, 2000, 1000)?)?;
+        r.complete_scoped(b, 200, b"keep".to_vec(), [2; 32])?;
+        r.redact_reports([1; 32]);
+        assert_eq!(r.charge, 4);
+        assert!(matches!(
+            r.begin(ID, MAC, 2000, 1001)?,
+            Admission::Unavailable
+        ));
+        assert_eq!(
+            r.begin(ID, &"0".repeat(64), 2000, 1001).err(),
+            Some(Error::Conflict)
+        );
+        assert!(matches!(
+            r.begin(&other, MAC, 2000, 1001)?,
+            Admission::Cached(_)
+        ));
         Ok(())
     }
 }

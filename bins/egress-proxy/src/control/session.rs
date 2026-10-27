@@ -26,6 +26,15 @@ impl std::fmt::Display for Error {
 }
 impl std::error::Error for Error {}
 
+/// Private historical control proof verifier; cannot mint, export a key or admit
+/// network access. Ordinary absolute validity is always checked at actual now.
+#[derive(Clone)]
+pub(super) struct OwnershipVerifier(egress::GrantKey);
+impl OwnershipVerifier {
+    pub(super) fn verify(&self, token: &[u8], wall_ms: u64) -> Result<egress::SignedGrant, Error> {
+        egress::verify(&self.0, token, wall_ms).map_err(|_| Error::Authentication)
+    }
+}
 /// One process incarnation. Production identity generation is OS CSPRNG only.
 /// Do not regenerate this per request; new sessions retain this process boot ID.
 pub struct Boot {
@@ -154,6 +163,9 @@ impl Session {
     #[cfg(test)]
     pub(super) fn expire_for_test(&mut self) {
         self.state = State::Expired;
+    }
+    pub(super) fn ownership_verifier(&self) -> OwnershipVerifier {
+        OwnershipVerifier(self.keys.grant.clone())
     }
     pub fn retire(&mut self) {
         self.state = State::Retired;

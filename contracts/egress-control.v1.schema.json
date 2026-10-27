@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:noevia:egress-control:operation-bodies:1",
   "title": "Noevia egress control operation bodies v1",
-  "$comment": "Top-level oneOf describes request bodies only. Raw UTF-8 JSON <=32768 bytes; duplicate fields rejected. Schema cannot enforce duplicate keys, numeric lexical spelling, metadata MAC binding, HTTP framing, deadline freshness or live state. HTTP/1.1 POST exact origin path; single Host, exact application/json and canonical matching Content-Length; x-noevia-request-id, x-noevia-deadline-ms, x-noevia-key-fingerprint, x-noevia-control-mac, optional x-noevia-boot-id. Optional Connection close/keep-alive, User-Agent, Accept only; all duplicate/other headers refuse;16 headers/16KiB. Initial Ready requires absent boot/null prior; replacement requires known boot and exact runtime prior session. Response defs:200ready/renewed,202pending,409conflict,408stale,503uncertain/unavailable/drain-incomplete. Response MAC binds original request MAC/status/exact bytes <=64KiB, no-store/close. Buffered controller implements Ready/renew only; scoped activity/revoke/forget are explicit503 until implemented. No live listener, permission-safe key-file adapter, transport collection/time/concurrency/parser qualification, forwarding/idle policy integration or release qualification follows.",
+  "$comment": "Top-level oneOf remains request bodies only. Raw request<=32KiB, response<=64KiB; duplicates/numeric lexical spelling/MAC/framing/freshness/live scope need native enforcement. Exact HTTP metadata names and closed body fields remain unchanged. Buffered Engine implements Ready/Renew/Activity/Revoke/Forget with independent ownership/security records, report FIFO500/50rows,48KiB serialized summary including actual escaped strings and worst-case JS-safe counter growth. Normal terminal statuses200/202/408/409/503; responseBarrier is503forincomplete drain/report or409forstale-current target barrier without updating newer watermark. Scope correlation stays backend-only; user summaries omit nonce/tokens. Final-snapshot-only acknowledgement deletes report bodies and redacts report-bearing replay outcomes into unavailable while retaining ID/MAC mutation fences/security tombstones. Already delivered/in-flight caller-owned data is not retroactively erased. Full live transport/control capacity/keyfile/maintenance/GrantStore idle-policy integration and Core/assembly/runtime qualification remain held; these schemas do not enable a listener or release.",
   "oneOf": [
     {
       "$ref": "#/$defs/ready"
@@ -399,6 +399,357 @@
             "drain-incomplete",
             "stale"
           ]
+        }
+      }
+    },
+    "reportRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "host",
+        "allowed",
+        "refused",
+        "reason"
+      ],
+      "properties": {
+        "host": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 49150
+        },
+        "allowed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "refused": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        }
+      }
+    },
+    "reportSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hosts",
+        "allowed",
+        "refused"
+      ],
+      "properties": {
+        "hosts": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/reportRow"
+          }
+        },
+        "allowed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "refused": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "reportSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "state",
+        "final",
+        "summary",
+        "partial",
+        "overflow"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "state": {
+          "enum": [
+            "complete",
+            "partial",
+            "interrupted",
+            "evicted",
+            "forgotten",
+            "unavailable"
+          ]
+        },
+        "final": {
+          "type": "boolean"
+        },
+        "summary": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/reportSummary"
+            }
+          ]
+        },
+        "partial": {
+          "type": "boolean"
+        },
+        "overflow": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "evicted",
+                  "forgotten",
+                  "unavailable"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "summary": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "summary": {
+                "$ref": "#/$defs/reportSummary"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "responseScoped": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "requestId",
+        "state",
+        "bootId",
+        "sessionId",
+        "taskId",
+        "leaseNonce",
+        "barrierInstalled",
+        "drained",
+        "snapshot"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "state": {
+          "enum": [
+            "activity",
+            "revoke-confirmed"
+          ]
+        },
+        "bootId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$(?![\\s\\S])"
+        },
+        "leaseNonce": {
+          "type": "string",
+          "minLength": 22,
+          "maxLength": 22,
+          "pattern": "^[A-Za-z0-9_-]{21}[AQgw]$(?![\\s\\S])"
+        },
+        "barrierInstalled": {
+          "type": "boolean"
+        },
+        "drained": {
+          "type": "boolean"
+        },
+        "snapshot": {
+          "$ref": "#/$defs/reportSnapshot"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "revoke-confirmed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "barrierInstalled": {
+                "const": true
+              },
+              "drained": {
+                "const": true
+              },
+              "snapshot": {
+                "properties": {
+                  "final": {
+                    "const": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "responseForgotten": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "requestId",
+        "state",
+        "bootId",
+        "sessionId",
+        "taskId",
+        "leaseNonce",
+        "snapshotId"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "state": {
+          "const": "forgotten"
+        },
+        "bootId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$(?![\\s\\S])"
+        },
+        "leaseNonce": {
+          "type": "string",
+          "minLength": 22,
+          "maxLength": 22,
+          "pattern": "^[A-Za-z0-9_-]{21}[AQgw]$(?![\\s\\S])"
+        },
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        }
+      }
+    },
+    "responseBarrier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "requestId",
+        "state",
+        "bootId",
+        "sessionId",
+        "taskId",
+        "leaseNonce",
+        "barrierInstalled",
+        "drained"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "state": {
+          "const": "barrier-installed"
+        },
+        "bootId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$(?![\\s\\S])"
+        },
+        "leaseNonce": {
+          "type": "string",
+          "minLength": 22,
+          "maxLength": 22,
+          "pattern": "^[A-Za-z0-9_-]{21}[AQgw]$(?![\\s\\S])"
+        },
+        "barrierInstalled": {
+          "const": true
+        },
+        "drained": {
+          "type": "boolean"
         }
       }
     }
