@@ -11,6 +11,8 @@
 //! * Refusals are logged as JSON lines with the task id; tokens, paths and headers never are.
 #![forbid(unsafe_code)]
 
+pub mod control;
+
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::future::Future;

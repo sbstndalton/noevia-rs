@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:noevia:egress-control:operation-bodies:1",
+  "title": "Noevia egress control operation bodies v1",
+  "$comment": "Input-body contract only, under construction. Raw UTF-8 JSON capped at 32768 bytes; duplicate fields rejected. JSON Schema cannot enforce duplicate keys, integer lexical spelling, metadata binding, cryptographic authentication, framing, deadline freshness or live state. Ready initial requires absent boot metadata; replace requires known boot and runtime exact previous-session precondition. This does not enable routes or define responses.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/ready"
+    },
+    {
+      "$ref": "#/$defs/renew"
+    },
+    {
+      "$ref": "#/$defs/activity"
+    },
+    {
+      "$ref": "#/$defs/revoke"
+    },
+    {
+      "$ref": "#/$defs/forget"
+    }
+  ],
+  "$defs": {
+    "ready": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "mode",
+        "challenge",
+        "expectedKeyFingerprint",
+        "priorSession"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "mode": {
+          "enum": [
+            "initial",
+            "replace"
+          ]
+        },
+        "challenge": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "expectedKeyFingerprint": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$(?![\\s\\S])",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "priorSession": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+              "minLength": 32,
+              "maxLength": 32
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "initial"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "priorSession": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "renew": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "sessionId",
+        "sequence"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "activity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "sessionId",
+        "taskId",
+        "leaseNonce",
+        "signedGrant"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$(?![\\s\\S])"
+        },
+        "leaseNonce": {
+          "type": "string",
+          "minLength": 22,
+          "maxLength": 22,
+          "pattern": "^[A-Za-z0-9_-]{21}[AQgw]$(?![\\s\\S])"
+        },
+        "signedGrant": {
+          "type": "string",
+          "minLength": 50,
+          "maxLength": 8192,
+          "pattern": "^ngr1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$(?![\\s\\S])",
+          "description": "Syntax only. Native execution must verify MAC, epoch, action, identities and claims."
+        }
+      }
+    },
+    "revoke": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "sessionId",
+        "taskId",
+        "leaseNonce",
+        "grantIssuedAt",
+        "signedGrant",
+        "signedRevoke"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$(?![\\s\\S])"
+        },
+        "leaseNonce": {
+          "type": "string",
+          "minLength": 22,
+          "maxLength": 22,
+          "pattern": "^[A-Za-z0-9_-]{21}[AQgw]$(?![\\s\\S])"
+        },
+        "grantIssuedAt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "signedGrant": {
+          "type": "string",
+          "minLength": 50,
+          "maxLength": 8192,
+          "pattern": "^ngr1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$(?![\\s\\S])",
+          "description": "Syntax only. Native execution must verify MAC, epoch, action, identities and claims."
+        },
+        "signedRevoke": {
+          "type": "string",
+          "minLength": 50,
+          "maxLength": 8192,
+          "pattern": "^ngr1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$(?![\\s\\S])",
+          "description": "Syntax only. Native execution must verify MAC, epoch, action, identities and claims."
+        }
+      }
+    },
+    "forget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "sessionId",
+        "taskId",
+        "leaseNonce",
+        "snapshotId"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$(?![\\s\\S])"
+        },
+        "leaseNonce": {
+          "type": "string",
+          "minLength": 22,
+          "maxLength": 22,
+          "pattern": "^[A-Za-z0-9_-]{21}[AQgw]$(?![\\s\\S])"
+        },
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        }
+      }
+    }
+  }
+}
