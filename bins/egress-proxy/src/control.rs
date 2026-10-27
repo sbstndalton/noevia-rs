@@ -7,3 +7,5 @@ pub mod wire;
 pub mod session;
 
 pub mod replay;
+
+pub mod http;

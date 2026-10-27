@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:noevia:egress-control:operation-bodies:1",
   "title": "Noevia egress control operation bodies v1",
-  "$comment": "Input-body contract only, under construction. Raw UTF-8 JSON capped at 32768 bytes; duplicate fields rejected. JSON Schema cannot enforce duplicate keys, integer lexical spelling, metadata binding, cryptographic authentication, framing, deadline freshness or live state. Ready initial requires absent boot metadata; replace requires known boot and runtime exact previous-session precondition. This does not enable routes or define responses.",
+  "$comment": "Input-body contract only, under construction. Raw UTF-8 JSON capped at 32768 bytes; duplicate fields rejected. JSON Schema cannot enforce duplicate keys, integer lexical spelling, metadata binding, cryptographic authentication, framing, deadline freshness or live state. Ready initial requires absent boot metadata; replace requires known boot and runtime exact previous-session precondition. This does not enable routes or define responses. Buffered HTTP metadata contract: HTTP/1.1 POST exact origin path, required single Host/application-json/Content-Length matching body; x-noevia-request-id, x-noevia-deadline-ms, x-noevia-key-fingerprint, x-noevia-control-mac, optional x-noevia-boot-id. Optional Connection close/keep-alive, User-Agent and Accept only. All duplicate/other headers refuse.16 headers/16KiB header bytes, body32KiB. Response MAC uses x-noevia-control-mac, exact original request MAC/status/bytes; raw response<=64KiB, no-store/close. Native transport collection/time/concurrency and terminal state schemas are still pending.",
   "oneOf": [
     {
       "$ref": "#/$defs/ready"
