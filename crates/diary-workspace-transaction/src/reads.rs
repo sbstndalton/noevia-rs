@@ -47,7 +47,7 @@ pub(super) fn admit(tx: &Transaction<'_>, full: &str, timestamps: bool) -> Resul
           AND CASE WHEN typeof(path)='text' AND length(CAST(path AS BLOB)) BETWEEN 1 AND ?4
           AND substr(path,1,1)!='/' AND substr(path,-1)!='/' AND instr(path,char(0))=0 AND instr(path,char(92))=0
           AND instr('/'||path||'/','/./')=0 AND instr('/'||path||'/','/../')=0 AND instr(path,'//')=0
-          AND typeof(version)='text' AND length(CAST(version AS BLOB))=64 AND version NOT GLOB '*[^0-9a-f]*'
+          AND typeof(version)='text' AND length(CAST(version AS BLOB))=64 AND instr(version,char(0))=0 AND version NOT GLOB '*[^0-9a-f]*'
           AND (?5=0 OR (typeof(updated)='real' AND abs(updated)<=1.7976931348623157e308))
           THEN 0 ELSE 1 END)
         OR EXISTS(SELECT 1 FROM directories WHERE (typeof(path)!='text' OR path=?1 OR substr(path,1,?2)=?3)

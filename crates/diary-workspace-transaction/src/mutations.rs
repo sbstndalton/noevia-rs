@@ -245,7 +245,7 @@ fn read_capsule(
     id: &str,
 ) -> Result<Option<rules::LegacyCapsule>, Fault> {
     let meta:Option<(Option<i64>,Option<String>,bool)>=tx.query_row(
-        "SELECT CASE WHEN typeof(data)='blob' THEN length(data) END, CASE WHEN typeof(version)='text' AND length(CAST(version AS BLOB))=64 AND version NOT GLOB '*[^0-9a-f]*' THEN version END, CASE WHEN typeof(updated)='real' AND abs(updated)<=1.7976931348623157e308 THEN 1 ELSE 0 END FROM files WHERE path=?",
+        "SELECT CASE WHEN typeof(data)='blob' THEN length(data) END, CASE WHEN typeof(version)='text' AND length(CAST(version AS BLOB))=64 AND instr(version,char(0))=0 AND version NOT GLOB '*[^0-9a-f]*' THEN version END, CASE WHEN typeof(updated)='real' AND abs(updated)<=1.7976931348623157e308 THEN 1 ELSE 0 END FROM files WHERE path=?",
         [key],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
     let Some((size, version, time_valid)) = meta else {
         return Ok(None);

@@ -173,6 +173,7 @@ fn outer_capsule_corruption_is_visible_without_recovery_or_repair() -> ResultOf<
         "version-mismatch",
         "version-blob",
         "version-nul",
+        "version-nul-exact",
         "version-size",
         "time-text",
         "time-infinite",
@@ -218,6 +219,12 @@ fn outer_capsule_corruption_is_visible_without_recovery_or_repair() -> ResultOf<
                     db.execute(
                         "UPDATE files SET version=? WHERE path=?",
                         params![format!("0\0{}", "x".repeat(100_000)), key],
+                    )?;
+                }
+                "version-nul-exact" => {
+                    db.execute(
+                        "UPDATE files SET version=? WHERE path=?",
+                        params![format!("{}\0", "0".repeat(63)), key],
                     )?;
                 }
                 "version-size" => {
@@ -354,5 +361,55 @@ fn missing_targets_below_valid_files_keep_normal_policy() -> ResultOf<()> {
     req.destination = Some("Target.md/missing.md".into());
     assert_eq!(execute(&req)?.status(), 409);
     assert_eq!(snapshot(&db, false)?, data_before);
+    Ok(())
+}
+
+#[test]
+fn exact_length_nul_versions_refuse_before_metadata_loading() -> ResultOf<()> {
+    let mut admitted = Vec::new();
+    for version in [
+        format!("{}\0", "0".repeat(63)),
+        format!("{}\0{}", "a".repeat(20), "z".repeat(43)),
+    ] {
+        assert_eq!(version.len(), 64);
+        for (op, source) in [
+            ("stat", "Notes/one.md"),
+            ("stat", "Notes"),
+            ("list", "Notes"),
+            ("copy", "Notes/one.md"),
+        ] {
+            let (_dir, path) = common::fixture()?;
+            let db = Connection::open(&path)?;
+            db.execute(
+                "UPDATE files SET version=? WHERE path='Notes/one.md'",
+                [&version],
+            )?;
+            let mut req = request(&path, op)?;
+            req.source = Some(source.into());
+            let before = snapshot(&db, true)?;
+            if execute(&req).err() != Some(Fault::Schema) || snapshot(&db, true)? != before {
+                admitted.push((version.clone(), op, source));
+            }
+        }
+    }
+    assert!(admitted.is_empty(), "NUL versions admitted: {admitted:?}");
+    let (_dir, path) = common::fixture()?;
+    let db = Connection::open(&path)?;
+    put(&db, "Other/invalid.md", b"unrelated")?;
+    db.execute(
+        "UPDATE files SET version=? WHERE path='Other/invalid.md'",
+        [format!("{}\0", "0".repeat(63))],
+    )?;
+    let before = snapshot(&db, true)?;
+    for (op, source) in [
+        ("stat", "Notes/one.md"),
+        ("stat", "Notes"),
+        ("list", "Notes"),
+    ] {
+        let mut req = request(&path, op)?;
+        req.source = Some(source.into());
+        assert_eq!(execute(&req)?.status(), 200);
+        assert_eq!(snapshot(&db, true)?, before);
+    }
     Ok(())
 }
