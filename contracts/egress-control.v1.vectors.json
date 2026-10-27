@@ -1,0 +1,73 @@
+{
+  "capability": "noevia-code-egress-control/1",
+  "scope": "byte-authentication only; no runtime admission",
+  "masterKey": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "webNonce": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+  "fileKey": "2d68da5ef5b3d247b0f73330433f21a9d48b6cdcd6f70f0024a309161884df9b",
+  "fingerprint": "cea0839f7676a0e8d13dd6608e4d5a224aeb8a639fbf0ae3d181325c925077fd",
+  "bootId": "000102030405060708090a0b0c0d0e0f",
+  "sessionId": "101112131415161718191a1b1c1d1e1f",
+  "grantToken": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJ0YXNrLTEiLCJob3N0cyI6WyJleGFtcGxlLmNvbSJdLCJpYXQiOjE3MDAwMDAwMDAwMDAsImV4cCI6MTcwMDAwMDA2MDAwMCwiaWRsZSI6MzAwMDAsIm5vbmNlIjoiQUFFQ0F3UUZCZ2NJQ1FvTERBME9EdyJ9.bOHhjA5nnIgDqlDcl6yVBcSU_G_SV1gMbgpaOEkA94g",
+  "cases": [
+    {
+      "route": "/v1/control/ready",
+      "requestId": "01010101010101010101010101010101",
+      "deadlineMs": 1700000030000,
+      "bootId": null,
+      "keyFingerprint": "cea0839f7676a0e8d13dd6608e4d5a224aeb8a639fbf0ae3d181325c925077fd",
+      "body": "{\"example\":\"ready\",\"sessionId\":\"101112131415161718191a1b1c1d1e1f\",\"sequence\":0}",
+      "requestMac": "28ff6e7e017c3441c99ec02e3b81ce7a15c81bf30227fd893343f3e2311f2d2d",
+      "responseStatus": 200,
+      "responseBody": "{\"example\":\"ready\",\"result\":\"synthetic\"}",
+      "responseMac": "a6390b40a6d96c72a15592b929b37e729d55b52615e05c2bb673ab3cc9e00fb0"
+    },
+    {
+      "route": "/v1/control/renew",
+      "requestId": "02020202020202020202020202020202",
+      "deadlineMs": 1700000030001,
+      "bootId": "000102030405060708090a0b0c0d0e0f",
+      "keyFingerprint": "cea0839f7676a0e8d13dd6608e4d5a224aeb8a639fbf0ae3d181325c925077fd",
+      "body": "{\"example\":\"renew\",\"sessionId\":\"101112131415161718191a1b1c1d1e1f\",\"sequence\":1}",
+      "requestMac": "ef76f0c3c2d6376159c53fd86c504fcd2f9a97c42b0deb098a35c0cf0e427943",
+      "responseStatus": 409,
+      "responseBody": "{\"example\":\"renew\",\"result\":\"synthetic\"}",
+      "responseMac": "9b117d293025a78da7f4b276c7b0218aff2d10fb477490e628de53381afaa63d"
+    },
+    {
+      "route": "/v1/control/activity",
+      "requestId": "03030303030303030303030303030303",
+      "deadlineMs": 1700000030002,
+      "bootId": "000102030405060708090a0b0c0d0e0f",
+      "keyFingerprint": "cea0839f7676a0e8d13dd6608e4d5a224aeb8a639fbf0ae3d181325c925077fd",
+      "body": "{\"example\":\"activity\",\"sessionId\":\"101112131415161718191a1b1c1d1e1f\",\"sequence\":2}",
+      "requestMac": "b87ee7d4653f692bded4b0afa430cc7cf4408fd72f7b22f0be91740321961899",
+      "responseStatus": 200,
+      "responseBody": "{\"example\":\"activity\",\"result\":\"synthetic\"}",
+      "responseMac": "08840f27b117f63ea15b21d4d4a8c1449ec38f98e8ac45084d566bcdeb8af7f5"
+    },
+    {
+      "route": "/v1/control/revoke",
+      "requestId": "04040404040404040404040404040404",
+      "deadlineMs": 1700000030003,
+      "bootId": "000102030405060708090a0b0c0d0e0f",
+      "keyFingerprint": "cea0839f7676a0e8d13dd6608e4d5a224aeb8a639fbf0ae3d181325c925077fd",
+      "body": "{\"example\":\"revoke\",\"sessionId\":\"101112131415161718191a1b1c1d1e1f\",\"sequence\":3}",
+      "requestMac": "283a959a23468b8e6544ffbf3deca01ed086004be86f9f93b614ba3df1a202fc",
+      "responseStatus": 409,
+      "responseBody": "{\"example\":\"revoke\",\"result\":\"synthetic\"}",
+      "responseMac": "71a9f60a08d8932f894bb23f930f427bf540443fbf082c503fbe5e35062bc923"
+    },
+    {
+      "route": "/v1/control/forget",
+      "requestId": "05050505050505050505050505050505",
+      "deadlineMs": 1700000030004,
+      "bootId": "000102030405060708090a0b0c0d0e0f",
+      "keyFingerprint": "cea0839f7676a0e8d13dd6608e4d5a224aeb8a639fbf0ae3d181325c925077fd",
+      "body": "{\"example\":\"forget\",\"sessionId\":\"101112131415161718191a1b1c1d1e1f\",\"sequence\":4}",
+      "requestMac": "334f497cb94ce9210db531ea623c55efbe3d4bed2c3890806233accd42a00dfb",
+      "responseStatus": 200,
+      "responseBody": "{\"example\":\"forget\",\"result\":\"synthetic\"}",
+      "responseMac": "c837a905f0b7f641f05a0803f3cf65315f6797f1c1aab95d9183f4de553db30f"
+    }
+  ]
+}

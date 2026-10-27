@@ -4,6 +4,7 @@
 //! the connection then goes to the one address that was checked.
 #![forbid(unsafe_code)]
 
+pub mod control;
 mod decision;
 mod grant;
 mod ip;
