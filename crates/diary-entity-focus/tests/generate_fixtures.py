@@ -7,6 +7,7 @@ import importlib.util
 import json
 import random
 import sys
+import unicodedata
 from datetime import date
 from pathlib import Path
 
@@ -44,6 +45,8 @@ def expected(res):
             "exact":[{"rank":rank,"names":names} for rank,names in sorted(res.exact.items())]}
 
 def main():
+    if sys.version_info[:3] != (3, 12, 15) or unicodedata.unidata_version != "15.0.0":
+        raise SystemExit("requires CPython3.12.15 / Unicode15.0.0")
     p=argparse.ArgumentParser();p.add_argument('--source',type=Path,required=True)
     p.add_argument('--output',type=Path,default=Path(__file__).with_name('entity-fixtures.jsonl'))
     a=p.parse_args();ef=load(a.source);rnd=random.Random(177180160)

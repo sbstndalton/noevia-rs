@@ -37,6 +37,8 @@ def ranges(pred):
     return out
 
 def main():
+    if sys.version_info[:3] != (3, 12, 15) or unicodedata.unidata_version != "15.0.0":
+        raise SystemExit("requires CPython3.12.15 / Unicode15.0.0")
     parser=argparse.ArgumentParser()
     parser.add_argument('--source',type=Path,required=True)
     parser.add_argument('--output',type=Path,default=Path(__file__).resolve().parents[1]/'src'/'generated_rules.rs')
@@ -70,7 +72,10 @@ def main():
         lines.append(f"    ('\\u{{{src:04x}}}', {rust_string(dest)}),")
     lines.append('];')
     for name,pred in [('DECIMAL_RANGES',lambda c: bool(re.fullmatch(r'\d',c))),
-                      ('COMBINING_RANGES',lambda c: unicodedata.combining(c)!=0)]:
+                      ('COMBINING_RANGES',lambda c: unicodedata.combining(c)!=0),
+                      ('ALNUM_RANGES',str.isalnum), ('ALPHA_RANGES',str.isalpha),
+                      ('UPPER_RANGES',str.isupper),
+                      ('CASED_RANGES',lambda c: c.isupper() or c.islower() or unicodedata.category(c)=='Lt')]:
         rows=ranges(pred)
         lines.append(f'pub const {name}: &[(u32,u32)] = &[')
         lines.extend(f'    (0x{a:x},0x{b:x}),' for a,b in rows)

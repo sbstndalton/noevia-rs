@@ -226,15 +226,37 @@ fn order(row: &Row) -> (String, String) {
         .filter(|s| !s.is_empty())
         .unwrap_or("")
         .to_owned();
-    let time = Regex::new(r"^\s*(\d{1,2}:\d{2})")
-        .ok()
-        .and_then(|re| {
-            re.captures(&row.header)
-                .and_then(|cap| cap.get(1).map(|m| m.as_str().to_owned()))
-        })
-        .unwrap_or_default();
-    let padded = if time.len() < 5 {
-        format!("{}{}", "0".repeat(5 - time.len()), time)
+    let mut chars = row
+        .header
+        .trim_start_matches(crate::lexical::py_space)
+        .chars()
+        .peekable();
+    let mut time = String::new();
+    for _ in 0..2 {
+        if chars
+            .peek()
+            .is_some_and(|c| crate::lexical::decimal_digit(*c).is_some())
+        {
+            if let Some(c) = chars.next() {
+                time.push(c);
+            }
+        } else {
+            break;
+        }
+    }
+    if time.is_empty() || chars.next() != Some(':') {
+        return (day, String::new());
+    }
+    time.push(':');
+    for _ in 0..2 {
+        match chars.next() {
+            Some(c) if crate::lexical::decimal_digit(c).is_some() => time.push(c),
+            _ => return (day, String::new()),
+        }
+    }
+    let width = time.chars().count();
+    let padded = if width < 5 {
+        format!("{}{}", "0".repeat(5 - width), time)
     } else {
         time
     };
@@ -587,4 +609,49 @@ pub fn focus_candidates(
     result.kept_ranks = ranked;
     result.removed.sort_by_key(|(rank, _)| *rank);
     Ok(result)
+}
+
+#[cfg(test)]
+mod frozen_order_probes {
+    use super::*;
+    #[test]
+    fn frozen_order_0() {
+        let row = Row {
+            day: Some("2030-01-20".into()),
+            header: "١:00".into(),
+            text: String::new(),
+            score: NumericValue::Null,
+        };
+        assert_eq!(order(&row), ("2030-01-20".into(), "0١:00".into()));
+    }
+    #[test]
+    fn frozen_order_1() {
+        let row = Row {
+            day: Some("2030-01-20".into()),
+            header: "".into(),
+            text: String::new(),
+            score: NumericValue::Null,
+        };
+        assert_eq!(order(&row), ("2030-01-20".into(), "".into()));
+    }
+    #[test]
+    fn frozen_order_2() {
+        let row = Row {
+            day: Some("2030-01-20".into()),
+            header: "١:00".into(),
+            text: String::new(),
+            score: NumericValue::Null,
+        };
+        assert_eq!(order(&row), ("2030-01-20".into(), "0١:00".into()));
+    }
+    #[test]
+    fn frozen_order_3() {
+        let row = Row {
+            day: Some("2030-01-20".into()),
+            header: "𞗱:00".into(),
+            text: String::new(),
+            score: NumericValue::Null,
+        };
+        assert_eq!(order(&row), ("2030-01-20".into(), "".into()));
+    }
 }

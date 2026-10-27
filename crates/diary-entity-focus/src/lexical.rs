@@ -36,11 +36,32 @@ pub(crate) fn decimal_digit(c: char) -> Option<u8> {
 fn combining(c: char) -> bool {
     in_ranges(c as u32, rules::COMBINING_RANGES)
 }
+pub(crate) fn py_alpha(c: char) -> bool {
+    in_ranges(c as u32, rules::ALPHA_RANGES)
+}
+fn py_alnum(c: char) -> bool {
+    in_ranges(c as u32, rules::ALNUM_RANGES)
+}
+fn py_upper(c: char) -> bool {
+    in_ranges(c as u32, rules::UPPER_RANGES)
+}
+pub(crate) fn py_isupper(s: &str) -> bool {
+    let mut cased = false;
+    for c in s.chars() {
+        if in_ranges(c as u32, rules::CASED_RANGES) {
+            cased = true;
+            if !py_upper(c) {
+                return false;
+            }
+        }
+    }
+    cased
+}
 fn word_letter(c: char) -> bool {
-    c != '_' && c.is_alphanumeric() && !decimal(c)
+    py_alnum(c) && !decimal(c)
 }
 fn alnum_no_underscore(c: char) -> bool {
-    c != '_' && c.is_alphanumeric()
+    py_alnum(c)
 }
 pub(crate) fn py_space(c: char) -> bool {
     matches!(c,'\u{0009}'..='\u{000d}'|'\u{001c}'..='\u{0020}'|'\u{0085}'|'\u{00a0}'|'\u{1680}'|'\u{2000}'..='\u{200a}'|'\u{2028}'|'\u{2029}'|'\u{202f}'|'\u{205f}'|'\u{3000}')
@@ -107,11 +128,11 @@ pub(crate) fn words(text: &str) -> Result<Vec<Word>, Error> {
             return Err(Error::Capacity);
         }
         let stripped = if raw.chars().count() > 2 {
-            if raw.ends_with("'s") || raw.ends_with("'S") {
-                raw.get(..raw.len() - 2).unwrap_or(raw)
-            } else {
-                raw.strip_suffix('\'').unwrap_or(raw)
-            }
+            raw.strip_suffix("'s")
+                .or_else(|| raw.strip_suffix("'S"))
+                .or_else(|| raw.strip_suffix("'ſ"))
+                .or_else(|| raw.strip_suffix('\''))
+                .unwrap_or(raw)
         } else {
             raw
         };
@@ -229,13 +250,13 @@ pub(crate) fn cap_runs(text: &str, stop: bool) -> Result<Vec<Run>, Error> {
         let chars = token.text.chars().collect::<Vec<_>>();
         let first = chars.first().copied();
         let initial = chars.len() == 1
-            && first.is_some_and(char::is_uppercase)
+            && first.is_some_and(py_upper)
             && token.text != "I"
             && text.get(token.end..).is_some_and(|s| s.starts_with('.'));
-        let mut name_like = first.is_some_and(char::is_uppercase)
+        let mut name_like = first.is_some_and(py_upper)
             && (chars.len() > 1 || !stop || initial)
             && !(stop && !initial && has(rules::NOT_NAMES, &token.text.to_lowercase()));
-        if first.is_some_and(char::is_uppercase)
+        if first.is_some_and(py_upper)
             && ordinary(&key(&token.text))
             && !(joined && !current.is_empty())
         {
@@ -254,7 +275,7 @@ pub(crate) fn cap_runs(text: &str, stop: bool) -> Result<Vec<Run>, Error> {
         prev_end = Some(token.end);
         prev_possessive = token.possessive;
         prev_title = has(rules::TITLES, &key(&token.text));
-        prev_initial = chars.len() == 1 && first.is_some_and(char::is_uppercase);
+        prev_initial = chars.len() == 1 && first.is_some_and(py_upper);
     }
     if !current.is_empty() {
         runs.push(current);
@@ -543,7 +564,7 @@ pub fn refers_back(message: &str) -> bool {
         if stripped.len() == after.len() {
             return false;
         }
-        let word: String = stripped.chars().take_while(|c| c.is_alphabetic()).collect();
+        let word: String = stripped.chars().take_while(|c| py_alpha(*c)).collect();
         !word.is_empty() && time_word(&word)
     };
     if let Ok(strong) = regex::Regex::new(r"(?i)\b(?:that|those|these)\b") {
@@ -623,4 +644,49 @@ pub fn relational(message: &str, entities: &[Entity]) -> bool {
         }
     }
     false
+}
+
+#[cfg(test)]
+mod frozen_parity_probes {
+    use super::*;
+    #[test]
+    fn frozen_key_0() {
+        assert_eq!(key("Ᲊ"), "Ᲊ");
+    }
+    #[test]
+    fn frozen_key_1() {
+        assert_eq!(key("𜳖"), "𜳖");
+    }
+    #[test]
+    fn frozen_key_2() {
+        assert_eq!(key("ΟΣ"), "ος");
+    }
+    #[test]
+    fn frozen_key_3() {
+        assert_eq!(key("Alderͅ"), "alder");
+    }
+    #[test]
+    fn frozen_words_0() {
+        assert_eq!(
+            words("Alderͅ Brannock")
+                .map(|tokens| tokens.into_iter().map(|w| w.text).collect::<Vec<_>>()),
+            Ok(vec![String::from("Alder"), String::from("Brannock")])
+        );
+    }
+    #[test]
+    fn frozen_words_1() {
+        assert_eq!(
+            words("Alder Brannock'ſ")
+                .map(|tokens| tokens.into_iter().map(|w| w.text).collect::<Vec<_>>()),
+            Ok(vec![String::from("Alder"), String::from("Brannock")])
+        );
+    }
+    #[test]
+    fn frozen_words_2() {
+        assert_eq!(
+            words("AlderᲉ Brannock")
+                .map(|tokens| tokens.into_iter().map(|w| w.text).collect::<Vec<_>>()),
+            Ok(vec![String::from("Alder"), String::from("Brannock")])
+        );
+    }
 }

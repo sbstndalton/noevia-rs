@@ -62,7 +62,7 @@ fn person_keys(words: &[String], lead: &str) -> Option<Vec<String>> {
     }
     if words
         .iter()
-        .any(|word| word.chars().count() > 1 && word.chars().all(char::is_uppercase))
+        .any(|word| word.chars().count() > 1 && crate::lexical::py_isupper(word))
     {
         return None;
     }
@@ -130,7 +130,7 @@ fn trailing_word_same_line(text: &str, pos: usize) -> String {
     let word: String = trimmed
         .chars()
         .rev()
-        .take_while(|c| c.is_alphabetic())
+        .take_while(|c| crate::lexical::py_alpha(*c))
         .collect::<Vec<_>>()
         .into_iter()
         .rev()
