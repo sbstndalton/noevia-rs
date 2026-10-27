@@ -350,6 +350,42 @@ impl Ledger {
         self.retired.retain(|_, exp| *exp > now_ms);
     }
 
+    /// Read-only security classification for an already cryptographically
+    /// verified grant. This neither verifies a MAC/lifetime nor admits, prunes,
+    /// refreshes or installs authority. Expired ledger rows are ignored exactly
+    /// as `admit` would prune them; control ownership must not call grant admission.
+    pub fn classify_grant(&self, g: &SignedGrant, now_ms: u64) -> Result<Admission, GrantError> {
+        if g.act != Act::Grant {
+            return Err(GrantError::NotAGrant);
+        }
+        if self.retired.get(&g.nonce).is_some_and(|exp| *exp > now_ms) {
+            return Err(GrantError::Replayed);
+        }
+        let task = self.tasks.get(&g.task).filter(|t| t.keep_until > now_ms);
+        let Some(t) = task else {
+            if self
+                .tasks
+                .values()
+                .filter(|t| t.keep_until > now_ms)
+                .count()
+                >= MAX_LEDGER_TASKS
+            {
+                return Err(GrantError::LedgerFull);
+            }
+            return Ok(Admission::New);
+        };
+        if t.revoked_through.is_some_and(|r| g.iat <= r) {
+            return Err(GrantError::Revoked);
+        }
+        match &t.current {
+            Some((iat, nonce)) if *iat == g.iat && *nonce == g.nonce => Ok(Admission::Current),
+            Some((iat, nonce)) if (*iat, nonce.as_str()) > (g.iat, g.nonce.as_str()) => {
+                Err(GrantError::Superseded)
+            }
+            _ => Ok(Admission::New),
+        }
+    }
+
     /// Applies the replay and supersession rules to a verified grant.
     /// A revoke is always admitted (it can only take access away) and returns `Current`.
     pub fn admit(&mut self, g: &SignedGrant, now_ms: u64) -> Result<Admission, GrantError> {
@@ -693,5 +729,39 @@ mod tests {
         assert!(b64url_decode(b"AB+/").is_none());
         assert!(b64url_decode(b"AB").is_none()); // non-zero trailing bits
         assert!(b64url_decode(b"AA").is_some());
+    }
+    #[test]
+    fn read_only_classification_observes_watermarks_without_installing_or_pruning() {
+        for admitted_first in [false, true] {
+            let mut l = Ledger::new();
+            let a = grant("task-1", NOW, N1);
+            if admitted_first {
+                assert_eq!(l.admit(&a, NOW), Ok(Admission::New));
+            }
+            let mut rv = grant("task-1", NOW + 100, "CCCCCCCCCCCCCCCCCCCCCA");
+            rv.act = Act::Revoke;
+            rv.hosts.clear();
+            assert_eq!(l.admit(&rv, NOW + 100), Ok(Admission::Current));
+            let between = grant("task-1", NOW + 50, N2);
+            let after = grant("task-1", NOW + 200, N2);
+            let before = format!("{l:?}");
+            assert_eq!(
+                l.classify_grant(&between, NOW + 100),
+                Err(GrantError::Revoked)
+            );
+            assert_eq!(l.classify_grant(&after, NOW + 200), Ok(Admission::New));
+            assert_eq!(format!("{l:?}"), before);
+            assert_eq!(l.admit(&between, NOW + 100), Err(GrantError::Revoked));
+            assert_eq!(l.admit(&after, NOW + 200), Ok(Admission::New));
+            assert_eq!(l.classify_grant(&after, NOW + 201), Ok(Admission::Current));
+            l.retire(&after.task, &after.nonce, after.exp);
+            assert_eq!(
+                l.classify_grant(&after, NOW + 202),
+                Err(GrantError::Replayed)
+            );
+            let before = format!("{l:?}");
+            assert_eq!(l.classify_grant(&after, after.exp), Ok(Admission::New));
+            assert_eq!(format!("{l:?}"), before);
+        }
     }
 }

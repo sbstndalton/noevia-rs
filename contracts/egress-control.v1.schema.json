@@ -1,0 +1,757 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:noevia:egress-control:operation-bodies:1",
+  "title": "Noevia egress control operation bodies v1",
+  "$comment": "Top-level oneOf remains request bodies only. Raw request<=32KiB, response<=64KiB; duplicates/numeric lexical spelling/MAC/framing/freshness/live scope need native enforcement. Exact HTTP metadata names and closed body fields remain unchanged. Buffered Engine implements Ready/Renew/Activity/Revoke/Forget with independent ownership/security records, report FIFO500/50rows,48KiB serialized summary including actual escaped strings and worst-case JS-safe counter growth. Normal terminal statuses200/202/408/409/503; responseBarrier is503forincomplete drain/report or409forstale-current target barrier without updating newer watermark. Scope correlation stays backend-only; user summaries omit nonce/tokens. Final-snapshot-only acknowledgement deletes report bodies and redacts report-bearing replay outcomes into unavailable while retaining ID/MAC mutation fences/security tombstones. Already delivered/in-flight caller-owned data is not retroactively erased. Full live transport/control capacity/keyfile/maintenance/GrantStore idle-policy integration and Core/assembly/runtime qualification remain held; these schemas do not enable a listener or release.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/ready"
+    },
+    {
+      "$ref": "#/$defs/renew"
+    },
+    {
+      "$ref": "#/$defs/activity"
+    },
+    {
+      "$ref": "#/$defs/revoke"
+    },
+    {
+      "$ref": "#/$defs/forget"
+    }
+  ],
+  "$defs": {
+    "ready": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "mode",
+        "challenge",
+        "expectedKeyFingerprint",
+        "priorSession"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "mode": {
+          "enum": [
+            "initial",
+            "replace"
+          ]
+        },
+        "challenge": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "expectedKeyFingerprint": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$(?![\\s\\S])",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "priorSession": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+              "minLength": 32,
+              "maxLength": 32
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "initial"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "priorSession": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "renew": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "sessionId",
+        "sequence"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "activity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "sessionId",
+        "taskId",
+        "leaseNonce",
+        "signedGrant"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$(?![\\s\\S])"
+        },
+        "leaseNonce": {
+          "type": "string",
+          "minLength": 22,
+          "maxLength": 22,
+          "pattern": "^[A-Za-z0-9_-]{21}[AQgw]$(?![\\s\\S])"
+        },
+        "signedGrant": {
+          "type": "string",
+          "minLength": 50,
+          "maxLength": 8192,
+          "pattern": "^ngr1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$(?![\\s\\S])",
+          "description": "Syntax only. Native execution must verify MAC, epoch, action, identities and claims."
+        }
+      }
+    },
+    "revoke": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "sessionId",
+        "taskId",
+        "leaseNonce",
+        "grantIssuedAt",
+        "signedGrant",
+        "signedRevoke"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$(?![\\s\\S])"
+        },
+        "leaseNonce": {
+          "type": "string",
+          "minLength": 22,
+          "maxLength": 22,
+          "pattern": "^[A-Za-z0-9_-]{21}[AQgw]$(?![\\s\\S])"
+        },
+        "grantIssuedAt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "signedGrant": {
+          "type": "string",
+          "minLength": 50,
+          "maxLength": 8192,
+          "pattern": "^ngr1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$(?![\\s\\S])",
+          "description": "Syntax only. Native execution must verify MAC, epoch, action, identities and claims."
+        },
+        "signedRevoke": {
+          "type": "string",
+          "minLength": 50,
+          "maxLength": 8192,
+          "pattern": "^ngr1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$(?![\\s\\S])",
+          "description": "Syntax only. Native execution must verify MAC, epoch, action, identities and claims."
+        }
+      }
+    },
+    "forget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "sessionId",
+        "taskId",
+        "leaseNonce",
+        "snapshotId"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$(?![\\s\\S])"
+        },
+        "leaseNonce": {
+          "type": "string",
+          "minLength": 22,
+          "maxLength": 22,
+          "pattern": "^[A-Za-z0-9_-]{21}[AQgw]$(?![\\s\\S])"
+        },
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        }
+      }
+    },
+    "responseReady": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "requestId",
+        "state",
+        "capability",
+        "bootId",
+        "sessionId",
+        "keyFingerprint",
+        "sequence",
+        "leaseMs",
+        "challenge"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "state": {
+          "const": "ready"
+        },
+        "capability": {
+          "const": "noevia-code-egress-control/1"
+        },
+        "bootId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "keyFingerprint": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$(?![\\s\\S])",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "sequence": {
+          "const": 0
+        },
+        "leaseMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 15000
+        },
+        "challenge": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        }
+      }
+    },
+    "responseRenew": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "requestId",
+        "state",
+        "capability",
+        "bootId",
+        "sessionId",
+        "keyFingerprint",
+        "sequence",
+        "leaseMs"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "state": {
+          "const": "renewed"
+        },
+        "capability": {
+          "const": "noevia-code-egress-control/1"
+        },
+        "bootId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "keyFingerprint": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$(?![\\s\\S])",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "leaseMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 15000
+        }
+      }
+    },
+    "responseTerminal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "requestId",
+        "state"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "state": {
+          "enum": [
+            "pending",
+            "uncertain",
+            "unavailable",
+            "conflict",
+            "drain-incomplete",
+            "stale"
+          ]
+        }
+      }
+    },
+    "reportRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "host",
+        "allowed",
+        "refused",
+        "reason"
+      ],
+      "properties": {
+        "host": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 49150
+        },
+        "allowed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "refused": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        }
+      }
+    },
+    "reportSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hosts",
+        "allowed",
+        "refused"
+      ],
+      "properties": {
+        "hosts": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/reportRow"
+          }
+        },
+        "allowed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "refused": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "reportSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "state",
+        "final",
+        "summary",
+        "partial",
+        "overflow"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "state": {
+          "enum": [
+            "complete",
+            "partial",
+            "interrupted",
+            "evicted",
+            "forgotten",
+            "unavailable"
+          ]
+        },
+        "final": {
+          "type": "boolean"
+        },
+        "summary": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/reportSummary"
+            }
+          ]
+        },
+        "partial": {
+          "type": "boolean"
+        },
+        "overflow": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "evicted",
+                  "forgotten",
+                  "unavailable"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "summary": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "summary": {
+                "$ref": "#/$defs/reportSummary"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "responseScoped": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "requestId",
+        "state",
+        "bootId",
+        "sessionId",
+        "taskId",
+        "leaseNonce",
+        "barrierInstalled",
+        "drained",
+        "snapshot"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "state": {
+          "enum": [
+            "activity",
+            "revoke-confirmed"
+          ]
+        },
+        "bootId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$(?![\\s\\S])"
+        },
+        "leaseNonce": {
+          "type": "string",
+          "minLength": 22,
+          "maxLength": 22,
+          "pattern": "^[A-Za-z0-9_-]{21}[AQgw]$(?![\\s\\S])"
+        },
+        "barrierInstalled": {
+          "type": "boolean"
+        },
+        "drained": {
+          "type": "boolean"
+        },
+        "snapshot": {
+          "$ref": "#/$defs/reportSnapshot"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "revoke-confirmed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "barrierInstalled": {
+                "const": true
+              },
+              "drained": {
+                "const": true
+              },
+              "snapshot": {
+                "properties": {
+                  "final": {
+                    "const": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "responseForgotten": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "requestId",
+        "state",
+        "bootId",
+        "sessionId",
+        "taskId",
+        "leaseNonce",
+        "snapshotId"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "state": {
+          "const": "forgotten"
+        },
+        "bootId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$(?![\\s\\S])"
+        },
+        "leaseNonce": {
+          "type": "string",
+          "minLength": 22,
+          "maxLength": 22,
+          "pattern": "^[A-Za-z0-9_-]{21}[AQgw]$(?![\\s\\S])"
+        },
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        }
+      }
+    },
+    "responseBarrier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "requestId",
+        "state",
+        "bootId",
+        "sessionId",
+        "taskId",
+        "leaseNonce",
+        "barrierInstalled",
+        "drained"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "state": {
+          "const": "barrier-installed"
+        },
+        "bootId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$(?![\\s\\S])",
+          "minLength": 32,
+          "maxLength": 32
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$(?![\\s\\S])"
+        },
+        "leaseNonce": {
+          "type": "string",
+          "minLength": 22,
+          "maxLength": 22,
+          "pattern": "^[A-Za-z0-9_-]{21}[AQgw]$(?![\\s\\S])"
+        },
+        "barrierInstalled": {
+          "const": true
+        },
+        "drained": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

@@ -11,6 +11,9 @@
 //! * Refusals are logged as JSON lines with the task id; tokens, paths and headers never are.
 #![forbid(unsafe_code)]
 
+pub mod control;
+mod native;
+
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::future::Future;
@@ -47,6 +50,19 @@ type Body = BoxBody<Bytes, hyper::Error>;
 /// play a rebinding resolver.
 pub trait Resolver: Send + Sync + 'static {
     fn resolve<'a>(&'a self, host: &'a str) -> BoxFuture<'a, io::Result<Vec<IpAddr>>>;
+    /// Native ownership must survive any non-cancellable resolver work. The
+    /// default is for cancellation-safe injected resolvers; SystemResolver keeps
+    /// the guard inside the actual blocking getaddrinfo job until it finishes.
+    fn resolve_scoped<'a>(
+        &'a self,
+        host: &'a str,
+        guard: Arc<control::engine::OperationGuard>,
+    ) -> BoxFuture<'a, io::Result<Vec<IpAddr>>> {
+        Box::pin(async move {
+            let _guard = guard;
+            self.resolve(host).await
+        })
+    }
 }
 
 /// Opens the upstream TCP connection to an already-checked address.
@@ -66,6 +82,24 @@ impl Resolver for SystemResolver {
         Box::pin(async move {
             let addrs = tokio::net::lookup_host((host, 0u16)).await?;
             Ok(addrs.map(|a| a.ip()).collect())
+        })
+    }
+    fn resolve_scoped<'a>(
+        &'a self,
+        host: &'a str,
+        guard: Arc<control::engine::OperationGuard>,
+    ) -> BoxFuture<'a, io::Result<Vec<IpAddr>>> {
+        let host = host.to_owned();
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || {
+                use std::net::ToSocketAddrs;
+                let _guard = guard;
+                (host.as_str(), 0u16)
+                    .to_socket_addrs()
+                    .map(|a| a.map(|s| s.ip()).collect())
+            })
+            .await
+            .map_err(|_| io::Error::other("resolver job unavailable"))?
         })
     }
 }

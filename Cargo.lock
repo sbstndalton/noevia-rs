@@ -830,10 +830,14 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "egress",
+ "getrandom 0.3.4",
  "http-body-util",
  "hyper",
  "hyper-util",
+ "rustix",
+ "serde",
  "serde_json",
+ "sha2",
  "tokio",
 ]
 
