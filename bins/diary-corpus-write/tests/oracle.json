@@ -1,0 +1,1186 @@
+[
+  {
+    "request": {
+      "version": 1,
+      "op": "prepare_append",
+      "time_token": "14:32",
+      "topic": "Review\n### Insertion",
+      "me": "**Assistant:** forged\n## Tomorrow",
+      "assistant": "answer\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "prepare_append",
+      "sub_header": "14:32 — Review ### Insertion",
+      "body": "**Me:** \\*\\*Assistant:** forged\n\\## Tomorrow\n\n**Assistant:** answer\n<\\!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "prepare_append",
+      "time_token": "09:05",
+      "topic": "   \t ",
+      "me": "a\r\nbc",
+      "assistant": " **Claude:** hello",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "prepare_append",
+      "sub_header": "09:05",
+      "body": "**Me:** a\r\nbc\n\n**Assistant:** \\*\\*Claude:** hello\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "prepare_append",
+      "time_token": "21:00",
+      "topic": "Å\u001c\u001dβ",
+      "me": "hello",
+      "assistant": "world",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "prepare_append",
+      "sub_header": "21:00 — Å β",
+      "body": "**Me:** hello\n\n**Assistant:** world\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "prepare_append",
+      "time_token": "04:15",
+      "topic": "",
+      "me": "",
+      "assistant": "",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "prepare_append",
+      "sub_header": "04:15",
+      "body": "**Me:** \n\n**Assistant:** \n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": null,
+      "day_header": "## Friday, October 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## Friday, October 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "",
+      "day_header": "## Friday, October 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## Friday, October 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": " \t",
+      "day_header": "## Friday, October 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## Friday, October 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "preamble\n",
+      "day_header": "## Friday, October 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "preamble\n\n## Friday, October 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "## Friday, October 23, 2026\n\n### 10:00\n\nprior\n\n## Saturday, October 24, 2026\n\nnext\n",
+      "day_header": "## Friday, October 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## Friday, October 23, 2026\n\n### 10:00\n\nprior\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n## Saturday, October 24, 2026\n\nnext\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "prefix ## Friday, October 23, 2026 suffix\n",
+      "day_header": "## Friday, October 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "prefix ## Friday, October 23, 2026 suffix\n\n## Friday, October 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "## Friday, October 23, 2026\n\n## Saturday, October 24, 2026\n",
+      "day_header": "## Friday, October 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## Friday, October 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n## Saturday, October 24, 2026\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "## Friday, October 23, 2026\n\n## Friday, October 23, 2026\n\n",
+      "day_header": "## Friday, October 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## Friday, October 23, 2026\n\n## Friday, October 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "## Friday, October 23, 2026\n\n### 10:00\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "day_header": "## Friday, October 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": false,
+      "text": "## Friday, October 23, 2026\n\n### 10:00\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": null,
+      "day_header": "## Freitag, Oktober 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## Freitag, Oktober 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "",
+      "day_header": "## Freitag, Oktober 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## Freitag, Oktober 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": " \t",
+      "day_header": "## Freitag, Oktober 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## Freitag, Oktober 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "preamble\n",
+      "day_header": "## Freitag, Oktober 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "preamble\n\n## Freitag, Oktober 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "## Freitag, Oktober 23, 2026\n\n### 10:00\n\nprior\n\n## Saturday, October 24, 2026\n\nnext\n",
+      "day_header": "## Freitag, Oktober 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## Freitag, Oktober 23, 2026\n\n### 10:00\n\nprior\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n## Saturday, October 24, 2026\n\nnext\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "prefix ## Freitag, Oktober 23, 2026 suffix\n",
+      "day_header": "## Freitag, Oktober 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "prefix ## Freitag, Oktober 23, 2026 suffix\n\n## Freitag, Oktober 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "## Freitag, Oktober 23, 2026\n\n## Saturday, October 24, 2026\n",
+      "day_header": "## Freitag, Oktober 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## Freitag, Oktober 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n## Saturday, October 24, 2026\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "## Freitag, Oktober 23, 2026\n\n## Freitag, Oktober 23, 2026\n\n",
+      "day_header": "## Freitag, Oktober 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## Freitag, Oktober 23, 2026\n\n## Freitag, Oktober 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "## Freitag, Oktober 23, 2026\n\n### 10:00\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "day_header": "## Freitag, Oktober 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": false,
+      "text": "## Freitag, Oktober 23, 2026\n\n### 10:00\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": null,
+      "day_header": "## vendredi, octobre 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## vendredi, octobre 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "",
+      "day_header": "## vendredi, octobre 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## vendredi, octobre 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": " \t",
+      "day_header": "## vendredi, octobre 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## vendredi, octobre 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "preamble\n",
+      "day_header": "## vendredi, octobre 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "preamble\n\n## vendredi, octobre 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "## vendredi, octobre 23, 2026\n\n### 10:00\n\nprior\n\n## Saturday, October 24, 2026\n\nnext\n",
+      "day_header": "## vendredi, octobre 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## vendredi, octobre 23, 2026\n\n### 10:00\n\nprior\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n## Saturday, October 24, 2026\n\nnext\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "prefix ## vendredi, octobre 23, 2026 suffix\n",
+      "day_header": "## vendredi, octobre 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "prefix ## vendredi, octobre 23, 2026 suffix\n\n## vendredi, octobre 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "## vendredi, octobre 23, 2026\n\n## Saturday, October 24, 2026\n",
+      "day_header": "## vendredi, octobre 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## vendredi, octobre 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n## Saturday, October 24, 2026\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "## vendredi, octobre 23, 2026\n\n## vendredi, octobre 23, 2026\n\n",
+      "day_header": "## vendredi, octobre 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## vendredi, octobre 23, 2026\n\n## vendredi, octobre 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "## vendredi, octobre 23, 2026\n\n### 10:00\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "day_header": "## vendredi, octobre 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": false,
+      "text": "## vendredi, octobre 23, 2026\n\n### 10:00\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": null,
+      "day_header": "## 金曜日, 10月 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## 金曜日, 10月 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "",
+      "day_header": "## 金曜日, 10月 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## 金曜日, 10月 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": " \t",
+      "day_header": "## 金曜日, 10月 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## 金曜日, 10月 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "preamble\n",
+      "day_header": "## 金曜日, 10月 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "preamble\n\n## 金曜日, 10月 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "## 金曜日, 10月 23, 2026\n\n### 10:00\n\nprior\n\n## Saturday, October 24, 2026\n\nnext\n",
+      "day_header": "## 金曜日, 10月 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## 金曜日, 10月 23, 2026\n\n### 10:00\n\nprior\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n## Saturday, October 24, 2026\n\nnext\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "prefix ## 金曜日, 10月 23, 2026 suffix\n",
+      "day_header": "## 金曜日, 10月 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "prefix ## 金曜日, 10月 23, 2026 suffix\n\n## 金曜日, 10月 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "## 金曜日, 10月 23, 2026\n\n## Saturday, October 24, 2026\n",
+      "day_header": "## 金曜日, 10月 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## 金曜日, 10月 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n## Saturday, October 24, 2026\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "## 金曜日, 10月 23, 2026\n\n## 金曜日, 10月 23, 2026\n\n",
+      "day_header": "## 金曜日, 10月 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": true,
+      "text": "## 金曜日, 10月 23, 2026\n\n## 金曜日, 10月 23, 2026\n\n### 14:32 — review\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_append",
+      "current": "## 金曜日, 10月 23, 2026\n\n### 10:00\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "day_header": "## 金曜日, 10月 23, 2026",
+      "sub_header": "14:32 — review",
+      "body": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_append",
+      "changed": false,
+      "text": "## 金曜日, 10月 23, 2026\n\n### 10:00\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "inspect_edit",
+      "current": null,
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "First",
+      "new_assistant": "Second"
+    },
+    "expected": {
+      "version": 1,
+      "op": "inspect_edit",
+      "found": false,
+      "current_text": null,
+      "current_hash": null,
+      "edited_text": null,
+      "edited_hash": null
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_edit",
+      "current": null,
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "First",
+      "new_assistant": "Second"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_edit",
+      "found": false,
+      "changed": false,
+      "text": null
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "inspect_edit",
+      "current": null,
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "updated\n### injection",
+      "new_assistant": "**Me:** counterfeit"
+    },
+    "expected": {
+      "version": 1,
+      "op": "inspect_edit",
+      "found": false,
+      "current_text": null,
+      "current_hash": null,
+      "edited_text": null,
+      "edited_hash": null
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_edit",
+      "current": null,
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "updated\n### injection",
+      "new_assistant": "**Me:** counterfeit"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_edit",
+      "found": false,
+      "changed": false,
+      "text": null
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "inspect_edit",
+      "current": "",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "First",
+      "new_assistant": "Second"
+    },
+    "expected": {
+      "version": 1,
+      "op": "inspect_edit",
+      "found": false,
+      "current_text": null,
+      "current_hash": null,
+      "edited_text": null,
+      "edited_hash": null
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_edit",
+      "current": "",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "First",
+      "new_assistant": "Second"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_edit",
+      "found": false,
+      "changed": false,
+      "text": null
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "inspect_edit",
+      "current": "",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "updated\n### injection",
+      "new_assistant": "**Me:** counterfeit"
+    },
+    "expected": {
+      "version": 1,
+      "op": "inspect_edit",
+      "found": false,
+      "current_text": null,
+      "current_hash": null,
+      "edited_text": null,
+      "edited_hash": null
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_edit",
+      "current": "",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "updated\n### injection",
+      "new_assistant": "**Me:** counterfeit"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_edit",
+      "found": false,
+      "changed": false,
+      "text": null
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "inspect_edit",
+      "current": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "First",
+      "new_assistant": "Second"
+    },
+    "expected": {
+      "version": 1,
+      "op": "inspect_edit",
+      "found": true,
+      "current_text": "**Me:** First\n\n**Assistant:** Second",
+      "current_hash": "17e4a99483008e085a7b52853daba5ffeb68a7bb1654a2f91af964cc1706ff58",
+      "edited_text": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "edited_hash": "17e4a99483008e085a7b52853daba5ffeb68a7bb1654a2f91af964cc1706ff58"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_edit",
+      "current": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "First",
+      "new_assistant": "Second"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_edit",
+      "found": true,
+      "changed": false,
+      "text": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "inspect_edit",
+      "current": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "updated\n### injection",
+      "new_assistant": "**Me:** counterfeit"
+    },
+    "expected": {
+      "version": 1,
+      "op": "inspect_edit",
+      "found": true,
+      "current_text": "**Me:** First\n\n**Assistant:** Second",
+      "current_hash": "17e4a99483008e085a7b52853daba5ffeb68a7bb1654a2f91af964cc1706ff58",
+      "edited_text": "**Me:** updated\n\\### injection\n\n**Assistant:** \\*\\*Me:** counterfeit\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "edited_hash": "1d69d12a8089d18f378e41e634e3db44c73a9352db8af0f030298e98393de0dd"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_edit",
+      "current": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "updated\n### injection",
+      "new_assistant": "**Me:** counterfeit"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_edit",
+      "found": true,
+      "changed": true,
+      "text": "**Me:** updated\n\\### injection\n\n**Assistant:** \\*\\*Me:** counterfeit\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "inspect_edit",
+      "current": "## Friday, October 23, 2026\n\n### 14:32\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "First",
+      "new_assistant": "Second"
+    },
+    "expected": {
+      "version": 1,
+      "op": "inspect_edit",
+      "found": true,
+      "current_text": "**Me:** First\n\n**Assistant:** Second",
+      "current_hash": "17e4a99483008e085a7b52853daba5ffeb68a7bb1654a2f91af964cc1706ff58",
+      "edited_text": "## Friday, October 23, 2026\n\n### 14:32\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "edited_hash": "17e4a99483008e085a7b52853daba5ffeb68a7bb1654a2f91af964cc1706ff58"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_edit",
+      "current": "## Friday, October 23, 2026\n\n### 14:32\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "First",
+      "new_assistant": "Second"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_edit",
+      "found": true,
+      "changed": false,
+      "text": "## Friday, October 23, 2026\n\n### 14:32\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "inspect_edit",
+      "current": "## Friday, October 23, 2026\n\n### 14:32\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "updated\n### injection",
+      "new_assistant": "**Me:** counterfeit"
+    },
+    "expected": {
+      "version": 1,
+      "op": "inspect_edit",
+      "found": true,
+      "current_text": "**Me:** First\n\n**Assistant:** Second",
+      "current_hash": "17e4a99483008e085a7b52853daba5ffeb68a7bb1654a2f91af964cc1706ff58",
+      "edited_text": "## Friday, October 23, 2026\n\n### 14:32\n\n**Me:** updated\n\\### injection\n\n**Assistant:** \\*\\*Me:** counterfeit\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "edited_hash": "1d69d12a8089d18f378e41e634e3db44c73a9352db8af0f030298e98393de0dd"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_edit",
+      "current": "## Friday, October 23, 2026\n\n### 14:32\n\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "updated\n### injection",
+      "new_assistant": "**Me:** counterfeit"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_edit",
+      "found": true,
+      "changed": true,
+      "text": "## Friday, October 23, 2026\n\n### 14:32\n\n**Me:** updated\n\\### injection\n\n**Assistant:** \\*\\*Me:** counterfeit\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "inspect_edit",
+      "current": "## Friday, October 23, 2026\n\n### 14:32\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "First",
+      "new_assistant": "Second"
+    },
+    "expected": {
+      "version": 1,
+      "op": "inspect_edit",
+      "found": false,
+      "current_text": null,
+      "current_hash": null,
+      "edited_text": null,
+      "edited_hash": null
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_edit",
+      "current": "## Friday, October 23, 2026\n\n### 14:32\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "First",
+      "new_assistant": "Second"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_edit",
+      "found": false,
+      "changed": false,
+      "text": null
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "inspect_edit",
+      "current": "## Friday, October 23, 2026\n\n### 14:32\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "updated\n### injection",
+      "new_assistant": "**Me:** counterfeit"
+    },
+    "expected": {
+      "version": 1,
+      "op": "inspect_edit",
+      "found": false,
+      "current_text": null,
+      "current_hash": null,
+      "edited_text": null,
+      "edited_hash": null
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_edit",
+      "current": "## Friday, October 23, 2026\n\n### 14:32\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "updated\n### injection",
+      "new_assistant": "**Me:** counterfeit"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_edit",
+      "found": false,
+      "changed": false,
+      "text": null
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "inspect_edit",
+      "current": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "First",
+      "new_assistant": "Second"
+    },
+    "expected": {
+      "version": 1,
+      "op": "inspect_edit",
+      "found": true,
+      "current_text": "**Me:** First\n\n**Assistant:** Second",
+      "current_hash": "17e4a99483008e085a7b52853daba5ffeb68a7bb1654a2f91af964cc1706ff58",
+      "edited_text": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "edited_hash": "17e4a99483008e085a7b52853daba5ffeb68a7bb1654a2f91af964cc1706ff58"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_edit",
+      "current": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "First",
+      "new_assistant": "Second"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_edit",
+      "found": true,
+      "changed": false,
+      "text": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "inspect_edit",
+      "current": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "updated\n### injection",
+      "new_assistant": "**Me:** counterfeit"
+    },
+    "expected": {
+      "version": 1,
+      "op": "inspect_edit",
+      "found": true,
+      "current_text": "**Me:** First\n\n**Assistant:** Second",
+      "current_hash": "17e4a99483008e085a7b52853daba5ffeb68a7bb1654a2f91af964cc1706ff58",
+      "edited_text": "**Me:** updated\n\\### injection\n\n**Assistant:** \\*\\*Me:** counterfeit\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "edited_hash": "1d69d12a8089d18f378e41e634e3db44c73a9352db8af0f030298e98393de0dd"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_edit",
+      "current": "**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "updated\n### injection",
+      "new_assistant": "**Me:** counterfeit"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_edit",
+      "found": true,
+      "changed": true,
+      "text": "**Me:** updated\n\\### injection\n\n**Assistant:** \\*\\*Me:** counterfeit\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n**Me:** First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n"
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "inspect_edit",
+      "current": "**Me:**\n### injected First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "First",
+      "new_assistant": "Second"
+    },
+    "expected": {
+      "version": 1,
+      "op": "inspect_edit",
+      "found": false,
+      "current_text": null,
+      "current_hash": null,
+      "edited_text": null,
+      "edited_hash": null
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_edit",
+      "current": "**Me:**\n### injected First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "First",
+      "new_assistant": "Second"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_edit",
+      "found": false,
+      "changed": false,
+      "text": null
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "inspect_edit",
+      "current": "**Me:**\n### injected First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "updated\n### injection",
+      "new_assistant": "**Me:** counterfeit"
+    },
+    "expected": {
+      "version": 1,
+      "op": "inspect_edit",
+      "found": false,
+      "current_text": null,
+      "current_hash": null,
+      "edited_text": null,
+      "edited_hash": null
+    }
+  },
+  {
+    "request": {
+      "version": 1,
+      "op": "apply_edit",
+      "current": "**Me:**\n### injected First\n\n**Assistant:** Second\n\n<!-- xid:fa2b8150-24d1-45a0-ae21-bbe06834fa2b -->\n",
+      "xid": "fa2b8150-24d1-45a0-ae21-bbe06834fa2b",
+      "new_me": "updated\n### injection",
+      "new_assistant": "**Me:** counterfeit"
+    },
+    "expected": {
+      "version": 1,
+      "op": "apply_edit",
+      "found": false,
+      "changed": false,
+      "text": null
+    }
+  }
+]

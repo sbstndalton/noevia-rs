@@ -13,7 +13,7 @@ mkdir -p "$out/seed"
   --report "$out/node-report.json" --state-out "$out/node-state.json"
 "$replay" run --corpus "$root/contracts/http/corpus" --base http://127.0.0.1:18021 \
   --ignore-body hours --ignore-body peakHour/hour --seed "$out/seed" --work "$out/front" \
-  --server-cmd "exec env NOEVIA_RUST_AUTH=1 sh '$root/tools/front/replay-front.sh' '$core' '$front'" \
+  --native-move-state --server-cmd "exec env NOEVIA_RUST_AUTH=1 sh '$root/tools/front/replay-front.sh' '$core' '$front'" \
   --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' --state-ignore '*chat-transcripts.lock' --state-ignore '*chat-changes.jsonl' \
   --report "$out/positive-report.json" --state-out "$out/positive-state.json" --expect-state "$out/node-state.json"
 # The omission control left with the reasoning switch (sbstndalton/noevia#1071): the front can no

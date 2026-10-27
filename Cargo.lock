@@ -407,6 +407,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "code-sandbox-supervisor"
+version = "0.1.0"
+dependencies = [
+ "nix",
+ "sandbox-bridge",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "completeness-report"
 version = "0.1.0"
 dependencies = [
@@ -584,6 +595,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "diary-backup-format"
+version = "0.1.0"
+dependencies = [
+ "ryu",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "diary-corpus-parse"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "diary-corpus-write"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "diary-corpus-write-cli"
+version = "0.1.0"
+dependencies = [
+ "diary-corpus-write",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "diary-entity-focus"
 version = "0.1.0"
 dependencies = [
@@ -592,6 +639,73 @@ dependencies = [
  "serde",
  "serde_json",
  "unicode-normalization",
+]
+
+
+[[package]]
+name = "diary-index-transform"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "diary-score-gap"
+version = "0.1.0"
+
+[[package]]
+name = "diary-storage-backoff"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde_json",
+]
+
+[[package]]
+name = "diary-temporal-focus"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "regex",
+ "serde",
+ "serde_json",
+ "unicode-normalization",
+]
+
+[[package]]
+name = "diary-workspace-export"
+version = "0.1.0"
+dependencies = [
+ "crc32fast",
+ "serde",
+ "serde_json",
+ "sha2",
+ "workspace-restore-verify",
+]
+
+[[package]]
+name = "diary-workspace-import-apply"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "ryu",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "workspace-restore-verify",
+]
+
+[[package]]
+name = "diary-workspace-rules"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "regex",
+ "ryu",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -1697,6 +1811,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "js-json",
+ "reqwest",
  "secret-envelope",
  "serde",
  "serde_json",
@@ -1704,6 +1819,7 @@ dependencies = [
  "server-auth",
  "server-chatgpt-status",
  "server-export",
+ "server-features",
  "server-projects",
  "server-reasoning-settings",
  "server-routing-default",
@@ -2343,6 +2459,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "roxmltree"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1964b10c76125c36f8afe190065a4bf9a87bf324842c05701330bba9f1cacbb"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "rsa"
 version = "0.9.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2671,6 +2796,7 @@ dependencies = [
  "rustix",
  "secret-envelope",
  "serde_json",
+ "server-features",
  "server-store",
  "sha2",
  "subtle",
@@ -2686,9 +2812,46 @@ dependencies = [
  "secret-envelope",
  "serde_json",
  "server-auth",
+ "server-features",
  "server-routing-mode",
  "server-store",
  "tempfile",
+ "zeroize",
+]
+
+[[package]]
+name = "server-dav"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "httpdate",
+ "hyper",
+ "hyper-util",
+ "percent-encoding",
+ "roxmltree",
+ "subtle",
+ "tokio",
+ "url",
+]
+
+[[package]]
+name = "server-dav-adapter"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "rand_core 0.6.4",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "server-auth",
+ "server-dav",
+ "server-store",
+ "sha2",
+ "tempfile",
+ "tenant-assertion",
+ "tokio",
+ "url",
  "zeroize",
 ]
 
@@ -2710,6 +2873,14 @@ dependencies = [
  "sha2",
  "tempfile",
  "unicode-normalization",
+]
+
+[[package]]
+name = "server-features"
+version = "0.1.0"
+dependencies = [
+ "policy-leaves",
+ "serde_json",
 ]
 
 [[package]]
@@ -2755,6 +2926,7 @@ dependencies = [
  "proptest",
  "rustix",
  "serde_json",
+ "server-features",
  "server-store",
  "sha2",
  "tempfile",
@@ -3733,6 +3905,7 @@ name = "workspace-restore-verify-cli"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "rustix",
  "serde_json",
  "workspace-restore-verify",
 ]

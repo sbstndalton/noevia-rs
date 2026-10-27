@@ -1,0 +1,11 @@
+[package]
+name = "diary-score-gap"
+version = "0.1.0"
+description = "Stable Diary retrieval score-gap partition, matching noevia-services"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

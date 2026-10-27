@@ -1,0 +1,16 @@
+[package]
+name = "diary-corpus-write-cli"
+version = "0.1.0"
+description = "Bounded framed Diary corpus write/edit transform transport"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+diary-corpus-write = { path = "../../crates/diary-corpus-write" }
+serde = "1"
+serde_json = "1"
