@@ -105,7 +105,7 @@ fn python_float_text(text: &str) -> Option<f64> {
     ) {
         return normalized.parse::<f64>().ok();
     }
-    let valid = Regex::new(r"(?i)^(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:e[+-]?[0-9]+)?$").ok()?;
+    let valid = Regex::new(r"^(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$").ok()?;
     if !valid.is_match(unsigned) {
         return None;
     }
@@ -292,11 +292,64 @@ fn superseded(
     rows: &[Row],
     matched: &[Entity],
 ) -> Result<Vec<(usize, String)>, Error> {
-    let cue=Regex::new(r"(?i)\bcorrection\b|\bI\s+(?:had\s+)?(?:misheard|misremembered|misspoke|misread)\b|\bI\s+(?:got|had)\s+(?:it|that|this)\s+wrong\b|\bto\s+correct\s+(?:my|an|the|that)\s+(?:earlier\s+|previous\s+)?(?:note|entry)\b").map_err(|_|Error::Internal)?;
-    let old_value = Regex::new(
-        r"(?i)\b(?:not|instead\s+of|rather\s+than)\s+(?:the\s+|a\s+|an\s+)?([^.,;:!?\n]{2,60})",
-    )
-    .map_err(|_| Error::Internal)?;
+    use crate::regex_profile::{self as rx, Pattern};
+    use std::sync::OnceLock;
+    static CUE: OnceLock<Result<Vec<Pattern>, Error>> = OnceLock::new();
+    static OLD: OnceLock<Result<Pattern, Error>> = OnceLock::new();
+    let cue = CUE
+        .get_or_init(|| {
+            let sp = format!("{}+", rx::SPACE);
+            let i = rx::literal("I");
+            [
+                rx::literal("correction"),
+                format!(
+                    "{i}{sp}(?:{}{sp})?(?:{})",
+                    rx::literal("had"),
+                    rx::alternatives(&["misheard", "misremembered", "misspoke", "misread"])
+                ),
+                format!(
+                    "{i}{sp}(?:{}){sp}(?:{}){sp}{}",
+                    rx::alternatives(&["got", "had"]),
+                    rx::alternatives(&["it", "that", "this"]),
+                    rx::literal("wrong")
+                ),
+                format!(
+                    "{}{sp}{}{sp}(?:{}){sp}(?:(?:{}){sp})?(?:{})",
+                    rx::literal("to"),
+                    rx::literal("correct"),
+                    rx::alternatives(&["my", "an", "the", "that"]),
+                    rx::alternatives(&["earlier", "previous"]),
+                    rx::alternatives(&["note", "entry"])
+                ),
+            ]
+            .iter()
+            .map(|body| Pattern::new(body, true, true))
+            .collect()
+        })
+        .as_ref()
+        .map_err(|e| *e)?;
+    let old_value = OLD
+        .get_or_init(|| {
+            let sp = format!("{}+", rx::SPACE);
+            let phrase = format!(
+                "(?:{}|{}{sp}{}|{}{sp}{})",
+                rx::literal("not"),
+                rx::literal("instead"),
+                rx::literal("of"),
+                rx::literal("rather"),
+                rx::literal("than")
+            );
+            Pattern::new(
+                &format!(
+                    r"{phrase}{sp}(?:(?:{}){sp})?([^.,;:!?\n]{{2,60}})",
+                    rx::alternatives(&["the", "a", "an"])
+                ),
+                true,
+                false,
+            )
+        })
+        .as_ref()
+        .map_err(|e| *e)?;
     let mut out = BTreeMap::<usize, ((String, String), String)>::new();
     for fix_rank in ranked {
         let Some(fix) = fix_rank.checked_sub(1).and_then(|i| rows.get(i)) else {
@@ -305,15 +358,16 @@ fn superseded(
         for entity in matched {
             let said = entity_sentences(&fix.text, entity)?;
             if said.is_empty()
-                || !(cue.is_match(&fix.header) || said.iter().any(|s| cue.is_match(s)))
+                || !(cue.iter().any(|re| re.is_match(&fix.header))
+                    || said.iter().any(|s| cue.iter().any(|re| re.is_match(s))))
             {
                 continue;
             }
             let old = said
                 .iter()
-                .flat_map(|s| old_value.captures_iter(s))
-                .filter_map(|c| c.get(1).map(|m| plain(m.as_str())))
-                .filter(|s| !s.trim().is_empty())
+                .flat_map(|s| old_value.find_iter(s))
+                .filter_map(|c| c.capture.map(plain))
+                .filter(|s| !s.trim_matches(crate::lexical::py_space).is_empty())
                 .collect::<Vec<_>>();
             let attribute = content_words(&said, entity);
             for rank in ranked {
@@ -452,8 +506,8 @@ pub fn focus_candidates(
             .filter(|e| {
                 e.keys.len() >= 2
                     || e.name
-                        .split_whitespace()
-                        .next()
+                        .split(crate::lexical::py_space)
+                        .find(|s| !s.is_empty())
                         .is_some_and(|name| has(rules::TITLES, &key(name)))
             })
             .collect::<Vec<_>>();

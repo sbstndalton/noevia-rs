@@ -4,15 +4,40 @@ use crate::{Entity, Error};
 use regex::Regex;
 
 pub(crate) fn clean(text: &str) -> Result<String, Error> {
-    let re = Regex::new(r"(?i)\*\*\s*(?:Me|Assistant|Claude|Companion|User)\s*:\s*\*\*")
-        .map_err(|_| Error::Internal)?;
+    use crate::regex_profile as rx;
+    use std::sync::OnceLock;
+    static ROLE: OnceLock<Result<Regex, Error>> = OnceLock::new();
+    let re = ROLE
+        .get_or_init(|| {
+            let space = rx::SPACE;
+            Regex::new(&format!(
+                r"\*\*{space}*(?:{}){space}*:{space}*\*\*",
+                rx::alternatives(&["Me", "Assistant", "Claude", "Companion", "User"])
+            ))
+            .map_err(|_| Error::Internal)
+        })
+        .as_ref()
+        .map_err(|e| *e)?;
     Ok(re.replace_all(&norm(text), "\n").into_owned())
 }
 pub(crate) fn body(text: &str) -> Result<String, Error> {
-    let re =
-        Regex::new(r"(?m)^\s*(?:\[\d{4}-\d{2}-\d{2}\]\s*)?#+\s.*$").map_err(|_| Error::Internal)?;
+    use crate::regex_profile as rx;
+    use std::sync::OnceLock;
+    static HEADER: OnceLock<Result<Regex, Error>> = OnceLock::new();
+    let re = HEADER
+        .get_or_init(|| {
+            let space = rx::SPACE;
+            let digit = rx::digits();
+            Regex::new(&format!(
+                r"(?m)^{space}*(?:\[{digit}{{4}}-{digit}{{2}}-{digit}{{2}}\]{space}*)?#+{space}.*$"
+            ))
+            .map_err(|_| Error::Internal)
+        })
+        .as_ref()
+        .map_err(|e| *e)?;
     clean(&re.replace_all(text, "\n"))
 }
+
 fn short_form(k: &str) -> bool {
     rules::SHORT_FORMS
         .binary_search_by_key(&k, |(name, _)| name)
@@ -90,7 +115,8 @@ pub(crate) fn is_person(entity: &Entity) -> bool {
     person_keys(
         &entity
             .name
-            .split_whitespace()
+            .split(crate::lexical::py_space)
+            .filter(|s| !s.is_empty())
             .map(str::to_owned)
             .collect::<Vec<_>>(),
         "",
@@ -141,7 +167,8 @@ fn trailing_word_same_line(text: &str, pos: usize) -> String {
 pub fn identified_people(text: &str, asked: Option<&[Entity]>) -> Result<Vec<Vec<String>>, Error> {
     let text = clean(text)?;
     let mut out = Vec::new();
-    let label_after = Regex::new(r"^[*_]*\s*:").map_err(|_| Error::Internal)?;
+    let label_after = Regex::new(&format!(r"^[*_]*{}*:", crate::regex_profile::SPACE))
+        .map_err(|_| Error::Internal)?;
     for run in cap_runs(&text, false)? {
         let mut words = run.iter().map(|(w, _)| w.clone()).collect::<Vec<_>>();
         let Some((_, first_pos)) = run.first() else {
@@ -183,4 +210,38 @@ pub fn identified_people(text: &str, asked: Option<&[Entity]>) -> Result<Vec<Vec
         }
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod frozen_regex_probes {
+    use super::{body, clean};
+    use serde_json::Value;
+    #[test]
+    fn frozen_role_and_header_regex_probes() -> Result<(), Box<dyn std::error::Error>> {
+        let mut n = 0;
+        for line in include_str!("../tests/regex-probes.jsonl").lines() {
+            let value: Value = serde_json::from_str(line)?;
+            let kind = value.get("kind").and_then(Value::as_str);
+            if !matches!(kind, Some("clean" | "body")) {
+                continue;
+            }
+            let text = value
+                .get("text")
+                .and_then(Value::as_str)
+                .ok_or("missing text")?;
+            let expected = value
+                .get("expected")
+                .and_then(Value::as_str)
+                .ok_or("missing expected")?;
+            let actual = if kind == Some("clean") {
+                clean(text)?
+            } else {
+                body(text)?
+            };
+            assert_eq!(actual, expected, "role/header case {n}: {text:?}");
+            n += 1;
+        }
+        assert_eq!(n, 62);
+        Ok(())
+    }
 }

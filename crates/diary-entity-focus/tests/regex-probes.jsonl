@@ -1,0 +1,240 @@
+{"kind":"meta","python":"3.12.15","unicode":"15.0.0","source_sha256":"dd4312e26a22cf2132f18bbd0ca4d7fd55a885706b8d0aa8997c14e94eeb7632"}
+{"kind":"refers_back","text":"that́","expected":true}
+{"kind":"refers_back","text":"́that","expected":true}
+{"kind":"refers_back","text":"that‌","expected":true}
+{"kind":"refers_back","text":"that‍","expected":true}
+{"kind":"refers_back","text":"that_","expected":false}
+{"kind":"refers_back","text":"thaté","expected":false}
+{"kind":"refers_back","text":"thatᲉ","expected":true}
+{"kind":"refers_back","text":"ıt written?","expected":true}
+{"kind":"refers_back","text":"İt written?","expected":true}
+{"kind":"refers_back","text":"thıs written?","expected":true}
+{"kind":"refers_back","text":"thiſ written?","expected":true}
+{"kind":"refers_back","text":"this records","expected":true}
+{"kind":"refers_back","text":"this record","expected":true}
+{"kind":"refers_back","text":"this recorded","expected":true}
+{"kind":"refers_back","text":"this records records","expected":true}
+{"kind":"refers_back","text":"that week","expected":false}
+{"kind":"refers_back","text":"that weeké","expected":true}
+{"kind":"refers_back","text":"that weeḱ","expected":false}
+{"kind":"refers_back","text":"\tand again","expected":true}
+{"kind":"refers_back","text":"\nand again","expected":true}
+{"kind":"refers_back","text":"\u000band again","expected":true}
+{"kind":"refers_back","text":"\fand again","expected":true}
+{"kind":"refers_back","text":"\rand again","expected":true}
+{"kind":"refers_back","text":"\u001cand again","expected":true}
+{"kind":"refers_back","text":"\u001dand again","expected":true}
+{"kind":"refers_back","text":"\u001eand again","expected":true}
+{"kind":"refers_back","text":"\u001fand again","expected":true}
+{"kind":"refers_back","text":" and again","expected":true}
+{"kind":"refers_back","text":"and again","expected":true}
+{"kind":"refers_back","text":" and again","expected":true}
+{"kind":"refers_back","text":" and again","expected":true}
+{"kind":"refers_back","text":" and again","expected":true}
+{"kind":"refers_back","text":" and again","expected":true}
+{"kind":"refers_back","text":" and again","expected":true}
+{"kind":"refers_back","text":" and again","expected":true}
+{"kind":"refers_back","text":" and again","expected":true}
+{"kind":"refers_back","text":" and again","expected":true}
+{"kind":"refers_back","text":" and again","expected":true}
+{"kind":"refers_back","text":" and again","expected":true}
+{"kind":"refers_back","text":" and again","expected":true}
+{"kind":"refers_back","text":" and again","expected":true}
+{"kind":"refers_back","text":" and again","expected":true}
+{"kind":"refers_back","text":" and again","expected":true}
+{"kind":"refers_back","text":" and again","expected":true}
+{"kind":"refers_back","text":" and again","expected":true}
+{"kind":"refers_back","text":" and again","expected":true}
+{"kind":"refers_back","text":"　and again","expected":true}
+{"kind":"refers_back","text":"this\tweek","expected":false}
+{"kind":"refers_back","text":"this\nweek","expected":false}
+{"kind":"refers_back","text":"this\u000bweek","expected":false}
+{"kind":"refers_back","text":"this\fweek","expected":false}
+{"kind":"refers_back","text":"this\rweek","expected":false}
+{"kind":"refers_back","text":"this\u001cweek","expected":false}
+{"kind":"refers_back","text":"this\u001dweek","expected":false}
+{"kind":"refers_back","text":"this\u001eweek","expected":false}
+{"kind":"refers_back","text":"this\u001fweek","expected":false}
+{"kind":"refers_back","text":"this week","expected":false}
+{"kind":"refers_back","text":"thisweek","expected":false}
+{"kind":"refers_back","text":"this week","expected":false}
+{"kind":"refers_back","text":"this week","expected":false}
+{"kind":"refers_back","text":"this week","expected":false}
+{"kind":"refers_back","text":"this week","expected":false}
+{"kind":"refers_back","text":"this week","expected":false}
+{"kind":"refers_back","text":"this week","expected":false}
+{"kind":"refers_back","text":"this week","expected":false}
+{"kind":"refers_back","text":"this week","expected":false}
+{"kind":"refers_back","text":"this week","expected":false}
+{"kind":"refers_back","text":"this week","expected":false}
+{"kind":"refers_back","text":"this week","expected":false}
+{"kind":"refers_back","text":"this week","expected":false}
+{"kind":"refers_back","text":"this week","expected":false}
+{"kind":"refers_back","text":"this week","expected":false}
+{"kind":"refers_back","text":"this week","expected":false}
+{"kind":"refers_back","text":"this week","expected":false}
+{"kind":"refers_back","text":"this week","expected":false}
+{"kind":"refers_back","text":"this　week","expected":false}
+{"kind":"refers_back","text":"this made\tup","expected":true}
+{"kind":"refers_back","text":"this made\nup","expected":true}
+{"kind":"refers_back","text":"this made\u000bup","expected":true}
+{"kind":"refers_back","text":"this made\fup","expected":true}
+{"kind":"refers_back","text":"this made\rup","expected":true}
+{"kind":"refers_back","text":"this made\u001cup","expected":true}
+{"kind":"refers_back","text":"this made\u001dup","expected":true}
+{"kind":"refers_back","text":"this made\u001eup","expected":true}
+{"kind":"refers_back","text":"this made\u001fup","expected":true}
+{"kind":"refers_back","text":"this made up","expected":true}
+{"kind":"refers_back","text":"this madeup","expected":true}
+{"kind":"refers_back","text":"this made up","expected":true}
+{"kind":"refers_back","text":"this made up","expected":true}
+{"kind":"refers_back","text":"this made up","expected":true}
+{"kind":"refers_back","text":"this made up","expected":true}
+{"kind":"refers_back","text":"this made up","expected":true}
+{"kind":"refers_back","text":"this made up","expected":true}
+{"kind":"refers_back","text":"this made up","expected":true}
+{"kind":"refers_back","text":"this made up","expected":true}
+{"kind":"refers_back","text":"this made up","expected":true}
+{"kind":"refers_back","text":"this made up","expected":true}
+{"kind":"refers_back","text":"this made up","expected":true}
+{"kind":"refers_back","text":"this made up","expected":true}
+{"kind":"refers_back","text":"this made up","expected":true}
+{"kind":"refers_back","text":"this made up","expected":true}
+{"kind":"refers_back","text":"this made up","expected":true}
+{"kind":"refers_back","text":"this made up","expected":true}
+{"kind":"refers_back","text":"this made up","expected":true}
+{"kind":"refers_back","text":"this made　up","expected":true}
+{"kind":"relational","text":"Alder Brannock's ² sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's Ⅳ sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's ½ sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's ͅ sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":false}
+{"kind":"relational","text":"Alder Brannock's Ᲊ sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":false}
+{"kind":"relational","text":"Alder Brannock's\tsister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's\nsister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's\u000bsister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's\fsister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's\rsister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's\u001csister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's\u001dsister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's\u001esister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's\u001fsister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock'ssister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"Alder Brannock's　sister","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister\tof\tAlder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister\nof\nAlder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister\u000bof\u000bAlder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister\fof\fAlder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister\rof\rAlder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister\u001cof\u001cAlder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister\u001dof\u001dAlder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister\u001eof\u001eAlder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister\u001fof\u001fAlder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister of Alder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sisterofAlder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister of Alder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister of Alder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister of Alder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister of Alder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister of Alder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister of Alder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister of Alder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister of Alder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister of Alder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister of Alder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister of Alder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister of Alder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister of Alder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister of Alder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister of Alder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister of Alder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister of Alder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"sister　of　Alder Brannock","entity":{"name":"Alder Brannock","keys":["alder","brannock"]},"expected":true}
+{"kind":"relational","text":"ıris Brannock's sister","entity":{"name":"Iris Brannock","keys":["iris","brannock"]},"expected":true}
+{"kind":"relational","text":"Iris Brannock's sister","entity":{"name":"İris Brannock","keys":["iris","brannock"]},"expected":true}
+{"kind":"relational","text":"ͅris Brannock's sister","entity":{"name":"Ιris Brannock","keys":["ιris","brannock"]},"expected":true}
+{"kind":"relational","text":"Kerr Brannock's sister","entity":{"name":"Kerr Brannock","keys":["kerr","brannock"]},"expected":true}
+{"kind":"clean","text":"**\tMe:\t** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":"\t##\tHeading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"**\nMe:\n** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":"\n##\nHeading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"**\u000bMe:\u000b** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":"\u000b##\u000bHeading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"**\fMe:\f** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":"\f##\fHeading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"**\rMe:\r** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":"\r##\rHeading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"**\u001cMe:\u001c** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":"\u001c##\u001cHeading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"**\u001dMe:\u001d** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":"\u001d##\u001dHeading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"**\u001eMe:\u001e** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":"\u001e##\u001eHeading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"**\u001fMe:\u001f** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":"\u001f##\u001fHeading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"** Me: ** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":" ## Heading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"**Me:** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":"##Heading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"** Me: ** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":" ## Heading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"** Me: ** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":" ## Heading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"** Me: ** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":" ## Heading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"** Me: ** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":" ## Heading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"** Me: ** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":" ## Heading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"** Me: ** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":" ## Heading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"** Me: ** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":" ## Heading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"** Me: ** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":" ## Heading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"** Me: ** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":" ## Heading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"** Me: ** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":" ## Heading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"** Me: ** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":" ## Heading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"** Me: ** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":" ## Heading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"** Me: ** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":" ## Heading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"** Me: ** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":" ## Heading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"** Me: ** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":" ## Heading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"** Me: ** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":" ## Heading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"** Me: ** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":" ## Heading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"clean","text":"**　Me:　** Alder Brannock spoke.","expected":"\n Alder Brannock spoke."}
+{"kind":"body","text":"　##　Heading\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"body","text":"[1111-11-11] # Header\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"body","text":"[١١١١-١١-١١] # Header\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"body","text":"[１１１１-１１-１１] # Header\nAlder Brannock spoke.","expected":"\n\nAlder Brannock spoke."}
+{"kind":"body","text":"[𞗱𞗱𞗱𞗱-𞗱𞗱-𞗱𞗱] # Header\nAlder Brannock spoke.","expected":"[𞗱𞗱𞗱𞗱-𞗱𞗱-𞗱𞗱] # Header\nAlder Brannock spoke."}
+{"kind":"focus","message":"What tea does Alder Brannock like?","rows":[{"day":"2030-01-10","header":"","text":"Alder Brannock likes teal tea.","score":0.8},{"day":"2030-01-11","header":"","text":"Correction: Alder Brannock likes blue tea, not teal tea.","score":0.9}],"limit":null,"margin":0.05,"earlier":[],"partition":{"survivors":[1,2],"removed":[]},"expected":{"entities":[{"name":"Alder Brannock","keys":["alder","brannock"]}],"carried":false,"anchor":null,"relational":false,"margin":0.05,"matched":[{"name":"Alder Brannock","keys":["alder","brannock"]}],"kept_ranks":[1,2],"removed":[],"similar":[],"corrected_by":[{"rank":1,"day":"2030-01-11"}],"absent":[],"exact":[{"rank":1,"names":["Alder Brannock"]},{"rank":2,"names":["Alder Brannock"]}]}}
+{"kind":"focus","message":"What tea does Alder Brannock like?","rows":[{"day":"2030-01-10","header":"","text":"Alder Brannock likes teal tea.","score":0.8},{"day":"2030-01-11","header":"","text":"Correctioń: Alder Brannock likes blue tea, not teal tea.","score":0.9}],"limit":null,"margin":0.05,"earlier":[],"partition":{"survivors":[1,2],"removed":[]},"expected":{"entities":[{"name":"Alder Brannock","keys":["alder","brannock"]}],"carried":false,"anchor":null,"relational":false,"margin":0.05,"matched":[{"name":"Alder Brannock","keys":["alder","brannock"]}],"kept_ranks":[1,2],"removed":[],"similar":[],"corrected_by":[{"rank":1,"day":"2030-01-11"}],"absent":[],"exact":[{"rank":1,"names":["Alder Brannock"]},{"rank":2,"names":["Alder Brannock"]}]}}
+{"kind":"focus","message":"What tea does Alder Brannock like?","rows":[{"day":"2030-01-10","header":"","text":"Alder Brannock likes teal tea.","score":0.8},{"day":"2030-01-11","header":"","text":"I\u001fmisremembered: Alder Brannock likes blue tea, not teal tea.","score":0.9}],"limit":null,"margin":0.05,"earlier":[],"partition":{"survivors":[1,2],"removed":[]},"expected":{"entities":[{"name":"Alder Brannock","keys":["alder","brannock"]}],"carried":false,"anchor":null,"relational":false,"margin":0.05,"matched":[{"name":"Alder Brannock","keys":["alder","brannock"]}],"kept_ranks":[1,2],"removed":[],"similar":[],"corrected_by":[{"rank":1,"day":"2030-01-11"}],"absent":[],"exact":[{"rank":1,"names":["Alder Brannock"]},{"rank":2,"names":["Alder Brannock"]}]}}
+{"kind":"focus","message":"What tea does Alder Brannock like?","rows":[{"day":"2030-01-10","header":"","text":"Alder Brannock likes teal tea.","score":0.8},{"day":"2030-01-11","header":"","text":"Igot it wrong: Alder Brannock likes blue tea, not teal tea.","score":0.9}],"limit":null,"margin":0.05,"earlier":[],"partition":{"survivors":[1,2],"removed":[]},"expected":{"entities":[{"name":"Alder Brannock","keys":["alder","brannock"]}],"carried":false,"anchor":null,"relational":false,"margin":0.05,"matched":[{"name":"Alder Brannock","keys":["alder","brannock"]}],"kept_ranks":[1,2],"removed":[],"similar":[],"corrected_by":[{"rank":1,"day":"2030-01-11"}],"absent":[],"exact":[{"rank":1,"names":["Alder Brannock"]},{"rank":2,"names":["Alder Brannock"]}]}}
+{"kind":"focus","message":"What tea does Alder Brannock like?","rows":[{"day":"2030-01-10","header":"","text":"Alder Brannock likes teal tea.","score":0.8},{"day":"2030-01-11","header":"","text":"To\u001fcorrect my earlier note: Alder Brannock likes blue tea, not teal tea.","score":0.9}],"limit":null,"margin":0.05,"earlier":[],"partition":{"survivors":[1,2],"removed":[]},"expected":{"entities":[{"name":"Alder Brannock","keys":["alder","brannock"]}],"carried":false,"anchor":null,"relational":false,"margin":0.05,"matched":[{"name":"Alder Brannock","keys":["alder","brannock"]}],"kept_ranks":[1,2],"removed":[],"similar":[],"corrected_by":[{"rank":1,"day":"2030-01-11"}],"absent":[],"exact":[{"rank":1,"names":["Alder Brannock"]},{"rank":2,"names":["Alder Brannock"]}]}}

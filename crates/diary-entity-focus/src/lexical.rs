@@ -1,6 +1,5 @@
 use crate::generated_rules as rules;
 use crate::{Entity, Error, Kind, MAX_ENTITIES, MAX_QUERY_BYTES, MAX_WORDS, MAX_WORD_CHARS};
-use unicode_normalization::UnicodeNormalization;
 
 pub(crate) fn has(set: &[&str], key: &str) -> bool {
     set.binary_search(&key).is_ok()
@@ -39,7 +38,7 @@ fn combining(c: char) -> bool {
 pub(crate) fn py_alpha(c: char) -> bool {
     in_ranges(c as u32, rules::ALPHA_RANGES)
 }
-fn py_alnum(c: char) -> bool {
+pub(crate) fn py_alnum(c: char) -> bool {
     in_ranges(c as u32, rules::ALNUM_RANGES)
 }
 fn py_upper(c: char) -> bool {
@@ -70,19 +69,86 @@ pub(crate) fn py_space(c: char) -> bool {
 pub(crate) fn norm(s: &str) -> String {
     s.replace(['’', '‘'], "'")
 }
-pub(crate) fn key(s: &str) -> String {
-    let mut folded = String::new();
-    for c in s.to_lowercase().chars() {
-        if let Some((_, to)) = rules::FOLD.iter().find(|(from, _)| *from == c) {
-            folded.push_str(to);
-        } else {
-            folded.push(c);
+fn lower_scalar(c: char, out: &mut String) {
+    let entry = crate::unicode15::LOWER
+        .binary_search_by_key(&u32::from(c), |(cp, _)| *cp)
+        .ok()
+        .and_then(|index| crate::unicode15::LOWER.get(index));
+    if let Some((_, lower)) = entry {
+        out.push_str(lower);
+    } else {
+        out.push(c);
+    }
+}
+
+pub(crate) fn py_lower(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    if !s.contains('Σ') {
+        for c in s.chars() {
+            lower_scalar(c, &mut out);
+        }
+        return out;
+    }
+    // CPython's language-neutral Final_Sigma rule uses the nearest
+    // non-Case_Ignorable character on either side. Two linear passes avoid
+    // quadratic scans across long runs of combining marks or apostrophes.
+    let chars: Vec<char> = s.chars().collect();
+    let mut following_cased = vec![false; chars.len()];
+    let mut next_cased = false;
+    for (&c, following) in chars.iter().zip(following_cased.iter_mut()).rev() {
+        *following = next_cased;
+        if !in_ranges(c as u32, crate::unicode15::IGNORABLE) {
+            next_cased = in_ranges(c as u32, rules::CASED_RANGES);
         }
     }
-    folded
-        .nfkd()
-        .filter(|c| !combining(*c) && *c != '\'')
-        .collect()
+    let mut previous_cased = false;
+    for (&c, following) in chars.iter().zip(following_cased) {
+        if c == 'Σ' {
+            out.push(if previous_cased && !following {
+                'ς'
+            } else {
+                'σ'
+            });
+        } else {
+            lower_scalar(c, &mut out);
+        }
+        if !in_ranges(c as u32, crate::unicode15::IGNORABLE) {
+            previous_cased = in_ranges(c as u32, rules::CASED_RANGES);
+        }
+    }
+    out
+}
+
+pub(crate) fn key(s: &str) -> String {
+    let mut out = String::new();
+    for c in py_lower(s).chars() {
+        if let Some((_, folded)) = rules::FOLD.iter().find(|(from, _)| *from == c) {
+            for c in folded.chars() {
+                append_key_scalar(c, &mut out);
+            }
+        } else {
+            append_key_scalar(c, &mut out);
+        }
+    }
+    out
+}
+
+fn append_key_scalar(c: char, out: &mut String) {
+    let decomposition = crate::unicode15::NFKD
+        .binary_search_by_key(&(c as u32), |(cp, _)| *cp)
+        .ok()
+        .and_then(|i| crate::unicode15::NFKD.get(i).map(|(_, value)| *value));
+    // Canonical reordering only permutes nonzero-CCC scalars, all discarded
+    // here. Their removal leaves the same zero-CCC sequence as whole-string NFKD.
+    if let Some(value) = decomposition {
+        for part in value.chars() {
+            if !combining(part) && part != '\'' {
+                out.push(part);
+            }
+        }
+    } else if !combining(c) && c != '\'' {
+        out.push(c);
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -255,7 +321,7 @@ pub(crate) fn cap_runs(text: &str, stop: bool) -> Result<Vec<Run>, Error> {
             && text.get(token.end..).is_some_and(|s| s.starts_with('.'));
         let mut name_like = first.is_some_and(py_upper)
             && (chars.len() > 1 || !stop || initial)
-            && !(stop && !initial && has(rules::NOT_NAMES, &token.text.to_lowercase()));
+            && !(stop && !initial && has(rules::NOT_NAMES, &py_lower(&token.text)));
         if first.is_some_and(py_upper)
             && ordinary(&key(&token.text))
             && !(joined && !current.is_empty())
@@ -524,58 +590,179 @@ pub fn classify(text: &str, entity: &Entity) -> Result<(Option<Kind>, Option<Str
 }
 
 pub fn refers_back(message: &str) -> bool {
+    use crate::regex_profile::{self as rx, Pattern};
+    use std::sync::OnceLock;
+    type Programs = Result<Vec<Pattern>, Error>;
+    static OPEN: OnceLock<Programs> = OnceLock::new();
+    static PRONOUN: OnceLock<Programs> = OnceLock::new();
+    static STRONG: OnceLock<Programs> = OnceLock::new();
+    static WEAK: OnceLock<Programs> = OnceLock::new();
+    static META: OnceLock<Programs> = OnceLock::new();
+    static TIME: OnceLock<Programs> = OnceLock::new();
     let text = norm(message);
-    let follow = regex::Regex::new(
-        r"(?i)^\s*(?:and|also|plus|so|then|what about|how about)\b|\b(?:he|she|they|him|her|them|his|hers|their|theirs|that person)\b",
-    );
-    if follow.is_ok_and(|re| re.is_match(&text)) {
+    let start = text.len() - text.trim_start_matches(py_space).len();
+    let open = OPEN.get_or_init(|| {
+        [
+            "and",
+            "also",
+            "plus",
+            "so",
+            "then",
+            "what about",
+            "how about",
+        ]
+        .iter()
+        .map(|s| Pattern::new(&rx::literal(s), false, true))
+        .collect()
+    });
+    if open
+        .as_ref()
+        .is_ok_and(|patterns| patterns.iter().any(|p| p.at(&text, start).is_some()))
+    {
         return true;
     }
-    let time_word = |s: &str| {
-        let low = s.to_lowercase();
-        let singular = low.strip_suffix('s').unwrap_or(&low);
-        has(rules::MONTHS, singular)
-            || has(rules::WEEKDAYS, singular)
-            || matches!(
-                singular,
-                "week"
-                    | "weekend"
-                    | "morning"
-                    | "afternoon"
-                    | "evening"
-                    | "night"
-                    | "day"
-                    | "month"
-                    | "year"
-                    | "time"
-                    | "summer"
-                    | "winter"
-                    | "spring"
-                    | "autumn"
-                    | "fall"
-                    | "season"
-                    | "term"
-                    | "quarter"
-            )
-    };
-    let is_time_after = |end: usize| {
+    let pronouns = PRONOUN.get_or_init(|| {
+        rx::keywords(&[
+            "he",
+            "she",
+            "they",
+            "him",
+            "her",
+            "them",
+            "his",
+            "hers",
+            "their",
+            "theirs",
+            "that person",
+        ])
+    });
+    if pronouns
+        .as_ref()
+        .is_ok_and(|patterns| patterns.iter().any(|p| p.is_match(&text)))
+    {
+        return true;
+    }
+    let after_time = |end: usize| {
         let after = text.get(end..).unwrap_or_default();
-        let stripped = after.trim_start_matches(py_space);
-        if stripped.len() == after.len() {
+        let trimmed = after.trim_start_matches(py_space);
+        if trimmed.len() == after.len() {
             return false;
         }
-        let word: String = stripped.chars().take_while(|c| py_alpha(*c)).collect();
-        !word.is_empty() && time_word(&word)
+        let at = text.len() - trimmed.len();
+        let time = TIME.get_or_init(|| {
+            let words = [
+                "week",
+                "weekend",
+                "morning",
+                "afternoon",
+                "evening",
+                "night",
+                "day",
+                "month",
+                "year",
+                "time",
+                "summer",
+                "winter",
+                "spring",
+                "autumn",
+                "fall",
+                "season",
+                "term",
+                "quarter",
+            ];
+            words
+                .into_iter()
+                .chain(rules::MONTHS.iter().copied())
+                .chain(rules::WEEKDAYS.iter().copied())
+                .map(|s| {
+                    Pattern::new(
+                        &format!("{}(?:{})?", rx::literal(s), rx::literal("s")),
+                        false,
+                        true,
+                    )
+                })
+                .collect()
+        });
+        time.as_ref()
+            .is_ok_and(|patterns| patterns.iter().any(|p| p.at(&text, at).is_some()))
     };
-    if let Ok(strong) = regex::Regex::new(r"(?i)\b(?:that|those|these)\b") {
-        if strong.find_iter(&text).any(|m| !is_time_after(m.end())) {
-            return true;
-        }
+    let strong = STRONG.get_or_init(|| rx::keywords(&["that", "those", "these"]));
+    if strong.as_ref().is_ok_and(|patterns| {
+        patterns
+            .iter()
+            .any(|p| p.find_iter(&text).any(|hit| !after_time(hit.end)))
+    }) {
+        return true;
     }
-    let weak = regex::Regex::new(r"(?i)\b(?:it|this)\b").ok();
-    let meta=regex::Regex::new(r"(?i)\b(?:written|write|wrote|recorded|record|records|noted|logged|sure|true|correct|right|infer|inferred|inferring|guess|guessed|guessing|assume|assumed|assuming|source|sources|diary|entry|entries|made\s+up|make\s+up|making\s+up|come\s+from|came\s+from|get|got|know|knew|say|said|mention|mentioned|confirm|confirmed|certain)\b").ok();
-    weak.is_some_and(|re| re.find_iter(&text).any(|m| !is_time_after(m.end())))
-        && meta.is_some_and(|re| re.is_match(&text))
+    let weak = WEAK.get_or_init(|| rx::keywords(&["it", "this"]));
+    let weak_hit = weak.as_ref().is_ok_and(|patterns| {
+        patterns
+            .iter()
+            .any(|p| p.find_iter(&text).any(|hit| !after_time(hit.end)))
+    });
+    if !weak_hit {
+        return false;
+    }
+    let meta = META.get_or_init(|| {
+        [
+            "written",
+            "write",
+            "wrote",
+            "recorded",
+            "record",
+            "records",
+            "noted",
+            "logged",
+            "sure",
+            "true",
+            "correct",
+            "right",
+            "infer",
+            "inferred",
+            "inferring",
+            "guess",
+            "guessed",
+            "guessing",
+            "assume",
+            "assumed",
+            "assuming",
+            "source",
+            "sources",
+            "diary",
+            "entry",
+            "entries",
+            "made up",
+            "make up",
+            "making up",
+            "come from",
+            "came from",
+            "get",
+            "got",
+            "know",
+            "knew",
+            "say",
+            "said",
+            "mention",
+            "mentioned",
+            "confirm",
+            "confirmed",
+            "certain",
+        ]
+        .iter()
+        .map(|s| {
+            Pattern::new(
+                &s.split(' ')
+                    .map(rx::literal)
+                    .collect::<Vec<_>>()
+                    .join(&format!("{}+", rx::SPACE)),
+                true,
+                true,
+            )
+        })
+        .collect()
+    });
+    meta.as_ref()
+        .is_ok_and(|patterns| patterns.iter().any(|p| p.is_match(&text)))
 }
 
 pub fn carried_entities(message: &str, earlier: &[String]) -> Result<Vec<Entity>, Error> {
@@ -592,29 +779,34 @@ pub fn carried_entities(message: &str, earlier: &[String]) -> Result<Vec<Entity>
 }
 
 pub fn relational(message: &str, entities: &[Entity]) -> bool {
+    use crate::regex_profile::{self as rx, Pattern};
     let text = norm(message);
+    let space = rx::SPACE;
+    let word = rx::letters();
     for entity in entities {
         let name = entity
             .name
-            .split_whitespace()
-            .map(regex::escape)
+            .split(py_space)
+            .filter(|s| !s.is_empty())
+            .map(rx::literal)
             .collect::<Vec<_>>()
-            .join(r"\.?\s+");
+            .join(&format!(r"\.?{space}+"));
         if name.is_empty() {
             continue;
         }
         let possessive = format!(
-            r"(?i){}(?:'s|')\s+((?:[\p{{L}}]+\s+)?[\p{{L}}]+(?:-[\p{{L}}]+)*)",
-            name
+            "{name}(?:{}|'){space}+((?:{word}+{space}+)?{word}+(?:-{word}+)*)",
+            rx::literal("'s")
         );
-        if let Ok(re) = regex::Regex::new(&possessive) {
-            for cap in re.captures_iter(&text) {
-                let phrase = cap.get(1).map(|m| m.as_str()).unwrap_or_default();
+        if let Ok(re) = Pattern::new(&possessive, false, false) {
+            for cap in re.find_iter(&text) {
+                let phrase = cap.capture.unwrap_or_default();
                 let parts = phrase
-                    .split_whitespace()
+                    .split(py_space)
+                    .filter(|s| !s.is_empty())
                     .flat_map(|w| std::iter::once(w).chain(w.split('-')));
                 if parts.into_iter().any(|w| {
-                    let low = w.to_lowercase();
+                    let low = py_lower(w);
                     has(rules::RELATIONS, &low) || has(rules::RELATIONS, low.trim_end_matches('s'))
                 }) {
                     return true;
@@ -622,16 +814,13 @@ pub fn relational(message: &str, entities: &[Entity]) -> bool {
             }
         }
         let of = format!(
-            r"(?i)\b([\p{{L}}]+(?:-[\p{{L}}]+)*)\s+of\s+(?:the\s+)?{}\b",
-            name
+            "({word}+(?:-{word}+)*){space}+{}{space}+(?:{}{space}+)?{name}",
+            rx::literal("of"),
+            rx::literal("the")
         );
-        if let Ok(re) = regex::Regex::new(&of) {
-            for cap in re.captures_iter(&text) {
-                let phrase = cap
-                    .get(1)
-                    .map(|m| m.as_str())
-                    .unwrap_or_default()
-                    .to_lowercase();
+        if let Ok(re) = Pattern::new(&of, true, true) {
+            for cap in re.find_iter(&text) {
+                let phrase = py_lower(cap.capture.unwrap_or_default());
                 if std::iter::once(phrase.as_str())
                     .chain(phrase.split('-'))
                     .any(|w| {
@@ -688,5 +877,89 @@ mod frozen_parity_probes {
                 .map(|tokens| tokens.into_iter().map(|w| w.text).collect::<Vec<_>>()),
             Ok(vec![String::from("Alder"), String::from("Brannock")])
         );
+    }
+}
+
+#[cfg(test)]
+mod frozen_unicode_proof {
+    use super::{key, py_lower};
+    use serde::Deserialize;
+    use sha2::{Digest, Sha256};
+
+    #[derive(Deserialize)]
+    struct Oracle {
+        python: String,
+        unicode: String,
+        source_sha256: String,
+        scalar_count: usize,
+        scalar_lower_sha256: String,
+        scalar_key_sha256: String,
+        context_points: Vec<u32>,
+        context_lower_sha256: String,
+        context_key_sha256: String,
+    }
+    fn record(hash: &mut Sha256, cp: u32, value: &str) -> Result<(), Box<dyn std::error::Error>> {
+        hash.update(cp.to_be_bytes());
+        hash.update(u32::try_from(value.len())?.to_be_bytes());
+        hash.update(value.as_bytes());
+        Ok(())
+    }
+    #[test]
+    fn every_scalar_and_whole_string_context_matches_frozen_python(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let oracle: Oracle = serde_json::from_str(include_str!("../tests/unicode15-oracle.json"))?;
+        assert_eq!(oracle.python, crate::PYTHON_VERSION);
+        assert_eq!(oracle.unicode, crate::PYTHON_UNICODE_VERSION);
+        assert_eq!(oracle.source_sha256, crate::PYTHON_SOURCE_SHA256);
+        let mut lower = Sha256::new();
+        let mut keys = Sha256::new();
+        let mut count = 0;
+        for cp in 0..=0x10ffff {
+            if let Some(c) = char::from_u32(cp) {
+                let s = c.to_string();
+                record(&mut lower, cp, &py_lower(&s))?;
+                record(&mut keys, cp, &key(&s))?;
+                count += 1;
+            }
+        }
+        assert_eq!(count, oracle.scalar_count);
+        assert_eq!(
+            format!("{:x}", lower.finalize()),
+            oracle.scalar_lower_sha256
+        );
+        assert_eq!(format!("{:x}", keys.finalize()), oracle.scalar_key_sha256);
+        let mut contexts = Vec::new();
+        for cp in oracle.context_points {
+            let c = char::from_u32(cp).ok_or("invalid oracle scalar")?;
+            contexts.extend([
+                format!("AΣ{c}"),
+                format!("AΣ{c}A"),
+                format!("{c}Σ"),
+                format!("{c}ΣA"),
+                format!("A{c}Σ"),
+            ]);
+        }
+        contexts.extend(
+            [
+                "A\u{345}Σ\u{301}B",
+                "AΣ\u{345}",
+                "ﬃ\u{301}Σ",
+                "ᾈΣ",
+                "A\u{345}\u{34f}Σ\u{34f}B",
+            ]
+            .map(str::to_owned),
+        );
+        let mut lower = Sha256::new();
+        let mut keys = Sha256::new();
+        for (i, text) in contexts.iter().enumerate() {
+            record(&mut lower, u32::try_from(i)?, &py_lower(text))?;
+            record(&mut keys, u32::try_from(i)?, &key(text))?;
+        }
+        assert_eq!(
+            format!("{:x}", lower.finalize()),
+            oracle.context_lower_sha256
+        );
+        assert_eq!(format!("{:x}", keys.finalize()), oracle.context_key_sha256);
+        Ok(())
     }
 }

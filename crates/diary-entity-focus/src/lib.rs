@@ -4,6 +4,8 @@ mod generated_rules;
 mod lexical;
 mod people;
 mod policy;
+mod regex_profile;
+mod unicode15;
 
 pub use lexical::{asked_entities, carried_entities, classify, near_word, refers_back, relational};
 pub use people::identified_people;

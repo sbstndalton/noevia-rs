@@ -1,10 +1,11 @@
 #![allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
 use diary_entity_focus::{
-    analyse, asked_entities, classify, focus_candidates, identified_people, Anchor, Entity,
-    NumericValue, Row, TemporalPartition,
+    analyse, asked_entities, classify, focus_candidates, identified_people, refers_back,
+    relational, Anchor, Entity, NumericValue, Row, TemporalPartition,
 };
 use serde_json::{json, Value};
 const DATA: &str = include_str!("entity-fixtures.jsonl");
+const PROBES: &str = include_str!("regex-probes.jsonl");
 fn entity(v: &Value) -> Entity {
     Entity {
         name: v["name"].as_str().unwrap().to_owned(),
@@ -69,7 +70,7 @@ fn partition(v: &Value) -> TemporalPartition {
 #[test]
 fn python_source_differential_focus() {
     let mut n = 0;
-    for line in DATA.lines() {
+    for line in DATA.lines().chain(PROBES.lines()) {
         let v: Value = serde_json::from_str(line).unwrap();
         if v["kind"] != "focus" {
             continue;
@@ -111,12 +112,12 @@ fn python_source_differential_focus() {
         assert_eq!(actual, v["expected"], "focus case {}", v["id"]);
         n += 1;
     }
-    assert_eq!(n, 784);
+    assert_eq!(n, 789);
 }
 #[test]
 fn python_source_differential_helpers() {
     let mut n = 0;
-    for line in DATA.lines() {
+    for line in DATA.lines().chain(PROBES.lines()) {
         let v: Value = serde_json::from_str(line).unwrap();
         if v["kind"] != "classify" {
             continue;
@@ -144,7 +145,7 @@ fn python_source_differential_helpers() {
 #[test]
 fn python_source_margin_text() {
     let mut n = 0;
-    for line in DATA.lines() {
+    for line in DATA.lines().chain(PROBES.lines()) {
         let v: Value = serde_json::from_str(line).unwrap();
         if v["kind"] != "margin" {
             continue;
@@ -159,4 +160,25 @@ fn python_source_margin_text() {
         n += 1;
     }
     assert_eq!(n, 13);
+}
+
+#[test]
+fn frozen_regex_keyword_and_relation_probes() {
+    let mut n = 0;
+    for line in PROBES.lines() {
+        let v: Value = serde_json::from_str(line).unwrap();
+        let actual = match v["kind"].as_str() {
+            Some("refers_back") => refers_back(v["text"].as_str().unwrap()),
+            Some("relational") => relational(v["text"].as_str().unwrap(), &[entity(&v["entity"])]),
+            _ => continue,
+        };
+        assert_eq!(
+            json!(actual),
+            v["expected"],
+            "regex case {n}: {}",
+            v["text"]
+        );
+        n += 1;
+    }
+    assert_eq!(n, 172);
 }

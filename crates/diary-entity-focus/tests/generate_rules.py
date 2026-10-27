@@ -37,7 +37,7 @@ def ranges(pred):
     return out
 
 def main():
-    if sys.version_info[:3] != (3, 12, 15) or unicodedata.unidata_version != "15.0.0":
+    if sys.implementation.name != "cpython" or sys.version_info[:3] != (3, 12, 15) or unicodedata.unidata_version != "15.0.0":
         raise SystemExit("requires CPython3.12.15 / Unicode15.0.0")
     parser=argparse.ArgumentParser()
     parser.add_argument('--source',type=Path,required=True)
