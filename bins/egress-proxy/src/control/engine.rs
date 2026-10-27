@@ -314,9 +314,15 @@ impl Engine {
                 .verify_token(&token, wall().map_err(data_refusal)?)
                 .map_err(|_| data_refusal(Error::Authentication))?
         };
-        let mut operation = self
-            .register_operation(&token, &claims.task, &claims.nonce)
-            .map_err(data_refusal)?;
+        let mut operation = match self.register_operation(&token, &claims.task, &claims.nonce) {
+            Ok(op) => op,
+            Err(Error::TaskCapacity) => {
+                return Err(self
+                    .capacity_refusal(&token, target, default_port)
+                    .unwrap_or_else(data_refusal))
+            }
+            Err(e) => return Err(data_refusal(e)),
+        };
         operation.recheck().map_err(data_refusal)?;
         {
             let mut st = self
@@ -384,6 +390,66 @@ impl Engine {
             }
         }
         Ok(operation)
+    }
+    // Guard-less reporting for a cryptographically proven original lease only.
+    // This does not admit Ledger authority, touch TokenStore or register work.
+    fn capacity_refusal(
+        &self,
+        token: &[u8],
+        target: Option<&str>,
+        default_port: u16,
+    ) -> Result<Refusal, Error> {
+        let mut st = self.inner.state.lock().map_err(|_| Error::State)?;
+        current(&self.inner, &mut st)?;
+        refresh(&mut st);
+        if st.transition.is_some() {
+            return Err(Error::Unavailable);
+        }
+        let session = st.session.as_mut().ok_or(Error::Unavailable)?;
+        let claims = session
+            .verify_token(token, wall()?)
+            .map_err(|_| Error::Authentication)?;
+        if claims.act != Act::Grant {
+            return Err(Error::Authentication);
+        }
+        let owner = session.ownership_verifier();
+        st.ledger
+            .classify_grant(&claims, wall()?)
+            .map_err(|_| Error::Authentication)?;
+        let scope = Scope {
+            session: st.session_id.clone().ok_or(Error::Unavailable)?,
+            task: claims.task.clone(),
+            nonce: claims.nonce.clone(),
+        };
+        if st.leases.known(&scope) && !st.leases.active(&scope) {
+            return Err(Error::Authentication);
+        }
+        let host = target
+            .filter(|t| t.len() <= http::MAX_HEADER_BYTES)
+            .and_then(|t| egress::parse_target(t, default_port))
+            .map(|t| t.host)
+            .filter(|h| {
+                h.len() <= 253
+                    && !h.chars().any(|c| {
+                        c.is_whitespace()
+                            || c.is_control()
+                            || matches!(c, '@' | '/' | '\\' | '?' | '#')
+                    })
+            });
+        let reason = "task has 64 connections open";
+        if let Some(host) = &host {
+            let original = std::str::from_utf8(token).map_err(|_| Error::Authentication)?;
+            st.leases
+                .remember(&scope, &claims, original, owner)
+                .map_err(|_| Error::Unavailable)?;
+            st.leases.event(&scope, host, false, Some(reason));
+        }
+        Ok(Refusal {
+            status: 429,
+            reason: reason.into(),
+            task_id: Some(claims.task),
+            host,
+        })
     }
     pub fn operation(
         &self,
@@ -2290,6 +2356,23 @@ mod scoped_tests {
         let r = start(&e, &f).await?;
         let token = grant(&f, &r, NONCE)?;
         let auth = data_auth(&token);
+        let mut other = claims(&f, &r, &token)?;
+        other.task = "task.2".into();
+        other.nonce = NEXT_NONCE.into();
+        let other_token = minted(&f, &r, &other)?;
+        let _other_guard = e.operation(other_token.as_bytes(), &other.task, &other.nonce)?;
+        let other_scope = Scope {
+            session: r.session_id.clone(),
+            task: other.task.clone(),
+            nonce: other.nonce.clone(),
+        };
+        let other_before = {
+            let mut st = e.inner.state.lock().map_err(|_| Error::State)?;
+            st.leases
+                .snapshot(&other_scope)
+                .map_err(|e| format!("snapshot {e:?}"))?
+                .summary
+        };
         let mut guards = Vec::new();
         for _ in 0..MAX_TASK_OPERATIONS {
             guards.push(
@@ -2297,13 +2380,72 @@ mod scoped_tests {
                     .map_err(|r| format!("data refusal {}", r.status))?,
             );
         }
+        let failure = e
+            .request(Some(&auth), Some("example.com:443"), 443)
+            .err()
+            .ok_or("capacity")?;
+        assert_eq!(failure.status, 429);
+        assert_eq!(failure.task_id.as_deref(), Some("task.1"));
+        assert_eq!(failure.host.as_deref(), Some("example.com"));
+        assert_eq!(failure.reason, "task has 64 connections open");
+        let scope = Scope {
+            session: r.session_id.clone(),
+            task: "task.1".into(),
+            nonce: NONCE.into(),
+        };
+        let snapshot = {
+            let mut st = e.inner.state.lock().map_err(|_| Error::State)?;
+            assert_eq!(
+                st.operations
+                    .values()
+                    .filter(|op| op.task == "task.1")
+                    .count(),
+                MAX_TASK_OPERATIONS
+            );
+            assert_eq!(st.data_store.len(), 1);
+            assert_eq!(
+                st.ledger.classify_grant(&claims(&f, &r, &token)?, wall()?),
+                Ok(GrantAdmission::Current)
+            );
+            st.leases
+                .snapshot(&scope)
+                .map_err(|e| format!("snapshot {e:?}"))?
+        };
+        let summary = snapshot.summary.ok_or("held summary")?;
+        assert_eq!(summary.get("refused"), Some(&json!(1)));
         assert_eq!(
-            e.request(Some(&auth), Some("example.com:443"), 443)
-                .err()
-                .ok_or("capacity")?
-                .status,
-            429
+            summary.pointer("/hosts/0/host"),
+            Some(&json!("example.com"))
         );
+        assert_eq!(
+            summary.pointer("/hosts/0/reason"),
+            Some(&json!("task has 64 connections open"))
+        );
+        let bogus = data_auth("not-a-valid-original");
+        assert!(e
+            .request(Some(&bogus), Some("invented.example:443"), 443)
+            .is_err());
+        // Host-only reporting excludes credentials, paths and unknown oversized input.
+        let unsafe_host = e
+            .request(Some(&auth), Some("user@secret.example:443"), 443)
+            .err()
+            .ok_or("capacity")?;
+        assert!(unsafe_host.host.is_none());
+        let unchanged = {
+            let mut st = e.inner.state.lock().map_err(|_| Error::State)?;
+            st.leases
+                .snapshot(&scope)
+                .map_err(|e| format!("snapshot {e:?}"))?
+        };
+        assert_eq!(unchanged.summary, Some(summary));
+        let other_after = {
+            let mut st = e.inner.state.lock().map_err(|_| Error::State)?;
+            st.leases
+                .snapshot(&other_scope)
+                .map_err(|e| format!("snapshot {e:?}"))?
+                .summary
+        };
+        assert_eq!(other_before, other_after);
         guards.pop();
         e.request(Some(&auth), Some("example.com:443"), 443)
             .map_err(|r| format!("data refusal {}", r.status))?
@@ -2337,6 +2479,69 @@ mod scoped_tests {
         assert!(e
             .request(Some(&data_auth(&token)), Some("example.com:443"), 443)
             .is_err());
+        assert!(e
+            .inner
+            .state
+            .lock()
+            .map_err(|_| Error::State)?
+            .data_store
+            .is_empty());
+        Ok(())
+    }
+    #[tokio::test]
+    async fn capacity_refusal_does_not_touch_idle_time_or_admit_a_successor(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (e, _, f) = setup()?;
+        let r = start(&e, &f).await?;
+        let token = grant(&f, &r, NONCE)?;
+        let auth = data_auth(&token);
+        let mut guards = Vec::new();
+        for _ in 0..MAX_TASK_OPERATIONS {
+            guards.push(
+                e.request(Some(&auth), Some("example.com:443"), 443)
+                    .map_err(|r| format!("data refusal {}", r.status))?,
+            );
+        }
+        let a = claims(&f, &r, &token)?;
+        let mut b = a.clone();
+        b.iat += 1;
+        b.exp += 1;
+        b.nonce = NEXT_NONCE.into();
+        let newer = minted(&f, &r, &b)?;
+        {
+            let mut st = e.inner.state.lock().map_err(|_| Error::State)?;
+            st.data_origin = std::time::Instant::now()
+                .checked_sub(Duration::from_secs(5))
+                .ok_or("origin")?;
+        }
+        assert_eq!(
+            e.request(Some(&auth), Some("example.com:443"), 443)
+                .err()
+                .ok_or("capacity")?
+                .status,
+            429
+        );
+        assert_eq!(
+            e.request(Some(&data_auth(&newer)), Some("example.com:443"), 443)
+                .err()
+                .ok_or("capacity")?
+                .status,
+            429
+        );
+        assert!(!guards.first().ok_or("guard")?.is_cancelled());
+        {
+            let mut st = e.inner.state.lock().map_err(|_| Error::State)?;
+            assert_eq!(
+                st.ledger.classify_grant(&a, wall()?),
+                Ok(GrantAdmission::Current)
+            );
+            assert_eq!(st.data_store.len(), 1);
+            st.data_origin = std::time::Instant::now()
+                .checked_sub(Duration::from_secs(11))
+                .ok_or("origin")?;
+        }
+        e.maintenance()?;
+        assert!(guards.iter().all(|g| g.is_cancelled()));
         assert!(e
             .inner
             .state
