@@ -9,9 +9,13 @@ use super::{
     wire::ReadyMode,
 };
 use egress::control::{FileKey, Route, CAPABILITY, MAX_SAFE_INTEGER};
-use egress::{Act, Admission as GrantAdmission, Ledger};
+use egress::{
+    basic_token, check_addresses, check_target, Act, Admission as GrantAdmission, Allowed, Grant,
+    GrantId, Ledger, Pending, Refusal, TokenStore, ALLOWED_PORTS,
+};
 use hyper::{Request, Response};
 use serde_json::{json, Value};
+use std::net::IpAddr;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex, Weak},
@@ -29,6 +33,7 @@ pub enum Error {
     Authentication,
     Unavailable,
     Capacity,
+    TaskCapacity,
 }
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -61,6 +66,13 @@ struct State {
     epoch_retired: bool,
     operations: HashMap<u64, Operation>,
     next_operation: u64,
+    data_store: TokenStore,
+    data_grants: HashMap<GrantId, DataGrant>,
+    data_origin: std::time::Instant,
+}
+struct DataGrant {
+    scope: Scope,
+    exp: u64,
 }
 struct Inner {
     source: Arc<dyn KeyProvider>,
@@ -82,6 +94,7 @@ pub struct OperationGuard {
     task: String,
     nonce: String,
     cancel: watch::Receiver<bool>,
+    data: Option<Pending>,
 }
 impl std::fmt::Debug for OperationGuard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -91,6 +104,58 @@ impl std::fmt::Debug for OperationGuard {
 impl OperationGuard {
     pub fn is_cancelled(&self) -> bool {
         *self.cancel.borrow() || self.cancel.has_changed().is_err()
+    }
+    /// Immutable policy-approved target; the adapter resolves exactly this host,
+    /// once. Call `resolved` after await; never construct a replacement target.
+    pub fn pending(&self) -> Option<&Pending> {
+        self.data.as_ref()
+    }
+    pub fn resolved(&self, addresses: &[IpAddr]) -> Result<Allowed, Refusal> {
+        self.recheck().map_err(data_refusal)?;
+        let inner = self
+            .inner
+            .upgrade()
+            .ok_or_else(|| data_refusal(Error::Unavailable))?;
+        let mut st = inner.state.lock().map_err(|_| data_refusal(Error::State))?;
+        current(&inner, &mut st).map_err(data_refusal)?;
+        refresh(&mut st);
+        if self.is_cancelled() || !st.operations.contains_key(&self.id) {
+            return Err(data_refusal(Error::Unavailable));
+        }
+        let pending = self
+            .data
+            .as_ref()
+            .ok_or_else(|| data_refusal(Error::Authentication))?;
+        let result = check_addresses(&st.data_store, pending, addresses);
+        if let Some(op) = st.operations.get(&self.id) {
+            let scope = op.scope.clone();
+            st.leases.event(
+                &scope,
+                &pending.host,
+                result.is_ok(),
+                result.as_ref().err().map(|r| r.reason.as_str()),
+            );
+        }
+        result
+    }
+    /// Actual native data activity; checks expiry BEFORE touching idle time.
+    /// A pump must call immediately after each awaited read, before its write.
+    pub fn touch_data(&self) -> Result<(), Error> {
+        self.recheck()?;
+        let inner = self.inner.upgrade().ok_or(Error::Unavailable)?;
+        let mut st = inner.state.lock().map_err(|_| Error::State)?;
+        current(&inner, &mut st)?;
+        refresh(&mut st);
+        let id = self.data.as_ref().ok_or(Error::Authentication)?.grant;
+        if self.is_cancelled()
+            || !st.operations.contains_key(&self.id)
+            || !st.data_store.contains(id)
+        {
+            return Err(Error::Unavailable);
+        }
+        let now = data_now(&st)?;
+        st.data_store.touch(id, now);
+        Ok(())
     }
     /// Decision tally only; never supplies network authority or touches TTL.
     /// Native adapter must pass host-only identities and controlled refusal text.
@@ -124,6 +189,10 @@ impl OperationGuard {
             || self.is_cancelled()
             || st.session_id.as_deref() != Some(&self.session_id)
             || !st.operations.contains_key(&self.id)
+            || self
+                .data
+                .as_ref()
+                .is_some_and(|p| !st.data_store.contains(p.grant))
         {
             return Err(Error::Unavailable);
         }
@@ -152,7 +221,9 @@ impl Drop for OperationGuard {
     fn drop(&mut self) {
         if let Some(inner) = self.inner.upgrade() {
             if let Ok(mut st) = inner.state.lock() {
-                st.operations.remove(&self.id);
+                if let Some(op) = st.operations.remove(&self.id) {
+                    finalize_scope(&mut st, &op.scope);
+                }
             }
             inner.drained.notify_waiters();
         }
@@ -199,6 +270,9 @@ impl Engine {
                     epoch_retired: true,
                     operations: HashMap::new(),
                     next_operation: 0,
+                    data_store: TokenStore::new(),
+                    data_grants: HashMap::new(),
+                    data_origin: std::time::Instant::now(),
                 }),
             }),
         })
@@ -211,7 +285,121 @@ impl Engine {
         refresh(&mut st);
         Ok(())
     }
+    /// Native request authority, registered before any DNS/connect/forward await.
+    /// Only current session-bound signed grants reach the policy store. Static
+    /// legacy grants and cached-file-key fallback have no path through this API.
+    pub fn request(
+        &self,
+        authorization: Option<&[u8]>,
+        target: Option<&str>,
+        default_port: u16,
+    ) -> Result<OperationGuard, Refusal> {
+        if authorization.is_some_and(|h| h.len() > http::MAX_HEADER_BYTES) {
+            return Err(data_refusal(Error::Authentication));
+        }
+        let token = authorization
+            .and_then(basic_token)
+            .ok_or_else(|| data_refusal(Error::Authentication))?;
+        let claims = {
+            let mut st = self
+                .inner
+                .state
+                .lock()
+                .map_err(|_| data_refusal(Error::State))?;
+            current(&self.inner, &mut st).map_err(data_refusal)?;
+            refresh(&mut st);
+            st.session
+                .as_mut()
+                .ok_or_else(|| data_refusal(Error::Unavailable))?
+                .verify_token(&token, wall().map_err(data_refusal)?)
+                .map_err(|_| data_refusal(Error::Authentication))?
+        };
+        let mut operation = self
+            .register_operation(&token, &claims.task, &claims.nonce)
+            .map_err(data_refusal)?;
+        operation.recheck().map_err(data_refusal)?;
+        {
+            let mut st = self
+                .inner
+                .state
+                .lock()
+                .map_err(|_| data_refusal(Error::State))?;
+            current(&self.inner, &mut st).map_err(data_refusal)?;
+            refresh(&mut st);
+            if operation.is_cancelled() || !st.operations.contains_key(&operation.id) {
+                return Err(data_refusal(Error::Unavailable));
+            }
+            let scope = st
+                .operations
+                .get(&operation.id)
+                .ok_or_else(|| data_refusal(Error::Unavailable))?
+                .scope
+                .clone();
+            let existing = st.data_grants.values().any(|v| v.scope == scope);
+            let now = data_now(&st).map_err(data_refusal)?;
+            if !existing {
+                let (id, replaced) = st.data_store.insert(
+                    Grant {
+                        token: std::str::from_utf8(&token)
+                            .map_err(|_| data_refusal(Error::Authentication))?
+                            .into(),
+                        task_id: claims.task.clone(),
+                        domains: claims.hosts.clone(),
+                        idle_ttl_ms: claims.idle,
+                    },
+                    now,
+                );
+                for old in replaced {
+                    st.data_grants.remove(&old);
+                }
+                st.data_grants.insert(
+                    id,
+                    DataGrant {
+                        scope: scope.clone(),
+                        exp: claims.exp,
+                    },
+                );
+            }
+            let mut expired = Vec::new();
+            let result = check_target(
+                &mut st.data_store,
+                authorization,
+                target,
+                default_port,
+                &ALLOWED_PORTS,
+                now,
+                &mut expired,
+            );
+            for e in expired {
+                expire_data(&mut st, e.id);
+            }
+            match result {
+                Ok(pending) => operation.data = Some(pending),
+                Err(r) => {
+                    if let Some(host) = &r.host {
+                        st.leases.event(&scope, host, false, Some(&r.reason));
+                    }
+                    return Err(r);
+                }
+            }
+        }
+        Ok(operation)
+    }
     pub fn operation(
+        &self,
+        token: &[u8],
+        task: &str,
+        nonce: &str,
+    ) -> Result<OperationGuard, Error> {
+        self.register_operation(token, task, nonce).map_err(|e| {
+            if e == Error::TaskCapacity {
+                Error::Capacity
+            } else {
+                e
+            }
+        })
+    }
+    fn register_operation(
         &self,
         token: &[u8],
         task: &str,
@@ -232,10 +420,11 @@ impl Engine {
         if claims.act != Act::Grant || claims.task != task || claims.nonce != nonce {
             return Err(Error::Authentication);
         }
-        if st.operations.len() >= MAX_OPERATIONS
-            || st.operations.values().filter(|o| o.task == task).count() >= MAX_TASK_OPERATIONS
-        {
+        if st.operations.len() >= MAX_OPERATIONS {
             return Err(Error::Capacity);
+        }
+        if st.operations.values().filter(|o| o.task == task).count() >= MAX_TASK_OPERATIONS {
+            return Err(Error::TaskCapacity);
         }
         let scope = Scope {
             session: st.session_id.clone().ok_or(Error::Unavailable)?,
@@ -296,6 +485,7 @@ impl Engine {
             task: task.into(),
             nonce: nonce.into(),
             cancel,
+            data: None,
         })
     }
     /// Explicit native GrantStore idle/absolute retirement hook; actual store
@@ -715,12 +905,65 @@ fn ready_precondition(st: &mut State, auth: &Authenticated, file: &FileKey) -> b
         }
     }
 }
+fn data_now(st: &State) -> Result<u64, Error> {
+    u64::try_from(st.data_origin.elapsed().as_millis()).map_err(|_| Error::Clock)
+}
+fn data_refusal(e: Error) -> Refusal {
+    Refusal {
+        status: match e {
+            Error::Authentication => 407,
+            Error::TaskCapacity => 429,
+            _ => 503,
+        },
+        reason: match e {
+            Error::Authentication => "no valid task token",
+            Error::TaskCapacity => "task has 64 connections open",
+            _ => "task token was revoked",
+        }
+        .into(),
+        task_id: None,
+        host: None,
+    }
+}
+fn expire_data(st: &mut State, id: GrantId) {
+    if let Some(data) = st.data_grants.remove(&id) {
+        st.ledger
+            .retire(&data.scope.task, &data.scope.nonce, data.exp);
+        let _ = st.leases.retire(&data.scope, Retirement::Interrupted);
+        // This exact token may already have been removed by TokenStore::sweep.
+        // Never revoke a successor just because it has the same task label.
+        if st.data_store.contains(id) {
+            st.data_store.revoke(&data.scope.task);
+        }
+        cancel_scope(st, &data.scope);
+        finalize_scope(st, &data.scope);
+    }
+}
 fn refresh(st: &mut State) {
+    let (Ok(now), Ok(wall_now)) = (data_now(st), wall()) else {
+        retire(st);
+        return;
+    };
+    let expired = st.data_store.sweep(now);
+    for e in expired {
+        expire_data(st, e.id);
+    }
+    let absolute: Vec<_> = st
+        .data_grants
+        .iter()
+        .filter(|(_, v)| wall_now >= v.exp)
+        .map(|(id, _)| *id)
+        .collect();
+    for id in absolute {
+        expire_data(st, id);
+    }
     if st.session.as_mut().is_some_and(|s| s.proof().is_err()) {
         retire(st);
     }
 }
 fn retire(st: &mut State) {
+    st.data_store = TokenStore::new();
+    st.data_grants.clear();
     if let Some(s) = st.session.as_mut() {
         s.retire();
     }
@@ -739,6 +982,18 @@ fn retire(st: &mut State) {
     }
 }
 fn cancel_scope(st: &mut State, s: &Scope) {
+    let ids: Vec<_> = st
+        .data_grants
+        .iter()
+        .filter(|(_, d)| d.scope == *s)
+        .map(|(id, _)| *id)
+        .collect();
+    for id in ids {
+        st.data_grants.remove(&id);
+        if st.data_store.contains(id) {
+            st.data_store.revoke(&s.task);
+        }
+    }
     for o in st.operations.values().filter(|o| o.scope == *s) {
         o.cancel.send_replace(true);
     }
@@ -1817,6 +2072,278 @@ mod scoped_tests {
         c.nonce = "CAECAwQFBgcICQoLDA0ODw".into();
         let ct = minted(&f, &r, &c)?;
         e.operation(ct.as_bytes(), &c.task, &c.nonce)?.recheck()?;
+        Ok(())
+    }
+    fn data_auth(token: &str) -> Vec<u8> {
+        format!(
+            "Basic {}",
+            egress::b64url_encode(format!("task:{token}").as_bytes())
+        )
+        .into_bytes()
+    }
+    #[tokio::test]
+    async fn native_data_admission_uses_policy_and_rejects_legacy_authority(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (e, _, f) = setup()?;
+        assert!(e
+            .request(
+                Some(&data_auth("legacy-static-token")),
+                Some("example.com:443"),
+                443
+            )
+            .is_err());
+        let r = start(&e, &f).await?;
+        let token = grant(&f, &r, NONCE)?;
+        let auth = data_auth(&token);
+        let op = e
+            .request(Some(&auth), Some("example.com:443"), 443)
+            .map_err(|r| format!("data refusal {}", r.status))?;
+        let pending = op.pending().ok_or("pending target")?;
+        assert_eq!(pending.host, "example.com");
+        assert_eq!(pending.port, 443);
+        let public: IpAddr = "93.184.216.34".parse()?;
+        let allowed = op
+            .resolved(&[public])
+            .map_err(|r| format!("data refusal {}", r.status))?;
+        assert_eq!(allowed.address, public);
+        assert_eq!(allowed.task_id, "task.1");
+        op.touch_data()?;
+        assert_eq!(
+            op.resolved(&[public, "127.0.0.1".parse()?])
+                .err()
+                .ok_or("private refusal")?
+                .status,
+            403
+        );
+        assert_eq!(op.resolved(&[]).err().ok_or("DNS refusal")?.status, 502);
+        assert_eq!(
+            e.request(Some(&auth), Some("other.example:443"), 443)
+                .err()
+                .ok_or("host refusal")?
+                .status,
+            403
+        );
+        assert_eq!(
+            e.request(Some(&auth), Some("example.com:22"), 443)
+                .err()
+                .ok_or("port refusal")?
+                .status,
+            403
+        );
+        assert_eq!(
+            e.request(Some(&auth), None, 443)
+                .err()
+                .ok_or("target refusal")?
+                .status,
+            400
+        );
+        Ok(())
+    }
+    #[tokio::test]
+    async fn native_idle_expiry_cancels_pending_work_and_cannot_be_touched_or_reinstalled(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (e, _, f) = setup()?;
+        let r = start(&e, &f).await?;
+        let token = grant(&f, &r, NONCE)?;
+        let auth = data_auth(&token);
+        let op = e
+            .request(Some(&auth), Some("example.com:443"), 443)
+            .map_err(|r| format!("data refusal {}", r.status))?;
+        let scope = Scope {
+            session: r.session_id.clone(),
+            task: "task.1".into(),
+            nonce: NONCE.into(),
+        };
+        {
+            let mut st = e.inner.state.lock().map_err(|_| Error::State)?;
+            // Only the synthetic store's elapsed origin is advanced; production
+            // signed-grant verification still uses actual wall/session clocks.
+            st.data_origin = std::time::Instant::now()
+                .checked_sub(Duration::from_secs(11))
+                .ok_or("origin")?;
+        }
+        e.maintenance()?;
+        assert!(op.is_cancelled());
+        assert!(op.touch_data().is_err());
+        assert!(op.resolved(&["93.184.216.34".parse()?]).is_err());
+        assert!(e
+            .request(Some(&auth), Some("example.com:443"), 443)
+            .is_err());
+        {
+            let mut st = e.inner.state.lock().map_err(|_| Error::State)?;
+            assert!(st.data_store.is_empty());
+            assert!(
+                !st.leases
+                    .snapshot(&scope)
+                    .map_err(|e| format!("snapshot {e:?}"))?
+                    .final_report
+            );
+        }
+        drop(op);
+        let mut st = e.inner.state.lock().map_err(|_| Error::State)?;
+        assert!(
+            st.leases
+                .snapshot(&scope)
+                .map_err(|e| format!("snapshot {e:?}"))?
+                .final_report
+        );
+        Ok(())
+    }
+    #[tokio::test]
+    async fn native_data_revoke_before_dns_completion_drains_actual_guard_without_newer_task_damage(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (e, _, f) = setup()?;
+        let r = start(&e, &f).await?;
+        let token = grant(&f, &r, NONCE)?;
+        let g = claims(&f, &r, &token)?;
+        let op = e
+            .request(Some(&data_auth(&token)), Some("example.com:443"), 443)
+            .map_err(|r| format!("data refusal {}", r.status))?;
+        let mut other = g.clone();
+        other.task = "task.2".into();
+        other.nonce = NEXT_NONCE.into();
+        let other_token = minted(&f, &r, &other)?;
+        let other_op = e
+            .request(Some(&data_auth(&other_token)), Some("example.com:443"), 443)
+            .map_err(|r| format!("data refusal {}", r.status))?;
+        let command = control(&f, &r, &token, &g, 200, true)?;
+        let revoke = tokio::spawn({
+            let e = e.clone();
+            async move { e.execute(command).await }
+        });
+        tokio::time::timeout(Duration::from_millis(250), async {
+            while !op.is_cancelled() {
+                tokio::task::yield_now().await
+            }
+        })
+        .await?;
+        assert!(!revoke.is_finished());
+        assert!(op.resolved(&["93.184.216.34".parse()?]).is_err());
+        assert!(op.touch_data().is_err());
+        other_op
+            .resolved(&["93.184.216.34".parse()?])
+            .map_err(|r| format!("data refusal {}", r.status))?;
+        drop(op);
+        let response = revoke.await??;
+        assert_eq!(response.status(), 200);
+        assert!(e
+            .request(Some(&data_auth(&token)), Some("example.com:443"), 443)
+            .is_err());
+        other_op.touch_data()?;
+        Ok(())
+    }
+    #[tokio::test]
+    async fn native_data_key_loss_and_supersession_remove_only_matching_store_authority(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        struct DataKeys(Mutex<Option<FileKey>>);
+        impl KeyProvider for DataKeys {
+            fn current(&self) -> Result<FileKey, Error> {
+                self.0
+                    .lock()
+                    .map_err(|_| Error::Key)?
+                    .clone()
+                    .ok_or(Error::Key)
+            }
+        }
+        let f = FileKey::from_bytes([7; 32]);
+        let k = Arc::new(DataKeys(Mutex::new(Some(f.clone()))));
+        let e = Engine::new(k.clone())?;
+        let r = start(&e, &f).await?;
+        let token = grant(&f, &r, NONCE)?;
+        let g = claims(&f, &r, &token)?;
+        let old = e
+            .request(Some(&data_auth(&token)), Some("example.com:443"), 443)
+            .map_err(|r| format!("data refusal {}", r.status))?;
+        let mut newer = g.clone();
+        newer.nonce = NEXT_NONCE.into();
+        newer.iat += 1;
+        newer.exp += 1;
+        let new_token = minted(&f, &r, &newer)?;
+        let new = e
+            .request(Some(&data_auth(&new_token)), Some("example.com:443"), 443)
+            .map_err(|r| format!("data refusal {}", r.status))?;
+        assert!(old.is_cancelled());
+        assert!(old.touch_data().is_err());
+        assert!(old.resolved(&["93.184.216.34".parse()?]).is_err());
+        new.touch_data()?;
+        // Repeated retirement of the predecessor cannot remove the successor.
+        e.retire_grant(&r.session_id, &g.task, &g.nonce)?;
+        new.resolved(&["93.184.216.34".parse()?])
+            .map_err(|r| format!("data refusal {}", r.status))?;
+        *k.0.lock().map_err(|_| Error::State)? = None;
+        assert!(e.maintenance().is_err());
+        assert!(new.is_cancelled());
+        assert!(new.touch_data().is_err());
+        assert!(e
+            .inner
+            .state
+            .lock()
+            .map_err(|_| Error::State)?
+            .data_store
+            .is_empty());
+        Ok(())
+    }
+    #[tokio::test]
+    async fn native_data_task_capacity_preserves_429_without_widening_authority(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (e, _, f) = setup()?;
+        let r = start(&e, &f).await?;
+        let token = grant(&f, &r, NONCE)?;
+        let auth = data_auth(&token);
+        let mut guards = Vec::new();
+        for _ in 0..MAX_TASK_OPERATIONS {
+            guards.push(
+                e.request(Some(&auth), Some("example.com:443"), 443)
+                    .map_err(|r| format!("data refusal {}", r.status))?,
+            );
+        }
+        assert_eq!(
+            e.request(Some(&auth), Some("example.com:443"), 443)
+                .err()
+                .ok_or("capacity")?
+                .status,
+            429
+        );
+        guards.pop();
+        e.request(Some(&auth), Some("example.com:443"), 443)
+            .map_err(|r| format!("data refusal {}", r.status))?
+            .touch_data()?;
+        let st = e.inner.state.lock().map_err(|_| Error::State)?;
+        assert_eq!(st.data_store.len(), 1);
+        Ok(())
+    }
+    #[tokio::test]
+    async fn native_data_actual_absolute_expiry_cancels_registered_pending_operation(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (e, _, f) = setup()?;
+        let r = start(&e, &f).await?;
+        let token = grant(&f, &r, NONCE)?;
+        let mut g = claims(&f, &r, &token)?;
+        g.iat = wall()?;
+        g.exp = g.iat + 500;
+        g.idle = 500;
+        let token = minted(&f, &r, &g)?;
+        let op = e
+            .request(Some(&data_auth(&token)), Some("example.com:443"), 443)
+            .map_err(|r| format!("data refusal {}", r.status))?;
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        op.touch_data()?; // idle deadline is now later than absolute expiry
+        let wait = g.exp.saturating_sub(wall()?).saturating_add(5);
+        tokio::time::sleep(Duration::from_millis(wait)).await;
+        e.maintenance()?;
+        assert!(op.is_cancelled());
+        assert!(op.touch_data().is_err());
+        assert!(op.resolved(&["93.184.216.34".parse()?]).is_err());
+        assert!(e
+            .request(Some(&data_auth(&token)), Some("example.com:443"), 443)
+            .is_err());
+        assert!(e
+            .inner
+            .state
+            .lock()
+            .map_err(|_| Error::State)?
+            .data_store
+            .is_empty());
         Ok(())
     }
 }
