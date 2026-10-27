@@ -1,0 +1,3246 @@
+{
+  "sourcePins": {
+    "managed_storage.py": "19e0cad75e79781dc1ef41dd3b00ffa375f4306f1ed00a9e3f6d50528a1e3f7b",
+    "workspace_ops.py": "038bceeac705cdce91f2eb7f464bf92a06fc9b6fa3bedd665d382530e63ac7dc",
+    "workspace_files.py": "243767a922b73d0308aab17dd41eca30beb5e1c50a1f70a40e940f027030ef07",
+    "corpus_store.py": "26ce8fc9a309b9400fa77d6ae3ed10043861d5a8317d6aa33e1f457e3fb03fc8",
+    "dedicated_storage.py": "f9d5fd3f25c28fa0c7db009245f9eea37fd8fa4d96a83da9c2dc5e2e416f8a67",
+    "workspace_trash.py": "95215946bc4e96094d39a33cd2d72331ecac575c91a263900f3ff51ca38e5632",
+    "corpus.py": "4b8809d3b7d4811723404cbc9a40fe4fe0743bc18bbb449a673ec711c48e0a87",
+    "app.py": "6ca99d74ec637cf37d063b8d48e0ae2062c8508a778475e527d1f49708f4e553"
+  },
+  "interpreter": "3.12.15",
+  "files": [
+    {
+      "path": "Notes/one.md",
+      "data": "synthetic note"
+    },
+    {
+      "path": "Notes/existing.md",
+      "data": "existing bytes"
+    },
+    {
+      "path": "Notes/Folder/a.md",
+      "data": "a"
+    },
+    {
+      "path": "Notes/Folder/b.md",
+      "data": "b"
+    },
+    {
+      "path": "Entries/capture.md",
+      "data": "protected capture"
+    },
+    {
+      "path": "AI Memory/standing.md",
+      "data": "protected memory"
+    },
+    {
+      "path": "Monthly/index.md",
+      "data": "protected index"
+    },
+    {
+      "path": "Monthly/2026-10.md",
+      "data": "protected month"
+    },
+    {
+      "path": "Other/sentinel.md",
+      "data": "unrelated"
+    }
+  ],
+  "directories": [
+    "Notes",
+    "Notes/Empty",
+    "Notes/Folder",
+    "Notes/Folder/Empty",
+    "Dest"
+  ],
+  "now": 1700000000.0,
+  "capsuleId": "31234567-89ab-4cde-8fab-0123456789ab",
+  "operationId": "21234567-89ab-4cde-8fab-0123456789ab",
+  "cases": [
+    {
+      "name": "copy-file",
+      "root": "Diary",
+      "input": {
+        "name": "copy-file",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/one.md",
+          "destination": "Dest/copied.md",
+          "replaced": false
+        }
+      },
+      "expectedStateSHA256": "67edbb213d4206d48e1e1cba56e9ee914c004b7183958afc600a2ef8027494c7"
+    },
+    {
+      "name": "copy-explicit-null",
+      "root": "Diary",
+      "input": {
+        "name": "copy-explicit-null",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md",
+        "version": null
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md",
+        "version": null
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 428,
+        "message": "Read the source ETag and send it with If-Match"
+      },
+      "expectedStateSHA256": "8e8d52dac1c58be335572949b5416290c5fdb00b8df926f9b977a046da0d8d4d"
+    },
+    {
+      "name": "copy-wrong-version",
+      "root": "Diary",
+      "input": {
+        "name": "copy-wrong-version",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md",
+        "version": "wrong"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 412,
+        "message": "The source changed; read it again"
+      },
+      "expectedStateSHA256": "8e8d52dac1c58be335572949b5416290c5fdb00b8df926f9b977a046da0d8d4d"
+    },
+    {
+      "name": "move-file",
+      "root": "Diary",
+      "input": {
+        "name": "move-file",
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "Dest/moved.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "Dest/moved.md",
+        "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/one.md",
+          "destination": "Dest/moved.md",
+          "replaced": false
+        }
+      },
+      "expectedStateSHA256": "6ff409c1573c6781693b800289ba354af97505e3e668913690eb1ca5d99e8f98"
+    },
+    {
+      "name": "move-folder",
+      "root": "Diary",
+      "input": {
+        "name": "move-folder",
+        "op": "move",
+        "path": "Notes/Folder",
+        "destination": "Dest/Moved",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "move",
+        "path": "Notes/Folder",
+        "destination": "Dest/Moved",
+        "version": "a3d763d4d0ed487658a3b8904079c4703fef0f3a58dc2d14d07731ddc7b3c870"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/Folder",
+          "destination": "Dest/Moved",
+          "replaced": false
+        }
+      },
+      "expectedStateSHA256": "fca99be680741364d7390546e2f453c8f43f9ce78ad4daff30909662b6c628b6"
+    },
+    {
+      "name": "copy-folder",
+      "root": "Diary",
+      "input": {
+        "name": "copy-folder",
+        "op": "copy",
+        "path": "Notes/Folder",
+        "destination": "Dest/Copied"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/Folder",
+        "destination": "Dest/Copied"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/Folder",
+          "destination": "Dest/Copied",
+          "replaced": false
+        }
+      },
+      "expectedStateSHA256": "45069cbbd891511757a09b5c7965e6d64ac37c2e4b0ad43e9c2139fa5d5abec3"
+    },
+    {
+      "name": "copy-empty-directory",
+      "root": "Diary",
+      "input": {
+        "name": "copy-empty-directory",
+        "op": "copy",
+        "path": "Notes/Empty",
+        "destination": "Dest/Empty"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/Empty",
+        "destination": "Dest/Empty"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/Empty",
+          "destination": "Dest/Empty",
+          "replaced": false
+        }
+      },
+      "expectedStateSHA256": "f5632877ada9801203a0aa9d4e6fb253a791b3b2c495e6fc6975318e4e89b54c"
+    },
+    {
+      "name": "delete-file",
+      "root": "Diary",
+      "input": {
+        "name": "delete-file",
+        "op": "delete",
+        "path": "Notes/one.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Notes/one.md",
+        "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "deleted": "Notes/one.md",
+          "trash": [
+            "07fd67f2-b400-552a-a038-ed620e3657c0"
+          ]
+        }
+      },
+      "expectedStateSHA256": "d78303d37c795643e762b5dca1162b7b3ab6bd6bd6ed6f0c7cfff7dc8d263c57"
+    },
+    {
+      "name": "delete-folder",
+      "root": "Diary",
+      "input": {
+        "name": "delete-folder",
+        "op": "delete",
+        "path": "Notes/Folder",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Notes/Folder",
+        "version": "a3d763d4d0ed487658a3b8904079c4703fef0f3a58dc2d14d07731ddc7b3c870"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "deleted": "Notes/Folder",
+          "trash": [
+            "1eded994-2edd-5fda-b568-fefad2f9a21c",
+            "bdf2ff98-b30b-5f40-8553-40a457f194a3"
+          ]
+        }
+      },
+      "expectedStateSHA256": "09204717f6a81cf06d85e3a9822d957bf4c087dc5e1366f216d64802d796dea0"
+    },
+    {
+      "name": "delete-empty-directory",
+      "root": "Diary",
+      "input": {
+        "name": "delete-empty-directory",
+        "op": "delete",
+        "path": "Notes/Empty",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Notes/Empty",
+        "version": "255cfbbbea5e668130b8364124afa7b1f48159fb4a2bf7dcf2efa368d7931cd4"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "deleted": "Notes/Empty",
+          "trash": []
+        }
+      },
+      "expectedStateSHA256": "ca400c50ad8eb9d9d1622a733a134978f2d92fde3b7cafb866f0e29e5f7c2f59"
+    },
+    {
+      "name": "preserve-file",
+      "root": "Diary",
+      "input": {
+        "name": "preserve-file",
+        "op": "preserve",
+        "path": "Notes/one.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "preserve",
+        "path": "Notes/one.md",
+        "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/one.md",
+          "trash": "31234567-89ab-4cde-8fab-0123456789ab"
+        }
+      },
+      "expectedStateSHA256": "174b34a6eefd8f1c02e0a43f9643034d4ff414585d1a6770cb1aaf7df15d72fd"
+    },
+    {
+      "name": "preserve-protected",
+      "root": "Diary",
+      "input": {
+        "name": "preserve-protected",
+        "op": "preserve",
+        "path": "Entries/capture.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "preserve",
+        "path": "Entries/capture.md",
+        "version": "6da5888ad705a98fbbdcb856380ccfd1de6d6b8be4fb086b519c1b57cb75552a"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 428,
+        "message": "Diary capture files, month files, the index and AI Memory need If-Match to be replaced"
+      },
+      "expectedStateSHA256": "8e8d52dac1c58be335572949b5416290c5fdb00b8df926f9b977a046da0d8d4d"
+    },
+    {
+      "name": "delete-protected",
+      "root": "Diary",
+      "input": {
+        "name": "delete-protected",
+        "op": "delete",
+        "path": "Entries/capture.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Entries/capture.md",
+        "version": "6da5888ad705a98fbbdcb856380ccfd1de6d6b8be4fb086b519c1b57cb75552a"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 403,
+        "message": "Diary capture files, month files, the index and AI Memory are protected"
+      },
+      "expectedStateSHA256": "8e8d52dac1c58be335572949b5416290c5fdb00b8df926f9b977a046da0d8d4d"
+    },
+    {
+      "name": "copy-to-protected",
+      "root": "Diary",
+      "input": {
+        "name": "copy-to-protected",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "AI Memory/new.md"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "AI Memory/new.md"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 403,
+        "message": "Diary capture files, month files, the index and AI Memory are protected"
+      },
+      "expectedStateSHA256": "8e8d52dac1c58be335572949b5416290c5fdb00b8df926f9b977a046da0d8d4d"
+    },
+    {
+      "name": "move-to-protected",
+      "root": "Diary",
+      "input": {
+        "name": "move-to-protected",
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "AI Memory/new.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "AI Memory/new.md",
+        "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 403,
+        "message": "Diary capture files, month files, the index and AI Memory are protected"
+      },
+      "expectedStateSHA256": "8e8d52dac1c58be335572949b5416290c5fdb00b8df926f9b977a046da0d8d4d"
+    },
+    {
+      "name": "copy-self",
+      "root": "Diary",
+      "input": {
+        "name": "copy-self",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/one.md"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/one.md"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 403,
+        "message": "A folder cannot be moved or copied into itself"
+      },
+      "expectedStateSHA256": "8e8d52dac1c58be335572949b5416290c5fdb00b8df926f9b977a046da0d8d4d"
+    },
+    {
+      "name": "copy-non-markdown-destination",
+      "root": "Diary",
+      "input": {
+        "name": "copy-non-markdown-destination",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/file.txt"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/file.txt"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 403,
+        "message": "Only Markdown file names are allowed"
+      },
+      "expectedStateSHA256": "8e8d52dac1c58be335572949b5416290c5fdb00b8df926f9b977a046da0d8d4d"
+    },
+    {
+      "name": "move-missing-parent",
+      "root": "Diary",
+      "input": {
+        "name": "move-missing-parent",
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "Missing/file.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "Missing/file.md",
+        "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 409,
+        "message": "Destination folder does not exist"
+      },
+      "expectedStateSHA256": "8e8d52dac1c58be335572949b5416290c5fdb00b8df926f9b977a046da0d8d4d"
+    },
+    {
+      "name": "copy-existing-without-overwrite",
+      "root": "Diary",
+      "input": {
+        "name": "copy-existing-without-overwrite",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/existing.md"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/existing.md"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 412,
+        "message": "Destination exists; send Overwrite: T with its ETag to replace it"
+      },
+      "expectedStateSHA256": "8e8d52dac1c58be335572949b5416290c5fdb00b8df926f9b977a046da0d8d4d"
+    },
+    {
+      "name": "copy-overwrite-file",
+      "root": "Diary",
+      "input": {
+        "name": "copy-overwrite-file",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/existing.md",
+        "overwrite": true,
+        "destinationVersion": "$destination"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/existing.md",
+        "overwrite": true,
+        "destinationVersion": "0ab742ff1fe543eae35da567ea70d8e91912989e4d42ee1fbe0100c9802b189f"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/one.md",
+          "destination": "Notes/existing.md",
+          "replaced": true
+        }
+      },
+      "expectedStateSHA256": "5124d54bd8f712ce7541fa058a461020d59fba9bd73438186358cdca92600e94"
+    },
+    {
+      "name": "copy-overwrite-wrong-destination",
+      "root": "Diary",
+      "input": {
+        "name": "copy-overwrite-wrong-destination",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/existing.md",
+        "overwrite": true,
+        "destinationVersion": "wrong"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/existing.md",
+        "overwrite": true,
+        "destinationVersion": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 412,
+        "message": "The destination changed; read it again"
+      },
+      "expectedStateSHA256": "8e8d52dac1c58be335572949b5416290c5fdb00b8df926f9b977a046da0d8d4d"
+    },
+    {
+      "name": "copy-overwrite-folder",
+      "root": "Diary",
+      "input": {
+        "name": "copy-overwrite-folder",
+        "op": "copy",
+        "path": "Notes/Folder",
+        "destination": "Notes/Empty",
+        "overwrite": true,
+        "destinationVersion": "$destination"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/Folder",
+        "destination": "Notes/Empty",
+        "overwrite": true,
+        "destinationVersion": "255cfbbbea5e668130b8364124afa7b1f48159fb4a2bf7dcf2efa368d7931cd4"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 409,
+        "message": "Replacing folders is not supported; delete the destination first"
+      },
+      "expectedStateSHA256": "8e8d52dac1c58be335572949b5416290c5fdb00b8df926f9b977a046da0d8d4d"
+    },
+    {
+      "name": "delete-missing",
+      "root": "Diary",
+      "input": {
+        "name": "delete-missing",
+        "op": "delete",
+        "path": "Notes/missing.md",
+        "version": "wrong"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Notes/missing.md",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 404,
+        "message": "File or folder not found"
+      },
+      "expectedStateSHA256": "8e8d52dac1c58be335572949b5416290c5fdb00b8df926f9b977a046da0d8d4d"
+    },
+    {
+      "name": "delete-folder-with-hidden-type",
+      "root": "Diary",
+      "input": {
+        "name": "delete-folder-with-hidden-type",
+        "op": "delete",
+        "path": "Notes/Folder",
+        "version": "$source",
+        "profile": "nonmarkdown"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Notes/Folder",
+        "version": "5c021c09d56eb9a9372ef11ca01e31856984b4658194841e2fa7959262f2422b"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 409,
+        "message": "The folder holds files this endpoint cannot show; remove it in the app"
+      },
+      "expectedStateSHA256": "71d8eb4cc8967f23a32731814dce310f9745694bf5100d8e43669fed4772008e"
+    },
+    {
+      "name": "delete-folder-bound",
+      "root": "Diary",
+      "input": {
+        "name": "delete-folder-bound",
+        "op": "delete",
+        "path": "Wide",
+        "version": "$source",
+        "profile": "wide"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Wide",
+        "version": "ed8f4a2af929149fc6c44deb676d07bc9526de3223e03bb6aae56b3bbf3a3c29"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 507,
+        "message": "Folder operations are limited to 500 entries and 50 MiB"
+      },
+      "expectedStateSHA256": "b5fe94f55098487dfdae412663929e9a8357be06b2e870f1f5fb7778f1aef8d9"
+    },
+    {
+      "name": "copy-large-generation",
+      "root": "Diary",
+      "input": {
+        "name": "copy-large-generation",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md",
+        "generation": "9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/one.md",
+          "destination": "Dest/copied.md",
+          "replaced": false
+        }
+      },
+      "expectedStateSHA256": "aa147a1e3cef5d56816a5f20d870c240852c75e56bacd80b6fb447dec04d094c"
+    },
+    {
+      "name": "trash-file",
+      "root": "Diary",
+      "input": {
+        "name": "trash-file",
+        "op": "trash",
+        "path": "Notes/one.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "trash",
+        "path": "Notes/one.md",
+        "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "id": "31234567-89ab-4cde-8fab-0123456789ab",
+          "path": "Notes/one.md",
+          "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939",
+          "state": "trashed",
+          "trashedAt": 1700000000.0,
+          "alreadyApplied": false
+        }
+      },
+      "expectedStateSHA256": "9bdeb6ca153e62d748dced515fa9fb5fcaad45684c8016fee510c35fa9319215"
+    },
+    {
+      "name": "trash-already-applied",
+      "root": "Diary",
+      "input": {
+        "name": "trash-already-applied",
+        "op": "trash",
+        "path": "Notes/one.md",
+        "version": "$original",
+        "prepare": "trashed"
+      },
+      "sourceBody": {
+        "op": "trash",
+        "path": "Notes/one.md",
+        "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939"
+      },
+      "seedCapsule": "{\"data\": \"c3ludGhldGljIG5vdGU=\", \"format\": \"noevia-trash-v1\", \"id\": \"31234567-89ab-4cde-8fab-0123456789ab\", \"path\": \"Notes/one.md\", \"state\": \"trashed\", \"trashedAt\": 1699999990.0, \"version\": \"4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939\"}",
+      "expected": {
+        "status": 200,
+        "body": {
+          "id": "31234567-89ab-4cde-8fab-0123456789ab",
+          "path": "Notes/one.md",
+          "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939",
+          "state": "trashed",
+          "trashedAt": 1699999990.0,
+          "alreadyApplied": true
+        }
+      },
+      "expectedStateSHA256": "a76baf4943ee9713d97d0f53f29554592966c71975c56dd2786b44da6b052fa7"
+    },
+    {
+      "name": "trash-id-version-mismatch",
+      "root": "Diary",
+      "input": {
+        "name": "trash-id-version-mismatch",
+        "op": "trash",
+        "path": "Notes/one.md",
+        "version": "wrong",
+        "prepare": "trashed"
+      },
+      "sourceBody": {
+        "op": "trash",
+        "path": "Notes/one.md",
+        "version": "wrong"
+      },
+      "seedCapsule": "{\"data\": \"c3ludGhldGljIG5vdGU=\", \"format\": \"noevia-trash-v1\", \"id\": \"31234567-89ab-4cde-8fab-0123456789ab\", \"path\": \"Notes/one.md\", \"state\": \"trashed\", \"trashedAt\": 1699999990.0, \"version\": \"4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939\"}",
+      "expected": {
+        "status": 409,
+        "message": "Operation ID was already used for a different file version"
+      },
+      "expectedStateSHA256": "a76baf4943ee9713d97d0f53f29554592966c71975c56dd2786b44da6b052fa7"
+    },
+    {
+      "name": "trash-protected",
+      "root": "Diary",
+      "input": {
+        "name": "trash-protected",
+        "op": "trash",
+        "path": "Entries/capture.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "trash",
+        "path": "Entries/capture.md",
+        "version": "6da5888ad705a98fbbdcb856380ccfd1de6d6b8be4fb086b519c1b57cb75552a"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 409,
+        "message": "Diary capture files, month files, the index and AI Memory cannot be moved to Trash"
+      },
+      "expectedStateSHA256": "8e8d52dac1c58be335572949b5416290c5fdb00b8df926f9b977a046da0d8d4d"
+    },
+    {
+      "name": "restore-file",
+      "root": "Diary",
+      "input": {
+        "name": "restore-file",
+        "op": "restore",
+        "prepare": "trashed"
+      },
+      "sourceBody": {
+        "op": "restore"
+      },
+      "seedCapsule": "{\"data\": \"c3ludGhldGljIG5vdGU=\", \"format\": \"noevia-trash-v1\", \"id\": \"31234567-89ab-4cde-8fab-0123456789ab\", \"path\": \"Notes/one.md\", \"state\": \"trashed\", \"trashedAt\": 1699999990.0, \"version\": \"4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939\"}",
+      "expected": {
+        "status": 200,
+        "body": {
+          "id": "31234567-89ab-4cde-8fab-0123456789ab",
+          "path": "Notes/one.md",
+          "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939",
+          "state": "restored",
+          "trashedAt": 1699999990.0,
+          "alreadyApplied": false
+        }
+      },
+      "expectedStateSHA256": "d3d673154ce0dfd638c5e16fb2c0881e22fceb1814b28da0523f76dcfd5e75e4"
+    },
+    {
+      "name": "restore-already-restored",
+      "root": "Diary",
+      "input": {
+        "name": "restore-already-restored",
+        "op": "restore",
+        "prepare": "restored"
+      },
+      "sourceBody": {
+        "op": "restore"
+      },
+      "seedCapsule": "{\"data\": \"c3ludGhldGljIG5vdGU=\", \"format\": \"noevia-trash-v1\", \"id\": \"31234567-89ab-4cde-8fab-0123456789ab\", \"path\": \"Notes/one.md\", \"restoredAt\": 1699999999.0, \"state\": \"restored\", \"trashedAt\": 1699999990.0, \"version\": \"4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939\"}",
+      "expected": {
+        "status": 200,
+        "body": {
+          "id": "31234567-89ab-4cde-8fab-0123456789ab",
+          "path": "Notes/one.md",
+          "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939",
+          "state": "restored",
+          "trashedAt": 1699999990.0,
+          "alreadyApplied": true
+        }
+      },
+      "expectedStateSHA256": "80d700b444a326a2ba5edb29387b30bbb79243e418f1e89b6e0e6af1fe983ca8"
+    },
+    {
+      "name": "restore-occupied",
+      "root": "Diary",
+      "input": {
+        "name": "restore-occupied",
+        "op": "restore",
+        "prepare": "occupied"
+      },
+      "sourceBody": {
+        "op": "restore"
+      },
+      "seedCapsule": "{\"data\": \"c3ludGhldGljIG5vdGU=\", \"format\": \"noevia-trash-v1\", \"id\": \"31234567-89ab-4cde-8fab-0123456789ab\", \"path\": \"Notes/one.md\", \"state\": \"trashed\", \"trashedAt\": 1699999990.0, \"version\": \"4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939\"}",
+      "expected": {
+        "status": 409,
+        "message": "The original path is occupied. Restore never overwrites existing data."
+      },
+      "expectedStateSHA256": "79d8be917f97576d536404cc2f061a69704d9ba642e01d159f82fbc92bc1f192"
+    },
+    {
+      "name": "trash-list",
+      "root": "Diary",
+      "input": {
+        "name": "trash-list",
+        "op": "trashList",
+        "prepare": "trashed"
+      },
+      "sourceBody": {
+        "op": "trashList"
+      },
+      "seedCapsule": "{\"data\": \"c3ludGhldGljIG5vdGU=\", \"format\": \"noevia-trash-v1\", \"id\": \"31234567-89ab-4cde-8fab-0123456789ab\", \"path\": \"Notes/one.md\", \"state\": \"trashed\", \"trashedAt\": 1699999990.0, \"version\": \"4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939\"}",
+      "expected": {
+        "status": 200,
+        "body": {
+          "records": [
+            {
+              "id": "31234567-89ab-4cde-8fab-0123456789ab",
+              "path": "Notes/one.md",
+              "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939",
+              "state": "trashed",
+              "trashedAt": 1699999990.0
+            }
+          ],
+          "next": null
+        }
+      },
+      "expectedStateSHA256": "a76baf4943ee9713d97d0f53f29554592966c71975c56dd2786b44da6b052fa7"
+    },
+    {
+      "name": "preserve-oversized-capsule",
+      "root": "Diary",
+      "input": {
+        "name": "preserve-oversized-capsule",
+        "op": "preserve",
+        "path": "Notes/one.md",
+        "version": "$source",
+        "profile": "large"
+      },
+      "sourceBody": {
+        "op": "preserve",
+        "path": "Notes/one.md",
+        "version": "84079794567a4362a19cbd5d771303b130580e18aa40f80e23c3c4432a6fa558"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 403,
+        "message": "Capture records or files over 512 KiB cannot be moved to Trash"
+      },
+      "expectedStateSHA256": "dc553aff3c997589bf58efc6e1d5cfcc1ffe94e221a3054bb0cbf98ca6288a87"
+    },
+    {
+      "name": "copy-missing-to-protected",
+      "root": "Diary",
+      "input": {
+        "name": "copy-missing-to-protected",
+        "op": "copy",
+        "path": "Notes/missing.md",
+        "destination": "AI Memory/new.md"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/missing.md",
+        "destination": "AI Memory/new.md"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 404,
+        "message": "File or folder not found"
+      },
+      "expectedStateSHA256": "8e8d52dac1c58be335572949b5416290c5fdb00b8df926f9b977a046da0d8d4d"
+    },
+    {
+      "name": "delete-missing-protected",
+      "root": "Diary",
+      "input": {
+        "name": "delete-missing-protected",
+        "op": "delete",
+        "path": "Entries/missing.md",
+        "version": "wrong"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Entries/missing.md",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 404,
+        "message": "File or folder not found"
+      },
+      "expectedStateSHA256": "8e8d52dac1c58be335572949b5416290c5fdb00b8df926f9b977a046da0d8d4d"
+    },
+    {
+      "name": "copy-wide-wrong-version",
+      "root": "Diary",
+      "input": {
+        "name": "copy-wide-wrong-version",
+        "op": "copy",
+        "path": "Wide",
+        "destination": "Dest/Wide",
+        "version": "wrong",
+        "profile": "wide"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Wide",
+        "destination": "Dest/Wide",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 412,
+        "message": "The source changed; read it again"
+      },
+      "expectedStateSHA256": "b5fe94f55098487dfdae412663929e9a8357be06b2e870f1f5fb7778f1aef8d9"
+    },
+    {
+      "name": "delete-wide-without-version",
+      "root": "Diary",
+      "input": {
+        "name": "delete-wide-without-version",
+        "op": "delete",
+        "path": "Wide",
+        "profile": "wide"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Wide"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 428,
+        "message": "Read the source ETag and send it with If-Match"
+      },
+      "expectedStateSHA256": "b5fe94f55098487dfdae412663929e9a8357be06b2e870f1f5fb7778f1aef8d9"
+    },
+    {
+      "name": "delete-wide-wrong-version",
+      "root": "Diary",
+      "input": {
+        "name": "delete-wide-wrong-version",
+        "op": "delete",
+        "path": "Wide",
+        "version": "wrong",
+        "profile": "wide"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Wide",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 412,
+        "message": "The source changed; read it again"
+      },
+      "expectedStateSHA256": "b5fe94f55098487dfdae412663929e9a8357be06b2e870f1f5fb7778f1aef8d9"
+    },
+    {
+      "name": "copy-null-with-nonmarkdown-destination",
+      "root": "Diary",
+      "input": {
+        "name": "copy-null-with-nonmarkdown-destination",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/file.txt",
+        "version": null
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/file.txt",
+        "version": null
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 428,
+        "message": "Read the source ETag and send it with If-Match"
+      },
+      "expectedStateSHA256": "8e8d52dac1c58be335572949b5416290c5fdb00b8df926f9b977a046da0d8d4d"
+    },
+    {
+      "name": "move-wrong-version-missing-parent",
+      "root": "Diary",
+      "input": {
+        "name": "move-wrong-version-missing-parent",
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "Missing/file.md",
+        "version": "wrong"
+      },
+      "sourceBody": {
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "Missing/file.md",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 412,
+        "message": "The source changed; read it again"
+      },
+      "expectedStateSHA256": "8e8d52dac1c58be335572949b5416290c5fdb00b8df926f9b977a046da0d8d4d"
+    },
+    {
+      "name": "preserve-missing-protected",
+      "root": "Diary",
+      "input": {
+        "name": "preserve-missing-protected",
+        "op": "preserve",
+        "path": "Entries/missing.md",
+        "version": "wrong"
+      },
+      "sourceBody": {
+        "op": "preserve",
+        "path": "Entries/missing.md",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 404,
+        "message": "File not found"
+      },
+      "expectedStateSHA256": "8e8d52dac1c58be335572949b5416290c5fdb00b8df926f9b977a046da0d8d4d"
+    },
+    {
+      "name": "move-protected-wrong-version",
+      "root": "Diary",
+      "input": {
+        "name": "move-protected-wrong-version",
+        "op": "move",
+        "path": "Entries/capture.md",
+        "destination": "Dest/capture.md",
+        "version": "wrong"
+      },
+      "sourceBody": {
+        "op": "move",
+        "path": "Entries/capture.md",
+        "destination": "Dest/capture.md",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 403,
+        "message": "Diary capture files, month files, the index and AI Memory are protected"
+      },
+      "expectedStateSHA256": "8e8d52dac1c58be335572949b5416290c5fdb00b8df926f9b977a046da0d8d4d"
+    },
+    {
+      "name": "copy-folder-nonmarkdown-child",
+      "root": "Diary",
+      "input": {
+        "name": "copy-folder-nonmarkdown-child",
+        "op": "copy",
+        "path": "Notes/Folder",
+        "destination": "Dest/Folder",
+        "profile": "nonmarkdown"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/Folder",
+        "destination": "Dest/Folder"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/Folder",
+          "destination": "Dest/Folder",
+          "replaced": false
+        }
+      },
+      "expectedStateSHA256": "a776d6395b04b1ec6364ddeac744c1697a0e97f088b7acc62b7639ead7692f0d"
+    },
+    {
+      "name": "copy-file",
+      "root": "",
+      "input": {
+        "name": "copy-file",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/one.md",
+          "destination": "Dest/copied.md",
+          "replaced": false
+        }
+      },
+      "expectedStateSHA256": "20f72f8254c5dc3c1eeaedef00b6f62cb210600b23d9e4c4ceba18c27dc7ff30"
+    },
+    {
+      "name": "copy-explicit-null",
+      "root": "",
+      "input": {
+        "name": "copy-explicit-null",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md",
+        "version": null
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md",
+        "version": null
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 428,
+        "message": "Read the source ETag and send it with If-Match"
+      },
+      "expectedStateSHA256": "295879730721a0c7031792efa3aa3bdf4686552f5dc97b4fe05529736d021ebf"
+    },
+    {
+      "name": "copy-wrong-version",
+      "root": "",
+      "input": {
+        "name": "copy-wrong-version",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md",
+        "version": "wrong"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 412,
+        "message": "The source changed; read it again"
+      },
+      "expectedStateSHA256": "295879730721a0c7031792efa3aa3bdf4686552f5dc97b4fe05529736d021ebf"
+    },
+    {
+      "name": "move-file",
+      "root": "",
+      "input": {
+        "name": "move-file",
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "Dest/moved.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "Dest/moved.md",
+        "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/one.md",
+          "destination": "Dest/moved.md",
+          "replaced": false
+        }
+      },
+      "expectedStateSHA256": "da21a09123db04480abe8eeac2db4a81d769e06b955791c25dd3b49d5ac9c57b"
+    },
+    {
+      "name": "move-folder",
+      "root": "",
+      "input": {
+        "name": "move-folder",
+        "op": "move",
+        "path": "Notes/Folder",
+        "destination": "Dest/Moved",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "move",
+        "path": "Notes/Folder",
+        "destination": "Dest/Moved",
+        "version": "a3d763d4d0ed487658a3b8904079c4703fef0f3a58dc2d14d07731ddc7b3c870"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/Folder",
+          "destination": "Dest/Moved",
+          "replaced": false
+        }
+      },
+      "expectedStateSHA256": "c6c633bdb85b4e29aeaa2c85e4dc57a665d7163e6a2497718a0345f78ce7e1a3"
+    },
+    {
+      "name": "copy-folder",
+      "root": "",
+      "input": {
+        "name": "copy-folder",
+        "op": "copy",
+        "path": "Notes/Folder",
+        "destination": "Dest/Copied"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/Folder",
+        "destination": "Dest/Copied"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/Folder",
+          "destination": "Dest/Copied",
+          "replaced": false
+        }
+      },
+      "expectedStateSHA256": "e490b85b74614d6e705f0ff4c581c357d2d39992297b3bde3868f44e5d567731"
+    },
+    {
+      "name": "copy-empty-directory",
+      "root": "",
+      "input": {
+        "name": "copy-empty-directory",
+        "op": "copy",
+        "path": "Notes/Empty",
+        "destination": "Dest/Empty"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/Empty",
+        "destination": "Dest/Empty"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/Empty",
+          "destination": "Dest/Empty",
+          "replaced": false
+        }
+      },
+      "expectedStateSHA256": "639091c4b7b338496fc7ab1e63efbc01a0b582a9c843a9d8be94dd7d8d2fa052"
+    },
+    {
+      "name": "delete-file",
+      "root": "",
+      "input": {
+        "name": "delete-file",
+        "op": "delete",
+        "path": "Notes/one.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Notes/one.md",
+        "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "deleted": "Notes/one.md",
+          "trash": [
+            "07fd67f2-b400-552a-a038-ed620e3657c0"
+          ]
+        }
+      },
+      "expectedStateSHA256": "05f6f0c7161ecd5dfe76d3e1b635ba88280ddcd2ac69ad52c20a2416751699e4"
+    },
+    {
+      "name": "delete-folder",
+      "root": "",
+      "input": {
+        "name": "delete-folder",
+        "op": "delete",
+        "path": "Notes/Folder",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Notes/Folder",
+        "version": "a3d763d4d0ed487658a3b8904079c4703fef0f3a58dc2d14d07731ddc7b3c870"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "deleted": "Notes/Folder",
+          "trash": [
+            "1eded994-2edd-5fda-b568-fefad2f9a21c",
+            "bdf2ff98-b30b-5f40-8553-40a457f194a3"
+          ]
+        }
+      },
+      "expectedStateSHA256": "993b58c2c619e2bfd58efa8b087491e13bf205027927dd91006e6d53c0340722"
+    },
+    {
+      "name": "delete-empty-directory",
+      "root": "",
+      "input": {
+        "name": "delete-empty-directory",
+        "op": "delete",
+        "path": "Notes/Empty",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Notes/Empty",
+        "version": "255cfbbbea5e668130b8364124afa7b1f48159fb4a2bf7dcf2efa368d7931cd4"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "deleted": "Notes/Empty",
+          "trash": []
+        }
+      },
+      "expectedStateSHA256": "a0e77e61375bf3173cff968429f6046132e0b14eef27b4aced07a5dd87593503"
+    },
+    {
+      "name": "preserve-file",
+      "root": "",
+      "input": {
+        "name": "preserve-file",
+        "op": "preserve",
+        "path": "Notes/one.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "preserve",
+        "path": "Notes/one.md",
+        "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/one.md",
+          "trash": "31234567-89ab-4cde-8fab-0123456789ab"
+        }
+      },
+      "expectedStateSHA256": "df6e20db6ed2f445856c69a96e06d55a1cd5f4ff09c02f4bfad740d31cc877ad"
+    },
+    {
+      "name": "preserve-protected",
+      "root": "",
+      "input": {
+        "name": "preserve-protected",
+        "op": "preserve",
+        "path": "Entries/capture.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "preserve",
+        "path": "Entries/capture.md",
+        "version": "6da5888ad705a98fbbdcb856380ccfd1de6d6b8be4fb086b519c1b57cb75552a"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 428,
+        "message": "Diary capture files, month files, the index and AI Memory need If-Match to be replaced"
+      },
+      "expectedStateSHA256": "295879730721a0c7031792efa3aa3bdf4686552f5dc97b4fe05529736d021ebf"
+    },
+    {
+      "name": "delete-protected",
+      "root": "",
+      "input": {
+        "name": "delete-protected",
+        "op": "delete",
+        "path": "Entries/capture.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Entries/capture.md",
+        "version": "6da5888ad705a98fbbdcb856380ccfd1de6d6b8be4fb086b519c1b57cb75552a"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 403,
+        "message": "Diary capture files, month files, the index and AI Memory are protected"
+      },
+      "expectedStateSHA256": "295879730721a0c7031792efa3aa3bdf4686552f5dc97b4fe05529736d021ebf"
+    },
+    {
+      "name": "copy-to-protected",
+      "root": "",
+      "input": {
+        "name": "copy-to-protected",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "AI Memory/new.md"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "AI Memory/new.md"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 403,
+        "message": "Diary capture files, month files, the index and AI Memory are protected"
+      },
+      "expectedStateSHA256": "295879730721a0c7031792efa3aa3bdf4686552f5dc97b4fe05529736d021ebf"
+    },
+    {
+      "name": "move-to-protected",
+      "root": "",
+      "input": {
+        "name": "move-to-protected",
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "AI Memory/new.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "AI Memory/new.md",
+        "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 403,
+        "message": "Diary capture files, month files, the index and AI Memory are protected"
+      },
+      "expectedStateSHA256": "295879730721a0c7031792efa3aa3bdf4686552f5dc97b4fe05529736d021ebf"
+    },
+    {
+      "name": "copy-self",
+      "root": "",
+      "input": {
+        "name": "copy-self",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/one.md"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/one.md"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 403,
+        "message": "A folder cannot be moved or copied into itself"
+      },
+      "expectedStateSHA256": "295879730721a0c7031792efa3aa3bdf4686552f5dc97b4fe05529736d021ebf"
+    },
+    {
+      "name": "copy-non-markdown-destination",
+      "root": "",
+      "input": {
+        "name": "copy-non-markdown-destination",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/file.txt"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/file.txt"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 403,
+        "message": "Only Markdown file names are allowed"
+      },
+      "expectedStateSHA256": "295879730721a0c7031792efa3aa3bdf4686552f5dc97b4fe05529736d021ebf"
+    },
+    {
+      "name": "move-missing-parent",
+      "root": "",
+      "input": {
+        "name": "move-missing-parent",
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "Missing/file.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "Missing/file.md",
+        "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 409,
+        "message": "Destination folder does not exist"
+      },
+      "expectedStateSHA256": "295879730721a0c7031792efa3aa3bdf4686552f5dc97b4fe05529736d021ebf"
+    },
+    {
+      "name": "copy-existing-without-overwrite",
+      "root": "",
+      "input": {
+        "name": "copy-existing-without-overwrite",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/existing.md"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/existing.md"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 412,
+        "message": "Destination exists; send Overwrite: T with its ETag to replace it"
+      },
+      "expectedStateSHA256": "295879730721a0c7031792efa3aa3bdf4686552f5dc97b4fe05529736d021ebf"
+    },
+    {
+      "name": "copy-overwrite-file",
+      "root": "",
+      "input": {
+        "name": "copy-overwrite-file",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/existing.md",
+        "overwrite": true,
+        "destinationVersion": "$destination"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/existing.md",
+        "overwrite": true,
+        "destinationVersion": "0ab742ff1fe543eae35da567ea70d8e91912989e4d42ee1fbe0100c9802b189f"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/one.md",
+          "destination": "Notes/existing.md",
+          "replaced": true
+        }
+      },
+      "expectedStateSHA256": "72188fc44fe5582e39350fc89fae0234cdbdaaba6459cddc6b9d3e4c620eedc5"
+    },
+    {
+      "name": "copy-overwrite-wrong-destination",
+      "root": "",
+      "input": {
+        "name": "copy-overwrite-wrong-destination",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/existing.md",
+        "overwrite": true,
+        "destinationVersion": "wrong"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/existing.md",
+        "overwrite": true,
+        "destinationVersion": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 412,
+        "message": "The destination changed; read it again"
+      },
+      "expectedStateSHA256": "295879730721a0c7031792efa3aa3bdf4686552f5dc97b4fe05529736d021ebf"
+    },
+    {
+      "name": "copy-overwrite-folder",
+      "root": "",
+      "input": {
+        "name": "copy-overwrite-folder",
+        "op": "copy",
+        "path": "Notes/Folder",
+        "destination": "Notes/Empty",
+        "overwrite": true,
+        "destinationVersion": "$destination"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/Folder",
+        "destination": "Notes/Empty",
+        "overwrite": true,
+        "destinationVersion": "255cfbbbea5e668130b8364124afa7b1f48159fb4a2bf7dcf2efa368d7931cd4"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 409,
+        "message": "Replacing folders is not supported; delete the destination first"
+      },
+      "expectedStateSHA256": "295879730721a0c7031792efa3aa3bdf4686552f5dc97b4fe05529736d021ebf"
+    },
+    {
+      "name": "delete-missing",
+      "root": "",
+      "input": {
+        "name": "delete-missing",
+        "op": "delete",
+        "path": "Notes/missing.md",
+        "version": "wrong"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Notes/missing.md",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 404,
+        "message": "File or folder not found"
+      },
+      "expectedStateSHA256": "295879730721a0c7031792efa3aa3bdf4686552f5dc97b4fe05529736d021ebf"
+    },
+    {
+      "name": "delete-folder-with-hidden-type",
+      "root": "",
+      "input": {
+        "name": "delete-folder-with-hidden-type",
+        "op": "delete",
+        "path": "Notes/Folder",
+        "version": "$source",
+        "profile": "nonmarkdown"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Notes/Folder",
+        "version": "5c021c09d56eb9a9372ef11ca01e31856984b4658194841e2fa7959262f2422b"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 409,
+        "message": "The folder holds files this endpoint cannot show; remove it in the app"
+      },
+      "expectedStateSHA256": "c8399c070a1fa1aeff68419f5abaf87e44d1d43d9a3e9995855044a5eca29a11"
+    },
+    {
+      "name": "delete-folder-bound",
+      "root": "",
+      "input": {
+        "name": "delete-folder-bound",
+        "op": "delete",
+        "path": "Wide",
+        "version": "$source",
+        "profile": "wide"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Wide",
+        "version": "ed8f4a2af929149fc6c44deb676d07bc9526de3223e03bb6aae56b3bbf3a3c29"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 507,
+        "message": "Folder operations are limited to 500 entries and 50 MiB"
+      },
+      "expectedStateSHA256": "eed91aef5ddabbd1dc8b6ef9dc32b46fcaca46e3f21ee9e38d305050ad14a4cd"
+    },
+    {
+      "name": "copy-large-generation",
+      "root": "",
+      "input": {
+        "name": "copy-large-generation",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md",
+        "generation": "9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/one.md",
+          "destination": "Dest/copied.md",
+          "replaced": false
+        }
+      },
+      "expectedStateSHA256": "cb3df58e4e5c6b5ea318ed3f5730549214befd3fac7ac5f9eb7e0cdf2e3810ef"
+    },
+    {
+      "name": "trash-file",
+      "root": "",
+      "input": {
+        "name": "trash-file",
+        "op": "trash",
+        "path": "Notes/one.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "trash",
+        "path": "Notes/one.md",
+        "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "id": "31234567-89ab-4cde-8fab-0123456789ab",
+          "path": "Notes/one.md",
+          "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939",
+          "state": "trashed",
+          "trashedAt": 1700000000.0,
+          "alreadyApplied": false
+        }
+      },
+      "expectedStateSHA256": "6687e8ff02cb75a380537f12e15ebea171008b73e1d9e8da12f062e899d64583"
+    },
+    {
+      "name": "trash-already-applied",
+      "root": "",
+      "input": {
+        "name": "trash-already-applied",
+        "op": "trash",
+        "path": "Notes/one.md",
+        "version": "$original",
+        "prepare": "trashed"
+      },
+      "sourceBody": {
+        "op": "trash",
+        "path": "Notes/one.md",
+        "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939"
+      },
+      "seedCapsule": "{\"data\": \"c3ludGhldGljIG5vdGU=\", \"format\": \"noevia-trash-v1\", \"id\": \"31234567-89ab-4cde-8fab-0123456789ab\", \"path\": \"Notes/one.md\", \"state\": \"trashed\", \"trashedAt\": 1699999990.0, \"version\": \"4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939\"}",
+      "expected": {
+        "status": 200,
+        "body": {
+          "id": "31234567-89ab-4cde-8fab-0123456789ab",
+          "path": "Notes/one.md",
+          "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939",
+          "state": "trashed",
+          "trashedAt": 1699999990.0,
+          "alreadyApplied": true
+        }
+      },
+      "expectedStateSHA256": "48a03152d9c651ad47e0c3dfde6fcb6e037ccbf154297ef5c3f5c1a49a99ef07"
+    },
+    {
+      "name": "trash-id-version-mismatch",
+      "root": "",
+      "input": {
+        "name": "trash-id-version-mismatch",
+        "op": "trash",
+        "path": "Notes/one.md",
+        "version": "wrong",
+        "prepare": "trashed"
+      },
+      "sourceBody": {
+        "op": "trash",
+        "path": "Notes/one.md",
+        "version": "wrong"
+      },
+      "seedCapsule": "{\"data\": \"c3ludGhldGljIG5vdGU=\", \"format\": \"noevia-trash-v1\", \"id\": \"31234567-89ab-4cde-8fab-0123456789ab\", \"path\": \"Notes/one.md\", \"state\": \"trashed\", \"trashedAt\": 1699999990.0, \"version\": \"4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939\"}",
+      "expected": {
+        "status": 409,
+        "message": "Operation ID was already used for a different file version"
+      },
+      "expectedStateSHA256": "48a03152d9c651ad47e0c3dfde6fcb6e037ccbf154297ef5c3f5c1a49a99ef07"
+    },
+    {
+      "name": "trash-protected",
+      "root": "",
+      "input": {
+        "name": "trash-protected",
+        "op": "trash",
+        "path": "Entries/capture.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "trash",
+        "path": "Entries/capture.md",
+        "version": "6da5888ad705a98fbbdcb856380ccfd1de6d6b8be4fb086b519c1b57cb75552a"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 409,
+        "message": "Diary capture files, month files, the index and AI Memory cannot be moved to Trash"
+      },
+      "expectedStateSHA256": "295879730721a0c7031792efa3aa3bdf4686552f5dc97b4fe05529736d021ebf"
+    },
+    {
+      "name": "restore-file",
+      "root": "",
+      "input": {
+        "name": "restore-file",
+        "op": "restore",
+        "prepare": "trashed"
+      },
+      "sourceBody": {
+        "op": "restore"
+      },
+      "seedCapsule": "{\"data\": \"c3ludGhldGljIG5vdGU=\", \"format\": \"noevia-trash-v1\", \"id\": \"31234567-89ab-4cde-8fab-0123456789ab\", \"path\": \"Notes/one.md\", \"state\": \"trashed\", \"trashedAt\": 1699999990.0, \"version\": \"4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939\"}",
+      "expected": {
+        "status": 200,
+        "body": {
+          "id": "31234567-89ab-4cde-8fab-0123456789ab",
+          "path": "Notes/one.md",
+          "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939",
+          "state": "restored",
+          "trashedAt": 1699999990.0,
+          "alreadyApplied": false
+        }
+      },
+      "expectedStateSHA256": "4ee2fceee937e3c722ff389594c1fe87d9c9c377833b5ac3184c2ec4a06658fe"
+    },
+    {
+      "name": "restore-already-restored",
+      "root": "",
+      "input": {
+        "name": "restore-already-restored",
+        "op": "restore",
+        "prepare": "restored"
+      },
+      "sourceBody": {
+        "op": "restore"
+      },
+      "seedCapsule": "{\"data\": \"c3ludGhldGljIG5vdGU=\", \"format\": \"noevia-trash-v1\", \"id\": \"31234567-89ab-4cde-8fab-0123456789ab\", \"path\": \"Notes/one.md\", \"restoredAt\": 1699999999.0, \"state\": \"restored\", \"trashedAt\": 1699999990.0, \"version\": \"4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939\"}",
+      "expected": {
+        "status": 200,
+        "body": {
+          "id": "31234567-89ab-4cde-8fab-0123456789ab",
+          "path": "Notes/one.md",
+          "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939",
+          "state": "restored",
+          "trashedAt": 1699999990.0,
+          "alreadyApplied": true
+        }
+      },
+      "expectedStateSHA256": "ec21f87f774925ae49c637028170dcddcc4e566c1db62fa5c71d0fb85b1e9abf"
+    },
+    {
+      "name": "restore-occupied",
+      "root": "",
+      "input": {
+        "name": "restore-occupied",
+        "op": "restore",
+        "prepare": "occupied"
+      },
+      "sourceBody": {
+        "op": "restore"
+      },
+      "seedCapsule": "{\"data\": \"c3ludGhldGljIG5vdGU=\", \"format\": \"noevia-trash-v1\", \"id\": \"31234567-89ab-4cde-8fab-0123456789ab\", \"path\": \"Notes/one.md\", \"state\": \"trashed\", \"trashedAt\": 1699999990.0, \"version\": \"4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939\"}",
+      "expected": {
+        "status": 409,
+        "message": "The original path is occupied. Restore never overwrites existing data."
+      },
+      "expectedStateSHA256": "27768908745f9c7c9336389748fb9e68f4547bb67748561aab906996b54717cd"
+    },
+    {
+      "name": "trash-list",
+      "root": "",
+      "input": {
+        "name": "trash-list",
+        "op": "trashList",
+        "prepare": "trashed"
+      },
+      "sourceBody": {
+        "op": "trashList"
+      },
+      "seedCapsule": "{\"data\": \"c3ludGhldGljIG5vdGU=\", \"format\": \"noevia-trash-v1\", \"id\": \"31234567-89ab-4cde-8fab-0123456789ab\", \"path\": \"Notes/one.md\", \"state\": \"trashed\", \"trashedAt\": 1699999990.0, \"version\": \"4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939\"}",
+      "expected": {
+        "status": 200,
+        "body": {
+          "records": [
+            {
+              "id": "31234567-89ab-4cde-8fab-0123456789ab",
+              "path": "Notes/one.md",
+              "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939",
+              "state": "trashed",
+              "trashedAt": 1699999990.0
+            }
+          ],
+          "next": null
+        }
+      },
+      "expectedStateSHA256": "48a03152d9c651ad47e0c3dfde6fcb6e037ccbf154297ef5c3f5c1a49a99ef07"
+    },
+    {
+      "name": "preserve-oversized-capsule",
+      "root": "",
+      "input": {
+        "name": "preserve-oversized-capsule",
+        "op": "preserve",
+        "path": "Notes/one.md",
+        "version": "$source",
+        "profile": "large"
+      },
+      "sourceBody": {
+        "op": "preserve",
+        "path": "Notes/one.md",
+        "version": "84079794567a4362a19cbd5d771303b130580e18aa40f80e23c3c4432a6fa558"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 403,
+        "message": "Capture records or files over 512 KiB cannot be moved to Trash"
+      },
+      "expectedStateSHA256": "fd217f7e013cb3f07a4c8227b817b84dc12c195fccc606f2bff87b1e73fc4858"
+    },
+    {
+      "name": "copy-missing-to-protected",
+      "root": "",
+      "input": {
+        "name": "copy-missing-to-protected",
+        "op": "copy",
+        "path": "Notes/missing.md",
+        "destination": "AI Memory/new.md"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/missing.md",
+        "destination": "AI Memory/new.md"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 404,
+        "message": "File or folder not found"
+      },
+      "expectedStateSHA256": "295879730721a0c7031792efa3aa3bdf4686552f5dc97b4fe05529736d021ebf"
+    },
+    {
+      "name": "delete-missing-protected",
+      "root": "",
+      "input": {
+        "name": "delete-missing-protected",
+        "op": "delete",
+        "path": "Entries/missing.md",
+        "version": "wrong"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Entries/missing.md",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 404,
+        "message": "File or folder not found"
+      },
+      "expectedStateSHA256": "295879730721a0c7031792efa3aa3bdf4686552f5dc97b4fe05529736d021ebf"
+    },
+    {
+      "name": "copy-wide-wrong-version",
+      "root": "",
+      "input": {
+        "name": "copy-wide-wrong-version",
+        "op": "copy",
+        "path": "Wide",
+        "destination": "Dest/Wide",
+        "version": "wrong",
+        "profile": "wide"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Wide",
+        "destination": "Dest/Wide",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 412,
+        "message": "The source changed; read it again"
+      },
+      "expectedStateSHA256": "eed91aef5ddabbd1dc8b6ef9dc32b46fcaca46e3f21ee9e38d305050ad14a4cd"
+    },
+    {
+      "name": "delete-wide-without-version",
+      "root": "",
+      "input": {
+        "name": "delete-wide-without-version",
+        "op": "delete",
+        "path": "Wide",
+        "profile": "wide"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Wide"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 428,
+        "message": "Read the source ETag and send it with If-Match"
+      },
+      "expectedStateSHA256": "eed91aef5ddabbd1dc8b6ef9dc32b46fcaca46e3f21ee9e38d305050ad14a4cd"
+    },
+    {
+      "name": "delete-wide-wrong-version",
+      "root": "",
+      "input": {
+        "name": "delete-wide-wrong-version",
+        "op": "delete",
+        "path": "Wide",
+        "version": "wrong",
+        "profile": "wide"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Wide",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 412,
+        "message": "The source changed; read it again"
+      },
+      "expectedStateSHA256": "eed91aef5ddabbd1dc8b6ef9dc32b46fcaca46e3f21ee9e38d305050ad14a4cd"
+    },
+    {
+      "name": "copy-null-with-nonmarkdown-destination",
+      "root": "",
+      "input": {
+        "name": "copy-null-with-nonmarkdown-destination",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/file.txt",
+        "version": null
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/file.txt",
+        "version": null
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 428,
+        "message": "Read the source ETag and send it with If-Match"
+      },
+      "expectedStateSHA256": "295879730721a0c7031792efa3aa3bdf4686552f5dc97b4fe05529736d021ebf"
+    },
+    {
+      "name": "move-wrong-version-missing-parent",
+      "root": "",
+      "input": {
+        "name": "move-wrong-version-missing-parent",
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "Missing/file.md",
+        "version": "wrong"
+      },
+      "sourceBody": {
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "Missing/file.md",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 412,
+        "message": "The source changed; read it again"
+      },
+      "expectedStateSHA256": "295879730721a0c7031792efa3aa3bdf4686552f5dc97b4fe05529736d021ebf"
+    },
+    {
+      "name": "preserve-missing-protected",
+      "root": "",
+      "input": {
+        "name": "preserve-missing-protected",
+        "op": "preserve",
+        "path": "Entries/missing.md",
+        "version": "wrong"
+      },
+      "sourceBody": {
+        "op": "preserve",
+        "path": "Entries/missing.md",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 404,
+        "message": "File not found"
+      },
+      "expectedStateSHA256": "295879730721a0c7031792efa3aa3bdf4686552f5dc97b4fe05529736d021ebf"
+    },
+    {
+      "name": "move-protected-wrong-version",
+      "root": "",
+      "input": {
+        "name": "move-protected-wrong-version",
+        "op": "move",
+        "path": "Entries/capture.md",
+        "destination": "Dest/capture.md",
+        "version": "wrong"
+      },
+      "sourceBody": {
+        "op": "move",
+        "path": "Entries/capture.md",
+        "destination": "Dest/capture.md",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 403,
+        "message": "Diary capture files, month files, the index and AI Memory are protected"
+      },
+      "expectedStateSHA256": "295879730721a0c7031792efa3aa3bdf4686552f5dc97b4fe05529736d021ebf"
+    },
+    {
+      "name": "copy-folder-nonmarkdown-child",
+      "root": "",
+      "input": {
+        "name": "copy-folder-nonmarkdown-child",
+        "op": "copy",
+        "path": "Notes/Folder",
+        "destination": "Dest/Folder",
+        "profile": "nonmarkdown"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/Folder",
+        "destination": "Dest/Folder"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/Folder",
+          "destination": "Dest/Folder",
+          "replaced": false
+        }
+      },
+      "expectedStateSHA256": "81a0cc6df0d67fb8982186320bf5c836b0208f3e7e68be26f73f5b4965e15c67"
+    },
+    {
+      "name": "copy-file",
+      "root": "Café/記録",
+      "input": {
+        "name": "copy-file",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/one.md",
+          "destination": "Dest/copied.md",
+          "replaced": false
+        }
+      },
+      "expectedStateSHA256": "f0c24198b86dd596673d2ec43ef18fa4ef5e26d22a894f3bffe41aab8cdf9808"
+    },
+    {
+      "name": "copy-explicit-null",
+      "root": "Café/記録",
+      "input": {
+        "name": "copy-explicit-null",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md",
+        "version": null
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md",
+        "version": null
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 428,
+        "message": "Read the source ETag and send it with If-Match"
+      },
+      "expectedStateSHA256": "971ffd057690c60d61ed3f8423df5393df57e3cb59be8aa58b1f1db184dd4871"
+    },
+    {
+      "name": "copy-wrong-version",
+      "root": "Café/記録",
+      "input": {
+        "name": "copy-wrong-version",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md",
+        "version": "wrong"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 412,
+        "message": "The source changed; read it again"
+      },
+      "expectedStateSHA256": "971ffd057690c60d61ed3f8423df5393df57e3cb59be8aa58b1f1db184dd4871"
+    },
+    {
+      "name": "move-file",
+      "root": "Café/記録",
+      "input": {
+        "name": "move-file",
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "Dest/moved.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "Dest/moved.md",
+        "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/one.md",
+          "destination": "Dest/moved.md",
+          "replaced": false
+        }
+      },
+      "expectedStateSHA256": "48988ec11e9b8cd24232b87ed22c9141902d66aad24b90a03c4969b58d5c933e"
+    },
+    {
+      "name": "move-folder",
+      "root": "Café/記録",
+      "input": {
+        "name": "move-folder",
+        "op": "move",
+        "path": "Notes/Folder",
+        "destination": "Dest/Moved",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "move",
+        "path": "Notes/Folder",
+        "destination": "Dest/Moved",
+        "version": "a3d763d4d0ed487658a3b8904079c4703fef0f3a58dc2d14d07731ddc7b3c870"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/Folder",
+          "destination": "Dest/Moved",
+          "replaced": false
+        }
+      },
+      "expectedStateSHA256": "19efbf5ca0139c703d6ed8be7620d1e2cdce03bc12e9fbefb7e4140eb95754b6"
+    },
+    {
+      "name": "copy-folder",
+      "root": "Café/記録",
+      "input": {
+        "name": "copy-folder",
+        "op": "copy",
+        "path": "Notes/Folder",
+        "destination": "Dest/Copied"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/Folder",
+        "destination": "Dest/Copied"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/Folder",
+          "destination": "Dest/Copied",
+          "replaced": false
+        }
+      },
+      "expectedStateSHA256": "255185b9f1421311b0e712bcc1a91eff9474a93c257fc9c23875a2a8ec97aed6"
+    },
+    {
+      "name": "copy-empty-directory",
+      "root": "Café/記録",
+      "input": {
+        "name": "copy-empty-directory",
+        "op": "copy",
+        "path": "Notes/Empty",
+        "destination": "Dest/Empty"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/Empty",
+        "destination": "Dest/Empty"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/Empty",
+          "destination": "Dest/Empty",
+          "replaced": false
+        }
+      },
+      "expectedStateSHA256": "c47515d6c570febea9af688dbac7f8398ae0fe5145c0326e8ece95272fa064b6"
+    },
+    {
+      "name": "delete-file",
+      "root": "Café/記録",
+      "input": {
+        "name": "delete-file",
+        "op": "delete",
+        "path": "Notes/one.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Notes/one.md",
+        "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "deleted": "Notes/one.md",
+          "trash": [
+            "07fd67f2-b400-552a-a038-ed620e3657c0"
+          ]
+        }
+      },
+      "expectedStateSHA256": "b7359699af419c859ae3561495b0b9f05ae413c4de4141655e185a9563fd272e"
+    },
+    {
+      "name": "delete-folder",
+      "root": "Café/記録",
+      "input": {
+        "name": "delete-folder",
+        "op": "delete",
+        "path": "Notes/Folder",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Notes/Folder",
+        "version": "a3d763d4d0ed487658a3b8904079c4703fef0f3a58dc2d14d07731ddc7b3c870"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "deleted": "Notes/Folder",
+          "trash": [
+            "1eded994-2edd-5fda-b568-fefad2f9a21c",
+            "bdf2ff98-b30b-5f40-8553-40a457f194a3"
+          ]
+        }
+      },
+      "expectedStateSHA256": "e0471cc870dd563744bb08b6bdbb90f9c9e70cba347741a055ee55a41669cc6a"
+    },
+    {
+      "name": "delete-empty-directory",
+      "root": "Café/記録",
+      "input": {
+        "name": "delete-empty-directory",
+        "op": "delete",
+        "path": "Notes/Empty",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Notes/Empty",
+        "version": "255cfbbbea5e668130b8364124afa7b1f48159fb4a2bf7dcf2efa368d7931cd4"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "deleted": "Notes/Empty",
+          "trash": []
+        }
+      },
+      "expectedStateSHA256": "30457a7f258f89dc4408625b16591d1d667c834b465a5708348865691617417a"
+    },
+    {
+      "name": "preserve-file",
+      "root": "Café/記録",
+      "input": {
+        "name": "preserve-file",
+        "op": "preserve",
+        "path": "Notes/one.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "preserve",
+        "path": "Notes/one.md",
+        "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/one.md",
+          "trash": "31234567-89ab-4cde-8fab-0123456789ab"
+        }
+      },
+      "expectedStateSHA256": "dc074d66814baeb4fdab96b4c7f48fc9bfd4a103b1ba521730dc10956e140afd"
+    },
+    {
+      "name": "preserve-protected",
+      "root": "Café/記録",
+      "input": {
+        "name": "preserve-protected",
+        "op": "preserve",
+        "path": "Entries/capture.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "preserve",
+        "path": "Entries/capture.md",
+        "version": "6da5888ad705a98fbbdcb856380ccfd1de6d6b8be4fb086b519c1b57cb75552a"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 428,
+        "message": "Diary capture files, month files, the index and AI Memory need If-Match to be replaced"
+      },
+      "expectedStateSHA256": "971ffd057690c60d61ed3f8423df5393df57e3cb59be8aa58b1f1db184dd4871"
+    },
+    {
+      "name": "delete-protected",
+      "root": "Café/記録",
+      "input": {
+        "name": "delete-protected",
+        "op": "delete",
+        "path": "Entries/capture.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Entries/capture.md",
+        "version": "6da5888ad705a98fbbdcb856380ccfd1de6d6b8be4fb086b519c1b57cb75552a"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 403,
+        "message": "Diary capture files, month files, the index and AI Memory are protected"
+      },
+      "expectedStateSHA256": "971ffd057690c60d61ed3f8423df5393df57e3cb59be8aa58b1f1db184dd4871"
+    },
+    {
+      "name": "copy-to-protected",
+      "root": "Café/記録",
+      "input": {
+        "name": "copy-to-protected",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "AI Memory/new.md"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "AI Memory/new.md"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 403,
+        "message": "Diary capture files, month files, the index and AI Memory are protected"
+      },
+      "expectedStateSHA256": "971ffd057690c60d61ed3f8423df5393df57e3cb59be8aa58b1f1db184dd4871"
+    },
+    {
+      "name": "move-to-protected",
+      "root": "Café/記録",
+      "input": {
+        "name": "move-to-protected",
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "AI Memory/new.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "AI Memory/new.md",
+        "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 403,
+        "message": "Diary capture files, month files, the index and AI Memory are protected"
+      },
+      "expectedStateSHA256": "971ffd057690c60d61ed3f8423df5393df57e3cb59be8aa58b1f1db184dd4871"
+    },
+    {
+      "name": "copy-self",
+      "root": "Café/記録",
+      "input": {
+        "name": "copy-self",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/one.md"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/one.md"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 403,
+        "message": "A folder cannot be moved or copied into itself"
+      },
+      "expectedStateSHA256": "971ffd057690c60d61ed3f8423df5393df57e3cb59be8aa58b1f1db184dd4871"
+    },
+    {
+      "name": "copy-non-markdown-destination",
+      "root": "Café/記録",
+      "input": {
+        "name": "copy-non-markdown-destination",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/file.txt"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/file.txt"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 403,
+        "message": "Only Markdown file names are allowed"
+      },
+      "expectedStateSHA256": "971ffd057690c60d61ed3f8423df5393df57e3cb59be8aa58b1f1db184dd4871"
+    },
+    {
+      "name": "move-missing-parent",
+      "root": "Café/記録",
+      "input": {
+        "name": "move-missing-parent",
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "Missing/file.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "Missing/file.md",
+        "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 409,
+        "message": "Destination folder does not exist"
+      },
+      "expectedStateSHA256": "971ffd057690c60d61ed3f8423df5393df57e3cb59be8aa58b1f1db184dd4871"
+    },
+    {
+      "name": "copy-existing-without-overwrite",
+      "root": "Café/記録",
+      "input": {
+        "name": "copy-existing-without-overwrite",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/existing.md"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/existing.md"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 412,
+        "message": "Destination exists; send Overwrite: T with its ETag to replace it"
+      },
+      "expectedStateSHA256": "971ffd057690c60d61ed3f8423df5393df57e3cb59be8aa58b1f1db184dd4871"
+    },
+    {
+      "name": "copy-overwrite-file",
+      "root": "Café/記録",
+      "input": {
+        "name": "copy-overwrite-file",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/existing.md",
+        "overwrite": true,
+        "destinationVersion": "$destination"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/existing.md",
+        "overwrite": true,
+        "destinationVersion": "0ab742ff1fe543eae35da567ea70d8e91912989e4d42ee1fbe0100c9802b189f"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/one.md",
+          "destination": "Notes/existing.md",
+          "replaced": true
+        }
+      },
+      "expectedStateSHA256": "da36fe402799b59762699b1965d231e7c9eda4db9692e7756919589aa08e3a80"
+    },
+    {
+      "name": "copy-overwrite-wrong-destination",
+      "root": "Café/記録",
+      "input": {
+        "name": "copy-overwrite-wrong-destination",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/existing.md",
+        "overwrite": true,
+        "destinationVersion": "wrong"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Notes/existing.md",
+        "overwrite": true,
+        "destinationVersion": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 412,
+        "message": "The destination changed; read it again"
+      },
+      "expectedStateSHA256": "971ffd057690c60d61ed3f8423df5393df57e3cb59be8aa58b1f1db184dd4871"
+    },
+    {
+      "name": "copy-overwrite-folder",
+      "root": "Café/記録",
+      "input": {
+        "name": "copy-overwrite-folder",
+        "op": "copy",
+        "path": "Notes/Folder",
+        "destination": "Notes/Empty",
+        "overwrite": true,
+        "destinationVersion": "$destination"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/Folder",
+        "destination": "Notes/Empty",
+        "overwrite": true,
+        "destinationVersion": "255cfbbbea5e668130b8364124afa7b1f48159fb4a2bf7dcf2efa368d7931cd4"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 409,
+        "message": "Replacing folders is not supported; delete the destination first"
+      },
+      "expectedStateSHA256": "971ffd057690c60d61ed3f8423df5393df57e3cb59be8aa58b1f1db184dd4871"
+    },
+    {
+      "name": "delete-missing",
+      "root": "Café/記録",
+      "input": {
+        "name": "delete-missing",
+        "op": "delete",
+        "path": "Notes/missing.md",
+        "version": "wrong"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Notes/missing.md",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 404,
+        "message": "File or folder not found"
+      },
+      "expectedStateSHA256": "971ffd057690c60d61ed3f8423df5393df57e3cb59be8aa58b1f1db184dd4871"
+    },
+    {
+      "name": "delete-folder-with-hidden-type",
+      "root": "Café/記録",
+      "input": {
+        "name": "delete-folder-with-hidden-type",
+        "op": "delete",
+        "path": "Notes/Folder",
+        "version": "$source",
+        "profile": "nonmarkdown"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Notes/Folder",
+        "version": "5c021c09d56eb9a9372ef11ca01e31856984b4658194841e2fa7959262f2422b"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 409,
+        "message": "The folder holds files this endpoint cannot show; remove it in the app"
+      },
+      "expectedStateSHA256": "c6f033bb49df6603d1c75a54da5155ab8d0ca5db365cef9cd277c0d100589528"
+    },
+    {
+      "name": "delete-folder-bound",
+      "root": "Café/記録",
+      "input": {
+        "name": "delete-folder-bound",
+        "op": "delete",
+        "path": "Wide",
+        "version": "$source",
+        "profile": "wide"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Wide",
+        "version": "ed8f4a2af929149fc6c44deb676d07bc9526de3223e03bb6aae56b3bbf3a3c29"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 507,
+        "message": "Folder operations are limited to 500 entries and 50 MiB"
+      },
+      "expectedStateSHA256": "96bfccbace45f8f958e692fd239cada5cea83031581877617285df8bf5b3274c"
+    },
+    {
+      "name": "copy-large-generation",
+      "root": "Café/記録",
+      "input": {
+        "name": "copy-large-generation",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md",
+        "generation": "9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/copied.md"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/one.md",
+          "destination": "Dest/copied.md",
+          "replaced": false
+        }
+      },
+      "expectedStateSHA256": "acb923ec79d7df35ef0d6e72833d92890cd44a4af60f3d7485311323b92731bc"
+    },
+    {
+      "name": "trash-file",
+      "root": "Café/記録",
+      "input": {
+        "name": "trash-file",
+        "op": "trash",
+        "path": "Notes/one.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "trash",
+        "path": "Notes/one.md",
+        "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "id": "31234567-89ab-4cde-8fab-0123456789ab",
+          "path": "Notes/one.md",
+          "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939",
+          "state": "trashed",
+          "trashedAt": 1700000000.0,
+          "alreadyApplied": false
+        }
+      },
+      "expectedStateSHA256": "94abd45a1b1e5d712bc2a81bbc7f60c158b4210a098c78db5e91a6576a2985a6"
+    },
+    {
+      "name": "trash-already-applied",
+      "root": "Café/記録",
+      "input": {
+        "name": "trash-already-applied",
+        "op": "trash",
+        "path": "Notes/one.md",
+        "version": "$original",
+        "prepare": "trashed"
+      },
+      "sourceBody": {
+        "op": "trash",
+        "path": "Notes/one.md",
+        "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939"
+      },
+      "seedCapsule": "{\"data\": \"c3ludGhldGljIG5vdGU=\", \"format\": \"noevia-trash-v1\", \"id\": \"31234567-89ab-4cde-8fab-0123456789ab\", \"path\": \"Notes/one.md\", \"state\": \"trashed\", \"trashedAt\": 1699999990.0, \"version\": \"4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939\"}",
+      "expected": {
+        "status": 200,
+        "body": {
+          "id": "31234567-89ab-4cde-8fab-0123456789ab",
+          "path": "Notes/one.md",
+          "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939",
+          "state": "trashed",
+          "trashedAt": 1699999990.0,
+          "alreadyApplied": true
+        }
+      },
+      "expectedStateSHA256": "bf8e7fb1b9ce237488ad269425c401585d7488ab1d9e18d77a922b507b5f7e89"
+    },
+    {
+      "name": "trash-id-version-mismatch",
+      "root": "Café/記録",
+      "input": {
+        "name": "trash-id-version-mismatch",
+        "op": "trash",
+        "path": "Notes/one.md",
+        "version": "wrong",
+        "prepare": "trashed"
+      },
+      "sourceBody": {
+        "op": "trash",
+        "path": "Notes/one.md",
+        "version": "wrong"
+      },
+      "seedCapsule": "{\"data\": \"c3ludGhldGljIG5vdGU=\", \"format\": \"noevia-trash-v1\", \"id\": \"31234567-89ab-4cde-8fab-0123456789ab\", \"path\": \"Notes/one.md\", \"state\": \"trashed\", \"trashedAt\": 1699999990.0, \"version\": \"4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939\"}",
+      "expected": {
+        "status": 409,
+        "message": "Operation ID was already used for a different file version"
+      },
+      "expectedStateSHA256": "bf8e7fb1b9ce237488ad269425c401585d7488ab1d9e18d77a922b507b5f7e89"
+    },
+    {
+      "name": "trash-protected",
+      "root": "Café/記録",
+      "input": {
+        "name": "trash-protected",
+        "op": "trash",
+        "path": "Entries/capture.md",
+        "version": "$source"
+      },
+      "sourceBody": {
+        "op": "trash",
+        "path": "Entries/capture.md",
+        "version": "6da5888ad705a98fbbdcb856380ccfd1de6d6b8be4fb086b519c1b57cb75552a"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 409,
+        "message": "Diary capture files, month files, the index and AI Memory cannot be moved to Trash"
+      },
+      "expectedStateSHA256": "971ffd057690c60d61ed3f8423df5393df57e3cb59be8aa58b1f1db184dd4871"
+    },
+    {
+      "name": "restore-file",
+      "root": "Café/記録",
+      "input": {
+        "name": "restore-file",
+        "op": "restore",
+        "prepare": "trashed"
+      },
+      "sourceBody": {
+        "op": "restore"
+      },
+      "seedCapsule": "{\"data\": \"c3ludGhldGljIG5vdGU=\", \"format\": \"noevia-trash-v1\", \"id\": \"31234567-89ab-4cde-8fab-0123456789ab\", \"path\": \"Notes/one.md\", \"state\": \"trashed\", \"trashedAt\": 1699999990.0, \"version\": \"4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939\"}",
+      "expected": {
+        "status": 200,
+        "body": {
+          "id": "31234567-89ab-4cde-8fab-0123456789ab",
+          "path": "Notes/one.md",
+          "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939",
+          "state": "restored",
+          "trashedAt": 1699999990.0,
+          "alreadyApplied": false
+        }
+      },
+      "expectedStateSHA256": "661bf63259a47af67f4da24bfec64244f53b1d6b70950731a31896895bc2639d"
+    },
+    {
+      "name": "restore-already-restored",
+      "root": "Café/記録",
+      "input": {
+        "name": "restore-already-restored",
+        "op": "restore",
+        "prepare": "restored"
+      },
+      "sourceBody": {
+        "op": "restore"
+      },
+      "seedCapsule": "{\"data\": \"c3ludGhldGljIG5vdGU=\", \"format\": \"noevia-trash-v1\", \"id\": \"31234567-89ab-4cde-8fab-0123456789ab\", \"path\": \"Notes/one.md\", \"restoredAt\": 1699999999.0, \"state\": \"restored\", \"trashedAt\": 1699999990.0, \"version\": \"4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939\"}",
+      "expected": {
+        "status": 200,
+        "body": {
+          "id": "31234567-89ab-4cde-8fab-0123456789ab",
+          "path": "Notes/one.md",
+          "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939",
+          "state": "restored",
+          "trashedAt": 1699999990.0,
+          "alreadyApplied": true
+        }
+      },
+      "expectedStateSHA256": "087f24959d2baa1ac51b9542aa9d33675f819a9a6a4824abf52717d485f0ac21"
+    },
+    {
+      "name": "restore-occupied",
+      "root": "Café/記録",
+      "input": {
+        "name": "restore-occupied",
+        "op": "restore",
+        "prepare": "occupied"
+      },
+      "sourceBody": {
+        "op": "restore"
+      },
+      "seedCapsule": "{\"data\": \"c3ludGhldGljIG5vdGU=\", \"format\": \"noevia-trash-v1\", \"id\": \"31234567-89ab-4cde-8fab-0123456789ab\", \"path\": \"Notes/one.md\", \"state\": \"trashed\", \"trashedAt\": 1699999990.0, \"version\": \"4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939\"}",
+      "expected": {
+        "status": 409,
+        "message": "The original path is occupied. Restore never overwrites existing data."
+      },
+      "expectedStateSHA256": "b7ca2a335ae66af27f7fa31abe3566e051db07126936224334c6a25cf44ad88c"
+    },
+    {
+      "name": "trash-list",
+      "root": "Café/記録",
+      "input": {
+        "name": "trash-list",
+        "op": "trashList",
+        "prepare": "trashed"
+      },
+      "sourceBody": {
+        "op": "trashList"
+      },
+      "seedCapsule": "{\"data\": \"c3ludGhldGljIG5vdGU=\", \"format\": \"noevia-trash-v1\", \"id\": \"31234567-89ab-4cde-8fab-0123456789ab\", \"path\": \"Notes/one.md\", \"state\": \"trashed\", \"trashedAt\": 1699999990.0, \"version\": \"4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939\"}",
+      "expected": {
+        "status": 200,
+        "body": {
+          "records": [
+            {
+              "id": "31234567-89ab-4cde-8fab-0123456789ab",
+              "path": "Notes/one.md",
+              "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939",
+              "state": "trashed",
+              "trashedAt": 1699999990.0
+            }
+          ],
+          "next": null
+        }
+      },
+      "expectedStateSHA256": "bf8e7fb1b9ce237488ad269425c401585d7488ab1d9e18d77a922b507b5f7e89"
+    },
+    {
+      "name": "preserve-oversized-capsule",
+      "root": "Café/記録",
+      "input": {
+        "name": "preserve-oversized-capsule",
+        "op": "preserve",
+        "path": "Notes/one.md",
+        "version": "$source",
+        "profile": "large"
+      },
+      "sourceBody": {
+        "op": "preserve",
+        "path": "Notes/one.md",
+        "version": "84079794567a4362a19cbd5d771303b130580e18aa40f80e23c3c4432a6fa558"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 403,
+        "message": "Capture records or files over 512 KiB cannot be moved to Trash"
+      },
+      "expectedStateSHA256": "86206fb06d567561300125db714a33401c5963134282939f1a8b08f9051379d8"
+    },
+    {
+      "name": "copy-missing-to-protected",
+      "root": "Café/記録",
+      "input": {
+        "name": "copy-missing-to-protected",
+        "op": "copy",
+        "path": "Notes/missing.md",
+        "destination": "AI Memory/new.md"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/missing.md",
+        "destination": "AI Memory/new.md"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 404,
+        "message": "File or folder not found"
+      },
+      "expectedStateSHA256": "971ffd057690c60d61ed3f8423df5393df57e3cb59be8aa58b1f1db184dd4871"
+    },
+    {
+      "name": "delete-missing-protected",
+      "root": "Café/記録",
+      "input": {
+        "name": "delete-missing-protected",
+        "op": "delete",
+        "path": "Entries/missing.md",
+        "version": "wrong"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Entries/missing.md",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 404,
+        "message": "File or folder not found"
+      },
+      "expectedStateSHA256": "971ffd057690c60d61ed3f8423df5393df57e3cb59be8aa58b1f1db184dd4871"
+    },
+    {
+      "name": "copy-wide-wrong-version",
+      "root": "Café/記録",
+      "input": {
+        "name": "copy-wide-wrong-version",
+        "op": "copy",
+        "path": "Wide",
+        "destination": "Dest/Wide",
+        "version": "wrong",
+        "profile": "wide"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Wide",
+        "destination": "Dest/Wide",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 412,
+        "message": "The source changed; read it again"
+      },
+      "expectedStateSHA256": "96bfccbace45f8f958e692fd239cada5cea83031581877617285df8bf5b3274c"
+    },
+    {
+      "name": "delete-wide-without-version",
+      "root": "Café/記録",
+      "input": {
+        "name": "delete-wide-without-version",
+        "op": "delete",
+        "path": "Wide",
+        "profile": "wide"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Wide"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 428,
+        "message": "Read the source ETag and send it with If-Match"
+      },
+      "expectedStateSHA256": "96bfccbace45f8f958e692fd239cada5cea83031581877617285df8bf5b3274c"
+    },
+    {
+      "name": "delete-wide-wrong-version",
+      "root": "Café/記録",
+      "input": {
+        "name": "delete-wide-wrong-version",
+        "op": "delete",
+        "path": "Wide",
+        "version": "wrong",
+        "profile": "wide"
+      },
+      "sourceBody": {
+        "op": "delete",
+        "path": "Wide",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 412,
+        "message": "The source changed; read it again"
+      },
+      "expectedStateSHA256": "96bfccbace45f8f958e692fd239cada5cea83031581877617285df8bf5b3274c"
+    },
+    {
+      "name": "copy-null-with-nonmarkdown-destination",
+      "root": "Café/記録",
+      "input": {
+        "name": "copy-null-with-nonmarkdown-destination",
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/file.txt",
+        "version": null
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/one.md",
+        "destination": "Dest/file.txt",
+        "version": null
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 428,
+        "message": "Read the source ETag and send it with If-Match"
+      },
+      "expectedStateSHA256": "971ffd057690c60d61ed3f8423df5393df57e3cb59be8aa58b1f1db184dd4871"
+    },
+    {
+      "name": "move-wrong-version-missing-parent",
+      "root": "Café/記録",
+      "input": {
+        "name": "move-wrong-version-missing-parent",
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "Missing/file.md",
+        "version": "wrong"
+      },
+      "sourceBody": {
+        "op": "move",
+        "path": "Notes/one.md",
+        "destination": "Missing/file.md",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 412,
+        "message": "The source changed; read it again"
+      },
+      "expectedStateSHA256": "971ffd057690c60d61ed3f8423df5393df57e3cb59be8aa58b1f1db184dd4871"
+    },
+    {
+      "name": "preserve-missing-protected",
+      "root": "Café/記録",
+      "input": {
+        "name": "preserve-missing-protected",
+        "op": "preserve",
+        "path": "Entries/missing.md",
+        "version": "wrong"
+      },
+      "sourceBody": {
+        "op": "preserve",
+        "path": "Entries/missing.md",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 404,
+        "message": "File not found"
+      },
+      "expectedStateSHA256": "971ffd057690c60d61ed3f8423df5393df57e3cb59be8aa58b1f1db184dd4871"
+    },
+    {
+      "name": "move-protected-wrong-version",
+      "root": "Café/記録",
+      "input": {
+        "name": "move-protected-wrong-version",
+        "op": "move",
+        "path": "Entries/capture.md",
+        "destination": "Dest/capture.md",
+        "version": "wrong"
+      },
+      "sourceBody": {
+        "op": "move",
+        "path": "Entries/capture.md",
+        "destination": "Dest/capture.md",
+        "version": "wrong"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 403,
+        "message": "Diary capture files, month files, the index and AI Memory are protected"
+      },
+      "expectedStateSHA256": "971ffd057690c60d61ed3f8423df5393df57e3cb59be8aa58b1f1db184dd4871"
+    },
+    {
+      "name": "copy-folder-nonmarkdown-child",
+      "root": "Café/記録",
+      "input": {
+        "name": "copy-folder-nonmarkdown-child",
+        "op": "copy",
+        "path": "Notes/Folder",
+        "destination": "Dest/Folder",
+        "profile": "nonmarkdown"
+      },
+      "sourceBody": {
+        "op": "copy",
+        "path": "Notes/Folder",
+        "destination": "Dest/Folder"
+      },
+      "seedCapsule": null,
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/Folder",
+          "destination": "Dest/Folder",
+          "replaced": false
+        }
+      },
+      "expectedStateSHA256": "5aa0c2411f7828525faec53a10f9fe725ca2efa3a1977981fce03137457032be"
+    }
+  ]
+}

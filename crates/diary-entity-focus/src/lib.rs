@@ -30,6 +30,31 @@ pub const MAX_NEAR_SPELLINGS: usize = 3;
 pub const DEFAULT_MARGIN: f64 = 0.05;
 pub const EPSILON: f64 = 1e-9;
 
+/// Bounded CPython 3.12 / Unicode 15 lowercase, including contextual final sigma.
+/// Shared with metadata ordering; static tables only, no host Unicode or I/O.
+pub fn python_lower(value: &str) -> Result<String, Error> {
+    if value.len() > MAX_QUERY_BYTES {
+        return Err(Error::Capacity);
+    }
+    Ok(lexical::py_lower(value))
+}
+
+#[cfg(test)]
+mod public_lower {
+    use super::*;
+    #[test]
+    fn shared_lower_preserves_pinned_unassigned_context_and_input_bounds() -> Result<(), Error> {
+        assert_eq!(python_lower("\u{a7cb}")?, "\u{a7cb}");
+        assert_eq!(python_lower("AΣ\u{1c89}")?, "aς\u{1c89}");
+        assert_eq!(python_lower("İ")?, "i\u{307}");
+        assert_eq!(
+            python_lower(&"x".repeat(MAX_QUERY_BYTES + 1)),
+            Err(Error::Capacity)
+        );
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
     Capacity,
