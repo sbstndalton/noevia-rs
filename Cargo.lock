@@ -631,6 +631,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "diary-entity-focus"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "diary-index-transform"
 version = "0.1.0"
 dependencies = [
