@@ -306,9 +306,6 @@ impl Book {
     pub fn active(&self, s: &Scope) -> bool {
         self.records.get(s).is_some_and(|r| r.retired.is_none())
     }
-    pub fn issued_at(&self, s: &Scope) -> Result<u64, Error> {
-        self.records.get(s).map(|r| r.iat).ok_or(Error::Unavailable)
-    }
     pub fn exp(&self, s: &Scope) -> Result<u64, Error> {
         self.records.get(s).map(|r| r.exp).ok_or(Error::Unavailable)
     }

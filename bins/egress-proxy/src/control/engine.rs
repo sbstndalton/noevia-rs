@@ -562,7 +562,7 @@ impl Engine {
                     let drained = !st.operations.values().any(|o| o.scope == scope);
                     return Ok((409, barrier_response(auth, &scope, drained)));
                 }
-                if st.ledger.admit(&revoke, wall()?).is_err() {
+                if st.leases.active(&scope) && st.ledger.admit(&revoke, wall()?).is_err() {
                     retire(&mut st);
                     return Ok((503, terminal(auth, "unavailable")));
                 }
@@ -664,23 +664,17 @@ fn owned(st: &mut State, auth: &Authenticated) -> Result<Scope, Error> {
         .verify_token(token.as_bytes(), wall()?)
         .map_err(|_| Error::Authentication)?;
     let owner = session.ownership_verifier();
+    let blocked = st.ledger.classify_grant(&claims, wall()?).is_err();
     if let Err(e) = st.leases.remember(&scope, &claims, token, owner) {
         if e == super::leases::Error::Capacity {
             retire(st);
         }
         return Err(Error::Unavailable);
     }
-    if let Some(other) = st.current_leases.get(&scope.task).cloned() {
-        if other != scope {
-            let current_iat = st
-                .leases
-                .issued_at(&other)
-                .map_err(|_| Error::Unavailable)?;
-            if (claims.iat, claims.nonce.as_str()) < (current_iat, other.nonce.as_str()) {
-                let _ = st.leases.retire(&scope, Retirement::Interrupted);
-                finalize_scope(st, &scope);
-            }
-        }
+    if blocked {
+        let _ = st.leases.retire(&scope, Retirement::Interrupted);
+        cancel_scope(st, &scope);
+        finalize_scope(st, &scope);
     }
     Ok(scope)
 }
@@ -1673,6 +1667,117 @@ mod scoped_tests {
         assert_eq!(e.execute(req).await?.status(), 503);
         assert!(!op.is_cancelled());
         op.recheck()?;
+        Ok(())
+    }
+    fn take_away_at(
+        f: &FileKey,
+        r: &Ready,
+        token: &str,
+        g: &egress::SignedGrant,
+        id: u64,
+        iat: u64,
+    ) -> Result<Request<Vec<u8>>, Box<dyn std::error::Error>> {
+        let signed = egress::SignedGrant {
+            act: Act::Revoke,
+            task: g.task.clone(),
+            hosts: vec![],
+            iat,
+            exp: iat + 60_000,
+            idle: 1,
+            nonce: egress::b64url_encode(&id.to_be_bytes().repeat(2)),
+        };
+        request(
+            f,
+            Route::Revoke,
+            id,
+            Some(&r.boot_id),
+            json!({"version":1,"sessionId":r.session_id,"taskId":g.task,"leaseNonce":g.nonce,"grantIssuedAt":g.iat,"signedGrant":token,"signedRevoke":minted(f,r,&signed)?}),
+        )
+    }
+    #[tokio::test]
+    async fn retired_predecessor_cleanup_cannot_revoke_a_proven_unused_successor(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        for variant in ["revoked", "forgotten", "idle"] {
+            let (e, _, f) = setup()?;
+            let r = start(&e, &f).await?;
+            let token = grant(&f, &r, NONCE)?;
+            let a = claims(&f, &r, &token)?;
+            let op = e.operation(token.as_bytes(), &a.task, &a.nonce)?;
+            if variant == "idle" {
+                e.retire_grant(&r.session_id, &a.task, &a.nonce)?;
+                drop(op);
+            } else {
+                drop(op);
+                let first = e
+                    .execute(take_away_at(&f, &r, &token, &a, 20, a.iat + 100)?)
+                    .await?;
+                assert_eq!(first.status(), 200);
+                if variant == "forgotten" {
+                    let id = snapshot_id(&first)?;
+                    assert_eq!(forget(&e, &f, &r, &a, 21, &id).await?.status(), 200);
+                }
+            }
+            let mut b = a.clone();
+            b.iat = a.iat + 200;
+            b.exp = b.iat + 60_000;
+            b.nonce = NEXT_NONCE.into();
+            let bt = minted(&f, &r, &b)?;
+            let unused = e.execute(control(&f, &r, &bt, &b, 22, false)?).await?;
+            assert_eq!(unused.status(), 200);
+            let value: Value = serde_json::from_slice(unused.body())?;
+            assert_eq!(value.pointer("/snapshot/final"), Some(&json!(false)));
+            let duplicate = e
+                .execute(take_away_at(&f, &r, &token, &a, 23, a.iat + 300)?)
+                .await?;
+            assert_eq!(duplicate.status(), 200);
+            let successor = e.operation(bt.as_bytes(), &b.task, &b.nonce)?;
+            successor.recheck()?;
+        }
+        Ok(())
+    }
+    #[tokio::test]
+    async fn first_seen_between_grant_and_revoke_watermark_is_final_interrupted_without_admission(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        for with_data in [false, true] {
+            let (e, _, f) = setup()?;
+            let r = start(&e, &f).await?;
+            let token = grant(&f, &r, NONCE)?;
+            let a = claims(&f, &r, &token)?;
+            if with_data {
+                drop(e.operation(token.as_bytes(), &a.task, &a.nonce)?);
+            }
+            assert_eq!(
+                e.execute(take_away_at(&f, &r, &token, &a, 20, a.iat + 100)?)
+                    .await?
+                    .status(),
+                200
+            );
+            let mut b = a.clone();
+            b.iat = a.iat + 50;
+            b.exp = b.iat + 60_000;
+            b.nonce = NEXT_NONCE.into();
+            let bt = minted(&f, &r, &b)?;
+            let reply = e.execute(control(&f, &r, &bt, &b, 21, false)?).await?;
+            assert_eq!(reply.status(), 200);
+            let v: Value = serde_json::from_slice(reply.body())?;
+            assert_eq!(v.pointer("/snapshot/final"), Some(&json!(true)));
+            assert_eq!(v.pointer("/snapshot/state"), Some(&json!("interrupted")));
+            assert_eq!(v.get("barrierInstalled"), Some(&json!(true)));
+            assert!(!e
+                .inner
+                .state
+                .lock()
+                .map_err(|_| Error::State)?
+                .current_leases
+                .values()
+                .any(|s| s.nonce == b.nonce));
+            let mut c = a.clone();
+            c.iat = a.iat + 200;
+            c.exp = c.iat + 60_000;
+            c.nonce = "CAECAwQFBgcICQoLDA0ODw".into();
+            let ct = minted(&f, &r, &c)?;
+            e.operation(ct.as_bytes(), &c.task, &c.nonce)?.recheck()?;
+        }
         Ok(())
     }
 }
