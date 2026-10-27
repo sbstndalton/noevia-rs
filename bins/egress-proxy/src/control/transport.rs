@@ -1,6 +1,6 @@
 //! Live socket adapter to the existing authenticated controller. No production
-//! listener or CLI enables it yet. The eventual single-port dispatcher must
-//! reserve this control budget independently of established data operations.
+//! CLI selects it yet. The native single-port dispatcher reserves this control
+//! budget independently of established data operations.
 use super::{engine::Engine, http};
 use bytes::Bytes;
 use egress::control::{Route, MAX_REQUEST_BYTES};
@@ -53,30 +53,40 @@ impl Transport {
                 Ok(Ok(h)) => h,
                 _ => return,
             };
-            if validate_head(&head).is_err() {
-                return;
-            }
-            let io = PrefixIo {
-                prefix: std::io::Cursor::new(head),
-                stream,
-            };
-            let service = hyper::service::service_fn(move |req| {
-                let engine = engine.clone();
-                async move { Ok::<_, Infallible>(handle(engine, req).await) }
-            });
-            let mut builder = hyper::server::conn::http1::Builder::new();
-            builder
-                .timer(TokioTimer::new())
-                .header_read_timeout(HEAD_TIMEOUT)
-                .max_buf_size(http::MAX_HEADER_BYTES)
-                .max_headers(http::MAX_HEADERS)
-                .keep_alive(false);
-            let _ = builder.serve_connection(TokioIo::new(io), service).await;
+            Self::serve_head(engine, stream, head).await;
         };
         let _ = tokio::time::timeout(CONNECTION_TIMEOUT, run).await;
     }
+    pub(crate) async fn connection_head(&self, stream: TcpStream, head: Vec<u8>) {
+        let Ok(_permit) = self.slots.clone().try_acquire_owned() else {
+            return;
+        };
+        let _ = tokio::time::timeout(
+            CONNECTION_TIMEOUT,
+            Self::serve_head(self.engine.clone(), stream, head),
+        )
+        .await;
+    }
+    async fn serve_head(engine: Arc<Engine>, stream: TcpStream, head: Vec<u8>) {
+        if head.len() > http::MAX_HEADER_BYTES || validate_head(&head).is_err() {
+            return;
+        }
+        let io = PrefixIo::new(head, stream);
+        let service = hyper::service::service_fn(move |req| {
+            let engine = engine.clone();
+            async move { Ok::<_, Infallible>(handle(engine, req).await) }
+        });
+        let mut builder = hyper::server::conn::http1::Builder::new();
+        builder
+            .timer(TokioTimer::new())
+            .header_read_timeout(HEAD_TIMEOUT)
+            .max_buf_size(http::MAX_HEADER_BYTES)
+            .max_headers(http::MAX_HEADERS)
+            .keep_alive(false);
+        let _ = builder.serve_connection(TokioIo::new(io), service).await;
+    }
 }
-async fn read_head(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
+pub(crate) async fn read_head(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
     let mut head = Vec::with_capacity(1024);
     while head.len() < http::MAX_HEADER_BYTES {
         head.push(stream.read_u8().await?);
@@ -192,9 +202,17 @@ fn refusal(status: u16) -> Response<Full<Bytes>> {
     );
     r
 }
-struct PrefixIo {
+pub(crate) struct PrefixIo {
     prefix: std::io::Cursor<Vec<u8>>,
     stream: TcpStream,
+}
+impl PrefixIo {
+    pub(crate) fn new(head: Vec<u8>, stream: TcpStream) -> Self {
+        Self {
+            prefix: std::io::Cursor::new(head),
+            stream,
+        }
+    }
 }
 impl AsyncRead for PrefixIo {
     fn poll_read(

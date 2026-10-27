@@ -1,6 +1,6 @@
 //! Integrated buffered session, scoped take-away, ownership and report controller.
-//! Live transport, idle/policy forwarding integration and permission-safe key-file
-//! adapter remain held; no listener or production mode is enabled here.
+//! Native socket/data adapters use this authority. CLI/selected production mode,
+//! paired Core/assembly and runtime qualification remain held.
 use super::leases::{Book, Retirement, Scope};
 use super::{
     http::{self, Authenticated},
@@ -84,7 +84,7 @@ struct Inner {
 pub struct Engine {
     inner: Arc<Inner>,
 }
-/// Includes pending DNS/connect/forward work once the native transport adopts it.
+/// Owns native pending DNS/connect/forward/tunnel work, including actual resolver jobs.
 /// Drop means that work is actually finished/reaped, not just cancellation signaled.
 pub struct OperationGuard {
     inner: Weak<Inner>,
@@ -102,6 +102,9 @@ impl std::fmt::Debug for OperationGuard {
     }
 }
 impl OperationGuard {
+    pub(crate) fn subscribe(&self) -> watch::Receiver<bool> {
+        self.cancel.clone()
+    }
     pub fn is_cancelled(&self) -> bool {
         *self.cancel.borrow() || self.cancel.has_changed().is_err()
     }
@@ -129,12 +132,14 @@ impl OperationGuard {
         let result = check_addresses(&st.data_store, pending, addresses);
         if let Some(op) = st.operations.get(&self.id) {
             let scope = op.scope.clone();
-            st.leases.event(
-                &scope,
-                &pending.host,
-                result.is_ok(),
-                result.as_ref().err().map(|r| r.reason.as_str()),
-            );
+            if safe_report_host(&pending.host) {
+                st.leases.event(
+                    &scope,
+                    &pending.host,
+                    result.is_ok(),
+                    result.as_ref().err().map(|r| r.reason.as_str()),
+                );
+            }
         }
         result
     }
@@ -277,8 +282,8 @@ impl Engine {
             }),
         })
     }
-    /// Called by the existing native proxy maintenance loop once integrated; this
-    /// function creates no background worker. Admission also checks expiry itself.
+    /// Called by the native proxy maintenance loop. Creates no background worker;
+    /// admission and data-frame checks also enforce expiry themselves.
     pub fn maintenance(&self) -> Result<(), Error> {
         let mut st = self.inner.state.lock().map_err(|_| Error::State)?;
         let _key = current(&self.inner, &mut st)?;
@@ -381,7 +386,8 @@ impl Engine {
             }
             match result {
                 Ok(pending) => operation.data = Some(pending),
-                Err(r) => {
+                Err(mut r) => {
+                    r.host = r.host.filter(|h| safe_report_host(h));
                     if let Some(host) = &r.host {
                         st.leases.event(&scope, host, false, Some(&r.reason));
                     }
@@ -554,8 +560,8 @@ impl Engine {
             data: None,
         })
     }
-    /// Explicit native GrantStore idle/absolute retirement hook; actual store
-    /// wiring is still held. Never updates another lease's task watermark.
+    /// Explicit exact native grant retirement hook, shared with data-store scope
+    /// cancellation. Never updates another lease's task watermark.
     pub fn retire_grant(&self, session: &str, task: &str, nonce: &str) -> Result<(), Error> {
         let mut st = self.inner.state.lock().map_err(|_| Error::State)?;
         let scope = Scope {
@@ -970,6 +976,12 @@ fn ready_precondition(st: &mut State, auth: &Authenticated, file: &FileKey) -> b
                 && r.prior_session == st.session_id.as_deref()
         }
     }
+}
+fn safe_report_host(host: &str) -> bool {
+    host.len() <= 253
+        && !host.chars().any(|c| {
+            c.is_whitespace() || c.is_control() || matches!(c, '@' | '/' | '\\' | '?' | '#')
+        })
 }
 fn data_now(st: &State) -> Result<u64, Error> {
     u64::try_from(st.data_origin.elapsed().as_millis()).map_err(|_| Error::Clock)
