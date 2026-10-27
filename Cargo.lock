@@ -708,6 +708,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "diary-workspace-transaction"
+version = "0.1.0"
+dependencies = [
+ "diary-backup-format",
+ "diary-entity-focus",
+ "diary-workspace-rules",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

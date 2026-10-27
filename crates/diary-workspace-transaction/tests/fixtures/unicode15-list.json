@@ -1,0 +1,430 @@
+{
+  "python": "3.12.15",
+  "unicode": "15.0.0",
+  "pins": {
+    "managed_storage.py": "19e0cad75e79781dc1ef41dd3b00ffa375f4306f1ed00a9e3f6d50528a1e3f7b",
+    "workspace_ops.py": "038bceeac705cdce91f2eb7f464bf92a06fc9b6fa3bedd665d382530e63ac7dc",
+    "workspace_files.py": "243767a922b73d0308aab17dd41eca30beb5e1c50a1f70a40e940f027030ef07",
+    "corpus_store.py": "26ce8fc9a309b9400fa77d6ae3ed10043861d5a8317d6aa33e1f457e3fb03fc8",
+    "dedicated_storage.py": "f9d5fd3f25c28fa0c7db009245f9eea37fd8fa4d96a83da9c2dc5e2e416f8a67"
+  },
+  "cases": [
+    {
+      "name": "new-ramshorn",
+      "root": "Diary",
+      "files": [
+        "Ɤa.md",
+        "ɤz.md"
+      ],
+      "expected": [
+        {
+          "path": "Notes/ɤz.md",
+          "name": "ɤz.md",
+          "isDir": false,
+          "modified": 1.0
+        },
+        {
+          "path": "Notes/Ɤa.md",
+          "name": "Ɤa.md",
+          "isDir": false,
+          "modified": 1.0
+        }
+      ]
+    },
+    {
+      "name": "new-cyrillic",
+      "root": "Diary",
+      "files": [
+        "Ᲊz.md",
+        "ᲊa.md"
+      ],
+      "expected": [
+        {
+          "path": "Notes/Ᲊz.md",
+          "name": "Ᲊz.md",
+          "isDir": false,
+          "modified": 1.0
+        },
+        {
+          "path": "Notes/ᲊa.md",
+          "name": "ᲊa.md",
+          "isDir": false,
+          "modified": 1.0
+        }
+      ]
+    },
+    {
+      "name": "sigma-followed-new",
+      "root": "Diary",
+      "files": [
+        "AΣᲉa.md",
+        "AςᲉz.md"
+      ],
+      "expected": [
+        {
+          "path": "Notes/AΣᲉa.md",
+          "name": "AΣᲉa.md",
+          "isDir": false,
+          "modified": 1.0
+        },
+        {
+          "path": "Notes/AςᲉz.md",
+          "name": "AςᲉz.md",
+          "isDir": false,
+          "modified": 1.0
+        }
+      ]
+    },
+    {
+      "name": "sigma-after-new",
+      "root": "Diary",
+      "files": [
+        "ᲉΣ1.md",
+        "Ᲊσ0.md"
+      ],
+      "expected": [
+        {
+          "path": "Notes/Ᲊσ0.md",
+          "name": "Ᲊσ0.md",
+          "isDir": false,
+          "modified": 1.0
+        },
+        {
+          "path": "Notes/ᲉΣ1.md",
+          "name": "ᲉΣ1.md",
+          "isDir": false,
+          "modified": 1.0
+        }
+      ]
+    },
+    {
+      "name": "dotted-i",
+      "root": "Diary",
+      "files": [
+        "İz.md",
+        "İa.md"
+      ],
+      "expected": [
+        {
+          "path": "Notes/İa.md",
+          "name": "İa.md",
+          "isDir": false,
+          "modified": 1.0
+        },
+        {
+          "path": "Notes/İz.md",
+          "name": "İz.md",
+          "isDir": false,
+          "modified": 1.0
+        }
+      ]
+    },
+    {
+      "name": "ordinary",
+      "root": "Diary",
+      "files": [
+        "Zebra.md",
+        "apple.MD",
+        "ΣΟΣ.md"
+      ],
+      "expected": [
+        {
+          "path": "Notes/apple.MD",
+          "name": "apple.MD",
+          "isDir": false,
+          "modified": 1.0
+        },
+        {
+          "path": "Notes/Zebra.md",
+          "name": "Zebra.md",
+          "isDir": false,
+          "modified": 1.0
+        },
+        {
+          "path": "Notes/ΣΟΣ.md",
+          "name": "ΣΟΣ.md",
+          "isDir": false,
+          "modified": 1.0
+        }
+      ]
+    },
+    {
+      "name": "new-ramshorn",
+      "root": "",
+      "files": [
+        "Ɤa.md",
+        "ɤz.md"
+      ],
+      "expected": [
+        {
+          "path": "Notes/ɤz.md",
+          "name": "ɤz.md",
+          "isDir": false,
+          "modified": 1.0
+        },
+        {
+          "path": "Notes/Ɤa.md",
+          "name": "Ɤa.md",
+          "isDir": false,
+          "modified": 1.0
+        }
+      ]
+    },
+    {
+      "name": "new-cyrillic",
+      "root": "",
+      "files": [
+        "Ᲊz.md",
+        "ᲊa.md"
+      ],
+      "expected": [
+        {
+          "path": "Notes/Ᲊz.md",
+          "name": "Ᲊz.md",
+          "isDir": false,
+          "modified": 1.0
+        },
+        {
+          "path": "Notes/ᲊa.md",
+          "name": "ᲊa.md",
+          "isDir": false,
+          "modified": 1.0
+        }
+      ]
+    },
+    {
+      "name": "sigma-followed-new",
+      "root": "",
+      "files": [
+        "AΣᲉa.md",
+        "AςᲉz.md"
+      ],
+      "expected": [
+        {
+          "path": "Notes/AΣᲉa.md",
+          "name": "AΣᲉa.md",
+          "isDir": false,
+          "modified": 1.0
+        },
+        {
+          "path": "Notes/AςᲉz.md",
+          "name": "AςᲉz.md",
+          "isDir": false,
+          "modified": 1.0
+        }
+      ]
+    },
+    {
+      "name": "sigma-after-new",
+      "root": "",
+      "files": [
+        "ᲉΣ1.md",
+        "Ᲊσ0.md"
+      ],
+      "expected": [
+        {
+          "path": "Notes/Ᲊσ0.md",
+          "name": "Ᲊσ0.md",
+          "isDir": false,
+          "modified": 1.0
+        },
+        {
+          "path": "Notes/ᲉΣ1.md",
+          "name": "ᲉΣ1.md",
+          "isDir": false,
+          "modified": 1.0
+        }
+      ]
+    },
+    {
+      "name": "dotted-i",
+      "root": "",
+      "files": [
+        "İz.md",
+        "İa.md"
+      ],
+      "expected": [
+        {
+          "path": "Notes/İa.md",
+          "name": "İa.md",
+          "isDir": false,
+          "modified": 1.0
+        },
+        {
+          "path": "Notes/İz.md",
+          "name": "İz.md",
+          "isDir": false,
+          "modified": 1.0
+        }
+      ]
+    },
+    {
+      "name": "ordinary",
+      "root": "",
+      "files": [
+        "Zebra.md",
+        "apple.MD",
+        "ΣΟΣ.md"
+      ],
+      "expected": [
+        {
+          "path": "Notes/apple.MD",
+          "name": "apple.MD",
+          "isDir": false,
+          "modified": 1.0
+        },
+        {
+          "path": "Notes/Zebra.md",
+          "name": "Zebra.md",
+          "isDir": false,
+          "modified": 1.0
+        },
+        {
+          "path": "Notes/ΣΟΣ.md",
+          "name": "ΣΟΣ.md",
+          "isDir": false,
+          "modified": 1.0
+        }
+      ]
+    },
+    {
+      "name": "new-ramshorn",
+      "root": "Café/記録",
+      "files": [
+        "Ɤa.md",
+        "ɤz.md"
+      ],
+      "expected": [
+        {
+          "path": "Notes/ɤz.md",
+          "name": "ɤz.md",
+          "isDir": false,
+          "modified": 1.0
+        },
+        {
+          "path": "Notes/Ɤa.md",
+          "name": "Ɤa.md",
+          "isDir": false,
+          "modified": 1.0
+        }
+      ]
+    },
+    {
+      "name": "new-cyrillic",
+      "root": "Café/記録",
+      "files": [
+        "Ᲊz.md",
+        "ᲊa.md"
+      ],
+      "expected": [
+        {
+          "path": "Notes/Ᲊz.md",
+          "name": "Ᲊz.md",
+          "isDir": false,
+          "modified": 1.0
+        },
+        {
+          "path": "Notes/ᲊa.md",
+          "name": "ᲊa.md",
+          "isDir": false,
+          "modified": 1.0
+        }
+      ]
+    },
+    {
+      "name": "sigma-followed-new",
+      "root": "Café/記録",
+      "files": [
+        "AΣᲉa.md",
+        "AςᲉz.md"
+      ],
+      "expected": [
+        {
+          "path": "Notes/AΣᲉa.md",
+          "name": "AΣᲉa.md",
+          "isDir": false,
+          "modified": 1.0
+        },
+        {
+          "path": "Notes/AςᲉz.md",
+          "name": "AςᲉz.md",
+          "isDir": false,
+          "modified": 1.0
+        }
+      ]
+    },
+    {
+      "name": "sigma-after-new",
+      "root": "Café/記録",
+      "files": [
+        "ᲉΣ1.md",
+        "Ᲊσ0.md"
+      ],
+      "expected": [
+        {
+          "path": "Notes/Ᲊσ0.md",
+          "name": "Ᲊσ0.md",
+          "isDir": false,
+          "modified": 1.0
+        },
+        {
+          "path": "Notes/ᲉΣ1.md",
+          "name": "ᲉΣ1.md",
+          "isDir": false,
+          "modified": 1.0
+        }
+      ]
+    },
+    {
+      "name": "dotted-i",
+      "root": "Café/記録",
+      "files": [
+        "İz.md",
+        "İa.md"
+      ],
+      "expected": [
+        {
+          "path": "Notes/İa.md",
+          "name": "İa.md",
+          "isDir": false,
+          "modified": 1.0
+        },
+        {
+          "path": "Notes/İz.md",
+          "name": "İz.md",
+          "isDir": false,
+          "modified": 1.0
+        }
+      ]
+    },
+    {
+      "name": "ordinary",
+      "root": "Café/記録",
+      "files": [
+        "Zebra.md",
+        "apple.MD",
+        "ΣΟΣ.md"
+      ],
+      "expected": [
+        {
+          "path": "Notes/apple.MD",
+          "name": "apple.MD",
+          "isDir": false,
+          "modified": 1.0
+        },
+        {
+          "path": "Notes/Zebra.md",
+          "name": "Zebra.md",
+          "isDir": false,
+          "modified": 1.0
+        },
+        {
+          "path": "Notes/ΣΟΣ.md",
+          "name": "ΣΟΣ.md",
+          "isDir": false,
+          "modified": 1.0
+        }
+      ]
+    }
+  ]
+}

@@ -90,7 +90,7 @@ pub fn safe_file_path(path: &str) -> Result<()> {
         || path
             .split('/')
             .any(|part| part.is_empty() || matches!(part, "." | "..") || part.starts_with('.'))
-        || !path.to_lowercase().ends_with(".md")
+        || !path.to_ascii_lowercase().ends_with(".md")
     {
         return Err(Error::InvalidPath);
     }
@@ -215,7 +215,7 @@ fn preserved_timestamp(now: f64) -> Result<String> {
 pub fn replaced_name(relative: &str, now: f64) -> Result<String> {
     let suffix = format!(" (replaced {}).md", preserved_timestamp(now)?);
     let budget = 500usize.saturating_sub(suffix.chars().count());
-    let mut stem = if relative.to_lowercase().ends_with(".md") {
+    let mut stem = if relative.to_ascii_lowercase().ends_with(".md") {
         relative
             .chars()
             .take(relative.chars().count().saturating_sub(3))

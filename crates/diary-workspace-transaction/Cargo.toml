@@ -1,0 +1,26 @@
+[package]
+name = "diary-workspace-transaction"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+diary-entity-focus = { path = "../diary-entity-focus" }
+diary-backup-format = { path = "../diary-backup-format" }
+diary-workspace-rules = { path = "../diary-workspace-rules" }
+rusqlite = { version = "0.40", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "=0.10.9"
+
+[[bin]]
+name = "diary-workspace-transaction"
+path = "src/main.rs"
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,514 @@
+{
+  "sourcePins": {
+    "managed_storage.py": "19e0cad75e79781dc1ef41dd3b00ffa375f4306f1ed00a9e3f6d50528a1e3f7b",
+    "workspace_ops.py": "038bceeac705cdce91f2eb7f464bf92a06fc9b6fa3bedd665d382530e63ac7dc",
+    "workspace_files.py": "243767a922b73d0308aab17dd41eca30beb5e1c50a1f70a40e940f027030ef07",
+    "corpus_store.py": "26ce8fc9a309b9400fa77d6ae3ed10043861d5a8317d6aa33e1f457e3fb03fc8",
+    "dedicated_storage.py": "f9d5fd3f25c28fa0c7db009245f9eea37fd8fa4d96a83da9c2dc5e2e416f8a67"
+  },
+  "interpreter": "3.12.15",
+  "files": [
+    {
+      "path": "Notes/one.md",
+      "data": "synthetic note",
+      "updated": 10.0
+    },
+    {
+      "path": "Notes/Zebra.md",
+      "data": "z",
+      "updated": 20.0
+    },
+    {
+      "path": "Notes/apple.MD",
+      "data": "a",
+      "updated": 30.0
+    },
+    {
+      "path": "Notes/a.md",
+      "data": "lower tie first",
+      "updated": 31.0
+    },
+    {
+      "path": "Notes/A.md",
+      "data": "upper tie second",
+      "updated": 32.0
+    },
+    {
+      "path": "Notes/ΣΟΣ.md",
+      "data": "unicode",
+      "updated": 33.0
+    },
+    {
+      "path": "Notes/ignore.txt",
+      "data": "not markdown",
+      "updated": 40.0
+    },
+    {
+      "path": "Notes/.hidden.md",
+      "data": "hidden",
+      "updated": 50.0
+    },
+    {
+      "path": "Other/sentinel.md",
+      "data": "unrelated",
+      "updated": 60.0
+    }
+  ],
+  "directories": [
+    "Notes",
+    "Notes/Empty",
+    "Empty"
+  ],
+  "cases": [
+    {
+      "root": "Diary",
+      "op": "stat",
+      "path": "Notes/one.md",
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/one.md",
+          "isDir": false,
+          "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939",
+          "entries": 1
+        }
+      }
+    },
+    {
+      "root": "Diary",
+      "op": "stat",
+      "path": "Notes",
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes",
+          "isDir": true,
+          "version": "f2feb5a6b48a3c02e43bdef250a45029309b86ff0198c555eac136743fbe5e6d",
+          "entries": 10
+        }
+      }
+    },
+    {
+      "root": "Diary",
+      "op": "stat",
+      "path": "Empty",
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Empty",
+          "isDir": true,
+          "version": "255cfbbbea5e668130b8364124afa7b1f48159fb4a2bf7dcf2efa368d7931cd4",
+          "entries": 1
+        }
+      }
+    },
+    {
+      "root": "Diary",
+      "op": "stat",
+      "path": "Missing",
+      "expected": {
+        "status": 404
+      }
+    },
+    {
+      "root": "Diary",
+      "op": "stat",
+      "path": "/Notes/one.md/",
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/one.md",
+          "isDir": false,
+          "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939",
+          "entries": 1
+        }
+      }
+    },
+    {
+      "root": "Diary",
+      "op": "list",
+      "path": "Notes",
+      "expected": {
+        "status": 200,
+        "body": [
+          {
+            "path": "Notes/a.md",
+            "name": "a.md",
+            "isDir": false,
+            "modified": 31.0
+          },
+          {
+            "path": "Notes/A.md",
+            "name": "A.md",
+            "isDir": false,
+            "modified": 32.0
+          },
+          {
+            "path": "Notes/apple.MD",
+            "name": "apple.MD",
+            "isDir": false,
+            "modified": 30.0
+          },
+          {
+            "path": "Notes/Empty",
+            "name": "Empty",
+            "isDir": true
+          },
+          {
+            "path": "Notes/one.md",
+            "name": "one.md",
+            "isDir": false,
+            "modified": 10.0
+          },
+          {
+            "path": "Notes/Zebra.md",
+            "name": "Zebra.md",
+            "isDir": false,
+            "modified": 20.0
+          },
+          {
+            "path": "Notes/ΣΟΣ.md",
+            "name": "ΣΟΣ.md",
+            "isDir": false,
+            "modified": 33.0
+          }
+        ]
+      }
+    },
+    {
+      "root": "Diary",
+      "op": "list",
+      "path": "",
+      "expected": {
+        "status": 200,
+        "body": [
+          {
+            "path": "Empty",
+            "name": "Empty",
+            "isDir": true
+          },
+          {
+            "path": "Notes",
+            "name": "Notes",
+            "isDir": true
+          },
+          {
+            "path": "Other",
+            "name": "Other",
+            "isDir": true,
+            "modified": 60.0
+          }
+        ]
+      }
+    },
+    {
+      "root": "Diary",
+      "op": "list",
+      "path": "Empty",
+      "expected": {
+        "status": 200,
+        "body": []
+      }
+    },
+    {
+      "root": "",
+      "op": "stat",
+      "path": "Notes/one.md",
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/one.md",
+          "isDir": false,
+          "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939",
+          "entries": 1
+        }
+      }
+    },
+    {
+      "root": "",
+      "op": "stat",
+      "path": "Notes",
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes",
+          "isDir": true,
+          "version": "f2feb5a6b48a3c02e43bdef250a45029309b86ff0198c555eac136743fbe5e6d",
+          "entries": 10
+        }
+      }
+    },
+    {
+      "root": "",
+      "op": "stat",
+      "path": "Empty",
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Empty",
+          "isDir": true,
+          "version": "255cfbbbea5e668130b8364124afa7b1f48159fb4a2bf7dcf2efa368d7931cd4",
+          "entries": 1
+        }
+      }
+    },
+    {
+      "root": "",
+      "op": "stat",
+      "path": "Missing",
+      "expected": {
+        "status": 404
+      }
+    },
+    {
+      "root": "",
+      "op": "stat",
+      "path": "/Notes/one.md/",
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/one.md",
+          "isDir": false,
+          "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939",
+          "entries": 1
+        }
+      }
+    },
+    {
+      "root": "",
+      "op": "list",
+      "path": "Notes",
+      "expected": {
+        "status": 200,
+        "body": [
+          {
+            "path": "Notes/a.md",
+            "name": "a.md",
+            "isDir": false,
+            "modified": 31.0
+          },
+          {
+            "path": "Notes/A.md",
+            "name": "A.md",
+            "isDir": false,
+            "modified": 32.0
+          },
+          {
+            "path": "Notes/apple.MD",
+            "name": "apple.MD",
+            "isDir": false,
+            "modified": 30.0
+          },
+          {
+            "path": "Notes/Empty",
+            "name": "Empty",
+            "isDir": true
+          },
+          {
+            "path": "Notes/one.md",
+            "name": "one.md",
+            "isDir": false,
+            "modified": 10.0
+          },
+          {
+            "path": "Notes/Zebra.md",
+            "name": "Zebra.md",
+            "isDir": false,
+            "modified": 20.0
+          },
+          {
+            "path": "Notes/ΣΟΣ.md",
+            "name": "ΣΟΣ.md",
+            "isDir": false,
+            "modified": 33.0
+          }
+        ]
+      }
+    },
+    {
+      "root": "",
+      "op": "list",
+      "path": "",
+      "expected": {
+        "status": 200,
+        "body": [
+          {
+            "path": "Empty",
+            "name": "Empty",
+            "isDir": true
+          },
+          {
+            "path": "Notes",
+            "name": "Notes",
+            "isDir": true
+          },
+          {
+            "path": "Other",
+            "name": "Other",
+            "isDir": true,
+            "modified": 60.0
+          }
+        ]
+      }
+    },
+    {
+      "root": "",
+      "op": "list",
+      "path": "Empty",
+      "expected": {
+        "status": 200,
+        "body": []
+      }
+    },
+    {
+      "root": "Tenants/Corpus",
+      "op": "stat",
+      "path": "Notes/one.md",
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/one.md",
+          "isDir": false,
+          "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939",
+          "entries": 1
+        }
+      }
+    },
+    {
+      "root": "Tenants/Corpus",
+      "op": "stat",
+      "path": "Notes",
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes",
+          "isDir": true,
+          "version": "f2feb5a6b48a3c02e43bdef250a45029309b86ff0198c555eac136743fbe5e6d",
+          "entries": 10
+        }
+      }
+    },
+    {
+      "root": "Tenants/Corpus",
+      "op": "stat",
+      "path": "Empty",
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Empty",
+          "isDir": true,
+          "version": "255cfbbbea5e668130b8364124afa7b1f48159fb4a2bf7dcf2efa368d7931cd4",
+          "entries": 1
+        }
+      }
+    },
+    {
+      "root": "Tenants/Corpus",
+      "op": "stat",
+      "path": "Missing",
+      "expected": {
+        "status": 404
+      }
+    },
+    {
+      "root": "Tenants/Corpus",
+      "op": "stat",
+      "path": "/Notes/one.md/",
+      "expected": {
+        "status": 200,
+        "body": {
+          "path": "Notes/one.md",
+          "isDir": false,
+          "version": "4168793f97486029e468a3cf60ae6f2296086f7476ffd616437af72799ec4939",
+          "entries": 1
+        }
+      }
+    },
+    {
+      "root": "Tenants/Corpus",
+      "op": "list",
+      "path": "Notes",
+      "expected": {
+        "status": 200,
+        "body": [
+          {
+            "path": "Notes/a.md",
+            "name": "a.md",
+            "isDir": false,
+            "modified": 31.0
+          },
+          {
+            "path": "Notes/A.md",
+            "name": "A.md",
+            "isDir": false,
+            "modified": 32.0
+          },
+          {
+            "path": "Notes/apple.MD",
+            "name": "apple.MD",
+            "isDir": false,
+            "modified": 30.0
+          },
+          {
+            "path": "Notes/Empty",
+            "name": "Empty",
+            "isDir": true
+          },
+          {
+            "path": "Notes/one.md",
+            "name": "one.md",
+            "isDir": false,
+            "modified": 10.0
+          },
+          {
+            "path": "Notes/Zebra.md",
+            "name": "Zebra.md",
+            "isDir": false,
+            "modified": 20.0
+          },
+          {
+            "path": "Notes/ΣΟΣ.md",
+            "name": "ΣΟΣ.md",
+            "isDir": false,
+            "modified": 33.0
+          }
+        ]
+      }
+    },
+    {
+      "root": "Tenants/Corpus",
+      "op": "list",
+      "path": "",
+      "expected": {
+        "status": 200,
+        "body": [
+          {
+            "path": "Empty",
+            "name": "Empty",
+            "isDir": true
+          },
+          {
+            "path": "Notes",
+            "name": "Notes",
+            "isDir": true
+          },
+          {
+            "path": "Other",
+            "name": "Other",
+            "isDir": true,
+            "modified": 60.0
+          }
+        ]
+      }
+    },
+    {
+      "root": "Tenants/Corpus",
+      "op": "list",
+      "path": "Empty",
+      "expected": {
+        "status": 200,
+        "body": []
+      }
+    }
+  ]
+}

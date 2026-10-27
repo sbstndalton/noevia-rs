@@ -1,0 +1,191 @@
+{
+  "sourceSha256": "19e0cad75e79781dc1ef41dd3b00ffa375f4306f1ed00a9e3f6d50528a1e3f7b",
+  "pythonVersion": [
+    3,
+    12,
+    15
+  ],
+  "scope": "Actual store schema only; proposed receipt table is not part of the frozen schema.",
+  "tables": [
+    {
+      "name": "backups",
+      "sql": "CREATE TABLE backups(destination TEXT PRIMARY KEY, generation INTEGER NOT NULL DEFAULT -1,\n                    last_success REAL, retry_at REAL NOT NULL DEFAULT 0, failures INTEGER NOT NULL DEFAULT 0, error TEXT)",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "destination",
+          "type": "TEXT",
+          "notnull": 0,
+          "default": null,
+          "pk": 1,
+          "hidden": 0
+        },
+        {
+          "cid": 1,
+          "name": "generation",
+          "type": "INTEGER",
+          "notnull": 1,
+          "default": "-1",
+          "pk": 0,
+          "hidden": 0
+        },
+        {
+          "cid": 2,
+          "name": "last_success",
+          "type": "REAL",
+          "notnull": 0,
+          "default": null,
+          "pk": 0,
+          "hidden": 0
+        },
+        {
+          "cid": 3,
+          "name": "retry_at",
+          "type": "REAL",
+          "notnull": 1,
+          "default": "0",
+          "pk": 0,
+          "hidden": 0
+        },
+        {
+          "cid": 4,
+          "name": "failures",
+          "type": "INTEGER",
+          "notnull": 1,
+          "default": "0",
+          "pk": 0,
+          "hidden": 0
+        },
+        {
+          "cid": 5,
+          "name": "error",
+          "type": "TEXT",
+          "notnull": 0,
+          "default": null,
+          "pk": 0,
+          "hidden": 0
+        }
+      ]
+    },
+    {
+      "name": "directories",
+      "sql": "CREATE TABLE directories(path TEXT PRIMARY KEY)",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "path",
+          "type": "TEXT",
+          "notnull": 0,
+          "default": null,
+          "pk": 1,
+          "hidden": 0
+        }
+      ]
+    },
+    {
+      "name": "files",
+      "sql": "CREATE TABLE files(path TEXT PRIMARY KEY, data BLOB NOT NULL, version TEXT NOT NULL, updated REAL NOT NULL)",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "path",
+          "type": "TEXT",
+          "notnull": 0,
+          "default": null,
+          "pk": 1,
+          "hidden": 0
+        },
+        {
+          "cid": 1,
+          "name": "data",
+          "type": "BLOB",
+          "notnull": 1,
+          "default": null,
+          "pk": 0,
+          "hidden": 0
+        },
+        {
+          "cid": 2,
+          "name": "version",
+          "type": "TEXT",
+          "notnull": 1,
+          "default": null,
+          "pk": 0,
+          "hidden": 0
+        },
+        {
+          "cid": 3,
+          "name": "updated",
+          "type": "REAL",
+          "notnull": 1,
+          "default": null,
+          "pk": 0,
+          "hidden": 0
+        }
+      ]
+    },
+    {
+      "name": "meta",
+      "sql": "CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "key",
+          "type": "TEXT",
+          "notnull": 0,
+          "default": null,
+          "pk": 1,
+          "hidden": 0
+        },
+        {
+          "cid": 1,
+          "name": "value",
+          "type": "TEXT",
+          "notnull": 1,
+          "default": null,
+          "pk": 0,
+          "hidden": 0
+        }
+      ]
+    },
+    {
+      "name": "workspace_imports",
+      "sql": "CREATE TABLE workspace_imports(fingerprint TEXT PRIMARY KEY, destination TEXT NOT NULL)",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "fingerprint",
+          "type": "TEXT",
+          "notnull": 0,
+          "default": null,
+          "pk": 1,
+          "hidden": 0
+        },
+        {
+          "cid": 1,
+          "name": "destination",
+          "type": "TEXT",
+          "notnull": 1,
+          "default": null,
+          "pk": 0,
+          "hidden": 0
+        }
+      ]
+    },
+    {
+      "name": "workspace_index_outbox",
+      "sql": "CREATE TABLE workspace_index_outbox(path TEXT PRIMARY KEY)",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "path",
+          "type": "TEXT",
+          "notnull": 0,
+          "default": null,
+          "pk": 1,
+          "hidden": 0
+        }
+      ]
+    }
+  ]
+}
