@@ -129,7 +129,7 @@ fn parse_options(args: Vec<String>, env: &impl Fn(&str) -> Option<String>) -> Re
         }
     };
     if profile.is_none() && grants.is_none() && key.is_none() {
-        return Err("no grant authority configured".into());
+        return Err("no grants: no grant authority configured".into());
     }
     let listen = match listen {
         Some(l) => l,
