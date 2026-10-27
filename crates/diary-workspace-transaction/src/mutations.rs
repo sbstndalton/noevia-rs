@@ -126,6 +126,7 @@ fn tree(
     Ok(Tree { files, dirs })
 }
 fn kind(tx: &Transaction<'_>, full: &str) -> Result<Option<bool>, Fault> {
+    reads::admit(tx, full, true)?;
     let (prefix, n) = scope(full)?;
     if tx.query_row::<bool, _, _>(
         "SELECT EXISTS(SELECT 1 FROM files WHERE path=?)",
@@ -243,20 +244,27 @@ fn read_capsule(
     key: &str,
     id: &str,
 ) -> Result<Option<rules::LegacyCapsule>, Fault> {
-    let meta: Option<(String, i64)> = tx
-        .query_row(
-            "SELECT typeof(data),length(data) FROM files WHERE path=?",
-            [key],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )
-        .optional()?;
-    let Some((storage, size)) = meta else {
+    let meta:Option<(Option<i64>,Option<String>,bool)>=tx.query_row(
+        "SELECT CASE WHEN typeof(data)='blob' THEN length(data) END, CASE WHEN typeof(version)='text' AND length(CAST(version AS BLOB))=64 AND version NOT GLOB '*[^0-9a-f]*' THEN version END, CASE WHEN typeof(updated)='real' AND abs(updated)<=1.7976931348623157e308 THEN 1 ELSE 0 END FROM files WHERE path=?",
+        [key],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
+    let Some((size, version, time_valid)) = meta else {
         return Ok(None);
     };
-    if storage != "blob" || !(0..=MAX_CAPSULE_BYTES).contains(&size) {
+    let (Some(size), Some(version)) = (size, version) else {
+        return Err(Fault::Conflict);
+    };
+    if !time_valid || !(0..=MAX_CAPSULE_BYTES).contains(&size) {
         return Err(Fault::Conflict);
     }
+    match reads::hierarchy(tx, key) {
+        Err(Fault::Schema) => return Err(Fault::Conflict),
+        Err(other) => return Err(other),
+        Ok(()) => {}
+    }
     let raw: Vec<u8> = tx.query_row("SELECT data FROM files WHERE path=?", [key], |r| r.get(0))?;
+    if sha256(&raw) != version {
+        return Err(Fault::Conflict);
+    }
     decode_capsule(&raw, id).map(Some)
 }
 fn decode_capsule(raw: &[u8], id: &str) -> Result<rules::LegacyCapsule, Fault> {
@@ -388,6 +396,7 @@ fn transfer(
     if !is_dir && !dest.to_ascii_lowercase().ends_with(".md") {
         return Err(Fault::Protected);
     }
+    reads::admit(tx, &dest, true)?;
     if !parent_exists(tx, &dest)? {
         return Err(Fault::Conflict);
     }

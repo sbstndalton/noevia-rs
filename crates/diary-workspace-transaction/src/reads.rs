@@ -57,10 +57,51 @@ pub(super) fn admit(tx: &Transaction<'_>, full: &str, timestamps: bool) -> Resul
           THEN 0 ELSE 1 END)
     "#, params![full,n,prefix,MAX_KEY_BYTES,timestamps], |row|row.get(0))?;
     if invalid {
-        Err(Fault::Schema)
-    } else {
-        Ok(())
+        return Err(Fault::Schema);
     }
+    hierarchy(tx, full)
+}
+
+/// Metadata-only namespace consistency for this subtree and its ancestor line.
+/// Prefix ranges use the validated BINARY primary-key order; no body is read.
+pub(super) fn hierarchy(tx: &Transaction<'_>, full: &str) -> Result<(), Fault> {
+    let prefix = if full.is_empty() {
+        String::new()
+    } else {
+        format!("{full}/")
+    };
+    let n = i64::try_from(prefix.chars().count()).map_err(|_| Fault::Capacity)?;
+    let corrupt:bool=tx.query_row(r#"
+        SELECT EXISTS(SELECT 1 FROM files f
+          WHERE (f.path=?1 OR substr(f.path,1,?2)=?3) AND (
+            EXISTS(SELECT 1 FROM directories d WHERE d.path=f.path)
+            OR EXISTS(SELECT 1 FROM files c WHERE c.path>=f.path||'/' AND c.path<f.path||'0')
+            OR EXISTS(SELECT 1 FROM directories c WHERE c.path>=f.path||'/' AND c.path<f.path||'0')))
+    "#,params![full,n,prefix],|r|r.get(0))?;
+    if corrupt {
+        return Err(Fault::Schema);
+    }
+    let occupied:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM files WHERE path=?1 OR substr(path,1,?2)=?3 UNION ALL SELECT 1 FROM directories WHERE path=?1 OR substr(path,1,?2)=?3)",params![full,n,prefix],|r|r.get(0))?;
+    for (offset, c) in full.char_indices() {
+        if c != '/' {
+            continue;
+        }
+        let ancestor = full.get(..offset).ok_or(Fault::Internal)?;
+        let file: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM files WHERE path=?)",
+            [ancestor],
+            |r| r.get(0),
+        )?;
+        if file {
+            // A missing target below an otherwise valid file is a normal
+            // missing/parent-conflict policy case, not corrupt existing data.
+            let ambiguous:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM directories WHERE path=?1) OR EXISTS(SELECT 1 FROM files WHERE path>=?1||'/' AND path<?1||'0') OR EXISTS(SELECT 1 FROM directories WHERE path>=?1||'/' AND path<?1||'0')",[ancestor],|r|r.get(0))?;
+            if occupied || ambiguous {
+                return Err(Fault::Schema);
+            }
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn stat(tx: &Transaction<'_>, r: &Request) -> Result<Reply, Fault> {
