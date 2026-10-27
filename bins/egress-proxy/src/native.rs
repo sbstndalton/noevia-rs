@@ -56,8 +56,8 @@ impl Proxy {
                 Some(_)=tasks.join_next(),if !tasks.is_empty()=>{}
                 accepted=listener.accept()=>{
                     let (mut stream,_)=accepted?;
-                    if tasks.len()>=self.limits.max_connections.max(1).saturating_add(2*INGRESS){continue;}
-                    let Ok(pending)=ingress.clone().try_acquire_owned() else {continue;};
+                    if tasks.len()>=self.limits.max_connections.max(1).saturating_add(2*INGRESS){self.record(json!({"event":"egress.ingress_limit"}));continue;}
+                    let Ok(pending)=ingress.clone().try_acquire_owned() else {self.record(json!({"event":"egress.ingress_limit"}));continue;};
                     let proxy=self.clone();let control=control.clone();let engine=engine.clone();let data=data.clone();
                     tasks.spawn(async move {
                         let head=match tokio::time::timeout(HEAD_TIME,transport::read_head(&mut stream)).await {Ok(Ok(h))=>h,_=>return};
@@ -65,7 +65,7 @@ impl Proxy {
                             .and_then(|s|s.split(' ').nth(1)).is_some_and(|p|p.starts_with("/v1/control/"));
                         if is_control {drop(pending);control.connection_head(stream,head).await;}
                         else {
-                            let Ok(slot)=data.try_acquire_owned() else {return;};
+                            let Ok(slot)=data.try_acquire_owned() else {proxy.record(json!({"event":"egress.connection_limit"}));return;};
                             drop(pending);
                             if !data_head(&head){return;}
                             native_connection(proxy,engine,stream,head,Arc::new(slot)).await;
@@ -247,6 +247,12 @@ async fn native_handle(
 ) -> Response<NativeBody> {
     let is_connect = req.method() == Method::CONNECT;
     if !is_connect && req.uri().scheme_str() != Some("http") {
+        proxy.refused(&Refusal {
+            status: 400,
+            reason: "unsupported proxy target".into(),
+            task_id: None,
+            host: None,
+        });
         return connect_refusal(400);
     }
     let target = req.uri().authority().map(|a| {
@@ -258,6 +264,12 @@ async fn native_handle(
         .to_owned()
     });
     if is_connect && target.as_ref().is_some_and(|t| t.contains('@')) {
+        proxy.refused(&Refusal {
+            status: 400,
+            reason: "unreadable target".into(),
+            task_id: None,
+            host: None,
+        });
         return connect_refusal(400);
     }
     let auth = req
@@ -277,16 +289,21 @@ async fn native_handle(
     {
         Ok(v) => v,
         Err(r) => {
+            proxy.refused(&r);
             return if is_connect {
                 connect_refusal(r.status)
             } else {
                 text_refusal(&r)
-            }
+            };
         }
     };
+    proxy.allowed(&allowed, req.method().as_str());
     let upstream = match connect(&proxy, &guard, &allowed).await {
         Ok(s) => s,
-        Err(_) => return upstream_failed(),
+        Err(e) => {
+            proxy.record(json!({"event":"egress.upstream_failed","taskId":allowed.task_id,"host":allowed.host,"error":e.kind().to_string()}));
+            return upstream_failed();
+        }
     };
     if is_connect {
         let upgrade = hyper::upgrade::on(&mut req);
@@ -535,6 +552,7 @@ mod tests {
         file: FileKey,
         keys: Arc<Keys>,
         _retained_engine: Arc<Engine>,
+        logs: Arc<Mutex<Vec<Value>>>,
     }
     impl Drop for Running {
         fn drop(&mut self) {
@@ -572,6 +590,8 @@ mod tests {
         let file = FileKey::from_bytes([37; 32]);
         let keys = Arc::new(Keys(Mutex::new(Some(file.clone()))));
         let engine = Arc::new(Engine::new(keys.clone())?);
+        let logs = Arc::new(Mutex::new(Vec::new()));
+        let sink = logs.clone();
         let proxy = ProxyBuilder::new(vec![])
             .resolver(resolver)
             .connector(connector)
@@ -579,7 +599,11 @@ mod tests {
                 max_connections: cap,
                 ..Limits::default()
             })
-            .log(Arc::new(|_| {}))
+            .log(Arc::new(move |entry| {
+                if let Ok(mut out) = sink.lock() {
+                    out.push(entry);
+                }
+            }))
             .build();
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let addr = listener.local_addr()?;
@@ -590,6 +614,7 @@ mod tests {
             file,
             keys,
             _retained_engine: engine,
+            logs,
         })
     }
     fn wall() -> Result<u64, TestError> {
@@ -849,6 +874,14 @@ mod tests {
         assert!(!wire.to_lowercase().contains("proxy-authorization"));
         assert!(!wire.contains("ngr1."));
         assert!(wire.to_lowercase().contains("host: example.com"));
+        let entries = s.logs.lock().map_err(|_| "logs")?;
+        assert!(entries
+            .iter()
+            .any(|v| v.get("event") == Some(&json!("egress.allowed"))
+                && v.get("taskId") == Some(&json!("job.1"))));
+        let audit = serde_json::to_string(&*entries)?;
+        assert!(!audit.contains("ngr1."));
+        assert!(!audit.contains("/private/path"));
         drop(remote);
         Ok(())
     }
@@ -1130,6 +1163,7 @@ mod tests {
             file,
             keys,
             _retained_engine: engine,
+            logs: Arc::new(Mutex::new(Vec::new())),
         };
         let c = ready(&s).await?;
         let mut stream = tunnel(&s, &c).await?;
@@ -1203,6 +1237,36 @@ mod tests {
         assert_eq!(seen.0, b"ab");
         assert!(!seen.1);
         drop(backend);
+        Ok(())
+    }
+    #[tokio::test]
+    async fn native_refusal_keeps_structured_audit_without_token_or_path() -> Result<(), TestError>
+    {
+        let (addr, _echo, calls) = echo().await?;
+        let s = start(
+            Arc::new(Fixed),
+            Arc::new(Bridge {
+                addr,
+                calls: calls.clone(),
+            }),
+            2,
+        )
+        .await?;
+        let c = ready(&s).await?;
+        let raw=format!("GET http://off.example/private/path HTTP/1.1\r\nHost: off.example\r\nProxy-Authorization: {}\r\n\r\n",auth(&c));
+        assert!(exchange(s.addr, raw.as_bytes())
+            .await?
+            .starts_with(b"HTTP/1.1 403"));
+        let entries = s.logs.lock().map_err(|_| "logs")?;
+        assert!(entries
+            .iter()
+            .any(|v| v.get("event") == Some(&json!("egress.refused"))
+                && v.get("taskId") == Some(&json!("job.1"))
+                && v.get("host") == Some(&json!("off.example"))));
+        let audit = serde_json::to_string(&*entries)?;
+        assert!(!audit.contains("ngr1."));
+        assert!(!audit.contains("/private/path"));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
         Ok(())
     }
 }

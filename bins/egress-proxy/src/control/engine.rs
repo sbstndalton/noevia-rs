@@ -253,8 +253,21 @@ impl Engine {
     pub fn new(source: Arc<dyn KeyProvider>) -> Result<Self, Error> {
         Self::with_timeout(source, DRAIN_TIMEOUT)
     }
+    /// Bind-time unready controller for process/web startup ordering. Missing or
+    /// invalid current keys install NO authority; only authenticated Ready after
+    /// a successful current observation can create a data session.
+    pub fn waiting(source: Arc<dyn KeyProvider>) -> Result<Self, Error> {
+        Self::initial(source, None, DRAIN_TIMEOUT)
+    }
     fn with_timeout(source: Arc<dyn KeyProvider>, drain_timeout: Duration) -> Result<Self, Error> {
-        let file = source.current()?;
+        let fingerprint = Some(source.current()?.fingerprint());
+        Self::initial(source, fingerprint, drain_timeout)
+    }
+    fn initial(
+        source: Arc<dyn KeyProvider>,
+        fingerprint: Option<String>,
+        drain_timeout: Duration,
+    ) -> Result<Self, Error> {
         Ok(Self {
             inner: Arc::new(Inner {
                 source,
@@ -262,7 +275,7 @@ impl Engine {
                 drained: Notify::new(),
                 state: Mutex::new(State {
                     boot: Boot::generate().map_err(|_| Error::Unavailable)?,
-                    fingerprint: Some(file.fingerprint()),
+                    fingerprint,
                     session: None,
                     session_id: None,
                     initialized: false,
