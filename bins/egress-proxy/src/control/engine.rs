@@ -466,14 +466,10 @@ fn current(inner: &Arc<Inner>, st: &mut State) -> Result<FileKey, Error> {
     }
 }
 fn load(inner: &Arc<Inner>) -> Result<FileKey, Error> {
-    match inner.source.current() {
-        Ok(k) => Ok(k),
-        Err(_) => {
-            let mut st = inner.state.lock().map_err(|_| Error::State)?;
-            sync_key(&mut st, None)?;
-            Err(Error::Key)
-        }
-    }
+    // Even an initial failed observation must be serialized. A saved failure
+    // outside this lock could retire a newer recovered session after it starts.
+    let mut st = inner.state.lock().map_err(|_| Error::State)?;
+    current(inner, &mut st)
 }
 fn wall() -> Result<u64, Error> {
     let n = SystemTime::now()
@@ -847,6 +843,72 @@ mod tests {
             .map_err(|_| Error::State)?
             .operations
             .is_empty());
+        Ok(())
+    }
+    #[tokio::test]
+    async fn initial_key_failure_is_serialized_before_recovered_ready(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use std::sync::{
+            atomic::{AtomicBool, Ordering},
+            mpsc, TryLockError,
+        };
+        struct Gated {
+            key: Mutex<FileKey>,
+            fail_next: AtomicBool,
+            entered: mpsc::SyncSender<()>,
+            release: Mutex<mpsc::Receiver<()>>,
+        }
+        impl KeyProvider for Gated {
+            fn current(&self) -> Result<FileKey, Error> {
+                if self.fail_next.swap(false, Ordering::SeqCst) {
+                    self.entered.send(()).map_err(|_| Error::State)?;
+                    self.release
+                        .lock()
+                        .map_err(|_| Error::State)?
+                        .recv()
+                        .map_err(|_| Error::State)?;
+                    return Err(Error::Key);
+                }
+                Ok(self.key.lock().map_err(|_| Error::State)?.clone())
+            }
+        }
+        let (entered_tx, entered) = mpsc::sync_channel(1);
+        let (release, release_rx) = mpsc::sync_channel(1);
+        let file = FileKey::from_bytes([7; 32]);
+        let source = Arc::new(Gated {
+            key: Mutex::new(file.clone()),
+            fail_next: AtomicBool::new(false),
+            entered: entered_tx,
+            release: Mutex::new(release_rx),
+        });
+        let e = Engine::new(source.clone())?;
+        let ready = start(&e, &file).await?;
+        let token = grant(&file, &ready, NONCE)?;
+        let old = e.operation(token.as_bytes(), "task.1", NONCE)?;
+        source.fail_next.store(true, Ordering::SeqCst);
+        let clone = e.clone();
+        let first = std::thread::spawn(move || load(&clone.inner));
+        entered.recv_timeout(Duration::from_secs(1))?;
+        // Gated observation proves serialization without a scheduling sleep.
+        // Old implementation observed failure without owning this mutex.
+        assert!(matches!(
+            e.inner.state.try_lock(),
+            Err(TryLockError::WouldBlock)
+        ));
+        let next = FileKey::from_bytes([8; 32]);
+        *source.key.lock().map_err(|_| Error::State)? = next.clone();
+        release.send(())?;
+        let result = first.join().map_err(|_| "reader thread failed")?;
+        assert_eq!(result.err(), Some(Error::Key));
+        assert!(old.is_cancelled());
+        drop(old);
+        let response = e.execute(initial(&next, 9)?).await?;
+        assert_eq!(response.status(), 200);
+        let recovered: Ready = serde_json::from_slice(response.body())?;
+        let new_token = grant(&next, &recovered, NONCE)?;
+        let live = e.operation(new_token.as_bytes(), "task.1", NONCE)?;
+        live.recheck()?;
+        assert!(!live.is_cancelled());
         Ok(())
     }
     #[tokio::test]
