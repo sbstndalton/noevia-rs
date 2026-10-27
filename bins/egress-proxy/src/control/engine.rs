@@ -653,6 +653,11 @@ fn owned(st: &mut State, auth: &Authenticated) -> Result<Scope, Error> {
         st.leases
             .proof(&scope, token, None)
             .map_err(|_| Error::Authentication)?;
+        if st.leases.blocked_now(&scope, token, &st.ledger, wall()?) {
+            let _ = st.leases.retire(&scope, Retirement::Interrupted);
+            cancel_scope(st, &scope);
+            finalize_scope(st, &scope);
+        }
         return Ok(scope);
     }
     if st.transition.is_some() || !st.initialized || st.session_id.as_deref() != Some(l.session_id)
@@ -1778,6 +1783,40 @@ mod scoped_tests {
             let ct = minted(&f, &r, &c)?;
             e.operation(ct.as_bytes(), &c.task, &c.nonce)?.recheck()?;
         }
+        Ok(())
+    }
+    #[tokio::test]
+    async fn previously_proven_unused_lease_reconciles_a_later_revoke_watermark(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (e, _, f) = setup()?;
+        let r = start(&e, &f).await?;
+        let token = grant(&f, &r, NONCE)?;
+        let a = claims(&f, &r, &token)?;
+        drop(e.operation(token.as_bytes(), &a.task, &a.nonce)?);
+        let mut b = a.clone();
+        b.iat = a.iat + 50;
+        b.exp = b.iat + 60_000;
+        b.nonce = NEXT_NONCE.into();
+        let bt = minted(&f, &r, &b)?;
+        let before = e.execute(control(&f, &r, &bt, &b, 20, false)?).await?;
+        let v: Value = serde_json::from_slice(before.body())?;
+        assert_eq!(v.pointer("/snapshot/final"), Some(&json!(false)));
+        assert_eq!(
+            e.execute(take_away_at(&f, &r, &token, &a, 21, a.iat + 100)?)
+                .await?
+                .status(),
+            200
+        );
+        let after = e.execute(control(&f, &r, &bt, &b, 22, false)?).await?;
+        let v: Value = serde_json::from_slice(after.body())?;
+        assert_eq!(v.pointer("/snapshot/final"), Some(&json!(true)));
+        assert_eq!(v.pointer("/snapshot/state"), Some(&json!("interrupted")));
+        let mut c = a.clone();
+        c.iat = a.iat + 200;
+        c.exp = c.iat + 60_000;
+        c.nonce = "CAECAwQFBgcICQoLDA0ODw".into();
+        let ct = minted(&f, &r, &c)?;
+        e.operation(ct.as_bytes(), &c.task, &c.nonce)?.recheck()?;
         Ok(())
     }
 }

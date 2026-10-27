@@ -303,6 +303,20 @@ impl Book {
             .get(s)
             .is_some_and(|r| r.location == Location::Forgotten)
     }
+    /// Reconcile a previously proven active record against current authoritative
+    /// security. Retired history remains readable without live token validity.
+    pub fn blocked_now(&self, s: &Scope, token: &str, ledger: &egress::Ledger, now: u64) -> bool {
+        let Some(r) = self.records.get(s) else {
+            return true;
+        };
+        if r.retired.is_some() {
+            return false;
+        }
+        match r.owner.verify(token.as_bytes(), now) {
+            Ok(g) => ledger.classify_grant(&g, now).is_err(),
+            Err(_) => true,
+        }
+    }
     pub fn active(&self, s: &Scope) -> bool {
         self.records.get(s).is_some_and(|r| r.retired.is_none())
     }
