@@ -593,6 +593,30 @@ async fn stalled_final_output_resets_instead_of_clean_eof() {
     h.close().await;
 }
 
+async fn escaped_session_pid(path: &std::path::Path) -> nix::unistd::Pid {
+    let raw_pid = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if let Ok(raw) = std::fs::read_to_string(path) {
+                // Opening the marker precedes echo's write. Wait for a full
+                // positive PID line rather than trusting an empty/partial file.
+                if raw.ends_with('\n') {
+                    if let Ok(pid) = raw.trim().parse::<i32>() {
+                        if pid > 0 {
+                            break pid;
+                        }
+                    }
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("escaped writer did not start");
+    let pid = nix::unistd::Pid::from_raw(raw_pid);
+    assert_eq!(nix::unistd::getsid(Some(pid)).unwrap(), pid);
+    pid
+}
+
 #[tokio::test]
 async fn escaped_group_writer_cannot_extend_post_exit_drain_forever() {
     let marker = tempfile::tempdir().unwrap();
@@ -600,9 +624,10 @@ async fn escaped_group_writer_cannot_extend_post_exit_drain_forever() {
     let cleanup = EscapedChildCleanup {
         pid_file: pid_file.clone(),
     };
+    // The leader must not exit until the new session has published its PID.
+    // Otherwise correct group teardown can kill the fixture before it escapes.
     let script = format!(
-        r#"setsid /bin/sh -c 'echo $$ > "{}"; exec yes "{}"' & exit 0"#,
-        pid_file.display(),
+        r#"setsid /bin/sh -c 'echo $$ > "{0}"; exec yes "{0}"' & while [ ! -s "{0}" ]; do sleep 0.01; done; exit 0"#,
         pid_file.display()
     );
     let h = Harness::with_options(
@@ -616,18 +641,7 @@ async fn escaped_group_writer_cannot_extend_post_exit_drain_forever() {
     let mut socket = h.connect().await;
     socket.write_all(h.start("{}").as_bytes()).await.unwrap();
 
-    let writer_pid = tokio::time::timeout(Duration::from_secs(2), async {
-        loop {
-            if let Ok(raw) = std::fs::read_to_string(&pid_file) {
-                break raw.trim().parse::<i32>().unwrap();
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .expect("escaped writer did not start");
-    let pid = nix::unistd::Pid::from_raw(writer_pid);
-    assert_eq!(nix::unistd::getsid(Some(pid)).unwrap(), pid);
+    escaped_session_pid(&pid_file).await;
 
     let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
     let mut chunk = [0_u8; 16 * 1024];
@@ -665,9 +679,10 @@ async fn quiet_escaped_stdout_pipe_resets_before_grace() {
     let cleanup = EscapedChildCleanup {
         pid_file: pid_file.clone(),
     };
+    // The leader must not exit until the new session has published its PID.
+    // Otherwise correct group teardown can kill the fixture before it escapes.
     let script = format!(
-        r#"setsid /bin/sh -c 'echo $$ > "{}"; exec tail -f "{}"' & exit 0"#,
-        pid_file.display(),
+        r#"setsid /bin/sh -c 'echo $$ > "{0}"; exec tail -f "{0}"' & while [ ! -s "{0}" ]; do sleep 0.01; done; exit 0"#,
         pid_file.display()
     );
     let h = Harness::with_options(
@@ -681,6 +696,7 @@ async fn quiet_escaped_stdout_pipe_resets_before_grace() {
     let mut socket = h.connect().await;
     let started = tokio::time::Instant::now();
     socket.write_all(h.start("{}").as_bytes()).await.unwrap();
+    escaped_session_pid(&pid_file).await;
     let mut chunk = [0_u8; 1024];
     loop {
         match tokio::time::timeout(Duration::from_secs(1), socket.read(&mut chunk))
