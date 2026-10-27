@@ -6,9 +6,8 @@ use crate::lexical::{
 use crate::people::{body, identified_people, is_person};
 use crate::{
     Analysis, Anchor, Entity, Error, FocusResult, Kind, NumericValue, Reason, Row, Similar,
-    TemporalPartition, DEFAULT_MARGIN, EPSILON, MAX_CANDIDATES, MAX_EARLIER, MAX_EARLIER_BYTES,
-    MAX_ENTITIES, MAX_NEAR_SPELLINGS, MAX_QUERY_BYTES, MAX_ROW_BYTES, MAX_TOTAL_ROW_BYTES,
-    MAX_WORDS,
+    TemporalPartition, DEFAULT_MARGIN, EPSILON, MAX_CANDIDATES, MAX_NEAR_SPELLINGS, MAX_ROW_BYTES,
+    MAX_TOTAL_ROW_BYTES,
 };
 use chrono::{Datelike, NaiveDate};
 use regex::Regex;
@@ -28,13 +27,8 @@ pub fn analyse(
     earlier: &[String],
     anchor: Option<Anchor>,
 ) -> Result<Analysis, Error> {
-    if message.len() > MAX_QUERY_BYTES
-        || earlier.len() > MAX_EARLIER
-        || earlier.iter().any(|s| s.len() > MAX_QUERY_BYTES)
-        || earlier.iter().map(String::len).sum::<usize>() > MAX_EARLIER_BYTES
-    {
-        return Err(Error::Capacity);
-    }
+    crate::checked::text(message)?;
+    crate::checked::earlier(earlier)?;
     if anchor.as_ref().is_some_and(|a| !validate_anchor(a)) {
         return Err(Error::InvalidAnchor);
     }
@@ -65,7 +59,7 @@ pub fn analyse(
             } else {
                 entities
             }),
-        ),
+        )?,
     })
 }
 
@@ -73,7 +67,8 @@ fn python_float_text(text: &str) -> Option<f64> {
     if text.len() > 128 {
         return None;
     }
-    let text = text.trim_matches(crate::lexical::py_space);
+    let text = text
+        .trim_matches(|c: char| crate::lexical::py_space(c) && !('\u{1c}'..='\u{1f}').contains(&c));
     let mut normalized = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
@@ -432,12 +427,6 @@ pub fn focus_candidates(
         .map(|r| r.header.len().saturating_add(r.text.len()))
         .sum::<usize>()
         > MAX_TOTAL_ROW_BYTES
-        || analysis.entities.len() > MAX_ENTITIES
-        || analysis.entities.iter().any(|e| {
-            e.name.len() > MAX_QUERY_BYTES
-                || e.keys.len() > MAX_WORDS
-                || e.keys.iter().any(|k| k.len() > MAX_QUERY_BYTES)
-        })
         || limit.is_some_and(|v| v > MAX_CANDIDATES)
         || matches!(margin,NumericValue::Text(s) if s.len()>128)
     {
@@ -450,6 +439,7 @@ pub fn focus_candidates(
     {
         return Err(Error::InvalidAnchor);
     }
+    crate::checked::entities(&analysis.entities)?;
     partition.validate(rows.len())?;
     if analysis.anchor.is_none() && !partition.removed.is_empty() {
         return Err(Error::InvalidPartition);

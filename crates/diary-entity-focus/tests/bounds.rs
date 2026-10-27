@@ -11,7 +11,7 @@ fn row() -> Row {
     }
 }
 #[test]
-fn rejects_overlarge_text_and_scores() {
+fn rejects_overlarge_text_and_scores() -> Result<(), Error> {
     assert!(matches!(
         analyse(&"a".repeat(MAX_QUERY_BYTES + 1), &[], None),
         Err(Error::Capacity)
@@ -20,14 +20,8 @@ fn rejects_overlarge_text_and_scores() {
         analyse("Alder", &vec!["a".repeat(MAX_QUERY_BYTES); 5], None),
         Err(Error::Capacity)
     ));
-    let analysis = analyse("What did Alder Brannock say?", &[], None).ok();
-    let Some(analysis) = analysis else {
-        return;
-    };
-    let partition = TemporalPartition::identity(1).ok();
-    let Some(partition) = partition else {
-        return;
-    };
+    let analysis = analyse("What did Alder Brannock say?", &[], None)?;
+    let partition = TemporalPartition::identity(1)?;
     let mut r = row();
     r.text = "a".repeat(MAX_ROW_BYTES + 1);
     assert!(matches!(
@@ -60,9 +54,10 @@ fn rejects_overlarge_text_and_scores() {
         ),
         Err(Error::Capacity)
     ));
+    Ok(())
 }
 #[test]
-fn rejects_bad_anchor_and_partitions() {
+fn rejects_bad_anchor_and_partitions() -> Result<(), Error> {
     assert!(matches!(
         analyse(
             "What did Alder Brannock say?",
@@ -74,9 +69,7 @@ fn rejects_bad_anchor_and_partitions() {
         ),
         Err(Error::InvalidAnchor)
     ));
-    let Some(analysis) = analyse("What did Alder Brannock say?", &[], None).ok() else {
-        return;
-    };
+    let analysis = analyse("What did Alder Brannock say?", &[], None)?;
     let rows = [row(), row()];
     for partition in [
         TemporalPartition {
@@ -109,12 +102,11 @@ fn rejects_bad_anchor_and_partitions() {
             Err(Error::InvalidPartition)
         ));
     }
+    Ok(())
 }
 #[test]
-fn rejects_public_analysis_abuse() {
-    let Some(mut analysis) = analyse("Alder", &[], None).ok() else {
-        return;
-    };
+fn rejects_public_analysis_abuse() -> Result<(), Error> {
+    let mut analysis = analyse("Alder", &[], None)?;
     analysis.entities = vec![
         Entity {
             name: "Alder".to_owned(),
@@ -122,11 +114,160 @@ fn rejects_public_analysis_abuse() {
         };
         5
     ];
-    let Some(partition) = TemporalPartition::identity(1).ok() else {
-        return;
-    };
+    let partition = TemporalPartition::identity(1)?;
     assert!(matches!(
         focus_candidates(&analysis, &[row()], &partition, None, &NumericValue::Null),
         Err(Error::Capacity)
     ));
+    Ok(())
+}
+
+#[test]
+fn public_helpers_reject_raw_input_before_cleanup_or_early_return() -> Result<(), Error> {
+    use diary_entity_focus::{
+        asked_entities, carried_entities, classify, identified_people, near_word, refers_back,
+        relational,
+    };
+    let normal = Entity {
+        name: "Alder Brannock".into(),
+        keys: vec!["alder".into(), "brannock".into()],
+    };
+    let empty = Entity {
+        name: String::new(),
+        keys: vec![],
+    };
+    // Curly apostrophes shrink on normalization; speaker labels shrink on clean.
+    let curly = "’ ".repeat(MAX_QUERY_BYTES / 4 + 1);
+    assert!(curly.len() > MAX_QUERY_BYTES);
+    assert_eq!(asked_entities(&curly), Err(Error::Capacity));
+    let roles = "**Me:** ".repeat(200_000);
+    assert!(roles.len() > MAX_QUERY_BYTES);
+    for entity in [&normal, &empty] {
+        assert_eq!(classify(&roles, entity), Err(Error::Capacity));
+    }
+    assert_eq!(identified_people(&roles, None), Err(Error::Capacity));
+    assert_eq!(refers_back(&roles), Err(Error::Capacity));
+    assert_eq!(relational(&roles, &[]), Err(Error::Capacity));
+    assert_eq!(near_word(&roles, "Alder"), Err(Error::Capacity));
+    assert_eq!(near_word(&"a".repeat(257), "Alder"), Err(Error::Capacity));
+    // Compatibility decomposition can expand a short raw word beyond the bound.
+    assert_eq!(near_word(&"ﷺ".repeat(15), "Alder"), Err(Error::Capacity));
+    let too_many = vec![String::new(); 65];
+    let aggregate = vec![" ".repeat(MAX_QUERY_BYTES); 5];
+    for message in [
+        "What did Alder Brannock say?",
+        "No referent",
+        "And his email?",
+    ] {
+        assert_eq!(carried_entities(message, &too_many), Err(Error::Capacity));
+        assert_eq!(carried_entities(message, &aggregate), Err(Error::Capacity));
+        assert_eq!(
+            carried_entities(message, std::slice::from_ref(&roles)),
+            Err(Error::Capacity)
+        );
+    }
+    assert_eq!(carried_entities(&roles, &[]), Err(Error::Capacity));
+    // Ordinary negatives remain successful policy answers, distinct from refusal.
+    assert_eq!(classify("Nothing here.", &empty)?, (None, None));
+    assert!(!refers_back("No referent")?);
+    assert!(!relational(
+        "No relationship",
+        std::slice::from_ref(&normal)
+    )?);
+    assert!(!near_word("Alder", "Alder")?);
+    Ok(())
+}
+
+#[test]
+fn public_entity_arguments_and_numeric_capacity_are_checked() -> Result<(), Error> {
+    use diary_entity_focus::{
+        classify, identified_people, parse_margin, relational, Analysis, MAX_ENTITIES, MAX_WORDS,
+    };
+    let normal = Entity {
+        name: "Alder".into(),
+        keys: vec!["alder".into()],
+    };
+    let oversized = [
+        Entity {
+            name: " ".repeat(MAX_QUERY_BYTES + 1),
+            keys: vec![],
+        },
+        Entity {
+            name: "Alder".into(),
+            keys: vec!["x".repeat(MAX_QUERY_BYTES + 1)],
+        },
+        Entity {
+            name: "Alder".into(),
+            keys: vec!["x".into(); MAX_WORDS + 1],
+        },
+        Entity {
+            name: "Alder".into(),
+            keys: vec!["x".repeat(MAX_QUERY_BYTES / 2 + 1); 2],
+        },
+    ];
+    let malformed = [
+        Entity {
+            name: String::new(),
+            keys: vec!["alder".into()],
+        },
+        Entity {
+            name: "Alder".into(),
+            keys: vec![String::new()],
+        },
+    ];
+    for (entities, expected) in [
+        (&oversized[..], Error::Capacity),
+        (&malformed[..], Error::InvalidEntity),
+    ] {
+        for entity in entities {
+            assert_eq!(classify("Nothing here.", entity), Err(expected));
+            assert_eq!(
+                identified_people("Nothing here.", Some(std::slice::from_ref(entity))),
+                Err(expected)
+            );
+            assert_eq!(
+                relational("Nothing here.", std::slice::from_ref(entity)),
+                Err(expected)
+            );
+            let analysis = Analysis {
+                entities: vec![entity.clone()],
+                carried: false,
+                anchor: None,
+                relational: false,
+            };
+            assert_eq!(
+                focus_candidates(
+                    &analysis,
+                    &[],
+                    &TemporalPartition::identity(0)?,
+                    None,
+                    &NumericValue::Null
+                ),
+                Err(expected)
+            );
+        }
+    }
+    let many = vec![normal; MAX_ENTITIES + 1];
+    assert_eq!(
+        identified_people("Nothing here.", Some(&many)),
+        Err(Error::Capacity)
+    );
+    assert_eq!(relational("Nothing here.", &many), Err(Error::Capacity));
+    assert_eq!(
+        parse_margin(&NumericValue::Text("9".repeat(129))),
+        Err(Error::Capacity)
+    );
+    assert_eq!(parse_margin(&NumericValue::Text("bad".into()))?, 0.05);
+    assert_eq!(parse_margin(&NumericValue::Text(" ".repeat(128)))?, 0.05);
+    Ok(())
+}
+
+#[test]
+fn extraction_retains_four_entities_instead_of_refusing_five() -> Result<(), Error> {
+    use diary_entity_focus::{asked_entities, MAX_ENTITIES};
+    let entities = asked_entities(
+        "Did Alder Brannock, Bryony Castellow, Caspian Juxon, William Hart, Janet Bell speak?",
+    )?;
+    assert_eq!(entities.len(), MAX_ENTITIES);
+    Ok(())
 }

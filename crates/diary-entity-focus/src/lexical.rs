@@ -35,9 +35,6 @@ pub(crate) fn decimal_digit(c: char) -> Option<u8> {
 fn combining(c: char) -> bool {
     in_ranges(c as u32, rules::COMBINING_RANGES)
 }
-pub(crate) fn py_alpha(c: char) -> bool {
-    in_ranges(c as u32, rules::ALPHA_RANGES)
-}
 pub(crate) fn py_alnum(c: char) -> bool {
     in_ranges(c as u32, rules::ALNUM_RANGES)
 }
@@ -56,7 +53,7 @@ pub(crate) fn py_isupper(s: &str) -> bool {
     }
     cased
 }
-fn word_letter(c: char) -> bool {
+pub(crate) fn word_letter(c: char) -> bool {
     py_alnum(c) && !decimal(c)
 }
 fn alnum_no_underscore(c: char) -> bool {
@@ -589,7 +586,7 @@ pub fn classify(text: &str, entity: &Entity) -> Result<(Option<Kind>, Option<Str
     Ok(best)
 }
 
-pub fn refers_back(message: &str) -> bool {
+pub fn refers_back(message: &str) -> Result<bool, Error> {
     use crate::regex_profile::{self as rx, Pattern};
     use std::sync::OnceLock;
     type Programs = Result<Vec<Pattern>, Error>;
@@ -617,9 +614,11 @@ pub fn refers_back(message: &str) -> bool {
     });
     if open
         .as_ref()
-        .is_ok_and(|patterns| patterns.iter().any(|p| p.at(&text, start).is_some()))
+        .map_err(|e| *e)?
+        .iter()
+        .any(|p| p.at(&text, start).is_some())
     {
-        return true;
+        return Ok(true);
     }
     let pronouns = PRONOUN.get_or_init(|| {
         rx::keywords(&[
@@ -638,15 +637,17 @@ pub fn refers_back(message: &str) -> bool {
     });
     if pronouns
         .as_ref()
-        .is_ok_and(|patterns| patterns.iter().any(|p| p.is_match(&text)))
+        .map_err(|e| *e)?
+        .iter()
+        .any(|p| p.is_match(&text))
     {
-        return true;
+        return Ok(true);
     }
-    let after_time = |end: usize| {
+    let after_time = |end: usize| -> Result<bool, Error> {
         let after = text.get(end..).unwrap_or_default();
         let trimmed = after.trim_start_matches(py_space);
         if trimmed.len() == after.len() {
-            return false;
+            return Ok(false);
         }
         let at = text.len() - trimmed.len();
         let time = TIME.get_or_init(|| {
@@ -683,25 +684,35 @@ pub fn refers_back(message: &str) -> bool {
                 })
                 .collect()
         });
-        time.as_ref()
-            .is_ok_and(|patterns| patterns.iter().any(|p| p.at(&text, at).is_some()))
+        Ok(time
+            .as_ref()
+            .map_err(|e| *e)?
+            .iter()
+            .any(|p| p.at(&text, at).is_some()))
     };
     let strong = STRONG.get_or_init(|| rx::keywords(&["that", "those", "these"]));
-    if strong.as_ref().is_ok_and(|patterns| {
-        patterns
-            .iter()
-            .any(|p| p.find_iter(&text).any(|hit| !after_time(hit.end)))
-    }) {
-        return true;
+    for p in strong.as_ref().map_err(|e| *e)? {
+        for hit in p.find_iter(&text) {
+            if !after_time(hit.end)? {
+                return Ok(true);
+            }
+        }
     }
     let weak = WEAK.get_or_init(|| rx::keywords(&["it", "this"]));
-    let weak_hit = weak.as_ref().is_ok_and(|patterns| {
-        patterns
-            .iter()
-            .any(|p| p.find_iter(&text).any(|hit| !after_time(hit.end)))
-    });
+    let mut weak_hit = false;
+    for p in weak.as_ref().map_err(|e| *e)? {
+        for hit in p.find_iter(&text) {
+            if !after_time(hit.end)? {
+                weak_hit = true;
+                break;
+            }
+        }
+        if weak_hit {
+            break;
+        }
+    }
     if !weak_hit {
-        return false;
+        return Ok(false);
     }
     let meta = META.get_or_init(|| {
         [
@@ -761,12 +772,15 @@ pub fn refers_back(message: &str) -> bool {
         })
         .collect()
     });
-    meta.as_ref()
-        .is_ok_and(|patterns| patterns.iter().any(|p| p.is_match(&text)))
+    Ok(meta
+        .as_ref()
+        .map_err(|e| *e)?
+        .iter()
+        .any(|p| p.is_match(&text)))
 }
 
 pub fn carried_entities(message: &str, earlier: &[String]) -> Result<Vec<Entity>, Error> {
-    if !asked_entities(message)?.is_empty() || !refers_back(message) {
+    if !asked_entities(message)?.is_empty() || !refers_back(message)? {
         return Ok(Vec::new());
     }
     for previous in earlier.iter().rev() {
@@ -778,7 +792,7 @@ pub fn carried_entities(message: &str, earlier: &[String]) -> Result<Vec<Entity>
     Ok(Vec::new())
 }
 
-pub fn relational(message: &str, entities: &[Entity]) -> bool {
+pub fn relational(message: &str, entities: &[Entity]) -> Result<bool, Error> {
     use crate::regex_profile::{self as rx, Pattern};
     let text = norm(message);
     let space = rx::SPACE;
@@ -798,7 +812,8 @@ pub fn relational(message: &str, entities: &[Entity]) -> bool {
             "{name}(?:{}|'){space}+((?:{word}+{space}+)?{word}+(?:-{word}+)*)",
             rx::literal("'s")
         );
-        if let Ok(re) = Pattern::new(&possessive, false, false) {
+        {
+            let re = Pattern::new(&possessive, false, false)?;
             for cap in re.find_iter(&text) {
                 let phrase = cap.capture.unwrap_or_default();
                 let parts = phrase
@@ -809,7 +824,7 @@ pub fn relational(message: &str, entities: &[Entity]) -> bool {
                     let low = py_lower(w);
                     has(rules::RELATIONS, &low) || has(rules::RELATIONS, low.trim_end_matches('s'))
                 }) {
-                    return true;
+                    return Ok(true);
                 }
             }
         }
@@ -818,7 +833,8 @@ pub fn relational(message: &str, entities: &[Entity]) -> bool {
             rx::literal("of"),
             rx::literal("the")
         );
-        if let Ok(re) = Pattern::new(&of, true, true) {
+        {
+            let re = Pattern::new(&of, true, true)?;
             for cap in re.find_iter(&text) {
                 let phrase = py_lower(cap.capture.unwrap_or_default());
                 if std::iter::once(phrase.as_str())
@@ -827,12 +843,12 @@ pub fn relational(message: &str, entities: &[Entity]) -> bool {
                         has(rules::RELATIONS, w) || has(rules::RELATIONS, w.trim_end_matches('s'))
                     })
                 {
-                    return true;
+                    return Ok(true);
                 }
             }
         }
     }
-    false
+    Ok(false)
 }
 
 #[cfg(test)]

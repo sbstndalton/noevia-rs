@@ -641,7 +641,6 @@ dependencies = [
  "sha2",
 ]
 
-
 [[package]]
 name = "diary-index-transform"
 version = "0.1.0"

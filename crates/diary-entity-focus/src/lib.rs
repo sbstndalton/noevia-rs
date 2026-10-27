@@ -7,9 +7,12 @@ mod policy;
 mod regex_profile;
 mod unicode15;
 
-pub use lexical::{asked_entities, carried_entities, classify, near_word, refers_back, relational};
-pub use people::identified_people;
-pub use policy::{analyse, focus_candidates, parse_margin};
+pub use policy::{analyse, focus_candidates};
+mod checked;
+pub use checked::{
+    asked_entities, carried_entities, classify, identified_people, near_word, parse_margin,
+    refers_back, relational,
+};
 
 pub const PYTHON_SOURCE_SHA256: &str = generated_rules::SOURCE_SHA256;
 pub const PYTHON_VERSION: &str = generated_rules::PYTHON_VERSION;
@@ -32,6 +35,7 @@ pub enum Error {
     Capacity,
     InvalidPartition,
     InvalidAnchor,
+    InvalidEntity,
     Internal,
 }
 impl std::fmt::Display for Error {
@@ -40,6 +44,7 @@ impl std::fmt::Display for Error {
             Self::Capacity => f.write_str("entity focus input capacity exceeded"),
             Self::InvalidPartition => f.write_str("invalid temporal rank partition"),
             Self::InvalidAnchor => f.write_str("invalid canonical temporal anchor"),
+            Self::InvalidEntity => f.write_str("invalid entity name or key"),
             Self::Internal => f.write_str("entity focus internal pattern failure"),
         }
     }

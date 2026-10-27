@@ -54,6 +54,29 @@ def main():
         result = ef.focus_candidates(query, candidates)
         rows.append(dict(kind='focus',message=query,rows=candidates,limit=None,margin=.05,earlier=[],
                          partition=partition(candidates,result.anchor),expected=expected(result)))
+    # Whole-source review regressions: preceding-word class and float whitespace.
+    for prefix in ['²along', 'Ⅳalong', '½along', '²at', 'along', 'at']:
+        text = prefix+' Rosa Bank spoke.'
+        rows.append(dict(kind='classify', text=text, entity=encode_entity(e),
+                         found=ef.classify(text,e), people=ef.identified_people(text,[e]),
+                         asked=[encode_entity(x) for x in ef.asked_entities(text)]))
+        candidates = [dict(day='2030-01-10',header='',text='Alder Brannock spoke.',score=1.0),
+                      dict(day='2030-01-11',header='',text=text,score=.99)]
+        query = 'What did Alder Brannock say?'
+        result = ef.focus_candidates(query, candidates)
+        rows.append(dict(kind='focus',message=query,rows=candidates,limit=None,margin=.05,earlier=[],
+                         partition=partition(candidates,result.anchor),expected=expected(result)))
+    for ws in spaces:
+        for numeric in [ws+'0.2', '0.2'+ws, ws+'0.2'+ws]:
+            rows.append(dict(kind='margin',input=numeric,expected=ef.parse_margin(numeric)))
+            for slot in ['margin','score']:
+                candidates = [dict(day='2030-01-10',header='',text='Alder Brannock spoke.',score=1.0),
+                              dict(day='2030-01-11',header='',text='No names here.',score=numeric if slot=='score' else .9)]
+                query = 'What did Alder Brannock say?'
+                margin = numeric if slot=='margin' else .05
+                result = ef.focus_candidates(query,candidates,margin=margin)
+                rows.append(dict(kind='focus',message=query,rows=candidates,limit=None,margin=margin,earlier=[],
+                                 partition=partition(candidates,result.anchor),expected=expected(result)))
     args.output.write_text('\n'.join(json.dumps(row,ensure_ascii=False,separators=(',',':')) for row in rows)+'\n')
     print({kind:sum(row['kind']==kind for row in rows) for kind in sorted({row['kind'] for row in rows})})
 

@@ -73,7 +73,7 @@ def main():
     lines.append('];')
     for name,pred in [('DECIMAL_RANGES',lambda c: bool(re.fullmatch(r'\d',c))),
                       ('COMBINING_RANGES',lambda c: unicodedata.combining(c)!=0),
-                      ('ALNUM_RANGES',str.isalnum), ('ALPHA_RANGES',str.isalpha),
+                      ('ALNUM_RANGES',str.isalnum),
                       ('UPPER_RANGES',str.isupper),
                       ('CASED_RANGES',lambda c: c.isupper() or c.islower() or unicodedata.category(c)=='Lt')]:
         rows=ranges(pred)

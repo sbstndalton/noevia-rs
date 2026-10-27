@@ -156,7 +156,7 @@ fn trailing_word_same_line(text: &str, pos: usize) -> String {
     let word: String = trimmed
         .chars()
         .rev()
-        .take_while(|c| crate::lexical::py_alpha(*c))
+        .take_while(|c| crate::lexical::word_letter(*c))
         .collect::<Vec<_>>()
         .into_iter()
         .rev()

@@ -112,7 +112,7 @@ fn python_source_differential_focus() {
         assert_eq!(actual, v["expected"], "focus case {}", v["id"]);
         n += 1;
     }
-    assert_eq!(n, 789);
+    assert_eq!(n, 969);
 }
 #[test]
 fn python_source_differential_helpers() {
@@ -140,7 +140,7 @@ fn python_source_differential_helpers() {
         );
         n += 1;
     }
-    assert_eq!(n, 420);
+    assert_eq!(n, 426);
 }
 #[test]
 fn python_source_margin_text() {
@@ -150,7 +150,7 @@ fn python_source_margin_text() {
         if v["kind"] != "margin" {
             continue;
         }
-        let actual = diary_entity_focus::parse_margin(&numeric(&v["input"]));
+        let actual = diary_entity_focus::parse_margin(&numeric(&v["input"])).unwrap();
         assert_eq!(
             json!(actual),
             v["expected"],
@@ -159,7 +159,7 @@ fn python_source_margin_text() {
         );
         n += 1;
     }
-    assert_eq!(n, 13);
+    assert_eq!(n, 100);
 }
 
 #[test]
@@ -168,8 +168,10 @@ fn frozen_regex_keyword_and_relation_probes() {
     for line in PROBES.lines() {
         let v: Value = serde_json::from_str(line).unwrap();
         let actual = match v["kind"].as_str() {
-            Some("refers_back") => refers_back(v["text"].as_str().unwrap()),
-            Some("relational") => relational(v["text"].as_str().unwrap(), &[entity(&v["entity"])]),
+            Some("refers_back") => refers_back(v["text"].as_str().unwrap()).unwrap(),
+            Some("relational") => {
+                relational(v["text"].as_str().unwrap(), &[entity(&v["entity"])]).unwrap()
+            }
             _ => continue,
         };
         assert_eq!(
