@@ -442,44 +442,48 @@ fn near_distance(a: &str, b: &str, limit: usize) -> usize {
     }
     prev.last().copied().unwrap_or(limit + 1)
 }
-pub fn near_word(a: &str, b: &str) -> bool {
+pub fn near_word(a: &str, b: &str) -> Result<bool, Error> {
     let a = key(a);
     let b = key(b);
-    let min = a.chars().count().min(b.chars().count());
-    if a == b || min < 3 || a.chars().count() > MAX_WORD_CHARS || b.chars().count() > MAX_WORD_CHARS
-    {
-        return false;
+    let alen = a.chars().count();
+    let blen = b.chars().count();
+    if alen > MAX_WORD_CHARS || blen > MAX_WORD_CHARS {
+        return Err(Error::Capacity);
+    }
+    let min = alen.min(blen);
+    if a == b || min < 3 {
+        return Ok(false);
     }
     let limit = if min <= 5 { 1 } else { 2 };
-    near_distance(&a, &b, limit) <= limit
+    Ok(near_distance(&a, &b, limit) <= limit)
 }
 
-fn relation(word: &str, want: &str) -> Option<&'static str> {
+fn relation(word: &str, want: &str) -> Result<Option<&'static str>, Error> {
     if word == want {
-        return Some("eq");
+        return Ok(Some("eq"));
     }
     if (want.chars().count() == 1 && word.starts_with(want))
         || (word.chars().count() == 1 && want.starts_with(word))
     {
-        return Some("variant");
+        return Ok(Some("variant"));
     }
     if short_forms(word).is_some_and(|forms| forms.contains(&want))
         || short_forms(want).is_some_and(|forms| forms.contains(&word))
     {
-        return Some("variant");
+        return Ok(Some("variant"));
     }
     if has(rules::NOT_NAMES, word) || has(rules::ROLE_WORDS, word) {
-        return None;
+        return Ok(None);
     }
-    if near_word(word, want) {
-        return Some("near");
+    if near_word(word, want)? {
+        return Ok(Some("near"));
     }
     if word.chars().count().min(want.chars().count()) >= 2
         && (want.starts_with(word) || word.starts_with(want))
     {
-        return Some("variant");
+        return Ok(Some("variant"));
     }
-    None
+    Ok(None)
 }
 fn subsequence(short: &[String], long: &[String]) -> bool {
     if short.is_empty() {
@@ -549,11 +553,11 @@ pub fn classify(text: &str, entity: &Entity) -> Result<(Option<Kind>, Option<Str
                 relation(
                     first,
                     entity.keys.first().map(String::as_str).unwrap_or_default(),
-                ),
+                )?,
                 relation(
                     first,
                     entity.keys.last().map(String::as_str).unwrap_or_default(),
-                ),
+                )?,
             ];
             if rel.contains(&Some("near")) {
                 kinds.push(Kind::Near);
@@ -566,7 +570,7 @@ pub fn classify(text: &str, entity: &Entity) -> Result<(Option<Kind>, Option<Str
                 .iter()
                 .zip(&entity.keys)
                 .map(|(a, b)| relation(a, b))
-                .collect::<Vec<_>>();
+                .collect::<Result<Vec<_>, Error>>()?;
             if rel.iter().all(Option::is_some) {
                 kinds.push(if rel.iter().all(|r| matches!(r, Some("eq" | "near"))) {
                     Kind::Near

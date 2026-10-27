@@ -97,7 +97,7 @@ pub fn near_word(a: &str, b: &str) -> Result<bool, Error> {
             return Err(Error::Capacity);
         }
     }
-    Ok(crate::lexical::near_word(a, b))
+    crate::lexical::near_word(a, b)
 }
 pub fn parse_margin(value: &NumericValue) -> Result<f64, Error> {
     numeric(value)?;

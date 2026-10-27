@@ -199,7 +199,11 @@ fn same_given_near_surname(text: &str, entity: &Entity) -> Result<Option<String>
                 entity.keys.first(),
                 entity.keys.get(1),
             ) {
-                if first != given || !near_word(last, surname) || plural_of(last, surname) {
+                if first != given
+                    || last == surname
+                    || plural_of(last, surname)
+                    || !near_word(last, surname)?
+                {
                     continue;
                 }
                 let shown = ws
@@ -697,5 +701,26 @@ mod frozen_order_probes {
             score: NumericValue::Null,
         };
         assert_eq!(order(&row), ("2030-01-20".into(), "".into()));
+    }
+}
+
+#[cfg(test)]
+mod normalized_fuzzy_capacity {
+    use super::*;
+    #[test]
+    fn same_given_near_surname_propagates_capacity() -> Result<(), Error> {
+        let a = format!("F{}a{}", "ﬃ".repeat(90), "ﬃ".repeat(10));
+        let b = format!("F{}b{}", "ﬃ".repeat(90), "ﬃ".repeat(10));
+        let entities = asked_entities(&format!("What about Alder {a}?"))?;
+        let entity = entities.first().ok_or(Error::Internal)?;
+        assert_eq!(
+            same_given_near_surname(&format!("Alder {a}"), entity)?,
+            None
+        );
+        assert_eq!(
+            same_given_near_surname(&format!("Alder {b}"), entity),
+            Err(Error::Capacity)
+        );
+        Ok(())
     }
 }

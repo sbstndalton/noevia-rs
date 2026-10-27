@@ -271,3 +271,55 @@ fn extraction_retains_four_entities_instead_of_refusing_five() -> Result<(), Err
     assert_eq!(entities.len(), MAX_ENTITIES);
     Ok(())
 }
+
+fn expanded_names() -> (String, String) {
+    (
+        format!("F{}a{}", "ﬃ".repeat(90), "ﬃ".repeat(10)),
+        format!("F{}b{}", "ﬃ".repeat(90), "ﬃ".repeat(10)),
+    )
+}
+#[test]
+fn normalized_fuzzy_classification_never_becomes_absence() -> Result<(), Error> {
+    use diary_entity_focus::{asked_entities, classify, Kind};
+    let (a, b) = expanded_names();
+    let entities = asked_entities(&format!("What about {a}?"))?;
+    let entity = entities.first().ok_or(Error::Internal)?;
+    assert_eq!(
+        entity.keys.first().ok_or(Error::Internal)?.chars().count(),
+        302
+    );
+    // Frozen Python says near; this exceeds our documented fuzzy capacity.
+    // Refuse the operation rather than producing successful absence.
+    assert_eq!(classify(&b, entity), Err(Error::Capacity));
+    assert_eq!(classify(&a, entity)?.0, Some(Kind::Match));
+    Ok(())
+}
+#[test]
+fn normalized_fuzzy_focus_never_becomes_absence() -> Result<(), Error> {
+    let (a, b) = expanded_names();
+    let analysis = analyse(&format!("What about {a}?"), &[], None)?;
+    let mut candidate = row();
+    candidate.text = b;
+    assert_eq!(
+        focus_candidates(
+            &analysis,
+            &[candidate],
+            &TemporalPartition::identity(1)?,
+            None,
+            &NumericValue::Null
+        ),
+        Err(Error::Capacity)
+    );
+    let mut exact = row();
+    exact.text = a;
+    let out = focus_candidates(
+        &analysis,
+        &[exact],
+        &TemporalPartition::identity(1)?,
+        None,
+        &NumericValue::Null,
+    )?;
+    assert_eq!(out.kept_ranks, vec![1]);
+    assert_eq!(out.exact.len(), 1);
+    Ok(())
+}
