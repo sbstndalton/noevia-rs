@@ -151,6 +151,10 @@ impl Session {
         self.proof_at(now)
     }
     /// Irreversible. Actual replacement acknowledgement still requires old work drain.
+    #[cfg(test)]
+    pub(super) fn expire_for_test(&mut self) {
+        self.state = State::Expired;
+    }
     pub fn retire(&mut self) {
         self.state = State::Retired;
     }
