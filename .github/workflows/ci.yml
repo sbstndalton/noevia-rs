@@ -58,8 +58,23 @@ jobs:
         if: steps.pkgs.outputs.any == 'true'
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: cargo test
+        id: workspace_tests
         if: steps.pkgs.outputs.any == 'true'
-        run: cargo test --locked --workspace
+        run: |
+          set -euo pipefail
+          cargo test --locked --workspace --message-format=json | tee "$RUNNER_TEMP/noevia-workspace-test-events.jsonl"
+      - name: Observe failed supervisor Node reset (owned processes only)
+        id: reset_trace
+        if: ${{ failure() && steps.workspace_tests.outcome == 'failure' }}
+        run: python3 bins/code-sandbox-supervisor/tests/trace_node_reset.py
+      - name: Upload bounded supervisor reset diagnostic
+        if: ${{ failure() && steps.workspace_tests.outcome == 'failure' && steps.reset_trace.outputs.ready == 'true' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: supervisor-node-reset-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/noevia-supervisor-reset-trace
+          if-no-files-found: error
+          retention-days: 3
       - name: Optimized code-actions performance qualification (#1328)
         run: cargo test --locked --release -p code-actions --test deep_find --test properties -- --test-threads=1
 
