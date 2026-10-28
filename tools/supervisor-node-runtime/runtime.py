@@ -22,7 +22,10 @@ if not __debug__:
 RECIPE = Path(__file__).resolve().parent
 SOURCE_LIMIT = 100 * 1024 * 1024
 EXPANDED_LIMIT = 1024 * 1024 * 1024
-PROBE = """console.log(JSON.stringify({versions:process.versions,features:process.features,
+PROBE = """const crypto=require('node:crypto');console.log(JSON.stringify({
+versions:process.versions,features:process.features,release:process.release,
+cryptoCapabilities:{hashes:crypto.getHashes().sort(),ciphers:crypto.getCiphers().sort(),
+curves:crypto.getCurves().sort(),fips:crypto.getFips()},
 config:process.config,arch:process.arch,platform:process.platform}))"""
 
 
@@ -35,7 +38,9 @@ def locked():
     data = json.loads((RECIPE / 'source-lock.json').read_text())
     assert data['schema'] == 1 and data['nodeVersion'] == '22.23.4'
     assert data['platform'] == 'linux/amd64' and data['compileJobs'] == 2
-    assert data['configureArgs'] == ['--with-intl=full-icu']
+    assert data['configureArgs'] == ['--with-intl=full-icu',
+                                    '--release-urlbase=https://nodejs.org/download/release/']
+    assert data['compileTimeoutSeconds'] == 7800
     assert data['sourceUrl'] == 'https://nodejs.org/dist/v22.23.4/node-v22.23.4.tar.xz'
     assert data['patchFile'] == 'libuv-partial-hup.patch'
     assert sha(RECIPE / data['patchFile']) == data['patchSha256']
@@ -50,6 +55,7 @@ def locked():
     for value in [data['sourceSha256'], data['patchSha256']] + [
             f[k] for f in data['files'] for k in ('beforeSha256', 'afterSha256')]:
         assert re.fullmatch('[0-9a-f]{64}', value)
+    read_evidence(data)
     return data
 
 
@@ -57,12 +63,133 @@ def recipe_sha():
     digest = hashlib.sha256()
     # Match the CI exact-key cache inputs. Test/copy edits do not force another
     # C++ compilation when all actual recipe inputs remain byte-identical.
-    for name in ('builder-manifest.json', 'ci.sh', 'libuv-partial-hup.patch',
+    for name in ('builder-manifest.json', 'ci.sh', 'gas-metadata-evidence.json', 'libuv-partial-hup.patch',
                  'runtime.py', 'source-lock.json'):
         path = RECIPE / name
         assert path.is_file() and not path.is_symlink()
         digest.update(name.encode() + b'\0' + bytes.fromhex(sha(path)))
     return digest.hexdigest()
+
+
+def read_evidence(data):
+    policy = data['configurationComparison']
+    assert policy['evidenceFile'] == 'gas-metadata-evidence.json'
+    path = RECIPE / policy['evidenceFile']
+    assert sha(path) == policy['evidenceSha256']
+    evidence = json.loads(path.read_text())
+    assert evidence['schema'] == 1 and evidence['nodeSourceSha256'] == data['sourceSha256']
+    assert evidence['builderManifest'] == data['builder']['linuxAmd64Manifest']
+    assert policy['referenceGasVersion'] == evidence['referenceGasVersion'] == '2.35'
+    assert policy['builderGasVersion'] == evidence['builderGasVersion'] == '2.40'
+    assert {item['label'] for item in evidence['cryptoTests']} == {
+        'hash', 'hmac', 'cipher', 'authenticated', 'sign'}
+    assert len(evidence['cryptoTests']) == 5
+    return evidence
+
+
+def source_evidence(source, evidence):
+    expected = {item['path']: item['sha256'] for item in evidence['gasFieldReferences']}
+    assert len(expected) == len(evidence['gasFieldReferences'])
+    actual = {}
+    for path in source.rglob('*'):
+        if not path.is_file():
+            continue
+        found, tail = False, b''
+        with path.open('rb') as stream:
+            while chunk := stream.read(1024 * 1024):
+                block = tail + chunk
+                found |= b'gas_version' in block
+                tail = block[-32:]
+        if found:
+            actual[path.relative_to(source).as_posix()] = sha(path)
+    assert actual == expected, 'Assembler field source references changed'
+    for item in evidence['supportingSources'] + evidence['cryptoTests']:
+        assert sha(source / item['path']) == item['sha256']
+    for item in evidence['predicates']:
+        lines = (source / item['path']).read_text().splitlines()
+        assert lines[item['line'] - 1].strip() == item['literal']
+        if 'constantLine' in item:
+            assert lines[item['constantLine'] - 1].strip() == item['constantLiteral']
+    return branch_outcomes(evidence)
+
+
+def branch_outcomes(evidence):
+    outcomes = []
+    for item in evidence['predicates']:
+        threshold = tuple(map(int, item['threshold'].split('.')))
+        left = tuple(map(int, evidence['referenceGasVersion'].split('.')))
+        right = tuple(map(int, evidence['builderGasVersion'].split('.')))
+        assert item['operator'] in ('>=', '<')
+        a = left >= threshold if item['operator'] == '>=' else left < threshold
+        b = right >= threshold if item['operator'] == '>=' else right < threshold
+        assert a == b
+        outcomes.append({'path': item['path'], 'line': item['line'],
+                         'referenceOutcome': a, 'builderOutcome': b})
+    return outcomes
+
+
+def configuration_comparison(reference, candidate, evidence):
+    differences = []
+
+    def compare(a, b, path):
+        if isinstance(a, dict) and isinstance(b, dict):
+            assert a.keys() == b.keys(), 'Configuration keys changed'
+            for key in sorted(a):
+                compare(a[key], b[key], path + '/' + key)
+        elif json.dumps(a, sort_keys=True) != json.dumps(b, sort_keys=True):
+            differences.append({'path': path, 'reference': a, 'candidate': b})
+
+    compare(reference, candidate, '')
+    expected = {'path': '/variables/gas_version',
+                'reference': evidence['referenceGasVersion'],
+                'candidate': evidence['builderGasVersion']}
+    assert differences == [expected], 'Unexpected configuration drift or assembler pair'
+    return {'rawConfigurationEqual': False, 'acceptedDiscoveryDifference': expected,
+            'sourceEvidence': 'Pinned source predicates agree; not machine-code identity'}
+
+
+def runtime_comparison(reference, candidate, configured, evidence):
+    parity({key: value for key, value in reference.items() if key != 'config'},
+           {key: value for key, value in candidate.items() if key != 'config'})
+    # The compiled binary must expose exactly what configure actually generated,
+    # including the truthful assembler version. Never rewrite either snapshot.
+    parity(configured, candidate['config'])
+    return configuration_comparison(reference['config'], candidate['config'], evidence)
+
+
+def selected_tools():
+    tools = {}
+    for name in ('as', 'ld'):
+        result = subprocess.run(['/usr/bin/gcc', '-print-prog-name=' + name],
+                                capture_output=True, text=True, check=True, timeout=15)
+        value = result.stdout.strip()
+        assert len(value) < 4096
+        path = Path(value) if Path(value).is_absolute() else Path(shutil.which(value))
+        path = path.resolve(strict=True)
+        assert path.is_relative_to('/usr')
+        version = subprocess.run([str(path), '--version'], capture_output=True,
+                                 text=True, check=True, timeout=15).stdout
+        assert len(version) <= 64 * 1024
+        tools[name] = {'path': str(path), 'sha256': sha(path), 'version': version.strip()}
+    assert tools['as']['version'].splitlines()[0].startswith('GNU assembler')
+    assert tools['as']['version'].splitlines()[0].endswith(' 2.40')
+    return tools
+
+
+def crypto_checks(source, output, reference, candidate, evidence):
+    results = []
+    for role, binary in (('reference', reference), ('candidate', candidate)):
+        binary_sha = sha(binary)
+        for item in evidence['cryptoTests']:
+            assert sha(source / item['path']) == item['sha256']
+            name = 'crypto-' + role + '-' + item['label'] + '.log'
+            log = output / name
+            run([str(binary), str(source / item['path'])], source, log, 120)
+            assert not re.search(r'\b(?:skipped|skipping)\b', log.read_text(), re.I)
+            results.append({'role': role, 'label': item['label'], 'binarySha256': binary_sha,
+                            'sourceSha256': item['sha256'],
+                            'log': name, 'logSha256': sha(log), 'status': 'passed'})
+    return results
 
 
 def download(destination):
@@ -232,6 +359,7 @@ def build(archive, work, output):
     assert platform.system() == 'Linux' and platform.machine() == 'x86_64'
     assert os.environ.get('NOEVIA_NODE_BUILDER') == data['builder']['linuxAmd64Manifest']
     assert os.environ.get('LC_ALL') == 'C.UTF-8'
+    assert os.environ.get('CC') == '/usr/bin/gcc' and os.environ.get('CXX') == '/usr/bin/g++'
     assert not any(os.environ.get(k) for k in (
         'NODE_OPTIONS', 'NODE_PATH', 'LD_PRELOAD', 'LD_LIBRARY_PATH',
         'CFLAGS', 'CXXFLAGS', 'CPPFLAGS', 'LDFLAGS', 'PYTHONPATH'))
@@ -251,9 +379,12 @@ def build(archive, work, output):
                                 check=True, timeout=15)
         assert len(result.stdout) <= 64 * 1024
         tools[name] = result.stdout.strip()
+    compiler_tools = selected_tools()
     source = work / 'node'
     extract(archive, source, data)
     patch_source(source, data)
+    evidence = read_evidence(data)
+    branch_outcomes = source_evidence(source, evidence)
     # Reference prefix is fixed by the immutable builder, not caller input.
     prefix = reference['config']['variables']['node_prefix']
     assert isinstance(prefix, str) and prefix.startswith('/') and len(prefix) < 256
@@ -262,13 +393,15 @@ def build(archive, work, output):
     run(configure, source, output / 'configure.log', 300)
     generated = process_config(ast.literal_eval((source / 'config.gypi').read_text()))
     (output / 'configured.json').write_text(json.dumps(generated, indent=2) + '\n')
-    parity(reference['config'], generated)
-    run(['make', '-j2', 'node'], source, output / 'compile.log', 9000)
+    comparison = configuration_comparison(reference['config'], generated, evidence)
+    (output / 'configuration-comparison.json').write_text(json.dumps(comparison, indent=2) + '\n')
+    run(['make', '-j2', 'node'], source, output / 'compile.log', data['compileTimeoutSeconds'])
     binary = source / 'out/Release/node'
     assert binary.is_file() and not binary.is_symlink()
     assert binary.open('rb').read(4) == b'\x7fELF'
     candidate = probe(binary)
-    parity(reference, candidate)
+    parity(comparison, runtime_comparison(reference, candidate, generated, evidence))
+    crypto_results = crypto_checks(source, output, Path('/usr/local/bin/node'), binary, evidence)
     shutil.copy2(binary, output / 'node')
     (output / 'node').chmod(0o555)
     shutil.copy2(source / 'LICENSE', output / 'LICENSE.node')
@@ -277,11 +410,14 @@ def build(archive, work, output):
     linkage = subprocess.run(['ldd', str(binary)], capture_output=True, text=True,
                              check=True, timeout=15).stdout
     assert 'not found' not in linkage and len(linkage) <= 64 * 1024
-    receipt = {'schema': 1, 'recipeSha256': recipe_sha(), 'source': data,
+    receipt = {'schema': 2, 'recipeSha256': recipe_sha(), 'source': data,
                'builderImageId': builder_id, 'builderInspectSha256': sha(identity),
                'referenceBinarySha256': sha('/usr/local/bin/node'),
                'binarySha256': sha(output / 'node'), 'reference': reference,
-               'candidate': candidate, 'tools': tools, 'linkage': linkage,
+               'candidate': candidate, 'configuredSha256': sha(output / 'configured.json'),
+               'configurationComparison': comparison, 'sourceBranchOutcomes': branch_outcomes,
+               'compilerSelectedTools': compiler_tools, 'cryptoChecks': crypto_results,
+               'tools': tools, 'linkage': linkage,
                'configureCommand': configure, 'compileCommand': ['make', '-j2', 'node'],
                'qualification': 'Unqualified: mandatory TCP and both shipped image gates remain',
                'licenses': {n: sha(output / n) for n in ('LICENSE.node', 'LICENSE.libuv')}}
@@ -291,12 +427,13 @@ def build(archive, work, output):
 def verify(output):
     data = locked()
     assert output.is_dir() and not output.is_symlink()
-    for name in ('node', 'receipt.json', 'builder-inspect.json', 'LICENSE.node', 'LICENSE.libuv'):
+    for name in ('node', 'receipt.json', 'builder-inspect.json', 'LICENSE.node', 'LICENSE.libuv',
+                 'configured.json', 'configuration-comparison.json'):
         path = output / name
         assert path.is_file() and not path.is_symlink()
     assert (output / 'receipt.json').stat().st_size <= 1024 * 1024
     receipt = json.loads((output / 'receipt.json').read_text())
-    assert receipt['schema'] == 1 and receipt['source'] == data
+    assert receipt['schema'] == 2 and receipt['source'] == data
     assert receipt['recipeSha256'] == recipe_sha()
     assert receipt['reference']['versions']['node'] == data['nodeVersion']
     assert receipt['reference']['platform'] == 'linux' and receipt['reference']['arch'] == 'x64'
@@ -309,8 +446,36 @@ def verify(output):
     assert sha(binary) == receipt['binarySha256']
     for name in ('LICENSE.node', 'LICENSE.libuv'):
         assert sha(output / name) == receipt['licenses'][name]
-    parity(receipt['reference'], receipt['candidate'])
-    parity(receipt['reference'], probe(binary))
+    evidence = read_evidence(data)
+    assert sha(output / 'configured.json') == receipt['configuredSha256']
+    configured = json.loads((output / 'configured.json').read_text())
+    comparison = runtime_comparison(receipt['reference'], receipt['candidate'], configured, evidence)
+    parity(receipt['sourceBranchOutcomes'], branch_outcomes(evidence))
+    parity(comparison, receipt['configurationComparison'])
+    parity(comparison, json.loads((output / 'configuration-comparison.json').read_text()))
+    for name in ('as', 'ld'):
+        item = receipt['compilerSelectedTools'][name]
+        assert Path(item['path']).is_absolute() and Path(item['path']).is_relative_to('/usr')
+        assert re.fullmatch('[0-9a-f]{64}', item['sha256'])
+        assert isinstance(item['version'], str) and 0 < len(item['version']) <= 64 * 1024
+    assert receipt['compilerSelectedTools']['as']['version'].splitlines()[0].endswith(' 2.40')
+    expected = {(role, item['label']): item for role in ('reference', 'candidate')
+                for item in evidence['cryptoTests']}
+    assert len(receipt['cryptoChecks']) == len(expected)
+    seen = set()
+    for item in receipt['cryptoChecks']:
+        key = (item['role'], item['label'])
+        assert key in expected and key not in seen and item['status'] == 'passed'
+        seen.add(key)
+        assert item['sourceSha256'] == expected[key]['sha256']
+        binary_sha = (receipt['referenceBinarySha256'] if item['role'] == 'reference'
+                      else receipt['binarySha256'])
+        assert item['binarySha256'] == binary_sha
+        assert item['log'] == 'crypto-' + item['role'] + '-' + item['label'] + '.log'
+        log = output / item['log']
+        assert log.is_file() and not log.is_symlink() and sha(log) == item['logSha256']
+        assert not re.search(r'\b(?:skipped|skipping)\b', log.read_text(), re.I)
+    parity(receipt['candidate'], probe(binary))
     print(json.dumps({'recipeSha256': recipe_sha(), 'binarySha256': sha(binary),
                       'node': receipt['candidate']['versions']['node'],
                       'qualification': 'TCP/image acceptance still required'}))

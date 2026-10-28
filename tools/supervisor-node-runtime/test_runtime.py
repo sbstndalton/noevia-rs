@@ -9,6 +9,7 @@ import tempfile
 import subprocess
 import sys
 import os
+import copy
 import unittest
 from unittest.mock import patch
 
@@ -167,7 +168,7 @@ class RecipeTests(unittest.TestCase):
         raw = json.dumps(identity)
         (self.root / 'builder-inspect.json').write_text(raw)
         environment = {'NOEVIA_NODE_BUILDER': data['builder']['linuxAmd64Manifest'],
-                       'LC_ALL': 'C.UTF-8'}
+                       'LC_ALL': 'C.UTF-8', 'CC': '/usr/bin/gcc', 'CXX': '/usr/bin/g++'}
         with patch.object(runtime.platform, 'system', return_value='Linux'), \
                 patch.object(runtime.platform, 'machine', return_value='x86_64'), \
                 patch.dict(os.environ, environment, clear=True), \
@@ -186,7 +187,7 @@ class RecipeTests(unittest.TestCase):
         self.assertIn('assertions disabled', result.stderr)
 
     def test_cache_key_tracks_recipe_inputs_not_test_copy(self):
-        for name in ('builder-manifest.json', 'ci.sh', 'libuv-partial-hup.patch',
+        for name in ('builder-manifest.json', 'ci.sh', 'gas-metadata-evidence.json', 'libuv-partial-hup.patch',
                      'runtime.py', 'source-lock.json'):
             (self.recipe / name).write_text(name)
         with patch.object(runtime, 'RECIPE', self.recipe):
@@ -201,14 +202,15 @@ class RecipeTests(unittest.TestCase):
         data = runtime.locked()
         output = self.root / 'cache'
         output.mkdir()
-        for name in ('node', 'LICENSE.node', 'LICENSE.libuv'):
+        for name in ('node', 'LICENSE.node', 'LICENSE.libuv', 'configured.json',
+                     'configuration-comparison.json'):
             (output / name).write_text('owned corrupt candidate')
         (output / 'node').chmod(0o555)
         identity = [{'Architecture': 'amd64', 'Os': 'linux',
                      'Id': data['builder']['configDigest'],
                      'RepoDigests': ['node@' + data['builder']['linuxAmd64Manifest']]}]
         (output / 'builder-inspect.json').write_text(json.dumps(identity))
-        receipt = {'schema': 1, 'source': data, 'recipeSha256': runtime.recipe_sha(),
+        receipt = {'schema': 2, 'source': data, 'recipeSha256': runtime.recipe_sha(),
                    'reference': {'versions': {'node': data['nodeVersion']},
                                  'platform': 'linux', 'arch': 'x64'},
                    'builderInspectSha256': runtime.sha(output / 'builder-inspect.json'),
@@ -218,6 +220,86 @@ class RecipeTests(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 runtime.verify(output)
             probe.assert_not_called()
+
+    def test_only_exact_directional_discovery_pair_is_accepted(self):
+        evidence = runtime.read_evidence(runtime.locked())
+        reference = {'variables': {'gas_version': '2.35', 'icu_small': False},
+                     'target_defaults': {'libraries': []}}
+        candidate = copy.deepcopy(reference)
+        candidate['variables']['gas_version'] = '2.40'
+        report = runtime.configuration_comparison(reference, candidate, evidence)
+        self.assertFalse(report['rawConfigurationEqual'])
+        self.assertEqual(reference['variables']['gas_version'], '2.35')
+        self.assertEqual(candidate['variables']['gas_version'], '2.40')
+        for left, right in [('2.35', '2.35'), ('2.40', '2.35'), ('2.35', '2.41'),
+                            ('2.34', '2.40')]:
+            a, b = copy.deepcopy(reference), copy.deepcopy(candidate)
+            a['variables']['gas_version'], b['variables']['gas_version'] = left, right
+            with self.assertRaises(AssertionError):
+                runtime.configuration_comparison(a, b, evidence)
+        candidate['variables']['icu_small'] = 0
+        with self.assertRaises(AssertionError):
+            runtime.configuration_comparison(reference, candidate, evidence)
+
+    def test_missing_or_changed_source_evidence_refused(self):
+        data = runtime.locked()
+        with patch.object(runtime, 'RECIPE', self.recipe):
+            with self.assertRaises(OSError):
+                runtime.read_evidence(data)
+            (self.recipe / 'gas-metadata-evidence.json').write_text('{}')
+            with self.assertRaises(AssertionError):
+                runtime.read_evidence(data)
+
+    def test_post_compile_must_equal_actual_config_and_all_other_probe_fields(self):
+        evidence = runtime.read_evidence(runtime.locked())
+        reference = {'config': {'variables': {'gas_version': '2.35'}},
+                     'features': {'tls': True}, 'versions': {'icu': '77'},
+                     'release': {'sourceUrl': 'official'}, 'cryptoCapabilities': ['sha256']}
+        candidate = copy.deepcopy(reference)
+        candidate['config']['variables']['gas_version'] = '2.40'
+        configured = copy.deepcopy(candidate['config'])
+        runtime.runtime_comparison(reference, candidate, configured, evidence)
+        for key, value in [('features', {'tls': False}), ('versions', {'icu': '78'}),
+                           ('release', {'sourceUrl': 'wrong'}), ('cryptoCapabilities', []),
+                           ('config', {'variables': {'gas_version': '2.35'}})]:
+            wrong = copy.deepcopy(candidate)
+            wrong[key] = value
+            with self.assertRaises(AssertionError):
+                runtime.runtime_comparison(reference, wrong, configured, evidence)
+
+    def test_changed_source_predicate_or_divergent_decisions_refused(self):
+        path = self.source / 'configure.py'
+        path.write_text('gas_version >= 2.23\n')
+        evidence = {'referenceGasVersion': '2.35', 'builderGasVersion': '2.40',
+                    'gasFieldReferences': [{'path': 'configure.py', 'sha256': runtime.sha(path)}],
+                    'supportingSources': [], 'cryptoTests': [], 'predicates': [
+                        {'path': 'configure.py', 'line': 1, 'literal': path.read_text().strip(),
+                         'operator': '>=', 'threshold': '2.23'}]}
+        self.assertEqual(len(runtime.source_evidence(self.source, evidence)), 1)
+        path.write_text('gas_version >= 2.36\n')
+        with self.assertRaises(AssertionError):
+            runtime.source_evidence(self.source, evidence)
+        evidence['gasFieldReferences'][0]['sha256'] = runtime.sha(path)
+        evidence['predicates'][0].update(literal=path.read_text().strip(), threshold='2.36')
+        with self.assertRaises(AssertionError):
+            runtime.source_evidence(self.source, evidence)
+
+    def test_skipped_crypto_script_never_earns_pass(self):
+        script = self.source / 'vector.js'
+        script.write_text('// fixed upstream vector\n')
+        evidence = {'cryptoTests': [{'label': 'hash', 'path': 'vector.js',
+                                    'sha256': runtime.sha(script)}]}
+        reference = self.root / 'reference-node'
+        candidate = self.root / 'candidate-node'
+        reference.write_text('mock reference; never executed')
+        candidate.write_text('mock candidate; never executed')
+
+        def skipped(_command, _cwd, log, _timeout):
+            log.write_text('1..0 # Skipped: missing crypto\n')
+
+        with patch.object(runtime, 'run', side_effect=skipped):
+            with self.assertRaises(AssertionError):
+                runtime.crypto_checks(self.source, self.root, reference, candidate, evidence)
 
 
 if __name__ == '__main__':

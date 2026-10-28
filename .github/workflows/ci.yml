@@ -66,7 +66,7 @@ jobs:
           path: ${{ runner.temp }}/noevia-supervisor-node-runtime
           # No restore prefixes or unverified fallback. Every restored result is
           # checked against the complete recipe, binary hash and runtime probe.
-          key: supervisor-node22-amd64-${{ hashFiles('tools/supervisor-node-runtime/runtime.py', 'tools/supervisor-node-runtime/ci.sh', 'tools/supervisor-node-runtime/source-lock.json', 'tools/supervisor-node-runtime/libuv-partial-hup.patch', 'tools/supervisor-node-runtime/builder-manifest.json') }}
+          key: supervisor-node22-amd64-${{ hashFiles('tools/supervisor-node-runtime/runtime.py', 'tools/supervisor-node-runtime/ci.sh', 'tools/supervisor-node-runtime/source-lock.json', 'tools/supervisor-node-runtime/libuv-partial-hup.patch', 'tools/supervisor-node-runtime/builder-manifest.json', 'tools/supervisor-node-runtime/gas-metadata-evidence.json') }}
       - name: Build and verify exact corrected Node22 consumer
         id: node_builder
         if: steps.pkgs.outputs.any == 'true'
@@ -82,8 +82,19 @@ jobs:
             ${{ steps.node_builder.outputs.diagnostic }}/builder-inspect.json
             ${{ steps.node_builder.outputs.diagnostic }}/reference.json
             ${{ steps.node_builder.outputs.diagnostic }}/configured.json
+            ${{ steps.node_builder.outputs.diagnostic }}/configuration-comparison.json
             ${{ steps.node_builder.outputs.diagnostic }}/configure.log
             ${{ steps.node_builder.outputs.diagnostic }}/compile.log
+            ${{ steps.node_builder.outputs.diagnostic }}/crypto-reference-hash.log
+            ${{ steps.node_builder.outputs.diagnostic }}/crypto-reference-hmac.log
+            ${{ steps.node_builder.outputs.diagnostic }}/crypto-reference-cipher.log
+            ${{ steps.node_builder.outputs.diagnostic }}/crypto-reference-authenticated.log
+            ${{ steps.node_builder.outputs.diagnostic }}/crypto-reference-sign.log
+            ${{ steps.node_builder.outputs.diagnostic }}/crypto-candidate-hash.log
+            ${{ steps.node_builder.outputs.diagnostic }}/crypto-candidate-hmac.log
+            ${{ steps.node_builder.outputs.diagnostic }}/crypto-candidate-cipher.log
+            ${{ steps.node_builder.outputs.diagnostic }}/crypto-candidate-authenticated.log
+            ${{ steps.node_builder.outputs.diagnostic }}/crypto-candidate-sign.log
           if-no-files-found: error
           retention-days: 3
       - name: cargo test

@@ -29,7 +29,7 @@ if [ ! -e "$output" ]; then
     --mount "type=bind,src=$owned,dst=/work" \
     --entrypoint /usr/bin/env "$image" -i \
     PATH=/usr/local/bin:/usr/bin:/bin HOME=/work/home TMPDIR=/work/tmp \
-    LC_ALL=C.UTF-8 TZ=UTC NOEVIA_NODE_BUILDER="$builder" \
+    LC_ALL=C.UTF-8 TZ=UTC CC=/usr/bin/gcc CXX=/usr/bin/g++ NOEVIA_NODE_BUILDER="$builder" \
     python3 /recipe/runtime.py build /work/source.tar.xz /work/source-work /work/output
   python3 "$recipe/runtime.py" verify "$owned/output"
   mv "$owned/output" "$output"

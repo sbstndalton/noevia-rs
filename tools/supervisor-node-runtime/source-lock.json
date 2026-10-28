@@ -29,8 +29,17 @@
   },
   "platform": "linux/amd64",
   "configureArgs": [
-    "--with-intl=full-icu"
+    "--with-intl=full-icu",
+    "--release-urlbase=https://nodejs.org/download/release/"
   ],
   "compileJobs": 2,
-  "note": "No build or image change enabled. Exact build recipe/configuration parity and both shipped consumer qualification remain required."
+  "note": "Candidate CI source build only; source-bound configuration comparison, strict runtime checks and both shipped-consumer qualifications remain required.",
+  "compileTimeoutSeconds": 7800,
+  "configurationComparison": {
+    "evidenceFile": "gas-metadata-evidence.json",
+    "evidenceSha256": "d742c715ed83c578cd4f56fc0a0508e5513c09702ce288883d47a615321754c4",
+    "referenceGasVersion": "2.35",
+    "builderGasVersion": "2.40",
+    "label": "Configuration equality except the evidenced assembler-discovery difference; raw values retained."
+  }
 }
