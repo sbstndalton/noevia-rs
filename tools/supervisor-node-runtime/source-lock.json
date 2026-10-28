@@ -24,7 +24,8 @@
   "builder": {
     "tag": "node:22.23.4-bookworm",
     "indexDigest": "sha256:78bc820a7a6148e8c48731eca18dbb9b6b2c05ac4a52138479be565f2831682d",
-    "linuxAmd64Manifest": "sha256:94c973596a8581a87ba42746ceb0b0e0b5246d098de45b1ce04dcc967cfc5dfb"
+    "linuxAmd64Manifest": "sha256:94c973596a8581a87ba42746ceb0b0e0b5246d098de45b1ce04dcc967cfc5dfb",
+    "configDigest": "sha256:04133e3c92bb23638cec40f6696efecee9427c41c25305bc34d9629775b48d11"
   },
   "platform": "linux/amd64",
   "configureArgs": [

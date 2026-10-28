@@ -12,6 +12,7 @@ jobs:
   rust:
     name: Rust fmt, clippy, test
     runs-on: ubuntu-latest
+    timeout-minutes: 210 # Includes one finite, two-job corrected Node22 source build on cache miss.
     env:
       NOEVIA_DOCLING_REFERENCE: ${{ github.workspace }}/.ci-docling/docling
       NOEVIA_LAYA_REFERENCE: ${{ github.workspace }}/.ci-laya/laya
@@ -57,6 +58,34 @@ jobs:
       - name: cargo clippy
         if: steps.pkgs.outputs.any == 'true'
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Node22 consumer recipe refusal checks
+        run: PYTHONDONTWRITEBYTECODE=1 python3 tools/supervisor-node-runtime/test_runtime.py
+      - name: Exact Node22 consumer candidate cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ runner.temp }}/noevia-supervisor-node-runtime
+          # No restore prefixes or unverified fallback. Every restored result is
+          # checked against the complete recipe, binary hash and runtime probe.
+          key: supervisor-node22-amd64-${{ hashFiles('tools/supervisor-node-runtime/runtime.py', 'tools/supervisor-node-runtime/ci.sh', 'tools/supervisor-node-runtime/source-lock.json', 'tools/supervisor-node-runtime/libuv-partial-hup.patch') }}
+      - name: Build and verify exact corrected Node22 consumer
+        id: node_builder
+        if: steps.pkgs.outputs.any == 'true'
+        timeout-minutes: 175
+        run: bash tools/supervisor-node-runtime/ci.sh
+      - name: Preserve exact Node22 candidate provenance and build diagnostics
+        if: ${{ always() && steps.node_builder.outputs.diagnostic != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: supervisor-node22-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ steps.node_builder.outputs.diagnostic }}/receipt.json
+            ${{ steps.node_builder.outputs.diagnostic }}/builder-inspect.json
+            ${{ steps.node_builder.outputs.diagnostic }}/reference.json
+            ${{ steps.node_builder.outputs.diagnostic }}/configured.json
+            ${{ steps.node_builder.outputs.diagnostic }}/configure.log
+            ${{ steps.node_builder.outputs.diagnostic }}/compile.log
+          if-no-files-found: error
+          retention-days: 3
       - name: cargo test
         id: workspace_tests
         if: steps.pkgs.outputs.any == 'true'

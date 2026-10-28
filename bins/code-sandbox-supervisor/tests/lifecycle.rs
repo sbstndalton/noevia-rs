@@ -598,7 +598,33 @@ async fn stalled_final_output_resets_instead_of_clean_eof() {
 
 #[tokio::test]
 async fn node_reader_distinguishes_complete_output_from_post_exit_reset() {
-    let version = tokio::process::Command::new("node")
+    // The reviewed Node22/libuv consumer correction is an explicit test input.
+    // Other workspace Node oracles retain their existing runtime and goldens.
+    let configured = std::env::var_os("NOEVIA_SUPERVISOR_TEST_NODE");
+    let explicit = configured.is_some();
+    assert!(
+        std::env::var_os("GITHUB_ACTIONS").as_deref() != Some(std::ffi::OsStr::new("true"))
+            || configured.is_some(),
+        "CI must supply its verified, provenance-bound Node22 candidate"
+    );
+    let node = configured.map_or_else(
+        || std::path::PathBuf::from("node"),
+        std::path::PathBuf::from,
+    );
+    let path = if node.is_absolute() {
+        assert!(node.is_file() && !node.is_symlink());
+        let parent = node.parent().unwrap();
+        std::env::join_paths(
+            std::iter::once(parent.to_path_buf())
+                .chain(std::env::split_paths(&std::env::var_os("PATH").unwrap())),
+        )
+        .unwrap()
+    } else {
+        assert!(!explicit, "an explicit candidate path must be absolute");
+        assert_eq!(node, std::path::Path::new("node"));
+        std::env::var_os("PATH").unwrap()
+    };
+    let version = tokio::process::Command::new(&node)
         .arg("--version")
         .output()
         .await
@@ -626,11 +652,11 @@ const child=spawn(process.execPath,['-e',`
 child.once('error',()=>process.exit(2));
 child.once('message',()=>{child.disconnect();child.unref();process.exit(0)});
 "#).unwrap();
-        let env = serde_json::json!({"PATH":std::env::var("PATH").unwrap()});
+        let env = serde_json::json!({"PATH":path.to_str().unwrap()});
         let start = h.start(&env.to_string());
         let result = tokio::time::timeout(
             Duration::from_secs(18),
-            tokio::process::Command::new("node")
+            tokio::process::Command::new(&node)
                 .arg("-e")
                 .arg(r#"
 const net=require('node:net'),assert=require('node:assert/strict');
