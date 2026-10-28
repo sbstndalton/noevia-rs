@@ -24,6 +24,7 @@ pub mod util;
 
 mod account;
 mod device;
+pub mod feature_context;
 mod files;
 mod framing_preferences;
 mod open;

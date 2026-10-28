@@ -2808,6 +2808,7 @@ dependencies = [
  "serde",
  "serde_json",
  "server-auth",
+ "server-features",
  "server-projects",
  "server-store",
  "sha2",
@@ -3022,6 +3023,7 @@ version = "0.1.0"
 dependencies = [
  "rusqlite",
  "serde_json",
+ "server-features",
  "tempfile",
 ]
 
