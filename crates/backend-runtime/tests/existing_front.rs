@@ -269,7 +269,10 @@ async fn original_front_auth_history_and_native_execution_share_one_transcript(
     let encoded = js_json::wtf16::stringify(&saved.history).ok_or("encoded")?;
     let messages: Vec<Value> = serde_json::from_str(&encoded)?;
     assert_eq!(messages.len(), 3);
-    assert_eq!(messages[1]["id"], "browser-user");
+    assert_eq!(
+        messages.get(1).and_then(|v| v.get("id")),
+        Some(&json!("browser-user"))
+    );
     assert_eq!(
         messages.last().and_then(|v| v.get("content")),
         Some(&json!("native answer"))

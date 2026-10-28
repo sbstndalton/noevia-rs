@@ -91,9 +91,9 @@ fn browser_presave_before_and_during_turn_preserves_ids_and_fences_other_edits(
         let value: Value =
             serde_json::from_str(&js_json::wtf16::stringify(&saved.history).ok_or("encode")?)?;
         assert_eq!(value.as_array().ok_or("array")?.len(), 3);
-        assert_eq!(value[0]["id"], "old");
+        assert_eq!(value.pointer("/0/id"), Some(&json!("old")));
         if timing != "repeat" {
-            assert_eq!(value[1]["id"], "new");
+            assert_eq!(value.pointer("/1/id"), Some(&json!("new")));
         }
     }
     Ok(())

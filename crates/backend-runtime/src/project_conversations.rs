@@ -87,7 +87,7 @@ impl ProjectConversations {
             if projection == expected {
                 // The browser save has not arrived yet.
             } else if projection.len() == expected.len() + 1
-                && projection[..expected.len()] == expected
+                && projection.get(..expected.len()) == Some(expected.as_slice())
                 && projection.last() == Some(request)
             {
                 history.pop();
@@ -260,18 +260,23 @@ impl Conversations for ProjectConversations {
                 // Accept only the one queued browser user save. All preceding raw
                 // metadata must still match. The final write CAS closes the read race.
                 if stored.len() != turn.base.len() + 1
-                    || stored[..turn.base.len()] != turn.base
-                    || text_projection(&stored[turn.base.len()..])? != vec![turn.user.clone()]
+                    || stored.get(..turn.base.len()) != Some(turn.base.as_slice())
+                    || text_projection(stored.get(turn.base.len()..).ok_or(Fault::Conflict)?)?
+                        != vec![turn.user.clone()]
                 {
                     return Err(Fault::Conflict);
                 }
             }
             if stored.len() > output.len()
-                || text_projection(&stored)? != text_projection(&output[..stored.len()])?
+                || text_projection(&stored)?
+                    != text_projection(output.get(..stored.len()).ok_or(Fault::Conflict)?)?
             {
                 return Err(Fault::Conflict);
             }
-            output[..stored.len()].clone_from_slice(&stored);
+            output
+                .get_mut(..stored.len())
+                .ok_or(Fault::Conflict)?
+                .clone_from_slice(&stored);
             base_revision = current.revision;
         }
         let encoded = serde_json::to_string(&output)?;
