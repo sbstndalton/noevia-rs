@@ -5,11 +5,55 @@ use std::collections::VecDeque;
 
 pub const MAX_REQUEST_BYTES: usize = 64 * 1024;
 pub const MAX_TAIL_BYTES: usize = 256 * 1024;
+// Internal Git stdout capture is larger; operator test tails are separately capped above.
+const MAX_CAPTURE_BYTES: usize = 1024 * 1024;
 pub const MAX_SAFE_COUNTER: u64 = 9_007_199_254_740_991;
 
 fn js_space(c: char) -> bool {
     matches!(c, '\u{9}'..='\u{d}' | '\u{20}' | '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}')
 }
+/// Node's positive operator option conversion, within the native JS-safe duration range.
+/// Fractional positive values can floor to zero; constructor-specific defaults are separate.
+pub fn operator_positive(raw: Option<&str>, fallback: u64) -> u64 {
+    let Some(raw) = raw else { return fallback };
+    let text = raw.trim_matches(js_space);
+    let number = if let Some((digits, radix)) = text
+        .strip_prefix("0x")
+        .or_else(|| text.strip_prefix("0X"))
+        .map(|s| (s, 16))
+        .or_else(|| {
+            text.strip_prefix("0o")
+                .or_else(|| text.strip_prefix("0O"))
+                .map(|s| (s, 8))
+        })
+        .or_else(|| {
+            text.strip_prefix("0b")
+                .or_else(|| text.strip_prefix("0B"))
+                .map(|s| (s, 2))
+        }) {
+        if digits.is_empty() {
+            return fallback;
+        }
+        let mut value = 0.0;
+        for c in digits.chars() {
+            let Some(d) = c.to_digit(radix) else {
+                return fallback;
+            };
+            value = value * f64::from(radix) + f64::from(d);
+        }
+        value
+    } else {
+        match text.parse::<f64>() {
+            Ok(n) => n,
+            Err(_) => return fallback,
+        }
+    };
+    if !number.is_finite() || number <= 0.0 {
+        return fallback;
+    }
+    number.min(MAX_SAFE_COUNTER as f64).floor() as u64
+}
+
 fn repo_name(s: &str) -> bool {
     (1..=64).contains(&s.len())
         && s.bytes()
@@ -133,7 +177,7 @@ impl Tail {
     pub fn new(cap: usize) -> Self {
         Self {
             bytes: VecDeque::new(),
-            cap: cap.clamp(1, MAX_TAIL_BYTES),
+            cap: cap.clamp(1, MAX_CAPTURE_BYTES),
             total: 0,
         }
     }
@@ -184,6 +228,21 @@ mod tests {
     fn frozen_node_operator_commands_paths_and_byte_tails() -> Result<(), Box<dyn std::error::Error>>
     {
         let v = oracle()?;
+        for x in v
+            .get("numericOptions")
+            .and_then(Value::as_array)
+            .ok_or("numeric fixtures")?
+        {
+            let raw = x
+                .get("input")
+                .and_then(Value::as_str)
+                .ok_or("numeric input")?;
+            let expected = x
+                .get("expected")
+                .and_then(Value::as_u64)
+                .ok_or("numeric expected")?;
+            assert_eq!(operator_positive(Some(raw), 123), expected);
+        }
         let configs = v
             .get("configs")
             .and_then(Value::as_array)

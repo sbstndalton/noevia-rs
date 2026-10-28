@@ -1,6 +1,72 @@
 {
   "sourceCommit": "3cbc9f9ee16e7dff4ce9680c46d47828d89d69b2",
   "sourceSha256": "bc763d89b7a0ed27ecc0230cd803f3992a1f22d2193b1553fb4a411449b2025b",
+  "numericOptions": [
+    {
+      "input": "",
+      "expected": 123
+    },
+    {
+      "input": " 12 ",
+      "expected": 12
+    },
+    {
+      "input": "﻿2﻿",
+      "expected": 2
+    },
+    {
+      "input": "0x10",
+      "expected": 16
+    },
+    {
+      "input": "0b11",
+      "expected": 3
+    },
+    {
+      "input": "0o10",
+      "expected": 8
+    },
+    {
+      "input": "+0x10",
+      "expected": 123
+    },
+    {
+      "input": "1e2",
+      "expected": 100
+    },
+    {
+      "input": ".2",
+      "expected": 0
+    },
+    {
+      "input": "Infinity",
+      "expected": 123
+    },
+    {
+      "input": "-1",
+      "expected": 123
+    },
+    {
+      "input": "1e-10",
+      "expected": 0
+    },
+    {
+      "input": "1_0",
+      "expected": 123
+    },
+    {
+      "input": "12",
+      "expected": 123
+    },
+    {
+      "input": "0",
+      "expected": 123
+    },
+    {
+      "input": "123.9",
+      "expected": 123
+    }
+  ],
   "configs": [
     {
       "input": "",

@@ -11,6 +11,10 @@ const tails = [];
 for (const cap of [1, 2, 3, 7, 16]) for (const chunks of [[[]], [[65,66,67]], [[240,159],[152,128,65]], [[255,254],[97,98,99]], [[0,10,13,34,92]], [Array.from(Buffer.from('abcdefghi')), Array.from(Buffer.from('雪😀z'))]]) {
  const tail = createTail(cap); for (const chunk of chunks) tail.push(Buffer.from(chunk)); tails.push({cap,chunks,expected:tail.read()});
 }
-const output = JSON.stringify({sourceCommit:'3cbc9f9ee16e7dff4ce9680c46d47828d89d69b2',sourceSha256,configs:configs.map(input=>({input,expected:Array.from(parseVerify(input))})),paths:paths.map(input=>({input,expected:configSafePath(input)})),tails},null,2)+'\n';
+const numericDeclaration=fs.readFileSync(source,'utf8').split('\n').find(line=>line.startsWith('const positive = '));
+if(!numericDeclaration)throw Error('frozen numeric oracle missing');
+const positive=require('node:vm').runInNewContext(numericDeclaration+'\npositive');
+const numericOptions=['',' 12 ','\ufeff2\ufeff','0x10','0b11','0o10','+0x10','1e2','.2','Infinity','-1','1e-10','1_0','\u008512','0','123.9'].map(input=>({input,expected:positive(input,123)}));
+const output = JSON.stringify({sourceCommit:'3cbc9f9ee16e7dff4ce9680c46d47828d89d69b2',sourceSha256,numericOptions,configs:configs.map(input=>({input,expected:Array.from(parseVerify(input))})),paths:paths.map(input=>({input,expected:configSafePath(input)})),tails},null,2)+'\n';
 const dest=path.join(__dirname,'fixtures/boundaries.json');
 if (process.argv.includes('--check')) { if(fs.readFileSync(dest,'utf8')!==output)throw Error('oracle drift'); } else fs.writeFileSync(dest,output);
