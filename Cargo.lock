@@ -159,6 +159,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "backend-runtime"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "diary-corpus-parse",
+ "diary-workspace-rules",
+ "diary-workspace-transaction",
+ "futures-core",
+ "mcp-frame",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "server-account",
+ "server-auth",
+ "server-dav",
+ "server-store",
+ "sha2",
+ "tempfile",
+ "tokio",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "backend-telemetry"
 version = "0.1.0"
 dependencies = [

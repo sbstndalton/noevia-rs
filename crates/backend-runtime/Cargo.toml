@@ -1,0 +1,36 @@
+[package]
+name = "backend-runtime"
+version = "0.1.0"
+description = "Native backend execution candidate: journal, approvals, model/tool loop, MCP and recovery"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+[lints]
+workspace = true
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.40", features = ["bundled", "backup"] }
+sha2 = "=0.10.9"
+uuid = { version = "1", features = ["v4"] }
+chrono = "0.4"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+url = "2.5"
+server-dav = { path = "../server-dav" }
+server-auth = { path = "../server-auth" }
+server-store = { path = "../server-store" }
+server-account = { path = "../server-account" }
+mcp-frame = { path = "../mcp-frame" }
+diary-corpus-parse = { path = "../diary-corpus-parse" }
+diary-workspace-transaction = { path = "../diary-workspace-transaction" }
+diary-workspace-rules = { path = "../diary-workspace-rules" }
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+futures-core = "0.3"
+[dev-dependencies]
+tempfile = "3"
+
+[[bin]]
+name = "native-backend-candidate"
+path = "src/main.rs"
