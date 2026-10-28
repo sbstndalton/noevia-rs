@@ -636,8 +636,9 @@ child.once('message',()=>{child.disconnect();child.unref();process.exit(0)});
 const net=require('node:net'),assert=require('node:assert/strict');
 const socket=net.connect(Number(process.argv[1]),'127.0.0.1');
 const paused=process.argv[3]==='true',events=[];
+const runtime={node:process.version,uv:process.versions.uv};
 let bytes=0,reset=false,eof=false;
-const deadline=setTimeout(()=>{console.error(JSON.stringify({paused,events,bytes,reset,eof}));process.exit(2)},12000);
+const deadline=setTimeout(()=>{console.error(JSON.stringify({runtime,paused,events,bytes,reset,eof}));process.exit(2)},12000);
 const done=new Promise((resolve,reject)=>{
   socket.on('data',b=>{bytes+=b.length;if(bytes>67108864)reject(Error('output cap'))});
   socket.on('end',()=>{eof=true;events.push('end')});
@@ -649,7 +650,7 @@ void done.catch(()=>{});
   await new Promise((resolve,reject)=>{socket.once('connect',resolve);socket.once('error',reject)});
   socket.write(process.argv[2]);
   if(paused){events.push('pause');socket.pause();await new Promise(r=>setTimeout(r,3000));events.push('resume');socket.resume()}
-  await done;console.log(JSON.stringify({paused,events,bytes,reset,eof}));
+  await done;console.log(JSON.stringify({runtime,paused,events,bytes,reset,eof}));
   assert.equal(reset,paused);assert.equal(eof,!paused);
   if(!paused)assert.equal(bytes,67108864);
 })().catch(e=>{console.error(e);process.exitCode=1}).finally(()=>{clearTimeout(deadline);socket.destroy()});

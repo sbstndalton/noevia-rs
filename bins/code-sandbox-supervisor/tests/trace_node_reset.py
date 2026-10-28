@@ -88,8 +88,12 @@ def main():
         # File limits do not cap the test's 64 MiB socket/pipe stream.
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
         resource.setrlimit(resource.RLIMIT_FSIZE, (LIMIT, LIMIT))
+        # Raw read/recv arguments are numeric only: never decode buffers,
+        # iovecs or message structures. Correlate their FD/PID with the decoded
+        # socket metadata. Epoll arrays contain event flags/IDs, not payloads.
         command = [str(tracer), '-f', '--kill-on-exit',
-                   '-ttt', '-yy', '-e', 'trace=accept,accept4,connect,setsockopt,getsockopt,shutdown,close,dup,dup2,dup3,fcntl',
+                   '-ttt', '-yy', '-e', 'trace=accept,accept4,connect,setsockopt,getsockopt,shutdown,close,dup,dup2,dup3,fcntl,read,readv,recvfrom,recvmsg,recvmmsg,epoll_wait,epoll_pwait',
+                   '-e', 'raw=read,readv,recvfrom,recvmsg,recvmmsg',
                    '-o', str(trace), str(binary), '--exact', TEST, '--nocapture', '--test-threads=1']
         with log.open('wb') as stream:
             process = subprocess.Popen(command, stdout=stream, stderr=subprocess.STDOUT,
