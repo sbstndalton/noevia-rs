@@ -575,9 +575,9 @@ mod native_write_tests {
         assert!(!dir.join("history-old.json").exists());
         assert!(dir.join("history-pinned.json").exists());
         assert!(std::fs::read_to_string(dir.join("deleted-chats.json"))?.contains("old"));
-        assert_eq!(stored_days(&dir)?, 30);
+        assert_eq!(stored_days(&dir).map_err(|e| format!("{e:?}"))?, 30);
         assert_eq!(put(ctx, br#"{"days":0,"confirmDeletes":-1}"#).status, 200);
-        assert_eq!(stored_days(&dir)?, 0);
+        assert_eq!(stored_days(&dir).map_err(|e| format!("{e:?}"))?, 0);
         Ok(())
     }
 }

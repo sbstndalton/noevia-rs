@@ -26,10 +26,6 @@ fn lists(ctx: Ctx<'_>) -> Result<(Vec<JValue>, Vec<JValue>), Reply> {
     Ok((free, projects.into_iter().filter(visible).collect()))
 }
 pub fn get(ctx: Ctx<'_>) -> Reply {
-    let dir = match store::user_dir(ctx.data_dir, ctx.user_id) {
-        Ok(v) => v,
-        Err(_) => return Reply::internal(),
-    };
     if let Err(reply) = retention::sweep(ctx) {
         return reply;
     }
