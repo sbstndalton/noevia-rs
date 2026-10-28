@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "status": "candidate-unbuilt-unqualified",
+  "nodeVersion": "22.23.4",
+  "sourceUrl": "https://nodejs.org/dist/v22.23.4/node-v22.23.4.tar.xz",
+  "sourceSha256": "7b9adc82d612d0a2a863d96c46de2292552e250cee51956ebbe0146c42aacae9",
+  "checksumEvidence": "https://nodejs.org/dist/v22.23.4/SHASUMS256.txt",
+  "upstreamFix": "https://github.com/libuv/libuv/commit/2e2114ed8957a0124bc629c61d034c387b8ce42a",
+  "upstreamIssue": "https://github.com/libuv/libuv/issues/2319",
+  "patchFile": "libuv-partial-hup.patch",
+  "patchSha256": "92f8851af213ad9e1fdb9e5b7e399adca2bf15c9f6a05b33132154aa50a98cd6",
+  "files": [
+    {
+      "path": "deps/uv/src/unix/stream.c",
+      "beforeSha256": "dac76e73caef1d01c7122f5d42f5e2d0a06b6a60bf4d83d26849d03aec805733",
+      "afterSha256": "f44bb2eb8a2130f55858cb6bbbd991c170ad452f4a92105f64a9be29ffff8bf8"
+    },
+    {
+      "path": "deps/uv/src/uv-common.h",
+      "beforeSha256": "7524f791d5648f3e135340ac61bcb242028947a81a5b8b32042f8561848a5397",
+      "afterSha256": "6ddce7ca203fe0dd293d1eec658745ca6a2d24386b3a02edaf2a15cf94732ee6"
+    }
+  ],
+  "builder": {
+    "tag": "node:22.23.4-bookworm",
+    "indexDigest": "sha256:78bc820a7a6148e8c48731eca18dbb9b6b2c05ac4a52138479be565f2831682d",
+    "linuxAmd64Manifest": "sha256:94c973596a8581a87ba42746ceb0b0e0b5246d098de45b1ce04dcc967cfc5dfb"
+  },
+  "platform": "linux/amd64",
+  "configureArgs": [
+    "--with-intl=full-icu"
+  ],
+  "compileJobs": 2,
+  "note": "No build or image change enabled. Exact build recipe/configuration parity and both shipped consumer qualification remain required."
+}
