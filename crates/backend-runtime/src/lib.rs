@@ -6,6 +6,7 @@ pub mod approvals;
 pub mod chat;
 pub mod dav;
 pub mod diary;
+pub mod diary_http;
 pub mod indexing;
 pub mod journal;
 pub mod mcp;

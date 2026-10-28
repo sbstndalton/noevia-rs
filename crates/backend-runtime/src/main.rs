@@ -65,7 +65,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         store.recover_interrupted()?;
         Arc::new(Runtime::new(store, Arc::new(model), BTreeMap::new())?)
     };
-    let app = Api::new(&data, runtime, |key| std::env::var(key).ok())?;
+    let diary = diary_registry()?;
+    let app = Api::with_diary(&data, runtime, |key| std::env::var(key).ok(), diary)?;
     // Loopback-only candidate: front code-network/TLS/static routing has not been integrated.
     let port = std::env::var("NATIVE_CANDIDATE_PORT")
         .ok()
@@ -85,4 +86,41 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .await
     })?;
     Ok(())
+}
+
+fn diary_registry(
+) -> Result<Option<Arc<backend_runtime::diary_http::DiaryHttp>>, Box<dyn std::error::Error>> {
+    let Some(path) = std::env::var_os("NATIVE_CANDIDATE_DIARY_REGISTRY") else {
+        return Ok(None);
+    };
+    let path = PathBuf::from(path);
+    if !path.is_absolute() || std::fs::metadata(&path)?.len() > 64 * 1024 {
+        return Err("invalid registry".into());
+    }
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Row {
+        corpus: PathBuf,
+        journal: PathBuf,
+    }
+    let rows: std::collections::HashMap<String, Row> =
+        serde_json::from_slice(&std::fs::read(path)?)?;
+    if rows.len() > 128 {
+        return Err("registry capacity".into());
+    }
+    let mut tenants = std::collections::HashMap::new();
+    for (user, row) in rows {
+        if !row.corpus.is_absolute() || !row.journal.is_absolute() || !row.journal.is_file() {
+            return Err("invalid tenant paths".into());
+        }
+        let corpus = backend_runtime::diary::Corpus::open(&row.corpus, &user, 3.0)?;
+        let journal = Arc::new(backend_runtime::journal::Journal::open(&row.journal)?);
+        tenants.insert(
+            user,
+            backend_runtime::diary_http::Tenant { corpus, journal },
+        );
+    }
+    Ok(Some(Arc::new(backend_runtime::diary_http::DiaryHttp::new(
+        tenants,
+    )?)))
 }

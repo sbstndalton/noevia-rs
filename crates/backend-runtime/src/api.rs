@@ -28,6 +28,7 @@ pub struct Api {
     pub runtime: Arc<Runtime>,
     admission: Arc<Semaphore>,
     chat_admission: Arc<Semaphore>,
+    diary: Option<Arc<crate::diary_http::DiaryHttp>>,
 }
 fn now() -> i64 {
     SystemTime::now()
@@ -41,6 +42,14 @@ impl Api {
         data_dir: &Path,
         runtime: Arc<Runtime>,
         get: impl Fn(&str) -> Option<String>,
+    ) -> Result<Arc<Self>> {
+        Self::with_diary(data_dir, runtime, get, None)
+    }
+    pub fn with_diary(
+        data_dir: &Path,
+        runtime: Arc<Runtime>,
+        get: impl Fn(&str) -> Option<String>,
+        diary: Option<Arc<crate::diary_http::DiaryHttp>>,
     ) -> Result<Arc<Self>> {
         let config = server_auth::AuthConfig::from_lookup(&get).map_err(|_| Fault::Invalid)?;
         let auth = Arc::new(Authenticator::new(config));
@@ -58,6 +67,7 @@ impl Api {
             auth,
             writer,
             runtime,
+            diary,
             admission: Arc::new(Semaphore::new(16)),
             chat_admission: Arc::new(Semaphore::new(4)),
         }))
@@ -107,6 +117,7 @@ async fn handle(
     };
     let path = request.uri().path().to_owned();
     let method = request.method().as_str().to_owned();
+    let query = request.uri().query().unwrap_or("").to_owned();
     let creds = Creds::from_headers(
         &method,
         request
@@ -180,8 +191,9 @@ async fn handle(
     let writer = Arc::clone(&api.writer);
     let auth = Arc::clone(&api.auth);
     let gate_path = path.clone();
+    let gate_creds = creds.clone();
     let identity = match tokio::task::spawn_blocking(move || {
-        writer.read(|r| auth.gate_in(r, &creds, &gate_path, now()))
+        writer.read(|r| auth.gate_in(r, &gate_creds, &gate_path, now()))
     })
     .await
     {
@@ -190,6 +202,33 @@ async fn handle(
         Ok(Ok(Err(_))) => return failure(Fault::Forbidden),
         _ => return failure(Fault::Unavailable),
     };
+    if crate::diary_http::DiaryHttp::handles(&path) {
+        let Some(diary) = api.diary.clone() else {
+            return failure(Fault::Unavailable);
+        };
+        let writer = Arc::clone(&api.writer);
+        let auth = Arc::clone(&api.auth);
+        let user = identity.user.id.clone();
+        return match tokio::task::spawn_blocking(move || {
+            diary.handle(
+                &writer,
+                &auth,
+                &creds,
+                &user,
+                &method,
+                &path,
+                &query,
+                &body,
+                now(),
+            )
+        })
+        .await
+        {
+            Ok(Ok((status, value))) => response(status, value),
+            Ok(Err(e)) => failure(e),
+            Err(_) => failure(Fault::Unavailable),
+        };
+    }
     if let Some(id) = path
         .strip_prefix("/api/tool-approvals/")
         .filter(|id| !id.is_empty() && !id.contains('/'))

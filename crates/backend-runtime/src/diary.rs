@@ -28,6 +28,15 @@ pub struct File {
     pub version: String,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceEntry {
+    pub path: String,
+    pub name: String,
+    pub is_dir: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modified: Option<f64>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Hit {
     pub id: i64,
     pub day: String,
@@ -186,6 +195,30 @@ impl Corpus {
         control: &Control,
         authorize: impl FnOnce() -> Result<()>,
     ) -> Result<String> {
+        self.put_inner(path, content, condition, now, control, false, authorize)
+    }
+    pub fn put_editor(
+        &self,
+        path: &str,
+        content: &str,
+        condition: WriteCondition<'_>,
+        now: f64,
+        control: &Control,
+        authorize: impl FnOnce() -> Result<()>,
+    ) -> Result<String> {
+        self.put_inner(path, content, condition, now, control, true, authorize)
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn put_inner(
+        &self,
+        path: &str,
+        content: &str,
+        condition: WriteCondition<'_>,
+        now: f64,
+        control: &Control,
+        skip_unchanged: bool,
+        authorize: impl FnOnce() -> Result<()>,
+    ) -> Result<String> {
         let path = Self::key(path)?;
         if content.len() > 8 * 1024 * 1024 || !now.is_finite() {
             return Err(Fault::Capacity);
@@ -194,7 +227,6 @@ impl Corpus {
         let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
         control.check()?;
         self.identity(&tx)?;
-        authorize()?;
         let existing: Option<String> = tx
             .query_row("SELECT version FROM files WHERE path=?", [&path], |r| {
                 r.get(0)
@@ -207,6 +239,11 @@ impl Corpus {
         {
             return Err(Fault::Conflict);
         }
+        let version = format!("{:x}", Sha256::digest(content.as_bytes()));
+        if skip_unchanged && existing.as_deref() == Some(version.as_str()) {
+            tx.commit()?;
+            return Ok(version);
+        }
         let directory: bool = tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM directories WHERE path=?)",
             [&path],
@@ -216,6 +253,7 @@ impl Corpus {
         if directory || children {
             return Err(Fault::Conflict);
         }
+        authorize()?;
         let mut prefix = String::new();
         let parts: Vec<&str> = path.split('/').collect();
         for part in parts.iter().take(parts.len().saturating_sub(1)) {
@@ -267,6 +305,18 @@ impl Corpus {
         Ok(())
     }
     pub fn list(&self, parent: &str, control: &Control) -> Result<Vec<server_dav::Entry>> {
+        Ok(self
+            .list_files(parent, control)?
+            .into_iter()
+            .map(|e| server_dav::Entry {
+                path: e.path,
+                name: e.name,
+                is_dir: e.is_dir,
+                modified_unix: e.modified.map(|n| n as u64),
+            })
+            .collect())
+    }
+    pub fn list_files(&self, parent: &str, control: &Control) -> Result<Vec<WorkspaceEntry>> {
         let parent = diary_workspace_rules::rel_path(parent, true).map_err(|_| Fault::Invalid)?;
         let prefix = if parent.is_empty() {
             String::new()
@@ -306,16 +356,14 @@ impl Corpus {
                     continue;
                 }
                 let modified: Option<f64> = row.get(2)?;
-                let entry = server_dav::Entry {
+                let entry = WorkspaceEntry {
                     path: format!("{prefix}{name}"),
                     name: name.to_owned(),
                     is_dir: directory,
-                    modified_unix: modified
-                        .filter(|n| n.is_finite() && *n > 0.0)
-                        .map(|n| n as u64),
+                    modified: modified.filter(|n| n.is_finite() && *n > 0.0),
                 };
                 if let Some(old) = entries.get(&entry.name) {
-                    let old: &server_dav::Entry = old;
+                    let old: &WorkspaceEntry = old;
                     if old.is_dir != entry.is_dir {
                         return Err(Fault::Database);
                     }
