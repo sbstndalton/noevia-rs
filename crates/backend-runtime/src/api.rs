@@ -22,6 +22,8 @@ use std::{
 };
 use tokio::sync::{mpsc, Semaphore};
 pub struct Api {
+    #[cfg(target_os = "linux")]
+    data: std::path::PathBuf,
     account: Arc<server_account::Account>,
     auth: Arc<Authenticator>,
     writer: Arc<Writer>,
@@ -63,6 +65,8 @@ impl Api {
             now(),
         ));
         Ok(Arc::new(Self {
+            #[cfg(target_os = "linux")]
+            data: data_dir.to_owned(),
             account,
             auth,
             writer,
@@ -258,6 +262,62 @@ async fn handle(
         Ok(Ok(Err(_))) => return failure(Fault::Forbidden),
         _ => return failure(Fault::Unavailable),
     };
+    #[cfg(target_os = "linux")]
+    if let Some(project) = path
+        .strip_prefix("/api/projects/")
+        .and_then(|p| p.strip_suffix("/sources/text"))
+        .filter(|s| !s.is_empty() && !s.contains('/'))
+    {
+        if method != "GET" {
+            return response(405, json!({"error":"Method not allowed"}));
+        }
+        let data = api.data.clone();
+        let writer = Arc::clone(&api.writer);
+        let auth = Arc::clone(&api.auth);
+        let user = identity.user.id.clone();
+        let project = project.to_owned();
+        let name = url::form_urlencoded::parse(query.as_bytes())
+            .find(|(k, _)| k == "name")
+            .map(|(_, v)| v.into_owned());
+        let output = tokio::task::spawn_blocking(move || {
+            let mut output = None;
+            writer
+                .write(|tx| {
+                    output = Some(match auth.gate_in(&tx.reader(), &creds, &path, now())? {
+                        Ok(identity) if identity.user.id == user => {
+                            Ok(server_projects::sources::get(
+                                server_projects::Ctx {
+                                    data_dir: &data,
+                                    user_id: &user,
+                                    switch: server_store::RustProjects::owned(),
+                                    now_ms: now(),
+                                },
+                                &project,
+                                name.as_deref(),
+                            ))
+                        }
+                        Err(Refusal::Unauthorized) => Err(Fault::Unauthorized),
+                        _ => Err(Fault::Forbidden),
+                    });
+                    Ok(())
+                })
+                .map_err(|_| Fault::Unavailable)?;
+            output.ok_or(Fault::Unavailable)?
+        })
+        .await;
+        return match output {
+            Ok(Ok(reply)) => match reply.body {
+                server_projects::Body::Json(text) => {
+                    let mut result = response(reply.status, Value::Null);
+                    *result.body_mut() = Body::from(text);
+                    result
+                }
+                _ => failure(Fault::Protocol),
+            },
+            Ok(Err(e)) => failure(e),
+            Err(_) => failure(Fault::Unavailable),
+        };
+    }
     if path == "/api/diary/workspace-export" {
         if method != "GET" {
             return response(405, json!({"error":"Method not allowed"}));

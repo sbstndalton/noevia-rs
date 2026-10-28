@@ -168,6 +168,29 @@ async fn original_front_auth_history_and_native_execution_share_one_transcript(
         .await?;
     assert_eq!(public.status(), 200);
     assert!(public.text().await?.contains("native answer"));
+    std::fs::write(
+        user_dir.join("projects.json"),
+        r#"{"projects":[{"id":"project1","files":[{"name":"note.md","content":"source through original front"}]}]}"#,
+    )?;
+    let source = client
+        .get(format!(
+            "http://{address}/api/projects/project1/sources/text?name=note.md"
+        ))
+        .header("cookie", cookie)
+        .send()
+        .await?;
+    assert_eq!(source.status(), 200);
+    assert!(source
+        .text()
+        .await?
+        .contains("source through original front"));
+    let source = client
+        .get(format!(
+            "http://{address}/api/projects/project1/sources/text?name=note.md"
+        ))
+        .send()
+        .await?;
+    assert_eq!(source.status(), 401);
     let _ = stop.send(());
     task.await?;
     Ok(())
