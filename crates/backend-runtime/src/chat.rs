@@ -588,15 +588,35 @@ impl Runtime {
             framed.extend(self.store.sources(binding, control)?);
             // UI transcript metadata (IDs, tool chips, saved versions) is not a
             // provider protocol field. Active tool-call wire fields are retained.
-            framed.extend(messages.iter().map(|message| {
+            for message in messages.iter() {
                 let mut wire = serde_json::Map::new();
                 for key in ["role", "content", "tool_calls", "tool_call_id", "name"] {
                     if let Some(value) = message.get(key) {
                         wire.insert(key.into(), value.clone());
                     }
                 }
-                Value::Object(wire)
-            }));
+                if let Some(calls) = message.get("toolCalls") {
+                    let mut content = message
+                        .get("content")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_owned();
+                    for call in calls.as_array().ok_or(Fault::Invalid)? {
+                        let known = call
+                            .get("name")
+                            .and_then(Value::as_str)
+                            .is_some_and(|name| self.tools.contains_key(name));
+                        if let Some(note) =
+                            crate::replay_history::completed_note(call, external, known)?
+                        {
+                            content.push_str("\n\n");
+                            content.push_str(&note);
+                        }
+                    }
+                    wire.insert("content".into(), Value::String(content));
+                }
+                framed.push(Value::Object(wire));
+            }
             if serde_json::to_vec(&framed)?.len() > 8 * 1024 * 1024 {
                 return Err(Fault::Capacity);
             }

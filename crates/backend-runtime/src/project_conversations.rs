@@ -28,41 +28,7 @@ struct Running {
     browser: bool,
     prefix: usize,
 }
-// Only ordinary text turns are admitted here. Applied/declined write records and
-// failed read recovery require the original modelHistory projection, not a lossy cast.
-fn text_projection(history: &[Value]) -> Result<Vec<Value>> {
-    history
-        .iter()
-        .map(|m| {
-            if !matches!(
-                m.get("role").and_then(Value::as_str),
-                Some("user" | "assistant")
-            ) || !m.get("content").is_some_and(Value::is_string)
-                || ["tool_calls", "error", "paused"]
-                    .iter()
-                    .any(|key| m.get(key).is_some())
-            {
-                return Err(Fault::Unavailable);
-            }
-            if let Some(calls) = m.get("toolCalls") {
-                let calls = calls.as_array().ok_or(Fault::Unavailable)?;
-                // Successful read chips add no modelHistory entries when an answer
-                // exists. Applied writes, declines and interrupted reads need notes.
-                if m.get("content")
-                    .and_then(Value::as_str)
-                    .is_none_or(|s| s.trim().is_empty())
-                    || calls.iter().any(|c| {
-                        c.get("applied") == Some(&Value::Bool(true))
-                            || c.get("status").and_then(Value::as_str) == Some("denied")
-                    })
-                {
-                    return Err(Fault::Unavailable);
-                }
-            }
-            Ok(json!({"role":m.get("role"),"content":m.get("content")}))
-        })
-        .collect()
-}
+use crate::replay_history::projection as text_projection;
 impl ProjectConversations {
     pub fn open(data: &Path, start: &str, journal_path: &Path) -> Result<Self> {
         if !data.is_absolute() || !server_projects::partial::valid_start_id(start) {
@@ -99,7 +65,7 @@ impl ProjectConversations {
         let base = history.clone();
         if let Some(expected) = browser {
             let projection = text_projection(&history)?;
-            let expected = text_projection(expected)?;
+            let expected = expected.to_vec();
             if projection == expected {
                 // The browser save has not arrived yet.
             } else if projection.len() == expected.len() + 1

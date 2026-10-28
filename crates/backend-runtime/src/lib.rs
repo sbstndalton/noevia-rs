@@ -24,6 +24,7 @@ pub mod project_conversations;
 #[cfg(target_os = "linux")]
 pub mod project_sources;
 pub mod replay;
+pub mod replay_history;
 pub mod retrieval;
 pub mod sampling;
 pub mod session_conversations;

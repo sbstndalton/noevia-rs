@@ -31,7 +31,7 @@ fn save(data: &std::path::Path, history: &[Value]) -> Result<(), Box<dyn std::er
 #[test]
 fn browser_presave_before_and_during_turn_preserves_ids_and_fences_other_edits(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    for timing in ["before", "during", "conflict", "repeat"] {
+    for timing in ["before", "during", "conflict", "repeat", "applied"] {
         let dir = tempfile::tempdir()?;
         let user = dir.path().join("users").join(USER);
         std::fs::create_dir_all(&user)?;
@@ -45,10 +45,14 @@ fn browser_presave_before_and_during_turn_preserves_ids_and_fences_other_edits(
         )?;
         server_projects::journal::set_start_id(START);
         chat_move::grant_context(dir.path(), USER, "chat1", START).map_err(|e| format!("{e:?}"))?;
-        let old = json!({"id":"old","role":"user","content":"same"});
+        let old = if timing == "applied" {
+            json!({"id":"old","role":"assistant","content":"Saved","toolCalls":[{"name":"write_note","args":"{}","result":"saved","status":"done","applied":true}]})
+        } else {
+            json!({"id":"old","role":"user","content":"same"})
+        };
         let sent = json!({"id":"new","role":"user","content":"same"});
         let request = json!({"role":"user","content":"same"});
-        let previous = vec![json!({"role":"user","content":"same"})];
+        let previous = backend_runtime::replay_history::projection(std::slice::from_ref(&old))?;
         save(dir.path(), std::slice::from_ref(&old))?;
         if timing == "before" {
             save(dir.path(), &[old.clone(), sent.clone()])?;
@@ -92,7 +96,7 @@ fn browser_presave_before_and_during_turn_preserves_ids_and_fences_other_edits(
             serde_json::from_str(&js_json::wtf16::stringify(&saved.history).ok_or("encode")?)?;
         assert_eq!(value.as_array().ok_or("array")?.len(), 3);
         assert_eq!(value.pointer("/0/id"), Some(&json!("old")));
-        if timing != "repeat" {
+        if timing != "repeat" && timing != "applied" {
             assert_eq!(value.pointer("/1/id"), Some(&json!("new")));
         }
     }
