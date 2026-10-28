@@ -289,6 +289,14 @@ impl StateStore {
 /// Execution persistence contract. Production adapters must fence the actual holder and
 /// generation together with the transcript write, not just compare before an await.
 pub trait Conversations: Send + Sync {
+    fn tool_mode(
+        &self,
+        _binding: &Binding,
+        _name: &str,
+        write: bool,
+    ) -> Result<policy_leaves::Mode> {
+        Ok(policy_leaves::mode(None, write))
+    }
     fn sampling_enabled(&self, _binding: &Binding) -> Result<bool> {
         Ok(true)
     }

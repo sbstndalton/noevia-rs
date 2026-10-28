@@ -63,6 +63,38 @@ impl SessionConversations {
     }
 }
 impl Conversations for SessionConversations {
+    fn tool_mode(&self, binding: &Binding, name: &str, write: bool) -> Result<policy_leaves::Mode> {
+        if binding.user != self.user {
+            return Err(Fault::Forbidden);
+        }
+        let mut outcome = None;
+        self.writer
+            .write(|tx| {
+                let reader = tx.reader();
+                outcome = Some(
+                    match self
+                        .auth
+                        .gate_in(&reader, &self.creds, "/api/chat", (self.clock)())?
+                    {
+                        Ok(identity) if identity.user.id == self.user => {
+                            // Older DBs predate the optional policy table. Its absence
+                            // has the original no-row default. Never bypass the auth
+                            // Writer's DDL denial; malformed present tables fail closed.
+                            let exists = reader.row("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tool_policies'", [], |r|r.get::<_,i64>(0))?.is_some();
+                            let stored = if exists { reader.row("SELECT mode FROM tool_policies WHERE user_id=? AND tool=?", [&self.user, name], |r|r.get::<_,String>(0))? } else { None };
+                            let units = stored.map(|s| s.encode_utf16().collect::<Vec<_>>());
+                            Ok(policy_leaves::mode(units.as_deref(), write))
+                        }
+                        Err(Refusal::Unauthorized) => Err(Fault::Unauthorized),
+                        _ => Err(Fault::Forbidden),
+                    },
+                );
+                Ok(())
+            })
+            .map_err(|_| Fault::Unavailable)?;
+        outcome.ok_or(Fault::Unavailable)?
+    }
+
     fn sampling_enabled(&self, binding: &Binding) -> Result<bool> {
         if binding.user != self.user {
             return Err(Fault::Forbidden);

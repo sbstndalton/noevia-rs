@@ -26,6 +26,7 @@ server-auth = { path = "../server-auth" }
 server-store = { path = "../server-store" }
 server-account = { path = "../server-account" }
 mcp-frame = { path = "../mcp-frame" }
+policy-leaves = { path = "../policy-leaves" }
 tool-exchange = { path = "../tool-exchange" }
 provider-egress = { path = "../provider-egress" }
 prompt-framing = { path = "../prompt-framing" }

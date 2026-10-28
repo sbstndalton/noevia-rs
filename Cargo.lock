@@ -176,6 +176,7 @@ dependencies = [
  "js-json",
  "mcp-frame",
  "noevia-server",
+ "policy-leaves",
  "project-file-names",
  "prompt-framing",
  "provider-egress",

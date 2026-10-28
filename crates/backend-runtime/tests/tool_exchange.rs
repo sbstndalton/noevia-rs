@@ -192,3 +192,127 @@ async fn external_engine_cannot_force_diary_or_unknown_storage_root(
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     Ok(())
 }
+
+struct OneCall(AtomicUsize);
+impl Model for OneCall {
+    fn complete<'a>(
+        &'a self,
+        _: &'a [Value],
+        _: &'a [Value],
+        _: &'a Control,
+    ) -> FutureResult<'a, Value> {
+        Box::pin(async move {
+            if self.0.fetch_add(1, Ordering::SeqCst) == 0 {
+                Ok(
+                    json!({"role":"assistant","tool_calls":[{"id":"write1","type":"function","function":{"name":"write","arguments":"{}"}}]}),
+                )
+            } else {
+                Ok(json!({"role":"assistant","content":"done"}))
+            }
+        })
+    }
+}
+struct OutcomeTool {
+    outcome: &'static str,
+    calls: Arc<AtomicUsize>,
+}
+impl Tool for OutcomeTool {
+    fn schema(&self) -> Value {
+        json!({"type":"object"})
+    }
+    fn mutating(&self) -> bool {
+        true
+    }
+    fn call<'a>(&'a self, _: &'a Binding, _: Value, _: &'a Control) -> FutureResult<'a, Value> {
+        Box::pin(async move {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            match self.outcome {
+                "transport" => Err(Fault::Transport),
+                "error" => Ok(json!("ERROR: rejected")),
+                "mcp" => Ok(json!({"isError":true})),
+                _ => Ok(json!("saved")),
+            }
+        })
+    }
+}
+#[tokio::test]
+async fn browser_tool_events_distinguish_applied_declined_and_uncertain(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for outcome in ["saved", "denied", "transport", "error", "mcp"] {
+        let dir = tempfile::tempdir()?;
+        let store = Arc::new(StateStore::create(&dir.path().join("state.db"))?);
+        let binding = Binding {
+            user: "synthetic".into(),
+            canonical_chat_id: "one".into(),
+            scope: "free".into(),
+            holder: Holder::Free,
+            generation: "0".into(),
+            start: "a".repeat(32),
+            tombstoned: false,
+        };
+        store.create_chat(&binding)?;
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut tools: BTreeMap<String, Arc<dyn Tool>> = BTreeMap::new();
+        tools.insert(
+            "write".into(),
+            Arc::new(OutcomeTool {
+                outcome,
+                calls: Arc::clone(&calls),
+            }),
+        );
+        let runtime = Runtime::new(store, Arc::new(OneCall(AtomicUsize::new(0))), tools)?;
+        let mut events = Vec::new();
+        runtime
+            .run(
+                binding,
+                &uuid::Uuid::new_v4().to_string(),
+                json!({"role":"user","content":"write"}),
+                &Control::new(Duration::from_secs(5))?,
+                |event| {
+                    if event.get("type") == Some(&json!("tool_pending")) {
+                        runtime.approvals.decide(
+                            "synthetic",
+                            event
+                                .get("id")
+                                .and_then(Value::as_str)
+                                .ok_or(Fault::Protocol)?,
+                            if outcome == "denied" {
+                                Decision::Deny
+                            } else {
+                                Decision::Approve
+                            },
+                        )?;
+                    }
+                    events.push(event);
+                    Ok(())
+                },
+            )
+            .await?;
+        let start = events
+            .iter()
+            .position(|e| e.get("type") == Some(&json!("tool")))
+            .ok_or("start")?;
+        let pending = events
+            .iter()
+            .position(|e| e.get("type") == Some(&json!("tool_pending")))
+            .ok_or("pending")?;
+        let end = events
+            .iter()
+            .position(|e| e.get("type") == Some(&json!("tool_result")))
+            .ok_or("result")?;
+        assert!(start < pending && pending < end);
+        assert_eq!(
+            events.get(end).and_then(|v| v.get("applied")),
+            Some(&json!(outcome == "saved"))
+        );
+        assert_eq!(
+            events.get(end).and_then(|v| v.get("declined")),
+            Some(&json!(outcome == "denied"))
+        );
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            usize::from(outcome != "denied")
+        );
+    }
+    Ok(())
+}

@@ -468,6 +468,10 @@ impl Runtime {
         let external = provider_egress::external_strict(Some(&provider));
         let permitted = |name: &str, tool: &Arc<dyn Tool>| {
             tool.permitted(binding)
+                && self
+                    .store
+                    .tool_mode(binding, name, tool.mutating())
+                    .is_ok_and(|m| m != policy_leaves::Mode::Block)
                 && !(external && (tool.private() || name.starts_with("diary_")))
                 && match tool.toolbox() {
                     None => true,
@@ -506,7 +510,7 @@ impl Runtime {
         let schemas:Vec<Value>=self.tools.iter().filter(|(name,tool)|permitted(name,tool)).map(|(name,tool)|json!({"type":"function","function":{"name":name,"description":tool.description(),"parameters":tool.schema()}})).collect();
         // Original tool-exchange contract: one cache per turn, canonical Rust keys,
         // serial execution, uncertain writes cached and reads invalidated only on write attempt.
-        let mut results = BTreeMap::<Vec<u16>, (String, bool)>::new();
+        let mut results = BTreeMap::<Vec<u16>, (String, bool, bool, bool)>::new();
         let mut event_index = 0usize;
         for _round in 0..32 {
             control.check()?;
@@ -585,12 +589,19 @@ impl Runtime {
                     },
                 )
                 .map_err(|_| Fault::Protocol)?;
+                emit(json!({"type":"tool","index":index,"name":name,"args":raw}))?;
+                let mut applied = false;
+                let mut declined = false;
+                let mut not_run = false;
                 let output = match checked {
                     tool_exchange::Check::Answer(answer) => {
+                        not_run = true;
                         String::from_utf16(&answer).map_err(|_| Fault::Protocol)?
                     }
                     tool_exchange::Check::Run(key) => {
-                        if let Some((text, _)) = results.get(&key) {
+                        if let Some((text, _, saved_applied, saved_declined)) = results.get(&key) {
+                            applied = *saved_applied;
+                            declined = *saved_declined;
                             text.clone()
                         } else {
                             let arguments: Value = if raw.is_empty() {
@@ -607,15 +618,22 @@ impl Runtime {
                             ) {
                                 let text =
                                     String::from_utf16(&refusal).map_err(|_| Fault::Protocol)?;
-                                results.insert(key, (text.clone(), false));
+                                results.insert(key, (text.clone(), false, false, false));
                                 messages
                                     .push(json!({"role":"tool","tool_call_id":id,"content":text}));
                                 emit(
-                                    json!({"type":"tool_result","index":index,"name":name,"text":text.chars().take(300).collect::<String>()}),
+                                    json!({"type":"tool_result","index":index,"name":name,"text":text.chars().take(300).collect::<String>(),"notRun":true}),
                                 )?;
                                 continue;
                             }
-                            let allowed = if tool.mutating() && !self.approvals.granted(binding)? {
+                            let permission =
+                                self.store.tool_mode(binding, name, tool.mutating())?;
+                            if permission == policy_leaves::Mode::Block {
+                                return Err(Fault::Forbidden);
+                            }
+                            let allowed = if permission == policy_leaves::Mode::Ask
+                                && !self.approvals.granted(binding)?
+                            {
                                 let ticket =
                                     self.approvals.ask(binding.clone(), control.remaining()?)?;
                                 emit(
@@ -633,13 +651,36 @@ impl Runtime {
                                 return Err(Fault::Conflict);
                             }
                             control.check()?;
+                            let latest = self.store.tool_mode(binding, name, tool.mutating())?;
+                            if latest == policy_leaves::Mode::Block
+                                || (permission != policy_leaves::Mode::Ask
+                                    && latest == policy_leaves::Mode::Ask)
+                            {
+                                return Err(Fault::Forbidden);
+                            }
                             let output = if allowed {
                                 if tool.mutating() {
-                                    results.retain(|_, (_, write)| *write);
+                                    results.retain(|_, (_, write, _, _)| *write);
                                 }
                                 match tool.call(binding, arguments, control).await {
-                                    Ok(Value::String(text)) => text,
-                                    Ok(value) => serde_json::to_string(&value)?,
+                                    Ok(value) => {
+                                        let text = match &value {
+                                            Value::String(text) => text.clone(),
+                                            _ => serde_json::to_string(&value)?,
+                                        };
+                                        // Original applied-write contract: confirmed call success,
+                                        // never an uncertain transport failure or an ERROR result.
+                                        let error_prefix =
+                                            text.strip_prefix("ERROR").is_some_and(|rest| {
+                                                rest.chars().next().is_none_or(|c| {
+                                                    !c.is_ascii_alphanumeric() && c != '_'
+                                                })
+                                            });
+                                        applied = tool.mutating()
+                                            && !error_prefix
+                                            && value.get("isError") != Some(&Value::Bool(true));
+                                        text
+                                    }
                                     Err(Fault::Cancelled) => return Err(Fault::Cancelled),
                                     Err(Fault::Deadline) => return Err(Fault::Deadline),
                                     Err(error) => {
@@ -653,12 +694,14 @@ impl Runtime {
                                     }
                                 }
                             } else {
+                                declined = true;
                                 "The user declined this action.".to_owned()
                             };
                             if output.len() > 1024 * 1024 {
                                 return Err(Fault::Capacity);
                             }
-                            results.insert(key, (output.clone(), tool.mutating()));
+                            results
+                                .insert(key, (output.clone(), tool.mutating(), applied, declined));
                             output
                         }
                     }
@@ -668,7 +711,7 @@ impl Runtime {
                 }
                 messages.push(json!({"role":"tool","tool_call_id":id,"content":output}));
                 emit(
-                    json!({"type":"tool_result","index":index,"name":name,"text":output.chars().take(300).collect::<String>()}),
+                    json!({"type":"tool_result","index":index,"name":name,"text":output.chars().take(300).collect::<String>(),"applied":applied,"declined":declined,"notRun":not_run}),
                 )?;
             }
         }
