@@ -165,6 +165,8 @@ dependencies = [
  "axum",
  "chrono",
  "diary-corpus-parse",
+ "diary-corpus-write",
+ "diary-index-transform",
  "diary-workspace-rules",
  "diary-workspace-transaction",
  "futures-core",

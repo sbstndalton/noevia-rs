@@ -14,6 +14,7 @@ pub mod journal;
 pub mod mcp;
 #[cfg(target_os = "linux")]
 pub mod project_conversations;
+pub mod replay;
 pub mod retrieval;
 pub mod snapshot;
 pub mod state;

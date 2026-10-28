@@ -74,7 +74,14 @@ fn original_editor_contract_and_revocation_fence() -> Result<(), Box<dyn std::er
             journal: Arc::clone(&journal),
         },
     );
-    let diary = DiaryHttp::new(tenants)?;
+    let diary = DiaryHttp::new(tenants)?.with_replay(backend_runtime::replay::Layout {
+        root: String::new(),
+        monthly_prefix: "Monthly".into(),
+        entries_prefix: "Entries".into(),
+        month_file_template: "{year}-{month02}.md".into(),
+        index_file: "INDEX.md".into(),
+        daily: false,
+    })?;
     let writer = server_store::Writer::open(built.dir.path(), server_store::RustAuth::owned())?;
     let config = server_auth::AuthConfig::from_lookup(|key| {
         (key == "PUBLIC_ORIGIN").then(|| "https://noevia.example.test".into())
@@ -166,6 +173,19 @@ fn original_editor_contract_and_revocation_fence() -> Result<(), Box<dyn std::er
         request("POST", "/api/diary/file", json!({"path":"note.md"}))?.0,
         404
     );
+    journal.enqueue(
+        "index_month",
+        &json!({"month":"2026-10.md","label":"October 2026"}),
+    )?;
+    let control = backend_runtime::Control::new(std::time::Duration::from_secs(5))?;
+    assert_eq!(diary.replay_pending(&writer, &control)?, 0);
+    assert_eq!(journal.pending_count()?, 1);
+    raw.execute(
+        "UPDATE user_features SET diary_enabled=1 WHERE user_id=?",
+        [USER],
+    )?;
+    assert_eq!(diary.replay_pending(&writer, &control)?, 1);
+    assert_eq!(journal.pending_count()?, 0);
     raw.execute("DELETE FROM sessions WHERE user_id=?", [USER])?;
     assert_eq!(
         request("POST", "/api/diary/file", json!({"path":"note.md"})),

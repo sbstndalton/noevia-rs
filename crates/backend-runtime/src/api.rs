@@ -72,6 +72,28 @@ impl Api {
             chat_admission: Arc::new(Semaphore::new(4)),
         }))
     }
+    /// Owned by the candidate listener task; dropping/aborting it ends scheduling.
+    pub fn start_replay_worker(self: &Arc<Self>) -> tokio::task::JoinHandle<()> {
+        let api = Arc::clone(self);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(30));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                interval.tick().await;
+                let Some(diary) = api.diary.clone() else {
+                    return;
+                };
+                let writer = Arc::clone(&api.writer);
+                let result = tokio::task::spawn_blocking(move || {
+                    diary.replay_pending(&writer, &Control::new(Duration::from_secs(20))?)
+                })
+                .await;
+                if !matches!(result, Ok(Ok(_))) {
+                    eprintln!("native Diary replay deferred; pending intent retained");
+                }
+            }
+        })
+    }
     pub fn dav_service(
         &self,
         data: &Path,

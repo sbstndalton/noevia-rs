@@ -16,13 +16,41 @@ pub struct Tenant {
 }
 pub struct DiaryHttp {
     tenants: HashMap<String, Tenant>,
+    replay: HashMap<String, crate::replay::Replay>,
 }
 impl DiaryHttp {
     pub fn new(tenants: HashMap<String, Tenant>) -> Result<Self> {
         if tenants.iter().any(|(user, t)| user != t.corpus.tenant_id()) {
             return Err(Fault::Forbidden);
         }
-        Ok(Self { tenants })
+        Ok(Self {
+            tenants,
+            replay: HashMap::new(),
+        })
+    }
+    pub fn with_replay(mut self, layout: crate::replay::Layout) -> Result<Self> {
+        for user in self.tenants.keys() {
+            self.replay
+                .insert(user.clone(), crate::replay::Replay::new(layout.clone())?);
+        }
+        Ok(self)
+    }
+    /// Account Writer remains held through the whole pass, including corpus commit.
+    /// No revoked/disabled/remote tenant can be acted on by the background worker.
+    pub fn replay_pending(&self, writer: &Writer, control: &Control) -> Result<usize> {
+        let mut count = 0;
+        for (user, replay) in &self.replay {
+            control.check()?;
+            let tenant = self.tenants.get(user).ok_or(Fault::Unavailable)?;
+            let mut result = Ok(0);
+            writer.write(|tx| {
+                let allowed=tx.reader().row("SELECT 1 FROM users u JOIN user_features f ON f.user_id=u.id LEFT JOIN storage_connections s ON s.user_id=u.id WHERE u.id=? AND u.disabled_at IS NULL AND f.diary_enabled=1 AND (s.kind IS NULL OR s.kind='local')",[user],|r|r.get::<_,i64>(0))?.is_some();
+                if allowed { result=replay.pending(&tenant.corpus,&tenant.journal,100,false,control); }
+                Ok(())
+            }).map_err(|_|Fault::Unavailable)?;
+            count += result?;
+        }
+        Ok(count)
     }
     pub fn corpora(&self) -> HashMap<String, Arc<Corpus>> {
         self.tenants

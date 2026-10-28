@@ -74,7 +74,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     if action == "--existing-front" {
         let config = noevia_server::config::Config::from_lookup(|key| std::env::var(key).ok())?;
         let sharing = configured_dav(&app, &data, config.port)?;
-        let front = backend_runtime::frontend::assemble(config, app)?;
+        let front = backend_runtime::frontend::assemble(config, Arc::clone(&app))?;
         let rt = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()?;
@@ -93,6 +93,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 None
             };
+            let replay_task = app.start_replay_worker();
             let dav_task = tokio::spawn(async move {
                 if let Some((listener, router)) = dav_listener {
                     noevia_server::serve::serve_router(
@@ -115,6 +116,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 std::future::pending(),
             )
             .await;
+            replay_task.abort();
+            let _ = replay_task.await;
             dav_task.abort();
             let _ = dav_task.await;
             Ok::<(), std::io::Error>(())
@@ -177,9 +180,11 @@ fn diary_registry(
             backend_runtime::diary_http::Tenant { corpus, journal },
         );
     }
-    Ok(Some(Arc::new(backend_runtime::diary_http::DiaryHttp::new(
-        tenants,
-    )?)))
+    let mut diary = backend_runtime::diary_http::DiaryHttp::new(tenants)?;
+    if let Ok(layout) = std::env::var("NATIVE_CANDIDATE_DIARY_LAYOUT") {
+        diary = diary.with_replay(serde_json::from_str(&layout)?)?;
+    }
+    Ok(Some(Arc::new(diary)))
 }
 
 #[cfg(target_os = "linux")]
