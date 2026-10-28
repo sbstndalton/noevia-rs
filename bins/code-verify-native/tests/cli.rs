@@ -40,3 +40,32 @@ fn host_invocation_and_forged_helper_input_cannot_run_repository_code(
     }
     Ok(())
 }
+
+#[test]
+fn source_probe_is_not_runtime_readiness() -> Result<(), Box<dyn std::error::Error>> {
+    let output = Command::new(env!("CARGO_BIN_EXE_code-verify-native"))
+        .arg("--capabilities")
+        .env_clear()
+        .output()?;
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(
+        value.get("probe").and_then(serde_json::Value::as_str),
+        Some("source-capability")
+    );
+    assert_eq!(
+        value.get("readiness").and_then(serde_json::Value::as_str),
+        Some("requires-isolated-namespace-init")
+    );
+    assert_eq!(
+        value
+            .get("nativeVerifier")
+            .and_then(serde_json::Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        value.get("oneShot").and_then(serde_json::Value::as_bool),
+        Some(true)
+    );
+    Ok(())
+}
