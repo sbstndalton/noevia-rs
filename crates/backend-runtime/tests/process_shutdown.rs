@@ -191,7 +191,21 @@ async fn fresh_original_account_setup_needs_no_node_initializer(
     let response=client.post(format!("http://127.0.0.1:{port}/api/setup/complete"))
         .header("origin","https://noevia.example.test").header("content-type","application/json")
         .body(serde_json::json!({"setupCode":code,"username":"synthetic","password":"Synthetic-account-password-20261028!","publicOrigin":"https://noevia.example.test","diaryEnabled":false}).to_string()).send().await?;
-    assert_eq!(response.status(), 200, "{}", response.text().await?);
+    assert_eq!(response.status(), 201);
+    let cookie = response
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .filter_map(|v| v.split(';').next())
+        .collect::<Vec<_>>()
+        .join("; ");
+    let workspace = client
+        .get(format!("http://127.0.0.1:{port}/api/workspace"))
+        .header("cookie", cookie)
+        .send()
+        .await?;
+    assert_eq!(workspace.status(), 200);
     let db = rusqlite::Connection::open(server_store::db_path(&data))?;
     assert_eq!(
         db.query_row(
