@@ -106,6 +106,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 None
             };
+            let (stop, stopped) = tokio::sync::watch::channel(false);
+            let mut ui_stop = stopped.clone();
+            let mut dav_stop = stopped.clone();
+            let mut drain_stop = stopped;
+            let signal_task = tokio::spawn(async move {
+                terminated().await;
+                let _ = stop.send(true);
+            });
             let replay_task = app.start_replay_worker();
             let dav_task = tokio::spawn(async move {
                 if let Some((listener, router)) = dav_listener {
@@ -117,20 +125,29 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                             keep_alive_idle: std::time::Duration::from_secs(60),
                             max_connections: 64,
                         },
-                        std::future::pending(),
+                        async move {
+                            let _ = dav_stop.wait_for(|s| *s).await;
+                        },
                     )
                     .await;
                 }
             });
-            noevia_server::serve::serve(
+            let server = noevia_server::serve::serve(
                 listener,
                 front,
                 noevia_server::serve::Limits::default(),
-                std::future::pending(),
-            )
-            .await;
-            replay_task.abort();
-            let _ = replay_task.await;
+                async move {
+                    let _ = ui_stop.wait_for(|s| *s).await;
+                },
+            );
+            let drained = async move {
+                let _ = drain_stop.wait_for(|s| *s).await;
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            };
+            tokio::select! { _ = server => {}, _ = drained => {} }
+            replay_task.shutdown().await;
+            signal_task.abort();
+            let _ = signal_task.await;
             dav_task.abort();
             let _ = dav_task.await;
             Ok::<(), std::io::Error>(())
@@ -153,6 +170,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             app.router()
                 .into_make_service_with_connect_info::<std::net::SocketAddr>(),
         )
+        .with_graceful_shutdown(terminated())
         .await
     })?;
     Ok(())
@@ -252,4 +270,17 @@ fn configured_dav(
         port,
         api.dav_service(data, scope, config, protection)?,
     )))
+}
+
+async fn terminated() {
+    #[cfg(unix)]
+    {
+        if let Ok(mut signal) =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        {
+            tokio::select! { _ = signal.recv() => {}, _ = tokio::signal::ctrl_c() => {} }
+            return;
+        }
+    }
+    let _ = tokio::signal::ctrl_c().await;
 }

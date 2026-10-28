@@ -77,26 +77,50 @@ impl Api {
         }))
     }
     /// Owned by the candidate listener task; dropping/aborting it ends scheduling.
-    pub fn start_replay_worker(self: &Arc<Self>) -> tokio::task::JoinHandle<()> {
+    pub fn start_replay_worker(self: &Arc<Self>) -> ReplayWorker {
         let api = Arc::clone(self);
-        tokio::spawn(async move {
+        let (stop, mut stopped) = tokio::sync::watch::channel(false);
+        let task = tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(30));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
-                interval.tick().await;
+                tokio::select! {
+                    _ = stopped.changed() => return,
+                    _ = interval.tick() => {},
+                }
+                if *stopped.borrow() {
+                    return;
+                }
                 let Some(diary) = api.diary.clone() else {
                     return;
                 };
                 let writer = Arc::clone(&api.writer);
-                let result = tokio::task::spawn_blocking(move || {
-                    diary.replay_pending(&writer, &Control::new(Duration::from_secs(20))?)
-                })
-                .await;
+                let Ok(control) = Control::new(Duration::from_secs(20)) else {
+                    return;
+                };
+                let pass_control = control.clone();
+                let mut pass = tokio::task::spawn_blocking(move || {
+                    diary.replay_pending(&writer, &pass_control)
+                });
+                let result = tokio::select! {
+                    result = &mut pass => result,
+                    _ = stopped.changed() => {
+                        control.cancel();
+                        // spawn_blocking cannot be aborted. Wait for its actual fenced
+                        // transaction boundary before saying the writer has stopped.
+                        let _ = pass.await;
+                        return;
+                    }
+                };
                 if !matches!(result, Ok(Ok(_))) {
                     eprintln!("native Diary replay deferred; pending intent retained");
                 }
             }
-        })
+        });
+        ReplayWorker {
+            stop,
+            task: Some(task),
+        }
     }
     pub fn dav_service(
         &self,
@@ -127,6 +151,24 @@ impl Api {
     }
     pub fn router(self: Arc<Self>) -> Router {
         Router::new().fallback(handle).with_state(self)
+    }
+}
+/// Owned replay lifetime. Dropping requests cancellation; shutdown also joins the real worker.
+pub struct ReplayWorker {
+    stop: tokio::sync::watch::Sender<bool>,
+    task: Option<tokio::task::JoinHandle<()>>,
+}
+impl ReplayWorker {
+    pub async fn shutdown(mut self) {
+        let _ = self.stop.send(true);
+        if let Some(task) = self.task.take() {
+            let _ = task.await;
+        }
+    }
+}
+impl Drop for ReplayWorker {
+    fn drop(&mut self) {
+        let _ = self.stop.send(true);
     }
 }
 fn response(status: u16, value: Value) -> Response<Body> {
