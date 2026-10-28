@@ -19,12 +19,11 @@ fn valid_incarnation(value: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
         && value.bytes().any(|b| b != b'0')
 }
+const EPOCH_READ: &str = "SELECT typeof(value), CASE WHEN typeof(value)='text' AND length(CAST(value AS BLOB))=32 THEN value ELSE NULL END FROM settings WHERE key=?1";
 fn stored_incarnation(reader: &Reader<'_>) -> Result<Option<String>, StoreError> {
-    let row = reader.row(
-        "SELECT typeof(value), CASE WHEN typeof(value)='text' AND length(value)=32 THEN value ELSE NULL END FROM settings WHERE key=?1",
-        [FEATURE_RUNTIME_INCARNATION_KEY],
-        |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?)),
-    )?;
+    let row = reader.row(EPOCH_READ, [FEATURE_RUNTIME_INCARNATION_KEY], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+    })?;
     match row {
         None => Ok(None),
         Some((kind, Some(value))) if kind == "text" && valid_incarnation(&value) => Ok(Some(value)),
@@ -205,6 +204,43 @@ mod tests {
     }
     fn epoch(byte: u8) -> FeatureRuntime {
         FeatureRuntime::with_incarnation(format!("{byte:02x}").repeat(16))
+    }
+    #[test]
+    fn epoch_projection_bounds_actual_text_bytes_before_materialization() -> Result<(), Error> {
+        let (_dir, node, writer) = fixture()?;
+        let valid = "ab".repeat(16);
+        let nul_suffix = format!("{valid}\0{}", "z".repeat(2 * 1024 * 1024));
+        for (raw, accepted) in [
+            (valid, true),
+            (format!("{}é", "a".repeat(31)), false),
+            ("a".repeat(33), false),
+            (nul_suffix, false),
+        ] {
+            node.execute(
+                "INSERT OR REPLACE INTO settings(key,value) VALUES(?1,?2)",
+                (FEATURE_RUNTIME_INCARNATION_KEY, &raw),
+            )?;
+            // Inspect the SAME production CASE: malformed text is suppressed inside SQLite,
+            // before conversion to a Rust String, including SQLite length(TEXT)'s NUL case.
+            let projected = writer.read(|reader| {
+                reader.row(EPOCH_READ, [FEATURE_RUNTIME_INCARNATION_KEY], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+                })
+            })?;
+            assert_eq!(projected.as_ref().map(|row| row.0.as_str()), Some("text"));
+            assert_eq!(projected.and_then(|row| row.1).is_some(), accepted);
+            let decoded = writer.read(stored_incarnation);
+            assert_eq!(decoded.is_ok(), accepted);
+            assert_eq!(
+                node.query_row(
+                    "SELECT length(CAST(value AS BLOB)) FROM settings WHERE key=?1",
+                    [FEATURE_RUNTIME_INCARNATION_KEY],
+                    |r| r.get::<_, i64>(0),
+                )?,
+                i64::try_from(raw.len())?
+            ); // refusal never repairs the input
+        }
+        Ok(())
     }
     #[test]
     fn actual_db_fences_old_process_and_debug_is_redacted() -> Result<(), Error> {
