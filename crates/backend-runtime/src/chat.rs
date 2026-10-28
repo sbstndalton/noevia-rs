@@ -10,6 +10,14 @@ use serde_json::{json, Value};
 use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc};
 pub type FutureResult<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 pub trait Model: Send + Sync {
+    /// Trusted provider configuration, never a field accepted from model or public chat input.
+    /// Unknown engines are external until the owning registry supplies their actual row.
+    fn provider(&self) -> provider_egress::Provider {
+        provider_egress::Provider {
+            external: true,
+            ..Default::default()
+        }
+    }
     fn complete<'a>(
         &'a self,
         messages: &'a [Value],
@@ -18,6 +26,12 @@ pub trait Model: Send + Sync {
     ) -> FutureResult<'a, Value>;
 }
 pub trait Tool: Send + Sync {
+    fn permitted(&self, _binding: &Binding) -> bool {
+        true
+    }
+    fn private(&self) -> bool {
+        false
+    }
     fn schema(&self) -> Value;
     /// Classification is configured by the trusted tool owner, never by model arguments.
     fn mutating(&self) -> bool;
@@ -182,7 +196,33 @@ impl Runtime {
         control: &Control,
         emit: &mut impl FnMut(Value) -> Result<()>,
     ) -> Result<()> {
-        let schemas:Vec<Value>=self.tools.iter().map(|(name,tool)|json!({"type":"function","function":{"name":name,"parameters":tool.schema()}})).collect();
+        let provider = self.model.provider();
+        let external = provider_egress::external_strict(Some(&provider));
+        let permitted = |name: &str, tool: &Arc<dyn Tool>| {
+            tool.permitted(binding) && !(external && (tool.private() || name.starts_with("diary_")))
+        };
+        // Previously stored private results may not be replayed into a newly external engine.
+        if external
+            && messages
+                .iter()
+                .filter_map(|m| m.get("tool_calls").and_then(Value::as_array))
+                .flatten()
+                .any(|call| {
+                    call.pointer("/function/name")
+                        .and_then(Value::as_str)
+                        .is_some_and(|name| {
+                            name.starts_with("diary_")
+                                || self.tools.get(name).is_none_or(|t| t.private())
+                        })
+                })
+        {
+            return Err(Fault::Forbidden);
+        }
+        let schemas:Vec<Value>=self.tools.iter().filter(|(name,tool)|permitted(name,tool)).map(|(name,tool)|json!({"type":"function","function":{"name":name,"parameters":tool.schema()}})).collect();
+        // Original tool-exchange contract: one cache per turn, canonical Rust keys,
+        // serial execution, uncertain writes cached and reads invalidated only on write attempt.
+        let mut results = BTreeMap::<Vec<u16>, (String, bool)>::new();
+        let mut event_index = 0usize;
         for _round in 0..32 {
             control.check()?;
             if self
@@ -212,7 +252,9 @@ impl Runtime {
                 return Ok(());
             }
             let mut ids = std::collections::HashSet::new();
-            for (index, call) in calls.into_iter().enumerate() {
+            for call in calls {
+                let index = event_index;
+                event_index += 1;
                 control.check()?;
                 let id = call
                     .get("id")
@@ -236,35 +278,99 @@ impl Runtime {
                 if raw.len() > 1024 * 1024 {
                     return Err(Fault::Capacity);
                 }
-                let arguments: Value = serde_json::from_str(raw)?;
-                if !arguments.is_object() {
-                    return Err(Fault::Protocol);
-                }
-                let tool = self.tools.get(name).ok_or(Fault::Forbidden)?;
-                let allowed = if tool.mutating() && !self.approvals.granted(binding)? {
-                    let ticket = self.approvals.ask(binding.clone(), control.remaining()?)?;
-                    emit(
-                        json!({"type":"tool_pending","id":ticket.id,"index":index,"name":name,"args":raw}),
-                    )?;
-                    ticket.wait(control).await?
-                } else {
-                    true
+                let name_units: Vec<u16> = name.encode_utf16().collect();
+                let raw_units: Vec<u16> = raw.encode_utf16().collect();
+                let checked = tool_exchange::check(
+                    false,
+                    self.tools
+                        .get(name)
+                        .is_some_and(|tool| permitted(name, tool)),
+                    &name_units,
+                    if raw.is_empty() {
+                        None
+                    } else {
+                        Some(&raw_units)
+                    },
+                )
+                .map_err(|_| Fault::Protocol)?;
+                let output = match checked {
+                    tool_exchange::Check::Answer(answer) => {
+                        String::from_utf16(&answer).map_err(|_| Fault::Protocol)?
+                    }
+                    tool_exchange::Check::Run(key) => {
+                        if let Some((text, _)) = results.get(&key) {
+                            text.clone()
+                        } else {
+                            let arguments: Value = if raw.is_empty() {
+                                json!({})
+                            } else {
+                                serde_json::from_str(raw)?
+                            };
+                            let tool = self.tools.get(name).ok_or(Fault::Forbidden)?;
+                            if let Some(refusal) = provider_egress::tool_refusal(
+                                Some(&provider),
+                                &name_units,
+                                &prompt_framing::json::Value::Str(raw_units.clone()),
+                                None,
+                            ) {
+                                let text =
+                                    String::from_utf16(&refusal).map_err(|_| Fault::Protocol)?;
+                                results.insert(key, (text.clone(), false));
+                                messages
+                                    .push(json!({"role":"tool","tool_call_id":id,"content":text}));
+                                emit(
+                                    json!({"type":"tool_result","index":index,"name":name,"text":text.chars().take(300).collect::<String>()}),
+                                )?;
+                                continue;
+                            }
+                            let allowed = if tool.mutating() && !self.approvals.granted(binding)? {
+                                let ticket =
+                                    self.approvals.ask(binding.clone(), control.remaining()?)?;
+                                emit(
+                                    json!({"type":"tool_pending","id":ticket.id,"index":index,"name":name,"args":raw}),
+                                )?;
+                                ticket.wait(control).await?
+                            } else {
+                                true
+                            };
+                            if self
+                                .store
+                                .context(&binding.user, &binding.canonical_chat_id)?
+                                != *binding
+                            {
+                                return Err(Fault::Conflict);
+                            }
+                            control.check()?;
+                            let output = if allowed {
+                                if tool.mutating() {
+                                    results.retain(|_, (_, write)| *write);
+                                }
+                                match tool.call(binding, arguments, control).await {
+                                    Ok(Value::String(text)) => text,
+                                    Ok(value) => serde_json::to_string(&value)?,
+                                    Err(Fault::Cancelled) => return Err(Fault::Cancelled),
+                                    Err(Fault::Deadline) => return Err(Fault::Deadline),
+                                    Err(error) => {
+                                        let message: Vec<u16> =
+                                            error.to_string().encode_utf16().collect();
+                                        String::from_utf16(
+                                            &tool_exchange::call_error(&name_units, &message)
+                                                .map_err(|_| Fault::Protocol)?,
+                                        )
+                                        .map_err(|_| Fault::Protocol)?
+                                    }
+                                }
+                            } else {
+                                "The user declined this action.".to_owned()
+                            };
+                            if output.len() > 1024 * 1024 {
+                                return Err(Fault::Capacity);
+                            }
+                            results.insert(key, (output.clone(), tool.mutating()));
+                            output
+                        }
+                    }
                 };
-                // The approval does not authorize a moved, deleted or superseded chat.
-                if self
-                    .store
-                    .context(&binding.user, &binding.canonical_chat_id)?
-                    != *binding
-                {
-                    return Err(Fault::Conflict);
-                }
-                control.check()?;
-                let output = if allowed {
-                    tool.call(binding, arguments, control).await?
-                } else {
-                    json!({"error":"The user declined this action."})
-                };
-                let output = serde_json::to_string(&output)?;
                 if output.len() > 1024 * 1024 {
                     return Err(Fault::Capacity);
                 }

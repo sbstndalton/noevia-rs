@@ -171,6 +171,8 @@ dependencies = [
  "js-json",
  "mcp-frame",
  "noevia-server",
+ "prompt-framing",
+ "provider-egress",
  "reqwest",
  "rusqlite",
  "serde",
@@ -183,6 +185,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "tokio",
+ "tool-exchange",
  "url",
  "uuid",
 ]

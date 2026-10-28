@@ -23,6 +23,9 @@ server-auth = { path = "../server-auth" }
 server-store = { path = "../server-store" }
 server-account = { path = "../server-account" }
 mcp-frame = { path = "../mcp-frame" }
+tool-exchange = { path = "../tool-exchange" }
+provider-egress = { path = "../provider-egress" }
+prompt-framing = { path = "../prompt-framing" }
 diary-corpus-parse = { path = "../diary-corpus-parse" }
 diary-workspace-transaction = { path = "../diary-workspace-transaction" }
 diary-workspace-rules = { path = "../diary-workspace-rules" }

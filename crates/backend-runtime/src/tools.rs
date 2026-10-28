@@ -19,6 +19,13 @@ pub struct McpTool {
     pub writes: bool,
 }
 impl Tool for McpTool {
+    fn permitted(&self, binding: &Binding) -> bool {
+        binding.user == self.user && binding.scope == self.scope
+    }
+    // Remote tool data is private until its trusted catalogue classifies it otherwise.
+    fn private(&self) -> bool {
+        true
+    }
     fn schema(&self) -> Value {
         self.parameters.clone()
     }
@@ -52,6 +59,12 @@ pub struct DiaryRead {
     pub user: String,
 }
 impl Tool for DiaryRead {
+    fn permitted(&self, binding: &Binding) -> bool {
+        binding.user == self.user && self.user == self.corpus.tenant_id()
+    }
+    fn private(&self) -> bool {
+        true
+    }
     fn schema(&self) -> Value {
         json!({"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":false})
     }
