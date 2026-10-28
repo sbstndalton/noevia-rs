@@ -143,6 +143,17 @@ impl RustAuth {
     }
 }
 
+/// The complete native feature-setting owner: typed catalog keys and one exact process fence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RustFeatureSettings(());
+impl RustFeatureSettings {
+    pub const fn owned() -> Self {
+        Self(())
+    }
+}
+/// Internal process-incarnation metadata, never a product flag or public description.
+pub const FEATURE_RUNTIME_INCARNATION_KEY: &str = "native:feature-runtime:incarnation";
+
 /// Rust's ownership of the project routes it serves (M4: a project's images, its chat list, the
 /// free-chat list) and of projects.json and free-chats.json, which Rust alone writes (Node saves
 /// through the project store, sbstndalton/noevia#1264). It was the deployment switch
@@ -893,6 +904,48 @@ impl WriteTx<'_> {
             "INSERT OR REPLACE INTO settings(key,value) VALUES(?1,?2)",
             [key, value],
         )
+    }
+
+    /// Only a canonical catalog setting, never a caller-selected settings key.
+    pub fn set_feature_enabled(
+        &self,
+        _features: RustFeatureSettings,
+        feature: server_features::Feature,
+        enabled: bool,
+    ) -> Result<usize, StoreError> {
+        self.settings_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.settings_open);
+        Ok(self.conn.execute(
+            "INSERT OR REPLACE INTO settings(key,value) VALUES(?1,?2)",
+            [
+                server_features::spec(feature).setting,
+                if enabled { "true" } else { "false" },
+            ],
+        )?)
+    }
+
+    /// One native-only epoch key; no generic key, prefix or arbitrary value grant.
+    pub fn set_feature_runtime_incarnation(
+        &self,
+        _features: RustFeatureSettings,
+        incarnation: &str,
+    ) -> Result<usize, StoreError> {
+        if incarnation.len() != 32
+            || !incarnation
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            || !incarnation.bytes().any(|b| b != b'0')
+        {
+            return Err(StoreError::NotOwned(
+                "feature runtime incarnation format".into(),
+            ));
+        }
+        self.settings_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.settings_open);
+        Ok(self.conn.execute(
+            "INSERT OR REPLACE INTO settings(key,value) VALUES('native:feature-runtime:incarnation',?1)",
+            [incarnation],
+        )?)
     }
 
     /// A distinct capability grants exactly one fixed statement/key; arbitrary SQL stays denied.

@@ -492,3 +492,68 @@ fn a_trigger_can_abort_a_writers_statement_but_never_write_through_it() {
         .unwrap();
     assert_eq!(count(&node, "SELECT count(*) FROM sessions"), 1);
 }
+
+#[test]
+fn feature_capability_grants_only_canonical_catalog_keys_and_exact_epoch() {
+    let (dir, node) = node_db();
+    let writer = Writer::open(dir.path(), RustAuth::owned()).unwrap();
+    writer
+        .write(|tx| {
+            for feature in server_features::Feature::ALL {
+                assert_eq!(
+                    tx.set_feature_enabled(RustFeatureSettings::owned(), feature, true)?,
+                    1
+                );
+            }
+            tx.set_feature_runtime_incarnation(
+                RustFeatureSettings::owned(),
+                "1234567890abcdef1234567890abcdef",
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    for feature in server_features::Feature::ALL {
+        let value: String = node
+            .query_row(
+                "SELECT value FROM settings WHERE key=?1",
+                [server_features::spec(feature).setting],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(value, "true");
+        assert!(writer
+            .write(|tx| tx.set_setting(server_features::spec(feature).setting, "false"))
+            .is_err());
+    }
+    assert!(writer
+        .write(|tx| tx.set_setting(FEATURE_RUNTIME_INCARNATION_KEY, "forged"))
+        .is_err());
+    assert!(writer
+        .write(|tx| tx.execute(
+            "UPDATE settings SET value='false' WHERE key='feature:plannerReview'",
+            []
+        ))
+        .is_err());
+    for invalid in [
+        "",
+        "00000000000000000000000000000000",
+        "1234567890ABCDEF1234567890ABCDEF",
+        "1234567890abcdef1234567890abcde/",
+    ] {
+        assert!(writer
+            .write(|tx| tx.set_feature_runtime_incarnation(RustFeatureSettings::owned(), invalid))
+            .is_err());
+    }
+    let epoch: String = node
+        .query_row(
+            "SELECT value FROM settings WHERE key=?1",
+            [FEATURE_RUNTIME_INCARNATION_KEY],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(epoch, "1234567890abcdef1234567890abcdef");
+    let count: i64 = node
+        .query_row("SELECT count(*) FROM settings", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(count, 24);
+}
