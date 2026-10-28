@@ -273,15 +273,21 @@ async fn handle(
         .or_else(|| {
             matches!(
                 path.as_str(),
-                "/api/diary/exchanges" | "/api/workspace" | "/api/chats/search"
+                "/api/diary/exchanges"
+                    | "/api/workspace"
+                    | "/api/chats/search"
+                    | "/api/account/retention"
             )
             .then_some("")
         })
     {
         let config = path.ends_with("/config");
         let recovery = path == "/api/diary/exchanges";
+        let retention = path == "/api/account/retention";
         if if recovery {
             !matches!(method.as_str(), "GET" | "POST")
+        } else if retention {
+            method != "PUT"
         } else {
             method != if config { "POST" } else { "GET" }
         } {
@@ -307,7 +313,9 @@ async fn handle(
                                 switch: server_store::RustProjects::owned(),
                                 now_ms: now(),
                             };
-                            Ok(if path == "/api/workspace" {
+                            Ok(if retention {
+                                server_projects::retention::put(ctx, &body)
+                            } else if path == "/api/workspace" {
                                 server_projects::workspace::get(ctx)
                             } else if path == "/api/chats/search" {
                                 let q = url::form_urlencoded::parse(query.as_bytes())

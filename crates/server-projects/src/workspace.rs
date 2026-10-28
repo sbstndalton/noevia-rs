@@ -1,5 +1,5 @@
 //! Original workspace metadata and bounded transcript search over existing state.
-//! Retention-enabled workspace reads stay unavailable until the deletion sweep is adopted.
+//! Workspace reads run the original hourly retention sweep through native tombstoned deletion.
 use crate::{chats, free_chats, retention, store, transcript, Ctx, Reply};
 use js_json::{wtf16, JValue};
 fn visible(project: &JValue) -> bool {
@@ -30,10 +30,8 @@ pub fn get(ctx: Ctx<'_>) -> Reply {
         Ok(v) => v,
         Err(_) => return Reply::internal(),
     };
-    match retention::stored_days(&dir) {
-        Ok(0) => (),
-        Ok(_) => return Reply::error(503, "Native retention sweep is not yet available"),
-        Err(_) => return Reply::internal(),
+    if let Err(reply) = retention::sweep(ctx) {
+        return reply;
     }
     let (free, projects) = match lists(ctx) {
         Ok(v) => v,
@@ -218,7 +216,7 @@ mod tests {
             Reply::json(200, r#"{"chats":["c1"],"truncated":false}"#.into())
         );
         std::fs::write(dir.join(retention::FILE), r#"{"days":30}"#)?;
-        assert_eq!(get(ctx).status, 503);
+        assert_eq!(get(ctx).status, 200);
         Ok(())
     }
 }

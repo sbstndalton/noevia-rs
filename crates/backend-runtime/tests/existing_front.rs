@@ -244,6 +244,25 @@ async fn original_front_auth_history_and_native_execution_share_one_transcript(
     assert!(js_json::wtf16::stringify(&saved.history)
         .ok_or("history")?
         .contains("native project answer"));
+    let workspace = client
+        .get(format!("http://{address}/api/workspace"))
+        .header("cookie", cookie)
+        .send()
+        .await?;
+    assert_eq!(workspace.status(), 200);
+    let metadata = workspace.text().await?;
+    assert!(metadata.contains("project1"));
+    assert!(metadata.contains("evidence.md"));
+    assert!(!metadata.contains("attached source evidence"));
+    let search = client
+        .get(format!(
+            "http://{address}/api/chats/search?q=existing%20question"
+        ))
+        .header("cookie", cookie)
+        .send()
+        .await?;
+    assert_eq!(search.status(), 200);
+    assert!(search.text().await?.contains("chat1"));
     let config_url = format!("http://{address}/api/projects/project1/config");
     let before = std::fs::read(user_dir.join("projects.json"))?;
     let bad = client
