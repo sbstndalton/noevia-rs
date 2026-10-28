@@ -244,6 +244,34 @@ async fn original_front_auth_history_and_native_execution_share_one_transcript(
     assert!(js_json::wtf16::stringify(&saved.history)
         .ok_or("history")?
         .contains("native project answer"));
+    let config_url = format!("http://{address}/api/projects/project1/config");
+    let before = std::fs::read(user_dir.join("projects.json"))?;
+    let bad = client
+        .post(&config_url)
+        .header("cookie", cookie)
+        .header("origin", "https://noevia.example.test")
+        .header("content-type", "application/json")
+        .body(r#"{"name":"Unauthorised"}"#)
+        .send()
+        .await?;
+    assert_eq!(bad.status(), 403);
+    assert_eq!(std::fs::read(user_dir.join("projects.json"))?, before);
+    let update = client
+        .post(&config_url)
+        .header("cookie", cookie)
+        .header("x-csrf-token", csrf)
+        .header("origin", "https://noevia.example.test")
+        .header("content-type", "application/json")
+        .body(r#"{"name":" Configured natively ","sampling":null}"#)
+        .send()
+        .await?;
+    assert_eq!(update.status(), 200);
+    let saved: Value = serde_json::from_slice(&std::fs::read(user_dir.join("projects.json"))?)?;
+    assert_eq!(saved["projects"][0]["name"], "Configured natively");
+    assert_eq!(
+        saved["projects"][0]["files"][0]["content"],
+        "attached source evidence"
+    );
     let _ = stop.send(());
     task.await?;
     Ok(())

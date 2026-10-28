@@ -39,13 +39,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let endpoint = std::env::var("NATIVE_CANDIDATE_MODEL_ENDPOINT")?;
     let parsed = url::Url::parse(&endpoint)?;
     let origin = parsed.origin().ascii_serialization();
-    let model = OpenAiModel::new(
+    let model = OpenAiModel::configured_default(
         Endpoint::new(
             &endpoint,
             &[origin],
-            std::env::var("INFERENCE_API_KEY").ok().as_deref(),
+            std::env::var("INFERENCE_API_KEY")
+                .ok()
+                .as_deref()
+                .filter(|s| !s.is_empty() && *s != "local"),
         )?,
         std::env::var("INFERENCE_MODEL")?,
+        std::env::var("DEFAULT_PROVIDER_ID").unwrap_or_else(|_| "default".into()),
+        std::env::var("DEFAULT_PROVIDER_LABEL").unwrap_or_else(|_| "Local".into()),
     )?;
     let runtime = if action == "--existing-projects" || action == "--existing-front" {
         #[cfg(target_os = "linux")]

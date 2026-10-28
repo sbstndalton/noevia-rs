@@ -12,6 +12,9 @@ pub struct Endpoint {
     headers: HeaderMap,
 }
 impl Endpoint {
+    pub fn url(&self) -> &Url {
+        &self.url
+    }
     /// An explicit origin allow-list is required even for model engines and MCP servers.
     /// Callers must apply the account's egress policy before constructing this capability.
     pub fn new(raw: &str, allowed_origins: &[String], bearer: Option<&str>) -> Result<Self> {

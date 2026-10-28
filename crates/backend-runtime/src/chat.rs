@@ -67,6 +67,8 @@ pub struct OpenAiModel {
     transport: Transport,
     endpoint: Endpoint,
     model: String,
+    provider_id: String,
+    provider: provider_egress::Provider,
 }
 impl OpenAiModel {
     pub fn new(endpoint: Endpoint, model: String) -> Result<Self> {
@@ -77,12 +79,46 @@ impl OpenAiModel {
             transport: Transport::new()?,
             endpoint,
             model,
+            provider_id: "default".into(),
+            provider: provider_egress::Provider {
+                external: true,
+                ..Default::default()
+            },
         })
+    }
+    /// The default provider is trusted deployment configuration, as in the original
+    /// workspace registry. Its actual endpoint still passes the native egress classifier.
+    pub fn configured_default(
+        endpoint: Endpoint,
+        model: String,
+        id: String,
+        label: String,
+    ) -> Result<Self> {
+        if id.is_empty()
+            || id.len() > 80
+            || !id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        {
+            return Err(Fault::Invalid);
+        }
+        let provider = provider_egress::Provider {
+            base_url: endpoint.url().as_str().encode_utf16().collect(),
+            label: label.encode_utf16().collect(),
+            ..Default::default()
+        };
+        let mut result = Self::new(endpoint, model)?;
+        result.provider_id = id;
+        result.provider = provider;
+        Ok(result)
     }
 }
 impl Model for OpenAiModel {
+    fn provider(&self) -> provider_egress::Provider {
+        self.provider.clone()
+    }
     fn selection(&self) -> Option<(&str, &str)> {
-        Some(("default", &self.model))
+        Some((&self.provider_id, &self.model))
     }
     fn complete_stream<'a>(
         &'a self,
@@ -274,7 +310,7 @@ impl Runtime {
                 .filter(|s| !s.is_empty())
             {
                 let value = if key == "provider" && value == "lemonade" {
-                    "default"
+                    selected.ok_or(Fault::Unavailable)?
                 } else {
                     value
                 };
@@ -555,5 +591,37 @@ impl Runtime {
             }
         }
         Err(Fault::Capacity)
+    }
+}
+
+#[cfg(test)]
+mod provider_tests {
+    use super::*;
+    #[test]
+    fn only_configured_defaults_receive_original_provider_classification() -> Result<()> {
+        for (url, external) in [
+            ("http://127.0.0.1:1234/v1/chat/completions", false),
+            ("https://integrate.api.nvidia.com/v1/chat/completions", true),
+        ] {
+            let origin = url::Url::parse(url)
+                .map_err(|_| Fault::Invalid)?
+                .origin()
+                .ascii_serialization();
+            let endpoint = Endpoint::new(url, &[origin], None)?;
+            let unknown = OpenAiModel::new(endpoint.clone(), "synthetic".into())?;
+            assert!(provider_egress::external_strict(Some(&unknown.provider())));
+            let model = OpenAiModel::configured_default(
+                endpoint,
+                "synthetic".into(),
+                "configured".into(),
+                "Engine".into(),
+            )?;
+            assert_eq!(model.selection(), Some(("configured", "synthetic")));
+            assert_eq!(
+                provider_egress::external_strict(Some(&model.provider())),
+                external
+            );
+        }
+        Ok(())
     }
 }
