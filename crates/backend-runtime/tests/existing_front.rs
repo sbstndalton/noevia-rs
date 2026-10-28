@@ -367,6 +367,23 @@ async fn original_front_auth_history_and_native_execution_share_one_transcript(
     assert_eq!(confirmed.status(), 200);
     assert!(!user_dir.join("history-chat1.json").exists());
     assert!(std::fs::read_to_string(user_dir.join("deleted-chats.json"))?.contains("chat1"));
+    let created = client
+        .post(format!("http://{address}/api/projects"))
+        .header("cookie", cookie)
+        .header("x-csrf-token", csrf)
+        .header("origin", "https://noevia.example.test")
+        .header("content-type", "application/json")
+        .body(r#"{"name":"Native project","routing":"manual","files":[]}"#)
+        .send()
+        .await?;
+    assert_eq!(created.status(), 200);
+    let created: Value = serde_json::from_str(&created.text().await?)?;
+    assert_eq!(created.get("name"), Some(&json!("Native project")));
+    assert_eq!(created.get("routing"), Some(&json!("manual")));
+    assert!(created
+        .get("id")
+        .and_then(Value::as_str)
+        .is_some_and(|id| id.starts_with("proj-")));
     let _ = stop.send(());
     task.await?;
     Ok(())

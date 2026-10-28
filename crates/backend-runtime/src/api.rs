@@ -277,11 +277,13 @@ async fn handle(
                     | "/api/workspace"
                     | "/api/chats/search"
                     | "/api/account/retention"
+                    | "/api/projects"
             )
             .then_some("")
         })
     {
         let config = path.ends_with("/config");
+        let create_project = path == "/api/projects";
         let recovery = path == "/api/diary/exchanges";
         let retention = path == "/api/account/retention";
         if if recovery {
@@ -289,7 +291,12 @@ async fn handle(
         } else if retention {
             method != "PUT"
         } else {
-            method != if config { "POST" } else { "GET" }
+            method
+                != if config || create_project {
+                    "POST"
+                } else {
+                    "GET"
+                }
         } {
             return response(405, json!({"error":"Method not allowed"}));
         }
@@ -307,13 +314,30 @@ async fn handle(
                 .write(|tx| {
                     output = Some(match auth.gate_in(&tx.reader(), &creds, &path, now())? {
                         Ok(identity) if identity.user.id == user => {
+                            match server_projects::store::ensure_user_dir(&data, &user) {
+                                Ok(
+                                    server_projects::store::Ensured::Existed(_)
+                                    | server_projects::store::Ensured::Created(_),
+                                ) => (),
+                                _ => {
+                                    output = Some(Err(Fault::Unavailable));
+                                    return Ok(());
+                                }
+                            }
                             let ctx = server_projects::Ctx {
                                 data_dir: &data,
                                 user_id: &user,
                                 switch: server_store::RustProjects::owned(),
                                 now_ms: now(),
                             };
-                            Ok(if retention {
+                            Ok(if create_project {
+                                let kind: Option<String> = tx.reader().row(
+                                    "SELECT kind FROM storage_connections WHERE user_id=?",
+                                    [user.as_str()],
+                                    |r| r.get(0),
+                                )?;
+                                crate::project_config::create(ctx, &body, kind.as_deref())
+                            } else if retention {
                                 server_projects::retention::put(ctx, &body)
                             } else if path == "/api/workspace" {
                                 server_projects::workspace::get(ctx)

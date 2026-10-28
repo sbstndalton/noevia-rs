@@ -261,6 +261,157 @@ pub fn configure(ctx: Ctx<'_>, raw_id: &str, bytes: &[u8]) -> Reply {
     })
     .unwrap_or_else(|_| Reply::internal())
 }
+/// File-free project creation uses the original record layout and current account routing default.
+/// Uploads and remote folder reservation are refused until their native owners are connected.
+pub fn create(ctx: Ctx<'_>, bytes: &[u8], storage_kind: Option<&str>) -> Reply {
+    let body: Value = match serde_json::from_slice(bytes) {
+        Ok(v @ Value::Object(_)) => v,
+        Ok(_) => return invalid("request body must be a JSON object"),
+        Err(_) => return invalid("invalid JSON"),
+    };
+    if body.get("toolboxes").and_then(Value::as_array).is_some_and(|items|items.iter().any(|v|v.as_str().is_some_and(|s|s!="core"))) {
+        return Reply::error(503,"Native non-core toolbox catalogue is not yet available");
+    }
+    if storage_kind.is_some_and(|s| s != "local")
+        || body
+            .get("files")
+            .and_then(Value::as_array)
+            .is_some_and(|files| {
+                files.iter().any(|f| {
+                    f.get("name").is_some_and(Value::is_string)
+                        && f.get("content").is_some_and(Value::is_string)
+                })
+            })
+    {
+        return Reply::error(503,"Native project creation with uploads or remote folder reservation is not yet available");
+    }
+    if body.get("reasoningEffort").is_some_and(|v| {
+        !v.as_str()
+            .is_some_and(|s| ["default", "low", "high"].contains(&s))
+    }) {
+        return invalid("Invalid reasoning effort");
+    }
+    let parsed = match js_json::wtf16::parse(&body.to_string()) {
+        Ok(v) => v,
+        Err(_) => return invalid("invalid JSON"),
+    };
+    let coerce = |key: &str, max: usize| -> Result<String, Reply> {
+        let v = parsed.get(key);
+        let text = if v.truthy() {
+            js_json::to_js_string(v).map_err(|_| Reply::internal())?
+        } else {
+            String::new()
+        };
+        clip(
+            if key == "name" {
+                server_projects::js::trim(&text)
+            } else {
+                &text
+            },
+            max,
+        )
+    };
+    let name = match coerce("name", 120) {
+        Ok(v) if !v.is_empty() => v,
+        Ok(_) => return invalid("name required"),
+        Err(v) => return v,
+    };
+    let goal = match coerce("goal", 2000) {
+        Ok(v) => v,
+        Err(v) => return v,
+    };
+    let instructions = match coerce("instructions", 8000) {
+        Ok(v) => v,
+        Err(v) => return v,
+    };
+    let mut appearance = serde_json::Map::new();
+    for key in ["icon", "color", "modes"] {
+        if let Some(v) = body.get(key) {
+            appearance.insert(key.into(), v.clone());
+        }
+    }
+    let appearance = match patch(&json!({}), &Value::Object(appearance)) {
+        Ok(v) => v,
+        Err(v) => return v,
+    };
+    let dir = match store::user_dir(ctx.data_dir, ctx.user_id) {
+        Ok(v) => v,
+        Err(_) => return Reply::internal(),
+    };
+    let preferences = match store::read_json(&dir.join("preferences.json")) {
+        Ok(v) => v,
+        Err(_) => return Reply::internal(),
+    };
+    let default = if preferences
+        .as_ref()
+        .is_some_and(|v| v.get("defaultRouting").as_str() == Some("manual"))
+    {
+        "manual"
+    } else {
+        "auto"
+    };
+    let routing = body
+        .get("routing")
+        .and_then(Value::as_str)
+        .filter(|r| ["manual", "auto"].contains(r))
+        .unwrap_or(default);
+    let boxes = body
+        .get("toolboxes")
+        .and_then(Value::as_array)
+        .map(|items| {
+            if items.iter().any(|v| v.as_str() == Some("core")) {
+                vec!["core"]
+            } else {
+                Vec::new()
+            }
+        })
+        .unwrap_or_else(|| vec!["core"]);
+    let tools_mode = body
+        .get("toolsMode")
+        .and_then(Value::as_str)
+        .filter(|s| ["manual", "auto"].contains(s))
+        .unwrap_or(if body.get("toolboxes").is_some_and(Value::is_array) {
+            "manual"
+        } else {
+            "auto"
+        });
+    let id = format!("proj-{}-{}", ctx.now_ms, server_projects::js::random36(6));
+    let mut project = json!({"id":id,"name":name,"goal":goal,"instructions":instructions,"pinned":false,"archived":false,"sourceFolders":[],"memories":[],"files":[],"routing":routing,"modes":["chat"],"toolboxes":boxes,"toolsMode":tools_mode,"chats":[],"createdAt":ctx.now_ms,"updatedAt":ctx.now_ms});
+    let Some(object) = project.as_object_mut() else {
+        return Reply::internal();
+    };
+    if let Some(fields) = appearance.as_object() {
+        object.extend(fields.clone());
+    }
+    for key in ["model", "provider"] {
+        if let Some(v) = body
+            .get(key)
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        {
+            object.insert(key.into(), json!(v));
+        }
+    }
+    if let Some(v) = body.get("reasoningEffort") {
+        object.insert("reasoningEffort".into(), v.clone());
+    }
+    let original = match js_json::wtf16::parse(&project.to_string()) {
+        Ok(v) => v,
+        Err(_) => return Reply::internal(),
+    };
+    store::update(&dir, ctx.switch, |projects| {
+        if store::find(projects, &id).is_some() {
+            return (
+                Reply::error(409, "Project identifier collision; retry creation"),
+                false,
+            );
+        }
+        projects.insert(0, original);
+        (Reply::json(200, project.to_string()), true)
+    })
+    .unwrap_or_else(|_| Reply::internal())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -313,5 +464,25 @@ mod tests {
         assert_eq!(std::fs::read(&file)?, before);
         assert_eq!(configure(ctx, "absent", b"{}").status, 404);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod create_tests {
+    use super::*;
+    #[test]
+    fn native_creation_uses_original_record_and_preserves_existing_projects()->Result<(),Box<dyn std::error::Error>> {
+        let root=tempfile::tempdir()?;let user="11111111-2222-4333-8444-555555555555";let dir=root.path().join("users").join(user);std::fs::create_dir_all(&dir)?;
+        std::fs::write(dir.join("projects.json"),r#"{"projects":[{"id":"existing","unknown":true}]}"#)?;
+        std::fs::write(dir.join("preferences.json"),r#"{"defaultRouting":"manual"}"#)?;
+        let ctx=Ctx{data_dir:root.path(),user_id:user,switch:server_store::RustProjects::owned(),now_ms:123};
+        let before=std::fs::read(dir.join("projects.json"))?;
+        assert_eq!(create(ctx,br#"{"name":"Remote"}"#,Some("webdav")).status,503);
+        assert_eq!(create(ctx,br#"{"name":"With upload","files":[{"name":"n.md","content":"synthetic"}]}"#,None).status,503);
+        assert_eq!(std::fs::read(dir.join("projects.json"))?,before);
+        let reply=create(ctx,br#"{"name":" New project ","goal":7,"modes":["code"],"toolboxes":[],"color":"#ABCDEF"}"#,None);assert_eq!(reply.status,200);
+        let server_projects::Body::Json(text)=reply.body else{return Err("body".into())};let project:Value=serde_json::from_str(&text)?;
+        assert_eq!(project.get("name"),Some(&json!("New project")));assert_eq!(project.get("goal"),Some(&json!("7")));assert_eq!(project.get("routing"),Some(&json!("manual")));assert_eq!(project.get("toolsMode"),Some(&json!("manual")));assert_eq!(project.get("toolboxes"),Some(&json!([])));assert_eq!(project.get("modes"),Some(&json!(["chat","code"])));
+        let stored:Value=serde_json::from_slice(&std::fs::read(dir.join("projects.json"))?)?;assert_eq!(stored.pointer("/projects/0"),Some(&project));assert_eq!(stored.pointer("/projects/1/unknown"),Some(&json!(true)));Ok(())
     }
 }
