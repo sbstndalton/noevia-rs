@@ -268,6 +268,12 @@ async fn handle(
         Ok(v) => v,
         Err(e) => return failure(e),
     };
+    if binding.holder != crate::approvals::Holder::Free || binding.scope != "free" {
+        return response(
+            409,
+            json!({"error":"Project instruction/context assembly is not implemented by this candidate"}),
+        );
+    }
     // Long-lived chats must not consume the request permits needed to approve them.
     drop(permit);
     let chat_permit = match Arc::clone(&api.chat_admission).try_acquire_owned() {

@@ -6,8 +6,11 @@ pub mod approvals;
 pub mod chat;
 pub mod dav;
 pub mod diary;
+pub mod indexing;
 pub mod journal;
 pub mod mcp;
+#[cfg(target_os = "linux")]
+pub mod project_conversations;
 pub mod retrieval;
 pub mod snapshot;
 pub mod state;

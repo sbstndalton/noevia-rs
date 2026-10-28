@@ -121,6 +121,60 @@ impl Corpus {
         tx.finish()?;
         Ok(result)
     }
+    /// Native index publication consumes the managed corpus outbox only after the
+    /// index commit. A crash before this commit leaves the item pending for replay.
+    pub fn publish_index(
+        &self,
+        path: &str,
+        version: Option<&str>,
+        control: &Control,
+        publish: impl FnOnce() -> Result<crate::retrieval::Applied>,
+    ) -> Result<crate::retrieval::Applied> {
+        let path = Self::key(path)?;
+        let mut db = self.db()?;
+        let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        control.check()?;
+        self.identity(&tx)?;
+        let current: Option<String> = tx
+            .query_row("SELECT version FROM files WHERE path=?", [&path], |r| {
+                r.get(0)
+            })
+            .optional()?;
+        if current.as_deref() != version {
+            return Err(Fault::Conflict);
+        }
+        let result = publish()?;
+        if !result.pending {
+            tx.execute("DELETE FROM workspace_index_outbox WHERE path=?", [&path])?;
+        }
+        tx.commit()?;
+        Ok(result)
+    }
+    /// Search holds the corpus writer while excluding every pending source change.
+    /// Thus a changed/deleted file cannot leak stale indexed text before reconciliation.
+    pub fn with_index_fence<T>(
+        &self,
+        control: &Control,
+        search: impl FnOnce(&[String]) -> Result<T>,
+    ) -> Result<T> {
+        let mut db = self.db()?;
+        let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        control.check()?;
+        self.identity(&tx)?;
+        let pending = {
+            let mut q =
+                tx.prepare("SELECT path FROM workspace_index_outbox ORDER BY path LIMIT 100001")?;
+            let rows = q.query_map([], |r| r.get::<_, String>(0))?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        if pending.len() > 100000 {
+            return Err(Fault::Capacity);
+        }
+        let result = search(&pending)?;
+        tx.commit()?;
+        Ok(result)
+    }
+
     /// The caller's live authorization fence runs AFTER acquisition of the SQLite writer.
     /// HTTP/device/DAV callers must supply their actual authority, not a cached bool.
     pub fn put(

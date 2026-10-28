@@ -2,7 +2,7 @@
 //! a fresh persisted chat-context comparison before every side effect.
 use crate::{
     approvals::{Approvals, Binding},
-    state::StateStore,
+    state::Conversations,
     transport::{Endpoint, Transport},
     Control, Fault, Result,
 };
@@ -85,7 +85,7 @@ impl Model for OpenAiModel {
     }
 }
 struct TurnGuard {
-    store: Arc<StateStore>,
+    store: Arc<dyn Conversations>,
     user: String,
     id: String,
     finished: bool,
@@ -99,13 +99,13 @@ impl Drop for TurnGuard {
 }
 pub struct Runtime {
     pub approvals: Approvals,
-    pub store: Arc<StateStore>,
+    pub store: Arc<dyn Conversations>,
     model: Arc<dyn Model>,
     tools: BTreeMap<String, Arc<dyn Tool>>,
 }
 impl Runtime {
-    pub fn new(
-        store: Arc<StateStore>,
+    pub fn new<S: Conversations + 'static>(
+        store: Arc<S>,
         model: Arc<dyn Model>,
         tools: BTreeMap<String, Arc<dyn Tool>>,
     ) -> Result<Self> {
@@ -160,7 +160,7 @@ impl Runtime {
             Ok(()) => {
                 if let Err(e) = self
                     .store
-                    .finish(&binding, id, revision, &messages, control)
+                    .finish(&binding, id, &revision, &messages, control)
                 {
                     let _ = self.store.fail(&binding.user, id, e);
                     return Err(e);

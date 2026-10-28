@@ -580,6 +580,43 @@ pub fn grant_context(
         context_held(&dir, raw, start, s)
     })
 }
+/// Commit an executor transcript only while its persisted permission context is
+/// still exactly current. The existing lock order covers context, lists and transcript.
+pub fn write_bound_transcript(
+    data: &Path,
+    user: &str,
+    expected: &GrantContext,
+    history: &[JValue],
+    base: &transcript::Base,
+    still_live: impl Fn() -> bool,
+) -> Result<transcript::Saved, MoveError> {
+    let dir = store::user_dir(data, user)?;
+    with_held(&dir, |state| {
+        recover_held(&dir, state, &|_| Ok(()))?;
+        let current = context_held(&dir, &expected.canonical, &expected.start, state)?;
+        if current != *expected || current.tombstoned || current.holder == Holder::Absent {
+            return Err(MoveError::NotFound);
+        }
+        if !still_live() {
+            return Err(MoveError::NotFound);
+        }
+        transcript::write_as_held(
+            data,
+            user,
+            &expected.canonical,
+            history,
+            base,
+            None,
+            transcript::Origin::Turn,
+        )
+        .map_err(|error| match error {
+            transcript::TranscriptError::Store(error) => MoveError::Store(error),
+            transcript::TranscriptError::InvalidChat
+            | transcript::TranscriptError::Unsanitisable => MoveError::Invalid,
+        })
+    })
+}
+
 pub fn recover(data: &Path, user: &str) -> Result<(), MoveError> {
     let dir = store::user_dir(data, user)?;
     with_held(&dir, |s| Ok(recover_held(&dir, s, &|_| Ok(()))?))
@@ -800,6 +837,31 @@ mod tests {
     }
     fn boom() -> StoreError {
         StoreError::Io(std::io::Error::other("synthetic crash/fsync failure"))
+    }
+
+    #[test]
+    fn bound_turn_commit_rechecks_holder_revision_and_live_fence() {
+        let (root, _) = setup();
+        let binding = grant_context(root.path(), USER, "qac", START).unwrap();
+        let current = transcript::read(root.path(), USER, "qac").unwrap();
+        let history =
+            vec![js_json::wtf16::parse(r#"{"role":"assistant","content":"native"}"#).unwrap()];
+        let base = transcript::Base::Revision(current.revision.clone());
+        assert!(
+            write_bound_transcript(root.path(), USER, &binding, &history, &base, || false).is_err()
+        );
+        assert_eq!(
+            transcript::read(root.path(), USER, "qac").unwrap().revision,
+            current.revision
+        );
+        assert!(matches!(
+            write_bound_transcript(root.path(), USER, &binding, &history, &base, || true).unwrap(),
+            transcript::Saved::Saved { .. }
+        ));
+        go(root.path(), Holder::Project("qa-p".into())).unwrap();
+        assert!(
+            write_bound_transcript(root.path(), USER, &binding, &history, &base, || true).is_err()
+        );
     }
 
     #[test]

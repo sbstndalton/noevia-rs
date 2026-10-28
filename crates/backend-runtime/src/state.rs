@@ -294,3 +294,60 @@ impl StateStore {
         Ok(self.db.lock().map_err(|_|Fault::Database)?.execute("UPDATE jobs SET state=CASE WHEN state='running' THEN 'uncertain' ELSE 'cancelled' END,lease=NULL WHERE user=? AND id=? AND state IN ('running','queued')",params![user,id])?==1)
     }
 }
+
+/// Execution persistence contract. Production adapters must fence the actual holder and
+/// generation together with the transcript write, not just compare before an await.
+pub trait Conversations: Send + Sync {
+    fn context(&self, user: &str, chat: &str) -> Result<Binding>;
+    fn begin(
+        &self,
+        binding: &Binding,
+        id: &str,
+        request: &Value,
+        control: &Control,
+    ) -> Result<(String, Vec<Value>)>;
+    fn finish(
+        &self,
+        binding: &Binding,
+        id: &str,
+        revision: &str,
+        messages: &[Value],
+        control: &Control,
+    ) -> Result<()>;
+    fn fail(&self, user: &str, id: &str, fault: Fault) -> Result<()>;
+}
+impl Conversations for StateStore {
+    fn context(&self, user: &str, chat: &str) -> Result<Binding> {
+        StateStore::context(self, user, chat)
+    }
+    fn begin(
+        &self,
+        binding: &Binding,
+        id: &str,
+        request: &Value,
+        control: &Control,
+    ) -> Result<(String, Vec<Value>)> {
+        let (revision, history) = StateStore::begin(self, binding, id, request, control)?;
+        Ok((revision.to_string(), history))
+    }
+    fn finish(
+        &self,
+        binding: &Binding,
+        id: &str,
+        revision: &str,
+        messages: &[Value],
+        control: &Control,
+    ) -> Result<()> {
+        StateStore::finish(
+            self,
+            binding,
+            id,
+            revision.parse().map_err(|_| Fault::Invalid)?,
+            messages,
+            control,
+        )
+    }
+    fn fail(&self, user: &str, id: &str, fault: Fault) -> Result<()> {
+        StateStore::fail(self, user, id, fault)
+    }
+}

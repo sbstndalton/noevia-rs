@@ -26,7 +26,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         StateStore::create(&path)?;
         return Ok(());
     }
-    if action != "--experimental-state" {
+    if action != "--experimental-state" && action != "--existing-projects" {
         return Err("invalid action".into());
     }
     let data = PathBuf::from(std::env::var_os("UI_DATA_DIR").ok_or("UI_DATA_DIR required")?);
@@ -44,9 +44,27 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         )?,
         std::env::var("INFERENCE_MODEL")?,
     )?;
-    let store = Arc::new(StateStore::open(&path)?);
-    store.recover_interrupted()?;
-    let runtime = Arc::new(Runtime::new(store, Arc::new(model), BTreeMap::new())?);
+    let runtime = if action == "--existing-projects" {
+        #[cfg(target_os = "linux")]
+        {
+            let start = std::env::var("NOEVIA_START_ID")?;
+            server_projects::journal::set_start_id(&start);
+            let store = Arc::new(
+                backend_runtime::project_conversations::ProjectConversations::open(
+                    &data, &start, &path,
+                )?,
+            );
+            Arc::new(Runtime::new(store, Arc::new(model), BTreeMap::new())?)
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            return Err("existing project authority requires Linux".into());
+        }
+    } else {
+        let store = Arc::new(StateStore::open(&path)?);
+        store.recover_interrupted()?;
+        Arc::new(Runtime::new(store, Arc::new(model), BTreeMap::new())?)
+    };
     let app = Api::new(&data, runtime, |key| std::env::var(key).ok())?;
     // Loopback-only candidate: front code-network/TLS/static routing has not been integrated.
     let port = std::env::var("NATIVE_CANDIDATE_PORT")
