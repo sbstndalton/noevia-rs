@@ -130,6 +130,9 @@ impl CurrentTime {
     }
 }
 impl Tool for CurrentTime {
+    fn toolbox(&self) -> Option<&str> {
+        Some("core")
+    }
     fn description(&self) -> &str {
         "Get the current date and time on the server, optionally in a specific IANA timezone. Use whenever freshness, today, or a timezone matters."
     }
@@ -162,6 +165,9 @@ pub struct ProjectFile {
     pub store: Arc<dyn crate::state::Conversations>,
 }
 impl Tool for ProjectFile {
+    fn toolbox(&self) -> Option<&str> {
+        Some("core")
+    }
     fn description(&self) -> &str {
         "Read an attached project text file by its stored name or an unambiguous trailing path."
     }

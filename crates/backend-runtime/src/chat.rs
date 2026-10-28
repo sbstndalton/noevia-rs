@@ -44,6 +44,11 @@ pub trait Model: Send + Sync {
     ) -> FutureResult<'a, Value>;
 }
 pub trait Tool: Send + Sync {
+    /// Catalogue ownership is trusted registration metadata, never a model argument.
+    fn toolbox(&self) -> Option<&str> {
+        None
+    }
+
     fn description(&self) -> &str {
         ""
     }
@@ -402,7 +407,24 @@ impl Runtime {
         let provider = self.model.provider();
         let external = provider_egress::external_strict(Some(&provider));
         let permitted = |name: &str, tool: &Arc<dyn Tool>| {
-            tool.permitted(binding) && !(external && (tool.private() || name.starts_with("diary_")))
+            tool.permitted(binding)
+                && !(external && (tool.private() || name.starts_with("diary_")))
+                && match tool.toolbox() {
+                    None => true,
+                    Some(id) => self.store.project(binding).is_ok_and(|project| {
+                        project.as_ref().is_none_or(|project| {
+                            if project.get("toolsMode").and_then(Value::as_str) == Some("auto") {
+                                return id == "core";
+                            }
+                            project
+                                .get("toolboxes")
+                                .and_then(Value::as_array)
+                                .map_or(id == "core", |boxes| {
+                                    boxes.iter().any(|v| v.as_str() == Some(id))
+                                })
+                        })
+                    }),
+                }
         };
         // Previously stored private results may not be replayed into a newly external engine.
         if external

@@ -36,7 +36,7 @@ impl Model for Engine {
     fn complete<'a>(
         &'a self,
         messages: &'a [Value],
-        _: &'a [Value],
+        tools: &'a [Value],
         _: &'a Control,
     ) -> FutureResult<'a, Value> {
         Box::pin(async move {
@@ -47,6 +47,28 @@ impl Model for Engine {
                 .and_then(|v| v.get("content"))
                 .and_then(Value::as_str)
                 .unwrap_or("");
+            if latest == "tools disabled" {
+                assert!(tools.is_empty());
+                if messages
+                    .last()
+                    .and_then(|m| m.get("tool_call_id"))
+                    .and_then(Value::as_str)
+                    == Some("denied-file")
+                {
+                    assert!(messages
+                        .last()
+                        .and_then(|m| m.get("content"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .starts_with("ERROR"));
+                    return Ok(
+                        json!({"role":"assistant","content":"manual tool selection respected"}),
+                    );
+                }
+                return Ok(
+                    json!({"role":"assistant","tool_calls":[{"id":"denied-file","type":"function","function":{"name":"read_project_file","arguments":"{\"name\":\"evidence.md\"}"}}]}),
+                );
+            }
             if latest == "project turn" {
                 let system = messages
                     .iter()
@@ -296,6 +318,31 @@ async fn original_front_auth_history_and_native_execution_share_one_transcript(
             .unwrap_or(&Value::Null),
         "attached source evidence"
     );
+    let mut project_state: Value =
+        serde_json::from_slice(&std::fs::read(user_dir.join("projects.json"))?)?;
+    let project = project_state
+        .pointer_mut("/projects/0")
+        .and_then(Value::as_object_mut)
+        .ok_or("project")?;
+    project.insert("toolsMode".into(), json!("manual"));
+    project.insert("toolboxes".into(), json!([]));
+    std::fs::write(user_dir.join("projects.json"), project_state.to_string())?;
+    let disabled = client
+        .post(format!("http://{address}/api/chat"))
+        .header("cookie", cookie)
+        .header("x-csrf-token", csrf)
+        .header("origin", "https://noevia.example.test")
+        .header("content-type", "application/json")
+        .body(
+            json!({"chatId":"chat2","projectId":"project1","message":"tools disabled"}).to_string(),
+        )
+        .send()
+        .await?;
+    assert_eq!(disabled.status(), 200);
+    assert!(disabled
+        .text()
+        .await?
+        .contains("manual tool selection respected"));
     let retention_url = format!("http://{address}/api/account/retention");
     let pending = client
         .put(&retention_url)
