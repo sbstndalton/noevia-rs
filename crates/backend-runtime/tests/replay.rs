@@ -26,6 +26,7 @@ fn original_journal_replay_is_ordered_idempotent_and_quarantines_dependents(
         month_file_template: "{year}-{month02}.md".into(),
         index_file: "INDEX.md".into(),
         daily: false,
+        index_enabled: true,
     })?;
     let xid = "41234567-89ab-4cde-8fab-0123456789ab";
     let payload = json!({"xid":xid,"day":"2026-10-28","sub_header":"12:00","body":diary_corpus_write::render_exchange("first","response",xid),"scaffold":true});

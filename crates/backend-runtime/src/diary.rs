@@ -459,6 +459,172 @@ impl Corpus {
         tx.commit()?;
         Ok(())
     }
+    /// Preview and apply the original new-folder-only ZIP import. No model calls.
+    pub fn import_zip(
+        &self,
+        body: &[u8],
+        name: &str,
+        reviewed: Option<&str>,
+        control: &Control,
+    ) -> Result<serde_json::Value> {
+        use serde_json::json;
+        let name = name.trim();
+        if name.is_empty()
+            || name.chars().count() > 100
+            || name.starts_with('.')
+            || name.contains('/')
+            || name.chars().any(|c| (c as u32) < 32)
+        {
+            return Err(Fault::Invalid);
+        }
+        let destination = format!("Imports/{name}");
+        if !workspace_restore_verify::safe_key(&destination) {
+            return Err(Fault::Invalid);
+        }
+        control.check()?;
+        let archive = workspace_restore_verify::verify_archive(body).map_err(|_| Fault::Invalid)?;
+        control.check()?;
+        let mut hash = Sha256::new();
+        hash.update(destination.as_bytes());
+        hash.update([0]);
+        hash.update(body);
+        let fingerprint = format!("{:x}", hash.finalize());
+        let mut db = self.db(control)?;
+        let tx = db.transaction()?;
+        self.identity(&tx)?;
+        let mut stmt = tx.prepare("SELECT path FROM files UNION SELECT path FROM directories")?;
+        let paths = stmt
+            .query_map([], |r| r.get::<_, String>(0))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        let mut conflicts: Vec<String> = paths
+            .into_iter()
+            .filter(|p| p == &destination || p.starts_with(&format!("{destination}/")))
+            .collect();
+        if tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM files WHERE path='Imports')",
+            [],
+            |r| r.get::<_, bool>(0),
+        )? {
+            conflicts.push("Imports".into());
+        }
+        conflicts.sort();
+        conflicts.dedup();
+        let applied = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM workspace_imports WHERE fingerprint=?)",
+            [&fingerprint],
+            |r| r.get::<_, bool>(0),
+        )?;
+        let mut versions = tx.prepare("SELECT DISTINCT version FROM files")?;
+        let hashes = versions
+            .query_map([], |r| r.get::<_, String>(0))?
+            .collect::<std::result::Result<std::collections::HashSet<_>, _>>()?;
+        let listing = archive.listing();
+        let duplicates: Vec<_> = listing
+            .files
+            .iter()
+            .filter(|f| hashes.contains(&f.sha256))
+            .map(|f| f.path.clone())
+            .collect();
+        let preview = json!({"fingerprint":fingerprint,"destination":destination,"fileCount":listing.files.len(),"bytes":listing.bytes,"files":listing.files.iter().map(|f|&f.path).collect::<Vec<_>>(),"directories":listing.directories,"conflicts":conflicts,"duplicates":duplicates,"mode":"new-folder-only","alreadyApplied":applied});
+        drop(versions);
+        drop(stmt);
+        tx.finish()?;
+        // Keep the migration fence while the existing native APPLY opens its transaction.
+        if let Some(reviewed) = reviewed {
+            if reviewed != fingerprint {
+                return Err(Fault::Conflict);
+            }
+            control.check()?;
+            let request = diary_workspace_import_apply::Request {
+                version: 1,
+                db_path: self.path.to_str().ok_or(Fault::Invalid)?.into(),
+                expected_tenant: self.tenant.clone(),
+                destination,
+                reviewed_fingerprint: reviewed.into(),
+                debounce: self.debounce,
+            };
+            let result = diary_workspace_import_apply::apply_guarded(
+                &request,
+                body,
+                || Ok(chrono::Utc::now().timestamp_millis() as f64 / 1000.0),
+                || {
+                    control
+                        .check()
+                        .map_err(|_| diary_workspace_import_apply::Error::Database)
+                },
+            )
+            .map_err(|e| {
+                if e.unavailable() {
+                    Fault::Unavailable
+                } else {
+                    Fault::Conflict
+                }
+            })?;
+            Ok(
+                json!({"destination":result.destination,"fileCount":result.file_count,"alreadyApplied":result.already_applied,"indexPending":true}),
+            )
+        } else {
+            Ok(preview)
+        }
+    }
+    /// A single SQL snapshot feeds the existing bounded ZIP formatter, including recovery capsules.
+    pub fn export_zip(&self, settings: &serde_json::Value, control: &Control) -> Result<Vec<u8>> {
+        use serde_json::json;
+        let mut db = self.db(control)?;
+        let tx = db.transaction()?;
+        self.identity(&tx)?;
+        let (count,total,max): (i64,i64,i64) = tx.query_row("SELECT count(*),coalesce(sum(length(data)),0),coalesce(max(length(data)),0) FROM files",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?)))?;
+        if count < 0
+            || total < 0
+            || max < 0
+            || count > 5000
+            || total > diary_workspace_export::MAX_TOTAL as i64
+            || max > diary_workspace_export::MAX_FILE as i64
+        {
+            return Err(Fault::Capacity);
+        }
+        let mut q = tx.prepare("SELECT path FROM directories ORDER BY path LIMIT 5002")?;
+        let dirs = q
+            .query_map([], |r| r.get::<_, String>(0))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        if dirs.len() > 5000 {
+            return Err(Fault::Capacity);
+        }
+        let mut q = tx.prepare("SELECT path,length(data) FROM files ORDER BY path")?;
+        let metadata = q
+            .query_map([], |r| {
+                Ok(json!({"path":r.get::<_,String>(0)?,"bytes":r.get::<_,i64>(1)?}))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        let header =
+            serde_json::to_vec(&json!({"settings":settings,"directories":dirs,"files":metadata}))?;
+        if header.len() > diary_workspace_export::MAX_HEADER {
+            return Err(Fault::Capacity);
+        }
+        let mut frame = Vec::with_capacity(
+            usize::try_from(total)
+                .map_err(|_| Fault::Capacity)?
+                .saturating_add(header.len())
+                .saturating_add(64),
+        );
+        frame.extend_from_slice(diary_workspace_export::MAGIC);
+        frame.extend_from_slice(
+            &u32::try_from(header.len())
+                .map_err(|_| Fault::Capacity)?
+                .to_be_bytes(),
+        );
+        frame.extend_from_slice(&header);
+        let mut q = tx.prepare("SELECT data FROM files ORDER BY path")?;
+        for row in q.query_map([], |r| r.get::<_, Vec<u8>>(0))? {
+            control.check()?;
+            frame.extend_from_slice(&row?);
+        }
+        control.check()?;
+        let archive =
+            diary_workspace_export::export(frame.as_slice()).map_err(|_| Fault::Invalid)?;
+        control.check()?;
+        Ok(archive)
+    }
     pub fn workspace_namespace(&self, control: &Control) -> Result<String> {
         let mut db = self.db(control)?;
         let tx = db.transaction()?;

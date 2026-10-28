@@ -22,6 +22,11 @@ pub struct Layout {
     pub month_file_template: String,
     pub index_file: String,
     pub daily: bool,
+    #[serde(default = "enabled")]
+    pub index_enabled: bool,
+}
+fn enabled() -> bool {
+    true
 }
 impl Layout {
     fn join(&self, parts: &[&str]) -> Result<String> {
@@ -74,6 +79,9 @@ impl Replay {
             layout,
             until: Mutex::new(None),
         })
+    }
+    pub fn settings(&self) -> Value {
+        serde_json::json!({"monthly_prefix":self.layout.monthly_prefix,"entries_prefix":self.layout.entries_prefix,"entry_layout":if self.layout.daily {"daily"} else {"monthly"},"month_file_template":self.layout.month_file_template,"index_file":self.layout.index_file,"index_enabled":self.layout.index_enabled})
     }
     pub fn months(&self, corpus: &Corpus, control: &Control) -> Result<Value> {
         let root = [
@@ -199,6 +207,9 @@ impl Replay {
                     );
                 }
             }
+        }
+        if !self.layout.index_enabled {
+            return Ok(json!({"todayLog":log,"standing":""}));
         }
         let index = corpus.read(
             &self

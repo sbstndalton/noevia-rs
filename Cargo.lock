@@ -167,6 +167,8 @@ dependencies = [
  "diary-corpus-parse",
  "diary-corpus-write",
  "diary-index-transform",
+ "diary-workspace-export",
+ "diary-workspace-import-apply",
  "diary-workspace-rules",
  "diary-workspace-transaction",
  "futures-core",
@@ -191,6 +193,7 @@ dependencies = [
  "tool-exchange",
  "url",
  "uuid",
+ "workspace-restore-verify",
 ]
 
 [[package]]

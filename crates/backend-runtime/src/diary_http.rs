@@ -17,6 +17,7 @@ pub struct Tenant {
 pub struct DiaryHttp {
     tenants: HashMap<String, Tenant>,
     replay: HashMap<String, crate::replay::Replay>,
+    workspace: Option<diary_workspace_transaction::ProtectionConfigDto>,
 }
 impl DiaryHttp {
     pub fn new(tenants: HashMap<String, Tenant>) -> Result<Self> {
@@ -26,7 +27,15 @@ impl DiaryHttp {
         Ok(Self {
             tenants,
             replay: HashMap::new(),
+            workspace: None,
         })
+    }
+    pub fn with_workspace(
+        mut self,
+        config: diary_workspace_transaction::ProtectionConfigDto,
+    ) -> Self {
+        self.workspace = Some(config);
+        self
     }
     pub fn with_replay(mut self, layout: crate::replay::Layout) -> Result<Self> {
         for user in self.tenants.keys() {
@@ -73,7 +82,141 @@ impl DiaryHttp {
                 | "/api/diary/history"
                 | "/api/diary/today"
                 | "/api/diary/source"
+                | "/api/diary/workspace-trash"
+                | "/api/diary/workspace-import"
         )
+    }
+    fn trash(
+        &self,
+        tenant: &Tenant,
+        method: &str,
+        query: &str,
+        body: &[u8],
+        now: i64,
+        control: &Control,
+    ) -> Result<(u16, Value)> {
+        use sha2::{Digest, Sha256};
+        if !matches!(method, "GET" | "POST") {
+            return Ok(error(405, "Method not allowed"));
+        }
+        let config = self.workspace.clone().ok_or(Fault::Unavailable)?;
+        let namespace = tenant.corpus.workspace_namespace(control)?;
+        let mut request = json!({"version":1,"dbPath":"","expectedTenant":"","operationNamespace":namespace,"op":"trashList","limit":100});
+        if method == "GET" {
+            if let Some((_, after)) =
+                url::form_urlencoded::parse(query.as_bytes()).find(|(k, _)| k == "after")
+            {
+                if !after.is_empty() {
+                    request.as_object_mut().ok_or(Fault::Protocol)?.insert(
+                        "cursor".into(),
+                        json!(uuid::Uuid::parse_str(&after)
+                            .map_err(|_| Fault::Invalid)?
+                            .to_string()),
+                    );
+                }
+            }
+        } else {
+            if body.len() > 4096 {
+                return Ok(error(413, "Request body too large"));
+            }
+            if tenant.journal.pending_count()? != 0 {
+                return Ok(error(
+                    409,
+                    "Finish pending Diary writes before changing Trash.",
+                ));
+            }
+            let body: Value = serde_json::from_slice(body).map_err(|_| Fault::Invalid)?;
+            let action = body
+                .get("action")
+                .and_then(Value::as_str)
+                .filter(|s| matches!(*s, "trash" | "restore"))
+                .ok_or(Fault::Invalid)?;
+            let id = uuid::Uuid::parse_str(
+                body.get("id")
+                    .and_then(Value::as_str)
+                    .ok_or(Fault::Invalid)?,
+            )
+            .map_err(|_| Fault::Invalid)?
+            .to_string();
+            // A retry keeps the capsule and mutation identities, while restore has its own receipt.
+            let hash = Sha256::digest(format!("{namespace}:{id}:{action}"));
+            let bytes: [u8; 16] = hash
+                .get(..16)
+                .ok_or(Fault::Protocol)?
+                .try_into()
+                .map_err(|_| Fault::Protocol)?;
+            let operation = uuid::Uuid::from_bytes(bytes).to_string();
+            request = json!({"version":1,"dbPath":"","expectedTenant":"","operationNamespace":namespace,"op":action,"operationId":operation,"capsuleId":id,"now":now as f64/1000.0,"debounce":3.0});
+            if action == "trash" {
+                let object = request.as_object_mut().ok_or(Fault::Protocol)?;
+                object.insert(
+                    "source".into(),
+                    body.get("path").cloned().ok_or(Fault::Invalid)?,
+                );
+                object.insert(
+                    "sourceVersion".into(),
+                    body.get("version").cloned().ok_or(Fault::Invalid)?,
+                );
+            }
+        }
+        let mut request: diary_workspace_transaction::Request =
+            serde_json::from_value(request).map_err(|_| Fault::Invalid)?;
+        request.config = Some(config);
+        let reply = tenant.corpus.workspace(request, control)?;
+        let mut value = reply.body().to_value().map_err(|_| Fault::Protocol)?;
+        if method == "POST" && reply.status() < 300 {
+            value
+                .as_object_mut()
+                .ok_or(Fault::Protocol)?
+                .insert("indexPending".into(), json!(true));
+        }
+        Ok((reply.status(), value))
+    }
+    pub fn export(
+        &self,
+        writer: &Writer,
+        auth: &Authenticator,
+        creds: &Creds,
+        user: &str,
+        now: i64,
+    ) -> Result<Vec<u8>> {
+        let control = Control::new(Duration::from_secs(60))?;
+        let mut outcome = None;
+        writer
+            .write(|tx| {
+                let identity =
+                    auth.gate_in(&tx.reader(), creds, "/api/diary/workspace-export", now)?;
+                outcome = Some(match identity {
+                    Ok(identity) if identity.user.id == user && identity.user.diary_enabled => {
+                        let kind: Option<String> = tx.reader().row(
+                            "SELECT kind FROM storage_connections WHERE user_id=?",
+                            [user],
+                            |r| r.get(0),
+                        )?;
+                        if kind.as_deref().is_some_and(|k| k != "local") {
+                            Err(Fault::Unavailable)
+                        } else {
+                            self.tenants
+                                .get(user)
+                                .ok_or(Fault::Unavailable)
+                                .and_then(|tenant| {
+                                    if tenant.journal.pending_count()? != 0 {
+                                        return Err(Fault::Conflict);
+                                    }
+                                    let settings =
+                                        self.replay.get(user).ok_or(Fault::Unavailable)?.settings();
+                                    tenant.corpus.export_zip(&settings, &control)
+                                })
+                        }
+                    }
+                    Err(Refusal::Unauthorized) => Err(Fault::Unauthorized),
+                    Ok(identity) if !identity.user.diary_enabled => Err(Fault::Missing),
+                    _ => Err(Fault::Forbidden),
+                });
+                Ok(())
+            })
+            .map_err(|_| Fault::Unavailable)?;
+        outcome.ok_or(Fault::Unavailable)?
     }
     #[allow(clippy::too_many_arguments)]
     pub fn handle(
@@ -122,7 +265,43 @@ impl DiaryHttp {
                     outcome = Some(Err(Fault::Unavailable));
                     return Ok(());
                 }
-                outcome = Some(if path == "/api/diary/entries/edit" {
+                outcome = Some(if path == "/api/diary/workspace-import" {
+                    if method != "POST" {
+                        Ok(error(405, "Method not allowed"))
+                    } else if body.len() > 32 * 1024 * 1024 {
+                        Ok(error(413, "Browser imports support ZIP files up to 32 MiB"))
+                    } else if tenant.journal.pending_count() != Ok(0) {
+                        Ok(error(409, "Finish pending Diary writes before importing."))
+                    } else {
+                        let params: HashMap<_, _> = url::form_urlencoded::parse(query.as_bytes())
+                            .into_owned()
+                            .collect();
+                        let action = params.get("action").map(String::as_str).unwrap_or("");
+                        let fingerprint =
+                            params.get("fingerprint").map(String::as_str).unwrap_or("");
+                        if !matches!(action, "preview" | "apply")
+                            || (action == "apply"
+                                && (fingerprint.len() != 64
+                                    || !fingerprint
+                                        .bytes()
+                                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))))
+                        {
+                            Ok(error(400, "Invalid import action or preview fingerprint"))
+                        } else {
+                            tenant
+                                .corpus
+                                .import_zip(
+                                    body,
+                                    params.get("name").map(String::as_str).unwrap_or(""),
+                                    (action == "apply").then_some(fingerprint),
+                                    &control,
+                                )
+                                .map(|v| (200, v))
+                        }
+                    }
+                } else if path == "/api/diary/workspace-trash" {
+                    self.trash(tenant, method, query, body, now, &control)
+                } else if path == "/api/diary/entries/edit" {
                     if method != "POST" {
                         Ok(error(405, "Method not allowed"))
                     } else if body.len() > 1024 * 1024 {

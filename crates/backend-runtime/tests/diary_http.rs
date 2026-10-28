@@ -46,7 +46,17 @@ fn original_editor_contract_and_revocation_fence() -> Result<(), Box<dyn std::er
     )?;
     let path = built.dir.path().join("managed.db");
     let db = rusqlite::Connection::open(&path)?;
-    db.execute_batch("CREATE TABLE meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);CREATE TABLE files(path TEXT PRIMARY KEY,data BLOB NOT NULL,version TEXT NOT NULL,updated REAL NOT NULL);CREATE TABLE directories(path TEXT PRIMARY KEY);CREATE TABLE workspace_index_outbox(path TEXT PRIMARY KEY);")?;
+    let schema: Value = serde_json::from_str(include_str!(
+        "../../diary-workspace-transaction/tests/fixtures/managed-schema.json"
+    ))?;
+    for table in schema
+        .get("tables")
+        .and_then(Value::as_array)
+        .ok_or("tables")?
+    {
+        db.execute_batch(table.get("sql").and_then(Value::as_str).ok_or("sql")?)?;
+    }
+    db.execute_batch("CREATE TABLE workspace_operation_receipts(id TEXT PRIMARY KEY,fingerprint TEXT NOT NULL,op TEXT NOT NULL,response BLOB NOT NULL,created REAL NOT NULL);INSERT INTO meta VALUES('workspace_operation_namespace','11234567-89ab-4cde-8fab-0123456789ab');")?;
     for (k, v) in [("tenant", USER), ("active", "1"), ("generation", "0")] {
         db.execute("INSERT INTO meta VALUES(?,?)", [k, v])?;
     }
@@ -81,7 +91,8 @@ fn original_editor_contract_and_revocation_fence() -> Result<(), Box<dyn std::er
         month_file_template: "{year}-{month02}.md".into(),
         index_file: "INDEX.md".into(),
         daily: false,
-    })?;
+        index_enabled: true,
+    })?.with_workspace(serde_json::from_value(json!({"remoteRoot":"","entriesPrefix":"Entries","monthlyPrefix":"Monthly","monthFileTemplate":"{year}-{month02}.md","indexFile":"INDEX.md","monthNames":["January","February","March","April","May","June","July","August","September","October","November","December"]}))?);
     let writer = server_store::Writer::open(built.dir.path(), server_store::RustAuth::owned())?;
     let config = server_auth::AuthConfig::from_lookup(|key| {
         (key == "PUBLIC_ORIGIN").then(|| "https://noevia.example.test".into())
@@ -104,7 +115,7 @@ fn original_editor_contract_and_revocation_fence() -> Result<(), Box<dyn std::er
         .and_then(Value::as_str)
         .ok_or("cookie")?;
     let csrf = input.get("csrf").and_then(Value::as_str).ok_or("csrf")?;
-    let request = |method: &str, path: &str, body: Value| {
+    let request_bytes = |method: &str, path: &str, query: &str, body: &[u8]| {
         let creds = server_auth::Creds::from_headers(
             method,
             [
@@ -120,10 +131,13 @@ fn original_editor_contract_and_revocation_fence() -> Result<(), Box<dyn std::er
             USER,
             method,
             path,
-            "",
-            body.to_string().as_bytes(),
+            query,
+            body,
             1_790_000_000_123,
         )
+    };
+    let request = |method: &str, path: &str, body: Value| {
+        request_bytes(method, path, "", body.to_string().as_bytes())
     };
     assert_eq!(
         request("POST", "/api/diary/file", json!({"path":"note.md"}))?,
@@ -164,6 +178,96 @@ fn original_editor_contract_and_revocation_fence() -> Result<(), Box<dyn std::er
     assert_eq!(
         request("POST", "/api/diary/file", json!({"path":"/note.md"}))?.0,
         400
+    );
+    let trash_id = "51234567-89ab-4cde-8fab-0123456789ab";
+    let trash = json!({"action":"trash","id":trash_id,"path":"note.md","version":saved.1.get("version").ok_or("version")?});
+    let removed = request("POST", "/api/diary/workspace-trash", trash.clone())?;
+    assert_eq!(removed.0, 200);
+    assert_eq!(
+        request("POST", "/api/diary/workspace-trash", trash.clone())?,
+        removed
+    );
+    assert_eq!(
+        request("POST", "/api/diary/file", json!({"path":"note.md"}))?
+            .1
+            .get("content"),
+        Some(&Value::Null)
+    );
+    let listing = request("GET", "/api/diary/workspace-trash", Value::Null)?;
+    assert_eq!(listing.1.pointer("/records/0/id"), Some(&json!(trash_id)));
+    let restore = json!({"action":"restore","id":trash_id});
+    let restored = request("POST", "/api/diary/workspace-trash", restore.clone())?;
+    assert_eq!(restored.0, 200);
+    assert_eq!(
+        request("POST", "/api/diary/workspace-trash", restore)?,
+        restored
+    );
+    assert_eq!(
+        request("POST", "/api/diary/file", json!({"path":"note.md"}))?
+            .1
+            .get("content"),
+        Some(&json!("original"))
+    );
+    let export_creds = server_auth::Creds::from_headers(
+        "GET",
+        [
+            ("cookie", cookie.as_bytes()),
+            ("origin", b"https://noevia.example.test".as_slice()),
+        ],
+    );
+    let exported = diary.export(&writer, &auth, &export_creds, USER, 1_790_000_000_123)?;
+    let verified =
+        workspace_restore_verify::verify_archive(&exported).map_err(|e| format!("{e:?}"))?;
+    assert!(verified
+        .files()
+        .any(|(f, b)| f.path == "note.md" && b == b"original"));
+    assert!(verified
+        .files()
+        .any(|(f, _)| f.path.starts_with(".noevia-trash/")));
+    let preview = request_bytes(
+        "POST",
+        "/api/diary/workspace-import",
+        "action=preview&name=Restored",
+        &exported,
+    )?;
+    assert_eq!(preview.0, 200);
+    let fingerprint = preview
+        .1
+        .get("fingerprint")
+        .and_then(Value::as_str)
+        .ok_or("fingerprint")?;
+    let apply_query = format!("action=apply&name=Restored&fingerprint={fingerprint}");
+    let applied = request_bytes(
+        "POST",
+        "/api/diary/workspace-import",
+        &apply_query,
+        &exported,
+    )?;
+    assert_eq!(applied.0, 200);
+    assert_eq!(applied.1.get("alreadyApplied"), Some(&json!(false)));
+    let imported = request(
+        "POST",
+        "/api/diary/file",
+        json!({"path":"Imports/Restored/note.md"}),
+    )?;
+    assert_eq!(imported.1.get("content"), Some(&json!("original")));
+    assert_eq!(request("PUT","/api/diary/file",json!({"path":"Imports/Restored/note.md","content":"later edit","version":imported.1.get("version")}))?.0,200);
+    let retried = request_bytes(
+        "POST",
+        "/api/diary/workspace-import",
+        &apply_query,
+        &exported,
+    )?;
+    assert_eq!(retried.1.get("alreadyApplied"), Some(&json!(true)));
+    assert_eq!(
+        request(
+            "POST",
+            "/api/diary/file",
+            json!({"path":"Imports/Restored/note.md"})
+        )?
+        .1
+        .get("content"),
+        Some(&json!("later edit"))
     );
     let xid = "41234567-89ab-4cde-8fab-0123456789ab";
     journal.enqueue("exchange", &json!({"xid":xid,"day":"2026-10-28","sub_header":"12:00","body":diary_corpus_write::render_exchange("first","response",xid),"scaffold":true}))?;

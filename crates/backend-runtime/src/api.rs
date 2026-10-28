@@ -189,7 +189,14 @@ async fn handle(
     } else {
         match tokio::time::timeout(
             Duration::from_secs(15),
-            to_bytes(request.into_body(), server_account::BODY_LIMIT),
+            to_bytes(
+                request.into_body(),
+                if path == "/api/diary/workspace-import" {
+                    32 * 1024 * 1024
+                } else {
+                    server_account::BODY_LIMIT
+                },
+            ),
         )
         .await
         {
@@ -251,6 +258,42 @@ async fn handle(
         Ok(Ok(Err(_))) => return failure(Fault::Forbidden),
         _ => return failure(Fault::Unavailable),
     };
+    if path == "/api/diary/workspace-export" {
+        if method != "GET" {
+            return response(405, json!({"error":"Method not allowed"}));
+        }
+        let Some(diary) = api.diary.clone() else {
+            return failure(Fault::Unavailable);
+        };
+        let writer = Arc::clone(&api.writer);
+        let auth = Arc::clone(&api.auth);
+        let user = identity.user.id.clone();
+        return match tokio::task::spawn_blocking(move || {
+            diary.export(&writer, &auth, &creds, &user, now())
+        })
+        .await
+        {
+            Ok(Ok(bytes)) => {
+                let mut reply = Response::new(Body::from(bytes));
+                for (name, value) in [
+                    ("content-type", "application/zip"),
+                    (
+                        "content-disposition",
+                        "attachment; filename=\"noevia-workspace.zip\"",
+                    ),
+                    ("cache-control", "no-store"),
+                    ("x-content-type-options", "nosniff"),
+                ] {
+                    reply
+                        .headers_mut()
+                        .insert(name, HeaderValue::from_static(value));
+                }
+                reply
+            }
+            Ok(Err(e)) => failure(e),
+            Err(_) => failure(Fault::Unavailable),
+        };
+    }
     if crate::diary_http::DiaryHttp::handles(&path) {
         let Some(diary) = api.diary.clone() else {
             return failure(Fault::Unavailable);

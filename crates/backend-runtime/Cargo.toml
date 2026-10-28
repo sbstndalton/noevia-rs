@@ -30,6 +30,9 @@ prompt-framing = { path = "../prompt-framing" }
 diary-corpus-write = { path = "../diary-corpus-write" }
 diary-index-transform = { path = "../diary-index-transform" }
 diary-corpus-parse = { path = "../diary-corpus-parse" }
+diary-workspace-import-apply = { path = "../diary-workspace-import-apply" }
+diary-workspace-export = { path = "../diary-workspace-export" }
+workspace-restore-verify = { path = "../workspace-restore-verify" }
 diary-workspace-transaction = { path = "../diary-workspace-transaction" }
 diary-workspace-rules = { path = "../diary-workspace-rules" }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }

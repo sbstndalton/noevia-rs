@@ -184,6 +184,9 @@ fn diary_registry(
     if let Ok(layout) = std::env::var("NATIVE_CANDIDATE_DIARY_LAYOUT") {
         diary = diary.with_replay(serde_json::from_str(&layout)?)?;
     }
+    if let Ok(config) = std::env::var("NATIVE_CANDIDATE_WORKSPACE_PROTECTION") {
+        diary = diary.with_workspace(serde_json::from_str(&config)?);
+    }
     Ok(Some(Arc::new(diary)))
 }
 
