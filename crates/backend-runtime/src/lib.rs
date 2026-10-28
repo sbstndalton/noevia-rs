@@ -7,6 +7,8 @@ pub mod chat;
 pub mod dav;
 pub mod diary;
 pub mod diary_http;
+#[cfg(target_os = "linux")]
+pub mod frontend;
 pub mod indexing;
 pub mod journal;
 pub mod mcp;

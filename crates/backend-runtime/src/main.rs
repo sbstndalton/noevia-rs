@@ -26,7 +26,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         StateStore::create(&path)?;
         return Ok(());
     }
-    if action != "--experimental-state" && action != "--existing-projects" {
+    if action != "--experimental-state"
+        && action != "--existing-projects"
+        && action != "--existing-front"
+    {
         return Err("invalid action".into());
     }
     let data = PathBuf::from(std::env::var_os("UI_DATA_DIR").ok_or("UI_DATA_DIR required")?);
@@ -44,7 +47,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         )?,
         std::env::var("INFERENCE_MODEL")?,
     )?;
-    let runtime = if action == "--existing-projects" {
+    let runtime = if action == "--existing-projects" || action == "--existing-front" {
         #[cfg(target_os = "linux")]
         {
             let start = std::env::var("NOEVIA_START_ID")?;
@@ -67,6 +70,29 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
     let diary = diary_registry()?;
     let app = Api::with_diary(&data, runtime, |key| std::env::var(key).ok(), diary)?;
+    #[cfg(target_os = "linux")]
+    if action == "--existing-front" {
+        let config = noevia_server::config::Config::from_lookup(|key| std::env::var(key).ok())?;
+        let front = backend_runtime::frontend::assemble(config, app)?;
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()?;
+        rt.block_on(async move {
+            // Candidate remains loopback-only. Production networking is not selected here.
+            let listener =
+                tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, front.config.port))
+                    .await?;
+            noevia_server::serve::serve(
+                listener,
+                front,
+                noevia_server::serve::Limits::default(),
+                std::future::pending(),
+            )
+            .await;
+            Ok::<(), std::io::Error>(())
+        })?;
+        return Ok(());
+    }
     // Loopback-only candidate: front code-network/TLS/static routing has not been integrated.
     let port = std::env::var("NATIVE_CANDIDATE_PORT")
         .ok()

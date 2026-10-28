@@ -170,6 +170,7 @@ dependencies = [
  "futures-core",
  "js-json",
  "mcp-frame",
+ "noevia-server",
  "reqwest",
  "rusqlite",
  "serde",

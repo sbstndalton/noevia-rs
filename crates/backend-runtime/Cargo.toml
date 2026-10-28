@@ -30,6 +30,7 @@ axum = { version = "0.8", default-features = false, features = ["http1", "tokio"
 futures-core = "0.3"
 [target.'cfg(target_os = "linux")'.dependencies]
 server-projects = { path = "../server-projects" }
+noevia-server = { path = "../../bins/noevia-server" }
 js-json = { path = "../js-json" }
 
 [dev-dependencies]

@@ -72,6 +72,13 @@ impl Api {
             chat_admission: Arc::new(Semaphore::new(4)),
         }))
     }
+    pub async fn serve_request(
+        self: Arc<Self>,
+        peer: SocketAddr,
+        request: Request<Body>,
+    ) -> Response<Body> {
+        handle(State(self), ConnectInfo(peer), request).await
+    }
     pub fn router(self: Arc<Self>) -> Router {
         Router::new().fallback(handle).with_state(self)
     }
