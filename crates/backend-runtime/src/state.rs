@@ -298,6 +298,21 @@ impl StateStore {
 /// Execution persistence contract. Production adapters must fence the actual holder and
 /// generation together with the transcript write, not just compare before an await.
 pub trait Conversations: Send + Sync {
+    fn supports_project_files(&self) -> bool {
+        false
+    }
+    fn sources(&self, _binding: &Binding, _control: &Control) -> Result<Vec<Value>> {
+        Ok(Vec::new())
+    }
+    fn read_project_file(
+        &self,
+        _binding: &Binding,
+        _args: &Value,
+        _control: &Control,
+    ) -> Result<Value> {
+        Err(Fault::Unavailable)
+    }
+
     fn project(&self, _binding: &Binding) -> Result<Option<Value>> {
         Ok(None)
     }

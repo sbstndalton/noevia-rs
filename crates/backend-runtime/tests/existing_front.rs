@@ -29,6 +29,10 @@ fn replace(v: &mut Value) {
 }
 struct Engine;
 impl Model for Engine {
+    fn provider(&self) -> provider_egress::Provider {
+        provider_egress::Provider::default()
+    }
+
     fn complete<'a>(
         &'a self,
         messages: &'a [Value],
@@ -53,6 +57,21 @@ impl Model for Engine {
                 assert!(system
                     .contains("Project instructions (follow closely):\nUse synthetic evidence"));
                 assert!(system.contains("- project memory"));
+                assert!(system.contains("attached source evidence"));
+                if let Some(tool) = messages
+                    .iter()
+                    .find(|v| v.get("role") == Some(&json!("tool")))
+                {
+                    assert!(tool
+                        .get("content")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .contains("attached source evidence"));
+                } else {
+                    return Ok(
+                        json!({"role":"assistant","tool_calls":[{"id":"read1","type":"function","function":{"name":"read_project_file","arguments":"{\"name\":\"evidence.md\"}"}}]}),
+                    );
+                }
                 assert!(!system.contains('\u{202e}'));
                 assert!(system.contains("\\u202e"));
                 return Ok(json!({"role":"assistant","content":"native project answer"}));
@@ -212,7 +231,7 @@ async fn original_front_auth_history_and_native_execution_share_one_transcript(
         .send()
         .await?;
     assert_eq!(source.status(), 401);
-    let project = json!({"id":"project1","name":"Example\u{202e}project","routing":"manual","instructions":"Use synthetic evidence","memories":["project memory"],"files":[],"chats":[{"id":"chat2","title":"Project chat"}]});
+    let project = json!({"id":"project1","name":"Example\u{202e}project","routing":"manual","instructions":"Use synthetic evidence","memories":["project memory"],"files":[{"name":"docs/evidence.md","content":"attached source evidence"}],"chats":[{"id":"chat2","title":"Project chat"}]});
     std::fs::write(
         user_dir.join("projects.json"),
         json!({"projects":[project]}).to_string(),

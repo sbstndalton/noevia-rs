@@ -54,6 +54,31 @@ impl ProjectConversations {
     }
 }
 impl Conversations for ProjectConversations {
+    fn supports_project_files(&self) -> bool {
+        true
+    }
+    fn sources(&self, binding: &Binding, control: &Control) -> Result<Vec<Value>> {
+        let Some(project) = self.project(binding)? else {
+            return Ok(Vec::new());
+        };
+        if !matches!(binding.holder, Holder::Project { .. }) {
+            return Ok(Vec::new());
+        }
+        Ok(crate::project_sources::fallback(&self.data, &binding.user, &project, control)?.map(|text| json!({"role":"system","content":format!("Relevant knowledge-file excerpts for this message:\n{text}")})).into_iter().collect())
+    }
+    fn read_project_file(
+        &self,
+        binding: &Binding,
+        args: &Value,
+        control: &Control,
+    ) -> Result<Value> {
+        if !matches!(binding.holder, Holder::Project { .. }) {
+            return Err(Fault::Unavailable);
+        }
+        let project = self.project(binding)?.ok_or(Fault::Missing)?;
+        crate::project_sources::read(&self.data, &binding.user, &project, args, control)
+    }
+
     fn project(&self, binding: &Binding) -> Result<Option<Value>> {
         if self.context(&binding.user, &binding.canonical_chat_id)? != *binding {
             return Err(Fault::Conflict);

@@ -175,8 +175,16 @@ impl Runtime {
     pub fn new<S: Conversations + 'static>(
         store: Arc<S>,
         model: Arc<dyn Model>,
-        tools: BTreeMap<String, Arc<dyn Tool>>,
+        mut tools: BTreeMap<String, Arc<dyn Tool>>,
     ) -> Result<Self> {
+        if store.supports_project_files() {
+            tools.insert(
+                "read_project_file".into(),
+                Arc::new(crate::tools::ProjectFile {
+                    store: store.clone(),
+                }),
+            );
+        }
         if tools.len() > 128
             || tools.keys().any(|k| {
                 k.is_empty()
@@ -211,7 +219,24 @@ impl Runtime {
         {
             return Err(Fault::Unavailable);
         }
-        for key in ["files", "assets", "sourceFolders"] {
+        if project
+            .get("files")
+            .is_some_and(|v| !v.is_null() && !v.as_array().is_some_and(Vec::is_empty))
+        {
+            if !self.store.supports_project_files()
+                || !matches!(binding.holder, crate::approvals::Holder::Project { .. })
+                || provider_egress::external_strict(Some(&self.model.provider()))
+            {
+                return Err(Fault::Unavailable);
+            }
+            #[cfg(target_os = "linux")]
+            if !crate::project_sources::supported(&project) {
+                return Err(Fault::Unavailable);
+            }
+            #[cfg(not(target_os = "linux"))]
+            return Err(Fault::Unavailable);
+        }
+        for key in ["assets", "sourceFolders"] {
             if project
                 .get(key)
                 .is_some_and(|v| !v.is_null() && !v.as_array().is_some_and(Vec::is_empty))
@@ -261,11 +286,22 @@ impl Runtime {
         Ok(())
     }
     pub fn with_conversations(&self, store: Arc<dyn Conversations>) -> Self {
+        let mut tools = self.tools.clone();
+        if store.supports_project_files() {
+            tools.insert(
+                "read_project_file".into(),
+                Arc::new(crate::tools::ProjectFile {
+                    store: store.clone(),
+                }),
+            );
+        } else {
+            tools.remove("read_project_file");
+        }
         Self {
             approvals: self.approvals.clone(),
             store,
             model: Arc::clone(&self.model),
-            tools: self.tools.clone(),
+            tools,
         }
     }
     /// `emit` is a bounded output sink supplied by the front; a disconnected sink returns
@@ -368,6 +404,7 @@ impl Runtime {
             }
             self.validate_context(binding)?;
             let mut framed = self.store.system(binding)?;
+            framed.extend(self.store.sources(binding, control)?);
             framed.extend(messages.iter().cloned());
             if serde_json::to_vec(&framed)?.len() > 8 * 1024 * 1024 {
                 return Err(Fault::Capacity);

@@ -182,3 +182,33 @@ mod time_tests {
         Ok(())
     }
 }
+
+/// Existing project source reads stay bound to the authenticated conversation adapter.
+pub struct ProjectFile {
+    pub store: Arc<dyn crate::state::Conversations>,
+}
+impl Tool for ProjectFile {
+    fn description(&self) -> &str {
+        "Read an attached project text file by its stored name or an unambiguous trailing path."
+    }
+    fn permitted(&self, binding: &Binding) -> bool {
+        matches!(binding.holder, crate::approvals::Holder::Project { .. })
+    }
+    fn private(&self) -> bool {
+        true
+    }
+    fn schema(&self) -> Value {
+        json!({"type":"object","properties":{"name":{"type":"string"}},"required":["name"]})
+    }
+    fn mutating(&self) -> bool {
+        false
+    }
+    fn call<'a>(
+        &'a self,
+        binding: &'a Binding,
+        arguments: Value,
+        control: &'a Control,
+    ) -> FutureResult<'a, Value> {
+        Box::pin(async move { self.store.read_project_file(binding, &arguments, control) })
+    }
+}

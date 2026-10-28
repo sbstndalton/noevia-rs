@@ -63,6 +63,23 @@ impl SessionConversations {
     }
 }
 impl Conversations for SessionConversations {
+    fn supports_project_files(&self) -> bool {
+        self.inner.supports_project_files()
+    }
+    fn sources(&self, binding: &Binding, control: &Control) -> Result<Vec<Value>> {
+        self.fenced(&binding.user, || self.inner.sources(binding, control))
+    }
+    fn read_project_file(
+        &self,
+        binding: &Binding,
+        args: &Value,
+        control: &Control,
+    ) -> Result<Value> {
+        self.fenced(&binding.user, || {
+            self.inner.read_project_file(binding, args, control)
+        })
+    }
+
     fn project(&self, binding: &Binding) -> Result<Option<Value>> {
         self.fenced(&binding.user, || self.inner.project(binding))
     }
