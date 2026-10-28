@@ -13,6 +13,7 @@ pub mod frontend;
 pub mod indexing;
 pub mod journal;
 pub mod mcp;
+pub mod model_stream;
 #[cfg(target_os = "linux")]
 pub mod project_conversations;
 pub mod replay;

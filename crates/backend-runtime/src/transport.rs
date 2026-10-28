@@ -54,6 +54,63 @@ impl Transport {
                 .map_err(|_| Fault::Transport)?,
         })
     }
+    /// Incremental bounded provider SSE. The caller's callback can stop disclosure and
+    /// cancel the underlying response immediately; no body task outlives this future.
+    pub async fn post_stream(
+        &self,
+        endpoint: &Endpoint,
+        body: Vec<u8>,
+        control: &Control,
+        mut consume: impl FnMut(&[u8]) -> Result<bool> + Send,
+    ) -> Result<()> {
+        if body.len() > 8 * 1024 * 1024 {
+            return Err(Fault::Capacity);
+        }
+        let exchange = async {
+            let mut response = self
+                .client
+                .post(endpoint.url.clone())
+                .headers(endpoint.headers.clone())
+                .header(CONTENT_TYPE, "application/json")
+                .body(body)
+                .timeout(control.remaining()?)
+                .send()
+                .await
+                .map_err(|_| Fault::Transport)?;
+            if !response.status().is_success() {
+                return Err(Fault::Transport);
+            }
+            if !response
+                .headers()
+                .get(CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .is_some_and(|v| {
+                    v.split(';')
+                        .next()
+                        .is_some_and(|s| s.trim().eq_ignore_ascii_case("text/event-stream"))
+                })
+            {
+                return Err(Fault::Protocol);
+            }
+            let mut total = 0usize;
+            while let Some(chunk) = response.chunk().await.map_err(|_| Fault::Transport)? {
+                control.check()?;
+                total = total.checked_add(chunk.len()).ok_or(Fault::Capacity)?;
+                if total > 8 * 1024 * 1024 {
+                    return Err(Fault::Capacity);
+                }
+                if consume(&chunk)? {
+                    break;
+                }
+            }
+            control.check()
+        };
+        tokio::pin!(exchange);
+        loop {
+            control.check()?;
+            tokio::select! {result=&mut exchange=>return result,_=tokio::time::sleep(control.remaining()?.min(Duration::from_millis(50)))=>{}}
+        }
+    }
     pub async fn request(
         &self,
         endpoint: &Endpoint,

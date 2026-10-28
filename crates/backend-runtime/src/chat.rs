@@ -18,6 +18,21 @@ pub trait Model: Send + Sync {
             ..Default::default()
         }
     }
+    fn complete_stream<'a>(
+        &'a self,
+        messages: &'a [Value],
+        tools: &'a [Value],
+        control: &'a Control,
+        emit: &'a mut (dyn FnMut(Value) -> Result<()> + Send),
+    ) -> FutureResult<'a, Value> {
+        Box::pin(async move {
+            let reply = self.complete(messages, tools, control).await?;
+            if let Some(text) = reply.get("content").and_then(Value::as_str) {
+                emit(json!({"type":"delta","text":text}))?;
+            }
+            Ok(reply)
+        })
+    }
     fn complete<'a>(
         &'a self,
         messages: &'a [Value],
@@ -60,6 +75,36 @@ impl OpenAiModel {
     }
 }
 impl Model for OpenAiModel {
+    fn complete_stream<'a>(
+        &'a self,
+        messages: &'a [Value],
+        tools: &'a [Value],
+        control: &'a Control,
+        emit: &'a mut (dyn FnMut(Value) -> Result<()> + Send),
+    ) -> FutureResult<'a, Value> {
+        Box::pin(async move {
+            let mut body = json!({"model":self.model,"messages":messages,"stream":true});
+            if !tools.is_empty() {
+                body.as_object_mut()
+                    .ok_or(Fault::Protocol)?
+                    .insert("tools".into(), json!(tools));
+            }
+            let mut decoder = crate::model_stream::Decoder::default();
+            self.transport
+                .post_stream(
+                    &self.endpoint,
+                    serde_json::to_vec(&body)?,
+                    control,
+                    |chunk| {
+                        decoder.feed(chunk, emit)?;
+                        Ok(decoder.is_done())
+                    },
+                )
+                .await?;
+            decoder.finish()
+        })
+    }
+
     fn complete<'a>(
         &'a self,
         messages: &'a [Value],
@@ -157,7 +202,7 @@ impl Runtime {
         id: &str,
         user_message: Value,
         control: &Control,
-        mut emit: impl FnMut(Value) -> Result<()>,
+        mut emit: impl FnMut(Value) -> Result<()> + Send,
     ) -> Result<Vec<Value>> {
         binding.validate()?;
         if user_message.get("role").and_then(Value::as_str) != Some("user")
@@ -202,7 +247,7 @@ impl Runtime {
         binding: &Binding,
         messages: &mut Vec<Value>,
         control: &Control,
-        emit: &mut impl FnMut(Value) -> Result<()>,
+        emit: &mut (impl FnMut(Value) -> Result<()> + Send),
     ) -> Result<()> {
         let provider = self.model.provider();
         let external = provider_egress::external_strict(Some(&provider));
@@ -248,7 +293,10 @@ impl Runtime {
             if serde_json::to_vec(&framed)?.len() > 8 * 1024 * 1024 {
                 return Err(Fault::Capacity);
             }
-            let reply = self.model.complete(&framed, &schemas, control).await?;
+            let reply = self
+                .model
+                .complete_stream(&framed, &schemas, control, emit)
+                .await?;
             if reply.get("role").and_then(Value::as_str) != Some("assistant") {
                 return Err(Fault::Protocol);
             }
@@ -257,9 +305,6 @@ impl Runtime {
                 Some(Value::Array(v)) if v.len() <= 32 => v.clone(),
                 _ => return Err(Fault::Protocol),
             };
-            if let Some(text) = reply.get("content").and_then(Value::as_str) {
-                emit(json!({"type":"delta","text":text}))?;
-            }
             messages.push(reply);
             if calls.is_empty() {
                 return Ok(());

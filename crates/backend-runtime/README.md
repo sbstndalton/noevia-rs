@@ -35,8 +35,7 @@ explicit, reviewed migration from current stores; there is no automatic adoption
 chat is the only newly exposed chat mode. Skills, attachments, Cowork, routing decisions,
 provider/OAuth lifecycle, model controls, connector administration, project/source/research
 executors and many other existing public routes are not ported. The existing frontend's full
-contract has not been qualified. Streaming currently emits completed provider responses rather
-than forwarding provider token streams.
+contract has not been qualified. The native OpenAI provider now streams bounded SSE content/reasoning and assembles tool-call fragments. It requires a complete stop/tool_calls finish plus DONE; JSON-only or truncated provider responses are refused rather than committed.
 
 The new native index does not import or mutate legacy sqlite-vec slots. Query embedding,
 reranking, temporal/entity orchestration and the complete Diary HTTP service still need wiring.
@@ -61,3 +60,5 @@ The native turn runner now owns the original per-turn tool-exchange result cache
 The Linux assembled candidate can start the original separate DAV endpoint from `COWORK_DAV_PORT`, `COWORK_DAV_SCOPE`, `COWORK_DAV_ORIGIN`, and proxy-token settings. Its actual bind remains loopback-only. `NATIVE_CANDIDATE_WORKSPACE_PROTECTION` is explicit JSON matching the original workspace protection configuration; only its presence enables DELETE/MOVE/COPY. Mutation IDs are allocated once per admitted operation and uncertain requests are never automatically retried. Original account, credential, scope, local-storage and migration fences remain held through mutations; receipt/Trash preservation stays in the existing workspace kernel.
 
 An explicit `NATIVE_CANDIDATE_DIARY_LAYOUT` JSON configuration (`root`, `monthlyPrefix`, `entriesPrefix`, `monthFileTemplate`, `indexFile`, `daily`) enables native replay of existing `exchange`, `exchange_edit`, `index_month`, and `index_update` journal intents. The assembled front schedules bounded passes every 30 seconds under the live account Writer fence. Replay preserves insertion order, duplicate markers, create-only scaffold files, CAS retries, dependent quarantine and outage cooldown. Existing corpora/journals remain explicit operator-selected paths; remote storage and full Diary request/orchestration remain incomplete. This worker does not activate the new retrieval schema or call an inference engine.
+
+Free chat now reads the original sanitized account instructions and persistent memories under its live session fence, and includes computed calendar facts in model context. These transient system parts are not saved as transcript messages. Full project/attachment/skill context, provider-specific formatting and routing remain incomplete. Live HTTP session checks gate every disclosure and hold the account Writer through final original transcript commit.
