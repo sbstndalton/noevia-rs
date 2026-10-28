@@ -15,6 +15,8 @@ pub mod journal;
 pub mod mcp;
 pub mod model_stream;
 #[cfg(target_os = "linux")]
+pub mod project_config;
+#[cfg(target_os = "linux")]
 pub mod project_conversations;
 #[cfg(target_os = "linux")]
 pub mod project_sources;

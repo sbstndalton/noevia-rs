@@ -265,10 +265,14 @@ async fn handle(
     #[cfg(target_os = "linux")]
     if let Some(project) = path
         .strip_prefix("/api/projects/")
-        .and_then(|p| p.strip_suffix("/sources/text"))
+        .and_then(|p| {
+            p.strip_suffix("/sources/text")
+                .or_else(|| p.strip_suffix("/config"))
+        })
         .filter(|s| !s.is_empty() && !s.contains('/'))
     {
-        if method != "GET" {
+        let config = path.ends_with("/config");
+        if method != if config { "POST" } else { "GET" } {
             return response(405, json!({"error":"Method not allowed"}));
         }
         let data = api.data.clone();
@@ -285,16 +289,17 @@ async fn handle(
                 .write(|tx| {
                     output = Some(match auth.gate_in(&tx.reader(), &creds, &path, now())? {
                         Ok(identity) if identity.user.id == user => {
-                            Ok(server_projects::sources::get(
-                                server_projects::Ctx {
-                                    data_dir: &data,
-                                    user_id: &user,
-                                    switch: server_store::RustProjects::owned(),
-                                    now_ms: now(),
-                                },
-                                &project,
-                                name.as_deref(),
-                            ))
+                            let ctx = server_projects::Ctx {
+                                data_dir: &data,
+                                user_id: &user,
+                                switch: server_store::RustProjects::owned(),
+                                now_ms: now(),
+                            };
+                            Ok(if config {
+                                crate::project_config::configure(ctx, &project, &body)
+                            } else {
+                                server_projects::sources::get(ctx, &project, name.as_deref())
+                            })
                         }
                         Err(Refusal::Unauthorized) => Err(Fault::Unauthorized),
                         _ => Err(Fault::Forbidden),
