@@ -189,6 +189,7 @@ dependencies = [
  "server-auth",
  "server-dav",
  "server-projects",
+ "server-storage-reads",
  "server-store",
  "sha2",
  "tempfile",

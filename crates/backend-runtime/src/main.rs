@@ -7,6 +7,17 @@ use backend_runtime::{
 };
 use std::{path::PathBuf, sync::Arc};
 fn main() -> std::process::ExitCode {
+    #[cfg(target_os = "linux")]
+    if std::env::args_os().nth(1).as_deref()
+        == Some(std::ffi::OsStr::new(
+            server_storage_reads::transport::CHILD_ARG,
+        ))
+    {
+        // The existing storage owner re-execs current_exe. Enter its hardened
+        // native child before creating the backend runtime or reading app config.
+        return server_storage_reads::transport::child_main();
+    }
+
     match run() {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(_) => {
@@ -132,6 +143,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     .await;
                 }
             });
+            let storage_metadata = Arc::clone(&front.storage_metadata);
             let server = noevia_server::serve::serve(
                 listener,
                 front,
@@ -146,6 +158,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             };
             tokio::select! { _ = server => {}, _ = drained => {} }
             replay_task.shutdown().await;
+            let _ = storage_metadata.shutdown().await;
             signal_task.abort();
             let _ = signal_task.await;
             dav_task.abort();

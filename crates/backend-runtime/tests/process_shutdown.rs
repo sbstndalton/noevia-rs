@@ -95,3 +95,35 @@ async fn original_front_binary_drains_on_sigterm_without_legacy_process(
         .is_err());
     Ok(())
 }
+
+#[tokio::test]
+async fn candidate_reexec_enters_hardened_storage_child_before_app_startup(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut child = OwnedChild(
+        Command::new(env!("CARGO_BIN_EXE_native-backend-candidate"))
+            .arg(server_storage_reads::transport::CHILD_ARG)
+            .env_clear()
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()?,
+    );
+    let finished = async {
+        loop {
+            if let Some(status) = child.0.try_wait()? {
+                return Ok::<_, std::io::Error>(status);
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    };
+    let status = tokio::time::timeout(Duration::from_secs(5), finished).await??;
+    // EOF is not a request. The real child publishes READY after installing its
+    // Linux limits, then refuses the absent frame without making any network call.
+    assert!(!status.success());
+    use std::io::Read;
+    let stdout = child.0.stdout.take().ok_or("stdout")?;
+    let mut bytes = Vec::new();
+    stdout.take(17).read_to_end(&mut bytes)?;
+    assert_eq!(bytes, server_storage_reads::isolated::READY);
+    Ok(())
+}
