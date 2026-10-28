@@ -18,6 +18,7 @@ pub struct DavBackend {
     writer: Arc<Writer>,
     tenants: HashMap<String, Arc<Corpus>>,
     scope: Scope,
+    workspace_config: Option<diary_workspace_transaction::ProtectionConfigDto>,
 }
 fn now_ms() -> i64 {
     SystemTime::now()
@@ -53,7 +54,16 @@ impl DavBackend {
             writer,
             tenants,
             scope,
+            workspace_config: None,
         })
+    }
+    /// Explicit original corpus protection settings are required before advertising mutations.
+    pub fn with_workspace(
+        mut self,
+        config: diary_workspace_transaction::ProtectionConfigDto,
+    ) -> Self {
+        self.workspace_config = Some(config);
+        self
     }
     fn fenced<T>(
         &self,
@@ -91,6 +101,57 @@ impl DavBackend {
     }
 }
 impl Backend for DavBackend {
+    fn workspace_enabled(&self) -> bool {
+        self.workspace_config.is_some()
+    }
+    fn workspace<'a>(
+        &'a self,
+        identity: &'a Identity,
+        body: serde_json::Value,
+    ) -> BackendFuture<'a, std::result::Result<(u16, serde_json::Value), server_dav::Fault>> {
+        Box::pin(async move {
+            let config = self
+                .workspace_config
+                .clone()
+                .ok_or(server_dav::Fault::Unavailable)?;
+            self.fenced(identity, |corpus, control| {
+                let op = body
+                    .get("op")
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or(Fault::Invalid)?;
+                if !matches!(op, "stat" | "delete" | "move" | "copy") {
+                    return Err(Fault::Invalid);
+                }
+                let namespace = corpus.workspace_namespace(control)?;
+                // IDs are allocated once per admitted HTTP operation, before the kernel. No
+                // automatic transport retry can re-execute an uncertain mutation.
+                let mut request = serde_json::json!({"version":1,"dbPath":"","expectedTenant":"",
+                    "operationNamespace":namespace,"operationId":uuid::Uuid::new_v4().to_string(),
+                    "capsuleId":uuid::Uuid::new_v4().to_string(),"op":op,"source":body.get("path"),
+                    "now":now_ms() as f64 / 1000.0,"debounce":3.0});
+                for (source, target) in [
+                    ("version", "sourceVersion"),
+                    ("destination", "destination"),
+                    ("destinationVersion", "destinationVersion"),
+                    ("overwrite", "overwrite"),
+                ] {
+                    if let Some(value) = body.get(source) {
+                        request
+                            .as_object_mut()
+                            .ok_or(Fault::Protocol)?
+                            .insert(target.into(), value.clone());
+                    }
+                }
+                let mut request: diary_workspace_transaction::Request =
+                    serde_json::from_value(request).map_err(|_| Fault::Invalid)?;
+                request.config = Some(config);
+                let reply = corpus.workspace(request, control)?;
+                let body = reply.body().to_value().map_err(|_| Fault::Protocol)?;
+                Ok((reply.status(), body))
+            })
+        })
+    }
+
     fn capabilities(&self) -> Capabilities {
         Capabilities { mkdir: true }
     }

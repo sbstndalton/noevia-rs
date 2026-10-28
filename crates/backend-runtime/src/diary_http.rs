@@ -24,6 +24,12 @@ impl DiaryHttp {
         }
         Ok(Self { tenants })
     }
+    pub fn corpora(&self) -> HashMap<String, Arc<Corpus>> {
+        self.tenants
+            .iter()
+            .map(|(user, t)| (user.clone(), Arc::new(t.corpus.clone())))
+            .collect()
+    }
     pub fn handles(path: &str) -> bool {
         matches!(path, "/api/diary/files" | "/api/diary/file")
     }

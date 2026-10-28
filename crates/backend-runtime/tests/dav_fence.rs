@@ -1,7 +1,7 @@
 #[path = "../../server-auth/tests/common/mod.rs"]
 mod auth_fixture;
 use backend_runtime::{dav::DavBackend, diary::Corpus};
-use serde_json::Value;
+use serde_json::{json, Value};
 use server_dav::{Backend, Identity, Scope, WriteCondition};
 use std::{collections::HashMap, sync::Arc};
 fn replace(value: &mut Value) {
@@ -47,7 +47,21 @@ async fn real_auth_writer_fences_revoked_dav_credentials_at_corpus_sink(
     )?;
     let path = built.dir.path().join("managed.db");
     let db = rusqlite::Connection::open(&path)?;
-    db.execute_batch("CREATE TABLE meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);CREATE TABLE files(path TEXT PRIMARY KEY,data BLOB NOT NULL,version TEXT NOT NULL,updated REAL NOT NULL);CREATE TABLE directories(path TEXT PRIMARY KEY);CREATE TABLE workspace_index_outbox(path TEXT PRIMARY KEY);")?;
+    let layout: Value = serde_json::from_str(include_str!(
+        "../../diary-workspace-transaction/tests/fixtures/managed-schema.json"
+    ))?;
+    for table in layout
+        .get("tables")
+        .and_then(Value::as_array)
+        .ok_or("tables")?
+    {
+        db.execute_batch(table.get("sql").and_then(Value::as_str).ok_or("schema")?)?;
+    }
+    db.execute_batch("CREATE TABLE workspace_operation_receipts(id TEXT PRIMARY KEY,fingerprint TEXT NOT NULL,op TEXT NOT NULL,response BLOB NOT NULL,created REAL NOT NULL);")?;
+    db.execute(
+        "INSERT INTO meta VALUES('workspace_operation_namespace',?)",
+        ["11234567-89ab-4cde-8fab-0123456789ab"],
+    )?;
     for (key, value) in [("tenant", user), ("active", "1"), ("generation", "0")] {
         db.execute("INSERT INTO meta VALUES(?,?)", [key, value])?;
     }
@@ -58,7 +72,11 @@ async fn real_auth_writer_fences_revoked_dav_credentials_at_corpus_sink(
         built.dir.path(),
         server_store::RustAuth::owned(),
     )?);
-    let backend = DavBackend::new(Arc::new(built.store), writer, tenants, Scope::Lan)?;
+    let config = serde_json::from_value(
+        json!({"remoteRoot":"","entriesPrefix":"Entries","monthlyPrefix":"Monthly","monthFileTemplate":"{year}-{month02}.md","indexFile":"index.md","monthNames":["January","February","March","April","May","June","July","August","September","October","November","December"]}),
+    )?;
+    let backend =
+        DavBackend::new(Arc::new(built.store), writer, tenants, Scope::Lan)?.with_workspace(config);
     let identity = Identity {
         user_id: user.into(),
         credential_id: "a".repeat(32),
@@ -79,6 +97,50 @@ async fn real_auth_writer_fences_revoked_dav_credentials_at_corpus_sink(
             .map(|f| f.content),
         Some("synthetic".into())
     );
+    let copy = backend
+        .workspace(
+            &identity,
+            json!({"op":"copy","path":"note.md","destination":"copy.md","overwrite":false}),
+        )
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    assert_eq!(copy.0, 200);
+    assert_eq!(
+        backend
+            .read(&identity, "copy.md")
+            .await
+            .map_err(|e| format!("{e:?}"))?
+            .ok_or("copy")?
+            .content,
+        "synthetic"
+    );
+    let stale = backend
+        .workspace(
+            &identity,
+            json!({"op":"delete","path":"copy.md","version":"0".repeat(64)}),
+        )
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    assert_eq!(stale.0, 412);
+    let deleted = backend
+        .workspace(
+            &identity,
+            json!({"op":"delete","path":"copy.md","version":version}),
+        )
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    assert_eq!(deleted.0, 200);
+    assert!(backend
+        .read(&identity, "copy.md")
+        .await
+        .map_err(|e| format!("{e:?}"))?
+        .is_none());
+    let receipts: i64 = db.query_row(
+        "SELECT count(*) FROM workspace_operation_receipts",
+        [],
+        |r| r.get(0),
+    )?;
+    assert_eq!(receipts, 3);
     raw.execute(
         "DELETE FROM app_passwords WHERE id=?",
         [&identity.credential_id],

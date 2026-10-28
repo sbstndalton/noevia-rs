@@ -68,8 +68,16 @@ impl Corpus {
         {
             return Err(Fault::Invalid);
         }
+        // Operator-selected directory may use the platform /var alias. Resolve that
+        // directory once; never resolve/follow the database filename itself.
+        let parent = path
+            .parent()
+            .ok_or(Fault::Invalid)?
+            .canonicalize()
+            .map_err(|_| Fault::Unavailable)?;
+        let path = parent.join(path.file_name().ok_or(Fault::Invalid)?);
         let result = Self {
-            path: path.to_owned(),
+            path,
             tenant: tenant.to_owned(),
             debounce,
         };
@@ -450,6 +458,20 @@ impl Corpus {
         control.check()?;
         tx.commit()?;
         Ok(())
+    }
+    pub fn workspace_namespace(&self, control: &Control) -> Result<String> {
+        let mut db = self.db(control)?;
+        let tx = db.transaction()?;
+        self.identity(&tx)?;
+        let value: String = tx.query_row(
+            "SELECT value FROM meta WHERE key='workspace_operation_namespace'",
+            [],
+            |r| r.get(0),
+        )?;
+        if uuid::Uuid::parse_str(&value).is_err() {
+            return Err(Fault::Database);
+        }
+        Ok(value)
     }
     pub fn workspace(
         &self,

@@ -73,6 +73,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_os = "linux")]
     if action == "--existing-front" {
         let config = noevia_server::config::Config::from_lookup(|key| std::env::var(key).ok())?;
+        let sharing = configured_dav(&app, &data, config.port)?;
         let front = backend_runtime::frontend::assemble(config, app)?;
         let rt = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
@@ -82,6 +83,31 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let listener =
                 tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, front.config.port))
                     .await?;
+            let dav_listener = if let Some((port, service)) = sharing {
+                let listener =
+                    tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
+                Some((
+                    listener,
+                    backend_runtime::frontend::dav_router(&front, service),
+                ))
+            } else {
+                None
+            };
+            let dav_task = tokio::spawn(async move {
+                if let Some((listener, router)) = dav_listener {
+                    noevia_server::serve::serve_router(
+                        listener,
+                        router,
+                        noevia_server::serve::Limits {
+                            header_read: std::time::Duration::from_secs(15),
+                            keep_alive_idle: std::time::Duration::from_secs(60),
+                            max_connections: 64,
+                        },
+                        std::future::pending(),
+                    )
+                    .await;
+                }
+            });
             noevia_server::serve::serve(
                 listener,
                 front,
@@ -89,6 +115,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 std::future::pending(),
             )
             .await;
+            dav_task.abort();
+            let _ = dav_task.await;
             Ok::<(), std::io::Error>(())
         })?;
         return Ok(());
@@ -152,4 +180,55 @@ fn diary_registry(
     Ok(Some(Arc::new(backend_runtime::diary_http::DiaryHttp::new(
         tenants,
     )?)))
+}
+
+#[cfg(target_os = "linux")]
+type Sharing = (
+    u16,
+    Arc<server_dav::DavService<backend_runtime::dav::DavBackend>>,
+);
+#[cfg(target_os = "linux")]
+fn configured_dav(
+    api: &Api,
+    data: &std::path::Path,
+    ui_port: u16,
+) -> Result<Option<Sharing>, Box<dyn std::error::Error>> {
+    let port: u16 = std::env::var("COWORK_DAV_PORT")
+        .unwrap_or_else(|_| "0".into())
+        .parse()?;
+    if port == 0 {
+        return Ok(None);
+    }
+    if port < 1024 || port == ui_port {
+        return Err("invalid separate DAV port".into());
+    }
+    let scope = match std::env::var("COWORK_DAV_SCOPE")?.as_str() {
+        "lan" => server_dav::Scope::Lan,
+        "public" => server_dav::Scope::Public,
+        _ => return Err("invalid DAV scope".into()),
+    };
+    let public = std::env::var("PUBLIC_ORIGIN").unwrap_or_default();
+    let origin = std::env::var("COWORK_DAV_ORIGIN").unwrap_or_else(|_| {
+        if scope == server_dav::Scope::Public {
+            public.clone()
+        } else {
+            String::new()
+        }
+    });
+    if scope == server_dav::Scope::Lan
+        && !public.is_empty()
+        && url::Url::parse(&origin)?.origin() == url::Url::parse(&public)?.origin()
+    {
+        return Err("DAV LAN authority must be separate".into());
+    }
+    let config =
+        server_dav::Config::new(&origin, scope, std::env::var("COWORK_DAV_PROXY_TOKEN").ok())?;
+    let protection = std::env::var("NATIVE_CANDIDATE_WORKSPACE_PROTECTION")
+        .ok()
+        .map(|v| serde_json::from_str(&v))
+        .transpose()?;
+    Ok(Some((
+        port,
+        api.dav_service(data, scope, config, protection)?,
+    )))
 }

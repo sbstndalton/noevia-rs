@@ -72,6 +72,25 @@ impl Api {
             chat_admission: Arc::new(Semaphore::new(4)),
         }))
     }
+    pub fn dav_service(
+        &self,
+        data: &Path,
+        scope: server_dav::Scope,
+        config: server_dav::Config,
+        protection: Option<diary_workspace_transaction::ProtectionConfigDto>,
+    ) -> Result<Arc<server_dav::DavService<crate::dav::DavBackend>>> {
+        let tenants = self.diary.as_ref().ok_or(Fault::Unavailable)?.corpora();
+        let store = Arc::new(server_store::Store::open(data).map_err(|_| Fault::Unavailable)?);
+        let mut backend =
+            crate::dav::DavBackend::new(store, Arc::clone(&self.writer), tenants, scope)?;
+        if let Some(protection) = protection {
+            backend = backend.with_workspace(protection);
+        }
+        Ok(Arc::new(server_dav::DavService::new(
+            Arc::new(backend),
+            config,
+        )))
+    }
     pub async fn serve_request(
         self: Arc<Self>,
         peer: SocketAddr,

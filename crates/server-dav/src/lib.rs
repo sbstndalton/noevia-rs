@@ -3,6 +3,7 @@
 //! Diary operations before this handler can be wired into an image.
 #![forbid(unsafe_code)]
 
+mod operations;
 mod xml;
 
 use axum::body::{to_bytes, Body};
@@ -38,6 +39,7 @@ impl Scope {
 #[derive(Clone, Debug)]
 pub struct Config {
     host: String,
+    origin: String,
     scope: Scope,
     proxy_token: Option<String>,
     deadline: Duration,
@@ -83,6 +85,7 @@ impl Config {
         }
         Ok(Self {
             host,
+            origin: url.origin().ascii_serialization(),
             scope,
             proxy_token: token,
             deadline: Duration::from_secs(45),
@@ -148,6 +151,17 @@ pub enum Fault {
 /// must route through Diary's guarded workspace operations. The adapter must
 /// refuse symlink traversal; this crate never opens a filesystem path.
 pub trait Backend: Send + Sync + 'static {
+    fn workspace_enabled(&self) -> bool {
+        false
+    }
+    fn workspace<'a>(
+        &'a self,
+        _identity: &'a Identity,
+        _request: serde_json::Value,
+    ) -> BackendFuture<'a, Result<(u16, serde_json::Value), Fault>> {
+        Box::pin(async { Err(Fault::Unavailable) })
+    }
+
     fn capabilities(&self) -> Capabilities {
         Capabilities::default()
     }
@@ -579,6 +593,27 @@ impl<B: Backend> DavService<B> {
         let method = req.method().as_str().to_owned();
         let headers = req.headers().clone();
         let cap = self.backend.capabilities();
+        if self.backend.workspace_enabled() && matches!(method.as_str(), "DELETE" | "MOVE" | "COPY")
+        {
+            return self
+                .workspace_operation(req, identity, username, path)
+                .await;
+        }
+        if self.backend.workspace_enabled() && method == "OPTIONS" {
+            let mut response = reply(StatusCode::OK, "", false);
+            response.headers_mut().insert(
+                header::ALLOW,
+                HeaderValue::from_static(if cap.mkdir {
+                    "OPTIONS, HEAD, GET, PROPFIND, PUT, MKCOL, DELETE, MOVE, COPY"
+                } else {
+                    "OPTIONS, HEAD, GET, PROPFIND, PUT, DELETE, MOVE, COPY"
+                }),
+            );
+            response
+                .headers_mut()
+                .insert("dav", HeaderValue::from_static("1"));
+            return response;
+        }
         let allow = if cap.mkdir {
             "OPTIONS, HEAD, GET, PROPFIND, PUT, MKCOL"
         } else {

@@ -21,3 +21,31 @@ pub fn assemble(
     );
     Ok(app)
 }
+
+/// Dedicated DAV router retains the same address-based code-network denial as the UI.
+pub fn dav_router(
+    front: &Arc<noevia_server::App>,
+    service: Arc<server_dav::DavService<crate::dav::DavBackend>>,
+) -> axum::Router {
+    let guard = Arc::clone(&front.code_net);
+    axum::Router::new().fallback(
+        move |axum::extract::ConnectInfo(conn): axum::extract::ConnectInfo<
+            noevia_server::serve::Conn,
+        >,
+              request: axum::http::Request<axum::body::Body>| {
+            let guard = Arc::clone(&guard);
+            let service = Arc::clone(&service);
+            async move {
+                if guard.enabled()
+                    && match conn.local {
+                        Some(local) => guard.refuses(local).await,
+                        None => true,
+                    }
+                {
+                    return guard.deny();
+                }
+                service.handle(request, conn.peer.ip()).await
+            }
+        },
+    )
+}
