@@ -10,6 +10,9 @@ use serde_json::{json, Value};
 use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc};
 pub type FutureResult<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 pub trait Model: Send + Sync {
+    fn selection(&self) -> Option<(&str, &str)> {
+        None
+    }
     /// Trusted provider configuration, never a field accepted from model or public chat input.
     /// Unknown engines are external until the owning registry supplies their actual row.
     fn provider(&self) -> provider_egress::Provider {
@@ -41,6 +44,9 @@ pub trait Model: Send + Sync {
     ) -> FutureResult<'a, Value>;
 }
 pub trait Tool: Send + Sync {
+    fn description(&self) -> &str {
+        ""
+    }
     fn permitted(&self, _binding: &Binding) -> bool {
         true
     }
@@ -75,6 +81,9 @@ impl OpenAiModel {
     }
 }
 impl Model for OpenAiModel {
+    fn selection(&self) -> Option<(&str, &str)> {
+        Some(("default", &self.model))
+    }
     fn complete_stream<'a>(
         &'a self,
         messages: &'a [Value],
@@ -186,6 +195,71 @@ impl Runtime {
             tools,
         })
     }
+    /// Respect existing project choices; an unsupported pipeline never silently uses the global engine.
+    pub fn validate_context(&self, binding: &Binding) -> Result<()> {
+        let Some(project) = self.store.project(binding)? else {
+            return Ok(());
+        };
+        if project.get("id").and_then(Value::as_str) == Some("cowork-diary-extras") {
+            return Err(Fault::Forbidden);
+        }
+        if project.get("archived") == Some(&Value::Bool(true))
+            || project
+                .get("routing")
+                .and_then(Value::as_str)
+                .is_some_and(|r| r != "manual")
+        {
+            return Err(Fault::Unavailable);
+        }
+        for key in ["files", "assets", "sourceFolders"] {
+            if project
+                .get(key)
+                .is_some_and(|v| !v.is_null() && !v.as_array().is_some_and(Vec::is_empty))
+            {
+                return Err(Fault::Unavailable);
+            }
+        }
+        for key in [
+            "reasoningEffort",
+            "sampling",
+            "routingMode",
+            "contextProfile",
+        ] {
+            if project.get(key).is_some_and(|v| !v.is_null()) {
+                return Err(Fault::Unavailable);
+            }
+        }
+        if project.pointer("/sharedContext/chat") == Some(&Value::Bool(true)) {
+            return Err(Fault::Unavailable);
+        }
+        if project
+            .get("toolboxes")
+            .and_then(Value::as_array)
+            .is_some_and(|v| v.iter().any(|x| x.as_str() != Some("core")))
+        {
+            return Err(Fault::Unavailable);
+        }
+        for (key, selected) in [
+            ("provider", self.model.selection().map(|s| s.0)),
+            ("model", self.model.selection().map(|s| s.1)),
+        ] {
+            if let Some(value) = project
+                .get(key)
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+            {
+                let value = if key == "provider" && value == "lemonade" {
+                    "default"
+                } else {
+                    value
+                };
+                if Some(value) != selected {
+                    return Err(Fault::Unavailable);
+                }
+            }
+        }
+        Ok(())
+    }
     pub fn with_conversations(&self, store: Arc<dyn Conversations>) -> Self {
         Self {
             approvals: self.approvals.clone(),
@@ -212,6 +286,7 @@ impl Runtime {
         {
             return Err(Fault::Invalid);
         }
+        self.validate_context(&binding)?;
         let (revision, mut messages) = self.store.begin(&binding, id, &user_message, control)?;
         let mut guard = TurnGuard {
             store: Arc::clone(&self.store),
@@ -233,7 +308,10 @@ impl Runtime {
                     return Err(e);
                 }
                 guard.finished = true;
-                emit(json!({"type":"done"}))?;
+                emit(match self.model.selection() {
+                    Some((_, model)) => json!({"type":"done","model":model}),
+                    None => json!({"type":"done"}),
+                })?;
                 Ok(messages)
             }
             Err(e) => {
@@ -271,7 +349,7 @@ impl Runtime {
         {
             return Err(Fault::Forbidden);
         }
-        let schemas:Vec<Value>=self.tools.iter().filter(|(name,tool)|permitted(name,tool)).map(|(name,tool)|json!({"type":"function","function":{"name":name,"parameters":tool.schema()}})).collect();
+        let schemas:Vec<Value>=self.tools.iter().filter(|(name,tool)|permitted(name,tool)).map(|(name,tool)|json!({"type":"function","function":{"name":name,"description":tool.description(),"parameters":tool.schema()}})).collect();
         // Original tool-exchange contract: one cache per turn, canonical Rust keys,
         // serial execution, uncertain writes cached and reads invalidated only on write attempt.
         let mut results = BTreeMap::<Vec<u16>, (String, bool)>::new();
@@ -288,6 +366,7 @@ impl Runtime {
             if serde_json::to_vec(messages)?.len() > 8 * 1024 * 1024 {
                 return Err(Fault::Capacity);
             }
+            self.validate_context(binding)?;
             let mut framed = self.store.system(binding)?;
             framed.extend(messages.iter().cloned());
             if serde_json::to_vec(&framed)?.len() > 8 * 1024 * 1024 {

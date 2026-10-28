@@ -54,6 +54,29 @@ impl ProjectConversations {
     }
 }
 impl Conversations for ProjectConversations {
+    fn project(&self, binding: &Binding) -> Result<Option<Value>> {
+        if self.context(&binding.user, &binding.canonical_chat_id)? != *binding {
+            return Err(Fault::Conflict);
+        }
+        let id = match &binding.holder {
+            Holder::Project { id } => id.clone(),
+            Holder::Free => format!("cowork-chat-context-{}", binding.canonical_chat_id),
+            Holder::Absent => return Err(Fault::Missing),
+        };
+        let dir = server_projects::store::user_dir(&self.data, &binding.user)
+            .map_err(|_| Fault::Unavailable)?;
+        let projects = server_projects::store::read(&dir).map_err(|_| Fault::Unavailable)?;
+        let Some(project) = server_projects::store::find(&projects, &id) else {
+            return if matches!(binding.holder, Holder::Free) {
+                Ok(None)
+            } else {
+                Err(Fault::Missing)
+            };
+        };
+        let encoded = js_json::wtf16::stringify(project).ok_or(Fault::Invalid)?;
+        Ok(Some(serde_json::from_str(&encoded)?))
+    }
+
     fn context(&self, user: &str, chat: &str) -> Result<Binding> {
         let context = chat_move::grant_context(&self.data, user, chat, &self.start)
             .map_err(|_| Fault::Unavailable)?;

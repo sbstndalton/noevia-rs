@@ -584,7 +584,11 @@ pub fn account_files(
 
 /// Original account-instructions/account-memory prompt projection. Caller holds its
 /// live session fence; this reads the same sanitized records as the public routes.
-pub(crate) fn chat_parts(acct: &Account, user: &str) -> Result<Vec<String>, Fault> {
+pub(crate) fn chat_parts(
+    acct: &Account,
+    user: &str,
+    project_memories: &[String],
+) -> Result<Vec<String>, Fault> {
     let dir = user_dir(acct, user)?;
     let settings = instructions_read(&dir);
     let mut lines = Vec::<String>::new();
@@ -642,6 +646,17 @@ pub(crate) fn chat_parts(acct: &Account, user: &str) -> Result<Vec<String>, Faul
                 if !memories.contains(&text) {
                     memories.push(text);
                 }
+            }
+        }
+    }
+    if memory.get("useProjectMemories").as_bool() != Some(false) {
+        for text in project_memories
+            .iter()
+            .map(String::as_str)
+            .filter(|s| !s.trim().is_empty())
+        {
+            if !memories.contains(&text) {
+                memories.push(text);
             }
         }
     }

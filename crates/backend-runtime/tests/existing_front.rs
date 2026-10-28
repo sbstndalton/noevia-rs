@@ -36,6 +36,27 @@ impl Model for Engine {
         _: &'a Control,
     ) -> FutureResult<'a, Value> {
         Box::pin(async move {
+            let latest = messages
+                .iter()
+                .rev()
+                .find(|v| v.get("role") == Some(&json!("user")))
+                .and_then(|v| v.get("content"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            if latest == "project turn" {
+                let system = messages
+                    .iter()
+                    .filter(|v| v.get("role") == Some(&json!("system")))
+                    .filter_map(|v| v.get("content").and_then(Value::as_str))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                assert!(system
+                    .contains("Project instructions (follow closely):\nUse synthetic evidence"));
+                assert!(system.contains("- project memory"));
+                assert!(!system.contains('\u{202e}'));
+                assert!(system.contains("\\u202e"));
+                return Ok(json!({"role":"assistant","content":"native project answer"}));
+            }
             assert_eq!(
                 messages
                     .iter()
@@ -146,7 +167,7 @@ async fn original_front_auth_history_and_native_execution_share_one_transcript(
         .header("x-csrf-token", csrf)
         .header("origin", "https://noevia.example.test")
         .header("content-type", "application/json")
-        .body(json!({"chatId":"chat1","message":"follow up","spaceId":"free"}).to_string())
+        .body(json!({"chatId":"chat1","message":"follow up","spaceId":"free","turnImageIds":[],"turnToolboxes":[],"compactOnly":false}).to_string())
         .send()
         .await?;
     assert_eq!(reply.status(), 200);
@@ -191,6 +212,19 @@ async fn original_front_auth_history_and_native_execution_share_one_transcript(
         .send()
         .await?;
     assert_eq!(source.status(), 401);
+    let project = json!({"id":"project1","name":"Example\u{202e}project","routing":"manual","instructions":"Use synthetic evidence","memories":["project memory"],"files":[],"chats":[{"id":"chat2","title":"Project chat"}]});
+    std::fs::write(
+        user_dir.join("projects.json"),
+        json!({"projects":[project]}).to_string(),
+    )?;
+    let reply=client.post(format!("http://{address}/api/chat")).header("cookie",cookie).header("x-csrf-token",csrf).header("origin","https://noevia.example.test").header("content-type","application/json").body(json!({"chatId":"chat2","projectId":"project1","spaceId":"project1","message":"project turn"}).to_string()).send().await?;
+    assert_eq!(reply.status(), 200);
+    assert!(reply.text().await?.contains("native project answer"));
+    let saved =
+        server_projects::transcript::read(data, USER, "chat2").map_err(|e| format!("{e:?}"))?;
+    assert!(js_json::wtf16::stringify(&saved.history)
+        .ok_or("history")?
+        .contains("native project answer"));
     let _ = stop.send(());
     task.await?;
     Ok(())

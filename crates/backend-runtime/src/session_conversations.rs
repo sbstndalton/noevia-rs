@@ -63,18 +63,37 @@ impl SessionConversations {
     }
 }
 impl Conversations for SessionConversations {
+    fn project(&self, binding: &Binding) -> Result<Option<Value>> {
+        self.fenced(&binding.user, || self.inner.project(binding))
+    }
+
     fn system(&self, binding: &Binding) -> Result<Vec<Value>> {
         self.fenced(&binding.user, || {
             let Some(account) = &self.account else {
                 return self.inner.system(binding);
             };
+            let project = self.inner.project(binding)?;
+            let memories: Vec<String> = project.as_ref().and_then(|p|p.get("memories")).and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_owned).collect();
             let mut parts = account
-                .chat_system_parts(&binding.user)
+                .chat_system_parts_with_memories(&binding.user,&memories)
                 .map_err(|_| Fault::Unavailable)?;
             parts.insert(
                 parts.len().min(1),
                 crate::calendar::system_part(chrono::Local::now().date_naive()),
             );
+            if let Some(project) = project {
+                let mut context = Vec::new();
+                if !project.get("id").and_then(Value::as_str).is_some_and(|s|s.starts_with("cowork-chat-context-")) {
+                    if let Some(name)=project.get("name").and_then(Value::as_str).filter(|s|!s.is_empty()) {
+                        let quoted=serde_json::to_string(name)?.chars().map(|c| if matches!(c,'\u{0085}'|'\u{200e}'|'\u{200f}'|'\u{2028}'..='\u{202e}'|'\u{2066}'..='\u{2069}') {format!("\\u{:04x}",c as u32)} else {c.to_string()}).collect::<String>();
+                        context.push(format!("You are working inside the user's project {quoted}."));
+                    }
+                }
+                if let Some(goal)=project.get("goal").and_then(Value::as_str).filter(|s|!s.is_empty()) { context.push(format!("Project goal: {goal}")); }
+                if let Some(instructions)=project.get("instructions").and_then(Value::as_str).filter(|s|!s.is_empty()) { context.push(format!("Project instructions (follow closely):\n{instructions}")); }
+                let at=parts.iter().position(|s|s.starts_with("Things you know about the user")).unwrap_or(parts.len());
+                parts.splice(at..at,context);
+            }
             Ok(vec![
                 serde_json::json!({"role":"system","content":parts.join("\n\n")}),
             ])

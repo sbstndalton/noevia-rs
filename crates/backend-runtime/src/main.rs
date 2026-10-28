@@ -5,7 +5,7 @@ use backend_runtime::{
     state::StateStore,
     transport::Endpoint,
 };
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc};
 fn main() -> std::process::ExitCode {
     match run() {
         Ok(()) => std::process::ExitCode::SUCCESS,
@@ -57,7 +57,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     &data, &start, &path,
                 )?,
             );
-            Arc::new(Runtime::new(store, Arc::new(model), BTreeMap::new())?)
+            Arc::new(Runtime::new(
+                store,
+                Arc::new(model),
+                backend_runtime::tools::core_tools(),
+            )?)
         }
         #[cfg(not(target_os = "linux"))]
         {
@@ -66,7 +70,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         let store = Arc::new(StateStore::open(&path)?);
         store.recover_interrupted()?;
-        Arc::new(Runtime::new(store, Arc::new(model), BTreeMap::new())?)
+        Arc::new(Runtime::new(
+            store,
+            Arc::new(model),
+            backend_runtime::tools::core_tools(),
+        )?)
     };
     let diary = diary_registry()?;
     let app = Api::with_diary(&data, runtime, |key| std::env::var(key).ok(), diary)?;

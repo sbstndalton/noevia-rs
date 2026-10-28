@@ -429,16 +429,18 @@ async fn handle(
     // Explicitly refuse unsupported semantics instead of silently dropping a pinned skill,
     // a Diary request, an attachment, Cowork mode, or per-turn tool permission selections.
     if body.get("mode").is_some_and(|v| v != "chat")
-        || body.get("spaceId").is_some_and(|v| v != "free")
-        || [
-            "skill",
-            "turnToolboxes",
-            "turnImageIds",
-            "compactOnly",
-            "projectId",
-        ]
-        .iter()
-        .any(|k| body.get(k).is_some_and(|v| !v.is_null()))
+        || body
+            .get("spaceId")
+            .and_then(Value::as_str)
+            .is_some_and(|v| v.starts_with("diary"))
+        || body.get("skill").is_some_and(|v| !v.is_null())
+        || body
+            .get("compactOnly")
+            .is_some_and(|v| !v.is_null() && v != &Value::Bool(false))
+        || ["turnToolboxes", "turnImageIds"].iter().any(|k| {
+            body.get(k)
+                .is_some_and(|v| !v.is_null() && !v.as_array().is_some_and(Vec::is_empty))
+        })
     {
         return response(
             409,
@@ -471,11 +473,19 @@ async fn handle(
         Ok(v) => v,
         Err(e) => return failure(e),
     };
-    if binding.holder != crate::approvals::Holder::Free || binding.scope != "free" {
-        return response(
-            409,
-            json!({"error":"Project instruction/context assembly is not implemented by this candidate"}),
-        );
+    let requested_project = body
+        .get("projectId")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty());
+    let expected_project = match &binding.holder {
+        crate::approvals::Holder::Project { id } => Some(id.as_str()),
+        _ => None,
+    };
+    if requested_project.is_some() && requested_project != expected_project {
+        return failure(Fault::Conflict);
+    }
+    if let Err(e) = runtime.validate_context(&binding) {
+        return failure(e);
     }
     // Long-lived chats must not consume the request permits needed to approve them.
     drop(permit);
