@@ -69,3 +69,22 @@ fn source_probe_is_not_runtime_readiness() -> Result<(), Box<dyn std::error::Err
     );
     Ok(())
 }
+
+#[cfg(unix)]
+#[test]
+fn non_utf8_argument_refuses_without_echo_or_panic() -> Result<(), Box<dyn std::error::Error>> {
+    use std::os::unix::ffi::OsStringExt;
+    let output = Command::new(env!("CARGO_BIN_EXE_code-verify-native"))
+        .arg(std::ffi::OsString::from_vec(
+            b"private-canary-\xff".to_vec(),
+        ))
+        .env_clear()
+        .output()?;
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    assert_eq!(
+        output.stderr,
+        b"code-verify-native: isolated verifier unavailable\n"
+    );
+    Ok(())
+}

@@ -797,8 +797,8 @@ fn serve(c: Config, mut a: Authority) -> Result<()> {
     Ok(())
 }
 pub fn entry() -> Result<()> {
-    let args: Vec<_> = std::env::args().skip(1).collect();
-    if args == ["--owned-helper"] {
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
+    if args == [std::ffi::OsString::from("--owned-helper")] {
         return helper();
     }
     if !args.is_empty() {

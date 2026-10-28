@@ -11,7 +11,9 @@ mod runtime;
 #[cfg(any(target_os = "linux", test))]
 mod session;
 fn main() -> std::process::ExitCode {
-    if std::env::args().skip(1).collect::<Vec<_>>() == ["--capabilities"] {
+    if std::env::args_os().skip(1).collect::<Vec<_>>()
+        == [std::ffi::OsString::from("--capabilities")]
+    {
         println!(
             "{}",
             serde_json::json!({"probe":"source-capability","capabilities":["noevia-code-verify/1"],"nativeVerifier":true,"oneShot":true,"readiness":"requires-isolated-namespace-init","requestMaxBytes":code_verify_native::MAX_REQUEST_BYTES})
