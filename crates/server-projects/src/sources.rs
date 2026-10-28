@@ -4,9 +4,15 @@ use crate::{chats, js, store, Ctx, Reply};
 use js_json::{wtf16, JValue};
 use std::io::Read;
 const MAX_TEXT: u64 = 64 * 1024 * 1024;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TextUnavailable;
 
 /// Read each path component without following symlinks. IDs use the original source-text safeId.
-pub fn text(dir: &std::path::Path, project: &str, file: &JValue) -> Result<String, ()> {
+pub fn text(
+    dir: &std::path::Path,
+    project: &str,
+    file: &JValue,
+) -> Result<String, TextUnavailable> {
     if let Some(content) = file.get("content").as_str() {
         return Ok(content.to_owned());
     }
@@ -25,31 +31,33 @@ pub fn text(dir: &std::path::Path, project: &str, file: &JValue) -> Result<Strin
         .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
         .collect();
     if id.is_empty() {
-        return Err(());
+        return Err(TextUnavailable);
     }
     use rustix::fs::{open, openat, Mode, OFlags};
     let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC | OFlags::NOFOLLOW;
-    let root = open(dir, flags, Mode::empty()).map_err(|_| ())?;
-    let sources = openat(&root, "project-sources", flags, Mode::empty()).map_err(|_| ())?;
-    let project = openat(&sources, id.as_str(), flags, Mode::empty()).map_err(|_| ())?;
+    let root = open(dir, flags, Mode::empty()).map_err(|_| TextUnavailable)?;
+    let sources =
+        openat(&root, "project-sources", flags, Mode::empty()).map_err(|_| TextUnavailable)?;
+    let project =
+        openat(&sources, id.as_str(), flags, Mode::empty()).map_err(|_| TextUnavailable)?;
     let fd = openat(
         &project,
         format!("{reference}.txt"),
         OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
         Mode::empty(),
     )
-    .map_err(|_| ())?;
+    .map_err(|_| TextUnavailable)?;
     let file = std::fs::File::from(fd);
-    let metadata = file.metadata().map_err(|_| ())?;
+    let metadata = file.metadata().map_err(|_| TextUnavailable)?;
     if !metadata.is_file() || metadata.len() > MAX_TEXT {
-        return Err(());
+        return Err(TextUnavailable);
     }
     let mut bytes = Vec::new();
     file.take(MAX_TEXT + 1)
         .read_to_end(&mut bytes)
-        .map_err(|_| ())?;
+        .map_err(|_| TextUnavailable)?;
     if bytes.len() as u64 > MAX_TEXT {
-        return Err(());
+        return Err(TextUnavailable);
     }
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
@@ -91,7 +99,7 @@ pub fn get(ctx: Ctx<'_>, raw_project: &str, name: Option<&str>) -> Reply {
             let content =
                 match text(&dir, &id, file) {
                     Ok(v) => v,
-                    Err(()) => return Reply::json(
+                    Err(TextUnavailable) => return Reply::json(
                         404,
                         wtf16::stringify(&JValue::obj([
                             (
