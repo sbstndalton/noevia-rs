@@ -89,6 +89,14 @@ impl DavBackend {
         identity: &Identity,
         operation: impl FnOnce(&Corpus, &Control) -> Result<T>,
     ) -> std::result::Result<T, server_dav::Fault> {
+        self.fenced_audit(identity, None, operation)
+    }
+    fn fenced_audit<T>(
+        &self,
+        identity: &Identity,
+        audit: Option<(&str, serde_json::Value)>,
+        operation: impl FnOnce(&Corpus, &Control) -> Result<T>,
+    ) -> std::result::Result<T, server_dav::Fault> {
         let corpus = self
             .tenants
             .get(&identity.user_id)
@@ -101,6 +109,12 @@ impl DavBackend {
             control.check().map_err(|_|StoreError::NotReady("DAV deadline".into()))?;
             outcome=Some(operation(corpus,&control));
             if outcome.as_ref().is_some_and(std::result::Result::is_ok){tx.execute("UPDATE app_passwords SET last_used_at=? WHERE id=? AND user_id=?",server_store::rusqlite::params![now_ms(),identity.credential_id,identity.user_id])?;}
+            if outcome.as_ref().is_some_and(std::result::Result::is_ok) {
+                if let Some((action, mut detail)) = audit {
+                    detail.as_object_mut().ok_or_else(||StoreError::NotReady("invalid audit detail".into()))?.insert("credentialId".into(),serde_json::json!(identity.credential_id));
+                    tx.execute("INSERT INTO audit_events(actor_user_id,target_user_id,action,detail,created_at) VALUES(?1,?1,?2,?3,?4)",server_store::rusqlite::params![identity.user_id,action,detail.to_string(),now_ms()])?;
+                }
+            }
             Ok(())
         }).map_err(|_|server_dav::Fault::Unavailable)?;
         outcome
@@ -141,7 +155,7 @@ impl Backend for DavBackend {
                     .get("op")
                     .and_then(serde_json::Value::as_str)
                     .ok_or(Fault::Invalid)?;
-                if !matches!(op, "stat" | "delete" | "move" | "copy") {
+                if !matches!(op, "stat" | "delete" | "move" | "copy" | "preserve") {
                     return Err(Fault::Invalid);
                 }
                 if op != "stat" {
@@ -250,26 +264,34 @@ impl Backend for DavBackend {
             if content.len() > 512 * 1024 || !path.to_ascii_lowercase().ends_with(".md") {
                 return Err(server_dav::Fault::Forbidden);
             }
-            self.fenced(identity, |corpus, control| {
-                let condition = match &condition {
-                    server_dav::WriteCondition::Match(version) => WriteCondition {
-                        if_match: Some(version),
-                        if_none_match: false,
-                    },
-                    server_dav::WriteCondition::Create => WriteCondition {
-                        if_match: None,
-                        if_none_match: true,
-                    },
-                };
-                corpus.put(
-                    path,
-                    content,
-                    condition,
-                    now_ms() as f64 / 1000.0,
-                    control,
-                    || Ok(()),
-                )
-            })
+            self.fenced_audit(
+                identity,
+                Some((
+                    "dav.write",
+                    serde_json::json!({"path":path,"bytes":content.len()}),
+                )),
+                |corpus, control| {
+                    self.mutation_ready(identity)?;
+                    let condition = match &condition {
+                        server_dav::WriteCondition::Match(version) => WriteCondition {
+                            if_match: Some(version),
+                            if_none_match: false,
+                        },
+                        server_dav::WriteCondition::Create => WriteCondition {
+                            if_match: None,
+                            if_none_match: true,
+                        },
+                    };
+                    corpus.put(
+                        path,
+                        content,
+                        condition,
+                        now_ms() as f64 / 1000.0,
+                        control,
+                        || Ok(()),
+                    )
+                },
+            )
         })
     }
     fn mkdir<'a>(
@@ -278,9 +300,14 @@ impl Backend for DavBackend {
         path: &'a str,
     ) -> BackendFuture<'a, std::result::Result<(), server_dav::Fault>> {
         Box::pin(async move {
-            self.fenced(identity, |corpus, control| {
-                corpus.mkdir(path, now_ms() as f64 / 1000.0, control)
-            })
+            self.fenced_audit(
+                identity,
+                Some(("dav.mkdir", serde_json::json!({"path":path}))),
+                |corpus, control| {
+                    self.mutation_ready(identity)?;
+                    corpus.mkdir(path, now_ms() as f64 / 1000.0, control)
+                },
+            )
         })
     }
 }

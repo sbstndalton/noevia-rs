@@ -81,6 +81,7 @@ async fn real_auth_writer_fences_revoked_dav_credentials_at_corpus_sink(
     let backend = DavBackend::new(Arc::new(built.store), writer, tenants, Scope::Lan)?
         .with_journals(HashMap::from([(user.to_owned(), Arc::clone(&journal))]))
         .with_workspace(config);
+    let backend = Arc::new(backend);
     let identity = Identity {
         user_id: user.into(),
         credential_id: "a".repeat(32),
@@ -116,6 +117,17 @@ async fn real_auth_writer_fences_revoked_dav_credentials_at_corpus_sink(
         .await
         .map_err(|e| format!("{e:?}"))?
         .is_none());
+    assert_eq!(
+        backend
+            .write(
+                &identity,
+                "note.md",
+                "must not pass pending journal",
+                WriteCondition::Match(version.clone())
+            )
+            .await,
+        Err(server_dav::Fault::Conflict)
+    );
     journal.mark_applied(&pending)?;
     let copy = backend
         .workspace(
@@ -161,6 +173,129 @@ async fn real_auth_writer_fences_revoked_dav_credentials_at_corpus_sink(
         |r| r.get(0),
     )?;
     assert_eq!(receipts, 3);
+    // Actual DAV handler uses the native preserve kernel before an unconditional overwrite.
+    let credential = scenario
+        .get("dav")
+        .and_then(Value::as_array)
+        .ok_or("DAV fixture")?
+        .iter()
+        .find(|v| {
+            v.pointer("/expect/userId").and_then(Value::as_str) == Some(user)
+                && v.get("scope").and_then(Value::as_str) == Some("lan")
+        })
+        .ok_or("DAV credential")?;
+    let username = credential
+        .get("username")
+        .and_then(Value::as_str)
+        .ok_or("username")?;
+    let password = credential
+        .get("password")
+        .and_then(Value::as_str)
+        .ok_or("password")?;
+    let req = reqwest::Client::new()
+        .get("http://127.0.0.1")
+        .basic_auth(username, Some(password))
+        .build()?;
+    let auth = req.headers().get("authorization").ok_or("header")?.clone();
+    let service = server_dav::DavService::new(
+        backend.clone(),
+        server_dav::Config::new("http://127.0.0.1:18022", Scope::Lan, None)
+            .map_err(|e| e.to_string())?,
+    );
+    for (text, status) in [("first version", 201), ("replacement version", 204)] {
+        let request = axum::http::Request::builder()
+            .method("PUT")
+            .uri(format!("/dav/{username}/unconditional.md"))
+            .header("host", "127.0.0.1:18022")
+            .header("authorization", auth.clone())
+            .body(axum::body::Body::from(text))?;
+        let response = service.handle(request, "127.0.0.1".parse()?).await;
+        assert_eq!(response.status().as_u16(), status);
+    }
+    assert_eq!(
+        backend
+            .read(&identity, "unconditional.md")
+            .await
+            .map_err(|e| format!("{e:?}"))?
+            .ok_or("file")?
+            .content,
+        "replacement version"
+    );
+    let preserved: i64 = db.query_row(
+        "SELECT count(*) FROM workspace_operation_receipts WHERE op='preserve'",
+        [],
+        |r| r.get(0),
+    )?;
+    assert_eq!(preserved, 1);
+    let mut stmt = db.prepare("SELECT path,data FROM files WHERE path LIKE '.noevia-trash/%'")?;
+    let capsules = stmt
+        .query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?))
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let mut found = false;
+    for (path, bytes) in capsules {
+        let id = path
+            .strip_prefix(".noevia-trash/")
+            .and_then(|s| s.strip_suffix(".json"))
+            .ok_or("capsule name")?;
+        let capsule =
+            diary_workspace_rules::decode_strict(&bytes, id).map_err(|e| format!("{e:?}"))?;
+        if capsule
+            .record
+            .get("path")
+            .and_then(Value::as_str)
+            .is_some_and(|s| s.starts_with("unconditional (replaced "))
+        {
+            assert_eq!(capsule.raw, b"first version");
+            found = true;
+        }
+    }
+    assert!(
+        found,
+        "previous bytes must be recoverable from a valid original Trash capsule"
+    );
+    let audit: String = raw.query_row(
+        "SELECT detail FROM audit_events WHERE action='dav.write' ORDER BY id DESC LIMIT 1",
+        [],
+        |r| r.get(0),
+    )?;
+    let audit: Value = serde_json::from_str(&audit)?;
+    assert_eq!(audit.get("path"), Some(&json!("unconditional.md")));
+    assert_eq!(audit.get("bytes"), Some(&json!(19)));
+    assert!(audit.get("content").is_none());
+    backend
+        .write(
+            &identity,
+            "Monthly/2026-10.md",
+            "protected original",
+            WriteCondition::Create,
+        )
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let request = axum::http::Request::builder()
+        .method("PUT")
+        .uri(format!("/dav/{username}/Monthly/2026-10.md"))
+        .header("host", "127.0.0.1:18022")
+        .header("authorization", auth)
+        .body(axum::body::Body::from("must not land"))?;
+    assert_eq!(
+        service
+            .handle(request, "127.0.0.1".parse()?)
+            .await
+            .status()
+            .as_u16(),
+        428
+    );
+    assert_eq!(
+        backend
+            .read(&identity, "Monthly/2026-10.md")
+            .await
+            .map_err(|e| format!("{e:?}"))?
+            .ok_or("protected file")?
+            .content,
+        "protected original"
+    );
     raw.execute(
         "DELETE FROM app_passwords WHERE id=?",
         [&identity.credential_id],

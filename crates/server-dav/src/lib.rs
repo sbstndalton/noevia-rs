@@ -971,8 +971,9 @@ impl<B: Backend> DavService<B> {
             );
         }
         let condition = match (matching, new_only) {
-            (Some(tag), None) => WriteCondition::Match(tag.trim_matches('"').to_owned()),
-            (None, Some(_)) => WriteCondition::Create,
+            (Some(tag), None) => Some(WriteCondition::Match(tag.trim_matches('"').to_owned())),
+            (None, Some(_)) => Some(WriteCondition::Create),
+            (None, None) if self.backend.workspace_enabled() => None,
             _ => {
                 return reply(
                     StatusCode::PRECONDITION_REQUIRED,
@@ -1001,6 +1002,49 @@ impl<B: Backend> DavService<B> {
         if !self.is_allowed(identity).await {
             return reply(StatusCode::FORBIDDEN, "Sharing was disabled", false);
         }
+        let condition = if let Some(condition) = condition {
+            condition
+        } else {
+            // Original unconditional-client contract: preserve the bytes just read,
+            // then CAS the replacement. No successful preservation is a write grant.
+            let current =
+                match tokio::time::timeout(self.config.deadline, self.backend.read(identity, path))
+                    .await
+                {
+                    Ok(Ok(current)) => current,
+                    Ok(Err(f)) => return fault_reply(f, true),
+                    Err(_) => return fault_reply(Fault::Unavailable, true),
+                };
+            if let Some(file) = current {
+                if !valid_tag(&file.version) {
+                    return fault_reply(Fault::Unavailable, true);
+                }
+                let preserved = tokio::time::timeout(
+                    self.config.deadline,
+                    self.backend.workspace(
+                        identity,
+                        serde_json::json!({"op":"preserve","path":path,"version":file.version}),
+                    ),
+                )
+                .await;
+                match preserved {
+                    Ok(Ok((200, body)))
+                        if body.get("trash").is_some_and(serde_json::Value::is_string) => {}
+                    Ok(Ok((status, _))) if (400..600).contains(&status) => {
+                        return reply(
+                            StatusCode::from_u16(status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
+                            "Previous version could not be preserved",
+                            false,
+                        )
+                    }
+                    Ok(Err(f)) => return fault_reply(f, true),
+                    _ => return fault_reply(Fault::Ambiguous, true),
+                }
+                WriteCondition::Match(file.version)
+            } else {
+                WriteCondition::Create
+            }
+        };
         let created = condition == WriteCondition::Create;
         let result = tokio::time::timeout(
             self.config.deadline,
