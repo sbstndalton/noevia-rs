@@ -418,6 +418,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "code-verify-native"
+version = "0.1.0"
+dependencies = [
+ "nix",
+ "rustix",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "completeness-report"
 version = "0.1.0"
 dependencies = [
