@@ -182,7 +182,7 @@ fn patch(stored: &Value, body: &Value) -> Result<Value, Reply> {
                 .filter(|s| !s.is_empty())
                 .take(50)
                 .map(|s| clip(s, 500))
-                .collect::<Vec<_>>()),
+                .collect::<Result<Vec<_>, _>>()?),
         );
     }
     if let Some(v) = input.get("sampling") {
