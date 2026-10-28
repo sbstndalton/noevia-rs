@@ -243,7 +243,12 @@ impl Runtime {
             if serde_json::to_vec(messages)?.len() > 8 * 1024 * 1024 {
                 return Err(Fault::Capacity);
             }
-            let reply = self.model.complete(messages, &schemas, control).await?;
+            let mut framed = self.store.system(binding)?;
+            framed.extend(messages.iter().cloned());
+            if serde_json::to_vec(&framed)?.len() > 8 * 1024 * 1024 {
+                return Err(Fault::Capacity);
+            }
+            let reply = self.model.complete(&framed, &schemas, control).await?;
             if reply.get("role").and_then(Value::as_str) != Some("assistant") {
                 return Err(Fault::Protocol);
             }

@@ -8,6 +8,7 @@ use server_store::Writer;
 use std::sync::Arc;
 pub struct SessionConversations {
     inner: Arc<dyn Conversations>,
+    account: Option<Arc<server_account::Account>>,
     writer: Arc<Writer>,
     auth: Arc<Authenticator>,
     creds: Creds,
@@ -25,12 +26,17 @@ impl SessionConversations {
     ) -> Self {
         Self {
             inner,
+            account: None,
             writer,
             auth,
             creds,
             user,
             clock: Arc::new(clock),
         }
+    }
+    pub fn with_account(mut self, account: Arc<server_account::Account>) -> Self {
+        self.account = Some(account);
+        self
     }
     fn fenced<T>(&self, user: &str, operation: impl FnOnce() -> Result<T>) -> Result<T> {
         if user != self.user {
@@ -57,6 +63,24 @@ impl SessionConversations {
     }
 }
 impl Conversations for SessionConversations {
+    fn system(&self, binding: &Binding) -> Result<Vec<Value>> {
+        self.fenced(&binding.user, || {
+            let Some(account) = &self.account else {
+                return self.inner.system(binding);
+            };
+            let mut parts = account
+                .chat_system_parts(&binding.user)
+                .map_err(|_| Fault::Unavailable)?;
+            parts.insert(
+                parts.len().min(1),
+                crate::calendar::system_part(chrono::Local::now().date_naive()),
+            );
+            Ok(vec![
+                serde_json::json!({"role":"system","content":parts.join("\n\n")}),
+            ])
+        })
+    }
+
     fn context(&self, user: &str, chat: &str) -> Result<Binding> {
         self.fenced(user, || self.inner.context(user, chat))
     }

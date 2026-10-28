@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 pub mod api;
 pub mod approvals;
+pub mod calendar;
 pub mod chat;
 pub mod dav;
 pub mod diary;

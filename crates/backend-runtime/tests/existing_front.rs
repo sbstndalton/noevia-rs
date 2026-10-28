@@ -37,7 +37,10 @@ impl Model for Engine {
     ) -> FutureResult<'a, Value> {
         Box::pin(async move {
             assert_eq!(
-                messages.first().and_then(|v| v.get("content")),
+                messages
+                    .iter()
+                    .find(|v| v.get("role") == Some(&json!("user")))
+                    .and_then(|v| v.get("content")),
                 Some(&json!("existing question"))
             );
             Ok(json!({"role":"assistant","content":"native answer"}))

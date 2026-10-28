@@ -20,14 +20,25 @@ struct ModelReply(Arc<AtomicUsize>, std::path::PathBuf);
 impl Model for ModelReply {
     fn complete<'a>(
         &'a self,
-        _: &'a [Value],
+        messages: &'a [Value],
         _: &'a [Value],
         _: &'a Control,
     ) -> FutureResult<'a, Value> {
         Box::pin(async move {
+            let system = messages
+                .first()
+                .and_then(|v| v.get("content"))
+                .and_then(Value::as_str)
+                .ok_or(backend_runtime::Fault::Protocol)?;
+            assert!(system.contains("Synthetic custom instruction"));
+            assert!(system.contains("Synthetic memory"));
+            assert!(system.contains("Calendar facts, computed by the server"));
             if self.0.fetch_add(1, Ordering::SeqCst) == 1 {
                 let db = rusqlite::Connection::open(&self.1)?;
-                db.execute("DELETE FROM sessions WHERE user_id='u-member'", [])?;
+                db.execute(
+                    "DELETE FROM sessions WHERE user_id='01234567-89ab-4cde-8fab-0123456789ab'",
+                    [],
+                )?;
             }
             Ok(json!({"role":"assistant","content":"Synthetic native reply"}))
         })
@@ -36,20 +47,34 @@ impl Model for ModelReply {
 #[tokio::test]
 async fn actual_loopback_auth_csrf_and_native_chat_store() -> Result<(), Box<dyn std::error::Error>>
 {
-    let fixtures: Value = serde_json::from_str(include_str!(
-        "../../server-auth/tests/fixtures/node-auth.v1.json"
-    ))?;
+    let fixtures: Value = serde_json::from_str(
+        &include_str!("../../server-auth/tests/fixtures/node-auth.v1.json")
+            .replace("u-member", "01234567-89ab-4cde-8fab-0123456789ab"),
+    )?;
     let scenario = fixtures
         .get("scenarios")
         .and_then(Value::as_array)
         .and_then(|a| a.first())
         .ok_or("scenario")?;
     let built = auth_fixture::build(scenario);
+    let user_dir = built
+        .dir
+        .path()
+        .join("users/01234567-89ab-4cde-8fab-0123456789ab");
+    std::fs::create_dir_all(&user_dir)?;
+    std::fs::write(
+        user_dir.join("account-instructions.json"),
+        json!({"text":"Synthetic custom instruction","style":"concise"}).to_string(),
+    )?;
+    std::fs::write(
+        user_dir.join("account-memory.json"),
+        json!({"memories":["Synthetic memory","Synthetic memory"]}).to_string(),
+    )?;
     let state = Arc::new(StateStore::create(
         &built.dir.path().join("native-state.db"),
     )?);
     let binding = Binding {
-        user: "u-member".into(),
+        user: "01234567-89ab-4cde-8fab-0123456789ab".into(),
         canonical_chat_id: "chat1".into(),
         scope: "free".into(),
         holder: Holder::Free,
@@ -99,7 +124,8 @@ async fn actual_loopback_auth_csrf_and_native_chat_store() -> Result<(), Box<dyn
         .iter()
         .find(|c| {
             c.pointer("/expect/csrf") == Some(&Value::Bool(true))
-                && c.pointer("/expect/authn/user/id") == Some(&json!("u-member"))
+                && c.pointer("/expect/authn/user/id")
+                    == Some(&json!("01234567-89ab-4cde-8fab-0123456789ab"))
         })
         .and_then(|c| c.get("input"))
         .ok_or("credentials")?;

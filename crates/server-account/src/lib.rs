@@ -195,6 +195,11 @@ pub const PUBLIC_AUTH_ROUTES: &[&str] = &[
 ];
 
 impl Account {
+    /// Caller must retain the live session/account fence around this read.
+    pub fn chat_system_parts(&self, user: &str) -> Result<Vec<String>, Fault> {
+        files::chat_parts(self, user)
+    }
+
     pub fn new(
         writer: Arc<Writer>,
         auth: Arc<Authenticator>,

@@ -351,14 +351,17 @@ async fn handle(
     let Some(chat) = body.get("chatId").and_then(Value::as_str) else {
         return response(400, json!({"error":"chatId required"}));
     };
-    let session_store = Arc::new(crate::session_conversations::SessionConversations::new(
-        Arc::clone(&api.runtime.store),
-        Arc::clone(&api.writer),
-        Arc::clone(&api.auth),
-        creds,
-        identity.user.id.clone(),
-        now,
-    ));
+    let session_store = Arc::new(
+        crate::session_conversations::SessionConversations::new(
+            Arc::clone(&api.runtime.store),
+            Arc::clone(&api.writer),
+            Arc::clone(&api.auth),
+            creds,
+            identity.user.id.clone(),
+            now,
+        )
+        .with_account(Arc::clone(&api.account)),
+    );
     let runtime = Arc::new(api.runtime.with_conversations(session_store.clone()));
     let binding = match runtime.store.context(&identity.user.id, chat) {
         Ok(v) => v,
