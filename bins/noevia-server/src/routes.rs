@@ -309,6 +309,10 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
         return decision;
     }
     let route = route_for(path)?;
+    // This owner is exact-path only; the shared matcher tolerates trailing slashes.
+    if route.path == "/api/chat-framing/preferences" && path != route.path {
+        return None;
+    }
     if route.path == STORAGE_METADATA && (path != STORAGE_METADATA || method != "GET") {
         return None;
     }
@@ -342,7 +346,9 @@ mod tests {
             "/api/chat-framing/preferences/x",
         ] {
             assert!(!is_account_path(path));
-            assert_eq!(dispatch("GET", path), None);
+            for method in ["GET", "PUT", "POST", "DELETE", "HEAD", "OPTIONS"] {
+                assert_eq!(dispatch(method, path), None, "{method} {path}");
+            }
         }
     }
 
