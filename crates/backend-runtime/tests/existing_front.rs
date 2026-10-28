@@ -296,6 +296,30 @@ async fn original_front_auth_history_and_native_execution_share_one_transcript(
             .unwrap_or(&Value::Null),
         "attached source evidence"
     );
+    let retention_url = format!("http://{address}/api/account/retention");
+    let pending = client
+        .put(&retention_url)
+        .header("cookie", cookie)
+        .header("x-csrf-token", csrf)
+        .header("origin", "https://noevia.example.test")
+        .header("content-type", "application/json")
+        .body(r#"{"days":30,"confirmDeletes":0}"#)
+        .send()
+        .await?;
+    assert_eq!(pending.status(), 409);
+    assert!(user_dir.join("history-chat1.json").exists());
+    let confirmed = client
+        .put(&retention_url)
+        .header("cookie", cookie)
+        .header("x-csrf-token", csrf)
+        .header("origin", "https://noevia.example.test")
+        .header("content-type", "application/json")
+        .body(r#"{"days":30,"confirmDeletes":1}"#)
+        .send()
+        .await?;
+    assert_eq!(confirmed.status(), 200);
+    assert!(!user_dir.join("history-chat1.json").exists());
+    assert!(std::fs::read_to_string(user_dir.join("deleted-chats.json"))?.contains("chat1"));
     let _ = stop.send(());
     task.await?;
     Ok(())
