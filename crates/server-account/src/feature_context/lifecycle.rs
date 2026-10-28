@@ -194,6 +194,8 @@ pub struct Controller {
     env: [Option<bool>; 23],
     state: Mutex<State>,
     clock: Arc<dyn Fn() -> Instant + Send + Sync>,
+    #[cfg(test)]
+    control_state_probe: Mutex<Option<std::sync::mpsc::SyncSender<bool>>>,
 }
 impl Controller {
     pub fn new(runtime: Arc<FeatureRuntime>, env: [Option<bool>; 23]) -> Self {
@@ -202,6 +204,8 @@ impl Controller {
             env,
             state: Mutex::new(State::default()),
             clock: Arc::new(Instant::now),
+            #[cfg(test)]
+            control_state_probe: Mutex::new(None),
         }
     }
     fn state(&self) -> Result<std::sync::MutexGuard<'_, State>, StoreError> {
@@ -210,6 +214,25 @@ impl Controller {
     fn now(&self) -> Instant {
         (self.clock)()
     }
+    #[cfg(test)]
+    fn before_control_state_wait(&self) -> Result<(), StoreError> {
+        let probe = self
+            .control_state_probe
+            .lock()
+            .map_err(|_| StoreError::Poisoned)?
+            .take();
+        if let Some(probe) = probe {
+            // Observe the ACTUAL held mutex after all DB/pre-state checks. The test cancels
+            // only after receiving this observation, while retaining the state guard.
+            let contended = matches!(
+                self.state.try_lock(),
+                Err(std::sync::TryLockError::WouldBlock)
+            );
+            probe.send(contended).map_err(|_| unavailable())?;
+        }
+        Ok(())
+    }
+
     /// Cleanup/migration is supplied by the Account owner inside the SAME existing Writer.
     /// No Ready state is installed inside its callback; commit failures and late commits retire it.
     pub fn register(
@@ -356,7 +379,11 @@ impl Controller {
         })?;
         control.check()?;
         {
+            #[cfg(test)]
+            self.before_control_state_wait()?;
             let mut state = self.state()?;
+            control.check()?; // The request can retire while waiting for THIS mutex.
+
             state.expire(self.now());
             if state.current != Some(session) {
                 return Err(unavailable());
@@ -400,7 +427,11 @@ impl Controller {
         })?;
         control.check()?;
         {
+            #[cfg(test)]
+            self.before_control_state_wait()?;
             let mut state = self.state()?;
+            control.check()?; // The request can retire while waiting for THIS mutex.
+
             let record = state.sessions.get_mut(&session).ok_or_else(unavailable)?;
             if record.boot != boot
                 || control.request == record.register
@@ -938,6 +969,143 @@ mod tests {
         assert!(gate.acquire().is_err());
         gate.state.lock().map_err(|_| "gate poisoned")?.waiting = 0;
         assert!(gate.acquire().is_ok());
+        Ok(())
+    }
+    #[derive(PartialEq, Eq)]
+    struct SessionObservation {
+        sequence: u64,
+        request: Uuid,
+        snapshot: Snapshot,
+        expires: Instant,
+        reply: Reply,
+        release: Option<Uuid>,
+        current: Option<Uuid>,
+    }
+    impl SessionObservation {
+        fn capture(state: &State) -> Result<Self, Error> {
+            let record = state
+                .sessions
+                .get(&Uuid::from_u128(2))
+                .ok_or("missing session")?;
+            Ok(Self {
+                sequence: record.sequence,
+                request: record.request,
+                snapshot: record.snapshot.clone(),
+                expires: record.expires,
+                reply: record.reply,
+                release: record.release,
+                current: state.current,
+            })
+        }
+    }
+    fn final_state_race(release: bool, retry: bool, expire_deadline: bool) -> Result<(), Error> {
+        let f = fixture()?;
+        ready(&f)?;
+        let registration = registration(&f, 2)?;
+        // Prime an exact retry, or advance the existing session so a fresh renewal really
+        // would extend it. None of these are the blocked operation being tested.
+        f.clock.store(5000, Ordering::SeqCst);
+        let (_prime_cancel, prime) = control(11);
+        f.controller.renew(
+            &f.writer,
+            &prime,
+            registration.boot,
+            registration.session,
+            1,
+            registration.snapshot.clone(),
+        )?;
+        if release && retry {
+            let (_release_cancel, prior_release) = control(12);
+            f.controller.release(
+                &f.writer,
+                &prior_release,
+                registration.boot,
+                registration.session,
+            )?;
+        }
+        let Fixture {
+            controller,
+            writer,
+            node: _node,
+            _dir,
+            clock: _,
+        } = f;
+        let controller = Arc::new(controller);
+        let writer = Arc::new(writer);
+        let request = if release {
+            12
+        } else if retry {
+            11
+        } else {
+            13
+        };
+        let (cancel, mut c) = control(request);
+        if expire_deadline {
+            c.deadline = Instant::now() + Duration::from_secs(1);
+        }
+        let deadline = c.deadline;
+        let (tx, rx) = std::sync::mpsc::sync_channel(0);
+        *controller
+            .control_state_probe
+            .lock()
+            .map_err(|_| "probe poisoned")? = Some(tx);
+        let held = controller.state()?;
+        let before = SessionObservation::capture(&held)?;
+        let worker_controller = Arc::clone(&controller);
+        let worker_writer = Arc::clone(&writer);
+        let worker = std::thread::spawn(move || {
+            if release {
+                worker_controller.release(
+                    &worker_writer,
+                    &c,
+                    registration.boot,
+                    registration.session,
+                )
+            } else {
+                worker_controller.renew(
+                    &worker_writer,
+                    &c,
+                    registration.boot,
+                    registration.session,
+                    if retry { 1 } else { 2 },
+                    registration.snapshot,
+                )
+            }
+        });
+        assert!(rx.recv_timeout(Duration::from_secs(5))?); // actual final mutex contention after DB checks
+        if expire_deadline {
+            while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
+                std::thread::park_timeout(remaining);
+            }
+        } else {
+            cancel.0.store(true, Ordering::SeqCst);
+        }
+        drop(held);
+        let outcome = worker.join().map_err(|_| "worker panic")?;
+        assert!(outcome.is_err());
+        let observed = controller.state()?;
+        assert!(before == SessionObservation::capture(&observed)?);
+        drop(cancel);
+        Ok(())
+    }
+    #[test]
+    fn final_renew_state_wait_rechecks_cancel_and_deadline_including_exact_retry(
+    ) -> Result<(), Error> {
+        for retry in [false, true] {
+            for expired in [false, true] {
+                final_state_race(false, retry, expired)?;
+            }
+        }
+        Ok(())
+    }
+    #[test]
+    fn final_release_state_wait_rechecks_cancel_and_deadline_including_exact_retry(
+    ) -> Result<(), Error> {
+        for retry in [false, true] {
+            for expired in [false, true] {
+                final_state_race(true, retry, expired)?;
+            }
+        }
         Ok(())
     }
 }
