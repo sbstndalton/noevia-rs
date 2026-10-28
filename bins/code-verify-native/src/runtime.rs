@@ -203,6 +203,7 @@ struct Authority {
     children: Children,
     shutdown: SignalFd,
     stopping: bool,
+    receipt: Option<super::receipt::Receipt>,
 }
 impl Authority {
     fn stopping(&mut self) -> Result<bool> {
@@ -280,6 +281,14 @@ impl Authority {
         }
         let child = command.spawn()?;
         let ticket = self.children.register(i32::try_from(child.id())?)?;
+        if matches!(plan, Plan::Exec { who, .. } if who.uid == self.test.uid) {
+            // The helper is actually created and tracked already, even if bootstrap,
+            // credential setup or exec fails before the untrusted body can write.
+            self.receipt
+                .as_mut()
+                .ok_or("missing admission receipt")?
+                .test_helper_spawned()?;
+        }
         // A write failure is cleanup uncertainty: the server exits, never passes.
         parent.write_all(&bytes)?;
         parent.shutdown(Shutdown::Write)?;
@@ -584,6 +593,7 @@ fn config() -> Result<(Config, Authority)> {
         children: Children::default(),
         shutdown,
         stopping: false,
+        receipt: None,
     };
     if !a.collect()? {
         return Err("unexpected startup children".into());
@@ -738,6 +748,10 @@ fn serve(c: Config, mut a: Authority) -> Result<()> {
             Err(e) => return Err(e.into()),
         }
     };
+    a.receipt = Some(super::receipt::Receipt::begin(
+        c.socket.parent().ok_or("socket parent")?,
+        &request.nonce,
+    )?);
     let response = if c.commands.get(&request.repo).is_none() {
         json!({"noevia":"verify-result","nonce":request.nonce,"ok":false,"error":"not_configured","message":"No verification command is configured."})
     } else {
@@ -783,6 +797,12 @@ fn serve(c: Config, mut a: Authority) -> Result<()> {
     if a.stopping()? || !a.collect()? || !a.children.receipt_ready() {
         return Err("final child barrier".into());
     }
+    // A reader may trust a final receipt only with the correlated response and
+    // this same request nonce. IO failure refuses the response, never reports zero.
+    a.receipt
+        .as_mut()
+        .ok_or("missing admission receipt")?
+        .finish()?;
     socket.set_nonblocking(false)?;
     socket.set_write_timeout(Some(Duration::from_secs(2)))?;
     socket.write_all((serde_json::to_string(&response)? + "\n").as_bytes())?;

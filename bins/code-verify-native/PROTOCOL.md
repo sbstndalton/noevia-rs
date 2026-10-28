@@ -82,3 +82,23 @@ first observed after expiry is timed out even if it is exit0, and late drain
 cannot hide expiry. Separate cleanup grace never authorizes another normal
 phase. Deterministic tests exercise these exact production decision functions;
 actual isolated Linux deadline/framing/identity fault evidence remains pending.
+
+The protected socket directory also contains one bounded root-owned admission
+receipt, `.noevia-native-admission.json` (regular, single-link, mode0600). It is
+reset for the accepted nonce and records successful creation of the test Exec
+helper immediately after admission tracking and before bootstrap/payload progress.
+A test helper that fails before exec or is killed before JavaScript still counts.
+Git, cleanup and signalling helpers are not test-Exec admissions. The one-shot
+flow permits at most one test helper; unexpected additional admission fails closed.
+The final receipt is sealed only after the final all-child ECHILD/status barrier;
+receipt IO failure refuses a response. It contains no paths, commands or output.
+
+Readers need the protected file's ownership/type/link/mode/bound, a final flag,
+and the exact nonce from their correlated response. Missing, stale, unfinished or
+unreadable evidence is uncertainty, never proof of zero admission. This metadata
+is an always-on bounded internal receipt, not a test bypass/public helper mode,
+new selector or unbounded audit log. Its descriptor is CLOEXEC; workers cannot
+enter the root-owned socket directory. The ordinary Core caller remains unchanged.
+Actual Linux proof includes a successful helper followed by `/bin/false` before
+any payload marker, which must still produce a final count1; the original-budget
+copy refusal must have count0. Payload-marker absence alone is not admission proof.

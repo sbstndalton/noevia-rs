@@ -6,6 +6,8 @@ mod budget;
 mod engine;
 #[cfg(any(target_os = "linux", test))]
 mod lifecycle;
+#[cfg(any(target_os = "linux", test))]
+mod receipt;
 #[cfg(target_os = "linux")]
 mod runtime;
 #[cfg(any(target_os = "linux", test))]
