@@ -35,7 +35,7 @@ impl Session {
         );
         headers.insert(
             "mcp-protocol-version",
-            HeaderValue::from_static("2025-03-26"),
+            HeaderValue::from_static("2025-06-18"),
         );
         if let Some(value) = &self.session {
             headers.insert("mcp-session-id", value.clone());
@@ -102,8 +102,15 @@ impl Session {
         if self.initialized {
             return Ok(());
         }
-        let reply=self.rpc("initialize",json!({"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"noevia","version":"0.1.0"}}),control).await?;
-        if reply.get("protocolVersion").and_then(Value::as_str) != Some("2025-03-26")
+        let result = self.handshake(control).await;
+        if result.is_err() {
+            self.disconnect().await;
+        }
+        result
+    }
+    async fn handshake(&mut self, control: &Control) -> Result<()> {
+        let reply=self.rpc("initialize",json!({"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"noevia","version":"0.1.0"}}),control).await?;
+        if reply.get("protocolVersion").and_then(Value::as_str) != Some("2025-06-18")
             || !reply.get("capabilities").is_some_and(Value::is_object)
         {
             return Err(Fault::Protocol);
@@ -181,6 +188,13 @@ impl Session {
             control,
         )
         .await
+    }
+    /// Best-effort teardown has its own bounded lifetime: cancellation of the
+    /// business operation must not leave the remote session alive or replay a call.
+    pub async fn disconnect(&mut self) {
+        if let Ok(cleanup) = Control::new(std::time::Duration::from_secs(1)) {
+            let _ = self.close(&cleanup).await;
+        }
     }
     pub async fn close(&mut self, control: &Control) -> Result<()> {
         if self.session.is_none() {

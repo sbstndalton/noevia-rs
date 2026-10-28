@@ -48,7 +48,9 @@ impl Tool for McpTool {
             let mut session = permit;
             control.check()?;
             session.initialize(control).await?;
-            session.call(&self.name, arguments, control).await
+            let result = session.call(&self.name, arguments, control).await;
+            session.disconnect().await;
+            result
         })
     }
 }
