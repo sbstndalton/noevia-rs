@@ -36,6 +36,7 @@ async fn original_front_binary_drains_on_sigterm_without_legacy_process(
             .arg("--existing-front")
             .arg(built.dir.path().join("owned-journal.db"))
             .env_clear()
+            .env("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9")
             .env("UI_DATA_DIR", built.dir.path())
             .env("UI_PORT", port.to_string())
             .env("NOEVIA_START_ID", "0123456789abcdef0123456789abcdef")
