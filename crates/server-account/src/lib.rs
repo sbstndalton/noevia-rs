@@ -214,7 +214,22 @@ impl Account {
 
     /// One request at `now` (epoch ms). Blocking: SQLite and Argon2.
     pub fn handle(&self, req: &Request, now: i64) -> Outcome {
-        match self.pipeline(req, now) {
+        self.handle_with_clock(req, || now)
+    }
+
+    /// A trusted server clock, sampled before initial authentication and again
+    /// at framing's final mutation gates. The monotonic anchor starts BEFORE
+    /// the first sample, so initial Writer admission waits cannot disappear.
+    /// Other account routes keep the original single initial timestamp.
+    pub fn handle_with_clock(&self, req: &Request, clock: impl Fn() -> i64) -> Outcome {
+        let start = std::time::Instant::now();
+        let now = clock();
+        let current = || {
+            clock().max(
+                now.saturating_add(i64::try_from(start.elapsed().as_millis()).unwrap_or(i64::MAX)),
+            )
+        };
+        match self.pipeline(req, now, &current) {
             Ok(o) => o,
             Err(Fault::Status(status, message)) => Reply::error(status, &message).into(),
             Err(Fault::Unavailable) => {
@@ -224,7 +239,7 @@ impl Account {
         }
     }
 
-    fn pipeline(&self, req: &Request, now: i64) -> Handled {
+    fn pipeline(&self, req: &Request, now: i64, current: &dyn Fn() -> i64) -> Handled {
         if let Some(o) = device::open(self, req, now)? {
             return Ok(o);
         }
@@ -273,7 +288,7 @@ impl Account {
         if let Some(o) = device::account(self, req, &authn, now)? {
             return Ok(o);
         }
-        if let Some(o) = framing_preferences::handle(self, req, &authn, now)? {
+        if let Some(o) = framing_preferences::handle(self, req, &authn, current)? {
             return Ok(o);
         }
         if let Some(o) = files::account_files(self, req, &authn, now)? {

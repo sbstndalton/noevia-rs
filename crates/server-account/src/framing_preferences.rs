@@ -210,7 +210,7 @@ pub(crate) fn handle(
     acct: &Account,
     req: &Request,
     authn: &Identity,
-    now: i64,
+    current_time: &dyn Fn() -> i64,
 ) -> Result<Option<Outcome>, Fault> {
     if req.path != "/api/chat-framing/preferences" {
         return Ok(None);
@@ -224,9 +224,6 @@ pub(crate) fn handle(
     } else {
         None
     };
-    let waiting = std::time::Instant::now();
-    let current_time =
-        || now.saturating_add(i64::try_from(waiting.elapsed().as_millis()).unwrap_or(i64::MAX));
     // Same IMMEDIATE writer fence as credential/user changes, including Node
     // writers. No nested Writer::read, and no DB+file crash-atomicity claim.
     let result = acct.writer.write(|tx| {
@@ -522,7 +519,7 @@ mod tests {
                 let b = &barrier;
                 let worker = scope.spawn(move || {
                     b.wait();
-                    handle(a, req, initial, T0)
+                    handle(a, req, initial, &|| T0)
                 });
                 barrier.wait();
                 f.node.execute_batch("COMMIT")?;
@@ -539,7 +536,7 @@ mod tests {
             assert_eq!(own.exists(), sql != "DELETE FROM users");
         }
         let f = fixture()?;
-        let out = handle(&f.acct, &f.req, &f.initial, T0 + 86_400_001)
+        let out = handle(&f.acct, &f.req, &f.initial, &|| T0 + 86_400_001)
             .map_err(|e| format!("{e:?}"))?
             .ok_or("no route")?;
         assert_eq!(reply(out)?.status, 401);
@@ -598,5 +595,48 @@ mod tests {
         assert_eq!(std::fs::read(own.join("projects.json"))?, b"[]");
         assert!(f.dir.path().join(FILE).is_file());
         Ok(())
+    }
+    #[test]
+    fn public_account_counts_expiry_while_initial_authentication_is_queued() -> Result<(), Error> {
+        use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
+        let f = fixture()?;
+        f.node
+            .execute("UPDATE sessions SET expires_at=?1", [T0 + 100])?;
+        let clock = AtomicI64::new(T0);
+        let samples = AtomicUsize::new(0);
+        let initial_sample = Barrier::new(2);
+        std::thread::scope(|scope| -> Result<(), Error> {
+            let mut worker = None;
+            // Hold the ACTUAL shared Writer mutex before public Account entry.
+            f.acct.writer.write(|_| {
+                let acct = &f.acct;
+                let req = &f.req;
+                let clock = &clock;
+                let samples = &samples;
+                let barrier = &initial_sample;
+                worker = Some(scope.spawn(move || {
+                    acct.handle_with_clock(req, || {
+                        let value = clock.load(Ordering::SeqCst);
+                        if samples.fetch_add(1, Ordering::SeqCst) == 0 {
+                            barrier.wait();
+                        }
+                        value
+                    })
+                }));
+                initial_sample.wait();
+                clock.store(T0 + 200, Ordering::SeqCst);
+                Ok(())
+            })?;
+            let response = reply(
+                worker
+                    .ok_or("no worker")?
+                    .join()
+                    .map_err(|_| "public gate thread panicked")?,
+            )?;
+            assert_eq!(response.status, 401);
+            assert!(!f.dir.path().join("users").join(UID).join(FILE).exists());
+            assert!(samples.load(Ordering::SeqCst) >= 2);
+            Ok(())
+        })
     }
 }

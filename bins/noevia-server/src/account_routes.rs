@@ -12,6 +12,7 @@ use crate::serve::Conn;
 use crate::App;
 use axum::body::Body;
 use axum::http::{header, HeaderValue, Request, Response, StatusCode};
+use axum::response::IntoResponse;
 use http_body_util::BodyExt;
 use server_account::{Account, Outcome, Settings, BODY_LIMIT};
 use server_auth::{Authenticator, Creds};
@@ -84,8 +85,38 @@ pub(crate) async fn read_body(body: Body, limit: usize) -> Result<server_account
 pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String) -> Response<Body> {
     let now = crate::identity::now_ms();
     let (parts, body) = req.into_parts();
-    let Ok(body) = read_body(body, BODY_LIMIT).await else {
-        return reply::error(StatusCode::BAD_REQUEST, "invalid request body", true);
+    let framing = path == "/api/chat-framing/preferences";
+    if framing {
+        let layer = Arc::clone(&app.identity);
+        let creds = crate::identity::creds_of(&parts);
+        let gate_path = path.clone();
+        match tokio::task::spawn_blocking(move || layer.gate_current_blocking(&creds, &gate_path))
+            .await
+        {
+            Ok(Ok(_)) => {}
+            Ok(Err(rejected)) => return rejected.into_response(),
+            Err(_) => return crate::identity::Rejection::Unavailable.into_response(),
+        }
+    }
+    // Node never calls readJson for framing GET or unsupported methods. Header
+    // admission precedes PUT body polling, including transport failures.
+    let body = if framing && parts.method != "PUT" {
+        server_account::Body::default()
+    } else {
+        match read_body(body, BODY_LIMIT).await {
+            Ok(body) => body,
+            Err(()) => {
+                return reply::error(
+                    StatusCode::BAD_REQUEST,
+                    if framing {
+                        "Invalid framing preferences"
+                    } else {
+                        "invalid request body"
+                    },
+                    true,
+                )
+            }
+        }
     };
     let forwarded = parts
         .headers
@@ -116,15 +147,16 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
     let layer = Arc::clone(&app.accounts);
     let app2 = Arc::clone(app);
     let outcome = tokio::task::spawn_blocking(move || {
-        // This new preference route uses a post-body/post-queue clock. Its final
-        // writer-fence check adds monotonic elapsed time while waiting for SQLite.
-        let now = if request.path == "/api/chat-framing/preferences" {
-            crate::identity::now_ms()
-        } else {
-            now
-        };
         let account = layer.account(&app2, now)?;
-        Some((account.handle(&request, now), request))
+        let outcome = if framing {
+            // The live clock is first sampled INSIDE public Account entry,
+            // after body and lazy Account initialization, then before/after
+            // all initial auth and final writer admission waits.
+            account.handle_with_clock(&request, crate::identity::now_ms)
+        } else {
+            account.handle(&request, now)
+        };
+        Some((outcome, request))
     })
     .await
     .ok()

@@ -89,6 +89,22 @@ impl IdentityLayer {
         }
     }
 
+    /// Fresh header-only admission for framing preferences. Read the clock
+    /// inside the store transaction, after lazy store/lock admission.
+    pub fn gate_current_blocking(
+        &self,
+        creds: &Creds,
+        pathname: &str,
+    ) -> Result<Identity, Rejection> {
+        let auth = self.auth.as_ref().map_err(|_| Rejection::Unavailable)?;
+        let store = self.store().map_err(|_| Rejection::Unavailable)?;
+        match store.read(|reader| auth.gate_in(reader, creds, pathname, now_ms())) {
+            Ok(Ok(id)) => Ok(id),
+            Ok(Err(why)) => Err(Rejection::Refused(why)),
+            Err(_) => Err(Rejection::Unavailable),
+        }
+    }
+
     /// Node's gate for an /api/ request outside publicAuthRoutes. Blocking (SQLite).
     pub fn gate_blocking(
         &self,
