@@ -141,6 +141,14 @@ impl Runtime {
             tools,
         })
     }
+    pub fn with_conversations(&self, store: Arc<dyn Conversations>) -> Self {
+        Self {
+            approvals: self.approvals.clone(),
+            store,
+            model: Arc::clone(&self.model),
+            tools: self.tools.clone(),
+        }
+    }
     /// `emit` is a bounded output sink supplied by the front; a disconnected sink returns
     /// an error and stops execution. No provider or tool is detached from this future.
     pub async fn run(

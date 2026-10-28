@@ -16,6 +16,7 @@ pub mod mcp;
 pub mod project_conversations;
 pub mod replay;
 pub mod retrieval;
+pub mod session_conversations;
 pub mod snapshot;
 pub mod state;
 pub mod tools;

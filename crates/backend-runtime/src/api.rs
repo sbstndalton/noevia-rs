@@ -351,7 +351,16 @@ async fn handle(
     let Some(chat) = body.get("chatId").and_then(Value::as_str) else {
         return response(400, json!({"error":"chatId required"}));
     };
-    let binding = match api.runtime.store.context(&identity.user.id, chat) {
+    let session_store = Arc::new(crate::session_conversations::SessionConversations::new(
+        Arc::clone(&api.runtime.store),
+        Arc::clone(&api.writer),
+        Arc::clone(&api.auth),
+        creds,
+        identity.user.id.clone(),
+        now,
+    ));
+    let runtime = Arc::new(api.runtime.with_conversations(session_store.clone()));
+    let binding = match runtime.store.context(&identity.user.id, chat) {
         Ok(v) => v,
         Err(e) => return failure(e),
     };
@@ -373,13 +382,13 @@ async fn handle(
     };
     let turn = uuid::Uuid::new_v4().to_string();
     let user = json!({"role":"user","content":message});
-    let runtime = Arc::clone(&api.runtime);
     let owned = control.clone();
     let (sender, receiver) = mpsc::channel::<Bytes>(64);
     let job = tokio::spawn(async move {
         let _permit = chat_permit;
         let result = runtime
             .run(binding, &turn, user, &owned, |event| {
+                session_store.check()?;
                 sender
                     .try_send(Bytes::from(format!("data: {event}\n\n")))
                     .map_err(|_| Fault::Cancelled)

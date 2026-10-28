@@ -16,7 +16,7 @@ use std::{
         Arc,
     },
 };
-struct ModelReply(Arc<AtomicUsize>);
+struct ModelReply(Arc<AtomicUsize>, std::path::PathBuf);
 impl Model for ModelReply {
     fn complete<'a>(
         &'a self,
@@ -25,7 +25,10 @@ impl Model for ModelReply {
         _: &'a Control,
     ) -> FutureResult<'a, Value> {
         Box::pin(async move {
-            self.0.fetch_add(1, Ordering::SeqCst);
+            if self.0.fetch_add(1, Ordering::SeqCst) == 1 {
+                let db = rusqlite::Connection::open(&self.1)?;
+                db.execute("DELETE FROM sessions WHERE user_id='u-member'", [])?;
+            }
             Ok(json!({"role":"assistant","content":"Synthetic native reply"}))
         })
     }
@@ -58,7 +61,10 @@ async fn actual_loopback_auth_csrf_and_native_chat_store() -> Result<(), Box<dyn
     let calls = Arc::new(AtomicUsize::new(0));
     let runtime = Arc::new(Runtime::new(
         Arc::clone(&state),
-        Arc::new(ModelReply(Arc::clone(&calls))),
+        Arc::new(ModelReply(
+            Arc::clone(&calls),
+            server_store::db_path(built.dir.path()),
+        )),
         BTreeMap::new(),
     )?);
     let api = Api::new(built.dir.path(), runtime, |key| {
@@ -137,6 +143,24 @@ async fn actual_loopback_auth_csrf_and_native_chat_store() -> Result<(), Box<dyn
     assert!(text.contains("\"type\":\"done\""));
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     assert_eq!(state.history(&binding)?.1.len(), 2);
+    let before = state.history(&binding)?;
+    let revoked = client
+        .post(&url)
+        .header("cookie", cookie)
+        .header("x-csrf-token", csrf)
+        .header("origin", "https://noevia.example.test")
+        .header("content-type", "application/json")
+        .body(
+            json!({"chatId":"chat1","message":"revoked during model call","spaceId":"free"})
+                .to_string(),
+        )
+        .send()
+        .await?;
+    let events = revoked.text().await?;
+    assert!(events.contains("Unauthorized"));
+    assert!(!events.contains("Synthetic native reply"));
+    assert_eq!(state.history(&binding)?, before);
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
     task.abort();
     Ok(())
 }
