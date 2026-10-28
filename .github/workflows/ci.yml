@@ -66,7 +66,7 @@ jobs:
           path: ${{ runner.temp }}/noevia-supervisor-node-runtime
           # No restore prefixes or unverified fallback. Every restored result is
           # checked against the complete recipe, binary hash and runtime probe.
-          key: supervisor-node22-amd64-${{ hashFiles('tools/supervisor-node-runtime/runtime.py', 'tools/supervisor-node-runtime/ci.sh', 'tools/supervisor-node-runtime/source-lock.json', 'tools/supervisor-node-runtime/libuv-partial-hup.patch') }}
+          key: supervisor-node22-amd64-${{ hashFiles('tools/supervisor-node-runtime/runtime.py', 'tools/supervisor-node-runtime/ci.sh', 'tools/supervisor-node-runtime/source-lock.json', 'tools/supervisor-node-runtime/libuv-partial-hup.patch', 'tools/supervisor-node-runtime/builder-manifest.json') }}
       - name: Build and verify exact corrected Node22 consumer
         id: node_builder
         if: steps.pkgs.outputs.any == 'true'

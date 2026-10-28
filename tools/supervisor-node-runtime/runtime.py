@@ -39,6 +39,11 @@ def locked():
     assert data['sourceUrl'] == 'https://nodejs.org/dist/v22.23.4/node-v22.23.4.tar.xz'
     assert data['patchFile'] == 'libuv-partial-hup.patch'
     assert sha(RECIPE / data['patchFile']) == data['patchSha256']
+    manifest_path = RECIPE / 'builder-manifest.json'
+    assert 'sha256:' + sha(manifest_path) == data['builder']['linuxAmd64Manifest']
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest['schemaVersion'] == 2
+    assert manifest['config']['digest'] == data['builder']['configDigest']
     assert {f['path'] for f in data['files']} == {
         'deps/uv/src/unix/stream.c', 'deps/uv/src/uv-common.h'}
     assert len(data['files']) == 2
@@ -52,7 +57,8 @@ def recipe_sha():
     digest = hashlib.sha256()
     # Match the CI exact-key cache inputs. Test/copy edits do not force another
     # C++ compilation when all actual recipe inputs remain byte-identical.
-    for name in ('ci.sh', 'libuv-partial-hup.patch', 'runtime.py', 'source-lock.json'):
+    for name in ('builder-manifest.json', 'ci.sh', 'libuv-partial-hup.patch',
+                 'runtime.py', 'source-lock.json'):
         path = RECIPE / name
         assert path.is_file() and not path.is_symlink()
         digest.update(name.encode() + b'\0' + bytes.fromhex(sha(path)))
@@ -210,7 +216,11 @@ def builder_identity(path, data):
     assert isinstance(rows, list) and len(rows) == 1
     row = rows[0]
     assert row['Architecture'] == 'amd64' and row['Os'] == 'linux'
-    assert row['Id'] == data['builder']['configDigest']
+    # Classic Docker IDs are config digests. The containerd image store uses
+    # the pulled target descriptor digest (moby daemon/containerd/image_inspect.go).
+    # Only these two exact identities are allowed; locked() independently binds
+    # the platform manifest's actual bytes to its config digest.
+    assert row['Id'] in (data['builder']['configDigest'], data['builder']['linuxAmd64Manifest'])
     allowed = {name + '@' + data['builder']['linuxAmd64Manifest'] for name in (
         'node', 'library/node', 'docker.io/library/node')}
     assert allowed.intersection(row['RepoDigests'])
@@ -226,10 +236,12 @@ def build(archive, work, output):
         'NODE_OPTIONS', 'NODE_PATH', 'LD_PRELOAD', 'LD_LIBRARY_PATH',
         'CFLAGS', 'CXXFLAGS', 'CPPFLAGS', 'LDFLAGS', 'PYTHONPATH'))
     identity = archive.parent / 'builder-inspect.json'
+    output.mkdir(mode=0o700)
+    # Preserve the actual inspection even if identity verification refuses it.
+    # An output directory without a success receipt is never a verified cache.
+    shutil.copy2(identity, output / 'builder-inspect.json')
     builder_id = builder_identity(identity, data)
     work.mkdir(mode=0o700)
-    output.mkdir(mode=0o700)
-    shutil.copy2(identity, output / 'builder-inspect.json')
     reference = probe('/usr/local/bin/node')
     assert reference['versions']['node'] == data['nodeVersion']
     assert reference['arch'] == 'x64' and reference['platform'] == 'linux'

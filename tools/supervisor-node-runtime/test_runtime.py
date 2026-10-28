@@ -8,6 +8,7 @@ import tarfile
 import tempfile
 import subprocess
 import sys
+import os
 import unittest
 from unittest.mock import patch
 
@@ -93,6 +94,16 @@ class RecipeTests(unittest.TestCase):
         self.assertEqual(data['nodeVersion'], '22.23.4')
         self.assertEqual(len(data['files']), 2)
 
+    def test_manifest_config_binding_mismatch_refused(self):
+        data = runtime.locked()
+        for name in ('libuv-partial-hup.patch', 'builder-manifest.json'):
+            (self.recipe / name).write_bytes((runtime.RECIPE / name).read_bytes())
+        data['builder']['configDigest'] = 'sha256:' + 'f' * 64
+        (self.recipe / 'source-lock.json').write_text(json.dumps(data))
+        with patch.object(runtime, 'RECIPE', self.recipe):
+            with self.assertRaises(AssertionError):
+                runtime.locked()
+
     def test_runtime_parity_has_no_behavior_allowlist(self):
         runtime.parity({'versions': {'icu': '77'}, 'feature': False},
                        {'feature': False, 'versions': {'icu': '77'}})
@@ -113,6 +124,9 @@ class RecipeTests(unittest.TestCase):
         path = self.root / 'builder.json'
         path.write_text(json.dumps([identity]))
         self.assertEqual(runtime.builder_identity(path, data), identity['Id'])
+        containerd = dict(identity, Id=data['builder']['linuxAmd64Manifest'])
+        path.write_text(json.dumps([containerd]))
+        self.assertEqual(runtime.builder_identity(path, data), containerd['Id'])
         for key, value in [('Architecture', 'arm64'), ('Id', 'sha256:' + 'c' * 64),
                            ('RepoDigests', ['node@sha256:' + 'd' * 64])]:
             wrong = dict(identity)
@@ -146,6 +160,25 @@ class RecipeTests(unittest.TestCase):
                 runtime.build(self.root / 'archive', self.root / 'work', self.root / 'output')
         self.assertFalse((self.root / 'work').exists())
 
+    def test_rejected_builder_inspection_is_preserved_before_build(self):
+        data = runtime.locked()
+        identity = [{'Architecture': 'amd64', 'Os': 'linux', 'Id': 'sha256:' + 'f' * 64,
+                     'RepoDigests': ['node@' + data['builder']['linuxAmd64Manifest']]}]
+        raw = json.dumps(identity)
+        (self.root / 'builder-inspect.json').write_text(raw)
+        environment = {'NOEVIA_NODE_BUILDER': data['builder']['linuxAmd64Manifest'],
+                       'LC_ALL': 'C.UTF-8'}
+        with patch.object(runtime.platform, 'system', return_value='Linux'), \
+                patch.object(runtime.platform, 'machine', return_value='x86_64'), \
+                patch.dict(os.environ, environment, clear=True), \
+                patch.object(runtime, 'probe') as probe:
+            with self.assertRaises(AssertionError):
+                runtime.build(self.root / 'archive', self.root / 'work', self.root / 'output')
+            probe.assert_not_called()
+        self.assertEqual((self.root / 'output/builder-inspect.json').read_text(), raw)
+        self.assertFalse((self.root / 'output/receipt.json').exists())
+        self.assertFalse((self.root / 'work').exists())
+
     def test_optimized_python_refuses_all_operations(self):
         result = subprocess.run([sys.executable, '-O', str(Path(runtime.__file__)),
                                  'verify', str(self.root)], capture_output=True, text=True)
@@ -153,7 +186,8 @@ class RecipeTests(unittest.TestCase):
         self.assertIn('assertions disabled', result.stderr)
 
     def test_cache_key_tracks_recipe_inputs_not_test_copy(self):
-        for name in ('ci.sh', 'libuv-partial-hup.patch', 'runtime.py', 'source-lock.json'):
+        for name in ('builder-manifest.json', 'ci.sh', 'libuv-partial-hup.patch',
+                     'runtime.py', 'source-lock.json'):
             (self.recipe / name).write_text(name)
         with patch.object(runtime, 'RECIPE', self.recipe):
             first = runtime.recipe_sha()
