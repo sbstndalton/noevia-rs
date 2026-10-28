@@ -25,6 +25,7 @@ pub mod util;
 mod account;
 mod device;
 mod files;
+mod framing_preferences;
 mod open;
 mod passkeys;
 mod sharing;
@@ -270,6 +271,9 @@ impl Account {
             .into());
         }
         if let Some(o) = device::account(self, req, &authn, now)? {
+            return Ok(o);
+        }
+        if let Some(o) = framing_preferences::handle(self, req, &authn, now)? {
             return Ok(o);
         }
         if let Some(o) = files::account_files(self, req, &authn, now)? {

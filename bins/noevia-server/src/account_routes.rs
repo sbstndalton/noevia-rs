@@ -116,6 +116,13 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
     let layer = Arc::clone(&app.accounts);
     let app2 = Arc::clone(app);
     let outcome = tokio::task::spawn_blocking(move || {
+        // This new preference route uses a post-body/post-queue clock. Its final
+        // writer-fence check adds monotonic elapsed time while waiting for SQLite.
+        let now = if request.path == "/api/chat-framing/preferences" {
+            crate::identity::now_ms()
+        } else {
+            now
+        };
         let account = layer.account(&app2, now)?;
         Some((account.handle(&request, now), request))
     })
