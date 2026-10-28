@@ -432,3 +432,20 @@ fn native_index_separates_models_dirty_documents_and_replaced_content(
         .is_empty());
     Ok(())
 }
+
+#[cfg(unix)]
+#[test]
+fn snapshot_refuses_symlinks_and_non_regular_sources() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let bytes = dir.path().join("owned-bytes");
+    std::fs::write(&bytes, b"synthetic original")?;
+    let link = dir.path().join("link");
+    std::os::unix::fs::symlink(&bytes, &link)?;
+    assert!(snapshot::digest(&link, &control()?).is_err());
+    assert!(snapshot::digest(dir.path(), &control()?).is_err());
+    assert!(
+        snapshot::create(&rusqlite::Connection::open_in_memory()?, &link, &control()?).is_err()
+    );
+    assert_eq!(std::fs::read(&bytes)?, b"synthetic original");
+    Ok(())
+}

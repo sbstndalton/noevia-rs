@@ -30,11 +30,21 @@ fn new_file(path: &Path) -> Result<File> {
     options.open(path).map_err(|_| Fault::Conflict)
 }
 fn source(path: &Path) -> Result<File> {
-    let metadata = std::fs::symlink_metadata(path).map_err(|_| Fault::Missing)?;
+    let fd = rustix::fs::open(
+        path,
+        rustix::fs::OFlags::RDONLY
+            | rustix::fs::OFlags::NOFOLLOW
+            | rustix::fs::OFlags::CLOEXEC
+            | rustix::fs::OFlags::NONBLOCK,
+        rustix::fs::Mode::empty(),
+    )
+    .map_err(|_| Fault::Missing)?;
+    let file = File::from(fd);
+    let metadata = file.metadata().map_err(|_| Fault::Database)?;
     if !metadata.is_file() || metadata.len() > MAX_BYTES {
         return Err(Fault::Invalid);
     }
-    File::open(path).map_err(|_| Fault::Database)
+    Ok(file)
 }
 pub fn digest(path: &Path, control: &Control) -> Result<Snapshot> {
     let mut file = source(path)?;
@@ -60,13 +70,25 @@ pub fn digest(path: &Path, control: &Control) -> Result<Snapshot> {
 }
 pub fn create(source_db: &Connection, destination: &Path, control: &Control) -> Result<Snapshot> {
     control.check()?;
+    // Resolve only the operator-owned parent (macOS /var is an alias), never
+    // the final file. SQLite NOFOLLOW then protects the database name itself.
+    let destination_path = destination
+        .parent()
+        .ok_or(Fault::Invalid)?
+        .canonicalize()
+        .map_err(|_| Fault::Unavailable)?
+        .join(destination.file_name().ok_or(Fault::Invalid)?);
+    let destination = destination_path.as_path();
     let file = new_file(destination)?;
     drop(file);
     let page_size: u32 = source_db.query_row("PRAGMA page_size", [], |r| r.get(0))?;
     if !(512..=65536).contains(&page_size) || !page_size.is_power_of_two() {
         return Err(Fault::Database);
     }
-    let mut output = Connection::open_with_flags(destination, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+    let mut output = Connection::open_with_flags(
+        destination,
+        OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NOFOLLOW,
+    )?;
     output.pragma_update(None, "synchronous", "FULL")?;
     {
         let backup = Backup::new(source_db, &mut output)?;
@@ -121,6 +143,13 @@ pub fn restore(
     {
         return Err(Fault::Invalid);
     }
+    let destination_path = destination
+        .parent()
+        .ok_or(Fault::Invalid)?
+        .canonicalize()
+        .map_err(|_| Fault::Unavailable)?
+        .join(destination.file_name().ok_or(Fault::Invalid)?);
+    let destination = destination_path.as_path();
     let mut input = source(source_path)?;
     let mut output = new_file(destination)?;
     let mut hash = Sha256::new();
@@ -145,7 +174,10 @@ pub fn restore(
     }
     output.sync_all().map_err(|_| Fault::Database)?;
     drop(output);
-    let restored = Connection::open_with_flags(destination, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    let restored = Connection::open_with_flags(
+        destination,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NOFOLLOW,
+    )?;
     let check: String = restored.query_row("PRAGMA quick_check", [], |r| r.get(0))?;
     let identity: String =
         restored.query_row("SELECT value FROM meta WHERE key='tenant'", [], |r| {
