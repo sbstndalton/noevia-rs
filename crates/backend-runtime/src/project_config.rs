@@ -168,7 +168,7 @@ fn patch(stored: &Value, body: &Value) -> Result<Value, Reply> {
                     "sharedContext.{key} must be true or false"
                 )));
             }
-            out[key] = value.clone();
+            *out.get_mut(key).ok_or_else(Reply::internal)? = value.clone();
         }
         next.insert("sharedContext".into(), out);
     }
@@ -249,7 +249,10 @@ pub fn configure(ctx: Ctx<'_>, raw_id: &str, bytes: &[u8]) -> Reply {
                 false,
             );
         }
-        next["updatedAt"] = json!(ctx.now_ms);
+        let Some(object) = next.as_object_mut() else {
+            return (Reply::internal(), false);
+        };
+        object.insert("updatedAt".into(), json!(ctx.now_ms));
         match js_json::wtf16::parse(&next.to_string()) {
             Ok(v) => *project = v,
             Err(_) => return (Reply::internal(), false),
@@ -297,12 +300,12 @@ mod tests {
         assert_eq!(std::fs::read(&file)?, before);
         assert_eq!(configure(ctx,"p",br#"{"name":" Renamed ","sampling":{"top_p":5,"temperature":0.4},"memories":[" keep ",7],"modes":["code"],"pinned":true}"#).status,200);
         let stored: Value = serde_json::from_slice(&std::fs::read(&file)?)?;
-        let p = &stored["projects"][0];
+        let p = stored.pointer("/projects/0").ok_or("project")?;
         assert_eq!(p["name"], "Renamed");
         assert_eq!(p["sampling"], json!({"temperature":0.4}));
         assert_eq!(p["memories"], json!(["keep"]));
         assert_eq!(p["modes"], json!(["chat", "code"]));
-        assert_eq!(p["future"]["retain"], true);
+        assert_eq!(p.pointer("/future/retain").unwrap_or(&Value::Null), true);
         assert_eq!(p["updatedAt"], 42);
         let before = std::fs::read(&file)?;
         let reply = configure(ctx, "p", br#"{"name":"Renamed"}"#);

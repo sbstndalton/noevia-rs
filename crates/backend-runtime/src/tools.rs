@@ -157,32 +157,6 @@ pub fn core_tools() -> std::collections::BTreeMap<String, Arc<dyn Tool>> {
         Arc::new(CurrentTime) as Arc<dyn Tool>,
     )])
 }
-#[cfg(test)]
-mod time_tests {
-    #[test]
-    fn original_tool_dates_follow_requested_zone_and_reject_unknown(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let now = "2027-01-01T00:30:00Z".parse::<chrono::DateTime<chrono::Utc>>()?;
-        let west =
-            super::CurrentTime::at(now, &serde_json::json!({"timezone":"America/Los_Angeles"}));
-        let text = west.as_str().ok_or("text")?;
-        assert!(text.contains("31 December 2026"));
-        assert!(text.contains("day 365 of 365 in 2026, 0 days left"));
-        let east = super::CurrentTime::at(now, &serde_json::json!({"timezone":"Asia/Tokyo"}));
-        assert!(east
-            .as_str()
-            .ok_or("text")?
-            .contains("ISO week 53 of 2026 (the ISO year is not the calendar year 2027)"));
-        assert!(
-            super::CurrentTime::at(now, &serde_json::json!({"timezone":"unknown/zone"}))
-                .as_str()
-                .ok_or("text")?
-                .starts_with("ERROR: unknown IANA timezone")
-        );
-        Ok(())
-    }
-}
-
 /// Existing project source reads stay bound to the authenticated conversation adapter.
 pub struct ProjectFile {
     pub store: Arc<dyn crate::state::Conversations>,
@@ -210,5 +184,31 @@ impl Tool for ProjectFile {
         control: &'a Control,
     ) -> FutureResult<'a, Value> {
         Box::pin(async move { self.store.read_project_file(binding, &arguments, control) })
+    }
+}
+
+#[cfg(test)]
+mod time_tests {
+    #[test]
+    fn original_tool_dates_follow_requested_zone_and_reject_unknown(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let now = "2027-01-01T00:30:00Z".parse::<chrono::DateTime<chrono::Utc>>()?;
+        let west =
+            super::CurrentTime::at(now, &serde_json::json!({"timezone":"America/Los_Angeles"}));
+        let text = west.as_str().ok_or("text")?;
+        assert!(text.contains("31 December 2026"));
+        assert!(text.contains("day 365 of 365 in 2026, 0 days left"));
+        let east = super::CurrentTime::at(now, &serde_json::json!({"timezone":"Asia/Tokyo"}));
+        assert!(east
+            .as_str()
+            .ok_or("text")?
+            .contains("ISO week 53 of 2026 (the ISO year is not the calendar year 2027)"));
+        assert!(
+            super::CurrentTime::at(now, &serde_json::json!({"timezone":"unknown/zone"}))
+                .as_str()
+                .ok_or("text")?
+                .starts_with("ERROR: unknown IANA timezone")
+        );
+        Ok(())
     }
 }

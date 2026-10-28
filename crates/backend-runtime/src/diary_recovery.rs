@@ -118,8 +118,10 @@ pub fn handle(ctx: Ctx<'_>, method: &str, query: &str, body: &[u8]) -> Reply {
                 if !row.is_object() {
                     continue;
                 }
-                if row["state"] == "running" {
-                    row["state"] = json!("uncertain");
+                if row.get("state").unwrap_or(&Value::Null) == "running" {
+                    if let Some(object) = row.as_object_mut() {
+                        object.insert("state".into(), json!("uncertain"));
+                    }
                 }
                 total += row.to_string().len();
                 if total > 128 * 1024 * 1024 {
@@ -182,23 +184,34 @@ pub fn handle(ctx: Ctx<'_>, method: &str, query: &str, body: &[u8]) -> Reply {
         }
         _ => return Reply::error(500, "This exchange record cannot be read."),
     };
-    if row["state"] == "running" {
-        row["state"] = json!("uncertain");
+    if row.get("state").unwrap_or(&Value::Null) == "running" {
+        if let Some(object) = row.as_object_mut() {
+            object.insert("state".into(), json!("uncertain"));
+        }
     }
-    if !["uncertain", "failed"].contains(&row["state"].as_str().unwrap_or("")) {
+    if !["uncertain", "failed"].contains(
+        &row.get("state")
+            .unwrap_or(&Value::Null)
+            .as_str()
+            .unwrap_or(""),
+    ) {
         return Reply::error(409, "This exchange has nothing to resolve.");
     }
     if row
         .get("acknowledgedAt")
         .is_none_or(|v| v.is_null() || v == &json!(0) || v == &json!(false) || v == &json!(""))
     {
-        row["acknowledgedAt"] = json!(ctx.now_ms);
-        row["updatedAt"] = json!(ctx.now_ms);
+        if let Some(object) = row.as_object_mut() {
+            object.insert("acknowledgedAt".into(), json!(ctx.now_ms));
+        }
+        if let Some(object) = row.as_object_mut() {
+            object.insert("updatedAt".into(), json!(ctx.now_ms));
+        }
         if write(&dir, &name, &row).is_err() {
             return Reply::error(500, "Could not update the recovery record");
         }
     }
-    Reply::json(200,json!({"exchange":{"id":row["id"],"day":row["day"],"state":row["state"],"acknowledgedAt":row["acknowledgedAt"]}}).to_string())
+    Reply::json(200,json!({"exchange":{"id":row.get("id").unwrap_or(&Value::Null),"day":row.get("day").unwrap_or(&Value::Null),"state":row.get("state").unwrap_or(&Value::Null),"acknowledgedAt":row.get("acknowledgedAt").unwrap_or(&Value::Null)}}).to_string())
 }
 #[cfg(test)]
 mod tests {
@@ -233,9 +246,9 @@ mod tests {
         assert_eq!(handle(ctx, "POST", "", body.as_bytes()).status, 200);
         let saved = std::fs::read(&file)?;
         let row: Value = serde_json::from_slice(&saved)?;
-        assert_eq!(row["unknown"]["retain"], true);
-        assert_eq!(row["acknowledgedAt"], 42);
-        assert_eq!(row["message"], "synthetic");
+        assert_eq!(row.pointer("/unknown/retain").unwrap_or(&Value::Null), true);
+        assert_eq!(row.get("acknowledgedAt").unwrap_or(&Value::Null), 42);
+        assert_eq!(row.get("message").unwrap_or(&Value::Null), "synthetic");
         assert_eq!(
             handle(Ctx { now_ms: 99, ..ctx }, "POST", "", body.as_bytes()).status,
             200

@@ -42,7 +42,9 @@ fn frame(kind: &str, name: &str, text: &str) -> Result<String> {
         return Err(Fault::Protocol);
     }
     let units = output
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|b| {
             u16::from_le_bytes([
                 b.first().copied().unwrap_or(0),

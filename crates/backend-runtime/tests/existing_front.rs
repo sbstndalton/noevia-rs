@@ -267,9 +267,14 @@ async fn original_front_auth_history_and_native_execution_share_one_transcript(
         .await?;
     assert_eq!(update.status(), 200);
     let saved: Value = serde_json::from_slice(&std::fs::read(user_dir.join("projects.json"))?)?;
-    assert_eq!(saved["projects"][0]["name"], "Configured natively");
     assert_eq!(
-        saved["projects"][0]["files"][0]["content"],
+        saved.pointer("/projects/0/name").unwrap_or(&Value::Null),
+        "Configured natively"
+    );
+    assert_eq!(
+        saved
+            .pointer("/projects/0/files/0/content")
+            .unwrap_or(&Value::Null),
         "attached source evidence"
     );
     let _ = stop.send(());
