@@ -56,8 +56,13 @@ fn browser_presave_before_and_during_turn_preserves_ids_and_fences_other_edits(
         let store = ProjectConversations::open(dir.path(), START, &dir.path().join("journal.db"))?;
         let binding = store.context(USER, "chat1")?;
         let control = Control::new(Duration::from_secs(5))?;
-        let (revision, mut messages) =
-            store.begin_browser(&binding, "turn1", &request, &previous, &control)?;
+        let (revision, mut messages) = store.begin_browser(
+            &binding,
+            "11111111-1111-4111-8111-111111111111",
+            &request,
+            &previous,
+            &control,
+        )?;
         assert_eq!(messages.len(), 1, "{timing}");
         messages.push(request);
         messages.push(json!({"role":"assistant","content":"answer"}));
@@ -70,7 +75,13 @@ fn browser_presave_before_and_during_turn_preserves_ids_and_fences_other_edits(
                 &[json!({"role":"user","content":"changed"}), sent.clone()],
             )?;
         }
-        let result = store.finish(&binding, "turn1", &revision, &messages, &control);
+        let result = store.finish(
+            &binding,
+            "11111111-1111-4111-8111-111111111111",
+            &revision,
+            &messages,
+            &control,
+        );
         if timing == "conflict" {
             assert_eq!(result, Err(Fault::Conflict));
             continue;
