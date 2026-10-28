@@ -208,12 +208,18 @@ mod tests {
         let dir = tempfile::tempdir()?;
         let project = json!({"id":"p","files":[{"name":"docs/note.md","content":"source evidence"},{"name":"other/note.md","content":"other evidence"}]});
         let control = Control::new(std::time::Duration::from_secs(5))?;
-        let context = fallback(dir.path(), "u", &project, &control)?.ok_or("context")?;
+        let context = fallback(
+            dir.path(),
+            "11111111-2222-4333-8444-555555555555",
+            &project,
+            &control,
+        )?
+        .ok_or("context")?;
         assert!(context.contains("source evidence"));
         assert!(context.contains("untrusted"));
         assert!(read(
             dir.path(),
-            "u",
+            "11111111-2222-4333-8444-555555555555",
             &project,
             &json!({"name":"docs/note.md"}),
             &control
@@ -224,7 +230,7 @@ mod tests {
         assert_eq!(
             read(
                 dir.path(),
-                "u",
+                "11111111-2222-4333-8444-555555555555",
                 &project,
                 &json!({"name":"note.md"}),
                 &control
@@ -234,7 +240,7 @@ mod tests {
         assert_eq!(
             read(
                 dir.path(),
-                "u",
+                "11111111-2222-4333-8444-555555555555",
                 &project,
                 &json!({"name":"../note.md"}),
                 &control
@@ -244,7 +250,7 @@ mod tests {
         assert_eq!(
             read(
                 dir.path(),
-                "u",
+                "11111111-2222-4333-8444-555555555555",
                 &project,
                 &json!({"name":"absent.md"}),
                 &control
@@ -253,12 +259,22 @@ mod tests {
         );
         let missing = json!({"id":"p","files":[{"name":"missing.md","textRef":"a".repeat(64)}]});
         assert_eq!(
-            fallback(dir.path(), "u", &missing, &control),
+            fallback(
+                dir.path(),
+                "11111111-2222-4333-8444-555555555555",
+                &missing,
+                &control
+            ),
             Err(Fault::Missing)
         );
         control.cancel();
         assert_eq!(
-            fallback(dir.path(), "u", &project, &control),
+            fallback(
+                dir.path(),
+                "11111111-2222-4333-8444-555555555555",
+                &project,
+                &control
+            ),
             Err(Fault::Cancelled)
         );
         Ok(())
