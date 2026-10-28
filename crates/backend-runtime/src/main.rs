@@ -139,6 +139,9 @@ fn diary_registry(
         if !row.corpus.is_absolute() || !row.journal.is_absolute() || !row.journal.is_file() {
             return Err("invalid tenant paths".into());
         }
+        if row.corpus.canonicalize()? == row.journal.canonicalize()? {
+            return Err("corpus and journal must be distinct databases".into());
+        }
         let corpus = backend_runtime::diary::Corpus::open(&row.corpus, &user, 3.0)?;
         let journal = Arc::new(backend_runtime::journal::Journal::open(&row.journal)?);
         tenants.insert(

@@ -175,6 +175,7 @@ dependencies = [
  "provider-egress",
  "reqwest",
  "rusqlite",
+ "rustix",
  "serde",
  "serde_json",
  "server-account",

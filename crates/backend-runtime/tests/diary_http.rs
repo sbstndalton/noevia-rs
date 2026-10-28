@@ -51,6 +51,20 @@ fn original_editor_contract_and_revocation_fence() -> Result<(), Box<dyn std::er
         db.execute("INSERT INTO meta VALUES(?,?)", [k, v])?;
     }
     let corpus = Corpus::open(&path, USER, 3.0)?;
+    let migration = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(built.dir.path().join("managed-diary.lock"))?;
+    migration.lock()?;
+    assert_eq!(
+        corpus.read(
+            "note.md",
+            &backend_runtime::Control::new(std::time::Duration::from_millis(10))?
+        ),
+        Err(Fault::Deadline)
+    );
+    drop(migration);
+
     let journal = Arc::new(Journal::open(&built.dir.path().join("index.db"))?);
     let mut tenants = HashMap::new();
     tenants.insert(

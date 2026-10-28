@@ -11,6 +11,21 @@ use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
+struct CorpusDb {
+    connection: Connection,
+    _migration: std::fs::File,
+}
+impl std::ops::Deref for CorpusDb {
+    type Target = Connection;
+    fn deref(&self) -> &Connection {
+        &self.connection
+    }
+}
+impl std::ops::DerefMut for CorpusDb {
+    fn deref_mut(&mut self) -> &mut Connection {
+        &mut self.connection
+    }
+}
 pub struct WriteCondition<'a> {
     pub if_match: Option<&'a str>,
     pub if_none_match: bool,
@@ -58,7 +73,7 @@ impl Corpus {
             tenant: tenant.to_owned(),
             debounce,
         };
-        let mut db = result.db()?;
+        let mut db = result.db(&Control::new(Duration::from_secs(5))?)?;
         let tx = db.transaction()?;
         result.identity(&tx)?;
         tx.finish()?;
@@ -67,11 +82,43 @@ impl Corpus {
     pub fn tenant_id(&self) -> &str {
         &self.tenant
     }
-    fn db(&self) -> Result<Connection> {
-        let db = Connection::open_with_flags(&self.path, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+    fn migration(&self, control: &Control) -> Result<std::fs::File> {
+        use rustix::fs::{Mode, OFlags};
+        let path = self
+            .path
+            .parent()
+            .ok_or(Fault::Invalid)?
+            .join("managed-diary.lock");
+        let fd = rustix::fs::open(
+            &path,
+            OFlags::RDWR | OFlags::CREATE | OFlags::CLOEXEC | OFlags::NOFOLLOW,
+            Mode::from_raw_mode(0o600),
+        )
+        .map_err(|_| Fault::Unavailable)?;
+        let file = std::fs::File::from(fd);
+        loop {
+            control.check()?;
+            match file.try_lock() {
+                Ok(()) => return Ok(file),
+                Err(std::fs::TryLockError::WouldBlock) => {
+                    std::thread::sleep(Duration::from_millis(5))
+                }
+                Err(_) => return Err(Fault::Unavailable),
+            }
+        }
+    }
+    fn db(&self, control: &Control) -> Result<CorpusDb> {
+        let migration = self.migration(control)?;
+        let db = Connection::open_with_flags(
+            &self.path,
+            OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NOFOLLOW,
+        )?;
         db.busy_timeout(Duration::from_secs(5))?;
         db.pragma_update(None, "synchronous", "FULL")?;
-        Ok(db)
+        Ok(CorpusDb {
+            connection: db,
+            _migration: migration,
+        })
     }
     fn identity(&self, tx: &Transaction<'_>) -> Result<()> {
         let identity: Option<String> = tx
@@ -94,7 +141,7 @@ impl Corpus {
     }
     pub fn read(&self, path: &str, control: &Control) -> Result<Option<File>> {
         let path = Self::key(path)?;
-        let mut db = self.db()?;
+        let mut db = self.db(control)?;
         let tx = db.transaction()?;
         control.check()?;
         self.identity(&tx)?;
@@ -140,7 +187,7 @@ impl Corpus {
         publish: impl FnOnce() -> Result<crate::retrieval::Applied>,
     ) -> Result<crate::retrieval::Applied> {
         let path = Self::key(path)?;
-        let mut db = self.db()?;
+        let mut db = self.db(control)?;
         let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
         control.check()?;
         self.identity(&tx)?;
@@ -166,7 +213,7 @@ impl Corpus {
         control: &Control,
         search: impl FnOnce(&[String]) -> Result<T>,
     ) -> Result<T> {
-        let mut db = self.db()?;
+        let mut db = self.db(control)?;
         let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
         control.check()?;
         self.identity(&tx)?;
@@ -223,7 +270,7 @@ impl Corpus {
         if content.len() > 8 * 1024 * 1024 || !now.is_finite() {
             return Err(Fault::Capacity);
         }
-        let mut db = self.db()?;
+        let mut db = self.db(control)?;
         let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
         control.check()?;
         self.identity(&tx)?;
@@ -323,7 +370,7 @@ impl Corpus {
         } else {
             format!("{parent}/")
         };
-        let mut db = self.db()?;
+        let mut db = self.db(control)?;
         let tx = db.transaction()?;
         self.identity(&tx)?;
         control.check()?;
@@ -384,7 +431,7 @@ impl Corpus {
         if !now.is_finite() {
             return Err(Fault::Invalid);
         }
-        let mut db = self.db()?;
+        let mut db = self.db(control)?;
         let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
         control.check()?;
         self.identity(&tx)?;
@@ -414,7 +461,14 @@ impl Corpus {
         request.db_path = self.path.to_str().ok_or(Fault::Invalid)?.to_owned();
         request.expected_tenant = self.tenant.clone();
         control.check()?;
-        diary_workspace_transaction::execute(&request).map_err(|e| match e {
+        let _migration = self.migration(control)?;
+        let result = diary_workspace_transaction::execute_guarded(&request, |_| {
+            control
+                .check()
+                .map_err(|_| diary_workspace_transaction::Fault::Database)
+        });
+        control.check()?;
+        result.map_err(|e| match e {
             diary_workspace_transaction::Fault::Conflict => Fault::Conflict,
             diary_workspace_transaction::Fault::Missing => Fault::Missing,
             diary_workspace_transaction::Fault::Protected => Fault::Forbidden,
