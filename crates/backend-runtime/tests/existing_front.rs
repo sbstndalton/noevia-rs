@@ -320,6 +320,24 @@ async fn original_front_auth_history_and_native_execution_share_one_transcript(
     assert!(js_json::wtf16::stringify(&saved.history)
         .ok_or("history")?
         .contains("native project answer"));
+    let ui: Value =
+        serde_json::from_str(&js_json::wtf16::stringify(&saved.history).ok_or("history")?)?;
+    let reply = ui.as_array().and_then(|v| v.last()).ok_or("reply")?;
+    assert_eq!(
+        reply.pointer("/toolCalls/0/name"),
+        Some(&json!("read_project_file"))
+    );
+    assert_eq!(reply.pointer("/toolCalls/0/status"), Some(&json!("done")));
+    assert!(reply
+        .pointer("/toolCalls/0/result")
+        .and_then(Value::as_str)
+        .is_some_and(|s| s.contains("attached source evidence")));
+    assert!(!ui
+        .as_array()
+        .ok_or("history")?
+        .iter()
+        .any(|v| v.get("role") == Some(&json!("tool"))));
+
     let workspace = client
         .get(format!("http://{address}/api/workspace"))
         .header("cookie", cookie)

@@ -348,6 +348,17 @@ pub trait Conversations: Send + Sync {
         messages: &[Value],
         control: &Control,
     ) -> Result<()>;
+    fn finish_tools(
+        &self,
+        binding: &Binding,
+        id: &str,
+        revision: &str,
+        messages: &[Value],
+        _tools: &[Value],
+        control: &Control,
+    ) -> Result<()> {
+        self.finish(binding, id, revision, messages, control)
+    }
     fn fail(&self, user: &str, id: &str, fault: Fault) -> Result<()>;
 }
 impl Conversations for StateStore {

@@ -418,15 +418,74 @@ impl Runtime {
             finished: false,
         };
         messages.push(user_message);
+        let mut recorded = BTreeMap::<usize, Value>::new();
+        let mut recorded_bytes = 0usize;
         let result = self
-            .exchange(&binding, &mut messages, control, &mut emit)
+            .exchange(&binding, &mut messages, control, &mut |event| {
+                if matches!(
+                    event.get("type").and_then(Value::as_str),
+                    Some("tool" | "tool_pending" | "tool_result")
+                ) {
+                    let index = event
+                        .get("index")
+                        .and_then(Value::as_u64)
+                        .and_then(|n| usize::try_from(n).ok())
+                        .ok_or(Fault::Protocol)?;
+                    if index >= 1024 {
+                        return Err(Fault::Capacity);
+                    }
+                    recorded_bytes = recorded_bytes
+                        .checked_add(serde_json::to_vec(&event)?.len())
+                        .ok_or(Fault::Capacity)?;
+                    if recorded_bytes > 8 * 1024 * 1024 {
+                        return Err(Fault::Capacity);
+                    }
+                    let record = recorded
+                        .entry(index)
+                        .or_insert_with(|| json!({}))
+                        .as_object_mut()
+                        .ok_or(Fault::Protocol)?;
+                    if let Some(name) = event.get("name") {
+                        record.insert("name".into(), name.clone());
+                    }
+                    if let Some(args) = event.get("args") {
+                        record.insert("args".into(), args.clone());
+                    }
+                    if event.get("type").and_then(Value::as_str) == Some("tool_result") {
+                        record.insert(
+                            "result".into(),
+                            event.get("text").cloned().unwrap_or(json!("")),
+                        );
+                        record.insert(
+                            "status".into(),
+                            json!(if event.get("declined") == Some(&Value::Bool(true)) {
+                                "denied"
+                            } else {
+                                "done"
+                            }),
+                        );
+                        for key in ["applied", "declined", "notRun", "public", "target"] {
+                            if let Some(value) = event.get(key) {
+                                record.insert(key.into(), value.clone());
+                            }
+                        }
+                    } else {
+                        record.insert("status".into(), json!("running"));
+                    }
+                }
+                emit(event)
+            })
             .await;
         match result {
             Ok(()) => {
-                if let Err(e) = self
-                    .store
-                    .finish(&binding, id, &revision, &messages, control)
-                {
+                if let Err(e) = self.store.finish_tools(
+                    &binding,
+                    id,
+                    &revision,
+                    &messages,
+                    &recorded.into_values().collect::<Vec<_>>(),
+                    control,
+                ) {
                     let _ = self.store.fail(&binding.user, id, e);
                     return Err(e);
                 }
@@ -527,7 +586,17 @@ impl Runtime {
             self.validate_context(binding)?;
             let mut framed = self.store.system(binding)?;
             framed.extend(self.store.sources(binding, control)?);
-            framed.extend(messages.iter().cloned());
+            // UI transcript metadata (IDs, tool chips, saved versions) is not a
+            // provider protocol field. Active tool-call wire fields are retained.
+            framed.extend(messages.iter().map(|message| {
+                let mut wire = serde_json::Map::new();
+                for key in ["role", "content", "tool_calls", "tool_call_id", "name"] {
+                    if let Some(value) = message.get(key) {
+                        wire.insert(key.into(), value.clone());
+                    }
+                }
+                Value::Object(wire)
+            }));
             if serde_json::to_vec(&framed)?.len() > 8 * 1024 * 1024 {
                 return Err(Fault::Capacity);
             }

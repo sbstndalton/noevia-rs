@@ -205,6 +205,20 @@ impl Conversations for SessionConversations {
             self.inner.finish(binding, id, revision, messages, control)
         })
     }
+    fn finish_tools(
+        &self,
+        binding: &Binding,
+        id: &str,
+        revision: &str,
+        messages: &[Value],
+        tools: &[Value],
+        control: &Control,
+    ) -> Result<()> {
+        self.fenced(&binding.user, || {
+            self.inner
+                .finish_tools(binding, id, revision, messages, tools, control)
+        })
+    }
     fn fail(&self, user: &str, id: &str, fault: Fault) -> Result<()> {
         // Cleanup of this owner's admitted intent must remain possible after revocation.
         if user != self.user {

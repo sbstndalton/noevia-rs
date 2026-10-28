@@ -26,6 +26,7 @@ struct Running {
     base: Vec<Value>,
     user: Value,
     browser: bool,
+    prefix: usize,
 }
 // Only ordinary text turns are admitted here. Applied/declined write records and
 // failed read recovery require the original modelHistory projection, not a lossy cast.
@@ -37,13 +38,28 @@ fn text_projection(history: &[Value]) -> Result<Vec<Value>> {
                 m.get("role").and_then(Value::as_str),
                 Some("user" | "assistant")
             ) || !m.get("content").is_some_and(Value::is_string)
-                || ["toolCalls", "tool_calls", "error", "paused"]
+                || ["tool_calls", "error", "paused"]
                     .iter()
                     .any(|key| m.get(key).is_some())
             {
                 return Err(Fault::Unavailable);
             }
-            Ok(json!({"role":m["role"],"content":m["content"]}))
+            if let Some(calls) = m.get("toolCalls") {
+                let calls = calls.as_array().ok_or(Fault::Unavailable)?;
+                // Successful read chips add no modelHistory entries when an answer
+                // exists. Applied writes, declines and interrupted reads need notes.
+                if m.get("content")
+                    .and_then(Value::as_str)
+                    .is_none_or(|s| s.trim().is_empty())
+                    || calls.iter().any(|c| {
+                        c.get("applied") == Some(&Value::Bool(true))
+                            || c.get("status").and_then(Value::as_str) == Some("denied")
+                    })
+                {
+                    return Err(Fault::Unavailable);
+                }
+            }
+            Ok(json!({"role":m.get("role"),"content":m.get("content")}))
         })
         .collect()
 }
@@ -111,6 +127,7 @@ impl ProjectConversations {
                 base,
                 user: request.clone(),
                 browser: browser.is_some(),
+                prefix: history.len(),
             },
         );
         Ok((current.revision, history))
@@ -300,6 +317,41 @@ impl Conversations for ProjectConversations {
             }
             transcript::Saved::Deleted | transcript::Saved::Conflict { .. } => Err(Fault::Conflict),
         }
+    }
+    fn finish_tools(
+        &self,
+        binding: &Binding,
+        id: &str,
+        revision: &str,
+        messages: &[Value],
+        tools: &[Value],
+        control: &Control,
+    ) -> Result<()> {
+        let prefix = self
+            .running
+            .lock()
+            .map_err(|_| Fault::Unavailable)?
+            .get(&(binding.user.clone(), binding.canonical_chat_id.clone()))
+            .filter(|turn| turn.id == id)
+            .map(|turn| turn.prefix)
+            .ok_or(Fault::Conflict)?;
+        let mut history = messages
+            .get(..prefix.checked_add(1).ok_or(Fault::Capacity)?)
+            .ok_or(Fault::Protocol)?
+            .to_vec();
+        let final_message = messages.last().ok_or(Fault::Protocol)?;
+        if final_message.get("role").and_then(Value::as_str) != Some("assistant") {
+            return Err(Fault::Protocol);
+        }
+        let mut reply = json!({"role":"assistant","content":final_message.get("content").and_then(Value::as_str).unwrap_or("")});
+        if !tools.is_empty() {
+            reply
+                .as_object_mut()
+                .ok_or(Fault::Protocol)?
+                .insert("toolCalls".into(), Value::Array(tools.to_vec()));
+        }
+        history.push(reply);
+        self.finish(binding, id, revision, &history, control)
     }
     fn fail(&self, user: &str, id: &str, fault: Fault) -> Result<()> {
         self.release(user, id)?;
