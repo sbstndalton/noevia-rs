@@ -33,6 +33,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     if args.next().is_some() || !path.is_absolute() {
         return Err("invalid arguments".into());
     }
+    if action == "--init-original-state" {
+        backend_runtime::bootstrap::create(&path, &std::env::var("NOEVIA_SETUP_CODE")?)?;
+        return Ok(());
+    }
     if action == "--init-experimental-state" {
         StateStore::create(&path)?;
         return Ok(());

@@ -127,3 +127,102 @@ async fn candidate_reexec_enters_hardened_storage_child_before_app_startup(
     assert_eq!(bytes, server_storage_reads::isolated::READY);
     Ok(())
 }
+
+#[tokio::test]
+async fn fresh_original_account_setup_needs_no_node_initializer(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let parent = tempfile::tempdir()?;
+    let data = parent.path().join("new-original");
+    let code = "synthetic-setup-code-20261028";
+    let init = Command::new(env!("CARGO_BIN_EXE_native-backend-candidate"))
+        .arg("--init-original-state")
+        .arg(&data)
+        .env_clear()
+        .env("NOEVIA_SETUP_CODE", code)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()?;
+    assert!(init.success());
+    let port = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+        listener.local_addr()?.port()
+    };
+    let mut child = OwnedChild(
+        Command::new(env!("CARGO_BIN_EXE_native-backend-candidate"))
+            .arg("--existing-front")
+            .arg(data.join("native-journal.db"))
+            .env_clear()
+            .env("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9")
+            .env("UI_DATA_DIR", &data)
+            .env("UI_PORT", port.to_string())
+            .env("NOEVIA_START_ID", "0123456789abcdef0123456789abcdef")
+            .env("NOEVIA_WEB_DIST", data.join("dist"))
+            .env("PUBLIC_ORIGIN", "https://noevia.example.test")
+            .env(
+                "NATIVE_CANDIDATE_MODEL_ENDPOINT",
+                "http://127.0.0.1:9/v1/chat/completions",
+            )
+            .env("INFERENCE_MODEL", "synthetic-no-calls")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?,
+    );
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_secs(5))
+        .build()?;
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if child.0.try_wait()?.is_some() {
+                return Err("candidate exited".into());
+            }
+            if client
+                .get(format!("http://127.0.0.1:{port}/api/setup/status"))
+                .send()
+                .await
+                .is_ok()
+            {
+                return Ok::<_, Box<dyn std::error::Error>>(());
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await??;
+    let response=client.post(format!("http://127.0.0.1:{port}/api/setup/complete"))
+        .header("origin","https://noevia.example.test").header("content-type","application/json")
+        .body(serde_json::json!({"setupCode":code,"username":"synthetic","password":"Synthetic-account-password-20261028!","publicOrigin":"https://noevia.example.test","diaryEnabled":false}).to_string()).send().await?;
+    assert_eq!(response.status(), 200, "{}", response.text().await?);
+    let db = rusqlite::Connection::open(server_store::db_path(&data))?;
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM users WHERE username='synthetic' AND role='admin'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )?,
+        1
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM settings WHERE key='setup_code_hash'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )?,
+        0
+    );
+    assert!(!data.join("first-run-setup-code").exists());
+    assert!(Command::new("/bin/kill")
+        .arg("-TERM")
+        .arg(child.0.id().to_string())
+        .status()?
+        .success());
+    tokio::time::timeout(Duration::from_secs(8), async {
+        loop {
+            if let Some(status) = child.0.try_wait()? {
+                return Ok::<_, std::io::Error>(status);
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await??;
+    Ok(())
+}
