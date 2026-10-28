@@ -49,7 +49,7 @@ fn browser_presave_before_and_during_turn_preserves_ids_and_fences_other_edits(
         let sent = json!({"id":"new","role":"user","content":"same"});
         let request = json!({"role":"user","content":"same"});
         let previous = vec![json!({"role":"user","content":"same"})];
-        save(dir.path(), &[old.clone()])?;
+        save(dir.path(), std::slice::from_ref(&old))?;
         if timing == "before" {
             save(dir.path(), &[old.clone(), sent.clone()])?;
         }

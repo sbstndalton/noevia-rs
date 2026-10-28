@@ -709,7 +709,19 @@ impl Runtime {
                 if output.len() > 1024 * 1024 {
                     return Err(Fault::Capacity);
                 }
-                messages.push(json!({"role":"tool","tool_call_id":id,"content":output}));
+                // Tool output is third-party data, even when the tool succeeded.
+                // Refusals produced by our own gate remain trusted server messages.
+                let for_model = if not_run || declined {
+                    output.clone()
+                } else {
+                    String::from_utf16(&prompt_framing::framing::frame_untrusted(
+                        &"tool result".encode_utf16().collect::<Vec<_>>(),
+                        &name_units,
+                        &output.encode_utf16().collect::<Vec<_>>(),
+                    ))
+                    .map_err(|_| Fault::Protocol)?
+                };
+                messages.push(json!({"role":"tool","tool_call_id":id,"content":for_model}));
                 emit(
                     json!({"type":"tool_result","index":index,"name":name,"text":output.chars().take(300).collect::<String>(),"applied":applied,"declined":declined,"notRun":not_run}),
                 )?;
