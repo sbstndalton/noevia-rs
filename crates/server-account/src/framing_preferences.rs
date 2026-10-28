@@ -2,8 +2,9 @@
 //! The legacy read is intentionally forgiving; only literal booleans enable a preference.
 //! PUT holds the shared SQLite IMMEDIATE writer fence through final authentication and
 //! the file read/merge/replace, so partial updates cannot overwrite each other.
-use crate::{files, read_json, Account, Fault, Outcome, Reply, Request, BODY_LIMIT};
+use crate::{files, Account, Fault, Outcome, Reply, Request, BODY_LIMIT};
 use js_json::JValue;
+use serde::Deserialize;
 use server_auth::Identity;
 use server_store::{json, RustAuth};
 use std::path::Path;
@@ -12,10 +13,91 @@ const FILE: &str = "chat-framing.json";
 const KEYS: [&str; 2] = ["autoAccept", "keepReasoningTraces"];
 const INVALID: &str = "autoAccept and keepReasoningTraces must be true or false";
 
+fn json_space(text: &str) -> &str {
+    text.trim_matches(|c| matches!(c, ' ' | '\t' | '\r' | '\n'))
+}
+
+/// Validate the complete JSON lexically, then project only the two ASCII keys.
+/// IgnoredAny does not convert ignored numbers/strings, so valid Node JSON with
+/// lone surrogates, private-use scalars, overflow numbers or deep ignored data
+/// cannot reset an unrelated saved boolean. This is not a general JSON parser:
+/// serde validates grammar; this scan only splits validated top-level members.
+fn project(text: &str) -> Result<JValue, ()> {
+    let mut decoder = serde_json::Deserializer::from_str(text);
+    serde::de::IgnoredAny::deserialize(&mut decoder).map_err(|_| ())?;
+    decoder.end().map_err(|_| ())?;
+    let Some(inner) = json_space(text)
+        .strip_prefix('{')
+        .and_then(|s| s.strip_suffix('}'))
+    else {
+        return Ok(JValue::Null);
+    };
+    let mut fields: Vec<(String, JValue)> = Vec::new();
+    let mut member = |entry: &str| {
+        let Some((key, value)) = entry.split_once(':') else {
+            return;
+        };
+        // A literal colon inside an unknown key may split early; such a key
+        // cannot be either recognized ASCII key and is safely ignored.
+        let Ok(JValue::Str(key)) = js_json::parse(json_space(key)) else {
+            return;
+        };
+        if !KEYS.contains(&key.as_str()) {
+            return;
+        }
+        let value = match json_space(value) {
+            "true" => JValue::Bool(true),
+            "false" => JValue::Bool(false),
+            _ => JValue::Null,
+        };
+        if let Some((_, old)) = fields.iter_mut().find(|(name, _)| name == &key) {
+            *old = value;
+        } else {
+            fields.push((key, value));
+        }
+    };
+    let (mut depth, mut quoted, mut escaped, mut start) = (0usize, false, false, 0usize);
+    for (offset, byte) in inner.bytes().enumerate() {
+        if quoted {
+            if escaped {
+                escaped = false;
+            } else if byte == b'\\' {
+                escaped = true;
+            } else if byte == b'"' {
+                quoted = false;
+            }
+        } else {
+            match byte {
+                b'"' => quoted = true,
+                b'{' | b'[' => depth += 1,
+                b'}' | b']' => depth = depth.saturating_sub(1),
+                b',' if depth == 0 => {
+                    member(inner.get(start..offset).ok_or(())?);
+                    start = offset + 1;
+                }
+                _ => {}
+            }
+        }
+    }
+    member(inner.get(start..).ok_or(())?);
+    Ok(JValue::Obj(fields))
+}
+
+fn preference_body(req: &Request) -> Result<JValue, Fault> {
+    if req.body.over || req.body.bytes.len() > BODY_LIMIT {
+        return Err(Fault::Status(413, "Request exceeds size limit".into()));
+    }
+    let raw = String::from_utf8_lossy(&req.body.bytes);
+    if raw.is_empty() {
+        return Ok(JValue::Obj(Vec::new()));
+    }
+    project(&raw).map_err(|()| Fault::Status(400, "invalid JSON".into()))
+}
+
 fn read(dir: &Path) -> JValue {
     let data = std::fs::read(dir.join(FILE))
         .ok()
-        .and_then(|bytes| js_json::parse(&String::from_utf8_lossy(&bytes)).ok())
+        .and_then(|bytes| project(&String::from_utf8_lossy(&bytes)).ok())
         .unwrap_or(JValue::Null);
     JValue::obj(KEYS.map(|key| (key, JValue::Bool(data.get(key) == &JValue::Bool(true)))))
 }
@@ -138,7 +220,7 @@ pub(crate) fn handle(
     }
     let dir = files::user_dir(acct, &authn.user.id)?;
     let body = if req.method == "PUT" {
-        Some(read_json(req, BODY_LIMIT)?)
+        Some(preference_body(req)?)
     } else {
         None
     };
@@ -194,15 +276,15 @@ mod tests {
         if value.is_null() {
             return Ok(None);
         }
-        value
-            .as_array()
-            .ok_or("not byte array")?
+        let hex = value.as_str().ok_or("not hexadecimal text")?;
+        if hex.len() % 2 != 0 {
+            return Err("odd hexadecimal length".into());
+        }
+        hex.as_bytes()
+            .as_chunks::<2>()
+            .0
             .iter()
-            .map(|v| {
-                v.as_u64()
-                    .and_then(|n| u8::try_from(n).ok())
-                    .ok_or_else(|| "bad byte".into())
-            })
+            .map(|part| Ok(u8::from_str_radix(std::str::from_utf8(part)?, 16)?))
             .collect::<Result<Vec<_>, Error>>()
             .map(Some)
     }
@@ -234,7 +316,7 @@ mod tests {
                         over: false,
                     },
                 };
-                read_json(&req, BODY_LIMIT).and_then(|v| update(dir.path(), &v, RustAuth::owned()))
+                preference_body(&req).and_then(|v| update(dir.path(), &v, RustAuth::owned()))
             } else {
                 Ok(read(dir.path()))
             };

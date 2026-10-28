@@ -2805,6 +2805,7 @@ dependencies = [
  "p256",
  "passkey",
  "rand_core 0.6.4",
+ "serde",
  "serde_json",
  "server-auth",
  "server-projects",
