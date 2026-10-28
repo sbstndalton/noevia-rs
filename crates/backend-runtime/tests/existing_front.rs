@@ -388,3 +388,93 @@ async fn original_front_auth_history_and_native_execution_share_one_transcript(
     task.await?;
     Ok(())
 }
+
+#[tokio::test]
+async fn native_workspace_claims_original_root_only_for_live_administrator(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for admin in [false, true] {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../server-auth/tests/fixtures/node-auth.v1.json"
+        ))?;
+        let mut scenario = fixture
+            .get("scenarios")
+            .and_then(Value::as_array)
+            .and_then(|a| a.first())
+            .ok_or("scenario")?
+            .clone();
+        replace(&mut scenario);
+        let built = auth_fixture::build(&scenario);
+        let data = built.dir.path();
+        if admin {
+            let db = rusqlite::Connection::open(data.join("cowork.db"))?;
+            db.execute("UPDATE users SET role='admin' WHERE id=?", [USER])?;
+        }
+        let original = br#"{"projects":[{"id":"legacy-project","name":"Preserved original","files":[],"chats":[]}]}"#;
+        std::fs::write(data.join("projects.json"), original)?;
+        let store = Arc::new(ProjectConversations::open(
+            data,
+            START,
+            &data.join("native-turns.db"),
+        )?);
+        let runtime = Arc::new(Runtime::new(store, Arc::new(Engine), BTreeMap::new())?);
+        let lookup = |key: &str| match key {
+            "UI_DATA_DIR" => Some(data.display().to_string()),
+            "NOEVIA_WEB_DIST" => Some(data.join("dist").display().to_string()),
+            "PUBLIC_ORIGIN" => Some("https://noevia.example.test".into()),
+            "NOEVIA_LEGACY_UPSTREAM" => Some("http://127.0.0.1:9".into()),
+            "NOEVIA_START_ID" => Some(START.into()),
+            _ => None,
+        };
+        let api = Api::new(data, runtime, lookup)?;
+        let front = backend_runtime::frontend::assemble(
+            noevia_server::config::Config::from_lookup(lookup)?,
+            api,
+        )?;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let address = listener.local_addr()?;
+        let (stop, stopped) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(noevia_server::serve::serve(
+            listener,
+            front,
+            noevia_server::serve::Limits::default(),
+            async move {
+                let _ = stopped.await;
+            },
+        ));
+        let cookie = scenario
+            .get("cases")
+            .and_then(Value::as_array)
+            .ok_or("cases")?
+            .iter()
+            .find(|v| {
+                v.pointer("/expect/csrf") == Some(&Value::Bool(true))
+                    && v.pointer("/expect/authn/user/id") == Some(&json!(USER))
+            })
+            .and_then(|v| v.pointer("/input/cookie"))
+            .and_then(Value::as_str)
+            .ok_or("cookie")?;
+        let client = reqwest::Client::builder().no_proxy().build()?;
+        let reply = client
+            .get(format!("http://{address}/api/workspace"))
+            .header("cookie", cookie)
+            .send()
+            .await?;
+        assert_eq!(reply.status().as_u16(), if admin { 200 } else { 503 });
+        let user = data.join("users").join(USER);
+        if admin {
+            let body: Value = serde_json::from_str(&reply.text().await?)?;
+            assert_eq!(
+                body.pointer("/projects/0/name"),
+                Some(&json!("Preserved original"))
+            );
+            assert_eq!(std::fs::read(user.join("projects.json"))?, original);
+            assert!(data.join("migration-backups").is_dir());
+        } else {
+            assert!(!user.exists());
+            assert_eq!(std::fs::read(data.join("projects.json"))?, original);
+        }
+        let _ = stop.send(());
+        task.await??;
+    }
+    Ok(())
+}

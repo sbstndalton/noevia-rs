@@ -314,7 +314,26 @@ async fn handle(
                 .write(|tx| {
                     output = Some(match auth.gate_in(&tx.reader(), &creds, &path, now())? {
                         Ok(identity) if identity.user.id == user => {
-                            match server_projects::store::ensure_user_dir(&data, &user) {
+                            let ensured = server_projects::store::ensure_user_dir(&data, &user);
+                            let ensured = if matches!(
+                                ensured,
+                                Ok(server_projects::store::Ensured::LegacyPending)
+                            ) && identity.account_role == server_auth::Role::Admin
+                            {
+                                // The live administrator was revalidated inside this same
+                                // auth IMMEDIATE transaction. Account deletion cannot race
+                                // the descriptor-relative, backed-up legacy migration.
+                                match server_projects::legacy_claim::claim_root(&data, &user) {
+                                    Ok(_) => server_projects::store::ensure_user_dir(&data, &user),
+                                    Err(_) => {
+                                        output = Some(Err(Fault::Unavailable));
+                                        return Ok(());
+                                    }
+                                }
+                            } else {
+                                ensured
+                            };
+                            match ensured {
                                 Ok(
                                     server_projects::store::Ensured::Existed(_)
                                     | server_projects::store::Ensured::Created(_),
