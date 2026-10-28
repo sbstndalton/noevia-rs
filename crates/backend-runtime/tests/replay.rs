@@ -56,6 +56,53 @@ fn original_journal_replay_is_ordered_idempotent_and_quarantines_dependents(
         .content
         .contains("Question?"));
     assert_eq!(replay.pending(&corpus, &journal, 100, true, &control)?, 0);
+    assert_eq!(
+        replay.months(&corpus, &control)?,
+        json!({"source":"sidecar","months":[{"id":"2026-10","label":"October 2026"}]})
+    );
+    let month_view = replay.history(
+        &corpus,
+        Some("2026-10"),
+        chrono::NaiveDate::from_ymd_opt(2026, 10, 28).ok_or("date")?,
+        &control,
+    )?;
+    assert_eq!(
+        month_view.get("todayLog").ok_or("todayLog")?,
+        &json!(content)
+    );
+    assert_eq!(month_view.get("standing").ok_or("standing")?, "");
+    let today_view = replay.history(
+        &corpus,
+        None,
+        chrono::NaiveDate::from_ymd_opt(2026, 10, 28).ok_or("date")?,
+        &control,
+    )?;
+    assert!(today_view
+        .get("todayLog")
+        .ok_or("todayLog")?
+        .as_str()
+        .ok_or("log")?
+        .contains(xid));
+    assert!(today_view
+        .get("todayLog")
+        .ok_or("todayLog")?
+        .as_str()
+        .ok_or("log")?
+        .contains("corrected"));
+    assert!(today_view
+        .get("standing")
+        .ok_or("standing")?
+        .as_str()
+        .ok_or("standing")?
+        .contains("Question?"));
+    assert!(replay
+        .history(
+            &corpus,
+            Some("2026-13"),
+            chrono::NaiveDate::from_ymd_opt(2026, 10, 28).ok_or("date")?,
+            &control
+        )
+        .is_err());
     journal.enqueue("unknown", &json!({"xid":"broken"}))?;
     journal.enqueue(
         "exchange_edit",

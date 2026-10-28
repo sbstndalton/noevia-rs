@@ -165,6 +165,67 @@ fn original_editor_contract_and_revocation_fence() -> Result<(), Box<dyn std::er
         request("POST", "/api/diary/file", json!({"path":"/note.md"}))?.0,
         400
     );
+    let xid = "41234567-89ab-4cde-8fab-0123456789ab";
+    journal.enqueue("exchange", &json!({"xid":xid,"day":"2026-10-28","sub_header":"12:00","body":diary_corpus_write::render_exchange("first","response",xid),"scaffold":true}))?;
+    let edit_control = backend_runtime::Control::new(std::time::Duration::from_secs(5))?;
+    assert_eq!(diary.replay_pending(&writer, &edit_control)?, 1);
+    let current = request(
+        "POST",
+        "/api/diary/file",
+        json!({"path":"Monthly/2026-10.md"}),
+    )?;
+    let hash =
+        diary_corpus_write::exchange_hash(current.1.get("content").ok_or("content")?.as_str(), xid)
+            .ok_or("hash")?;
+    journal.enqueue(
+        "exchange_edit",
+        &json!({"xid":xid,"month":"2026-10","new_me":"queued","new_claude":"response"}),
+    )?;
+    let edit =
+        json!({"xid":xid,"month":"2026-10","me":"corrected","assistant":"reply","base_hash":hash});
+    assert_eq!(
+        request("POST", "/api/diary/entries/edit", edit.clone())?.0,
+        409
+    );
+    assert_eq!(journal.pending_count()?, 1);
+    assert_eq!(diary.replay_pending(&writer, &edit_control)?, 1);
+    assert_eq!(
+        request("POST", "/api/diary/entries/edit", edit.clone())?.0,
+        409
+    );
+    let current = request(
+        "POST",
+        "/api/diary/file",
+        json!({"path":"Monthly/2026-10.md"}),
+    )?;
+    let mut edit = edit;
+    *edit.get_mut("base_hash").ok_or("base_hash")? = json!(diary_corpus_write::exchange_hash(
+        current.1.get("content").ok_or("content")?.as_str(),
+        xid
+    ));
+    let corrected = request("POST", "/api/diary/entries/edit", edit.clone())?;
+    assert_eq!(corrected.0, 200);
+    assert_eq!(corrected.1.get("day").ok_or("day")?, "2026-10-01");
+    let current = request(
+        "POST",
+        "/api/diary/file",
+        json!({"path":"Monthly/2026-10.md"}),
+    )?;
+    assert!(current
+        .1
+        .get("content")
+        .ok_or("content")?
+        .as_str()
+        .ok_or("content")?
+        .contains("corrected"));
+    assert_eq!(
+        corrected.1.get("hash").ok_or("hash")?,
+        &json!(diary_corpus_write::exchange_hash(
+            current.1.get("content").ok_or("content")?.as_str(),
+            xid
+        ))
+    );
+    assert_eq!(request("POST", "/api/diary/entries/edit", edit)?.0, 409);
     raw.execute(
         "UPDATE user_features SET diary_enabled=0 WHERE user_id=?",
         [USER],

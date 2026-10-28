@@ -104,7 +104,8 @@ impl Api {
         let tenants = self.diary.as_ref().ok_or(Fault::Unavailable)?.corpora();
         let store = Arc::new(server_store::Store::open(data).map_err(|_| Fault::Unavailable)?);
         let mut backend =
-            crate::dav::DavBackend::new(store, Arc::clone(&self.writer), tenants, scope)?;
+            crate::dav::DavBackend::new(store, Arc::clone(&self.writer), tenants, scope)?
+                .with_journals(self.diary.as_ref().ok_or(Fault::Unavailable)?.journals());
         if let Some(protection) = protection {
             backend = backend.with_workspace(protection);
         }

@@ -19,6 +19,7 @@ pub struct DavBackend {
     tenants: HashMap<String, Arc<Corpus>>,
     scope: Scope,
     workspace_config: Option<diary_workspace_transaction::ProtectionConfigDto>,
+    journals: HashMap<String, Arc<crate::journal::Journal>>,
 }
 fn now_ms() -> i64 {
     SystemTime::now()
@@ -55,7 +56,25 @@ impl DavBackend {
             tenants,
             scope,
             workspace_config: None,
+            journals: HashMap::new(),
         })
+    }
+    pub fn with_journals(
+        mut self,
+        journals: HashMap<String, Arc<crate::journal::Journal>>,
+    ) -> Self {
+        self.journals = journals;
+        self
+    }
+    fn mutation_ready(&self, identity: &Identity) -> Result<()> {
+        let journal = self
+            .journals
+            .get(&identity.user_id)
+            .ok_or(Fault::Unavailable)?;
+        if journal.pending_count()? != 0 {
+            return Err(Fault::Conflict);
+        }
+        Ok(())
     }
     /// Explicit original corpus protection settings are required before advertising mutations.
     pub fn with_workspace(
@@ -96,6 +115,9 @@ impl DavBackend {
         request: diary_workspace_transaction::Request,
     ) -> std::result::Result<diary_workspace_transaction::Reply, server_dav::Fault> {
         self.fenced(identity, |corpus, control| {
+            if !matches!(request.op.as_str(), "stat" | "list" | "trashList") {
+                self.mutation_ready(identity)?;
+            }
             corpus.workspace(request, control)
         })
     }
@@ -121,6 +143,9 @@ impl Backend for DavBackend {
                     .ok_or(Fault::Invalid)?;
                 if !matches!(op, "stat" | "delete" | "move" | "copy") {
                     return Err(Fault::Invalid);
+                }
+                if op != "stat" {
+                    self.mutation_ready(identity)?;
                 }
                 let namespace = corpus.workspace_namespace(control)?;
                 // IDs are allocated once per admitted HTTP operation, before the kernel. No

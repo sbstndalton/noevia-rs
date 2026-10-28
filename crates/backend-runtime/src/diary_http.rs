@@ -52,6 +52,12 @@ impl DiaryHttp {
         }
         Ok(count)
     }
+    pub fn journals(&self) -> HashMap<String, Arc<Journal>> {
+        self.tenants
+            .iter()
+            .map(|(u, t)| (u.clone(), Arc::clone(&t.journal)))
+            .collect()
+    }
     pub fn corpora(&self) -> HashMap<String, Arc<Corpus>> {
         self.tenants
             .iter()
@@ -59,7 +65,15 @@ impl DiaryHttp {
             .collect()
     }
     pub fn handles(path: &str) -> bool {
-        matches!(path, "/api/diary/files" | "/api/diary/file")
+        matches!(
+            path,
+            "/api/diary/files"
+                | "/api/diary/file"
+                | "/api/diary/entries/edit"
+                | "/api/diary/history"
+                | "/api/diary/today"
+                | "/api/diary/source"
+        )
     }
     #[allow(clippy::too_many_arguments)]
     pub fn handle(
@@ -108,7 +122,48 @@ impl DiaryHttp {
                     outcome = Some(Err(Fault::Unavailable));
                     return Ok(());
                 }
-                outcome = Some(tenant.handle(method, path, query, body, now, &control));
+                outcome = Some(if path == "/api/diary/entries/edit" {
+                    if method != "POST" {
+                        Ok(error(405, "Method not allowed"))
+                    } else if body.len() > 1024 * 1024 {
+                        Ok(error(413, "Request body too large"))
+                    } else {
+                        match serde_json::from_slice::<Value>(body) {
+                            Ok(value @ Value::Object(_)) => self
+                                .replay
+                                .get(user)
+                                .ok_or(Fault::Unavailable)
+                                .and_then(|replay| {
+                                    replay.edit(&tenant.corpus, &tenant.journal, &value, &control)
+                                }),
+                            _ => Ok(error(400, "Invalid JSON body")),
+                        }
+                    }
+                } else if path == "/api/diary/source" {
+                    self.replay
+                        .get(user)
+                        .ok_or(Fault::Unavailable)
+                        .and_then(|r| r.months(&tenant.corpus, &control))
+                        .map(|v| (200, v))
+                } else if matches!(path, "/api/diary/history" | "/api/diary/today") {
+                    let month = url::form_urlencoded::parse(query.as_bytes())
+                        .find(|(k, _)| k == "month")
+                        .map(|(_, v)| v.into_owned());
+                    self.replay
+                        .get(user)
+                        .ok_or(Fault::Unavailable)
+                        .and_then(|r| {
+                            r.history(
+                                &tenant.corpus,
+                                month.as_deref(),
+                                chrono::Local::now().date_naive(),
+                                &control,
+                            )
+                        })
+                        .map(|v| (200, v))
+                } else {
+                    tenant.handle(method, path, query, body, now, &control)
+                });
                 Ok(())
             })
             .map_err(|_| Fault::Unavailable)?;

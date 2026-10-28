@@ -75,6 +75,264 @@ impl Replay {
             until: Mutex::new(None),
         })
     }
+    pub fn months(&self, corpus: &Corpus, control: &Control) -> Result<Value> {
+        let root = [
+            &self.layout.root,
+            if self.layout.daily {
+                &self.layout.entries_prefix
+            } else {
+                &self.layout.monthly_prefix
+            },
+        ]
+        .into_iter()
+        .map(|s| s.trim_matches('/'))
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("/");
+        let mut folders = vec![root];
+        let mut files = HashSet::new();
+        let mut seen = 0;
+        while let Some(folder) = folders.pop() {
+            for item in corpus.list_files(&folder, control)? {
+                seen += 1;
+                if seen > 10000 {
+                    return Err(Fault::Capacity);
+                }
+                if item.is_dir {
+                    if self.layout.daily {
+                        folders.push(item.path);
+                    }
+                } else {
+                    files.insert(item.path);
+                }
+            }
+        }
+        let mut months = Vec::new();
+        let mut used = HashSet::new();
+        for year in 2000..=2100 {
+            for month in 1..=12 {
+                control.check()?;
+                let first = NaiveDate::from_ymd_opt(year, month, 1).ok_or(Fault::Invalid)?;
+                let mut present = false;
+                for number in 1..=31 {
+                    let Some(day) = first.with_day(number) else {
+                        break;
+                    };
+                    let path = self.layout.document(day)?;
+                    if files.contains(&path) && used.insert(path) {
+                        present = true;
+                    }
+                    if !self.layout.daily {
+                        break;
+                    }
+                }
+                if present {
+                    months.push(serde_json::json!({"id":first.format("%Y-%m").to_string(),"label":first.format("%B %Y").to_string()}));
+                }
+            }
+        }
+        // Retain the existing API's source discriminator for frontend compatibility.
+        Ok(serde_json::json!({"source":"sidecar","months":months}))
+    }
+    /// Browse existing layout files, preserving markers for the original editor UI.
+    pub fn history(
+        &self,
+        corpus: &Corpus,
+        month: Option<&str>,
+        today: NaiveDate,
+        control: &Control,
+    ) -> Result<Value> {
+        use serde_json::json;
+        if let Some(month) = month.filter(|s| !s.is_empty()) {
+            if month.len() != 7 {
+                return Err(Fault::Invalid);
+            }
+            let first = date(&format!("{month}-01"))?;
+            let mut parts = Vec::new();
+            for day_number in 1..=31 {
+                let Some(day) = first.with_day(day_number) else {
+                    break;
+                };
+                if let Some(file) = corpus.read(&self.layout.document(day)?, control)? {
+                    parts.push(if self.layout.daily {
+                        file.content.trim().to_owned()
+                    } else {
+                        file.content
+                    });
+                }
+                if !self.layout.daily {
+                    break;
+                }
+            }
+            return Ok(
+                json!({"todayLog":parts.into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n\n"),"standing":""}),
+            );
+        }
+        let mut log = String::new();
+        if let Some(file) = corpus.read(&self.layout.document(today)?, control)? {
+            let expected = diary_corpus_write::canonical_day_header(today).ok_or(Fault::Invalid)?;
+            if let Some(day) = diary_corpus_parse::parse_diary(&file.content)
+                .into_iter()
+                .find(|d| d.header == expected)
+            {
+                let mut parts = vec![day.header, String::new()];
+                for sub in day.subsections {
+                    parts.extend([format!("### {}", sub.header), String::new()]);
+                    for ex in sub.exchanges {
+                        if !ex.me.is_empty() {
+                            parts.extend([format!("**Me:** {}", ex.me), String::new()]);
+                        }
+                        if !ex.claude.is_empty() {
+                            parts.extend([format!("**Assistant:** {}", ex.claude), String::new()]);
+                        }
+                        if let Some(xid) = ex.xid {
+                            parts.extend([format!("<!-- xid:{xid} -->"), String::new()]);
+                        }
+                    }
+                }
+                log = parts.join("\n").trim().to_owned();
+                let count = log.chars().count();
+                if count > 12000 {
+                    log = format!(
+                        "(earlier exchanges today truncated)\n…{}",
+                        log.chars().skip(count - 12000).collect::<String>()
+                    );
+                }
+            }
+        }
+        let index = corpus.read(
+            &self
+                .layout
+                .join(&[&self.layout.monthly_prefix, &self.layout.index_file])?,
+            control,
+        )?;
+        let mut standing =
+            diary_index_transform::parse_index(index.as_ref().map(|f| f.content.as_str()))
+                .and_then(|i| i.render())
+                .map_err(|_| Fault::Capacity)?;
+        if standing.chars().count() > 4000 {
+            standing = format!(
+                "{}\n…(standing sections truncated)",
+                standing.chars().take(4000).collect::<String>()
+            );
+        }
+        Ok(json!({"todayLog":log,"standing":standing}))
+    }
+    /// Explicit human correction, under the caller's account/lifecycle writer fence.
+    /// A queued predecessor participates in optimistic concurrency even before storage changes.
+    pub fn edit(
+        &self,
+        corpus: &Corpus,
+        journal: &Journal,
+        request: &Value,
+        control: &Control,
+    ) -> Result<(u16, Value)> {
+        use diary_corpus_write::{exchange_hash, exchange_text, replace_exchange_text};
+        use serde_json::json;
+        let bad = |message: &str| Ok((400, json!({"error":message})));
+        let Some(xid) = request.get("xid").and_then(Value::as_str).map(str::trim) else {
+            return bad("invalid xid");
+        };
+        if !(8..=64).contains(&xid.len())
+            || !xid.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-')
+        {
+            return bad("invalid xid");
+        }
+        let Some(me) = request
+            .get("me")
+            .and_then(Value::as_str)
+            .filter(|s| !s.trim().is_empty())
+        else {
+            return bad("me is required");
+        };
+        let assistant = match request.get("assistant") {
+            None | Some(Value::Null) => "",
+            Some(Value::String(s)) => s,
+            _ => return bad("invalid assistant"),
+        };
+        let month = match request.get("month") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(s)) if s.len() == 7 && date(&format!("{s}-01")).is_ok() => {
+                Some(s.as_str())
+            }
+            _ => return bad("month must be YYYY-MM"),
+        };
+        let base = match request.get("base_hash") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(s))
+                if s.trim().len() == 64 && s.trim().bytes().all(|b| b.is_ascii_hexdigit()) =>
+            {
+                Some(s.trim().to_ascii_lowercase())
+            }
+            _ => return bad("invalid base_hash"),
+        };
+        let Some(path) = self.find(corpus, xid, month, control)? else {
+            return Ok((
+                404,
+                json!({"error":"No corpus document contains this exchange"}),
+            ));
+        };
+        let original = corpus.read(&path, control)?.ok_or(Fault::Missing)?.content;
+        let Some(edited) = replace_exchange_text(&original, xid, me, assistant) else {
+            return Ok((
+                404,
+                json!({"error":"The entry cannot be edited safely: malformed or missing block"}),
+            ));
+        };
+        let current_hash = exchange_hash(Some(&original), xid);
+        let current_text = exchange_text(Some(&original), xid);
+        if let Some(base) = base {
+            let queued = journal.unapplied_exchange_edit(xid)?;
+            let queued_hash = queued.as_ref().and_then(|e| {
+                let edited = replace_exchange_text(
+                    &original,
+                    xid,
+                    e.payload.get("new_me")?.as_str()?,
+                    e.payload.get("new_claude")?.as_str()?,
+                )?;
+                exchange_hash(Some(&edited), xid)
+            });
+            if current_hash.as_deref() != Some(base.as_str())
+                || (queued.is_some() && queued_hash.as_deref() != Some(base.as_str()))
+            {
+                return Ok((
+                    409,
+                    json!({"error":"Entry changed or an edit is still queued; reload and retry", "conflict":true,"current_hash":current_hash,"current_text":current_text}),
+                ));
+            }
+        }
+        let day = diary_corpus_parse::parse_diary(&original)
+            .into_iter()
+            .filter_map(|s| s.date)
+            .filter_map(|v| date(&v).ok())
+            .find(|d| self.layout.document(*d).ok().as_deref() == Some(&path))
+            .ok_or(Fault::Invalid)?;
+        // The original monthly store reports the owning document's first day.
+        let day = if self.layout.daily {
+            day
+        } else {
+            day.with_day(1).ok_or(Fault::Invalid)?
+        };
+        let id = journal.enqueue(
+            "exchange_edit",
+            &json!({"xid":xid,"new_me":me,"new_claude":assistant,"month":month}),
+        )?;
+        self.pending(corpus, journal, 10000, false, control)?;
+        let stored = corpus.read(&path, control)?;
+        if !journal.is_applied(&id)?
+            || exchange_hash(stored.as_ref().map(|f| f.content.as_str()), xid)
+                != exchange_hash(Some(&edited), xid)
+        {
+            return Ok((
+                503,
+                json!({"error":"Correction is queued but could not be saved yet. It will retry when storage is available."}),
+            ));
+        }
+        Ok((
+            200,
+            json!({"ok":true,"document":path,"day":day.format("%Y-%m-%d").to_string(),"hash":exchange_hash(Some(&edited),xid)}),
+        ))
+    }
     fn write(
         &self,
         corpus: &Corpus,

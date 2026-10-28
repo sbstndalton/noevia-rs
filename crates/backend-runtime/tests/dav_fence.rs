@@ -75,8 +75,12 @@ async fn real_auth_writer_fences_revoked_dav_credentials_at_corpus_sink(
     let config = serde_json::from_value(
         json!({"remoteRoot":"","entriesPrefix":"Entries","monthlyPrefix":"Monthly","monthFileTemplate":"{year}-{month02}.md","indexFile":"index.md","monthNames":["January","February","March","April","May","June","July","August","September","October","November","December"]}),
     )?;
-    let backend =
-        DavBackend::new(Arc::new(built.store), writer, tenants, Scope::Lan)?.with_workspace(config);
+    let journal = Arc::new(backend_runtime::journal::Journal::open(
+        &built.dir.path().join("journal.db"),
+    )?);
+    let backend = DavBackend::new(Arc::new(built.store), writer, tenants, Scope::Lan)?
+        .with_journals(HashMap::from([(user.to_owned(), Arc::clone(&journal))]))
+        .with_workspace(config);
     let identity = Identity {
         user_id: user.into(),
         credential_id: "a".repeat(32),
@@ -97,6 +101,22 @@ async fn real_auth_writer_fences_revoked_dav_credentials_at_corpus_sink(
             .map(|f| f.content),
         Some("synthetic".into())
     );
+    let pending = journal.enqueue("exchange", &json!({"xid":"pending"}))?;
+    assert_eq!(
+        backend
+            .workspace(
+                &identity,
+                json!({"op":"copy","path":"note.md","destination":"copy.md","overwrite":false})
+            )
+            .await,
+        Err(server_dav::Fault::Conflict)
+    );
+    assert!(backend
+        .read(&identity, "copy.md")
+        .await
+        .map_err(|e| format!("{e:?}"))?
+        .is_none());
+    journal.mark_applied(&pending)?;
     let copy = backend
         .workspace(
             &identity,
