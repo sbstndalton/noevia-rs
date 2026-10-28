@@ -5,6 +5,7 @@ pub mod api;
 pub mod approvals;
 pub mod calendar;
 pub mod chat;
+mod database;
 pub mod dav;
 pub mod diary;
 pub mod diary_http;

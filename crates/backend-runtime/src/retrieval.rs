@@ -1,7 +1,7 @@
 //! Native index with model/profile-separated vector slots and hash-bound vectors.
 //! A new database is explicit; this module does not silently migrate sqlite-vec tables.
 use crate::{diary::Hit, Control, Fault, Result};
-use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBehavior};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -73,20 +73,14 @@ fn decode(bytes: &[u8], dim: usize) -> Result<Vec<f32>> {
 }
 impl Index {
     pub fn create(path: &Path) -> Result<Self> {
-        let file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(path)
-            .map_err(|_| Fault::Conflict)?;
-        drop(file);
-        let db = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+        let db = crate::database::open(path, crate::database::Open::New)?;
         db.busy_timeout(Duration::from_secs(5))?;
         db.pragma_update(None, "synchronous", "FULL")?;
         db.execute_batch(SCHEMA)?;
         Ok(Self { db: Mutex::new(db) })
     }
     pub fn open(path: &Path) -> Result<Self> {
-        let db = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+        let db = crate::database::open(path, crate::database::Open::Existing)?;
         let version: i64 =
             db.query_row("SELECT version FROM native_index_meta", [], |r| r.get(0))?;
         if version != 1 {

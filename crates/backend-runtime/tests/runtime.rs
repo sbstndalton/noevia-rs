@@ -449,3 +449,28 @@ fn snapshot_refuses_symlinks_and_non_regular_sources() -> Result<(), Box<dyn std
     assert_eq!(std::fs::read(&bytes)?, b"synthetic original");
     Ok(())
 }
+
+#[cfg(unix)]
+#[test]
+fn native_database_owners_refuse_symlinks_and_keep_new_files_private(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir()?;
+    let state = dir.path().join("state.db");
+    let _state = backend_runtime::state::StateStore::create(&state)?;
+    let index = dir.path().join("index.db");
+    let _index = backend_runtime::retrieval::Index::create(&index)?;
+    let journal = dir.path().join("journal.db");
+    let _journal = backend_runtime::journal::Journal::open(&journal)?;
+    for path in [&state, &index, &journal] {
+        assert_eq!(std::fs::metadata(path)?.permissions().mode() & 0o777, 0o600);
+        let alias = path.with_extension("link");
+        std::os::unix::fs::symlink(path, &alias)?;
+        assert!(backend_runtime::state::StateStore::open(&alias).is_err());
+        assert!(backend_runtime::retrieval::Index::open(&alias).is_err());
+        assert!(backend_runtime::journal::Journal::open(&alias).is_err());
+    }
+    assert!(backend_runtime::state::StateStore::create(&state).is_err());
+    assert!(backend_runtime::retrieval::Index::create(&index).is_err());
+    Ok(())
+}

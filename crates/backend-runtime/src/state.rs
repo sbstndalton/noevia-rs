@@ -1,7 +1,7 @@
 //! Candidate execution store. This is a separate, explicitly initialized database;
 //! it does not migrate or silently reinterpret the existing project JSON stores.
 use crate::{approvals::Binding, Control, Fault, Result};
-use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBehavior};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{path::Path, sync::Mutex, time::Duration};
@@ -28,16 +28,7 @@ pub struct Job {
 }
 impl StateStore {
     pub fn create(path: &Path) -> Result<Self> {
-        if path.try_exists().map_err(|_| Fault::Database)? {
-            return Err(Fault::Conflict);
-        }
-        let file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(path)
-            .map_err(|_| Fault::Database)?;
-        drop(file);
-        let db = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+        let db = crate::database::open(path, crate::database::Open::New)?;
         db.execute_batch(SCHEMA)?;
         db.execute("INSERT INTO runtime_meta VALUES('version','1')", [])?;
         db.pragma_update(None, "synchronous", "FULL")?;
@@ -45,7 +36,7 @@ impl StateStore {
         Ok(Self { db: Mutex::new(db) })
     }
     pub fn open(path: &Path) -> Result<Self> {
-        let db = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+        let db = crate::database::open(path, crate::database::Open::Existing)?;
         let version: String = db.query_row(
             "SELECT value FROM runtime_meta WHERE key='version'",
             [],

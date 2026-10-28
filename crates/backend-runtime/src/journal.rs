@@ -41,7 +41,7 @@ fn entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<Entry> {
 impl Journal {
     /// Explicit construction; no connection is ever selected from request-supplied paths.
     pub fn open(path: &Path) -> Result<Self> {
-        let db = Connection::open(path)?;
+        let db = crate::database::open(path, crate::database::Open::ExistingOrNew)?;
         db.busy_timeout(Duration::from_secs(30))?;
         db.execute_batch(SCHEMA)?;
         Ok(Self { db: Mutex::new(db) })
