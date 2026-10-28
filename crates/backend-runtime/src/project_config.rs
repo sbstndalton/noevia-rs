@@ -269,8 +269,19 @@ pub fn create(ctx: Ctx<'_>, bytes: &[u8], storage_kind: Option<&str>) -> Reply {
         Ok(_) => return invalid("request body must be a JSON object"),
         Err(_) => return invalid("invalid JSON"),
     };
-    if body.get("toolboxes").and_then(Value::as_array).is_some_and(|items|items.iter().any(|v|v.as_str().is_some_and(|s|s!="core"))) {
-        return Reply::error(503,"Native non-core toolbox catalogue is not yet available");
+    if body
+        .get("toolboxes")
+        .and_then(Value::as_array)
+        .is_some_and(|items| {
+            items
+                .iter()
+                .any(|v| v.as_str().is_some_and(|s| s != "core"))
+        })
+    {
+        return Reply::error(
+            503,
+            "Native non-core toolbox catalogue is not yet available",
+        );
     }
     if storage_kind.is_some_and(|s| s != "local")
         || body
@@ -471,18 +482,56 @@ mod tests {
 mod create_tests {
     use super::*;
     #[test]
-    fn native_creation_uses_original_record_and_preserves_existing_projects()->Result<(),Box<dyn std::error::Error>> {
-        let root=tempfile::tempdir()?;let user="11111111-2222-4333-8444-555555555555";let dir=root.path().join("users").join(user);std::fs::create_dir_all(&dir)?;
-        std::fs::write(dir.join("projects.json"),r#"{"projects":[{"id":"existing","unknown":true}]}"#)?;
-        std::fs::write(dir.join("preferences.json"),r#"{"defaultRouting":"manual"}"#)?;
-        let ctx=Ctx{data_dir:root.path(),user_id:user,switch:server_store::RustProjects::owned(),now_ms:123};
-        let before=std::fs::read(dir.join("projects.json"))?;
-        assert_eq!(create(ctx,br#"{"name":"Remote"}"#,Some("webdav")).status,503);
-        assert_eq!(create(ctx,br#"{"name":"With upload","files":[{"name":"n.md","content":"synthetic"}]}"#,None).status,503);
-        assert_eq!(std::fs::read(dir.join("projects.json"))?,before);
-        let reply=create(ctx,br#"{"name":" New project ","goal":7,"modes":["code"],"toolboxes":[],"color":"#ABCDEF"}"#,None);assert_eq!(reply.status,200);
-        let server_projects::Body::Json(text)=reply.body else{return Err("body".into())};let project:Value=serde_json::from_str(&text)?;
-        assert_eq!(project.get("name"),Some(&json!("New project")));assert_eq!(project.get("goal"),Some(&json!("7")));assert_eq!(project.get("routing"),Some(&json!("manual")));assert_eq!(project.get("toolsMode"),Some(&json!("manual")));assert_eq!(project.get("toolboxes"),Some(&json!([])));assert_eq!(project.get("modes"),Some(&json!(["chat","code"])));
-        let stored:Value=serde_json::from_slice(&std::fs::read(dir.join("projects.json"))?)?;assert_eq!(stored.pointer("/projects/0"),Some(&project));assert_eq!(stored.pointer("/projects/1/unknown"),Some(&json!(true)));Ok(())
+    fn native_creation_uses_original_record_and_preserves_existing_projects(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let root = tempfile::tempdir()?;
+        let user = "11111111-2222-4333-8444-555555555555";
+        let dir = root.path().join("users").join(user);
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(
+            dir.join("projects.json"),
+            r#"{"projects":[{"id":"existing","unknown":true}]}"#,
+        )?;
+        std::fs::write(
+            dir.join("preferences.json"),
+            r#"{"defaultRouting":"manual"}"#,
+        )?;
+        let ctx = Ctx {
+            data_dir: root.path(),
+            user_id: user,
+            switch: server_store::RustProjects::owned(),
+            now_ms: 123,
+        };
+        let before = std::fs::read(dir.join("projects.json"))?;
+        assert_eq!(
+            create(ctx, br#"{"name":"Remote"}"#, Some("webdav")).status,
+            503
+        );
+        assert_eq!(
+            create(
+                ctx,
+                br#"{"name":"With upload","files":[{"name":"n.md","content":"synthetic"}]}"#,
+                None
+            )
+            .status,
+            503
+        );
+        assert_eq!(std::fs::read(dir.join("projects.json"))?, before);
+        let reply=create(ctx,br##"{"name":" New project ","goal":7,"modes":["code"],"toolboxes":[],"color":"#ABCDEF"}"##,None);
+        assert_eq!(reply.status, 200);
+        let server_projects::Body::Json(text) = reply.body else {
+            return Err("body".into());
+        };
+        let project: Value = serde_json::from_str(&text)?;
+        assert_eq!(project.get("name"), Some(&json!("New project")));
+        assert_eq!(project.get("goal"), Some(&json!("7")));
+        assert_eq!(project.get("routing"), Some(&json!("manual")));
+        assert_eq!(project.get("toolsMode"), Some(&json!("manual")));
+        assert_eq!(project.get("toolboxes"), Some(&json!([])));
+        assert_eq!(project.get("modes"), Some(&json!(["chat", "code"])));
+        let stored: Value = serde_json::from_slice(&std::fs::read(dir.join("projects.json"))?)?;
+        assert_eq!(stored.pointer("/projects/0"), Some(&project));
+        assert_eq!(stored.pointer("/projects/1/unknown"), Some(&json!(true)));
+        Ok(())
     }
 }
