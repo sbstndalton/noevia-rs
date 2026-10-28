@@ -148,6 +148,19 @@ impl Conversations for SessionConversations {
             self.inner.begin(binding, id, request, control)
         })
     }
+    fn begin_browser(
+        &self,
+        binding: &Binding,
+        id: &str,
+        request: &Value,
+        history: &[Value],
+        control: &Control,
+    ) -> Result<(String, Vec<Value>)> {
+        self.fenced(&binding.user, || {
+            self.inner
+                .begin_browser(binding, id, request, history, control)
+        })
+    }
     fn finish(
         &self,
         binding: &Binding,

@@ -18,7 +18,34 @@ pub struct ProjectConversations {
     data: PathBuf,
     start: String,
     journal: Journal,
-    running: Mutex<HashMap<(String, String), String>>,
+    running: Mutex<HashMap<(String, String), Running>>,
+}
+#[derive(Clone)]
+struct Running {
+    id: String,
+    base: Vec<Value>,
+    user: Value,
+    browser: bool,
+}
+// Only ordinary text turns are admitted here. Applied/declined write records and
+// failed read recovery require the original modelHistory projection, not a lossy cast.
+fn text_projection(history: &[Value]) -> Result<Vec<Value>> {
+    history
+        .iter()
+        .map(|m| {
+            if !matches!(
+                m.get("role").and_then(Value::as_str),
+                Some("user" | "assistant")
+            ) || !m.get("content").is_some_and(Value::is_string)
+                || ["toolCalls", "tool_calls", "error", "paused"]
+                    .iter()
+                    .any(|key| m.get(key).is_some())
+            {
+                return Err(Fault::Unavailable);
+            }
+            Ok(json!({"role":m["role"],"content":m["content"]}))
+        })
+        .collect()
 }
 impl ProjectConversations {
     pub fn open(data: &Path, start: &str, journal_path: &Path) -> Result<Self> {
@@ -31,6 +58,62 @@ impl ProjectConversations {
             journal: Journal::open(journal_path)?,
             running: Mutex::new(HashMap::new()),
         })
+    }
+    fn begin_inner(
+        &self,
+        binding: &Binding,
+        id: &str,
+        request: &Value,
+        control: &Control,
+        browser: Option<&[Value]>,
+    ) -> Result<(String, Vec<Value>)> {
+        control.check()?;
+        if self.context(&binding.user, &binding.canonical_chat_id)? != *binding {
+            return Err(Fault::Conflict);
+        }
+        let mut running = self.running.lock().map_err(|_| Fault::Unavailable)?;
+        let key = (binding.user.clone(), binding.canonical_chat_id.clone());
+        if running.contains_key(&key) || running.len() >= 1024 {
+            return Err(Fault::Conflict);
+        }
+        let current = transcript::read(&self.data, &binding.user, &binding.canonical_chat_id)
+            .map_err(|_| Fault::Unavailable)?;
+        let encoded = js_json::wtf16::stringify(&current.history).ok_or(Fault::Invalid)?;
+        let mut history: Vec<Value> = serde_json::from_str(&encoded)?;
+        let base = history.clone();
+        if let Some(expected) = browser {
+            let projection = text_projection(&history)?;
+            let expected = text_projection(expected)?;
+            if projection == expected {
+                // The browser save has not arrived yet.
+            } else if projection.len() == expected.len() + 1
+                && projection[..expected.len()] == expected
+                && projection.last() == Some(request)
+            {
+                history.pop();
+            } else {
+                return Err(Fault::Conflict);
+            }
+        }
+        // The model runtime cannot safely reinterpret non-array or lone-surrogate histories.
+        // Refuse those inputs; original history routes still serve their original contract.
+        self.journal.enqueue_id(
+            id,
+            "native_chat_turn",
+            &json!({"binding":binding,"baseRevision":current.revision,"request":request}),
+            &chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
+        )?;
+        control.check()?;
+        running.insert(
+            key,
+            Running {
+                id: id.to_owned(),
+                base,
+                user: request.clone(),
+                browser: browser.is_some(),
+            },
+        );
+        Ok((current.revision, history))
     }
     fn native(binding: &Binding) -> chat_move::GrantContext {
         chat_move::GrantContext {
@@ -49,7 +132,7 @@ impl ProjectConversations {
         self.running
             .lock()
             .map_err(|_| Fault::Unavailable)?
-            .retain(|(owner, _), turn| owner != user || turn != id);
+            .retain(|(owner, _), turn| owner != user || turn.id != id);
         Ok(())
     }
 }
@@ -134,30 +217,17 @@ impl Conversations for ProjectConversations {
         request: &Value,
         control: &Control,
     ) -> Result<(String, Vec<Value>)> {
-        control.check()?;
-        if self.context(&binding.user, &binding.canonical_chat_id)? != *binding {
-            return Err(Fault::Conflict);
-        }
-        let mut running = self.running.lock().map_err(|_| Fault::Unavailable)?;
-        let key = (binding.user.clone(), binding.canonical_chat_id.clone());
-        if running.contains_key(&key) || running.len() >= 1024 {
-            return Err(Fault::Conflict);
-        }
-        let current = transcript::read(&self.data, &binding.user, &binding.canonical_chat_id)
-            .map_err(|_| Fault::Unavailable)?;
-        let encoded = js_json::wtf16::stringify(&current.history).ok_or(Fault::Invalid)?;
-        let history: Vec<Value> = serde_json::from_str(&encoded)?;
-        // The model runtime cannot safely reinterpret non-array or lone-surrogate histories.
-        // Refuse those inputs; original history routes still serve their original contract.
-        self.journal.enqueue_id(
-            id,
-            "native_chat_turn",
-            &json!({"binding":binding,"baseRevision":current.revision,"request":request}),
-            &chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
-        )?;
-        control.check()?;
-        running.insert(key, id.to_owned());
-        Ok((current.revision, history))
+        self.begin_inner(binding, id, request, control, None)
+    }
+    fn begin_browser(
+        &self,
+        binding: &Binding,
+        id: &str,
+        request: &Value,
+        history: &[Value],
+        control: &Control,
+    ) -> Result<(String, Vec<Value>)> {
+        self.begin_inner(binding, id, request, control, Some(history))
     }
     fn finish(
         &self,
@@ -171,17 +241,40 @@ impl Conversations for ProjectConversations {
         if binding.start != self.start {
             return Err(Fault::Conflict);
         }
-        if self
+        let turn = self
             .running
             .lock()
             .map_err(|_| Fault::Unavailable)?
             .get(&(binding.user.clone(), binding.canonical_chat_id.clone()))
-            .map(String::as_str)
-            != Some(id)
-        {
-            return Err(Fault::Conflict);
+            .filter(|turn| turn.id == id)
+            .cloned()
+            .ok_or(Fault::Conflict)?;
+        let mut output = messages.to_vec();
+        let mut base_revision = revision.to_owned();
+        if turn.browser {
+            let current = transcript::read(&self.data, &binding.user, &binding.canonical_chat_id)
+                .map_err(|_| Fault::Unavailable)?;
+            let encoded = js_json::wtf16::stringify(&current.history).ok_or(Fault::Invalid)?;
+            let stored: Vec<Value> = serde_json::from_str(&encoded)?;
+            if current.revision != revision {
+                // Accept only the one queued browser user save. All preceding raw
+                // metadata must still match. The final write CAS closes the read race.
+                if stored.len() != turn.base.len() + 1
+                    || stored[..turn.base.len()] != turn.base
+                    || text_projection(&stored[turn.base.len()..])? != vec![turn.user.clone()]
+                {
+                    return Err(Fault::Conflict);
+                }
+            }
+            if stored.len() > output.len()
+                || text_projection(&stored)? != text_projection(&output[..stored.len()])?
+            {
+                return Err(Fault::Conflict);
+            }
+            output[..stored.len()].clone_from_slice(&stored);
+            base_revision = current.revision;
         }
-        let encoded = serde_json::to_string(messages)?;
+        let encoded = serde_json::to_string(&output)?;
         let value = js_json::wtf16::parse(&encoded).map_err(|_| Fault::Invalid)?;
         let js_json::JValue::Arr(history) = value else {
             return Err(Fault::Invalid);
@@ -191,7 +284,7 @@ impl Conversations for ProjectConversations {
             &binding.user,
             &Self::native(binding),
             &history,
-            &transcript::Base::Revision(revision.to_owned()),
+            &transcript::Base::Revision(base_revision),
             || control.check().is_ok(),
         )
         .map_err(|_| Fault::Conflict)?;

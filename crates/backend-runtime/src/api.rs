@@ -623,17 +623,29 @@ async fn handle(
     };
     let turn = uuid::Uuid::new_v4().to_string();
     let user = json!({"role":"user","content":message});
+    let browser_history = match body.get("history") {
+        None => None,
+        Some(Value::Array(history)) => Some(history.clone()),
+        _ => return failure(Fault::Invalid),
+    };
     let owned = control.clone();
     let (sender, receiver) = mpsc::channel::<Bytes>(64);
     let job = tokio::spawn(async move {
         let _permit = chat_permit;
         let result = runtime
-            .run(binding, &turn, user, &owned, |event| {
-                session_store.check()?;
-                sender
-                    .try_send(Bytes::from(format!("data: {event}\n\n")))
-                    .map_err(|_| Fault::Cancelled)
-            })
+            .run_browser(
+                binding,
+                &turn,
+                user,
+                browser_history.as_deref(),
+                &owned,
+                |event| {
+                    session_store.check()?;
+                    sender
+                        .try_send(Bytes::from(format!("data: {event}\n\n")))
+                        .map_err(|_| Fault::Cancelled)
+                },
+            )
             .await;
         if let Err(error) = result {
             let _ = sender.try_send(Bytes::from(format!(

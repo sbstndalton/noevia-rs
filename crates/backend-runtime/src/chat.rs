@@ -381,6 +381,18 @@ impl Runtime {
         id: &str,
         user_message: Value,
         control: &Control,
+        emit: impl FnMut(Value) -> Result<()> + Send,
+    ) -> Result<Vec<Value>> {
+        self.run_browser(binding, id, user_message, None, control, emit)
+            .await
+    }
+    pub async fn run_browser(
+        &self,
+        binding: Binding,
+        id: &str,
+        user_message: Value,
+        browser_history: Option<&[Value]>,
+        control: &Control,
         mut emit: impl FnMut(Value) -> Result<()> + Send,
     ) -> Result<Vec<Value>> {
         binding.validate()?;
@@ -392,7 +404,13 @@ impl Runtime {
             return Err(Fault::Invalid);
         }
         self.validate_context(&binding)?;
-        let (revision, mut messages) = self.store.begin(&binding, id, &user_message, control)?;
+        let (revision, mut messages) = match browser_history {
+            Some(history) => {
+                self.store
+                    .begin_browser(&binding, id, &user_message, history, control)?
+            }
+            None => self.store.begin(&binding, id, &user_message, control)?,
+        };
         let mut guard = TurnGuard {
             store: Arc::clone(&self.store),
             user: binding.user.clone(),

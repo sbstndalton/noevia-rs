@@ -321,6 +321,17 @@ pub trait Conversations: Send + Sync {
         request: &Value,
         control: &Control,
     ) -> Result<(String, Vec<Value>)>;
+    /// Browser history is an admission assertion, never permission to replace server state.
+    fn begin_browser(
+        &self,
+        _binding: &Binding,
+        _id: &str,
+        _request: &Value,
+        _history: &[Value],
+        _control: &Control,
+    ) -> Result<(String, Vec<Value>)> {
+        Err(Fault::Unavailable)
+    }
     fn finish(
         &self,
         binding: &Binding,

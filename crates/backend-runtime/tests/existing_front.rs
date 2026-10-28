@@ -235,13 +235,30 @@ async fn original_front_auth_history_and_native_execution_share_one_transcript(
         .and_then(Value::as_str)
         .ok_or("csrf")?;
     let client = reqwest::Client::builder().no_proxy().build()?;
+    // The real browser queues a history save before starting /api/chat.
+    let before =
+        server_projects::transcript::read(data, USER, "chat1").map_err(|e| format!("{e:?}"))?;
+    let mut browser_saved = history.clone();
+    browser_saved.push(
+        js_json::wtf16::parse(r#"{"id":"browser-user","role":"user","content":"follow up"}"#)
+            .map_err(|_| "parse")?,
+    );
+    server_projects::transcript::write(
+        data,
+        USER,
+        "chat1",
+        &browser_saved,
+        &server_projects::transcript::Base::Revision(before.revision),
+        None,
+    )
+    .map_err(|e| format!("{e:?}"))?;
     let reply = client
         .post(format!("http://{address}/api/chat"))
         .header("cookie", cookie)
         .header("x-csrf-token", csrf)
         .header("origin", "https://noevia.example.test")
         .header("content-type", "application/json")
-        .body(json!({"chatId":"chat1","message":"follow up","spaceId":"free","turnImageIds":[],"turnToolboxes":[],"compactOnly":false}).to_string())
+        .body(json!({"chatId":"chat1","message":"follow up","history":[{"role":"user","content":"existing question"}],"spaceId":"free","turnImageIds":[],"turnToolboxes":[],"compactOnly":false}).to_string())
         .send()
         .await?;
     assert_eq!(reply.status(), 200);
@@ -252,6 +269,7 @@ async fn original_front_auth_history_and_native_execution_share_one_transcript(
     let encoded = js_json::wtf16::stringify(&saved.history).ok_or("encoded")?;
     let messages: Vec<Value> = serde_json::from_str(&encoded)?;
     assert_eq!(messages.len(), 3);
+    assert_eq!(messages[1]["id"], "browser-user");
     assert_eq!(
         messages.last().and_then(|v| v.get("content")),
         Some(&json!("native answer"))
