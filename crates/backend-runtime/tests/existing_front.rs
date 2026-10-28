@@ -474,7 +474,7 @@ async fn native_workspace_claims_original_root_only_for_live_administrator(
             assert_eq!(std::fs::read(data.join("projects.json"))?, original);
         }
         let _ = stop.send(());
-        task.await??;
+        task.await?;
     }
     Ok(())
 }
