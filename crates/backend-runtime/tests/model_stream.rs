@@ -36,6 +36,9 @@ async fn actual_provider_stream_emits_before_completion_and_closes_at_done(
         socket.read_exact(&mut body).await?;
         let body: serde_json::Value = serde_json::from_slice(&body)?;
         assert_eq!(body.get("stream"), Some(&json!(true)));
+        assert_eq!(body.get("temperature"), Some(&json!(0.2)));
+        assert_eq!(body.get("top_k"), Some(&json!(12)));
+        assert_eq!(body.get("model"), Some(&json!("synthetic")));
         socket.write_all(b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ntransfer-encoding: chunked\r\n\r\n").await?;
         let first="data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"early\"},\"finish_reason\":null}]}\n\n";
         socket
@@ -67,9 +70,10 @@ async fn actual_provider_stream_emits_before_completion_and_closes_at_done(
     let (events, mut output) = tokio::sync::mpsc::unbounded_channel();
     let model = tokio::spawn(async move {
         model
-            .complete_stream(
+            .complete_sampled(
                 &[json!({"role":"user","content":"test"})],
                 &[],
+                &json!({"temperature":0.2,"top_k":12,"model":"untrusted override"}),
                 &Control::new(Duration::from_secs(5))?,
                 &mut |v| {
                     events

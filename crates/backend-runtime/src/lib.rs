@@ -24,6 +24,7 @@ pub mod project_conversations;
 pub mod project_sources;
 pub mod replay;
 pub mod retrieval;
+pub mod sampling;
 pub mod session_conversations;
 pub mod snapshot;
 pub mod state;

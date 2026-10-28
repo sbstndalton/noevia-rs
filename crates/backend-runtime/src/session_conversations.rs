@@ -63,6 +63,23 @@ impl SessionConversations {
     }
 }
 impl Conversations for SessionConversations {
+    fn sampling_enabled(&self, binding: &Binding) -> Result<bool> {
+        if binding.user != self.user {
+            return Err(Fault::Forbidden);
+        }
+        let mut outcome = None;
+        self.writer.write(|tx| {
+            let reader = tx.reader();
+            outcome = Some(match self.auth.gate_in(&reader, &self.creds, "/api/chat", (self.clock)())? {
+                Ok(identity) if identity.user.id == self.user => Ok(reader.row("SELECT CASE WHEN typeof(value)='text' AND value='false' THEN 0 ELSE 1 END FROM settings WHERE key='auto_sampling_presets_enabled'", [], |r|r.get::<_,bool>(0))?.unwrap_or(true)),
+                Err(Refusal::Unauthorized) => Err(Fault::Unauthorized),
+                _ => Err(Fault::Forbidden),
+            });
+            Ok(())
+        }).map_err(|_|Fault::Unavailable)?;
+        outcome.ok_or(Fault::Unavailable)?
+    }
+
     fn supports_project_files(&self) -> bool {
         self.inner.supports_project_files()
     }

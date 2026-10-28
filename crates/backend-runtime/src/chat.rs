@@ -10,6 +10,22 @@ use serde_json::{json, Value};
 use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc};
 pub type FutureResult<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 pub trait Model: Send + Sync {
+    fn complete_sampled<'a>(
+        &'a self,
+        messages: &'a [Value],
+        tools: &'a [Value],
+        sampling: &'a Value,
+        control: &'a Control,
+        emit: &'a mut (dyn FnMut(Value) -> Result<()> + Send),
+    ) -> FutureResult<'a, Value> {
+        Box::pin(async move {
+            if !sampling.as_object().is_some_and(serde_json::Map::is_empty) {
+                return Err(Fault::Unavailable);
+            }
+            self.complete_stream(messages, tools, control, emit).await
+        })
+    }
+
     fn selection(&self) -> Option<(&str, &str)> {
         None
     }
@@ -133,7 +149,24 @@ impl Model for OpenAiModel {
         emit: &'a mut (dyn FnMut(Value) -> Result<()> + Send),
     ) -> FutureResult<'a, Value> {
         Box::pin(async move {
+            self.complete_sampled(messages, tools, &json!({}), control, emit)
+                .await
+        })
+    }
+    fn complete_sampled<'a>(
+        &'a self,
+        messages: &'a [Value],
+        tools: &'a [Value],
+        sampling: &'a Value,
+        control: &'a Control,
+        emit: &'a mut (dyn FnMut(Value) -> Result<()> + Send),
+    ) -> FutureResult<'a, Value> {
+        Box::pin(async move {
             let mut body = json!({"model":self.model,"messages":messages,"stream":true});
+            let selected = crate::sampling::select(None, "", Some(sampling), false)?;
+            body.as_object_mut()
+                .ok_or(Fault::Protocol)?
+                .extend(selected.as_object().ok_or(Fault::Protocol)?.clone());
             if !tools.is_empty() {
                 body.as_object_mut()
                     .ok_or(Fault::Protocol)?
@@ -285,12 +318,7 @@ impl Runtime {
                 return Err(Fault::Unavailable);
             }
         }
-        for key in [
-            "reasoningEffort",
-            "sampling",
-            "routingMode",
-            "contextProfile",
-        ] {
+        for key in ["reasoningEffort", "routingMode", "contextProfile"] {
             if project.get(key).is_some_and(|v| !v.is_null()) {
                 return Err(Fault::Unavailable);
             }
@@ -404,6 +432,20 @@ impl Runtime {
         control: &Control,
         emit: &mut (impl FnMut(Value) -> Result<()> + Send),
     ) -> Result<()> {
+        let message = messages
+            .iter()
+            .rev()
+            .find(|v| v.get("role").and_then(Value::as_str) == Some("user"))
+            .and_then(|v| v.get("content"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let project = self.store.project(binding)?;
+        let sampling = crate::sampling::select(
+            None,
+            message,
+            project.as_ref().and_then(|p| p.get("sampling")),
+            self.store.sampling_enabled(binding)?,
+        )?;
         let provider = self.model.provider();
         let external = provider_egress::external_strict(Some(&provider));
         let permitted = |name: &str, tool: &Arc<dyn Tool>| {
@@ -469,7 +511,7 @@ impl Runtime {
             }
             let reply = self
                 .model
-                .complete_stream(&framed, &schemas, control, emit)
+                .complete_sampled(&framed, &schemas, &sampling, control, emit)
                 .await?;
             if reply.get("role").and_then(Value::as_str) != Some("assistant") {
                 return Err(Fault::Protocol);

@@ -29,6 +29,39 @@ fn replace(v: &mut Value) {
 }
 struct Engine;
 impl Model for Engine {
+    fn complete_sampled<'a>(
+        &'a self,
+        messages: &'a [Value],
+        tools: &'a [Value],
+        sampling: &'a Value,
+        control: &'a Control,
+        emit: &'a mut (dyn FnMut(Value) -> backend_runtime::Result<()> + Send),
+    ) -> FutureResult<'a, Value> {
+        Box::pin(async move {
+            let text = messages
+                .iter()
+                .rev()
+                .find(|v| v.get("role").and_then(Value::as_str) == Some("user"))
+                .and_then(|v| v.get("content"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            if text == "write a poem" || text == "draft a poem" {
+                assert_eq!(
+                    sampling,
+                    &if text == "write a poem" {
+                        json!({"temperature":0.9,"top_p":0.95})
+                    } else {
+                        json!({})
+                    }
+                );
+                emit(json!({"type":"delta","text":"sampling honored"}))?;
+                return Ok(json!({"role":"assistant","content":"sampling honored"}));
+            }
+            assert_eq!(sampling, &json!({}));
+            self.complete_stream(messages, tools, control, emit).await
+        })
+    }
+
     fn provider(&self) -> provider_egress::Provider {
         provider_egress::Provider::default()
     }
@@ -343,6 +376,17 @@ async fn original_front_auth_history_and_native_execution_share_one_transcript(
         .text()
         .await?
         .contains("manual tool selection respected"));
+    for (text, enabled) in [("write a poem", "true"), ("draft a poem", "false")] {
+        let db = rusqlite::Connection::open(data.join("cowork.db"))?;
+        db.execute(
+            "INSERT OR REPLACE INTO settings(key,value) VALUES('auto_sampling_presets_enabled',?)",
+            [enabled],
+        )?;
+        drop(db);
+        let response = client.post(format!("http://{address}/api/chat")).header("cookie",cookie).header("x-csrf-token",csrf).header("origin","https://noevia.example.test").header("content-type","application/json").body(json!({"chatId":"chat2","projectId":"project1","spaceId":"project1","message":text}).to_string()).send().await?;
+        assert_eq!(response.status(), 200);
+        assert!(response.text().await?.contains("sampling honored"));
+    }
     let retention_url = format!("http://{address}/api/account/retention");
     let pending = client
         .put(&retention_url)

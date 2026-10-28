@@ -179,6 +179,7 @@ dependencies = [
  "project-file-names",
  "prompt-framing",
  "provider-egress",
+ "regex",
  "reqwest",
  "rusqlite",
  "rustix",
