@@ -66,3 +66,19 @@ escaped descendants and clone-child/all-child drain, shutdown, forced cleanup
 uncertainty, immutable measured Core caller, and paired image/Compose adoption.
 Nothing in the portable tests or Linux cross-target checks supplies that proof.
 No source push, partial PR, runtime activation or release pin update is approved.
+
+The first whole-source review held the draft for three concrete issues. The
+local repairs reject worker GID0 before socket/admission and use a fresh session
+for every untrusted exec. The worker parser is the same pure policy used by the
+production profile and authenticated helper; a root-only signalling helper is
+not a worker role. An owned ordinary-user child tests the actual session entry
+function; it does not establish Linux cross-identity signalling proof.
+
+Production admission now requires a sealed, unexpired original-budget token.
+The bounded helper envelope carries an absolute Linux monotonic deadline,
+sampled conservatively without refreshing the original remaining duration;
+it is checked on receipt and again immediately before exec. A terminal status
+first observed after expiry is timed out even if it is exit0, and late drain
+cannot hide expiry. Separate cleanup grace never authorizes another normal
+phase. Deterministic tests exercise these exact production decision functions;
+actual isolated Linux deadline/framing/identity fault evidence remains pending.

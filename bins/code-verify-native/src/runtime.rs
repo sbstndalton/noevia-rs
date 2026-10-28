@@ -1,4 +1,5 @@
 //! Linux namespace-init execution authority. Never run as a privileged host test.
+use super::budget::{bootstrap_deadline, bootstrap_live, Admission, Budget};
 use super::engine::{self, tree_permissions, Config, Execution, Identity, Plan, Runner};
 use super::lifecycle::{Children, Terminal};
 use code_verify_native::{Commands, Request, Tail, MAX_REQUEST_BYTES, MAX_TAIL_BYTES};
@@ -14,6 +15,7 @@ use rustix::fs::{fcntl_getfl, fcntl_setfl, open, openat, Mode, OFlags};
 use rustix::net::sockopt::socket_peercred;
 use rustix::net::{recv, RecvFlags};
 use rustix::process::{pidfd_open, pidfd_send_signal, PidfdFlags, Signal};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
@@ -29,6 +31,24 @@ use std::time::{Duration, Instant};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const TICK: Duration = Duration::from_millis(5);
 const BOOTSTRAP_CAP: u64 = 64 * 1024;
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct Envelope {
+    deadline_ns: u64,
+    plan: Plan,
+}
+fn monotonic_ns() -> Result<u64> {
+    let t = rustix::time::clock_gettime(rustix::time::ClockId::Monotonic);
+    let seconds = u64::try_from(t.tv_sec)?;
+    let nanos = u64::try_from(t.tv_nsec)?;
+    if nanos >= 1_000_000_000 {
+        return Err("monotonic clock evidence".into());
+    }
+    seconds
+        .checked_mul(1_000_000_000)
+        .and_then(|v| v.checked_add(nanos))
+        .ok_or_else(|| "monotonic clock range".into())
+}
 fn status_field<'a>(text: &'a str, key: &str) -> Result<&'a str> {
     Ok(text
         .lines()
@@ -108,7 +128,11 @@ fn helper() -> Result<()> {
     if bytes.len() as u64 > BOOTSTRAP_CAP {
         return Err("bootstrap cap".into());
     }
-    let plan: Plan = serde_json::from_slice(&bytes)?;
+    let envelope: Envelope = serde_json::from_slice(&bytes)?;
+    if !bootstrap_live(monotonic_ns()?, envelope.deadline_ns) {
+        return Err("expired helper admission".into());
+    }
+    let plan = envelope.plan;
     drop(channel);
     let who = plan.who();
     // Root is allowed only for exact-pidfd signalling of a still-privileged owned helper.
@@ -116,6 +140,7 @@ fn helper() -> Result<()> {
         return Err("root execution refused".into());
     }
     if who.uid != 0 {
+        who.validate_worker()?;
         drop_identity(who)?;
     }
     rustix::process::umask(Mode::from_raw_mode(0o022));
@@ -147,6 +172,7 @@ fn helper() -> Result<()> {
             cpu,
             ..
         } => {
+            super::session::enter_untrusted_session()?;
             setrlimit(Resource::RLIMIT_CORE, 0, 0)?;
             let (_, hard) = getrlimit(Resource::RLIMIT_CPU)?;
             let limit = cpu.min(hard).max(1);
@@ -155,6 +181,9 @@ fn helper() -> Result<()> {
             SigSet::empty().thread_set_mask()?;
             // Every inherited Rust-owned fd is CLOEXEC. Replace bootstrap fd0 with /dev/null.
             // No plan channel/listener/pidfd reaches Git or the operator command.
+            if !bootstrap_live(monotonic_ns()?, envelope.deadline_ns) {
+                return Err("expired exec admission".into());
+            }
             return Err(Command::new(program)
                 .args(args)
                 .current_dir(cwd)
@@ -219,7 +248,23 @@ impl Authority {
         self.children.still_alive();
         Ok(false)
     }
-    fn spawn(&mut self, plan: &Plan, signal_fd: Option<OwnedFd>) -> Result<(Child, u64)> {
+    fn spawn(
+        &mut self,
+        plan: &Plan,
+        signal_fd: Option<OwnedFd>,
+        admission: Admission,
+    ) -> Result<(Child, u64)> {
+        let stamp = monotonic_ns()?;
+        let remaining = admission
+            .deadline()
+            .checked_duration_since(Instant::now())
+            .ok_or("expired spawn admission")?;
+        let deadline_ns = bootstrap_deadline(stamp, remaining)?;
+        let bytes =
+            serde_json::to_vec(&serde_json::json!({"deadline_ns":deadline_ns,"plan":plan}))?;
+        if bytes.len() as u64 > BOOTSTRAP_CAP {
+            return Err("plan too large".into());
+        }
         let (mut parent, child) = UnixStream::pair()?;
         parent.set_write_timeout(Some(Duration::from_secs(2)))?;
         let mut command = Command::new(&self.executable);
@@ -230,13 +275,12 @@ impl Authority {
             .stdin(Stdio::from(OwnedFd::from(child)))
             .stdout(signal_fd.map_or_else(Stdio::piped, Stdio::from))
             .stderr(Stdio::piped());
+        if !bootstrap_live(monotonic_ns()?, deadline_ns) {
+            return Err("expired prepared admission".into());
+        }
         let child = command.spawn()?;
         let ticket = self.children.register(i32::try_from(child.id())?)?;
         // A write failure is cleanup uncertainty: the server exits, never passes.
-        let bytes = serde_json::to_vec(plan)?;
-        if bytes.len() as u64 > BOOTSTRAP_CAP {
-            return Err("plan too large".into());
-        }
         parent.write_all(&bytes)?;
         parent.shutdown(Shutdown::Write)?;
         drop(parent);
@@ -308,7 +352,11 @@ impl Authority {
             let victims = self.direct()?;
             for (_pid, who, fd) in victims {
                 // Check whether a live target is ours through the descriptor, never UID selection.
-                let (_child, id) = self.spawn(&Plan::Signal { who }, Some(fd))?;
+                let (_child, id) = self.spawn(
+                    &Plan::Signal { who },
+                    Some(fd),
+                    Budget::new(end).admit(Instant::now())?,
+                )?;
                 loop {
                     self.collect()?;
                     if let Some(s) = self.children.take(id) {
@@ -372,7 +420,8 @@ fn execute(
     if a.stopping()? {
         return Err("stopping".into());
     }
-    let (mut child, id) = a.spawn(plan, None)?;
+    let mut budget = Budget::new(deadline);
+    let (mut child, id) = a.spawn(plan, None, budget.admit(Instant::now())?)?;
     let mut stdout = child.stdout.take().ok_or("stdout")?;
     let mut stderr = child.stderr.take().ok_or("stderr")?;
     nonblocking(&stdout)?;
@@ -387,11 +436,15 @@ fn execute(
         done_out |= pump(&mut stdout, &mut out, &mut combined)?;
         done_err |= pump(&mut stderr, &mut err, &mut combined)?;
         a.collect()?;
-        if let Some(s) = a.children.take(id) {
-            break s;
+        let observed = a.children.take(id);
+        if let Some(completion) = budget.observe(Instant::now(), observed) {
+            timed_out = completion.timed_out;
+            break completion.terminal.unwrap_or(Terminal {
+                code: None,
+                signal: None,
+            });
         }
-        if a.stopping()? || !connected(socket)? || Instant::now() >= deadline {
-            timed_out = Instant::now() >= deadline;
+        if a.stopping()? || !connected(socket)? {
             break Terminal {
                 code: None,
                 signal: None,
@@ -416,21 +469,13 @@ fn execute(
     if a.stopping()? || !connected(socket)? {
         return Err("cancelled".into());
     }
+    timed_out |= budget.expired(Instant::now());
     Ok(Execution {
         terminal,
         out: out.read(),
         timed_out,
         combined: combined.read(),
     })
-}
-fn identity(raw: &str) -> Result<Identity> {
-    let mut p = raw.split(':');
-    let uid = p.next().ok_or("uid")?.parse()?;
-    let gid = p.next().map(str::parse).transpose()?.unwrap_or(uid);
-    if p.next().is_some() || uid == 0 {
-        return Err("identity".into());
-    }
-    Ok(Identity { uid, gid })
 }
 fn positive(raw: Option<String>, fallback: u64) -> u64 {
     code_verify_native::operator_positive(raw.as_deref(), fallback)
@@ -460,8 +505,8 @@ fn config() -> Result<(Config, Authority)> {
     if getpid().as_raw() != 1 {
         return Err("namespace init required".into());
     }
-    let git = identity(&std::env::var("VERIFY_GIT_USER")?)?;
-    let test = identity(&std::env::var("VERIFY_TEST_USER")?)?;
+    let git = Identity::worker(&std::env::var("VERIFY_GIT_USER")?)?;
+    let test = Identity::worker(&std::env::var("VERIFY_TEST_USER")?)?;
     if git.uid == test.uid {
         return Err("distinct identities".into());
     }

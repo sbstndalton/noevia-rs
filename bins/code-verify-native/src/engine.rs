@@ -33,6 +33,31 @@ pub(super) struct Identity {
     pub(super) uid: u32,
     pub(super) gid: u32,
 }
+impl Identity {
+    pub(super) fn worker(raw: &str) -> Result<Self> {
+        let text = code_verify_native::operator_trim(raw);
+        let (uid, gid) = text.split_once(':').unwrap_or((text, text));
+        if uid.is_empty()
+            || gid.is_empty()
+            || !uid.bytes().all(|b| b.is_ascii_digit())
+            || !gid.bytes().all(|b| b.is_ascii_digit())
+        {
+            return Err("worker identity syntax".into());
+        }
+        let who = Self {
+            uid: uid.parse()?,
+            gid: gid.parse()?,
+        };
+        who.validate_worker()?;
+        Ok(who)
+    }
+    pub(super) fn validate_worker(self) -> Result<()> {
+        if self.uid == 0 || self.gid == 0 {
+            return Err("root worker identity refused".into());
+        }
+        Ok(())
+    }
+}
 #[derive(Deserialize, Serialize)]
 #[serde(tag = "operation", deny_unknown_fields)]
 pub(super) enum Plan {
@@ -598,6 +623,25 @@ mod tests {
                 reject_readonly: false,
             },
         })
+    }
+    #[test]
+    fn root_group_worker_overrides_refuse_before_any_socket_or_process() -> Result<()> {
+        for raw in [
+            "1002:0",
+            "1003:0",
+            "0:1003",
+            "0",
+            "1003:",
+            "+1003:1003",
+            "4294967296:1003",
+        ] {
+            assert!(Identity::worker(raw).is_err());
+        }
+        let git = Identity::worker("1002:1005")?;
+        let test = Identity::worker("\u{feff}1003:1003\u{feff}")?;
+        assert_eq!((git.uid, git.gid), (1002, 1005));
+        assert_eq!((test.uid, test.gid), (1003, 1003));
+        Ok(())
     }
     #[test]
     fn real_copy_runs_requested_commit_and_keeps_output_as_data() -> Result<()> {

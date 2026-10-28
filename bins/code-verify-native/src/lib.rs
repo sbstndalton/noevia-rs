@@ -54,6 +54,10 @@ pub fn operator_positive(raw: Option<&str>, fallback: u64) -> u64 {
     number.min(MAX_SAFE_COUNTER as f64).floor() as u64
 }
 
+/// ECMAScript operator-field trim, including FEFF and excluding NEL.
+pub fn operator_trim(raw: &str) -> &str {
+    raw.trim_matches(js_space)
+}
 fn repo_name(s: &str) -> bool {
     (1..=64).contains(&s.len())
         && s.bytes()
