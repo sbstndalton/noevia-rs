@@ -1,6 +1,6 @@
 # Candidate Node 22 consumer correction
 
-This directory is unbuilt source preparation for the supervisor's strict TCP qualification. Nothing downloads, builds or activates it automatically. It is not a qualified runtime or an instruction to change the selected Node version.
+This directory contains the candidate recipe for the supervisor's strict TCP qualification. Required CI downloads, builds and verifies an unqualified candidate on an exact-key cache miss. It does not install or activate a runtime in production, and is not a qualified runtime or an instruction to change selected release inputs.
 
 The preserved Linux regression observed Node 22/libuv 1.51.0 emit EOF after EPOLLIN|EPOLLERR|EPOLLHUP and a positive short read, without a kernel zero read. Upstream libuv commit [2e2114ed](https://github.com/libuv/libuv/commit/2e2114ed8957a0124bc629c61d034c387b8ce42a) removes that EOF shortcut when POLLIN is present. The patch here contains only its two runtime-file changes, rebased onto exact Node 22.23.4 source context; upstream PTY tests are not a substitute for the unchanged TCP and image tests. Upstream attribution/license are preserved.
 
