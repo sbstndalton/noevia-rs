@@ -9,6 +9,8 @@ pub mod dav;
 pub mod diary;
 pub mod diary_http;
 #[cfg(target_os = "linux")]
+pub mod diary_recovery;
+#[cfg(target_os = "linux")]
 pub mod frontend;
 pub mod indexing;
 pub mod journal;

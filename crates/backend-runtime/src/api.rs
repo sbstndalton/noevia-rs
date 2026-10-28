@@ -270,9 +270,15 @@ async fn handle(
                 .or_else(|| p.strip_suffix("/config"))
         })
         .filter(|s| !s.is_empty() && !s.contains('/'))
+        .or_else(|| (path == "/api/diary/exchanges").then_some(""))
     {
         let config = path.ends_with("/config");
-        if method != if config { "POST" } else { "GET" } {
+        let recovery = path == "/api/diary/exchanges";
+        if if recovery {
+            !matches!(method.as_str(), "GET" | "POST")
+        } else {
+            method != if config { "POST" } else { "GET" }
+        } {
             return response(405, json!({"error":"Method not allowed"}));
         }
         let data = api.data.clone();
@@ -295,7 +301,13 @@ async fn handle(
                                 switch: server_store::RustProjects::owned(),
                                 now_ms: now(),
                             };
-                            Ok(if config {
+                            Ok(if recovery {
+                                if identity.user.diary_enabled {
+                                    crate::diary_recovery::handle(ctx, &method, &query, &body)
+                                } else {
+                                    server_projects::Reply::error(404, "Diary add-on is disabled")
+                                }
+                            } else if config {
                                 crate::project_config::configure(ctx, &project, &body)
                             } else {
                                 server_projects::sources::get(ctx, &project, name.as_deref())
