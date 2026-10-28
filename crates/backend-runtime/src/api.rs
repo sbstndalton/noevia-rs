@@ -270,7 +270,13 @@ async fn handle(
                 .or_else(|| p.strip_suffix("/config"))
         })
         .filter(|s| !s.is_empty() && !s.contains('/'))
-        .or_else(|| (path == "/api/diary/exchanges").then_some(""))
+        .or_else(|| {
+            matches!(
+                path.as_str(),
+                "/api/diary/exchanges" | "/api/workspace" | "/api/chats/search"
+            )
+            .then_some("")
+        })
     {
         let config = path.ends_with("/config");
         let recovery = path == "/api/diary/exchanges";
@@ -301,7 +307,15 @@ async fn handle(
                                 switch: server_store::RustProjects::owned(),
                                 now_ms: now(),
                             };
-                            Ok(if recovery {
+                            Ok(if path == "/api/workspace" {
+                                server_projects::workspace::get(ctx)
+                            } else if path == "/api/chats/search" {
+                                let q = url::form_urlencoded::parse(query.as_bytes())
+                                    .find(|(k, _)| k == "q")
+                                    .map(|(_, v)| v.into_owned())
+                                    .unwrap_or_default();
+                                server_projects::workspace::search(ctx, &q)
+                            } else if recovery {
                                 if identity.user.diary_enabled {
                                     crate::diary_recovery::handle(ctx, &method, &query, &body)
                                 } else {

@@ -78,6 +78,7 @@ pub mod sources;
 pub mod store;
 pub mod store_api;
 pub mod transcript;
+pub mod workspace;
 
 /// A handler's answer: Node's `json(res, status, body)` or a binary body with its headers.
 #[derive(Debug, Clone, PartialEq, Eq)]
