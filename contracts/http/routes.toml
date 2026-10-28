@@ -240,7 +240,7 @@ owner = "node"
 
 [[route]]
 path = "/api/chat-framing/preferences"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/chat-framing/suggest"

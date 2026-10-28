@@ -238,10 +238,11 @@ const ACCOUNT_PREFIXES: &[&str] = &[
 ];
 
 fn is_account_path(path: &str) -> bool {
-    ACCOUNT_PREFIXES.iter().any(|p| {
-        path.strip_prefix(p)
-            .is_some_and(|rest| p.ends_with('/') || rest.is_empty() || rest.starts_with('/'))
-    })
+    path == "/api/chat-framing/preferences"
+        || ACCOUNT_PREFIXES.iter().any(|p| {
+            path.strip_prefix(p)
+                .is_some_and(|rest| p.ends_with('/') || rest.is_empty() || rest.starts_with('/'))
+        })
 }
 
 fn is_api(path: &str) -> bool {
@@ -308,6 +309,10 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
         return decision;
     }
     let route = route_for(path)?;
+    // This owner is exact-path only; the shared matcher tolerates trailing slashes.
+    if route.path == "/api/chat-framing/preferences" && path != route.path {
+        return None;
+    }
     if route.path == STORAGE_METADATA && (path != STORAGE_METADATA || method != "GET") {
         return None;
     }
@@ -326,6 +331,26 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn framing_preferences_are_native_for_all_methods_without_claiming_siblings() {
+        for method in ["GET", "PUT", "POST", "DELETE", "HEAD", "OPTIONS"] {
+            assert_eq!(
+                dispatch(method, "/api/chat-framing/preferences"),
+                Some(Native::Account)
+            );
+        }
+        for path in [
+            "/api/chat-framing/suggest",
+            "/api/chat-framing/preferences/",
+            "/api/chat-framing/preferences/x",
+        ] {
+            assert!(!is_account_path(path));
+            for method in ["GET", "PUT", "POST", "DELETE", "HEAD", "OPTIONS"] {
+                assert_eq!(dispatch(method, path), None, "{method} {path}");
+            }
+        }
+    }
 
     #[test]
     fn every_rust_route_has_a_native_handler() {

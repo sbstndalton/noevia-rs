@@ -37,7 +37,7 @@ const LOCALES: &[&str] = &[
 ];
 
 /// workspace.cjs `userDir(userId)`.
-fn user_dir(acct: &Account, uid: &str) -> Result<PathBuf, Fault> {
+pub(crate) fn user_dir(acct: &Account, uid: &str) -> Result<PathBuf, Fault> {
     let ok = uid.len() == 36 && uid.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-');
     if !ok {
         return Err(Fault::Internal);

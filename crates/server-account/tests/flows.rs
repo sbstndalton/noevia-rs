@@ -1485,3 +1485,104 @@ fn a_device_token_is_refused_on_sharing_and_writes_nothing() {
     assert_eq!(count(&w, "SELECT count(*) FROM dav_settings"), 0);
     assert_eq!(count(&w, audit), audits_before);
 }
+
+#[test]
+fn framing_preferences_real_device_token_reads_writes_and_respects_disablement() {
+    let w = world(true);
+    let mut owner = Browser::new("10.0.0.1");
+    let id = setup(&w, &mut owner);
+    // Portable tests initialize the workspace; real Linux first-use/legacy behavior
+    // is a separate mandatory native test.
+    std::fs::create_dir_all(w.dir.path().join("users").join(&id)).unwrap();
+    let mut app = Browser::new("10.0.0.20");
+    let (_, code, _) = call(
+        &w,
+        &mut app,
+        "POST",
+        "/api/auth/device/code",
+        r#"{"client_name":"Synthetic client"}"#,
+        T0,
+    );
+    let device = code["device_code"].as_str().unwrap();
+    let user = code["user_code"].as_str().unwrap();
+    assert_eq!(
+        call(
+            &w,
+            &mut owner,
+            "POST",
+            "/api/auth/device/approve",
+            &format!(r#"{{"user_code":"{user}","approve":true}}"#),
+            T0 + 4
+        )
+        .0,
+        200
+    );
+    let (status, token, _) = call(
+        &w,
+        &mut app,
+        "POST",
+        "/api/auth/device/token",
+        &format!(
+            r#"{{"grant_type":"urn:ietf:params:oauth:grant-type:device_code","device_code":"{device}"}}"#
+        ),
+        T0 + 20_000,
+    );
+    assert_eq!(status, 200);
+    let token = token["access_token"].as_str().unwrap();
+    let request = |method: &str, body: &str| Request {
+        method: method.into(),
+        path: "/api/chat-framing/preferences".into(),
+        creds: Creds {
+            cookie: None,
+            authorization: Some(format!("Bearer {token}")),
+            origin: None,
+            csrf: None,
+            method: method.into(),
+        },
+        user_agent: "Synthetic client".into(),
+        content_type: "application/json".into(),
+        client_ip: "10.0.0.20".into(),
+        body: Body {
+            bytes: body.as_bytes().to_vec(),
+            over: false,
+        },
+    };
+    for (method, body) in [("GET", ""), ("PUT", r#"{"autoAccept":true}"#)] {
+        let Outcome::Reply(r) = w.acct.handle(&request(method, body), T0 + 20_001) else {
+            panic!("native route fell through")
+        };
+        assert_eq!(r.status, 200, "{}", r.body);
+    }
+    let before = std::fs::read(
+        w.dir
+            .path()
+            .join("users")
+            .join(&id)
+            .join("chat-framing.json"),
+    )
+    .unwrap();
+    w.node
+        .execute(
+            "UPDATE users SET disabled_at=?1 WHERE id=?2",
+            (T0 + 20_002, &id),
+        )
+        .unwrap();
+    let Outcome::Reply(r) = w
+        .acct
+        .handle(&request("PUT", r#"{"autoAccept":false}"#), T0 + 20_003)
+    else {
+        panic!("native route fell through")
+    };
+    assert_eq!(r.status, 401);
+    assert_eq!(
+        std::fs::read(
+            w.dir
+                .path()
+                .join("users")
+                .join(&id)
+                .join("chat-framing.json")
+        )
+        .unwrap(),
+        before
+    );
+}

@@ -116,11 +116,12 @@ pub const OWNED_SETTING_KEYS: &[&str] = &[
 
 /// JSON files (by file name, in a user's workspace directory) Rust may write with
 /// [`json::write_owned`]: core account-instructions.cjs, account-memory.cjs and
-/// account-preferences.cjs.
+/// account-preferences.cjs and the two per-user chat-framing preferences.
 pub const OWNED_JSON_FILES: &[&str] = &[
     "account-instructions.json",
     "account-memory.json",
     "account-preferences.json",
+    "chat-framing.json",
 ];
 
 /// Rust's ownership of sign-in and the account (M3): the tables and files Rust writes. It was the
