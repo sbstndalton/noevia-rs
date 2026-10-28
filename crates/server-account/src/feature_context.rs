@@ -6,7 +6,12 @@ use server_store::{
     Reader, RustFeatureSettings, StoreError, WriteTx, Writer, FEATURE_RUNTIME_INCARNATION_KEY,
 };
 use sha2::{Digest, Sha256};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::Mutex;
+mod lifecycle;
+pub use lifecycle::{
+    Admission, BootFacts, BrowserFact, Cancellation, ChoiceReason, Control, Controller,
+    Registration, Reply, Snapshot,
+};
 
 pub const SOURCE_LIMIT: i64 = 1024 * 1024;
 fn unavailable() -> StoreError {
@@ -38,7 +43,7 @@ struct State {
 }
 pub struct FeatureRuntime {
     incarnation: String,
-    operations: Mutex<()>,
+    operations: lifecycle::Gate,
     state: Mutex<State>,
 }
 impl std::fmt::Debug for FeatureRuntime {
@@ -61,7 +66,7 @@ impl FeatureRuntime {
     fn with_incarnation(incarnation: String) -> Self {
         Self {
             incarnation,
-            operations: Mutex::new(()),
+            operations: lifecycle::Gate::default(),
             state: Mutex::new(State {
                 initialized: false,
                 retired: false,
@@ -74,12 +79,15 @@ impl FeatureRuntime {
         &self.incarnation
     }
     /// Controller permit MUST precede Writer; no inner auth callback acquires it.
-    pub(crate) fn operation_permit(&self) -> Result<MutexGuard<'_, ()>, StoreError> {
-        self.operations.lock().map_err(|_| StoreError::Poisoned)
+    fn operation_permit(&self) -> Result<lifecycle::Permit<'_>, StoreError> {
+        self.operations.acquire()
     }
     /// Existing schema only: Writer itself opens without CREATE. This publishes no session Ready.
     pub fn initialize(&self, writer: &Writer) -> Result<(), StoreError> {
         let _operation = self.operation_permit()?;
+        self.initialize_under_permit(writer)
+    }
+    fn initialize_under_permit(&self, writer: &Writer) -> Result<(), StoreError> {
         writer.write(|tx| {
             let observed = stored_incarnation(&tx.reader())?;
             let mut state = self.state.lock().map_err(|_| StoreError::Poisoned)?;
