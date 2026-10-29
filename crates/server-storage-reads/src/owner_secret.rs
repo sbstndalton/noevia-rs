@@ -68,6 +68,11 @@ impl ProjectedConnection {
     pub fn secret_needs_reauth(&self) -> bool {
         self.secret_needs_reauth
     }
+    /// Whether the owner has a `storage_connections` row at all (an absent row is the local
+    /// default, which Node's `getStorage` answers without the two credential flags).
+    pub fn row_present(&self) -> bool {
+        self.row_present
+    }
 }
 
 /// `identity` MUST come from the actual request gate. No caller-selectable row owner or AAD.

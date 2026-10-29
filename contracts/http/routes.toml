@@ -319,12 +319,15 @@ path = "/api/diary/local-exchange"
 owner = "node"
 
 [[route]]
+# sbstndalton/noevia#2185: the five proxy-only Diary routes (crates/server-diary): source, today,
+# storage-import, workspace-export, workspace-import. All methods; each answers its own 405 after the
+# add-on gate. The other Diary routes stay Node's (contracts/http/README.md).
 path = "/api/diary/source"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/diary/storage-import"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/diary/storage-status"
@@ -332,15 +335,15 @@ owner = "node"
 
 [[route]]
 path = "/api/diary/today"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/diary/workspace-export"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/diary/workspace-import"
-owner = "node"
+owner = "rust"
 
 [[route]]
 # M4 (#1315): GET only (crates/server-export, read from the user's files on disk); every other

@@ -197,6 +197,52 @@ Node's: it deletes chats through Node's delete cascade, and recounts what is due
 (409, with the preview) more than `confirmDeletes`, so a preview here never becomes a delete. Core
 refuses the GET (rust-auth.cjs `OWNED_ROUTES`) once its handler is deleted.
 
+## sbstndalton/noevia#2185: the Diary sidecar client, and the Diary routes that are only a proxy
+
+`crates/server-diary` is the front's Diary client: what core `diary.cjs` adds before it proxies to the
+Python Diary sidecar (bearer `DIARY_AUTH_TOKEN`, `X-Cowork-User-ID`, `X-Cowork-Legacy-Owner` when the
+workspace holds `migration.json`, the base64url storage descriptor, the v2 assertion signed by
+`crates/tenant-assertion` with `DIARY_TENANT_KEY`, and the once-only 428 retry that re-signs and adds
+the secret), read from the same environment (`DIARY_BASE_URL`, `DIARY_AUTH_TOKEN`, `DIARY_TENANT_KEY`,
+`DIARY_SOURCE`, `MEMBER_OUTBOUND_ORIGINS` per call, `SECRETS_KEY_PREVIOUS`; a `DIARY_SOURCE` other than
+`sidecar` stops startup as it stops Node). The storage connection comes from the same owner-bound
+projection the storage list/read routes use (`server-storage-reads` `owner_secret`), so a person only ever
+speaks with their own row. `--features` lists `rust-diary`; core refuses the moved routes with 503
+`RUST_DIARY_OWNED` (core `server/rust-diary.cjs`). The sidecar stays the single writer: the front passes
+on the signed-in person's request, signed for that person, and writes nothing itself.
+
+| route | owner | why (core file:line at 94953d0) |
+|---|---|---|
+| `/api/diary/source` (any method) | rust | `routes/diary.cjs` `corpusSource.listMonths()` over `GET /api/months`: a proxy and a filter; a failure is an empty list |
+| `/api/diary/today` (any method) | rust | `routes/diary.cjs` `corpusSource.readMonth()` over `GET /api/day`: a failure is core's generic 500 |
+| `/api/diary/storage-import` (POST) | rust | `routes/diary.cjs`: 4 KiB body, 300 s, the sidecar's `detail` relayed |
+| `/api/diary/workspace-export` (GET) | rust | `workspace-export.cjs`: 300 s, 272 MiB, streamed, cut short rather than completed |
+| `/api/diary/workspace-import` (POST) | rust | `workspace-import.cjs`: 32 MiB body, 120 s, 24 MiB reply (#920), 428 resend of the buffered body |
+| `/api/diary/context` | node | `routes/projects.cjs:185` creates the Diary project in `PROJECTS`, Node's in-memory project list, through `diaryExtras.newProject` |
+| `/api/diary/exchanges` | node | `routes/diary.cjs` lists and acknowledges through `diary-jobs.cjs`, whose `active` set of running jobs is Node memory, written by the chat turn |
+| `/api/diary/local-exchange` | node | `routes/diary.cjs` takes the model throttle shared with chat (`llmRateLimited`) and, via `index.cjs handleRequest`, the inference maintenance gate; both are Node memory |
+| `/api/diary/storage-status` | node | `routes/diary.cjs` adds `automaticStorage` from `storage-latch.cjs`, an in-memory latch the backup worker and the source refresh write |
+| `/api/diary-connector` | node | `diary-connectors.cjs`: credential table, in-memory throttles (`connectorRate`), audit rows, and `operate()` |
+| `/api/profile/diary-connectors[/{id}]` | node | the same `diary_connectors` table (Node creates it and its tokens); no sidecar call at all |
+| `/api/diary` | node | no handler: Node's generic not-found |
+
+Not in this table and so still Node's: `/api/diary/history` (the same read as `today` under a name the
+web client does not use), `files`, `file`, `workspace-trash`, `external-sources`, `entries/edit`.
+
+Judgement calls, each testable: (1) core took the inference maintenance gate for every non-GET
+`/api/diary/*`. The front takes no gate for the two moved POSTs, and a direct request to Node no longer
+holds one either. `workspace-import` opens the tenant without recovery and makes no model call.
+`storage-import` opens it with recovery, so on a cold tenant state it can reindex dirty files (an
+embedding call, failures caught) before it snapshots and activates. Node's ungated GET reads already
+reach that same recovery path, and activation only schedules work, so the gate guarded nothing the
+reads do not already do. (2) An upload whose body is still arriving at the 120 s
+deadline is answered 408; core destroyed the socket. (3) A request body
+of at most 4 KiB gets a 120 s read deadline (core had only the server-wide 20 minutes). (4) Core's
+`getStorage` upgrades a legacy v1 ciphertext in place when it reads it; the front reads and never writes
+`storage_connections`, so that upgrade still happens only on Node's own reads. (5) A sidecar reply that
+`JSON.parse` accepts but the port cannot hold (a number outside f64, a character in the reserved private
+range) is treated as a failed call (`js_json::wtf16`'s `Unsupported`).
+
 ## sbstndalton/noevia#1071: Settings -> Sharing, and the small routes that stay Node's
 
 `GET` and `PUT /api/profile/sharing` (core routes/auth.cjs over dav-settings.cjs) are Rust's with
