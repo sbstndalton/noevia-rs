@@ -93,6 +93,11 @@ fn run() -> Result<(), String> {
     let core = PathBuf::from(a.next().ok_or("actual pinned core required")?)
         .canonicalize()
         .map_err(|e| e.to_string())?;
+    // The front runs before the Core generation paired with it (front-core.ref); the oracle at
+    // core.ref records the routing corpus and answers the Node-direct references.
+    let paired = PathBuf::from(a.next().ok_or("actual paired front core required")?)
+        .canonicalize()
+        .map_err(|e| e.to_string())?;
     let out = PathBuf::from(a.next().ok_or("new evidence directory required")?);
     let (resume, resume_node) = match a.next().as_deref() {
         None => (false, false),
@@ -107,20 +112,28 @@ fn run() -> Result<(), String> {
         return Err("evidence directory must be new".into());
     }
     let expected = include_str!("../../../../contracts/http/core.ref").trim();
-    let mut command = Command::new("git");
-    command.arg("-C").arg(&core).args(["rev-parse", "HEAD"]);
-    let head = bounded(command)?;
-    if !head.status.success() || String::from_utf8_lossy(&head.stdout).trim() != expected {
-        return Err("routing contracts require actual pinned core".into());
-    }
-    let mut command = Command::new("git");
-    command
-        .arg("-C")
-        .arg(&core)
-        .args(["status", "--porcelain", "--untracked-files=no"]);
-    let clean = bounded(command)?;
-    if !clean.status.success() || !clean.stdout.is_empty() {
-        return Err("routing contracts require clean core".into());
+    for (checkout, pin) in [
+        (&core, expected),
+        (
+            &paired,
+            include_str!("../../../../contracts/http/front-core.ref").trim(),
+        ),
+    ] {
+        let mut command = Command::new("git");
+        command.arg("-C").arg(checkout).args(["rev-parse", "HEAD"]);
+        let head = bounded(command)?;
+        if !head.status.success() || String::from_utf8_lossy(&head.stdout).trim() != pin {
+            return Err("routing contracts require actual pinned core".into());
+        }
+        let mut command = Command::new("git");
+        command
+            .arg("-C")
+            .arg(checkout)
+            .args(["status", "--porcelain", "--untracked-files=no"]);
+        let clean = bounded(command)?;
+        if !clean.status.success() || !clean.stdout.is_empty() {
+            return Err("routing contracts require clean core".into());
+        }
     }
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let bin = exe.parent().ok_or("binary directory missing")?;
@@ -192,7 +205,7 @@ fn run() -> Result<(), String> {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         let baseline = root.join("contracts/http/corpus");
         if !replay(&core, &baseline, &out.join("baseline"), "node", false)?
-            || !replay(&core, &baseline, &out.join("baseline"), "positive", true)?
+            || !replay(&paired, &baseline, &out.join("baseline"), "positive", true)?
         {
             return Err("full existing228 Node/native/state replay failed".into());
         }
@@ -224,7 +237,7 @@ fn run() -> Result<(), String> {
             false,
         )?)
         || !replay(
-            &core,
+            &paired,
             &out.join("routing-corpus"),
             &out.join("routing"),
             "positive",

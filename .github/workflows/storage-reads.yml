@@ -89,6 +89,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/rs-pin" && tar -xzf "$RUNNER_TEMP/rs.tgz" --strip-components=1 -C "$RUNNER_TEMP/rs-pin"
           "$RUNNER_TEMP/rs-pin/tools/build-dav-parse-wasm.sh" "$PWD/server/wasm/dav-parse.wasm"
           echo "$DAV_PARSE_WASM_SHA256  server/wasm/dav-parse.wasm" | sha256sum -c -
+      # Front replays run behind the Core generation paired with this front (front-core.ref).
+      - uses: ./.github/actions/paired-core
       - name: "List/read differential: native routes vs core routes/storage.cjs on synthetic DAV + S3"
         # Real gate, row projection, endpoint policy, engine and owned outbound child (release
         # build: the child's pre-READY limits cap its address space) against the actual Node route
@@ -114,7 +116,7 @@ jobs:
           target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
             --ignore-body hours --ignore-body peakHour/hour \
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-storage" \
-            --native-move-state --server-cmd "exec env NOEVIA_RUST_AUTH=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
+            --native-move-state --server-cmd "exec env NOEVIA_RUST_AUTH=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/front-core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
             --report "$RUNNER_TEMP/storage-positive.json" --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' --state-ignore '*chat-transcripts.lock' --state-ignore '*chat-changes.jsonl' --expect-state "$RUNNER_TEMP/node-state.json"
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

@@ -259,7 +259,8 @@ pub(crate) fn handle(
                 }
             }
             tx.set_feature_enabled(RustFeatureSettings::owned(), feature, *enabled)?;
-            crate::users::audit(tx, "feature.set", Some(&actor.user.id), None, &JValue::obj([
+            // Node's feature audit names the administrator as both actor and target.
+            crate::users::audit(tx, "feature.set", Some(&actor.user.id), Some(&actor.user.id), &JValue::obj([
                 ("name", JValue::from(spec.name)), ("enabled", JValue::Bool(*enabled)),
             ]), clock())?;
             if feature == Feature::NativeClientAuth && !enabled { startup::revoke_all(tx, Some(&actor.user.id), clock())?; }
@@ -718,11 +719,11 @@ mod tests {
         assert!(f.acct.writer.read(|r| controller.admission(r))? != before);
         assert_eq!(
             f.node.query_row(
-                "SELECT count(*) FROM audit_events WHERE action='feature.set'",
+                "SELECT actor_user_id, target_user_id FROM audit_events WHERE action='feature.set'",
                 [],
-                |r| r.get::<_, i64>(0)
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
             )?,
-            1
+            (UID.to_string(), Some(UID.to_string()))
         );
         Ok(())
     }

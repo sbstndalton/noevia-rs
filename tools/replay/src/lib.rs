@@ -10,6 +10,7 @@ pub mod calendar;
 pub mod corpus;
 pub mod diff;
 pub mod http;
+pub mod native_features;
 pub mod native_moves;
 pub mod routes;
 pub mod state;

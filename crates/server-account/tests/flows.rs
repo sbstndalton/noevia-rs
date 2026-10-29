@@ -677,6 +677,16 @@ fn app_passwords_appearance_and_records() {
         T0,
     );
     assert_eq!(s, 404);
+    // An id the front never issues is the generic 404 (contract corpus exchange 186), not Node's.
+    let (s, v, _) = call(
+        &w,
+        &mut owner,
+        "DELETE",
+        "/api/profile/app-passwords/missing-app-password",
+        "",
+        T0,
+    );
+    assert_eq!((s, v["error"].clone()), (404, "not found".into()));
     // Appearance.
     let (_, v, _) = call(&w, &mut owner, "GET", "/api/profile/appearance", "", T0);
     assert!(v.is_null());
