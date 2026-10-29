@@ -288,6 +288,7 @@ async fn handle(
                     | routes::Native::Models
                     | routes::Native::PublicPages
                     | routes::Native::PluginDirectory
+                    | routes::Native::DecisionSettings
             )
         ) {
             native = on_whatwg;

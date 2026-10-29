@@ -749,6 +749,24 @@ mod tests {
         js_json::parse(s).unwrap()
     }
 
+    // The DNS-rebinding guard: the up-front check and the connect-time resolver both refuse a
+    // name whose answers leave this network (IP literals resolve without real DNS).
+    #[tokio::test]
+    async fn public_answers_are_refused_up_front_and_at_connect() {
+        use reqwest::dns::Resolve;
+        assert_eq!(check_name("8.8.8.8", true).await, Err(false));
+        assert_eq!(check_name("127.0.0.1", true).await, Ok(()));
+        let guard = LocalOnly { link_local: true };
+        let refused = guard.resolve("8.8.8.8".parse().unwrap()).await;
+        assert!(refused.is_err());
+        let local: Vec<SocketAddr> = guard
+            .resolve("127.0.0.1".parse().unwrap())
+            .await
+            .unwrap()
+            .collect();
+        assert!(local.iter().all(|a| a.ip().is_loopback()) && !local.is_empty());
+    }
+
     #[test]
     fn service_urls_follow_core_rule() {
         for ok in [
