@@ -1656,9 +1656,15 @@ async fn import_caps_the_reply_and_keeps_secrets_out_of_failure_text() {
     );
     let got = run(&d, &w, MEMBER, Route::WorkspaceImport, "POST", "/x", b"PK").await;
     assert_eq!((got.status(), got.text()), (502, unavailable));
-    assert!(
-        stub.streamed.load(std::sync::atomic::Ordering::SeqCst) < 4 * 1024 * 1024,
-        "the endless reply was not pulled"
+    // The endless reply is dropped, not drained: once the answer is out the sidecar's stream stops growing
+    // (how far it got before the cut depends on the kernel's socket buffers, so no byte count is asserted).
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let stopped_at = stub.streamed.load(std::sync::atomic::Ordering::SeqCst);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(
+        stub.streamed.load(std::sync::atomic::Ordering::SeqCst),
+        stopped_at,
+        "the endless reply was dropped"
     );
     assert_eq!(Limits::default().import_max_reply, 24 * 1024 * 1024);
     // A dead sidecar: the same fixed text, nothing about the connection or the credential.

@@ -7,6 +7,7 @@ pub mod account_routes;
 pub mod chatgpt_status_routes;
 pub mod code_net;
 pub mod config;
+pub mod diary_routes;
 pub mod export_routes;
 pub mod feature_context;
 pub mod health;
@@ -59,6 +60,11 @@ use std::sync::Arc;
 /// writes ported for sbstndalton/noevia#1264 (so far `GET`/`POST /api/chats/{chatId}/context`)
 /// permanently (#1071); Node refuses these two methods without a deployment switch.
 ///
+/// `rust-diary`: this build answers the Diary routes that are only a proxy and a policy
+/// (`/api/diary/source`, `/today`, `/storage-import`, `/workspace-export`, `/workspace-import`;
+/// sbstndalton/noevia#2185), permanently and with no switch. Node refuses them (core
+/// rust-diary.cjs `RUST_DIARY_OWNED`), so the web supervisor must refuse a front without it.
+///
 /// `project-store`: this build serves the internal project store Node writes projects.json and
 /// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
 /// supervisor confirms it to Node (NOEVIA_RUST_PROJECT_STORE_CONFIRMED) and hands both the secret.
@@ -82,6 +88,7 @@ pub const FEATURES: &[&str] = &[
     server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER,
     server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER,
     "rust-auth",
+    "rust-diary",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",
@@ -138,6 +145,9 @@ pub struct App {
     /// The ONE context controller for this native App and its existing private store.
     pub feature_context: Option<Arc<feature_context::Layer>>,
     pub usage: Arc<usage_routes::UsageLayer>,
+    /// The Diary sidecar client (sbstndalton/noevia#2185); `None` only if its HTTP client could
+    /// not be built, when its routes answer 503.
+    pub diary: Option<Arc<server_diary::Diary>>,
     pub reasoning_settings: Arc<tokio::sync::Semaphore>,
     pub sampling_settings: Arc<tokio::sync::Semaphore>,
     pub routing_mode: Arc<tokio::sync::Semaphore>,
@@ -184,6 +194,9 @@ impl App {
             accounts,
             feature_context,
             usage: Arc::new(usage_routes::UsageLayer::default()),
+            diary: server_diary::Diary::new(config.diary.clone())
+                .ok()
+                .map(Arc::new),
             reasoning_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             sampling_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             routing_mode: Arc::new(tokio::sync::Semaphore::new(4)),
@@ -243,6 +256,7 @@ async fn handle(
                     | routes::Native::Stats
                     | routes::Native::Export
                     | routes::Native::ChatgptStatus
+                    | routes::Native::Diary
             )
         ) {
             native = on_whatwg;
@@ -264,7 +278,8 @@ async fn handle(
             | routes::Native::RoutingDefault
             | routes::Native::Stats
             | routes::Native::Export
-            | routes::Native::ChatgptStatus,
+            | routes::Native::ChatgptStatus
+            | routes::Native::Diary,
         )
         | None => false,
     };
@@ -389,6 +404,12 @@ async fn handle(
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };
             export_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::Diary) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            diary_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::Ready) => {
             if app.proxy.is_in_process() {

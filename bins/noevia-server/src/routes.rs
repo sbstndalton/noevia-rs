@@ -76,7 +76,21 @@ pub enum Native {
     Export,
     /// GET /api/providers/chatgpt (M6, NOEVIA_RUST_CHATGPT_STATUS): crates/server-chatgpt-status.
     ChatgptStatus,
+    /// The Diary routes that are only a proxy and a policy (sbstndalton/noevia#2185):
+    /// crates/server-diary. The others stay Node's (contracts/http/README.md).
+    Diary,
 }
+
+/// The routes [`Native::Diary`] implements, all methods (each answers its own 405 after the add-on
+/// gate, as core does). `/api/diary/history`, which core's handler shares with `today`, is not a
+/// route the web client names and stays Node's.
+const DIARY_ROUTES: &[&str] = &[
+    "/api/diary/source",
+    "/api/diary/today",
+    "/api/diary/storage-import",
+    "/api/diary/workspace-export",
+    "/api/diary/workspace-import",
+];
 
 /// The route [`Native::RoutingDefault`] implements (GET only; routes.toml).
 const ROUTING_DEFAULT: &str = "/api/routing-default";
@@ -205,6 +219,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
         "/api/sampling-settings" if auth => return Some(Native::SamplingSettings),
         "/api/usage" | "/api/usage/aggregate" if auth => return Some(Native::Usage),
         EXPORT if auth => return Some(Native::Export),
+        p if auth && DIARY_ROUTES.contains(&p) => return Some(Native::Diary),
         "/api/instance"
         | "/.well-known/webauthn"
         | "/api/admin/web-address"
@@ -859,12 +874,49 @@ mod tests {
             ("OPTIONS", "/api/export/conversations"),
             ("GET", "/api/export/conversationsx"),
             ("GET", "/api/export"),
-            ("GET", "/api/diary/workspace-export"),
         ] {
             assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
         }
         assert!(!on.on("NOEVIA_RUST_EXPORT"));
         assert!(!on.on("NOEVIA_RUST_PROJECTS"));
+    }
+
+    /// sbstndalton/noevia#2185: the five proxy-only Diary routes are the front's for every method
+    /// (each answers its own 405 after the add-on gate); everything else Diary stays Node's.
+    #[test]
+    fn diary_proxy_routes_are_rusts_for_every_method_and_the_rest_stays_nodes() {
+        let on = Switches::default();
+        for p in DIARY_ROUTES {
+            for m in ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] {
+                assert_eq!(dispatch_under(m, p, on), Some(Native::Diary), "{m} {p}");
+            }
+        }
+        assert!(crate::FEATURES.contains(&"rust-diary"));
+        // Node keeps what reads its memory: the project list, the running-job set, the model
+        // throttle and inference gate, the storage-login latch; and its credential table.
+        for p in [
+            "/api/diary",
+            "/api/diary-connector",
+            "/api/diary/context",
+            "/api/diary/exchanges",
+            "/api/diary/local-exchange",
+            "/api/diary/storage-status",
+            "/api/profile/diary-connectors",
+            "/api/profile/diary-connectors/0123456789abcdef0123456789abcdef",
+            // not in the route table at all
+            "/api/diary/history",
+            "/api/diary/files",
+            "/api/diary/file",
+            "/api/diary/workspace-trash",
+            "/api/diary/entries/edit",
+            "/api/diary/external-sources",
+            "/api/diary/sourcex",
+            "/api/diary/source/x",
+        ] {
+            for m in ["GET", "POST", "PUT", "DELETE"] {
+                assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
+            }
+        }
     }
 
     #[test]

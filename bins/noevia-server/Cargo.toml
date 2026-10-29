@@ -54,6 +54,7 @@ rust-project-writes = []
 
 [dependencies]
 server-features = { path = "../../crates/server-features" }
+server-diary = { path = "../../crates/server-diary" }
 server-storage-reads = { path = "../../crates/server-storage-reads", optional = true }
 zeroize = { version = "=1.9.1", default-features = false, features = ["alloc"], optional = true }
 server-routing-mode = { path = "../../crates/server-routing-mode" }
@@ -92,6 +93,7 @@ toml = "0.9"
 
 [dev-dependencies]
 secret-envelope = { path = "../../crates/secret-envelope" }
+tenant-assertion = { path = "../../crates/tenant-assertion" }
 tempfile = "3"
 http-body-util = { version = "0.1", features = ["channel"] }
 hyper = { version = "1", features = ["http1", "client", "server"] }

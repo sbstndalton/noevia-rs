@@ -274,7 +274,9 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
             }
         }
     }
-    assert!(node_routes > 100);
+    // A floor that shows the table was read; the count falls as routes move to the front (105 before
+    // sbstndalton/noevia#2185 moved five Diary routes, 100 after).
+    assert!(node_routes >= 90, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("POST", "/api/ready"),

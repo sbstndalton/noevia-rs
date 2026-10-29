@@ -87,6 +87,10 @@ pub struct Config {
     /// What the account routes read (PUBLIC_ORIGIN, WEBAUTHN_RP_ID, TRUST_PROXY, COWORK_DAV_PORT,
     /// UI_DATA_DIR); `None` without UI_DATA_DIR.
     pub account: Option<server_account::Settings>,
+    /// The Diary sidecar the front speaks to for its Diary routes (sbstndalton/noevia#2185):
+    /// DIARY_BASE_URL, DIARY_AUTH_TOKEN, DIARY_TENANT_KEY, DIARY_SOURCE as core index.cjs reads
+    /// them. A DIARY_SOURCE other than `sidecar` stops startup, as it stops Node's.
+    pub diary: server_diary::DiaryConfig,
 }
 
 /// The native ChatGPT status's startup inputs (#1373). Read once, as Node reads them once.
@@ -328,6 +332,7 @@ impl Config {
             project_store,
             start_id,
             rust_chatgpt_status,
+            diary: server_diary::DiaryConfig::from_lookup(&get)?,
             usage_clock: server_usage::summary::Clock::system(&get),
             retired,
         })
