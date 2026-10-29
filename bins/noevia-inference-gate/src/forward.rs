@@ -2,7 +2,10 @@
 //! body that keeps a generation counted in flight until it ends.
 
 use crate::respond;
-use crate::{admit_request, lease_from_headers, log, max_wait_from_headers, Gate, InflightGuard};
+use crate::{
+    admit_request, hold_from_headers, lease_from_headers, log, max_wait_from_headers, Gate,
+    InflightGuard,
+};
 use axum::body::Body;
 use axum::extract::Request;
 use axum::http::request::Parts;
@@ -34,6 +37,7 @@ const HOP_BY_HOP: &[&str] = &[
 /// Headers addressed to the gate itself; never forwarded.
 const GATE_HEADERS: &[&str] = &[
     "x-noevia-lease",
+    "x-noevia-maintenance",
     "x-noevia-max-wait-ms",
     "x-noevia-client",
     "x-noevia-gate-admin",
@@ -66,6 +70,17 @@ pub(crate) async fn proxy(gate: Arc<Gate>, request: Request) -> Response {
     };
     let body_kib = body_bytes.map_or(0, |b| b.len().div_ceil(gate.buffer_unit));
     let class = classify(parts.method.as_str(), &path, query.as_deref(), body_bytes);
+    // The maintenance hold the request carries (its holder's work), checked for every class that
+    // the hold affects.
+    let by_hold = match &class {
+        Class::Model { .. } | Class::Unload { .. } | Class::Reload => {
+            match hold_from_headers(&gate, &parts.headers) {
+                Ok(by_hold) => by_hold,
+                Err(refusal) => return refuse(&gate, refusal),
+            }
+        }
+        _ => None,
+    };
     match class {
         Class::Invalid(refusal) => refuse(&gate, refusal),
         Class::Passthrough => send(&gate, &parts, outgoing, None, permit).await,
@@ -80,7 +95,7 @@ pub(crate) async fn proxy(gate: Arc<Gate>, request: Request) -> Response {
                 Ok(wait) => wait,
                 Err(refusal) => return refuse(&gate, refusal),
             };
-            match admit_request(&gate, &model, autoload, lease, max_wait, body_kib).await {
+            match admit_request(&gate, &model, autoload, lease, max_wait, body_kib, by_hold).await {
                 Ok(Some(mut guard)) => {
                     // A session request: the router maps its conversation id to the model and
                     // may keep generating for a resume after the client leaves.
@@ -144,7 +159,8 @@ pub(crate) async fn proxy(gate: Arc<Gate>, request: Request) -> Response {
                 return refuse(&gate, Refusal::AdminRequired);
             }
             let canonical = gate.lock().sched.canon(&model);
-            let allowed = gate.with(|inner, now| inner.sched.admin_unload(now, &model, force));
+            let allowed =
+                gate.with(|inner, now| inner.sched.admin_unload_by(now, &model, force, by_hold));
             if let Err(refusal) = allowed {
                 log(
                     "gate.unload_refused",
@@ -190,7 +206,8 @@ pub(crate) async fn proxy(gate: Arc<Gate>, request: Request) -> Response {
         }
         Class::Reload => {
             let force = gate.admin(&parts.headers);
-            if let Err(refusal) = gate.with(|inner, now| inner.sched.begin_maintenance(now, force))
+            if let Err(refusal) =
+                gate.with(|inner, now| inner.sched.begin_maintenance_by(now, force, by_hold))
             {
                 return respond::refusal(refusal);
             }

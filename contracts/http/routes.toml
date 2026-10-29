@@ -465,9 +465,12 @@ owner = "node"
 path = "/api/models/calibration/cancel"
 owner = "node"
 
+# sbstndalton/noevia#2187: configuration-only reads, the front's (bins/noevia-server
+# model_routes.rs); Node refuses the GET (core rust-models.cjs). Other methods stay Node's.
 [[route]]
 path = "/api/models/capabilities"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/models/delete"
@@ -491,7 +494,8 @@ owner = "node"
 
 [[route]]
 path = "/api/models/hardware"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/models/inference-budget"

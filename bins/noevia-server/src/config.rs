@@ -57,6 +57,9 @@ pub struct Config {
     /// `https` engine (the front has no TLS client) and for the Lemonade kind, whose MTP "last
     /// response" fallback was kept in Node's memory.
     pub rust_stats: Option<std::sync::Arc<server_stats::Engine>>,
+    /// GET /api/models/capabilities and /api/models/hardware (sbstndalton/noevia#2187): the engine
+    /// kind (the same one /api/stats reads), the preset file and the model management service.
+    pub models: crate::model_routes::ModelReads,
     /// GET /api/export/conversations (M4, sbstndalton/noevia#1315), read from the user's files on
     /// disk: always on (#1071), since free-chats.json on disk is the list (Rust is its only writer,
     /// the owner's 2026-10-12 condition).
@@ -223,6 +226,7 @@ impl Config {
         if engine.kind() == server_stats::Kind::Lemonade {
             return Err("GET /api/stats is not available with the Lemonade model manager (its MTP last-response fallback was recorded in Node)".into());
         }
+        let models = crate::model_routes::ModelReads::from_lookup(engine.kind(), &get);
         let rust_stats = Some(std::sync::Arc::new(engine));
         // GET /api/export/conversations reads the free-chat list from disk, which Rust alone
         // writes (the owner's 2026-10-12 condition): always the front's (#1071).
@@ -328,6 +332,7 @@ impl Config {
             feature_context_env,
             rust_routing_default,
             rust_stats,
+            models,
             rust_export,
             project_store,
             start_id,

@@ -1,14 +1,17 @@
-//! The gate's own endpoints: health, status, metrics, and leases.
+//! The gate's own endpoints: health, status, metrics, leases, and the maintenance hold.
 
 use crate::respond;
-use crate::{forget_lease, log, token_hash, valid_token, Gate, Outcome, WaitGuard};
+use crate::{
+    forget_lease, hold_from_headers, log, token_hash, valid_token, wait_for_hold_end, Gate,
+    HoldWaiter, Outcome, WaitGuard,
+};
 use axum::body::Body;
 use axum::extract::Request;
 use axum::http::{HeaderValue, Method, StatusCode};
 use axum::response::Response;
 use bytes::Bytes;
 use http_body_util::BodyExt;
-use inference_admission::{Admission, Arrival, Grant, LeaseKey, Refusal, WaitKind};
+use inference_admission::{Admission, Arrival, Grant, HoldKey, LeaseKey, Refusal, WaitKind};
 use std::fmt::Write as _;
 use std::sync::Arc;
 use std::time::Duration;
@@ -31,6 +34,7 @@ pub(crate) async fn gate_endpoint(gate: Arc<Gate>, request: Request) -> Response
             let now = gate.now();
             let inner = gate.lock();
             let status = inner.sched.status(now);
+            let hold = inner.sched.hold_status(now);
             respond::json(
                 200,
                 &serde_json::json!({
@@ -39,6 +43,13 @@ pub(crate) async fn gate_endpoint(gate: Arc<Gate>, request: Request) -> Response
                     "buffer_free_kib": gate.buffer.available_permits(),
                     "queued_kib": inner.queued_kib,
                     "sessions": inner.sessions.len(),
+                    // The holder's own text for people (never request content) and its times.
+                    "maintenance": {
+                        "held": hold.is_some(),
+                        "reason": hold.as_ref().map(|h| h.reason.clone()),
+                        "held_ms": hold.as_ref().map(|h| h.held_ms),
+                        "idle_ttl_ms": hold.as_ref().map(|h| h.idle_ttl_ms),
+                    },
                 }),
             )
         }
@@ -46,6 +57,18 @@ pub(crate) async fn gate_endpoint(gate: Arc<Gate>, request: Request) -> Response
         (Method::POST, "/gate/v1/leases") => acquire(gate, request).await,
         (Method::DELETE, p) if p.starts_with("/gate/v1/leases/") => {
             release(&gate, p.trim_start_matches("/gate/v1/leases/"))
+        }
+        (Method::POST, "/gate/v1/maintenance") => take_hold(gate, request).await,
+        (Method::POST, p) if p.starts_with("/gate/v1/maintenance/") && p.ends_with("/renew") => {
+            let token = p
+                .trim_start_matches("/gate/v1/maintenance/")
+                .trim_end_matches("/renew")
+                .to_owned();
+            renew_hold(gate, request, &token).await
+        }
+        (Method::DELETE, p) if p.starts_with("/gate/v1/maintenance/") => {
+            let token = p.trim_start_matches("/gate/v1/maintenance/").to_owned();
+            end_hold(&gate, request.headers(), &token)
         }
         _ => respond::json(
             404,
@@ -83,6 +106,7 @@ fn release(gate: &Arc<Gate>, token: &str) -> Response {
 /// waits, then `granted` (the lease token and its limits) or `error`. Closing the stream while
 /// queued leaves the queue.
 async fn acquire(gate: Arc<Gate>, request: Request) -> Response {
+    let headers = request.headers().clone();
     let body = match tokio::time::timeout(
         gate.cfg.body_timeout,
         http_body_util::Limited::new(request.into_body(), LEASE_BODY_LIMIT).collect(),
@@ -125,10 +149,50 @@ async fn acquire(gate: Arc<Gate>, request: Request) -> Response {
             None => return respond::refusal(Refusal::InvalidWait),
         },
     };
-    let (arrival, rx) = gate.with(|inner, now| {
+    let by_hold = match hold_from_headers(&gate, &headers) {
+        Ok(by_hold) => by_hold,
+        Err(refusal) => return respond::refusal(refusal),
+    };
+    let (arrival, rx) = arrive_lease(&gate, &model, max_wait, by_hold);
+    match arrival {
+        // Another client holds the engine for maintenance: the stream reports the wait (as a
+        // queue position of 1) until the hold ends, then asks again.
+        Arrival::Refused(Refusal::MaintenanceHeld) => {
+            let Some(waiting) = HoldWaiter::take(&gate, 0) else {
+                gate.count_refusal(Refusal::GateBusy);
+                return respond::refusal(Refusal::GateBusy);
+            };
+            log(
+                "gate.queue",
+                &[
+                    ("model", model.as_str().into()),
+                    ("holder", holder.as_str().into()),
+                    ("position", 1.into()),
+                    ("lease", true.into()),
+                    ("maintenance", true.into()),
+                ],
+            );
+            let (tx, events) = mpsc::channel::<Bytes>(4);
+            tokio::spawn(lease_after_hold(
+                gate, tx, model, holder, max_wait, by_hold, waiting,
+            ));
+            stream_response(events)
+        }
+        arrival => answer_lease(gate, arrival, rx, model, holder, max_wait),
+    }
+}
+
+/// One lease arrival, with its waiter channel when it queues.
+fn arrive_lease(
+    gate: &Arc<Gate>,
+    model: &str,
+    max_wait: u64,
+    by_hold: Option<HoldKey>,
+) -> (Arrival, Option<oneshot::Receiver<Outcome>>) {
+    gate.with(|inner, now| {
         let arrival = inner
             .sched
-            .arrive(now, &model, WaitKind::Lease, None, max_wait);
+            .arrive_by(now, model, WaitKind::Lease, None, max_wait, by_hold);
         let rx = match &arrival {
             Arrival::Queued { waiter, .. } => {
                 let (tx, rx) = oneshot::channel();
@@ -138,7 +202,17 @@ async fn acquire(gate: Arc<Gate>, request: Request) -> Response {
             _ => None,
         };
         (arrival, rx)
-    });
+    })
+}
+
+fn answer_lease(
+    gate: Arc<Gate>,
+    arrival: Arrival,
+    rx: Option<oneshot::Receiver<Outcome>>,
+    model: String,
+    holder: String,
+    max_wait: u64,
+) -> Response {
     match arrival {
         Arrival::Refused(refusal) => respond::refusal(refusal),
         Arrival::Admitted(Admission::Request(_)) | Arrival::Pass => {
@@ -243,6 +317,330 @@ async fn wait_for_lease(
             _ = tx.closed() => return,
         }
     }
+}
+
+/// A lease request that arrived while another client held the engine for maintenance: reports
+/// `queued` (position 1) every few seconds until the hold ends, then arrives again (it may be
+/// granted, queue for its model, or be refused); `maintenance_held` once `max_wait` has passed.
+async fn lease_after_hold(
+    gate: Arc<Gate>,
+    tx: mpsc::Sender<Bytes>,
+    model: String,
+    holder: String,
+    max_wait: u64,
+    by_hold: Option<HoldKey>,
+    waiting: HoldWaiter,
+) {
+    // Counted as a waiter while it waits out the hold (dropped before it arrives again).
+    let mut waiting = Some(waiting);
+    let started = tokio::time::Instant::now();
+    let limit = Duration::from_millis(max_wait);
+    let queued = |waited: u64| {
+        event(
+            "queued",
+            &serde_json::json!({ "model": model, "position": 1, "waited_ms": waited }),
+        )
+    };
+    if tx.send(queued(0)).await.is_err() {
+        return;
+    }
+    loop {
+        let left = limit.saturating_sub(started.elapsed());
+        let slice = left.min(gate.cfg.lease_event_interval);
+        tokio::select! {
+            ended = wait_for_hold_end(&gate, slice) => {
+                if !ended {
+                    if started.elapsed() >= limit {
+                        gate.count_refusal(Refusal::MaintenanceHeld);
+                        let _ = tx.send(error_event(Refusal::MaintenanceHeld)).await;
+                        return;
+                    }
+                    let waited = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+                    if tx.send(queued(waited)).await.is_err() {
+                        return;
+                    }
+                    continue;
+                }
+            }
+            () = tx.closed() => return,
+        }
+        let waited = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let left_ms = max_wait.saturating_sub(waited).max(1);
+        drop(waiting.take());
+        let (arrival, rx) = arrive_lease(&gate, &model, left_ms, by_hold);
+        match arrival {
+            // Taken again at once by another holder: keep waiting, counted again.
+            Arrival::Refused(Refusal::MaintenanceHeld) => {
+                waiting = HoldWaiter::take(&gate, 0);
+                if waiting.is_none() {
+                    gate.count_refusal(Refusal::GateBusy);
+                    let _ = tx.send(error_event(Refusal::GateBusy)).await;
+                    return;
+                }
+            }
+            Arrival::Refused(refusal) => {
+                let _ = tx.send(error_event(refusal)).await;
+                return;
+            }
+            Arrival::Admitted(Admission::Request(ticket)) => {
+                gate.with(|inner, now| inner.sched.finish(now, &ticket));
+                let _ = tx.send(error_event(Refusal::InvalidLease)).await;
+                return;
+            }
+            Arrival::Pass => {
+                let _ = tx.send(error_event(Refusal::InvalidLease)).await;
+                return;
+            }
+            Arrival::Admitted(Admission::Lease(lease)) => {
+                let token = issue_token(&gate, lease);
+                if tx
+                    .send(granted_event(&gate, &model, &token, waited))
+                    .await
+                    .is_err()
+                {
+                    gate.with(|inner, _| {
+                        inner.sched.release_lease(lease);
+                        forget_lease(inner, lease);
+                    });
+                } else {
+                    log(
+                        "gate.lease",
+                        &[
+                            ("model", model.as_str().into()),
+                            ("holder", holder.as_str().into()),
+                            ("waited_ms", waited.into()),
+                        ],
+                    );
+                }
+                return;
+            }
+            Arrival::Queued { waiter, position } => {
+                let guard = WaitGuard {
+                    gate: Arc::clone(&gate),
+                    key: waiter,
+                    rx,
+                };
+                wait_for_lease(gate, guard, tx, model, holder, position, left_ms).await;
+                return;
+            }
+        }
+    }
+}
+
+/// The longest a hold request may wait for the engine to become idle.
+const MAX_HOLD_WAIT_MS: u64 = 600_000;
+/// The idle limits a holder may ask for.
+const HOLD_IDLE_RANGE_MS: std::ops::RangeInclusive<u64> = 1_000..=600_000;
+/// The longest reason kept (characters).
+const MAX_REASON_CHARS: usize = 300;
+
+fn admin_required() -> Response {
+    respond::json(
+        403,
+        &serde_json::json!({ "error": { "code": Refusal::AdminRequired.code(), "message": "The maintenance hold needs the gate's admin token.", "type": "gate_error", "retryable": false } }),
+    )
+}
+
+fn hold_unknown() -> Response {
+    respond::json(
+        404,
+        &serde_json::json!({ "error": { "code": Refusal::HoldUnknown.code(), "message": Refusal::HoldUnknown.message(), "type": "gate_error", "retryable": false } }),
+    )
+}
+
+/// The reason as kept: printable text, at most [`MAX_REASON_CHARS`] characters. `None`: not a string.
+fn reason_of(value: &serde_json::Value) -> Option<Option<String>> {
+    match value.get("reason") {
+        None | Some(serde_json::Value::Null) => Some(None),
+        Some(serde_json::Value::String(text)) => Some(Some(
+            text.chars()
+                .filter(|c| !c.is_control())
+                .take(MAX_REASON_CHARS)
+                .collect(),
+        )),
+        Some(_) => None,
+    }
+}
+
+/// An optional JSON body of a maintenance request (`{}` when empty).
+async fn body_of(gate: &Gate, request: Request) -> Result<serde_json::Value, Refusal> {
+    let body = match tokio::time::timeout(
+        gate.cfg.body_timeout,
+        http_body_util::Limited::new(request.into_body(), LEASE_BODY_LIMIT).collect(),
+    )
+    .await
+    {
+        Ok(Ok(collected)) => collected.to_bytes(),
+        Ok(Err(_)) => return Err(Refusal::BodyTooLarge),
+        Err(_) => return Err(Refusal::BodyTimeout),
+    };
+    if body.iter().all(u8::is_ascii_whitespace) {
+        return Ok(serde_json::json!({}));
+    }
+    match serde_json::from_slice::<serde_json::Value>(&body) {
+        Ok(value) if value.is_object() => Ok(value),
+        _ => Err(Refusal::InvalidJson),
+    }
+}
+
+/// `POST /gate/v1/maintenance` `{reason?, wait_ms?, idle_ttl_ms?}` (admin): takes the
+/// maintenance hold. `201 {hold, idle_ttl_ms}`; `409 engine_busy` while work runs and `503
+/// maintenance_held` while another hold is held, each after up to `wait_ms` of waiting for it to
+/// end. A holder that leaves while it waits leaves nothing behind; one that leaves the moment it
+/// is granted leaves a hold that expires after its idle limit.
+async fn take_hold(gate: Arc<Gate>, request: Request) -> Response {
+    if !gate.admin(request.headers()) {
+        log(
+            "gate.maintenance_refused",
+            &[("code", "admin_required".into())],
+        );
+        return admin_required();
+    }
+    let value = match body_of(&gate, request).await {
+        Ok(value) => value,
+        Err(refusal) => return respond::refusal(refusal),
+    };
+    let Some(reason) = reason_of(&value) else {
+        return respond::refusal(Refusal::InvalidJson);
+    };
+    let wait_ms = match value.get("wait_ms") {
+        None => 0,
+        Some(v) => match v.as_u64().filter(|v| *v <= MAX_HOLD_WAIT_MS) {
+            Some(v) => v,
+            None => return respond::refusal(Refusal::InvalidWait),
+        },
+    };
+    let default_idle = u64::try_from(gate.cfg.maintenance_idle.as_millis()).unwrap_or(u64::MAX);
+    let idle_ms = match value.get("idle_ttl_ms") {
+        None => default_idle,
+        Some(v) => match v.as_u64().filter(|v| HOLD_IDLE_RANGE_MS.contains(v)) {
+            Some(v) => v,
+            None => return respond::refusal(Refusal::InvalidWait),
+        },
+    };
+    let reason = reason.unwrap_or_default();
+    let started = tokio::time::Instant::now();
+    let deadline = started + Duration::from_millis(wait_ms);
+    loop {
+        let taken = gate.with(|inner, now| inner.sched.begin_hold(now, idle_ms, &reason));
+        match taken {
+            Ok(key) => {
+                let Some(token) = issue_hold_token(&gate, key) else {
+                    gate.with(|inner, _| {
+                        inner.sched.end_hold(key);
+                    });
+                    return respond::refusal(Refusal::GateBusy);
+                };
+                let waited = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+                log(
+                    "gate.maintenance_hold",
+                    &[
+                        ("waited_ms", waited.into()),
+                        ("idle_ttl_ms", idle_ms.into()),
+                    ],
+                );
+                return respond::json(
+                    201,
+                    &serde_json::json!({ "hold": token, "idle_ttl_ms": idle_ms }),
+                );
+            }
+            Err(Refusal::EngineBusy | Refusal::MaintenanceHeld)
+                if tokio::time::Instant::now() < deadline =>
+            {
+                // Wait for the work in flight (or another hold) to end; a tick is short against
+                // any hold's purpose.
+                let nap = (deadline - tokio::time::Instant::now())
+                    .min(gate.cfg.tick.max(Duration::from_millis(10)));
+                tokio::time::sleep(nap).await;
+            }
+            Err(refusal) => {
+                log(
+                    "gate.maintenance_refused",
+                    &[("code", refusal.code().into())],
+                );
+                return respond::refusal(refusal);
+            }
+        }
+    }
+}
+
+fn issue_hold_token(gate: &Arc<Gate>, key: HoldKey) -> Option<String> {
+    let mut raw = [0u8; 16];
+    getrandom::getrandom(&mut raw).ok()?;
+    let token: String = raw.iter().fold(String::with_capacity(32), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    });
+    gate.lock().hold = Some((token_hash(&token), key));
+    Some(token)
+}
+
+/// The live hold `token` names, if any.
+fn hold_named(gate: &Arc<Gate>, token: &str) -> Option<HoldKey> {
+    if !valid_token(token) {
+        return None;
+    }
+    let hash = token_hash(token);
+    let now = gate.now();
+    let inner = gate.lock();
+    match inner.hold {
+        Some((held, key)) if held == hash && inner.sched.hold_live(now, key) => Some(key),
+        _ => None,
+    }
+}
+
+/// `POST /gate/v1/maintenance/{hold}/renew` `{reason?}` (admin): the holder is still at work.
+/// `200 {idle_ttl_ms}`; `404 maintenance_hold_unknown` when it has ended.
+async fn renew_hold(gate: Arc<Gate>, request: Request, token: &str) -> Response {
+    if !gate.admin(request.headers()) {
+        return admin_required();
+    }
+    let value = match body_of(&gate, request).await {
+        Ok(value) => value,
+        Err(refusal) => return respond::refusal(refusal),
+    };
+    let Some(reason) = reason_of(&value) else {
+        return respond::refusal(Refusal::InvalidJson);
+    };
+    let Some(key) = hold_named(&gate, token) else {
+        return hold_unknown();
+    };
+    let renewed = gate.with(|inner, now| {
+        inner
+            .sched
+            .renew_hold(now, key, reason.as_deref())
+            .then(|| inner.sched.hold_status(now).map(|h| h.idle_ttl_ms))
+            .flatten()
+    });
+    match renewed {
+        Some(idle_ttl_ms) => respond::json(200, &serde_json::json!({ "idle_ttl_ms": idle_ttl_ms })),
+        None => hold_unknown(),
+    }
+}
+
+/// `DELETE /gate/v1/maintenance/{hold}` (admin): the holder gives the hold back. `204`; `404
+/// maintenance_hold_unknown` when it had already ended.
+fn end_hold(gate: &Arc<Gate>, headers: &axum::http::HeaderMap, token: &str) -> Response {
+    if !gate.admin(headers) {
+        return admin_required();
+    }
+    let Some(key) = hold_named(gate, token) else {
+        return hold_unknown();
+    };
+    let ended = gate.with(|inner, _| {
+        let ended = inner.sched.end_hold(key);
+        if ended {
+            inner.hold = None;
+        }
+        ended
+    });
+    if !ended {
+        return hold_unknown();
+    }
+    log("gate.maintenance_end", &[("end", "released".into())]);
+    gate.hold_ended.notify_waiters();
+    gate.kick();
+    respond::empty(StatusCode::NO_CONTENT)
 }
 
 fn issue_token(gate: &Arc<Gate>, lease: LeaseKey) -> String {

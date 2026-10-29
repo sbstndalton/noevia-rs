@@ -575,6 +575,10 @@ impl Harness {
                 Action::LeaseEnded { lease, .. } => {
                     self.leases.retain(|(k, _)| k != lease);
                 }
+                // The model never takes a maintenance hold.
+                Action::HoldEnded { .. } => {
+                    prop_assert!(false, "a hold ended that was never taken")
+                }
             }
         }
         if let Some(violation) = self.violation.take() {
