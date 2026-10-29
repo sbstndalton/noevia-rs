@@ -87,10 +87,70 @@ pub(crate) async fn read_body(body: Body, limit: usize) -> Result<server_account
 
 /// One request for a Rust-owned account route; `path` is the WHATWG pathname.
 pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String) -> Response<Body> {
+    let request_started = std::time::Instant::now();
     let now = crate::identity::now_ms();
     let (parts, body) = req.into_parts();
     let framing = path == "/api/chat-framing/preferences";
     let features = server_account::features::owns(&path);
+    let forwarded = parts
+        .headers
+        .get_all("x-forwarded-for")
+        .iter()
+        .map(|v| String::from_utf8_lossy(v.as_bytes()).into_owned())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut request = server_account::Request {
+        method: parts.method.as_str().to_string(),
+        path: path.clone(),
+        creds: Creds::from_headers(
+            parts.method.as_str(),
+            parts
+                .headers
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.as_bytes())),
+        ),
+        user_agent: first_header(&parts.headers, header::USER_AGENT),
+        content_type: first_header(&parts.headers, header::CONTENT_TYPE),
+        client_ip: server_account::util::client_address(
+            conn.peer.ip(),
+            (!forwarded.is_empty()).then_some(forwarded.as_str()),
+            app.config.trust_proxy,
+        ),
+        body: server_account::Body::default(),
+    };
+    let device = path.starts_with("/api/") && server_account::device_route(&path);
+    let mut device_admission = None;
+    let mut device_body_limit = None;
+    if device {
+        let layer = Arc::clone(&app.accounts);
+        let owner = Arc::clone(app);
+        let header_request = request.clone();
+        let preflight = tokio::task::spawn_blocking(move || {
+            let account = layer.account(&owner, now)?;
+            let clock = || {
+                crate::identity::now_ms().max(now.saturating_add(
+                    i64::try_from(request_started.elapsed().as_millis()).unwrap_or(i64::MAX),
+                ))
+            };
+            Some(account.device_preflight(&header_request, clock))
+        })
+        .await
+        .ok()
+        .flatten();
+        match preflight {
+            Some(server_account::DevicePreflight::Accepted {
+                admission,
+                body_limit,
+            }) => {
+                device_admission = Some(admission);
+                device_body_limit = body_limit;
+            }
+            Some(server_account::DevicePreflight::Refused(reply)) => {
+                return account_response(reply)
+            }
+            None => return crate::identity::Rejection::Unavailable.into_response(),
+        }
+    }
     if framing || features {
         let layer = Arc::clone(&app.identity);
         let creds = crate::identity::creds_of(&parts);
@@ -120,10 +180,13 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
     // admission precedes PUT body polling, including transport failures.
     let feature_body =
         features && path.starts_with("/api/admin/features/") && parts.method == "PUT";
-    let body = if (framing && parts.method != "PUT") || (features && !feature_body) {
+    let body = if (framing && parts.method != "PUT")
+        || (features && !feature_body)
+        || (device && device_body_limit.is_none())
+    {
         server_account::Body::default()
     } else {
-        match read_body(body, BODY_LIMIT).await {
+        match read_body(body, device_body_limit.unwrap_or(BODY_LIMIT)).await {
             Ok(body) => body,
             Err(()) => {
                 return reply::error(
@@ -140,41 +203,23 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
             }
         }
     };
-    let forwarded = parts
-        .headers
-        .get_all("x-forwarded-for")
-        .iter()
-        .map(|v| String::from_utf8_lossy(v.as_bytes()).into_owned())
-        .collect::<Vec<_>>()
-        .join(", ");
-    let request = server_account::Request {
-        method: parts.method.as_str().to_string(),
-        path,
-        creds: Creds::from_headers(
-            parts.method.as_str(),
-            parts
-                .headers
-                .iter()
-                .map(|(k, v)| (k.as_str(), v.as_bytes())),
-        ),
-        user_agent: first_header(&parts.headers, header::USER_AGENT),
-        content_type: first_header(&parts.headers, header::CONTENT_TYPE),
-        client_ip: server_account::util::client_address(
-            conn.peer.ip(),
-            (!forwarded.is_empty()).then_some(forwarded.as_str()),
-            app.config.trust_proxy,
-        ),
-        body,
-    };
+    request.body = body;
     let layer = Arc::clone(&app.accounts);
     let app2 = Arc::clone(app);
     let outcome = tokio::task::spawn_blocking(move || {
         let account = layer.account(&app2, now)?;
-        let outcome = if framing || features || server_account::device_route(&request.path) {
+        let clock = || {
+            crate::identity::now_ms().max(now.saturating_add(
+                i64::try_from(request_started.elapsed().as_millis()).unwrap_or(i64::MAX),
+            ))
+        };
+        let outcome = if let Some(admission) = device_admission {
+            account.handle_with_device_admission(&request, clock, admission)
+        } else if framing || features {
             // The live clock is first sampled INSIDE public Account entry,
             // after body and lazy Account initialization, then before/after
             // all initial auth and final writer admission waits.
-            account.handle_with_clock(&request, crate::identity::now_ms)
+            account.handle_with_clock(&request, clock)
         } else {
             account.handle(&request, now)
         };
@@ -191,26 +236,7 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
         );
     };
     match outcome {
-        Outcome::Reply(r) => {
-            let status =
-                StatusCode::from_u16(r.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-            let mut res = reply::json_text(status, r.body, true);
-            let h = res.headers_mut();
-            for c in r.cookies {
-                if let Ok(v) = HeaderValue::from_str(&c) {
-                    h.append(header::SET_COOKIE, v);
-                }
-            }
-            for (k, v) in r.headers {
-                if let (Ok(k), Ok(v)) = (
-                    header::HeaderName::from_bytes(k.as_bytes()),
-                    HeaderValue::from_str(&v),
-                ) {
-                    h.insert(k, v);
-                }
-            }
-            res
-        }
+        Outcome::Reply(r) => account_response(r),
         Outcome::Pass => {
             if request.body.over {
                 return reply::error(
@@ -223,6 +249,26 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
             app.proxy.forward(conn.peer, req).await
         }
     }
+}
+
+fn account_response(r: server_account::Reply) -> Response<Body> {
+    let status = StatusCode::from_u16(r.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    let mut res = reply::json_text(status, r.body, true);
+    let h = res.headers_mut();
+    for c in r.cookies {
+        if let Ok(v) = HeaderValue::from_str(&c) {
+            h.append(header::SET_COOKIE, v);
+        }
+    }
+    for (k, v) in r.headers {
+        if let (Ok(k), Ok(v)) = (
+            header::HeaderName::from_bytes(k.as_bytes()),
+            HeaderValue::from_str(&v),
+        ) {
+            h.insert(k, v);
+        }
+    }
+    res
 }
 
 #[cfg(test)]
@@ -248,9 +294,7 @@ mod tests {
             Poll::Pending
         }
     }
-    #[tokio::test]
-    async fn all_feature_namespaces_preserve_header_and_method_before_body_order(
-    ) -> Result<(), Error> {
+    fn fixture() -> Result<(tempfile::TempDir, Connection, Arc<App>), Error> {
         let dir = tempfile::tempdir()?;
         let db = Connection::open(db_path(dir.path()))?;
         db.execute_batch(include_str!(
@@ -260,14 +304,25 @@ mod tests {
         let uid = "00000000-0000-4000-8000-000000000001";
         db.execute("INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES(?1,'Synthetic','synthetic','Synthetic','admin','unused','wa',?2,?2)",(uid,now))?;
         db.execute("INSERT INTO sessions(id_hash,user_id,csrf_hash,created_at,last_seen_at,expires_at,user_agent,ip) VALUES(?1,?2,?3,?4,?4,?5,'Synthetic','127.0.0.1')",(server_auth::js::digest("synthetic-session"),uid,server_auth::js::digest("synthetic-csrf"),now,now+60_000))?;
+        db.execute(
+            "INSERT INTO settings(key,value) VALUES('feature:nativeClientAuth','true')",
+            [],
+        )?;
         let config = crate::config::Config::from_lookup(|key| match key {
             "NOEVIA_LEGACY_UPSTREAM" => Some("http://127.0.0.1:9".into()),
             "UI_DATA_DIR" => Some(dir.path().to_string_lossy().into_owned()),
             "NOEVIA_START_ID" => Some("11111111111111111111111111111111".into()),
             "PUBLIC_ORIGIN" => Some("https://noevia.example.test".into()),
+            "TRUST_PROXY" => Some("true".into()),
             _ => None,
         })?;
         let app = App::new(config);
+        Ok((dir, db, app))
+    }
+    #[tokio::test]
+    async fn all_feature_namespaces_preserve_header_and_method_before_body_order(
+    ) -> Result<(), Error> {
+        let (_dir, db, app) = fixture()?;
         for (method, path, signed, member, status) in [
             ("GET", "/api/features", false, false, 401),
             ("PUT", "/api/admin/features/previews", false, false, 401),
@@ -311,6 +366,289 @@ mod tests {
             assert_eq!(response.status().as_u16(), status, "{method} {path}");
             assert!(!polled.load(Ordering::SeqCst), "{method} {path}");
         }
+        Ok(())
+    }
+    fn register(app: &Arc<App>) -> Result<Arc<server_account::feature_context::Controller>, Error> {
+        use server_account::feature_context::{
+            source_fingerprint, BootFacts, BrowserFact, Cancellation, ContextSource, Control,
+            Registration, Snapshot,
+        };
+        let controller = app
+            .feature_context
+            .as_ref()
+            .ok_or("missing runtime")?
+            .controller();
+        let writer = app.writes.writer()?;
+        let snapshot = writer.read(|r| {
+            Ok(Snapshot {
+                decision: source_fingerprint(r, ContextSource::Decision)?,
+                machines: source_fingerprint(r, ContextSource::InferenceMachines)?,
+                choice: None,
+                system_one_unconfigured: true,
+            })
+        })?;
+        let facts = BootFacts {
+            env: [None; 23],
+            restart: [false, false],
+            browser: BrowserFact::Available,
+            code: false,
+            trust_proxy: true,
+        };
+        let cancel = Cancellation::default();
+        let control = Control {
+            request: "00000000-0000-4000-8000-000000000003".parse()?,
+            deadline: std::time::Instant::now() + std::time::Duration::from_secs(30),
+            cancelled: cancel.signal(),
+        };
+        let result = controller.register(
+            &writer,
+            &control,
+            Registration {
+                boot: "00000000-0000-4000-8000-000000000001".parse()?,
+                session: "00000000-0000-4000-8000-000000000002".parse()?,
+                facts: facts.clone(),
+                snapshot,
+            },
+            |tx| {
+                server_account::feature_context::startup::initialize(
+                    tx,
+                    &facts,
+                    crate::identity::now_ms(),
+                )
+            },
+        )?;
+        assert!(matches!(
+            result,
+            server_account::feature_context::Reply::Ready(_)
+        ));
+        Ok(controller)
+    }
+    fn connection() -> Result<Conn, Error> {
+        Ok(Conn {
+            peer: "127.0.0.1:12345".parse()?,
+            local: None,
+        })
+    }
+    #[tokio::test]
+    async fn device_off_unknown_auth_origin_and_method_refuse_without_body_poll(
+    ) -> Result<(), Error> {
+        let (_dir, db, app) = fixture()?;
+        for path in ["/api/auth/device/code", "/api/auth/device/approve"] {
+            let polled = Arc::new(AtomicBool::new(false));
+            let request = Request::post(path).body(Body::new(Pending(Arc::clone(&polled))))?;
+            let response = tokio::time::timeout(
+                std::time::Duration::from_secs(3),
+                serve(&app, connection()?, request, path.into()),
+            )
+            .await?;
+            assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+            assert!(!polled.load(Ordering::SeqCst));
+        }
+        register(&app)?;
+        for (method, path, signed, origin, status) in [
+            (
+                "GET",
+                "/api/auth/device/code",
+                false,
+                "https://noevia.example.test",
+                405,
+            ),
+            (
+                "GET",
+                "/api/auth/device/token",
+                false,
+                "https://noevia.example.test",
+                405,
+            ),
+            (
+                "POST",
+                "/api/auth/device/code",
+                false,
+                "https://other.example.test",
+                403,
+            ),
+            (
+                "POST",
+                "/api/auth/device/lookup",
+                false,
+                "https://noevia.example.test",
+                401,
+            ),
+            (
+                "GET",
+                "/api/auth/device/approve",
+                true,
+                "https://noevia.example.test",
+                405,
+            ),
+            (
+                "POST",
+                "/api/auth/device/approve",
+                true,
+                "https://other.example.test",
+                403,
+            ),
+            (
+                "GET",
+                "/api/auth/devices",
+                true,
+                "https://noevia.example.test",
+                200,
+            ),
+        ] {
+            let polled = Arc::new(AtomicBool::new(false));
+            let mut request = Request::builder()
+                .method(method)
+                .uri(path)
+                .header("origin", origin);
+            if signed {
+                request = request
+                    .header(
+                        "cookie",
+                        "cowork_session=synthetic-session; cowork_csrf=synthetic-csrf",
+                    )
+                    .header("x-csrf-token", "synthetic-csrf");
+            }
+            let response = tokio::time::timeout(
+                std::time::Duration::from_secs(3),
+                serve(
+                    &app,
+                    connection()?,
+                    request.body(Body::new(Pending(Arc::clone(&polled))))?,
+                    path.into(),
+                ),
+            )
+            .await?;
+            assert_eq!(response.status().as_u16(), status, "{method} {path}");
+            assert!(!polled.load(Ordering::SeqCst));
+        }
+        db.execute(
+            "UPDATE settings SET value='false' WHERE key='feature:nativeClientAuth'",
+            [],
+        )?;
+        let polled = Arc::new(AtomicBool::new(false));
+        let request =
+            Request::post("/api/auth/device/code").body(Body::new(Pending(Arc::clone(&polled))))?;
+        assert_eq!(
+            serve(&app, connection()?, request, "/api/auth/device/code".into())
+                .await
+                .status(),
+            StatusCode::NOT_FOUND
+        );
+        assert!(!polled.load(Ordering::SeqCst));
+        Ok(())
+    }
+    struct HeldBody {
+        entered: Option<tokio::sync::oneshot::Sender<()>>,
+        release: tokio::sync::oneshot::Receiver<()>,
+        done: bool,
+    }
+    impl http_body::Body for HeldBody {
+        type Data = Bytes;
+        type Error = std::io::Error;
+        fn poll_frame(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+        ) -> Poll<Option<Result<http_body::Frame<Bytes>, Self::Error>>> {
+            use std::future::Future;
+            if self.done {
+                return Poll::Ready(None);
+            }
+            if let Some(tx) = self.entered.take() {
+                let _ = tx.send(());
+            }
+            match Pin::new(&mut self.release).poll(cx) {
+                Poll::Pending => Poll::Pending,
+                Poll::Ready(Ok(())) => {
+                    self.done = true;
+                    Poll::Ready(Some(Ok(http_body::Frame::data(Bytes::from_static(
+                        br#"{"client_name":"Synthetic"}"#,
+                    )))))
+                }
+                Poll::Ready(Err(_)) => {
+                    self.done = true;
+                    Poll::Ready(Some(Err(std::io::Error::other("test body released"))))
+                }
+            }
+        }
+    }
+    struct OwnRequest(tokio::task::AbortHandle);
+    impl Drop for OwnRequest {
+        fn drop(&mut self) {
+            self.0.abort();
+        }
+    }
+    #[tokio::test]
+    async fn device_header_admission_survives_body_wait_and_off_on_never_revives_it(
+    ) -> Result<(), Error> {
+        let (_dir, db, app) = fixture()?;
+        let controller = register(&app)?;
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        let request = Request::post("/api/auth/device/code")
+            .header("origin", "https://noevia.example.test")
+            .header("content-type", "application/json")
+            .body(Body::new(HeldBody {
+                entered: Some(entered_tx),
+                release: release_rx,
+                done: false,
+            }))?;
+        let owner = Arc::clone(&app);
+        let conn = connection()?;
+        let request = tokio::spawn(async move {
+            serve(&owner, conn, request, "/api/auth/device/code".into()).await
+        });
+        let _owned = OwnRequest(request.abort_handle());
+        tokio::time::timeout(std::time::Duration::from_secs(3), entered_rx).await??;
+        let writer = app.writes.writer()?;
+        let old = writer.read(|r| controller.admission(r))?;
+        controller.mutate(&writer, old, true, |tx| {
+            tx.set_feature_enabled(
+                server_store::RustFeatureSettings::owned(),
+                server_features::Feature::NativeClientAuth,
+                false,
+            )?;
+            server_account::feature_context::startup::revoke_all(
+                tx,
+                None,
+                crate::identity::now_ms(),
+            )
+        })?;
+        let next = writer.read(|r| controller.admission(r))?;
+        controller.mutate(&writer, next, false, |tx| {
+            tx.set_feature_enabled(
+                server_store::RustFeatureSettings::owned(),
+                server_features::Feature::NativeClientAuth,
+                true,
+            )
+        })?;
+        release_tx.send(()).map_err(|_| "body closed")?;
+        assert_eq!(
+            tokio::time::timeout(std::time::Duration::from_secs(3), request)
+                .await??
+                .status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        assert_eq!(
+            db.query_row("SELECT count(*) FROM device_authorizations", [], |r| r
+                .get::<_, i64>(0))?,
+            0
+        );
+        let fresh = Request::post("/api/auth/device/code")
+            .header("origin", "https://noevia.example.test")
+            .header("content-type", "application/json")
+            .body(Body::from(br#"{"client_name":"Synthetic"}"#.as_slice()))?;
+        assert_eq!(
+            serve(&app, connection()?, fresh, "/api/auth/device/code".into())
+                .await
+                .status(),
+            StatusCode::OK
+        );
+        assert_eq!(
+            db.query_row("SELECT count(*) FROM device_authorizations", [], |r| r
+                .get::<_, i64>(0))?,
+            1
+        );
         Ok(())
     }
 }

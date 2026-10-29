@@ -136,7 +136,7 @@ fn describe(reader: &Reader<'_>, view: &View, feature: Feature) -> Result<JValue
     ));
     Ok(JValue::Obj(fields))
 }
-fn refuse(why: server_auth::identity::Refusal) -> Outcome {
+pub(crate) fn refuse(why: server_auth::identity::Refusal) -> Outcome {
     use server_auth::identity::Refusal;
     match why {
         Refusal::Unauthorized => {

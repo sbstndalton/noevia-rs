@@ -50,11 +50,11 @@ owner = "node"
 
 [[route]]
 path = "/api/admin/features"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/admin/features/{name}"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/admin/invitations"
@@ -351,7 +351,7 @@ methods = ["GET"]
 
 [[route]]
 path = "/api/features"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/freechats"

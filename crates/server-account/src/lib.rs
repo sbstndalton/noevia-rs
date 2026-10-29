@@ -177,6 +177,16 @@ impl Settings {
     }
 }
 
+/// Header-only decision for a native device route. The front retains this exact
+/// admission across body IO; clients cannot supply it through a request field.
+pub enum DevicePreflight {
+    Accepted {
+        admission: feature_context::Admission,
+        body_limit: Option<usize>,
+    },
+    Refused(Reply),
+}
+
 /// The routes' state: the writer, the gate, the settings and the in-memory rate limiters Node
 /// keeps per process (auth.cjs `rate` and device-auth.cjs's own).
 pub struct Account {
@@ -240,6 +250,29 @@ impl Account {
         self
     }
 
+    pub fn device_preflight(&self, req: &Request, clock: impl Fn() -> i64) -> DevicePreflight {
+        match device::preflight(self, req, &clock) {
+            Ok(result) => result,
+            Err(Fault::Status(status, message)) => {
+                DevicePreflight::Refused(Reply::error(status, &message))
+            }
+            Err(Fault::Unavailable) => DevicePreflight::Refused(Reply::error(
+                503,
+                "Sign-in is unavailable right now. Try again shortly.",
+            )),
+            Err(Fault::Internal) => DevicePreflight::Refused(Reply::error(500, "Internal error")),
+        }
+    }
+    /// Continue a header-admitted device request using the SAME generation after IO.
+    pub fn handle_with_device_admission(
+        &self,
+        req: &Request,
+        clock: impl Fn() -> i64,
+        admission: feature_context::Admission,
+    ) -> Outcome {
+        self.handle_context(req, clock, Some(admission))
+    }
+
     /// One request at `now` (epoch ms). Blocking: SQLite and Argon2.
     pub fn handle(&self, req: &Request, now: i64) -> Outcome {
         self.handle_with_clock(req, || now)
@@ -250,6 +283,14 @@ impl Account {
     /// the first sample, so initial Writer admission waits cannot disappear.
     /// Other account routes keep the original single initial timestamp.
     pub fn handle_with_clock(&self, req: &Request, clock: impl Fn() -> i64) -> Outcome {
+        self.handle_context(req, clock, None)
+    }
+    fn handle_context(
+        &self,
+        req: &Request,
+        clock: impl Fn() -> i64,
+        earlier: Option<feature_context::Admission>,
+    ) -> Outcome {
         let start = std::time::Instant::now();
         let now = clock();
         let current = || {
@@ -257,7 +298,7 @@ impl Account {
                 now.saturating_add(i64::try_from(start.elapsed().as_millis()).unwrap_or(i64::MAX)),
             )
         };
-        match self.pipeline(req, now, &current) {
+        match self.pipeline(req, now, &current, earlier) {
             Ok(o) => o,
             Err(Fault::Status(status, message)) => Reply::error(status, &message).into(),
             Err(Fault::Unavailable) => {
@@ -267,8 +308,14 @@ impl Account {
         }
     }
 
-    fn pipeline(&self, req: &Request, now: i64, current: &dyn Fn() -> i64) -> Handled {
-        if let Some(o) = device::open(self, req, now, current)? {
+    fn pipeline(
+        &self,
+        req: &Request,
+        now: i64,
+        current: &dyn Fn() -> i64,
+        earlier: Option<feature_context::Admission>,
+    ) -> Handled {
+        if let Some(o) = device::open(self, req, now, current, earlier)? {
             return Ok(o);
         }
         if let Some(o) = open::open(self, req, now)? {
@@ -281,7 +328,7 @@ impl Account {
                 self.auth.authenticate_in(
                     r,
                     &req.creds,
-                    if features::owns(&req.path) {
+                    if features::owns(&req.path) || device::is_device_api(&req.path) {
                         current()
                     } else {
                         now
@@ -322,7 +369,7 @@ impl Account {
             )
             .into());
         }
-        if let Some(o) = device::account(self, req, &authn, now, current)? {
+        if let Some(o) = device::account(self, req, &authn, now, current, earlier)? {
             return Ok(o);
         }
         if let Some(o) = features::handle(self, req, &authn, current)? {

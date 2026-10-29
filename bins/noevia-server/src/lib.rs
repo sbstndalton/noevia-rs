@@ -76,6 +76,7 @@ pub const FEATURES: &[&str] = &[
     "client-address-header",
     "code-net-guard",
     "header-read-timeout",
+    "rust-feature-owner",
     "legacy-root-claim",
     "project-store",
     server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER,

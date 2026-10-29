@@ -82,9 +82,21 @@ impl<'a> Issuance<'a> {
         clock: &'a dyn Fn() -> i64,
         browser: Option<&'a Identity>,
     ) -> Result<Self, Fault> {
+        Self::capture_for(acct, req, clock, browser, None)
+    }
+    fn capture_for(
+        acct: &'a Account,
+        req: &'a Request,
+        clock: &'a dyn Fn() -> i64,
+        browser: Option<&'a Identity>,
+        earlier: Option<crate::feature_context::Admission>,
+    ) -> Result<Self, Fault> {
         let controller = acct.feature_context.as_ref().ok_or(Fault::Unavailable)?;
         let admission = acct.writer.read(|reader| {
             let view = controller.view(reader)?;
+            if earlier.is_some_and(|original| original != view.admission) {
+                return Err(context_unavailable());
+            }
             if !crate::features::evaluate(
                 reader,
                 &view,
@@ -175,12 +187,92 @@ fn context_unavailable() -> StoreError {
     StoreError::NotReady("device feature context is unavailable".into())
 }
 
+/// Preserve off/auth/method/origin decisions before a body is polled. Only
+/// an Accepted value may continue through the front's body reader.
+pub(crate) fn preflight(
+    acct: &Account,
+    req: &Request,
+    clock: &dyn Fn() -> i64,
+) -> Result<crate::DevicePreflight, Fault> {
+    use crate::DevicePreflight;
+    let refuse = |reply: Reply| Ok(DevicePreflight::Refused(reply));
+    if !is_device_api(&req.path) {
+        return Err(Fault::Internal);
+    }
+    if !acct.native_client_auth()? {
+        return refuse(Reply::error(404, "not found"));
+    }
+    let issuance = Issuance::capture(acct, req, clock, None)?;
+    if !server_auth::request::bearer_token(&req.creds).is_empty()
+        && server_auth::request::has_session_cookie(&req.creds)
+    {
+        return refuse(Reply::json(
+            400,
+            &JValue::obj([
+                (
+                    "error",
+                    JValue::from("Send either a session cookie or a bearer token, not both."),
+                ),
+                ("code", JValue::from("ambiguous_credentials")),
+            ]),
+        ));
+    }
+    let public = matches!(
+        req.path.as_str(),
+        "/api/auth/device/code" | "/api/auth/device/token"
+    );
+    let expected = if req.path == "/api/auth/devices" {
+        "GET"
+    } else if req.path.starts_with("/api/auth/devices/") {
+        "DELETE"
+    } else {
+        "POST"
+    };
+    if !public {
+        let current = acct
+            .writer
+            .read(|reader| acct.auth.gate_in(reader, &req.creds, &req.path, clock()))?;
+        let original = match current {
+            Ok(id) => id,
+            Err(why) => {
+                return match crate::features::refuse(why) {
+                    Outcome::Reply(reply) => refuse(reply),
+                    _ => Err(Fault::Internal),
+                }
+            }
+        };
+        if !matches!(original.credential, Credential::Session { .. }) {
+            return match crate::features::refuse(server_auth::identity::Refusal::BrowserOnly) {
+                Outcome::Reply(reply) => refuse(reply),
+                _ => Err(Fault::Internal),
+            };
+        }
+    }
+    if req.method != expected {
+        return refuse(Reply::error(405, "method not allowed"));
+    }
+    if public
+        && !acct
+            .writer
+            .read(|reader| acct.auth.origin_valid(reader, &req.creds))?
+    {
+        return refuse(Reply::error(403, "origin not allowed"));
+    }
+    let body_limit =
+        (req.method == "POST").then_some(if public { 16 * 1024 } else { crate::BODY_LIMIT });
+    Ok(DevicePreflight::Accepted {
+        admission: issuance.admission,
+        body_limit,
+    })
+}
+
 /// routes/device-auth.cjs `open`.
 pub fn open(
     acct: &Account,
     req: &Request,
     now: i64,
     current: &dyn Fn() -> i64,
+    earlier: Option<crate::feature_context::Admission>,
 ) -> Result<Option<Outcome>, Fault> {
     let p = req.path.as_str();
     let is_device_path = is_device_api(p) || p == "/device" || p == "/device/";
@@ -190,7 +282,7 @@ pub fn open(
     // Do not put unrelated browser sign-in/setup behind a producer outage.
     // Device paths, however, cannot run ahead of committed startup cleanup.
     let issuance = if is_device_path {
-        Some(Issuance::capture(acct, req, current, None)?)
+        Some(Issuance::capture_for(acct, req, current, None, earlier)?)
     } else {
         None
     };
@@ -814,6 +906,7 @@ pub fn account(
     authn: &Identity,
     now: i64,
     current: &dyn Fn() -> i64,
+    earlier: Option<crate::feature_context::Admission>,
 ) -> Result<Option<Outcome>, Fault> {
     if !acct.native_client_auth()? {
         return Ok(None);
@@ -936,7 +1029,7 @@ pub fn account(
                 Reply::error(404, "That code is not valid or has expired.").into(),
             ));
         };
-        let issuance = Issuance::capture(acct, req, current, Some(authn))?;
+        let issuance = Issuance::capture_for(acct, req, current, Some(authn), earlier)?;
         let decided = issuance.write(Some(row.expires_at), |tx, now| {
             if approve {
                 // Approvals fail closed: the epoch read with the session must still be the account's.
