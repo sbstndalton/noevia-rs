@@ -303,7 +303,7 @@ fn every_native_replay_invocation_requires_a_persisted_proof_including_negative_
     assert!(stats.contains("test ! -e \"$RUNNER_TEMP/stats-proof-state.json\""));
     assert!(stats.contains("proof = state['nativeMoveStateProof']"));
     assert!(stats.contains("set -euo pipefail"));
-    assert!(stats.contains("assert stats and len(stats) == len(bad)"));
+    assert!(stats.contains("assert stats and len(stats) + len(caps) + len(hardware) == len(bad)"));
 }
 
 #[test]
@@ -321,7 +321,13 @@ fn deliberate_stats_difference_cannot_mask_missing_or_invalid_native_proof() {
     let dir = tempfile::tempdir().unwrap();
     let report = dir.path().join("report.json");
     let state = dir.path().join("state.json");
-    std::fs::write(&report,serde_json::json!([{"method":"GET","path":"/api/stats","diffs":[{"at":"body/inference/up"}],"error":null,"status":200,"expectedStatus":200}]).to_string()).unwrap();
+    // The proof front follows its own llama.cpp engine: /api/stats and the native model reads (#2187) drift.
+    let rows = serde_json::json!([
+        {"method":"GET","path":"/api/stats","diffs":[{"at":"body/inference/up","expected":"false","actual":"true"}],"error":null,"status":200,"expectedStatus":200},
+        {"method":"GET","path":"/api/models/capabilities","diffs":[{"at":"body/kind","expected":"\"none\"","actual":"\"llamacpp\""}],"error":null,"status":200,"expectedStatus":200},
+        {"method":"GET","path":"/api/models/hardware","diffs":[{"at":"status","expected":"404","actual":"200"},{"at":"body/supported","expected":"(absent)","actual":"false"}],"error":null,"status":200,"expectedStatus":404},
+    ]);
+    std::fs::write(&report, rows.to_string()).unwrap();
     let check = || {
         std::process::Command::new("python3")
             .arg("-c")
@@ -348,5 +354,18 @@ fn deliberate_stats_difference_cannot_mask_missing_or_invalid_native_proof() {
     ] {
         std::fs::write(&state, bad.to_string()).unwrap();
         assert!(!check());
+    }
+    std::fs::write(&state, valid.to_string()).unwrap();
+    let mut extra = rows.clone();
+    extra.as_array_mut().unwrap().push(serde_json::json!({"method":"GET","path":"/api/models/estimate","diffs":[{"at":"status","expected":"200","actual":"404"}],"error":null,"status":404,"expectedStatus":200}));
+    let mut no_caps = rows.clone();
+    no_caps.as_array_mut().unwrap().remove(1);
+    let mut supported = rows.clone();
+    supported[2]["diffs"][1]["actual"] = serde_json::json!("true");
+    let mut caps_none = rows.clone();
+    caps_none[1]["diffs"][0]["actual"] = serde_json::json!("\"none\"");
+    for bad in [extra, no_caps, supported, caps_none] {
+        std::fs::write(&report, bad.to_string()).unwrap();
+        assert!(!check(), "only the expected engine drifts may pass: {bad}");
     }
 }
