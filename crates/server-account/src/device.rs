@@ -751,7 +751,15 @@ fn exchange_refresh(
     if !retrying && limited(acct, &format!("device-token:grant:{grant}"), 30, at)? {
         return Ok(too_many("refreshes for this device"));
     }
-    let rotated = issuance.write(Some(ge.min(te).min(lu.saturating_add(REFRESH_IDLE_MS))), |tx, at| {
+    let mut rotation_deadline = ge.min(te).min(lu.saturating_add(REFRESH_IDLE_MS));
+    if in_grace {
+        // Original grace accepts elapsed == 60_000. The shared check uses an
+        // exclusive deadline, so preserve that boundary through COMMIT too.
+        let used = used_at.ok_or(Fault::Internal)?;
+        rotation_deadline =
+            rotation_deadline.min(used.saturating_add(REFRESH_GRACE_MS).saturating_add(1));
+    }
+    let rotated = issuance.write(Some(rotation_deadline), |tx, at| {
         let live=tx.reader().row(
             "SELECT t.expires_at,t.used_at,t.replaced_by,g.expires_at,g.last_used_at,u.disabled_at FROM device_tokens t JOIN device_grants g ON g.id=t.grant_id JOIN users u ON u.id=g.user_id WHERE t.token_hash=?1 AND t.kind='refresh' AND g.id=?2 AND g.user_id=?3",
             (&token_hash,&grant,&user_id),|r|Ok((r.get::<_,Value>(0)?,r.get::<_,Option<i64>>(1)?,r.get::<_,Option<String>>(2)?,r.get::<_,Value>(3)?,r.get::<_,Value>(4)?,r.get::<_,Value>(5)?)))?;
@@ -1432,6 +1440,85 @@ mod issuance_tests {
             Issuance::capture(&f.acct, &f.req, &clock, None).map_err(|e| format!("{e:?}"))?;
         assert!(fence.write(Some(T0+100),|tx,_|tx.execute("INSERT INTO device_authorizations(device_code_hash,user_code_hash,client_name,ip,user_agent,created_at,expires_at,interval_ms,status) VALUES('post','post','Synthetic','ip','ua',1,1000,5000,'pending')",[])).is_err());
         assert_eq!(count(&f, "device_authorizations")?, 0);
+        Ok(())
+    }
+    #[test]
+    fn refresh_grace_is_rechecked_after_sql_with_inclusive_original_boundary() -> Result<(), Error>
+    {
+        for elapsed in [REFRESH_GRACE_MS, REFRESH_GRACE_MS + 1] {
+            let f = fixture()?;
+            refresh(&f)?;
+            let successor = util::digest("nvr_successor");
+            let old = util::digest("nvr_synthetic");
+            f.node
+                .execute("UPDATE device_grants SET expires_at=?1", [T0 + 86_400_000])?;
+            f.node.execute(
+                "UPDATE device_tokens SET expires_at=?1,used_at=?2,replaced_by=?3",
+                (T0 + 3_600_000, T0, &successor),
+            )?;
+            f.node.execute("INSERT INTO device_tokens(token_hash,grant_id,kind,created_at,expires_at) VALUES(?1,'synthetic-grant','refresh',?2,?3)",(&successor,T0,T0+3_600_000))?;
+            let samples = AtomicUsize::new(0);
+            let clock = || {
+                if samples.fetch_add(1, Ordering::SeqCst) == 0 {
+                    T0 + REFRESH_GRACE_MS - 1
+                } else {
+                    T0 + elapsed
+                }
+            };
+            let fence =
+                Issuance::capture(&f.acct, &f.req, &clock, None).map_err(|e| format!("{e:?}"))?;
+            let status = status(exchange_refresh(
+                &f.acct,
+                "nvr_synthetic",
+                T0 + REFRESH_GRACE_MS - 1,
+                false,
+                &fence,
+            ));
+            assert_eq!(
+                status,
+                if elapsed == REFRESH_GRACE_MS {
+                    200
+                } else {
+                    503
+                }
+            );
+            if elapsed > REFRESH_GRACE_MS {
+                assert_eq!(count(&f, "device_tokens")?, 2);
+                assert_eq!(count(&f, "audit_events")?, 0);
+                assert_eq!(
+                    f.node.query_row(
+                        "SELECT used_at FROM device_tokens WHERE token_hash=?1",
+                        [&successor],
+                        |r| r.get::<_, Option<i64>>(0)
+                    )?,
+                    None
+                );
+                assert_eq!(
+                    f.node.query_row(
+                        "SELECT replaced_by FROM device_tokens WHERE token_hash=?1",
+                        [&old],
+                        |r| r.get::<_, String>(0)
+                    )?,
+                    successor
+                );
+                assert_eq!(
+                    f.node
+                        .query_row("SELECT last_used_at FROM device_grants", [], |r| r
+                            .get::<_, i64>(0))?,
+                    T0
+                );
+            } else {
+                assert_eq!(
+                    f.node.query_row(
+                        "SELECT used_at FROM device_tokens WHERE token_hash=?1",
+                        [&successor],
+                        |r| r.get::<_, Option<i64>>(0)
+                    )?,
+                    Some(T0 + REFRESH_GRACE_MS - 1)
+                );
+                assert_eq!(count(&f, "audit_events")?, 1);
+            }
+        }
         Ok(())
     }
     #[test]
