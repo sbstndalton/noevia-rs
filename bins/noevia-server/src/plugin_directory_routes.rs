@@ -231,8 +231,8 @@ impl Directory {
                 }
             }
             Kind::Mcp => {
-                let found = futures_join(picks.iter().map(|(id, _)| self.find_registry_server(id)))
-                    .await;
+                let found =
+                    futures_join(picks.iter().map(|(id, _)| self.find_registry_server(id))).await;
                 for ((_, why), item) in picks.iter().zip(found) {
                     if let Ok(Some(item)) = item {
                         items.push(with_why(item, why));
@@ -310,20 +310,14 @@ fn starter_picks(kind: Kind) -> Vec<(String, String)> {
 fn js_space(c: char) -> bool {
     matches!(
         c,
-        '\t' | '\n'
-            | '\u{b}'
-            | '\u{c}'
-            | '\r'
-            | ' '
-            | '\u{a0}'
-            | '\u{1680}'
-            | '\u{2000}'..='\u{200a}'
-            | '\u{2028}'
-            | '\u{2029}'
-            | '\u{202f}'
-            | '\u{205f}'
-            | '\u{3000}'
-            | '\u{feff}'
+        '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
     )
 }
 
@@ -400,8 +394,7 @@ fn reserved_header(name: &str) -> bool {
 }
 
 fn plain_header_name(name: &str) -> bool {
-    (1..=64).contains(&name.len())
-        && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    (1..=64).contains(&name.len()) && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
 }
 
 /// `(s.match(/\{[^}]+\}/g) || []).length`.
@@ -441,10 +434,16 @@ fn clean_headers(list: &JValue) -> Vec<JValue> {
             JValue::obj([
                 ("name", h.get("name").clone()),
                 ("required", JValue::Bool(h.get("isRequired").truthy())),
-                ("secret", JValue::Bool(h.get("isSecret") != &JValue::Bool(false))),
+                (
+                    "secret",
+                    JValue::Bool(h.get("isSecret") != &JValue::Bool(false)),
+                ),
                 (
                     "description",
-                    JValue::Str(js_json::js_slice(&string_or_empty(h.get("description")), 300)),
+                    JValue::Str(js_json::js_slice(
+                        &string_or_empty(h.get("description")),
+                        300,
+                    )),
                 ),
                 ("template", template),
             ])
@@ -462,7 +461,9 @@ fn installable(s: &JValue, loopback: bool) -> Vec<(String, JValue)> {
     let usable = remotes.iter().find(|r| {
         r.truthy()
             && r.get("type").as_str() == Some("streamable-http")
-            && r.get("url").as_str().is_some_and(|u| hosted_url_ok(u, loopback))
+            && r.get("url")
+                .as_str()
+                .is_some_and(|u| hosted_url_ok(u, loopback))
             && clean_headers(r.get("headers")).iter().all(|h| {
                 h.get("name")
                     .as_str()
@@ -556,12 +557,20 @@ fn fallback_server_name(s: &JValue) -> JValue {
     if !slug.is_empty() && slug.to_lowercase() != "mcp" {
         return JValue::Str(slug.into());
     }
-    let head = parts.get(..parts.len().saturating_sub(1)).unwrap_or(&[]).join(".");
+    let head = parts
+        .get(..parts.len().saturating_sub(1))
+        .unwrap_or(&[])
+        .join(".");
     let meaningful: Vec<&str> = head
         .split('.')
-        .filter(|seg| !seg.is_empty() && !GENERIC_NAME_SEGMENTS.contains(&seg.to_lowercase().as_str()))
+        .filter(|seg| {
+            !seg.is_empty() && !GENERIC_NAME_SEGMENTS.contains(&seg.to_lowercase().as_str())
+        })
         .collect();
-    let mut derived = meaningful.last().map(|s| (*s).to_owned()).unwrap_or_default();
+    let mut derived = meaningful
+        .last()
+        .map(|s| (*s).to_owned())
+        .unwrap_or_default();
     if derived.is_empty() {
         derived = host_slug(s.get("repository").get("url"));
     }
@@ -611,7 +620,10 @@ pub fn mcp_items(body: &JValue, loopback: bool) -> Vec<JValue> {
             ),
             (
                 "description".to_owned(),
-                JValue::Str(js_json::js_slice(&string_or_empty(s.get("description")), 300)),
+                JValue::Str(js_json::js_slice(
+                    &string_or_empty(s.get("description")),
+                    300,
+                )),
             ),
             (
                 "version".to_owned(),
@@ -783,25 +795,49 @@ mod tests {
             text(&items[1]),
             r#"{"id":"ai.exa/exa","name":"exa","publisher":"ai.exa","description":"","version":"","url":"","remote":true,"installable":false,"notInstallable":"Uses a connection type noevia does not support"}"#
         );
-        assert_eq!(items[2].get("notInstallable").as_str(), Some("Uses an address or header noevia cannot accept"));
-        assert_eq!(items[3].get("notInstallable").as_str(), Some("Uses an address or header noevia cannot accept"));
+        assert_eq!(
+            items[2].get("notInstallable").as_str(),
+            Some("Uses an address or header noevia cannot accept")
+        );
+        assert_eq!(
+            items[3].get("notInstallable").as_str(),
+            Some("Uses an address or header noevia cannot accept")
+        );
         assert_eq!(items[4].get("name").as_str(), Some("Cloudflare"));
-        assert_eq!(items[5].get("name").as_str(), Some("Github"), "host slug, www. dropped");
-        assert_eq!(items[6].get("notInstallable").as_str(), Some("Runs as a program on the server; not supported"));
+        assert_eq!(
+            items[5].get("name").as_str(),
+            Some("Github"),
+            "host slug, www. dropped"
+        );
+        assert_eq!(
+            items[6].get("notInstallable").as_str(),
+            Some("Runs as a program on the server; not supported")
+        );
         assert_eq!(items[6].get("publisher").as_str(), Some(""));
         assert!(mcp_items(&JValue::Null, false).is_empty());
     }
 
     #[test]
     fn the_loopback_remote_is_installable_only_when_qa_allows_it() {
-        let s = parse(r#"{"servers":[{"name":"a/b","remotes":[{"type":"streamable-http","url":"http://127.0.0.1:4100/mcp"}]}]}"#);
-        assert_eq!(mcp_items(&s, false)[0].get("installable"), &JValue::Bool(false));
-        assert_eq!(mcp_items(&s, true)[0].get("installable"), &JValue::Bool(true));
+        let s = parse(
+            r#"{"servers":[{"name":"a/b","remotes":[{"type":"streamable-http","url":"http://127.0.0.1:4100/mcp"}]}]}"#,
+        );
+        assert_eq!(
+            mcp_items(&s, false)[0].get("installable"),
+            &JValue::Bool(false)
+        );
+        assert_eq!(
+            mcp_items(&s, true)[0].get("installable"),
+            &JValue::Bool(true)
+        );
         assert!(!hosted_url_ok("http://127.0.0.1:/x", true));
         assert!(!hosted_url_ok("https://", false));
         assert!(!hosted_url_ok("https://a b", false));
         assert!(!hosted_url_ok("https://a\u{feff}b", false));
-        assert!(hosted_url_ok("https://a\u{85}b", false), "NEL is not a JS space");
+        assert!(
+            hosted_url_ok("https://a\u{85}b", false),
+            "NEL is not a JS space"
+        );
     }
 
     #[test]

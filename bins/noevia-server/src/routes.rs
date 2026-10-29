@@ -231,9 +231,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
         p if auth && DIARY_ROUTES.contains(&p) => return Some(Native::Diary),
         p if auth && crate::model_routes::ROUTES.contains(&p) => return Some(Native::Models),
         p if auth && crate::public_pages::ROUTES.contains(&p) => return Some(Native::PublicPages),
-        crate::plugin_directory_routes::DIRECTORY if auth => {
-            return Some(Native::PluginDirectory)
-        }
+        crate::plugin_directory_routes::DIRECTORY if auth => return Some(Native::PluginDirectory),
         "/api/instance"
         | "/.well-known/webauthn"
         | "/api/admin/web-address"
@@ -590,7 +588,11 @@ mod tests {
         assert_eq!(dispatch("POST", "/device/"), Some(Native::PublicPages));
         assert_eq!(dispatch("GET", "/device/x"), Some(Native::Static));
         for m in ["GET", "POST", "PUT", "DELETE", "HEAD"] {
-            assert_eq!(dispatch(m, "/api/plugins/directory"), Some(Native::PluginDirectory), "{m}");
+            assert_eq!(
+                dispatch(m, "/api/plugins/directory"),
+                Some(Native::PluginDirectory),
+                "{m}"
+            );
         }
         assert_eq!(dispatch("GET", "/api/plugins/directoryx"), None);
         for path in [

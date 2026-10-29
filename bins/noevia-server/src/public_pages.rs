@@ -14,7 +14,7 @@
 //!   Node answered first; on, the web bundle's answer for the path (the SPA approval page), as the
 //!   request chain gave it after that mount.
 
-use crate::{reply, static_files, App};
+use crate::{reply, App};
 use axum::body::Body;
 use axum::http::{header, HeaderValue, Method, Request, Response, StatusCode};
 use std::sync::Arc;
@@ -98,13 +98,11 @@ pub async fn serve(
         ),
         Some(false) => reply::error(StatusCode::NOT_FOUND, "not found", false),
         Some(true) => {
-            let raw = req.uri().path().to_string();
-            if !static_files::canonical(&raw) {
-                return app.proxy.forward(conn.peer, req).await;
-            }
+            // `path` is the WHATWG pathname ("/device" or "/device/"), what Node's chain served
+            // after this mount, so a dot-segment spelling gets the same page.
             let statics = app.statics.clone();
             let (method, headers) = (req.method().clone(), req.headers().clone());
-            tokio::task::spawn_blocking(move || statics.serve(&method, &headers, &raw))
+            tokio::task::spawn_blocking(move || statics.serve(&method, &headers, &path))
                 .await
                 .unwrap_or_else(|_| {
                     reply::error(StatusCode::INTERNAL_SERVER_ERROR, "read error", false)

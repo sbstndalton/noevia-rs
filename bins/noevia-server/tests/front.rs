@@ -276,8 +276,8 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     }
     // A floor that shows the table was read; the count falls as routes move to the front (105 before
     // sbstndalton/noevia#2185 moved five Diary routes, 100 after, 98 after #2187 moved the two
-    // configuration-only model reads, 97 after #2190 moved the plugin directory).
-    assert!(node_routes >= 97, "{node_routes} node routes");
+    // configuration-only model reads, 94 after #2190 moved the plugin directory and the three pages).
+    assert!(node_routes >= 94, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("POST", "/api/ready"),
@@ -751,14 +751,13 @@ async fn static_bundle_like_static_files_cjs() {
         assert!(res.headers().get("x-noevia-api").is_none());
         assert!(text(res).await.starts_with("<!doctype html>"));
         let (res, _c) = call(front, "POST", p, &[], b"").await;
-        assert!(res.headers().get("x-upstream").is_some(), "POST {p} stays Node's");
+        assert!(
+            res.headers().get("x-upstream").is_some(),
+            "POST {p} stays Node's"
+        );
     }
     // Anything Node's URL parsing might read differently goes to Node.
-    for p in [
-        "/about/",
-        "/a/%2e%2e/index.html",
-        "/a//b",
-    ] {
+    for p in ["/about/", "/a/%2e%2e/index.html", "/a//b"] {
         let (res, _c) = call(front, "GET", p, &[], b"").await;
         assert!(res.headers().get("x-upstream").is_some(), "{p}");
     }

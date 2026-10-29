@@ -97,7 +97,10 @@ fn seed_database(dir: &Path, native_client_auth: Option<bool>) -> Connection {
     db
 }
 
-async fn start(dir: &Path, extra: &[(&str, String)]) -> (std::net::SocketAddr, oneshot::Sender<()>) {
+async fn start(
+    dir: &Path,
+    extra: &[(&str, String)],
+) -> (std::net::SocketAddr, oneshot::Sender<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let mut env: HashMap<&str, String> = HashMap::from([
@@ -107,7 +110,10 @@ async fn start(dir: &Path, extra: &[(&str, String)]) -> (std::net::SocketAddr, o
         ("PUBLIC_ORIGIN", format!("http://{addr}")),
         // No test may reach the real directory hosts.
         ("NOEVIA_QA_MCP_REGISTRY", "http://127.0.0.1:9".into()),
-        ("NOEVIA_QA_SKILLS_DIRECTORY", "http://127.0.0.1:9/skills".into()),
+        (
+            "NOEVIA_QA_SKILLS_DIRECTORY",
+            "http://127.0.0.1:9/skills".into(),
+        ),
     ]);
     for (k, v) in extra {
         env.insert(k, v.clone());
@@ -161,7 +167,10 @@ async fn upstream(respond: Respond) -> Upstream {
                 h.lock().unwrap().push(head.to_ascii_lowercase());
                 c.fetch_add(1, Ordering::SeqCst);
                 let (status, headers, body) = respond(&target);
-                let mut out = format!("HTTP/1.1 {status} X\r\nContent-Length: {}\r\nConnection: close\r\n", body.len());
+                let mut out = format!(
+                    "HTTP/1.1 {status} X\r\nContent-Length: {}\r\nConnection: close\r\n",
+                    body.len()
+                );
                 for (k, v) in headers {
                     out.push_str(&format!("{k}: {v}\r\n"));
                 }
@@ -182,7 +191,11 @@ fn registry(target: &str) -> (u16, Vec<(&'static str, String)>, Vec<u8>) {
         return (500, vec![], b"{}".to_vec());
     }
     if target.contains("search=moved") {
-        return (302, vec![("Location", "https://example.invalid/".into())], Vec::new());
+        return (
+            302,
+            vec![("Location", "https://example.invalid/".into())],
+            Vec::new(),
+        );
     }
     if target.contains("search=huge") {
         let mut body = b"{\"servers\":[\"".to_vec();
@@ -208,7 +221,10 @@ async fn public_pages_are_nodes_bytes_and_need_no_session() {
         assert!(h.contains("cache-control: public, max-age=300"));
         assert!(h.contains("strict-transport-security: max-age=15552000"));
         assert!(!h.contains("x-noevia-api"));
-        assert!(b.contains(&format!("<title>{title} · noevia</title>")), "{path}");
+        assert!(
+            b.contains(&format!("<title>{title} · noevia</title>")),
+            "{path}"
+        );
         let (s, _, b) = call(addr, "HEAD", path, "").await;
         assert_eq!((s, b.as_str()), (200, ""), "HEAD {path}");
         // Other methods and the trailing-slash form were never these pages: Node's (dead here).
@@ -231,7 +247,11 @@ async fn the_device_page_is_a_404_while_native_sign_in_is_off_and_the_bundle_whe
     for p in ["/device", "/device/"] {
         for m in ["GET", "POST"] {
             let (s, h, b) = call(addr, m, p, "Accept: text/html\r\n").await;
-            assert_eq!((s, b.as_str()), (404, r#"{"error":"not found"}"#), "{m} {p}");
+            assert_eq!(
+                (s, b.as_str()),
+                (404, r#"{"error":"not found"}"#),
+                "{m} {p}"
+            );
             assert!(h.contains("x-frame-options: deny"));
         }
     }
@@ -242,6 +262,10 @@ async fn the_device_page_is_a_404_while_native_sign_in_is_off_and_the_bundle_whe
     )
     .unwrap();
     let (s, _, b) = call(addr, "GET", "/device", "Accept: text/html\r\n").await;
+    assert_eq!(s, 200, "{b}");
+    assert!(b.contains("<title>spa</title>"));
+    // The WHATWG pathname decides, as in Node: a dot-segment spelling is the same page.
+    let (s, _, b) = call(addr, "GET", "/x/../device", "Accept: text/html\r\n").await;
     assert_eq!(s, 200, "{b}");
     assert!(b.contains("<title>spa</title>"));
     let _ = stop.send(());
@@ -269,14 +293,25 @@ async fn the_directory_gate_and_methods_follow_core() {
     // A write without the CSRF pair is Node's 403 before the 405.
     let (s, _, b) = call(addr, "POST", DIRECTORY, &cookie(MEMBER)).await;
     assert_eq!((s, b.as_str()), (403, r#"{"error":"invalid CSRF token"}"#));
-    let csrf = format!("{}X-CSRF-Token: csrf\r\nOrigin: http://{addr}\r\n", cookie(MEMBER));
+    let csrf = format!(
+        "{}X-CSRF-Token: csrf\r\nOrigin: http://{addr}\r\n",
+        cookie(MEMBER)
+    );
     for m in ["POST", "PUT", "DELETE"] {
         let (s, _, b) = call(addr, m, DIRECTORY, &csrf).await;
-        assert_eq!((s, b.as_str()), (405, r#"{"error":"method not allowed"}"#), "{m}");
+        assert_eq!(
+            (s, b.as_str()),
+            (405, r#"{"error":"method not allowed"}"#),
+            "{m}"
+        );
     }
     let (s, _, _) = call(addr, "HEAD", DIRECTORY, &cookie(MEMBER)).await;
     assert_eq!(s, 405);
-    assert_eq!(up.count.load(Ordering::SeqCst), 0, "no refused request reached the directory");
+    assert_eq!(
+        up.count.load(Ordering::SeqCst),
+        0,
+        "no refused request reached the directory"
+    );
     let (s, _, _) = call(addr, "GET", "/api/plugins/directory/", &cookie(MEMBER)).await;
     assert_eq!(s, 502, "the trailing-slash form is Node's (dead here)");
     let _ = stop.send(());
@@ -305,34 +340,66 @@ async fn the_directory_lists_caches_and_fails_like_core() {
     );
     {
         let hits = up.hits.lock().unwrap();
-        assert!(hits[0].starts_with("get /v0/servers?limit=40 http/1.1"), "{}", hits[0]);
+        assert!(
+            hits[0].starts_with("get /v0/servers?limit=40 http/1.1"),
+            "{}",
+            hits[0]
+        );
         assert!(hits[0].contains("user-agent: noevia"));
         assert!(hits[0].contains("accept: application/json"));
-        assert!(!hits[0].contains("cookie"), "no credential leaves the server");
+        assert!(
+            !hits[0].contains("cookie"),
+            "no credential leaves the server"
+        );
     }
     // An hour's cache: the same answer, no second fetch.
     let (_, _, again) = call(addr, "GET", DIRECTORY, &cookie(ADMIN)).await;
     assert_eq!(again, b);
     assert_eq!(up.count.load(Ordering::SeqCst), 1);
     // The query: trimmed, encoded like encodeURIComponent.
-    let (s, _, _) = call(addr, "GET", &format!("{DIRECTORY}?q=%20a%2Fb%20c%20"), &cookie(MEMBER)).await;
+    let (s, _, _) = call(
+        addr,
+        "GET",
+        &format!("{DIRECTORY}?q=%20a%2Fb%20c%20"),
+        &cookie(MEMBER),
+    )
+    .await;
     assert_eq!(s, 200);
-    assert!(up.hits.lock().unwrap()[1].starts_with("get /v0/servers?limit=40&search=a%2fb%20c http/1.1"));
+    assert!(up.hits.lock().unwrap()[1]
+        .starts_with("get /v0/servers?limit=40&search=a%2fb%20c http/1.1"));
     // Skills: the listing, filtered by name.
-    let (s, _, b) = call(addr, "GET", &format!("{DIRECTORY}?kind=skills&q=CREATOR"), &cookie(MEMBER)).await;
+    let (s, _, b) = call(
+        addr,
+        "GET",
+        &format!("{DIRECTORY}?kind=skills&q=CREATOR"),
+        &cookie(MEMBER),
+    )
+    .await;
     assert_eq!(s, 200, "{b}");
     assert_eq!(
         b,
         r#"{"items":[{"id":"skill-creator","name":"Skill creator","publisher":"Anthropic","description":"","version":"","url":"","remote":false}],"source":{"label":"anthropics/skills on GitHub","home":"https://github.com/anthropics/skills"}}"#
     );
     // Starters: each pick resolved against the directory; the ones it lacks drop out.
-    let (s, _, b) = call(addr, "GET", &format!("{DIRECTORY}?starters=1"), &cookie(MEMBER)).await;
+    let (s, _, b) = call(
+        addr,
+        "GET",
+        &format!("{DIRECTORY}?starters=1"),
+        &cookie(MEMBER),
+    )
+    .await;
     assert_eq!(s, 200, "{b}");
     assert_eq!(
         b,
         r#"{"items":[{"id":"ai.exa/exa","name":"exa","publisher":"ai.exa","description":"","version":"","url":"","remote":true,"remoteUrl":"https://mcp.exa.ai/mcp","installable":true,"why":"Web search and page reading, with no key to manage."},{"id":"com.notion/mcp","name":"Notion","publisher":"com.notion","description":"Synthetic","version":"","url":"","remote":true,"remoteUrl":"https://mcp.notion.example/mcp","installable":true,"why":"Read and write your Notion pages; sign in with Notion."}],"source":{"label":"MCP registry","home":"https://registry.modelcontextprotocol.io"}}"#
     );
-    let (s, _, b) = call(addr, "GET", &format!("{DIRECTORY}?kind=skills&starters=1"), &cookie(MEMBER)).await;
+    let (s, _, b) = call(
+        addr,
+        "GET",
+        &format!("{DIRECTORY}?kind=skills&starters=1"),
+        &cookie(MEMBER),
+    )
+    .await;
     assert_eq!(s, 200);
     assert!(b.starts_with(r#"{"items":[{"id":"pdf","name":"Pdf","publisher":"Anthropic","description":"","version":"","url":"https://github.com/anthropics/skills/tree/main/skills/pdf","remote":false,"why":"Fill, split"#), "{b}");
     assert!(b.contains(r#""id":"skill-creator""#));
@@ -342,11 +409,19 @@ async fn the_directory_lists_caches_and_fails_like_core() {
         let (s, _, b) = call(addr, "GET", &format!("{DIRECTORY}?q={q}"), &cookie(MEMBER)).await;
         assert_eq!(
             (s, b.as_str()),
-            (502, r#"{"error":"The directory could not be reached right now.","source":{"label":"MCP registry","home":"https://registry.modelcontextprotocol.io"}}"#),
+            (
+                502,
+                r#"{"error":"The directory could not be reached right now.","source":{"label":"MCP registry","home":"https://registry.modelcontextprotocol.io"}}"#
+            ),
             "{q}"
         );
     }
-    assert!(up.hits.lock().unwrap().iter().all(|h| !h.contains("example.invalid")));
+    assert!(up
+        .hits
+        .lock()
+        .unwrap()
+        .iter()
+        .all(|h| !h.contains("example.invalid")));
     let _ = stop.send(());
 }
 
@@ -359,9 +434,18 @@ async fn an_unreachable_directory_is_the_corpus_502() {
     let (s, _, b) = call(addr, "GET", DIRECTORY, &cookie(MEMBER)).await;
     assert_eq!(
         (s, b.as_str()),
-        (502, r#"{"error":"The directory could not be reached right now.","source":{"label":"MCP registry","home":"https://registry.modelcontextprotocol.io"}}"#)
+        (
+            502,
+            r#"{"error":"The directory could not be reached right now.","source":{"label":"MCP registry","home":"https://registry.modelcontextprotocol.io"}}"#
+        )
     );
-    let (s, _, b) = call(addr, "GET", &format!("{DIRECTORY}?kind=skills"), &cookie(MEMBER)).await;
+    let (s, _, b) = call(
+        addr,
+        "GET",
+        &format!("{DIRECTORY}?kind=skills"),
+        &cookie(MEMBER),
+    )
+    .await;
     assert_eq!(s, 502);
     assert!(b.contains("anthropics/skills on GitHub"));
     let _ = stop.send(());
