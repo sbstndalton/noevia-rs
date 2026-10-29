@@ -8,6 +8,7 @@ use server_store::{
 use sha2::{Digest, Sha256};
 use std::sync::Mutex;
 mod lifecycle;
+pub mod wire;
 pub use lifecycle::{
     Admission, BootFacts, BrowserFact, Cancellation, ChoiceReason, Control, Controller,
     Registration, Reply, Snapshot,

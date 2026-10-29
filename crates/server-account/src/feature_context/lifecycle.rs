@@ -78,7 +78,7 @@ pub struct Control {
     pub cancelled: Arc<AtomicBool>,
 }
 impl Control {
-    fn check(&self) -> Result<(), StoreError> {
+    pub(super) fn check(&self) -> Result<(), StoreError> {
         if self.request.is_nil()
             || self.cancelled.load(Ordering::SeqCst)
             || Instant::now() >= self.deadline
@@ -118,7 +118,7 @@ pub struct Snapshot {
     pub system_one_unconfigured: bool,
 }
 impl Snapshot {
-    fn validate(&self) -> Result<(), StoreError> {
+    pub(super) fn validate(&self) -> Result<(), StoreError> {
         if [&self.decision, &self.machines].iter().all(|s| {
             s.len() == 64
                 && s.bytes()
@@ -198,6 +198,9 @@ pub struct Controller {
     control_state_probe: Mutex<Option<std::sync::mpsc::SyncSender<bool>>>,
 }
 impl Controller {
+    pub(super) fn runtime(&self) -> &FeatureRuntime {
+        &self.runtime
+    }
     pub fn new(runtime: Arc<FeatureRuntime>, env: [Option<bool>; 23]) -> Self {
         Self {
             runtime,
