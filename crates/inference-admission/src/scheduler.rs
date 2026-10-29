@@ -49,6 +49,13 @@ pub enum Refusal {
     ModelNotFound,
     /// The query string is too long or has too many keys to be checked.
     InvalidQuery,
+    /// A maintenance hold is held by another client (a preset write, a calibration or an
+    /// auto-tune): new work waits for its end, up to its wait limit, then gets this.
+    MaintenanceHeld,
+    /// The maintenance hold named by the request is not (or no longer) held.
+    HoldUnknown,
+    /// The maintenance hold header is not valid.
+    InvalidHold,
 }
 
 impl Refusal {
@@ -74,22 +81,30 @@ impl Refusal {
             Self::AdminRequired => "admin_required",
             Self::ModelNotFound => "model_not_found",
             Self::InvalidQuery => "invalid_query",
+            Self::MaintenanceHeld => "maintenance_held",
+            Self::HoldUnknown => "maintenance_hold_unknown",
+            Self::InvalidHold => "invalid_hold",
         }
     }
 
     /// The HTTP status the gate answers with.
     pub fn http_status(self) -> u16 {
         match self {
-            Self::QueueFull | Self::QueueTimeout | Self::SwitchStuck | Self::GateBusy => 503,
+            Self::QueueFull
+            | Self::QueueTimeout
+            | Self::SwitchStuck
+            | Self::GateBusy
+            | Self::MaintenanceHeld => 503,
             Self::EngineUnavailable => 502,
-            Self::LeaseUnknown | Self::ModelInUse | Self::EngineBusy => 409,
+            Self::LeaseUnknown | Self::ModelInUse | Self::EngineBusy | Self::HoldUnknown => 409,
             Self::LeaseModelMismatch
             | Self::InvalidPath
             | Self::InvalidJson
             | Self::InvalidModel
             | Self::InvalidLease
             | Self::InvalidWait
-            | Self::InvalidQuery => 400,
+            | Self::InvalidQuery
+            | Self::InvalidHold => 400,
             Self::ModelNotFound => 404,
             Self::BodyTooLarge => 413,
             Self::BodyTimeout => 408,
@@ -109,6 +124,7 @@ impl Refusal {
                 | Self::ModelInUse
                 | Self::EngineBusy
                 | Self::GateBusy
+                | Self::MaintenanceHeld
         )
     }
 
@@ -134,6 +150,9 @@ impl Refusal {
             Self::AdminRequired => "Unloading a model that is in use needs an admin.",
             Self::ModelNotFound => "The local model engine has no model of that name.",
             Self::InvalidQuery => "The request query is too long or has too many parameters.",
+            Self::MaintenanceHeld => "Model settings are being changed or measured. Try again shortly.",
+            Self::HoldUnknown => "The maintenance hold has ended. Take a new one before changing models.",
+            Self::InvalidHold => "The maintenance hold header is not valid.",
         }
     }
 }
@@ -217,6 +236,11 @@ pub enum Action {
         lease: LeaseKey,
         end: LeaseEnd,
     },
+    /// A maintenance hold ended on its own (it expired); a release is reported by its caller.
+    HoldEnded {
+        hold: HoldKey,
+        end: HoldEnd,
+    },
 }
 
 /// The router's answer to an unload the scheduler asked for.
@@ -264,6 +288,36 @@ struct SessionHold {
     cap: u64,
     /// Numbers holds, so an answer about an older generation never ends a newer hold.
     generation: u64,
+}
+
+/// A maintenance hold (see [`Scheduler::begin_hold`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct HoldKey(pub u64);
+
+/// Why a maintenance hold ended.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HoldEnd {
+    Released,
+    /// Its holder neither renewed it nor used it for its idle limit.
+    Expired,
+}
+
+#[derive(Clone, Debug)]
+struct Hold {
+    key: HoldKey,
+    since: u64,
+    last: u64,
+    idle_ms: u64,
+    reason: String,
+}
+
+/// What `GET /gate/v1/status` shows of a maintenance hold: its reason (the holder's text for
+/// people, never request content) and times.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct HoldStatus {
+    pub reason: String,
+    pub held_ms: u64,
+    pub idle_ttl_ms: u64,
 }
 
 /// Most session holds tracked one by one; past this a hold falls back to a plain residency hold
@@ -369,6 +423,8 @@ pub struct Scheduler {
     /// The read number current when the running unload was asked for.
     switch_epoch: u64,
     touched_at: BTreeMap<String, u64>,
+    /// The maintenance hold, if one is held.
+    hold: Option<Hold>,
     actions: Vec<Action>,
     counters: Counters,
 }
@@ -396,6 +452,7 @@ impl Scheduler {
             listing_ticket: 0,
             switch_epoch: 0,
             touched_at: BTreeMap::new(),
+            hold: None,
             actions: Vec::new(),
             counters: Counters::default(),
         }
@@ -572,6 +629,26 @@ impl Scheduler {
         lease: Option<LeaseKey>,
         max_wait_ms: u64,
     ) -> Arrival {
+        self.arrive_by(now, model, kind, lease, max_wait_ms, false)
+    }
+
+    /// [`Scheduler::arrive`] for a request that may (`by_hold`) or may not carry the maintenance
+    /// hold. While a hold is held, chat work without it is refused at once with
+    /// [`Refusal::MaintenanceHeld`], which the caller waits out (bounded by the request's wait
+    /// limit) and then asks again. Nothing is queued meanwhile, so the queue only ever holds the
+    /// holder's own work. Exempt work (embedding and reranking models beside the chat model) never
+    /// takes the slot and runs as before, as it did under core's in-process hold. A request that
+    /// names a live lease continues its turn. Work of the holder is scheduled as if no hold
+    /// existed, and counts as the hold's use (it renews it).
+    pub fn arrive_by(
+        &mut self,
+        now: u64,
+        model: &str,
+        kind: WaitKind,
+        lease: Option<LeaseKey>,
+        max_wait_ms: u64,
+        by_hold: bool,
+    ) -> Arrival {
         self.counters.arrivals += 1;
         let id = self.canon(model);
         let model = id.as_str();
@@ -588,6 +665,15 @@ impl Scheduler {
         }
         if self.router_down() {
             return self.refuse(Refusal::EngineUnavailable);
+        }
+        // A maintenance hold: chat work of other clients gets no slot until it ends (the caller
+        // waits it out). Exempt work never takes the slot and runs as before.
+        if self.hold.is_some() && !self.exempt(model) {
+            if !by_hold {
+                // Not counted: the caller waits and asks again; it counts a final refusal itself.
+                return Arrival::Refused(Refusal::MaintenanceHeld);
+            }
+            self.touch_hold(now);
         }
         // A preset reload may restart any model: chat work queues behind it (below); exempt work,
         // which never queues, is refused until it ends.
@@ -670,9 +756,23 @@ impl Scheduler {
         lease: Option<LeaseKey>,
         max_wait_ms: u64,
     ) -> Arrival {
+        self.arrive_without_autoload_by(now, model, lease, max_wait_ms, false)
+    }
+
+    /// [`Scheduler::arrive_without_autoload`] for a request that may (`by_hold`) carry the
+    /// maintenance hold. Such a request loads nothing and never switches, so a hold does not stop
+    /// it (core's in-process hold did not either); the holder's use renews the hold.
+    pub fn arrive_without_autoload_by(
+        &mut self,
+        now: u64,
+        model: &str,
+        lease: Option<LeaseKey>,
+        max_wait_ms: u64,
+        by_hold: bool,
+    ) -> Arrival {
         let id = self.canon(model);
         if lease.is_some() {
-            return self.arrive(now, &id, WaitKind::Request, lease, max_wait_ms);
+            return self.arrive_by(now, &id, WaitKind::Request, lease, max_wait_ms, by_hold);
         }
         let resident_here = self.holder.as_deref() == Some(id.as_str())
             || (self.exempt(&id)
@@ -690,6 +790,9 @@ impl Scheduler {
         }
         if self.in_maintenance() || self.switch_model() == Some(id.as_str()) {
             return self.refuse(Refusal::EngineBusy);
+        }
+        if by_hold {
+            self.touch_hold(now);
         }
         match self.admit_request(&id, None) {
             Arrival::Admitted(Admission::Request(mut ticket)) => {
@@ -1032,6 +1135,28 @@ impl Scheduler {
     /// the chat slot, new chat work waits until the listing shows it gone; an exempt or
     /// non-resident model never blocks chat admission.
     pub fn admin_unload(&mut self, now: u64, model: &str, force: bool) -> Result<(), Refusal> {
+        self.admin_unload_by(now, model, force, false)
+    }
+
+    /// [`Scheduler::admin_unload`] for a request that may (`by_hold`) carry the maintenance hold.
+    /// While a hold is held, an unload without it is refused [`Refusal::EngineBusy`] unless it is
+    /// an admin force (the memory watchdog's last resort).
+    pub fn admin_unload_by(
+        &mut self,
+        now: u64,
+        model: &str,
+        force: bool,
+        by_hold: bool,
+    ) -> Result<(), Refusal> {
+        if self.hold.is_some() {
+            if by_hold {
+                self.touch_hold(now);
+            } else if !force {
+                self.counters.unloads_refused += 1;
+                self.reject_count(Refusal::EngineBusy);
+                return Err(Refusal::EngineBusy);
+            }
+        }
         let id = self.canon(model);
         let model = id.as_str();
         if self.router_down() {
@@ -1090,6 +1215,25 @@ impl Scheduler {
     /// new work is admitted (it queues) until [`Scheduler::end_maintenance`], which the caller must
     /// report however the reload ends.
     pub fn begin_maintenance(&mut self, now: u64, force: bool) -> Result<(), Refusal> {
+        self.begin_maintenance_by(now, force, false)
+    }
+
+    /// [`Scheduler::begin_maintenance`] for a reload that may (`by_hold`) carry the maintenance
+    /// hold. While a hold is held, a reload without it is refused [`Refusal::EngineBusy`], even an
+    /// admin force: the holder is changing or measuring the models the reload would restart.
+    pub fn begin_maintenance_by(
+        &mut self,
+        now: u64,
+        force: bool,
+        by_hold: bool,
+    ) -> Result<(), Refusal> {
+        if self.hold.is_some() {
+            if !by_hold {
+                self.reject_count(Refusal::EngineBusy);
+                return Err(Refusal::EngineBusy);
+            }
+            self.touch_hold(now);
+        }
         if self.router_down() {
             self.reject_count(Refusal::EngineUnavailable);
             return Err(Refusal::EngineUnavailable);
@@ -1110,11 +1254,108 @@ impl Scheduler {
         }
     }
 
+    /// Takes the maintenance hold: the one exclusion that a preset write, a calibration, an
+    /// auto-tune or a throughput sweep needs (sbstndalton/noevia#2187). It is granted only while
+    /// nothing runs: no request in flight, no live lease, nobody queued, no switch, unload or
+    /// preset reload under way and no detached session generation held
+    /// ([`Refusal::EngineBusy`]); and only one is held at a time ([`Refusal::MaintenanceHeld`]).
+    ///
+    /// While it is held, work that does not carry it gets no slot (see [`Scheduler::arrive_by`]).
+    /// It ends by [`Scheduler::end_hold`], or on its own once its holder has neither renewed
+    /// ([`Scheduler::renew_hold`]) nor used it for `idle_ms` (at least 1 ms), so a holder that
+    /// died never pauses the engine for longer than that; [`Scheduler::poll`] then reports
+    /// [`Action::HoldEnded`]. There is no hard limit: a calibration may run for hours while it
+    /// keeps renewing.
+    pub fn begin_hold(&mut self, now: u64, idle_ms: u64, reason: &str) -> Result<HoldKey, Refusal> {
+        if self.hold.is_some() {
+            return Err(Refusal::MaintenanceHeld);
+        }
+        let live_sessions = self.session_holds.values().any(|h| now < h.until);
+        if self.switching()
+            || !self.in_flight.is_empty()
+            || !self.leases.is_empty()
+            || !self.waiters.is_empty()
+            || live_sessions
+        {
+            return Err(Refusal::EngineBusy);
+        }
+        let key = HoldKey(self.next());
+        self.hold = Some(Hold {
+            key,
+            since: now,
+            last: now,
+            idle_ms: idle_ms.max(1),
+            reason: reason.to_owned(),
+        });
+        Ok(key)
+    }
+
+    /// The holder of `key` is still at work: its idle time starts again, and its reason changes
+    /// when `reason` is given. `false`: that hold is not held (released or expired).
+    pub fn renew_hold(&mut self, now: u64, key: HoldKey, reason: Option<&str>) -> bool {
+        match self.hold.as_mut() {
+            Some(hold) if hold.key == key && now.saturating_sub(hold.last) < hold.idle_ms => {
+                hold.last = now;
+                if let Some(reason) = reason {
+                    reason.clone_into(&mut hold.reason);
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// The holder gives the hold `key` back. `false`: it was not held.
+    pub fn end_hold(&mut self, key: HoldKey) -> bool {
+        if self.hold.as_ref().is_some_and(|h| h.key == key) {
+            self.hold = None;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Whether the hold `key` is held (and not past its idle limit at `now`).
+    pub fn hold_live(&self, now: u64, key: HoldKey) -> bool {
+        self.hold
+            .as_ref()
+            .is_some_and(|h| h.key == key && now.saturating_sub(h.last) < h.idle_ms)
+    }
+
+    /// Whether a maintenance hold is held.
+    pub fn held(&self) -> bool {
+        self.hold.is_some()
+    }
+
+    /// The maintenance hold for `GET /gate/v1/status`, if one is held.
+    pub fn hold_status(&self, now: u64) -> Option<HoldStatus> {
+        self.hold.as_ref().map(|h| HoldStatus {
+            reason: h.reason.clone(),
+            held_ms: now.saturating_sub(h.since),
+            idle_ttl_ms: h.idle_ms,
+        })
+    }
+
+    fn touch_hold(&mut self, now: u64) {
+        if let Some(hold) = self.hold.as_mut() {
+            hold.last = hold.last.max(now);
+        }
+    }
+
     /// Advances time: ends leases, refuses expired waiters, notices a stuck unload, and when the
     /// holder is idle and another model waits, asks for its unload or grants the next group.
     /// Returns the actions for the caller.
     pub fn poll(&mut self, now: u64) -> Vec<Action> {
         self.session_holds.retain(|_, h| now < h.until);
+        if let Some(hold) = self
+            .hold
+            .take_if(|h| now.saturating_sub(h.last) >= h.idle_ms)
+        {
+            self.actions.push(Action::HoldEnded {
+                hold: hold.key,
+                end: HoldEnd::Expired,
+            });
+        }
         self.expire_leases(now);
         if let Some(since) = self.router_down_since {
             if now.saturating_sub(since) >= self.cfg.router_down_grace_ms {

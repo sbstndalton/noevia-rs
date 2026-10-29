@@ -16,7 +16,21 @@
 //! Gate endpoints (everything else is the router's API):
 //! - `GET /gate/v1/health`, `GET /gate/v1/status` (model ids, counts and times; never request
 //!   content), `GET /gate/v1/metrics` (text exposition format);
-//! - `POST /gate/v1/leases` `{model, holder?, max_wait_ms?}` and `DELETE /gate/v1/leases/{lease}`.
+//! - `POST /gate/v1/leases` `{model, holder?, max_wait_ms?}` and `DELETE /gate/v1/leases/{lease}`;
+//! - the maintenance hold (sbstndalton/noevia#2187), admin only: `POST /gate/v1/maintenance`
+//!   `{reason?, wait_ms?, idle_ttl_ms?}`, `POST /gate/v1/maintenance/{hold}/renew` `{reason?}` and
+//!   `DELETE /gate/v1/maintenance/{hold}` (see leases.rs).
+//!
+//! The maintenance hold is the one exclusion a preset write, a calibration, an auto-tune or a
+//! throughput sweep takes: the gate is its only authority, so every client of the router (web,
+//! Diary, the Rust front) respects the same hold. It is granted only while nothing runs (no
+//! request in flight, no lease, nobody queued, no switch or reload); while it is held, a request
+//! or lease without it waits for its end (bounded by its wait limit, then `maintenance_held`), and
+//! unloads (but an admin force) and preset reloads without it are refused `engine_busy`; exempt
+//! work and `autoload=false` reads, which never take the slot, run as before. The holder's own
+//! requests carry it in `X-Noevia-Maintenance` and are scheduled as if there were no hold. A hold
+//! ends when it is released, or once its holder has neither renewed nor used it for its idle limit
+//! (60 s by default), so a holder that died pauses the engine for at most that long.
 //!
 //! Names are resolved as the router resolves them (an alias is its model). A request that asks the
 //! router not to load a model that is not resident cannot use the slot and is passed on. A
@@ -29,7 +43,7 @@
 //! admission until the router has answered it. Unloads and reloads run to their end on their own
 //! task, whatever happens to the client that asked.
 //!
-//! Request headers the gate reads and removes: `X-Noevia-Lease`, `X-Noevia-Max-Wait-Ms` (a shorter
+//! Request headers the gate reads and removes: `X-Noevia-Lease`, `X-Noevia-Maintenance`, `X-Noevia-Max-Wait-Ms` (a shorter
 //! wait than the configured maximum), `X-Noevia-Client` (a short label for logs) and
 //! `X-Noevia-Gate-Admin` (the admin token: needed to unload a model that is in use, which is
 //! logged).
@@ -47,8 +61,8 @@ use axum::Router;
 use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::Client;
 use inference_admission::{
-    Action, Arrival, Config, Grant, LeaseKey, Refusal, Scheduler, Ticket, UnloadOutcome, WaitKind,
-    WaiterKey,
+    Action, Arrival, Config, Grant, HoldKey, LeaseKey, Refusal, Scheduler, Ticket, UnloadOutcome,
+    WaitKind, WaiterKey,
 };
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
@@ -92,6 +106,9 @@ pub struct GateConfig {
     /// The period of the timer that asks the router whether held detached session generations
     /// still run (the timer always ticks; a tick does nothing while no hold exists).
     pub session_check_interval: Duration,
+    /// A maintenance hold ends this long after its holder last renewed or used it, unless the
+    /// holder asked for another limit (1 s to 10 min).
+    pub maintenance_idle: Duration,
 }
 
 impl std::fmt::Debug for GateConfig {
@@ -127,6 +144,7 @@ impl GateConfig {
             max_connections: 512,
             reload_timeout: Duration::from_secs(120),
             session_check_interval: Duration::from_secs(5),
+            maintenance_idle: Duration::from_secs(60),
         }
     }
 }
@@ -167,6 +185,8 @@ struct Inner {
     sessions: Sessions,
     /// Buffered-body KiB held by requests waiting in the queue.
     queued_kib: usize,
+    /// The token hash of the maintenance hold, while one is held (the token itself is never kept).
+    hold: Option<([u8; 32], HoldKey)>,
 }
 
 /// Most conversation ids remembered.
@@ -213,6 +233,8 @@ pub(crate) struct Gate {
     buffer_unit: usize,
     buffer_permits: usize,
     kick: Notify,
+    /// Woken when the maintenance hold ends (released or expired).
+    pub(crate) hold_ended: Notify,
 }
 
 impl Gate {
@@ -240,6 +262,7 @@ impl Gate {
                 router_was_up: None,
                 sessions: Sessions::default(),
                 queued_kib: 0,
+                hold: None,
             }),
             cfg,
             start: Instant::now(),
@@ -248,6 +271,7 @@ impl Gate {
             buffer_unit,
             buffer_permits: permits,
             kick: Notify::new(),
+            hold_ended: Notify::new(),
         })
     }
 
@@ -345,6 +369,16 @@ impl Gate {
                         &[("end", format!("{end:?}").to_lowercase().into())],
                     );
                     forget_lease(inner, lease);
+                }
+                Action::HoldEnded { hold, end } => {
+                    log(
+                        "gate.maintenance_end",
+                        &[("end", format!("{end:?}").to_lowercase().into())],
+                    );
+                    if inner.hold.is_some_and(|(_, key)| key == hold) {
+                        inner.hold = None;
+                    }
+                    self.hold_ended.notify_waiters();
                 }
             }
         }
@@ -893,6 +927,7 @@ impl Drop for QueuedBytes {
 /// `Ok(None)`: it cannot load or use the slot and is forwarded without being counted.
 /// `body_kib` is its buffered body: waiting requests may hold at most half of the gate's body
 /// buffer, so they can never starve the requests already admitted.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn admit_request(
     gate: &Arc<Gate>,
     model: &str,
@@ -900,44 +935,60 @@ pub(crate) async fn admit_request(
     lease: Option<LeaseKey>,
     max_wait_ms: u64,
     body_kib: usize,
+    by_hold: bool,
 ) -> Result<Option<InflightGuard>, Refusal> {
     if !gate.known(model).await {
         return Err(Refusal::ModelNotFound);
     }
     let queued_cap = gate.buffer_permits / 2;
-    let (arrival, rx, queued_bytes) = gate.with(|inner, now| {
-        let mut arrival = if autoload {
-            inner
-                .sched
-                .arrive(now, model, WaitKind::Request, lease, max_wait_ms)
-        } else {
-            inner
-                .sched
-                .arrive_without_autoload(now, model, lease, max_wait_ms)
-        };
-        let mut queued_bytes = None;
-        if let Arrival::Queued { waiter, .. } = &arrival {
-            if inner.queued_kib.saturating_add(body_kib) > queued_cap {
-                inner.sched.cancel(*waiter);
-                arrival = Arrival::Refused(Refusal::GateBusy);
+    let wait = Duration::from_millis(max_wait_ms.min(gate.cfg.admission.max_wait_ms));
+    let started = tokio::time::Instant::now();
+    let (arrival, rx, queued_bytes) = loop {
+        // Time spent waiting out a maintenance hold counts against the request's wait limit.
+        let waited = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let left = max_wait_ms.saturating_sub(waited).max(1);
+        let attempt = gate.with(|inner, now| {
+            let mut arrival = if autoload {
+                inner
+                    .sched
+                    .arrive_by(now, model, WaitKind::Request, lease, left, by_hold)
             } else {
-                inner.queued_kib += body_kib;
-                queued_bytes = Some(QueuedBytes {
-                    gate: Arc::clone(gate),
-                    kib: body_kib,
-                });
+                inner
+                    .sched
+                    .arrive_without_autoload_by(now, model, lease, left, by_hold)
+            };
+            let mut queued_bytes = None;
+            if let Arrival::Queued { waiter, .. } = &arrival {
+                if inner.queued_kib.saturating_add(body_kib) > queued_cap {
+                    inner.sched.cancel(*waiter);
+                    arrival = Arrival::Refused(Refusal::GateBusy);
+                } else {
+                    inner.queued_kib += body_kib;
+                    queued_bytes = Some(QueuedBytes {
+                        gate: Arc::clone(gate),
+                        kib: body_kib,
+                    });
+                }
             }
+            let rx = match &arrival {
+                Arrival::Queued { waiter, .. } => {
+                    let (tx, rx) = oneshot::channel();
+                    inner.waiters.insert(*waiter, tx);
+                    Some(rx)
+                }
+                _ => None,
+            };
+            (arrival, rx, queued_bytes)
+        });
+        if !matches!(attempt.0, Arrival::Refused(Refusal::MaintenanceHeld)) {
+            break attempt;
         }
-        let rx = match &arrival {
-            Arrival::Queued { waiter, .. } => {
-                let (tx, rx) = oneshot::channel();
-                inner.waiters.insert(*waiter, tx);
-                Some(rx)
-            }
-            _ => None,
-        };
-        (arrival, rx, queued_bytes)
-    });
+        // Another client holds the engine for maintenance: wait for its end, then ask again.
+        if !wait_for_hold_end(gate, wait.saturating_sub(started.elapsed())).await {
+            gate.count_refusal(Refusal::MaintenanceHeld);
+            return Err(Refusal::MaintenanceHeld);
+        }
+    };
     match arrival {
         Arrival::Pass => Ok(None),
         Arrival::Admitted(inference_admission::Admission::Request(ticket)) => {
@@ -975,6 +1026,53 @@ pub(crate) async fn admit_request(
                 None => Err(Refusal::QueueTimeout),
             }
         }
+    }
+}
+
+/// Waits until no maintenance hold is held, for at most `limit`. `false`: one is still held.
+pub(crate) async fn wait_for_hold_end(gate: &Arc<Gate>, limit: Duration) -> bool {
+    let deadline = tokio::time::Instant::now() + limit;
+    loop {
+        // Registered before the check, so an end between the check and the wait is not missed.
+        let ended = gate.hold_ended.notified();
+        tokio::pin!(ended);
+        ended.as_mut().enable();
+        if !gate.lock().sched.held() {
+            return true;
+        }
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            return false;
+        }
+        // The idle expiry is noticed on a tick: wake at least that often.
+        let nap = (deadline - now).min(gate.cfg.tick.max(Duration::from_millis(10)) * 5);
+        tokio::select! {
+            () = &mut ended => {}
+            () = tokio::time::sleep(nap) => {}
+        }
+    }
+}
+
+/// Parses `X-Noevia-Maintenance`: absent (`false`), or exactly one 32-character lowercase hex token
+/// that names the live maintenance hold (`true`).
+pub(crate) fn hold_from_headers(gate: &Arc<Gate>, headers: &HeaderMap) -> Result<bool, Refusal> {
+    let mut values = headers.get_all("x-noevia-maintenance").iter();
+    let Some(value) = values.next() else {
+        return Ok(false);
+    };
+    if values.next().is_some() {
+        return Err(Refusal::InvalidHold);
+    }
+    let token = value.to_str().map_err(|_| Refusal::InvalidHold)?;
+    if !valid_token(token) {
+        return Err(Refusal::InvalidHold);
+    }
+    let hash = token_hash(token);
+    let now = gate.now();
+    let inner = gate.lock();
+    match inner.hold {
+        Some((held, key)) if held == hash && inner.sched.hold_live(now, key) => Ok(true),
+        _ => Err(Refusal::HoldUnknown),
     }
 }
 

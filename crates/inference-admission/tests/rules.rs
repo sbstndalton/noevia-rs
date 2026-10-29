@@ -9,8 +9,8 @@
 )]
 
 use inference_admission::{
-    Action, Admission, Arrival, Config, Grant, LeaseEnd, LeaseKey, Listing, ModelRow, Refusal,
-    RowStatus, Scheduler, Ticket, UnloadOutcome, WaitKind, WaiterKey,
+    Action, Admission, Arrival, Config, Grant, HoldEnd, LeaseEnd, LeaseKey, Listing, ModelRow,
+    Refusal, RowStatus, Scheduler, Ticket, UnloadOutcome, WaitKind, WaiterKey,
 };
 
 const CODE: &str = "route-code";
@@ -948,4 +948,138 @@ fn a_stale_lookup_answer_never_ends_or_renews_a_newer_hold() {
     let current = s.held_sessions(3_499)[0].1;
     assert!(s.release_session_generation("conv-d", current));
     assert_eq!(unloads(&s.poll(3_500)), vec![CODE.to_owned()]);
+}
+
+// sbstndalton/noevia#2187: the maintenance hold.
+
+#[test]
+fn a_maintenance_hold_needs_an_idle_engine_and_only_one_is_held() {
+    let mut s = with_loaded(CODE);
+    let t = admitted(s.arrive(0, CODE, WaitKind::Request, None, 1000));
+    assert_eq!(s.begin_hold(1, 1000, "x"), Err(Refusal::EngineBusy));
+    s.finish(2, &t);
+    let l = lease(s.arrive(3, CODE, WaitKind::Lease, None, 1000));
+    assert_eq!(
+        s.begin_hold(4, 1000, "x"),
+        Err(Refusal::EngineBusy),
+        "a live lease"
+    );
+    assert!(s.release_lease(l));
+    let w = queued(s.arrive(5, SMART, WaitKind::Request, None, 10_000));
+    assert_eq!(
+        s.begin_hold(6, 1000, "x"),
+        Err(Refusal::EngineBusy),
+        "a queued waiter"
+    );
+    s.cancel(w);
+    assert_eq!(s.begin_maintenance(7, false), Ok(()));
+    assert_eq!(
+        s.begin_hold(8, 1000, "x"),
+        Err(Refusal::EngineBusy),
+        "a reload"
+    );
+    s.end_maintenance();
+    let key = s.begin_hold(9, 1000, "Calibrating").unwrap();
+    assert!(s.held());
+    assert_eq!(s.hold_status(19).unwrap().reason, "Calibrating");
+    assert_eq!(s.hold_status(19).unwrap().held_ms, 10);
+    assert_eq!(s.begin_hold(10, 1000, "y"), Err(Refusal::MaintenanceHeld));
+    assert!(s.end_hold(key));
+    assert!(!s.end_hold(key), "released once");
+    assert!(!s.held());
+}
+
+#[test]
+fn work_without_the_hold_gets_no_slot_while_it_is_held() {
+    let mut s = with_loaded(CODE);
+    let key = s.begin_hold(0, 10_000, "Tuning").unwrap();
+    assert_eq!(
+        s.arrive(1, CODE, WaitKind::Request, None, 1000),
+        Arrival::Refused(Refusal::MaintenanceHeld)
+    );
+    assert_eq!(
+        s.arrive(1, SMART, WaitKind::Lease, None, 1000),
+        Arrival::Refused(Refusal::MaintenanceHeld)
+    );
+    // Work that never takes the slot runs as under core's in-process hold: exempt models, and
+    // reads that load nothing.
+    let e = admitted(s.arrive(1, EMBED, WaitKind::Request, None, 1000));
+    s.finish(1, &e);
+    let r = admitted(s.arrive_without_autoload(1, CODE, None, 1000));
+    s.finish(1, &r);
+    assert_eq!(s.admin_unload(2, CODE, false), Err(Refusal::EngineBusy));
+    assert_eq!(
+        s.begin_maintenance(2, true),
+        Err(Refusal::EngineBusy),
+        "even forced"
+    );
+    assert_eq!(s.waiting(), 0, "nothing queued behind the hold");
+    // The holder's own work runs as if there were no hold: a switch included.
+    let t = admitted(s.arrive_by(3, CODE, WaitKind::Request, None, 1000, true));
+    s.finish(4, &t);
+    assert_eq!(s.begin_maintenance_by(5, false, true), Ok(()));
+    s.end_maintenance();
+    let w = queued(s.arrive_by(600, SMART, WaitKind::Request, None, 10_000, true));
+    assert_eq!(unloads(&s.poll(700)), vec![CODE.to_owned()]);
+    s.observe(listing(&[
+        (CODE, RowStatus::Unloaded),
+        (SMART, RowStatus::Unloaded),
+    ]));
+    assert_eq!(granted(&s.poll(701))[0].0, w);
+    assert!(s.end_hold(key));
+    s.observe(listing(&[
+        (CODE, RowStatus::Unloaded),
+        (SMART, RowStatus::Loaded),
+    ]));
+    // Released: others are admitted again (the holder's request is still running on SMART).
+    assert!(matches!(
+        s.arrive(800, SMART, WaitKind::Request, None, 1000),
+        Arrival::Admitted(_)
+    ));
+}
+
+#[test]
+fn a_forced_unload_still_works_while_a_hold_is_held() {
+    let mut s = with_loaded(CODE);
+    s.begin_hold(0, 10_000, "Tuning").unwrap();
+    assert_eq!(s.admin_unload(1, CODE, true), Ok(()));
+}
+
+#[test]
+fn a_hold_its_holder_neither_renews_nor_uses_expires_and_is_reported() {
+    let mut s = with_loaded(CODE);
+    let key = s.begin_hold(0, 1_000, "Tuning").unwrap();
+    assert!(s.renew_hold(900, key, Some("Tuning: phase 2")));
+    assert_eq!(s.hold_status(900).unwrap().reason, "Tuning: phase 2");
+    assert!(s
+        .poll(1_800)
+        .iter()
+        .all(|a| !matches!(a, Action::HoldEnded { .. })));
+    // Use renews it too.
+    let t = admitted(s.arrive_by(1_850, CODE, WaitKind::Request, None, 1000, true));
+    s.finish(1_860, &t);
+    assert!(s.held());
+    assert!(s.hold_live(2_800, key));
+    let actions = s.poll(2_850);
+    assert!(actions.contains(&Action::HoldEnded {
+        hold: key,
+        end: HoldEnd::Expired
+    }));
+    assert!(!s.held());
+    assert!(
+        !s.renew_hold(2_851, key, None),
+        "an expired hold is not renewed"
+    );
+    assert!(matches!(
+        s.arrive(2_852, CODE, WaitKind::Request, None, 1000),
+        Arrival::Admitted(_)
+    ));
+}
+
+#[test]
+fn a_hold_past_its_idle_limit_is_not_renewed_before_the_next_poll() {
+    let mut s = with_loaded(CODE);
+    let key = s.begin_hold(0, 1_000, "x").unwrap();
+    assert!(!s.hold_live(1_000, key));
+    assert!(!s.renew_hold(1_000, key, None));
 }

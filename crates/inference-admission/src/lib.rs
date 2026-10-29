@@ -33,6 +33,6 @@ pub use classify::{classify, Class};
 pub use config::{Config, ConfigError};
 pub use listing::{parse_listing, Listing, ModelRow, RowStatus};
 pub use scheduler::{
-    Action, Admission, Arrival, Counters, Grant, LeaseEnd, LeaseKey, QueuedGroup, Refusal,
-    Scheduler, Status, Ticket, UnloadOutcome, WaitKind, WaiterKey,
+    Action, Admission, Arrival, Counters, Grant, HoldEnd, HoldKey, HoldStatus, LeaseEnd, LeaseKey,
+    QueuedGroup, Refusal, Scheduler, Status, Ticket, UnloadOutcome, WaitKind, WaiterKey,
 };
