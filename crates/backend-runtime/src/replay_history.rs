@@ -14,7 +14,7 @@ pub fn projection(history: &[Value]) -> Result<Vec<Value>> {
             .and_then(Value::as_str)
             .ok_or(Fault::Invalid)?;
         if !matches!(role, "user" | "assistant")
-            || ["tool_calls", "error", "paused"]
+            || ["tool_calls", "error", "versions"]
                 .iter()
                 .any(|k| message.get(k).is_some())
         {
@@ -24,9 +24,18 @@ pub fn projection(history: &[Value]) -> Result<Vec<Value>> {
         let Some(calls) = message.get("toolCalls") else {
             continue;
         };
-        if role != "assistant" || content.trim().is_empty() {
+        if role != "assistant" {
             return Err(Fault::Unavailable);
         }
+        if content.trim().is_empty()
+            && calls.as_array().ok_or(Fault::Invalid)?.iter().any(|call| {
+                call.get("applied") != Some(&Value::Bool(true))
+                    && call.get("status").and_then(Value::as_str) != Some("denied")
+            })
+        {
+            return Err(Fault::Unavailable);
+        }
+
         for call in calls.as_array().ok_or(Fault::Invalid)? {
             let applied = call.get("applied") == Some(&Value::Bool(true));
             let declined = !applied && call.get("status").and_then(Value::as_str) == Some("denied");
@@ -164,7 +173,11 @@ mod tests {
             assert!(!public.contains("secret"));
             assert_eq!(public.contains("write_note"), known);
         }
-        assert!(projection(&[json!({"role":"assistant","content":"","paused":{"reason":"stopped"},"toolCalls":[call]})]).is_err());
+        assert_eq!(projection(&[json!({"role":"assistant","content":"","paused":{"reason":"stopped"},"toolCalls":[call.clone()]})])?.len(),2);
+        assert!(projection(&[
+            json!({"role":"assistant","content":"","versions":[],"toolCalls":[call]})
+        ])
+        .is_err());
         Ok(())
     }
 }

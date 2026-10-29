@@ -268,6 +268,15 @@ impl PartialRecord {
             }
         }
         if let Some(text) = event.get("text").and_then(Value::as_str) {
+            if event.get("type").and_then(Value::as_str) == Some("preamble") {
+                if let Some(at) = self.content.rfind(text) {
+                    self.content.replace_range(at..at + text.len(), "");
+                }
+                if !self.reasoning.is_empty() {
+                    self.reasoning.push_str("\n\n");
+                }
+                self.reasoning.push_str(text.trim());
+            }
             let target = match event.get("type").and_then(Value::as_str) {
                 Some("delta") => Some(&mut self.content),
                 Some("reasoning") => Some(&mut self.reasoning),
@@ -559,6 +568,13 @@ impl Runtime {
                         .ok_or(Fault::Protocol)?;
                     if let Some(name) = event.get("name") {
                         record.insert("name".into(), name.clone());
+                        record.insert(
+                            "write".into(),
+                            json!(name
+                                .as_str()
+                                .and_then(|name| self.tools.get(name))
+                                .is_some_and(|tool| tool.mutating())),
+                        );
                     }
                     if let Some(args) = event.get("args") {
                         record.insert("args".into(), args.clone());
@@ -765,11 +781,21 @@ impl Runtime {
                 Some(Value::Array(v)) if v.len() <= 32 => v.clone(),
                 _ => return Err(Fault::Protocol),
             };
+            if !calls.is_empty() {
+                if let Some(text) = reply
+                    .get("content")
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                {
+                    emit(json!({"type":"preamble","text":text}))?;
+                }
+            }
             messages.push(reply);
             if calls.is_empty() {
                 return Ok(());
             }
             let mut ids = std::collections::HashSet::new();
+            let mut declined_calls = std::collections::BTreeSet::new();
             for call in calls {
                 let index = event_index;
                 event_index += 1;
@@ -822,7 +848,8 @@ impl Runtime {
                     }
                     tool_exchange::Check::Run(key) => {
                         if let Some(saved) = results.get(&key) {
-                            applied = saved.applied;
+                            // A cache hit did not execute another write. The original
+                            // successful chip remains the durable applied-write record.
                             declined = saved.declined;
                             not_run = saved.not_run;
                             saved.text.clone()
@@ -961,10 +988,21 @@ impl Runtime {
                     ))
                     .map_err(|_| Fault::Protocol)?
                 };
+                if declined && self.tools.get(name).is_some_and(|tool| tool.mutating()) {
+                    declined_calls.insert(name.to_owned());
+                }
                 messages.push(json!({"role":"tool","tool_call_id":id,"content":for_model}));
                 emit(
                     json!({"type":"tool_result","index":index,"name":name,"text":output.chars().take(300).collect::<String>(),"applied":applied,"declined":declined,"notRun":not_run}),
                 )?;
+            }
+            if !declined_calls.is_empty() {
+                let applied = results.values().filter(|r| r.applied).count();
+                emit(
+                    json!({"type":"paused","reason":"declined","applied":applied,"declined":declined_calls}),
+                )?;
+                messages.push(json!({"role":"assistant","content":""}));
+                return Ok(());
             }
         }
         Err(Fault::Capacity)

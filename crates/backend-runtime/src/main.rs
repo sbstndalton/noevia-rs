@@ -34,7 +34,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Err("invalid arguments".into());
     }
     if action == "--init-original-state" {
-        backend_runtime::bootstrap::create(&path, &std::env::var("NOEVIA_SETUP_CODE")?)?;
+        let code = std::env::var("NOEVIA_SETUP_CODE").unwrap_or_else(|_| {
+            format!(
+                "{}{}",
+                uuid::Uuid::new_v4().simple(),
+                uuid::Uuid::new_v4().simple()
+            )
+        });
+        backend_runtime::bootstrap::create(&path, &code)?;
         return Ok(());
     }
     if action == "--init-experimental-state" {

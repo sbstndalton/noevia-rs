@@ -343,6 +343,25 @@ impl Conversations for ProjectConversations {
                 .ok_or(Fault::Protocol)?
                 .insert("toolCalls".into(), Value::Array(tools.to_vec()));
         }
+        let declined = tools
+            .iter()
+            .filter(|t| {
+                t.get("status").and_then(Value::as_str) == Some("denied")
+                    && t.get("write") == Some(&Value::Bool(true))
+            })
+            .filter_map(|t| t.get("name").and_then(Value::as_str))
+            .take(8)
+            .collect::<Vec<_>>();
+        if !declined.is_empty() {
+            let applied = tools
+                .iter()
+                .filter(|t| t.get("applied") == Some(&Value::Bool(true)))
+                .count();
+            reply.as_object_mut().ok_or(Fault::Protocol)?.insert(
+                "paused".into(),
+                json!({"reason":"declined","applied":applied,"declined":declined}),
+            );
+        }
         history.push(reply);
         self.finish(binding, id, revision, &history, control)
     }

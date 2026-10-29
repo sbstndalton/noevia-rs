@@ -269,7 +269,8 @@ async fn browser_tool_events_distinguish_applied_declined_and_uncertain(
                 calls: Arc::clone(&calls),
             }),
         );
-        let runtime = Runtime::new(store, Arc::new(OneCall(AtomicUsize::new(0))), tools)?;
+        let model = Arc::new(OneCall(AtomicUsize::new(0)));
+        let runtime = Runtime::new(store, model.clone(), tools)?;
         let mut events = Vec::new();
         runtime
             .run(
@@ -321,6 +322,16 @@ async fn browser_tool_events_distinguish_applied_declined_and_uncertain(
         assert_eq!(
             calls.load(Ordering::SeqCst),
             usize::from(outcome != "denied")
+        );
+        assert_eq!(
+            model.0.load(Ordering::SeqCst),
+            if outcome == "denied" { 1 } else { 2 }
+        );
+        assert_eq!(
+            events
+                .iter()
+                .any(|e| e.get("type") == Some(&json!("paused"))),
+            outcome == "denied"
         );
     }
     Ok(())
@@ -393,5 +404,69 @@ async fn cached_egress_refusal_remains_not_run() -> Result<(), Box<dyn std::erro
     assert!(outcomes
         .iter()
         .all(|event| event.get("notRun") == Some(&Value::Bool(true))));
+    Ok(())
+}
+
+#[tokio::test]
+async fn cached_success_is_not_reported_as_a_second_applied_write(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let store = Arc::new(StateStore::create(&dir.path().join("state.db"))?);
+    let binding = Binding {
+        user: "synthetic".into(),
+        canonical_chat_id: "one".into(),
+        scope: "free".into(),
+        holder: Holder::Free,
+        generation: "0".into(),
+        start: "a".repeat(32),
+        tombstoned: false,
+    };
+    store.create_chat(&binding)?;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mut tools: BTreeMap<String, Arc<dyn Tool>> = BTreeMap::new();
+    tools.insert(
+        "write".into(),
+        Arc::new(OutcomeTool {
+            outcome: "saved",
+            calls: Arc::clone(&calls),
+        }),
+    );
+    tools.insert(
+        "read".into(),
+        Arc::new(Count {
+            count: Arc::new(AtomicUsize::new(0)),
+            write: false,
+        }),
+    );
+    let runtime = Runtime::new(store, Arc::new(Batch(AtomicUsize::new(0))), tools)?;
+    let mut applied = 0;
+    runtime
+        .run(
+            binding,
+            &uuid::Uuid::new_v4().to_string(),
+            json!({"role":"user","content":"test"}),
+            &Control::new(Duration::from_secs(5))?,
+            |event| {
+                if event.get("type") == Some(&json!("tool_pending")) {
+                    runtime.approvals.decide(
+                        "synthetic",
+                        event
+                            .get("id")
+                            .and_then(Value::as_str)
+                            .ok_or(Fault::Protocol)?,
+                        Decision::Approve,
+                    )?;
+                }
+                if event.get("type") == Some(&json!("tool_result"))
+                    && event.get("applied") == Some(&Value::Bool(true))
+                {
+                    applied += 1;
+                }
+                Ok(())
+            },
+        )
+        .await?;
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(applied, 1);
     Ok(())
 }
