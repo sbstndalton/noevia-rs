@@ -79,7 +79,7 @@
       expires_at INTEGER NOT NULL, used_at INTEGER, replaced_by TEXT
     );
     CREATE INDEX IF NOT EXISTS device_tokens_grant_idx ON device_tokens(grant_id);
-  
+
 CREATE TABLE IF NOT EXISTS app_passwords(
     id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name TEXT NOT NULL, scope TEXT NOT NULL CHECK(scope IN ('lan','public')),
