@@ -269,6 +269,138 @@ fn original_editor_contract_and_revocation_fence() -> Result<(), Box<dyn std::er
         .get("content"),
         Some(&json!("later edit"))
     );
+    // Hold the real account Writer before each adapter enters. Expiry advances
+    // after the initial trusted clock sample, without scheduler sleeps.
+    let admission_preview = request_bytes(
+        "POST",
+        "/api/diary/workspace-import",
+        "action=preview&name=Admission",
+        &exported,
+    )?;
+    let admission_query = format!(
+        "action=apply&name=Admission&fingerprint={}",
+        admission_preview
+            .1
+            .get("fingerprint")
+            .and_then(Value::as_str)
+            .ok_or("fingerprint")?
+    );
+    for operation in ["editor", "import", "export"] {
+        for expired in [true, false] {
+            use std::sync::{
+                atomic::{AtomicI64, AtomicUsize, Ordering},
+                Barrier,
+            };
+            const T0: i64 = 1_790_000_000_123;
+            raw.execute(
+                "UPDATE sessions SET expires_at=?",
+                [T0 + if expired { 100 } else { 100_000 }],
+            )?;
+            let files_before: i64 = db.query_row("SELECT count(*) FROM files", [], |r| r.get(0))?;
+            let receipts_before: i64 = db.query_row(
+                "SELECT count(*) FROM workspace_operation_receipts",
+                [],
+                |r| r.get(0),
+            )?;
+            let generation_before: String =
+                db.query_row("SELECT value FROM meta WHERE key='generation'", [], |r| {
+                    r.get(0)
+                })?;
+            let clock = AtomicI64::new(T0);
+            let samples = AtomicUsize::new(0);
+            let initial_sample = Barrier::new(2);
+            std::thread::scope(|scope| -> Result<(), Box<dyn std::error::Error>> {
+                let mut worker = None;
+                writer.write(|_| {
+                    let diary = &diary;
+                    let writer = &writer;
+                    let auth = &auth;
+                    let clock = &clock;
+                    let samples = &samples;
+                    let barrier = &initial_sample;
+                    let archive = &exported;
+                    let query = &admission_query;
+                    worker = Some(scope.spawn(move || {
+                        let current = || {
+                            let value = clock.load(Ordering::SeqCst);
+                            if samples.fetch_add(1, Ordering::SeqCst) == 0 {
+                                barrier.wait();
+                            }
+                            value
+                        };
+                        let method = if operation == "export" {
+                            "GET"
+                        } else if operation == "import" {
+                            "POST"
+                        } else {
+                            "PUT"
+                        };
+                        let creds = server_auth::Creds::from_headers(
+                            method,
+                            [
+                                ("cookie", cookie.as_bytes()),
+                                ("x-csrf-token", csrf.as_bytes()),
+                                ("origin", b"https://noevia.example.test".as_slice()),
+                            ],
+                        );
+                        if operation == "export" {
+                            diary
+                                .export_with_clock(writer, auth, &creds, USER, current)
+                                .map(|bytes| assert!(!bytes.is_empty()))
+                        } else {
+                            let editor =
+                                br#"{"path":"admission.md","content":"admitted","version":null}"#;
+                            let (path, query, body): (&str, &str, &[u8]) = if operation == "import"
+                            {
+                                ("/api/diary/workspace-import", query, archive)
+                            } else {
+                                ("/api/diary/file", "", editor)
+                            };
+                            diary
+                                .handle_with_clock(
+                                    writer, auth, &creds, USER, method, path, query, body, current,
+                                )
+                                .map(|reply| assert_eq!(reply.0, 200))
+                        }
+                    }));
+                    initial_sample.wait();
+                    clock.store(T0 + 200, Ordering::SeqCst);
+                    Ok(())
+                })?;
+                let result = worker
+                    .ok_or("no admission worker")?
+                    .join()
+                    .map_err(|_| "admission worker panicked")?;
+                if expired {
+                    assert_eq!(result, Err(Fault::Unauthorized));
+                } else {
+                    result?;
+                }
+                assert!(samples.load(Ordering::SeqCst) >= 2);
+                Ok(())
+            })?;
+            if expired {
+                assert_eq!(
+                    db.query_row("SELECT count(*) FROM files", [], |r| r.get::<_, i64>(0))?,
+                    files_before
+                );
+                assert_eq!(
+                    db.query_row(
+                        "SELECT count(*) FROM workspace_operation_receipts",
+                        [],
+                        |r| r.get::<_, i64>(0)
+                    )?,
+                    receipts_before
+                );
+                assert_eq!(
+                    db.query_row("SELECT value FROM meta WHERE key='generation'", [], |r| {
+                        r.get::<_, String>(0)
+                    })?,
+                    generation_before
+                );
+            }
+        }
+    }
     let xid = "41234567-89ab-4cde-8fab-0123456789ab";
     journal.enqueue("exchange", &json!({"xid":xid,"day":"2026-10-28","sub_header":"12:00","body":diary_corpus_write::render_exchange("first","response",xid),"scaffold":true}))?;
     let edit_control = backend_runtime::Control::new(std::time::Duration::from_secs(5))?;

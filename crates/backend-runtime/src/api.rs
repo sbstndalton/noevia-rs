@@ -453,7 +453,7 @@ async fn handle(
         let auth = Arc::clone(&api.auth);
         let user = identity.user.id.clone();
         return match tokio::task::spawn_blocking(move || {
-            diary.export(&writer, &auth, &creds, &user, now())
+            diary.export_with_clock(&writer, &auth, &creds, &user, now)
         })
         .await
         {
@@ -486,16 +486,8 @@ async fn handle(
         let auth = Arc::clone(&api.auth);
         let user = identity.user.id.clone();
         return match tokio::task::spawn_blocking(move || {
-            diary.handle(
-                &writer,
-                &auth,
-                &creds,
-                &user,
-                &method,
-                &path,
-                &query,
-                &body,
-                now(),
+            diary.handle_with_clock(
+                &writer, &auth, &creds, &user, &method, &path, &query, &body, now,
             )
         })
         .await

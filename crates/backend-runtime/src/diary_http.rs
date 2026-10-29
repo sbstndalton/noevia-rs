@@ -9,7 +9,23 @@ use crate::{
 use serde_json::{json, Value};
 use server_auth::{Authenticator, Creds, Refusal};
 use server_store::Writer;
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+/// Anchor before admission: neither a queued Writer nor a wall-clock rollback
+/// may extend the authentication lifetime captured at request entry.
+fn admission_clock(clock: impl Fn() -> i64) -> impl Fn() -> i64 {
+    let start = Instant::now();
+    let initial = clock();
+    move || {
+        clock().max(
+            initial.saturating_add(i64::try_from(start.elapsed().as_millis()).unwrap_or(i64::MAX)),
+        )
+    }
+}
 pub struct Tenant {
     pub corpus: Corpus,
     pub journal: Arc<Journal>,
@@ -180,12 +196,27 @@ impl DiaryHttp {
         user: &str,
         now: i64,
     ) -> Result<Vec<u8>> {
+        self.export_with_clock(writer, auth, creds, user, || now)
+    }
+    pub fn export_with_clock(
+        &self,
+        writer: &Writer,
+        auth: &Authenticator,
+        creds: &Creds,
+        user: &str,
+        clock: impl Fn() -> i64,
+    ) -> Result<Vec<u8>> {
+        let current = admission_clock(clock);
         let control = Control::new(Duration::from_secs(60))?;
         let mut outcome = None;
         writer
             .write(|tx| {
-                let identity =
-                    auth.gate_in(&tx.reader(), creds, "/api/diary/workspace-export", now)?;
+                let identity = auth.gate_in(
+                    &tx.reader(),
+                    creds,
+                    "/api/diary/workspace-export",
+                    current(),
+                )?;
                 outcome = Some(match identity {
                     Ok(identity) if identity.user.id == user && identity.user.diary_enabled => {
                         let kind: Option<String> = tx.reader().row(
@@ -231,10 +262,27 @@ impl DiaryHttp {
         body: &[u8],
         now: i64,
     ) -> Result<(u16, Value)> {
+        self.handle_with_clock(writer, auth, creds, user, method, path, query, body, || now)
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub fn handle_with_clock(
+        &self,
+        writer: &Writer,
+        auth: &Authenticator,
+        creds: &Creds,
+        user: &str,
+        method: &str,
+        path: &str,
+        query: &str,
+        body: &[u8],
+        clock: impl Fn() -> i64,
+    ) -> Result<(u16, Value)> {
+        let current = admission_clock(clock);
         let mut outcome = None;
         let control = Control::new(Duration::from_secs(30))?;
         writer
             .write(|tx| {
+                let now = current();
                 let identity = match auth.gate_in(&tx.reader(), creds, path, now)? {
                     Ok(identity) if identity.user.id == user => identity,
                     Ok(_) | Err(Refusal::Unauthorized) => {
