@@ -442,3 +442,29 @@ and `--features` lists `rust-model-reads`. The rest wait for batch M2 (the job r
   (`gate_busy` past them), so they cannot starve the holder's own requests. A request is admitted
   under a hold only if the hold it names is still the one held (the key, not a flag).
 - Exempt work in flight does not keep a hold from being taken (it runs while one is held).
+
+## sbstndalton/noevia#2191 (group rust-project-reads): a project source's stored reads
+
+Three GETs that read projects.json and a content-addressed file Node writes once and never changes
+in place move to the front (crates/server-projects `sources` and `originals`, served by
+`src/project_routes.rs`); core refuses those GETs with 503 `RUST_PROJECT_READS_OWNED`
+(`server/rust-project-reads.cjs`) and `--features` lists `rust-project-reads`. Each looks the
+project up as `getProject` does (the context self-heal and the instruction-skills reconcile are
+saved under the projects.json lock), opens every component below the user directory with
+`O_NOFOLLOW` (a symlink is never followed out of the tenant directory) and serves only a regular
+file whose name is a validated hex hash, never a request value.
+
+| route | owner | why |
+|---|---|---|
+| `/api/projects/{id}/sources/text` (GET) | rust | inline text, or `project-sources/<safe id>/<textRef>.txt`; a missing text is 404 `SOURCE_TEXT_MISSING`, the pointer kept |
+| `/api/projects/{id}/documents/original` (GET) | rust | `project-documents/<sha256 id>/<byteHash>.pdf`; unreadable is Node's 422 |
+| `/api/projects/{id}/{*}/original` (GET) | rust | `uploads/original` only (`project-uploads/<sha256 id>/<attachment.id>`, #786's 404); any other segment is Node's |
+| `/api/projects/{id}/documents/pages` | node | the page reader, beside the extraction state and the large-document lock |
+| `/api/projects`, `/api/projects/{projectId}` | node | create reserves a storage folder, stores and RAG-indexes create-time files; delete purges the RAG index, uploads, chats and storage sweep (Node's in-process jobs) |
+| `/api/projects/{projectId}/config` | node | ~200 lines of source bookkeeping: RAG indexing, storage writes, toolbox catalogue and provider checks held in Node's memory |
+| `/api/projects/{id}/files`, `/upload`, `/sources/sync` | node | storage deletes and uploads, docling/OCR extraction, RAG indexing and the background source jobs all run in Node's process |
+| `/api/projects/{projectId}/instruction-skills`, `.../manifests`, `/api/projects/{project}/skills/install` | node | the known-toolbox list (plugins, MCP) is Node's runtime catalogue; install fetches a published skill through Node's plugin directory |
+| `/api/projects/{projectId}/browser`, `/code`, `/research` | node | they drive a browser session, the code harness or research jobs |
+| `/api/code/active` | node | the code harness service's live task list |
+| `/api/workspace` | node | its load runs the retention sweep and the orphaned attachments-project reaper, whose delete (RAG index, uploads) is Node's |
+| `/api/import/conversations` | node | creates projects through Node's `createProject` (storage folder, RAG) |

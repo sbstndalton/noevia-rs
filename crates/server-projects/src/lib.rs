@@ -69,6 +69,7 @@ pub mod journal;
 pub mod js;
 pub mod legacy_claim;
 pub mod lock;
+pub mod originals;
 pub mod partial;
 pub mod research_jobs;
 pub mod retention;

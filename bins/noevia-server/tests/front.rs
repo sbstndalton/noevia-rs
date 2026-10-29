@@ -216,6 +216,11 @@ async fn text(res: Response<Incoming>) -> String {
 }
 
 fn sample(route: &str) -> String {
+    // The front answers `{*}/original` for its `uploads` segment only (sbstndalton/noevia#2191);
+    // any other segment there is Node's.
+    if route == "/api/projects/{id}/{*}/original" {
+        return "/api/projects/x1/uploads/original".to_string();
+    }
     let mut out = Vec::new();
     for seg in route.replace("{*?}", "").split('/') {
         out.push(if seg.starts_with('{') {
@@ -276,8 +281,8 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     }
     // A floor that shows the table was read; the count falls as routes move to the front (105 before
     // sbstndalton/noevia#2185 moved five Diary routes, 100 after, 98 after #2187 moved the two
-    // configuration-only model reads).
-    assert!(node_routes >= 98, "{node_routes} node routes");
+    // configuration-only model reads, 95 after #2191 moved a project source's three stored reads).
+    assert!(node_routes >= 95, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("POST", "/api/ready"),

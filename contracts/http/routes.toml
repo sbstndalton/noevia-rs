@@ -609,9 +609,12 @@ owner = "node"
 path = "/api/projects/{projectId}/config"
 owner = "node"
 
+# sbstndalton/noevia#2191 (rust-project-reads): a source's stored text or original, the front's
+# (bins/noevia-server project_routes.rs); Node refuses the GET (core rust-project-reads.cjs).
 [[route]]
 path = "/api/projects/{id}/documents/original"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/projects/{id}/files"
@@ -637,17 +640,23 @@ owner = "node"
 path = "/api/projects/{id}/sources/sync"
 owner = "node"
 
+# sbstndalton/noevia#2191 (rust-project-reads): a source's stored text or original, the front's
+# (bins/noevia-server project_routes.rs); Node refuses the GET (core rust-project-reads.cjs).
 [[route]]
 path = "/api/projects/{id}/sources/text"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/projects/{id}/upload"
 owner = "node"
 
+# sbstndalton/noevia#2191 (rust-project-reads): a source's stored text or original, the front's
+# (bins/noevia-server project_routes.rs); Node refuses the GET (core rust-project-reads.cjs).
 [[route]]
 path = "/api/projects/{id}/{*}/original"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/providers"

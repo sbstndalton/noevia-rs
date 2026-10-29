@@ -20,8 +20,8 @@ use axum::body::Body;
 use axum::http::{HeaderName, HeaderValue, Request, Response, StatusCode};
 use axum::response::IntoResponse;
 use server_projects::{
-    assets, chat_delete, chat_move, chats, context, context_window, free_chats, history, retention,
-    Ctx, Reply,
+    assets, chat_delete, chat_move, chats, context, context_window, free_chats, history, originals,
+    retention, Ctx, Reply,
 };
 use std::sync::Arc;
 
@@ -78,6 +78,18 @@ pub enum Route {
     DeleteChat {
         project: String,
         chat: String,
+    },
+    /// GET /api/projects/{id}/sources/text (sbstndalton/noevia#2191, `rust-project-reads`)
+    SourceText {
+        project: String,
+    },
+    /// GET /api/projects/{id}/documents/original (sbstndalton/noevia#2191)
+    DocumentOriginal {
+        project: String,
+    },
+    /// GET /api/projects/{id}/uploads/original (sbstndalton/noevia#2191)
+    UploadOriginal {
+        project: String,
     },
 }
 
@@ -148,6 +160,21 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
         ("POST", [project, "chats"]) if !project.is_empty() => Some(Route::SaveChats {
             project: (*project).to_string(),
         }),
+        // routes/projects.cjs `sourceTextRoute`, `docRead` (its `original` half) and
+        // `originalUpload`, GET only (sbstndalton/noevia#2191). `documents/pages` stays Node's.
+        ("GET", [project, "sources", "text"]) if !project.is_empty() => Some(Route::SourceText {
+            project: (*project).to_string(),
+        }),
+        ("GET", [project, "documents", "original"]) if !project.is_empty() => {
+            Some(Route::DocumentOriginal {
+                project: (*project).to_string(),
+            })
+        }
+        ("GET", [project, "uploads", "original"]) if !project.is_empty() => {
+            Some(Route::UploadOriginal {
+                project: (*project).to_string(),
+            })
+        }
         // routes/projects.cjs `/^\/api\/projects\/([^/]+)\/chats\/([^/]+)$/` for DELETE.
         ("DELETE", [project, "chats", chat]) if !project.is_empty() && !chat.is_empty() => {
             Some(Route::DeleteChat {
@@ -308,8 +335,17 @@ pub async fn serve(
         | Route::History { .. }
         | Route::Retention
         | Route::DeleteFreeChat { .. }
-        | Route::DeleteChat { .. } => None,
+        | Route::DeleteChat { .. }
+        | Route::SourceText { .. }
+        | Route::DocumentOriginal { .. }
+        | Route::UploadOriginal { .. } => None,
     };
+    // `url.searchParams.get('name')`: the first `name`, form-decoded as WHATWG URLSearchParams.
+    let name = parts.uri.query().and_then(|q| {
+        url::form_urlencoded::parse(q.as_bytes())
+            .find(|(k, _)| k == "name")
+            .map(|(_, v)| v.into_owned())
+    });
     let upload = match limit {
         Some(limit) => match crate::account_routes::read_body(body, limit).await {
             Ok(b) => Some(b),
@@ -328,10 +364,14 @@ pub async fn serve(
     // routes/projects.cjs: `authn?.user?.role === 'admin'` (a device token acts as a member).
     let admin = authn.user.role == server_auth::Role::Admin;
     let user = authn.user.id;
-    // The context GET writes too (getProject's self-heal), so it is re-gated as well.
+    // The context GET writes too (getProject's self-heal), so it is re-gated as well; so do the
+    // source reads, whose getProject may save the same way.
     let writes = matches!(
         route,
         Route::Upload { .. }
+            | Route::SourceText { .. }
+            | Route::DocumentOriginal { .. }
+            | Route::UploadOriginal { .. }
             | Route::SaveChats { .. }
             | Route::SaveFreeChats
             | Route::SaveHistory { .. }
@@ -382,6 +422,15 @@ pub async fn serve(
             (Route::DeleteFreeChat { chat }, _) => chat_delete::delete_free_route(ctx, &chat),
             (Route::DeleteChat { project, chat }, _) => {
                 chat_delete::delete_project_route(ctx, &project, &chat)
+            }
+            (Route::SourceText { project }, _) => {
+                server_projects::sources::get(ctx, &project, name.as_deref())
+            }
+            (Route::DocumentOriginal { project }, _) => {
+                originals::document(ctx, &project, name.as_deref())
+            }
+            (Route::UploadOriginal { project }, _) => {
+                originals::upload(ctx, &project, name.as_deref())
             }
             (
                 Route::Upload { .. }

@@ -71,6 +71,12 @@ use std::sync::Arc;
 /// those two GETs (core rust-models.cjs `RUST_MODELS_OWNED`), so the web supervisor must refuse a
 /// front without it beside such a Core, and a front with it beside an older Core.
 ///
+/// `rust-project-reads`: this build answers `GET /api/projects/{id}/sources/text`, `GET
+/// /api/projects/{id}/documents/original` and `GET /api/projects/{id}/uploads/original`
+/// (sbstndalton/noevia#2191), permanently and with no switch. Node refuses those GETs (core
+/// rust-project-reads.cjs `RUST_PROJECT_READS_OWNED`), so the web supervisor must refuse a front
+/// without it beside such a Core, and a front with it beside an older Core.
+///
 /// `project-store`: this build serves the internal project store Node writes projects.json and
 /// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
 /// supervisor confirms it to Node (NOEVIA_RUST_PROJECT_STORE_CONFIRMED) and hands both the secret.
@@ -96,6 +102,7 @@ pub const FEATURES: &[&str] = &[
     "rust-auth",
     "rust-diary",
     "rust-model-reads",
+    "rust-project-reads",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",

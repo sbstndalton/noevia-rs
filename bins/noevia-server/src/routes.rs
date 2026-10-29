@@ -122,7 +122,18 @@ const PROJECT_ROUTES: &[&str] = &[
     CHAT_MOVE,
     FREE_CHAT,
     PROJECT_CHAT,
+    PROJECT_SOURCE_TEXT,
+    PROJECT_DOCUMENT_ORIGINAL,
+    PROJECT_ORIGINAL,
 ];
+
+/// A project source's stored text and stored original bytes (GET only; routes.toml), the front's
+/// under `rust-project-reads` (sbstndalton/noevia#2191); Node refuses those GETs
+/// (core rust-project-reads.cjs). `{*}/original` is `uploads/original`; any other segment there is
+/// sent on to Node by project_routes::route.
+pub(crate) const PROJECT_SOURCE_TEXT: &str = "/api/projects/{id}/sources/text";
+pub(crate) const PROJECT_DOCUMENT_ORIGINAL: &str = "/api/projects/{id}/documents/original";
+pub(crate) const PROJECT_ORIGINAL: &str = "/api/projects/{id}/{*}/original";
 
 /// Settings → Data → Delete old chats, its preview (GET only; routes.toml): a read of the chat
 /// lists, answered by crates/server-projects `retention` (sbstndalton/noevia#1071). `PUT`, which
@@ -985,6 +996,45 @@ mod tests {
                 (crate::model_routes::HARDWARE, &["GET"][..]),
             ]
         );
+    }
+
+    /// sbstndalton/noevia#2191: a project source's three stored reads are the front's, GET only;
+    /// other methods, the page reader and the source writes stay Node's.
+    #[test]
+    fn project_source_reads_are_rusts_for_get_only() {
+        let on = Switches::default();
+        for p in [
+            "/api/projects/p1/sources/text",
+            "/api/projects/p1/documents/original",
+            "/api/projects/p1/uploads/original",
+        ] {
+            assert_eq!(
+                dispatch_under("GET", p, on),
+                Some(Native::Projects),
+                "GET {p}"
+            );
+            for m in ["POST", "PUT", "PATCH", "DELETE"] {
+                assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
+            }
+        }
+        for p in [
+            "/api/projects/p1/documents/pages",
+            "/api/projects/p1/upload",
+            "/api/projects/p1/sources/sync",
+            "/api/projects/p1/files",
+            "/api/projects/p1/config",
+        ] {
+            for m in ["GET", "POST", "DELETE"] {
+                assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
+            }
+        }
+        // `{*}/original` is matched by the table; project_routes::route sends any segment but
+        // `uploads` on to Node.
+        assert_eq!(
+            crate::project_routes::route("GET", "/api/projects/p1/other/original"),
+            None
+        );
+        assert!(crate::FEATURES.contains(&"rust-project-reads"));
     }
 
     #[test]
