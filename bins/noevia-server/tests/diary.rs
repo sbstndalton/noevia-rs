@@ -358,6 +358,29 @@ async fn with_the_addon_the_front_speaks_to_the_sidecar_for_the_signed_in_person
     assert_eq!(sent, 3, "refusals never reached the sidecar");
 }
 
+/// A legacy data dir not yet claimed for this user: the workspace is not theirs yet, so the front
+/// answers the project routes' 503 and never asks the sidecar (Node would claim first).
+#[tokio::test]
+async fn a_pending_legacy_claim_answers_setting_up_and_never_reaches_the_sidecar() {
+    let dir = tempfile::tempdir().unwrap();
+    seed(dir.path(), true);
+    std::fs::write(dir.path().join("projects.json"), "[]").unwrap();
+    let (base, seen) = sidecar().await;
+    let app = app(dir.path(), &base);
+    let a = call(&app, "GET", "/api/diary/source", true, b"").await;
+    assert_eq!(a.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(
+        a.body,
+        br#"{"error":"Your account is still being set up; try again in a moment."}"#
+    );
+    assert!(seen.lock().unwrap().is_empty());
+    // Once the claim has happened (the user's directory exists) the same request is served.
+    std::fs::create_dir_all(dir.path().join("users").join(USER)).unwrap();
+    let a = call(&app, "GET", "/api/diary/source", true, b"").await;
+    assert_eq!(a.status, 200);
+    assert_eq!(seen.lock().unwrap().len(), 1);
+}
+
 #[tokio::test]
 async fn a_trailing_slash_is_not_the_route_and_goes_to_node_as_before() {
     let dir = tempfile::tempdir().unwrap();
@@ -367,6 +390,10 @@ async fn a_trailing_slash_is_not_the_route_and_goes_to_node_as_before() {
     // Node's exact matcher does not know it; here the proxy gets it (nothing listens upstream, so
     // the proxy's own failure answers) and the sidecar is never asked.
     let a = call(&app, "GET", "/api/diary/source/", true, b"").await;
-    assert_ne!(a.status, 200);
+    assert_eq!(
+        a.status,
+        StatusCode::BAD_GATEWAY,
+        "the proxy's own answer, not a native one"
+    );
     assert!(seen.lock().unwrap().is_empty());
 }

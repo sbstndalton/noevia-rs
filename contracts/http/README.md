@@ -230,9 +230,12 @@ Not in this table and so still Node's: `/api/diary/history` (the same read as `t
 web client does not use), `files`, `file`, `workspace-trash`, `external-sources`, `entries/edit`.
 
 Judgement calls, each testable: (1) core took the inference maintenance gate for every non-GET
-`/api/diary/*`; the two moved POSTs make no model call (the sidecar's `workspace_import` says so in a
-comment, `storage-import` only snapshots and activates), so the front takes no gate for them and a direct
-request to Node no longer holds one either. (2) An upload whose body is still arriving at the 120 s
+`/api/diary/*`. The front takes no gate for the two moved POSTs, and a direct request to Node no longer
+holds one either. `workspace-import` opens the tenant without recovery and makes no model call.
+`storage-import` opens it with recovery, so on a cold tenant state it can reindex dirty files (an
+embedding call, failures caught) before it snapshots and activates. Node's ungated GET reads already
+reach that same recovery path, and activation only schedules work, so the gate guarded nothing the
+reads do not already do. (2) An upload whose body is still arriving at the 120 s
 deadline is answered 408; core destroyed the socket. (3) A request body
 of at most 4 KiB gets a 120 s read deadline (core had only the server-wide 20 minutes). (4) Core's
 `getStorage` upgrades a legacy v1 ciphertext in place when it reads it; the front reads and never writes

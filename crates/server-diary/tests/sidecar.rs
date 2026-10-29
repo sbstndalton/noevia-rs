@@ -1430,6 +1430,55 @@ async fn export_deadline_cuts_a_stalled_download_and_a_client_that_leaves_stops_
     );
 }
 
+#[tokio::test]
+async fn a_client_that_leaves_while_the_sidecar_is_quiet_stops_the_sidecars_stream_at_once() {
+    use std::sync::Arc;
+    let w = World::new(&[]);
+    let dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let flag = Arc::clone(&dropped);
+    let stub = Stub::start(move |_, _| Out::Stall {
+        status: 200,
+        headers: vec![("content-type", "application/zip".into())],
+        chunk: b"PK".to_vec(),
+        dropped: Arc::clone(&flag),
+    })
+    .await;
+    // The deadline is far away: only the client leaving can end the copy within this test.
+    let d = diary_with(
+        &stub,
+        TENANT_KEY,
+        Limits {
+            export_deadline: Duration::from_secs(60),
+            export_cap: usize::MAX,
+            ..Limits::default()
+        },
+    );
+    let reply = d
+        .serve(
+            Route::WorkspaceExport,
+            w.ctx(MEMBER, true),
+            Request {
+                method: "GET".into(),
+                target: "/x".into(),
+                content_length: None,
+            },
+            Full::new(Bytes::new()),
+        )
+        .await;
+    let ReplyBody::Zip(mut body) = reply.body else {
+        panic!()
+    };
+    let _ = body.frame().await;
+    drop(body);
+    for _ in 0..50 {
+        if dropped.load(std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("the sidecar's stream was still held a second after the client left");
+}
+
 // ── workspace-import ───────────────────────────────────────────────────────────
 
 fn import_target(action: &str) -> String {

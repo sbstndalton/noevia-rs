@@ -97,8 +97,42 @@ pub enum Out {
         chunks: Vec<Vec<u8>>,
         forever: bool,
     },
+    /// Sends `chunk`, then nothing more until the client goes away; `dropped` is set when the
+    /// connection gives the body up.
+    Stall {
+        status: u16,
+        headers: Vec<(&'static str, String)>,
+        chunk: Vec<u8>,
+        dropped: Arc<std::sync::atomic::AtomicBool>,
+    },
     /// Closes the connection without an answer.
     Hangup,
+}
+
+/// [`Out::Stall`]'s body: one data frame, then pending until dropped.
+struct StallBody {
+    first: Option<Bytes>,
+    dropped: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl http_body::Body for StallBody {
+    type Data = Bytes;
+    type Error = std::io::Error;
+    fn poll_frame(
+        mut self: std::pin::Pin<&mut Self>,
+        _: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<http_body::Frame<Bytes>, std::io::Error>>> {
+        match self.first.take() {
+            Some(chunk) => std::task::Poll::Ready(Some(Ok(http_body::Frame::data(chunk)))),
+            None => std::task::Poll::Pending,
+        }
+    }
+}
+
+impl Drop for StallBody {
+    fn drop(&mut self) {
+        self.dropped.store(true, Ordering::SeqCst);
+    }
 }
 
 impl Out {
@@ -234,6 +268,22 @@ async fn answer(
     };
     match script(&record, index) {
         Out::Hangup => Err(std::io::Error::other("hangup")),
+        Out::Stall {
+            status,
+            headers,
+            chunk,
+            dropped,
+        } => {
+            let mut res = Response::builder().status(status);
+            for (k, v) in headers {
+                res = res.header(k, v);
+            }
+            let body = StallBody {
+                first: Some(Bytes::from(chunk)),
+                dropped,
+            };
+            Ok(res.body(body.boxed()).unwrap())
+        }
         Out::Full {
             status,
             headers,

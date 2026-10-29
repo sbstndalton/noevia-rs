@@ -80,6 +80,26 @@ pub async fn serve(
         Ok(Err(rejection)) => return rejection.into_response(),
         Err(_) => return identity::Rejection::Unavailable.into_response(),
     };
+    // Node claims a pre-multi-user data dir for the administrator before any route (core index.cjs
+    // handleRequestInner); the project routes make that claim, this route does not. Until it has
+    // happened the workspace (its migration.json marker, its storage row) is not the user's yet, so
+    // nothing goes to the sidecar: the project routes' 503.
+    let (pending_dir, pending_user) = (data_dir.clone(), id.user.id.clone());
+    match tokio::task::spawn_blocking(move || {
+        server_projects::store::legacy_pending(&pending_dir, &pending_user)
+    })
+    .await
+    {
+        Ok(Ok(false)) => {}
+        Ok(Ok(true)) => {
+            return reply::error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Your account is still being set up; try again in a moment.",
+                true,
+            )
+        }
+        _ => return reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true),
+    }
     let Some(diary) = app.diary.clone() else {
         return unavailable();
     };

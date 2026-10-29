@@ -98,6 +98,20 @@ fn legacy_claim_open(data_dir: &Path, user_id: &str) -> bool {
     }
 }
 
+/// Whether Node's `claimLegacy` could still move the legacy root into this user's directory, read
+/// without making anything: the directory is absent and the claim is open for this user
+/// ([`ensure_user_dir`]'s [`Ensured::LegacyPending`]). A front route that reads the user's workspace
+/// without the project routes' claim step answers 503 until it has happened.
+pub fn legacy_pending(data_dir: &Path, user_id: &str) -> Result<bool, StoreError> {
+    let dir = user_dir(data_dir, user_id)?;
+    match std::fs::metadata(&dir) {
+        Ok(_) => return Ok(false),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(StoreError::Io(e)),
+    }
+    Ok(has_legacy_root(data_dir)? && legacy_claim_open(data_dir, user_id))
+}
+
 /// The signed-in user's directory, made when it is absent: workspace.cjs `get` runs
 /// `fs.mkdirSync(userDir(id), { recursive: true, mode: 0o700 })` for every authenticated request
 /// (core index.cjs `handleRequestInner`, before any route), so a new account has its directory

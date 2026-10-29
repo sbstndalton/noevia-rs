@@ -24,7 +24,7 @@ server-storage-reads = { path = "../server-storage-reads" }
 server-store = { path = "../server-store" }
 sha2 = "0.10"
 tenant-assertion = { path = "../tenant-assertion" }
-tokio = { version = "1", features = ["rt", "sync", "time"] }
+tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
 url = "2.5"
 zeroize = { version = "1.9", default-features = false, features = ["alloc"] }
 

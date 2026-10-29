@@ -597,7 +597,13 @@ async fn pump(
     let copy = async {
         let mut total = 0usize;
         loop {
-            match upstream.chunk().await {
+            // A client that leaves while the sidecar is quiet stops the copy at once, as Node's
+            // `res` close did, instead of holding the sidecar's stream until the deadline.
+            let next = tokio::select! {
+                next = upstream.chunk() => next,
+                () = tx.closed() => return Ok(()),
+            };
+            match next {
                 Ok(Some(chunk)) => {
                     total = total.saturating_add(chunk.len());
                     if total > cap {
