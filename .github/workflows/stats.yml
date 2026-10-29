@@ -86,10 +86,11 @@ jobs:
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-stats" \
             --native-move-state --server-cmd "exec env NOEVIA_RUST_AUTH=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/front-core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
             --report "$RUNNER_TEMP/stats-positive.json" --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' --state-ignore '*chat-transcripts.lock' --state-ignore '*chat-changes.jsonl' --expect-state "$RUNNER_TEMP/node-state.json"
-      - name: "Native proof: the front reads its own synthetic engine, so only /api/stats differs"
+      - name: "Native proof: the front reads its own synthetic engine, so only /api/stats and the model reads differ"
         # The corpus engine is the `none` kind (up false). Pointed at a synthetic llama.cpp router
-        # (Node keeps its own clean corpus environment), the front's /api/stats answers change and
-        # nothing else does: the clean replay above was the front's own answer, not a proxied one.
+        # (Node keeps its own clean corpus environment), the front's /api/stats and model capability/
+        # hardware answers change and nothing else does: the clean replay above was the front's own
+        # answer, not a proxied one.
         run: |
           set -euo pipefail
           python3 - "$RUNNER_TEMP/engine.port" <<'PY' &
@@ -121,7 +122,7 @@ jobs:
               --native-move-state --server-cmd "exec env NOEVIA_RUST_AUTH=1 MODEL_MANAGER_KIND=llamacpp MODEL_MANAGER_BASE_URL=http://127.0.0.1:$port/v1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/front-core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
               --state-out "$RUNNER_TEMP/stats-proof-state.json" \
               --report "$RUNNER_TEMP/stats-proof.json"; then
-            echo "::error::the front's /api/stats did not follow its own engine"; exit 1
+            echo "::error::the front's /api/stats and model reads did not follow its own engine"; exit 1
           fi
           python3 - "$RUNNER_TEMP/stats-proof.json" "$RUNNER_TEMP/stats-proof-state.json" <<'PY'
           import json, sys
@@ -131,10 +132,16 @@ jobs:
           assert all(s['pending'] is None and s['generations'] == {'free-alpha': '2'} for s in proof['accountFiles'].values()), proof
           rows = json.load(open(sys.argv[1]))
           bad = [r for r in rows if r['diffs'] or r['error'] or r['status'] != r['expectedStatus']]
-          stats = [r for r in bad if r['method'] == 'GET' and r['path'] == '/api/stats']
-          assert stats and len(stats) == len(bad), [(r['method'], r['path'], r['diffs']) for r in bad]
+          def get(path): return [r for r in bad if r['method'] == 'GET' and r['path'] == path]
+          stats = get('/api/stats')
+          # The model reads (#2187) are native too, so they also follow the front's own
+          # llama.cpp engine instead of the recorded "none" kind.
+          caps, hardware = get('/api/models/capabilities'), get('/api/models/hardware')
+          assert stats and len(stats) + len(caps) + len(hardware) == len(bad), [(r['method'], r['path'], r['diffs']) for r in bad]
           assert all(r['status'] == 200 and any(d['at'].endswith('up') for d in r['diffs']) for r in stats), stats
-          print('only GET /api/stats differs, natively:', len(stats))
+          assert len(caps) == 1 and all(r['status'] == 200 and any(d['at'].endswith('kind') and 'llamacpp' in d['actual'] for d in r['diffs']) for r in caps), caps
+          assert len(hardware) == 1 and all(r['status'] == 200 and r['expectedStatus'] == 404 and any(d['at'].endswith('supported') and d['actual'] == 'false' for d in r['diffs']) for r in hardware), hardware
+          print('only GET /api/stats and the model reads differ, natively:', len(bad))
           PY
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
