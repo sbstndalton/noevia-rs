@@ -197,16 +197,28 @@ async fn switched_routes_are_answered_by_the_front() {
         (s, body.as_str()),
         (403, r#"{"error":"origin not allowed"}"#)
     );
-    // A path shape the account mount does not answer goes on to Node, body included.
     let w = [
         ("cookie", jar.as_str()),
         ("x-csrf-token", csrf.as_str()),
         origin,
     ];
-    let (s, h, _) = call(
+    // Every app-password DELETE id is the front's: one it never issues is its own 404 (corpus
+    // exchange 186), never Node's, which refuses the owned route (sbstndalton/noevia#2182).
+    let (s, h, body) = call(
         addr,
         "DELETE",
         "/api/profile/app-passwords/not-an-id",
+        &w,
+        "{\"x\":1}",
+    )
+    .await;
+    assert_eq!((s, body.as_str()), (404, r#"{"error":"not found"}"#));
+    assert!(!h.contains_key("x-upstream"));
+    // A path shape the account mount does not answer goes on to Node, body included.
+    let (s, h, _) = call(
+        addr,
+        "DELETE",
+        "/api/profile/app-passwords/not-an-id/nested",
         &w,
         "{\"x\":1}",
     )
@@ -231,7 +243,7 @@ async fn switched_routes_are_answered_by_the_front() {
     assert_eq!(
         seen,
         vec![
-            "DELETE /api/profile/app-passwords/not-an-id 7".to_string(),
+            "DELETE /api/profile/app-passwords/not-an-id/nested 7".to_string(),
             "DELETE /api/profile/onboarding 0".to_string(),
         ]
     );
