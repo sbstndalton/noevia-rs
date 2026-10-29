@@ -1,0 +1,18 @@
+{
+  "_comment": "noevia's curated starter list (ui-overhaul master prompt: marketplace sources). Only first-party entries published under the vendor's own name; each is resolved against the live directory, so one that disappears simply drops out. `why` is noevia's one line, not the publisher's.",
+  "mcp": [
+    { "id": "ai.exa/exa", "why": "Web search and page reading, with no key to manage." },
+    { "id": "com.notion/mcp", "why": "Read and write your Notion pages; sign in with Notion." },
+    { "id": "app.linear/linear", "why": "Issues and projects for Code mode work; sign in with Linear." },
+    { "id": "co.huggingface/hf-mcp-server", "why": "Find models and datasets for the local engine." },
+    { "id": "com.cloudflare.mcp/mcp", "why": "Cloudflare's documentation, for the tunnel and DNS in front of noevia." }
+  ],
+  "skills": [
+    { "id": "pdf", "why": "Fill, split and extract PDFs, like tax forms." },
+    { "id": "docx", "why": "Create and edit Word documents with tracked changes." },
+    { "id": "xlsx", "why": "Build spreadsheets with working formulas." },
+    { "id": "doc-coauthoring", "why": "A structured way to write a document together." },
+    { "id": "frontend-design", "why": "Better-looking web pages from Code mode." },
+    { "id": "skill-creator", "why": "Write your own skills for a project." }
+  ]
+}

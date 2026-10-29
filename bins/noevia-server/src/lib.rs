@@ -14,8 +14,10 @@ pub mod health;
 pub mod identity;
 pub mod legacy_proxy;
 pub mod model_routes;
+pub mod plugin_directory_routes;
 pub mod project_routes;
 pub mod project_store;
+pub mod public_pages;
 pub mod reasoning_settings_routes;
 pub mod reply;
 pub mod routes;
@@ -71,6 +73,11 @@ use std::sync::Arc;
 /// those two GETs (core rust-models.cjs `RUST_MODELS_OWNED`), so the web supervisor must refuse a
 /// front without it beside such a Core, and a front with it beside an older Core.
 ///
+/// `rust-public-pages`: this build answers `GET|HEAD /about` and `/privacy` and every method of
+/// `/device` (sbstndalton/noevia#2190); `rust-plugin-directory`: `/api/plugins/directory`. Both are
+/// permanent with no switch; Node refuses them (core rust-public-pages.cjs and
+/// rust-plugin-directory.cjs), so the web supervisor pairs each with its Core marker.
+///
 /// `project-store`: this build serves the internal project store Node writes projects.json and
 /// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
 /// supervisor confirms it to Node (NOEVIA_RUST_PROJECT_STORE_CONFIRMED) and hands both the secret.
@@ -96,6 +103,8 @@ pub const FEATURES: &[&str] = &[
     "rust-auth",
     "rust-diary",
     "rust-model-reads",
+    "rust-public-pages",
+    "rust-plugin-directory",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",
@@ -165,6 +174,8 @@ pub struct App {
     pub export: Arc<tokio::sync::Semaphore>,
     pub routing_files:
         Option<Result<server_routing_mode::storage::Root, server_routing_mode::storage::Fault>>,
+    /// GET /api/plugins/directory: its client and hour-long cache (#2190).
+    pub plugin_directory: plugin_directory_routes::Directory,
 }
 
 impl App {
@@ -214,6 +225,9 @@ impl App {
                 .as_ref()
                 .map(|engine| Arc::new(stats_routes::StatsLayer::new(Arc::clone(engine)))),
             routing_files,
+            plugin_directory: plugin_directory_routes::Directory::new(
+                config.plugin_directory.clone(),
+            ),
             proxy: legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy),
             statics: static_files::StaticFiles::new(config.dist.clone()),
             version,
@@ -265,6 +279,8 @@ async fn handle(
                     | routes::Native::ChatgptStatus
                     | routes::Native::Diary
                     | routes::Native::Models
+                    | routes::Native::PublicPages
+                    | routes::Native::PluginDirectory
             )
         ) {
             native = on_whatwg;
@@ -288,7 +304,9 @@ async fn handle(
             | routes::Native::Export
             | routes::Native::ChatgptStatus
             | routes::Native::Diary
-            | routes::Native::Models,
+            | routes::Native::Models
+            | routes::Native::PublicPages
+            | routes::Native::PluginDirectory,
         )
         | None => false,
     };
@@ -425,6 +443,18 @@ async fn handle(
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };
             model_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::PublicPages) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", false);
+            };
+            public_pages::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::PluginDirectory) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            plugin_directory_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::Ready) => {
             if app.proxy.is_in_process() {

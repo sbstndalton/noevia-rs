@@ -442,3 +442,35 @@ and `--features` lists `rust-model-reads`. The rest wait for batch M2 (the job r
   (`gate_busy` past them), so they cannot starve the holder's own requests. A request is admitted
   under a hold only if the hold it names is still the one held (the key, not a flag).
 - Exempt work in flight does not keep a hold from being taken (it runs while one is held).
+
+## sbstndalton/noevia#2190: the settings and integrations singles that need nothing of Node's memory
+
+Two groups move to the front, each with its own Core marker and front capability so either can be
+rolled back alone (old/old pairs stay valid; the web supervisor and release assembly refuse mixed
+pairs):
+
+| route | owner | capability / Core refusal | notes |
+|---|---|---|---|
+| `/about`, `/privacy` (GET, HEAD) | rust | `rust-public-pages` / `RUST_PUBLIC_PAGES_OWNED` | Node's exact bytes and headers (`src/pages/`), no session; other methods stay Node's |
+| `/device` (all methods) | rust | `rust-public-pages` / `RUST_PUBLIC_PAGES_OWNED` | JSON 404 while `nativeClientAuth` is off (read per request); the bundle's page when on |
+| `/api/plugins/directory` (all methods) | rust | `rust-plugin-directory` / `RUST_PLUGIN_DIRECTORY_OWNED` | fixed hosts, no redirects, 8 s, 4 MiB, hour cache, starters; 405 for all but GET after the gate |
+
+The replay runs the front with `NOEVIA_QA_MCP_REGISTRY` and `NOEVIA_QA_SKILLS_DIRECTORY` on a
+closed loopback port (`tools/front/replay-front.sh`), the counterpart of the corpus net guard Node
+runs under: exchange 000141 is the recorded "could not be reached" 502 on both sides.
+
+Left on Node in this batch, and why (each resolves Node memory, a Node-only cache or an in-process
+job that chat or another Node route reads):
+
+| route | why it stays |
+|---|---|
+| `/api/providers`, `/api/providers/{id}`, `/api/providers/test`, `/api/providers/{providerId}/models{*?}` | the provider rows live on the in-memory workspace (`ws.providers`, `PROVIDERS`) that every chat turn reads in-process; a Rust writer would need Node to re-read the workspace per turn (follow-up) |
+| `/api/providers/chatgpt/device`, `/device/poll`, `/device/cancel`, `/api/providers/chatgpt/models` | chatgpt-oauth.cjs keeps the pending logins, the catalogue cache, its in-flight fetch and the token refresh lock in memory; chat uses the same tokens |
+| `/api/connectors`, `/api/connectors/gdrive/*`, `/api/connectors/nextcloud/policy` | drive-accounts.cjs holds personal Drive tokens in memory and the chat tools read the policies in-process |
+| `/api/integrations/storage/{folder,test,nextcloud/start,poll,cancel}` | the Nextcloud login flows are a sealed in-process store with a pending limit; the storage latch and login throttle are Node memory |
+| `/api/admin/offsite-backup` and its six children | offsite-service.cjs runs the backup, copy and verify jobs and their busy lock and 15-minute timer in-process |
+| `/api/admin/decision-settings`, `/test` | decision-settings.cjs keeps the saved row and the per-URL decision backends (their lanes) in memory for every chat decision |
+| `/api/admin/users/{id}` (DELETE) | the clean-up spans Node's workspace cache, MCP OAuth, directory MCP keys and ChatGPT tokens in memory |
+| `/api/auto-roles` | GET reads the served catalogue and machine models; an admin PUT warms the roles in Node's engine (`ensureRolesLoaded`) |
+| `/api/chat-vault-mirror/preferences` | PUT schedules Node's in-process mirror at once; the GET alone would split one setting over two processes |
+| `/api/health` | the retrieval probe is Node's cached RAG status, and the default provider is Node's in-memory registry |
