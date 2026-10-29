@@ -4,8 +4,9 @@
 //! this file is the front's side of it: the request gate (session or token, origin, CSRF, browser
 //! only), the person's store, and the reply's headers.
 //!
-//! Order follows core: the gate first (401/403), then the add-on (404), the method (405), the body,
-//! and only then the sidecar. The sidecar stays the single writer: the front passes on the request
+//! Order follows core: the gate first (401/403), then a legacy claim still to come (503, which core
+//! makes before routing), then the add-on (404), the method (405), the body, and only then the
+//! sidecar. The sidecar stays the single writer: the front passes on the request
 //! the signed-in person made, signed for that person, and nothing else.
 //!
 //! Not moved, and why (each reads Node's memory or its own table): `/api/diary/context` (the
