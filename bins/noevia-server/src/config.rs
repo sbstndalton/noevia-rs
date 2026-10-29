@@ -66,7 +66,6 @@ pub struct Config {
     /// /api/admin/decision-settings (sbstndalton/noevia#2190): the deployment's
     /// COWORK_DECISION_URL, the view's fallback.
     pub decision: crate::decision_settings_routes::Deployment,
-///
     /// GET /api/models/estimate and /api/models/preset/suggest (sbstndalton/noevia#2189): the
     /// preset file, the model mounts, the sizing budget keys and the same engine /api/stats reads.
     pub sizing: std::sync::Arc<crate::model_sizing::Sizing>,
