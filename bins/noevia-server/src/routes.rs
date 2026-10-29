@@ -88,6 +88,9 @@ pub enum Native {
     /// GET /api/plugins/directory and its 405s (sbstndalton/noevia#2190):
     /// plugin_directory_routes.rs.
     PluginDirectory,
+    /// Every method of /api/admin/decision-settings and /test (sbstndalton/noevia#2190):
+    /// decision_settings_routes.rs.
+    DecisionSettings,
 }
 
 /// The routes [`Native::Diary`] implements, all methods (each answers its own 405 after the add-on
@@ -232,6 +235,9 @@ pub fn native_for(route: &Route) -> Option<Native> {
         p if auth && crate::model_routes::ROUTES.contains(&p) => return Some(Native::Models),
         p if auth && crate::public_pages::ROUTES.contains(&p) => return Some(Native::PublicPages),
         crate::plugin_directory_routes::DIRECTORY if auth => return Some(Native::PluginDirectory),
+        p if auth && crate::decision_settings_routes::ROUTES.contains(&p) => {
+            return Some(Native::DecisionSettings)
+        }
         "/api/instance"
         | "/.well-known/webauthn"
         | "/api/admin/web-address"
@@ -392,12 +398,7 @@ mod tests {
                 );
             }
         }
-        for path in [
-            "/api/features/",
-            "/api/features-x",
-            "/api/admin/features-x",
-            "/api/admin/decision-settings",
-        ] {
+        for path in ["/api/features/", "/api/features-x", "/api/admin/features-x"] {
             for method in ["GET", "PUT", "POST", "DELETE"] {
                 assert_eq!(dispatch(method, path), None, "{method} {path}");
             }
@@ -460,6 +461,8 @@ mod tests {
                 Some(Native::WebAddress)
                     if r.path == "/api/admin/web-address"
                         || r.path == "/api/admin/web-address/remove" => {}
+                Some(Native::DecisionSettings)
+                    if crate::decision_settings_routes::ROUTES.contains(&r.path) => {}
                 Some(_) => assert!(!is_account_path(r.path), "{} is an account path", r.path),
                 other @ None => assert!(
                     other.is_some(),

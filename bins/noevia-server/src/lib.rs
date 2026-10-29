@@ -7,6 +7,7 @@ pub mod account_routes;
 pub mod chatgpt_status_routes;
 pub mod code_net;
 pub mod config;
+pub mod decision_settings_routes;
 pub mod diary_routes;
 pub mod export_routes;
 pub mod feature_context;
@@ -78,6 +79,11 @@ use std::sync::Arc;
 /// permanent with no switch; Node refuses them (core rust-public-pages.cjs and
 /// rust-plugin-directory.cjs), so the web supervisor pairs each with its Core marker.
 ///
+/// `rust-decision-settings`: this build answers every method of `/api/admin/decision-settings`
+/// and `/test` and is the single writer of the `decision:configuration` row
+/// (sbstndalton/noevia#2190); Node re-reads that row per decision and refuses the routes (core
+/// rust-decision-settings.cjs `RUST_DECISION_SETTINGS_OWNED`), so the supervisor pairs them.
+///
 /// `project-store`: this build serves the internal project store Node writes projects.json and
 /// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
 /// supervisor confirms it to Node (NOEVIA_RUST_PROJECT_STORE_CONFIRMED) and hands both the secret.
@@ -105,6 +111,7 @@ pub const FEATURES: &[&str] = &[
     "rust-model-reads",
     "rust-public-pages",
     "rust-plugin-directory",
+    "rust-decision-settings",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",
@@ -306,7 +313,8 @@ async fn handle(
             | routes::Native::Diary
             | routes::Native::Models
             | routes::Native::PublicPages
-            | routes::Native::PluginDirectory,
+            | routes::Native::PluginDirectory
+            | routes::Native::DecisionSettings,
         )
         | None => false,
     };
@@ -455,6 +463,12 @@ async fn handle(
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };
             plugin_directory_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::DecisionSettings) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            decision_settings_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::Ready) => {
             if app.proxy.is_in_process() {

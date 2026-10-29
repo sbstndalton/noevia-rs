@@ -40,13 +40,16 @@ path = "/api/account/retention"
 owner = "rust"
 methods = ["GET"]
 
+# sbstndalton/noevia#2190: Settings -> Models -> Decision service, every method (each answers its
+# own 405); Rust alone writes decision:configuration, Node re-reads it per decision and refuses the
+# routes (core rust-decision-settings.cjs).
 [[route]]
 path = "/api/admin/decision-settings"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/admin/decision-settings/test"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/admin/features"

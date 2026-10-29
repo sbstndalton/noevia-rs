@@ -63,6 +63,9 @@ pub struct Config {
     /// GET /api/plugins/directory (sbstndalton/noevia#2190): the fixed directory hosts, or the
     /// synthetic ones a QA run names.
     pub plugin_directory: crate::plugin_directory_routes::Sources,
+    /// /api/admin/decision-settings (sbstndalton/noevia#2190): the deployment's
+    /// COWORK_DECISION_URL, the view's fallback.
+    pub decision: crate::decision_settings_routes::Deployment,
     /// GET /api/export/conversations (M4, sbstndalton/noevia#1315), read from the user's files on
     /// disk: always on (#1071), since free-chats.json on disk is the list (Rust is its only writer,
     /// the owner's 2026-10-12 condition).
@@ -337,6 +340,7 @@ impl Config {
             rust_stats,
             models,
             plugin_directory: crate::plugin_directory_routes::Sources::from_lookup(&get),
+            decision: crate::decision_settings_routes::Deployment::from_lookup(&get),
             rust_export,
             project_store,
             start_id,
