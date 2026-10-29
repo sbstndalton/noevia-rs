@@ -26,6 +26,11 @@ mod account;
 mod device;
 pub mod feature_context;
 pub mod features;
+
+/// Device surfaces require a live public-entry clock through final issuance.
+pub fn device_route(path: &str) -> bool {
+    device::is_device_api(path) || matches!(path, "/device" | "/device/")
+}
 mod files;
 mod framing_preferences;
 mod open;
@@ -263,7 +268,7 @@ impl Account {
     }
 
     fn pipeline(&self, req: &Request, now: i64, current: &dyn Fn() -> i64) -> Handled {
-        if let Some(o) = device::open(self, req, now)? {
+        if let Some(o) = device::open(self, req, now, current)? {
             return Ok(o);
         }
         if let Some(o) = open::open(self, req, now)? {
@@ -317,7 +322,7 @@ impl Account {
             )
             .into());
         }
-        if let Some(o) = device::account(self, req, &authn, now)? {
+        if let Some(o) = device::account(self, req, &authn, now, current)? {
             return Ok(o);
         }
         if let Some(o) = features::handle(self, req, &authn, current)? {

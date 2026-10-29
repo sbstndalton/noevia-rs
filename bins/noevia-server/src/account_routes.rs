@@ -170,7 +170,7 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
     let app2 = Arc::clone(app);
     let outcome = tokio::task::spawn_blocking(move || {
         let account = layer.account(&app2, now)?;
-        let outcome = if framing || features {
+        let outcome = if framing || features || server_account::device_route(&request.path) {
             // The live clock is first sampled INSIDE public Account entry,
             // after body and lazy Account initialization, then before/after
             // all initial auth and final writer admission waits.

@@ -74,7 +74,11 @@ fn reason(view: &View, feature: Feature) -> Option<(&'static str, Option<&'stati
         TrustProxy => (!view.facts.trust_proxy).then_some(("Needs TRUST_PROXY on so sign-in limits can tell clients apart.", Some("trustProxy"))),
     }
 }
-fn evaluate(reader: &Reader<'_>, view: &View, feature: Feature) -> Result<Evaluation, StoreError> {
+pub(crate) fn evaluate(
+    reader: &Reader<'_>,
+    view: &View,
+    feature: Feature,
+) -> Result<Evaluation, StoreError> {
     let index = Feature::ALL
         .iter()
         .position(|f| *f == feature)

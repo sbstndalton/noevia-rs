@@ -64,13 +64,136 @@ fn limited(acct: &Account, key: &str, limit: u64, now: i64) -> Result<bool, Faul
         .limited(key, limit, WINDOW, now))
 }
 
+/// One request's earlier coherent generation. OFF/re-enable, release, expiry or
+/// process replacement invalidates it; never recapture a new admission at commit.
+struct Issuance<'a> {
+    acct: &'a Account,
+    req: &'a Request,
+    admission: crate::feature_context::Admission,
+    clock: &'a dyn Fn() -> i64,
+    browser: Option<&'a Identity>,
+    #[cfg(test)]
+    before_write: Option<&'a dyn Fn()>,
+}
+impl<'a> Issuance<'a> {
+    fn capture(
+        acct: &'a Account,
+        req: &'a Request,
+        clock: &'a dyn Fn() -> i64,
+        browser: Option<&'a Identity>,
+    ) -> Result<Self, Fault> {
+        let controller = acct.feature_context.as_ref().ok_or(Fault::Unavailable)?;
+        let admission = acct.writer.read(|reader| {
+            let view = controller.view(reader)?;
+            if !crate::features::evaluate(
+                reader,
+                &view,
+                server_features::Feature::NativeClientAuth,
+            )?
+            .enabled
+            {
+                return Err(context_unavailable());
+            }
+            Ok(view.admission)
+        })?;
+        Ok(Self {
+            acct,
+            req,
+            admission,
+            clock,
+            browser,
+            #[cfg(test)]
+            before_write: None,
+        })
+    }
+    fn check(&self, tx: &WriteTx<'_>, now: i64, deadline: Option<i64>) -> Result<(), StoreError> {
+        let reader = tx.reader();
+        let controller = self
+            .acct
+            .feature_context
+            .as_ref()
+            .ok_or_else(context_unavailable)?;
+        let view = controller.view(&reader)?;
+        if view.admission != self.admission
+            || !crate::features::evaluate(
+                &reader,
+                &view,
+                server_features::Feature::NativeClientAuth,
+            )?
+            .enabled
+            || deadline.is_some_and(|at| now >= at)
+            || !self.acct.auth.origin_valid(&reader, &self.req.creds)?
+        {
+            return Err(context_unavailable());
+        }
+        if let Some(original) = self.browser {
+            match self
+                .acct
+                .auth
+                .gate_in(&reader, &self.req.creds, &self.req.path, now)?
+            {
+                Ok(current)
+                    if current.user.id == original.user.id
+                        && current.credential == original.credential => {}
+                _ => return Err(context_unavailable()),
+            }
+        }
+        Ok(())
+    }
+    fn write<T>(
+        &self,
+        deadline: Option<i64>,
+        action: impl FnOnce(&WriteTx<'_>, i64) -> Result<T, StoreError>,
+    ) -> Result<T, StoreError> {
+        let controller = self
+            .acct
+            .feature_context
+            .as_ref()
+            .ok_or_else(context_unavailable)?;
+        #[cfg(test)]
+        if let Some(probe) = self.before_write {
+            probe();
+        }
+        controller.mutate(&self.acct.writer, self.admission, false, |tx| {
+            let now = (self.clock)();
+            self.check(tx, now, deadline)?;
+            let result = action(tx, now)?;
+            self.check(tx, (self.clock)(), deadline)?;
+            Ok(result)
+        })
+    }
+}
+fn active_user(tx: &WriteTx<'_>, uid: &str) -> Result<bool, StoreError> {
+    Ok(tx
+        .reader()
+        .row("SELECT disabled_at FROM users WHERE id=?1", [uid], |r| {
+            r.get::<_, Value>(0)
+        })?
+        .is_some_and(|v| !server_auth::js::truthy(&v)))
+}
+fn context_unavailable() -> StoreError {
+    StoreError::NotReady("device feature context is unavailable".into())
+}
+
 /// routes/device-auth.cjs `open`.
-pub fn open(acct: &Account, req: &Request, now: i64) -> Result<Option<Outcome>, Fault> {
+pub fn open(
+    acct: &Account,
+    req: &Request,
+    now: i64,
+    current: &dyn Fn() -> i64,
+) -> Result<Option<Outcome>, Fault> {
     let p = req.path.as_str();
     let is_device_path = is_device_api(p) || p == "/device" || p == "/device/";
     if !acct.native_client_auth()? {
         return Ok(is_device_path.then(|| Reply::error(404, "not found").into()));
     }
+    // Do not put unrelated browser sign-in/setup behind a producer outage.
+    // Device paths, however, cannot run ahead of committed startup cleanup.
+    let issuance = if is_device_path {
+        Some(Issuance::capture(acct, req, current, None)?)
+    } else {
+        None
+    };
     if p.starts_with("/api/")
         && !server_auth::request::bearer_token(&req.creds).is_empty()
         && server_auth::request::has_session_cookie(&req.creds)
@@ -108,10 +231,11 @@ pub fn open(acct: &Account, req: &Request, now: i64) -> Result<Option<Outcome>, 
             "The body must be JSON or form-encoded.",
         )));
     };
+    let issuance = issuance.as_ref().ok_or(Fault::Unavailable)?;
     Ok(Some(if p == "/api/auth/device/code" {
-        start(acct, req, &body, now)?
+        start(acct, req, &body, now, issuance)?
     } else {
-        token(acct, req, &body, now)?
+        token(acct, req, &body, now, issuance)?
     }))
 }
 
@@ -145,7 +269,13 @@ fn token_body(req: &Request) -> Result<Option<JValue>, Fault> {
 }
 
 /// device-auth.cjs `start(req, body)`: POST /api/auth/device/code.
-fn start(acct: &Account, req: &Request, body: &JValue, now: i64) -> Result<Outcome, Fault> {
+fn start(
+    acct: &Account,
+    req: &Request,
+    body: &JValue,
+    now: i64,
+    issuance: &Issuance<'_>,
+) -> Result<Outcome, Fault> {
     let mut name = util::clean_client_name(body.get("client_name"));
     if name.is_empty() {
         name = util::clean_client_name(body.get("client_id"));
@@ -167,7 +297,7 @@ fn start(acct: &Account, req: &Request, body: &JValue, now: i64) -> Result<Outco
         return Ok(too_many("sign-in requests"));
     }
     let device_code = util::random_token(32);
-    let created = acct.writer.write(|tx| {
+    let created = issuance.write(None, |tx, now| {
         tx.execute("DELETE FROM device_authorizations WHERE expires_at<=?1", [now])?;
         let pending: i64 = tx
             .reader()
@@ -290,7 +420,13 @@ fn num(v: &Value) -> Option<i64> {
 }
 
 /// device-auth.cjs `token(req, body)`: POST /api/auth/device/token.
-fn token(acct: &Account, req: &Request, body: &JValue, now: i64) -> Result<Outcome, Fault> {
+fn token(
+    acct: &Account,
+    req: &Request,
+    body: &JValue,
+    now: i64,
+    issuance: &Issuance<'_>,
+) -> Result<Outcome, Fault> {
     let grant = body.get("grant_type").as_str();
     let device = grant == Some(DEVICE_GRANT_TYPE);
     if !device && grant != Some("refresh_token") {
@@ -367,13 +503,18 @@ fn token(acct: &Account, req: &Request, body: &JValue, now: i64) -> Result<Outco
         return Ok(too_many("token requests"));
     }
     if device {
-        exchange_device_code(acct, &hash, now)
+        exchange_device_code(acct, &hash, now, issuance)
     } else {
-        exchange_refresh(acct, credential, now, false)
+        exchange_refresh(acct, credential, now, false, issuance)
     }
 }
 
-fn exchange_device_code(acct: &Account, hash: &str, at: i64) -> Result<Outcome, Fault> {
+fn exchange_device_code(
+    acct: &Account,
+    hash: &str,
+    at: i64,
+    issuance: &Issuance<'_>,
+) -> Result<Outcome, Fault> {
     let row = acct.writer.read(|r| {
         r.row(
             "SELECT device_code_hash, expires_at, status, last_poll_at, interval_ms, user_id, client_name, ip, user_agent FROM device_authorizations WHERE device_code_hash=?1",
@@ -446,7 +587,11 @@ fn exchange_device_code(acct: &Account, hash: &str, at: i64) -> Result<Outcome, 
         });
     }
     // Approved: the device code is single use; claim it and mint the grant atomically.
-    let issued = acct.writer.write(|tx| {
+    let issued = issuance.write(Some(expires), |tx, at| {
+        // Re-read the actual approved row after Writer admission. A previous
+        // snapshot is not permission to resurrect a consumed/revoked code.
+        let live=tx.reader().row("SELECT user_id,client_name,ip,user_agent FROM device_authorizations WHERE device_code_hash=?1 AND status='approved' AND expires_at>?2",(&dch,at),|r|Ok((r.get::<_,Option<String>>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,r.get::<_,String>(3)?)))?;
+        if live!=Some((user_id.clone(),client_name.clone(),ip.clone(),ua.clone())) {return Ok(None);}
         if tx.execute("DELETE FROM device_authorizations WHERE device_code_hash=?1", [&dch])? != 1 {
             return Ok(None);
         }
@@ -473,6 +618,7 @@ fn exchange_device_code(acct: &Account, hash: &str, at: i64) -> Result<Outcome, 
             &JValue::obj([("grantId", JValue::from(grant.as_str())), ("clientName", JValue::from(client_name.as_str()))]),
             at,
         )?;
+        if !active_user(tx,&uid)? {return Err(context_unavailable());}
         Ok(Some(tokens))
     })?;
     Ok(match issued {
@@ -492,6 +638,7 @@ fn exchange_refresh(
     token: &str,
     at: i64,
     retrying: bool,
+    issuance: &Issuance<'_>,
 ) -> Result<Outcome, Fault> {
     let hash = util::digest(token);
     let row = if token.starts_with(REFRESH_PREFIX) {
@@ -604,7 +751,13 @@ fn exchange_refresh(
     if !retrying && limited(acct, &format!("device-token:grant:{grant}"), 30, at)? {
         return Ok(too_many("refreshes for this device"));
     }
-    let rotated = acct.writer.write(|tx| {
+    let rotated = issuance.write(Some(ge.min(te).min(lu.saturating_add(REFRESH_IDLE_MS))), |tx, at| {
+        let live=tx.reader().row(
+            "SELECT t.expires_at,t.used_at,t.replaced_by,g.expires_at,g.last_used_at,u.disabled_at FROM device_tokens t JOIN device_grants g ON g.id=t.grant_id JOIN users u ON u.id=g.user_id WHERE t.token_hash=?1 AND t.kind='refresh' AND g.id=?2 AND g.user_id=?3",
+            (&token_hash,&grant,&user_id),|r|Ok((r.get::<_,Value>(0)?,r.get::<_,Option<i64>>(1)?,r.get::<_,Option<String>>(2)?,r.get::<_,Value>(3)?,r.get::<_,Value>(4)?,r.get::<_,Value>(5)?)))?;
+        if !matches!(live,Some((ref expiry,used,ref replaced,ref grant_expiry,ref last,ref disabled)) if expiry==&token_expires && used==used_at && replaced==&replaced_by && grant_expiry==&grant_expires && last==&last_used && !server_auth::js::truthy(disabled)) {return Ok(None);}
+        if in_grace && used_at.is_none_or(|used|at.saturating_sub(used)>REFRESH_GRACE_MS) {return Ok(None);}
+
         if in_grace {
             let successor = replaced_by.as_deref().unwrap_or("");
             if tx.execute(
@@ -632,6 +785,7 @@ fn exchange_refresh(
         if in_grace {
             audit(tx, "device.refresh_grace", None, Some(&user_id), &detail(), at)?;
         }
+        if !active_user(tx,&user_id)? {return Err(context_unavailable());}
         Ok(Some(body))
     })?;
     if let Some(body) = rotated {
@@ -641,7 +795,7 @@ fn exchange_refresh(
     if retrying {
         revoke_for_reuse(acct)
     } else {
-        exchange_refresh(acct, token, at, true)
+        exchange_refresh(acct, token, (issuance.clock)(), true, issuance)
     }
 }
 
@@ -651,6 +805,7 @@ pub fn account(
     req: &Request,
     authn: &Identity,
     now: i64,
+    current: &dyn Fn() -> i64,
 ) -> Result<Option<Outcome>, Fault> {
     if !acct.native_client_auth()? {
         return Ok(None);
@@ -773,7 +928,8 @@ pub fn account(
                 Reply::error(404, "That code is not valid or has expired.").into(),
             ));
         };
-        let decided = acct.writer.write(|tx| {
+        let issuance = Issuance::capture(acct, req, current, Some(authn))?;
+        let decided = issuance.write(Some(row.expires_at), |tx, now| {
             if approve {
                 // Approvals fail closed: the epoch read with the session must still be the account's.
                 let Some(epoch) = credential_epoch else { return Ok(false) };
@@ -945,4 +1101,379 @@ fn revoke(
         )?;
         Ok(true)
     })?)
+}
+
+#[cfg(test)]
+mod issuance_tests {
+    use super::*;
+    use crate::{
+        feature_context::{
+            self, source_fingerprint, BootFacts, BrowserFact, Cancellation, ContextSource, Control,
+            Controller, FeatureRuntime, Registration, Snapshot,
+        },
+        Body, Settings,
+    };
+    use server_auth::{AuthConfig, Authenticator, Creds};
+    use server_store::{db_path, rusqlite::Connection, RustAuth, RustFeatureSettings, Writer};
+    use std::{
+        sync::{
+            atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering},
+            Arc, Barrier,
+        },
+        time::{Duration, Instant},
+    };
+    use uuid::Uuid;
+    type Error = Box<dyn std::error::Error>;
+    const T0: i64 = 1_800_000_000_000;
+    const UID: &str = "00000000-0000-4000-8000-000000000001";
+    const ORIGIN: &str = "https://noevia.example.test";
+    struct Fixture {
+        _dir: tempfile::TempDir,
+        node: Connection,
+        acct: Account,
+        req: Request,
+        controller: Arc<Controller>,
+        boot: Uuid,
+        session: Uuid,
+    }
+    fn fixture() -> Result<Fixture, Error> {
+        let dir = tempfile::tempdir()?;
+        let node = Connection::open(db_path(dir.path()))?;
+        node.execute_batch(include_str!(
+            "../../server-store/tests/fixtures/node-schema.sql"
+        ))?;
+        node.execute("INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES(?1,'Synthetic','synthetic','Synthetic','admin','unused','wa',?2,?2)",(UID,T0))?;
+        node.execute("INSERT INTO sessions(id_hash,user_id,csrf_hash,created_at,last_seen_at,expires_at,user_agent,ip) VALUES(?1,?2,?3,?4,?4,?5,'Synthetic','127.0.0.1')",(util::digest("synthetic-session"),UID,util::digest("synthetic-csrf"),T0,T0+60_000))?;
+        node.execute(
+            "INSERT INTO settings(key,value) VALUES('feature:nativeClientAuth','true')",
+            [],
+        )?;
+        let writer = Arc::new(Writer::open(dir.path(), RustAuth::owned())?);
+        let controller = Arc::new(Controller::new(
+            Arc::new(FeatureRuntime::new()?),
+            [None; 23],
+        ));
+        let snapshot = writer.read(|r| {
+            Ok(Snapshot {
+                decision: source_fingerprint(r, ContextSource::Decision)?,
+                machines: source_fingerprint(r, ContextSource::InferenceMachines)?,
+                choice: None,
+                system_one_unconfigured: true,
+            })
+        })?;
+        let facts = BootFacts {
+            env: [None; 23],
+            restart: [false, false],
+            browser: BrowserFact::Available,
+            code: false,
+            trust_proxy: true,
+        };
+        let boot = Uuid::new_v4();
+        let session = Uuid::new_v4();
+        let cancel = Cancellation::default();
+        let control = Control {
+            request: Uuid::new_v4(),
+            deadline: Instant::now() + Duration::from_secs(30),
+            cancelled: cancel.signal(),
+        };
+        assert!(matches!(
+            controller.register(
+                &writer,
+                &control,
+                Registration {
+                    boot,
+                    session,
+                    facts: facts.clone(),
+                    snapshot
+                },
+                |tx| feature_context::startup::initialize(tx, &facts, T0)
+            )?,
+            feature_context::Reply::Ready(_)
+        ));
+        let auth = Arc::new(Authenticator::new(AuthConfig {
+            public_origin: ORIGIN.into(),
+            additional_origins: vec![],
+            legacy_token: String::new(),
+            legacy_compat: false,
+            trust_proxy: true,
+            native_client_auth_env: None,
+            origin_from_settings: false,
+        }));
+        let settings = Settings {
+            public_origin: ORIGIN.into(),
+            webauthn_rp_id: String::new(),
+            trust_proxy: true,
+            data_dir: dir.path().to_owned(),
+            dav_available: false,
+            dav: crate::DavEnv::default(),
+        };
+        let acct = Account::new(writer, auth, settings, RustAuth::owned(), T0)
+            .with_feature_context(Arc::clone(&controller));
+        let req = Request {
+            method: "POST".into(),
+            path: "/api/auth/device/code".into(),
+            creds: Creds {
+                method: "POST".into(),
+                origin: Some(ORIGIN.into()),
+                cookie: None,
+                csrf: None,
+                authorization: None,
+            },
+            user_agent: "Synthetic".into(),
+            client_ip: "127.0.0.1".into(),
+            content_type: "application/json".into(),
+            body: Body {
+                bytes: br#"{"client_name":"Synthetic"}"#.to_vec(),
+                over: false,
+            },
+        };
+        Ok(Fixture {
+            _dir: dir,
+            node,
+            acct,
+            req,
+            controller,
+            boot,
+            session,
+        })
+    }
+    fn count(f: &Fixture, table: &str) -> Result<i64, Error> {
+        // All callers below use fixed test-owned table names.
+        Ok(f.node
+            .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))?)
+    }
+    fn status(result: Result<Outcome, Fault>) -> u16 {
+        match result {
+            Ok(Outcome::Reply(reply)) => reply.status,
+            Err(Fault::Unavailable) => 503,
+            Err(Fault::Status(n, _)) => n,
+            _ => 500,
+        }
+    }
+    fn pending(f: &Fixture, approved: bool) -> Result<(), Error> {
+        f.node.execute("INSERT INTO device_authorizations(device_code_hash,user_code_hash,client_name,ip,user_agent,created_at,expires_at,interval_ms,status,user_id) VALUES(?1,?2,'Synthetic','127.0.0.1','Synthetic',?3,?4,5000,?5,?6)",(util::digest("synthetic-code"),util::digest("BCDFGHJK"),T0,T0+60_000,if approved {"approved"} else {"pending"},approved.then_some(UID)))?;
+        Ok(())
+    }
+    fn refresh(f: &Fixture) -> Result<(), Error> {
+        f.node.execute("INSERT INTO device_grants(id,user_id,client_name,created_at,last_used_at,expires_at,ip,user_agent) VALUES('synthetic-grant',?1,'Synthetic',?2,?2,?3,'127.0.0.1','Synthetic')",(UID,T0,T0+60_000))?;
+        f.node.execute("INSERT INTO device_tokens(token_hash,grant_id,kind,created_at,expires_at) VALUES(?1,'synthetic-grant','refresh',?2,?3)",(util::digest("nvr_synthetic"),T0,T0+60_000))?;
+        Ok(())
+    }
+    #[test]
+    fn off_reenable_invalidates_earlier_work_and_cannot_restore_pending_codes() -> Result<(), Error>
+    {
+        let f = fixture()?;
+        pending(&f, false)?;
+        let fence =
+            Issuance::capture(&f.acct, &f.req, &|| T0, None).map_err(|e| format!("{e:?}"))?;
+        let earlier = fence.admission;
+        f.controller.mutate(&f.acct.writer, earlier, true, |tx| {
+            tx.set_feature_enabled(
+                RustFeatureSettings::owned(),
+                server_features::Feature::NativeClientAuth,
+                false,
+            )?;
+            feature_context::startup::revoke_all(tx, Some(UID), T0)
+        })?;
+        let next = f.acct.writer.read(|r| f.controller.admission(r))?;
+        f.controller.mutate(&f.acct.writer, next, false, |tx| {
+            tx.set_feature_enabled(
+                RustFeatureSettings::owned(),
+                server_features::Feature::NativeClientAuth,
+                true,
+            )
+        })?;
+        assert_eq!(
+            status(start(
+                &f.acct,
+                &f.req,
+                &JValue::obj([("client_name", JValue::from("Synthetic"))]),
+                T0,
+                &fence
+            )),
+            503
+        );
+        assert_eq!(count(&f, "device_authorizations")?, 0);
+        let fresh =
+            Issuance::capture(&f.acct, &f.req, &|| T0, None).map_err(|e| format!("{e:?}"))?;
+        assert_eq!(
+            status(start(
+                &f.acct,
+                &f.req,
+                &JValue::obj([("client_name", JValue::from("Synthetic"))]),
+                T0,
+                &fresh
+            )),
+            200
+        );
+        Ok(())
+    }
+    #[test]
+    fn released_and_replaced_contexts_refuse_without_erasing_existing_credentials(
+    ) -> Result<(), Error> {
+        for replaced in [false, true] {
+            let f = fixture()?;
+            refresh(&f)?;
+            let fence =
+                Issuance::capture(&f.acct, &f.req, &|| T0, None).map_err(|e| format!("{e:?}"))?;
+            if replaced {
+                FeatureRuntime::new()?.initialize(&f.acct.writer)?;
+            } else {
+                let cancel = Cancellation::default();
+                let control = Control {
+                    request: Uuid::new_v4(),
+                    deadline: Instant::now() + Duration::from_secs(30),
+                    cancelled: cancel.signal(),
+                };
+                f.controller
+                    .release(&f.acct.writer, &control, f.boot, f.session)?;
+            }
+            assert!(fence
+                .write(None, |tx, now| tx
+                    .execute("UPDATE device_grants SET last_used_at=?1", [now]))
+                .is_err());
+            assert_eq!(count(&f, "device_grants")?, 1);
+            assert_eq!(count(&f, "device_tokens")?, 1);
+        }
+        Ok(())
+    }
+    #[test]
+    fn code_and_refresh_recheck_authoritative_rows_after_read_before_write() -> Result<(), Error> {
+        for code in [true, false] {
+            let f = fixture()?;
+            if code {
+                pending(&f, true)?;
+            } else {
+                refresh(&f)?;
+            }
+            let admission = f.acct.writer.read(|r| f.controller.admission(r))?;
+            let arrived = Barrier::new(2);
+            let proceed = Barrier::new(2);
+            std::thread::scope(|scope| -> Result<(), Error> {
+                let acct = &f.acct;
+                let req = &f.req;
+                let arrived = &arrived;
+                let proceed = &proceed;
+                let worker = scope.spawn(move || {
+                    let first = AtomicBool::new(true);
+                    let probe = || {
+                        if first.swap(false, Ordering::SeqCst) {
+                            arrived.wait();
+                            proceed.wait();
+                        }
+                    };
+                    let fence = Issuance {
+                        acct,
+                        req,
+                        admission,
+                        clock: &|| T0,
+                        browser: None,
+                        before_write: Some(&probe),
+                    };
+                    if code {
+                        status(exchange_device_code(
+                            acct,
+                            &util::digest("synthetic-code"),
+                            T0,
+                            &fence,
+                        ))
+                    } else {
+                        status(exchange_refresh(acct, "nvr_synthetic", T0, false, &fence))
+                    }
+                });
+                arrived.wait();
+                let changed = if code {
+                    f.node
+                        .execute("UPDATE device_authorizations SET status='denied'", [])
+                } else {
+                    f.node.execute("UPDATE users SET disabled_at=?1", [T0])
+                };
+                proceed.wait();
+                changed?;
+                assert_eq!(worker.join().map_err(|_| "worker panic")?, 400);
+                Ok(())
+            })?;
+            assert_eq!(count(&f, "device_tokens")?, if code { 0 } else { 1 });
+            assert_eq!(count(&f, "device_grants")?, if code { 0 } else { 1 });
+        }
+        Ok(())
+    }
+    #[test]
+    fn actual_writer_queue_and_post_sql_deadline_expiry_both_refuse() -> Result<(), Error> {
+        let f = fixture()?;
+        let admission = f.acct.writer.read(|r| f.controller.admission(r))?;
+        let clock = AtomicI64::new(T0);
+        let entered = Barrier::new(2);
+        std::thread::scope(|scope| -> Result<(), Error> {
+            let mut worker = None;
+            f.acct.writer.write(|_|{
+                let acct=&f.acct;let req=&f.req;let clock=&clock;let entered=&entered;
+                worker=Some(scope.spawn(move||{
+                    let clock=||clock.load(Ordering::SeqCst);
+                    let fence=Issuance {acct,req,admission,clock:&clock,browser:None,before_write:None};
+                    entered.wait();
+                    fence.write(Some(T0+100),|tx,now|tx.execute("INSERT INTO device_authorizations(device_code_hash,user_code_hash,client_name,ip,user_agent,created_at,expires_at,interval_ms,status) VALUES('queued','queued','Synthetic','ip','ua',?1,?2,5000,'pending')",(now,now+1000))).is_err()
+                }));
+                entered.wait();clock.store(T0+101,Ordering::SeqCst);Ok(())
+            })?;
+            assert!(worker.ok_or("worker")?.join().map_err(|_| "worker panic")?);
+            Ok(())
+        })?;
+        assert_eq!(count(&f, "device_authorizations")?, 0);
+        let samples = AtomicUsize::new(0);
+        let clock = || {
+            if samples.fetch_add(1, Ordering::SeqCst) == 0 {
+                T0
+            } else {
+                T0 + 101
+            }
+        };
+        let fence =
+            Issuance::capture(&f.acct, &f.req, &clock, None).map_err(|e| format!("{e:?}"))?;
+        assert!(fence.write(Some(T0+100),|tx,_|tx.execute("INSERT INTO device_authorizations(device_code_hash,user_code_hash,client_name,ip,user_agent,created_at,expires_at,interval_ms,status) VALUES('post','post','Synthetic','ip','ua',1,1000,5000,'pending')",[])).is_err());
+        assert_eq!(count(&f, "device_authorizations")?, 0);
+        Ok(())
+    }
+    #[test]
+    fn approval_rechecks_actual_browser_after_sql_and_rolls_everything_back() -> Result<(), Error> {
+        let mut f = fixture()?;
+        pending(&f, false)?;
+        f.req.path = "/api/auth/device/approve".into();
+        f.req.creds.cookie =
+            Some("cowork_session=synthetic-session; cowork_csrf=synthetic-csrf".into());
+        f.req.creds.csrf = Some("synthetic-csrf".into());
+        f.req.body.bytes = br#"{"user_code":"BCDFGHJK","approve":true}"#.to_vec();
+        let samples = AtomicUsize::new(0);
+        let outcome = f.acct.handle_with_clock(&f.req, || {
+            if samples.fetch_add(1, Ordering::SeqCst) >= 2 {
+                T0 + 60_001
+            } else {
+                T0
+            }
+        });
+        assert_eq!(status(Ok(outcome)), 503);
+        assert_eq!(
+            f.node
+                .query_row("SELECT status FROM device_authorizations", [], |r| r
+                    .get::<_, String>(0))?,
+            "pending"
+        );
+        assert_eq!(count(&f, "sessions")?, 1);
+        assert_eq!(count(&f, "audit_events")?, 0);
+        Ok(())
+    }
+    #[test]
+    fn absent_context_does_not_block_browser_signin_or_fabricate_device_off() -> Result<(), Error> {
+        let mut f = fixture()?;
+        refresh(&f)?;
+        f.acct.feature_context = None;
+        assert_eq!(status(Ok(f.acct.handle(&f.req, T0))), 503);
+        f.req.path = "/api/setup/status".into();
+        f.req.method = "GET".into();
+        f.req.creds.method = "GET".into();
+        assert_eq!(status(Ok(f.acct.handle(&f.req, T0))), 200);
+        assert_eq!(count(&f, "device_grants")?, 1);
+        assert_eq!(count(&f, "device_tokens")?, 1);
+        Ok(())
+    }
 }

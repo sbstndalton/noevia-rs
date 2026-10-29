@@ -66,7 +66,63 @@ fn world_with(native: bool, dav: server_account::DavEnv) -> World {
         dav_available: false,
         dav,
     };
-    let acct = Account::new(writer, auth, settings, switch, T0);
+    // Real producer registration is now a prerequisite for device issuance.
+    // Keep the original flow expectations; do not bypass the final context gate.
+    use server_account::feature_context::{
+        source_fingerprint, startup, BootFacts, BrowserFact, Cancellation, ContextSource, Control,
+        Controller, FeatureRuntime, Registration, Snapshot,
+    };
+    let mut env = [None; 23];
+    let native_index = server_features::Feature::ALL
+        .iter()
+        .position(|f| *f == server_features::Feature::NativeClientAuth)
+        .unwrap();
+    env[native_index] = Some(native);
+    let controller = Arc::new(Controller::new(
+        Arc::new(FeatureRuntime::new().unwrap()),
+        env,
+    ));
+    let facts = BootFacts {
+        env,
+        restart: [false, false],
+        browser: BrowserFact::Available,
+        code: false,
+        trust_proxy: true,
+    };
+    let snapshot = writer
+        .read(|r| {
+            Ok(Snapshot {
+                decision: source_fingerprint(r, ContextSource::Decision)?,
+                machines: source_fingerprint(r, ContextSource::InferenceMachines)?,
+                choice: None,
+                system_one_unconfigured: true,
+            })
+        })
+        .unwrap();
+    let cancel = Cancellation::default();
+    let control = Control {
+        request: uuid::Uuid::new_v4(),
+        deadline: std::time::Instant::now() + std::time::Duration::from_secs(30),
+        cancelled: cancel.signal(),
+    };
+    let registered = controller
+        .register(
+            &writer,
+            &control,
+            Registration {
+                boot: uuid::Uuid::new_v4(),
+                session: uuid::Uuid::new_v4(),
+                facts: facts.clone(),
+                snapshot,
+            },
+            |tx| startup::initialize(tx, &facts, T0),
+        )
+        .unwrap();
+    assert!(matches!(
+        registered,
+        server_account::feature_context::Reply::Ready(_)
+    ));
+    let acct = Account::new(writer, auth, settings, switch, T0).with_feature_context(controller);
     World { dir, node, acct }
 }
 
