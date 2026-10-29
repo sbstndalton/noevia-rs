@@ -90,7 +90,9 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
     let request_started = std::time::Instant::now();
     let now = crate::identity::now_ms();
     let (parts, body) = req.into_parts();
-    let framing = path == "/api/chat-framing/preferences";
+    // The account's own preference files (chat framing; the chat vault mirror, #2190 round 3).
+    let mirror = path == server_account::vault_mirror::PATH;
+    let framing = path == "/api/chat-framing/preferences" || mirror;
     let features = server_account::features::owns(&path);
     let forwarded = parts
         .headers
@@ -193,6 +195,8 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
                     StatusCode::BAD_REQUEST,
                     if features {
                         "invalid JSON"
+                    } else if mirror {
+                        "Invalid mirror preferences"
                     } else if framing {
                         "Invalid framing preferences"
                     } else {

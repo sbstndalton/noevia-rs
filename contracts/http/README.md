@@ -480,6 +480,7 @@ at connect time, no redirect, no environment proxy, 3 s, 4 KiB.
 | route | owner | capability / Core refusal | notes |
 |---|---|---|---|
 | `/api/integrations/storage/folder`, `/test`, `/nextcloud/start`, `/nextcloud/poll`, `/nextcloud/cancel` (POST) | rust | `rust-storage-integrations` / `RUST_STORAGE_INTEGRATIONS_OWNED` | session gate, then the JSON-object body (1 MiB); the member-origin rule on every target, no redirect, no environment proxy, Node's deadlines and the 64 KiB Nextcloud reply cap; other methods stay Node's |
+| `/api/chat-vault-mirror/preferences` (all methods) | rust | `rust-vault-mirror-preferences` / `RUST_VAULT_MIRROR_PREFERENCES_OWNED` | Rust is the only writer of `users/<id>/chat-vault-mirror.json` (Node's mirror re-reads it per use); a PUT that turns it on while available writes `chat-vault-mirror-nudges.json` (`{version:1,nudges:{<userId>:<ms>}}`), which core polls by file signal to run that account's mirror at once |
 
 The pending Nextcloud sign-ins move wholesale: the same sealed file
 (`nextcloud-login-flows.json`, `enc:v2:` bound to the account, 10 minutes, at most 100, one per
@@ -504,5 +505,4 @@ job that chat or another Node route reads):
 | `/api/admin/offsite-backup` and its six children | offsite-service.cjs runs the backup, copy and verify jobs and their busy lock and 15-minute timer in-process |
 | `/api/admin/users/{id}` (DELETE) | the clean-up spans Node's workspace cache, MCP OAuth, directory MCP keys and ChatGPT tokens in memory |
 | `/api/auto-roles` | GET reads the served catalogue and machine models; an admin PUT warms the roles in Node's engine (`ensureRolesLoaded`) |
-| `/api/chat-vault-mirror/preferences` | PUT schedules Node's in-process mirror at once; the GET alone would split one setting over two processes |
 | `/api/health` | the retrieval probe is Node's cached RAG status, and the default provider is Node's in-memory registry |

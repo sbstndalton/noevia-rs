@@ -251,7 +251,7 @@ owner = "node"
 
 [[route]]
 path = "/api/chat-vault-mirror/preferences"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/chats/{chatId}/context"

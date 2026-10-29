@@ -285,6 +285,7 @@ const ACCOUNT_PREFIXES: &[&str] = &[
 
 fn is_account_path(path: &str) -> bool {
     path == "/api/chat-framing/preferences"
+        || path == server_account::vault_mirror::PATH
         || server_account::features::owns(path)
         || ACCOUNT_PREFIXES.iter().any(|p| {
             path.strip_prefix(p)
@@ -371,7 +372,10 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
     }
     let route = route_for(path)?;
     // This owner is exact-path only; the shared matcher tolerates trailing slashes.
-    if route.path == "/api/chat-framing/preferences" && path != route.path {
+    if (route.path == "/api/chat-framing/preferences"
+        || route.path == server_account::vault_mirror::PATH)
+        && path != route.path
+    {
         return None;
     }
     if route.path == STORAGE_METADATA && (path != STORAGE_METADATA || method != "GET") {

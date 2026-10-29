@@ -86,6 +86,9 @@ use std::sync::Arc;
 /// (sbstndalton/noevia#2190); Node re-reads that row per decision and refuses the routes (core
 /// rust-decision-settings.cjs `RUST_DECISION_SETTINGS_OWNED`), so the supervisor pairs them.
 ///
+/// `rust-vault-mirror-preferences`: this build answers `GET|PUT /api/chat-vault-mirror/preferences`
+/// natively (server-account vault_mirror) and writes the mirror nudges core polls; the paired core
+/// refuses that path (rust-vault-mirror-preferences.cjs `RUST_VAULT_MIRROR_PREFERENCES_OWNED`).
 /// `rust-storage-integrations`: this build answers `POST /api/integrations/storage/folder`,
 /// `/test` and `/nextcloud/{start,poll,cancel}` (sbstndalton/noevia#2190): it owns the pending
 /// Nextcloud sign-ins (`nextcloud-login-flows.json`), saves a completed sign-in's storage row and
@@ -138,6 +141,7 @@ pub const FEATURES: &[&str] = &[
     "rust-storage-browse",
     #[cfg(feature = "rust-storage-reads")]
     "rust-storage-integrations",
+    "rust-vault-mirror-preferences",
     #[cfg(feature = "rust-reasoning-settings")]
     "rust-reasoning-settings",
     #[cfg(feature = "rust-routing-mode")]

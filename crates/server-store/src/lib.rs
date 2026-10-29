@@ -122,6 +122,8 @@ pub const OWNED_JSON_FILES: &[&str] = &[
     "account-memory.json",
     "account-preferences.json",
     "chat-framing.json",
+    // core chat-vault-mirror.cjs `writePreferences` (sbstndalton/noevia#2190 round 3).
+    "chat-vault-mirror.json",
 ];
 
 /// Rust's ownership of sign-in and the account (M3): the tables and files Rust writes. It was the

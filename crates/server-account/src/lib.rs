@@ -37,6 +37,7 @@ mod open;
 mod passkeys;
 mod sharing;
 mod users;
+pub mod vault_mirror;
 
 use js_json::JValue;
 use server_auth::{Authenticator, Creds};
@@ -376,6 +377,9 @@ impl Account {
             return Ok(o);
         }
         if let Some(o) = framing_preferences::handle(self, req, &authn, current)? {
+            return Ok(o);
+        }
+        if let Some(o) = vault_mirror::handle(self, req, &authn, current)? {
             return Ok(o);
         }
         if let Some(o) = files::account_files(self, req, &authn, now)? {
