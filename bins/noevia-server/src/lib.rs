@@ -385,7 +385,11 @@ async fn handle(
             export_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::Ready) => {
-            health::ready(&app.config.upstream, app.version.as_deref()).await
+            if app.proxy.is_in_process() {
+                app.proxy.forward(conn.peer, req).await
+            } else {
+                health::ready(&app.config.upstream, app.version.as_deref()).await
+            }
         }
         Some(routes::Native::Static) if static_files::canonical(&path) => {
             let statics = app.statics.clone();

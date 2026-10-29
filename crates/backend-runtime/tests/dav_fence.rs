@@ -1,0 +1,324 @@
+#[path = "../../server-auth/tests/common/mod.rs"]
+mod auth_fixture;
+use backend_runtime::{dav::DavBackend, diary::Corpus};
+use serde_json::{json, Value};
+use server_dav::{Backend, Identity, Scope, WriteCondition};
+use std::{collections::HashMap, sync::Arc};
+fn replace(value: &mut Value) {
+    match value {
+        Value::String(s) if s == "u-member" => *s = "01234567-89ab-4cde-8fab-0123456789ab".into(),
+        Value::Array(a) => {
+            for v in a {
+                replace(v)
+            }
+        }
+        Value::Object(o) => {
+            for v in o.values_mut() {
+                replace(v)
+            }
+        }
+        _ => {}
+    }
+}
+#[tokio::test]
+async fn real_auth_writer_fences_revoked_dav_credentials_at_corpus_sink(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../server-auth/tests/fixtures/node-auth.v1.json"
+    ))?;
+    let mut scenario = fixture
+        .get("scenarios")
+        .and_then(Value::as_array)
+        .and_then(|a| a.first())
+        .ok_or("scenario")?
+        .clone();
+    replace(&mut scenario);
+    let built = auth_fixture::build(&scenario);
+    let user = "01234567-89ab-4cde-8fab-0123456789ab";
+    let raw = rusqlite::Connection::open(server_store::db_path(built.dir.path()))?;
+    raw.execute_batch("CREATE TABLE IF NOT EXISTS dav_settings(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,scope TEXT NOT NULL CHECK(scope IN ('off','lan','public')),acknowledged_at INTEGER,updated_at INTEGER NOT NULL);CREATE TABLE IF NOT EXISTS storage_connections(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,kind TEXT NOT NULL,base_url TEXT NOT NULL DEFAULT '',bucket TEXT NOT NULL DEFAULT '',username TEXT NOT NULL DEFAULT '',secret TEXT NOT NULL DEFAULT '',corpus_root TEXT NOT NULL DEFAULT '',updated_at INTEGER NOT NULL);")?;
+    raw.execute(
+        "INSERT INTO dav_settings(user_id,scope,updated_at) VALUES(?,'lan',0)",
+        [user],
+    )?;
+    raw.execute(
+        "UPDATE user_features SET diary_enabled=1 WHERE user_id=?",
+        [user],
+    )?;
+    let path = built.dir.path().join("managed.db");
+    let db = rusqlite::Connection::open(&path)?;
+    let layout: Value = serde_json::from_str(include_str!(
+        "../../diary-workspace-transaction/tests/fixtures/managed-schema.json"
+    ))?;
+    for table in layout
+        .get("tables")
+        .and_then(Value::as_array)
+        .ok_or("tables")?
+    {
+        db.execute_batch(table.get("sql").and_then(Value::as_str).ok_or("schema")?)?;
+    }
+    db.execute_batch("CREATE TABLE workspace_operation_receipts(id TEXT PRIMARY KEY,fingerprint TEXT NOT NULL,op TEXT NOT NULL,response BLOB NOT NULL,created REAL NOT NULL);")?;
+    db.execute(
+        "INSERT INTO meta VALUES('workspace_operation_namespace',?)",
+        ["11234567-89ab-4cde-8fab-0123456789ab"],
+    )?;
+    for (key, value) in [("tenant", user), ("active", "1"), ("generation", "0")] {
+        db.execute("INSERT INTO meta VALUES(?,?)", [key, value])?;
+    }
+    let corpus = Arc::new(Corpus::open(&path, user, 3.0)?);
+    let mut tenants = HashMap::new();
+    tenants.insert(user.to_owned(), corpus);
+    let writer = Arc::new(server_store::Writer::open(
+        built.dir.path(),
+        server_store::RustAuth::owned(),
+    )?);
+    let config = serde_json::from_value(
+        json!({"remoteRoot":"","entriesPrefix":"Entries","monthlyPrefix":"Monthly","monthFileTemplate":"{year}-{month02}.md","indexFile":"index.md","monthNames":["January","February","March","April","May","June","July","August","September","October","November","December"]}),
+    )?;
+    let journal = Arc::new(backend_runtime::journal::Journal::open(
+        &built.dir.path().join("journal.db"),
+    )?);
+    let backend = DavBackend::new(Arc::new(built.store), writer, tenants, Scope::Lan)?
+        .with_journals(HashMap::from([(user.to_owned(), Arc::clone(&journal))]))
+        .with_workspace(config);
+    let backend = Arc::new(backend);
+    let identity = Identity {
+        user_id: user.into(),
+        credential_id: "a".repeat(32),
+    };
+    assert!(backend
+        .allowed(&identity, Scope::Lan)
+        .await
+        .map_err(|e| format!("{e:?}"))?);
+    let version = backend
+        .write(&identity, "note.md", "synthetic", WriteCondition::Create)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    assert_eq!(
+        backend
+            .read(&identity, "note.md")
+            .await
+            .map_err(|e| format!("{e:?}"))?
+            .map(|f| f.content),
+        Some("synthetic".into())
+    );
+    let pending = journal.enqueue("exchange", &json!({"xid":"pending"}))?;
+    assert_eq!(
+        backend
+            .workspace(
+                &identity,
+                json!({"op":"copy","path":"note.md","destination":"copy.md","overwrite":false})
+            )
+            .await,
+        Err(server_dav::Fault::Conflict)
+    );
+    assert!(backend
+        .read(&identity, "copy.md")
+        .await
+        .map_err(|e| format!("{e:?}"))?
+        .is_none());
+    assert_eq!(
+        backend
+            .write(
+                &identity,
+                "note.md",
+                "must not pass pending journal",
+                WriteCondition::Match(version.clone())
+            )
+            .await,
+        Err(server_dav::Fault::Conflict)
+    );
+    journal.mark_applied(&pending)?;
+    let copy = backend
+        .workspace(
+            &identity,
+            json!({"op":"copy","path":"note.md","destination":"copy.md","overwrite":false}),
+        )
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    assert_eq!(copy.0, 200);
+    assert_eq!(
+        backend
+            .read(&identity, "copy.md")
+            .await
+            .map_err(|e| format!("{e:?}"))?
+            .ok_or("copy")?
+            .content,
+        "synthetic"
+    );
+    let stale = backend
+        .workspace(
+            &identity,
+            json!({"op":"delete","path":"copy.md","version":"0".repeat(64)}),
+        )
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    assert_eq!(stale.0, 412);
+    let deleted = backend
+        .workspace(
+            &identity,
+            json!({"op":"delete","path":"copy.md","version":version}),
+        )
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    assert_eq!(deleted.0, 200);
+    assert!(backend
+        .read(&identity, "copy.md")
+        .await
+        .map_err(|e| format!("{e:?}"))?
+        .is_none());
+    let receipts: i64 = db.query_row(
+        "SELECT count(*) FROM workspace_operation_receipts",
+        [],
+        |r| r.get(0),
+    )?;
+    assert_eq!(receipts, 3);
+    // Actual DAV handler uses the native preserve kernel before an unconditional overwrite.
+    let credential = scenario
+        .get("dav")
+        .and_then(Value::as_array)
+        .ok_or("DAV fixture")?
+        .iter()
+        .find(|v| {
+            v.pointer("/expect/userId").and_then(Value::as_str) == Some(user)
+                && v.get("scope").and_then(Value::as_str) == Some("lan")
+        })
+        .ok_or("DAV credential")?;
+    let username = credential
+        .get("username")
+        .and_then(Value::as_str)
+        .ok_or("username")?;
+    let password = credential
+        .get("password")
+        .and_then(Value::as_str)
+        .ok_or("password")?;
+    let req = reqwest::Client::new()
+        .get("http://127.0.0.1")
+        .basic_auth(username, Some(password))
+        .build()?;
+    let auth = req.headers().get("authorization").ok_or("header")?.clone();
+    let service = server_dav::DavService::new(
+        backend.clone(),
+        server_dav::Config::new("http://127.0.0.1:18022", Scope::Lan, None)
+            .map_err(|e| e.to_string())?,
+    );
+    for (text, status) in [("first version", 201), ("replacement version", 204)] {
+        let request = axum::http::Request::builder()
+            .method("PUT")
+            .uri(format!("/dav/{username}/unconditional.md"))
+            .header("host", "127.0.0.1:18022")
+            .header("authorization", auth.clone())
+            .body(axum::body::Body::from(text))?;
+        let response = service.handle(request, "127.0.0.1".parse()?).await;
+        assert_eq!(response.status().as_u16(), status);
+    }
+    assert_eq!(
+        backend
+            .read(&identity, "unconditional.md")
+            .await
+            .map_err(|e| format!("{e:?}"))?
+            .ok_or("file")?
+            .content,
+        "replacement version"
+    );
+    let preserved: i64 = db.query_row(
+        "SELECT count(*) FROM workspace_operation_receipts WHERE op='preserve'",
+        [],
+        |r| r.get(0),
+    )?;
+    assert_eq!(preserved, 1);
+    let mut stmt = db.prepare("SELECT path,data FROM files WHERE path LIKE '.noevia-trash/%'")?;
+    let capsules = stmt
+        .query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?))
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let mut found = false;
+    for (path, bytes) in capsules {
+        let id = path
+            .strip_prefix(".noevia-trash/")
+            .and_then(|s| s.strip_suffix(".json"))
+            .ok_or("capsule name")?;
+        let capsule =
+            diary_workspace_rules::decode_strict(&bytes, id).map_err(|e| format!("{e:?}"))?;
+        if capsule
+            .record
+            .get("path")
+            .and_then(Value::as_str)
+            .is_some_and(|s| s.starts_with("unconditional (replaced "))
+        {
+            assert_eq!(capsule.raw, b"first version");
+            found = true;
+        }
+    }
+    assert!(
+        found,
+        "previous bytes must be recoverable from a valid original Trash capsule"
+    );
+    let audit: String = raw.query_row(
+        "SELECT detail FROM audit_events WHERE action='dav.write' ORDER BY id DESC LIMIT 1",
+        [],
+        |r| r.get(0),
+    )?;
+    let audit: Value = serde_json::from_str(&audit)?;
+    assert_eq!(audit.get("path"), Some(&json!("unconditional.md")));
+    assert_eq!(audit.get("bytes"), Some(&json!(19)));
+    assert!(audit.get("content").is_none());
+    backend
+        .write(
+            &identity,
+            "Monthly/2026-10.md",
+            "protected original",
+            WriteCondition::Create,
+        )
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let request = axum::http::Request::builder()
+        .method("PUT")
+        .uri(format!("/dav/{username}/Monthly/2026-10.md"))
+        .header("host", "127.0.0.1:18022")
+        .header("authorization", auth)
+        .body(axum::body::Body::from("must not land"))?;
+    assert_eq!(
+        service
+            .handle(request, "127.0.0.1".parse()?)
+            .await
+            .status()
+            .as_u16(),
+        428
+    );
+    assert_eq!(
+        backend
+            .read(&identity, "Monthly/2026-10.md")
+            .await
+            .map_err(|e| format!("{e:?}"))?
+            .ok_or("protected file")?
+            .content,
+        "protected original"
+    );
+    raw.execute(
+        "DELETE FROM app_passwords WHERE id=?",
+        [&identity.credential_id],
+    )?;
+    assert!(!backend
+        .allowed(&identity, Scope::Lan)
+        .await
+        .map_err(|e| format!("{e:?}"))?);
+    assert_eq!(
+        backend
+            .write(
+                &identity,
+                "note.md",
+                "must not land",
+                WriteCondition::Match(version)
+            )
+            .await,
+        Err(server_dav::Fault::Forbidden)
+    );
+    let content: Vec<u8> =
+        db.query_row("SELECT data FROM files WHERE path='note.md'", [], |r| {
+            r.get(0)
+        })?;
+    assert_eq!(content, b"synthetic");
+    Ok(())
+}

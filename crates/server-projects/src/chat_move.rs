@@ -580,6 +580,99 @@ pub fn grant_context(
         context_held(&dir, raw, start, s)
     })
 }
+/// Commit an executor transcript only while its persisted permission context is
+/// still exactly current. The existing lock order covers context, lists and transcript.
+pub fn write_bound_transcript(
+    data: &Path,
+    user: &str,
+    expected: &GrantContext,
+    history: &[JValue],
+    base: &transcript::Base,
+    still_live: impl Fn() -> bool,
+) -> Result<transcript::Saved, MoveError> {
+    let dir = store::user_dir(data, user)?;
+    with_held(&dir, |state| {
+        recover_held(&dir, state, &|_| Ok(()))?;
+        let current = context_held(&dir, &expected.canonical, &expected.start, state)?;
+        if current != *expected || current.tombstoned || current.holder == Holder::Absent {
+            return Err(MoveError::NotFound);
+        }
+        if !still_live() {
+            return Err(MoveError::NotFound);
+        }
+        transcript::write_as_held(
+            data,
+            user,
+            &expected.canonical,
+            history,
+            base,
+            None,
+            transcript::Origin::Turn,
+        )
+        .map_err(|error| match error {
+            transcript::TranscriptError::Store(error) => MoveError::Store(error),
+            transcript::TranscriptError::InvalidChat
+            | transcript::TranscriptError::Unsanitisable => MoveError::Invalid,
+        })
+    })
+}
+
+/// Original chat partial file, written only while its canonical owner/generation
+/// is held. Account/session authority must surround this call, as for transcripts.
+pub fn write_bound_partial(
+    data: &Path,
+    user: &str,
+    expected: &GrantContext,
+    entry: Option<&JValue>,
+) -> Result<(), MoveError> {
+    let dir = store::user_dir(data, user)?;
+    with_held(&dir, |state| {
+        recover_held(&dir, state, &|_| Ok(()))?;
+        let current = context_held(&dir, &expected.canonical, &expected.start, state)?;
+        if current != *expected || current.tombstoned || current.holder == Holder::Absent {
+            return Err(MoveError::NotFound);
+        }
+        let file = crate::partial::file_for(&dir, &expected.canonical);
+        let parent = file.parent().ok_or(MoveError::Invalid)?;
+        if let Some(entry) = entry {
+            match std::fs::create_dir(parent) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(e) => return Err(StoreError::from(e).into()),
+            }
+            transcript::existing_dir(parent)?;
+            let text = js_json::wtf16::stringify(entry).ok_or(MoveError::Invalid)?;
+            if text.len() > 8 * 1024 * 1024 {
+                return Err(MoveError::Invalid);
+            }
+            strict_write(
+                parent,
+                file.file_name()
+                    .and_then(|n| n.to_str())
+                    .ok_or(MoveError::Invalid)?,
+                &text,
+                &|_| Ok(()),
+            )?;
+        } else {
+            match std::fs::symlink_metadata(parent) {
+                Ok(_) => transcript::existing_dir(parent)?,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+                Err(e) => return Err(StoreError::from(e).into()),
+            }
+            match std::fs::remove_file(&file) {
+                Ok(()) => {
+                    std::fs::File::open(parent)
+                        .and_then(|file| file.sync_all())
+                        .map_err(StoreError::from)?;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(StoreError::from(e).into()),
+            }
+        }
+        Ok(())
+    })
+}
+
 pub fn recover(data: &Path, user: &str) -> Result<(), MoveError> {
     let dir = store::user_dir(data, user)?;
     with_held(&dir, |s| Ok(recover_held(&dir, s, &|_| Ok(()))?))
@@ -800,6 +893,31 @@ mod tests {
     }
     fn boom() -> StoreError {
         StoreError::Io(std::io::Error::other("synthetic crash/fsync failure"))
+    }
+
+    #[test]
+    fn bound_turn_commit_rechecks_holder_revision_and_live_fence() {
+        let (root, _) = setup();
+        let binding = grant_context(root.path(), USER, "qac", START).unwrap();
+        let current = transcript::read(root.path(), USER, "qac").unwrap();
+        let history =
+            vec![js_json::wtf16::parse(r#"{"role":"assistant","content":"native"}"#).unwrap()];
+        let base = transcript::Base::Revision(current.revision.clone());
+        assert!(
+            write_bound_transcript(root.path(), USER, &binding, &history, &base, || false).is_err()
+        );
+        assert_eq!(
+            transcript::read(root.path(), USER, "qac").unwrap().revision,
+            current.revision
+        );
+        assert!(matches!(
+            write_bound_transcript(root.path(), USER, &binding, &history, &base, || true).unwrap(),
+            transcript::Saved::Saved { .. }
+        ));
+        go(root.path(), Holder::Project("qa-p".into())).unwrap();
+        assert!(
+            write_bound_transcript(root.path(), USER, &binding, &history, &base, || true).is_err()
+        );
     }
 
     #[test]

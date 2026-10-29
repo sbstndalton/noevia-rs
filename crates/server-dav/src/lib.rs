@@ -3,6 +3,7 @@
 //! Diary operations before this handler can be wired into an image.
 #![forbid(unsafe_code)]
 
+mod operations;
 mod xml;
 
 use axum::body::{to_bytes, Body};
@@ -38,6 +39,7 @@ impl Scope {
 #[derive(Clone, Debug)]
 pub struct Config {
     host: String,
+    origin: String,
     scope: Scope,
     proxy_token: Option<String>,
     deadline: Duration,
@@ -83,6 +85,7 @@ impl Config {
         }
         Ok(Self {
             host,
+            origin: url.origin().ascii_serialization(),
             scope,
             proxy_token: token,
             deadline: Duration::from_secs(45),
@@ -148,6 +151,17 @@ pub enum Fault {
 /// must route through Diary's guarded workspace operations. The adapter must
 /// refuse symlink traversal; this crate never opens a filesystem path.
 pub trait Backend: Send + Sync + 'static {
+    fn workspace_enabled(&self) -> bool {
+        false
+    }
+    fn workspace<'a>(
+        &'a self,
+        _identity: &'a Identity,
+        _request: serde_json::Value,
+    ) -> BackendFuture<'a, Result<(u16, serde_json::Value), Fault>> {
+        Box::pin(async { Err(Fault::Unavailable) })
+    }
+
     fn capabilities(&self) -> Capabilities {
         Capabilities::default()
     }
@@ -579,6 +593,27 @@ impl<B: Backend> DavService<B> {
         let method = req.method().as_str().to_owned();
         let headers = req.headers().clone();
         let cap = self.backend.capabilities();
+        if self.backend.workspace_enabled() && matches!(method.as_str(), "DELETE" | "MOVE" | "COPY")
+        {
+            return self
+                .workspace_operation(req, identity, username, path)
+                .await;
+        }
+        if self.backend.workspace_enabled() && method == "OPTIONS" {
+            let mut response = reply(StatusCode::OK, "", false);
+            response.headers_mut().insert(
+                header::ALLOW,
+                HeaderValue::from_static(if cap.mkdir {
+                    "OPTIONS, HEAD, GET, PROPFIND, PUT, MKCOL, DELETE, MOVE, COPY"
+                } else {
+                    "OPTIONS, HEAD, GET, PROPFIND, PUT, DELETE, MOVE, COPY"
+                }),
+            );
+            response
+                .headers_mut()
+                .insert("dav", HeaderValue::from_static("1"));
+            return response;
+        }
         let allow = if cap.mkdir {
             "OPTIONS, HEAD, GET, PROPFIND, PUT, MKCOL"
         } else {
@@ -936,8 +971,9 @@ impl<B: Backend> DavService<B> {
             );
         }
         let condition = match (matching, new_only) {
-            (Some(tag), None) => WriteCondition::Match(tag.trim_matches('"').to_owned()),
-            (None, Some(_)) => WriteCondition::Create,
+            (Some(tag), None) => Some(WriteCondition::Match(tag.trim_matches('"').to_owned())),
+            (None, Some(_)) => Some(WriteCondition::Create),
+            (None, None) if self.backend.workspace_enabled() => None,
             _ => {
                 return reply(
                     StatusCode::PRECONDITION_REQUIRED,
@@ -966,6 +1002,49 @@ impl<B: Backend> DavService<B> {
         if !self.is_allowed(identity).await {
             return reply(StatusCode::FORBIDDEN, "Sharing was disabled", false);
         }
+        let condition = if let Some(condition) = condition {
+            condition
+        } else {
+            // Original unconditional-client contract: preserve the bytes just read,
+            // then CAS the replacement. No successful preservation is a write grant.
+            let current =
+                match tokio::time::timeout(self.config.deadline, self.backend.read(identity, path))
+                    .await
+                {
+                    Ok(Ok(current)) => current,
+                    Ok(Err(f)) => return fault_reply(f, true),
+                    Err(_) => return fault_reply(Fault::Unavailable, true),
+                };
+            if let Some(file) = current {
+                if !valid_tag(&file.version) {
+                    return fault_reply(Fault::Unavailable, true);
+                }
+                let preserved = tokio::time::timeout(
+                    self.config.deadline,
+                    self.backend.workspace(
+                        identity,
+                        serde_json::json!({"op":"preserve","path":path,"version":file.version}),
+                    ),
+                )
+                .await;
+                match preserved {
+                    Ok(Ok((200, body)))
+                        if body.get("trash").is_some_and(serde_json::Value::is_string) => {}
+                    Ok(Ok((status, _))) if (400..600).contains(&status) => {
+                        return reply(
+                            StatusCode::from_u16(status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
+                            "Previous version could not be preserved",
+                            false,
+                        )
+                    }
+                    Ok(Err(f)) => return fault_reply(f, true),
+                    _ => return fault_reply(Fault::Ambiguous, true),
+                }
+                WriteCondition::Match(file.version)
+            } else {
+                WriteCondition::Create
+            }
+        };
         let created = condition == WriteCondition::Create;
         let result = tokio::time::timeout(
             self.config.deadline,

@@ -344,15 +344,33 @@ fn error(f: Fault) -> Reply {
 /// Existing source transaction boundary. Caller activation, shared schema and
 /// full-backup/lifecycle integration remain separately held.
 pub fn execute(r: &Request) -> Result<Reply, Fault> {
-    execute_with(r, |tx, r, namespace| match r.op.as_str() {
+    execute_with(r, apply_operation)
+}
+fn apply_operation(tx: &Transaction<'_>, r: &Request, namespace: &str) -> Result<Reply, Fault> {
+    match r.op.as_str() {
         "stat" => reads::stat(tx, r),
         "list" => reads::list(tx, r),
         "trashList" => trash_list(tx, r),
         _ => mutate(tx, r, namespace),
-    })
+    }
+}
+/// Native callers can retain their live account/migration fence and recheck cancellation
+/// after SQLite admission and before commit. A refused guard never seals a receipt.
+pub fn execute_guarded(
+    r: &Request,
+    guard: impl Fn(&Transaction<'_>) -> Result<(), Fault>,
+) -> Result<Reply, Fault> {
+    execute_with_guard(r, &guard, apply_operation)
 }
 fn execute_with(
     r: &Request,
+    apply: impl FnOnce(&Transaction<'_>, &Request, &str) -> Result<Reply, Fault>,
+) -> Result<Reply, Fault> {
+    execute_with_guard(r, &|_| Ok(()), apply)
+}
+fn execute_with_guard(
+    r: &Request,
+    guard: &impl Fn(&Transaction<'_>) -> Result<(), Fault>,
     apply: impl FnOnce(&Transaction<'_>, &Request, &str) -> Result<Reply, Fault>,
 ) -> Result<Reply, Fault> {
     if r.version != 1 || !Path::new(&r.db_path).is_absolute() || !canonical_uuid(&r.expected_tenant)
@@ -381,6 +399,7 @@ fn execute_with(
     } else {
         TransactionBehavior::Deferred
     })?;
+    guard(&tx)?;
     validate_db(&tx, r)?;
     let namespace = meta(&tx, "workspace_operation_namespace")?.ok_or(Fault::Schema)?;
     if !canonical_uuid(&namespace) {
@@ -435,6 +454,7 @@ fn execute_with(
                 |row| row.get(0),
             )?;
             let stored = stored_reply(r, response, created)?;
+            guard(&tx)?;
             tx.commit()?;
             return Ok(stored);
         }
@@ -469,6 +489,7 @@ fn execute_with(
         tx.execute("INSERT INTO workspace_operation_receipts(id,fingerprint,op,response,created) VALUES(?,?,?,?,?)",
             params![id, fingerprint.as_deref().ok_or(Fault::Internal)?, r.op, bytes, created])?;
     }
+    guard(&tx)?;
     tx.commit()?;
     Ok(result)
 }
@@ -630,6 +651,24 @@ mod receipt_atomicity {
             )?,
             receipts
         );
+        Ok(())
+    }
+    #[test]
+    fn expired_native_guard_rolls_back_effect_and_receipt() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let (_dir, path) = fixture()?;
+        let request = request(&path)?;
+        let calls = std::cell::Cell::new(0);
+        let result = execute_guarded(&request, |_| {
+            calls.set(calls.get() + 1);
+            if calls.get() > 1 {
+                Err(Fault::Database)
+            } else {
+                Ok(())
+            }
+        });
+        assert_eq!(result, Err(Fault::Database));
+        unchanged(&path, 0)?;
         Ok(())
     }
     fn framed(reply: &Reply) -> Result<Vec<u8>, Fault> {
