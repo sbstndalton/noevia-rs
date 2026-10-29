@@ -46,6 +46,8 @@ pub struct Config {
     pub rust_reasoning_settings: Option<server_store::RustReasoningSettings>,
     pub rust_routing_mode: Option<server_store::RustRoutingMode>,
     pub routing_feature_env: Option<bool>,
+    /// Immutable native operator selections, in the canonical full catalog order.
+    pub feature_context_env: [Option<bool>; 23],
     /// GET /api/routing-default (M6, #1305).
     pub rust_routing_default: bool,
     /// GET /api/stats (M6, #1650): the engine it reads, configured from the keys core index.cjs
@@ -282,6 +284,14 @@ impl Config {
         } else {
             None
         };
+        let mut feature_context_env = [None; 23];
+        for (feature, slot) in server_features::Feature::ALL
+            .into_iter()
+            .zip(&mut feature_context_env)
+        {
+            *slot = server_features::parse_env(get(server_features::spec(feature).env).as_deref())
+                .map_err(str::to_owned)?;
+        }
         Ok(Config {
             host,
             port,
@@ -311,6 +321,7 @@ impl Config {
             rust_reasoning_settings,
             rust_routing_mode,
             routing_feature_env,
+            feature_context_env,
             rust_routing_default,
             rust_stats,
             rust_export,

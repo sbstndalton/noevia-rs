@@ -205,9 +205,10 @@ async fn server_main() -> ExitCode {
             start_id: app.config.start_id.clone().unwrap_or_default().into(),
         };
         let mut rx = stop_rx.clone();
-        tokio::spawn(noevia_server::project_store::serve(
+        tokio::spawn(noevia_server::project_store::serve_with_context(
             listener,
             store,
+            app.feature_context.clone(),
             async move {
                 let _ = rx.wait_for(|s| *s).await;
             },

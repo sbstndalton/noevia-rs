@@ -153,6 +153,20 @@ fn uuid(value: &str) -> Result<Uuid, StoreError> {
     }
     Ok(id)
 }
+/// Parse the closed, bounded envelope before constructing the handler's Control.
+pub fn request_id(bytes: &[u8]) -> Result<Uuid, StoreError> {
+    if bytes.len() > BODY_LIMIT {
+        return Err(unavailable());
+    }
+    let message: Message = serde_json::from_slice(bytes).map_err(|_| unavailable())?;
+    let request = match &message {
+        Message::Hello { request, .. }
+        | Message::Register { request, .. }
+        | Message::Renew { request, .. }
+        | Message::Release { request, .. } => request,
+    };
+    uuid(request)
+}
 /// Dispatch only after the existing private store capability is authenticated.
 /// The cleanup callback MUST implement the Account's startup migration/revoke
 /// work in the provided transaction. Its failure cannot acknowledge Ready.
