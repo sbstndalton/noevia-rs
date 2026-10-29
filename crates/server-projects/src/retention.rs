@@ -189,6 +189,217 @@ pub fn get(ctx: Ctx<'_>) -> Reply {
     }
 }
 
+/// Persist this owner's retention setting without recreating an account removed meanwhile.
+fn save_setting(dir: &Path, days: u32, last_sweep: i64) -> Result<(), store::StoreError> {
+    use rustix::fs::{open, openat, renameat, unlinkat, AtFlags, Mode, OFlags};
+    use std::io::Write;
+    let parent = std::fs::File::from(
+        open(
+            dir,
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map_err(std::io::Error::from)?,
+    );
+    let temp = format!(".retention-{}.tmp", crate::js::random36(24));
+    let result = (|| -> Result<(), std::io::Error> {
+        let mut file = std::fs::File::from(openat(
+            &parent,
+            temp.as_str(),
+            OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::from_raw_mode(0o600),
+        )?);
+        write!(file, "{{\"days\":{days},\"lastSweep\":{last_sweep}}}")?;
+        file.sync_all()?;
+        renameat(&parent, temp.as_str(), &parent, FILE)?;
+        parent.sync_all()
+    })();
+    if result.is_err() {
+        let _ = unlinkat(&parent, temp.as_str(), AtFlags::empty());
+    }
+    result.map_err(store::StoreError::from)
+}
+fn last_sweep(dir: &Path) -> Result<i64, store::StoreError> {
+    Ok(store::read_json(&dir.join(FILE))?
+        .and_then(|v| v.get("lastSweep").as_num())
+        .filter(|n| n.is_finite())
+        .unwrap_or(0.0) as i64)
+}
+fn remove_due(ctx: Ctx<'_>, due: &[Due]) -> Result<usize, Reply> {
+    let start = std::time::Instant::now();
+    let mut deleted = 0;
+    for chat in due {
+        if start.elapsed() > std::time::Duration::from_secs(30) {
+            return Err(Reply::error(
+                503,
+                "Retention sweep deadline reached; remaining chats were kept",
+            ));
+        }
+        let Some(id) = chat.id.as_str() else {
+            return Err(Reply::internal());
+        };
+        let kind = if let Some(project) = chat.project_id.as_str() {
+            crate::chat_delete::Kind::Project(project)
+        } else if chat.project_id == JValue::Null {
+            crate::chat_delete::Kind::Free
+        } else {
+            return Err(Reply::internal());
+        };
+        let result = crate::chat_delete::delete(
+            ctx.data_dir,
+            ctx.user_id,
+            id,
+            kind,
+            crate::journal::Origin::Remove,
+            ctx.switch,
+        )
+        .map_err(|_| {
+            Reply::error(
+                503,
+                "Retention sweep could not finish; retry to remove remaining chats",
+            )
+        })?;
+        deleted += usize::from(result.deleted);
+    }
+    Ok(deleted)
+}
+/// PUT contract: recompute before confirmation, persist the choice, then use native tombstoned deletion.
+pub fn put(ctx: Ctx<'_>, body: &[u8]) -> Reply {
+    let input = match wtf16::parse(&String::from_utf8_lossy(body)) {
+        Ok(v) => v,
+        Err(_) => return Reply::error(400, "invalid JSON"),
+    };
+    let Some(days) = input
+        .get("days")
+        .as_num()
+        .and_then(|n| [0, 30, 90, 365].into_iter().find(|d| f64::from(*d) == n))
+    else {
+        return Reply::error(400, "Choose off, or 30, 90 or 365 days.");
+    };
+    let dir = match store::user_dir(ctx.data_dir, ctx.user_id) {
+        Ok(v) => v,
+        Err(e) => return chats::store_failure(&e),
+    };
+    let _held = match crate::lock::acquire(&dir.join(FILE)) {
+        Ok(v) => v,
+        Err(_) => return Reply::error(503, "Retention settings are busy"),
+    };
+    let (free, projects) = match lists(&dir) {
+        Ok(v) => v,
+        Err(v) => return v,
+    };
+    let due = match expired(&free, &projects, days, ctx.now_ms as f64) {
+        Ok(v) => v,
+        Err(_) => return Reply::internal(),
+    };
+    let confirmed = input
+        .get("confirmDeletes")
+        .as_num()
+        .filter(|n| n.is_finite() && n.fract() == 0.0)
+        .unwrap_or(0.0);
+    if days != 0 && due.len() as f64 > confirmed {
+        let mut preview = Vec::new();
+        for period in PERIODS {
+            let n = match expired(&free, &projects, period, ctx.now_ms as f64) {
+                Ok(v) => v.len(),
+                Err(_) => return Reply::internal(),
+            };
+            preview.push((period.to_string(), JValue::Num(n as f64)));
+        }
+        let message = format!(
+            "{} chat{} would be deleted now. Confirm to continue.",
+            due.len(),
+            if due.len() == 1 { "" } else { "s" }
+        );
+        return Reply::json(
+            409,
+            wtf16::stringify(&JValue::obj([
+                ("error", JValue::from(message)),
+                ("preview", JValue::Obj(preview)),
+            ]))
+            .unwrap_or_default(),
+        );
+    }
+    let prior = match last_sweep(&dir) {
+        Ok(v) => v,
+        Err(_) => return Reply::internal(),
+    };
+    if save_setting(&dir, days, prior).is_err() {
+        return Reply::error(500, "Could not save");
+    }
+    let deleted = match remove_due(ctx, &due) {
+        Ok(v) => v,
+        Err(v) => return v,
+    };
+    if days != 0 && save_setting(&dir, days, ctx.now_ms).is_err() {
+        return Reply::error(500, "Could not save");
+    }
+    Reply::json(200, format!("{{\"days\":{days},\"deleted\":{deleted}}}"))
+}
+/// Original hourly workspace-load sweep. Call under the account Writer, never from a global scan.
+pub fn sweep(ctx: Ctx<'_>) -> Result<(), Reply> {
+    let dir = store::user_dir(ctx.data_dir, ctx.user_id).map_err(|_| Reply::internal())?;
+    let _held = crate::lock::acquire(&dir.join(FILE))
+        .map_err(|_| Reply::error(503, "Retention settings are busy"))?;
+    let days = stored_days(&dir).map_err(|_| Reply::internal())?;
+    if days == 0
+        || ctx
+            .now_ms
+            .saturating_sub(last_sweep(&dir).map_err(|_| Reply::internal())?)
+            < 3600000
+    {
+        return Ok(());
+    }
+    let (free, projects) = lists(&dir)?;
+    let due = expired(&free, &projects, days, ctx.now_ms as f64).map_err(|_| Reply::internal())?;
+    remove_due(ctx, &due)?;
+    save_setting(&dir, days, ctx.now_ms).map_err(|_| Reply::internal())
+}
+
+#[cfg(test)]
+mod native_write_tests {
+    use super::*;
+    #[test]
+    fn confirmation_precedes_settings_and_deletion_preserves_pinned_chats(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let root = tempfile::tempdir()?;
+        let user = "11111111-2222-4333-8444-555555555555";
+        let dir = root.path().join("users").join(user);
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(dir.join("projects.json"), r#"{"projects":[]}"#)?;
+        std::fs::write(
+            dir.join("free-chats.json"),
+            r#"[{"id":"old","updatedAt":1},{"id":"pinned","updatedAt":1,"pinned":true}]"#,
+        )?;
+        for id in ["old", "pinned"] {
+            std::fs::write(
+                dir.join(format!("history-{id}.json")),
+                r#"{"history":[{"role":"user","content":"synthetic"}]}"#,
+            )?;
+        }
+        let ctx = Ctx {
+            data_dir: root.path(),
+            user_id: user,
+            switch: server_store::RustProjects::owned(),
+            now_ms: 90 * 86400000,
+        };
+        assert_eq!(put(ctx, br#"{"days":30,"confirmDeletes":0}"#).status, 409);
+        assert!(!dir.join(FILE).exists());
+        assert!(dir.join("history-old.json").exists());
+        assert_eq!(
+            put(ctx, br#"{"days":30,"confirmDeletes":1}"#),
+            Reply::json(200, r#"{"days":30,"deleted":1}"#.into())
+        );
+        assert!(!dir.join("history-old.json").exists());
+        assert!(dir.join("history-pinned.json").exists());
+        assert!(std::fs::read_to_string(dir.join("deleted-chats.json"))?.contains("old"));
+        assert_eq!(stored_days(&dir).map_err(|e| format!("{e:?}"))?, 30);
+        assert_eq!(put(ctx, br#"{"days":0,"confirmDeletes":-1}"#).status, 200);
+        assert_eq!(stored_days(&dir).map_err(|e| format!("{e:?}"))?, 0);
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {

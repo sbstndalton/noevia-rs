@@ -148,7 +148,7 @@ pub(crate) fn get_project_effects(project: &JValue) -> Result<Effects, skills::U
 }
 
 /// `sanitizeChats(chats)`: `Err` where JS throws (a truthy non-array has no `filter`).
-fn sanitize(chats: &JValue) -> Result<Vec<JValue>, ()> {
+pub(crate) fn sanitize(chats: &JValue) -> Result<Vec<JValue>, ()> {
     match chats {
         JValue::Arr(items) => Ok(items
             .iter()

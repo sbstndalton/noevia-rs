@@ -159,6 +159,49 @@ dependencies = [
 ]
 
 [[package]]
+name = "backend-runtime"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "chrono-tz",
+ "diary-corpus-parse",
+ "diary-corpus-write",
+ "diary-index-transform",
+ "diary-workspace-export",
+ "diary-workspace-import-apply",
+ "diary-workspace-rules",
+ "diary-workspace-transaction",
+ "futures-core",
+ "js-json",
+ "mcp-frame",
+ "noevia-server",
+ "policy-leaves",
+ "project-file-names",
+ "prompt-framing",
+ "provider-egress",
+ "regex",
+ "reqwest",
+ "rusqlite",
+ "rustix",
+ "serde",
+ "serde_json",
+ "server-account",
+ "server-auth",
+ "server-dav",
+ "server-projects",
+ "server-storage-reads",
+ "server-store",
+ "sha2",
+ "tempfile",
+ "tokio",
+ "tool-exchange",
+ "url",
+ "uuid",
+ "workspace-restore-verify",
+]
+
+[[package]]
 name = "backend-telemetry"
 version = "0.1.0"
 dependencies = [
@@ -2861,6 +2904,7 @@ dependencies = [
  "hyper-util",
  "percent-encoding",
  "roxmltree",
+ "serde_json",
  "subtle",
  "tokio",
  "url",
@@ -2920,6 +2964,7 @@ version = "0.1.0"
 dependencies = [
  "js-json",
  "libc",
+ "prompt-framing",
  "proptest",
  "rand_core 0.6.4",
  "rustix",

@@ -195,6 +195,19 @@ pub const PUBLIC_AUTH_ROUTES: &[&str] = &[
 ];
 
 impl Account {
+    /// Caller must retain the live session/account fence around this read.
+    pub fn chat_system_parts(&self, user: &str) -> Result<Vec<String>, Fault> {
+        files::chat_parts(self, user, &[])
+    }
+
+    /// Project memory is supplied by the existing project authority under the same session fence.
+    pub fn chat_system_parts_with_memories(
+        &self,
+        user: &str,
+        memories: &[String],
+    ) -> Result<Vec<String>, Fault> {
+        files::chat_parts(self, user, memories)
+    }
     pub fn new(
         writer: Arc<Writer>,
         auth: Arc<Authenticator>,
