@@ -45,13 +45,17 @@ impl AccountLayer {
             app.writes.switch(),
         );
         let writer = app.writes.writer().ok()?;
-        let a = Arc::new(Account::new(
+        let a = Account::new(
             writer,
             Arc::new(Authenticator::new(auth)),
             settings,
             switch,
             now,
-        ));
+        );
+        let a = Arc::new(match &app.feature_context {
+            Some(context) => a.with_feature_context(context.controller()),
+            None => a,
+        });
         *slot = Some(Arc::clone(&a));
         Some(a)
     }
@@ -86,21 +90,37 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
     let now = crate::identity::now_ms();
     let (parts, body) = req.into_parts();
     let framing = path == "/api/chat-framing/preferences";
-    if framing {
+    let features = server_account::features::owns(&path);
+    if framing || features {
         let layer = Arc::clone(&app.identity);
         let creds = crate::identity::creds_of(&parts);
         let gate_path = path.clone();
         match tokio::task::spawn_blocking(move || layer.gate_current_blocking(&creds, &gate_path))
             .await
         {
-            Ok(Ok(_)) => {}
+            Ok(Ok(identity)) => {
+                if features
+                    && path != "/api/features"
+                    && identity.user.role != server_auth::Role::Admin
+                {
+                    return reply::error(StatusCode::FORBIDDEN, "Administrator required", true);
+                }
+            }
             Ok(Err(rejected)) => return rejected.into_response(),
             Err(_) => return crate::identity::Rejection::Unavailable.into_response(),
         }
     }
+    if features
+        && path.starts_with("/api/admin/features/")
+        && server_account::features::decode_suffix(&path).is_err()
+    {
+        return reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true);
+    }
     // Node never calls readJson for framing GET or unsupported methods. Header
     // admission precedes PUT body polling, including transport failures.
-    let body = if framing && parts.method != "PUT" {
+    let feature_body =
+        features && path.starts_with("/api/admin/features/") && parts.method == "PUT";
+    let body = if (framing && parts.method != "PUT") || (features && !feature_body) {
         server_account::Body::default()
     } else {
         match read_body(body, BODY_LIMIT).await {
@@ -108,7 +128,9 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
             Err(()) => {
                 return reply::error(
                     StatusCode::BAD_REQUEST,
-                    if framing {
+                    if features {
+                        "invalid JSON"
+                    } else if framing {
                         "Invalid framing preferences"
                     } else {
                         "invalid request body"

@@ -146,6 +146,11 @@ pub struct Admission {
     session: Uuid,
     generation: u64,
 }
+pub struct View {
+    pub admission: Admission,
+    pub facts: BootFacts,
+    pub snapshot: Snapshot,
+}
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Reply {
     Ready(Admission),
@@ -348,6 +353,11 @@ impl Controller {
         })
     }
     pub fn admission(&self, reader: &Reader<'_>) -> Result<Admission, StoreError> {
+        self.view(reader).map(|view| view.admission)
+    }
+    /// Read the live lease and its producer facts under one state lock, inside
+    /// the caller's SQLite snapshot. Never reconstruct facts from process env.
+    pub fn view(&self, reader: &Reader<'_>) -> Result<View, StoreError> {
         self.runtime.check_incarnation(reader)?;
         let mut state = self.state()?;
         state.expire(self.now());
@@ -355,7 +365,15 @@ impl Controller {
         let record = state.sessions.get(&session).ok_or_else(unavailable)?;
         record.snapshot.check_sources(reader)?;
         match record.reply {
-            Reply::Ready(admission) => Ok(admission),
+            Reply::Ready(admission) => Ok(View {
+                admission,
+                facts: state
+                    .boots
+                    .get(&record.boot)
+                    .ok_or_else(unavailable)?
+                    .clone(),
+                snapshot: record.snapshot.clone(),
+            }),
             _ => Err(unavailable()),
         }
     }

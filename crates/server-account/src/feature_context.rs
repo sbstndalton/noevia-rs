@@ -12,7 +12,7 @@ pub mod startup;
 pub mod wire;
 pub use lifecycle::{
     Admission, BootFacts, BrowserFact, Cancellation, ChoiceReason, Control, Controller,
-    Registration, Reply, Snapshot,
+    Registration, Reply, Snapshot, View,
 };
 
 pub const SOURCE_LIMIT: i64 = 1024 * 1024;

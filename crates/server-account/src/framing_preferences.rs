@@ -23,6 +23,10 @@ fn json_space(text: &str) -> &str {
 /// cannot reset an unrelated saved boolean. This is not a general JSON parser:
 /// serde validates grammar; this scan only splits validated top-level members.
 fn project(text: &str) -> Result<JValue, ()> {
+    project_booleans(text, &KEYS)
+}
+
+pub(crate) fn project_booleans(text: &str, keys: &[&str]) -> Result<JValue, ()> {
     let mut decoder = serde_json::Deserializer::from_str(text);
     serde::de::IgnoredAny::deserialize(&mut decoder).map_err(|_| ())?;
     decoder.end().map_err(|_| ())?;
@@ -42,7 +46,7 @@ fn project(text: &str) -> Result<JValue, ()> {
         let Ok(JValue::Str(key)) = js_json::parse(json_space(key)) else {
             return;
         };
-        if !KEYS.contains(&key.as_str()) {
+        if !keys.contains(&key.as_str()) {
             return;
         }
         let value = match json_space(value) {

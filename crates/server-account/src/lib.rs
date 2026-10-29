@@ -25,6 +25,7 @@ pub mod util;
 mod account;
 mod device;
 pub mod feature_context;
+pub mod features;
 mod files;
 mod framing_preferences;
 mod open;
@@ -181,6 +182,7 @@ pub struct Account {
     rate: Mutex<rate::RateLimiter>,
     device_rate: Mutex<rate::RateLimiter>,
     decoy_key: Mutex<Option<Vec<u8>>>,
+    feature_context: Option<Arc<feature_context::Controller>>,
 }
 
 /// The paths Node's open mounts answer without a session (index.cjs `publicAuthRoutes`).
@@ -223,7 +225,14 @@ impl Account {
             rate: Mutex::new(rate::RateLimiter::new(now)),
             device_rate: Mutex::new(rate::RateLimiter::new(now)),
             decoy_key: Mutex::new(None),
+            feature_context: None,
         }
+    }
+
+    /// Bind the exact controller used by this App's private context transport.
+    pub fn with_feature_context(mut self, controller: Arc<feature_context::Controller>) -> Self {
+        self.feature_context = Some(controller);
+        self
     }
 
     /// One request at `now` (epoch ms). Blocking: SQLite and Argon2.
@@ -263,8 +272,17 @@ impl Account {
         // index.cjs: the session gate for every /api/ path outside publicAuthRoutes.
         let api = req.path.starts_with("/api/");
         let authn = if api {
-            self.writer
-                .read(|r| self.auth.authenticate_in(r, &req.creds, now))?
+            self.writer.read(|r| {
+                self.auth.authenticate_in(
+                    r,
+                    &req.creds,
+                    if features::owns(&req.path) {
+                        current()
+                    } else {
+                        now
+                    },
+                )
+            })?
         } else {
             None
         };
@@ -300,6 +318,9 @@ impl Account {
             .into());
         }
         if let Some(o) = device::account(self, req, &authn, now)? {
+            return Ok(o);
+        }
+        if let Some(o) = features::handle(self, req, &authn, current)? {
             return Ok(o);
         }
         if let Some(o) = framing_preferences::handle(self, req, &authn, current)? {
