@@ -276,8 +276,8 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     }
     // A floor that shows the table was read; the count falls as routes move to the front (105 before
     // sbstndalton/noevia#2185 moved five Diary routes, 100 after, 98 after #2187 moved the two
-    // configuration-only model reads).
-    assert!(node_routes >= 98, "{node_routes} node routes");
+    // configuration-only model reads, 97 after #2189 moved GET /api/models/estimate).
+    assert!(node_routes >= 97, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("POST", "/api/ready"),

@@ -16,11 +16,14 @@
 //!   so no engine is asked. The Lemonade adapter (the only one that read hardware, from its
 //!   `/v1/system-info`) never reaches this front: config.rs refuses to start with it.
 //!
+//! `GET /api/models/estimate` and `GET /api/models/preset/suggest` moved here in batch M2-A
+//! (sbstndalton/noevia#2189, model_sizing.rs).
+//!
 //! Kept on Node (each needs its memory or its job state), with the rest of the 22 model routes:
 //! `/api/model-manager` (the folder scan cache), `/api/models/autotune*` and
 //! `/api/models/calibration*` (the job runners, M2), `/api/models/evidence` (the identity cache it
-//! fills), `/api/models/estimate` and `/api/models/inference-budget` (the boot-time budget fault,
-//! the inference budget store and the shared installed list), `/api/models/installed` (the shared
+//! fills), `/api/models/inference-budget` (the inference budget store, its PUT and the shared
+//! installed list), `/api/models/installed` (the shared
 //! installed list), `/api/models/machines` (probe and tune caches), the writes and `/api/models/{*}`.
 
 use crate::{identity, reply, App};
@@ -33,8 +36,14 @@ use std::sync::Arc;
 pub const CAPABILITIES: &str = "/api/models/capabilities";
 pub const HARDWARE: &str = "/api/models/hardware";
 
-/// The model reads this front answers (GET only; routes.toml).
-pub const ROUTES: &[&str] = &[CAPABILITIES, HARDWARE];
+/// The model reads this front answers (GET only; routes.toml): the two configuration-only reads
+/// (#2187) and the two sizing reads (#2189, model_sizing.rs).
+pub const ROUTES: &[&str] = &[
+    CAPABILITIES,
+    HARDWARE,
+    crate::model_sizing::ESTIMATE,
+    crate::model_sizing::SUGGEST,
+];
 
 /// What the model reads answer from: the keys core index.cjs read at startup.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,6 +119,7 @@ pub async fn serve(
     if !ROUTES.contains(&path.as_str()) || req.method() != Method::GET {
         return app.proxy.forward(conn.peer, req).await;
     }
+    let model = crate::model_sizing::model_param(req.uri());
     let (parts, _body) = req.into_parts();
     let creds = identity::creds_of(&parts);
     let layer = Arc::clone(&app.identity);
@@ -122,6 +132,16 @@ pub async fn serve(
         Ok(Err(rejection)) => return rejection.into_response(),
         Err(_) => return identity::Rejection::Unavailable.into_response(),
     };
+    if let Some(route) = crate::model_sizing::Route::of(&path) {
+        let layer = Arc::clone(&app.identity);
+        let budget = Arc::new(move || crate::model_sizing::budget_setting(&layer));
+        let (status, body) = app
+            .config
+            .sizing
+            .answer(route, id.user.role == Role::Admin, model, budget)
+            .await;
+        return crate::model_sizing::respond(status, body);
+    }
     let reads = app.config.models;
     if path == CAPABILITIES {
         return reply::json_text(
