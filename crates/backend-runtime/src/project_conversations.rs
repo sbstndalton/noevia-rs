@@ -120,6 +120,32 @@ impl ProjectConversations {
     }
 }
 impl Conversations for ProjectConversations {
+    fn partial(&self, binding: &Binding, id: &str, entry: Option<&Value>) -> Result<()> {
+        if self
+            .running
+            .lock()
+            .map_err(|_| Fault::Unavailable)?
+            .get(&(binding.user.clone(), binding.canonical_chat_id.clone()))
+            .is_none_or(|turn| turn.id != id)
+        {
+            return Err(Fault::Conflict);
+        }
+        let value = entry
+            .map(|entry| {
+                serde_json::to_string(entry)
+                    .map_err(Fault::from)
+                    .and_then(|text| js_json::wtf16::parse(&text).map_err(|_| Fault::Invalid))
+            })
+            .transpose()?;
+        chat_move::write_bound_partial(
+            &self.data,
+            &binding.user,
+            &Self::native(binding),
+            value.as_ref(),
+        )
+        .map_err(|_| Fault::Conflict)
+    }
+
     fn supports_project_files(&self) -> bool {
         true
     }
@@ -279,6 +305,7 @@ impl Conversations for ProjectConversations {
         match saved {
             transcript::Saved::Saved { .. } => {
                 self.journal.mark_applied(id)?;
+                self.partial(binding, id, None)?;
                 self.release(&binding.user, id)
             }
             transcript::Saved::Deleted | transcript::Saved::Conflict { .. } => Err(Fault::Conflict),

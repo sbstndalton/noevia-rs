@@ -325,3 +325,73 @@ async fn browser_tool_events_distinguish_applied_declined_and_uncertain(
     }
     Ok(())
 }
+
+struct RepeatedExternal(AtomicUsize);
+impl Model for RepeatedExternal {
+    fn complete<'a>(
+        &'a self,
+        _: &'a [Value],
+        _: &'a [Value],
+        _: &'a Control,
+    ) -> FutureResult<'a, Value> {
+        Box::pin(async move {
+            let round = self.0.fetch_add(1, Ordering::SeqCst);
+            if round == 2 {
+                return Ok(json!({"role":"assistant","content":"done"}));
+            }
+            Ok(
+                json!({"role":"assistant","tool_calls":[{"id":format!("call{round}"),"type":"function","function":{"name":"nc_webdav_read_file","arguments":"{\"path\":\"diary/note.md\"}"}}]}),
+            )
+        })
+    }
+}
+#[tokio::test]
+async fn cached_egress_refusal_remains_not_run() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let store = Arc::new(StateStore::create(&dir.path().join("state.db"))?);
+    let binding = Binding {
+        user: "synthetic".into(),
+        canonical_chat_id: "one".into(),
+        scope: "free".into(),
+        holder: Holder::Free,
+        generation: "0".into(),
+        start: "a".repeat(32),
+        tombstoned: false,
+    };
+    store.create_chat(&binding)?;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mut tools: BTreeMap<String, Arc<dyn Tool>> = BTreeMap::new();
+    tools.insert(
+        "nc_webdav_read_file".into(),
+        Arc::new(Count {
+            count: Arc::clone(&calls),
+            write: false,
+        }),
+    );
+    let runtime = Runtime::new(
+        store,
+        Arc::new(RepeatedExternal(AtomicUsize::new(0))),
+        tools,
+    )?;
+    let mut outcomes = Vec::new();
+    runtime
+        .run(
+            binding,
+            &uuid::Uuid::new_v4().to_string(),
+            json!({"role":"user","content":"test"}),
+            &Control::new(Duration::from_secs(5))?,
+            |event| {
+                if event.get("type") == Some(&json!("tool_result")) {
+                    outcomes.push(event);
+                }
+                Ok(())
+            },
+        )
+        .await?;
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert_eq!(outcomes.len(), 2);
+    assert!(outcomes
+        .iter()
+        .all(|event| event.get("notRun") == Some(&Value::Bool(true))));
+    Ok(())
+}

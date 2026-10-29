@@ -617,6 +617,62 @@ pub fn write_bound_transcript(
     })
 }
 
+/// Original chat partial file, written only while its canonical owner/generation
+/// is held. Account/session authority must surround this call, as for transcripts.
+pub fn write_bound_partial(
+    data: &Path,
+    user: &str,
+    expected: &GrantContext,
+    entry: Option<&JValue>,
+) -> Result<(), MoveError> {
+    let dir = store::user_dir(data, user)?;
+    with_held(&dir, |state| {
+        recover_held(&dir, state, &|_| Ok(()))?;
+        let current = context_held(&dir, &expected.canonical, &expected.start, state)?;
+        if current != *expected || current.tombstoned || current.holder == Holder::Absent {
+            return Err(MoveError::NotFound);
+        }
+        let file = crate::partial::file_for(&dir, &expected.canonical);
+        let parent = file.parent().ok_or(MoveError::Invalid)?;
+        if let Some(entry) = entry {
+            match std::fs::create_dir(parent) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(e) => return Err(StoreError::from(e).into()),
+            }
+            transcript::existing_dir(parent)?;
+            let text = js_json::wtf16::stringify(entry).ok_or(MoveError::Invalid)?;
+            if text.len() > 8 * 1024 * 1024 {
+                return Err(MoveError::Invalid);
+            }
+            strict_write(
+                parent,
+                file.file_name()
+                    .and_then(|n| n.to_str())
+                    .ok_or(MoveError::Invalid)?,
+                &text,
+                &|_| Ok(()),
+            )?;
+        } else {
+            match std::fs::symlink_metadata(parent) {
+                Ok(_) => transcript::existing_dir(parent)?,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+                Err(e) => return Err(StoreError::from(e).into()),
+            }
+            match std::fs::remove_file(&file) {
+                Ok(()) => {
+                    std::fs::File::open(parent)
+                        .and_then(|file| file.sync_all())
+                        .map_err(StoreError::from)?;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(StoreError::from(e).into()),
+            }
+        }
+        Ok(())
+    })
+}
+
 pub fn recover(data: &Path, user: &str) -> Result<(), MoveError> {
     let dir = store::user_dir(data, user)?;
     with_held(&dir, |s| Ok(recover_held(&dir, s, &|_| Ok(()))?))

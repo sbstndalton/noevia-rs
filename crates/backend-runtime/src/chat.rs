@@ -226,18 +226,124 @@ impl Model for OpenAiModel {
         })
     }
 }
+#[derive(Default)]
+struct PartialRecord {
+    content: String,
+    reasoning: String,
+    tools: BTreeMap<usize, Value>,
+    failed: bool,
+    truncated: bool,
+}
+fn partial_tail(text: &str, cap: usize) -> String {
+    let units = text.encode_utf16().collect::<Vec<_>>();
+    String::from_utf16_lossy(
+        units
+            .get(units.len().saturating_sub(cap)..)
+            .unwrap_or_default(),
+    )
+}
+impl PartialRecord {
+    fn observe(&mut self, event: &Value, tools: &BTreeMap<usize, Value>) {
+        if let Some(index) = event
+            .get("index")
+            .and_then(Value::as_u64)
+            .and_then(|n| usize::try_from(n).ok())
+        {
+            if let Some(record) = tools.get(&index) {
+                let mut record = record.clone();
+                if let Some(object) = record.as_object_mut() {
+                    for (key, cap) in [("args", 4000), ("result", 300), ("target", 300)] {
+                        if let Some(text) = object.get(key).and_then(Value::as_str) {
+                            if text.encode_utf16().count() > cap {
+                                self.truncated = true;
+                                object.insert(key.into(), Value::String(partial_tail(text, cap)));
+                            }
+                        }
+                    }
+                    if object.get("status").and_then(Value::as_str) == Some("running") {
+                        object.insert("status".into(), json!("stopped"));
+                    }
+                }
+                self.tools.insert(index, record);
+            }
+        }
+        if let Some(text) = event.get("text").and_then(Value::as_str) {
+            let target = match event.get("type").and_then(Value::as_str) {
+                Some("delta") => Some(&mut self.content),
+                Some("reasoning") => Some(&mut self.reasoning),
+                _ => None,
+            };
+            if let Some(target) = target {
+                target.push_str(text);
+                if target.len() > 256 * 1024 {
+                    self.truncated = true;
+                    *target = partial_tail(target, 65536);
+                }
+            }
+        }
+    }
+    fn entry(&self) -> Option<Value> {
+        let applied = self
+            .tools
+            .values()
+            .filter(|t| t.get("applied") == Some(&Value::Bool(true)))
+            .count();
+        if (self.failed && applied == 0)
+            || (self.content.is_empty() && self.reasoning.is_empty() && self.tools.is_empty())
+        {
+            return None;
+        }
+        let tools = self
+            .tools
+            .values()
+            .filter(|t| !self.failed || t.get("status").and_then(Value::as_str) != Some("denied"))
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut entry = json!({"role":"assistant","content":if self.failed {String::new()} else {partial_tail(&self.content,65536)},"toolCalls":tools,"interrupted":true,"savedAt":chrono::Utc::now().timestamp_millis(),"truncated":self.truncated || self.content.encode_utf16().count()>65536});
+        if let Some(object) = entry.as_object_mut() {
+            if !self.failed && !self.reasoning.is_empty() {
+                object.insert(
+                    "reasoning".into(),
+                    json!(partial_tail(&self.reasoning, 65536)),
+                );
+            }
+            if applied > 0 {
+                object.insert(
+                    "paused".into(),
+                    json!({"reason":"stopped","applied":applied}),
+                );
+            }
+        }
+        Some(entry)
+    }
+}
 struct TurnGuard {
     store: Arc<dyn Conversations>,
     user: String,
     id: String,
     finished: bool,
+    binding: Binding,
+    partial: std::sync::Arc<std::sync::Mutex<PartialRecord>>,
+    fault: Fault,
 }
 impl Drop for TurnGuard {
     fn drop(&mut self) {
         if !self.finished {
-            let _ = self.store.fail(&self.user, &self.id, Fault::Cancelled);
+            if let Ok(snapshot) = self.partial.lock() {
+                let _ = self
+                    .store
+                    .partial(&self.binding, &self.id, snapshot.entry().as_ref());
+            }
+            let _ = self.store.fail(&self.user, &self.id, self.fault);
         }
     }
+}
+struct CachedToolResult {
+    text: String,
+    write: bool,
+    applied: bool,
+    declined: bool,
+    not_run: bool,
 }
 pub struct Runtime {
     pub approvals: Approvals,
@@ -411,15 +517,21 @@ impl Runtime {
             }
             None => self.store.begin(&binding, id, &user_message, control)?,
         };
+        let partial = std::sync::Arc::new(std::sync::Mutex::new(PartialRecord::default()));
         let mut guard = TurnGuard {
             store: Arc::clone(&self.store),
             user: binding.user.clone(),
             id: id.to_owned(),
             finished: false,
+            binding: binding.clone(),
+            partial: std::sync::Arc::clone(&partial),
+            fault: Fault::Cancelled,
         };
+        self.store.partial(&binding, id, None)?;
         messages.push(user_message);
         let mut recorded = BTreeMap::<usize, Value>::new();
         let mut recorded_bytes = 0usize;
+        let mut partial_saved = std::time::Instant::now();
         let result = self
             .exchange(&binding, &mut messages, control, &mut |event| {
                 if matches!(
@@ -460,6 +572,8 @@ impl Runtime {
                             "status".into(),
                             json!(if event.get("declined") == Some(&Value::Bool(true)) {
                                 "denied"
+                            } else if event.get("notRun") == Some(&Value::Bool(true)) {
+                                "stopped"
                             } else {
                                 "done"
                             }),
@@ -471,6 +585,20 @@ impl Runtime {
                         }
                     } else {
                         record.insert("status".into(), json!("running"));
+                    }
+                }
+                {
+                    let mut snapshot = partial.lock().map_err(|_| Fault::Unavailable)?;
+                    snapshot.observe(&event, &recorded);
+                    if partial_saved.elapsed() >= std::time::Duration::from_secs(4) {
+                        if let Some(mut running) = snapshot.entry() {
+                            running
+                                .as_object_mut()
+                                .ok_or(Fault::Invalid)?
+                                .insert("running".into(), json!({"start":binding.start}));
+                            self.store.partial(&binding, id, Some(&running))?;
+                        }
+                        partial_saved = std::time::Instant::now();
                     }
                 }
                 emit(event)
@@ -486,7 +614,7 @@ impl Runtime {
                     &recorded.into_values().collect::<Vec<_>>(),
                     control,
                 ) {
-                    let _ = self.store.fail(&binding.user, id, e);
+                    guard.fault = e;
                     return Err(e);
                 }
                 guard.finished = true;
@@ -497,7 +625,12 @@ impl Runtime {
                 Ok(messages)
             }
             Err(e) => {
-                let _ = self.store.fail(&binding.user, id, e);
+                guard.fault = e;
+                if !matches!(e, Fault::Cancelled | Fault::Deadline) {
+                    if let Ok(mut snapshot) = partial.lock() {
+                        snapshot.failed = true;
+                    }
+                }
                 Err(e)
             }
         }
@@ -569,7 +702,7 @@ impl Runtime {
         let schemas:Vec<Value>=self.tools.iter().filter(|(name,tool)|permitted(name,tool)).map(|(name,tool)|json!({"type":"function","function":{"name":name,"description":tool.description(),"parameters":tool.schema()}})).collect();
         // Original tool-exchange contract: one cache per turn, canonical Rust keys,
         // serial execution, uncertain writes cached and reads invalidated only on write attempt.
-        let mut results = BTreeMap::<Vec<u16>, (String, bool, bool, bool)>::new();
+        let mut results = BTreeMap::<Vec<u16>, CachedToolResult>::new();
         let mut event_index = 0usize;
         for _round in 0..32 {
             control.check()?;
@@ -688,10 +821,11 @@ impl Runtime {
                         String::from_utf16(&answer).map_err(|_| Fault::Protocol)?
                     }
                     tool_exchange::Check::Run(key) => {
-                        if let Some((text, _, saved_applied, saved_declined)) = results.get(&key) {
-                            applied = *saved_applied;
-                            declined = *saved_declined;
-                            text.clone()
+                        if let Some(saved) = results.get(&key) {
+                            applied = saved.applied;
+                            declined = saved.declined;
+                            not_run = saved.not_run;
+                            saved.text.clone()
                         } else {
                             let arguments: Value = if raw.is_empty() {
                                 json!({})
@@ -707,7 +841,16 @@ impl Runtime {
                             ) {
                                 let text =
                                     String::from_utf16(&refusal).map_err(|_| Fault::Protocol)?;
-                                results.insert(key, (text.clone(), false, false, false));
+                                results.insert(
+                                    key,
+                                    CachedToolResult {
+                                        text: text.clone(),
+                                        write: false,
+                                        applied: false,
+                                        declined: false,
+                                        not_run: true,
+                                    },
+                                );
                                 messages
                                     .push(json!({"role":"tool","tool_call_id":id,"content":text}));
                                 emit(
@@ -749,7 +892,7 @@ impl Runtime {
                             }
                             let output = if allowed {
                                 if tool.mutating() {
-                                    results.retain(|_, (_, write, _, _)| *write);
+                                    results.retain(|_, result| result.write);
                                 }
                                 match tool.call(binding, arguments, control).await {
                                     Ok(value) => {
@@ -789,8 +932,16 @@ impl Runtime {
                             if output.len() > 1024 * 1024 {
                                 return Err(Fault::Capacity);
                             }
-                            results
-                                .insert(key, (output.clone(), tool.mutating(), applied, declined));
+                            results.insert(
+                                key,
+                                CachedToolResult {
+                                    text: output.clone(),
+                                    write: tool.mutating(),
+                                    applied,
+                                    declined,
+                                    not_run,
+                                },
+                            );
                             output
                         }
                     }

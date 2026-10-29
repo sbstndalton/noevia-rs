@@ -63,6 +63,10 @@ impl SessionConversations {
     }
 }
 impl Conversations for SessionConversations {
+    fn partial(&self, binding: &Binding, id: &str, entry: Option<&Value>) -> Result<()> {
+        self.fenced(&binding.user, || self.inner.partial(binding, id, entry))
+    }
+
     fn tool_mode(&self, binding: &Binding, name: &str, write: bool) -> Result<policy_leaves::Mode> {
         if binding.user != self.user {
             return Err(Fault::Forbidden);

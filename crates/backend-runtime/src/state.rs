@@ -289,6 +289,10 @@ impl StateStore {
 /// Execution persistence contract. Production adapters must fence the actual holder and
 /// generation together with the transcript write, not just compare before an await.
 pub trait Conversations: Send + Sync {
+    fn partial(&self, _binding: &Binding, _id: &str, _entry: Option<&Value>) -> Result<()> {
+        Ok(())
+    }
+
     fn tool_mode(
         &self,
         _binding: &Binding,
