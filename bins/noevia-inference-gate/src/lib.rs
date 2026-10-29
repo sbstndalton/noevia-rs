@@ -962,8 +962,11 @@ pub(crate) async fn admit_request(
                     .arrive_without_autoload_by(now, model, lease, left, by_hold)
             };
             let mut queued_bytes = None;
+            // The current hold's own requests are not counted against the queued share: other
+            // clients waiting out the hold may fill it, and must not lock the holder out.
+            let holder = by_hold.is_some_and(|k| inner.sched.hold_live(now, k));
             if let Arrival::Queued { waiter, .. } = &arrival {
-                if inner.queued_kib.saturating_add(body_kib) > queued_cap {
+                if !holder && inner.queued_kib.saturating_add(body_kib) > queued_cap {
                     inner.sched.cancel(*waiter);
                     arrival = Arrival::Refused(Refusal::GateBusy);
                 } else {
@@ -1122,7 +1125,11 @@ pub(crate) fn hold_from_headers(
         // The key, not a flag: the scheduler compares it with the hold held when the request is
         // admitted, which may have changed while it waited.
         Some((held, key)) if held == hash && inner.sched.hold_live(now, key) => Ok(Some(key)),
-        _ => Err(Refusal::HoldUnknown),
+        // Another live hold: this token is not it.
+        Some((_, key)) if inner.sched.hold_live(now, key) => Err(Refusal::HoldUnknown),
+        // No hold at all (the gate restarted, or the hold ended): a well-formed token names nothing,
+        // so the request is admitted as anyone's would be.
+        _ => Ok(None),
     }
 }
 

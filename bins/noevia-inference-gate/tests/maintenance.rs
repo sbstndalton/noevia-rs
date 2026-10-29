@@ -261,7 +261,9 @@ async fn requests_without_the_hold_wait_and_the_holders_own_run_at_once() {
         before + 1,
         "it reached the router only after the release"
     );
-    // The header is the gate's: never forwarded, and a stale or malformed one is refused.
+    // The header is the gate's: never forwarded. A stale one names another live hold: refused;
+    // a malformed one is refused.
+    let other_hold = take(&gate, "Tuning again").await;
     let stale = client()
         .post(gate.url("/v1/chat/completions"))
         .header("x-noevia-maintenance", &token)
@@ -282,6 +284,87 @@ async fn requests_without_the_hold_wait_and_the_holders_own_run_at_once() {
         .await
         .unwrap();
     assert_eq!(bad.status(), 400);
+    assert_eq!(release(&gate, Some(ADMIN), &other_hold).await, 204);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_token_the_gate_no_longer_knows_is_no_hold_when_none_is_held() {
+    // A fresh gate (restarted: every hold forgotten): the job's next request still carries its old
+    // token, and is admitted as anyone's would be instead of being refused.
+    let (_router, gate) = setup().await;
+    let resp = client()
+        .post(gate.url("/v1/chat/completions"))
+        .header("x-noevia-maintenance", "a".repeat(32))
+        .body(chat_body(CODE, 1, 1))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    // Read to its end, so the request is no longer in flight when the hold is asked for.
+    resp.text().await.unwrap();
+    // The same after a hold ended on this gate.
+    let (status, body) = hold(
+        &gate,
+        Some(ADMIN),
+        serde_json::json!({ "reason": "Calibrating", "wait_ms": 2000 }),
+    )
+    .await;
+    assert_eq!(status, 201, "{body}");
+    let token = body["hold"].as_str().unwrap().to_owned();
+    assert_eq!(release(&gate, Some(ADMIN), &token).await, 204);
+    let resp = client()
+        .post(gate.url("/v1/chat/completions"))
+        .header("x-noevia-maintenance", &token)
+        .body(chat_body(CODE, 1, 1))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+async fn waiters_filling_the_queued_share_never_lock_the_holder_out_of_a_model_switch() {
+    let router = FakeRouter::start(
+        &[(CODE, St::Loaded, false), (SMART, St::Unloaded, false)],
+        FakeConfig::default(),
+    )
+    .await;
+    let mut cfg = test_config(router.url());
+    cfg.max_buffered_bytes = 64 * 1024;
+    let gate = Arc::new(start_gate(cfg).await);
+    let token = take(&gate, "Calibrating").await;
+    // Another client's request waits out the hold and uses most of the 32 KiB waiting share.
+    let waiting = {
+        let gate = Arc::clone(&gate);
+        tokio::spawn(async move {
+            client()
+                .post(gate.url("/v1/chat/completions"))
+                .body(padded_body(CODE, 20))
+                .send()
+                .await
+                .unwrap()
+                .status()
+                .as_u16()
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(!waiting.is_finished());
+    // The holder's request for a model outside the chat slot queues behind the switch: granted.
+    let own = client()
+        .post(gate.url("/v1/chat/completions"))
+        .header("x-noevia-maintenance", &token)
+        .body(padded_body(SMART, 20))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        own.status(),
+        200,
+        "{:?}",
+        own.headers().get("x-noevia-gate-refusal")
+    );
+    assert_eq!(release(&gate, Some(ADMIN), &token).await, 204);
+    assert_eq!(waiting.await.unwrap(), 200);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
