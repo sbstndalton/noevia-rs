@@ -60,6 +60,9 @@ pub struct Config {
     /// GET /api/models/capabilities and /api/models/hardware (sbstndalton/noevia#2187): the engine
     /// kind (the same one /api/stats reads), the preset file and the model management service.
     pub models: crate::model_routes::ModelReads,
+    /// GET /api/models/estimate and /api/models/preset/suggest (sbstndalton/noevia#2189): the
+    /// preset file, the model mounts, the sizing budget keys and the same engine /api/stats reads.
+    pub sizing: std::sync::Arc<crate::model_sizing::Sizing>,
     /// GET /api/export/conversations (M4, sbstndalton/noevia#1315), read from the user's files on
     /// disk: always on (#1071), since free-chats.json on disk is the list (Rust is its only writer,
     /// the owner's 2026-10-12 condition).
@@ -227,7 +230,13 @@ impl Config {
             return Err("GET /api/stats is not available with the Lemonade model manager (its MTP last-response fallback was recorded in Node)".into());
         }
         let models = crate::model_routes::ModelReads::from_lookup(engine.kind(), &get);
-        let rust_stats = Some(std::sync::Arc::new(engine));
+        let engine = std::sync::Arc::new(engine);
+        let sizing = std::sync::Arc::new(crate::model_sizing::Sizing::from_lookup(
+            engine.kind(),
+            std::sync::Arc::clone(&engine),
+            &get,
+        ));
+        let rust_stats = Some(engine);
         // GET /api/export/conversations reads the free-chat list from disk, which Rust alone
         // writes (the owner's 2026-10-12 condition): always the front's (#1071).
         let rust_export = true;
@@ -333,6 +342,7 @@ impl Config {
             rust_routing_default,
             rust_stats,
             models,
+            sizing,
             rust_export,
             project_store,
             start_id,

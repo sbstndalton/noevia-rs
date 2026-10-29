@@ -14,6 +14,7 @@ pub mod health;
 pub mod identity;
 pub mod legacy_proxy;
 pub mod model_routes;
+pub mod model_sizing;
 pub mod project_routes;
 pub mod project_store;
 pub mod reasoning_settings_routes;
@@ -71,6 +72,11 @@ use std::sync::Arc;
 /// those two GETs (core rust-models.cjs `RUST_MODELS_OWNED`), so the web supervisor must refuse a
 /// front without it beside such a Core, and a front with it beside an older Core.
 ///
+/// `rust-model-sizing`: this build answers `GET /api/models/estimate` and `GET
+/// /api/models/preset/suggest` (sbstndalton/noevia#2189, src/model_sizing.rs), permanently and
+/// with no switch. Node refuses those two GETs (core rust-model-sizing.cjs `RUST_MODEL_SIZING_OWNED`),
+/// so the web supervisor pairs this capability with that Core in both directions.
+///
 /// `project-store`: this build serves the internal project store Node writes projects.json and
 /// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
 /// supervisor confirms it to Node (NOEVIA_RUST_PROJECT_STORE_CONFIRMED) and hands both the secret.
@@ -96,6 +102,7 @@ pub const FEATURES: &[&str] = &[
     "rust-auth",
     "rust-diary",
     "rust-model-reads",
+    "rust-model-sizing",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",
