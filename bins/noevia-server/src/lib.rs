@@ -13,6 +13,7 @@ pub mod feature_context;
 pub mod health;
 pub mod identity;
 pub mod legacy_proxy;
+pub mod model_routes;
 pub mod project_routes;
 pub mod project_store;
 pub mod reasoning_settings_routes;
@@ -65,6 +66,11 @@ use std::sync::Arc;
 /// sbstndalton/noevia#2185), permanently and with no switch. Node refuses them (core
 /// rust-diary.cjs `RUST_DIARY_OWNED`), so the web supervisor must refuse a front without it.
 ///
+/// `rust-model-reads`: this build answers `GET /api/models/capabilities` and `GET
+/// /api/models/hardware` (sbstndalton/noevia#2187), permanently and with no switch. Node refuses
+/// those two GETs (core rust-models.cjs `RUST_MODELS_OWNED`), so the web supervisor must refuse a
+/// front without it beside such a Core, and a front with it beside an older Core.
+///
 /// `project-store`: this build serves the internal project store Node writes projects.json and
 /// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
 /// supervisor confirms it to Node (NOEVIA_RUST_PROJECT_STORE_CONFIRMED) and hands both the secret.
@@ -89,6 +95,7 @@ pub const FEATURES: &[&str] = &[
     server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER,
     "rust-auth",
     "rust-diary",
+    "rust-model-reads",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",
@@ -257,6 +264,7 @@ async fn handle(
                     | routes::Native::Export
                     | routes::Native::ChatgptStatus
                     | routes::Native::Diary
+                    | routes::Native::Models
             )
         ) {
             native = on_whatwg;
@@ -279,7 +287,8 @@ async fn handle(
             | routes::Native::Stats
             | routes::Native::Export
             | routes::Native::ChatgptStatus
-            | routes::Native::Diary,
+            | routes::Native::Diary
+            | routes::Native::Models,
         )
         | None => false,
     };
@@ -410,6 +419,12 @@ async fn handle(
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };
             diary_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::Models) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            model_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::Ready) => {
             if app.proxy.is_in_process() {

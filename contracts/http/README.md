@@ -379,3 +379,51 @@ a removed preload, and runs `host-control` with a 12 GiB input. That full replay
 must reject exactly the strict `budgetGib`, `hostRamGib` and `maxGib` fields;
 all other fields and statuses remain checked. The regular 8 GiB Node baseline
 and native front must match all 228 exchanges and final state.
+
+## sbstndalton/noevia#2187 (batch M1): one maintenance authority, and the configuration-only model reads
+
+The inference gate (`bins/noevia-inference-gate`) is the one maintenance authority. A preset write, a
+calibration, an auto-tune model or a throughput sweep takes the gate's maintenance hold
+(`POST /gate/v1/maintenance`, admin token only); every client of the router then respects the same
+hold, and core's in-process gate (`server/inference-maintenance.cjs`) is only the fallback when no gate
+with the hold API is configured (no `INFERENCE_GATE_ADMIN_TOKEN`, or a 404 from the engine address).
+The hold is refused (409 `engine_busy`) while a request is in flight, a lease is live, anyone is queued,
+a switch, unload or reload runs, or a detached session generation is held; `wait_ms` (at most 10 min)
+waits for that to end. While it is held, requests and leases without it wait for its end (bounded by
+their own wait limit, then 503 `maintenance_held`); unloads (but an admin force) and preset reloads
+without it are refused `engine_busy`; exempt work and `autoload=false` reads, which never take the
+chat slot, run as they did under core's in-process hold. The
+holder's requests carry it in `X-Noevia-Maintenance`. It ends by `DELETE /gate/v1/maintenance/{hold}`,
+or when its holder has neither renewed (`POST /gate/v1/maintenance/{hold}/renew`) nor used it for its
+idle limit (default 60 s, 1 s to 10 min on request): a holder that died pauses the engine that long at
+most; there is no hard limit, a calibration may run for hours while it renews. `GET /gate/v1/status`
+shows `maintenance: {held, reason, held_ms, idle_ttl_ms}` (the holder's text, never request content).
+
+Two of the 22 model routes are configuration only and move to the front, GET only
+(`src/model_routes.rs`); core refuses those GETs with 503 `RUST_MODELS_OWNED` (`server/rust-models.cjs`)
+and `--features` lists `rust-model-reads`. The rest wait for batch M2 (the job runners and writes).
+
+| route | owner | why |
+|---|---|---|
+| `/api/models/capabilities` (GET) | rust | the adapter kind, `LLAMACPP_PRESET_PATH` and `MODEL_LOADER_URL` only |
+| `/api/models/hardware` (GET) | rust | no model manager: 404; llama.cpp cannot discover hardware: `{supported:false}`; other methods keep Node's 405 |
+| `/api/model-manager` | node | proxy whose `GET models` serves Node's in-memory folder scan cache (and writes it); sweep hold, delete cleanup |
+| `/api/models/autotune` | node | GET is the auto-tune job runner's in-memory job state; POST starts it (M2) |
+| `/api/models/autotune/cancel` | node | write to the running job (M2) |
+| `/api/models/autotune/clear` | node | write to the job state (M2) |
+| `/api/models/autotune/resume` | node | starts the job runner (M2) |
+| `/api/models/autotune/settings` | node | write to the tune history the runner keeps (M2) |
+| `/api/models/autotune/untuned` | node | reads the runner's tune history and identity state |
+| `/api/models/calibration` | node | GET is the calibration job's in-memory state; POST starts it (M2) |
+| `/api/models/calibration/cancel` | node | write to the running job (M2) |
+| `/api/models/delete` | node | write: unload, delete, roles, preset section (M2) |
+| `/api/models/estimate` | node | sizes with the boot-time budget fault and the inference budget store held in Node |
+| `/api/models/evidence` | node | fills Node's in-memory identity cache that evidence writes use |
+| `/api/models/evidence/import` | node | write (M2) |
+| `/api/models/evidence/recheck` | node | write that may load a model (M2) |
+| `/api/models/inference-budget` | node | budget store, boot-time budget, Node's shared installed list; PUT writes |
+| `/api/models/installed` | node | Node's shared (cached, invalidated by its writes) installed list |
+| `/api/models/load` | node | write through Node's lease and maintenance gate (M2) |
+| `/api/models/machines` | node | machine health probe and tune caches in Node memory; POST writes |
+| `/api/models/presets/reload` | node | write under the maintenance hold (M2) |
+| `/api/models/{*}` | node | preset, suggest, idle-unload, assignments, reranker, prune, mtp-artifact, pull, downloads: mixed reads of Node state and writes |

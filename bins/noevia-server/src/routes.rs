@@ -79,6 +79,9 @@ pub enum Native {
     /// The Diary routes that are only a proxy and a policy (sbstndalton/noevia#2185):
     /// crates/server-diary. The others stay Node's (contracts/http/README.md).
     Diary,
+    /// GET /api/models/capabilities and GET /api/models/hardware (sbstndalton/noevia#2187):
+    /// model_routes.rs. The other model routes stay Node's.
+    Models,
 }
 
 /// The routes [`Native::Diary`] implements, all methods (each answers its own 405 after the add-on
@@ -220,6 +223,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
         "/api/usage" | "/api/usage/aggregate" if auth => return Some(Native::Usage),
         EXPORT if auth => return Some(Native::Export),
         p if auth && DIARY_ROUTES.contains(&p) => return Some(Native::Diary),
+        p if auth && crate::model_routes::ROUTES.contains(&p) => return Some(Native::Models),
         "/api/instance"
         | "/.well-known/webauthn"
         | "/api/admin/web-address"
@@ -917,6 +921,70 @@ mod tests {
                 assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
             }
         }
+    }
+
+    /// sbstndalton/noevia#2187: the two configuration-only model reads are the front's, GET only;
+    /// every other method and every other model route (the 20 others in routes.toml) stays Node's.
+    #[test]
+    fn model_reads_are_rusts_for_get_only_and_the_other_model_routes_stay_nodes() {
+        let on = Switches::default();
+        for p in crate::model_routes::ROUTES {
+            assert_eq!(
+                dispatch_under("GET", p, on),
+                Some(Native::Models),
+                "GET {p}"
+            );
+            for m in ["HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] {
+                assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
+            }
+        }
+        assert!(crate::FEATURES.contains(&"rust-model-reads"));
+        for p in [
+            "/api/model-manager",
+            "/api/model-manager/models",
+            "/api/models/autotune",
+            "/api/models/autotune/cancel",
+            "/api/models/autotune/clear",
+            "/api/models/autotune/resume",
+            "/api/models/autotune/settings",
+            "/api/models/autotune/untuned",
+            "/api/models/calibration",
+            "/api/models/calibration/cancel",
+            "/api/models/delete",
+            "/api/models/estimate",
+            "/api/models/evidence",
+            "/api/models/evidence/import",
+            "/api/models/evidence/recheck",
+            "/api/models/inference-budget",
+            "/api/models/installed",
+            "/api/models/load",
+            "/api/models/machines",
+            "/api/models/presets/reload",
+            "/api/models/preset",
+            "/api/models/downloads",
+            "/api/models/capabilitiesx",
+            "/api/models/hardware/x",
+        ] {
+            for m in ["GET", "POST", "PUT", "DELETE"] {
+                assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
+            }
+        }
+        // Exactly the two model routes are the front's in the contract, GET only.
+        let rust: Vec<_> = ROUTES
+            .iter()
+            .filter(|r| {
+                (r.path.starts_with("/api/models") || r.path.starts_with("/api/model-manager"))
+                    && r.owner == Owner::Rust
+            })
+            .map(|r| (r.path, r.methods))
+            .collect();
+        assert_eq!(
+            rust,
+            vec![
+                (crate::model_routes::CAPABILITIES, &["GET"][..]),
+                (crate::model_routes::HARDWARE, &["GET"][..]),
+            ]
+        );
     }
 
     #[test]
