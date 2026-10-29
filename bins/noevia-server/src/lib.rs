@@ -77,6 +77,13 @@ use std::sync::Arc;
 /// rust-project-reads.cjs `RUST_PROJECT_READS_OWNED`), so the web supervisor must refuse a front
 /// without it beside such a Core, and a front with it beside an older Core.
 ///
+/// `rust-project-lifecycle`: this build answers `POST /api/projects` and `DELETE
+/// /api/projects/{projectId}` (sbstndalton/noevia#2191 round 2), permanently and with no switch,
+/// and writes the index outbox (`users/<id>/index-outbox.db`) core's executor drains. Node refuses
+/// those routes (core rust-project-lifecycle.cjs `RUST_PROJECT_LIFECYCLE_OWNED`) and publishes the
+/// toolbox catalogue a create reads (`project-catalogue.json`), so the web supervisor must refuse a
+/// front without it beside such a Core, and a front with it beside an older Core.
+///
 /// `project-store`: this build serves the internal project store Node writes projects.json and
 /// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
 /// supervisor confirms it to Node (NOEVIA_RUST_PROJECT_STORE_CONFIRMED) and hands both the secret.
@@ -103,6 +110,7 @@ pub const FEATURES: &[&str] = &[
     "rust-diary",
     "rust-model-reads",
     "rust-project-reads",
+    "rust-project-lifecycle",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",

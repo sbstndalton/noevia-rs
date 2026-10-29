@@ -125,7 +125,15 @@ const PROJECT_ROUTES: &[&str] = &[
     PROJECT_SOURCE_TEXT,
     PROJECT_DOCUMENT_ORIGINAL,
     PROJECT_ORIGINAL,
+    PROJECT_CREATE,
+    PROJECT_ONE,
 ];
+
+/// A project's create (POST only) and delete (DELETE only; routes.toml), the front's under
+/// `rust-project-lifecycle` (sbstndalton/noevia#2191); Node refuses them
+/// (core rust-project-lifecycle.cjs).
+pub(crate) const PROJECT_CREATE: &str = "/api/projects";
+pub(crate) const PROJECT_ONE: &str = "/api/projects/{projectId}";
 
 /// A project source's stored text and stored original bytes (GET only; routes.toml), the front's
 /// under `rust-project-reads` (sbstndalton/noevia#2191); Node refuses those GETs
@@ -531,7 +539,8 @@ mod tests {
             ("HEAD", "/api/projects/p1/assets/img-1"),
             ("POST", "/api/projects/p1/assets/img-1"),
             ("POST", "/api/projects/p1/upload"),
-            ("DELETE", "/api/projects/p1"),
+            // DELETE /api/projects/p1 is the front's since #2191 round 2 (rust-project-lifecycle).
+            ("GET", "/api/projects/p1"),
         ] {
             assert_eq!(dispatch_under(m, p, both), None, "{m} {p}");
         }
@@ -563,9 +572,10 @@ mod tests {
             ("HEAD", "/api/projects/p1/chats"),
             ("GET", "/api/projects/p1/chats/c1"),
             ("PATCH", "/api/projects/p1/chats/c1"),
-            ("POST", "/api/projects"),
+            // The project's own create and delete are the front's since #2191 round 2.
+            ("GET", "/api/projects"),
             ("POST", "/api/projects/p1/config"),
-            ("DELETE", "/api/projects/p1"),
+            ("PUT", "/api/projects/p1"),
         ] {
             assert_eq!(dispatch_under(m, p, both), None, "{m} {p}");
         }
@@ -1035,6 +1045,33 @@ mod tests {
             None
         );
         assert!(crate::FEATURES.contains(&"rust-project-reads"));
+    }
+
+    /// sbstndalton/noevia#2191 round 2: a project's create (POST) and delete (DELETE) are the
+    /// front's; every other method on those paths, and /config, stay Node's.
+    #[test]
+    fn project_create_and_delete_are_rusts_for_their_method_only() {
+        let on = Switches::default();
+        assert_eq!(
+            dispatch_under("POST", "/api/projects", on),
+            Some(Native::Projects)
+        );
+        assert_eq!(
+            dispatch_under("DELETE", "/api/projects/p1", on),
+            Some(Native::Projects)
+        );
+        for m in ["GET", "PUT", "PATCH", "DELETE"] {
+            assert_eq!(dispatch_under(m, "/api/projects", on), None, "{m}");
+        }
+        for m in ["GET", "PUT", "PATCH", "POST"] {
+            assert_eq!(dispatch_under(m, "/api/projects/p1", on), None, "{m}");
+        }
+        assert_eq!(dispatch_under("POST", "/api/projects/p1/config", on), None);
+        assert_eq!(
+            crate::project_routes::route("DELETE", "/api/projects/"),
+            None
+        );
+        assert!(crate::FEATURES.contains(&"rust-project-lifecycle"));
     }
 
     #[test]

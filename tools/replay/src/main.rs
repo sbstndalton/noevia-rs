@@ -366,7 +366,20 @@ fn run(a: &Args) -> Result<bool, String> {
             println!(
                 "NATIVE FEATURE RUNTIME: one registration epoch validated; full snapshot retained"
             );
-            Some(replay::native_features::project(&moves)?)
+            // sbstndalton/noevia#2191 round 2: core's published toolbox catalogue and the front's
+            // drained index outboxes are native-only state too.
+            let outboxes = replay::native_lifecycle::validate(dir)?;
+            snap.as_object_mut()
+                .ok_or("invalid snapshot object")?
+                .insert(
+                    "nativeProjectLifecycleProof".into(),
+                    replay::native_lifecycle::evidence(outboxes),
+                );
+            println!(
+                "NATIVE PROJECT LIFECYCLE: catalogue and {outboxes} drained index outbox(es) validated; full snapshot retained"
+            );
+            let features = replay::native_features::project(&moves)?;
+            Some(replay::native_lifecycle::project(&features, outboxes)?)
         } else {
             None
         };

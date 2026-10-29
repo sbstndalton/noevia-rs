@@ -460,11 +460,43 @@ file whose name is a validated hex hash, never a request value.
 | `/api/projects/{id}/documents/original` (GET) | rust | `project-documents/<sha256 id>/<byteHash>.pdf`; unreadable is Node's 422 |
 | `/api/projects/{id}/{*}/original` (GET) | rust | `uploads/original` only (`project-uploads/<sha256 id>/<attachment.id>`, #786's 404); any other segment is Node's |
 | `/api/projects/{id}/documents/pages` | node | the page reader, beside the extraction state and the large-document lock |
-| `/api/projects`, `/api/projects/{projectId}` | node | create reserves a storage folder, stores and RAG-indexes create-time files; delete purges the RAG index, uploads, chats and storage sweep (Node's in-process jobs) |
-| `/api/projects/{projectId}/config` | node | ~200 lines of source bookkeeping: RAG indexing, storage writes, toolbox catalogue and provider checks held in Node's memory |
-| `/api/projects/{id}/files`, `/upload`, `/sources/sync` | node | storage deletes and uploads, docling/OCR extraction, RAG indexing and the background source jobs all run in Node's process |
+| `/api/projects` (POST), `/api/projects/{projectId}` (DELETE) | rust | round 2, below |
+| `/api/projects/{projectId}/config` | node | its model check reads Node's served-model catalogue and provider registry (live state, not persisted), and a `files` patch re-indexes through Node's RAG writer; next after the provider/model catalogue is published like the toolbox catalogue |
+| `/api/projects/{id}/files`, `/upload`, `/sources/sync`, `/documents` (POST), `source-jobs`, `folder-import/plan` | node | each writes to remote storage (WebDAV `PUT`/`MKCOL`/`DELETE` with `If-None-Match`/`If-Match`; the front's storage client is the isolated read-only child: `GET`/`PROPFIND`) and runs docling/OCR extraction, `pdf-reduce`, the large-document lock and the background source jobs in Node; moving them needs a write-capable storage child first (security review), then the pipeline on the index outbox below |
 | `/api/projects/{projectId}/instruction-skills`, `.../manifests`, `/api/projects/{project}/skills/install` | node | the known-toolbox list (plugins, MCP) is Node's runtime catalogue; install fetches a published skill through Node's plugin directory |
 | `/api/projects/{projectId}/browser`, `/code`, `/research` | node | they drive a browser session, the code harness or research jobs |
 | `/api/code/active` | node | the code harness service's live task list |
 | `/api/workspace` | node | its load runs the retention sweep and the orphaned attachments-project reaper, whose delete (RAG index, uploads) is Node's |
-| `/api/import/conversations` | node | creates projects through Node's `createProject` (storage folder, RAG) |
+| `/api/import/conversations` | node | creates projects through Node's `createProject` (storage folder, RAG) and publishes transcripts; it can move onto `lifecycle.rs`'s create once the remaining storage step (#687's move of create-time files into the folder) has a write-capable storage client |
+
+## sbstndalton/noevia#2191 round 2 (group rust-project-lifecycle): a project's create and delete
+
+`POST /api/projects` and `DELETE /api/projects/{projectId}` are the front's (crates/server-projects
+`lifecycle`, served by `src/project_routes.rs`); core refuses both with 503
+`RUST_PROJECT_LIFECYCLE_OWNED` (`server/rust-project-lifecycle.cjs`) and `--features` lists
+`rust-project-lifecycle`. Every other method of both paths is Node's.
+
+- Create: Node's validation order and messages, Node's keys in Node's order, the folder reserved
+  (#589) as `reserveProjectFolder` names it under the projects.json lock, create-time texts written to
+  `project-sources/<id>/<sha256>.txt` before the projects.json that points at them (#1806), first in
+  the list, every project's skills reconciled. The toolbox ids a project may select (MCP boxes
+  included) are core's runtime state: core publishes them with the default list and the icon ids as
+  `UI_DATA_DIR/project-catalogue.json` (core `project-catalogue.cjs`, written on change at startup
+  and at each request start); the create answers 503 until it exists.
+- Delete: the record removed under the lock (a failed save removes nothing, #1914), then the
+  project's upload originals, document pages, images, RAG index, empty directories (never through
+  a symlink, never recursive), its chats (the store's `Unlisted` delete) and their attachments
+  projects.
+- The index outbox (crates/server-projects `outbox`, `users/<id>/index-outbox.db`, SQLite WAL): the
+  RAG index of create-time files and the storage folder sweep run where their engines are (core's
+  sqlite-vec index, core's WebDAV client), so the front records them in the same request:
+  idempotent job keys (`["index",project,file]`, `["sweep",project]`; a pending key is re-queued at
+  a new generation, never duplicated), claim/acknowledge at a generation (work asked again while a
+  job runs runs again), a `running` row taken back at core's next start (at least once; every job
+  is idempotent), 5 attempts then `failed`. A delete writes the project's tombstone and drops its
+  pending index jobs in one transaction before removing the RAG files; core's index run checks the
+  tombstone against the generation it was queued at on every step and closes its handle (core
+  `rust-index-outbox.cjs`, `rust-generation.cjs`, rag.cjs lifecycle guard).
+- Not ported: #687's move of create-time text files into the project's storage folder (a WebDAV
+  write). With storage connected they stay noevia's own plain-named copies, as Node left them when
+  that write failed; the first edit moves one into the folder.

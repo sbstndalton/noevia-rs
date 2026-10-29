@@ -281,8 +281,9 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     }
     // A floor that shows the table was read; the count falls as routes move to the front (105 before
     // sbstndalton/noevia#2185 moved five Diary routes, 100 after, 98 after #2187 moved the two
-    // configuration-only model reads, 95 after #2191 moved a project source's three stored reads).
-    assert!(node_routes >= 95, "{node_routes} node routes");
+    // configuration-only model reads, 95 after #2191 moved a project source's three stored reads,
+    // 93 after its round 2 moved a project's create and delete).
+    assert!(node_routes >= 93, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("POST", "/api/ready"),
@@ -377,7 +378,8 @@ async fn headers_cookies_and_forwarded_for() {
         let (res, _c) = call(
             front,
             "POST",
-            "/api/projects?x=1",
+            // A route Node answers (POST /api/projects is the front's since #2191 round 2).
+            "/api/projects/p1/config?x=1",
             &[
                 ("x-forwarded-for", "6.6.6.6"),
                 ("x-noevia-client-ip", "7.7.7.7"),
@@ -399,7 +401,7 @@ async fn headers_cookies_and_forwarded_for() {
         assert_eq!(cookies, vec!["a=1; Path=/; HttpOnly", "b=2; Path=/"]);
         assert!(res.headers().get("x-hop").is_none());
         let echo: serde_json::Value = serde_json::from_str(&text(res).await).unwrap();
-        assert_eq!(echo["path"], "/api/projects");
+        assert_eq!(echo["path"], "/api/projects/p1/config");
         assert_eq!(echo["bodyLen"], 7);
         let h = &echo["headers"];
         assert_eq!(h["host"][0], "front.test");
