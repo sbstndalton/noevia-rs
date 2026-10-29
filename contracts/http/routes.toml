@@ -394,23 +394,28 @@ methods = ["GET"]
 
 [[route]]
 path = "/api/integrations/storage/folder"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/integrations/storage/nextcloud/cancel"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/integrations/storage/nextcloud/poll"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/integrations/storage/nextcloud/start"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/integrations/storage/test"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/mcp-keys/servers"

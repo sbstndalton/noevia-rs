@@ -31,6 +31,8 @@ pub mod stats_routes;
 #[cfg(feature = "rust-storage-browse")]
 pub mod storage_browse_routes;
 #[cfg(feature = "rust-storage-reads")]
+pub mod storage_integration_routes;
+#[cfg(feature = "rust-storage-reads")]
 pub mod storage_metadata_worker;
 #[cfg(feature = "rust-storage-reads")]
 pub mod storage_read_routes;
@@ -84,6 +86,12 @@ use std::sync::Arc;
 /// (sbstndalton/noevia#2190); Node re-reads that row per decision and refuses the routes (core
 /// rust-decision-settings.cjs `RUST_DECISION_SETTINGS_OWNED`), so the supervisor pairs them.
 ///
+/// `rust-storage-integrations`: this build answers `POST /api/integrations/storage/folder`,
+/// `/test` and `/nextcloud/{start,poll,cancel}` (sbstndalton/noevia#2190): it owns the pending
+/// Nextcloud sign-ins (`nextcloud-login-flows.json`), saves a completed sign-in's storage row and
+/// writes the login proofs Node's storage latch re-reads. Node refuses those five POSTs (core
+/// rust-storage-integrations.cjs `RUST_STORAGE_INTEGRATIONS_OWNED`), so the supervisor pairs them.
+///
 /// `project-store`: this build serves the internal project store Node writes projects.json and
 /// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
 /// supervisor confirms it to Node (NOEVIA_RUST_PROJECT_STORE_CONFIRMED) and hands both the secret.
@@ -128,6 +136,8 @@ pub const FEATURES: &[&str] = &[
     "rust-storage-reads",
     #[cfg(feature = "rust-storage-browse")]
     "rust-storage-browse",
+    #[cfg(feature = "rust-storage-reads")]
+    "rust-storage-integrations",
     #[cfg(feature = "rust-reasoning-settings")]
     "rust-reasoning-settings",
     #[cfg(feature = "rust-routing-mode")]
@@ -154,6 +164,9 @@ pub struct App {
     /// This binary, run as the owned outbound child (`--storage-request-child`).
     #[cfg(feature = "rust-storage-browse")]
     pub storage_child: Option<std::path::PathBuf>,
+    /// The Nextcloud sign-ins and the login proofs (#2190).
+    #[cfg(feature = "rust-storage-reads")]
+    pub storage_integrations: storage_integration_routes::State,
     pub config: config::Config,
     pub proxy: legacy_proxy::LegacyProxy,
     pub statics: static_files::StaticFiles,
@@ -214,6 +227,10 @@ impl App {
             storage_browse: server_storage_reads::admission::Admission::default(),
             #[cfg(feature = "rust-storage-browse")]
             storage_child: storage_browse_routes::child_command(),
+            #[cfg(feature = "rust-storage-reads")]
+            storage_integrations: storage_integration_routes::State::new(
+                config.storage_qa_ca.as_deref(),
+            ),
             identity,
             writes,
             accounts,
@@ -288,6 +305,7 @@ async fn handle(
                     | routes::Native::Models
                     | routes::Native::PublicPages
                     | routes::Native::PluginDirectory
+                    | routes::Native::StorageIntegrations
             )
         ) {
             native = on_whatwg;
@@ -314,7 +332,8 @@ async fn handle(
             | routes::Native::Models
             | routes::Native::PublicPages
             | routes::Native::PluginDirectory
-            | routes::Native::DecisionSettings,
+            | routes::Native::DecisionSettings
+            | routes::Native::StorageIntegrations,
         )
         | None => false,
     };
@@ -463,6 +482,20 @@ async fn handle(
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };
             plugin_directory_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::StorageIntegrations) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            #[cfg(feature = "rust-storage-reads")]
+            {
+                storage_integration_routes::serve(&app, conn, req, p).await
+            }
+            #[cfg(not(feature = "rust-storage-reads"))]
+            {
+                let _ = (p, conn, req);
+                reply::error(StatusCode::SERVICE_UNAVAILABLE, "Storage unavailable", true)
+            }
         }
         Some(routes::Native::DecisionSettings) => {
             let Some(p) = whatwg else {

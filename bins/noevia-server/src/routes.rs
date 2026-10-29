@@ -91,6 +91,9 @@ pub enum Native {
     /// Every method of /api/admin/decision-settings and /test (sbstndalton/noevia#2190):
     /// decision_settings_routes.rs.
     DecisionSettings,
+    /// POST /api/integrations/storage/{folder,test,nextcloud/start,poll,cancel}
+    /// (sbstndalton/noevia#2190): storage_integration_routes.rs.
+    StorageIntegrations,
 }
 
 /// The routes [`Native::Diary`] implements, all methods (each answers its own 405 after the add-on
@@ -177,6 +180,14 @@ const STORAGE_METADATA: &str = "/api/integrations/storage";
 /// `rust-storage-browse` under NOEVIA_RUST_STORAGE_BROWSE (#1368). Node's handler matches
 /// `^/api/integrations/storage/files(?:/(.*))?$` for GET and `.../file` exactly for POST.
 const STORAGE_FILES: &str = "/api/integrations/storage/files";
+/// The storage routes storage_integration_routes.rs answers (POST only, routes.toml).
+const STORAGE_INTEGRATIONS: &[&str] = &[
+    "/api/integrations/storage/folder",
+    "/api/integrations/storage/test",
+    "/api/integrations/storage/nextcloud/start",
+    "/api/integrations/storage/nextcloud/poll",
+    "/api/integrations/storage/nextcloud/cancel",
+];
 const STORAGE_FILES_ROUTE: &str = "/api/integrations/storage/files{*?}";
 const STORAGE_FILE: &str = "/api/integrations/storage/file";
 
@@ -206,6 +217,7 @@ fn compiled(route: &Route) -> bool {
         && (route.path != STORAGE_METADATA || cfg!(feature = "rust-storage-reads"))
         && (![STORAGE_FILE, STORAGE_FILES_ROUTE].contains(&route.path)
             || cfg!(feature = "rust-storage-browse"))
+        && (!STORAGE_INTEGRATIONS.contains(&route.path) || cfg!(feature = "rust-storage-reads"))
         && (route.path != EXPORT || cfg!(feature = "rust-export"))
         && (route.path != CHATGPT_STATUS || cfg!(feature = "rust-chatgpt-status"))
 }
@@ -238,6 +250,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
         p if auth && crate::decision_settings_routes::ROUTES.contains(&p) => {
             return Some(Native::DecisionSettings)
         }
+        p if auth && STORAGE_INTEGRATIONS.contains(&p) => return Some(Native::StorageIntegrations),
         "/api/instance"
         | "/.well-known/webauthn"
         | "/api/admin/web-address"
@@ -463,6 +476,7 @@ mod tests {
                         || r.path == "/api/admin/web-address/remove" => {}
                 Some(Native::DecisionSettings)
                     if crate::decision_settings_routes::ROUTES.contains(&r.path) => {}
+                Some(Native::StorageIntegrations) if STORAGE_INTEGRATIONS.contains(&r.path) => {}
                 Some(_) => assert!(!is_account_path(r.path), "{} is an account path", r.path),
                 other @ None => assert!(
                     other.is_some(),

@@ -66,6 +66,10 @@ pub struct Config {
     /// /api/admin/decision-settings (sbstndalton/noevia#2190): the deployment's
     /// COWORK_DECISION_URL, the view's fallback.
     pub decision: crate::decision_settings_routes::Deployment,
+    /// The storage test/folder routes and the Nextcloud sign-in (sbstndalton/noevia#2190): a QA
+    /// run's extra trusted root (`NOEVIA_QA_STORAGE_CA`, a DER file), for synthetic https
+    /// servers; production leaves it unset and trusts the public roots only.
+    pub storage_qa_ca: Option<Vec<u8>>,
     /// GET /api/export/conversations (M4, sbstndalton/noevia#1315), read from the user's files on
     /// disk: always on (#1071), since free-chats.json on disk is the list (Rust is its only writer,
     /// the owner's 2026-10-12 condition).
@@ -341,6 +345,9 @@ impl Config {
             models,
             plugin_directory: crate::plugin_directory_routes::Sources::from_lookup(&get),
             decision: crate::decision_settings_routes::Deployment::from_lookup(&get),
+            storage_qa_ca: get("NOEVIA_QA_STORAGE_CA")
+                .filter(|p| !p.is_empty())
+                .and_then(|p| std::fs::read(p).ok()),
             rust_export,
             project_store,
             start_id,

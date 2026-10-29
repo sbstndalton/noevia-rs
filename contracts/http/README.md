@@ -475,6 +475,24 @@ row, which stays Node's to write. The connection test resolves a name and refuse
 answer is on this network, then checks `/health` through a resolver that applies the same rule
 at connect time, no redirect, no environment proxy, 3 s, 4 KiB.
 
+### Round 3: the storage integrations (Rust owns the Nextcloud sign-in)
+
+| route | owner | capability / Core refusal | notes |
+|---|---|---|---|
+| `/api/integrations/storage/folder`, `/test`, `/nextcloud/start`, `/nextcloud/poll`, `/nextcloud/cancel` (POST) | rust | `rust-storage-integrations` / `RUST_STORAGE_INTEGRATIONS_OWNED` | session gate, then the JSON-object body (1 MiB); the member-origin rule on every target, no redirect, no environment proxy, Node's deadlines and the 64 KiB Nextcloud reply cap; other methods stay Node's |
+
+The pending Nextcloud sign-ins move wholesale: the same sealed file
+(`nextcloud-login-flows.json`, `enc:v2:` bound to the account, 10 minutes, at most 100, one per
+account, a nonce per flow so a cancelled flow's in-flight poll revokes the app password). A
+completed sign-in saves the `storage_connections` row with core `saveStorage`'s exact upsert and
+its `storage.update` audit row in one transaction (server-store `save_storage_connection`, its own
+grant); Node reads that row on every use (`getStorage`), and still saves it from
+`PUT /api/integrations/storage`, which stays Node's. The storage latch stays in Node with its
+automatic callers (the project refresh, the Diary backup): a folder or test call that works with
+the saved login writes `storage-login-proofs.json` (`{version:1,proofs:{<userId>:<ms>}}`, no
+credential), which Node's latch re-reads by its file signal (core shared-reread.cjs) and which
+ends a hold set before it.
+
 Left on Node in this batch, and why (each resolves Node memory, a Node-only cache or an in-process
 job that chat or another Node route reads):
 
@@ -483,7 +501,6 @@ job that chat or another Node route reads):
 | `/api/providers`, `/api/providers/{id}`, `/api/providers/test`, `/api/providers/{providerId}/models{*?}` | the provider rows live on the in-memory workspace (`ws.providers`, `PROVIDERS`) that every chat turn reads in-process; a Rust writer would need Node to re-read the workspace per turn (follow-up) |
 | `/api/providers/chatgpt/device`, `/device/poll`, `/device/cancel`, `/api/providers/chatgpt/models` | chatgpt-oauth.cjs keeps the pending logins, the catalogue cache, its in-flight fetch and the token refresh lock in memory; chat uses the same tokens |
 | `/api/connectors`, `/api/connectors/gdrive/*`, `/api/connectors/nextcloud/policy` | drive-accounts.cjs holds personal Drive tokens in memory and the chat tools read the policies in-process |
-| `/api/integrations/storage/{folder,test,nextcloud/start,poll,cancel}` | the Nextcloud login flows are a sealed in-process store with a pending limit; the storage latch and login throttle are Node memory |
 | `/api/admin/offsite-backup` and its six children | offsite-service.cjs runs the backup, copy and verify jobs and their busy lock and 15-minute timer in-process |
 | `/api/admin/users/{id}` (DELETE) | the clean-up spans Node's workspace cache, MCP OAuth, directory MCP keys and ChatGPT tokens in memory |
 | `/api/auto-roles` | GET reads the served catalogue and machine models; an admin PUT warms the roles in Node's engine (`ensureRolesLoaded`) |
