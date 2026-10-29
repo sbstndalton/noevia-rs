@@ -189,6 +189,11 @@ pub fn account(
             })?;
             return reply(Reply::json(if removed { 200 } else { 404 }, &ok_body()));
         }
+        // Every DELETE under this prefix is the front's (routes.toml): an id it never issues
+        // names no app password. Node refuses the owned route, so never fall through to it.
+        if m == "DELETE" {
+            return reply(Reply::error(404, "not found"));
+        }
     }
     if p == "/api/profile" && m == "PATCH" {
         let body = read_object(req)?;

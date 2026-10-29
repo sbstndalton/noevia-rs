@@ -78,7 +78,7 @@ pub struct Control {
     pub cancelled: Arc<AtomicBool>,
 }
 impl Control {
-    fn check(&self) -> Result<(), StoreError> {
+    pub(super) fn check(&self) -> Result<(), StoreError> {
         if self.request.is_nil()
             || self.cancelled.load(Ordering::SeqCst)
             || Instant::now() >= self.deadline
@@ -118,7 +118,7 @@ pub struct Snapshot {
     pub system_one_unconfigured: bool,
 }
 impl Snapshot {
-    fn validate(&self) -> Result<(), StoreError> {
+    pub(super) fn validate(&self) -> Result<(), StoreError> {
         if [&self.decision, &self.machines].iter().all(|s| {
             s.len() == 64
                 && s.bytes()
@@ -145,6 +145,11 @@ pub struct Admission {
     incarnation: Uuid,
     session: Uuid,
     generation: u64,
+}
+pub struct View {
+    pub admission: Admission,
+    pub facts: BootFacts,
+    pub snapshot: Snapshot,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Reply {
@@ -198,6 +203,9 @@ pub struct Controller {
     control_state_probe: Mutex<Option<std::sync::mpsc::SyncSender<bool>>>,
 }
 impl Controller {
+    pub(super) fn runtime(&self) -> &FeatureRuntime {
+        &self.runtime
+    }
     pub fn new(runtime: Arc<FeatureRuntime>, env: [Option<bool>; 23]) -> Self {
         Self {
             runtime,
@@ -345,6 +353,11 @@ impl Controller {
         })
     }
     pub fn admission(&self, reader: &Reader<'_>) -> Result<Admission, StoreError> {
+        self.view(reader).map(|view| view.admission)
+    }
+    /// Read the live lease and its producer facts under one state lock, inside
+    /// the caller's SQLite snapshot. Never reconstruct facts from process env.
+    pub fn view(&self, reader: &Reader<'_>) -> Result<View, StoreError> {
         self.runtime.check_incarnation(reader)?;
         let mut state = self.state()?;
         state.expire(self.now());
@@ -352,7 +365,15 @@ impl Controller {
         let record = state.sessions.get(&session).ok_or_else(unavailable)?;
         record.snapshot.check_sources(reader)?;
         match record.reply {
-            Reply::Ready(admission) => Ok(admission),
+            Reply::Ready(admission) => Ok(View {
+                admission,
+                facts: state
+                    .boots
+                    .get(&record.boot)
+                    .ok_or_else(unavailable)?
+                    .clone(),
+                snapshot: record.snapshot.clone(),
+            }),
             _ => Err(unavailable()),
         }
     }

@@ -132,7 +132,7 @@ fn run() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     let mode = args
         .next()
-        .ok_or("usage: corpus-launcher capture|serve|verify|wrong-host CORE [OUT]")?;
+        .ok_or("usage: corpus-launcher capture|serve|front-serve|verify|wrong-host CORE [OUT]")?;
     let core = PathBuf::from(args.next().ok_or("actual core checkout required")?)
         .canonicalize()
         .map_err(|e| e.to_string())?;
@@ -143,10 +143,14 @@ fn run() -> Result<(), String> {
     let mut command = Command::new("git");
     command.arg("-C").arg(&core).args(["rev-parse", "HEAD"]);
     let sha = bounded(command)?;
-    if !sha.status.success()
-        || String::from_utf8_lossy(&sha.stdout).trim()
-            != include_str!("../../../../contracts/http/core.ref").trim()
-    {
+    // The front's upstream is the exact Core generation paired with it (front-core.ref): the
+    // release guard refuses mixed feature owners. core.ref stays the recording oracle.
+    let pinned = if mode == "front-serve" {
+        include_str!("../../../../contracts/http/front-core.ref")
+    } else {
+        include_str!("../../../../contracts/http/core.ref")
+    };
+    if !sha.status.success() || String::from_utf8_lossy(&sha.stdout).trim() != pinned.trim() {
         return Err("synthetic launcher requires the actual pinned core commit".into());
     }
     if mode == "finalize-capture" {
@@ -175,7 +179,9 @@ fn run() -> Result<(), String> {
         {
             ("serve.cjs", vec![])
         }
-        "serve" | "verify" | "verify-omission" | "wrong-host" if output.is_none() => {
+        "serve" | "front-serve" | "verify" | "verify-omission" | "wrong-host"
+            if output.is_none() =>
+        {
             ("serve.cjs", vec![])
         }
         _ => return Err("unsupported synthetic launcher arguments".into()),

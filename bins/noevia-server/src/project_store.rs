@@ -138,7 +138,7 @@ fn same(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
-fn authorised(store: &Store, headers: &HeaderMap) -> bool {
+pub(crate) fn authorised(store: &Store, headers: &HeaderMap) -> bool {
     headers
         .get(TOKEN_HEADER)
         .is_some_and(|v| same(v.as_bytes(), store.token.as_bytes()))
@@ -616,6 +616,32 @@ pub fn router(store: Store) -> Router {
 }
 
 /// Serves the store on `listener` until `shutdown`.
+pub fn router_with_context(
+    store: Store,
+    context: Option<Arc<crate::feature_context::Layer>>,
+) -> Router {
+    let feature_store = store.clone();
+    router(store).route(
+        "/v1/features/context",
+        post(move |request: axum::http::Request<Body>| {
+            let store = feature_store.clone();
+            let context = context.clone();
+            async move { crate::feature_context::serve(context, store, request).await }
+        }),
+    )
+}
+
+pub async fn serve_with_context(
+    listener: tokio::net::TcpListener,
+    store: Store,
+    context: Option<Arc<crate::feature_context::Layer>>,
+    shutdown: impl std::future::Future<Output = ()> + Send + 'static,
+) {
+    let _ = axum::serve(listener, router_with_context(store, context))
+        .with_graceful_shutdown(shutdown)
+        .await;
+}
+
 pub async fn serve(
     listener: tokio::net::TcpListener,
     store: Store,

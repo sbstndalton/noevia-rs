@@ -354,7 +354,19 @@ fn run(a: &Args) -> Result<bool, String> {
                     replay::native_moves::evidence(dir, &outcomes, start)?,
                 );
             println!("NATIVE MOVE STATE: {} account-root authoritative files validated; full snapshot retained",proven.len());
-            Some(replay::native_moves::project(&snap, &proven)?)
+            let moves = replay::native_moves::project(&snap, &proven)?;
+            // The paired front's feature runtime registration is native-only state too.
+            let incarnation = replay::native_features::validate(dir)?;
+            snap.as_object_mut()
+                .ok_or("invalid snapshot object")?
+                .insert(
+                    "nativeFeatureRuntimeProof".into(),
+                    replay::native_features::evidence(&incarnation),
+                );
+            println!(
+                "NATIVE FEATURE RUNTIME: one registration epoch validated; full snapshot retained"
+            );
+            Some(replay::native_features::project(&moves)?)
         } else {
             None
         };

@@ -239,6 +239,7 @@ const ACCOUNT_PREFIXES: &[&str] = &[
 
 fn is_account_path(path: &str) -> bool {
     path == "/api/chat-framing/preferences"
+        || server_account::features::owns(path)
         || ACCOUNT_PREFIXES.iter().any(|p| {
             path.strip_prefix(p)
                 .is_some_and(|rest| p.ends_with('/') || rest.is_empty() || rest.starts_with('/'))
@@ -285,6 +286,20 @@ fn pattern_matches(pattern: &str, path: &str) -> Option<usize> {
 /// The route a request path belongs to: the most specific listed pattern, else (for non-/api
 /// paths) the catch-all. `None` is an unlisted /api path, which Node owns.
 pub fn route_for(path: &str) -> Option<&'static Route> {
+    // The original feature suffix is a namespace, including empty/encoded or
+    // slash-containing suffixes; only the public root rejects a trailing slash.
+    if server_account::features::owns(path) {
+        let pattern = if path.starts_with("/api/admin/features/") {
+            "/api/admin/features/{name}"
+        } else {
+            path
+        };
+        return ROUTES.iter().find(|r| r.path == pattern);
+    }
+    if path == "/api/features/" {
+        return None;
+    }
+
     let best = ROUTES
         .iter()
         .filter(|r| !r.catch_all)
@@ -332,6 +347,35 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
 mod tests {
     use super::*;
 
+    #[test]
+    fn complete_feature_namespace_is_native_for_every_method_and_preserves_siblings() {
+        for path in [
+            "/api/features",
+            "/api/admin/features",
+            "/api/admin/features/",
+            "/api/admin/features/previews",
+            "/api/admin/features/%",
+            "/api/admin/features/a/b",
+        ] {
+            for method in ["GET", "PUT", "POST", "DELETE", "HEAD", "OPTIONS", "PATCH"] {
+                assert_eq!(
+                    dispatch(method, path),
+                    Some(Native::Account),
+                    "{method} {path}"
+                );
+            }
+        }
+        for path in [
+            "/api/features/",
+            "/api/features-x",
+            "/api/admin/features-x",
+            "/api/admin/decision-settings",
+        ] {
+            for method in ["GET", "PUT", "POST", "DELETE"] {
+                assert_eq!(dispatch(method, path), None, "{method} {path}");
+            }
+        }
+    }
     #[test]
     fn framing_preferences_are_native_for_all_methods_without_claiming_siblings() {
         for method in ["GET", "PUT", "POST", "DELETE", "HEAD", "OPTIONS"] {

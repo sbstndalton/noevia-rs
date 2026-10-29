@@ -110,7 +110,7 @@ fn walk(root: &Path, dir: &Path, ignore: &[String], b: &Bindings, out: &mut Vec<
     }
 }
 
-fn sqlite_json(db: &Path, sql: &str) -> Result<Value, String> {
+pub(crate) fn sqlite_json(db: &Path, sql: &str) -> Result<Value, String> {
     let out = Command::new("sqlite3")
         .arg("-readonly")
         .arg("-json")

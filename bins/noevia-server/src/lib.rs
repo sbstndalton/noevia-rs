@@ -8,6 +8,7 @@ pub mod chatgpt_status_routes;
 pub mod code_net;
 pub mod config;
 pub mod export_routes;
+pub mod feature_context;
 pub mod health;
 pub mod identity;
 pub mod legacy_proxy;
@@ -75,6 +76,7 @@ pub const FEATURES: &[&str] = &[
     "client-address-header",
     "code-net-guard",
     "header-read-timeout",
+    "rust-feature-owner",
     "legacy-root-claim",
     "project-store",
     server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER,
@@ -133,6 +135,8 @@ pub struct App {
     pub writes: Arc<upkeep::WriterLayer>,
     /// The account routes (M3).
     pub accounts: Arc<account_routes::AccountLayer>,
+    /// The ONE context controller for this native App and its existing private store.
+    pub feature_context: Option<Arc<feature_context::Layer>>,
     pub usage: Arc<usage_routes::UsageLayer>,
     pub reasoning_settings: Arc<tokio::sync::Semaphore>,
     pub sampling_settings: Arc<tokio::sync::Semaphore>,
@@ -158,6 +162,7 @@ impl App {
         let identity = Arc::new(identity::IdentityLayer::new(&config));
         let writes = Arc::new(upkeep::WriterLayer::new(&config));
         let accounts = Arc::new(account_routes::AccountLayer::new(&config));
+        let feature_context = feature_context::Layer::new(&config, Arc::clone(&writes));
         let routing_files = config.rust_routing_mode.map(|_| {
             config
                 .data_dir
@@ -177,6 +182,7 @@ impl App {
             identity,
             writes,
             accounts,
+            feature_context,
             usage: Arc::new(usage_routes::UsageLayer::default()),
             reasoning_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             sampling_settings: Arc::new(tokio::sync::Semaphore::new(4)),
