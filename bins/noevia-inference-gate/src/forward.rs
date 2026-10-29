@@ -79,7 +79,7 @@ pub(crate) async fn proxy(gate: Arc<Gate>, request: Request) -> Response {
                 Err(refusal) => return refuse(&gate, refusal),
             }
         }
-        _ => false,
+        _ => None,
     };
     match class {
         Class::Invalid(refusal) => refuse(&gate, refusal),

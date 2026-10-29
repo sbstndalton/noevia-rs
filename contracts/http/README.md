@@ -427,3 +427,18 @@ and `--features` lists `rust-model-reads`. The rest wait for batch M2 (the job r
 | `/api/models/machines` | node | machine health probe and tune caches in Node memory; POST writes |
 | `/api/models/presets/reload` | node | write under the maintenance hold (M2) |
 | `/api/models/{*}` | node | preset, suggest, idle-unload, assignments, reranker, prune, mtp-artifact, pull, downloads: mixed reads of Node state and writes |
+
+### PR notes (#2187)
+
+- sbstndalton/noevia#2138: the model-manager sidecar's throughput sweep reaches the router outside the
+  gate today (web holds the gate's maintenance hold for it, core `benchmark-sweep-guard.cjs`). If the
+  sweep is later routed through the gate, its requests must carry the hold (`X-Noevia-Maintenance`),
+  or they wait for the very hold that protects them.
+- A web restart during a sweep: core gives its hold back at shutdown and the new process adopts the
+  running sweep, asking for the hold again (with a growing delay) until the old one is gone.
+- A hold the gate forgot mid-job (a gate restart) is taken again with a bounded wait; if that fails
+  the job's requests stop carrying the dead token and run without the gate's hold (logged).
+- Requests and leases waiting out a hold count against the queued body share and the waiter limit
+  (`gate_busy` past them), so they cannot starve the holder's own requests. A request is admitted
+  under a hold only if the hold it names is still the one held (the key, not a flag).
+- Exempt work in flight does not keep a hold from being taken (it runs while one is held).

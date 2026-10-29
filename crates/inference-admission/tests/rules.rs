@@ -1015,11 +1015,11 @@ fn work_without_the_hold_gets_no_slot_while_it_is_held() {
     );
     assert_eq!(s.waiting(), 0, "nothing queued behind the hold");
     // The holder's own work runs as if there were no hold: a switch included.
-    let t = admitted(s.arrive_by(3, CODE, WaitKind::Request, None, 1000, true));
+    let t = admitted(s.arrive_by(3, CODE, WaitKind::Request, None, 1000, Some(key)));
     s.finish(4, &t);
-    assert_eq!(s.begin_maintenance_by(5, false, true), Ok(()));
+    assert_eq!(s.begin_maintenance_by(5, false, Some(key)), Ok(()));
     s.end_maintenance();
-    let w = queued(s.arrive_by(600, SMART, WaitKind::Request, None, 10_000, true));
+    let w = queued(s.arrive_by(600, SMART, WaitKind::Request, None, 10_000, Some(key)));
     assert_eq!(unloads(&s.poll(700)), vec![CODE.to_owned()]);
     s.observe(listing(&[
         (CODE, RowStatus::Unloaded),
@@ -1056,7 +1056,7 @@ fn a_hold_its_holder_neither_renews_nor_uses_expires_and_is_reported() {
         .iter()
         .all(|a| !matches!(a, Action::HoldEnded { .. })));
     // Use renews it too.
-    let t = admitted(s.arrive_by(1_850, CODE, WaitKind::Request, None, 1000, true));
+    let t = admitted(s.arrive_by(1_850, CODE, WaitKind::Request, None, 1000, Some(key)));
     s.finish(1_860, &t);
     assert!(s.held());
     assert!(s.hold_live(2_800, key));
@@ -1082,4 +1082,41 @@ fn a_hold_past_its_idle_limit_is_not_renewed_before_the_next_poll() {
     let key = s.begin_hold(0, 1_000, "x").unwrap();
     assert!(!s.hold_live(1_000, key));
     assert!(!s.renew_hold(1_000, key, None));
+}
+
+#[test]
+fn exempt_work_in_flight_does_not_keep_a_hold_from_being_taken() {
+    let mut s = with_loaded(CODE);
+    let e = admitted(s.arrive(0, EMBED, WaitKind::Request, None, 1000));
+    let key = s.begin_hold(1, 1000, "Calibrating").unwrap();
+    s.finish(2, &e);
+    assert!(s.held());
+    // Chat work in flight still does.
+    assert!(s.end_hold(key));
+    let t = admitted(s.arrive(3, CODE, WaitKind::Request, None, 1000));
+    assert_eq!(s.begin_hold(4, 1000, "x"), Err(Refusal::EngineBusy));
+    s.finish(5, &t);
+}
+
+#[test]
+fn a_released_holds_key_never_counts_for_the_next_hold() {
+    let mut s = with_loaded(CODE);
+    let old = s.begin_hold(0, 10_000, "A").unwrap();
+    assert!(s.end_hold(old));
+    let new = s.begin_hold(1, 10_000, "B").unwrap();
+    assert_eq!(
+        s.arrive_by(2, CODE, WaitKind::Request, None, 1000, Some(old)),
+        Arrival::Refused(Refusal::MaintenanceHeld),
+        "work of the released hold A does not run under B"
+    );
+    assert_eq!(
+        s.begin_maintenance_by(3, false, Some(old)),
+        Err(Refusal::EngineBusy)
+    );
+    assert_eq!(
+        s.admin_unload_by(3, CODE, false, Some(old)),
+        Err(Refusal::EngineBusy)
+    );
+    let t = admitted(s.arrive_by(4, CODE, WaitKind::Request, None, 1000, Some(new)));
+    s.finish(5, &t);
 }

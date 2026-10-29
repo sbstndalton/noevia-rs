@@ -629,10 +629,10 @@ impl Scheduler {
         lease: Option<LeaseKey>,
         max_wait_ms: u64,
     ) -> Arrival {
-        self.arrive_by(now, model, kind, lease, max_wait_ms, false)
+        self.arrive_by(now, model, kind, lease, max_wait_ms, None)
     }
 
-    /// [`Scheduler::arrive`] for a request that may (`by_hold`) or may not carry the maintenance
+    /// [`Scheduler::arrive`] for a request that may (`hold_key`, the hold it names) or may not carry the maintenance
     /// hold. While a hold is held, chat work without it is refused at once with
     /// [`Refusal::MaintenanceHeld`], which the caller waits out (bounded by the request's wait
     /// limit) and then asks again. Nothing is queued meanwhile, so the queue only ever holds the
@@ -647,8 +647,10 @@ impl Scheduler {
         kind: WaitKind,
         lease: Option<LeaseKey>,
         max_wait_ms: u64,
-        by_hold: bool,
+        hold_key: Option<HoldKey>,
     ) -> Arrival {
+        // The hold the request names counts only while it is the one held now.
+        let by_hold = self.is_holder(hold_key);
         self.counters.arrivals += 1;
         let id = self.canon(model);
         let model = id.as_str();
@@ -756,10 +758,10 @@ impl Scheduler {
         lease: Option<LeaseKey>,
         max_wait_ms: u64,
     ) -> Arrival {
-        self.arrive_without_autoload_by(now, model, lease, max_wait_ms, false)
+        self.arrive_without_autoload_by(now, model, lease, max_wait_ms, None)
     }
 
-    /// [`Scheduler::arrive_without_autoload`] for a request that may (`by_hold`) carry the
+    /// [`Scheduler::arrive_without_autoload`] for a request that may (`hold_key`, the hold it names) carry the
     /// maintenance hold. Such a request loads nothing and never switches, so a hold does not stop
     /// it (core's in-process hold did not either); the holder's use renews the hold.
     pub fn arrive_without_autoload_by(
@@ -768,11 +770,13 @@ impl Scheduler {
         model: &str,
         lease: Option<LeaseKey>,
         max_wait_ms: u64,
-        by_hold: bool,
+        hold_key: Option<HoldKey>,
     ) -> Arrival {
+        // The hold the request names counts only while it is the one held now.
+        let by_hold = self.is_holder(hold_key);
         let id = self.canon(model);
         if lease.is_some() {
-            return self.arrive_by(now, &id, WaitKind::Request, lease, max_wait_ms, by_hold);
+            return self.arrive_by(now, &id, WaitKind::Request, lease, max_wait_ms, hold_key);
         }
         let resident_here = self.holder.as_deref() == Some(id.as_str())
             || (self.exempt(&id)
@@ -1135,10 +1139,10 @@ impl Scheduler {
     /// the chat slot, new chat work waits until the listing shows it gone; an exempt or
     /// non-resident model never blocks chat admission.
     pub fn admin_unload(&mut self, now: u64, model: &str, force: bool) -> Result<(), Refusal> {
-        self.admin_unload_by(now, model, force, false)
+        self.admin_unload_by(now, model, force, None)
     }
 
-    /// [`Scheduler::admin_unload`] for a request that may (`by_hold`) carry the maintenance hold.
+    /// [`Scheduler::admin_unload`] for a request that may (`hold_key`, the hold it names) carry the maintenance hold.
     /// While a hold is held, an unload without it is refused [`Refusal::EngineBusy`] unless it is
     /// an admin force (the memory watchdog's last resort).
     pub fn admin_unload_by(
@@ -1146,8 +1150,10 @@ impl Scheduler {
         now: u64,
         model: &str,
         force: bool,
-        by_hold: bool,
+        hold_key: Option<HoldKey>,
     ) -> Result<(), Refusal> {
+        // The hold the request names counts only while it is the one held now.
+        let by_hold = self.is_holder(hold_key);
         if self.hold.is_some() {
             if by_hold {
                 self.touch_hold(now);
@@ -1215,18 +1221,20 @@ impl Scheduler {
     /// new work is admitted (it queues) until [`Scheduler::end_maintenance`], which the caller must
     /// report however the reload ends.
     pub fn begin_maintenance(&mut self, now: u64, force: bool) -> Result<(), Refusal> {
-        self.begin_maintenance_by(now, force, false)
+        self.begin_maintenance_by(now, force, None)
     }
 
-    /// [`Scheduler::begin_maintenance`] for a reload that may (`by_hold`) carry the maintenance
+    /// [`Scheduler::begin_maintenance`] for a reload that may (`hold_key`, the hold it names) carry the maintenance
     /// hold. While a hold is held, a reload without it is refused [`Refusal::EngineBusy`], even an
     /// admin force: the holder is changing or measuring the models the reload would restart.
     pub fn begin_maintenance_by(
         &mut self,
         now: u64,
         force: bool,
-        by_hold: bool,
+        hold_key: Option<HoldKey>,
     ) -> Result<(), Refusal> {
+        // The hold the request names counts only while it is the one held now.
+        let by_hold = self.is_holder(hold_key);
         if self.hold.is_some() {
             if !by_hold {
                 self.reject_count(Refusal::EngineBusy);
@@ -1271,9 +1279,16 @@ impl Scheduler {
             return Err(Refusal::MaintenanceHeld);
         }
         let live_sessions = self.session_holds.values().any(|h| now < h.until);
+        // Exempt work (embedding and reranking models beside the chat model) never takes the slot
+        // and runs while a hold is held, so it does not keep one from being taken either.
+        let chat_in_flight = self
+            .in_flight
+            .iter()
+            .any(|(model, n)| *n > 0 && !self.exempt(model));
+        let chat_leases = self.leases.values().any(|l| !self.exempt(&l.model));
         if self.switching()
-            || !self.in_flight.is_empty()
-            || !self.leases.is_empty()
+            || chat_in_flight
+            || chat_leases
             || !self.waiters.is_empty()
             || live_sessions
         {
@@ -1334,6 +1349,11 @@ impl Scheduler {
             held_ms: now.saturating_sub(h.since),
             idle_ttl_ms: h.idle_ms,
         })
+    }
+
+    /// Whether `key` names the hold held now (a released hold's key never matches a later one).
+    fn is_holder(&self, key: Option<HoldKey>) -> bool {
+        key.is_some_and(|k| self.hold.as_ref().is_some_and(|h| h.key == k))
     }
 
     fn touch_hold(&mut self, now: u64) {

@@ -392,3 +392,96 @@ async fn exempt_work_and_reads_that_load_nothing_run_while_a_hold_is_held() {
     assert_eq!(read.status(), 200);
     assert_eq!(release(&gate, Some(ADMIN), &token).await, 204);
 }
+
+/// A chat body of about `kib` KiB (the padding is a field the fake router ignores).
+fn padded_body(model: &str, kib: usize) -> String {
+    let mut v: serde_json::Value = serde_json::from_str(&chat_body(model, 1, 1)).unwrap();
+    v["padding"] = "x".repeat(kib * 1024).into();
+    v.to_string()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+async fn requests_waiting_out_a_hold_cannot_take_the_buffer_the_holders_requests_need() {
+    let router = FakeRouter::start(&[(CODE, St::Loaded, false)], FakeConfig::default()).await;
+    let mut cfg = test_config(router.url());
+    // 64 KiB of body buffer: waiting requests may hold at most half of it.
+    cfg.max_buffered_bytes = 64 * 1024;
+    let gate = Arc::new(start_gate(cfg).await);
+    let token = take(&gate, "Calibrating").await;
+    let waiting = {
+        let gate = Arc::clone(&gate);
+        tokio::spawn(async move {
+            client()
+                .post(gate.url("/v1/chat/completions"))
+                .body(padded_body(CODE, 20))
+                .send()
+                .await
+                .unwrap()
+                .status()
+                .as_u16()
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(!waiting.is_finished(), "the first one waits for the hold");
+    // A second one would take more than the waiting share: refused at once.
+    let second = client()
+        .post(gate.url("/v1/chat/completions"))
+        .body(padded_body(CODE, 20))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(second.status(), 503);
+    assert_eq!(second.headers()["x-noevia-gate-refusal"], "gate_busy");
+    // The holder's own large request still fits and runs now.
+    let own = client()
+        .post(gate.url("/v1/chat/completions"))
+        .header("x-noevia-maintenance", &token)
+        .body(padded_body(CODE, 20))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(own.status(), 200);
+    assert_eq!(release(&gate, Some(ADMIN), &token).await, 204);
+    assert_eq!(waiting.await.unwrap(), 200);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+async fn requests_and_leases_waiting_out_a_hold_count_against_the_waiter_limit() {
+    let router = FakeRouter::start(&[(CODE, St::Loaded, false)], FakeConfig::default()).await;
+    let mut cfg = test_config(router.url());
+    cfg.admission.max_waiters = 2;
+    let gate = Arc::new(start_gate(cfg).await);
+    let token = take(&gate, "Calibrating").await;
+    let a = {
+        let gate = Arc::clone(&gate);
+        tokio::spawn(async move { chat(&gate, CODE, 1, 1, None).await.0 })
+    };
+    let b = {
+        let gate = Arc::clone(&gate);
+        tokio::spawn(async move { acquire_lease(&gate, CODE).await })
+    };
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let (code, _) = chat(&gate, CODE, 1, 1, None).await;
+    assert_eq!(code, 503, "a third waiter is refused gate_busy");
+    let refused = client()
+        .post(gate.url("/gate/v1/leases"))
+        .body(serde_json::json!({ "model": CODE }).to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refused.status(), 503);
+    assert_eq!(json_of(refused).await["error"]["code"], "gate_busy");
+    // The holder is not a waiter.
+    let resp = client()
+        .post(gate.url("/v1/chat/completions"))
+        .header("x-noevia-maintenance", &token)
+        .body(chat_body(CODE, 1, 1))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert_eq!(release(&gate, Some(ADMIN), &token).await, 204);
+    assert_eq!(a.await.unwrap(), 200);
+    let lease = b.await.unwrap().unwrap();
+    assert_eq!(release_lease(&gate, &lease).await, 204);
+}

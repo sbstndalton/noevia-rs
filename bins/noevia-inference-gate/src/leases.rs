@@ -3,7 +3,7 @@
 use crate::respond;
 use crate::{
     forget_lease, hold_from_headers, log, token_hash, valid_token, wait_for_hold_end, Gate,
-    Outcome, WaitGuard,
+    HoldWaiter, Outcome, WaitGuard,
 };
 use axum::body::Body;
 use axum::extract::Request;
@@ -158,6 +158,10 @@ async fn acquire(gate: Arc<Gate>, request: Request) -> Response {
         // Another client holds the engine for maintenance: the stream reports the wait (as a
         // queue position of 1) until the hold ends, then asks again.
         Arrival::Refused(Refusal::MaintenanceHeld) => {
+            let Some(waiting) = HoldWaiter::take(&gate, 0) else {
+                gate.count_refusal(Refusal::GateBusy);
+                return respond::refusal(Refusal::GateBusy);
+            };
             log(
                 "gate.queue",
                 &[
@@ -169,7 +173,9 @@ async fn acquire(gate: Arc<Gate>, request: Request) -> Response {
                 ],
             );
             let (tx, events) = mpsc::channel::<Bytes>(4);
-            tokio::spawn(lease_after_hold(gate, tx, model, holder, max_wait, by_hold));
+            tokio::spawn(lease_after_hold(
+                gate, tx, model, holder, max_wait, by_hold, waiting,
+            ));
             stream_response(events)
         }
         arrival => answer_lease(gate, arrival, rx, model, holder, max_wait),
@@ -181,7 +187,7 @@ fn arrive_lease(
     gate: &Arc<Gate>,
     model: &str,
     max_wait: u64,
-    by_hold: bool,
+    by_hold: Option<HoldKey>,
 ) -> (Arrival, Option<oneshot::Receiver<Outcome>>) {
     gate.with(|inner, now| {
         let arrival = inner
@@ -322,8 +328,11 @@ async fn lease_after_hold(
     model: String,
     holder: String,
     max_wait: u64,
-    by_hold: bool,
+    by_hold: Option<HoldKey>,
+    waiting: HoldWaiter,
 ) {
+    // Counted as a waiter while it waits out the hold (dropped before it arrives again).
+    let mut waiting = Some(waiting);
     let started = tokio::time::Instant::now();
     let limit = Duration::from_millis(max_wait);
     let queued = |waited: u64| {
@@ -357,10 +366,18 @@ async fn lease_after_hold(
         }
         let waited = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         let left_ms = max_wait.saturating_sub(waited).max(1);
+        drop(waiting.take());
         let (arrival, rx) = arrive_lease(&gate, &model, left_ms, by_hold);
         match arrival {
-            // Taken again at once by another holder: keep waiting.
-            Arrival::Refused(Refusal::MaintenanceHeld) => {}
+            // Taken again at once by another holder: keep waiting, counted again.
+            Arrival::Refused(Refusal::MaintenanceHeld) => {
+                waiting = HoldWaiter::take(&gate, 0);
+                if waiting.is_none() {
+                    gate.count_refusal(Refusal::GateBusy);
+                    let _ = tx.send(error_event(Refusal::GateBusy)).await;
+                    return;
+                }
+            }
             Arrival::Refused(refusal) => {
                 let _ = tx.send(error_event(refusal)).await;
                 return;

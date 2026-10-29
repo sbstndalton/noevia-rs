@@ -187,6 +187,9 @@ struct Inner {
     queued_kib: usize,
     /// The token hash of the maintenance hold, while one is held (the token itself is never kept).
     hold: Option<([u8; 32], HoldKey)>,
+    /// Requests and lease requests waiting out another client's maintenance hold (outside the
+    /// scheduler's queue, so counted here against its waiter limit).
+    hold_waiters: usize,
 }
 
 /// Most conversation ids remembered.
@@ -263,6 +266,7 @@ impl Gate {
                 sessions: Sessions::default(),
                 queued_kib: 0,
                 hold: None,
+                hold_waiters: 0,
             }),
             cfg,
             start: Instant::now(),
@@ -935,7 +939,7 @@ pub(crate) async fn admit_request(
     lease: Option<LeaseKey>,
     max_wait_ms: u64,
     body_kib: usize,
-    by_hold: bool,
+    by_hold: Option<HoldKey>,
 ) -> Result<Option<InflightGuard>, Refusal> {
     if !gate.known(model).await {
         return Err(Refusal::ModelNotFound);
@@ -983,7 +987,13 @@ pub(crate) async fn admit_request(
         if !matches!(attempt.0, Arrival::Refused(Refusal::MaintenanceHeld)) {
             break attempt;
         }
-        // Another client holds the engine for maintenance: wait for its end, then ask again.
+        // Another client holds the engine for maintenance: wait for its end, then ask again. The
+        // wait is counted like a queued one (body KiB, waiter limit) so waiting requests cannot
+        // take the buffer the holder's own requests need.
+        let Some(_waiting) = HoldWaiter::take(gate, body_kib) else {
+            gate.count_refusal(Refusal::GateBusy);
+            return Err(Refusal::GateBusy);
+        };
         if !wait_for_hold_end(gate, wait.saturating_sub(started.elapsed())).await {
             gate.count_refusal(Refusal::MaintenanceHeld);
             return Err(Refusal::MaintenanceHeld);
@@ -1029,6 +1039,41 @@ pub(crate) async fn admit_request(
     }
 }
 
+/// A request or lease request waiting out a maintenance hold: counted in the queued body KiB and
+/// against the waiter limit until it is dropped.
+pub(crate) struct HoldWaiter {
+    gate: Arc<Gate>,
+    kib: usize,
+}
+
+impl HoldWaiter {
+    /// `None` when the queued body share or the waiter limit is used up (the caller answers
+    /// `gate_busy`, as for a full queue).
+    pub(crate) fn take(gate: &Arc<Gate>, kib: usize) -> Option<Self> {
+        let mut inner = gate.lock();
+        let waiters = inner.sched.waiting().saturating_add(inner.hold_waiters);
+        if inner.queued_kib.saturating_add(kib) > gate.buffer_permits / 2
+            || waiters >= gate.cfg.admission.max_waiters
+        {
+            return None;
+        }
+        inner.queued_kib += kib;
+        inner.hold_waiters += 1;
+        Some(HoldWaiter {
+            gate: Arc::clone(gate),
+            kib,
+        })
+    }
+}
+
+impl Drop for HoldWaiter {
+    fn drop(&mut self) {
+        let mut inner = self.gate.lock();
+        inner.queued_kib = inner.queued_kib.saturating_sub(self.kib);
+        inner.hold_waiters = inner.hold_waiters.saturating_sub(1);
+    }
+}
+
 /// Waits until no maintenance hold is held, for at most `limit`. `false`: one is still held.
 pub(crate) async fn wait_for_hold_end(gate: &Arc<Gate>, limit: Duration) -> bool {
     let deadline = tokio::time::Instant::now() + limit;
@@ -1055,10 +1100,13 @@ pub(crate) async fn wait_for_hold_end(gate: &Arc<Gate>, limit: Duration) -> bool
 
 /// Parses `X-Noevia-Maintenance`: absent (`false`), or exactly one 32-character lowercase hex token
 /// that names the live maintenance hold (`true`).
-pub(crate) fn hold_from_headers(gate: &Arc<Gate>, headers: &HeaderMap) -> Result<bool, Refusal> {
+pub(crate) fn hold_from_headers(
+    gate: &Arc<Gate>,
+    headers: &HeaderMap,
+) -> Result<Option<HoldKey>, Refusal> {
     let mut values = headers.get_all("x-noevia-maintenance").iter();
     let Some(value) = values.next() else {
-        return Ok(false);
+        return Ok(None);
     };
     if values.next().is_some() {
         return Err(Refusal::InvalidHold);
@@ -1071,7 +1119,9 @@ pub(crate) fn hold_from_headers(gate: &Arc<Gate>, headers: &HeaderMap) -> Result
     let now = gate.now();
     let inner = gate.lock();
     match inner.hold {
-        Some((held, key)) if held == hash && inner.sched.hold_live(now, key) => Ok(true),
+        // The key, not a flag: the scheduler compares it with the hold held when the request is
+        // admitted, which may have changed while it waited.
+        Some((held, key)) if held == hash && inner.sched.hold_live(now, key) => Ok(Some(key)),
         _ => Err(Refusal::HoldUnknown),
     }
 }
