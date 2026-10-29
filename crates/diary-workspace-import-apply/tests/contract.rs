@@ -192,3 +192,67 @@ fn rejected_python_generations_preserve_the_complete_transaction() {
         assert_eq!(snapshot(), before, "{generation:?}");
     }
 }
+
+#[test]
+fn native_lifecycle_guard_refuses_commit_and_receipt_replay() {
+    let (_dir, request) = database();
+    let calls = std::cell::Cell::new(0);
+    let refused = diary_workspace_import_apply::apply_guarded(
+        &request,
+        include_bytes!("workspace.zip"),
+        || Ok(1700000000.0),
+        || {
+            calls.set(calls.get() + 1);
+            if calls.get() == 3 {
+                Err(Error::Inactive)
+            } else {
+                Ok(())
+            }
+        },
+    );
+    assert_eq!(refused, Err(Error::Inactive));
+    let db = Connection::open(&request.db_path).unwrap();
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM files", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM workspace_imports", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        db.query_row("SELECT value FROM meta WHERE key='generation'", [], |r| {
+            r.get::<_, String>(0)
+        })
+        .unwrap(),
+        "1"
+    );
+    apply_with_clock(&request, include_bytes!("workspace.zip"), || {
+        Ok(1700000000.0)
+    })
+    .unwrap();
+    calls.set(0);
+    let refused = diary_workspace_import_apply::apply_guarded(
+        &request,
+        include_bytes!("workspace.zip"),
+        || Err(Error::Clock),
+        || {
+            calls.set(calls.get() + 1);
+            if calls.get() == 3 {
+                Err(Error::Inactive)
+            } else {
+                Ok(())
+            }
+        },
+    );
+    assert_eq!(refused, Err(Error::Inactive));
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM workspace_imports", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+}

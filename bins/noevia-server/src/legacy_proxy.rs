@@ -193,10 +193,22 @@ impl HttpBody for UpstreamBody {
     }
 }
 
+/// In-process executor for an explicitly assembled native backend. The ordinary
+/// front constructor continues to use its existing upstream contract.
+pub type NativeExecutor = Arc<
+    dyn Fn(
+            SocketAddr,
+            Request<Body>,
+        ) -> Pin<Box<dyn std::future::Future<Output = Response<Body>> + Send>>
+        + Send
+        + Sync,
+>;
+
 #[derive(Clone)]
 pub struct LegacyProxy {
     upstream: Upstream,
     trust_proxy: bool,
+    native: Option<NativeExecutor>,
 }
 
 impl LegacyProxy {
@@ -204,10 +216,29 @@ impl LegacyProxy {
         LegacyProxy {
             upstream,
             trust_proxy,
+            native: None,
         }
     }
 
+    /// Replaces every legacy delegation site with the same owned native executor.
+    /// No connection to the configured legacy upstream can be made in this mode.
+    pub fn in_process(upstream: Upstream, trust_proxy: bool, native: NativeExecutor) -> Self {
+        Self {
+            upstream,
+            trust_proxy,
+            native: Some(native),
+        }
+    }
+    pub fn is_in_process(&self) -> bool {
+        self.native.is_some()
+    }
     pub async fn forward(&self, peer: SocketAddr, req: Request<Body>) -> Response<Body> {
+        if let Some(native) = &self.native {
+            let address = client_address(self.trust_proxy, peer.ip(), req.headers())
+                .parse()
+                .unwrap_or(peer.ip());
+            return native(SocketAddr::new(address, peer.port()), req).await;
+        }
         let api = req.uri().path().starts_with("/api/");
         let too_large = || {
             reply::error(
@@ -298,6 +329,45 @@ impl LegacyProxy {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn in_process_executor_never_contacts_the_old_upstream() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let observed = Arc::clone(&count);
+        let native: NativeExecutor = Arc::new(move |peer, request| {
+            assert_eq!(peer.ip().to_string(), "192.0.2.7");
+            assert_eq!(request.uri().path(), "/api/chat");
+            observed.fetch_add(1, Ordering::SeqCst);
+            Box::pin(async {
+                Response::builder()
+                    .status(418)
+                    .body(Body::from("owned native executor"))
+                    .unwrap()
+            })
+        });
+        let service = LegacyProxy::in_process(
+            Upstream {
+                ip: address.ip(),
+                port: address.port(),
+            },
+            true,
+            native,
+        );
+        let request = Request::post("/api/chat")
+            .header("x-forwarded-for", "192.0.2.7")
+            .body(Body::empty())
+            .unwrap();
+        let reply = service.forward(address, request).await;
+        assert_eq!(reply.status(), 418);
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(30), listener.accept())
+                .await
+                .is_err()
+        );
+    }
 
     #[test]
     fn upload_limit_is_restricted_to_exact_post_route() {

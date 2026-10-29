@@ -1,0 +1,233 @@
+//! Live HTTP-session fence around history disclosure and final transcript authority.
+//! Lock order is account Writer -> original project/transcript locks. Revocation cannot
+//! commit between the last session check and the native transcript commit.
+use crate::{approvals::Binding, state::Conversations, Control, Fault, Result};
+use serde_json::Value;
+use server_auth::{Authenticator, Creds, Refusal};
+use server_store::Writer;
+use std::sync::Arc;
+pub struct SessionConversations {
+    inner: Arc<dyn Conversations>,
+    account: Option<Arc<server_account::Account>>,
+    writer: Arc<Writer>,
+    auth: Arc<Authenticator>,
+    creds: Creds,
+    user: String,
+    clock: Arc<dyn Fn() -> i64 + Send + Sync>,
+}
+impl SessionConversations {
+    pub fn new(
+        inner: Arc<dyn Conversations>,
+        writer: Arc<Writer>,
+        auth: Arc<Authenticator>,
+        creds: Creds,
+        user: String,
+        clock: impl Fn() -> i64 + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            inner,
+            account: None,
+            writer,
+            auth,
+            creds,
+            user,
+            clock: Arc::new(clock),
+        }
+    }
+    pub fn with_account(mut self, account: Arc<server_account::Account>) -> Self {
+        self.account = Some(account);
+        self
+    }
+    fn fenced<T>(&self, user: &str, operation: impl FnOnce() -> Result<T>) -> Result<T> {
+        if user != self.user {
+            return Err(Fault::Forbidden);
+        }
+        let mut outcome = None;
+        self.writer
+            .write(|tx| {
+                let gate =
+                    self.auth
+                        .gate_in(&tx.reader(), &self.creds, "/api/chat", (self.clock)())?;
+                outcome = Some(match gate {
+                    Ok(identity) if identity.user.id == self.user => operation(),
+                    Err(Refusal::Unauthorized) => Err(Fault::Unauthorized),
+                    _ => Err(Fault::Forbidden),
+                });
+                Ok(())
+            })
+            .map_err(|_| Fault::Unavailable)?;
+        outcome.ok_or(Fault::Unavailable)?
+    }
+    pub fn check(&self) -> Result<()> {
+        self.fenced(&self.user, || Ok(()))
+    }
+}
+impl Conversations for SessionConversations {
+    fn partial(&self, binding: &Binding, id: &str, entry: Option<&Value>) -> Result<()> {
+        self.fenced(&binding.user, || self.inner.partial(binding, id, entry))
+    }
+
+    fn tool_mode(&self, binding: &Binding, name: &str, write: bool) -> Result<policy_leaves::Mode> {
+        if binding.user != self.user {
+            return Err(Fault::Forbidden);
+        }
+        let mut outcome = None;
+        self.writer
+            .write(|tx| {
+                let reader = tx.reader();
+                outcome = Some(
+                    match self
+                        .auth
+                        .gate_in(&reader, &self.creds, "/api/chat", (self.clock)())?
+                    {
+                        Ok(identity) if identity.user.id == self.user => {
+                            // Older DBs predate the optional policy table. Its absence
+                            // has the original no-row default. Never bypass the auth
+                            // Writer's DDL denial; malformed present tables fail closed.
+                            let exists = reader.row("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tool_policies'", [], |r|r.get::<_,i64>(0))?.is_some();
+                            let stored = if exists { reader.row("SELECT mode FROM tool_policies WHERE user_id=? AND tool=?", [&self.user, name], |r|r.get::<_,String>(0))? } else { None };
+                            let units = stored.map(|s| s.encode_utf16().collect::<Vec<_>>());
+                            Ok(policy_leaves::mode(units.as_deref(), write))
+                        }
+                        Err(Refusal::Unauthorized) => Err(Fault::Unauthorized),
+                        _ => Err(Fault::Forbidden),
+                    },
+                );
+                Ok(())
+            })
+            .map_err(|_| Fault::Unavailable)?;
+        outcome.ok_or(Fault::Unavailable)?
+    }
+
+    fn sampling_enabled(&self, binding: &Binding) -> Result<bool> {
+        if binding.user != self.user {
+            return Err(Fault::Forbidden);
+        }
+        let mut outcome = None;
+        self.writer.write(|tx| {
+            let reader = tx.reader();
+            outcome = Some(match self.auth.gate_in(&reader, &self.creds, "/api/chat", (self.clock)())? {
+                Ok(identity) if identity.user.id == self.user => Ok(reader.row("SELECT CASE WHEN typeof(value)='text' AND value='false' THEN 0 ELSE 1 END FROM settings WHERE key='auto_sampling_presets_enabled'", [], |r|r.get::<_,bool>(0))?.unwrap_or(true)),
+                Err(Refusal::Unauthorized) => Err(Fault::Unauthorized),
+                _ => Err(Fault::Forbidden),
+            });
+            Ok(())
+        }).map_err(|_|Fault::Unavailable)?;
+        outcome.ok_or(Fault::Unavailable)?
+    }
+
+    fn supports_project_files(&self) -> bool {
+        self.inner.supports_project_files()
+    }
+    fn sources(&self, binding: &Binding, control: &Control) -> Result<Vec<Value>> {
+        self.fenced(&binding.user, || self.inner.sources(binding, control))
+    }
+    fn read_project_file(
+        &self,
+        binding: &Binding,
+        args: &Value,
+        control: &Control,
+    ) -> Result<Value> {
+        self.fenced(&binding.user, || {
+            self.inner.read_project_file(binding, args, control)
+        })
+    }
+
+    fn project(&self, binding: &Binding) -> Result<Option<Value>> {
+        self.fenced(&binding.user, || self.inner.project(binding))
+    }
+
+    fn system(&self, binding: &Binding) -> Result<Vec<Value>> {
+        self.fenced(&binding.user, || {
+            let Some(account) = &self.account else {
+                return self.inner.system(binding);
+            };
+            let project = self.inner.project(binding)?;
+            let memories: Vec<String> = project.as_ref().and_then(|p|p.get("memories")).and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_owned).collect();
+            let mut parts = account
+                .chat_system_parts_with_memories(&binding.user,&memories)
+                .map_err(|_| Fault::Unavailable)?;
+            parts.insert(
+                parts.len().min(1),
+                crate::calendar::system_part(chrono::Local::now().date_naive()),
+            );
+            if let Some(project) = project {
+                let mut context = Vec::new();
+                if !project.get("id").and_then(Value::as_str).is_some_and(|s|s.starts_with("cowork-chat-context-")) {
+                    if let Some(name)=project.get("name").and_then(Value::as_str).filter(|s|!s.is_empty()) {
+                        let quoted=serde_json::to_string(name)?.chars().map(|c| if matches!(c,'\u{0085}'|'\u{200e}'|'\u{200f}'|'\u{2028}'..='\u{202e}'|'\u{2066}'..='\u{2069}') {format!("\\u{:04x}",c as u32)} else {c.to_string()}).collect::<String>();
+                        context.push(format!("You are working inside the user's project {quoted}."));
+                    }
+                }
+                if let Some(goal)=project.get("goal").and_then(Value::as_str).filter(|s|!s.is_empty()) { context.push(format!("Project goal: {goal}")); }
+                if let Some(instructions)=project.get("instructions").and_then(Value::as_str).filter(|s|!s.is_empty()) { context.push(format!("Project instructions (follow closely):\n{instructions}")); }
+                let at=parts.iter().position(|s|s.starts_with("Things you know about the user")).unwrap_or(parts.len());
+                parts.splice(at..at,context);
+            }
+            Ok(vec![
+                serde_json::json!({"role":"system","content":parts.join("\n\n")}),
+            ])
+        })
+    }
+
+    fn context(&self, user: &str, chat: &str) -> Result<Binding> {
+        self.fenced(user, || self.inner.context(user, chat))
+    }
+    fn begin(
+        &self,
+        binding: &Binding,
+        id: &str,
+        request: &Value,
+        control: &Control,
+    ) -> Result<(String, Vec<Value>)> {
+        self.fenced(&binding.user, || {
+            self.inner.begin(binding, id, request, control)
+        })
+    }
+    fn begin_browser(
+        &self,
+        binding: &Binding,
+        id: &str,
+        request: &Value,
+        history: &[Value],
+        control: &Control,
+    ) -> Result<(String, Vec<Value>)> {
+        self.fenced(&binding.user, || {
+            self.inner
+                .begin_browser(binding, id, request, history, control)
+        })
+    }
+    fn finish(
+        &self,
+        binding: &Binding,
+        id: &str,
+        revision: &str,
+        messages: &[Value],
+        control: &Control,
+    ) -> Result<()> {
+        self.fenced(&binding.user, || {
+            self.inner.finish(binding, id, revision, messages, control)
+        })
+    }
+    fn finish_tools(
+        &self,
+        binding: &Binding,
+        id: &str,
+        revision: &str,
+        messages: &[Value],
+        tools: &[Value],
+        control: &Control,
+    ) -> Result<()> {
+        self.fenced(&binding.user, || {
+            self.inner
+                .finish_tools(binding, id, revision, messages, tools, control)
+        })
+    }
+    fn fail(&self, user: &str, id: &str, fault: Fault) -> Result<()> {
+        // Cleanup of this owner's admitted intent must remain possible after revocation.
+        if user != self.user {
+            return Err(Fault::Forbidden);
+        }
+        self.inner.fail(user, id, fault)
+    }
+}

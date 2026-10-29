@@ -376,12 +376,27 @@ pub fn write_as(
     supersede: Option<&str>,
     origin: Origin,
 ) -> Result<Saved, TranscriptError> {
+    let (dir, _) = locate(data_dir, user, chat)?;
+    let _held = lock_user(&dir)?;
+    write_as_held(data_dir, user, chat, history, base, supersede, origin)
+}
+
+/// Caller holds the transcript lock. Used by the context-bound native executor while
+/// it also holds both metadata-list locks, so a move cannot race the final commit.
+pub(crate) fn write_as_held(
+    data_dir: &Path,
+    user: &str,
+    chat: &str,
+    history: &[JValue],
+    base: &Base,
+    supersede: Option<&str>,
+    origin: Origin,
+) -> Result<Saved, TranscriptError> {
     let (dir, safe) = locate(data_dir, user, chat)?;
     let next = bounded(history)?;
     let proposed = revision_of(&JValue::Arr(next.clone())).ok_or(StoreError::Corrupt)?;
     let text = store_text(&next)?;
     let file = history_file(&dir, &safe);
-    let _held = lock_user(&dir)?;
     if tombstoned(&dir, &safe)? {
         return Ok(Saved::Deleted);
     }

@@ -180,7 +180,19 @@ pub fn apply_with_clock(
     body: &[u8],
     clock: impl FnOnce() -> Result<f64, Error>,
 ) -> Result<Applied, Error> {
+    apply_guarded(request, body, clock, || Ok(()))
+}
+
+/// Native in-process caller keeps lifecycle locks and can refuse before any commit.
+pub fn apply_guarded(
+    request: &Request,
+    body: &[u8],
+    clock: impl FnOnce() -> Result<f64, Error>,
+    guard: impl Fn() -> Result<(), Error>,
+) -> Result<Applied, Error> {
+    guard()?;
     let archive = checked_archive(request, body)?;
+    guard()?;
     // READ_WRITE explicitly excludes CREATE, URI and load-extension flags.
     let mut db = Connection::open_with_flags(
         Path::new(&request.db_path),
@@ -212,6 +224,7 @@ pub fn apply_with_clock(
         .optional()?
         .is_some()
     {
+        guard()?;
         tx.commit()?;
         return Ok(Applied {
             already_applied: true,
@@ -261,6 +274,7 @@ pub fn apply_with_clock(
         "INSERT INTO workspace_imports VALUES (?,?)",
         [&request.reviewed_fingerprint, &request.destination],
     )?;
+    guard()?;
     tx.commit()?;
     Ok(applied)
 }

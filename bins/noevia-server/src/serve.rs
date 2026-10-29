@@ -174,7 +174,16 @@ pub async fn serve(
     limits: Limits,
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) {
-    let router = crate::router(app);
+    serve_router(listener, crate::router(app), limits, shutdown).await;
+}
+/// Same bounded accept loop for a dedicated native service. The supplied router
+/// must enforce the code-network guard before dispatch using its injected Conn.
+pub async fn serve_router(
+    listener: TcpListener,
+    router: Router,
+    limits: Limits,
+    shutdown: impl Future<Output = ()> + Send + 'static,
+) {
     let max = limits
         .max_connections
         .clamp(1, tokio::sync::Semaphore::MAX_PERMITS);

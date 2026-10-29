@@ -581,3 +581,94 @@ pub fn account_files(
         Err(f) => return Err(f),
     }))
 }
+
+/// Original account-instructions/account-memory prompt projection. Caller holds its
+/// live session fence; this reads the same sanitized records as the public routes.
+pub(crate) fn chat_parts(
+    acct: &Account,
+    user: &str,
+    project_memories: &[String],
+) -> Result<Vec<String>, Fault> {
+    let dir = user_dir(acct, user)?;
+    let settings = instructions_read(&dir);
+    let mut lines = Vec::<String>::new();
+    match settings.get("style").as_str(){
+        Some("concise")=>lines.push("Keep replies short and direct: lead with the answer, skip preamble, and expand only when asked.".into()),
+        Some("detailed")=>lines.push("Be thorough: explain reasoning, cover edge cases and give examples where they help.".into()),_=>()
+    }
+    for (key, value, line) in [
+        (
+            "length",
+            "short",
+            "Prefer brief answers, a few sentences where possible.",
+        ),
+        ("length", "long", "Prefer complete, longer answers."),
+        ("tone", "casual", "Use a relaxed, conversational tone."),
+        ("tone", "formal", "Use a formal, professional tone."),
+        (
+            "formatting",
+            "minimal",
+            "Write in plain paragraphs; avoid headings and bullet lists unless asked.",
+        ),
+        (
+            "formatting",
+            "structured",
+            "Organise longer answers with headings and bullet lists.",
+        ),
+        ("emoji", "none", "Do not use emoji."),
+        (
+            "emoji",
+            "some",
+            "An occasional emoji is fine where it fits.",
+        ),
+    ] {
+        if settings.get("advanced").get(key).as_str() == Some(value) {
+            lines.push(line.into());
+        }
+    }
+    if let Some(language) = settings.get("language").as_str().filter(|s| !s.is_empty()) {
+        lines.push(format!(
+            "Reply in {language} unless the user writes in or asks for another language."
+        ));
+    }
+    if let Some(text) = settings.get("text").as_str().filter(|s| !s.is_empty()) {
+        lines.push(text.into());
+    }
+    let mut result = Vec::new();
+    if !lines.is_empty() {
+        result.push(format!("The user's custom instructions for all chats (project instructions, and any format or language the user asks for in a message, take precedence where they conflict):\n{}",lines.join("\n")));
+    }
+    let memory = memory_read(&dir);
+    let mut memories = Vec::new();
+    if let JValue::Arr(items) = memory.get("memories") {
+        for item in items {
+            if let Some(text) = item.as_str() {
+                if !memories.contains(&text) {
+                    memories.push(text);
+                }
+            }
+        }
+    }
+    if memory.get("useProjectMemories").as_bool() != Some(false) {
+        for text in project_memories
+            .iter()
+            .map(String::as_str)
+            .filter(|s| !s.trim().is_empty())
+        {
+            if !memories.contains(&text) {
+                memories.push(text);
+            }
+        }
+    }
+    if !memories.is_empty() {
+        result.push(format!(
+            "Things you know about the user (persistent memory, apply silently):\n{}",
+            memories
+                .iter()
+                .map(|s| format!("- {s}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ));
+    }
+    Ok(result)
+}
