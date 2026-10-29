@@ -170,7 +170,7 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
     let app2 = Arc::clone(app);
     let outcome = tokio::task::spawn_blocking(move || {
         let account = layer.account(&app2, now)?;
-        let outcome = if framing {
+        let outcome = if framing || features {
             // The live clock is first sampled INSIDE public Account entry,
             // after body and lazy Account initialization, then before/after
             // all initial auth and final writer admission waits.
@@ -222,5 +222,95 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
             let req = Request::from_parts(parts, Body::from(request.body.bytes));
             app.proxy.forward(conn.peer, req).await
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Bytes;
+    use server_store::{db_path, rusqlite::Connection};
+    use std::{
+        pin::Pin,
+        sync::atomic::{AtomicBool, Ordering},
+        task::{Context, Poll},
+    };
+    type Error = Box<dyn std::error::Error>;
+    struct Pending(Arc<AtomicBool>);
+    impl http_body::Body for Pending {
+        type Data = Bytes;
+        type Error = std::io::Error;
+        fn poll_frame(
+            self: Pin<&mut Self>,
+            _: &mut Context<'_>,
+        ) -> Poll<Option<Result<http_body::Frame<Bytes>, Self::Error>>> {
+            self.0.store(true, Ordering::SeqCst);
+            Poll::Pending
+        }
+    }
+    #[tokio::test]
+    async fn all_feature_namespaces_preserve_header_and_method_before_body_order(
+    ) -> Result<(), Error> {
+        let dir = tempfile::tempdir()?;
+        let db = Connection::open(db_path(dir.path()))?;
+        db.execute_batch(include_str!(
+            "../../../crates/server-store/tests/fixtures/node-schema.sql"
+        ))?;
+        let now = crate::identity::now_ms();
+        let uid = "00000000-0000-4000-8000-000000000001";
+        db.execute("INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES(?1,'Synthetic','synthetic','Synthetic','admin','unused','wa',?2,?2)",(uid,now))?;
+        db.execute("INSERT INTO sessions(id_hash,user_id,csrf_hash,created_at,last_seen_at,expires_at,user_agent,ip) VALUES(?1,?2,?3,?4,?4,?5,'Synthetic','127.0.0.1')",(server_auth::js::digest("synthetic-session"),uid,server_auth::js::digest("synthetic-csrf"),now,now+60_000))?;
+        let config = crate::config::Config::from_lookup(|key| match key {
+            "NOEVIA_LEGACY_UPSTREAM" => Some("http://127.0.0.1:9".into()),
+            "UI_DATA_DIR" => Some(dir.path().to_string_lossy().into_owned()),
+            "NOEVIA_START_ID" => Some("11111111111111111111111111111111".into()),
+            "PUBLIC_ORIGIN" => Some("https://noevia.example.test".into()),
+            _ => None,
+        })?;
+        let app = App::new(config);
+        for (method, path, signed, member, status) in [
+            ("GET", "/api/features", false, false, 401),
+            ("PUT", "/api/admin/features/previews", false, false, 401),
+            ("GET", "/api/features", true, false, 503),
+            ("POST", "/api/features", true, false, 405),
+            ("PUT", "/api/admin/features", true, false, 405),
+            ("GET", "/api/admin/features/previews", true, false, 405),
+            ("GET", "/api/admin/features/%", true, false, 500),
+            ("PUT", "/api/admin/features/previews", true, true, 403),
+        ] {
+            db.execute(
+                "UPDATE users SET role=?1",
+                [if member { "member" } else { "admin" }],
+            )?;
+            let polled = Arc::new(AtomicBool::new(false));
+            let mut request = Request::builder()
+                .method(method)
+                .uri(path)
+                .header("origin", "https://noevia.example.test");
+            if signed {
+                request = request
+                    .header(
+                        "cookie",
+                        "cowork_session=synthetic-session; cowork_csrf=synthetic-csrf",
+                    )
+                    .header("x-csrf-token", "synthetic-csrf");
+            }
+            let response = tokio::time::timeout(
+                std::time::Duration::from_secs(3),
+                serve(
+                    &app,
+                    Conn {
+                        peer: "127.0.0.1:12345".parse()?,
+                        local: None,
+                    },
+                    request.body(Body::new(Pending(Arc::clone(&polled))))?,
+                    path.into(),
+                ),
+            )
+            .await?;
+            assert_eq!(response.status().as_u16(), status, "{method} {path}");
+            assert!(!polled.load(Ordering::SeqCst), "{method} {path}");
+        }
+        Ok(())
     }
 }
