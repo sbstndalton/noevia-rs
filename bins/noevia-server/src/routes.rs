@@ -424,7 +424,12 @@ pub fn native_for(route: &Route) -> Option<Native> {
         "/api/usage" | "/api/usage/aggregate" if auth => return Some(Native::Usage),
         EXPORT if auth => return Some(Native::Export),
         p if auth && DIARY_ROUTES.contains(&p) => return Some(Native::Diary),
-        p if auth && crate::model_routes::ROUTES.contains(&p) => return Some(Native::Models),
+        p if auth
+            && (crate::model_routes::ROUTES.contains(&p)
+                || crate::model_maint::ROUTES.contains(&p)) =>
+        {
+            return Some(Native::Models)
+        }
         p if auth && crate::public_pages::ROUTES.contains(&p) => return Some(Native::PublicPages),
         crate::plugin_directory_routes::DIRECTORY if auth => return Some(Native::PluginDirectory),
         p if auth && crate::decision_settings_routes::ROUTES.contains(&p) => {
@@ -1247,6 +1252,7 @@ mod tests {
         }
         assert!(crate::FEATURES.contains(&"rust-model-reads"));
         assert!(crate::FEATURES.contains(&"rust-model-sizing"));
+        assert!(crate::FEATURES.contains(&"rust-model-maintenance"));
         for p in [
             "/api/model-manager",
             "/api/model-manager/models",
@@ -1259,14 +1265,11 @@ mod tests {
             "/api/models/calibration",
             "/api/models/calibration/cancel",
             "/api/models/delete",
-            "/api/models/evidence",
-            "/api/models/evidence/import",
             "/api/models/evidence/recheck",
             "/api/models/inference-budget",
             "/api/models/installed",
             "/api/models/load",
             "/api/models/machines",
-            "/api/models/presets/reload",
             "/api/models/preset",
             "/api/models/downloads",
             "/api/models/capabilitiesx",
@@ -1293,10 +1296,32 @@ mod tests {
             vec![
                 (crate::model_routes::CAPABILITIES, &["GET"][..]),
                 (crate::model_sizing::ESTIMATE, &["GET"][..]),
+                (crate::model_maint::EVIDENCE, &["GET"][..]),
+                (crate::model_maint::EVIDENCE_IMPORT, &["POST"][..]),
                 (crate::model_routes::HARDWARE, &["GET"][..]),
                 (crate::model_sizing::SUGGEST, &["GET"][..]),
+                (crate::model_maint::RELOAD, &["POST"][..]),
             ]
         );
+        // #2210: the maintenance routes are the front's for their one method only; every other
+        // method stays Node's.
+        for p in crate::model_maint::ROUTES {
+            let own = if *p == crate::model_maint::EVIDENCE {
+                "GET"
+            } else {
+                "POST"
+            };
+            assert_eq!(
+                dispatch_under(own, p, on),
+                Some(Native::Models),
+                "{own} {p}"
+            );
+            for m in ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] {
+                if m != own {
+                    assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
+                }
+            }
+        }
     }
 
     /// sbstndalton/noevia#2191: a project source's three stored reads are the front's, GET only;

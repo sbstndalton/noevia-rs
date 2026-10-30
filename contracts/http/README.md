@@ -514,14 +514,14 @@ and `--features` lists `rust-model-reads`. The rest wait for batch M2 (the job r
 | `/api/models/calibration/cancel` | node | write to the running job (M2) |
 | `/api/models/delete` | node | write: unload, delete, roles, preset section (M2) |
 | `/api/models/estimate` (GET) | rust | moved in #2189 (below); other methods keep Node's admin check and 405 |
-| `/api/models/evidence` | node | fills Node's in-memory identity cache that evidence writes use |
-| `/api/models/evidence/import` | node | write (M2) |
-| `/api/models/evidence/recheck` | node | write that may load a model (M2) |
+| `/api/models/evidence` (GET) | rust | moved in #2210 (below); the front computes the identity and is the evidence store's only writer |
+| `/api/models/evidence/import` (POST) | rust | moved in #2210 (below) |
+| `/api/models/evidence/recheck` | node | image probe that may load a model, after Node's admission check; its record goes to the front through the evidence inbox (#2210) |
 | `/api/models/inference-budget` | node | budget store, boot-time budget, Node's shared installed list; PUT writes |
 | `/api/models/installed` | node | Node's shared (cached, invalidated by its writes) installed list |
 | `/api/models/load` | node | write through Node's lease and maintenance gate (M2) |
 | `/api/models/machines` | node | machine health probe and tune caches in Node memory; POST writes |
-| `/api/models/presets/reload` | node | write under the maintenance hold (M2) |
+| `/api/models/presets/reload` (POST) | rust | moved in #2210 (below); other methods keep Node's 403/405 |
 | `/api/models/preset/suggest` (GET) | rust | moved in #2189 (below); other methods keep Node's admin check and 405 |
 | `/api/models/{*}` | node | preset, idle-unload, assignments, reranker, prune, mtp-artifact, pull, downloads: mixed reads of Node state and writes |
 
@@ -937,12 +937,9 @@ and the recorded answers are the port's text in every case. `tests/model_sizing.
 gave for synthetic fixtures (`tests/fixtures/model-sizing/record-node.cjs`, recorded at Core `fbac2e4`) byte
 for byte, and proves nothing is written and the router is asked only for its listing. Nothing is cached.
 
-Kept on Node, and why: `GET /api/models/evidence` computes the model's identity from router args, the
-engine's `/props`, a file fingerprint and the preset hash, and keeps it in a 30 s cache the evidence writers
-(calibration, auto-tune, recheck, import) read and clear; serving it from a second process would need that
-cache or a second identity writer, so it moves with the evidence writers (batch B). `inference-budget` (its
-PUT and the boot-time saved value), `installed`, load/unload, delete, calibration, auto-tune, machines, preset
-GET/PUT and `/api/model-manager` stay too.
+Kept on Node, and why: `GET /api/models/evidence` moved with the evidence writers in #2210 (below).
+`inference-budget` (its PUT and the boot-time saved value), `installed`, load/unload, delete, calibration,
+auto-tune, machines, preset GET/PUT and `/api/model-manager` stay too.
 
 Not Node's answer, each unreachable in a working deployment: Core always has an inference budget of at least
 2 GiB, so the boot-time `LLAMACPP_MEMORY_LIMIT` fault and the "no budget" 501 never show (both kept or
@@ -951,6 +948,56 @@ memory); GGUF metadata with NaN, Infinity or -0 in a raw field (float-typed head
 `null`/`0` where the JS estimator saw the number; a router listing nested 64 deep at the fields read counts as
 no listing.
 
+
+## sbstndalton/noevia#2210 (models round B, group rust-model-maintenance): reload and evidence
+
+`POST /api/models/presets/reload`, `GET /api/models/evidence` and `POST /api/models/evidence/import` are the
+front's (`bins/noevia-server/src/model_maint/`); core refuses them with 503 `RUST_MODEL_MAINTENANCE_OWNED`
+(`server/rust-model-maintenance.cjs`, before authentication) and `--features` lists `rust-model-maintenance`.
+Every other method of the three paths keeps Node's answer (the administrator check, then 405). The web
+supervisor and the release assembly pair the capability with that Core in both directions.
+
+What the front reads and writes (all from Core's keys): `MODEL_MANAGER_*`/`INFERENCE_*` (the router), `INFERENCE_GATE_ADMIN_TOKEN`
+(the inference gate's maintenance hold), `LLAMACPP_PRESET_PATH` and `LLAMACPP_MODELS_PATH`/`LLAMACPP_CACHE_PATH`,
+`MODELS_INI_WRITER`/`MODEL_LOADER_URL`/`MODEL_LOADER_TOKEN` (the models.ini writer, used by the next batch), and in
+`UI_DATA_DIR` (suffix = the first 16 hex digits of sha256 of the model manager's base URL, as Core names it):
+`native-preset-reload-<suffix>.json`, `evidence-<suffix>/evidence.jsonl` and `evidence-inbox-<suffix>/`.
+`NOEVIA_QA_MODEL_CARD_SOURCE` points the model-card import at a synthetic source (tests, replays); production
+leaves it unset (https://huggingface.co).
+
+- **Reload.** The work is a spawned task that owns an inference-gate maintenance hold (a deadline, renewed every
+  third of the gate's idle limit, taken again if the gate loses it, given back on every exit and from `Drop`),
+  so a client that leaves strands neither. Without an admin token or a gate that knows the hold (production has no
+  gate), the reload takes a lease on Node's own maintenance gate instead (`/internal/model-maintenance/lease`, core
+  `model-maintenance-lease.cjs`, `model_maint/node_lease.rs`): loopback, the per-start store secret, not a proxied
+  request. A lease IS a hold of Node's gate, so chat active refuses the reload with the 409, and a held lease holds
+  back chat (503 after its short wait), tune, calibration, sweep, idle-unload, delete and prune. It ends by itself
+  when not renewed (180 s, longer than any one router call; a step starts only if the last confirmation and the lease's hard limit cover its whole limit), so a front that dies frees Node. Node unreachable, or answering anything else: 503 with
+  nothing changed. A lease that ended or that Node stopped confirming stops the work before its next step, and is
+  never taken again. With a gate and no admin token, `unload: true` is refused (503): the gate's hold is the only
+  exclusion for other clients. The front prints Node's missing-token warning at start when a gate answers. The
+  deadline grows to fit 60 s per unload plus the 120 s reload once the loaded models are known. The baseline
+  file is written by both processes under one lock file (`<file>.lock`, created exclusively, taken over after
+  30 s) and replaced atomically; Core's guard re-reads it on every use. Core also asks the gate whether a hold it
+  did not take is held (`GET /gate/v1/status`), so the folder sync, the optional chat work and the code machine
+  wait for a hold the front took.
+- **Evidence.** Records are the format Core reads and writes (JSON lines, id/at/limitations first, key order kept);
+  an old Core reads them and the reverse. The front is the only writer. Node's producers (a chat's vision probe
+  and MTP acceptance, a benchmark run, auto-tune and calibration results, the recheck, a finished download)
+  queue records in the inbox directory, one whole file each (`.tmp`, renamed to `.json`), which the front drains
+  in name order every second (at most 200 entries of at most 64 KiB; an unusable entry is dropped). The recheck
+  waits (3 s) for its record and answers from Node's read-only view of the log. Compaction, the reported-rate
+  throttle, the credential refusal and the derived states are Core's. One difference from Core: two records with
+  the same value in a different key order are the same value here (Core compared the serialised text).
+- **Not Node's answer.** A task-scoped record (`taskId`, never produced) is refused. The identity cache (30 s)
+  is the front's own: a delete through Node does not clear it, so a reported rate arriving in the 30 s after a
+  deleted model's file is gone may be filed under the old identity (Core cleared its cache on delete).
+- **Kept on Node, and why.** `POST /api/models/evidence/recheck` runs an image probe that may load the model after
+  Node's admission check (the inference budget, the memory-watchdog quarantine and the probe cache are Node memory);
+  `/api/model-manager`, load/unload/delete/pull/downloads, the preset GET/PUT, machines, reranker, assignments,
+  idle-unload and prune-missing are chat-bound or engine-live (roles, last-loaded, leases, the load gate).
+- **Tests.** `tests/model_reload.rs` replays 38 answers Core gave (`tests/fixtures/model-maint/record-reload.cjs`) and
+  `tests/model_evidence.rs` 26 scenarios (`record-evidence.cjs`), both recorded at Core `b6113b57`.
 
 ## sbstndalton/noevia#2191 round 4 (group rust-project-document-pages): a stored document's pages
 
