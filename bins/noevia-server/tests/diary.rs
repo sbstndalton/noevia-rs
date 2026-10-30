@@ -83,6 +83,12 @@ async fn sidecar() -> (String, Arc<Mutex<Vec<Seen>>>) {
                             )
                         } else if target.starts_with("/api/workspace-export") {
                             ("application/zip", &[80, 75, 0, 255, 9])
+                        } else if target.starts_with("/api/storage-status") {
+                            ("application/json", br#"{"mode":"legacy"}"#)
+                        } else if target.starts_with("/api/files") {
+                            ("application/json", br#"{"files":[{"path":"Notes/a.md"}]}"#)
+                        } else if target.starts_with("/api/file") {
+                            ("application/json", br#"{"content":"hi","version":"v"}"#)
                         } else {
                             ("application/json", br#"{"fingerprint":"reviewed"}"#)
                         };
@@ -171,14 +177,18 @@ async fn call(app: &Arc<App>, method: &str, path: &str, signed_in: bool, body: &
 }
 
 #[test]
-fn the_front_lists_the_capability_and_owns_exactly_the_five_routes() {
+fn the_front_lists_the_capabilities_and_owns_exactly_these_routes() {
     assert!(noevia_server::FEATURES.contains(&"rust-diary"));
+    assert!(noevia_server::FEATURES.contains(&"rust-diary-routes"));
     for path in [
         "/api/diary/source",
         "/api/diary/today",
         "/api/diary/storage-import",
         "/api/diary/workspace-export",
         "/api/diary/workspace-import",
+        "/api/diary",
+        "/api/diary-connector",
+        "/api/diary/storage-status",
     ] {
         for method in ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"] {
             assert_eq!(
@@ -188,16 +198,25 @@ fn the_front_lists_the_capability_and_owns_exactly_the_five_routes() {
             );
         }
     }
-    for path in [
-        "/api/diary",
-        "/api/diary-connector",
-        "/api/diary/context",
-        "/api/diary/exchanges",
-        "/api/diary/local-exchange",
-        "/api/diary/storage-status",
-        "/api/profile/diary-connectors",
-        "/api/diary/history",
+    for (path, methods) in [
+        ("/api/diary/context", ["GET", "POST"].as_slice()),
+        ("/api/diary/exchanges", ["GET", "POST"].as_slice()),
+        ("/api/profile/diary-connectors", ["GET", "POST"].as_slice()),
+        (
+            "/api/profile/diary-connectors/0123456789abcdef0123456789abcdef",
+            ["DELETE"].as_slice(),
+        ),
     ] {
+        for method in ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"] {
+            assert_eq!(
+                routes::dispatch(method, path),
+                methods.contains(&method).then_some(routes::Native::Diary),
+                "{method} {path}"
+            );
+        }
+    }
+    // Node keeps the local exchange, and the paths the web client never names.
+    for path in ["/api/diary/local-exchange", "/api/diary/history"] {
         assert_eq!(routes::dispatch("GET", path), None, "{path}");
         assert_eq!(routes::dispatch("POST", path), None, "{path}");
     }
@@ -396,4 +415,450 @@ async fn a_trailing_slash_is_not_the_route_and_goes_to_node_as_before() {
         "the proxy's own answer, not a native one"
     );
     assert!(seen.lock().unwrap().is_empty());
+}
+
+// ── sbstndalton/noevia#2206 ────────────────────────────────────────────────────
+
+fn db(dir: &std::path::Path) -> Connection {
+    let c = Connection::open(server_store::db_path(dir)).unwrap();
+    c.execute_batch("CREATE TABLE IF NOT EXISTS diary_connectors(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,token_hash TEXT NOT NULL,created_at INTEGER NOT NULL)").unwrap();
+    c
+}
+
+fn json_of(a: &Answer) -> js_json::JValue {
+    js_json::wtf16::parse(std::str::from_utf8(&a.body).unwrap()).unwrap()
+}
+
+async fn with_account() -> (tempfile::TempDir, Arc<App>, Arc<Mutex<Vec<Seen>>>) {
+    let dir = tempfile::tempdir().unwrap();
+    seed(dir.path(), true);
+    db(dir.path());
+    std::fs::create_dir_all(dir.path().join("users").join(USER)).unwrap();
+    let (base, seen) = sidecar().await;
+    let app = app(dir.path(), &base);
+    (dir, app, seen)
+}
+
+#[tokio::test]
+async fn the_gate_comes_first_for_the_new_routes_and_a_bare_diary_path_is_not_found() {
+    let (_dir, app, seen) = with_account().await;
+    for (method, path) in [
+        ("GET", "/api/diary"),
+        ("GET", "/api/diary/storage-status"),
+        ("GET", "/api/diary/exchanges"),
+        ("POST", "/api/diary/exchanges"),
+        ("GET", "/api/diary/context"),
+        ("POST", "/api/diary/context"),
+        ("GET", "/api/profile/diary-connectors"),
+        ("POST", "/api/profile/diary-connectors"),
+        (
+            "DELETE",
+            "/api/profile/diary-connectors/0123456789abcdef0123456789abcdef",
+        ),
+    ] {
+        let a = call(&app, method, path, false, b"{}").await;
+        assert_eq!(a.status, 401, "{method} {path}");
+        assert_eq!(a.headers["www-authenticate"], "Bearer realm=\"cowork\"");
+    }
+    // Signed in, `/api/diary` has no handler in Node: its unknown-path answer, for every method.
+    for method in ["GET", "POST", "PUT", "DELETE"] {
+        let a = call(&app, method, "/api/diary", true, b"{}").await;
+        assert_eq!(
+            (a.status.as_u16(), a.body.as_slice()),
+            (404, br#"{"error":"not found"}"#.as_slice()),
+            "{method}"
+        );
+        assert_eq!(a.headers["x-noevia-api"], "1");
+    }
+    assert!(seen.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn the_storage_status_shows_the_hold_both_processes_share() {
+    let (dir, app, seen) = with_account().await;
+    let a = call(&app, "GET", "/api/diary/storage-status", true, b"").await;
+    assert_eq!(
+        (a.status.as_u16(), a.body.as_slice()),
+        (200, br#"{"mode":"legacy"}"#.as_slice())
+    );
+    // A refused login recorded the way Node's backup worker records it (the same file, the same
+    // fingerprint of the account's saved connection: none saved, so local).
+    let fingerprint = server_projects::storage_latch::fingerprint("local", "", "", "", "");
+    server_projects::storage_latch::note(
+        dir.path(),
+        USER,
+        &fingerprint,
+        server_projects::source_storage::Failure {
+            kind: "login",
+            retry_after: None,
+        },
+        server_projects::wall_ms(),
+    )
+    .unwrap();
+    let a = call(&app, "GET", "/api/diary/storage-status", true, b"").await;
+    let v = json_of(&a);
+    assert_eq!(a.status, 200);
+    assert_eq!(v.get("mode").as_str(), Some("legacy"));
+    let held = v.get("automaticStorage");
+    assert_eq!(held.get("held").as_bool(), Some(true));
+    assert_eq!(held.get("kind").as_str(), Some("login"));
+    assert!(held.get("nextAttemptAt").as_num().unwrap() > 1.0e12);
+    // Another method is the route's own 405, after the add-on.
+    let a = call(&app, "POST", "/api/diary/storage-status", true, b"{}").await;
+    assert_eq!(
+        (a.status.as_u16(), a.body.as_slice()),
+        (405, br#"{"error":"Method not allowed"}"#.as_slice())
+    );
+    assert_eq!(seen.lock().unwrap().len(), 2);
+    assert!(seen
+        .lock()
+        .unwrap()
+        .iter()
+        .all(|r| r.target == "/api/storage-status"));
+}
+
+#[tokio::test]
+async fn the_exchanges_use_the_start_the_supervisor_gave_both_processes() {
+    let (dir, app, _seen) = with_account().await;
+    let day = dir
+        .path()
+        .join("users")
+        .join(USER)
+        .join("diary-conversations")
+        .join("2026-10-30");
+    std::fs::create_dir_all(&day).unwrap();
+    std::fs::write(
+        day.join("exchange-aaaaaaaaaaaaaaaa.json"),
+        r#"{"id":"exchange-aaaaaaaaaaaaaaaa","state":"running","startedAt":1}"#,
+    )
+    .unwrap();
+    // The app was built without NOEVIA_START_ID: nothing can be shown to belong to a live Node.
+    let a = call(
+        &app,
+        "GET",
+        "/api/diary/exchanges?day=2026-10-30",
+        true,
+        b"",
+    )
+    .await;
+    assert_eq!(a.status, 200);
+    assert_eq!(
+        json_of(&a).get("exchanges"),
+        &js_json::wtf16::parse(
+            r#"[{"id":"exchange-aaaaaaaaaaaaaaaa","state":"uncertain","startedAt":1}]"#
+        )
+        .unwrap()
+    );
+    let a = call(&app, "GET", "/api/diary/exchanges", true, b"").await;
+    assert_eq!(
+        (a.status.as_u16(), a.body.as_slice()),
+        (400, br#"{"error":"Valid diary day required."}"#.as_slice())
+    );
+    let a = call(
+        &app,
+        "POST",
+        "/api/diary/exchanges",
+        true,
+        br#"{"action":"dismiss","day":"2026-10-30","id":"exchange-aaaaaaaaaaaaaaaa"}"#,
+    )
+    .await;
+    assert_eq!(a.status, 200);
+    assert_eq!(
+        json_of(&a).get("exchange").get("state").as_str(),
+        Some("uncertain")
+    );
+    // The add-on switch comes after the gate and before the day.
+    let off = tempfile::tempdir().unwrap();
+    seed(off.path(), false);
+    let (base, _) = sidecar().await;
+    let app = self::app(off.path(), &base);
+    let a = call(&app, "GET", "/api/diary/exchanges", true, b"").await;
+    assert_eq!(
+        (a.status.as_u16(), a.body.as_slice()),
+        (404, br#"{"error":"Diary add-on is disabled"}"#.as_slice())
+    );
+}
+
+#[tokio::test]
+async fn the_context_is_made_once_in_the_persons_projects_and_needs_the_addon() {
+    let (dir, app, _seen) = with_account().await;
+    let a = call(&app, "GET", "/api/diary/context", true, b"").await;
+    assert_eq!(
+        (a.status.as_u16(), a.body.as_slice()),
+        (200, br#"{"project":null}"#.as_slice())
+    );
+    let a = call(&app, "POST", "/api/diary/context", true, b"").await;
+    assert_eq!(a.status, 200);
+    let v = json_of(&a);
+    assert_eq!(
+        v.get("project").get("id").as_str(),
+        Some("cowork-diary-extras")
+    );
+    assert_eq!(
+        v.get("project").get("name").as_str(),
+        Some("Diary attachments")
+    );
+    let listed =
+        std::fs::read_to_string(dir.path().join("users").join(USER).join("projects.json")).unwrap();
+    assert_eq!(listed.matches("cowork-diary-extras").count(), 1);
+    let again = call(&app, "POST", "/api/diary/context", true, b"").await;
+    assert_eq!(json_of(&again).get("project"), v.get("project"));
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("users").join(USER).join("projects.json")).unwrap(),
+        listed
+    );
+    let off = tempfile::tempdir().unwrap();
+    seed(off.path(), false);
+    let (base, _) = sidecar().await;
+    let app = self::app(off.path(), &base);
+    let a = call(&app, "GET", "/api/diary/context", true, b"").await;
+    assert_eq!(
+        (a.status.as_u16(), a.body.as_slice()),
+        (404, br#"{"error":"Diary add-on is disabled"}"#.as_slice())
+    );
+    assert!(!off
+        .path()
+        .join("users")
+        .join(USER)
+        .join("projects.json")
+        .exists());
+}
+
+#[tokio::test]
+async fn connectors_are_made_listed_and_revoked_by_the_person_and_each_use_is_audited() {
+    let (dir, app, seen) = with_account().await;
+    let a = call(&app, "GET", "/api/profile/diary-connectors", true, b"").await;
+    assert_eq!(
+        (a.status.as_u16(), a.body.as_slice()),
+        (200, br#"{"connectors":[]}"#.as_slice())
+    );
+    let a = call(
+        &app,
+        "POST",
+        "/api/profile/diary-connectors",
+        true,
+        br#"{"name":" Phone "}"#,
+    )
+    .await;
+    assert_eq!(a.status, 201);
+    let made = json_of(&a);
+    let (id, token) = (
+        made.get("id").as_str().unwrap().to_owned(),
+        made.get("token").as_str().unwrap().to_owned(),
+    );
+    assert_eq!(a.headers["cache-control"], "no-store");
+    let a = call(&app, "GET", "/api/profile/diary-connectors", true, b"").await;
+    assert!(std::str::from_utf8(&a.body).unwrap().starts_with(&format!(
+        r#"{{"connectors":[{{"id":"{id}","name":"Phone","createdAt":"#
+    )));
+    assert!(!std::str::from_utf8(&a.body).unwrap().contains(&token));
+    // Bad requests, in Node's words, with a status that says what to change.
+    for (body, status) in [
+        (&br#"{"name":""}"#[..], 400),
+        (b"{}", 400),
+        (b"[]", 400),
+        (b"{broken", 400),
+    ] {
+        let a = call(&app, "POST", "/api/profile/diary-connectors", true, body).await;
+        assert_eq!(a.status, status, "{}", String::from_utf8_lossy(body));
+    }
+
+    // The credential opens the file bridge with no session and no origin.
+    let bridge = |body: &str| {
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/diary-connector")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(body.to_owned()))
+            .unwrap();
+        (req, body.to_owned())
+    };
+    let (req, _) = bridge(r#"{"action":"list","path":"Notes"}"#);
+    let res = diary_routes::serve(&app, conn(), req, "/api/diary-connector".into()).await;
+    assert_eq!(res.status(), 200);
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(bytes.as_ref(), br#"{"files":[{"path":"Notes/a.md"}]}"#);
+    let (req, _) =
+        bridge(r#"{"action":"write","path":"Notes/a.md","content":"hello","version":null}"#);
+    let res = diary_routes::serve(&app, conn(), req, "/api/diary-connector".into()).await;
+    assert_eq!(res.status(), 200);
+    let audit: Vec<(String, String)> = {
+        let c = db(dir.path());
+        let mut st = c
+            .prepare("SELECT action,detail FROM audit_events ORDER BY id")
+            .unwrap();
+        st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
+    };
+    assert_eq!(audit[0].0, "diary-connector.create");
+    assert_eq!(
+        audit[1],
+        (
+            "diary-connector.write".to_owned(),
+            format!(r#"{{"credentialId":"{id}","path":"Notes/a.md","bytes":5}}"#)
+        )
+    );
+    assert!(!audit
+        .iter()
+        .any(|(_, d)| d.contains("hello") || d.contains(&token)));
+    let wrote = seen.lock().unwrap().last().unwrap().clone();
+    assert_eq!(
+        (wrote.method.as_str(), wrote.target.as_str()),
+        ("PUT", "/api/file")
+    );
+    assert_eq!(wrote.headers["x-cowork-user-id"], USER);
+
+    // Revoked: the same credential no longer works, and the revoke is audited.
+    let a = call(
+        &app,
+        "DELETE",
+        &format!("/api/profile/diary-connectors/{id}"),
+        true,
+        b"",
+    )
+    .await;
+    assert_eq!(
+        (a.status.as_u16(), a.body.as_slice()),
+        (200, br#"{"revoked":true}"#.as_slice())
+    );
+    let a = call(
+        &app,
+        "DELETE",
+        &format!("/api/profile/diary-connectors/{id}"),
+        true,
+        b"",
+    )
+    .await;
+    assert_eq!(a.body, br#"{"revoked":false}"#);
+    let (req, _) = bridge(r#"{"action":"list"}"#);
+    let res = diary_routes::serve(&app, conn(), req, "/api/diary-connector".into()).await;
+    assert_eq!(res.status(), 401);
+    // A malformed id is no connector route: the unknown-path answer, after the gate.
+    let a = call(
+        &app,
+        "DELETE",
+        "/api/profile/diary-connectors/not-an-id",
+        true,
+        b"",
+    )
+    .await;
+    assert_eq!(
+        (a.status.as_u16(), a.body.as_slice()),
+        (404, br#"{"error":"not found"}"#.as_slice())
+    );
+}
+
+#[tokio::test]
+async fn the_connector_endpoint_is_checked_before_anything_else_and_throttled_by_bucket() {
+    let (_dir, app, seen) = with_account().await;
+    let post = |auth: Option<&str>, origin: bool, method: &str| {
+        let mut req = Request::builder()
+            .method(method)
+            .uri("/api/diary-connector");
+        if let Some(a) = auth {
+            req = req.header("authorization", a);
+        }
+        if origin {
+            req = req.header("origin", ORIGIN);
+        }
+        req.body(Body::from("{}")).unwrap()
+    };
+    let go = |req| async {
+        let res = diary_routes::serve(&app, conn(), req, "/api/diary-connector".into()).await;
+        let status = res.status().as_u16();
+        let headers = res.headers().clone();
+        let body = res.into_body().collect().await.unwrap().to_bytes().to_vec();
+        (status, headers, String::from_utf8(body).unwrap())
+    };
+    // Method, then origin, both before the credential is looked at.
+    let (s, h, b) = go(post(None, false, "GET")).await;
+    assert_eq!((s, b.as_str()), (405, r#"{"error":"POST required"}"#));
+    assert_eq!(h["cache-control"], "no-store");
+    let (s, _, b) = go(post(Some("Bearer x"), true, "POST")).await;
+    assert_eq!(
+        (s, b.as_str()),
+        (403, r#"{"error":"Use the authenticated connector client"}"#)
+    );
+    // An empty Origin header is no origin (core tested `req.headers.origin` for truthiness).
+    let mut empty = post(Some("Bearer nope"), false, "POST");
+    empty
+        .headers_mut()
+        .insert("origin", axum::http::HeaderValue::from_static(""));
+    let (s, _, _) = go(empty).await;
+    assert_eq!(s, 401);
+    // No credential, a session-looking one, a malformed one: all the same 401, no challenge header.
+    for auth in [
+        None,
+        Some("Bearer nope"),
+        Some("nv_diary_x"),
+        Some("Basic abc"),
+    ] {
+        let (s, h, b) = go(post(auth, false, "POST")).await;
+        assert_eq!(
+            (s, b.as_str()),
+            (401, r#"{"error":"Diary connector credential required"}"#),
+            "{auth:?}"
+        );
+        assert!(h.get("www-authenticate").is_none());
+    }
+    // Unknown credentials, whatever they are, share one bucket (TRUST_PROXY is off): the 301st in a minute is a 429.
+    let mut limited = None;
+    for n in 0..320 {
+        let (s, _, _) = go(post(Some(&format!("Bearer nope-{n}")), false, "POST")).await;
+        if s == 429 {
+            limited = Some(n);
+            break;
+        }
+    }
+    assert!(limited.is_some_and(|n| n >= 290), "{limited:?}");
+    assert!(seen.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_working_connector_is_never_locked_out_by_unknown_credentials_and_has_its_own_limit() {
+    let (_dir, app, _seen) = with_account().await;
+    let a = call(
+        &app,
+        "POST",
+        "/api/profile/diary-connectors",
+        true,
+        br#"{"name":"Phone"}"#,
+    )
+    .await;
+    let token = json_of(&a).get("token").as_str().unwrap().to_owned();
+    let go = |auth: String| {
+        let app = Arc::clone(&app);
+        async move {
+            let req = Request::builder()
+                .method("POST")
+                .uri("/api/diary-connector")
+                .header("authorization", auth)
+                .body(Body::from(r#"{"action":"list"}"#))
+                .unwrap();
+            diary_routes::serve(&app, conn(), req, "/api/diary-connector".into())
+                .await
+                .status()
+                .as_u16()
+        }
+    };
+    // Different unknown credentials: one shared bucket (a bucket each would never fill).
+    for n in 0..310 {
+        go(format!("Bearer nope-{n}")).await;
+    }
+    assert_eq!(go("Bearer nope-last".into()).await, 429);
+    assert_eq!(
+        go(format!("Bearer {token}")).await,
+        200,
+        "the credential has a bucket of its own"
+    );
+    let mut over = None;
+    for n in 0..130 {
+        if go(format!("Bearer {token}")).await == 429 {
+            over = Some(n);
+            break;
+        }
+    }
+    assert!(over.is_some_and(|n| n >= 115), "{over:?}: 120 a minute");
 }
