@@ -1041,6 +1041,16 @@ async fn the_state_file_exists_only_once_there_is_something_to_say() {
             .permissions(),
     );
     assert_eq!(mode & 0o777, 0o700);
+    // Disconnecting an account that never connected changes nothing on disk (core wrote nothing either).
+    let (s, _) = store(
+        f.store,
+        "gdrive/disconnect",
+        STORE_TOKEN,
+        &format!(r#"{{"user":"{B}","admin":false}}"#),
+    )
+    .await;
+    assert_eq!(s, 200);
+    assert!(!state.exists());
     // A connection Node saved before (or a stale file): the first publish of a start says so.
     plant_account_file(d.path(), B, r#"{"refreshToken":"r","connectedAt":5}"#);
     drive.publish_startup();

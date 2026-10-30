@@ -694,6 +694,15 @@ impl Drive {
     /// Rewrites `gdrive-connections.json`: the accounts that have a connection file and in what
     /// state, and the backup slot's. No secret, no email. Called after every committed change.
     pub fn publish(&self) {
+        // Nothing connected, nothing pending and no earlier file to correct: nothing to say (a
+        // disconnect of an account that never connected leaves the data directory as core did).
+        let pending = self
+            .mem()
+            .values()
+            .any(|m| m.pending.as_ref().is_some_and(|p| p.expires_at > now_ms()));
+        if !pending && !self.has_state() {
+            return;
+        }
         let backup = self.state(&Slot::Backup);
         let mut personal: Vec<(String, JValue)> = Vec::new();
         if let Ok(dir) = std::fs::read_dir(self.data_dir.join(USERS_DIR)) {
