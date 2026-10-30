@@ -4,8 +4,8 @@
 
 pub mod account_routes;
 #[cfg(feature = "rust-chatgpt-status")]
-#[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_oauth_routes;
+#[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_status_routes;
 pub mod code_net;
 pub mod config;
