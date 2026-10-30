@@ -103,6 +103,11 @@ use std::sync::Arc;
 /// no switch. Node refuses the GET (core rust-project-document-pages.cjs
 /// `RUST_PROJECT_DOCUMENT_PAGES_OWNED`), so the web supervisor pairs them.
 ///
+/// `rust-conversation-import`: this build answers `POST /api/import/conversations` (Settings → Data
+/// → Import conversations, sbstndalton/noevia#2191 round 4) with Node's recovery journal, so an
+/// import Node left unfinished is finished here. Node refuses the POST (core
+/// rust-conversation-import.cjs `RUST_CONVERSATION_IMPORT_OWNED`), so the web supervisor pairs them.
+///
 /// `project-store`: this build serves the internal project store Node writes projects.json and
 /// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
 /// supervisor confirms it to Node (NOEVIA_RUST_PROJECT_STORE_CONFIRMED) and hands both the secret.
@@ -133,6 +138,7 @@ pub const FEATURES: &[&str] = &[
     "rust-project-storage",
     "rust-project-files",
     "rust-project-document-pages",
+    "rust-conversation-import",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",

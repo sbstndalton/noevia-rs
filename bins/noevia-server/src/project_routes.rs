@@ -96,6 +96,8 @@ pub enum Route {
     DocumentPages {
         project: String,
     },
+    /// POST /api/import/conversations (sbstndalton/noevia#2191 round 4, `rust-conversation-import`)
+    ImportConversations,
     /// POST /api/projects (sbstndalton/noevia#2191, `rust-project-lifecycle`)
     CreateProject,
     /// DELETE /api/projects/{projectId} (sbstndalton/noevia#2191, `rust-project-lifecycle`)
@@ -112,6 +114,10 @@ pub enum Route {
 /// `^\/api\/projects\/([^/]+)\/chats$`, and routes/chat-lists.cjs's `p === '/api/freechats'`,
 /// with the methods its handlers answer; `None` sends the request on to Node.
 pub fn route(method: &str, path: &str) -> Option<Route> {
+    // routes/import.cjs `path === '/api/import/conversations'`, its POST only (Node answers 405).
+    if path == server_projects::import::ROUTE {
+        return (method == "POST").then_some(Route::ImportConversations);
+    }
     // routes/account.cjs `path === '/api/account/retention'`, its GET only.
     if path == "/api/account/retention" {
         return (method == "GET").then_some(Route::Retention);
@@ -360,6 +366,7 @@ pub async fn serve(
         Route::SaveHistory { .. } => Some(history::BODY_LIMIT),
         Route::MoveChat { .. } => Some(chat_move::BODY_LIMIT),
         Route::CreateProject => Some(lifecycle::BODY_LIMIT),
+        Route::ImportConversations => Some(server_projects::import::MAX_BYTES),
         Route::DeleteFile { .. } => Some(server_projects::files::BODY_LIMIT),
         Route::DeleteProject { .. }
         | Route::One { .. }
@@ -390,6 +397,14 @@ pub async fn serve(
             Err(()) if matches!(route, Route::MoveChat { .. }) => {
                 return reply::error(StatusCode::BAD_REQUEST, "invalid JSON", true);
             }
+            // routes/import.cjs: a body it could not read is the "not an export" 400.
+            Err(()) if matches!(route, Route::ImportConversations) => {
+                return reply::error(
+                    StatusCode::BAD_REQUEST,
+                    server_projects::import::NOT_EXPORT,
+                    true,
+                )
+            }
             Err(()) if matches!(route, Route::SaveHistory { .. }) => {
                 return reply::error(StatusCode::BAD_REQUEST, "could not read the chat", true)
             }
@@ -403,14 +418,17 @@ pub async fn serve(
     // What a create reads besides the request (sbstndalton/noevia#2191): core's published toolbox
     // catalogue and whether the user's storage is browsable (folder reservation, #589); read on the
     // blocking pool with the rest.
-    let create_inputs =
-        matches!(route, Route::CreateProject).then(|| (Arc::clone(app), authn.clone()));
+    let create_inputs = matches!(route, Route::CreateProject | Route::ImportConversations)
+        .then(|| (Arc::clone(app), authn.clone()));
     // A source file's delete writes to the user's storage (round 3, #2191).
     let file_inputs =
         matches!(route, Route::DeleteFile { .. }).then(|| (Arc::clone(app), authn.clone()));
     // A create or delete runs the user's queued storage sweep afterwards (round 3, #2191).
-    let sweep_inputs = matches!(route, Route::CreateProject | Route::DeleteProject { .. })
-        .then(|| (Arc::clone(app), authn.clone(), data_dir.clone()));
+    let sweep_inputs = matches!(
+        route,
+        Route::CreateProject | Route::DeleteProject { .. } | Route::ImportConversations
+    )
+    .then(|| (Arc::clone(app), authn.clone(), data_dir.clone()));
     let user = authn.user.id;
     // The context GET writes too (getProject's self-heal), so it is re-gated as well; so do the
     // source reads, whose getProject may save the same way.
@@ -431,6 +449,7 @@ pub async fn serve(
             | Route::CreateProject
             | Route::DeleteProject { .. }
             | Route::DeleteFile { .. }
+            | Route::ImportConversations
     ) || (matches!(route, Route::One { .. }) && method == "DELETE");
     let done = tokio::task::spawn_blocking(move || {
         if writes {
@@ -512,6 +531,45 @@ pub async fn serve(
                 }
                 None => Reply::internal(),
             },
+            (Route::ImportConversations, Some(b)) => match &create_env {
+                Some((catalogue, storage, root, (app, authn))) => {
+                    let opener = opener(app, authn);
+                    let env = lifecycle::CreateEnv {
+                        catalogue: catalogue.as_ref(),
+                        storage: *storage,
+                        root,
+                        with_remote: Some(&opener),
+                    };
+                    // conversation-import.cjs `ctx.createProject({ name, toolboxes: [] })`.
+                    let create = |name: &str| {
+                        let body = js_json::wtf16::stringify(&js_json::JValue::obj([
+                            ("name", js_json::JValue::Str(name.to_string())),
+                            ("toolboxes", js_json::JValue::Arr(Vec::new())),
+                        ]))
+                        .unwrap_or_default();
+                        let made = lifecycle::create(ctx, body.as_bytes(), false, &env);
+                        let id = match (&made.status, &made.body) {
+                            (200, server_projects::Body::Json(text)) => js_json::wtf16::parse(text)
+                                .ok()
+                                .and_then(|v| v.get("id").as_str().map(str::to_owned)),
+                            _ => None,
+                        };
+                        id.ok_or(if made.status == 400 { 400 } else { 503 })
+                    };
+                    let audit =
+                        |result: &js_json::JValue| import_audit(app, &authn.user.id, result);
+                    server_projects::import::post(
+                        ctx,
+                        &b.bytes,
+                        b.over,
+                        &server_projects::import::ImportEnv {
+                            create: &create,
+                            audit: &audit,
+                        },
+                    )
+                }
+                None => Reply::internal(),
+            },
             (Route::DeleteProject { project }, _) => lifecycle::delete(ctx, &project),
             (Route::DeleteFile { project }, Some(b)) => match &file_inputs {
                 Some((app, authn)) => {
@@ -522,6 +580,7 @@ pub async fn serve(
             },
             (
                 Route::CreateProject
+                | Route::ImportConversations
                 | Route::DeleteFile { .. }
                 | Route::Upload { .. }
                 | Route::SaveChats { .. }
@@ -548,6 +607,34 @@ pub async fn serve(
 }
 
 /// The create's storage opener (higher-ranked over the step, as `OpenRemote` needs).
+/// The import's audit row: core auth.cjs `audit('import.conversations', actor, actor, { imported,
+/// skipped: <count>, projectsCreated })`, appended to cowork.db's audit_events as Node appends it.
+fn import_audit(app: &App, user: &str, result: &js_json::JValue) -> Result<(), ()> {
+    let skipped = match result.get("skipped") {
+        js_json::JValue::Arr(list) => list.len(),
+        _ => 0,
+    };
+    let detail = js_json::wtf16::stringify(&js_json::JValue::obj([
+        ("imported", result.get("imported").clone()),
+        ("skipped", js_json::JValue::Num(skipped as f64)),
+        ("projectsCreated", result.get("projectsCreated").clone()),
+    ]))
+    .ok_or(())?;
+    let at = identity::now_ms();
+    app.writes
+        .writer()
+        .and_then(|w| {
+            w.write(|tx| {
+                tx.execute(
+                    "INSERT INTO audit_events(actor_user_id,target_user_id,action,detail,created_at) VALUES(?1,?2,?3,?4,?5)",
+                    server_store::rusqlite::params![user, user, server_projects::import::AUDIT_ACTION, detail, at],
+                )?;
+                Ok(())
+            })
+        })
+        .map_err(|_| ())
+}
+
 fn opener<'a>(
     app: &'a Arc<App>,
     authn: &'a server_auth::Identity,

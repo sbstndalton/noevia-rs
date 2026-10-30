@@ -71,6 +71,7 @@ pub mod frame;
 pub mod free_chats;
 pub mod history;
 pub mod history_sanitize;
+pub mod import;
 pub mod journal;
 pub mod js;
 pub mod legacy_claim;

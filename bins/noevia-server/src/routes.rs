@@ -129,6 +129,7 @@ const PROJECT_ROUTES: &[&str] = &[
     PROJECT_CREATE,
     PROJECT_ONE,
     PROJECT_FILES,
+    server_projects::import::ROUTE,
 ];
 
 /// A project source file's delete from the user's storage (DELETE only; routes.toml), the front's
@@ -1108,6 +1109,22 @@ mod tests {
         );
         assert!(crate::FEATURES.contains(&"rust-project-files"));
         assert!(crate::FEATURES.contains(&"rust-project-document-pages"));
+        // Round 4: the conversation import, POST only (Node keeps its 405).
+        assert_eq!(
+            dispatch_under("POST", "/api/import/conversations", on),
+            Some(Native::Projects)
+        );
+        for m in ["GET", "PUT", "DELETE"] {
+            assert_eq!(
+                crate::project_routes::route(m, "/api/import/conversations"),
+                None
+            );
+        }
+        assert_eq!(
+            crate::project_routes::route("POST", "/api/import/conversations/"),
+            None
+        );
+        assert!(crate::FEATURES.contains(&"rust-conversation-import"));
         assert_eq!(
             crate::project_routes::route("GET", "/api/projects//documents/pages"),
             None

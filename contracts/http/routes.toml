@@ -370,9 +370,13 @@ methods = ["DELETE"]
 path = "/api/health"
 owner = "node"
 
+# sbstndalton/noevia#2191 round 4 (rust-conversation-import): Settings -> Data -> Import
+# conversations, the front's (crates/server-projects import.rs); Node refuses the POST (core
+# rust-conversation-import.cjs) and answers other methods' 405 as before.
 [[route]]
 path = "/api/import/conversations"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/integrations/storage"

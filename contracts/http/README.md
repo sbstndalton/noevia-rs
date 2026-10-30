@@ -467,7 +467,7 @@ file whose name is a validated hex hash, never a request value.
 | `/api/projects/{projectId}/browser`, `/code`, `/research` | node | they drive a browser session, the code harness or research jobs |
 | `/api/code/active` | node | the code harness service's live task list |
 | `/api/workspace` | node | its load runs the retention sweep and the orphaned attachments-project reaper, whose delete (RAG index, uploads) is Node's |
-| `/api/import/conversations` | node | creates projects through Node's `createProject` and publishes transcripts; the storage step it needed now exists in the front (round 3, `project_storage`), the import's own parsing and transcript publishing are what is left to port |
+| `/api/import/conversations` (POST) | rust | round 4, below |
 
 ## sbstndalton/noevia#2191 round 2 (group rust-project-lifecycle): a project's create and delete
 
@@ -558,3 +558,22 @@ the document's `notice` (quoted name, state, page outcomes and OCR-retry notes, 
 Stricter than Node: the result is opened with `O_NOFOLLOW` and read only up to 256 MiB. The file is
 written once per version by core's extraction (an atomic rename); reading it never takes the
 large-document lock (Node's reader did not either). Every other method of the path is Node's.
+
+## sbstndalton/noevia#2191 round 4 (group rust-conversation-import): Settings → Data → Import conversations
+
+`POST /api/import/conversations` is the front's (crates/server-projects `import`); core refuses the
+POST with 503 `RUST_CONVERSATION_IMPORT_OWNED` (`server/rust-conversation-import.cjs`), keeps its
+405 for every other method, and `--features` lists `rust-conversation-import`. core routes/import.cjs
+with conversation-import.cjs and chat-import.cjs, answer for answer: the body read up to 64 MiB
+(413 `That file is over 64 MB…`; unreadable or not JSON 400 `Choose a conversations.json…`),
+`planImport`'s refusals (400 with their words) before anything is written, then Node's recovery
+journal, file for file (`conversation-imports/<sha256 of JSON.stringify(body)>/` with `<n>.json`
+stages and `manifest.json`, `atomicJson` 0600), so a journal Node left is finished here: every
+pending journal is applied, audited (`import.conversations`, `{imported, skipped, projectsCreated}`)
+and removed first, and the same file's finished journal answers its own result. Projects are
+matched by name or created through the round-2 create (`{name, toolboxes: []}`, its storage step
+included); transcripts are published only where none is (origin `import`, a taken id gets a new
+one), lists merged as `mergeChats` merges them; a chat the list cap dropped is `capped` and taken
+back (origin `remove`) only while it is still the imported transcript. Any other failure is Node's
+503 `Import was interrupted…`, the journal kept for the next import. Imports of one account run one
+at a time (Node: per process; the front is the only process answering it now).

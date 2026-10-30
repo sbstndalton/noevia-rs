@@ -446,7 +446,7 @@ pub(crate) fn list_ids(list: &JValue, into: &mut HashSet<String>) -> Result<(), 
 /// `saveChats(projectId, chats)` from `chatIdsElsewhere` on, and the `saveProjects` it ends with:
 /// `memory` (the project as `getProject` left it, at `projects[at]`) gets the merged list and every
 /// project is reconciled. Nothing is changed unless all of it succeeds. Returns `skipped`.
-fn save_chats(
+pub(crate) fn save_chats(
     dir: &Path,
     projects: &mut [JValue],
     at: usize,
