@@ -155,6 +155,20 @@ pub struct Response {
     pub body: Decoded,
 }
 
+/// One ranged GET's reply (noevia#2191 round 8, [`crate::stream`]): the status, what the response's
+/// headers declare, and the body bytes exactly as sent (never decoded as text).
+pub struct Chunk {
+    pub status: u16,
+    /// The file's size as declared: a 206's `Content-Range` total, a 200's `Content-Length`.
+    pub total: Option<u64>,
+    /// The first and last byte of the range a 206 says it carries.
+    pub first: Option<u64>,
+    pub last: Option<u64>,
+    pub bytes: Vec<u8>,
+    /// More bytes were sent than the chunk cap; `bytes` holds the first [`crate::CHUNK_BYTES`].
+    pub capped: bool,
+}
+
 /// An adapter MUST enforce attempt + body deadlines, decoded byte caps, drop on
 /// overflow, no redirects/proxies/cookies/implicit retry and finite allocation.
 /// No production implementation is supplied until TLS/allocation proof passes.
@@ -162,6 +176,11 @@ pub trait Transport {
     fn elapsed(&self) -> Duration;
     fn amz_date(&self) -> String;
     fn attempt(&mut self, request: Request) -> Result<Response, TransportFailure>;
+    /// One ranged GET ([`chunk_request`]) answered as raw bytes; only a transport that runs the
+    /// owned child provides it.
+    fn attempt_chunk(&mut self, _request: Request) -> Result<Chunk, TransportFailure> {
+        Err(TransportFailure::Other)
+    }
     fn delay(&mut self, delay: Duration) -> Result<(), TransportFailure>;
 }
 
@@ -413,6 +432,33 @@ fn request(
         },
         body: Zeroizing::new(Vec::new()),
     })
+}
+
+/// A ranged GET of bytes `first..=last` of one file (connection-absolute `path`, already checked):
+/// the read's request with a `Range` header, its reply the raw bytes behind a
+/// [`crate::CHUNK_PREFIX`]-byte header summary. For S3 the key is joined under the corpus root as a
+/// read does; the `Range` header is not signed (S3 accepts it unsigned).
+pub(crate) fn chunk_request(
+    c: &Connection,
+    path: &str,
+    first: u64,
+    last: u64,
+    date: &str,
+    remaining: Duration,
+) -> Result<Request, Failure> {
+    let remote = if c.kind == Kind::S3 {
+        storage_path::join_root(&c.corpus_root, path)
+            .map_err(|_| Failure::new(502, "storage path could not be checked"))?
+    } else {
+        path.to_owned()
+    };
+    let mut r = request(c, &remote, Operation::Read, &[], date, remaining)?;
+    r.headers.push((
+        "Range".into(),
+        Zeroizing::new(format!("bytes={first}-{last}")),
+    ));
+    r.body_cap = crate::CHUNK_FRAME;
+    Ok(r)
 }
 
 fn fetch(

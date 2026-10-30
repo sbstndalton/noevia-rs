@@ -12,7 +12,7 @@
 //! belongs to [`crate::protocol::execute`].
 use crate::{
     isolated,
-    protocol::{decoded_fixture, Request, Response, Transport, TransportFailure},
+    protocol::{decoded_fixture, Chunk, Request, Response, Transport, TransportFailure},
     response_ipc::Reply,
 };
 use std::{
@@ -61,6 +61,55 @@ impl Transport for ChildTransport<'_> {
             std::thread::sleep(Duration::from_millis(10).min(end - Instant::now()));
         }
         Ok(())
+    }
+    fn attempt_chunk(&mut self, request: Request) -> Result<Chunk, TransportFailure> {
+        let budget = request.attempt_timeout;
+        let mut command = Command::new(&self.program);
+        command.args(self.args);
+        let reply = isolated::attempt_dns(command, request, budget, self.cancelled, None).map_err(
+            |error| match error {
+                isolated::Error::Deadline => TransportFailure::Timeout,
+                _ => TransportFailure::Other,
+            },
+        )?;
+        match reply.view() {
+            Ok(Reply::Http { status, .. }) if status >= 300 => Ok(Chunk {
+                status,
+                total: None,
+                first: None,
+                last: None,
+                bytes: Vec::new(),
+                capped: false,
+            }),
+            Ok(Reply::Http {
+                status,
+                capped,
+                payload,
+            }) => {
+                let number = |at: usize| -> Option<u64> {
+                    let raw: [u8; 8] = payload.get(at..at + 8)?.try_into().ok()?;
+                    Some(u64::from_be_bytes(raw)).filter(|n| *n != u64::MAX)
+                };
+                let bytes = payload
+                    .get(crate::CHUNK_PREFIX..)
+                    .ok_or(TransportFailure::Body)?
+                    .to_vec();
+                Ok(Chunk {
+                    status,
+                    total: number(0),
+                    first: number(8),
+                    last: number(16),
+                    bytes,
+                    capped,
+                })
+            }
+            Ok(Reply::Failure {
+                phase: crate::response_ipc::Phase::Body,
+                failure: TransportFailure::Timeout,
+            }) => Err(TransportFailure::BodyTimeout),
+            Ok(Reply::Failure { failure, .. }) => Err(failure),
+            Err(_) => Err(TransportFailure::Other),
+        }
     }
     fn attempt(&mut self, request: Request) -> Result<Response, TransportFailure> {
         let cap = request.body_cap;

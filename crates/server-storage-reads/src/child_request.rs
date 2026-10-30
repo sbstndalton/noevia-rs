@@ -47,7 +47,10 @@ pub fn nested(output: &mut impl Write, frame: &[u8]) -> Result<(), Error> {
         .map_err(|_| Error::Protocol)
 }
 pub fn network_reply(output: &mut impl Write, frame: &[u8], cap: usize) -> Result<(), Error> {
-    if !matches!(cap, crate::LIST_BYTES | crate::TEXT_BYTES) {
+    if !matches!(
+        cap,
+        crate::LIST_BYTES | crate::TEXT_BYTES | crate::CHUNK_FRAME
+    ) {
         return Err(Error::Input);
     }
     crate::response_ipc::decode(frame, cap)?;

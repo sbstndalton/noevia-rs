@@ -33,7 +33,7 @@ pub struct StorageError {
 }
 
 impl StorageError {
-    fn new(status: u16, message: impl Into<String>) -> Self {
+    pub(crate) fn new(status: u16, message: impl Into<String>) -> Self {
         Self {
             status,
             message: message.into(),
@@ -41,11 +41,11 @@ impl StorageError {
             upstream: None,
         }
     }
-    fn code(mut self, code: &'static str) -> Self {
+    pub(crate) fn code(mut self, code: &'static str) -> Self {
         self.code = Some(code);
         self
     }
-    fn upstream(mut self, status: u16) -> Self {
+    pub(crate) fn upstream(mut self, status: u16) -> Self {
         self.upstream = Some(status);
         self
     }
@@ -62,7 +62,7 @@ impl std::fmt::Display for StorageError {
 }
 
 /// core `transportError`: a timeout is 504 `timeout`, the rest 502 `unreachable`.
-fn transport_error(failure: TransportFailure) -> StorageError {
+pub(crate) fn transport_error(failure: TransportFailure) -> StorageError {
     match failure {
         TransportFailure::Timeout => {
             StorageError::new(504, "the storage server did not answer in time").code("timeout")
