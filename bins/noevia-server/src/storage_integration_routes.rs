@@ -43,6 +43,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use zeroize::Zeroizing;
 
+/// `PUT` saves the connection (sbstndalton/noevia#2190 round 4; `GET` is storage_read_routes.rs).
+pub const CONNECTION: &str = "/api/integrations/storage";
 pub const FOLDER: &str = "/api/integrations/storage/folder";
 pub const TEST: &str = "/api/integrations/storage/test";
 pub const NEXTCLOUD_START: &str = "/api/integrations/storage/nextcloud/start";
@@ -952,8 +954,9 @@ pub async fn serve(
     req: Request<Body>,
     path: String,
 ) -> Response<Body> {
-    // Node compared the exact pathnames, and only POST.
-    if !ROUTES.contains(&path.as_str()) || req.method() != Method::POST {
+    // Node compared the exact pathnames: POST on the five, PUT on the connection itself.
+    let put = path == CONNECTION && req.method() == Method::PUT;
+    if !put && (!ROUTES.contains(&path.as_str()) || req.method() != Method::POST) {
         return app.proxy.forward(conn.peer, req).await;
     }
     let (parts, body) = req.into_parts();
@@ -980,6 +983,9 @@ pub async fn serve(
         id,
         data_dir,
     });
+    if put {
+        return put_connection(&ctx, &body).await;
+    }
     match path.as_str() {
         FOLDER => folder(&ctx, &body).await,
         TEST => test(&ctx, &body).await,
@@ -1616,6 +1622,75 @@ async fn poll(ctx: &Arc<Ctx>, body: &JValue) -> Response<Body> {
     answer(StatusCode::OK, &JValue::Obj(items))
 }
 
+/// One `storage_connections` row as core auth.cjs `saveStorage` normalizes it (the caller has
+/// already applied the kind/slash/region rules); the secret is sealed here.
+pub struct Row {
+    pub kind: &'static str,
+    pub base_url: String,
+    pub bucket: String,
+    pub region: String,
+    pub username: String,
+    pub secret: Zeroizing<String>,
+    pub corpus_root: String,
+}
+
+/// When [`write_row`] saves.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum When {
+    /// Always (a save from Settings or a completed sign-in).
+    Always,
+    /// Only while the account has no row or a `local` one (core index.cjs's legacy WebDAV setup,
+    /// which checked `getStorage(id).kind === 'local'` first; checked here inside the write).
+    Local,
+}
+
+/// core auth.cjs `saveStorage(userId, value)`'s upsert and its `storage.update` audit row, in one
+/// transaction of the cowork.db writer (sbstndalton/noevia#2190: the Rust front is the only writer
+/// of the row). `Ok(false)`: [`When::Local`] found a configured row and changed nothing.
+pub fn write_row(
+    app: &App,
+    keys: &SecretKeys,
+    user: &str,
+    row: &Row,
+    when: When,
+) -> Result<bool, StoreError> {
+    let sealed = keys
+        .seal(&row.secret, Some(user), &random::<12>())
+        .map_err(|_| StoreError::Poisoned)?;
+    let now = identity::now_ms();
+    let detail = js_json::stringify(&JValue::obj([("kind", JValue::Str(row.kind.into()))]))
+        .unwrap_or_default();
+    app.writes.writer()?.write(|tx| {
+        if when == When::Local {
+            let kind: Option<String> = tx.reader().row(
+                "SELECT kind FROM storage_connections WHERE user_id=?1",
+                server_store::rusqlite::params![user],
+                |r| r.get(0),
+            )?;
+            if kind.is_some_and(|k| k != "local") {
+                return Ok(false);
+            }
+        }
+        tx.save_storage_connection(
+            RustStorageIntegrations::owned(),
+            user,
+            row.kind,
+            &row.base_url,
+            &row.bucket,
+            &row.region,
+            &row.username,
+            &sealed,
+            &row.corpus_root,
+            now,
+        )?;
+        tx.execute(
+            "INSERT INTO audit_events(actor_user_id,target_user_id,action,detail,created_at) VALUES(?1,?1,'storage.update',?2,?3)",
+            server_store::rusqlite::params![user, detail, now],
+        )?;
+        Ok(true)
+    })
+}
+
 /// core auth.cjs `saveStorage(userId, {kind:'nextcloud', baseUrl, username, secret, corpusRoot})`
 /// and its `storage.update` audit row in one transaction; answers `getStorage(userId)`.
 async fn save(
@@ -1625,44 +1700,29 @@ async fn save(
     secret: &str,
     corpus_root: &str,
 ) -> Option<JValue> {
+    let row = Row {
+        kind: "nextcloud",
+        base_url: strip_slashes(base_url).to_string(),
+        bucket: String::new(),
+        region: s3_sign::DEFAULT_REGION.to_string(),
+        username: username.to_string(),
+        secret: Zeroizing::new(secret.to_string()),
+        corpus_root: corpus_root.to_string(),
+    };
+    save_row(ctx, row).await
+}
+
+/// [`write_row`] for the signed-in account, then `getStorage(userId)` (no secret).
+async fn save_row(ctx: &Arc<Ctx>, row: Row) -> Option<JValue> {
     let ctx2 = Arc::clone(ctx);
-    let (base_url, username, corpus_root) = (
-        strip_slashes(base_url).to_string(),
-        username.to_string(),
-        corpus_root.to_string(),
-    );
-    let secret = Zeroizing::new(secret.to_string());
-    let written = tokio::task::spawn_blocking(move || -> Result<(), StoreError> {
+    let written = tokio::task::spawn_blocking(move || -> Result<bool, StoreError> {
         let keys = ctx2.keys().ok_or(StoreError::Poisoned)?;
-        let user = ctx2.user();
-        let sealed = keys
-            .seal(&secret, Some(&user), &random::<12>())
-            .map_err(|_| StoreError::Poisoned)?;
-        let now = identity::now_ms();
-        ctx2.app.writes.writer()?.write(|tx| {
-            tx.save_storage_connection(
-                RustStorageIntegrations::owned(),
-                &user,
-                "nextcloud",
-                &base_url,
-                "",
-                s3_sign::DEFAULT_REGION,
-                &username,
-                &sealed,
-                &corpus_root,
-                now,
-            )?;
-            tx.execute(
-                "INSERT INTO audit_events(actor_user_id,target_user_id,action,detail,created_at) VALUES(?1,?1,'storage.update',?2,?3)",
-                server_store::rusqlite::params![user, r#"{"kind":"nextcloud"}"#, now],
-            )?;
-            Ok(())
-        })
+        write_row(&ctx2.app, &keys, &ctx2.user(), &row, When::Always)
     })
     .await
     .ok()?;
     if written.is_err() {
-        eprintln!("noevia-server: storage sign-in could not be saved");
+        eprintln!("noevia-server: storage connection could not be saved");
         return None;
     }
     let mut saved = ctx.saved().await?;
@@ -1671,6 +1731,146 @@ async fn save(
         items.retain(|(k, _)| k != "secret");
     }
     Some(saved)
+}
+
+// ---------------------------------------------------------------------------------------------
+// PUT /api/integrations/storage: save the connection (core routes/storage.cjs).
+
+/// The same text as core routes/storage.cjs `STORAGE_LOGIN_REJECTED`.
+const STORAGE_LOGIN_REJECTED: &str = "The server rejected this username or app password.";
+const STORAGE_REDIRECTED: &str =
+    "Saved, but the server redirected the login check. Check the URL (https, trailing slash).";
+const STORAGE_THROTTLED: &str = "Saved, but the storage server is throttling logins from noevia after too many failed attempts, so the login was not checked. Wait, then press Test.";
+const FIELDS_REQUIRED: &str = "server URL, username, and app password are required";
+const REGION_INVALID: &str =
+    "Region must be 1-32 lowercase letters, digits, or dashes (for example eu-west-1)";
+
+/// `/^https?:\/\//`.
+fn http_prefixed(s: &str) -> bool {
+    s.starts_with("http://") || s.starts_with("https://")
+}
+
+/// core s3-region.cjs `S3_REGION_RE` (`/^[a-z0-9-]{1,32}$/`).
+fn region_shaped(s: &str) -> bool {
+    (1..=32).contains(&s.len())
+        && s.bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+/// The warning fields core spreads over the saved connection when the login was not checked.
+fn warning_of(check: &Check) -> Option<Vec<(String, JValue)>> {
+    let code = |c: &str| ("warningCode".to_string(), JValue::Str(c.into()));
+    let text = |t: String| ("warning".to_string(), JValue::Str(t));
+    Some(match check {
+        Check::Ok | Check::Rejected => return None,
+        Check::Throttled(wait) => {
+            let mut items = vec![
+                text(STORAGE_THROTTLED.into()),
+                code("storageThrottled"),
+                ("status".into(), JValue::Num(429.0)),
+            ];
+            if let Some(wait) = wait {
+                items.push(("retryAfter".into(), JValue::Num(*wait)));
+            }
+            items
+        }
+        Check::Unverified("redirect", _) => vec![
+            text(STORAGE_REDIRECTED.into()),
+            code("storageUnverified"),
+            ("reason".into(), JValue::Str("redirect".into())),
+        ],
+        Check::Unverified("timeout", _) => vec![
+            text(STORAGE_TIMED_OUT.into()),
+            code("storageUnverified"),
+            ("reason".into(), JValue::Str("timeout".into())),
+        ],
+        Check::Unverified(_, Some(status)) => vec![
+            text(format!(
+                "Saved, but the login could not be checked (the storage server answered {status})."
+            )),
+            code("storageUnverified"),
+            ("status".into(), JValue::Num(f64::from(*status))),
+        ],
+        Check::Unverified(_, None) => {
+            vec![text(STORAGE_UNVERIFIED.into()), code("storageUnverified")]
+        }
+    })
+}
+
+/// core routes/storage.cjs PUT, in its order: the fields, the member-origin rule, the region, the
+/// login check for WebDAV kinds (a rejected login keeps the old row; an unreachable server still
+/// saves with a warning), the save, and the proof the latch clears its hold by.
+async fn put_connection(ctx: &Arc<Ctx>, body: &JValue) -> Response<Body> {
+    let local = body.get("kind").as_str() == Some("local");
+    if !local
+        && (!http_prefixed(&or_empty(body.get("baseUrl")))
+            || !body.get("username").truthy()
+            || !body.get("secret").truthy())
+    {
+        return error(400, FIELDS_REQUIRED);
+    }
+    // The choke point: everything downstream fetches the saved baseUrl.
+    if !local && !endpoint_approved(ctx.admin(), &js_string(body.get("baseUrl"))) {
+        return error(400, PRIVATE_URL);
+    }
+    let region = body.get("region");
+    let region_given =
+        !matches!(region, JValue::Undefined | JValue::Null) && region.as_str() != Some("");
+    if region_given && !region_shaped(&js_string(region)) {
+        return error(400, REGION_INVALID);
+    }
+    let dav = matches!(body.get("kind").as_str(), Some("nextcloud" | "webdav"));
+    let mut warning = None;
+    if dav {
+        let check = check_login(
+            ctx.client(),
+            &js_string(body.get("baseUrl")),
+            &js_string(body.get("username")),
+            &js_string(body.get("secret")),
+        )
+        .await;
+        if check == Check::Rejected {
+            return answer(
+                StatusCode::BAD_REQUEST,
+                &JValue::obj([
+                    ("error", JValue::Str(STORAGE_LOGIN_REJECTED.into())),
+                    ("code", JValue::Str("storageLoginRejected".into())),
+                    ("status", JValue::Num(401.0)),
+                ]),
+            );
+        }
+        warning = warning_of(&check);
+    }
+    let kind = match body.get("kind").as_str() {
+        Some("nextcloud") => "nextcloud",
+        Some("webdav") => "webdav",
+        Some("s3") => "s3",
+        _ => "local",
+    };
+    let row = Row {
+        kind,
+        base_url: strip_slashes(&or_empty(body.get("baseUrl"))).to_string(),
+        bucket: strip_slashes(&or_empty(body.get("bucket"))).to_string(),
+        region: s3_sign::normalize_region(&or_empty(region)),
+        username: or_empty(body.get("username")),
+        secret: Zeroizing::new(or_empty(body.get("secret"))),
+        corpus_root: or_empty(body.get("corpusRoot")),
+    };
+    let Some(saved) = save_row(ctx, row).await else {
+        return unavailable();
+    };
+    // A login that was just checked and accepted ends the hold even when the credentials are unchanged.
+    if dav && warning.is_none() {
+        ctx.login_proven(body).await;
+    }
+    let mut items = match saved {
+        JValue::Obj(items) => items,
+        _ => Vec::new(),
+    };
+    for (k, v) in warning.unwrap_or_default() {
+        js_json::wtf16::set(&mut items, &k, v);
+    }
+    answer(StatusCode::OK, &JValue::Obj(items))
 }
 
 #[cfg(test)]

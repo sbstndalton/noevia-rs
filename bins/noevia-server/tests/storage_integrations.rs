@@ -1164,3 +1164,352 @@ async fn nextcloud_replies_caps_folders_and_revocation() {
     );
     f.stop().await;
 }
+
+// ---------------------------------------------------------------------------------------------
+// sbstndalton/noevia#2190 round 4: PUT /api/integrations/storage and the legacy WebDAV store op.
+
+const CONNECTION: &str = "/api/integrations/storage";
+
+async fn put(addr: std::net::SocketAddr, cookie: &str, body: &str) -> (u16, serde_json::Value) {
+    let csrf = format!("Origin: http://{addr}\r\nX-CSRF-Token: csrf\r\n");
+    raw(addr, "PUT", CONNECTION, cookie, &csrf, body.as_bytes()).await
+}
+
+/// The reply text as sent (key order included).
+async fn put_text(addr: std::net::SocketAddr, cookie: &str, body: &str) -> String {
+    let mut s = TcpStream::connect(addr).await.unwrap();
+    s.write_all(format!("PUT {CONNECTION} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\nCookie: {cookie}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nOrigin: http://{addr}\r\nX-CSRF-Token: csrf\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+    let mut out = Vec::new();
+    let _ = s.read_to_end(&mut out).await;
+    let text = String::from_utf8(out).unwrap();
+    text.split_once("\r\n\r\n").unwrap().1.to_string()
+}
+
+fn proofs(dir: &std::path::Path) -> Option<serde_json::Value> {
+    std::fs::read_to_string(dir.join("storage-login-proofs.json"))
+        .ok()
+        .map(|t| j(&t))
+}
+
+#[tokio::test]
+async fn put_connection_validates_checks_and_saves() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let dav = upstream(false).await;
+    let base = dav.base("http");
+    let f = front(d.path()).await;
+    let addr = f.addr;
+    let required = r#"{"error":"server URL, username, and app password are required"}"#;
+
+    // The gate, then the body (core routes/storage.cjs order).
+    assert_eq!(raw(addr, "PUT", CONNECTION, "", "", b"{}").await.0, 401);
+    assert_eq!(raw(addr, "PUT", CONNECTION, ADMIN, "", b"{}").await.0, 403);
+    assert_eq!(
+        put(addr, ADMIN, "[]").await,
+        (400, j(r#"{"error":"request body must be a JSON object"}"#))
+    );
+    assert_eq!(
+        put(addr, ADMIN, "null").await,
+        (400, j(r#"{"error":"request body must be a JSON object"}"#))
+    );
+    assert_eq!(put(addr, ADMIN, "{}").await, (400, j(required)));
+    for body in [
+        r#"{"kind":"webdav","baseUrl":"ftp://x","username":"u","secret":"s"}"#,
+        r#"{"kind":"webdav","baseUrl":"HTTP://x","username":"u","secret":"s"}"#,
+        r#"{"kind":"webdav","baseUrl":"http://x","username":"","secret":"s"}"#,
+        r#"{"kind":"s3","baseUrl":"http://x","username":"u","secret":0}"#,
+        r#"{"kind":"bogus","baseUrl":"http://x","username":"u"}"#,
+    ] {
+        assert_eq!(put(addr, ADMIN, body).await, (400, j(required)), "{body}");
+    }
+    let webdav = |user: &str, secret: &str| {
+        format!(
+            r#"{{"kind":"webdav","baseUrl":"{base}/dav","username":"{user}","secret":"{secret}","corpusRoot":"Notes"}}"#
+        )
+    };
+    // A member may not save an origin that is not approved; nothing is contacted.
+    dav.clear();
+    assert_eq!(
+        put(addr, MEMBER, &webdav("alice", "s")).await,
+        (400, serde_json::json!({ "error": PRIVATE }))
+    );
+    assert!(dav.seen().is_empty());
+    let region = r#"{"error":"Region must be 1-32 lowercase letters, digits, or dashes (for example eu-west-1)"}"#;
+    for r in [r#""EU""#, r#""a_b""#, "12345678901234567890123456789012345"] {
+        let body = format!(r#"{{"kind":"local","region":{r}}}"#);
+        assert_eq!(put(addr, ADMIN, &body).await, (400, j(region)), "{r}");
+    }
+    assert!(row(&db, A).is_none());
+
+    // A rejected login keeps the old row and saves nothing.
+    save_row(&db, A, "webdav", "http://old.invalid", "", "old-secret");
+    dav.set(|_: &Seen| now(reply("401 Unauthorized", "", "")));
+    assert_eq!(
+        put(addr, ADMIN, &webdav("alice", "wrong")).await,
+        (
+            400,
+            j(
+                r#"{"error":"The server rejected this username or app password.","code":"storageLoginRejected","status":401}"#
+            )
+        )
+    );
+    assert_eq!(row(&db, A).unwrap().1, "http://old.invalid");
+    let r = dav.seen().last().unwrap().clone();
+    assert_eq!((r.method.as_str(), r.path.as_str()), ("PROPFIND", "/dav/"));
+    assert!(r.headers.contains("depth: 0"));
+    // basic base64("alice:wrong")
+    assert!(
+        r.headers.contains("authorization: basic ywxpy2u6d3jvbmc="),
+        "{}",
+        r.headers
+    );
+    assert!(audits(&db).is_empty());
+    assert!(proofs(d.path()).is_none());
+
+    // An accepted login saves the row (sealed to the account), its audit row and the proof.
+    dav.set(|_: &Seen| now(reply("207 Multi-Status", "", "")));
+    let (status, body) = put(addr, ADMIN, &webdav("alice", "synthetic-secret")).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        body,
+        serde_json::json!({"kind":"webdav","baseUrl":format!("{base}/dav"),"bucket":"","region":"us-east-1","username":"alice","corpusRoot":"Notes","secretConfigured":true,"secretNeedsReauth":false})
+    );
+    let saved = row(&db, A).unwrap();
+    assert_eq!(
+        (
+            saved.0.as_str(),
+            saved.2.as_str(),
+            saved.4.as_str(),
+            saved.5.as_str()
+        ),
+        ("webdav", "alice", "Notes", "us-east-1")
+    );
+    assert!(saved.3.starts_with("enc:v2:"), "{}", saved.3);
+    assert_eq!(open(&saved.3, A), "synthetic-secret");
+    assert_eq!(
+        audits(&db),
+        vec![(
+            A.into(),
+            A.into(),
+            "storage.update".into(),
+            r#"{"kind":"webdav"}"#.into()
+        )]
+    );
+    assert!(proofs(d.path()).unwrap()["proofs"][A].is_number());
+
+    // Not checked: saved anyway, with Node's warning fields after the connection; no new proof.
+    std::fs::remove_file(d.path().join("storage-login-proofs.json")).unwrap();
+    let cases: Vec<(&str, serde_json::Value)> = vec![
+        (
+            "403 Forbidden",
+            serde_json::json!({"warning":"Saved, but the login could not be checked (the storage server answered 403).","warningCode":"storageUnverified","status":403}),
+        ),
+        (
+            "503 Busy",
+            serde_json::json!({"warning":"Saved, but the login could not be checked (the storage server answered 503).","warningCode":"storageUnverified","status":503}),
+        ),
+        (
+            "302 Found",
+            serde_json::json!({"warning":"Saved, but the server redirected the login check. Check the URL (https, trailing slash).","warningCode":"storageUnverified","reason":"redirect"}),
+        ),
+        (
+            "429 Too Many",
+            serde_json::json!({"warning":"Saved, but the storage server is throttling logins from noevia after too many failed attempts, so the login was not checked. Wait, then press Test.","warningCode":"storageThrottled","status":429,"retryAfter":30}),
+        ),
+    ];
+    for (line, want) in cases {
+        let line = line.to_string();
+        dav.set(move |_: &Seen| now(reply(&line, "Retry-After: 29.5\r\nLocation: /x\r\n", "")));
+        let (status, body) = put(addr, ADMIN, &webdav("bob", "s2")).await;
+        assert_eq!(status, 200, "{body}");
+        let obj = body.as_object().unwrap();
+        for (k, v) in want.as_object().unwrap() {
+            assert_eq!(&obj[k], v, "{k}");
+        }
+        assert_eq!(obj.len(), 8 + want.as_object().unwrap().len());
+        assert!(
+            !body.to_string().contains("s2\""),
+            "the secret is never answered"
+        );
+        assert_eq!(row(&db, A).unwrap().2, "bob");
+    }
+    assert!(proofs(d.path()).is_none());
+    // Node's `{ ...saved, ...warning }`: the connection's keys first, then the warning's, in order.
+    let text = put_text(addr, ADMIN, &webdav("bob", "s2")).await;
+    let order: Vec<usize> = [
+        "\"kind\"",
+        "\"baseUrl\"",
+        "\"bucket\"",
+        "\"region\"",
+        "\"username\"",
+        "\"corpusRoot\"",
+        "\"secretConfigured\"",
+        "\"secretNeedsReauth\"",
+        "\"warning\"",
+        "\"warningCode\"",
+        "\"status\"",
+        "\"retryAfter\"",
+    ]
+    .iter()
+    .map(|k| text.find(k).unwrap_or_else(|| panic!("{k} in {text}")))
+    .collect();
+    assert!(order.windows(2).all(|w| w[0] < w[1]), "{text}");
+
+    // A trailing slash is stripped from the save, so the proof (core fingerprintOf the body)
+    // is not written: Node's loginProven compared the saved row with the body as sent.
+    dav.set(|_: &Seen| now(reply("200 OK", "", "")));
+    let slashed = format!(
+        r#"{{"kind":"nextcloud","baseUrl":"{base}/dav//","username":"alice","secret":"s3"}}"#
+    );
+    let (status, body) = put(addr, ADMIN, &slashed).await;
+    assert_eq!(
+        (status, body["baseUrl"].clone()),
+        (200, serde_json::json!(format!("{base}/dav")))
+    );
+    assert_eq!(body["corpusRoot"], "");
+    assert!(proofs(d.path()).is_none());
+
+    // S3 and local are not login-checked; bucket slashes and the region are normalized.
+    dav.clear();
+    let s3 = format!(
+        r#"{{"kind":"s3","baseUrl":"{base}/","bucket":"notes//","region":"eu-west-1","username":"AKIA","secret":"k"}}"#
+    );
+    let (status, body) = put(addr, ADMIN, &s3).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        (body["bucket"].clone(), body["region"].clone()),
+        (serde_json::json!("notes"), serde_json::json!("eu-west-1"))
+    );
+    assert!(dav.seen().is_empty());
+    // The body's userId is ignored: the save is the session account's alone.
+    let (status, body) = put(
+        addr,
+        ADMIN,
+        &format!(r#"{{"kind":"local","region":"","userId":"{B}"}}"#),
+    )
+    .await;
+    assert_eq!(
+        (status, body),
+        (
+            200,
+            j(
+                r#"{"kind":"local","baseUrl":"","bucket":"","region":"us-east-1","username":"","corpusRoot":"","secretConfigured":false,"secretNeedsReauth":false}"#
+            )
+        )
+    );
+    assert_eq!(row(&db, A).unwrap().3, "");
+    // The other account's row is untouched by A's saves.
+    assert!(row(&db, B).is_none());
+    // Another method on the path is Node's (its upstream is dead here).
+    let csrf = format!("Origin: http://{addr}\r\nX-CSRF-Token: csrf\r\n");
+    let mut s = TcpStream::connect(addr).await.unwrap();
+    s.write_all(format!("DELETE {CONNECTION} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\nCookie: {ADMIN}\r\n{csrf}Content-Length: 0\r\n\r\n").as_bytes()).await.unwrap();
+    let mut out = Vec::new();
+    let _ = s.read_to_end(&mut out).await;
+    let text = String::from_utf8_lossy(&out);
+    assert!(!text.starts_with("HTTP/1.1 200"), "{text}");
+    f.stop().await;
+}
+
+#[tokio::test]
+async fn legacy_webdav_store_op_saves_only_an_unconfigured_account() {
+    use noevia_server::project_store::{serve_with_context, Store, TOKEN_HEADER};
+    const TOKEN: &str = "synthetic-store-token-0123456789abcdef";
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let env = HashMap::from([
+        ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".to_string()),
+        ("UI_DATA_DIR", d.path().display().to_string()),
+    ]);
+    let app = App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let store = Store {
+        data_dir: d.path().to_path_buf(),
+        token: TOKEN.into(),
+        switch: server_store::RustProjects::owned(),
+        start_id: "".into(),
+    };
+    tokio::spawn(serve_with_context(
+        listener,
+        store,
+        None,
+        Some(app),
+        std::future::pending(),
+    ));
+    let op = |token: Option<&'static str>, body: String| async move {
+        let mut s = TcpStream::connect(addr).await.unwrap();
+        let mut req = format!("POST /v1/storage/legacy-webdav HTTP/1.1\r\nhost: store\r\nconnection: close\r\ncontent-type: application/json\r\ncontent-length: {}\r\n", body.len());
+        if let Some(t) = token {
+            req.push_str(&format!("{TOKEN_HEADER}: {t}\r\n"));
+        }
+        req.push_str("\r\n");
+        s.write_all(req.as_bytes()).await.unwrap();
+        s.write_all(body.as_bytes()).await.unwrap();
+        let mut out = Vec::new();
+        s.read_to_end(&mut out).await.unwrap();
+        let text = String::from_utf8_lossy(&out).into_owned();
+        let status: u16 = text[9..12].parse().unwrap();
+        (status, j(text.split_once("\r\n\r\n").unwrap().1))
+    };
+    let legacy = |user: &str| {
+        format!(
+            r#"{{"user":"{user}","baseUrl":"https://dav.example.test/remote/","username":"legacy","secret":"legacy-secret","corpusRoot":"Cowork/Diary"}}"#
+        )
+    };
+    assert_eq!(op(None, legacy(A)).await.0, 401);
+    assert_eq!(
+        op(Some("wrong-token-wrong-token-wrong-token!"), legacy(A))
+            .await
+            .0,
+        401
+    );
+    assert!(row(&db, A).is_none());
+    assert_eq!(op(Some(TOKEN), "[]".into()).await.0, 400);
+    assert_eq!(op(Some(TOKEN), r#"{"user":""}"#.into()).await.0, 400);
+
+    // No row: saved as WebDAV, sealed to the account, with its audit row.
+    assert_eq!(
+        op(Some(TOKEN), legacy(A)).await,
+        (200, j(r#"{"saved":true}"#))
+    );
+    let saved = row(&db, A).unwrap();
+    assert_eq!(
+        (
+            saved.0.as_str(),
+            saved.1.as_str(),
+            saved.2.as_str(),
+            saved.4.as_str()
+        ),
+        (
+            "webdav",
+            "https://dav.example.test/remote",
+            "legacy",
+            "Cowork/Diary"
+        )
+    );
+    assert_eq!(open(&saved.3, A), "legacy-secret");
+    assert_eq!(audits(&db).len(), 1);
+    // A configured row is never replaced.
+    save_row(
+        &db,
+        A,
+        "nextcloud",
+        "https://cloud.example.test",
+        "",
+        "mine",
+    );
+    assert_eq!(
+        op(Some(TOKEN), legacy(A)).await,
+        (200, j(r#"{"saved":false}"#))
+    );
+    assert_eq!(row(&db, A).unwrap().0, "nextcloud");
+    assert_eq!(audits(&db).len(), 1);
+    // A local row is.
+    save_row(&db, B, "local", "", "", "");
+    assert_eq!(
+        op(Some(TOKEN), legacy(B)).await,
+        (200, j(r#"{"saved":true}"#))
+    );
+    assert_eq!(row(&db, B).unwrap().0, "webdav");
+}

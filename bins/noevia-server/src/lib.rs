@@ -94,6 +94,11 @@ use std::sync::Arc;
 /// Nextcloud sign-ins (`nextcloud-login-flows.json`), saves a completed sign-in's storage row and
 /// writes the login proofs Node's storage latch re-reads. Node refuses those five POSTs (core
 /// rust-storage-integrations.cjs `RUST_STORAGE_INTEGRATIONS_OWNED`), so the supervisor pairs them.
+/// `rust-storage-connection`: this build also answers `PUT /api/integrations/storage` and is the
+/// single writer of the `storage_connections` row (sbstndalton/noevia#2190 round 4), including the
+/// legacy WebDAV setup Node asks for through the internal store (`/v1/storage/legacy-webdav`). The
+/// paired core refuses the PUT (rust-storage-connection.cjs `RUST_STORAGE_CONNECTION_OWNED`) and
+/// its database guard refuses every Node write of the table but the same-plaintext reseal.
 ///
 /// `project-store`: this build serves the internal project store Node writes projects.json and
 /// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
@@ -141,6 +146,8 @@ pub const FEATURES: &[&str] = &[
     "rust-storage-browse",
     #[cfg(feature = "rust-storage-reads")]
     "rust-storage-integrations",
+    #[cfg(feature = "rust-storage-reads")]
+    "rust-storage-connection",
     "rust-vault-mirror-preferences",
     #[cfg(feature = "rust-reasoning-settings")]
     "rust-reasoning-settings",

@@ -238,8 +238,9 @@ reach that same recovery path, and activation only schedules work, so the gate g
 reads do not already do. (2) An upload whose body is still arriving at the 120 s
 deadline is answered 408; core destroyed the socket. (3) A request body
 of at most 4 KiB gets a 120 s read deadline (core had only the server-wide 20 minutes). (4) Core's
-`getStorage` upgrades a legacy v1 ciphertext in place when it reads it; the front reads and never writes
-`storage_connections`, so that upgrade still happens only on Node's own reads. (5) A sidecar reply that
+`getStorage` upgrades a legacy v1 ciphertext in place when it reads it; the front's reads never write
+`storage_connections`, so that upgrade still happens only on Node's own reads (since #2190 round 4 a
+compare-and-swap reseal of the same plaintext, the one Node write of the table its guard allows). (5) A sidecar reply that
 `JSON.parse` accepts but the port cannot hold (a number outside f64, a character in the reserved private
 range) is treated as a failed call (`js_json::wtf16`'s `Unsupported`).
 
@@ -487,12 +488,29 @@ The pending Nextcloud sign-ins move wholesale: the same sealed file
 account, a nonce per flow so a cancelled flow's in-flight poll revokes the app password). A
 completed sign-in saves the `storage_connections` row with core `saveStorage`'s exact upsert and
 its `storage.update` audit row in one transaction (server-store `save_storage_connection`, its own
-grant); Node reads that row on every use (`getStorage`), and still saves it from
-`PUT /api/integrations/storage`, which stays Node's. The storage latch stays in Node with its
+grant); Node reads that row on every use (`getStorage`). Round 4 moves the remaining save
+(`PUT /api/integrations/storage`), so Rust is that row's only writer (below). The storage latch stays in Node with its
 automatic callers (the project refresh, the Diary backup): a folder or test call that works with
 the saved login writes `storage-login-proofs.json` (`{version:1,proofs:{<userId>:<ms>}}`, no
 credential), which Node's latch re-reads by its file signal (core shared-reread.cjs) and which
 ends a hold set before it.
+
+### Round 4: one writer for the storage connection
+
+| route | owner | capability / Core refusal | notes |
+|---|---|---|---|
+| `/api/integrations/storage` (PUT) | rust | `rust-storage-connection` / `RUST_STORAGE_CONNECTION_OWNED` | GET stays the metadata worker's; other methods stay Node's. Session gate (device tokens refused), the JSON-object body (1 MiB), then core's order: the fields, the member-origin rule, the region, the WebDAV/Nextcloud login check (PROPFIND Depth 0, 10 s, no redirect, no environment proxy; a 401 keeps the old row), the save and its `storage.update` audit row in one transaction, and the login proof when the checked login is the saved one |
+
+Every Node writer of `storage_connections` is gone: the PUT; `saveStorage` (deleted from core
+auth.cjs); and core index.cjs's legacy WebDAV setup (an administrator's legacy workspace with
+`CORPUS_BACKEND=webdav`), which now asks the internal store (`POST /v1/storage/legacy-webdav
+{ user, baseUrl, username, secret, corpusRoot }` -> `{ saved }`, saved only while the account has
+no row or a `local` one, checked inside the write). Core's database guard (rust-auth.cjs
+`FRONT_TABLES`) refuses every Node INSERT, UPDATE or DELETE of the table with
+`RUST_STORAGE_CONNECTION_OWNED`, even inside `exempt()`, except one statement: `UPDATE
+storage_connections SET secret=? WHERE user_id=? AND secret=?`, the same plaintext resealed under
+the current key (`getStorage`'s legacy upgrade, `secrets:rotate`), which changes nothing if Rust
+saved the row in between. The seal is `enc:v2` bound to the account (the round-3 golden vector).
 
 Left on Node in this batch, and why (each resolves Node memory, a Node-only cache or an in-process
 job that chat or another Node route reads):

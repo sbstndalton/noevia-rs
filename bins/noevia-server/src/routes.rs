@@ -378,7 +378,9 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
     {
         return None;
     }
-    if route.path == STORAGE_METADATA && (path != STORAGE_METADATA || method != "GET") {
+    if route.path == STORAGE_METADATA
+        && (path != STORAGE_METADATA || !["GET", "PUT"].contains(&method))
+    {
         return None;
     }
     if route.owner_under(switches) != Owner::Rust {
@@ -389,6 +391,11 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
     }
     if !compiled(route) {
         return None;
+    }
+    // sbstndalton/noevia#2190 round 4: saving the connection is storage_integration_routes.rs;
+    // reading it is the metadata worker's.
+    if route.path == STORAGE_METADATA && method == "PUT" {
+        return Some(Native::StorageIntegrations);
     }
     native_for(route)
 }
@@ -1084,6 +1091,12 @@ mod tests {
             ("GET", "/api/stats", Native::Stats),
             ("GET", "/api/providers/chatgpt", Native::ChatgptStatus),
             ("GET", "/api/integrations/storage", Native::StorageMetadata),
+            // sbstndalton/noevia#2190 round 4: the save.
+            (
+                "PUT",
+                "/api/integrations/storage",
+                Native::StorageIntegrations,
+            ),
             (
                 "GET",
                 "/api/integrations/storage/files",

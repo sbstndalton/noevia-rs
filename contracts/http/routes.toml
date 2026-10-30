@@ -378,9 +378,11 @@ path = "/api/import/conversations"
 owner = "node"
 
 [[route]]
+# GET: the metadata worker (#1071). PUT, the save (sbstndalton/noevia#2190 round 4,
+# rust-storage-connection): Rust is the only writer of the storage_connections row.
 path = "/api/integrations/storage"
 owner = "rust"
-methods = ["GET"]
+methods = ["GET", "PUT"]
 
 [[route]]
 path = "/api/integrations/storage/file"

@@ -631,13 +631,105 @@ pub fn router_with_context(
     )
 }
 
+/// [`router_with_context`] plus the operations that need the front's [`crate::App`] (its cowork.db
+/// writer and credential keys): `POST /v1/storage/legacy-webdav` (sbstndalton/noevia#2190 round 4).
+pub fn router_with_app(
+    store: Store,
+    context: Option<Arc<crate::feature_context::Layer>>,
+    app: Option<Arc<crate::App>>,
+) -> Router {
+    let storage_store = store.clone();
+    router_with_context(store, context).route(
+        "/v1/storage/legacy-webdav",
+        post(move |headers: HeaderMap, raw: Bytes| {
+            let store = storage_store.clone();
+            let app = app.clone();
+            async move { legacy_webdav(store, app, headers, raw).await }
+        }),
+    )
+}
+
+/// `POST /v1/storage/legacy-webdav { user, baseUrl, username, secret, corpusRoot }` -> 200
+/// `{ saved }`: core index.cjs's legacy WebDAV setup (an administrator's legacy workspace with
+/// CORPUS_BACKEND=webdav), which Node used to save with `authService.saveStorage`. Node checks its
+/// own preconditions (role, Diary add-on, migration.json, the environment); the row is saved only
+/// while the account has none or a `local` one, checked inside the write (`saved: false`
+/// otherwise). The Rust front is then the only writer of `storage_connections`.
+async fn legacy_webdav(
+    store: Store,
+    app: Option<Arc<crate::App>>,
+    headers: HeaderMap,
+    raw: Bytes,
+) -> Response<Body> {
+    if !authorised(&store, &headers) {
+        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+    }
+    #[cfg(feature = "rust-storage-reads")]
+    {
+        let Some(app) = app else {
+            return error(StatusCode::SERVICE_UNAVAILABLE, "storage unavailable");
+        };
+        let body = match js_json::parse(&String::from_utf8_lossy(&raw)) {
+            Ok(b @ JValue::Obj(_)) => b,
+            _ => return error(StatusCode::BAD_REQUEST, "invalid JSON"),
+        };
+        let user = match body.get("user") {
+            JValue::Str(u) if !u.is_empty() && u.len() <= 256 => u.clone(),
+            _ => return error(StatusCode::BAD_REQUEST, "invalid user"),
+        };
+        let text = |k: &str| match body.get(k) {
+            JValue::Str(v) => v.clone(),
+            _ => String::new(),
+        };
+        let row = crate::storage_integration_routes::Row {
+            kind: "webdav",
+            base_url: text("baseUrl").trim_end_matches('/').to_string(),
+            bucket: String::new(),
+            region: s3_sign::DEFAULT_REGION.to_string(),
+            username: text("username"),
+            secret: zeroize::Zeroizing::new(text("secret")),
+            corpus_root: text("corpusRoot"),
+        };
+        let data_dir = store.data_dir.clone();
+        let saved = tokio::task::spawn_blocking(move || {
+            let previous = std::env::var("SECRETS_KEY_PREVIOUS")
+                .ok()
+                .map(zeroize::Zeroizing::new);
+            let keys = server_storage_reads::owner_secret::load_existing_keys(
+                &data_dir,
+                previous.as_deref().map(String::as_str),
+            )
+            .map_err(|_| StoreError::Busy)?;
+            crate::storage_integration_routes::write_row(
+                &app,
+                &keys,
+                &user,
+                &row,
+                crate::storage_integration_routes::When::Local,
+            )
+            .map_err(|_| StoreError::Busy)
+        })
+        .await;
+        match saved {
+            Ok(Ok(saved)) => reply(StatusCode::OK, &json!({ "saved": saved })),
+            _ => error(StatusCode::SERVICE_UNAVAILABLE, "storage unavailable"),
+        }
+    }
+    #[cfg(not(feature = "rust-storage-reads"))]
+    {
+        let _ = (store, app, raw);
+        error(StatusCode::NOT_FOUND, "not found")
+    }
+}
+
 pub async fn serve_with_context(
     listener: tokio::net::TcpListener,
     store: Store,
     context: Option<Arc<crate::feature_context::Layer>>,
+    app: Option<Arc<crate::App>>,
     shutdown: impl std::future::Future<Output = ()> + Send + 'static,
 ) {
-    let _ = axum::serve(listener, router_with_context(store, context))
+    let _ = axum::serve(listener, router_with_app(store, context, app))
         .with_graceful_shutdown(shutdown)
         .await;
 }

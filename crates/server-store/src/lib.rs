@@ -207,9 +207,11 @@ impl RustDecisionSettings {
 
 /// Settings -> Diary & storage, the Nextcloud sign-in and the storage test/folder routes
 /// (sbstndalton/noevia#2190): a completed sign-in saves the account's `storage_connections` row
-/// through [`WriteTx::save_storage_connection`], Node's exact upsert. Node still saves the row from
-/// `PUT /api/integrations/storage`, so this table is not in [`OWNED_TABLES`] (Node's guard does
-/// not refuse it); the grant is this one statement, never a delete.
+/// through [`WriteTx::save_storage_connection`], Node's exact upsert. Since round 4 the Settings save
+/// (`PUT /api/integrations/storage`) and the legacy WebDAV setup are saved here too, so this is the
+/// row's only writer: core's guard (rust-auth.cjs `FRONT_TABLES`) refuses every Node write of the
+/// table but the same-plaintext compare-and-swap reseal. The table stays out of [`OWNED_TABLES`]
+/// (whose grants are per statement kind); the grant is this one statement, never a delete.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RustStorageIntegrations(());
 impl RustStorageIntegrations {
