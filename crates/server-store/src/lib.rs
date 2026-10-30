@@ -55,9 +55,9 @@ pub enum Access {
     InsertUpdate,
     /// INSERT only. `audit_events` is shared: every Node module appends too, nobody rewrites.
     Append,
-    /// DELETE only: an account recovery revokes the account's Diary connectors, a table Node
-    /// otherwise owns.
-    DeleteOnly,
+    /// INSERT and DELETE, never an UPDATE: the Diary connectors (sbstndalton/noevia#2206), whose rows
+    /// are created once, listed and revoked, and never edited.
+    InsertDelete,
 }
 
 impl Access {
@@ -70,7 +70,10 @@ impl Access {
                     AuthAction::Insert { .. } | AuthAction::Update { .. }
                 )
                 | (Access::Append, AuthAction::Insert { .. })
-                | (Access::DeleteOnly, AuthAction::Delete { .. })
+                | (
+                    Access::InsertDelete,
+                    AuthAction::Insert { .. } | AuthAction::Delete { .. }
+                )
         )
     }
 }
@@ -94,7 +97,10 @@ pub const OWNED_TABLES: &[(&str, Access)] = &[
     ("device_tokens", Access::Full),
     ("app_passwords", Access::Full),
     ("audit_events", Access::Append),
-    ("diary_connectors", Access::DeleteOnly),
+    // sbstndalton/noevia#2206: the Diary connector credentials are the front's (created, listed and
+    // revoked by /api/profile/diary-connectors, verified by /api/diary-connector). Core's guard
+    // (rust-auth.cjs `FRONT_TABLES`) refuses every Node write; an account's rows go by cascade.
+    ("diary_connectors", Access::InsertDelete),
     // core dav-settings.cjs (Settings -> Sharing, #1071): created by core at boot; the DAV
     // listener only reads it.
     ("dav_settings", Access::InsertUpdate),
@@ -282,8 +288,8 @@ pub const SHARED_PROJECT_FILES: &[&str] = &["projects.json", "free-chats.json", 
 pub const ROOT_PROVIDER_FILE: &str = "shared-providers.json";
 
 /// Columns Rust reads or writes, per table, with the core module that creates them. Each must
-/// exist; Node may add others. (`diary_connectors` is optional: diary-connectors.cjs creates it
-/// when the server wires it up, and Rust only deletes from it when it is there.)
+/// exist; Node may add others. (`diary_connectors` is optional: core still creates the table at boot
+/// (diary-connectors.cjs `ensureTable`); Rust reads and writes it only when it is there.)
 pub const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     ("schema_migrations", &["version"]),
     ("settings", &["key", "value"]),

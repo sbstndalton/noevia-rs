@@ -446,7 +446,7 @@ one slice at a time.
   default) and WAL, as Node. Refuses a schema newer than `schema_migrations` v5 (rechecked on
   every read) or missing a column it reads. M3: `Writer` writes only what the compiled
   `OWNED_TABLES` grants (the auth tables, per-table INSERT/UPDATE/DELETE; `audit_events`
-  append-only; `diary_connectors` delete-only for recovery), `settings` only for
+  append-only; `diary_connectors` insert and delete only, the Diary connector credentials, #2206), `settings` only for
   `OWNED_SETTING_KEYS` through key-checked helpers, with `foreign_keys = ON`; it opens with the
   ownership token `RustAuth::owned()` (the old switch `NOEVIA_RUST_AUTH` is retired,
   sbstndalton/noevia#1071). Node always refuses the same writes (noevia-core

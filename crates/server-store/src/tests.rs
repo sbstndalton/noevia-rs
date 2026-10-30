@@ -362,6 +362,32 @@ fn a_cascade_reaches_only_tables_the_writer_owns() {
 }
 
 #[test]
+fn the_writer_creates_and_revokes_diary_connectors_but_never_edits_one() {
+    // sbstndalton/noevia#2206: the front is the writer of the Diary connector credentials.
+    let (dir, node) = node_db();
+    node.execute_batch(
+        "CREATE TABLE IF NOT EXISTS diary_connectors(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,token_hash TEXT NOT NULL,created_at INTEGER NOT NULL);",
+    )
+    .unwrap();
+    let writer = Writer::open(dir.path(), RustAuth::for_tests()).unwrap();
+    writer
+        .write(|w| {
+            w.execute(
+                "INSERT INTO diary_connectors VALUES('c1','u1','Phone','h',1)",
+                [],
+            )
+        })
+        .unwrap();
+    assert_eq!(count(&node, "SELECT count(*) FROM diary_connectors"), 1);
+    let edit = writer.write(|w| w.execute("UPDATE diary_connectors SET name='X'", []));
+    assert!(matches!(edit, Err(StoreError::NotOwned(_))), "{edit:?}");
+    writer
+        .write(|w| w.execute("DELETE FROM diary_connectors WHERE id='c1'", []))
+        .unwrap();
+    assert_eq!(count(&node, "SELECT count(*) FROM diary_connectors"), 0);
+}
+
+#[test]
 fn the_writer_reads_its_own_commits() {
     let (dir, _node) = node_db();
     let writer = Writer::open(dir.path(), RustAuth::for_tests()).unwrap();

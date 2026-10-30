@@ -65,6 +65,7 @@ pub mod chat_move;
 pub mod chats;
 pub mod context;
 pub mod context_window;
+pub mod diary_context;
 pub mod document_ingest;
 pub mod document_pages;
 pub mod extract;
