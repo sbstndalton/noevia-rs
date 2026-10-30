@@ -623,7 +623,7 @@ job that chat or another Node route reads):
 | `/api/admin/offsite-backup` and its six children | offsite-service.cjs runs the backup, copy and verify jobs and their busy lock and 15-minute timer in-process |
 | `/api/admin/users/{id}` (DELETE) | the clean-up spans Node's workspace cache, MCP OAuth and directory MCP keys in memory (the ChatGPT tokens through the broker's `/v1/chatgpt/forget`) |
 | `/api/auto-roles` | GET reads the served catalogue and machine models; an admin PUT warms the roles in Node's engine (`ensureRolesLoaded`) |
-| `/api/health` | the retrieval probe is Node's cached RAG status, and the default provider is Node's in-memory registry |
+| `/api/health` | `ragAvailable` and the `retrieval` tri-state are Node's cached RAG status (Node-live); the default provider row is now env-derived in the front (provider_routes.rs `Deployment`), so only that status needs publishing (round 6 below) |
 
 ## sbstndalton/noevia#2190 round 6: the provider registry (group B2)
 
@@ -664,6 +664,14 @@ the way: a `%`-escape `decodeURIComponent` refuses in the id threw (500; now `40
 a save could drop a concurrent writer's rows (Node rewrote its whole cached list); the
 `/api/providers/chatgpt` disconnect and the row delete share one path, so a disconnect cannot leave
 tokens without a row or a re-added row.
+
+### Round 6: still on Node, and the plan for each
+
+| route(s) | why it stays | plan |
+|---|---|---|
+| `/api/connectors*` (Drive and the Nextcloud policy) | `drive-accounts.cjs` and `gdrive.cjs` hold the Drive device sign-in, the sealed refresh tokens (`google-drive-users/<id>.sealed`, HKDF key from `secrets.key`) and the access-token refresh in process; the chat tools (`gdrive-tools.cjs`) and the administrator's off-site backup mirror (`offsite-service.cjs`, the `google-drive.sealed` slot that doubles as that administrator's personal connection) call `drive.token()`/`call()`; the view needs the tool catalogue (`isWrite`) and the `tool_policies` table Node writes through policy-leaves | a Drive broker on the ChatGPT pattern (`/v1/gdrive/{session,reject,disconnect,forget}` on the internal store, enc-sealed rows, single-flight refresh, compare-and-swap writes, a change-signal file), with the backup slot's ownership rule (`ownsBackup`) ported with it; Node's tools and the mirror ask for access tokens only; the policies become a re-read of `tool_policies` by content fingerprint, as the decision settings are. The off-site backup stays Node's (its own round) and uses the broker's session |
+| `/api/health` | see the table above | Node writes `rag-status.json` (`{ version, ragAvailable, retrieval, at }`, atomically, on a timer and when the status changes); the front reads it per request, probes the default provider and the Diary itself, and reports a snapshot older than a bound as `retrieval: "unavailable"` |
+| `/api/auto-roles` | GET needs the served catalogue (names, `missingFile`) and the machine models, both Node-live; PUT warms the roles in the engine | publish the catalogue and machine-model names in the same snapshot; GET moves with it; PUT stays Node's (chat-live) unless the warm-up is split from the save |
 
 ## sbstndalton/noevia#2189 (batch M2-A): the read-only model sizing reads
 
