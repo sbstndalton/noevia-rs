@@ -967,9 +967,16 @@ leaves it unset (https://huggingface.co).
 
 - **Reload.** The work is a spawned task that owns an inference-gate maintenance hold (a deadline, renewed every
   third of the gate's idle limit, taken again if the gate loses it, given back on every exit and from `Drop`),
-  so a client that leaves strands neither. Without an admin token or a gate that knows the hold, the hold is the
-  front's own (one reload at a time); Node's in-flight chat is then invisible to it, and the reload guard (a
-  loaded model keeps running only if its section is unchanged) is what protects a loaded model. The baseline
+  so a client that leaves strands neither. Without an admin token or a gate that knows the hold (production has no
+  gate), the reload takes a lease on Node's own maintenance gate instead (`/internal/model-maintenance/lease`, core
+  `model-maintenance-lease.cjs`, `model_maint/node_lease.rs`): loopback, the per-start store secret, not a proxied
+  request. A lease IS a hold of Node's gate, so chat active refuses the reload with the 409, and a held lease holds
+  back chat (503 after its short wait), tune, calibration, sweep, idle-unload, delete and prune. It ends by itself
+  when not renewed (30 s), so a front that dies frees Node. Node unreachable, or answering anything else: 503 with
+  nothing changed. A lease that ended or that Node stopped confirming stops the work before its next step, and is
+  never taken again. With a gate and no admin token, `unload: true` is refused (503): the gate's hold is the only
+  exclusion for other clients. The front prints Node's missing-token warning at start when a gate answers. The
+  deadline grows to fit 60 s per unload plus the 120 s reload once the loaded models are known. The baseline
   file is written by both processes under one lock file (`<file>.lock`, created exclusively, taken over after
   30 s) and replaced atomically; Core's guard re-reads it on every use. Core also asks the gate whether a hold it
   did not take is held (`GET /gate/v1/status`), so the folder sync, the optional chat work and the code machine

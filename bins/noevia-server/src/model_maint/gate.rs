@@ -11,10 +11,12 @@
 //! hold by itself after its idle limit. A dropped HTTP client never reaches this: the work runs on
 //! its own spawned task, which owns the hold.
 //!
-//! Without an admin token, or when nothing at the engine address knows the hold (404), a hold is
-//! this process's alone ([`Maint::acquire`](super::Maint::acquire) says so); callers that cannot
-//! run without the gate's exclusion ask for it to be required.
+//! Without an admin token, or when nothing at the engine address knows the hold (404), a hold is a
+//! lease on Node's own maintenance gate instead ([`node_lease`](super::node_lease)): renewed the same
+//! way, but a lease that ends is never taken again: [`Hold::lost`] tells the work to stop before its
+//! next step, because Node's work may be running from then on.
 
+use super::node_lease::{LeaseGrant, NodeLeases};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE};
 use serde_json::Value;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -299,15 +301,55 @@ impl Gate {
 }
 
 struct Shared {
+    /// The gate's hold token, or the id of Node's lease.
     token: Mutex<Option<String>>,
     released: AtomicBool,
+    /// Wakes the renewer when the hold ends, so it stops by itself (and gives back a hold it was
+    /// retaking at that moment) rather than being aborted mid-call.
+    wake: tokio::sync::Notify,
+    deadline: Mutex<Instant>,
+    /// Node's lease only: when Node last confirmed it, and how long that confirmation lasts.
+    confirmed: Mutex<Instant>,
+    lease_ttl: Option<Duration>,
+    lost: AtomicBool,
+}
+
+impl Shared {
+    fn new(token: Option<String>, deadline: Instant, lease_ttl: Option<Duration>) -> Arc<Shared> {
+        Arc::new(Shared {
+            token: Mutex::new(token),
+            released: AtomicBool::new(false),
+            wake: tokio::sync::Notify::new(),
+            deadline: Mutex::new(deadline),
+            confirmed: Mutex::new(Instant::now()),
+            lease_ttl,
+            lost: AtomicBool::new(false),
+        })
+    }
+
+    fn deadline(&self) -> Instant {
+        self.deadline
+            .lock()
+            .map(|d| *d)
+            .unwrap_or_else(|_| Instant::now())
+    }
+
+    /// Sleeps `every` or to the deadline, or until the hold ends. False when it has ended.
+    async fn pause(&self, every: Duration) -> bool {
+        let left = self.deadline().saturating_duration_since(Instant::now());
+        tokio::select! {
+            () = tokio::time::sleep(every.min(left)) => {}
+            () = self.wake.notified() => {}
+        }
+        !self.released.load(Ordering::Acquire)
+    }
 }
 
 /// A maintenance hold. Always bounded by a deadline; `release().await` ends it, `Drop` ends it too.
 pub struct Hold {
     shared: Arc<Shared>,
     gate: Option<Arc<Gate>>,
-    renewer: Option<tokio::task::JoinHandle<()>>,
+    node: Option<Arc<NodeLeases>>,
     local: Arc<AtomicBool>,
     reason: String,
 }
@@ -322,15 +364,21 @@ impl std::fmt::Debug for Hold {
 }
 
 impl Hold {
-    /// A hold that is this process's alone: `local` is the flag it clears when it ends.
-    pub(super) fn local_only(local: Arc<AtomicBool>, reason: &str) -> Hold {
+    /// A lease on Node's gate, renewed until `deadline`.
+    pub(super) fn leased(
+        local: Arc<AtomicBool>,
+        node: Arc<NodeLeases>,
+        grant: LeaseGrant,
+        reason: &str,
+        deadline: Instant,
+    ) -> Hold {
+        let shared = Shared::new(Some(grant.id), deadline, Some(grant.ttl));
+        let every = (grant.ttl / 3).max(Duration::from_millis(50));
+        tokio::spawn(lease_loop(Arc::clone(&shared), Arc::clone(&node), every));
         Hold {
-            shared: Arc::new(Shared {
-                token: Mutex::new(None),
-                released: AtomicBool::new(false),
-            }),
+            shared,
             gate: None,
-            renewer: None,
+            node: Some(node),
             local,
             reason: reason.to_owned(),
         }
@@ -344,22 +392,18 @@ impl Hold {
         reason: &str,
         deadline: Instant,
     ) -> Hold {
-        let shared = Arc::new(Shared {
-            token: Mutex::new(Some(grant.token)),
-            released: AtomicBool::new(false),
-        });
+        let shared = Shared::new(Some(grant.token), deadline, None);
         let every = (grant.idle_ttl / 3).max(Duration::from_secs(1));
-        let renewer = tokio::spawn(renew_loop(
+        tokio::spawn(renew_loop(
             Arc::clone(&shared),
             Arc::clone(&gate),
             every,
-            deadline,
             reason.to_owned(),
         ));
         Hold {
             shared,
             gate: Some(gate),
-            renewer: Some(renewer),
+            node: None,
             local,
             reason: reason.to_owned(),
         }
@@ -368,7 +412,31 @@ impl Hold {
     /// The gate's hold token, while there is one: the header this process's requests to the
     /// engine carry (`X-Noevia-Maintenance`).
     pub fn token(&self) -> Option<String> {
+        if self.node.is_some() {
+            return None;
+        }
         self.shared.token.lock().ok().and_then(|t| t.clone())
+    }
+
+    /// Whether Node's lease has ended or can no longer be vouched for: the work must not start its
+    /// next step. Always false for the gate's hold, which goes on as it always did.
+    pub fn lost(&self) -> bool {
+        let Some(ttl) = self.shared.lease_ttl else {
+            return false;
+        };
+        self.shared.lost.load(Ordering::Acquire)
+            || self
+                .shared
+                .confirmed
+                .lock()
+                .map_or(true, |at| at.elapsed() >= ttl)
+    }
+
+    /// Makes the deadline at least `needed` from now: the work has found out how long it may take.
+    pub fn cover(&self, needed: Duration) {
+        if let Ok(mut d) = self.shared.deadline.lock() {
+            *d = (*d).max(Instant::now() + needed);
+        }
     }
 
     /// Whether the gate (not just this process) holds the engine.
@@ -387,16 +455,17 @@ impl Hold {
     pub async fn release(mut self) {
         self.finish();
         let token = self.shared.token.lock().ok().and_then(|mut t| t.take());
-        if let (Some(gate), Some(token)) = (self.gate.as_ref(), token) {
-            gate.release(&token).await;
+        if let (Some(gate), Some(token)) = (self.gate.as_ref(), token.as_ref()) {
+            gate.release(token).await;
+        }
+        if let (Some(node), Some(token)) = (self.node.as_ref(), token.as_ref()) {
+            node.release(token).await;
         }
     }
 
     fn finish(&mut self) {
         self.shared.released.store(true, Ordering::Release);
-        if let Some(r) = self.renewer.take() {
-            r.abort();
-        }
+        self.shared.wake.notify_one();
         self.local.store(false, Ordering::Release);
     }
 }
@@ -405,31 +474,30 @@ impl Drop for Hold {
     fn drop(&mut self) {
         self.finish();
         let token = self.shared.token.lock().ok().and_then(|mut t| t.take());
-        if let (Some(gate), Some(token)) = (self.gate.take(), token) {
-            if let Ok(rt) = tokio::runtime::Handle::try_current() {
-                rt.spawn(async move { gate.release(&token).await });
-            }
+        let Some(token) = token else {
+            return;
+        };
+        let Ok(rt) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
+        if let Some(gate) = self.gate.take() {
+            rt.spawn(async move { gate.release(&token).await });
+        } else if let Some(node) = self.node.take() {
+            rt.spawn(async move { node.release(&token).await });
         }
     }
 }
 
-async fn renew_loop(
-    shared: Arc<Shared>,
-    gate: Arc<Gate>,
-    every: Duration,
-    deadline: Instant,
-    reason: String,
-) {
+async fn renew_loop(shared: Arc<Shared>, gate: Arc<Gate>, every: Duration, reason: String) {
     loop {
-        let now = Instant::now();
-        if now >= deadline {
+        if Instant::now() >= shared.deadline() {
             break;
         }
-        tokio::time::sleep(every.min(deadline - now)).await;
-        if shared.released.load(Ordering::Acquire) {
+        if !shared.pause(every).await {
             return;
         }
-        if Instant::now() >= deadline {
+        // A later `cover` may have moved it.
+        if Instant::now() >= shared.deadline() {
             break;
         }
         let Some(token) = shared.token.lock().ok().and_then(|t| t.clone()) else {
@@ -463,6 +531,40 @@ async fn renew_loop(
     if let Some(token) = token {
         eprintln!("[inference-gate] a maintenance hold passed its deadline and was given back");
         gate.release(&token).await;
+    }
+}
+
+async fn lease_loop(shared: Arc<Shared>, node: Arc<NodeLeases>, every: Duration) {
+    loop {
+        if !shared.pause(every).await {
+            return;
+        }
+        if Instant::now() >= shared.deadline() {
+            break;
+        }
+        let Some(id) = shared.token.lock().ok().and_then(|t| t.clone()) else {
+            return;
+        };
+        match node.renew(&id).await {
+            Some(true) => {
+                if let Ok(mut at) = shared.confirmed.lock() {
+                    *at = Instant::now();
+                }
+            }
+            Some(false) => {
+                shared.lost.store(true, Ordering::Release);
+                eprintln!("[models] Node ended this front's maintenance lease; the work stops before its next step");
+                return;
+            }
+            // Not answered: `Hold::lost` turns true when the last confirmation runs out.
+            None => {}
+        }
+    }
+    shared.lost.store(true, Ordering::Release);
+    let id = shared.token.lock().ok().and_then(|mut t| t.take());
+    if let Some(id) = id {
+        eprintln!("[models] a maintenance lease passed its deadline and was given back");
+        node.release(&id).await;
     }
 }
 

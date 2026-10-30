@@ -102,6 +102,10 @@ fn scripted(case: &Value, ini: PathBuf, calls: Arc<AtomicUsize>) -> Handler {
 fn lines(seen: &[Req]) -> (Vec<String>, Vec<String>) {
     let (mut router, mut gate) = (Vec::new(), Vec::new());
     for r in seen {
+        // Asked only to tell a gate without an admin token from no gate at all (#2210).
+        if r.method == "GET" && r.target == "/gate/v1/status" {
+            continue;
+        }
         if r.target.starts_with("/gate/v1/") {
             let mut norm = r.target.replace(TOKEN, "T");
             if r.method == "POST" && norm == "/gate/v1/maintenance" {
@@ -153,6 +157,27 @@ async fn every_recorded_core_answer_is_the_fronts_byte_for_byte() {
             ("MODEL_MANAGER_BASE_URL".into(), base),
             ("LLAMACPP_PRESET_PATH".into(), ini.display().to_string()),
         ];
+        // With no gate's hold, the front leases Node's own maintenance gate: Node's answer to that
+        // was its own hold in the recording.
+        let (node_port, _) = engine(Arc::new(|req: &Req| {
+            if req.method == "POST" && req.target == "/internal/model-maintenance/lease" {
+                Answer::Reply(
+                    201,
+                    json!({"lease": TOKEN, "ttlMs": 600_000}).to_string(),
+                )
+            } else {
+                Answer::Reply(204, String::new())
+            }
+        }))
+        .await;
+        env.push((
+            "NOEVIA_LEGACY_UPSTREAM".into(),
+            format!("http://127.0.0.1:{node_port}"),
+        ));
+        env.push((
+            "NOEVIA_PROJECT_STORE_TOKEN".into(),
+            "synthetic-store-token-0123456789abcdef".into(),
+        ));
         if case["gateToken"] == true {
             env.push((
                 "INFERENCE_GATE_ADMIN_TOKEN".into(),

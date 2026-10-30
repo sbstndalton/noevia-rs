@@ -218,6 +218,8 @@ pub struct Store {
     caps: Caps,
     /// The only writer: appends and compactions of this process do not interleave.
     write: Mutex<Option<usize>>,
+    /// Held across "read the newest, then append": a drain and an HTTP import cannot both decide to add.
+    decide: Mutex<()>,
 }
 
 impl std::fmt::Debug for Store {
@@ -253,6 +255,7 @@ impl Store {
             dir,
             caps: Caps::default(),
             write: Mutex::new(None),
+            decide: Mutex::new(()),
         }
     }
 
@@ -261,6 +264,7 @@ impl Store {
             dir,
             caps,
             write: Mutex::new(None),
+            decide: Mutex::new(()),
         }
     }
 
@@ -367,6 +371,7 @@ impl Store {
 
     /// Skips a record when the newest one for the same model, category and identity says the same.
     pub fn append_if_changed(&self, record: &JValue, at_ms: i64) -> Result<JValue, StoreError> {
+        let _deciding = self.decide.lock().map_err(|_| StoreError::Io)?;
         let (model, category, hash) = keys_of(record);
         let newest = self
             .list()
@@ -385,6 +390,7 @@ impl Store {
 
     /// Reported rates drift a little on every reply; one record per meaningful change or per day.
     pub fn append_reported_rate(&self, record: &JValue, at_ms: i64) -> Result<JValue, StoreError> {
+        let _deciding = self.decide.lock().map_err(|_| StoreError::Io)?;
         let (model, category, hash) = keys_of(record);
         let newest = self
             .list()
@@ -1085,6 +1091,25 @@ pub fn sampling_plan(model: &str, source_values: &JValue, source_provenance: &JV
 #[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn concurrent_writers_of_the_same_result_store_it_once() {
+        let d = tempfile::tempdir().unwrap();
+        let store = std::sync::Arc::new(Store::new(d.path().join("evidence")));
+        for round in 0..20 {
+            let record = rec("m", "vision", &format!("h{round}"), "passed", JValue::Null);
+            let threads: Vec<_> = (0..8)
+                .map(|_| {
+                    let (store, record) = (std::sync::Arc::clone(&store), record.clone());
+                    std::thread::spawn(move || store.append_if_changed(&record, 1000).unwrap())
+                })
+                .collect();
+            for t in threads {
+                t.join().unwrap();
+            }
+        }
+        assert_eq!(store.list().len(), 20);
+    }
 
     fn rec(model: &str, category: &str, hash: &str, result: &str, value: JValue) -> JValue {
         JValue::obj([

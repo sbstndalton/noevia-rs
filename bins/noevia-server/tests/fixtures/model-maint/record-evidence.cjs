@@ -58,6 +58,9 @@ add('a changed preset or file makes it stale; restoring it verifies again; a mis
   { op: 'record', record: rec('context_capacity', 'passed', { ctx: 8192 }) }, get,
   { op: 'ini', text: INI('16384') }, get, { op: 'ini', text: INI('8192') }, get,
   { op: 'file', fill: 9, size: 4096 }, get, { op: 'rmfile' }, get] });
+// #2210: speculative decoding with a draft model. The hash must be the same on both sides, as must what is filed under it.
+add('a speculative draft model in the preset', { draft: true, ini: 'version = 1\n\n[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\nspec-type = draft-simple\nspec-draft-model = /models/fx/draft.gguf\n', ops: [get,
+  { op: 'record', record: rec('context_capacity', 'passed', { ctx: 8192 }) }, get] });
 add('a vision projector and cache settings are part of the identity', { mmproj: true, ini: INI('8192', 'mmproj = /models/fx/mm.gguf\ncache-type-k = q8_0\nparallel = 2\nspec-type = draft-mtp\n'), ops: [
   { op: 'record', record: rec('vision', 'passed', null) }, get] });
 add('a model that is not in the router listing but has a preset', { listing: 'empty', ops: [get] });

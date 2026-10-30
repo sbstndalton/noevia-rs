@@ -244,12 +244,27 @@ async fn every_recorded_core_answer_and_evidence_log_is_the_fronts() {
                         js_json::JValue::Arr(ops) => ops[op_index].get("record").clone(),
                         _ => panic!("ops"),
                     };
-                    let entry = js_json::stringify(&js_json::JValue::obj([
+                    let mut fields = vec![
                         ("kind", js_json::JValue::Str("record".into())),
                         ("model", js_json::JValue::Str(model.clone())),
-                        ("record", record),
-                    ]))
-                    .unwrap();
+                    ];
+                    // A non-reported record carries the identity it was measured on; here, the live one.
+                    if record.get("result").as_str() != Some("reported") {
+                        let (_, _, answer) = call(
+                            addr,
+                            "GET",
+                            &format!("/api/models/evidence?model={}", encode(&model)),
+                            Some(ADMIN),
+                            b"",
+                        )
+                        .await;
+                        let answer: Value = serde_json::from_str(&answer).unwrap();
+                        if let Some(hash) = answer["identityHash"].as_str() {
+                            fields.push(("identityHash", js_json::JValue::Str(hash.into())));
+                        }
+                    }
+                    fields.push(("record", record));
+                    let entry = js_json::stringify(&js_json::JValue::obj(fields)).unwrap();
                     let name_ = format!(
                         "{:015}-{queued:08x}",
                         1_700_000_000_000u64 + u64::from(queued)
@@ -364,7 +379,7 @@ async fn the_front_is_the_only_writer_and_a_bad_inbox_entry_is_dropped_without_h
         ("007-model.json", json!({"kind": "record", "model": "x".repeat(201), "record": {"category": "vision", "result": "passed"}}).to_string()),
         ("008-huge.json", format!("{{\"kind\":\"record\",\"model\":\"fx\",\"pad\":\"{}\"}}", "x".repeat(70_000))),
         ("009-partial.tmp", "{".into()),
-        ("010-good.json", json!({"kind": "record", "model": "fx", "record": {"category": "vision", "result": "passed", "value": null, "limitations": []}}).to_string()),
+        ("010-good.json", json!({"kind": "record", "model": "fx", "record": {"category": "vision", "result": "reported", "value": null, "limitations": []}}).to_string()),
     ];
     for (n, t) in &bad {
         std::fs::write(inbox.join(n), t).unwrap();

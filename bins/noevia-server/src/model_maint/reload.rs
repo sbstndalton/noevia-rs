@@ -18,11 +18,13 @@
 //! (core `preset-reload.cjs`). Neither side keeps a copy in memory across calls.
 
 use super::router::{rows, Router};
-use super::{HoldError, Maint};
+use super::{Hold, HoldError, Maint};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// A lock file older than this belongs to a writer that died.
@@ -33,6 +35,18 @@ const LOADED: &str = "A model is loaded. Unload it to apply the new settings.";
 const IN_PROGRESS: &str = "Requests are in progress. Try again when chats finish.";
 const NOT_RELOADED: &str = "The engine did not reload its settings. Check the Hardware tab.";
 const COULD_NOT: &str = "Could not reload model profiles.";
+const NO_ARBITER: &str = "The model service could not confirm that chat is idle, so nothing was changed. Try again shortly.";
+const LEASE_LOST: &str = "The model service stopped confirming that chat is held back, so the reload stopped. Try again shortly.";
+const NEEDS_TOKEN: &str = "An inference gate fronts the engine and INFERENCE_GATE_ADMIN_TOKEN is not set, so a reload that unloads models is refused.";
+/// `POST /models/unload` and `GET /models?reload=1`, as the router client bounds them, plus the rest.
+const UNLOAD_LIMIT: Duration = Duration::from_secs(60);
+const RELOAD_LIMIT: Duration = Duration::from_secs(120);
+const OTHER_STEPS: Duration = Duration::from_secs(60);
+
+/// The worst case of unloading `models` models one by one and then reloading.
+pub fn worst_case(models: usize) -> Duration {
+    UNLOAD_LIMIT.saturating_mul(u32::try_from(models).unwrap_or(u32::MAX)) + RELOAD_LIMIT + OTHER_STEPS
+}
 
 /// Statuses the router counts as running (server-models.h `is_running()`).
 pub fn live_ids(rows: &[Value]) -> Vec<String> {
@@ -94,11 +108,17 @@ fn unsafe_because(reason: &str) -> Verdict {
 #[derive(Debug, Clone)]
 pub struct Guard {
     file: Option<PathBuf>,
+    /// A write failed (the lock timed out), so the file may hold an old baseline: unknown until a
+    /// write succeeds.
+    unsaved: Arc<AtomicBool>,
 }
 
 impl Guard {
     pub fn new(file: Option<PathBuf>) -> Guard {
-        Guard { file }
+        Guard {
+            file,
+            unsaved: Arc::new(AtomicBool::new(false)),
+        }
     }
 
     pub fn file(&self) -> Option<&Path> {
@@ -107,6 +127,9 @@ impl Guard {
 
     /// The saved baseline, or `None` (unknown): no file, unreadable, or the `{}` tombstone.
     fn load(&self) -> Option<Baseline> {
+        if self.unsaved.load(Ordering::Acquire) {
+            return None;
+        }
         let raw = std::fs::read_to_string(self.file.as_ref()?).ok()?;
         let v: Value = serde_json::from_str(&raw).ok()?;
         Some(Baseline {
@@ -125,8 +148,14 @@ impl Guard {
             Some(b) => json!({ "text": b.text, "view": b.view }).to_string(),
             None => "{}".to_owned(),
         };
-        if let Err(e) = write_locked(file, body.as_bytes()) {
-            eprintln!("[models] could not save the preset reload baseline: {e}");
+        match write_locked(file, body.as_bytes()) {
+            Ok(()) => self.unsaved.store(false, Ordering::Release),
+            Err(e) => {
+                self.unsaved.store(true, Ordering::Release);
+                eprintln!(
+                    "[models] could not save the preset reload baseline; it is treated as unknown: {e}"
+                );
+            }
         }
     }
 
@@ -205,13 +234,19 @@ fn lock_path(file: &Path) -> PathBuf {
     PathBuf::from(format!("{}.lock", file.display()))
 }
 
-struct Lock(PathBuf);
+/// The lock file and what this writer wrote in it. Removed only while it still says that: a writer
+/// that overran [`LOCK_STALE`] may have lost it to another.
+struct Lock(PathBuf, String);
 
 impl Drop for Lock {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
+        if std::fs::read_to_string(&self.0).is_ok_and(|held| held == self.1) {
+            let _ = std::fs::remove_file(&self.0);
+        }
     }
 }
+
+static LOCK_SERIAL: AtomicU64 = AtomicU64::new(0);
 
 fn take_lock(file: &Path) -> std::io::Result<Lock> {
     let path = lock_path(file);
@@ -223,8 +258,14 @@ fn take_lock(file: &Path) -> std::io::Result<Lock> {
             .open(&path)
         {
             Ok(mut f) => {
-                let _ = write!(f, "{}", std::process::id());
-                return Ok(Lock(path));
+                let owner = format!(
+                    "{}:{}:{}",
+                    std::process::id(),
+                    LOCK_SERIAL.fetch_add(1, Ordering::Relaxed),
+                    crate::identity::now_ms()
+                );
+                let _ = write!(f, "{owner}");
+                return Ok(Lock(path, owner));
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                 let stale = std::fs::metadata(&path)
@@ -378,20 +419,21 @@ impl Maint {
         let Some(router) = self.router.as_ref() else {
             return message(404, "This engine does not use a preset file");
         };
-        let hold = match self.acquire("", Duration::from_secs(300), false).await {
+        let hold = match self.acquire("", Duration::from_secs(300), unload).await {
             Ok(h) => h,
             Err(HoldError::Busy) => return message(409, IN_PROGRESS),
             Err(HoldError::Gate { status, message: m }) => return message(status, &m),
-            Err(HoldError::NeedsGate) => return message(500, COULD_NOT),
+            Err(HoldError::NeedsGate) => return message(503, NEEDS_TOKEN),
+            Err(HoldError::NodeUnavailable) => return message(503, NO_ARBITER),
         };
-        let token = hold.token();
-        let held = token.as_deref();
-        let outcome = self.reload_inner(router, held, unload).await;
+        let outcome = self.reload_inner(router, &hold, unload).await;
         hold.release().await;
         outcome
     }
 
-    async fn reload_inner(&self, router: &Router, hold: Option<&str>, unload: bool) -> Outcome {
+    async fn reload_inner(&self, router: &Router, holding: &Hold, unload: bool) -> Outcome {
+        let token = holding.token();
+        let hold = token.as_deref();
         let listing = match router.models(hold).await {
             Ok(l) => l,
             Err(_) => return message(500, COULD_NOT),
@@ -434,9 +476,16 @@ impl Maint {
             expect = judged;
         }
         if kept.is_empty() {
+            holding.cover(worst_case(loaded.len()));
             for id in &loaded {
+                if holding.lost() {
+                    return message(503, LEASE_LOST);
+                }
                 let _ = router.unload(id, hold).await;
             }
+        }
+        if holding.lost() {
+            return message(503, LEASE_LOST);
         }
         let result = match self.router_reload(router, hold, expect.as_deref()).await {
             Ok(r) => r,
@@ -473,6 +522,49 @@ impl Maint {
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_writer_does_not_remove_a_lock_another_writer_took_over() {
+        let d = tempfile::tempdir().unwrap();
+        let file = d.path().join("state.json");
+        let lock = take_lock(&file).unwrap();
+        // Its lock went stale while it worked; another writer took it over.
+        std::fs::write(lock_path(&file), "another-writer").unwrap();
+        drop(lock);
+        assert_eq!(
+            std::fs::read_to_string(lock_path(&file)).unwrap(),
+            "another-writer"
+        );
+        std::fs::remove_file(lock_path(&file)).unwrap();
+        // Its own it does remove.
+        drop(take_lock(&file).unwrap());
+        assert!(!lock_path(&file).exists());
+    }
+
+    #[test]
+    fn a_write_that_cannot_take_the_lock_makes_the_baseline_unknown_until_one_succeeds() {
+        let d = tempfile::tempdir().unwrap();
+        let file = d.path().join("state.json");
+        let guard = Guard::new(Some(file.clone()));
+        let listing = [row("a", "unloaded", "p")];
+        guard.record(Some("text"), &listing, Some("text"));
+        assert!(guard.known());
+        // A live writer holds the lock past the wait.
+        std::fs::write(lock_path(&file), "other").unwrap();
+        guard.forget();
+        assert!(
+            std::fs::read_to_string(&file).unwrap().contains("text"),
+            "the old baseline is still on disk"
+        );
+        assert!(!guard.known(), "and is not trusted");
+        assert_eq!(
+            guard.verdict(Some("text"), Some(&listing), &[]).reason,
+            "unknown"
+        );
+        std::fs::remove_file(lock_path(&file)).unwrap();
+        guard.record(Some("text"), &listing, Some("text"));
+        assert!(guard.known(), "a write that succeeds restores it");
+    }
 
     fn row(id: &str, status: &str, preset: &str) -> Value {
         json!({"id": id, "status": {"value": status, "preset": preset}})

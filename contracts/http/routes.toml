@@ -590,7 +590,7 @@ owner = "rust"
 methods = ["GET"]
 
 # sbstndalton/noevia#2210: the preset reload, the front's (bins/noevia-server model_maint/reload.rs);
-# Node's core server/rust-model-reload.cjs refuses its POST. Other methods stay Node's (403/405).
+# Node's core server/rust-model-maintenance.cjs refuses its POST. Other methods stay Node's (403/405).
 [[route]]
 path = "/api/models/presets/reload"
 owner = "rust"

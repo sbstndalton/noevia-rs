@@ -3,6 +3,8 @@
 //!
 //! - [`gate`]: the inference gate's maintenance hold, the one exclusion every client of the router
 //!   (Node's chat, Diary, this front) respects. A hold has a deadline and is given back on failure.
+//! - [`node_lease`]: with no gate, a lease on Node's own maintenance gate, so the reload is still
+//!   exclusive with Node's chat and tune.
 //! - [`router`]: the router's HTTP API as the maintenance work uses it.
 //! - [`ini`]: the models.ini store (read, parse, commit through the model-loader or the web writer).
 //! - [`reload`]: `POST /api/models/presets/reload` and the reload-guard state file
@@ -20,6 +22,7 @@ pub mod evidence;
 pub mod evidence_live;
 pub mod gate;
 pub mod ini;
+pub mod node_lease;
 pub mod reload;
 pub mod router;
 
@@ -45,6 +48,8 @@ pub const EVIDENCE_IMPORT: &str = "/api/models/evidence/import";
 /// The maintenance routes this front answers.
 pub const ROUTES: &[&str] = &[RELOAD, EVIDENCE, EVIDENCE_IMPORT];
 
+const MISSING_TOKEN_WARNING: &str = "[inference-gate] INFERENCE_GATE_ADMIN_TOKEN is not set: the memory watchdog cannot unload a model that is answering a request, and \"unload anyway\" on the Models page is unavailable. Set it to the admin token of the gate.";
+
 /// The methods the front answers on each (routes.toml); every other method stays Node's.
 pub fn owned(method: &Method, path: &str) -> bool {
     match path {
@@ -61,8 +66,11 @@ pub enum HoldError {
     Busy,
     /// The inference gate refused for another reason (its HTTP status and text).
     Gate { status: u16, message: String },
-    /// The caller cannot run without the gate's exclusion and there is none.
+    /// A gate fronts the engine, this process has no admin token for its hold, and the caller
+    /// cannot run without it.
     NeedsGate,
+    /// No gate, and Node's own maintenance gate gave no answer: nothing was changed.
+    NodeUnavailable,
 }
 
 /// What the maintenance routes need from the environment, as Core's index.cjs reads it.
@@ -83,7 +91,11 @@ pub struct Maint {
     /// The model-card source: `https://huggingface.co`, or the QA source.
     pub(crate) card_base: String,
     pub(crate) source_client: reqwest::Client,
-    /// A hold this process has taken on its own (no gate): one job at a time.
+    /// Node's own maintenance gate: the arbiter when the inference gate gives no hold.
+    node: Arc<node_lease::NodeLeases>,
+    /// The inbox entries that failed or could not be removed, by file name.
+    pub(crate) drain: std::sync::Mutex<evidence_live::DrainState>,
+    /// A job of this process is running: one at a time.
     local: Arc<AtomicBool>,
     /// `UI_DATA_DIR` and the 16-digit suffix of the state files.
     pub data_dir: Option<PathBuf>,
@@ -198,6 +210,10 @@ impl Maint {
             .no_proxy()
             .build()
             .map_err(|e| format!("model card client: {e}"))?;
+        let node = Arc::new(node_lease::NodeLeases::new(
+            first(get, &["NOEVIA_LEGACY_UPSTREAM"]).as_deref(),
+            get("NOEVIA_PROJECT_STORE_TOKEN").as_deref(),
+        )?);
         Ok(Maint {
             kind,
             router,
@@ -210,15 +226,21 @@ impl Maint {
             identities: std::sync::Mutex::new(Vec::new()),
             card_base,
             source_client,
+            node,
+            drain: std::sync::Mutex::new(evidence_live::DrainState::default()),
             local: Arc::new(AtomicBool::new(false)),
             data_dir,
             suffix,
         })
     }
 
-    /// A maintenance hold for work of up to `max`: the gate's when it is configured (and knows the
-    /// hold), else this process's own, which is only exclusive against this front's own jobs.
-    /// `need_gate`: refuse (rather than run unexcluded) when there is no gate.
+    /// A maintenance hold for work of up to `max`. The gate's when it grants one. Otherwise (no admin
+    /// token, or nothing at the engine address knows the hold) a lease on Node's own maintenance gate:
+    /// the normal production case, exclusive with Node's chat, tune, calibration, sweep, idle-unload,
+    /// delete and prune. No lease, no work.
+    ///
+    /// `need_gate`: a gate fronts the engine but this process has no admin token for its hold, and the
+    /// work would end requests other clients have running through that gate: refuse.
     pub async fn acquire(
         &self,
         reason: &str,
@@ -232,8 +254,20 @@ impl Maint {
         {
             return Err(HoldError::Busy);
         }
-        let Some(gate) = self.gate.as_ref() else {
+        let taken = self.acquire_locally_held(reason, max, need_gate).await;
+        if taken.is_err() {
             self.local.store(false, Ordering::Release);
+        }
+        taken
+    }
+
+    async fn acquire_locally_held(
+        &self,
+        reason: &str,
+        max: Duration,
+        need_gate: bool,
+    ) -> Result<Hold, HoldError> {
+        let Some(gate) = self.gate.as_ref() else {
             return Err(HoldError::NeedsGate);
         };
         match gate.hold(reason, Duration::ZERO).await {
@@ -244,23 +278,39 @@ impl Maint {
                 reason,
                 Instant::now() + max,
             )),
-            Ok(None) if need_gate => {
-                self.local.store(false, Ordering::Release);
-                Err(HoldError::NeedsGate)
-            }
-            Ok(None) => Ok(Hold::local_only(Arc::clone(&self.local), reason)),
-            Err(f) => {
-                self.local.store(false, Ordering::Release);
-                if f.busy() {
-                    Err(HoldError::Busy)
-                } else {
-                    Err(HoldError::Gate {
-                        status: f.status(),
-                        message: f.message(),
-                    })
+            Ok(None) => {
+                if need_gate && !gate.has_admin() && gate.held().await.is_some() {
+                    return Err(HoldError::NeedsGate);
+                }
+                match self.node.acquire().await {
+                    Ok(grant) => Ok(Hold::leased(
+                        Arc::clone(&self.local),
+                        Arc::clone(&self.node),
+                        grant,
+                        reason,
+                        Instant::now() + max,
+                    )),
+                    Err(node_lease::LeaseFault::Busy) => Err(HoldError::Busy),
+                    Err(node_lease::LeaseFault::Unavailable) => Err(HoldError::NodeUnavailable),
                 }
             }
+            Err(f) if f.busy() => Err(HoldError::Busy),
+            Err(f) => Err(HoldError::Gate {
+                status: f.status(),
+                message: f.message(),
+            }),
         }
+    }
+
+    /// Node's boot warning, when a gate fronts the engine and this process has no admin token for it.
+    /// `inference-gate-client.cjs` `adminTokenWarning` is the same text (a key name, never a value).
+    pub async fn missing_token_warning(&self) -> Option<&'static str> {
+        let gate = self.gate.as_ref()?;
+        if gate.has_admin() {
+            return None;
+        }
+        gate.held().await?;
+        Some(MISSING_TOKEN_WARNING)
     }
 
     /// Whether a job of this process holds the engine (the local flag).

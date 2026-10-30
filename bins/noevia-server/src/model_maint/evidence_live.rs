@@ -132,19 +132,25 @@ impl Maint {
         let mmproj_file = flag(&["--mmproj", "-mm"]).or(preset_mmproj);
         let sizing = std::sync::Arc::clone(&self.sizing);
         let (mf, mm) = (model_file.clone(), mmproj_file.clone());
+        let draft_file = options
+            .iter()
+            .find(|(k, _)| k == "spec-draft-model")
+            .map(|(_, v)| v.clone())
+            .filter(|v| !v.is_empty());
         let fingerprints = tokio::task::spawn_blocking(move || {
             let fp = |c: &Option<String>| {
                 c.as_deref()
                     .and_then(|c| sizing.local_file_path(c))
                     .and_then(|(p, _)| ev::file_fingerprint(&p))
             };
-            (fp(&mf), mm.as_ref().map(|_| fp(&mm)))
+            (fp(&mf), mm.as_ref().map(|_| fp(&mm)), fp(&draft_file))
         })
         .await
         .map_err(|_| Failure::internal())?;
         let Some(artifact) = fingerprints.0 else {
             return Ok(None);
         };
+        let draft = fingerprints.2.map_or(JValue::Null, JValue::Str);
         let projector = match fingerprints.1 {
             Some(Some(p)) => JValue::Str(p),
             _ => JValue::Null,
@@ -196,9 +202,7 @@ impl Maint {
             (
                 "mtp",
                 match opt("spec-type") {
-                    Some(t) => {
-                        JValue::obj([("type", JValue::Str(t.into())), ("draft", JValue::Null)])
-                    }
+                    Some(t) => JValue::obj([("type", JValue::Str(t.into())), ("draft", draft)]),
                     None => JValue::Null,
                 },
             ),
@@ -247,13 +251,29 @@ impl Maint {
         model: &str,
         record: &JValue,
     ) -> Result<Option<JValue>, Failure> {
-        let Some(store) = self.evidence.clone() else {
+        if self.evidence.is_none() {
             return Ok(None);
-        };
+        }
         let result = record.get("result").as_str().unwrap_or("").to_owned();
         let Some(live) = self.identity_for_record(model, &result).await? else {
             return Ok(None);
         };
+        self.file_record(model, record, &live, crate::identity::now_ms())
+            .await
+    }
+
+    /// Files `record` under `live`, stamped `at`.
+    async fn file_record(
+        &self,
+        model: &str,
+        record: &JValue,
+        live: &Live,
+        at: i64,
+    ) -> Result<Option<JValue>, Failure> {
+        let Some(store) = self.evidence.clone() else {
+            return Ok(None);
+        };
+        let result = record.get("result").as_str().unwrap_or("").to_owned();
         let mut entry: Vec<(String, JValue)> = vec![
             ("model".into(), JValue::Str(model.into())),
             ("identityHash".into(), JValue::Str(live.hash.clone())),
@@ -274,7 +294,6 @@ impl Maint {
                 .get("rate")
                 .as_num()
                 .is_some_and(f64::is_finite);
-        let at = crate::identity::now_ms();
         tokio::task::spawn_blocking(move || {
             if rate {
                 store.append_reported_rate(&entry, at)
@@ -285,7 +304,14 @@ impl Maint {
         .await
         .map_err(|_| Failure::internal())?
         .map(Some)
-        .map_err(|_| Failure::internal())
+        .map_err(|e| match e {
+            // The record itself is unusable; trying again cannot help.
+            ev::StoreError::Io => Failure::internal(),
+            _ => Failure {
+                status: 400,
+                message: "Invalid evidence record".into(),
+            },
+        })
     }
 
     /// `evidence(model)`: the answer of `GET /api/models/evidence`, with Node's key order.
@@ -904,67 +930,264 @@ pub fn normalize_generation_config(body: &JValue) -> Option<JValue> {
 const DRAIN_BATCH: usize = 50;
 const MAX_ENTRY_BYTES: u64 = 64 * 1024;
 
+/// How many times an entry whose apply failed is tried, the backoff doubling from [`RETRY_BASE`]. A
+/// failed entry waits its turn without holding up the entries behind it.
+const MAX_ATTEMPTS: u32 = 5;
+const RETRY_BASE: Duration = Duration::from_secs(2);
+/// A `.tmp` this old was left by a Node that died while writing it.
+const ORPHAN_AGE: Duration = Duration::from_secs(60 * 60);
+
+/// What the drain remembers about entries still in the inbox.
+#[derive(Debug, Default)]
+pub struct DrainState {
+    entries: std::collections::HashMap<String, Tried>,
+    retry_base: Option<Duration>,
+}
+
+#[derive(Debug)]
+struct Tried {
+    attempts: u32,
+    next: Instant,
+    /// Finished with; only its removal failed, so it is never applied again.
+    finished: bool,
+}
+
+/// What became of one entry.
+enum Applied {
+    /// Filed, or nothing to do: remove it.
+    Done,
+    /// Unusable for good: remove it, saying why.
+    Discard(&'static str),
+    /// May work later.
+    Retry(&'static str),
+}
+
 impl Maint {
-    /// Applies the entries Node's producers left in `evidence-inbox-<hash>/`, oldest first, each
-    /// removed once applied or found unusable. Returns how many were taken.
+    /// Applies the entries Node's producers left in `evidence-inbox-<hash>/`, oldest first. Returns how
+    /// many were taken (removed, or finished with). A failed apply stays for a bounded number of tries.
     pub async fn drain_inbox(&self) -> usize {
         let Some(dir) = self.inbox_dir.clone() else {
             return 0;
         };
         let names = tokio::task::spawn_blocking({
             let dir = dir.clone();
-            move || inbox_names(&dir)
+            move || {
+                sweep_orphans(&dir, ORPHAN_AGE);
+                inbox_names(&dir)
+            }
         })
         .await
         .unwrap_or_default();
+        if let Ok(mut state) = self.drain.lock() {
+            // Forget what is no longer there.
+            state.entries.retain(|n, _| names.contains(n));
+        }
         let mut taken = 0;
         for name in names.into_iter().take(DRAIN_BATCH) {
             let path = dir.join(&name);
-            let text = tokio::task::spawn_blocking({
-                let path = path.clone();
-                move || read_entry(&path)
-            })
-            .await
-            .ok()
-            .flatten();
-            if let Some(entry) = text.and_then(|t| parse(&t).ok()) {
-                let model = entry
-                    .get("model")
-                    .as_str()
-                    .filter(|m| !m.is_empty() && js_len(m) <= MAX_MODEL)
-                    .map(str::to_owned);
-                if let Some(model) = model {
-                    match entry.get("kind").as_str() {
-                        Some("record") => {
-                            let _ = self.record_evidence(&model, entry.get("record")).await;
+            let (finished, due) = self
+                .drain
+                .lock()
+                .ok()
+                .and_then(|s| {
+                    s.entries
+                        .get(&name)
+                        .map(|t| (t.finished, Instant::now() >= t.next))
+                })
+                .unwrap_or((false, true));
+            if !finished {
+                if !due {
+                    continue;
+                }
+                match self.apply_entry(&path).await {
+                    Applied::Done => {}
+                    Applied::Discard(why) => {
+                        eprintln!("[evidence] an inbox entry was discarded: {why}");
+                    }
+                    Applied::Retry(why) => {
+                        if self.note_failure(&name, why) {
+                            continue;
                         }
-                        Some("import") => {
-                            let _ = self
-                                .import_evidence(&model, entry.get("checkpoint").as_str())
-                                .await;
-                        }
-                        _ => {}
                     }
                 }
             }
-            let _ = tokio::fs::remove_file(&path).await;
             taken += 1;
+            match tokio::fs::remove_file(&path).await {
+                Ok(()) => {
+                    if let Ok(mut state) = self.drain.lock() {
+                        state.entries.remove(&name);
+                    }
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => {
+                    if !finished {
+                        eprintln!(
+                            "[evidence] an applied inbox entry could not be removed; it will not be applied again: {e}"
+                        );
+                    }
+                    if let Ok(mut state) = self.drain.lock() {
+                        state.entries.insert(
+                            name,
+                            Tried {
+                                attempts: 0,
+                                next: Instant::now(),
+                                finished: true,
+                            },
+                        );
+                    }
+                }
+            }
         }
         taken
     }
 
-    /// The drain loop: once at start, then every second.
+    /// True while the entry may be tried again; false when it is out of tries (logged).
+    fn note_failure(&self, name: &str, why: &str) -> bool {
+        let Ok(mut state) = self.drain.lock() else {
+            return false;
+        };
+        let base = state.retry_base.unwrap_or(RETRY_BASE);
+        let tried = state.entries.entry(name.to_owned()).or_insert(Tried {
+            attempts: 0,
+            next: Instant::now(),
+            finished: false,
+        });
+        tried.attempts += 1;
+        if tried.attempts >= MAX_ATTEMPTS {
+            eprintln!(
+                "[evidence] an inbox entry was discarded after {MAX_ATTEMPTS} tries: {why}"
+            );
+            return false;
+        }
+        tried.next = Instant::now() + base.saturating_mul(1u32 << (tried.attempts - 1));
+        true
+    }
+
+    /// The first retry's wait (doubling after it); tests shorten it.
+    pub fn set_retry_base(&self, base: Duration) {
+        if let Ok(mut state) = self.drain.lock() {
+            state.retry_base = Some(base);
+        }
+    }
+
+    async fn apply_entry(&self, path: &Path) -> Applied {
+        let text = tokio::task::spawn_blocking({
+            let path = path.to_path_buf();
+            move || read_entry(&path)
+        })
+        .await
+        .ok()
+        .flatten();
+        let Some(entry) = text.and_then(|t| parse(&t).ok()) else {
+            return Applied::Discard("unreadable");
+        };
+        let Some(model) = entry
+            .get("model")
+            .as_str()
+            .filter(|m| !m.is_empty() && js_len(m) <= MAX_MODEL)
+            .map(str::to_owned)
+        else {
+            return Applied::Discard("no usable model");
+        };
+        match entry.get("kind").as_str() {
+            Some("record") => self.apply_record(&model, &entry).await,
+            Some("import") => match self
+                .import_evidence(&model, entry.get("checkpoint").as_str())
+                .await
+            {
+                Ok(()) => Applied::Done,
+                Err(_) => Applied::Retry("the import failed"),
+            },
+            _ => Applied::Discard("unknown kind"),
+        }
+    }
+
+    async fn apply_record(&self, model: &str, entry: &JValue) -> Applied {
+        let record = entry.get("record");
+        let filed = |r: Result<Option<JValue>, Failure>| match r {
+            Ok(_) => Applied::Done,
+            Err(f) if f.status == 400 => Applied::Discard("an invalid record"),
+            Err(_) => Applied::Retry("the store or the router failed"),
+        };
+        // A frequent rate is filed under the identity live now, as it always was.
+        if record.get("result").as_str() == Some("reported") {
+            return filed(self.record_evidence(model, record).await);
+        }
+        // Any other result is true of the configuration it was measured on, which Node carries. An
+        // entry without it was left by an earlier version (a rollback), its configuration unknown.
+        let Some(carried) = entry.get("identityHash").as_str().map(str::to_owned) else {
+            return Applied::Discard("a result with no identity, left by an earlier version");
+        };
+        let live = match self.compute_identity(model).await {
+            Ok(Some(live)) => live,
+            Ok(None) => return Applied::Retry("the model's identity cannot be read now"),
+            Err(_) => return Applied::Retry("the router failed"),
+        };
+        if live.hash != carried {
+            // A /props that failed just now also changes the hash, and passes.
+            if live.identity.get("build") == &JValue::Null {
+                return Applied::Retry("the identity differs while the engine's build is unknown");
+            }
+            return Applied::Discard(
+                "the configuration has changed since this result was measured",
+            );
+        }
+        let now = crate::identity::now_ms();
+        let at = entry
+            .get("at")
+            .as_num()
+            .filter(|n| n.is_finite() && *n > 0.0 && *n <= now as f64)
+            .map_or(now, |n| n as i64);
+        filed(self.file_record(model, record, &live, at).await)
+    }
+
+    /// The drain loop: once at start, then every second. A panic ends that pass, not the loop.
     pub fn spawn_inbox(self: &std::sync::Arc<Self>) {
         if self.inbox_dir.is_none() || self.evidence.is_none() {
             return;
         }
         let me = std::sync::Arc::clone(self);
-        tokio::spawn(async move {
-            loop {
+        tokio::spawn(supervise(Duration::from_secs(1), move || {
+            let me = std::sync::Arc::clone(&me);
+            async move {
                 me.drain_inbox().await;
-                tokio::time::sleep(Duration::from_secs(1)).await;
             }
-        });
+        }));
+    }
+}
+
+/// Runs `pass` forever, `pause` apart, each on its own task so that a panic is logged and survived.
+pub async fn supervise<F, Fut>(pause: Duration, pass: F)
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = ()> + Send + 'static,
+{
+    loop {
+        if tokio::spawn(pass()).await.is_err() {
+            eprintln!("[evidence] the inbox drain failed; it starts again");
+        }
+        tokio::time::sleep(pause).await;
+    }
+}
+
+/// Removes `.tmp` files older than `age`.
+fn sweep_orphans(dir: &Path, age: Duration) {
+    let Ok(read) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in read.flatten() {
+        if !e.file_name().to_string_lossy().ends_with(".tmp") {
+            continue;
+        }
+        let old = e
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|a| a > age);
+        if old {
+            let _ = std::fs::remove_file(e.path());
+        }
     }
 }
 
