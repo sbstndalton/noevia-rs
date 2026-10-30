@@ -33,6 +33,8 @@ pub mod routing_mode_routes;
 pub mod sampling_settings_routes;
 pub mod serve;
 pub mod source_job_routes;
+#[cfg(feature = "rust-storage-browse")]
+pub mod source_storage_io;
 pub mod static_files;
 pub mod stats_routes;
 #[cfg(feature = "rust-storage-browse")]
@@ -160,11 +162,19 @@ use std::sync::Arc;
 /// `rust-source-jobs`: this build is the one owning process of the source-job store
 /// (sbstndalton/noevia#2191 round 6, crates/server-projects `source_work`): it answers
 /// `POST /api/projects/{id}/upload?background=1`, `POST .../sources/sync?background=1` and
-/// `GET .../source-jobs/{jobId}`, and runs each job's operation by sending the synchronous route to
-/// Node with `X-Noevia-Source-Work: 1`. It serves no internal source-job store routes any more
-/// (`noevia-source-jobs-store/1` is gone). Node refuses the background starts and the poll (core
-/// rust-source-jobs.cjs `RUST_SOURCE_JOBS_OWNED`) and has no source journal client, so the web
-/// supervisor pairs them.
+/// `GET .../source-jobs/{jobId}`, and (round 8) runs each job's operation in this process. It serves no
+/// internal source-job store routes (`noevia-source-jobs-store/1` is gone). Node refuses the background
+/// starts and the poll (core rust-source-jobs.cjs `RUST_SOURCE_JOBS_OWNED`) and has no source journal
+/// client, so the web supervisor pairs them.
+///
+/// `rust-project-source-work`: this build runs the source operations itself (sbstndalton/noevia#2191
+/// round 8, crates/server-projects `upload` and `sync`): the organized and older upload, the attached
+/// folders' sync, the folder import's plan and its tickets, on Docling and the streamed storage read, in
+/// the foreground or as a source job. It keeps no `X-Noevia-Source-Work` worker call. Node refuses
+/// `POST /api/projects/{id}/upload`, `.../sources/sync` and `.../folder-import/plan` (core
+/// rust-project-source-work.cjs `RUST_PROJECT_SOURCE_WORK_OWNED`), reads the storage latch from
+/// `UI_DATA_DIR/storage-latch.db` and the running file operations from `users/<id>/source-file-ops.json`,
+/// so the web supervisor pairs them.
 ///
 /// `rust-large-document-host-lock`: this build takes the host-wide large-document lock
 /// (`UI_DATA_DIR/large-document.lock`, crates/server-projects `extract::large_lock`,
@@ -205,6 +215,7 @@ pub const FEATURES: &[&str] = &[
     "rust-document-extraction",
     "rust-project-documents",
     "rust-source-jobs",
+    "rust-project-source-work",
     "rust-large-document-host-lock",
     "rust-public-pages",
     "rust-plugin-directory",

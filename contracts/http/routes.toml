@@ -669,6 +669,14 @@ path = "/api/projects/{id}/files"
 owner = "rust"
 methods = ["DELETE"]
 
+# sbstndalton/noevia#2191 round 8 (rust-project-source-work): a folder import's plan and its tickets, the
+# front's (crates/server-projects upload.rs, folder_import.rs); Node refuses the POST
+# (core rust-project-source-work.cjs).
+[[route]]
+path = "/api/projects/{id}/folder-import/plan"
+owner = "rust"
+methods = ["POST"]
+
 [[route]]
 path = "/api/projects/{projectId}/instruction-skills"
 owner = "node"
@@ -685,10 +693,10 @@ owner = "node"
 path = "/api/projects/{project}/skills/install"
 owner = "node"
 
-# sbstndalton/noevia#2191 round 6 (rust-source-jobs): the background start (`?background=1`), the
-# front's, which owns the source-job store (crates/server-projects source_work.rs) and runs the
-# operation by sending the synchronous POST to Node (`X-Noevia-Source-Work: 1`); that synchronous
-# form stays Node's answer. Node refuses the background start (core rust-source-jobs.cjs).
+# sbstndalton/noevia#2191 round 8 (rust-project-source-work): the front's, in the foreground and (round 6,
+# rust-source-jobs: `?background=1`) as a source job it owns (crates/server-projects source_work.rs); the
+# operation runs in the front (crates/server-projects sync.rs). Node refuses the POST
+# (core rust-project-source-work.cjs, rust-source-jobs.cjs).
 [[route]]
 path = "/api/projects/{id}/sources/sync"
 owner = "rust"
@@ -708,10 +716,10 @@ path = "/api/projects/{id}/sources/text"
 owner = "rust"
 methods = ["GET"]
 
-# sbstndalton/noevia#2191 round 6 (rust-source-jobs): the background start (`?background=1`), the
-# front's, which owns the source-job store (crates/server-projects source_work.rs) and runs the
-# operation by sending the synchronous POST to Node (`X-Noevia-Source-Work: 1`); that synchronous
-# form stays Node's answer. Node refuses the background start (core rust-source-jobs.cjs).
+# sbstndalton/noevia#2191 round 8 (rust-project-source-work): the front's, in the foreground and (round 6,
+# rust-source-jobs: `?background=1`) as a source job it owns (crates/server-projects source_work.rs); the
+# operation runs in the front (crates/server-projects upload.rs). Node refuses the POST
+# (core rust-project-source-work.cjs, rust-source-jobs.cjs).
 [[route]]
 path = "/api/projects/{id}/upload"
 owner = "rust"
