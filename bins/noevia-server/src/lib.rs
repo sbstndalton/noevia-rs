@@ -330,6 +330,8 @@ pub const FEATURES: &[&str] = &[
 ];
 
 pub struct App {
+    /// The demand marker and the wait for Node's published snapshots (snapshot.rs).
+    pub demand: Arc<snapshot::Demand>,
     /// Google Drive's token authority (sbstndalton/noevia#2190 round 7); `None` without UI_DATA_DIR.
     pub drive: Option<Arc<gdrive::Drive>>,
     /// The off-site backup (jobs, schedule, status); `None` without UI_DATA_DIR.
@@ -424,6 +426,7 @@ impl App {
             _ => None,
         };
         Arc::new(App {
+            demand: Arc::new(snapshot::Demand::default()),
             drive,
             offsite,
             #[cfg(feature = "rust-chatgpt-status")]

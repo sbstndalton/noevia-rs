@@ -1137,14 +1137,15 @@ OCR is gone with pdf.js).
 
 Each is permanent with no switch. Core refuses exactly the GET before authentication; the web supervisor and
 the release assembler pair each marker with its capability in both directions (old/old stays valid). The
-node-route floor in `tests/front.rs` is 65.
+node-route floor in `tests/front.rs` is NODEFLOOR.
 
 **Snapshots (what only Node knows).** `GET /api/health` needs `ragAvailable` and the retrieval tri-state
 (rag.cjs: the native index dependencies, the embedding probe and its 45 s cache, the administrator's embedding
 switch); `GET /api/auto-roles` needs the served model catalogue, the roles other machines serve and their
 models. Node publishes each as a file in the data directory (core `published-snapshot.cjs`): `rag-status.json`
 every 10 s (`RAG_STATUS_PUBLISH_MS`) and `auto-roles-snapshot.json` every 15 s (`AUTO_ROLES_PUBLISH_MS`), and
-at once after the embedding service refreshes or a model write drops the shared model reads. A file is
+at once after the embedding service refreshes or a model write drops the shared model reads, **but only while
+someone is asking** (next paragraph). A file is
 written atomically (temporary file in the directory, fsync, rename, directory fsync, mode 0600) and holds
 `{ version: 1, kind, writtenAt, everyMs, ...state }`. The front (snapshot.rs) reads it on every request and
 trusts it only when it is a regular file under 4 MiB of that version and kind with `writtenAt` within two
@@ -1155,6 +1156,24 @@ reported missing and no machine models are listed). A publisher whose build fail
 file ages out. `auto-roles-snapshot.json` carries `catalogue` (`null` or `[{ name, missingFile }]`),
 `machineRoles` (the roles another machine serves, which are not checked against this machine's catalogue,
 #1840) and `machineModels` (their models the local catalogue does not list, #1849/#1855, filtered by Node).
+
+**Publishing is demand-driven.** The publishers probe the embedder (a real embeddings request, cached 45 s) and
+the model engines' catalogue, which an idle installation must not have probed around the clock (an embedder on
+another machine would never reach its idle unload). So on every signed-in `GET /api/health` and `GET
+/api/auto-roles` (after the gate: a refused request asks nothing of Node) the front touches a **demand
+marker**, `snapshot-demand` in the data directory: a tiny file replaced atomically (temporary file in the
+directory, rename; mode 0600) and rewritten at most every 5 s, so a busy page costs a `stat`. Node publishes
+only while the marker's mtime is under **60 s** old: it watches the data directory (`fs.watch`, not keeping the
+process alive) with a 1 s `stat` poll behind it (`SNAPSHOT_DEMAND_POLL_MS`), starts publishing at once when the
+marker appears and stops its timers when it ages out; `changed()` republishes only while it is live. When a GET
+finds its snapshot unusable and the marker **was idle** (missing, or 60 s or older), the front waits up to **2 s**
+for a fresh one, looking every 100 ms; the wait is a task of its own that stops when the request does, and a
+request that arrives during an open wait joins it. If none arrives the answer is the unusable-snapshot one
+(health `retrieval: "unavailable"`; auto-roles without `machineModels` and with nothing reported missing). A
+snapshot that is unusable while the marker is live (Core is down or stuck) is answered at once. Stale still means
+unavailable: an old value is never republished or shown. The marker, the two snapshots and their temporary files
+are state of the running process, so the off-site backup leaves them out at the top of a backed-up folder
+(offsite_engine.rs `walk`, `snapshot::is_published_state`).
 
 **Health's probes.** The front probes the default provider itself (the env-derived row: `INFERENCE_BASE_URL`,
 else `LEMONADE_BASE_URL`, else core's default address; the key as a bearer unless empty or `local`;
@@ -1184,14 +1203,20 @@ symlink, so a symlink counts as gone. Nothing in the list is chat-live, so no pa
    longer has either route (the other methods are its 404). No client used them.
 2. A delete-old-chats sweep that fails (a damaged setting, a busy lock) no longer fails the list: it is logged
    and the list is answered, as core did (the crate's earlier function returned the failure).
-3. Retrieval is published on a timer, so Node now runs the embedding probe (cached 45 s; the router variant is
-   a side-effect-free `GET /v1/models`) while nobody polls `/api/health`, and the catalogue is read every 15 s
-   for the auto-roles snapshot; both previously ran only when a page asked.
+3. Retrieval and the catalogue are published on a timer, but **only while a signed-in page has asked in the
+   last 60 s** (demand-driven publishing, above), so an idle installation does not probe the embedder or the
+   engines; they previously ran only when a page asked, and still do. The first request after an idle spell
+   may wait up to 2 s for Node to publish; if it does not, it reads "unavailable".
 4. `retrieval` and the auto-roles `missing` can be up to one publishing interval old (10 s and 15 s, plus the
    snapshot's two-interval bound before they read as unavailable). A model write or an embedding refresh
-   through the routes republishes at once; a load the engine does by itself shows at the next tick.
+   through the routes republishes at once (while the marker is live); a load the engine does by itself shows
+   at the next tick.
 5. The text-missing flag is the front's scan, not Node's memory: a read failure in Node's chat no longer flags
    a source; the scan finds it within 3 minutes. The flag survives a front restart no better than before
    (it is in memory; the next list starts a scan).
-6. A first request for an account now creates its directory from `/api/auto-roles` and `/api/workspace`, as
+6. **With Core down and the front up, `GET /api/health` answers 200** with `retrieval: "unavailable"` (and the
+   provider and Diary probes the front makes itself). Node's route used to answer it, so the same condition
+   was a 502 from the proxy. `GET /api/auto-roles` likewise answers from the roles file, **leaving out
+   `machineModels`** (and reporting nothing missing) whenever the snapshot is unusable.
+7. A first request for an account now creates its directory from `/api/auto-roles` and `/api/workspace`, as
    Node's workspace load did; `/api/health` does not (Node's health did not read the workspace).

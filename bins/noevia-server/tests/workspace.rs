@@ -139,6 +139,23 @@ fn put(dir: &std::path::Path, id: &str, name: &str, text: &str) {
     std::fs::write(user(dir, id).join(name), text).unwrap();
 }
 
+/// The files a project (here an attachments project) leaves on disk besides its record: the upload
+/// originals (`project-uploads/<sha256 id>`), the images (`project-assets/<id>`) and the RAG index
+/// (`rag/<id>.db`). Returns the three paths.
+fn leftovers(dir: &std::path::Path, who: &str, project: &str) -> [std::path::PathBuf; 3] {
+    let home = user(dir, who);
+    let upload = home.join("project-uploads").join(hex(project));
+    let assets = home.join("project-assets").join(project);
+    let index = home.join("rag").join(format!("{project}.db"));
+    std::fs::create_dir_all(&upload).unwrap();
+    std::fs::write(upload.join("original.txt"), "synthetic original").unwrap();
+    std::fs::create_dir_all(&assets).unwrap();
+    std::fs::write(assets.join("image.png"), "synthetic image").unwrap();
+    std::fs::create_dir_all(home.join("rag")).unwrap();
+    std::fs::write(&index, "synthetic index").unwrap();
+    [upload, assets, index]
+}
+
 fn data() -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     seed(dir.path());
@@ -331,6 +348,7 @@ async fn an_attachments_project_goes_only_when_its_chats_deletion_is_proven() {
         format!(r#"{{"id":"{CTX}gone-3"}}"#),
         format!(r#"{{"id":"{CTX}fresh"}}"#),
         format!(r#"{{"id":"{CTX}listed"}}"#),
+        format!(r#"{{"id":"{CTX}old"}}"#),
         format!(r#"{{"id":"{CTX}inproj"}}"#),
         format!(r#"{{"id":"{CTX}bad id"}}"#),
         r#"{"id":"regular","name":"R","chats":[{"id":"inproj"}]}"#.to_owned(),
@@ -341,7 +359,14 @@ async fn an_attachments_project_goes_only_when_its_chats_deletion_is_proven() {
         "projects.json",
         &format!(r#"{{"projects":[{}]}}"#, projects.join(",")),
     );
-    put(dir.path(), A, "free-chats.json", r#"[{"id":"listed"}]"#);
+    // An archived chat is listed, not deleted: its attachments project stays (core's own test of this, which
+    // asserted it before anything ran, was vacuous and is gone); a listed chat wins even when tombstoned, as `listed`.
+    put(
+        dir.path(),
+        A,
+        "free-chats.json",
+        r#"[{"id":"listed"},{"id":"old","archived":true}]"#,
+    );
     put(
         dir.path(),
         A,
@@ -361,9 +386,20 @@ async fn an_attachments_project_goes_only_when_its_chats_deletion_is_proven() {
         &format!(r#"{{"projects":[{{"id":"{CTX}gone-1"}}]}}"#),
     );
     put(dir.path(), B, "deleted-chats.json", r#"["gone-1"]"#);
+    // What a removed project leaves on disk goes with it; what a kept one has stays.
+    let gone = leftovers(dir.path(), A, &format!("{CTX}gone-1"));
+    let kept = leftovers(dir.path(), A, &format!("{CTX}fresh"));
+    let archived = leftovers(dir.path(), A, &format!("{CTX}old"));
+    let theirs = leftovers(dir.path(), B, &format!("{CTX}gone-1"));
     let addr = front(dir.path()).await;
 
     let _ = list(addr, COOKIE_A).await;
+    for path in &gone {
+        assert!(!path.exists(), "{} should be gone", path.display());
+    }
+    for path in kept.iter().chain(&theirs).chain(&archived) {
+        assert!(path.exists(), "{} should stay", path.display());
+    }
     let left = |who: &str| -> Vec<String> {
         let v: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(user(dir.path(), who).join("projects.json")).unwrap(),
@@ -376,6 +412,7 @@ async fn an_attachments_project_goes_only_when_its_chats_deletion_is_proven() {
         [
             format!("{CTX}fresh"),
             format!("{CTX}listed"),
+            format!("{CTX}old"),
             format!("{CTX}inproj"),
             format!("{CTX}bad id"),
             "regular".to_owned()
@@ -388,8 +425,46 @@ async fn an_attachments_project_goes_only_when_its_chats_deletion_is_proven() {
     );
     // Idempotent: nothing more goes on the next list.
     let _ = list(addr, COOKIE_A).await;
-    assert_eq!(left(A).len(), 5);
+    assert_eq!(left(A).len(), 6);
     projects.clear();
+}
+
+#[tokio::test]
+async fn a_list_of_free_chats_that_cannot_be_read_is_no_proof_that_a_chat_is_unlisted() {
+    // The free-chat list protects a chat that is still listed. Read as "empty" because the file cannot
+    // be read, it would let the cleanup remove the attachments of chats that are listed.
+    let dir = data();
+    put(
+        dir.path(),
+        A,
+        "projects.json",
+        &format!(r#"{{"projects":[{{"id":"{CTX}gone-1"}}]}}"#),
+    );
+    put(dir.path(), A, "deleted-chats.json", r#"["gone-1"]"#);
+    let kept = leftovers(dir.path(), A, &format!("{CTX}gone-1"));
+    let free = user(dir.path(), A).join("free-chats.json");
+    let addr = front(dir.path()).await;
+    let records = || std::fs::read_to_string(user(dir.path(), A).join("projects.json")).unwrap();
+    for broken in ["a directory", "damaged"] {
+        if broken == "a directory" {
+            std::fs::create_dir(&free).unwrap();
+        } else {
+            std::fs::remove_dir(&free).unwrap();
+            std::fs::write(&free, "[{\"id\":\"listed\"").unwrap();
+        }
+        let _ = call(addr, "GET", "/api/workspace", COOKIE_A).await;
+        assert!(records().contains("gone-1"), "{broken}: the record stays");
+        for path in &kept {
+            assert!(path.exists(), "{broken}: {} stays", path.display());
+        }
+    }
+    // Not there at all is an empty list: the proof holds and the attachments go.
+    std::fs::remove_file(&free).unwrap();
+    let _ = list(addr, COOKIE_A).await;
+    assert!(!records().contains("gone-1"));
+    for path in &kept {
+        assert!(!path.exists(), "{} is gone", path.display());
+    }
 }
 
 #[tokio::test]

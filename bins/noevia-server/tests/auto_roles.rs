@@ -349,3 +349,52 @@ async fn the_first_request_of_an_account_makes_its_directory_and_only_the_get_is
         502
     );
 }
+
+fn marker(dir: &std::path::Path) -> std::path::PathBuf {
+    dir.join("snapshot-demand")
+}
+
+#[tokio::test]
+async fn a_signed_in_read_asks_node_to_publish_and_waits_for_it_only_after_idle() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = data();
+    roles_file(dir.path(), A, r#"{"fast":"anything"}"#);
+    let addr = front(dir.path()).await;
+    let silent = r#"{"configured":true,"roles":{"fast":"anything"},"missing":[]}"#;
+    let loud = r#"{"configured":true,"roles":{"fast":"anything"},"missing":[{"role":"fast","model":"anything"}],"machineModels":[{"model":"m","machine":{"id":"i","name":"n"},"roles":["fast"]}]}"#;
+    let state = r#""catalogue":[{"name":"other","missingFile":false}],"machineRoles":[],"machineModels":[{"model":"m","machine":{"id":"i","name":"n"},"roles":["fast"]}]"#;
+    // Signed out: no marker.
+    assert_eq!(call(addr, "GET", "/api/auto-roles", "").await.status, 401);
+    assert!(!marker(dir.path()).exists());
+    // Idle and nothing published: silent after the wait (no machineModels), still a 200.
+    let started = std::time::Instant::now();
+    let r = call(addr, "GET", "/api/auto-roles", COOKIE_A).await;
+    assert_eq!((r.status, r.text.as_str()), (200, silent));
+    assert!(started.elapsed() >= Duration::from_millis(1900), "{:?}", started.elapsed());
+    let mode = std::fs::metadata(marker(dir.path())).unwrap().permissions().mode();
+    assert_eq!(mode & 0o777, 0o600);
+    // The marker is live and Node is not publishing: answered at once.
+    let started = std::time::Instant::now();
+    assert_eq!(call(addr, "GET", "/api/auto-roles", COOKIE_A).await.text, silent);
+    assert!(started.elapsed() < Duration::from_millis(1000), "{:?}", started.elapsed());
+    // Idle again, and Node wakes inside the wait: the answer carries what it published.
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(marker(dir.path()))
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() - Duration::from_secs(90))
+        .unwrap();
+    let writer = {
+        let path = dir.path().to_path_buf();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            fresh(&path, state);
+        })
+    };
+    let started = std::time::Instant::now();
+    let r = call(addr, "GET", "/api/auto-roles", COOKIE_A).await;
+    writer.await.unwrap();
+    assert_eq!(r.text, loud);
+    assert!(started.elapsed() >= Duration::from_millis(450), "{:?}", started.elapsed());
+    assert!(started.elapsed() < Duration::from_millis(1900), "{:?}", started.elapsed());
+}

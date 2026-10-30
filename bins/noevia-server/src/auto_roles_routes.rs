@@ -14,7 +14,9 @@
 //! against this machine's catalogue, #1840) and the models those machines serve that this catalogue
 //! does not list (`machineModels`, #1849/#1855). An unusable or stale snapshot reads as core reads an
 //! engine it cannot reach: the catalogue is unknown, so nothing is reported missing and no machine
-//! models are listed. Nothing old is ever shown as current.
+//! models are listed (`machineModels` is left out of the answer). Nothing old is ever shown as
+//! current. Node publishes only while someone asks: this route touches the demand marker, and when
+//! Node was idle it waits up to two seconds for a fresh file before answering without one.
 //!
 //! Order follows core: the session gate (401/403), then the answer. Like every route that reads the
 //! account's directory, the first request of an account makes it (project_routes::ensure_account).
@@ -46,16 +48,21 @@ pub struct Published {
 /// The published state at `now_ms`; the default (catalogue unknown, nothing on machines) when the
 /// snapshot is unusable or its shape is not the one Node writes.
 pub fn published(data_dir: &Path, now_ms: i64) -> Published {
+    published_checked(data_dir, now_ms).unwrap_or_default()
+}
+
+/// [`published`], `None` when the snapshot is unusable or its shape is not the one Node writes.
+pub fn published_checked(data_dir: &Path, now_ms: i64) -> Option<Published> {
     let Ok(snap) = snapshot::read(&data_dir.join(SNAPSHOT_FILE), SNAPSHOT_KIND, now_ms) else {
-        return Published::default();
+        return None;
     };
     // Order matters for `machineModels` (core's `{ model, machine, roles }`), so the checked bytes
     // are read again with the key-order-keeping parser.
     let Ok(text) = String::from_utf8(snap.raw) else {
-        return Published::default();
+        return None;
     };
     let Ok(doc) = wtf16::parse(&text) else {
-        return Published::default();
+        return None;
     };
     let strings = |v: &JValue| -> Option<Vec<String>> {
         match v {
@@ -74,7 +81,7 @@ pub fn published(data_dir: &Path, now_ms: i64) -> Published {
             let mut names = Vec::new();
             for row in rows {
                 let Some(name) = row.get("name").as_str() else {
-                    return Published::default();
+                    return None;
                 };
                 match row.get("missingFile") {
                     JValue::Bool(false) | JValue::Null | JValue::Undefined => {
@@ -91,13 +98,13 @@ pub fn published(data_dir: &Path, now_ms: i64) -> Published {
     let (Some(machine_roles), JValue::Arr(machine_models)) =
         (strings(doc.get("machineRoles")), doc.get("machineModels"))
     else {
-        return Published::default();
+        return None;
     };
-    Published {
+    Some(Published {
         catalogue,
         machine_roles,
         machine_models: machine_models.clone(),
-    }
+    })
 }
 
 /// core auto-roles-check.cjs `missingRoles(localRoles(roles), catalogue)`.
@@ -187,12 +194,27 @@ pub async fn serve(
         return *response;
     }
     let user = id.user.id.clone();
+    // Asks Node to publish (the demand marker); when it was idle the snapshot is waited for, up to
+    // two seconds, while the roles file is read.
+    let published_dir = data_dir.clone();
+    let state = app
+        .demand
+        .read(data_dir.clone(), move |now| {
+            published_checked(&published_dir, now)
+        });
     let done = tokio::task::spawn_blocking(move || {
         let dir = server_projects::store::user_dir(&data_dir, &user).ok()?;
-        let roles = read_roles(&dir);
-        Some(answer(roles, &published(&data_dir, identity::now_ms())))
+        Some(read_roles(&dir))
     })
     .await;
+    let done = match done {
+        Ok(Some(roles)) => Ok(Some(answer(
+            roles,
+            &state.await.unwrap_or_default(),
+        ))),
+        Ok(None) => Ok(None),
+        Err(e) => Err(e),
+    };
     match done {
         Ok(Some(text)) => reply::json_text(StatusCode::OK, text, true),
         _ => reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true),

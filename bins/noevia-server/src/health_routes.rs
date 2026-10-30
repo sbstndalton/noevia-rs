@@ -20,8 +20,11 @@
 //!
 //! `ragAvailable` and `retrieval` are Node-live (native index dependencies, the embedding probe and
 //! its cache, the administrator's embedding switch). Node publishes them as `rag-status.json`
-//! (snapshot.rs); an unusable or stale file is `ragAvailable: false, retrieval: "unavailable"`, never
-//! an old value. A `retrieval` that is not one of core's four words reads the same way.
+//! (snapshot.rs), and only while someone asks: this route touches the demand marker, and when Node
+//! was idle it waits up to two seconds for a fresh file. An unusable or stale file is
+//! `ragAvailable: false, retrieval: "unavailable"`, never an old value. A `retrieval` that is not one
+//! of core's four words reads the same way. With Core down the answer is still a 200 (Node's route
+//! died with it: a 502 from the proxy before), `retrieval: "unavailable"`.
 //!
 //! Each probe runs in a task of its own that the handler awaits, bounded by its own deadline: a
 //! client that goes away does not leave a half-read connection, and nothing outlives the 5 s bound.
@@ -122,18 +125,21 @@ async fn provider_up(url: String, bearer: Option<String>) -> bool {
     )
 }
 
-/// `(ragAvailable, retrieval)` from the published snapshot; the unusable case is
-/// `(false, "unavailable")`.
-pub fn retrieval_from(data_dir: &Path, now_ms: i64) -> (bool, &'static str) {
-    let Ok(snap) = snapshot::read(&data_dir.join(SNAPSHOT_FILE), SNAPSHOT_KIND, now_ms) else {
-        return (false, "unavailable");
-    };
+/// `(ragAvailable, retrieval)` from the published snapshot, `None` when it is unusable.
+pub fn retrieval_checked(data_dir: &Path, now_ms: i64) -> Option<(bool, &'static str)> {
+    let snap = snapshot::read(&data_dir.join(SNAPSHOT_FILE), SNAPSHOT_KIND, now_ms).ok()?;
     let rag = snap.body.get("ragAvailable").and_then(|v| v.as_bool());
     let word = snap.body.get("retrieval").and_then(|v| v.as_str());
     match (rag, word.and_then(|w| WORDS.iter().find(|k| **k == w))) {
-        (Some(rag), Some(word)) => (rag, word),
-        _ => (false, "unavailable"),
+        (Some(rag), Some(word)) => Some((rag, word)),
+        _ => None,
     }
+}
+
+/// `(ragAvailable, retrieval)` from the published snapshot; the unusable case is
+/// `(false, "unavailable")`.
+pub fn retrieval_from(data_dir: &Path, now_ms: i64) -> (bool, &'static str) {
+    retrieval_checked(data_dir, now_ms).unwrap_or((false, "unavailable"))
 }
 
 fn body(inference: bool, diary: Option<bool>, rag: bool, retrieval: &str) -> String {
@@ -176,6 +182,12 @@ pub async fn serve(
         Err(_) => return identity::Rejection::Unavailable.into_response(),
     };
     let diary_on = id.user.diary_enabled;
+    // A signed-in request asks Node to publish (the demand marker); when Node was idle the read waits
+    // up to two seconds for it, while the probes below run.
+    let dir = data_dir.clone();
+    let snap = app
+        .demand
+        .read(data_dir.clone(), move |now| retrieval_checked(&dir, now));
     let (url, bearer) = default_provider_probe(&|k| std::env::var(k).ok());
     let inference = tokio::spawn(provider_up(url, bearer));
     let diary = if diary_on {
@@ -200,12 +212,6 @@ pub async fn serve(
     } else {
         None
     };
-    // The snapshot is a small file: read it while the probes run.
-    let dir = app.config.data_dir.clone();
-    let snap = tokio::task::spawn_blocking(move || match dir {
-        Some(dir) => retrieval_from(&dir, identity::now_ms()),
-        None => (false, "unavailable"),
-    });
     let inference = inference.await.unwrap_or(false);
     let diary = match diary {
         Some(task) => Some(task.await.unwrap_or(false)),

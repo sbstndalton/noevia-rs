@@ -152,11 +152,17 @@ pub fn reap_orphan_contexts(ctx: Ctx<'_>, limit: usize) -> usize {
         return 0;
     };
     let mut listed: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    let free = store::read_json(&dir.join(chats::FREE_CHATS_FILE))
-        .ok()
-        .flatten()
-        .map(|v| free_chats::as_list(Some(v)))
-        .unwrap_or_default();
+    // The list is read strictly: it is what protects a chat that is still listed, so a file that
+    // cannot be read or parsed (here, or only for now) is no proof that nothing is listed, and the
+    // pass removes nothing. Only a file that is not there is an empty list.
+    let free = match std::fs::read(dir.join(chats::FREE_CHATS_FILE)) {
+        Ok(bytes) => match wtf16::parse(&String::from_utf8_lossy(&bytes)) {
+            Ok(v) => free_chats::as_list(Some(v)),
+            Err(_) => return 0,
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(_) => return 0,
+    };
     for chat in &free {
         if let Some(id) = chat.get("id").as_str() {
             listed.insert(id);
