@@ -115,6 +115,7 @@ async function runOne(c) {
   const touch = (f) => fs.utimesSync(f, MTIME, MTIME);
   fs.writeFileSync(modelFile, Buffer.alloc(2048, 7)); touch(modelFile);
   if (c.mmproj) { fs.writeFileSync(path.join(modelsDir, 'fx', 'mm.gguf'), Buffer.alloc(1024, 3)); touch(path.join(modelsDir, 'fx', 'mm.gguf')); }
+  if (c.draft) { fs.writeFileSync(path.join(modelsDir, 'fx', 'draft.gguf'), Buffer.alloc(512, 9)); touch(path.join(modelsDir, 'fx', 'draft.gguf')); }
   const ini = path.join(dir, 'models.ini');
   fs.writeFileSync(ini, c.iniPad ? `[fx]\nmodel = /models/fx/fx.gguf\n; ${'x'.repeat(c.iniPad)}\n` : c.ini);
   const evidenceDir = path.join(dir, 'evidence-0123456789abcdef');

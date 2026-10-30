@@ -112,6 +112,10 @@ async fn every_recorded_core_answer_and_evidence_log_is_the_fronts() {
             std::fs::write(models.join("fx/mm.gguf"), vec![3u8; 1024]).unwrap();
             set_mtime(&models.join("fx/mm.gguf"), mtime);
         }
+        if case["draft"] == true {
+            std::fs::write(models.join("fx/draft.gguf"), vec![9u8; 512]).unwrap();
+            set_mtime(&models.join("fx/draft.gguf"), mtime);
+        }
         let ini = d.path().join("models.ini");
         let ini_text = match case["iniPad"].as_u64() {
             Some(pad) => format!(

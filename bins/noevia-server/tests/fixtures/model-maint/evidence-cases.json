@@ -350,6 +350,53 @@
    }
   },
   {
+   "name": "a speculative draft model in the preset",
+   "model": "fx",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\nspec-type = draft-simple\nspec-draft-model = /models/fx/draft.gguf\n",
+   "mmproj": false,
+   "hf": {},
+   "ops": [
+    {
+     "op": "get"
+    },
+    {
+     "op": "record",
+     "record": {
+      "category": "context_capacity",
+      "result": "passed",
+      "value": {
+       "ctx": 8192
+      },
+      "suite": {
+       "name": "synthetic",
+       "version": 1
+      },
+      "source": "test",
+      "limitations": []
+     }
+    },
+    {
+     "op": "get"
+    }
+   ],
+   "draft": true,
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"fx\",\"tracked\":true,\"identityHash\":\"1d4447adfdb26cacfc09f2fc5dc3d95dcc8c044d759cf77d10b32c405d5c7059\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"fx\",\"tracked\":true,\"identityHash\":\"1d4447adfdb26cacfc09f2fc5dc3d95dcc8c044d759cf77d10b32c405d5c7059\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"verified\",\"value\":{\"ctx\":8192},\"result\":\"passed\",\"at\":1793387731178,\"suite\":{\"name\":\"synthetic\",\"version\":1},\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     }
+    ],
+    "log": "{\"id\":\"ev_d5eb7bd9-be6a-498d-a102-5918ff390486\",\"at\":1793387731178,\"limitations\":[],\"model\":\"fx\",\"identityHash\":\"1d4447adfdb26cacfc09f2fc5dc3d95dcc8c044d759cf77d10b32c405d5c7059\",\"identity\":{\"backend\":\"llamacpp\",\"build\":\"b-synthetic\",\"endpoint\":\"133c2168a49c7c92\",\"model\":\"fx\",\"artifact\":\"2048:1700000000000:e4fde89f39bc53b90e9935a8015b80dd\",\"projector\":null,\"preset\":\"2ebc2b599bd42625b0aae9f0e398498149922c33cfc650ed09dfbddfa29d733c\",\"context\":{\"ctx\":\"8192\",\"parallel\":null,\"cacheK\":null,\"cacheV\":null},\"mtp\":{\"type\":\"draft-simple\",\"draft\":null}},\"category\":\"context_capacity\",\"result\":\"passed\",\"value\":{\"ctx\":8192},\"suite\":{\"name\":\"synthetic\",\"version\":1},\"source\":\"test\"}\n"
+   }
+  },
+  {
    "name": "a vision projector and cache settings are part of the identity",
    "model": "fx",
    "role": "admin",
