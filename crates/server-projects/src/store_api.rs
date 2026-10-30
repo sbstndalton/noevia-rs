@@ -145,6 +145,13 @@ pub fn write(
     }
     server_store::json::write_shared_projects(&dir, which.name(), text, switch)
         .map_err(|e| WriteError::Store(StoreError::Write(e)))?;
+    if which == StoreFile::Projects {
+        if let Ok(parsed) = js_json::wtf16::parse(text) {
+            if let JValue::Arr(projects) = parsed.get("projects") {
+                store::revive_listed(&dir, projects);
+            }
+        }
+    }
     Ok(version_of(text.as_bytes()))
 }
 

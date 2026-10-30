@@ -557,3 +557,57 @@ fn feature_capability_grants_only_canonical_catalog_keys_and_exact_epoch() {
         .unwrap();
     assert_eq!(count, 24);
 }
+
+#[test]
+fn storage_connections_take_only_the_save_upsert() {
+    // sbstndalton/noevia#2190: a completed Nextcloud sign-in saves the row through Node's exact
+    // upsert; no other statement (a raw insert, an update, a delete) reaches the table.
+    let (dir, node) = node_db();
+    let w = Writer::open(dir.path(), RustAuth::owned()).unwrap();
+    let raw = w.write(|tx| {
+        tx.execute(
+            "INSERT INTO storage_connections(user_id,kind) VALUES('u1','webdav')",
+            [],
+        )
+    });
+    assert!(matches!(raw, Err(StoreError::NotOwned(_))), "{raw:?}");
+    let save = |kind: &str, at: i64| {
+        w.write(|tx| {
+            tx.save_storage_connection(
+                RustStorageIntegrations::owned(),
+                "u1",
+                kind,
+                "https://cloud.invalid/remote.php/dav/files/ada",
+                "",
+                "us-east-1",
+                "ada",
+                "enc:v2:synthetic",
+                "Cowork/Diary",
+                at,
+            )
+        })
+    };
+    assert_eq!(save("nextcloud", 5).unwrap(), 1);
+    assert_eq!(
+        save("nextcloud", 6).unwrap(),
+        1,
+        "the conflict path updates the row"
+    );
+    let got: (String, String, i64) = node
+        .query_row(
+            "SELECT kind,secret,updated_at FROM storage_connections WHERE user_id='u1'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(got, ("nextcloud".into(), "enc:v2:synthetic".into(), 6));
+    // The window closes after the statement: no update or delete afterwards.
+    for sql in [
+        "UPDATE storage_connections SET kind='local'",
+        "DELETE FROM storage_connections",
+    ] {
+        let r = w.write(|tx| tx.execute(sql, []));
+        assert!(matches!(r, Err(StoreError::NotOwned(_))), "{sql}: {r:?}");
+    }
+    assert_eq!(count(&node, "SELECT count(*) FROM storage_connections"), 1);
+}

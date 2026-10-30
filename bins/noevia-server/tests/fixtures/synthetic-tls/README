@@ -1,0 +1,3 @@
+Synthetic test-only TLS material for tests/storage_integrations.rs (sbstndalton/noevia#2190):
+a throwaway CA (ca.der) and a leaf for 127.0.0.1/localhost (leaf.der, PKCS#8 key leaf.key.der),
+generated with openssl on 2026-10-29. Trusted only through NOEVIA_QA_STORAGE_CA in tests.

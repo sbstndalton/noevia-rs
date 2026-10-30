@@ -153,6 +153,24 @@ impl SecretKeys {
             used,
         ))
     }
+
+    /// secrets.cjs `encrypt(value, userId)` under the current key (sbstndalton/noevia#2190): ''
+    /// for an empty value, else `enc:v2:` bound to `user_id` when it is non-empty
+    /// (secret-envelope.cjs `hasUser`), else `enc:v1:`. `nonce` must be 12 fresh bytes from a
+    /// CSPRNG (the caller's, as Node passes `crypto.randomBytes(12)`).
+    pub fn seal(
+        &self,
+        plain: &str,
+        user_id: Option<&str>,
+        nonce: &[u8; secret_envelope::NONCE_BYTES],
+    ) -> Result<String, SecretsError> {
+        if plain.is_empty() {
+            return Ok(String::new());
+        }
+        let user = user_id.filter(|u| !u.is_empty()).map(str::as_bytes);
+        secret_envelope::seal(&self.current, nonce, plain.as_bytes(), user)
+            .map_err(|_| SecretsError::Unreadable)
+    }
 }
 
 /// Logical cap on the optional previous-key environment text, before UTF-16/decode allocation.

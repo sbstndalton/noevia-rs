@@ -7,6 +7,7 @@ pub mod account_routes;
 pub mod chatgpt_status_routes;
 pub mod code_net;
 pub mod config;
+pub mod decision_settings_routes;
 pub mod diary_routes;
 pub mod export_routes;
 pub mod extraction;
@@ -15,10 +16,15 @@ pub mod health;
 pub mod identity;
 pub mod legacy_proxy;
 pub mod model_routes;
+pub mod model_sizing;
+pub mod plugin_directory_routes;
 pub mod project_routes;
 #[cfg(feature = "rust-storage-browse")]
 pub mod project_storage_io;
 pub mod project_store;
+#[cfg(feature = "rust-storage-reads")]
+pub mod provider_test_routes;
+pub mod public_pages;
 pub mod reasoning_settings_routes;
 pub mod reply;
 pub mod routes;
@@ -31,6 +37,8 @@ pub mod static_files;
 pub mod stats_routes;
 #[cfg(feature = "rust-storage-browse")]
 pub mod storage_browse_routes;
+#[cfg(feature = "rust-storage-reads")]
+pub mod storage_integration_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod storage_metadata_worker;
 #[cfg(feature = "rust-storage-reads")]
@@ -87,6 +95,37 @@ use std::sync::Arc;
 /// those routes (core rust-project-lifecycle.cjs `RUST_PROJECT_LIFECYCLE_OWNED`) and publishes the
 /// toolbox catalogue a create reads (`project-catalogue.json`), so the web supervisor must refuse a
 /// front without it beside such a Core, and a front with it beside an older Core.
+/// `rust-public-pages`: this build answers `GET|HEAD /about` and `/privacy` and every method of
+/// `/device` (sbstndalton/noevia#2190); `rust-plugin-directory`: `/api/plugins/directory`. Both are
+/// permanent with no switch; Node refuses them (core rust-public-pages.cjs and
+/// rust-plugin-directory.cjs), so the web supervisor pairs each with its Core marker.
+///
+/// `rust-decision-settings`: this build answers every method of `/api/admin/decision-settings`
+/// and `/test` and is the single writer of the `decision:configuration` row
+/// (sbstndalton/noevia#2190); Node re-reads that row per decision and refuses the routes (core
+/// rust-decision-settings.cjs `RUST_DECISION_SETTINGS_OWNED`), so the supervisor pairs them.
+///
+/// `rust-vault-mirror-preferences`: this build answers `GET|PUT /api/chat-vault-mirror/preferences`
+/// natively (server-account vault_mirror) and writes the mirror nudges core polls; the paired core
+/// refuses that path (rust-vault-mirror-preferences.cjs `RUST_VAULT_MIRROR_PREFERENCES_OWNED`).
+/// `rust-storage-integrations`: this build answers `POST /api/integrations/storage/folder`,
+/// `/test` and `/nextcloud/{start,poll,cancel}` (sbstndalton/noevia#2190): it owns the pending
+/// Nextcloud sign-ins (`nextcloud-login-flows.json`), saves a completed sign-in's storage row and
+/// writes the login proofs Node's storage latch re-reads. Node refuses those five POSTs (core
+/// rust-storage-integrations.cjs `RUST_STORAGE_INTEGRATIONS_OWNED`), so the supervisor pairs them.
+/// `rust-storage-connection`: this build also answers `PUT /api/integrations/storage` and is the
+/// single writer of the `storage_connections` row (sbstndalton/noevia#2190 round 4), including the
+/// legacy WebDAV setup Node asks for through the internal store (`/v1/storage/legacy-webdav`). The
+/// paired core refuses the PUT (rust-storage-connection.cjs `RUST_STORAGE_CONNECTION_OWNED`) and
+/// its database guard refuses every Node write of the table but the same-plaintext reseal.
+/// `rust-provider-test`: this build answers `POST /api/providers/test` (provider_test_routes.rs,
+/// sbstndalton/noevia#2190 round 4), reading the stored rows from disk for the key it may reuse;
+/// the paired core refuses it (rust-provider-test.cjs `RUST_PROVIDER_TEST_OWNED`).
+///
+/// `rust-model-sizing`: this build answers `GET /api/models/estimate` and `GET
+/// /api/models/preset/suggest` (sbstndalton/noevia#2189, src/model_sizing.rs), permanently and
+/// with no switch. Node refuses those two GETs (core rust-model-sizing.cjs `RUST_MODEL_SIZING_OWNED`),
+/// so the web supervisor pairs this capability with that Core in both directions.
 ///
 /// `rust-project-storage`: this build writes to a user's connected storage for a project's
 /// lifecycle (sbstndalton/noevia#2191 round 3): a create stores its text files in the project's
@@ -167,6 +206,10 @@ pub const FEATURES: &[&str] = &[
     "rust-project-documents",
     "rust-source-jobs",
     "rust-large-document-host-lock",
+    "rust-public-pages",
+    "rust-plugin-directory",
+    "rust-decision-settings",
+    "rust-model-sizing",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",
@@ -183,6 +226,13 @@ pub const FEATURES: &[&str] = &[
     "rust-storage-reads",
     #[cfg(feature = "rust-storage-browse")]
     "rust-storage-browse",
+    #[cfg(feature = "rust-storage-reads")]
+    "rust-storage-integrations",
+    #[cfg(feature = "rust-storage-reads")]
+    "rust-storage-connection",
+    #[cfg(feature = "rust-storage-reads")]
+    "rust-provider-test",
+    "rust-vault-mirror-preferences",
     #[cfg(feature = "rust-reasoning-settings")]
     "rust-reasoning-settings",
     #[cfg(feature = "rust-routing-mode")]
@@ -209,6 +259,9 @@ pub struct App {
     /// This binary, run as the owned outbound child (`--storage-request-child`).
     #[cfg(feature = "rust-storage-browse")]
     pub storage_child: Option<std::path::PathBuf>,
+    /// The Nextcloud sign-ins and the login proofs (#2190).
+    #[cfg(feature = "rust-storage-reads")]
+    pub storage_integrations: storage_integration_routes::State,
     /// Project storage write admission (round 3, #2191): four at once, one per account, apart
     /// from the browse's.
     #[cfg(feature = "rust-storage-browse")]
@@ -244,6 +297,8 @@ pub struct App {
     /// outside a Tokio runtime or when its HTTP client could not be built (the document route
     /// answers 503).
     pub extraction: Option<Arc<extraction::HttpEngine>>,
+    /// GET /api/plugins/directory: its client and hour-long cache (#2190).
+    pub plugin_directory: plugin_directory_routes::Directory,
 }
 
 impl App {
@@ -275,6 +330,10 @@ impl App {
             storage_browse: server_storage_reads::admission::Admission::default(),
             #[cfg(feature = "rust-storage-browse")]
             storage_child: storage_browse_routes::child_command(),
+            #[cfg(feature = "rust-storage-reads")]
+            storage_integrations: storage_integration_routes::State::new(
+                config.storage_qa_ca.as_deref(),
+            ),
             #[cfg(feature = "rust-storage-browse")]
             storage_writes: server_storage_reads::admission::Admission::default(),
             identity,
@@ -298,6 +357,9 @@ impl App {
             extraction: tokio::runtime::Handle::try_current()
                 .ok()
                 .and_then(|rt| extraction::HttpEngine::new(rt, config.data_dir.clone())),
+            plugin_directory: plugin_directory_routes::Directory::new(
+                config.plugin_directory.clone(),
+            ),
             proxy: legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy),
             statics: static_files::StaticFiles::new(config.dist.clone()),
             version,
@@ -349,6 +411,11 @@ async fn handle(
                     | routes::Native::ChatgptStatus
                     | routes::Native::Diary
                     | routes::Native::Models
+                    | routes::Native::PublicPages
+                    | routes::Native::PluginDirectory
+                    | routes::Native::DecisionSettings
+                    | routes::Native::StorageIntegrations
+                    | routes::Native::ProviderTest
             )
         ) {
             native = on_whatwg;
@@ -372,7 +439,12 @@ async fn handle(
             | routes::Native::Export
             | routes::Native::ChatgptStatus
             | routes::Native::Diary
-            | routes::Native::Models,
+            | routes::Native::Models
+            | routes::Native::PublicPages
+            | routes::Native::PluginDirectory
+            | routes::Native::DecisionSettings
+            | routes::Native::StorageIntegrations
+            | routes::Native::ProviderTest,
         )
         | None => false,
     };
@@ -509,6 +581,56 @@ async fn handle(
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };
             model_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::PublicPages) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", false);
+            };
+            public_pages::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::PluginDirectory) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            plugin_directory_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::StorageIntegrations) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            #[cfg(feature = "rust-storage-reads")]
+            {
+                storage_integration_routes::serve(&app, conn, req, p).await
+            }
+            #[cfg(not(feature = "rust-storage-reads"))]
+            {
+                let _ = (p, conn, req);
+                reply::error(StatusCode::SERVICE_UNAVAILABLE, "Storage unavailable", true)
+            }
+        }
+        Some(routes::Native::ProviderTest) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            #[cfg(feature = "rust-storage-reads")]
+            {
+                provider_test_routes::serve(&app, conn, req, p).await
+            }
+            #[cfg(not(feature = "rust-storage-reads"))]
+            {
+                let _ = (p, conn, req);
+                reply::error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Provider test unavailable",
+                    true,
+                )
+            }
+        }
+        Some(routes::Native::DecisionSettings) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            decision_settings_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::Ready) => {
             if app.proxy.is_in_process() {

@@ -139,7 +139,7 @@ fn update(dir: &Path, body: &JValue, switch: RustAuth) -> Result<JValue, Fault> 
     Ok(record)
 }
 
-fn refusal(why: server_auth::identity::Refusal) -> Outcome {
+pub(crate) fn refusal(why: server_auth::identity::Refusal) -> Outcome {
     use server_auth::identity::Refusal;
     match why {
         Refusal::Unauthorized => {
@@ -165,7 +165,11 @@ fn refusal(why: server_auth::identity::Refusal) -> Outcome {
 }
 
 #[cfg(target_os = "linux")]
-fn ensure_workspace(acct: &Account, current: &Identity, dir: &Path) -> Result<(), Fault> {
+pub(crate) fn ensure_workspace(
+    acct: &Account,
+    current: &Identity,
+    dir: &Path,
+) -> Result<(), Fault> {
     use server_projects::store::{ensure_user_dir, Ensured};
     if matches!(
         ensure_user_dir(&acct.settings.data_dir, &current.user.id)
@@ -202,7 +206,11 @@ fn ensure_workspace(acct: &Account, current: &Identity, dir: &Path) -> Result<()
 // Account tests may exercise an already-initialized synthetic workspace only;
 // no non-Linux substitute claims or creates a legacy workspace.
 #[cfg(not(target_os = "linux"))]
-fn ensure_workspace(_acct: &Account, _current: &Identity, dir: &Path) -> Result<(), Fault> {
+pub(crate) fn ensure_workspace(
+    _acct: &Account,
+    _current: &Identity,
+    dir: &Path,
+) -> Result<(), Fault> {
     if dir.is_dir() {
         Ok(())
     } else {

@@ -167,6 +167,12 @@ async fn original_front_auth_history_and_native_execution_share_one_transcript(
         user_dir.join(server_projects::chats::FREE_CHATS_FILE),
         r#"[{"id":"chat1","title":"existing title","updatedAt":1}]"#,
     )?;
+    // The toolbox catalogue core publishes (core server/project-catalogue.cjs); without it the
+    // front's native project create answers 503 (#2191).
+    std::fs::write(
+        data.join(server_projects::lifecycle::CATALOGUE_FILE),
+        r#"{"version":1,"selectable":["core","project-docs"],"defaults":["core"],"icons":["folder"]}"#,
+    )?;
     server_projects::journal::set_start_id(START);
     let history = vec![
         js_json::wtf16::parse(r#"{"role":"user","content":"existing question"}"#)

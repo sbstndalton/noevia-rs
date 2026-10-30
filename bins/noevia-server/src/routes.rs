@@ -79,10 +79,28 @@ pub enum Native {
     /// The Diary routes that are only a proxy and a policy (sbstndalton/noevia#2185):
     /// crates/server-diary. The others stay Node's (contracts/http/README.md).
     Diary,
-    /// GET /api/models/capabilities and GET /api/models/hardware (sbstndalton/noevia#2187):
-    /// model_routes.rs. The other model routes stay Node's.
+    /// GET /api/models/capabilities and GET /api/models/hardware (sbstndalton/noevia#2187), and GET
+    /// /api/models/estimate and GET /api/models/preset/suggest (#2189): model_routes.rs and
+    /// model_sizing.rs. The other model routes stay Node's.
     Models,
+    /// GET|HEAD /about and /privacy, every method of /device (sbstndalton/noevia#2190):
+    /// public_pages.rs.
+    PublicPages,
+    /// GET /api/plugins/directory and its 405s (sbstndalton/noevia#2190):
+    /// plugin_directory_routes.rs.
+    PluginDirectory,
+    /// Every method of /api/admin/decision-settings and /test (sbstndalton/noevia#2190):
+    /// decision_settings_routes.rs.
+    DecisionSettings,
+    /// POST /api/integrations/storage/{folder,test,nextcloud/start,poll,cancel}
+    /// (sbstndalton/noevia#2190): storage_integration_routes.rs.
+    StorageIntegrations,
+    /// POST /api/providers/test (sbstndalton/noevia#2190 round 4): provider_test_routes.rs.
+    ProviderTest,
 }
+
+/// The route [`Native::ProviderTest`] implements (POST only; routes.toml).
+const PROVIDER_TEST: &str = "/api/providers/test";
 
 /// The routes [`Native::Diary`] implements, all methods (each answers its own 405 after the add-on
 /// gate, as core does). `/api/diary/history`, which core's handler shares with `today`, is not a
@@ -216,6 +234,14 @@ const STORAGE_METADATA: &str = "/api/integrations/storage";
 /// `rust-storage-browse` under NOEVIA_RUST_STORAGE_BROWSE (#1368). Node's handler matches
 /// `^/api/integrations/storage/files(?:/(.*))?$` for GET and `.../file` exactly for POST.
 const STORAGE_FILES: &str = "/api/integrations/storage/files";
+/// The storage routes storage_integration_routes.rs answers (POST only, routes.toml).
+const STORAGE_INTEGRATIONS: &[&str] = &[
+    "/api/integrations/storage/folder",
+    "/api/integrations/storage/test",
+    "/api/integrations/storage/nextcloud/start",
+    "/api/integrations/storage/nextcloud/poll",
+    "/api/integrations/storage/nextcloud/cancel",
+];
 const STORAGE_FILES_ROUTE: &str = "/api/integrations/storage/files{*?}";
 const STORAGE_FILE: &str = "/api/integrations/storage/file";
 
@@ -245,6 +271,8 @@ fn compiled(route: &Route) -> bool {
         && (route.path != STORAGE_METADATA || cfg!(feature = "rust-storage-reads"))
         && (![STORAGE_FILE, STORAGE_FILES_ROUTE].contains(&route.path)
             || cfg!(feature = "rust-storage-browse"))
+        && (!STORAGE_INTEGRATIONS.contains(&route.path) || cfg!(feature = "rust-storage-reads"))
+        && (route.path != PROVIDER_TEST || cfg!(feature = "rust-storage-reads"))
         && (route.path != EXPORT || cfg!(feature = "rust-export"))
         && (route.path != CHATGPT_STATUS || cfg!(feature = "rust-chatgpt-status"))
 }
@@ -272,6 +300,13 @@ pub fn native_for(route: &Route) -> Option<Native> {
         EXPORT if auth => return Some(Native::Export),
         p if auth && DIARY_ROUTES.contains(&p) => return Some(Native::Diary),
         p if auth && crate::model_routes::ROUTES.contains(&p) => return Some(Native::Models),
+        p if auth && crate::public_pages::ROUTES.contains(&p) => return Some(Native::PublicPages),
+        crate::plugin_directory_routes::DIRECTORY if auth => return Some(Native::PluginDirectory),
+        p if auth && crate::decision_settings_routes::ROUTES.contains(&p) => {
+            return Some(Native::DecisionSettings)
+        }
+        p if auth && STORAGE_INTEGRATIONS.contains(&p) => return Some(Native::StorageIntegrations),
+        PROVIDER_TEST if auth => return Some(Native::ProviderTest),
         "/api/instance"
         | "/.well-known/webauthn"
         | "/api/admin/web-address"
@@ -306,6 +341,7 @@ const ACCOUNT_PREFIXES: &[&str] = &[
 
 fn is_account_path(path: &str) -> bool {
     path == "/api/chat-framing/preferences"
+        || path == server_account::vault_mirror::PATH
         || server_account::features::owns(path)
         || ACCOUNT_PREFIXES.iter().any(|p| {
             path.strip_prefix(p)
@@ -392,10 +428,15 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
     }
     let route = route_for(path)?;
     // This owner is exact-path only; the shared matcher tolerates trailing slashes.
-    if route.path == "/api/chat-framing/preferences" && path != route.path {
+    if (route.path == "/api/chat-framing/preferences"
+        || route.path == server_account::vault_mirror::PATH)
+        && path != route.path
+    {
         return None;
     }
-    if route.path == STORAGE_METADATA && (path != STORAGE_METADATA || method != "GET") {
+    if route.path == STORAGE_METADATA
+        && (path != STORAGE_METADATA || !["GET", "PUT"].contains(&method))
+    {
         return None;
     }
     if route.owner_under(switches) != Owner::Rust {
@@ -406,6 +447,11 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
     }
     if !compiled(route) {
         return None;
+    }
+    // sbstndalton/noevia#2190 round 4: saving the connection is storage_integration_routes.rs;
+    // reading it is the metadata worker's.
+    if route.path == STORAGE_METADATA && method == "PUT" {
+        return Some(Native::StorageIntegrations);
     }
     native_for(route)
 }
@@ -432,12 +478,7 @@ mod tests {
                 );
             }
         }
-        for path in [
-            "/api/features/",
-            "/api/features-x",
-            "/api/admin/features-x",
-            "/api/admin/decision-settings",
-        ] {
+        for path in ["/api/features/", "/api/features-x", "/api/admin/features-x"] {
             for method in ["GET", "PUT", "POST", "DELETE"] {
                 assert_eq!(dispatch(method, path), None, "{method} {path}");
             }
@@ -500,6 +541,10 @@ mod tests {
                 Some(Native::WebAddress)
                     if r.path == "/api/admin/web-address"
                         || r.path == "/api/admin/web-address/remove" => {}
+                Some(Native::DecisionSettings)
+                    if crate::decision_settings_routes::ROUTES.contains(&r.path) => {}
+                Some(Native::StorageIntegrations) if STORAGE_INTEGRATIONS.contains(&r.path) => {}
+                Some(Native::ProviderTest) if r.path == PROVIDER_TEST => {}
                 Some(_) => assert!(!is_account_path(r.path), "{} is an account path", r.path),
                 other @ None => assert!(
                     other.is_some(),
@@ -622,10 +667,21 @@ mod tests {
         assert_eq!(dispatch("HEAD", "/assets/a.js"), Some(Native::Static));
         assert_eq!(dispatch("GET", "/c/abc"), Some(Native::Static));
         assert_eq!(dispatch("POST", "/c/abc"), None);
-        assert_eq!(dispatch("GET", "/about"), None);
-        assert_eq!(dispatch("GET", "/privacy"), None);
-        assert_eq!(dispatch("GET", "/device"), None);
-        assert_eq!(dispatch("GET", "/device/"), None);
+        // sbstndalton/noevia#2190: the public pages (GET/HEAD) and the device page are the front's.
+        assert_eq!(dispatch("GET", "/about"), Some(Native::PublicPages));
+        assert_eq!(dispatch("HEAD", "/privacy"), Some(Native::PublicPages));
+        assert_eq!(dispatch("POST", "/about"), None);
+        assert_eq!(dispatch("GET", "/device"), Some(Native::PublicPages));
+        assert_eq!(dispatch("POST", "/device/"), Some(Native::PublicPages));
+        assert_eq!(dispatch("GET", "/device/x"), Some(Native::Static));
+        for m in ["GET", "POST", "PUT", "DELETE", "HEAD"] {
+            assert_eq!(
+                dispatch(m, "/api/plugins/directory"),
+                Some(Native::PluginDirectory),
+                "{m}"
+            );
+        }
+        assert_eq!(dispatch("GET", "/api/plugins/directoryx"), None);
         for path in [
             "/api/instance",
             "/.well-known/webauthn",
@@ -973,8 +1029,8 @@ mod tests {
         }
     }
 
-    /// sbstndalton/noevia#2187: the two configuration-only model reads are the front's, GET only;
-    /// every other method and every other model route (the 20 others in routes.toml) stays Node's.
+    /// sbstndalton/noevia#2187: the two configuration-only model reads are the front's, GET only, and
+    /// (#2189) the two sizing reads; every other method and every other model route stays Node's.
     #[test]
     fn model_reads_are_rusts_for_get_only_and_the_other_model_routes_stay_nodes() {
         let on = Switches::default();
@@ -989,6 +1045,7 @@ mod tests {
             }
         }
         assert!(crate::FEATURES.contains(&"rust-model-reads"));
+        assert!(crate::FEATURES.contains(&"rust-model-sizing"));
         for p in [
             "/api/model-manager",
             "/api/model-manager/models",
@@ -1001,7 +1058,6 @@ mod tests {
             "/api/models/calibration",
             "/api/models/calibration/cancel",
             "/api/models/delete",
-            "/api/models/estimate",
             "/api/models/evidence",
             "/api/models/evidence/import",
             "/api/models/evidence/recheck",
@@ -1014,6 +1070,9 @@ mod tests {
             "/api/models/downloads",
             "/api/models/capabilitiesx",
             "/api/models/hardware/x",
+            "/api/models/estimate/x",
+            "/api/models/preset/suggestx",
+            "/api/models/preset/x",
         ] {
             for m in ["GET", "POST", "PUT", "DELETE"] {
                 assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
@@ -1032,7 +1091,9 @@ mod tests {
             rust,
             vec![
                 (crate::model_routes::CAPABILITIES, &["GET"][..]),
+                (crate::model_sizing::ESTIMATE, &["GET"][..]),
                 (crate::model_routes::HARDWARE, &["GET"][..]),
+                (crate::model_sizing::SUGGEST, &["GET"][..]),
             ]
         );
     }
@@ -1283,6 +1344,13 @@ mod tests {
             ("GET", "/api/stats", Native::Stats),
             ("GET", "/api/providers/chatgpt", Native::ChatgptStatus),
             ("GET", "/api/integrations/storage", Native::StorageMetadata),
+            ("POST", "/api/providers/test", Native::ProviderTest),
+            // sbstndalton/noevia#2190 round 4: the save.
+            (
+                "PUT",
+                "/api/integrations/storage",
+                Native::StorageIntegrations,
+            ),
             (
                 "GET",
                 "/api/integrations/storage/files",

@@ -122,6 +122,8 @@ pub const OWNED_JSON_FILES: &[&str] = &[
     "account-memory.json",
     "account-preferences.json",
     "chat-framing.json",
+    // core chat-vault-mirror.cjs `writePreferences` (sbstndalton/noevia#2190 round 3).
+    "chat-vault-mirror.json",
 ];
 
 /// Rust's ownership of sign-in and the account (M3): the tables and files Rust writes. It was the
@@ -189,6 +191,37 @@ impl RustReasoningSettings {
         (value == Some("1")).then_some(Self(()))
     }
 }
+
+/// Settings -> Models -> Decision service (sbstndalton/noevia#2190): the one `decision:configuration`
+/// row, which the Rust front alone writes (core rust-decision-settings.cjs refuses the routes and
+/// core rust-auth.cjs the key). Permanent, no switch: the web supervisor pairs the front's
+/// `rust-decision-settings` capability with that Core.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RustDecisionSettings(());
+impl RustDecisionSettings {
+    pub const KEY: &'static str = "decision:configuration";
+    pub const fn owned() -> Self {
+        Self(())
+    }
+}
+
+/// Settings -> Diary & storage, the Nextcloud sign-in and the storage test/folder routes
+/// (sbstndalton/noevia#2190): a completed sign-in saves the account's `storage_connections` row
+/// through [`WriteTx::save_storage_connection`], Node's exact upsert. Since round 4 the Settings save
+/// (`PUT /api/integrations/storage`) and the legacy WebDAV setup are saved here too, so this is the
+/// row's only writer: core's guard (rust-auth.cjs `FRONT_TABLES`) refuses every Node write of the
+/// table but the same-plaintext compare-and-swap reseal. The table stays out of [`OWNED_TABLES`]
+/// (whose grants are per statement kind); the grant is this one statement, never a delete.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RustStorageIntegrations(());
+impl RustStorageIntegrations {
+    pub const fn owned() -> Self {
+        Self(())
+    }
+}
+
+/// The table [`RustStorageIntegrations`] may upsert one row of.
+const STORAGE_CONNECTIONS: &str = "storage_connections";
 
 /// Dedicated routing configuration capability; native auth alone grants neither its file nor key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -436,6 +469,7 @@ fn read_only_authorizer(ctx: AuthContext<'_>) -> Authorization {
 fn owned_authorizer(
     owned: &'static [(&'static str, Access)],
     settings_open: Arc<AtomicBool>,
+    storage_open: Arc<AtomicBool>,
 ) -> impl FnMut(AuthContext<'_>) -> Authorization {
     move |ctx: AuthContext<'_>| match ctx.action {
         AuthAction::Insert { table_name }
@@ -461,6 +495,20 @@ fn owned_authorizer(
                     && matches!(
                         ctx.action,
                         AuthAction::Insert { .. } | AuthAction::Delete { .. }
+                    );
+                return if open {
+                    Authorization::Allow
+                } else {
+                    Authorization::Deny
+                };
+            }
+            if table_name == STORAGE_CONNECTIONS {
+                // sbstndalton/noevia#2190: only Node's saveStorage upsert, inside
+                // [`WriteTx::save_storage_connection`]; never a delete.
+                let open = storage_open.load(Ordering::SeqCst)
+                    && matches!(
+                        ctx.action,
+                        AuthAction::Insert { .. } | AuthAction::Update { .. }
                     );
                 return if open {
                     Authorization::Allow
@@ -610,7 +658,8 @@ fn verify_write_topology(
     conn: &Connection,
     owned: &[(&'static str, Access)],
 ) -> Result<(), StoreError> {
-    let written = |t: &str| t == "settings" || owned.iter().any(|(o, _)| *o == t);
+    let written =
+        |t: &str| t == "settings" || t == STORAGE_CONNECTIONS || owned.iter().any(|(o, _)| *o == t);
     let mut tables = conn.prepare(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY name LIMIT ?1",
     )?;
@@ -862,6 +911,7 @@ impl Reader<'_> {
 pub struct WriteTx<'a> {
     conn: &'a Connection,
     settings_open: &'a AtomicBool,
+    storage_open: &'a AtomicBool,
 }
 
 /// Opens the `settings` grant for one statement (prepared uncached, so no authorized statement
@@ -976,6 +1026,71 @@ impl WriteTx<'_> {
         )?)
     }
 
+    /// Exactly Node's decision-settings save statement (core feature-setting-source.cjs WRITE_SQL
+    /// without RETURNING), under its own capability.
+    pub fn set_decision_configuration(
+        &self,
+        _decision: RustDecisionSettings,
+        value: &str,
+    ) -> Result<usize, StoreError> {
+        self.settings_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.settings_open);
+        Ok(self.conn.execute(
+            "INSERT OR REPLACE INTO settings(key,value) VALUES('decision:configuration',?1)",
+            [value],
+        )?)
+    }
+
+    /// Exactly Node's decision-settings reset statement, under the same capability.
+    pub fn delete_decision_configuration(
+        &self,
+        _decision: RustDecisionSettings,
+    ) -> Result<usize, StoreError> {
+        self.settings_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.settings_open);
+        Ok(self.conn.execute(
+            "DELETE FROM settings WHERE key='decision:configuration'",
+            [],
+        )?)
+    }
+
+    /// Exactly core auth.cjs `saveStorage`'s upsert (sbstndalton/noevia#2190: a Nextcloud sign-in
+    /// that completed, saved by the Rust front), under its own capability; the values are already
+    /// normalized and the secret sealed by the caller. The audit row is the caller's.
+    #[allow(clippy::too_many_arguments)]
+    pub fn save_storage_connection(
+        &self,
+        _storage: RustStorageIntegrations,
+        user_id: &str,
+        kind: &str,
+        base_url: &str,
+        bucket: &str,
+        region: &str,
+        username: &str,
+        sealed_secret: &str,
+        corpus_root: &str,
+        updated_at: i64,
+    ) -> Result<usize, StoreError> {
+        self.storage_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.storage_open);
+        let mut stmt = self.conn.prepare(
+            "INSERT INTO storage_connections(user_id,kind,base_url,bucket,region,username,secret,corpus_root,updated_at)
+        VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET kind=excluded.kind,base_url=excluded.base_url,
+        bucket=excluded.bucket,region=excluded.region,username=excluded.username,secret=excluded.secret,corpus_root=excluded.corpus_root,updated_at=excluded.updated_at",
+        )?;
+        Ok(stmt.execute(rusqlite::params![
+            user_id,
+            kind,
+            base_url,
+            bucket,
+            region,
+            username,
+            sealed_secret,
+            corpus_root,
+            updated_at
+        ])?)
+    }
+
     /// Exactly the routing allowed-list statement, under its own capability.
     pub fn set_routing_allowed(
         &self,
@@ -1033,6 +1148,7 @@ fn sql_target(sql: &str) -> String {
 pub struct Writer {
     inner: Mutex<Inner>,
     settings_open: Arc<AtomicBool>,
+    storage_open: Arc<AtomicBool>,
 }
 
 impl Writer {
@@ -1050,16 +1166,18 @@ impl Writer {
             ));
         }
         let settings_open = Arc::new(AtomicBool::new(false));
+        let storage_open = Arc::new(AtomicBool::new(false));
         // READ_WRITE without CREATE: the file must already exist (Node made it).
         let inner = open_inner(
             data_dir,
             OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
             Some(owned),
-            owned_authorizer(owned, Arc::clone(&settings_open)),
+            owned_authorizer(owned, Arc::clone(&settings_open), Arc::clone(&storage_open)),
         )?;
         Ok(Writer {
             inner: Mutex::new(inner),
             settings_open,
+            storage_open,
         })
     }
 
@@ -1076,6 +1194,7 @@ impl Writer {
         let out = f(&WriteTx {
             conn: &tx,
             settings_open: &self.settings_open,
+            storage_open: &self.storage_open,
         })?;
         tx.commit()?;
         Ok(out)

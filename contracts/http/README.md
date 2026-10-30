@@ -238,8 +238,9 @@ reach that same recovery path, and activation only schedules work, so the gate g
 reads do not already do. (2) An upload whose body is still arriving at the 120 s
 deadline is answered 408; core destroyed the socket. (3) A request body
 of at most 4 KiB gets a 120 s read deadline (core had only the server-wide 20 minutes). (4) Core's
-`getStorage` upgrades a legacy v1 ciphertext in place when it reads it; the front reads and never writes
-`storage_connections`, so that upgrade still happens only on Node's own reads. (5) A sidecar reply that
+`getStorage` upgrades a legacy v1 ciphertext in place when it reads it; the front's reads never write
+`storage_connections`, so that upgrade still happens only on Node's own reads (since #2190 round 4 a
+compare-and-swap reseal of the same plaintext, the one Node write of the table its guard allows). (5) A sidecar reply that
 `JSON.parse` accepts but the port cannot hold (a number outside f64, a character in the reserved private
 range) is treated as a failed call (`js_json::wtf16`'s `Unsupported`).
 
@@ -417,7 +418,7 @@ and `--features` lists `rust-model-reads`. The rest wait for batch M2 (the job r
 | `/api/models/calibration` | node | GET is the calibration job's in-memory state; POST starts it (M2) |
 | `/api/models/calibration/cancel` | node | write to the running job (M2) |
 | `/api/models/delete` | node | write: unload, delete, roles, preset section (M2) |
-| `/api/models/estimate` | node | sizes with the boot-time budget fault and the inference budget store held in Node |
+| `/api/models/estimate` (GET) | rust | moved in #2189 (below); other methods keep Node's admin check and 405 |
 | `/api/models/evidence` | node | fills Node's in-memory identity cache that evidence writes use |
 | `/api/models/evidence/import` | node | write (M2) |
 | `/api/models/evidence/recheck` | node | write that may load a model (M2) |
@@ -426,7 +427,8 @@ and `--features` lists `rust-model-reads`. The rest wait for batch M2 (the job r
 | `/api/models/load` | node | write through Node's lease and maintenance gate (M2) |
 | `/api/models/machines` | node | machine health probe and tune caches in Node memory; POST writes |
 | `/api/models/presets/reload` | node | write under the maintenance hold (M2) |
-| `/api/models/{*}` | node | preset, suggest, idle-unload, assignments, reranker, prune, mtp-artifact, pull, downloads: mixed reads of Node state and writes |
+| `/api/models/preset/suggest` (GET) | rust | moved in #2189 (below); other methods keep Node's admin check and 405 |
+| `/api/models/{*}` | node | preset, idle-unload, assignments, reranker, prune, mtp-artifact, pull, downloads: mixed reads of Node state and writes |
 
 ### PR notes (#2187)
 
@@ -541,6 +543,121 @@ tombstone drops it. Stricter than Node: the storage endpoint policy (as the brow
 and a pruned directory entry is never followed through a symlink. Not serialized with core's
 in-process source lock (a concurrent core upload of the same project is merged through
 projects.json's version, not queued behind the delete). Every other method of the path is Node's.
+## sbstndalton/noevia#2190: the settings and integrations singles that need nothing of Node's memory
+
+Two groups move to the front, each with its own Core marker and front capability so either can be
+rolled back alone (old/old pairs stay valid; the web supervisor and release assembly refuse mixed
+pairs):
+
+| route | owner | capability / Core refusal | notes |
+|---|---|---|---|
+| `/about`, `/privacy` (GET, HEAD) | rust | `rust-public-pages` / `RUST_PUBLIC_PAGES_OWNED` | Node's exact bytes and headers (`src/pages/`), no session; other methods stay Node's |
+| `/device` (all methods) | rust | `rust-public-pages` / `RUST_PUBLIC_PAGES_OWNED` | JSON 404 while `nativeClientAuth` is off (read per request); the bundle's page when on |
+| `/api/plugins/directory` (all methods) | rust | `rust-plugin-directory` / `RUST_PLUGIN_DIRECTORY_OWNED` | fixed hosts, no redirects, 8 s, 4 MiB, hour cache, starters; 405 for all but GET after the gate |
+
+The replay runs the front with `NOEVIA_QA_MCP_REGISTRY` and `NOEVIA_QA_SKILLS_DIRECTORY` on a
+closed loopback port (`tools/front/replay-front.sh`), the counterpart of the corpus net guard Node
+runs under: exchange 000141 is the recorded "could not be reached" 502 on both sides.
+
+### Round 2: the decision settings (Rust single writer, Node re-reads)
+
+| route | owner | capability / Core refusal | notes |
+|---|---|---|---|
+| `/api/admin/decision-settings` (all methods), `/api/admin/decision-settings/test` (all methods) | rust | `rust-decision-settings` / `RUST_DECISION_SETTINGS_OWNED` | admin only; GET/PUT/DELETE and `PUT {reset:true}`, POST `/test`, 405 otherwise; the save or reset and its `decision.*` audit row in one transaction |
+
+Rust is the only writer of the `decision:configuration` settings row (core rust-auth.cjs refuses
+the key on Node's connection with the same code). Node keeps the decision path in process and
+re-reads the row on every use by its content fingerprint (core feature-setting-source.cjs
+`readFact().source`, through core shared-reread.cjs): a save here is in force for the next
+decision with no restart, and the per-URL decision backends (their lanes) stay Node caches keyed
+by what it re-read. The view's Inference machine address comes from the `inference:machines`
+row, which stays Node's to write. The connection test resolves a name and refuses it unless every
+answer is on this network, then checks `/health` through a resolver that applies the same rule
+at connect time, no redirect, no environment proxy, 3 s, 4 KiB.
+
+### Round 3: the storage integrations (Rust owns the Nextcloud sign-in)
+
+| route | owner | capability / Core refusal | notes |
+|---|---|---|---|
+| `/api/integrations/storage/folder`, `/test`, `/nextcloud/start`, `/nextcloud/poll`, `/nextcloud/cancel` (POST) | rust | `rust-storage-integrations` / `RUST_STORAGE_INTEGRATIONS_OWNED` | session gate, then the JSON-object body (1 MiB); the member-origin rule on every target, no redirect, no environment proxy, Node's deadlines and the 64 KiB Nextcloud reply cap; other methods stay Node's |
+| `/api/chat-vault-mirror/preferences` (all methods) | rust | `rust-vault-mirror-preferences` / `RUST_VAULT_MIRROR_PREFERENCES_OWNED` | Rust is the only writer of `users/<id>/chat-vault-mirror.json` (Node's mirror re-reads it per use); a PUT that turns it on while available writes `chat-vault-mirror-nudges.json` (`{version:1,nudges:{<userId>:<ms>}}`), which core polls by file signal to run that account's mirror at once |
+
+The pending Nextcloud sign-ins move wholesale: the same sealed file
+(`nextcloud-login-flows.json`, `enc:v2:` bound to the account, 10 minutes, at most 100, one per
+account, a nonce per flow so a cancelled flow's in-flight poll revokes the app password). A
+completed sign-in saves the `storage_connections` row with core `saveStorage`'s exact upsert and
+its `storage.update` audit row in one transaction (server-store `save_storage_connection`, its own
+grant); Node reads that row on every use (`getStorage`). Round 4 moves the remaining save
+(`PUT /api/integrations/storage`), so Rust is that row's only writer (below). The storage latch stays in Node with its
+automatic callers (the project refresh, the Diary backup): a folder or test call that works with
+the saved login writes `storage-login-proofs.json` (`{version:1,proofs:{<userId>:<ms>}}`, no
+credential), which Node's latch re-reads by its file signal (core shared-reread.cjs) and which
+ends a hold set before it.
+
+### Round 4: one writer for the storage connection
+
+| route | owner | capability / Core refusal | notes |
+|---|---|---|---|
+| `/api/integrations/storage` (PUT) | rust | `rust-storage-connection` / `RUST_STORAGE_CONNECTION_OWNED` | GET stays the metadata worker's; other methods stay Node's. Session gate (device tokens refused), the JSON-object body (1 MiB), then core's order: the fields, the member-origin rule, the region, the WebDAV/Nextcloud login check (PROPFIND Depth 0, 10 s, no redirect, no environment proxy; a 401 keeps the old row), the save and its `storage.update` audit row in one transaction, and the login proof when the checked login is the saved one |
+| `/api/providers/test` (POST) | rust | `rust-provider-test` / `RUST_PROVIDER_TEST_OWNED` | session gate, the body (1 MiB; empty is `{}`; a `null` body is no longer Node's 500), core's address, length and member-origin rules, then `GET <base>/v1/models` with no redirect, no environment proxy, 8 s for the whole exchange and an 8 MiB reply cap; a stored key is reused only for a row the caller may edit, with a real key, at the same origin, read from `shared-providers.json` and `users/<id>/providers.json` per request (`enc:v1`, golden vector shared with core); other methods stay Node's |
+
+Every Node writer of `storage_connections` is gone: the PUT; `saveStorage` (deleted from core
+auth.cjs); and core index.cjs's legacy WebDAV setup (an administrator's legacy workspace with
+`CORPUS_BACKEND=webdav`), which now asks the internal store (`POST /v1/storage/legacy-webdav
+{ user, baseUrl, username, secret, corpusRoot }` -> `{ saved }`, saved only while the account has
+no row or a `local` one, checked inside the write). Core's database guard (rust-auth.cjs
+`FRONT_TABLES`) refuses every Node INSERT, UPDATE or DELETE of the table with
+`RUST_STORAGE_CONNECTION_OWNED`, even inside `exempt()`, except one statement: `UPDATE
+storage_connections SET secret=? WHERE user_id=? AND secret=?`, the same plaintext resealed under
+the current key (`getStorage`'s legacy upgrade, `secrets:rotate`), which changes nothing if Rust
+saved the row in between. The seal is `enc:v2` bound to the account (the round-3 golden vector).
+
+Left on Node in this batch, and why (each resolves Node memory, a Node-only cache or an in-process
+job that chat or another Node route reads):
+
+| route | why it stays |
+|---|---|
+| `/api/providers`, `/api/providers/{id}` | the private rows are cached on Node's workspace (`privateProviders`) that every chat turn reads in-process, and the list carries the env-derived default row, the model manager state and the ChatGPT connection; a Rust writer needs Node to re-read `providers.json` per turn by its file signal and the ChatGPT row writes (`ensureChatGptRow`/`removeChatGptRow`) to go through the internal store (round 4 design, not built) |
+| `/api/providers/{providerId}/models{*?}` | a ChatGPT row's list is Node's catalogue (chatgpt-oauth.cjs cache, in-flight fetch and refresh lock); the route cannot be split by row |
+| `/api/providers/chatgpt/device`, `/device/poll`, `/device/cancel`, `/api/providers/chatgpt/models` | chatgpt-oauth.cjs keeps the pending logins, the catalogue cache, its in-flight fetch and the token refresh lock in memory; chat uses the same tokens |
+| `/api/connectors`, `/api/connectors/gdrive/*`, `/api/connectors/nextcloud/policy` | drive-accounts.cjs holds personal Drive tokens in memory and the chat tools read the policies in-process |
+| `/api/admin/offsite-backup` and its six children | offsite-service.cjs runs the backup, copy and verify jobs and their busy lock and 15-minute timer in-process |
+| `/api/admin/users/{id}` (DELETE) | the clean-up spans Node's workspace cache, MCP OAuth, directory MCP keys and ChatGPT tokens in memory |
+| `/api/auto-roles` | GET reads the served catalogue and machine models; an admin PUT warms the roles in Node's engine (`ensureRolesLoaded`) |
+| `/api/health` | the retrieval probe is Node's cached RAG status, and the default provider is Node's in-memory registry |
+
+## sbstndalton/noevia#2189 (batch M2-A): the read-only model sizing reads
+
+`GET /api/models/estimate?model=` (the "Will it fit?" inputs) and `GET /api/models/preset/suggest?model=`
+(the size-based preset suggestion) are the front's (`src/model_sizing.rs`), permanently and GET only. Core
+refuses both GETs before authentication with 503 `RUST_MODEL_SIZING_OWNED` (`server/rust-model-sizing.cjs`,
+required from `index.cjs`) and `--features` lists `rust-model-sizing`; the web supervisor and the release
+assembly pair the two. Every other method stays Node's (an administrator check, then 405; corpus 000174).
+
+| route | owner | reads |
+|---|---|---|
+| `/api/models/estimate` (GET) | rust | `LLAMACPP_PRESET_PATH` (models.ini, read only), `LLAMACPP_MODELS_PATH`/`LLAMACPP_CACHE_PATH` (the GGUF header and file sizes), the router's `GET /models` (the model's argv), the saved inference budget (`settings` key `inference:memory-budget`, `INFERENCE_MEMORY_BUDGET_GIB`, host RAM) lowered only by `LLAMACPP_AUTOCONFIG_MEMORY_GIB` |
+| `/api/models/preset/suggest` (GET) | rust | the same, and the prompt-cache cap (`LLAMACPP_AUTOCONFIG_CACHE_RAM_MAX_MIB`, `LLAMACPP_CACHE_RAM_HARD_MAX_MIB`) |
+
+The sizing is crates/llamacpp-autoconfig's strict operations 1 and 2 and the header summary is crates/gguf's,
+the same code Core ran through dav-parse.wasm; Core's answer was its JS estimator's confirmed by that port,
+and the recorded answers are the port's text in every case. `tests/model_sizing.rs` replays 178 answers Core
+gave for synthetic fixtures (`tests/fixtures/model-sizing/record-node.cjs`, recorded at Core `fbac2e4`) byte
+for byte, and proves nothing is written and the router is asked only for its listing. Nothing is cached.
+
+Kept on Node, and why: `GET /api/models/evidence` computes the model's identity from router args, the
+engine's `/props`, a file fingerprint and the preset hash, and keeps it in a 30 s cache the evidence writers
+(calibration, auto-tune, recheck, import) read and clear; serving it from a second process would need that
+cache or a second identity writer, so it moves with the evidence writers (batch B). `inference-budget` (its
+PUT and the boot-time saved value), `installed`, load/unload, delete, calibration, auto-tune, machines, preset
+GET/PUT and `/api/model-manager` stay too.
+
+Not Node's answer, each unreachable in a working deployment: Core always has an inference budget of at least
+2 GiB, so the boot-time `LLAMACPP_MEMORY_LIMIT` fault and the "no budget" 501 never show (both kept or
+documented in model_sizing.rs); a settings store the front cannot read answers 503 (Node holds the value in
+memory); GGUF metadata with NaN, Infinity or -0 in a raw field (float-typed headers only) asks the port with
+`null`/`0` where the JS estimator saw the number; a router listing nested 64 deep at the fields read counts as
+no listing.
 
 
 ## sbstndalton/noevia#2191 round 4 (group rust-project-document-pages): a stored document's pages

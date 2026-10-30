@@ -40,13 +40,16 @@ path = "/api/account/retention"
 owner = "rust"
 methods = ["GET"]
 
+# sbstndalton/noevia#2190: Settings -> Models -> Decision service, every method (each answers its
+# own 405); Rust alone writes decision:configuration, Node re-reads it per decision and refuses the
+# routes (core rust-decision-settings.cjs).
 [[route]]
 path = "/api/admin/decision-settings"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/admin/decision-settings/test"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/admin/features"
@@ -248,7 +251,7 @@ owner = "node"
 
 [[route]]
 path = "/api/chat-vault-mirror/preferences"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/chats/{chatId}/context"
@@ -379,9 +382,11 @@ owner = "rust"
 methods = ["POST"]
 
 [[route]]
+# GET: the metadata worker (#1071). PUT, the save (sbstndalton/noevia#2190 round 4,
+# rust-storage-connection): Rust is the only writer of the storage_connections row.
 path = "/api/integrations/storage"
 owner = "rust"
-methods = ["GET"]
+methods = ["GET", "PUT"]
 
 [[route]]
 path = "/api/integrations/storage/file"
@@ -395,23 +400,28 @@ methods = ["GET"]
 
 [[route]]
 path = "/api/integrations/storage/folder"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/integrations/storage/nextcloud/cancel"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/integrations/storage/nextcloud/poll"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/integrations/storage/nextcloud/start"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/integrations/storage/test"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/mcp-keys/servers"
@@ -480,9 +490,12 @@ methods = ["GET"]
 path = "/api/models/delete"
 owner = "node"
 
+# sbstndalton/noevia#2189: the read-only sizing reads, the front's (bins/noevia-server
+# model_sizing.rs); Node refuses the GET (core rust-model-sizing.cjs). Other methods stay Node's.
 [[route]]
 path = "/api/models/estimate"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/models/evidence"
@@ -519,6 +532,11 @@ path = "/api/models/machines"
 owner = "node"
 
 [[route]]
+path = "/api/models/preset/suggest"
+owner = "rust"
+methods = ["GET"]
+
+[[route]]
 path = "/api/models/presets/reload"
 owner = "node"
 
@@ -526,9 +544,11 @@ owner = "node"
 path = "/api/models/{*}"
 owner = "node"
 
+# sbstndalton/noevia#2190: the front's (bins/noevia-server plugin_directory_routes.rs); Node
+# refuses it (core rust-plugin-directory.cjs).
 [[route]]
 path = "/api/plugins/directory"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/profile"
@@ -732,8 +752,11 @@ path = "/api/providers/chatgpt/models"
 owner = "node"
 
 [[route]]
+# sbstndalton/noevia#2190 round 4 (rust-provider-test): the probe. Node keeps the other methods
+# (its PUT|DELETE /api/providers/{id} handler reads `test` as a provider id).
 path = "/api/providers/test"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/providers/{id}"
@@ -814,14 +837,19 @@ path = "/api/workspace"
 owner = "node"
 
 # Non-/api pages (M1). Node answers these before its static fallback, so they stay Node's.
+# sbstndalton/noevia#2190: the public pages and the device approval page are the front's
+# (bins/noevia-server public_pages.rs); Node refuses them (core rust-public-pages.cjs). The other
+# methods of /about and /privacy stay Node's.
 [[route]]
 path = "/about"
-owner = "node"
+owner = "rust"
+methods = ["GET", "HEAD"]
 client = false
 
 [[route]]
 path = "/privacy"
-owner = "node"
+owner = "rust"
+methods = ["GET", "HEAD"]
 client = false
 
 [[route]]
@@ -833,7 +861,7 @@ client = false
 # /device answers a JSON 404 while the nativeClientAuth feature is off (routes/device-auth.cjs).
 [[route]]
 path = "/device"
-owner = "node"
+owner = "rust"
 client = false
 
 # The built web client: a file of the bundle (cache headers, ETag, br/gzip as static-files.cjs),

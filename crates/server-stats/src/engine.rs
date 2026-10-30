@@ -210,6 +210,12 @@ impl Engine {
         }
     }
 
+    /// llamacpp-manager.cjs `rawModels()`: the router's `/models` listing as `fetchJson` settles it
+    /// (the model sizing reads, bins/noevia-server model_sizing.rs). Only for the llama.cpp kind.
+    pub async fn listing(&self) -> Read {
+        self.fetch("/models".into(), self.timeouts.listing).await
+    }
+
     /// llamacpp-manager.cjs `stats()`: `Ok(None)` where the JS returns a not-ok listing or
     /// rejects (both make `up` false), `Err` only where the port cannot follow the JS.
     async fn llamacpp_stats(&self) -> Result<Option<Summary>, Fault> {
