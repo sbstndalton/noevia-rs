@@ -1628,5 +1628,5 @@ rag.cjs; only the two search tools, in research's own shape, as the asking user)
 `ERROR...` is reported as a failed search, not "no relevant information"; gather's result is capped when the web budget
 ran out; a progress stage over 4096 bytes is clipped instead of killing the job; `POST .../research/cancel` is a 404
 rather than a new job; a `.sources.json` retry now matches its first hash after the journal's key sort. Steps stream
-(`stream: true`) with a 120 s deadline and an idle limit, a local step takes the gate's lease when a gate exists, and
-deadline and connect failures have their own words. Availability still ignores `project.model`, as Node's did.
+(`stream: true`) with one 120 s deadline for the whole step and no separate idle limit (Node's step had only that deadline; a stream that goes quiet runs to it), a local step takes the gate's lease when a gate exists, and
+deadline and connect failures have their own words, and so does a bridge to Node that does not answer or refuses the front ("unreachable", not "Web search is not configured"). Availability still ignores `project.model`, as Node's did.

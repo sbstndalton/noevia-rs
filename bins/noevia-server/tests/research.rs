@@ -26,6 +26,7 @@ const ORIGIN: &str = "http://127.0.0.1:18021";
 const STORE_TOKEN: &str = "synthetic-store-token-0123456789abcdef";
 const START: &str = "0123456789abcdef0123456789abcdef";
 const LEASE: &str = "0123456789abcdef0123456789abcdef";
+const UNREACHABLE: &str = "Research could not reach this server's search tools (the bridge to the web process did not answer). Try again shortly; if it keeps happening, ask an administrator to check the server.";
 
 #[derive(Clone)]
 enum Answer {
@@ -172,6 +173,7 @@ struct Front {
     user: String,
     node: Stub,
     engine: Stub,
+    app: Arc<noevia_server::App>,
 }
 
 async fn front(flag: Option<&str>, node: Responder, engine: Responder) -> Front {
@@ -205,6 +207,7 @@ async fn front(flag: Option<&str>, node: Responder, engine: Responder) -> Front 
         Some(env!("CARGO_BIN_EXE_noevia-server").into());
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
+    let kept = Arc::clone(&app);
     tokio::spawn(serve(
         listener,
         app,
@@ -245,6 +248,7 @@ async fn front(flag: Option<&str>, node: Responder, engine: Responder) -> Front 
         user,
         node,
         engine,
+        app: kept,
     };
     seed_project(&f.user_dir());
     f
@@ -518,6 +522,10 @@ async fn availability_comes_from_node_and_a_missing_node_refuses() {
     let f = front(Some("true"), nothing, engine_saying("x")).await;
     let (_, v) = f.call("GET", "/api/projects/p1/research", "").await;
     assert_eq!(v["available"], false, "unknown is not available: {v}");
+    assert_eq!(
+        v["reason"], UNREACHABLE,
+        "a bridge that fails is not 'not configured': {v}"
+    );
     // Tools there but no model anywhere: the pick-a-model words.
     let none: Responder = Arc::new(|_m, p, b| {
         if p == "/internal/research/availability" {
@@ -917,4 +925,158 @@ async fn the_local_engine_never_redirects_a_step() {
     let (s, v) = f.plan().await;
     assert_eq!(s, 500, "{v}");
     assert_eq!(target.seen().len(), 0, "nothing followed");
+}
+
+/// The failure that hid behind "Web search is not configured" (review H1, L2): Node answering the front's own calls
+/// with its 404 for an unknown path, as it did when it was built with an empty secret.
+#[tokio::test]
+async fn a_bridge_that_refuses_the_front_is_unreachable_not_unconfigured() {
+    let refuse: Responder = Arc::new(|_m, p, b| {
+        if p.starts_with("/internal/research/") {
+            Answer::Now(404, json!({"error": "Not found"}).to_string())
+        } else {
+            node_answer(p, b)
+        }
+    });
+    let f = front(Some("true"), refuse, engine_saying("x")).await;
+    let (s, v) = f.call("GET", "/api/projects/p1/research", "").await;
+    assert_eq!(s, 200);
+    assert_eq!(
+        (&v["available"], &v["reason"]),
+        (&json!(false), &json!(UNREACHABLE))
+    );
+    let (s, v) = f.plan().await;
+    assert_eq!((s, v), (409, json!({"error": UNREACHABLE})));
+
+    // Availability fine, but the tool route refuses: the job says what happened, in the same words.
+    let tools_refused: Responder = Arc::new(|_m, p, b| {
+        if p == "/internal/research/tool" || p == "/internal/research/retrieve" {
+            Answer::Now(404, json!({"error": "Not found"}).to_string())
+        } else {
+            node_answer(p, b)
+        }
+    });
+    let f = front(Some("true"), tools_refused, engine_saying("x")).await;
+    let (s, v) = f
+        .call(
+            "POST",
+            "/api/projects/p1/research",
+            r#"{"question":"How tall is the tower?"}"#,
+        )
+        .await;
+    assert_eq!(s, 202, "{v}");
+    let id = v["id"].as_str().unwrap().to_owned();
+    let done = f.job_until(&id, |j| j["status"] != "running").await;
+    assert_eq!(done["status"], "failed", "{done}");
+    assert!(
+        !done.to_string().contains("not configured") && !done.to_string().contains("Not found"),
+        "{done}"
+    );
+    assert!(
+        done["error"]
+            .as_str()
+            .unwrap()
+            .contains("could not reach this server's search tools"),
+        "{done}"
+    );
+}
+
+/// A POST whose client leaves while the job store is busy (review M1). The store call is held on the owner lock; the
+/// client goes away; the lock is let go. The job either was never made or is running to its end: it is never a
+/// `running` row with nothing behind it.
+#[tokio::test]
+async fn a_client_that_leaves_while_the_store_is_busy_cannot_strand_the_job() {
+    let f = front(
+        Some("true"),
+        lease_node(),
+        engine_saying("The tower is 50 metres tall [S1]."),
+    )
+    .await;
+    // The first read recovers the account's old jobs and makes the owner file the lock sits beside.
+    let (s, v) = f.call("GET", "/api/projects/p1/research", "").await;
+    assert_eq!(s, 200, "{v}");
+    let lock = server_projects::lock::path_for(&f.user_dir().join("research-jobs-owner.json"));
+    let held = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&lock)
+        .unwrap();
+    held.lock().unwrap();
+
+    let mut client = TcpStream::connect(f.addr).await.unwrap();
+    let body = r#"{"question":"How tall is the tower?"}"#;
+    let req = format!(
+        "POST /api/projects/p1/research HTTP/1.1\r\nhost: front.test\r\ncookie: {}\r\nx-csrf-token: {}\r\norigin: {ORIGIN}\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+        f.jar, f.csrf, body.len()
+    );
+    client.write_all(req.as_bytes()).await.unwrap();
+    // The store call is waiting on the lock (it gives up after 3 s). The client leaves, and the server notices.
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    drop(client);
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    drop(held);
+
+    // The start goes through (or was never made). A job that exists must be run, to its end.
+    let mut job = None;
+    for _ in 0..120 {
+        let (_, v) = f.call("GET", "/api/projects/p1/research", "").await;
+        if let Some(j) = v["jobs"].as_array().and_then(|a| a.first()) {
+            job = j["id"].as_str().map(str::to_owned);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    if let Some(id) = job {
+        let done = f.job_until(&id, |j| j["status"] != "running").await;
+        assert_eq!(done["status"], "completed", "{done}");
+        assert_eq!(f.app.config.research.running(), 0);
+    }
+    // And the project's one slot is free either way.
+    let (s, v) = f
+        .call(
+            "POST",
+            "/api/projects/p1/research",
+            r#"{"question":"Another?"}"#,
+        )
+        .await;
+    assert_eq!(s, 202, "{v}");
+}
+
+/// A job task that ends without reaching its own last lines (a panic does that; here it is stopped from outside,
+/// which the runtime reports the same way) leaves no `running` row and no taken slot (review L1).
+#[tokio::test]
+async fn a_job_task_that_dies_frees_its_slot_and_its_row() {
+    let hang: Responder = Arc::new(|_m, _p, _b| Answer::Hang("engine-dropped"));
+    let f = front(Some("true"), lease_node(), hang).await;
+    let (s, v) = f
+        .call(
+            "POST",
+            "/api/projects/p1/research",
+            r#"{"question":"How tall?"}"#,
+        )
+        .await;
+    assert_eq!(s, 202, "{v}");
+    let id = v["id"].as_str().unwrap().to_owned();
+    assert!(
+        settle(|| f.engine.count("POST /v1/chat/completions") >= 1).await,
+        "the job reached the engine"
+    );
+    assert_eq!(f.app.config.research.running(), 1);
+    assert_eq!(f.app.config.research.abort_jobs(), 1);
+    let done = f.job_until(&id, |j| j["status"] != "running").await;
+    assert_ne!(done["status"], "running", "{done}");
+    assert!(
+        settle(|| f.app.config.research.running() == 0).await,
+        "the job left the live set"
+    );
+    let (s, v) = f
+        .call(
+            "POST",
+            "/api/projects/p1/research",
+            r#"{"question":"Again?"}"#,
+        )
+        .await;
+    assert_eq!(s, 202, "the project's slot is free again: {v}");
 }

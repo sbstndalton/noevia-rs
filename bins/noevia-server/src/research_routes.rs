@@ -50,7 +50,9 @@ const FEATURE_SETTING: &str = "feature:deepResearch";
 const MACHINES_KEY: &str = "inference:machines";
 const PICK_MODEL: &str =
     "Pick a Smart model for Auto routing, or load a model, before starting research.";
-const NO_SEARCH: &str = "Web search is not configured on this server.";
+/// Node's loopback bridge did not answer, or refused the front (its 404 for a wrong secret too): not the same as
+/// "no search tools here", which Node says in its own words.
+const NODE_UNREACHABLE: &str = "Research could not reach this server's search tools (the bridge to the web process did not answer). Try again shortly; if it keeps happening, ask an administrator to check the server.";
 const STREAM_FAILED: &str = "The model stream failed. Check the backend before retrying.";
 const TOKEN_HEADER: &str = "x-noevia-store-token";
 
@@ -137,6 +139,8 @@ struct Live {
     cancel: Cancel,
     run: String,
     cancel_attempted: Arc<std::sync::atomic::AtomicBool>,
+    /// The job's task, to stop it at once ([`Research::abort_jobs`]).
+    task: Option<tokio::task::AbortHandle>,
 }
 
 #[derive(Default)]
@@ -205,6 +209,22 @@ impl Research {
     /// Jobs this process is running.
     pub fn running(&self) -> usize {
         self.state().live.len()
+    }
+
+    /// Stops every running job's task where it stands, as a panic in it would. Each job's watcher then frees its
+    /// slot and queues its abandon (the journal moves the job out of `running`), so a process that keeps going
+    /// can start the project's next job. Returns how many tasks were told to stop.
+    pub fn abort_jobs(&self) -> usize {
+        let state = self.state();
+        let tasks: Vec<&tokio::task::AbortHandle> = state
+            .live
+            .values()
+            .filter_map(|l| l.task.as_ref())
+            .collect();
+        for t in &tasks {
+            t.abort();
+        }
+        tasks.len()
     }
 
     fn bridge_post(
@@ -471,7 +491,7 @@ impl Account {
                     .and_then(Value::as_str)
                     .map(str::to_owned),
             ),
-            _ => (Some(NO_SEARCH.to_owned()), None),
+            _ => (Some(NODE_UNREACHABLE.to_owned()), None),
         }
     }
 
@@ -705,14 +725,16 @@ impl JobTools {
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_owned()),
+            // The bridge's own refusal (404 for a wrong or missing secret, 401, 403) says nothing about the tool.
+            Some((401 | 403 | 404, _)) => Err(Failure(NODE_UNREACHABLE.to_owned())),
             Some((_, v)) => Err(Failure(
                 v.get("error")
                     .and_then(Value::as_str)
-                    .unwrap_or(NO_SEARCH)
+                    .unwrap_or(NODE_UNREACHABLE)
                     .to_owned(),
             )),
             None if cancel.is_cancelled() => Err(Failure("Research was cancelled.".to_owned())),
-            None => Err(Failure(NO_SEARCH.to_owned())),
+            None => Err(Failure(NODE_UNREACHABLE.to_owned())),
         }
     }
 }
@@ -758,6 +780,7 @@ impl runner::Tools for JobTools {
                         .collect()
                 })
                 .unwrap_or_default()),
+            Some((401 | 403 | 404, _)) => Err(Failure(NODE_UNREACHABLE.to_owned())),
             Some((_, v)) => Err(Failure(
                 v.get("error")
                     .and_then(Value::as_str)
@@ -1178,6 +1201,23 @@ impl Account {
         self.research().state().live.remove(&id);
     }
 
+    /// A job task that ends in a panic (or is aborted) never reaches its own last lines, which free the slot and write
+    /// the terminal row. Node's async function caught everything; this task is the same safety net: on a `JoinError`
+    /// the job leaves `live` and its request is queued to be abandoned, so the row does not stay `running`.
+    fn watch(&self, task: tokio::task::JoinHandle<()>, id: String, request: String) {
+        let account = self.clone();
+        tokio::spawn(async move {
+            if task.await.is_err() {
+                account.research().state().live.remove(&id);
+                account.queue_abandon(Abandon {
+                    user: account.user.clone(),
+                    request,
+                    report: None,
+                });
+            }
+        });
+    }
+
     fn queue_abandon(&self, abandon: Abandon) {
         let research = Arc::clone(self.research());
         let start = {
@@ -1239,7 +1279,23 @@ impl Account {
         }
     }
 
+    /// Starts a job. The whole of it, the store's admission, the job's entry in `live` and its task, runs on a task
+    /// of its own that this awaits, as cancel and save do: a client that leaves in the middle cannot drop the
+    /// request between the store committing a running job and the task that runs it (which would leave the row
+    /// `running` with nothing behind it, and the project's only active slot taken).
     async fn start(
+        &self,
+        project: &str,
+        project_model: Option<String>,
+        body: &JValue,
+    ) -> Result<JValue, Fail> {
+        let (acc, project, body) = (self.clone(), project.to_owned(), body.clone());
+        tokio::spawn(async move { acc.start_job(&project, project_model, &body).await })
+            .await
+            .map_err(|_| fail(500, "Research request failed"))?
+    }
+
+    async fn start_job(
         &self,
         project: &str,
         project_model: Option<String>,
@@ -1305,20 +1361,26 @@ impl Account {
                 cancel: cancel.clone(),
                 run: run.clone(),
                 cancel_attempted: Arc::clone(&cancel_attempted),
+                task: None,
             },
         );
         // Everything from here on is the job's own task: a client that leaves cannot strand it.
-        tokio::spawn(self.clone().run_job(
+        let task = tokio::spawn(self.clone().run_job(
             project.to_owned(),
             project_model,
             id.clone(),
             run,
-            request,
+            request.clone(),
             question,
             questions,
             cancel,
             cancel_attempted,
         ));
+        // A job that finished already has left `live`; there is then nothing to point at.
+        if let Some(live) = self.research().state().live.get_mut(&id) {
+            live.task = Some(task.abort_handle());
+        }
+        self.watch(task, id.clone(), request);
         let job = self.owned(project, &id).await?;
         self.public_view(&job, project).await
     }
