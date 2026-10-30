@@ -500,6 +500,7 @@ ends a hold set before it.
 | route | owner | capability / Core refusal | notes |
 |---|---|---|---|
 | `/api/integrations/storage` (PUT) | rust | `rust-storage-connection` / `RUST_STORAGE_CONNECTION_OWNED` | GET stays the metadata worker's; other methods stay Node's. Session gate (device tokens refused), the JSON-object body (1 MiB), then core's order: the fields, the member-origin rule, the region, the WebDAV/Nextcloud login check (PROPFIND Depth 0, 10 s, no redirect, no environment proxy; a 401 keeps the old row), the save and its `storage.update` audit row in one transaction, and the login proof when the checked login is the saved one |
+| `/api/providers/test` (POST) | rust | `rust-provider-test` / `RUST_PROVIDER_TEST_OWNED` | session gate, the body (1 MiB; empty is `{}`; a `null` body is no longer Node's 500), core's address, length and member-origin rules, then `GET <base>/v1/models` with no redirect, no environment proxy, 8 s for the whole exchange and an 8 MiB reply cap; a stored key is reused only for a row the caller may edit, with a real key, at the same origin, read from `shared-providers.json` and `users/<id>/providers.json` per request (`enc:v1`, golden vector shared with core); other methods stay Node's |
 
 Every Node writer of `storage_connections` is gone: the PUT; `saveStorage` (deleted from core
 auth.cjs); and core index.cjs's legacy WebDAV setup (an administrator's legacy workspace with
@@ -517,7 +518,8 @@ job that chat or another Node route reads):
 
 | route | why it stays |
 |---|---|
-| `/api/providers`, `/api/providers/{id}`, `/api/providers/test`, `/api/providers/{providerId}/models{*?}` | the provider rows live on the in-memory workspace (`ws.providers`, `PROVIDERS`) that every chat turn reads in-process; a Rust writer would need Node to re-read the workspace per turn (follow-up) |
+| `/api/providers`, `/api/providers/{id}` | the private rows are cached on Node's workspace (`privateProviders`) that every chat turn reads in-process, and the list carries the env-derived default row, the model manager state and the ChatGPT connection; a Rust writer needs Node to re-read `providers.json` per turn by its file signal and the ChatGPT row writes (`ensureChatGptRow`/`removeChatGptRow`) to go through the internal store (round 4 design, not built) |
+| `/api/providers/{providerId}/models{*?}` | a ChatGPT row's list is Node's catalogue (chatgpt-oauth.cjs cache, in-flight fetch and refresh lock); the route cannot be split by row |
 | `/api/providers/chatgpt/device`, `/device/poll`, `/device/cancel`, `/api/providers/chatgpt/models` | chatgpt-oauth.cjs keeps the pending logins, the catalogue cache, its in-flight fetch and the token refresh lock in memory; chat uses the same tokens |
 | `/api/connectors`, `/api/connectors/gdrive/*`, `/api/connectors/nextcloud/policy` | drive-accounts.cjs holds personal Drive tokens in memory and the chat tools read the policies in-process |
 | `/api/admin/offsite-backup` and its six children | offsite-service.cjs runs the backup, copy and verify jobs and their busy lock and 15-minute timer in-process |

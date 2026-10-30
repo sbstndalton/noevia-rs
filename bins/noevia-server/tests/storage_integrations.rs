@@ -1513,3 +1513,264 @@ async fn legacy_webdav_store_op_saves_only_an_unconfigured_account() {
     );
     assert_eq!(row(&db, B).unwrap().0, "webdav");
 }
+
+// ---------------------------------------------------------------------------------------------
+// sbstndalton/noevia#2190 round 4: POST /api/providers/test (provider_test_routes.rs). Lives here
+// to share the synthetic upstreams and the seeded front (one test binary fewer).
+
+const PROVIDER_TEST: &str = "/api/providers/test";
+
+/// Shared with core server/rust-provider-test.test.cjs: Node's `secrets.encrypt('sk-stored')` layout
+/// (enc:v1, no account) with key [7;32] and nonce [9;12], computed there with Node's own AES-GCM.
+const GOLDEN_V1: &str = "enc:v1:CQkJCQkJCQkJCQkJmAG2pcdXYs1DpznJT63n0FTuqefKn7MExA";
+
+fn seal_v1(plain: &str) -> String {
+    let nonce = [9u8; 12];
+    secret_envelope::seal(&KEY, &nonce, plain.as_bytes(), None).unwrap()
+}
+
+#[tokio::test]
+async fn provider_test_probes_with_node_rules() {
+    let d = tempfile::tempdir().unwrap();
+    let _db = seed(d.path());
+    let up = upstream(false).await;
+    let base = up.base("http");
+    let f = front(d.path()).await;
+    let addr = f.addr;
+    let need = r#"{"error":"valid baseUrl required"}"#;
+
+    // The gate, then the body (core readJson: empty is {}; a null body is no longer a 500).
+    assert_eq!(raw(addr, "POST", PROVIDER_TEST, "", "", b"{}").await.0, 401);
+    assert_eq!(
+        raw(addr, "POST", PROVIDER_TEST, ADMIN, "", b"{}").await.0,
+        403
+    );
+    assert_eq!(call(addr, PROVIDER_TEST, ADMIN, "").await, (400, j(need)));
+    assert_eq!(
+        call(addr, PROVIDER_TEST, ADMIN, "null").await,
+        (400, j(need))
+    );
+    assert_eq!(call(addr, PROVIDER_TEST, ADMIN, "[]").await, (400, j(need)));
+    assert_eq!(
+        call(addr, PROVIDER_TEST, ADMIN, "{").await,
+        (400, j(r#"{"error":"invalid JSON"}"#))
+    );
+    for b in [
+        r#"{"baseUrl":"ftp://x.test"}"#,
+        r#"{"baseUrl":"HTTPS://x.test"}"#,
+        r#"{"baseUrl":7}"#,
+    ] {
+        assert_eq!(
+            call(addr, PROVIDER_TEST, ADMIN, b).await,
+            (400, j(need)),
+            "{b}"
+        );
+    }
+    let long = format!(r#"{{"baseUrl":"http://x.test/{}"}}"#, "a".repeat(2048));
+    assert_eq!(
+        call(addr, PROVIDER_TEST, ADMIN, &long).await,
+        (400, j(r#"{"error":"baseUrl is too long"}"#))
+    );
+    let not_approved = r#"{"error":"Provider origin is not approved for member connections; contact an administrator."}"#;
+    up.clear();
+    for b in [
+        format!(r#"{{"baseUrl":"{base}/v1"}}"#),
+        r#"{"baseUrl":"http://u:p@127.0.0.1:9/v1"}"#.to_string(),
+    ] {
+        let who = if b.contains("u:p@") { ADMIN } else { MEMBER };
+        assert_eq!(
+            call(addr, PROVIDER_TEST, who, &b).await,
+            (400, j(not_approved)),
+            "{b}"
+        );
+    }
+    assert!(up.seen().is_empty(), "a refused target is never contacted");
+
+    // A 2xx lists the model ids (core modelIdsFrom, at most 100); /v1 is not doubled.
+    let mut data: Vec<String> = (0..120).map(|i| format!(r#"{{"id":"m{i}"}}"#)).collect();
+    data.insert(0, r#"{"id":" m0 "},{"id":""},{"id":"bad\u0001"}"#.into());
+    let listing = format!(r#"{{"data":[{}]}}"#, data.join(","));
+    up.set(move |_: &Seen| {
+        now(reply(
+            "200 OK",
+            "Content-Type: application/json\r\n",
+            &listing,
+        ))
+    });
+    let (status, body) = call(
+        addr,
+        PROVIDER_TEST,
+        ADMIN,
+        &format!(r#"{{"baseUrl":"  {base}/v1//  "}}"#),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["ok"], true);
+    let models = body["models"].as_array().unwrap();
+    assert_eq!(models.len(), 100);
+    assert_eq!(
+        (models[0].as_str(), models[99].as_str()),
+        (Some("m0"), Some("m99"))
+    );
+    let r = up.seen().last().unwrap().clone();
+    assert_eq!((r.method.as_str(), r.path.as_str()), ("GET", "/v1/models"));
+    assert!(
+        r.headers.contains("content-type: application/json"),
+        "{}",
+        r.headers
+    );
+    assert!(!r.headers.contains("authorization:"), "no key, no header");
+    // A typed key is sent as is.
+    call(
+        addr,
+        PROVIDER_TEST,
+        ADMIN,
+        &format!(r#"{{"baseUrl":"{base}","apiKey":"sk-typed"}}"#),
+    )
+    .await;
+    assert!(up
+        .seen()
+        .last()
+        .unwrap()
+        .headers
+        .contains("authorization: bearer sk-typed"));
+
+    // Failures: Node's statuses and undici's words.
+    for (line, extra, want) in [
+        ("404 Not Found", "", "provider returned 404"),
+        ("302 Found", "Location: /elsewhere\r\n", "fetch failed"),
+        ("200 OK", "", "__ok_not_json__"),
+    ] {
+        let (line, extra) = (line.to_string(), extra.to_string());
+        up.set(move |_: &Seen| now(reply(&line, &extra, "not json")));
+        let got = call(
+            addr,
+            PROVIDER_TEST,
+            ADMIN,
+            &format!(r#"{{"baseUrl":"{base}"}}"#),
+        )
+        .await;
+        if want == "__ok_not_json__" {
+            assert_eq!(got, (200, j(r#"{"ok":true,"models":[]}"#)));
+        } else {
+            assert_eq!(got, (502, serde_json::json!({ "error": want })));
+        }
+    }
+    let huge = "x".repeat(8 * 1024 * 1024 + 1);
+    up.set(move |_: &Seen| now(reply("200 OK", "", &huge)));
+    assert_eq!(
+        call(
+            addr,
+            PROVIDER_TEST,
+            ADMIN,
+            &format!(r#"{{"baseUrl":"{base}"}}"#)
+        )
+        .await,
+        (502, j(r#"{"error":"provider returned 200"}"#))
+    );
+    assert_eq!(
+        call(
+            addr,
+            PROVIDER_TEST,
+            ADMIN,
+            r#"{"baseUrl":"http://127.0.0.1:9"}"#
+        )
+        .await,
+        (502, j(r#"{"error":"fetch failed"}"#))
+    );
+
+    // The stored key: reused only for an editable row with a real key at the same origin.
+    up.set(|_: &Seen| now(reply("200 OK", "", r#"{"data":[]}"#)));
+    std::fs::create_dir_all(d.path().join("users").join(A)).unwrap();
+    let rows = serde_json::json!({"providers":[
+        {"id":"p1","label":"P1","baseUrl":format!("{base}/v1"),"apiKey":seal_v1("sk-stored")},
+        {"id":"p1","label":"dup","baseUrl":format!("{base}/v1"),"apiKey":seal_v1("sk-dup")},
+        {"id":"local","label":"L","baseUrl":base.clone(),"apiKey":seal_v1("local")},
+        {"id":"ext","label":"E","baseUrl":base.clone(),"apiKey":seal_v1("sk-ext"),"external":true},
+        {"id":"chatgpt-oauth","kind":"chatgpt-oauth","label":"C","baseUrl":base.clone(),"apiKey":seal_v1("sk-c")},
+        {"id":"lemonade","label":"Lem","baseUrl":base.clone(),"apiKey":seal_v1("sk-lem")},
+        {"id":"bad","label":"B","baseUrl":base.clone(),"apiKey":"enc:v1:AAAA"}
+    ]});
+    std::fs::write(
+        d.path().join("users").join(A).join("providers.json"),
+        rows.to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        d.path().join("shared-providers.json"),
+        serde_json::json!({"providers":[{"id":"s1","label":"S","baseUrl":base.clone(),"apiKey":seal_v1("sk-shared"),"shared":true}]}).to_string(),
+    )
+    .unwrap();
+    assert_eq!(seal_v1("sk-stored"), GOLDEN_V1);
+    let auth_for = |provider: &str, url: String| {
+        let provider = provider.to_string();
+        let up = up.clone();
+        async move {
+            up.clear();
+            let (status, _) = call(
+                addr,
+                PROVIDER_TEST,
+                ADMIN,
+                &format!(r#"{{"baseUrl":"{url}","providerId":"{provider}"}}"#),
+            )
+            .await;
+            assert_eq!(status, 200, "{provider}");
+            let h = up.seen().last().unwrap().headers.clone();
+            h.lines()
+                .find(|l| l.starts_with("authorization:"))
+                .map(str::to_string)
+        }
+    };
+    assert_eq!(
+        auth_for("p1", base.clone()).await.as_deref(),
+        Some("authorization: bearer sk-stored")
+    );
+    assert_eq!(
+        auth_for("s1", format!("{base}/other")).await.as_deref(),
+        Some("authorization: bearer sk-shared")
+    );
+    for id in [
+        "local",
+        "ext",
+        "chatgpt-oauth",
+        "lemonade",
+        "default",
+        "bad",
+        "missing",
+    ] {
+        assert_eq!(auth_for(id, base.clone()).await, None, "{id}");
+    }
+    // Another origin never gets the stored key.
+    let other = base.replace("127.0.0.1", "localhost");
+    assert_eq!(auth_for("p1", other).await, None);
+    // A typed key wins over the stored one.
+    call(
+        addr,
+        PROVIDER_TEST,
+        ADMIN,
+        &format!(r#"{{"baseUrl":"{base}","apiKey":"sk-new","providerId":"p1"}}"#),
+    )
+    .await;
+    assert!(up
+        .seen()
+        .last()
+        .unwrap()
+        .headers
+        .contains("authorization: bearer sk-new"));
+
+    // The deadline: 8 s for the whole exchange.
+    up.set(|_: &Seen| (Duration::from_secs(9), reply("200 OK", "", "{}")));
+    let started = std::time::Instant::now();
+    assert_eq!(
+        call(
+            addr,
+            PROVIDER_TEST,
+            ADMIN,
+            &format!(r#"{{"baseUrl":"{base}"}}"#)
+        )
+        .await,
+        (502, j(r#"{"error":"This operation was aborted"}"#))
+    );
+    assert!(started.elapsed() < Duration::from_secs(9));
+    f.stop().await;
+}

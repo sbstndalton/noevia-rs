@@ -18,6 +18,8 @@ pub mod model_routes;
 pub mod plugin_directory_routes;
 pub mod project_routes;
 pub mod project_store;
+#[cfg(feature = "rust-storage-reads")]
+pub mod provider_test_routes;
 pub mod public_pages;
 pub mod reasoning_settings_routes;
 pub mod reply;
@@ -99,6 +101,9 @@ use std::sync::Arc;
 /// legacy WebDAV setup Node asks for through the internal store (`/v1/storage/legacy-webdav`). The
 /// paired core refuses the PUT (rust-storage-connection.cjs `RUST_STORAGE_CONNECTION_OWNED`) and
 /// its database guard refuses every Node write of the table but the same-plaintext reseal.
+/// `rust-provider-test`: this build answers `POST /api/providers/test` (provider_test_routes.rs,
+/// sbstndalton/noevia#2190 round 4), reading the stored rows from disk for the key it may reuse;
+/// the paired core refuses it (rust-provider-test.cjs `RUST_PROVIDER_TEST_OWNED`).
 ///
 /// `project-store`: this build serves the internal project store Node writes projects.json and
 /// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
@@ -148,6 +153,8 @@ pub const FEATURES: &[&str] = &[
     "rust-storage-integrations",
     #[cfg(feature = "rust-storage-reads")]
     "rust-storage-connection",
+    #[cfg(feature = "rust-storage-reads")]
+    "rust-provider-test",
     "rust-vault-mirror-preferences",
     #[cfg(feature = "rust-reasoning-settings")]
     "rust-reasoning-settings",
@@ -317,6 +324,7 @@ async fn handle(
                     | routes::Native::PublicPages
                     | routes::Native::PluginDirectory
                     | routes::Native::StorageIntegrations
+                    | routes::Native::ProviderTest
             )
         ) {
             native = on_whatwg;
@@ -344,7 +352,8 @@ async fn handle(
             | routes::Native::PublicPages
             | routes::Native::PluginDirectory
             | routes::Native::DecisionSettings
-            | routes::Native::StorageIntegrations,
+            | routes::Native::StorageIntegrations
+            | routes::Native::ProviderTest,
         )
         | None => false,
     };
@@ -506,6 +515,24 @@ async fn handle(
             {
                 let _ = (p, conn, req);
                 reply::error(StatusCode::SERVICE_UNAVAILABLE, "Storage unavailable", true)
+            }
+        }
+        Some(routes::Native::ProviderTest) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            #[cfg(feature = "rust-storage-reads")]
+            {
+                provider_test_routes::serve(&app, conn, req, p).await
+            }
+            #[cfg(not(feature = "rust-storage-reads"))]
+            {
+                let _ = (p, conn, req);
+                reply::error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Provider test unavailable",
+                    true,
+                )
             }
         }
         Some(routes::Native::DecisionSettings) => {

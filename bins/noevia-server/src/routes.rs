@@ -94,7 +94,12 @@ pub enum Native {
     /// POST /api/integrations/storage/{folder,test,nextcloud/start,poll,cancel}
     /// (sbstndalton/noevia#2190): storage_integration_routes.rs.
     StorageIntegrations,
+    /// POST /api/providers/test (sbstndalton/noevia#2190 round 4): provider_test_routes.rs.
+    ProviderTest,
 }
+
+/// The route [`Native::ProviderTest`] implements (POST only; routes.toml).
+const PROVIDER_TEST: &str = "/api/providers/test";
 
 /// The routes [`Native::Diary`] implements, all methods (each answers its own 405 after the add-on
 /// gate, as core does). `/api/diary/history`, which core's handler shares with `today`, is not a
@@ -218,6 +223,7 @@ fn compiled(route: &Route) -> bool {
         && (![STORAGE_FILE, STORAGE_FILES_ROUTE].contains(&route.path)
             || cfg!(feature = "rust-storage-browse"))
         && (!STORAGE_INTEGRATIONS.contains(&route.path) || cfg!(feature = "rust-storage-reads"))
+        && (route.path != PROVIDER_TEST || cfg!(feature = "rust-storage-reads"))
         && (route.path != EXPORT || cfg!(feature = "rust-export"))
         && (route.path != CHATGPT_STATUS || cfg!(feature = "rust-chatgpt-status"))
 }
@@ -251,6 +257,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
             return Some(Native::DecisionSettings)
         }
         p if auth && STORAGE_INTEGRATIONS.contains(&p) => return Some(Native::StorageIntegrations),
+        PROVIDER_TEST if auth => return Some(Native::ProviderTest),
         "/api/instance"
         | "/.well-known/webauthn"
         | "/api/admin/web-address"
@@ -488,6 +495,7 @@ mod tests {
                 Some(Native::DecisionSettings)
                     if crate::decision_settings_routes::ROUTES.contains(&r.path) => {}
                 Some(Native::StorageIntegrations) if STORAGE_INTEGRATIONS.contains(&r.path) => {}
+                Some(Native::ProviderTest) if r.path == PROVIDER_TEST => {}
                 Some(_) => assert!(!is_account_path(r.path), "{} is an account path", r.path),
                 other @ None => assert!(
                     other.is_some(),
@@ -1091,6 +1099,7 @@ mod tests {
             ("GET", "/api/stats", Native::Stats),
             ("GET", "/api/providers/chatgpt", Native::ChatgptStatus),
             ("GET", "/api/integrations/storage", Native::StorageMetadata),
+            ("POST", "/api/providers/test", Native::ProviderTest),
             // sbstndalton/noevia#2190 round 4: the save.
             (
                 "PUT",
