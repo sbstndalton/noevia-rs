@@ -92,7 +92,15 @@ pub enum Native {
     /// Every method of /api/admin/decision-settings and /test (sbstndalton/noevia#2190):
     /// decision_settings_routes.rs.
     DecisionSettings,
+    /// POST /api/integrations/storage/{folder,test,nextcloud/start,poll,cancel}
+    /// (sbstndalton/noevia#2190): storage_integration_routes.rs.
+    StorageIntegrations,
+    /// POST /api/providers/test (sbstndalton/noevia#2190 round 4): provider_test_routes.rs.
+    ProviderTest,
 }
+
+/// The route [`Native::ProviderTest`] implements (POST only; routes.toml).
+const PROVIDER_TEST: &str = "/api/providers/test";
 
 /// The routes [`Native::Diary`] implements, all methods (each answers its own 405 after the add-on
 /// gate, as core does). `/api/diary/history`, which core's handler shares with `today`, is not a
@@ -203,6 +211,14 @@ const STORAGE_METADATA: &str = "/api/integrations/storage";
 /// `rust-storage-browse` under NOEVIA_RUST_STORAGE_BROWSE (#1368). Node's handler matches
 /// `^/api/integrations/storage/files(?:/(.*))?$` for GET and `.../file` exactly for POST.
 const STORAGE_FILES: &str = "/api/integrations/storage/files";
+/// The storage routes storage_integration_routes.rs answers (POST only, routes.toml).
+const STORAGE_INTEGRATIONS: &[&str] = &[
+    "/api/integrations/storage/folder",
+    "/api/integrations/storage/test",
+    "/api/integrations/storage/nextcloud/start",
+    "/api/integrations/storage/nextcloud/poll",
+    "/api/integrations/storage/nextcloud/cancel",
+];
 const STORAGE_FILES_ROUTE: &str = "/api/integrations/storage/files{*?}";
 const STORAGE_FILE: &str = "/api/integrations/storage/file";
 
@@ -232,6 +248,8 @@ fn compiled(route: &Route) -> bool {
         && (route.path != STORAGE_METADATA || cfg!(feature = "rust-storage-reads"))
         && (![STORAGE_FILE, STORAGE_FILES_ROUTE].contains(&route.path)
             || cfg!(feature = "rust-storage-browse"))
+        && (!STORAGE_INTEGRATIONS.contains(&route.path) || cfg!(feature = "rust-storage-reads"))
+        && (route.path != PROVIDER_TEST || cfg!(feature = "rust-storage-reads"))
         && (route.path != EXPORT || cfg!(feature = "rust-export"))
         && (route.path != CHATGPT_STATUS || cfg!(feature = "rust-chatgpt-status"))
 }
@@ -264,6 +282,8 @@ pub fn native_for(route: &Route) -> Option<Native> {
         p if auth && crate::decision_settings_routes::ROUTES.contains(&p) => {
             return Some(Native::DecisionSettings)
         }
+        p if auth && STORAGE_INTEGRATIONS.contains(&p) => return Some(Native::StorageIntegrations),
+        PROVIDER_TEST if auth => return Some(Native::ProviderTest),
         "/api/instance"
         | "/.well-known/webauthn"
         | "/api/admin/web-address"
@@ -298,6 +318,7 @@ const ACCOUNT_PREFIXES: &[&str] = &[
 
 fn is_account_path(path: &str) -> bool {
     path == "/api/chat-framing/preferences"
+        || path == server_account::vault_mirror::PATH
         || server_account::features::owns(path)
         || ACCOUNT_PREFIXES.iter().any(|p| {
             path.strip_prefix(p)
@@ -384,10 +405,15 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
     }
     let route = route_for(path)?;
     // This owner is exact-path only; the shared matcher tolerates trailing slashes.
-    if route.path == "/api/chat-framing/preferences" && path != route.path {
+    if (route.path == "/api/chat-framing/preferences"
+        || route.path == server_account::vault_mirror::PATH)
+        && path != route.path
+    {
         return None;
     }
-    if route.path == STORAGE_METADATA && (path != STORAGE_METADATA || method != "GET") {
+    if route.path == STORAGE_METADATA
+        && (path != STORAGE_METADATA || !["GET", "PUT"].contains(&method))
+    {
         return None;
     }
     if route.owner_under(switches) != Owner::Rust {
@@ -398,6 +424,11 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
     }
     if !compiled(route) {
         return None;
+    }
+    // sbstndalton/noevia#2190 round 4: saving the connection is storage_integration_routes.rs;
+    // reading it is the metadata worker's.
+    if route.path == STORAGE_METADATA && method == "PUT" {
+        return Some(Native::StorageIntegrations);
     }
     native_for(route)
 }
@@ -489,6 +520,8 @@ mod tests {
                         || r.path == "/api/admin/web-address/remove" => {}
                 Some(Native::DecisionSettings)
                     if crate::decision_settings_routes::ROUTES.contains(&r.path) => {}
+                Some(Native::StorageIntegrations) if STORAGE_INTEGRATIONS.contains(&r.path) => {}
+                Some(Native::ProviderTest) if r.path == PROVIDER_TEST => {}
                 Some(_) => assert!(!is_account_path(r.path), "{} is an account path", r.path),
                 other @ None => assert!(
                     other.is_some(),
@@ -1189,6 +1222,13 @@ mod tests {
             ("GET", "/api/stats", Native::Stats),
             ("GET", "/api/providers/chatgpt", Native::ChatgptStatus),
             ("GET", "/api/integrations/storage", Native::StorageMetadata),
+            ("POST", "/api/providers/test", Native::ProviderTest),
+            // sbstndalton/noevia#2190 round 4: the save.
+            (
+                "PUT",
+                "/api/integrations/storage",
+                Native::StorageIntegrations,
+            ),
             (
                 "GET",
                 "/api/integrations/storage/files",

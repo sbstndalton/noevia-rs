@@ -32,7 +32,7 @@ default = [
 ]
 rust-reasoning-settings = []
 rust-routing-mode = []
-rust-storage-reads = ["dep:server-storage-reads", "dep:zeroize"]
+rust-storage-reads = ["dep:server-storage-reads", "dep:zeroize", "dep:s3-sign", "dep:storage-path", "dep:rand_core"]
 # M4 (#1368): connected-storage list/read (permanent under NOEVIA_RUST_AUTH, #1071; src/storage_browse_routes.rs).
 rust-storage-browse = ["rust-storage-reads"]
 # M6 (#1305): GET /api/routing-default (permanent under NOEVIA_RUST_AUTH; src/routes.rs ROUTING_DEFAULT).
@@ -57,6 +57,10 @@ server-features = { path = "../../crates/server-features" }
 server-diary = { path = "../../crates/server-diary" }
 server-storage-reads = { path = "../../crates/server-storage-reads", optional = true }
 zeroize = { version = "=1.9.1", default-features = false, features = ["alloc"], optional = true }
+# sbstndalton/noevia#2190: the storage test/folder routes and the Nextcloud sign-in (storage_integration_routes.rs).
+s3-sign = { path = "../../crates/s3-sign", optional = true }
+storage-path = { path = "../../crates/storage-path", optional = true }
+rand_core = { version = "0.6", features = ["getrandom"], optional = true }
 server-routing-mode = { path = "../../crates/server-routing-mode" }
 server-reasoning-settings = { path = "../../crates/server-reasoning-settings" }
 server-sampling-settings = { path = "../../crates/server-sampling-settings" }
@@ -96,6 +100,9 @@ toml = "0.9"
 
 [dev-dependencies]
 secret-envelope = { path = "../../crates/secret-envelope" }
+# tests/storage_integrations.rs: a synthetic https Nextcloud on 127.0.0.1 (tests/fixtures/synthetic-tls).
+rustls = { version = "=0.23.45", default-features = false, features = ["std", "ring", "tls12"] }
+tokio-rustls = { version = "=0.26.6", default-features = false, features = ["ring", "tls12"] }
 tenant-assertion = { path = "../../crates/tenant-assertion" }
 tempfile = "3"
 http-body-util = { version = "0.1", features = ["channel"] }

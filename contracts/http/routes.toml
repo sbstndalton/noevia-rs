@@ -251,7 +251,7 @@ owner = "node"
 
 [[route]]
 path = "/api/chat-vault-mirror/preferences"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/chats/{chatId}/context"
@@ -378,9 +378,11 @@ path = "/api/import/conversations"
 owner = "node"
 
 [[route]]
+# GET: the metadata worker (#1071). PUT, the save (sbstndalton/noevia#2190 round 4,
+# rust-storage-connection): Rust is the only writer of the storage_connections row.
 path = "/api/integrations/storage"
 owner = "rust"
-methods = ["GET"]
+methods = ["GET", "PUT"]
 
 [[route]]
 path = "/api/integrations/storage/file"
@@ -394,23 +396,28 @@ methods = ["GET"]
 
 [[route]]
 path = "/api/integrations/storage/folder"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/integrations/storage/nextcloud/cancel"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/integrations/storage/nextcloud/poll"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/integrations/storage/nextcloud/start"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/integrations/storage/test"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/mcp-keys/servers"
@@ -708,8 +715,11 @@ path = "/api/providers/chatgpt/models"
 owner = "node"
 
 [[route]]
+# sbstndalton/noevia#2190 round 4 (rust-provider-test): the probe. Node keeps the other methods
+# (its PUT|DELETE /api/providers/{id} handler reads `test` as a provider id).
 path = "/api/providers/test"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/providers/{id}"

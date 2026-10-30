@@ -209,6 +209,7 @@ async fn server_main() -> ExitCode {
             listener,
             store,
             app.feature_context.clone(),
+            Some(std::sync::Arc::clone(&app)),
             async move {
                 let _ = rx.wait_for(|s| *s).await;
             },

@@ -284,8 +284,9 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     // configuration-only model reads, 97 after #2189 moved GET /api/models/estimate, about 91 after
     // #2190 moved the plugin directory, the three pages and the decision settings, 86 after #2191
     // moved a project source's three stored reads and a project's create and delete, 85 after its
-    // round 3 moved a source file's delete).
-    assert!(node_routes >= 85, "{node_routes} node routes");
+    // round 3 moved a source file's delete; #2190 rounds 3+4 then moved the storage integration
+    // POSTs, the vault-mirror preferences and the provider test: 78).
+    assert!(node_routes >= 78, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("POST", "/api/ready"),

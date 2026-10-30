@@ -238,8 +238,9 @@ reach that same recovery path, and activation only schedules work, so the gate g
 reads do not already do. (2) An upload whose body is still arriving at the 120 s
 deadline is answered 408; core destroyed the socket. (3) A request body
 of at most 4 KiB gets a 120 s read deadline (core had only the server-wide 20 minutes). (4) Core's
-`getStorage` upgrades a legacy v1 ciphertext in place when it reads it; the front reads and never writes
-`storage_connections`, so that upgrade still happens only on Node's own reads. (5) A sidecar reply that
+`getStorage` upgrades a legacy v1 ciphertext in place when it reads it; the front's reads never write
+`storage_connections`, so that upgrade still happens only on Node's own reads (since #2190 round 4 a
+compare-and-swap reseal of the same plaintext, the one Node write of the table its guard allows). (5) A sidecar reply that
 `JSON.parse` accepts but the port cannot hold (a number outside f64, a character in the reserved private
 range) is treated as a failed call (`js_json::wtf16`'s `Unsupported`).
 
@@ -572,19 +573,55 @@ row, which stays Node's to write. The connection test resolves a name and refuse
 answer is on this network, then checks `/health` through a resolver that applies the same rule
 at connect time, no redirect, no environment proxy, 3 s, 4 KiB.
 
+### Round 3: the storage integrations (Rust owns the Nextcloud sign-in)
+
+| route | owner | capability / Core refusal | notes |
+|---|---|---|---|
+| `/api/integrations/storage/folder`, `/test`, `/nextcloud/start`, `/nextcloud/poll`, `/nextcloud/cancel` (POST) | rust | `rust-storage-integrations` / `RUST_STORAGE_INTEGRATIONS_OWNED` | session gate, then the JSON-object body (1 MiB); the member-origin rule on every target, no redirect, no environment proxy, Node's deadlines and the 64 KiB Nextcloud reply cap; other methods stay Node's |
+| `/api/chat-vault-mirror/preferences` (all methods) | rust | `rust-vault-mirror-preferences` / `RUST_VAULT_MIRROR_PREFERENCES_OWNED` | Rust is the only writer of `users/<id>/chat-vault-mirror.json` (Node's mirror re-reads it per use); a PUT that turns it on while available writes `chat-vault-mirror-nudges.json` (`{version:1,nudges:{<userId>:<ms>}}`), which core polls by file signal to run that account's mirror at once |
+
+The pending Nextcloud sign-ins move wholesale: the same sealed file
+(`nextcloud-login-flows.json`, `enc:v2:` bound to the account, 10 minutes, at most 100, one per
+account, a nonce per flow so a cancelled flow's in-flight poll revokes the app password). A
+completed sign-in saves the `storage_connections` row with core `saveStorage`'s exact upsert and
+its `storage.update` audit row in one transaction (server-store `save_storage_connection`, its own
+grant); Node reads that row on every use (`getStorage`). Round 4 moves the remaining save
+(`PUT /api/integrations/storage`), so Rust is that row's only writer (below). The storage latch stays in Node with its
+automatic callers (the project refresh, the Diary backup): a folder or test call that works with
+the saved login writes `storage-login-proofs.json` (`{version:1,proofs:{<userId>:<ms>}}`, no
+credential), which Node's latch re-reads by its file signal (core shared-reread.cjs) and which
+ends a hold set before it.
+
+### Round 4: one writer for the storage connection
+
+| route | owner | capability / Core refusal | notes |
+|---|---|---|---|
+| `/api/integrations/storage` (PUT) | rust | `rust-storage-connection` / `RUST_STORAGE_CONNECTION_OWNED` | GET stays the metadata worker's; other methods stay Node's. Session gate (device tokens refused), the JSON-object body (1 MiB), then core's order: the fields, the member-origin rule, the region, the WebDAV/Nextcloud login check (PROPFIND Depth 0, 10 s, no redirect, no environment proxy; a 401 keeps the old row), the save and its `storage.update` audit row in one transaction, and the login proof when the checked login is the saved one |
+| `/api/providers/test` (POST) | rust | `rust-provider-test` / `RUST_PROVIDER_TEST_OWNED` | session gate, the body (1 MiB; empty is `{}`; a `null` body is no longer Node's 500), core's address, length and member-origin rules, then `GET <base>/v1/models` with no redirect, no environment proxy, 8 s for the whole exchange and an 8 MiB reply cap; a stored key is reused only for a row the caller may edit, with a real key, at the same origin, read from `shared-providers.json` and `users/<id>/providers.json` per request (`enc:v1`, golden vector shared with core); other methods stay Node's |
+
+Every Node writer of `storage_connections` is gone: the PUT; `saveStorage` (deleted from core
+auth.cjs); and core index.cjs's legacy WebDAV setup (an administrator's legacy workspace with
+`CORPUS_BACKEND=webdav`), which now asks the internal store (`POST /v1/storage/legacy-webdav
+{ user, baseUrl, username, secret, corpusRoot }` -> `{ saved }`, saved only while the account has
+no row or a `local` one, checked inside the write). Core's database guard (rust-auth.cjs
+`FRONT_TABLES`) refuses every Node INSERT, UPDATE or DELETE of the table with
+`RUST_STORAGE_CONNECTION_OWNED`, even inside `exempt()`, except one statement: `UPDATE
+storage_connections SET secret=? WHERE user_id=? AND secret=?`, the same plaintext resealed under
+the current key (`getStorage`'s legacy upgrade, `secrets:rotate`), which changes nothing if Rust
+saved the row in between. The seal is `enc:v2` bound to the account (the round-3 golden vector).
+
 Left on Node in this batch, and why (each resolves Node memory, a Node-only cache or an in-process
 job that chat or another Node route reads):
 
 | route | why it stays |
 |---|---|
-| `/api/providers`, `/api/providers/{id}`, `/api/providers/test`, `/api/providers/{providerId}/models{*?}` | the provider rows live on the in-memory workspace (`ws.providers`, `PROVIDERS`) that every chat turn reads in-process; a Rust writer would need Node to re-read the workspace per turn (follow-up) |
+| `/api/providers`, `/api/providers/{id}` | the private rows are cached on Node's workspace (`privateProviders`) that every chat turn reads in-process, and the list carries the env-derived default row, the model manager state and the ChatGPT connection; a Rust writer needs Node to re-read `providers.json` per turn by its file signal and the ChatGPT row writes (`ensureChatGptRow`/`removeChatGptRow`) to go through the internal store (round 4 design, not built) |
+| `/api/providers/{providerId}/models{*?}` | a ChatGPT row's list is Node's catalogue (chatgpt-oauth.cjs cache, in-flight fetch and refresh lock); the route cannot be split by row |
 | `/api/providers/chatgpt/device`, `/device/poll`, `/device/cancel`, `/api/providers/chatgpt/models` | chatgpt-oauth.cjs keeps the pending logins, the catalogue cache, its in-flight fetch and the token refresh lock in memory; chat uses the same tokens |
 | `/api/connectors`, `/api/connectors/gdrive/*`, `/api/connectors/nextcloud/policy` | drive-accounts.cjs holds personal Drive tokens in memory and the chat tools read the policies in-process |
-| `/api/integrations/storage/{folder,test,nextcloud/start,poll,cancel}` | the Nextcloud login flows are a sealed in-process store with a pending limit; the storage latch and login throttle are Node memory |
 | `/api/admin/offsite-backup` and its six children | offsite-service.cjs runs the backup, copy and verify jobs and their busy lock and 15-minute timer in-process |
 | `/api/admin/users/{id}` (DELETE) | the clean-up spans Node's workspace cache, MCP OAuth, directory MCP keys and ChatGPT tokens in memory |
 | `/api/auto-roles` | GET reads the served catalogue and machine models; an admin PUT warms the roles in Node's engine (`ensureRolesLoaded`) |
-| `/api/chat-vault-mirror/preferences` | PUT schedules Node's in-process mirror at once; the GET alone would split one setting over two processes |
 | `/api/health` | the retrieval probe is Node's cached RAG status, and the default provider is Node's in-memory registry |
 
 ## sbstndalton/noevia#2189 (batch M2-A): the read-only model sizing reads

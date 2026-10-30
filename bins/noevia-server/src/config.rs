@@ -66,6 +66,10 @@ pub struct Config {
     /// /api/admin/decision-settings (sbstndalton/noevia#2190): the deployment's
     /// COWORK_DECISION_URL, the view's fallback.
     pub decision: crate::decision_settings_routes::Deployment,
+    /// The storage test/folder routes and the Nextcloud sign-in (sbstndalton/noevia#2190): a QA
+    /// run's extra trusted root (`NOEVIA_QA_STORAGE_CA`, a DER file), for synthetic https
+    /// servers; production leaves it unset and trusts the public roots only.
+    pub storage_qa_ca: Option<Vec<u8>>,
     /// GET /api/models/estimate and /api/models/preset/suggest (sbstndalton/noevia#2189): the
     /// preset file, the model mounts, the sizing budget keys and the same engine /api/stats reads.
     pub sizing: std::sync::Arc<crate::model_sizing::Sizing>,
@@ -350,6 +354,9 @@ impl Config {
             models,
             plugin_directory: crate::plugin_directory_routes::Sources::from_lookup(&get),
             decision: crate::decision_settings_routes::Deployment::from_lookup(&get),
+            storage_qa_ca: get("NOEVIA_QA_STORAGE_CA")
+                .filter(|p| !p.is_empty())
+                .and_then(|p| std::fs::read(p).ok()),
             sizing,
             rust_export,
             project_store,
