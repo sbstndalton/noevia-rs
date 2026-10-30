@@ -250,7 +250,7 @@ pub fn read_json(file: &Path) -> Result<Option<JValue>, StoreError> {
 
 /// The user's directory, which a shared-file save never creates: [`StoreError::Gone`] when it is
 /// missing (the account was removed while the request was in flight).
-fn existing(dir: &Path) -> Result<(), StoreError> {
+pub(crate) fn existing(dir: &Path) -> Result<(), StoreError> {
     match std::fs::symlink_metadata(dir) {
         Ok(m) if m.is_dir() => Ok(()),
         Ok(_) => Err(StoreError::Corrupt),
@@ -260,7 +260,7 @@ fn existing(dir: &Path) -> Result<(), StoreError> {
 }
 
 /// A lock or a write that found the user's directory gone meanwhile.
-fn gone_if_missing(e: StoreError) -> StoreError {
+pub(crate) fn gone_if_missing(e: StoreError) -> StoreError {
     let missing = match &e {
         StoreError::Io(io) => io.kind() == std::io::ErrorKind::NotFound,
         StoreError::Write(server_store::json::JsonError::Io(io)) => {

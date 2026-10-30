@@ -255,7 +255,15 @@ impl RustRoutingMode {
 /// each file's lock (crates/server-projects `lock`) and never from a stale copy; Node saves its
 /// changes through the project store (sbstndalton/noevia#1264).
 /// free-chats.json is the free-chat slice's (crates/server-projects `free_chats`).
-pub const SHARED_PROJECT_FILES: &[&str] = &["projects.json", "free-chats.json"];
+///
+/// `providers.json` (sbstndalton/noevia#2190 round 6) is the same kind of file: the account's private
+/// provider rows, whose only writer is the Rust front (its provider routes, the ChatGPT broker's
+/// row and Node's seal-on-load migration through the project store), under the file's lock.
+pub const SHARED_PROJECT_FILES: &[&str] = &["projects.json", "free-chats.json", "providers.json"];
+
+/// The shared provider rows (`UI_DATA_DIR/shared-providers.json`, administrators'), which the Rust
+/// front alone writes since sbstndalton/noevia#2190 round 6.
+pub const ROOT_PROVIDER_FILE: &str = "shared-providers.json";
 
 /// Columns Rust reads or writes, per table, with the core module that creates them. Each must
 /// exist; Node may add others. (`diary_connectors` is optional: diary-connectors.cjs creates it
