@@ -230,13 +230,14 @@ async fn an_unusable_snapshot_reads_as_an_engine_that_cannot_be_reached() {
     let addr = front(dir.path()).await;
     let silent =
         r#"{"configured":true,"roles":{"fast":"anything","smart":"anything"},"missing":[]}"#;
-    let now = noevia_server::identity::now_ms();
     let file = dir.path().join("auto-roles-snapshot.json");
     // Missing: nothing is reported missing and no machine models are listed.
     assert_eq!(
         call(addr, "GET", "/api/auto-roles", COOKIE_A).await.text,
         silent
     );
+    // The first request after a start waits for Node (two seconds): the clock is read after it.
+    let now = noevia_server::identity::now_ms();
     // The same models, published, are missing.
     let state = r#""catalogue":[{"name":"other","missingFile":false}],"machineRoles":[],"machineModels":[{"model":"m","machine":{"id":"i","name":"n"},"roles":["fast"]}]"#;
     let loud = r#"{"configured":true,"roles":{"fast":"anything","smart":"anything"},"missing":[{"role":"fast","model":"anything"},{"role":"smart","model":"anything"}],"machineModels":[{"model":"m","machine":{"id":"i","name":"n"},"roles":["fast"]}]}"#;

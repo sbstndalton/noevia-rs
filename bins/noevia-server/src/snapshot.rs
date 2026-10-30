@@ -372,6 +372,7 @@ mod tests {
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(clippy::expect_used)]
 mod demand_tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt as _;

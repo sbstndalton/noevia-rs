@@ -1137,7 +1137,7 @@ OCR is gone with pdf.js).
 
 Each is permanent with no switch. Core refuses exactly the GET before authentication; the web supervisor and
 the release assembler pair each marker with its capability in both directions (old/old stays valid). The
-node-route floor in `tests/front.rs` is NODEFLOOR.
+node-route floor in `tests/front.rs` is 54.
 
 **Snapshots (what only Node knows).** `GET /api/health` needs `ragAvailable` and the retrieval tri-state
 (rag.cjs: the native index dependencies, the embedding probe and its 45 s cache, the administrator's embedding

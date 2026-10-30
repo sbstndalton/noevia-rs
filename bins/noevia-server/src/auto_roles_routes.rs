@@ -80,20 +80,18 @@ pub fn published_checked(data_dir: &Path, now_ms: i64) -> Option<Published> {
         JValue::Arr(rows) => {
             let mut names = Vec::new();
             for row in rows {
-                let Some(name) = row.get("name").as_str() else {
-                    return None;
-                };
+                let name = row.get("name").as_str()?;
                 match row.get("missingFile") {
                     JValue::Bool(false) | JValue::Null | JValue::Undefined => {
                         names.push(name.to_owned())
                     }
                     JValue::Bool(true) => {}
-                    _ => return Published::default(),
+                    _ => return None,
                 }
             }
             Some(names)
         }
-        _ => return Published::default(),
+        _ => return None,
     };
     let (Some(machine_roles), JValue::Arr(machine_models)) =
         (strings(doc.get("machineRoles")), doc.get("machineModels"))
