@@ -281,10 +281,11 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     }
     // A floor that shows the table was read; the count falls as routes move to the front (105 before
     // sbstndalton/noevia#2185 moved five Diary routes, 100 after, 98 after #2187 moved the two
-    // configuration-only model reads, 95 after #2191 moved a project source's three stored reads,
-    // 93 after its round 2 moved a project's create and delete, 92 after round 3 moved a source
-    // file's delete).
-    assert!(node_routes >= 92, "{node_routes} node routes");
+    // configuration-only model reads, 97 after #2189 moved GET /api/models/estimate, about 91 after
+    // #2190 moved the plugin directory, the three pages and the decision settings, 86 after #2191
+    // moved a project source's three stored reads and a project's create and delete, 85 after its
+    // round 3 moved a source file's delete).
+    assert!(node_routes >= 85, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("POST", "/api/ready"),
@@ -749,14 +750,23 @@ async fn static_bundle_like_static_files_cjs() {
     }
     assert!(up.hits.lock().unwrap().is_empty());
 
-    // Node's own pages, and anything Node's URL parsing might read differently, go to Node.
-    for p in [
-        "/about",
-        "/privacy",
-        "/device",
-        "/a/%2e%2e/index.html",
-        "/a//b",
-    ] {
+    // sbstndalton/noevia#2190: the public pages are the front's, byte for byte Node's.
+    for p in ["/about", "/privacy"] {
+        let (res, _c) = call(front, "GET", p, &[], b"").await;
+        assert!(res.headers().get("x-upstream").is_none(), "{p}");
+        assert_eq!(res.headers()["content-type"], "text/html; charset=utf-8");
+        assert_eq!(res.headers()["cache-control"], "public, max-age=300");
+        assert_eq!(res.headers()["x-frame-options"], "DENY");
+        assert!(res.headers().get("x-noevia-api").is_none());
+        assert!(text(res).await.starts_with("<!doctype html>"));
+        let (res, _c) = call(front, "POST", p, &[], b"").await;
+        assert!(
+            res.headers().get("x-upstream").is_some(),
+            "POST {p} stays Node's"
+        );
+    }
+    // Anything Node's URL parsing might read differently goes to Node.
+    for p in ["/about/", "/a/%2e%2e/index.html", "/a//b"] {
         let (res, _c) = call(front, "GET", p, &[], b"").await;
         assert!(res.headers().get("x-upstream").is_some(), "{p}");
     }

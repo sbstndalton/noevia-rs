@@ -79,9 +79,19 @@ pub enum Native {
     /// The Diary routes that are only a proxy and a policy (sbstndalton/noevia#2185):
     /// crates/server-diary. The others stay Node's (contracts/http/README.md).
     Diary,
-    /// GET /api/models/capabilities and GET /api/models/hardware (sbstndalton/noevia#2187):
-    /// model_routes.rs. The other model routes stay Node's.
+    /// GET /api/models/capabilities and GET /api/models/hardware (sbstndalton/noevia#2187), and GET
+    /// /api/models/estimate and GET /api/models/preset/suggest (#2189): model_routes.rs and
+    /// model_sizing.rs. The other model routes stay Node's.
     Models,
+    /// GET|HEAD /about and /privacy, every method of /device (sbstndalton/noevia#2190):
+    /// public_pages.rs.
+    PublicPages,
+    /// GET /api/plugins/directory and its 405s (sbstndalton/noevia#2190):
+    /// plugin_directory_routes.rs.
+    PluginDirectory,
+    /// Every method of /api/admin/decision-settings and /test (sbstndalton/noevia#2190):
+    /// decision_settings_routes.rs.
+    DecisionSettings,
 }
 
 /// The routes [`Native::Diary`] implements, all methods (each answers its own 405 after the add-on
@@ -249,6 +259,11 @@ pub fn native_for(route: &Route) -> Option<Native> {
         EXPORT if auth => return Some(Native::Export),
         p if auth && DIARY_ROUTES.contains(&p) => return Some(Native::Diary),
         p if auth && crate::model_routes::ROUTES.contains(&p) => return Some(Native::Models),
+        p if auth && crate::public_pages::ROUTES.contains(&p) => return Some(Native::PublicPages),
+        crate::plugin_directory_routes::DIRECTORY if auth => return Some(Native::PluginDirectory),
+        p if auth && crate::decision_settings_routes::ROUTES.contains(&p) => {
+            return Some(Native::DecisionSettings)
+        }
         "/api/instance"
         | "/.well-known/webauthn"
         | "/api/admin/web-address"
@@ -409,12 +424,7 @@ mod tests {
                 );
             }
         }
-        for path in [
-            "/api/features/",
-            "/api/features-x",
-            "/api/admin/features-x",
-            "/api/admin/decision-settings",
-        ] {
+        for path in ["/api/features/", "/api/features-x", "/api/admin/features-x"] {
             for method in ["GET", "PUT", "POST", "DELETE"] {
                 assert_eq!(dispatch(method, path), None, "{method} {path}");
             }
@@ -477,6 +487,8 @@ mod tests {
                 Some(Native::WebAddress)
                     if r.path == "/api/admin/web-address"
                         || r.path == "/api/admin/web-address/remove" => {}
+                Some(Native::DecisionSettings)
+                    if crate::decision_settings_routes::ROUTES.contains(&r.path) => {}
                 Some(_) => assert!(!is_account_path(r.path), "{} is an account path", r.path),
                 other @ None => assert!(
                     other.is_some(),
@@ -599,10 +611,21 @@ mod tests {
         assert_eq!(dispatch("HEAD", "/assets/a.js"), Some(Native::Static));
         assert_eq!(dispatch("GET", "/c/abc"), Some(Native::Static));
         assert_eq!(dispatch("POST", "/c/abc"), None);
-        assert_eq!(dispatch("GET", "/about"), None);
-        assert_eq!(dispatch("GET", "/privacy"), None);
-        assert_eq!(dispatch("GET", "/device"), None);
-        assert_eq!(dispatch("GET", "/device/"), None);
+        // sbstndalton/noevia#2190: the public pages (GET/HEAD) and the device page are the front's.
+        assert_eq!(dispatch("GET", "/about"), Some(Native::PublicPages));
+        assert_eq!(dispatch("HEAD", "/privacy"), Some(Native::PublicPages));
+        assert_eq!(dispatch("POST", "/about"), None);
+        assert_eq!(dispatch("GET", "/device"), Some(Native::PublicPages));
+        assert_eq!(dispatch("POST", "/device/"), Some(Native::PublicPages));
+        assert_eq!(dispatch("GET", "/device/x"), Some(Native::Static));
+        for m in ["GET", "POST", "PUT", "DELETE", "HEAD"] {
+            assert_eq!(
+                dispatch(m, "/api/plugins/directory"),
+                Some(Native::PluginDirectory),
+                "{m}"
+            );
+        }
+        assert_eq!(dispatch("GET", "/api/plugins/directoryx"), None);
         for path in [
             "/api/instance",
             "/.well-known/webauthn",
@@ -950,8 +973,8 @@ mod tests {
         }
     }
 
-    /// sbstndalton/noevia#2187: the two configuration-only model reads are the front's, GET only;
-    /// every other method and every other model route (the 20 others in routes.toml) stays Node's.
+    /// sbstndalton/noevia#2187: the two configuration-only model reads are the front's, GET only, and
+    /// (#2189) the two sizing reads; every other method and every other model route stays Node's.
     #[test]
     fn model_reads_are_rusts_for_get_only_and_the_other_model_routes_stay_nodes() {
         let on = Switches::default();
@@ -966,6 +989,7 @@ mod tests {
             }
         }
         assert!(crate::FEATURES.contains(&"rust-model-reads"));
+        assert!(crate::FEATURES.contains(&"rust-model-sizing"));
         for p in [
             "/api/model-manager",
             "/api/model-manager/models",
@@ -978,7 +1002,6 @@ mod tests {
             "/api/models/calibration",
             "/api/models/calibration/cancel",
             "/api/models/delete",
-            "/api/models/estimate",
             "/api/models/evidence",
             "/api/models/evidence/import",
             "/api/models/evidence/recheck",
@@ -991,6 +1014,9 @@ mod tests {
             "/api/models/downloads",
             "/api/models/capabilitiesx",
             "/api/models/hardware/x",
+            "/api/models/estimate/x",
+            "/api/models/preset/suggestx",
+            "/api/models/preset/x",
         ] {
             for m in ["GET", "POST", "PUT", "DELETE"] {
                 assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
@@ -1009,7 +1035,9 @@ mod tests {
             rust,
             vec![
                 (crate::model_routes::CAPABILITIES, &["GET"][..]),
+                (crate::model_sizing::ESTIMATE, &["GET"][..]),
                 (crate::model_routes::HARDWARE, &["GET"][..]),
+                (crate::model_sizing::SUGGEST, &["GET"][..]),
             ]
         );
     }

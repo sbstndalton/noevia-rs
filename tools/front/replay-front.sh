@@ -101,7 +101,10 @@ UI_PORT="$legacy" PUBLIC_ORIGIN="$origin" NOEVIA_RUST_AUTH=1 NOEVIA_RUST_AUTH_CO
   NOEVIA_RUST_PROJECT_STORE_CONFIRMED="$store_confirmed" NOEVIA_PROJECT_STORE_PORT="$store_port" NOEVIA_PROJECT_STORE_TOKEN="$store_token" NOEVIA_START_ID="$start_id" \
   "$(dirname "$front")/corpus-launcher" front-serve "$core" &
 node_pid=$!
-PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" NOEVIA_PROJECT_STORE_PORT="$store_port" NOEVIA_PROJECT_STORE_TOKEN="$store_token" NOEVIA_START_ID="$start_id" "$front" &
+# sbstndalton/noevia#2190: the plugin directory is the front's. Like Node under the corpus net
+# guard, it must never reach the Internet here: both directory sources point at a closed loopback
+# port, which is the recorded "could not be reached" 502.
+PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" NOEVIA_QA_MCP_REGISTRY="http://127.0.0.1:9" NOEVIA_QA_SKILLS_DIRECTORY="http://127.0.0.1:9/skills" NOEVIA_PROJECT_STORE_PORT="$store_port" NOEVIA_PROJECT_STORE_TOKEN="$store_token" NOEVIA_START_ID="$start_id" "$front" &
 front_pid=$!
 trap 'kill "$node_pid" "$front_pid" 2>/dev/null || true' INT TERM EXIT
 # Either one exiting ends the run (the replayer then sees the server go away).

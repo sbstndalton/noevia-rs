@@ -7,6 +7,7 @@ pub mod account_routes;
 pub mod chatgpt_status_routes;
 pub mod code_net;
 pub mod config;
+pub mod decision_settings_routes;
 pub mod diary_routes;
 pub mod export_routes;
 pub mod feature_context;
@@ -14,10 +15,13 @@ pub mod health;
 pub mod identity;
 pub mod legacy_proxy;
 pub mod model_routes;
+pub mod model_sizing;
+pub mod plugin_directory_routes;
 pub mod project_routes;
 #[cfg(feature = "rust-storage-browse")]
 pub mod project_storage_io;
 pub mod project_store;
+pub mod public_pages;
 pub mod reasoning_settings_routes;
 pub mod reply;
 pub mod routes;
@@ -85,6 +89,20 @@ use std::sync::Arc;
 /// those routes (core rust-project-lifecycle.cjs `RUST_PROJECT_LIFECYCLE_OWNED`) and publishes the
 /// toolbox catalogue a create reads (`project-catalogue.json`), so the web supervisor must refuse a
 /// front without it beside such a Core, and a front with it beside an older Core.
+/// `rust-public-pages`: this build answers `GET|HEAD /about` and `/privacy` and every method of
+/// `/device` (sbstndalton/noevia#2190); `rust-plugin-directory`: `/api/plugins/directory`. Both are
+/// permanent with no switch; Node refuses them (core rust-public-pages.cjs and
+/// rust-plugin-directory.cjs), so the web supervisor pairs each with its Core marker.
+///
+/// `rust-decision-settings`: this build answers every method of `/api/admin/decision-settings`
+/// and `/test` and is the single writer of the `decision:configuration` row
+/// (sbstndalton/noevia#2190); Node re-reads that row per decision and refuses the routes (core
+/// rust-decision-settings.cjs `RUST_DECISION_SETTINGS_OWNED`), so the supervisor pairs them.
+///
+/// `rust-model-sizing`: this build answers `GET /api/models/estimate` and `GET
+/// /api/models/preset/suggest` (sbstndalton/noevia#2189, src/model_sizing.rs), permanently and
+/// with no switch. Node refuses those two GETs (core rust-model-sizing.cjs `RUST_MODEL_SIZING_OWNED`),
+/// so the web supervisor pairs this capability with that Core in both directions.
 ///
 /// `rust-project-storage`: this build writes to a user's connected storage for a project's
 /// lifecycle (sbstndalton/noevia#2191 round 3): a create stores its text files in the project's
@@ -127,6 +145,10 @@ pub const FEATURES: &[&str] = &[
     "rust-project-lifecycle",
     "rust-project-storage",
     "rust-project-files",
+    "rust-public-pages",
+    "rust-plugin-directory",
+    "rust-decision-settings",
+    "rust-model-sizing",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",
@@ -200,6 +222,8 @@ pub struct App {
     pub export: Arc<tokio::sync::Semaphore>,
     pub routing_files:
         Option<Result<server_routing_mode::storage::Root, server_routing_mode::storage::Fault>>,
+    /// GET /api/plugins/directory: its client and hour-long cache (#2190).
+    pub plugin_directory: plugin_directory_routes::Directory,
 }
 
 impl App {
@@ -251,6 +275,9 @@ impl App {
                 .as_ref()
                 .map(|engine| Arc::new(stats_routes::StatsLayer::new(Arc::clone(engine)))),
             routing_files,
+            plugin_directory: plugin_directory_routes::Directory::new(
+                config.plugin_directory.clone(),
+            ),
             proxy: legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy),
             statics: static_files::StaticFiles::new(config.dist.clone()),
             version,
@@ -302,6 +329,9 @@ async fn handle(
                     | routes::Native::ChatgptStatus
                     | routes::Native::Diary
                     | routes::Native::Models
+                    | routes::Native::PublicPages
+                    | routes::Native::PluginDirectory
+                    | routes::Native::DecisionSettings
             )
         ) {
             native = on_whatwg;
@@ -325,7 +355,10 @@ async fn handle(
             | routes::Native::Export
             | routes::Native::ChatgptStatus
             | routes::Native::Diary
-            | routes::Native::Models,
+            | routes::Native::Models
+            | routes::Native::PublicPages
+            | routes::Native::PluginDirectory
+            | routes::Native::DecisionSettings,
         )
         | None => false,
     };
@@ -462,6 +495,24 @@ async fn handle(
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };
             model_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::PublicPages) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", false);
+            };
+            public_pages::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::PluginDirectory) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            plugin_directory_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::DecisionSettings) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            decision_settings_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::Ready) => {
             if app.proxy.is_in_process() {

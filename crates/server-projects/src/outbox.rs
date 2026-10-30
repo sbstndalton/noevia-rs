@@ -129,6 +129,35 @@ fn key_of(job: &Job<'_>) -> String {
 
 /// Queues `jobs` in one transaction (a job whose key is pending gets this generation). A project
 /// with a tombstone takes no index job. Returns the generation written.
+/// The projects a projects.json write lists exist again: their tombstones go (one transaction, and
+/// nothing is created when the user has no outbox). Called by every projects.json writer after the
+/// file is on disk, so a fixed id created again (a free chat's context project, the Diary context)
+/// is indexed again while a deleted project, listed nowhere, stays refused (Node treats any
+/// tombstone as deleted, core rust-index-outbox.cjs `deletedSince`).
+pub fn revive_listed(dir: &Path, projects: &[js_json::JValue]) -> Result<usize, OutboxError> {
+    if !path(dir).exists() {
+        return Ok(0);
+    }
+    let ids: Vec<&str> = projects
+        .iter()
+        .filter_map(|p| p.get("id").as_str())
+        .collect();
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let mut conn = open(dir)?;
+    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let mut gone = 0;
+    for id in ids {
+        gone += tx.execute("DELETE FROM tombstones WHERE project = ?1", [id])?;
+    }
+    if gone > 0 {
+        bump(&tx)?;
+    }
+    tx.commit()?;
+    Ok(gone)
+}
+
 pub fn enqueue(dir: &Path, jobs: &[Job<'_>], now_ms: i64) -> Result<i64, OutboxError> {
     let mut conn = open(dir)?;
     let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -396,6 +425,26 @@ mod tests {
         assert_eq!(kinds, vec![("index", "q"), ("sweep", "p")]);
         revive(d.path(), "p").unwrap();
         assert_eq!(tombstoned(d.path(), "p").unwrap(), None);
+    }
+
+    #[test]
+    fn a_listed_project_is_revived_and_an_unlisted_one_stays_dead() {
+        let d = tempfile::tempdir().unwrap();
+        enqueue(d.path(), &[index("p", "a.md")], 1).unwrap();
+        tombstone(d.path(), "p", None, 2).unwrap();
+        tombstone(d.path(), "q", None, 3).unwrap();
+        let listed = js_json::parse(r#"[{"id":"p"},{"id":"r"},{"name":"no id"}]"#).unwrap();
+        let listed = match listed {
+            js_json::JValue::Arr(items) => items,
+            _ => Vec::new(),
+        };
+        assert_eq!(listed.len(), 3);
+        assert_eq!(revive_listed(d.path(), &listed).unwrap(), 1);
+        assert_eq!(tombstoned(d.path(), "p").unwrap(), None);
+        assert!(tombstoned(d.path(), "q").unwrap().is_some());
+        let empty = tempfile::tempdir().unwrap();
+        assert_eq!(revive_listed(empty.path(), &listed).unwrap(), 0);
+        assert!(!path(empty.path()).exists());
     }
 
     #[test]
