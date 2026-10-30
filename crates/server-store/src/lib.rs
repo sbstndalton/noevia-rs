@@ -223,6 +223,23 @@ impl RustStorageIntegrations {
 /// The table [`RustStorageIntegrations`] may upsert one row of.
 const STORAGE_CONNECTIONS: &str = "storage_connections";
 
+/// Sign in with ChatGPT (sbstndalton/noevia#2190 round 5): the Rust front is the token broker and
+/// the only writer of `chatgpt_oauth_tokens` (the device sign-in's save, the single-flight refresh's
+/// compare-and-swap, "reconnect needed", disconnect, account removal and the start sweep of orphans). Core's guard (rust-auth.cjs
+/// `FRONT_TABLES`) refuses every Node write of the table but the rotation's same-plaintext reseal.
+/// Like [`RustStorageIntegrations`] the grant is per statement: only the five [`WriteTx`] methods
+/// named `*_chatgpt_tokens` open it, each for its one statement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RustChatgptOAuth(());
+impl RustChatgptOAuth {
+    pub const fn owned() -> Self {
+        Self(())
+    }
+}
+
+/// The table [`RustChatgptOAuth`] writes.
+const CHATGPT_OAUTH_TOKENS: &str = "chatgpt_oauth_tokens";
+
 /// Dedicated routing configuration capability; native auth alone grants neither its file nor key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RustRoutingMode(());
@@ -470,6 +487,7 @@ fn owned_authorizer(
     owned: &'static [(&'static str, Access)],
     settings_open: Arc<AtomicBool>,
     storage_open: Arc<AtomicBool>,
+    chatgpt_open: Arc<AtomicBool>,
 ) -> impl FnMut(AuthContext<'_>) -> Authorization {
     move |ctx: AuthContext<'_>| match ctx.action {
         AuthAction::Insert { table_name }
@@ -511,6 +529,14 @@ fn owned_authorizer(
                         AuthAction::Insert { .. } | AuthAction::Update { .. }
                     );
                 return if open {
+                    Authorization::Allow
+                } else {
+                    Authorization::Deny
+                };
+            }
+            if table_name == CHATGPT_OAUTH_TOKENS {
+                // sbstndalton/noevia#2190 round 5: only inside the `*_chatgpt_tokens` methods.
+                return if chatgpt_open.load(Ordering::SeqCst) {
                     Authorization::Allow
                 } else {
                     Authorization::Deny
@@ -912,6 +938,7 @@ pub struct WriteTx<'a> {
     conn: &'a Connection,
     settings_open: &'a AtomicBool,
     storage_open: &'a AtomicBool,
+    chatgpt_open: &'a AtomicBool,
 }
 
 /// Opens the `settings` grant for one statement (prepared uncached, so no authorized statement
@@ -1091,6 +1118,90 @@ impl WriteTx<'_> {
         ])?)
     }
 
+    /// Opens the `chatgpt_oauth_tokens` grant for one uncached statement.
+    fn chatgpt_statement<P: Params>(&self, sql: &str, params: P) -> Result<usize, StoreError> {
+        self.chatgpt_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.chatgpt_open);
+        let mut stmt = self.conn.prepare(sql)?;
+        Ok(stmt.execute(params)?)
+    }
+
+    /// Exactly core chatgpt-oauth.cjs `write()`: the sign-in's upsert (the row's sealed token JSON).
+    pub fn save_chatgpt_tokens(
+        &self,
+        _cap: RustChatgptOAuth,
+        user_id: &str,
+        data_enc: &str,
+        state: &str,
+        updated_at: i64,
+    ) -> Result<usize, StoreError> {
+        self.chatgpt_statement(
+            "INSERT INTO chatgpt_oauth_tokens(user_id, data_enc, state, updated_at) VALUES(?,?,?,?)
+      ON CONFLICT(user_id) DO UPDATE SET data_enc=excluded.data_enc, state=excluded.state, updated_at=excluded.updated_at",
+            rusqlite::params![user_id, data_enc, state, updated_at],
+        )
+    }
+
+    /// Exactly core's refresh compare-and-set: the new tokens replace the ciphertext the refresh
+    /// started from, only while that row is still connected.
+    pub fn swap_chatgpt_tokens(
+        &self,
+        _cap: RustChatgptOAuth,
+        user_id: &str,
+        next: &str,
+        updated_at: i64,
+        previous: &str,
+    ) -> Result<usize, StoreError> {
+        self.chatgpt_statement(
+            "UPDATE chatgpt_oauth_tokens SET data_enc=?, updated_at=? WHERE user_id=? AND state='connected' AND data_enc=?",
+            rusqlite::params![next, updated_at, user_id, previous],
+        )
+    }
+
+    /// Exactly core's `markReconnect`: this stored sign-in (by its ciphertext) or, without one, the row.
+    pub fn mark_chatgpt_reconnect(
+        &self,
+        _cap: RustChatgptOAuth,
+        user_id: &str,
+        raw: Option<&str>,
+        updated_at: i64,
+    ) -> Result<usize, StoreError> {
+        match raw {
+            Some(raw) => self.chatgpt_statement(
+                "UPDATE chatgpt_oauth_tokens SET state='reconnect', updated_at=? WHERE user_id=? AND data_enc=?",
+                rusqlite::params![updated_at, user_id, raw],
+            ),
+            None => self.chatgpt_statement(
+                "UPDATE chatgpt_oauth_tokens SET state='reconnect', updated_at=? WHERE user_id=?",
+                rusqlite::params![updated_at, user_id],
+            ),
+        }
+    }
+
+    /// Exactly core's `disconnect`/`forgetUser` delete.
+    pub fn delete_chatgpt_tokens(
+        &self,
+        _cap: RustChatgptOAuth,
+        user_id: &str,
+    ) -> Result<usize, StoreError> {
+        self.chatgpt_statement(
+            "DELETE FROM chatgpt_oauth_tokens WHERE user_id=?",
+            rusqlite::params![user_id],
+        )
+    }
+
+    /// The broker-start sweep: the rows of accounts that no longer exist (core `forgetUser` failed
+    /// after `deleteUser` removed the account, so its tokens were left behind).
+    pub fn delete_orphan_chatgpt_tokens(
+        &self,
+        _cap: RustChatgptOAuth,
+    ) -> Result<usize, StoreError> {
+        self.chatgpt_statement(
+            "DELETE FROM chatgpt_oauth_tokens WHERE user_id NOT IN (SELECT id FROM users)",
+            [],
+        )
+    }
+
     /// Exactly the routing allowed-list statement, under its own capability.
     pub fn set_routing_allowed(
         &self,
@@ -1149,6 +1260,7 @@ pub struct Writer {
     inner: Mutex<Inner>,
     settings_open: Arc<AtomicBool>,
     storage_open: Arc<AtomicBool>,
+    chatgpt_open: Arc<AtomicBool>,
 }
 
 impl Writer {
@@ -1167,17 +1279,24 @@ impl Writer {
         }
         let settings_open = Arc::new(AtomicBool::new(false));
         let storage_open = Arc::new(AtomicBool::new(false));
+        let chatgpt_open = Arc::new(AtomicBool::new(false));
         // READ_WRITE without CREATE: the file must already exist (Node made it).
         let inner = open_inner(
             data_dir,
             OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
             Some(owned),
-            owned_authorizer(owned, Arc::clone(&settings_open), Arc::clone(&storage_open)),
+            owned_authorizer(
+                owned,
+                Arc::clone(&settings_open),
+                Arc::clone(&storage_open),
+                Arc::clone(&chatgpt_open),
+            ),
         )?;
         Ok(Writer {
             inner: Mutex::new(inner),
             settings_open,
             storage_open,
+            chatgpt_open,
         })
     }
 
@@ -1195,6 +1314,7 @@ impl Writer {
             conn: &tx,
             settings_open: &self.settings_open,
             storage_open: &self.storage_open,
+            chatgpt_open: &self.chatgpt_open,
         })?;
         tx.commit()?;
         Ok(out)

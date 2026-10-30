@@ -95,6 +95,11 @@ pub struct Config {
     /// GET /api/providers/chatgpt (M6, sbstndalton/noevia#1373). An invalid
     /// NOEVIA_FEATURE_CHATGPT_OAUTH refuses startup (Node does not start with one either).
     pub rust_chatgpt_status: Option<ChatgptStatus>,
+    /// Sign in with ChatGPT's broker settings (sbstndalton/noevia#2190 round 5): Node's hosts, or
+    /// a loopback QA server (NOEVIA_QA_CHATGPT_ISSUER / NOEVIA_QA_CHATGPT_CODEX_BASE), and
+    /// NOEVIA_CHATGPT_CODEX_VERSION.
+    #[cfg(feature = "rust-chatgpt-status")]
+    pub chatgpt_oauth: Option<crate::chatgpt_oauth_routes::Settings>,
     pub rust_sampling_settings: Option<server_store::RustSamplingSettings>,
     pub usage_clock: Result<server_usage::summary::Clock, server_usage::Fault>,
     /// Retired deployment switches still set in the environment (#1071): reported at startup,
@@ -362,6 +367,10 @@ impl Config {
             project_store,
             start_id,
             rust_chatgpt_status,
+            #[cfg(feature = "rust-chatgpt-status")]
+            chatgpt_oauth: Some(crate::chatgpt_oauth_routes::Settings::from_lookup(
+                &get, None,
+            )),
             diary: server_diary::DiaryConfig::from_lookup(&get)?,
             usage_clock: server_usage::summary::Clock::system(&get),
             retired,

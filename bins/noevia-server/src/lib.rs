@@ -4,6 +4,8 @@
 
 pub mod account_routes;
 #[cfg(feature = "rust-chatgpt-status")]
+pub mod chatgpt_oauth_routes;
+#[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_status_routes;
 pub mod code_net;
 pub mod config;
@@ -22,6 +24,8 @@ pub mod project_routes;
 #[cfg(feature = "rust-storage-browse")]
 pub mod project_storage_io;
 pub mod project_store;
+#[cfg(feature = "rust-storage-reads")]
+pub mod provider_models_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod provider_test_routes;
 pub mod public_pages;
@@ -123,6 +127,14 @@ use std::sync::Arc;
 /// `rust-provider-test`: this build answers `POST /api/providers/test` (provider_test_routes.rs,
 /// sbstndalton/noevia#2190 round 4), reading the stored rows from disk for the key it may reuse;
 /// the paired core refuses it (rust-provider-test.cjs `RUST_PROVIDER_TEST_OWNED`).
+/// `rust-chatgpt-oauth`: this build is Sign in with ChatGPT's token broker (chatgpt_oauth_routes.rs,
+/// sbstndalton/noevia#2190 round 5): it answers the device sign-in and the account's model list,
+/// is the only writer of `chatgpt_oauth_tokens`, and hands Node's chat access tokens over the
+/// internal store (`/v1/chatgpt/*`); the paired core refuses the routes
+/// (rust-chatgpt-oauth.cjs `RUST_CHATGPT_OAUTH_OWNED`) and every Node write of the table.
+/// `rust-provider-models`: this build answers `/api/providers/{id}/models` (provider_models_routes.rs,
+/// round 5): the stored rows read from disk, the per-account cache, a ChatGPT row through the broker;
+/// the paired core refuses it (rust-provider-models.cjs `RUST_PROVIDER_MODELS_OWNED`).
 ///
 /// `rust-model-sizing`: this build answers `GET /api/models/estimate` and `GET
 /// /api/models/preset/suggest` (sbstndalton/noevia#2189, src/model_sizing.rs), permanently and
@@ -243,6 +255,10 @@ pub const FEATURES: &[&str] = &[
     "rust-storage-connection",
     #[cfg(feature = "rust-storage-reads")]
     "rust-provider-test",
+    #[cfg(feature = "rust-chatgpt-status")]
+    "rust-chatgpt-oauth",
+    #[cfg(feature = "rust-storage-reads")]
+    "rust-provider-models",
     "rust-vault-mirror-preferences",
     #[cfg(feature = "rust-reasoning-settings")]
     "rust-reasoning-settings",
@@ -262,6 +278,13 @@ pub struct App {
     /// GET /api/providers/chatgpt under NOEVIA_RUST_AUTH (M6, #1373; permanent since #1071).
     #[cfg(feature = "rust-chatgpt-status")]
     pub chatgpt_status: Option<Arc<chatgpt_status_routes::StatusLayer>>,
+    /// Sign in with ChatGPT's token broker (sbstndalton/noevia#2190 round 5): the device sign-in,
+    /// the token store and refresh, the catalogue cache; Node's chat asks it for access tokens.
+    #[cfg(feature = "rust-chatgpt-status")]
+    pub chatgpt_oauth: Option<Arc<chatgpt_oauth_routes::Broker>>,
+    /// GET /api/providers/{id}/models: the per-account list cache (sbstndalton/noevia#2190 round 5).
+    #[cfg(feature = "rust-storage-reads")]
+    pub provider_models: provider_models_routes::Lists,
     #[cfg(feature = "rust-storage-reads")]
     pub storage_metadata: Arc<storage_metadata_worker::Worker>,
     /// Storage list/read admission: four at once, one per account (#1368).
@@ -335,6 +358,11 @@ impl App {
         Arc::new(App {
             #[cfg(feature = "rust-chatgpt-status")]
             chatgpt_status: chatgpt_status_routes::StatusLayer::new(&config).map(Arc::new),
+            #[cfg(feature = "rust-chatgpt-status")]
+            chatgpt_oauth: chatgpt_oauth_routes::Broker::new(&config, version.as_deref())
+                .map(Arc::new),
+            #[cfg(feature = "rust-storage-reads")]
+            provider_models: provider_models_routes::Lists::default(),
             #[cfg(feature = "rust-storage-reads")]
             storage_metadata: Arc::new(storage_metadata_worker::Worker::default()),
             #[cfg(feature = "rust-storage-browse")]
@@ -427,6 +455,8 @@ async fn handle(
                     | routes::Native::DecisionSettings
                     | routes::Native::StorageIntegrations
                     | routes::Native::ProviderTest
+                    | routes::Native::ChatgptOAuth
+                    | routes::Native::ProviderModels
             )
         ) {
             native = on_whatwg;
@@ -455,7 +485,9 @@ async fn handle(
             | routes::Native::PluginDirectory
             | routes::Native::DecisionSettings
             | routes::Native::StorageIntegrations
-            | routes::Native::ProviderTest,
+            | routes::Native::ProviderTest
+            | routes::Native::ChatgptOAuth
+            | routes::Native::ProviderModels,
         )
         | None => false,
     };
@@ -573,6 +605,42 @@ async fn handle(
             {
                 let _ = p;
                 app.proxy.forward(conn.peer, req).await
+            }
+        }
+        Some(routes::Native::ProviderModels) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            #[cfg(feature = "rust-storage-reads")]
+            {
+                provider_models_routes::serve(&app, conn, req, p).await
+            }
+            #[cfg(not(feature = "rust-storage-reads"))]
+            {
+                let _ = (p, conn, req);
+                reply::error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Provider models unavailable",
+                    true,
+                )
+            }
+        }
+        Some(routes::Native::ChatgptOAuth) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            #[cfg(feature = "rust-chatgpt-status")]
+            {
+                chatgpt_oauth_routes::serve(&app, conn, req, p).await
+            }
+            #[cfg(not(feature = "rust-chatgpt-status"))]
+            {
+                let _ = p;
+                reply::error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "ChatGPT sign-in unavailable",
+                    true,
+                )
             }
         }
         Some(routes::Native::Export) => {

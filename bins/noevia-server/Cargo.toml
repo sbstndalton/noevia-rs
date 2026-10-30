@@ -43,7 +43,7 @@ rust-stats = []
 rust-export = []
 # M6 (#1373): GET /api/providers/chatgpt (permanent under NOEVIA_RUST_AUTH; src/routes.rs CHATGPT_STATUS,
 # crates/server-chatgpt-status).
-rust-chatgpt-status = ["dep:server-chatgpt-status", "dep:zeroize"]
+rust-chatgpt-status = ["dep:server-chatgpt-status", "dep:zeroize", "dep:rand_core"]
 # M4's second slice: a project's chat list (permanent since #1071; src/routes.rs PROJECT_CHATS).
 rust-project-chats = []
 # M4's third slice: the free-chat list (permanent since #1071; src/routes.rs FREE_CHATS).

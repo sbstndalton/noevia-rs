@@ -64,11 +64,11 @@ const TERMINATED: &str = "terminated";
 /// undici's own User-Agent.
 const NODE_AGENT: &str = "node";
 
-fn answer(status: StatusCode, body: &JValue) -> Response<Body> {
+pub(crate) fn answer(status: StatusCode, body: &JValue) -> Response<Body> {
     reply::json_text(status, js_json::stringify(body).unwrap_or_default(), true)
 }
 
-fn error(status: u16, message: &str) -> Response<Body> {
+pub(crate) fn error(status: u16, message: &str) -> Response<Body> {
     answer(
         StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
         &JValue::obj([("error", JValue::Str(message.into()))]),
@@ -76,7 +76,7 @@ fn error(status: u16, message: &str) -> Response<Body> {
 }
 
 /// `String(v || '')`.
-fn or_empty(v: &JValue) -> String {
+pub(crate) fn or_empty(v: &JValue) -> String {
     if v.truthy() {
         js_json::to_js_string(v).unwrap_or_default()
     } else {
@@ -101,7 +101,7 @@ fn origin_of(raw: &str) -> Option<String> {
 }
 
 /// core ssrf.cjs `createEndpointApproved()(authn, rawUrl)`.
-fn endpoint_approved(admin: bool, raw: &str) -> bool {
+pub(crate) fn endpoint_approved(admin: bool, raw: &str) -> bool {
     let Ok(u) = url::Url::parse(raw) else {
         return false;
     };
@@ -120,7 +120,7 @@ fn endpoint_approved(admin: bool, raw: &str) -> bool {
 }
 
 /// core index.cjs `DEFAULT_PROVIDER_ID`.
-fn default_provider_id() -> String {
+pub(crate) fn default_provider_id() -> String {
     std::env::var("DEFAULT_PROVIDER_ID")
         .ok()
         .filter(|v| !v.is_empty())
@@ -128,10 +128,10 @@ fn default_provider_id() -> String {
 }
 
 /// One stored provider row as the routes read it: its fields and the opened key.
-struct Row {
-    id: JValue,
-    raw: JValue,
-    key: Zeroizing<String>,
+pub(crate) struct Row {
+    pub(crate) id: JValue,
+    pub(crate) raw: JValue,
+    pub(crate) key: Zeroizing<String>,
 }
 
 /// workspace.cjs `readJson(file, { providers: [] }).providers || []`, each key opened as
@@ -170,7 +170,12 @@ fn is_id(v: &JValue, id: &str) -> bool {
 }
 
 /// The workspace's merged view (workspace.cjs `mergeProviders`), the first row with `id`.
-fn find_row(data_dir: &Path, user: &str, id: &str, keys: Option<&SecretKeys>) -> Option<Row> {
+pub(crate) fn find_row(
+    data_dir: &Path,
+    user: &str,
+    id: &str,
+    keys: Option<&SecretKeys>,
+) -> Option<Row> {
     let default = default_provider_id();
     if id == default {
         // The env-derived default row is first in the view; it is never editable here.
@@ -267,12 +272,12 @@ fn client() -> Option<&'static reqwest::Client> {
 }
 
 /// What the probe got: Node's `{ ok, status, body }` or the thrown message.
-enum Probe {
+pub(crate) enum Probe {
     Reply { ok: bool, status: u16, body: JValue },
     Thrown(&'static str),
 }
 
-async fn probe(url: &str, key: &str) -> Probe {
+pub(crate) async fn probe(url: &str, key: &str) -> Probe {
     let deadline = Instant::now() + DEADLINE;
     let Some(client) = client() else {
         return Probe::Thrown(FETCH_FAILED);
