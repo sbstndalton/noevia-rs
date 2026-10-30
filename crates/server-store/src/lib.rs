@@ -190,6 +190,19 @@ impl RustReasoningSettings {
     }
 }
 
+/// Settings -> Models -> Decision service (sbstndalton/noevia#2190): the one `decision:configuration`
+/// row, which the Rust front alone writes (core rust-decision-settings.cjs refuses the routes and
+/// core rust-auth.cjs the key). Permanent, no switch: the web supervisor pairs the front's
+/// `rust-decision-settings` capability with that Core.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RustDecisionSettings(());
+impl RustDecisionSettings {
+    pub const KEY: &'static str = "decision:configuration";
+    pub const fn owned() -> Self {
+        Self(())
+    }
+}
+
 /// Dedicated routing configuration capability; native auth alone grants neither its file nor key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RustRoutingMode(());
@@ -973,6 +986,34 @@ impl WriteTx<'_> {
         Ok(self.conn.execute(
             "INSERT OR REPLACE INTO settings(key,value) VALUES('reasoning_effort_default',?1)",
             [value],
+        )?)
+    }
+
+    /// Exactly Node's decision-settings save statement (core feature-setting-source.cjs WRITE_SQL
+    /// without RETURNING), under its own capability.
+    pub fn set_decision_configuration(
+        &self,
+        _decision: RustDecisionSettings,
+        value: &str,
+    ) -> Result<usize, StoreError> {
+        self.settings_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.settings_open);
+        Ok(self.conn.execute(
+            "INSERT OR REPLACE INTO settings(key,value) VALUES('decision:configuration',?1)",
+            [value],
+        )?)
+    }
+
+    /// Exactly Node's decision-settings reset statement, under the same capability.
+    pub fn delete_decision_configuration(
+        &self,
+        _decision: RustDecisionSettings,
+    ) -> Result<usize, StoreError> {
+        self.settings_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.settings_open);
+        Ok(self.conn.execute(
+            "DELETE FROM settings WHERE key='decision:configuration'",
+            [],
         )?)
     }
 

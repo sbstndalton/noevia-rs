@@ -417,7 +417,7 @@ and `--features` lists `rust-model-reads`. The rest wait for batch M2 (the job r
 | `/api/models/calibration` | node | GET is the calibration job's in-memory state; POST starts it (M2) |
 | `/api/models/calibration/cancel` | node | write to the running job (M2) |
 | `/api/models/delete` | node | write: unload, delete, roles, preset section (M2) |
-| `/api/models/estimate` | node | sizes with the boot-time budget fault and the inference budget store held in Node |
+| `/api/models/estimate` (GET) | rust | moved in #2189 (below); other methods keep Node's admin check and 405 |
 | `/api/models/evidence` | node | fills Node's in-memory identity cache that evidence writes use |
 | `/api/models/evidence/import` | node | write (M2) |
 | `/api/models/evidence/recheck` | node | write that may load a model (M2) |
@@ -426,7 +426,8 @@ and `--features` lists `rust-model-reads`. The rest wait for batch M2 (the job r
 | `/api/models/load` | node | write through Node's lease and maintenance gate (M2) |
 | `/api/models/machines` | node | machine health probe and tune caches in Node memory; POST writes |
 | `/api/models/presets/reload` | node | write under the maintenance hold (M2) |
-| `/api/models/{*}` | node | preset, suggest, idle-unload, assignments, reranker, prune, mtp-artifact, pull, downloads: mixed reads of Node state and writes |
+| `/api/models/preset/suggest` (GET) | rust | moved in #2189 (below); other methods keep Node's admin check and 405 |
+| `/api/models/{*}` | node | preset, idle-unload, assignments, reranker, prune, mtp-artifact, pull, downloads: mixed reads of Node state and writes |
 
 ### PR notes (#2187)
 
@@ -500,3 +501,83 @@ file whose name is a validated hex hash, never a request value.
 - Not ported: #687's move of create-time text files into the project's storage folder (a WebDAV
   write). With storage connected they stay noevia's own plain-named copies, as Node left them when
   that write failed; the first edit moves one into the folder.
+## sbstndalton/noevia#2190: the settings and integrations singles that need nothing of Node's memory
+
+Two groups move to the front, each with its own Core marker and front capability so either can be
+rolled back alone (old/old pairs stay valid; the web supervisor and release assembly refuse mixed
+pairs):
+
+| route | owner | capability / Core refusal | notes |
+|---|---|---|---|
+| `/about`, `/privacy` (GET, HEAD) | rust | `rust-public-pages` / `RUST_PUBLIC_PAGES_OWNED` | Node's exact bytes and headers (`src/pages/`), no session; other methods stay Node's |
+| `/device` (all methods) | rust | `rust-public-pages` / `RUST_PUBLIC_PAGES_OWNED` | JSON 404 while `nativeClientAuth` is off (read per request); the bundle's page when on |
+| `/api/plugins/directory` (all methods) | rust | `rust-plugin-directory` / `RUST_PLUGIN_DIRECTORY_OWNED` | fixed hosts, no redirects, 8 s, 4 MiB, hour cache, starters; 405 for all but GET after the gate |
+
+The replay runs the front with `NOEVIA_QA_MCP_REGISTRY` and `NOEVIA_QA_SKILLS_DIRECTORY` on a
+closed loopback port (`tools/front/replay-front.sh`), the counterpart of the corpus net guard Node
+runs under: exchange 000141 is the recorded "could not be reached" 502 on both sides.
+
+### Round 2: the decision settings (Rust single writer, Node re-reads)
+
+| route | owner | capability / Core refusal | notes |
+|---|---|---|---|
+| `/api/admin/decision-settings` (all methods), `/api/admin/decision-settings/test` (all methods) | rust | `rust-decision-settings` / `RUST_DECISION_SETTINGS_OWNED` | admin only; GET/PUT/DELETE and `PUT {reset:true}`, POST `/test`, 405 otherwise; the save or reset and its `decision.*` audit row in one transaction |
+
+Rust is the only writer of the `decision:configuration` settings row (core rust-auth.cjs refuses
+the key on Node's connection with the same code). Node keeps the decision path in process and
+re-reads the row on every use by its content fingerprint (core feature-setting-source.cjs
+`readFact().source`, through core shared-reread.cjs): a save here is in force for the next
+decision with no restart, and the per-URL decision backends (their lanes) stay Node caches keyed
+by what it re-read. The view's Inference machine address comes from the `inference:machines`
+row, which stays Node's to write. The connection test resolves a name and refuses it unless every
+answer is on this network, then checks `/health` through a resolver that applies the same rule
+at connect time, no redirect, no environment proxy, 3 s, 4 KiB.
+
+Left on Node in this batch, and why (each resolves Node memory, a Node-only cache or an in-process
+job that chat or another Node route reads):
+
+| route | why it stays |
+|---|---|
+| `/api/providers`, `/api/providers/{id}`, `/api/providers/test`, `/api/providers/{providerId}/models{*?}` | the provider rows live on the in-memory workspace (`ws.providers`, `PROVIDERS`) that every chat turn reads in-process; a Rust writer would need Node to re-read the workspace per turn (follow-up) |
+| `/api/providers/chatgpt/device`, `/device/poll`, `/device/cancel`, `/api/providers/chatgpt/models` | chatgpt-oauth.cjs keeps the pending logins, the catalogue cache, its in-flight fetch and the token refresh lock in memory; chat uses the same tokens |
+| `/api/connectors`, `/api/connectors/gdrive/*`, `/api/connectors/nextcloud/policy` | drive-accounts.cjs holds personal Drive tokens in memory and the chat tools read the policies in-process |
+| `/api/integrations/storage/{folder,test,nextcloud/start,poll,cancel}` | the Nextcloud login flows are a sealed in-process store with a pending limit; the storage latch and login throttle are Node memory |
+| `/api/admin/offsite-backup` and its six children | offsite-service.cjs runs the backup, copy and verify jobs and their busy lock and 15-minute timer in-process |
+| `/api/admin/users/{id}` (DELETE) | the clean-up spans Node's workspace cache, MCP OAuth, directory MCP keys and ChatGPT tokens in memory |
+| `/api/auto-roles` | GET reads the served catalogue and machine models; an admin PUT warms the roles in Node's engine (`ensureRolesLoaded`) |
+| `/api/chat-vault-mirror/preferences` | PUT schedules Node's in-process mirror at once; the GET alone would split one setting over two processes |
+| `/api/health` | the retrieval probe is Node's cached RAG status, and the default provider is Node's in-memory registry |
+
+## sbstndalton/noevia#2189 (batch M2-A): the read-only model sizing reads
+
+`GET /api/models/estimate?model=` (the "Will it fit?" inputs) and `GET /api/models/preset/suggest?model=`
+(the size-based preset suggestion) are the front's (`src/model_sizing.rs`), permanently and GET only. Core
+refuses both GETs before authentication with 503 `RUST_MODEL_SIZING_OWNED` (`server/rust-model-sizing.cjs`,
+required from `index.cjs`) and `--features` lists `rust-model-sizing`; the web supervisor and the release
+assembly pair the two. Every other method stays Node's (an administrator check, then 405; corpus 000174).
+
+| route | owner | reads |
+|---|---|---|
+| `/api/models/estimate` (GET) | rust | `LLAMACPP_PRESET_PATH` (models.ini, read only), `LLAMACPP_MODELS_PATH`/`LLAMACPP_CACHE_PATH` (the GGUF header and file sizes), the router's `GET /models` (the model's argv), the saved inference budget (`settings` key `inference:memory-budget`, `INFERENCE_MEMORY_BUDGET_GIB`, host RAM) lowered only by `LLAMACPP_AUTOCONFIG_MEMORY_GIB` |
+| `/api/models/preset/suggest` (GET) | rust | the same, and the prompt-cache cap (`LLAMACPP_AUTOCONFIG_CACHE_RAM_MAX_MIB`, `LLAMACPP_CACHE_RAM_HARD_MAX_MIB`) |
+
+The sizing is crates/llamacpp-autoconfig's strict operations 1 and 2 and the header summary is crates/gguf's,
+the same code Core ran through dav-parse.wasm; Core's answer was its JS estimator's confirmed by that port,
+and the recorded answers are the port's text in every case. `tests/model_sizing.rs` replays 178 answers Core
+gave for synthetic fixtures (`tests/fixtures/model-sizing/record-node.cjs`, recorded at Core `fbac2e4`) byte
+for byte, and proves nothing is written and the router is asked only for its listing. Nothing is cached.
+
+Kept on Node, and why: `GET /api/models/evidence` computes the model's identity from router args, the
+engine's `/props`, a file fingerprint and the preset hash, and keeps it in a 30 s cache the evidence writers
+(calibration, auto-tune, recheck, import) read and clear; serving it from a second process would need that
+cache or a second identity writer, so it moves with the evidence writers (batch B). `inference-budget` (its
+PUT and the boot-time saved value), `installed`, load/unload, delete, calibration, auto-tune, machines, preset
+GET/PUT and `/api/model-manager` stay too.
+
+Not Node's answer, each unreachable in a working deployment: Core always has an inference budget of at least
+2 GiB, so the boot-time `LLAMACPP_MEMORY_LIMIT` fault and the "no budget" 501 never show (both kept or
+documented in model_sizing.rs); a settings store the front cannot read answers 503 (Node holds the value in
+memory); GGUF metadata with NaN, Infinity or -0 in a raw field (float-typed headers only) asks the port with
+`null`/`0` where the JS estimator saw the number; a router listing nested 64 deep at the fields read counts as
+no listing.
+
