@@ -653,7 +653,9 @@ endpoints other than a loopback QA server are not accepted (`GOOGLE_OAUTH_BASE_U
 Nextcloud half is Node's) and `policy {user, tools, writes, mode}` (the Nextcloud permissions, written by the front
 because it is `tool_policies`' only writer). A refresh token never reaches Node. The broker rewrites
 `gdrive-connections.json` after each change (no secret, no email: the accounts that have a connection file and its
-state, and the backup slot's `{usable, state, owner, expiresAt}`); Node's sync `connected(user)` and its
+state, and the backup slot's `{usable, state, owner, expiresAt}`; at start only when there is a connection file or an older
+state file to correct, because Node reads a missing file as "nobody is connected" and the corpus replay compares the data
+directory; the front makes `google-drive-users/` (0700) the first time an account's Drive is asked for, as core's `forUser` did); Node's sync `connected(user)` and its
 60-second access-token cache follow that file's signal, and the shared cases in `gdrive-owns-backup.v1.json`
 prove Node and the front agree on `ownsBackup`. `tool_policies`: a per-statement grant (server-store
 `RustToolPolicies`, `upsert_tool_policy`, never a delete); core's guard refuses every Node write even inside
