@@ -109,10 +109,19 @@ pub enum Native {
     /// POST /api/connectors/gdrive/{connect,disconnect}, PUT .../{policy,backup-copy}
     /// (sbstndalton/noevia#2190 round 7): connector_routes.rs.
     Connectors,
+    /// GET|POST /api/providers, PUT|DELETE /api/providers/{id}, DELETE /api/providers/chatgpt
+    /// (sbstndalton/noevia#2190 round 6): provider_routes.rs.
+    Providers,
 }
 
 /// The route [`Native::ProviderTest`] implements (POST only; routes.toml).
 const PROVIDER_TEST: &str = "/api/providers/test";
+
+/// The routes [`Native::Providers`] implements (sbstndalton/noevia#2190 round 6): the list (GET,
+/// POST) and one row (PUT, DELETE). `DELETE /api/providers/chatgpt` and `PUT|DELETE
+/// /api/providers/test` are the same handler's, picked by method in [`dispatch_under`].
+pub(crate) const PROVIDERS_LIST: &str = "/api/providers";
+pub(crate) const PROVIDER_ONE: &str = "/api/providers/{id}";
 
 /// The route [`Native::ProviderModels`] implements (every method; routes.toml).
 const PROVIDER_MODELS: &str = "/api/providers/{providerId}/models{*?}";
@@ -301,6 +310,8 @@ fn compiled(route: &Route) -> bool {
         && (route.path != CHATGPT_STATUS || cfg!(feature = "rust-chatgpt-status"))
         && (!CHATGPT_OAUTH.contains(&route.path) || cfg!(feature = "rust-chatgpt-status"))
         && (route.path != PROVIDER_MODELS || cfg!(feature = "rust-storage-reads"))
+        && (![PROVIDERS_LIST, PROVIDER_ONE].contains(&route.path)
+            || cfg!(feature = "rust-storage-reads"))
 }
 
 /// The native handler a rust-owned route is implemented by. The front read routes and the export
@@ -339,6 +350,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
         p if auth && crate::connector_routes::ROUTES.contains(&p) => {
             return Some(Native::Connectors)
         }
+        PROVIDERS_LIST | PROVIDER_ONE if auth => return Some(Native::Providers),
         "/api/instance"
         | "/.well-known/webauthn"
         | "/api/admin/web-address"
@@ -477,6 +489,14 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
     if !route.methods.is_empty() && !route.methods.contains(&method) {
         return None;
     }
+    // sbstndalton/noevia#2190 round 6: the provider registry's writes share these paths with the
+    // status GET and the probe POST (a `test` or `chatgpt` segment is also a provider id).
+    if matches!(
+        (route.path, method),
+        (CHATGPT_STATUS, "DELETE") | (PROVIDER_TEST, "PUT" | "DELETE")
+    ) {
+        return cfg!(feature = "rust-storage-reads").then_some(Native::Providers);
+    }
     if !compiled(route) {
         return None;
     }
@@ -581,6 +601,7 @@ mod tests {
                 Some(Native::ProviderModels) if r.path == PROVIDER_MODELS => {}
                 Some(Native::Offsite) if crate::offsite_routes::ROUTES.contains(&r.path) => {}
                 Some(Native::Connectors) if crate::connector_routes::ROUTES.contains(&r.path) => {}
+                Some(Native::Providers) if r.path == PROVIDERS_LIST || r.path == PROVIDER_ONE => {}
                 Some(_) => assert!(!is_account_path(r.path), "{} is an account path", r.path),
                 other @ None => assert!(
                     other.is_some(),
@@ -1345,19 +1366,21 @@ mod tests {
         ] {
             assert_eq!(dispatch_under(m, p, on), broker, "{m} {p}");
         }
-        // Node keeps every other method (its 405 or the disconnect), the siblings' other methods
-        // and the provider list.
+        // The disconnect is the provider registry's since round 6; Node keeps every other method
+        // (its 404/405), and the siblings' other methods.
+        assert_eq!(
+            dispatch_under("DELETE", "/api/providers/chatgpt", on),
+            cfg!(feature = "rust-storage-reads").then_some(Native::Providers)
+        );
         for (m, p) in [
             ("HEAD", "/api/providers/chatgpt"),
             ("POST", "/api/providers/chatgpt"),
             ("PUT", "/api/providers/chatgpt"),
-            ("DELETE", "/api/providers/chatgpt"),
             ("OPTIONS", "/api/providers/chatgpt"),
             ("POST", "/api/providers/chatgpt/models"),
             ("GET", "/api/providers/chatgpt/device"),
             ("DELETE", "/api/providers/chatgpt/device/poll"),
             ("GET", "/api/providers/chatgptx"),
-            ("GET", "/api/providers"),
         ] {
             assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
         }
@@ -1412,6 +1435,14 @@ mod tests {
                 Native::ChatgptOAuth,
             ),
             ("GET", "/api/providers/chatgpt/models", Native::ChatgptOAuth),
+            // sbstndalton/noevia#2190 round 6: the provider registry.
+            ("GET", "/api/providers", Native::Providers),
+            ("POST", "/api/providers", Native::Providers),
+            ("PUT", "/api/providers/mine", Native::Providers),
+            ("DELETE", "/api/providers/mine", Native::Providers),
+            ("DELETE", "/api/providers/chatgpt", Native::Providers),
+            ("PUT", "/api/providers/test", Native::Providers),
+            ("DELETE", "/api/providers/test", Native::Providers),
             ("GET", "/api/providers/mine/models", Native::ProviderModels),
             ("POST", "/api/providers/mine/models", Native::ProviderModels),
             // sbstndalton/noevia#2190 round 4: the save.

@@ -296,9 +296,9 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     // POSTs, the vault-mirror preferences and the provider test: 78; #2191 round 4 moved the
     // conversation import and round 6 the upload's and the sync's POST, the background start: 75;
     // #2190 round 5 moved the ChatGPT device sign-in, its model list and the provider model
-    // lists: 70; round 7 the off-site backup's seven routes and the four Google Drive connector
-    // writes: 59).
-    assert!(node_routes >= 59, "{node_routes} node routes");
+    // lists: 70; round 6 moved the provider registry's list and its one-row route: 68; round 7 the
+    // off-site backup's seven routes and the four Google Drive connector writes: 57).
+    assert!(node_routes >= 57, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("POST", "/api/ready"),

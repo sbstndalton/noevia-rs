@@ -36,7 +36,7 @@ use axum::body::Body;
 use axum::http::{Method, Request, Response, StatusCode};
 use axum::response::IntoResponse;
 use http_body_util::BodyExt;
-use js_json::JValue;
+use js_json::{wtf16, JValue};
 use server_auth::secrets::SecretKeys;
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
@@ -85,16 +85,16 @@ pub(crate) fn or_empty(v: &JValue) -> String {
 }
 
 /// `s.trim().replace(/\/+$/, '')` (JavaScript's whitespace set).
-fn trimmed_address(s: &str) -> String {
+pub(crate) fn trimmed_address(s: &str) -> String {
     s3_sign::js_trim(s).trim_end_matches('/').to_string()
 }
 
-fn http_prefixed(s: &str) -> bool {
+pub(crate) fn http_prefixed(s: &str) -> bool {
     s.starts_with("http://") || s.starts_with("https://")
 }
 
 /// `new URL(url).origin`, or `None` when it does not parse.
-fn origin_of(raw: &str) -> Option<String> {
+pub(crate) fn origin_of(raw: &str) -> Option<String> {
     url::Url::parse(raw)
         .ok()
         .map(|u| u.origin().ascii_serialization())
@@ -186,11 +186,16 @@ pub(crate) fn find_row(
         });
     }
     let shared = read_rows(&data_dir.join("shared-providers.json"), keys);
-    if let Some(row) = shared
+    if let Some(mut row) = shared
         .into_iter()
         .filter(|r| !is_id(&r.id, &default))
         .find(|r| is_id(&r.id, id))
     {
+        // A row in the shared file is shared whatever its own flag says (the registry's rule,
+        // provider_routes.rs `is_shared`): a member neither edits it nor probes with its key.
+        if let JValue::Obj(items) = &mut row.raw {
+            wtf16::set(items, "shared", JValue::Bool(true));
+        }
         return Some(row);
     }
     let user_ok = user.len() == 36 && user.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-');
@@ -332,12 +337,12 @@ pub(crate) async fn probe(url: &str, key: &str) -> Probe {
     }
 }
 
-enum BodyError {
+pub(crate) enum BodyError {
     TooLarge,
     Failed,
 }
 
-async fn read_body(mut body: Body) -> Result<Vec<u8>, BodyError> {
+pub(crate) async fn read_body(mut body: Body) -> Result<Vec<u8>, BodyError> {
     let read = async {
         let mut out = Vec::new();
         while let Some(frame) = body.frame().await {
@@ -463,6 +468,26 @@ pub async fn serve(
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_row_in_the_shared_file_is_shared_whatever_its_flag_and_editable_by_administrators_only() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("shared-providers.json"),
+            r#"{"providers":[{"id":"team","label":"Team","baseUrl":"https://x.test","apiKey":""}]}"#,
+        )
+        .unwrap();
+        let row = find_row(
+            dir.path(),
+            "11111111-2222-4333-8444-555555555555",
+            "team",
+            None,
+        )
+        .unwrap();
+        assert!(row.raw.get("shared").truthy());
+        assert!(!editable("team", &row, false));
+        assert!(editable("team", &row, true));
+    }
 
     #[test]
     fn model_ids_are_core_model_ids_from() {

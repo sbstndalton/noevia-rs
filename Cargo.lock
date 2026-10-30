@@ -1901,6 +1901,7 @@ dependencies = [
  "offsite-backup-format",
  "policy-leaves",
  "prompt-framing",
+ "provider-egress",
  "rand_core 0.6.4",
  "reqwest",
  "rustls",
