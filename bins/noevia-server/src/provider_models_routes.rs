@@ -101,7 +101,7 @@ fn digest(parts: &[&str]) -> String {
 }
 
 /// JS `decodeURIComponent`: `%XX` escapes to UTF-8, which must be valid; a stray `%` throws.
-fn decode_component(s: &str) -> Option<String> {
+pub(crate) fn decode_component(s: &str) -> Option<String> {
     let mut out = Vec::with_capacity(s.len());
     let mut bytes = s.bytes();
     while let Some(b) = bytes.next() {

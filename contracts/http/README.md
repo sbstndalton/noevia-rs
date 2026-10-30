@@ -599,7 +599,7 @@ ends a hold set before it.
 | route | owner | capability / Core refusal | notes |
 |---|---|---|---|
 | `/api/integrations/storage` (PUT) | rust | `rust-storage-connection` / `RUST_STORAGE_CONNECTION_OWNED` | GET stays the metadata worker's; other methods stay Node's. Session gate (device tokens refused), the JSON-object body (1 MiB), then core's order: the fields, the member-origin rule, the region, the WebDAV/Nextcloud login check (PROPFIND Depth 0, 10 s, no redirect, no environment proxy; a 401 keeps the old row), the save and its `storage.update` audit row in one transaction, and the login proof when the checked login is the saved one |
-| `/api/providers/chatgpt/device`, `/device/poll`, `/device/cancel` (POST), `/api/providers/chatgpt/models` (GET) | rust | `rust-chatgpt-oauth` / `RUST_CHATGPT_OAUTH_OWNED` | the token broker (chatgpt_oauth_routes.rs): session gate, the `chatgptOAuth` flag (off: 404), then core's device sign-in (5 starts per 10 minutes, 3 pending per account, 15-minute TTL, the poll interval and the cancel/disconnect race), the token store (`chatgpt_oauth_tokens`, `enc:v2` bound to the owner) and the catalogue cache (5 minutes, failures 1 minute, a 10-second refresh gap, one fetch in flight per account). Outbound to Node's hosts only (a loopback QA server may replace them), no redirect, no environment proxy, 15 s, replies capped. Node's chat asks the internal store for access tokens (`/v1/chatgpt/session`, refresh-ahead and single-flight refresh per account, compare-and-swap writes) and never sees a refresh token; core's database guard refuses every Node write of the table but the rotation's reseal. DELETE `/api/providers/chatgpt` stays Node's (it also removes the provider row Node writes) and asks the broker to delete the tokens (when that request fails after the account was deleted, the broker's first use after a start sweeps the rows of accounts that no longer exist). The exchange, a refresh and the catalogue fetch run to completion even if the caller disconnects mid-request |
+| `/api/providers/chatgpt/device`, `/device/poll`, `/device/cancel` (POST), `/api/providers/chatgpt/models` (GET) | rust | `rust-chatgpt-oauth` / `RUST_CHATGPT_OAUTH_OWNED` | the token broker (chatgpt_oauth_routes.rs): session gate, the `chatgptOAuth` flag (off: 404), then core's device sign-in (5 starts per 10 minutes, 3 pending per account, 15-minute TTL, the poll interval and the cancel/disconnect race), the token store (`chatgpt_oauth_tokens`, `enc:v2` bound to the owner) and the catalogue cache (5 minutes, failures 1 minute, a 10-second refresh gap, one fetch in flight per account). Outbound to Node's hosts only (a loopback QA server may replace them), no redirect, no environment proxy, 15 s, replies capped. Node's chat asks the internal store for access tokens (`/v1/chatgpt/session`, refresh-ahead and single-flight refresh per account, compare-and-swap writes) and never sees a refresh token; core's database guard refuses every Node write of the table but the rotation's reseal. DELETE `/api/providers/chatgpt` was Node's in round 5 and is the provider registry's since round 6 (below), which deletes the tokens, the provider row and the projects' fallbacks (the broker's first use after a start still sweeps the token rows of accounts that no longer exist, for the account deletion Node runs). The exchange, a refresh and the catalogue fetch run to completion even if the caller disconnects mid-request |
 | `/api/providers/{providerId}/models{*?}` (every method) | rust | `rust-provider-models` / `RUST_PROVIDER_MODELS_OWNED` | provider_models_routes.rs: session gate, then on the exact `/api/providers/<id>/models` (other shapes and `<id>` = `chatgpt` go to Node) core's 405, `decodeURIComponent`, default-row and unknown-row refusals; the row read per request from `shared-providers.json` and `users/<id>/providers.json` (`enc:v1`); a ChatGPT row lists the broker's catalogue (with no stored row yet, the broker's token row stands for it); other rows `GET <base>/v1/models` as the probe (no redirect, no environment proxy, 8 s, 8 MiB) behind the member-origin rule, cached per (account, row, address, key digest) for ten minutes with core's ten-second refresh throttle and shared in-flight fetches |
 | `/api/providers/test` (POST) | rust | `rust-provider-test` / `RUST_PROVIDER_TEST_OWNED` | session gate, the body (1 MiB; empty is `{}`; a `null` body is no longer Node's 500), core's address, length and member-origin rules, then `GET <base>/v1/models` with no redirect, no environment proxy, 8 s for the whole exchange and an 8 MiB reply cap; a stored key is reused only for a row the caller may edit, with a real key, at the same origin, read from `shared-providers.json` and `users/<id>/providers.json` per request (`enc:v1`, golden vector shared with core); other methods stay Node's |
 
@@ -619,13 +619,51 @@ job that chat or another Node route reads):
 
 | route | why it stays |
 |---|---|
-| `/api/providers`, `/api/providers/{id}` | the private rows are cached on Node's workspace (`privateProviders`) that every chat turn reads in-process, and the list carries the env-derived default row, the model manager state and the ChatGPT connection; a Rust writer needs Node to re-read `providers.json` per turn by its file signal. Since round 5 the ChatGPT row follows the broker's token row: Node adds it when it lists or uses providers and a token row exists (`/v1/chatgpt/connected`), so Node stays the file's single writer until the rows move |
-| `/api/providers/chatgpt` (DELETE) | the disconnect also removes the ChatGPT provider row and the projects' fallbacks, which Node writes; the tokens go through the broker (`/v1/chatgpt/disconnect`) |
 | `/api/connectors`, `/api/connectors/gdrive/*`, `/api/connectors/nextcloud/policy` | drive-accounts.cjs holds personal Drive tokens in memory and the chat tools read the policies in-process |
 | `/api/admin/offsite-backup` and its six children | offsite-service.cjs runs the backup, copy and verify jobs and their busy lock and 15-minute timer in-process |
 | `/api/admin/users/{id}` (DELETE) | the clean-up spans Node's workspace cache, MCP OAuth and directory MCP keys in memory (the ChatGPT tokens through the broker's `/v1/chatgpt/forget`) |
 | `/api/auto-roles` | GET reads the served catalogue and machine models; an admin PUT warms the roles in Node's engine (`ensureRolesLoaded`) |
 | `/api/health` | the retrieval probe is Node's cached RAG status, and the default provider is Node's in-memory registry |
+
+## sbstndalton/noevia#2190 round 6: the provider registry (group B2)
+
+| route | owner | capability / Core refusal | notes |
+|---|---|---|---|
+| `GET`, `POST /api/providers`; `PUT`, `DELETE /api/providers/{id}` (a `test` id included); `DELETE /api/providers/chatgpt` | rust | `rust-providers` / `RUST_PROVIDERS_OWNED` | provider_routes.rs: the front is the only writer of `users/<id>/providers.json` and `shared-providers.json`. Other methods on those paths (a PUT on `/api/providers/chatgpt`, a GET of one id) stay Node's |
+
+The listing is the workspace's merged view as core showed it: the env-derived default row first
+(`DEFAULT_PROVIDER_ID`, `DEFAULT_PROVIDER_LABEL`, `INFERENCE_BASE_URL`/`LEMONADE_BASE_URL`,
+`INFERENCE_API_KEY`/`LEMONADE_API_KEY`; `managed` is `MODEL_MANAGER_KIND` being `lemonade` or
+`llamacpp`, whose engine capabilities the row carries), the shared rows, then the account's own (a
+`lemonade` row read as the default, the first row of an id, shared-flagged private rows hidden).
+Each row is core's `listRow`: the key masked to its last four characters (never the key), the
+context window and capabilities (a row without its own gets the OpenAI preset for that address),
+`keyUnreadable`, `external` for a trial-terms host (crates/provider-egress), and for the ChatGPT row
+its `kind` and the token broker's `connection`. ChatGPT rows are listed only while the
+`chatgptOAuth` flag is on. A token row without a provider row gets its row at the listing, and the
+broker writes the row in the same step that saves a sign-in (inside its connect fence), so a
+disconnect either wins before it (no row) or removes tokens, then the row.
+
+Writes are locked read-modify-writes of the file as it is now (crates/server-projects
+`provider_rows`), so two requests cannot lose each other's rows; a row nobody edits is written back
+as it was (an unreadable key keeps its ciphertext, #782), a plaintext or retired-key key is sealed
+`enc:v1` under the current key at every save, and a damaged file is never overwritten (500). The
+checks and their order are core's (the POST: JSON object, shared rule, label, context window, address
+and member-origin rule, capabilities; the PUT: the default, an unknown or sign-in-managed row and a
+member's edit of a shared row are refused before the body is read; a stored key never follows a row
+to another origin). The DELETE of the ChatGPT row (either path) deletes the broker's tokens first (a
+failure leaves the row), then the row, then clears `provider` and `model` of the account's projects
+that used it (a locked edit of projects.json). Every change runs as a spawned task the handler
+awaits, so a client that leaves cannot strand the tokens/row/fallbacks steps.
+
+Node keeps no copy: `privateProviders` is a re-read of the file by its change signal
+(shared-reread.cjs; a file that cannot be read means no private providers), the shared rows are read
+on every access, and its one write left is sealing a plaintext key at load, through the project store
+(`providers.json` is a store file: `/v1/read` and `/v1/write`, compare-and-swap). Node bugs fixed on
+the way: a `%`-escape `decodeURIComponent` refuses in the id threw (500; now `400 no such provider`);
+a save could drop a concurrent writer's rows (Node rewrote its whole cached list); the
+`/api/providers/chatgpt` disconnect and the row delete share one path, so a disconnect cannot leave
+tokens without a row or a re-added row.
 
 ## sbstndalton/noevia#2189 (batch M2-A): the read-only model sizing reads
 

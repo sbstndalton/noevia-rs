@@ -24,8 +24,11 @@ pub mod project_routes;
 #[cfg(feature = "rust-storage-browse")]
 pub mod project_storage_io;
 pub mod project_store;
+pub mod provider_files;
 #[cfg(feature = "rust-storage-reads")]
 pub mod provider_models_routes;
+#[cfg(feature = "rust-storage-reads")]
+pub mod provider_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod provider_test_routes;
 pub mod public_pages;
@@ -133,6 +136,12 @@ use std::sync::Arc;
 /// `rust-provider-models`: this build answers `/api/providers/{id}/models` (provider_models_routes.rs,
 /// round 5): the stored rows read from disk, the per-account cache, a ChatGPT row through the broker;
 /// the paired core refuses it (rust-provider-models.cjs `RUST_PROVIDER_MODELS_OWNED`).
+/// `rust-providers`: this build answers `GET|POST /api/providers`, `PUT|DELETE /api/providers/{id}`
+/// and `DELETE /api/providers/chatgpt` (provider_routes.rs, sbstndalton/noevia#2190 round 6) and is
+/// the only writer of `providers.json` and `shared-providers.json`, including the ChatGPT row the
+/// token broker writes when a sign-in is saved; Node re-reads the private rows by their file
+/// signal and saves only its seal-on-load migration, through the project store. The paired core
+/// refuses these methods (rust-providers.cjs `RUST_PROVIDERS_OWNED`).
 ///
 /// `rust-model-sizing`: this build answers `GET /api/models/estimate` and `GET
 /// /api/models/preset/suggest` (sbstndalton/noevia#2189, src/model_sizing.rs), permanently and
@@ -248,6 +257,8 @@ pub const FEATURES: &[&str] = &[
     "rust-chatgpt-oauth",
     #[cfg(feature = "rust-storage-reads")]
     "rust-provider-models",
+    #[cfg(feature = "rust-storage-reads")]
+    "rust-providers",
     "rust-vault-mirror-preferences",
     #[cfg(feature = "rust-reasoning-settings")]
     "rust-reasoning-settings",
@@ -446,6 +457,7 @@ async fn handle(
                     | routes::Native::ProviderTest
                     | routes::Native::ChatgptOAuth
                     | routes::Native::ProviderModels
+                    | routes::Native::Providers
             )
         ) {
             native = on_whatwg;
@@ -476,7 +488,8 @@ async fn handle(
             | routes::Native::StorageIntegrations
             | routes::Native::ProviderTest
             | routes::Native::ChatgptOAuth
-            | routes::Native::ProviderModels,
+            | routes::Native::ProviderModels
+            | routes::Native::Providers,
         )
         | None => false,
     };
@@ -610,6 +623,24 @@ async fn handle(
                 reply::error(
                     StatusCode::SERVICE_UNAVAILABLE,
                     "Provider models unavailable",
+                    true,
+                )
+            }
+        }
+        Some(routes::Native::Providers) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            #[cfg(feature = "rust-storage-reads")]
+            {
+                provider_routes::serve(&app, conn, req, p).await
+            }
+            #[cfg(not(feature = "rust-storage-reads"))]
+            {
+                let _ = (p, conn, req);
+                reply::error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Providers unavailable",
                     true,
                 )
             }

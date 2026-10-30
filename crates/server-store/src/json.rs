@@ -272,6 +272,20 @@ pub fn write_shared_projects(
     write_text_atomic(&dir.join(name), text, Parent::MustExist)
 }
 
+/// Writes [`crate::ROOT_PROVIDER_FILE`] in `data_dir` (which must exist) atomically with text the
+/// caller serialised; the caller holds the file's shared lock (crates/server-projects).
+pub fn write_root_shared_providers(
+    data_dir: &Path,
+    text: &str,
+    _switch: crate::RustProjects,
+) -> Result<(), JsonError> {
+    write_text_atomic(
+        &data_dir.join(crate::ROOT_PROVIDER_FILE),
+        text,
+        Parent::MustExist,
+    )
+}
+
 /// `fs.rmSync(dir/name, { force: true })` for an owned file: a missing file is not an error.
 pub fn remove_owned(dir: &Path, name: &str, _switch: crate::RustAuth) -> Result<(), JsonError> {
     owned_name(crate::OWNED_JSON_FILES, name)?;
@@ -434,12 +448,22 @@ mod tests {
             std::fs::read_to_string(dir.path().join("projects.json")).unwrap(),
             "{}"
         );
-        for bad in ["account-memory.json", "../projects.json", "providers.json"] {
+        for bad in [
+            "account-memory.json",
+            "../projects.json",
+            "shared-providers.json",
+        ] {
             assert!(
                 write_shared_projects(dir.path(), bad, "{}", projects).is_err(),
                 "{bad}"
             );
         }
+        // providers.json is the same kind of file since sbstndalton/noevia#2190 round 6; the
+        // shared rows live at the data directory's root, written by their own function.
+        write_shared_projects(dir.path(), "providers.json", "{}", projects).unwrap();
+        write_root_shared_providers(dir.path(), "{}", projects).unwrap();
+        assert!(dir.path().join("shared-providers.json").exists());
+        assert!(write_root_shared_providers(&dir.path().join("missing"), "{}", projects).is_err());
         let owned = ["mine.json"];
         for bad in ["../mine.json", "a/mine.json", "", ".", "..", "theirs.json"] {
             assert!(

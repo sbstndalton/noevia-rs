@@ -1048,6 +1048,17 @@ impl Broker {
         .unwrap_or(false)
     }
 
+    /// The account's connection state as core `status(userId).state` words it (`disconnected`
+    /// without a token row, `connected`, else `reconnect`); `None` when the database is unusable.
+    pub async fn connection(&self, app: &Arc<App>, user: &str) -> Option<&'static str> {
+        match self.row(app, user).await {
+            Ok(None) => Some("disconnected"),
+            Ok(Some(row)) if row.state == "connected" => Some("connected"),
+            Ok(Some(_)) => Some("reconnect"),
+            Err(_) => None,
+        }
+    }
+
     /// Whether the account has a token row (any state): core then lists its ChatGPT provider row.
     pub async fn has_tokens(&self, app: &Arc<App>, user: &str) -> bool {
         matches!(self.row(app, user).await, Ok(Some(_)))
@@ -1349,6 +1360,13 @@ impl Broker {
                 return Ok::<bool, Fail>(false);
             }
             b.save(&a, &u, &t)?;
+            // The provider row follows the saved sign-in in the same step (round 6): a disconnect
+            // that lands after this removes the tokens and then the row, and one that landed
+            // before it made `abandoned` true above. When the row cannot be written the tokens
+            // stay and the next provider listing adds it.
+            if let Err(e) = crate::provider_files::ensure_chatgpt_row(&b.data_dir, &u) {
+                eprintln!("noevia-server: ChatGPT provider row not written ({e:?}); the next listing adds it");
+            }
             drop(fence);
             let plan = server_chatgpt_status::public_plan(
                 &t.plan.clone().map(JValue::Str).unwrap_or(JValue::Null),

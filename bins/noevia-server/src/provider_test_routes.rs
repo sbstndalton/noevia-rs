@@ -85,16 +85,16 @@ pub(crate) fn or_empty(v: &JValue) -> String {
 }
 
 /// `s.trim().replace(/\/+$/, '')` (JavaScript's whitespace set).
-fn trimmed_address(s: &str) -> String {
+pub(crate) fn trimmed_address(s: &str) -> String {
     s3_sign::js_trim(s).trim_end_matches('/').to_string()
 }
 
-fn http_prefixed(s: &str) -> bool {
+pub(crate) fn http_prefixed(s: &str) -> bool {
     s.starts_with("http://") || s.starts_with("https://")
 }
 
 /// `new URL(url).origin`, or `None` when it does not parse.
-fn origin_of(raw: &str) -> Option<String> {
+pub(crate) fn origin_of(raw: &str) -> Option<String> {
     url::Url::parse(raw)
         .ok()
         .map(|u| u.origin().ascii_serialization())
@@ -332,12 +332,12 @@ pub(crate) async fn probe(url: &str, key: &str) -> Probe {
     }
 }
 
-enum BodyError {
+pub(crate) enum BodyError {
     TooLarge,
     Failed,
 }
 
-async fn read_body(mut body: Body) -> Result<Vec<u8>, BodyError> {
+pub(crate) async fn read_body(mut body: Body) -> Result<Vec<u8>, BodyError> {
     let read = async {
         let mut out = Vec::new();
         while let Some(frame) = body.frame().await {

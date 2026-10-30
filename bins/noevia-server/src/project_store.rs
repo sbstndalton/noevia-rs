@@ -154,7 +154,7 @@ fn target(body: &Value) -> Result<(String, StoreFile), &'static str> {
         .get("file")
         .and_then(Value::as_str)
         .and_then(StoreFile::parse)
-        .ok_or("file must be projects.json or free-chats.json")?;
+        .ok_or("file must be projects.json, free-chats.json or providers.json")?;
     Ok((user.to_string(), file))
 }
 
