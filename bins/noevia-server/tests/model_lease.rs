@@ -737,12 +737,12 @@ async fn a_panicking_drain_pass_does_not_end_the_loop() {
 
 const REAL_NODE: &str = r#"
 const http = require('node:http');
-const core = process.argv[2];
+const core = process.argv[1];
 const { createMaintenanceGate } = require(core + '/server/inference-maintenance.cjs');
 const { createLeaseRoutes } = require(core + '/server/model-maintenance-lease.cjs');
 const gate = createMaintenanceGate();
 const json = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
-const routes = createLeaseRoutes({ secret: process.argv[3], hold: () => gate.hold(), json, ttlMs: Number(process.argv[4]) });
+const routes = createLeaseRoutes({ secret: process.argv[2], hold: () => gate.hold(), json, ttlMs: Number(process.argv[3]) });
 let leave = null;
 const server = http.createServer(async (req, res) => {
   if (await routes.handle(req, res)) return;
