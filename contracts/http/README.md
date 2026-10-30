@@ -218,13 +218,13 @@ on the signed-in person's request, signed for that person, and writes nothing it
 | `/api/diary/storage-import` (POST) | rust | `routes/diary.cjs`: 4 KiB body, 300 s, the sidecar's `detail` relayed |
 | `/api/diary/workspace-export` (GET) | rust | `workspace-export.cjs`: 300 s, 272 MiB, streamed, cut short rather than completed |
 | `/api/diary/workspace-import` (POST) | rust | `workspace-import.cjs`: 32 MiB body, 120 s, 24 MiB reply (#920), 428 resend of the buffered body |
-| `/api/diary/context` | node | `routes/projects.cjs:185` creates the Diary project in `PROJECTS`, Node's in-memory project list, through `diaryExtras.newProject` |
-| `/api/diary/exchanges` | node | `routes/diary.cjs` lists and acknowledges through `diary-jobs.cjs`, whose `active` set of running jobs is Node memory, written by the chat turn |
-| `/api/diary/local-exchange` | node | `routes/diary.cjs` takes the model throttle shared with chat (`llmRateLimited`) and, via `index.cjs handleRequest`, the inference maintenance gate; both are Node memory |
-| `/api/diary/storage-status` | node | `routes/diary.cjs` adds `automaticStorage` from `storage-latch.cjs`, an in-memory latch the backup worker and the source refresh write |
-| `/api/diary-connector` | node | `diary-connectors.cjs`: credential table, in-memory throttles (`connectorRate`), audit rows, and `operate()` |
-| `/api/profile/diary-connectors[/{id}]` | node | the same `diary_connectors` table (Node creates it and its tokens); no sidecar call at all |
-| `/api/diary` | node | no handler: Node's generic not-found |
+| `/api/diary/context` | rust (#2206) | moved: see "sbstndalton/noevia#2206" below |
+| `/api/diary/exchanges` | rust (#2206) | moved: see below |
+| `/api/diary/local-exchange` | node | `routes/diary.cjs` takes the model throttle shared with chat (`llmRateLimited`) and, via `index.cjs handleRequest`, the inference maintenance gate; both are Node memory. Re-evaluated in #2206 and kept: see below |
+| `/api/diary/storage-status` | rust (#2206) | moved: see below |
+| `/api/diary-connector` | rust (#2206) | moved: see below |
+| `/api/profile/diary-connectors[/{id}]` | rust (#2206) | moved: see below |
+| `/api/diary` | rust (#2206) | no handler in Node: the gate, then its unknown-path 404 |
 
 Not in this table and so still Node's: `/api/diary/history` (the same read as `today` under a name the
 web client does not use), `files`, `file`, `workspace-trash`, `external-sources`, `entries/edit`.
@@ -243,6 +243,101 @@ of at most 4 KiB gets a 120 s read deadline (core had only the server-wide 20 mi
 compare-and-swap reseal of the same plaintext, the one Node write of the table its guard allows). (5) A sidecar reply that
 `JSON.parse` accepts but the port cannot hold (a number outside f64, a character in the reserved private
 range) is treated as a failed call (`js_json::wtf16`'s `Unsupported`).
+
+## sbstndalton/noevia#2206: the rest of the Diary routes, on the same client
+
+The Python Diary sidecar stays the single writer of Diary data; the front is its client and proxy
+authority in place of Node. Every route below speaks to it through `crates/server-diary` (the bearer, the
+tenant id, the legacy-owner marker, the base64url storage descriptor with the secret handled as in
+#2185, the v2 assertion from `crates/tenant-assertion`, the once-only 428 retry, the member-origin
+policy, 8 MiB reply cap), and Core refuses each moved route with 503 `RUST_DIARY_ROUTES_OWNED`
+(core `server/rust-diary-routes.cjs`) under the capability `rust-diary-routes`, which the web supervisor
+and the release assembler pair (old/old stays valid; mixed pairs are refused). Which methods Core
+refuses cannot drift from this file: `bins/noevia-server/tests/diary_core_pair.rs` asks the paired Core's
+own `owned()` functions about every method on every Diary route in `routes.toml` (CI job
+`corpus-replay-front`, Core at `front-core.ref`; `NOEVIA_DIARY_CORE` runs it locally).
+
+| route | methods | what the front does | what Node still does for it |
+|---|---|---|---|
+| `/api/diary/storage-status` | every (GET; the rest 405 after the add-on gate) | the sidecar's `/api/storage-status` (60 s) and, while a refused or throttled login holds the account's automatic storage calls, `automaticStorage: { held, kind, nextAttemptAt }` from `UI_DATA_DIR/storage-latch.db` (`server-projects storage_latch::status`: the same transition on the same rows as core's `status`, never letting a probe through) | the backup worker and the files route still write the latch |
+| `/api/diary/exchanges` | GET, POST | lists a day's recovery records (`users/<id>/diary-conversations/<day>/<id>.json`, oldest first, newest 100) and dismisses an uncertain or failed one (`acknowledgedAt`, once; the outcome is never rewritten; written as `atomicJson` writes) | the chat turn is still the only writer of a running record (`diary-jobs.cjs start`) and now publishes which exchanges run, below |
+| `/api/diary/context` | GET, POST | `getProject` / create of the Diary attachments project in the person's `projects.json` under the shared lock, with the project routes' account claim (`server-projects diary_context`, the former `diaryExtras.newProject()`) | chat reads the project through the project store like any project |
+| `/api/diary-connector` | every (POST; 405 before authentication) | the connector credential is the authentication (no session, no browser origin): list, read and write one Markdown file as the credential's account, through the Diary client; 300 bad credentials and 120 uses a minute (`connectorRate`, in this process's memory) | nothing |
+| `/api/profile/diary-connectors` | GET, POST | list (own, creation order) and create (name 1..80 UTF-16 units before trimming; at most ten; the credential is returned once) | nothing |
+| `/api/profile/diary-connectors/{id}` | DELETE | revoke by id (`^[a-f0-9]{32}$`; any other segment gets the unknown-path 404 after the gate) | nothing |
+| `/api/diary` | every | the gate, then the unknown-path 404 `not found`, as Node (it had no handler) | nothing |
+
+**Connector storage.** `diary_connectors` keeps only the credential's SHA-256, in core's own shape (id,
+user_id, name, token_hash, created_at), so there is no secret to seal and nothing for `runRotation` to
+reseal; a rollback reads every row. The front is the table's only writer (`server-store`
+`Access::InsertDelete`: insert and delete, never an update; core `rust-auth.cjs` `FRONT_TABLES` refuses
+every Node statement, `exempt()` included); a row goes with its account by cascade as before. Core still
+creates the table at boot (`diary-connectors.cjs ensureTable`). A create and a revoke write their
+audit event (`diary-connector.create|revoke`) in the same transaction as the row; a connector write
+audits `diary-connector.write` with the credential id, the path and the byte count, never the content.
+
+**The running-exchange set.** `diary-jobs.cjs` `active` was a Set in Node's memory, and the list marked a
+record `running` that nothing ran for as `uncertain`. Node now publishes the set beside the records,
+`users/<id>/diary-conversations/active.json` = `{ start, files: ["<day>/<id>.json", ...] }`, where `start`
+is `NOEVIA_START_ID` (the same per-container-start id `chat-partial.cjs` marks partial replies with): the
+name is added and the file written BEFORE the record's first write and removed AFTER its last, and a
+set written by another start names nothing (a Node that is gone). The front reads the record, then the
+set; a record not in it is read once more, and only one that still reads `running` is abandoned. A job
+that is alive is in the set from before its record exists until after its last write, so a running
+record cannot be mislabelled by the order of the two reads (`exchanges::list`; tested with both
+orders). A start that cannot publish refuses the exchange (the chat route's existing "no diary request
+was sent" 500).
+
+*Known trade-off (review L5).* The publish after a record's last write is best effort
+(`diary-jobs.cjs release`): a record that has finished must not turn into a failed chat turn because a
+file could not be written. If that one write fails (disk full, a permission fault), `active.json` keeps
+naming a record that no longer runs, so a dismissal of that record answers 409 "still running" and the
+list shows it `running`, until the next exchange of that account writes the whole set again or the
+container restarts (a set written by another start names nothing). It is never the other way round: a
+record cannot be missing from the set while it runs. Fixing it would mean failing the finished exchange
+or retrying in a timer, and a stale name only costs a delayed dismissal.
+
+**Kept on Node: `POST /api/diary/local-exchange`.** Re-evaluated with both techniques. It takes the 60 per
+minute model throttle that chat shares (`llmRateLimited`, one bucket per account for both routes) and, from
+`index.cjs handleRequest`, the inference maintenance gate for the whole life of its response
+(`modelManager.enterInferenceWithin`, llamacpp-manager `maintenance`), so that a preset apply, a
+calibration or a tune waits for it. A re-reader carries state, not a lease: the front could read a
+published "gate held" flag, but could not make a maintenance wait for its exchange, so a preset apply
+could unload the model under it. Moving the whole authority means moving the gate and the throttle, i.e.
+the model manager and chat, which take them per turn; the model-manager routes and chat are other
+batches. What is movable (body cap 16 MiB, the SSE relay of `diary-stream.cjs`, the add-on gate) is the
+smaller part and moves with the gate: moving it alone would put two processes on one throttle. The seam
+to cut when the gate moves is a lease the front takes before the first byte to the sidecar and drops
+when its response ends. The paths the web client never names (`history`, `files`, `file`,
+`workspace-trash`, `external-sources`, `entries/edit`) are not in the route table and stay Node's with
+the local exchange.
+
+**Behaviour changes (Node bugs fixed on the way).**
+1. Creating a connector with a bad name, for an account without the add-on, or past ten threw a bare
+   `Error` in core: a generic 500 `Internal error`, so the person never saw why. They are now 400
+   `Connector name required (maximum 80 characters)`, 403 `Diary account unavailable` and 409 `Revoke an
+   existing connector first`. The count, the insert and the audit event are one transaction (core ran
+   them as separate statements, so an audit failure left a created credential behind a 500).
+2. A connector write that went through is answered 200 even if its audit event cannot be written (core
+   answered 500 for a write that had happened, which invites a blind retry); the failure is logged with no
+   detail.
+3. `POST /api/diary/storage-import` (the #2185 route) is no longer abandoned half-sent when the client
+   goes away: the sidecar call runs on its own task, as core's never-aborted `fetch` did. The connector
+   bridge's calls are detached the same way, and a connector write's audit event is made on that same
+   task, straight after the sidecar accepted the write, so a client that disconnects once the sidecar
+   has the write does not cost the `diary-connector.write` row (it was made after the await, in the
+   handler, which a disconnect drops).
+4. A dismissal whose `day` or `id` is not a string is a 400 (core coerced a number into the id pattern).
+5. The exchanges: any method but GET and POST gets the unknown-path 404 before the add-on is looked at, as
+   core's mount did; a day is checked as a real calendar date (core: `Date.parse` round trip), 0000 to 9999.
+6. Small JSON bodies (the dismissal 4 KiB, the connector endpoint 4 MiB, the credential create 1 MiB) get a
+   120 s read deadline (core had only the server-wide 20 minutes).
+7. `automaticStorage` is computed from the same latch rows by the same transition; a latch that cannot be
+   read shows no hold (core's `try/catch` did the same).
+8. The day's list sorts by `startedAt` as a total order: a record with no numeric `startedAt` (the Diary
+   never writes one without; a hand-edited or damaged record) is older than every dated one and the
+   undated keep file-name order. Core's `a.startedAt - b.startedAt` answered NaN for them, which sorted
+   them wherever the algorithm left them.
 
 ## sbstndalton/noevia#1071: Settings -> Sharing, and the small routes that stay Node's
 
@@ -1147,6 +1242,90 @@ Chat-bound, by design: `POST /api/tool-approvals` (the parked approval promise l
 three actions - Allow once, Decline, Allow for this chat - and their tenant scope stay in Node) and `GET
 /api/toolboxes` (prefill samples come from the chat stream, the MCP block from live discovery state).
 
+## sbstndalton/noevia#2202 round 2: the admin MCP directory, the permitted tools and the connectors list
+
+Three capabilities, each paired with a Core refusal (`RUST_MCP_DIRECTORY_OWNED`, `RUST_TOOLBOXES_PERMITTED_OWNED`,
+`RUST_CONNECTORS_OWNED`; both guard scripts refuse a mixed pair, old/old stays valid), all three needing the discovery
+snapshot Core publishes:
+
+| capability | routes (routes.toml) | where |
+|---|---|---|
+| `rust-mcp-directory` | every method of `/api/admin/mcp-directory`, `/custom`, `/custom/preview`, `/{*}`, `/{*}/keys`, `/{id}/oauth-client` | `mcp_directory_routes.rs`, `mcp_directory.rs`, `mcp_tools.rs`, `mcp_egress.rs` |
+| `rust-toolboxes-permitted` | every method of `/api/toolboxes/permitted` (non-GET is its 405) | `toolbox_routes.rs` |
+| `rust-connectors` | GET `/api/connectors`, PUT `/api/connectors/nextcloud/policy` | `nextcloud_routes.rs`, `connector_routes.rs` |
+
+**The directory.** The front is the single writer of `directory_mcp_servers` (the server rows, the administrators'
+shared key slot, the OAuth and per-account flags): one transaction per write that checks what it relies on, the
+shared key replaced only while it still holds the ciphertext it started from (compare-and-swap), an add that
+cannot exceed 20 servers or repeat a name even when two administrators race. Core re-reads the table
+(`directory-mcp.cjs`, `shared-reread.cjs` on the table's content; an unreadable table is no directory servers) and
+keeps only the chat-time MCP client. A candidate server is probed and its tools listed **by the front**
+(`mcp_egress::list_tools`: initialize, tools/list over JSON or event-stream replies, the same public-https-only
+egress as round 1 - QA loopback flag, no redirect, caps, deadlines), then each tool is judged as core's `convertTool`
+judged it (`mcp_tools.rs`, over mcp-frame's `$ref` resolver). Every state-changing request runs as one spawned task
+the handler awaits, so a client that goes away strands nothing half-done. The custom add keeps the "tools changed"
+rollback: after the save the tools are listed again with the credentials as stored, and a catalogue other than the one
+previewed removes the server **and forgets the key the administrator stored** (the M3 fix of round 1). The secrets
+rotation re-seals the shared key slot through the broker (`directory_mcp_servers` is its fourth table; `POST
+/v1/mcp/reseal`), and Core's rotation no longer lists it.
+
+**Node's discovery, published.** `mcp-discovery.json` (`mcp_discovery.rs`; Core `mcp-discovery-snapshot.cjs`) carries what
+only the live MCP client knows: the offered boxes with their tools and whether each writes, the configured boxes,
+each server's last discovery, the coding harness switch, whether a repository is registered, whether a Nextcloud MCP
+server is configured and `MCP_NEXTCLOUD_ORIGINS`. It is written atomically (0600) every 3 s **only while the front asks**
+(the demand marker `snapshot-demand`, snapshot.rs), and the front trusts it only while it is two intervals young;
+otherwise the answer is "not ready" (the permitted view: 503 `Retry-After: 2`; the admin listing: no tool counts; the
+connectors page: Drive plus a Nextcloud entry that says it is being prepared). `snapshot.rs` and Core's
+`published-snapshot.cjs` are the close-out round's files (#2190 group D) copied unchanged so the two branches merge
+without a conflict; `mcp-discovery.json` joins `PUBLISHED_STATE` (the off-site walk and the replay state comparison leave it out).
+
+**Permitted tools, with no stale window.** The view is computed per request from the `toolboxes-permitted` crate, the
+project (tenant-scoped `users/<id>/projects.json`), the account's `tool_policies`, Drive connection, MCP sign-ins and
+keys (the broker, read from the tables), the Diary preference and the directory, plus the snapshot. Core cached it
+for 30 s under a key that left out the project's toolbox edits, the Drive/Nextcloud connection and the MCP readiness;
+the cache and its fingerprints are deleted, and none replaces them.
+
+**Connectors.** The Nextcloud half is the account's storage connection (Nextcloud or WebDAV, a user name and a credential
+that opens), the operator's declared origins and `tool_policies`, joined with the Nextcloud boxes and write flags of the
+snapshot. `PUT /api/connectors/nextcloud/policy` writes `tool_policies` (it already had a single writer) for the tools
+Node's catalogue offers. The Nextcloud toolbox is MCP-live only for the list of tools and their write flags; that is the
+whole of what stays on Node behind the snapshot.
+
+Behaviour changes (Node bugs fixed on the way):
+
+1. `PUT .../{id}/keys` on a **custom** server asked the registry about `url:...`, found nothing, and so checked with no
+   header and then **cleared** the shared key. The stored declaration is used (the registry only for a row that never
+   stored one).
+2. The permitted view was up to 30 s stale after any write the front makes (see above).
+3. A mixed `GET /api/connectors` keeps working when Node's catalogue is not ready: Drive is listed and Nextcloud says why
+   it is missing (Node's page failed whole when its own discovery threw).
+4. Two administrators adding one server at once: one 201, one 409 (core checked, then inserted, in two steps).
+5. Methods other than the listed ones on `/api/connectors` and a trailing slash on it are 404 from Node, not core's 405/404 mix.
+
+Review of round 2 (the limits and the rollbacks):
+
+6. One listing of a server's tools (connect, every page, close) is over after 60 s whatever its pages are doing, and at
+   most four listings run at once in the front, for every account together; one that finds no place for 20 s answers 503
+   "noevia is checking other servers right now". A key check counts the tools it finds and keeps none (a listing can be
+   16 MiB of definitions). The session is closed after a deadline as after any other end.
+7. A rollback of an add (the tools changed while connecting, the administrator's key could not be kept, the sign-in could
+   not start) tries each step a second time and, if the row or the keys still cannot be removed, answers 500 with the
+   server's id and what to do (remove it by hand; add it again and remove it) instead of a quiet 409/422. When the row is
+   not there to remove (another administrator removed or replaced it), only the key this request stored is forgotten.
+   Removing a server clears its keys and sign-ins once more after the row is gone.
+8. The key replacement checks the row is the one it read (`added_at`), not only the key it held.
+9. `toolbox_routes.rs` carries a differential against the 2500 frozen JS answers (`tests/fixtures/toolboxes-permitted-js.v1.json`,
+   byte-identical to noevia-core's, same sha256): 853 inputs the front can be asked are compared; the rest (an id list holding
+   something that is not text, a box id that is not text, a manifest entry that is not an object with a text id) are counted
+   and skipped. The publisher's three presentation differences (a boolean write flag, a tool named by a number, a 240-character
+   description) are put back on the output so everything else is compared exactly.
+10. Scheduled removal: the Drive broker's `/v1/gdrive/view` and `/v1/gdrive/policy` ops are unused by the paired Core and stay
+   only for the Core of a rollback pair; delete them in the first release after that floor has passed.
+
+Still Node's, on purpose: the MCP client itself (a chat's live sessions, `mcp.cjs`, `mcp-wiring.cjs`),
+`POST /api/tool-approvals/{id}` (the parked approval is in the live chat loop) and `GET /api/toolboxes` (prefill
+samples come from the chat stream; the MCP block from live discovery).
+
 ## sbstndalton/noevia#2191 round 8 (group rust-project-source-work): the front runs the source operations
 
 `--features` lists `rust-project-source-work`. `POST /api/projects/{id}/upload`, `POST .../sources/sync` and
@@ -1240,7 +1419,7 @@ OCR is gone with pdf.js).
 
 Each is permanent with no switch. Core refuses exactly the GET before authentication; the web supervisor and
 the release assembler pair each marker with its capability in both directions (old/old stays valid). The
-node-route floor in `tests/front.rs` is 49 (44 after round 9, below).
+node-route floor in `tests/front.rs` is 49 (28 after round 9 and the rounds beside it, below).
 
 **Snapshots (what only Node knows).** `GET /api/health` needs `ragAvailable` and the retrieval tri-state
 (rag.cjs: the native index dependencies, the embedding probe and its 45 s cache, the administrator's embedding
@@ -1327,7 +1506,7 @@ symlink, so a symlink counts as gone. Nothing in the list is chat-live, so no pa
 ## sbstndalton/noevia#2191 round 9 (capability `rust-project-config`) and #2190 (capability `rust-admin-users`)
 
 Two groups move, each as one owner (Core's refusal and the front's capability of the same name; the web supervisor
-and assemble-release.sh refuse a mixed pair, old/old stays valid). The node-route floor in `tests/front.rs` is 44.
+and assemble-release.sh refuse a mixed pair, old/old stays valid). The node-route floor in `tests/front.rs` is 28 (after the Diary and MCP rounds that landed beside it).
 
 | Route | Owner | Core marker / capability | Where |
 |---|---|---|---|

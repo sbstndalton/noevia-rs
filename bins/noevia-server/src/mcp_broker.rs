@@ -98,11 +98,11 @@ pub fn auth_error(code: &'static str) -> Fail {
     }
 }
 
-fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     identity::now_ms()
 }
 
-fn random<const N: usize>() -> [u8; N] {
+pub(crate) fn random<const N: usize>() -> [u8; N] {
     let mut out = [0u8; N];
     OsRng.fill_bytes(&mut out);
     out
@@ -134,11 +134,11 @@ fn uri_component(s: &str) -> String {
     out
 }
 
-fn js_ws(c: char) -> bool {
+pub(crate) fn js_ws(c: char) -> bool {
     matches!(c, '\u{9}'..='\u{d}' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}')
 }
 
-fn text(v: &JValue) -> Option<String> {
+pub(crate) fn text(v: &JValue) -> Option<String> {
     v.as_str().filter(|s| !s.is_empty()).map(str::to_owned)
 }
 
@@ -168,20 +168,25 @@ pub struct Declared {
 
 impl Server {
     pub fn declared_headers(&self) -> Vec<Declared> {
-        let JValue::Arr(items) = &self.declared else {
-            return Vec::new();
-        };
-        items
-            .iter()
-            .filter_map(|h| {
-                Some(Declared {
-                    name: text(h.get("name"))?,
-                    required: h.get("required").truthy(),
-                    template: text(h.get("template")),
-                })
-            })
-            .collect()
+        declared_of(&self.declared)
     }
+}
+
+/// A `declared_json` array (or a registry item's `headers`) as the declared key headers.
+pub fn declared_of(items: &JValue) -> Vec<Declared> {
+    let JValue::Arr(items) = items else {
+        return Vec::new();
+    };
+    items
+        .iter()
+        .filter_map(|h| {
+            Some(Declared {
+                name: text(h.get("name"))?,
+                required: h.get("required").truthy(),
+                template: text(h.get("template")),
+            })
+        })
+        .collect()
 }
 
 /// core directory-mcp.cjs `checkHeaderValues`: one line, bounded, the declared names only.
@@ -401,6 +406,15 @@ impl Tokens {
 /// An account's stored key for a server: `None` when it has no row, `Some(None)` for a row no key opens.
 type StoredKey = Option<Vec<(String, String)>>;
 
+/// Which servers an account is ready for (see [`Mcp::ready_for`]).
+#[derive(Debug, Default, Clone)]
+pub struct Ready {
+    /// Servers it has a live sign-in for.
+    pub signed_in: std::collections::HashSet<String>,
+    /// Servers it holds a key for.
+    pub keys: std::collections::HashSet<String>,
+}
+
 /// What one stored sign-in row is: the ciphertext and the opened tokens (`None`: unreadable).
 pub struct Row {
     pub raw: String,
@@ -530,9 +544,9 @@ impl Settings {
     }
 }
 
-type Locks = Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>;
+pub(crate) type Locks = Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>;
 
-fn lock_for(map: &Locks, key: &str) -> Arc<tokio::sync::Mutex<()>> {
+pub(crate) fn lock_for(map: &Locks, key: &str) -> Arc<tokio::sync::Mutex<()>> {
     let mut m = map.lock().unwrap_or_else(|e| e.into_inner());
     // Drop the locks nobody holds or waits on, so the map stays bounded by the active accounts.
     m.retain(|_, l| Arc::strong_count(l) > 1);
@@ -562,15 +576,18 @@ pub struct Mcp {
     keys: RwLock<Option<Arc<SecretKeys>>>,
     pending: Mutex<HashMap<String, Pending>>,
     /// Per (account, server): the refresh, the re-seal, the disconnect.
-    locks: Locks,
+    pub(crate) locks: Locks,
     /// Per server: the app registration.
-    client_locks: Locks,
+    pub(crate) client_locks: Locks,
     /// Key checks running per account (see `MAX_KEY_CHECKS_PER_USER`).
     key_checks: Arc<Mutex<HashMap<String, usize>>>,
     /// The last published readiness (serialises the publisher).
     published: Mutex<Option<String>>,
     swept: std::sync::atomic::AtomicBool,
-    rpc_id: std::sync::atomic::AtomicI64,
+    pub(crate) rpc_id: std::sync::atomic::AtomicI64,
+    /// Signs the custom-server preview tokens (core `previewKey`): made here, never stored, so a
+    /// restart makes an old preview ask to be run again.
+    pub(crate) preview_key: [u8; 32],
 }
 
 impl Mcp {
@@ -598,6 +615,7 @@ impl Mcp {
             published: Mutex::new(None),
             swept: std::sync::atomic::AtomicBool::new(false),
             rpc_id: std::sync::atomic::AtomicI64::new(0),
+            preview_key: random::<32>(),
         })
     }
 
@@ -623,7 +641,7 @@ impl Mcp {
 
     /// core `dec(s, userId)`: the bound form first, then the unbound one (a row sealed before
     /// user binding shipped). `None`: no key opens it, or it is not a JSON object.
-    fn open_json(&self, raw: &str, user: Option<&str>) -> Option<JValue> {
+    pub(crate) fn open_json(&self, raw: &str, user: Option<&str>) -> Option<JValue> {
         let keys = self.keys()?;
         let plain = match user {
             Some(u) => keys
@@ -638,7 +656,7 @@ impl Mcp {
         }
     }
 
-    fn seal(&self, plain: &str, user: Option<&str>) -> Result<String, Fail> {
+    pub(crate) fn seal(&self, plain: &str, user: Option<&str>) -> Result<String, Fail> {
         let keys = self.keys().ok_or_else(|| auth_error("transient"))?;
         keys.seal(plain, user, &random::<12>())
             .map_err(|_| auth_error("transient"))
@@ -646,7 +664,7 @@ impl Mcp {
 
     // ── blocking helpers ──
 
-    async fn blocking<T: Send + 'static>(
+    pub(crate) async fn blocking<T: Send + 'static>(
         self: &Arc<Self>,
         app: &Arc<App>,
         f: impl FnOnce(&Mcp, &App) -> T + Send + 'static,
@@ -657,7 +675,7 @@ impl Mcp {
             .map_err(|_| auth_error("transient"))
     }
 
-    fn audit(&self, app: &App, actor: Option<&str>, action: &str, detail: &JValue) {
+    pub(crate) fn audit(&self, app: &App, actor: Option<&str>, action: &str, detail: &JValue) {
         let detail = js_json::stringify(detail).unwrap_or_else(|| "{}".into());
         if let Ok(w) = app.writes.writer() {
             let _ = w.write(|tx| {
@@ -757,7 +775,12 @@ impl Mcp {
     }
 
     /// The account's stored key headers: `None` (no key), or `Some(None)` (one no key opens).
-    fn read_key(&self, app: &App, user: &str, server: &str) -> Result<Option<StoredKey>, Fail> {
+    pub(crate) fn read_key(
+        &self,
+        app: &App,
+        user: &str,
+        server: &str,
+    ) -> Result<Option<StoredKey>, Fail> {
         let writer = app.writes.writer().map_err(|_| auth_error("transient"))?;
         let raw: Option<String> = writer
             .read(|r| {
@@ -780,6 +803,45 @@ impl Mcp {
     }
 
     // ── readiness ──
+
+    /// Which servers this account can use right now (blocking): its sign-ins that are alive and the
+    /// servers it holds a key for. What Node's `accountReady` answered from the published file, asked
+    /// of the tables themselves, so a change shows at once. `Err`: the tables cannot be read.
+    pub fn ready_for(&self, app: &App, user: &str) -> Result<Ready, Fail> {
+        let writer = app.writes.writer().map_err(|_| auth_error("transient"))?;
+        let now = now_ms();
+        let tokens: Vec<(String, String)> = writer
+            .read(|r| {
+                r.rows(
+                    "SELECT server_id, data_enc FROM mcp_oauth_tokens WHERE user_id=?1",
+                    [user],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+            })
+            .map_err(|_| auth_error("transient"))?;
+        let keys: Vec<String> = writer
+            .read(|r| {
+                r.rows(
+                    "SELECT server_id FROM directory_mcp_user_keys WHERE user_id=?1",
+                    [user],
+                    |row| row.get(0),
+                )
+            })
+            .map_err(|_| auth_error("transient"))?;
+        let signed_in = tokens
+            .into_iter()
+            .filter(|(_, raw)| {
+                self.open_json(raw, Some(user))
+                    .and_then(|v| Tokens::from_json(&v))
+                    .is_some_and(|t| !t.dead(now))
+            })
+            .map(|(server, _)| server)
+            .collect();
+        Ok(Ready {
+            signed_in,
+            keys: keys.into_iter().collect(),
+        })
+    }
 
     /// Rewrites the published readiness if (and only if) it changed. Blocking.
     pub fn publish(&self, app: &App) {
@@ -916,7 +978,7 @@ impl Mcp {
 
     // ── the address a sign-in returns to ──
 
-    fn redirect_uri(&self, app: &App) -> Result<String, Fail> {
+    pub(crate) fn redirect_uri(&self, app: &App) -> Result<String, Fail> {
         let writer = app.writes.writer().map_err(|_| auth_error("transient"))?;
         let setting = |key: &str| -> Option<String> {
             writer
@@ -2016,6 +2078,25 @@ impl Mcp {
         .await?
     }
 
+    /// One account's key for a server, forgotten without an audit entry: the clean-up of a failed add (the
+    /// key the adding administrator typed), not a decision of the account.
+    pub async fn forget_key_quietly(
+        self: &Arc<Self>,
+        app: &Arc<App>,
+        user: &str,
+        server: &str,
+    ) -> Result<(), Fail> {
+        let (u, s) = (user.to_owned(), server.to_owned());
+        self.blocking(app, move |me, a| {
+            let w = a.writes.writer().map_err(|_| auth_error("transient"))?;
+            w.write(|tx| tx.mcp_delete_key(RustMcpCredentials::owned(), &u, &s))
+                .map_err(|_| auth_error("transient"))?;
+            me.publish(a);
+            Ok(())
+        })
+        .await?
+    }
+
     /// A deleted account takes every one of its sign-ins and keys with it.
     pub async fn forget_user(self: &Arc<Self>, app: &Arc<App>, user: &str) -> Result<(), Fail> {
         let u = user.to_owned();
@@ -2178,6 +2259,10 @@ impl Mcp {
             let checked =
                 mcp_egress::check_key(&me.egress, &server.url, &pending, &me.rpc_id).await;
             if let Err(why) = checked {
+                // No place for the check yet is the front's own state, not the server's answer.
+                if why == mcp_egress::BUSY {
+                    return Err(fail(mcp_egress::BUSY, 503));
+                }
                 return Err(fail(
                     format!(
                         "The server did not accept that key: {}",
@@ -2296,10 +2381,13 @@ impl Mcp {
                 let tokens = w.read(|r| r.rows("SELECT user_id, server_id FROM mcp_oauth_tokens ORDER BY user_id, server_id", [], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))).unwrap_or_default();
                 let clients = w.read(|r| r.rows("SELECT server_id FROM mcp_oauth_clients ORDER BY server_id", [], |row| row.get::<_, String>(0))).unwrap_or_default();
                 let keys = w.read(|r| r.rows("SELECT user_id, server_id FROM directory_mcp_user_keys ORDER BY user_id, server_id", [], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))).unwrap_or_default();
-                Ok((tokens, clients, keys))
+                // sbstndalton/noevia#2202 round 2: the administrators' shared keys (unbound), kept in the
+                // directory rows this front writes.
+                let shared = w.read(|r| r.rows("SELECT id FROM directory_mcp_servers WHERE headers_enc IS NOT NULL ORDER BY id", [], |row| row.get::<_, String>(0))).unwrap_or_default();
+                Ok((tokens, clients, keys, shared))
             })
             .await??;
-        let (tokens, clients, keys) = rows;
+        let (tokens, clients, keys, shared) = rows;
         for (user, server) in tokens {
             let lock = lock_for(&self.locks, &pair_key(&user, &server));
             let _held = lock.lock().await;
@@ -2329,6 +2417,15 @@ impl Mcp {
                 .await?;
             report.add("directory_mcp_user_keys", &[user, server], outcome);
         }
+        for server in shared {
+            let s = server.clone();
+            let outcome = self
+                .blocking(app, move |me, a| {
+                    me.reseal_row(a, "directory_mcp_servers", "", &s)
+                })
+                .await?;
+            report.add("directory_mcp_servers", &[server], outcome);
+        }
         let _ = self.blocking(app, |me, a| me.publish(a)).await;
         Ok(report)
     }
@@ -2348,6 +2445,11 @@ impl Mcp {
                 [user, server],
                 |row| row.get::<_, String>(0),
             ),
+            "directory_mcp_servers" => r.row(
+                "SELECT headers_enc FROM directory_mcp_servers WHERE id=?1 AND headers_enc IS NOT NULL",
+                [server],
+                |row| row.get::<_, String>(0),
+            ),
             _ => r.row(
                 "SELECT data_enc FROM mcp_oauth_clients WHERE server_id=?1",
                 [server],
@@ -2361,7 +2463,7 @@ impl Mcp {
         if raw.is_empty() {
             return Resealed::Empty;
         }
-        let bound = table != "mcp_oauth_clients";
+        let bound = table != "mcp_oauth_clients" && table != "directory_mcp_servers";
         let version = if raw.starts_with("enc:v2:") {
             2
         } else if raw.starts_with("enc:v1:") {
@@ -2390,6 +2492,9 @@ impl Mcp {
         let swapped = w.write(|tx| match table {
             "mcp_oauth_tokens" => tx.mcp_swap_token(cap, user, server, &next, now_ms(), &raw),
             "directory_mcp_user_keys" => tx.mcp_swap_key(cap, user, server, &next, &raw),
+            "directory_mcp_servers" => {
+                tx.mcp_directory_swap_headers(cap, server, Some(&next), Some(&raw), None)
+            }
             _ => tx.mcp_swap_client(cap, server, &next, now_ms(), &raw),
         });
         match swapped {
@@ -2444,13 +2549,14 @@ impl ResealReport {
         }
     }
 
-    /// `{ ok, tables: { name: { current, rotated, upgraded, empty, failed } }, failures }`. The three
+    /// `{ ok, tables: { name: { current, rotated, upgraded, empty, failed } }, failures }`. The four
     /// tables are always listed, so a pass over empty tables still names them.
     pub fn json(&self) -> JValue {
         let names = [
             "mcp_oauth_tokens",
             "mcp_oauth_clients",
             "directory_mcp_user_keys",
+            "directory_mcp_servers",
         ];
         let tables = names.iter().map(|name| {
             let counts = self

@@ -1766,7 +1766,7 @@ async fn the_administrators_calls_start_set_an_app_forget_and_store_a_key() {
 }
 
 #[tokio::test]
-async fn a_rotation_reseals_the_three_tables_under_the_new_key_and_loses_nothing() {
+async fn a_rotation_reseals_the_four_tables_under_the_new_key_and_loses_nothing() {
     let d = tempfile::tempdir().unwrap();
     let db = seed(d.path());
     add_server(
@@ -1817,6 +1817,13 @@ async fn a_rotation_reseals_the_three_tables_under_the_new_key_and_loses_nothing
         [A],
     )
     .unwrap(); // empty
+               // An administrator's shared key (the directory row itself, the front's since #2202 round 2): sealed
+               // unbound under the previous key. A row with no shared key is not listed at all.
+    db.execute(
+        "UPDATE directory_mcp_servers SET headers_enc=?1 WHERE id='dir-b'",
+        [seal_old(KEYS_JSON, None)],
+    )
+    .unwrap();
     std::fs::write(d.path().join("secrets.key.previous"), old).unwrap();
     let f = front(d.path()).await;
     let (st, body) = store(f.store, "reseal", STORE_TOKEN, "{}").await;
@@ -1833,6 +1840,10 @@ async fn a_rotation_reseals_the_three_tables_under_the_new_key_and_loses_nothing
     assert_eq!(
         body["tables"]["directory_mcp_user_keys"],
         j(r#"{"current":0,"rotated":1,"upgraded":0,"empty":1,"failed":1}"#)
+    );
+    assert_eq!(
+        body["tables"]["directory_mcp_servers"],
+        j(r#"{"current":0,"rotated":1,"upgraded":0,"empty":0,"failed":0}"#)
     );
     assert_eq!(body["failures"].as_array().unwrap().len(), 1);
     assert_eq!(body["failures"][0]["table"], "directory_mcp_user_keys");
@@ -1866,8 +1877,24 @@ async fn a_rotation_reseals_the_three_tables_under_the_new_key_and_loses_nothing
         key_row(&db, B, "dir-oauth").as_deref(),
         Some("enc:v2:AAAA-not-a-sealed-value")
     );
+    let shared: String = db
+        .query_row(
+            "SELECT headers_enc FROM directory_mcp_servers WHERE id='dir-b'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        shared.starts_with("enc:v1:"),
+        "the shared key stays unbound, as core sealed it"
+    );
+    assert_eq!(open(&shared, None), j(KEYS_JSON));
     // Idempotent: a second pass finds every opened row current.
     let (_, again) = store(f.store, "reseal", STORE_TOKEN, "{}").await;
+    assert_eq!(
+        again["tables"]["directory_mcp_servers"],
+        j(r#"{"current":1,"rotated":0,"upgraded":0,"empty":0,"failed":0}"#)
+    );
     assert_eq!(
         again["tables"]["mcp_oauth_tokens"],
         j(r#"{"current":2,"rotated":0,"upgraded":0,"empty":0,"failed":0}"#)

@@ -13,16 +13,17 @@
 //! caller has already passed the request gate (session or token, origin, CSRF) and hands over the
 //! validated [`Identity`]; this module never reads credentials from a request.
 //!
-//! Kept on Node, with the reason, in contracts/http/README.md: `/api/diary/context` (the project
-//! list in Node's memory), `/api/diary/exchanges` (the running-job set in Node's memory),
-//! `/api/diary/local-exchange` (the shared model throttle and inference gate),
-//! `/api/diary/storage-status` (the storage-login latch in Node's memory), `/api/diary-connector`
-//! and `/api/profile/diary-connectors` (Node's credential table, throttles and audit).
+//! `GET /api/diary/storage-status` and `GET`/`POST /api/diary/exchanges` (sbstndalton/noevia#2206) are
+//! here too; the connector credentials and the file bridge are [`crate::connector`].
+//!
+//! Kept on Node, with the reason, in contracts/http/README.md: `POST /api/diary/local-exchange` (the
+//! shared model throttle and the inference gate, both Node memory).
 
 use crate::body::{ChannelBody, StreamError};
 use crate::client::{parse_or_text, read_capped, CallError, Capped, JsonReply, Sidecar};
 use crate::config::DiaryConfig;
-use crate::tenant::{Content, Tenant};
+use crate::exchanges;
+use crate::tenant::{workspace_dir, Content, StorageIdentity, Tenant};
 use bytes::Bytes;
 use http_body::Body;
 use http_body_util::BodyExt;
@@ -82,6 +83,16 @@ impl Default for Limits {
     }
 }
 
+/// `readObject(req, 4096)` of the exchanges' dismiss.
+const EXCHANGE_BODY: usize = 4096;
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+        .unwrap_or(0)
+}
+
 pub const EXPORT_FAILED: &str =
     "Workspace export could not finish. Retry when storage is available.";
 pub const IMPORT_UNAVAILABLE: &str =
@@ -94,15 +105,21 @@ pub enum Route {
     StorageImport,
     WorkspaceExport,
     WorkspaceImport,
+    /// `GET /api/diary/storage-status` (sbstndalton/noevia#2206).
+    StorageStatus,
+    /// `GET` and `POST /api/diary/exchanges` (sbstndalton/noevia#2206).
+    Exchanges,
 }
 
 impl Route {
-    pub const PATHS: [&'static str; 5] = [
+    pub const PATHS: [&'static str; 7] = [
         "/api/diary/source",
         "/api/diary/today",
         "/api/diary/storage-import",
         "/api/diary/workspace-export",
         "/api/diary/workspace-import",
+        "/api/diary/storage-status",
+        "/api/diary/exchanges",
     ];
 
     /// The exact pathname only: core compares `p === '/api/diary/...'`.
@@ -113,16 +130,41 @@ impl Route {
             "/api/diary/storage-import" => Some(Route::StorageImport),
             "/api/diary/workspace-export" => Some(Route::WorkspaceExport),
             "/api/diary/workspace-import" => Some(Route::WorkspaceImport),
+            "/api/diary/storage-status" => Some(Route::StorageStatus),
+            "/api/diary/exchanges" => Some(Route::Exchanges),
             _ => None,
         }
     }
 }
 
+/// The hold on an account's AUTOMATIC storage calls, as the status view shows it (core
+/// `storage-latch.cjs` `status`). The latch is a durable file both processes use (noevia-server
+/// reads it with crates/server-projects `storage_latch`), so this crate only asks.
+pub trait StorageLatch: Send + Sync {
+    /// The hold for this account's saved connection, or none. Blocking (SQLite). A latch that
+    /// cannot be read is no hold: the status is then as the sidecar gave it, as core's was.
+    fn held(&self, user_id: &str, storage: &StorageIdentity<'_>) -> Option<Held>;
+}
+
+/// `{ kind, nextAttemptAt }`: `login` or `throttled`, and when the next automatic attempt is due
+/// (epoch ms).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Held {
+    pub kind: &'static str,
+    pub next_attempt_at: i64,
+}
+
 /// Who is asking, from the gate and the front's store.
+#[derive(Clone)]
 pub struct Ctx {
     pub identity: Identity,
     pub store: Arc<Store>,
     pub data_dir: PathBuf,
+    /// The storage-login latch, for the status route.
+    pub latch: Option<Arc<dyn StorageLatch>>,
+    /// The container start (NOEVIA_START_ID): the set of running exchanges Node published belongs to
+    /// the start that wrote it.
+    pub start_id: Option<String>,
 }
 
 /// The request line and the headers this module reads.
@@ -195,6 +237,7 @@ fn encode_uri_component(text: &str) -> String {
 struct Query {
     search: String,
     month: Option<String>,
+    day: Option<String>,
 }
 
 fn query_of(target: &str) -> Query {
@@ -211,10 +254,15 @@ fn query_of(target: &str) -> Query {
                 .query_pairs()
                 .find(|(k, _)| k == "month")
                 .map(|(_, v)| v.into_owned()),
+            day: url
+                .query_pairs()
+                .find(|(k, _)| k == "day")
+                .map(|(_, v)| v.into_owned()),
         },
         None => Query {
             search: String::new(),
             month: None,
+            day: None,
         },
     }
 }
@@ -237,6 +285,9 @@ fn detail_or(body: Option<&JValue>, fallback: &str) -> JValue {
     }
 }
 
+/// Cheap to clone (the HTTP client and the configuration are shared), so work that must not be
+/// abandoned when a client goes away can be handed to its own task.
+#[derive(Clone)]
 pub struct Diary {
     sidecar: Sidecar,
     limits: Limits,
@@ -290,11 +341,16 @@ impl Diary {
     where
         B: Body<Data = Bytes> + Unpin + Send,
     {
+        let method = request.method.as_str();
+        // core mounts the exchanges on GET and POST only; any other method matches nothing and falls
+        // through to the unknown-path answer, before the add-on is looked at.
+        if route == Route::Exchanges && !matches!(method, "GET" | "POST") {
+            return error_reply(404, "not found");
+        }
         if !ctx.identity.user.diary_enabled {
             return disabled();
         }
         let query = query_of(&request.target);
-        let method = request.method.as_str();
         match route {
             Route::Source => self.source(&ctx).await,
             Route::Today => self.today(&ctx, query.month.as_deref()).await,
@@ -317,6 +373,154 @@ impl Diary {
                 self.workspace_import(&ctx, &request, &query.search, body)
                     .await
             }
+            Route::StorageStatus => {
+                if method != "GET" {
+                    return not_allowed();
+                }
+                self.storage_status(&ctx).await
+            }
+            Route::Exchanges => self.exchanges(&ctx, method, query.day, body).await,
+        }
+    }
+
+    /// `GET /api/diary/storage-status`: the sidecar's view of the person's storage, and, while a
+    /// refused or throttled login holds this account's automatic storage calls (the backup among
+    /// them), the hold and when the next attempt is due (#1589), instead of looking healthy.
+    async fn storage_status(&self, ctx: &Ctx) -> Reply {
+        let reply = async {
+            let tenant = self.tenant(ctx).await?;
+            let reply = self
+                .sidecar
+                .fetch_json(
+                    &tenant,
+                    Method::GET,
+                    "/api/storage-status",
+                    None,
+                    Duration::from_secs(60),
+                )
+                .await?;
+            // Only a reply that is an object can carry the hold.
+            let held = match (&reply.body, reply.ok, &ctx.latch) {
+                (Some(JValue::Obj(_)), true, Some(latch)) => {
+                    let (latch, tenant, user) = (
+                        Arc::clone(latch),
+                        Arc::clone(&tenant),
+                        ctx.identity.user.id.clone(),
+                    );
+                    tokio::task::spawn_blocking(move || {
+                        latch.held(&user, &tenant.storage_identity())
+                    })
+                    .await
+                    .ok()
+                    .flatten()
+                }
+                _ => None,
+            };
+            Ok::<_, CallError>((reply, held))
+        }
+        .await;
+        match reply {
+            Ok((r, held)) if r.ok => {
+                let body = r.body.unwrap_or(JValue::Undefined);
+                let body = match (held, body) {
+                    (Some(held), JValue::Obj(mut fields)) => {
+                        wtf16::set(
+                            &mut fields,
+                            "automaticStorage",
+                            JValue::obj([
+                                ("held", JValue::Bool(true)),
+                                ("kind", JValue::Str(held.kind.to_owned())),
+                                ("nextAttemptAt", JValue::Num(held.next_attempt_at as f64)),
+                            ]),
+                        );
+                        JValue::Obj(fields)
+                    }
+                    (_, body) => body,
+                };
+                json_reply(r.status, &body)
+            }
+            Ok((r, _)) => json_reply(
+                r.status,
+                &JValue::obj([(
+                    "error",
+                    detail_or(r.body.as_ref(), "Diary storage request failed"),
+                )]),
+            ),
+            Err(_) => internal(),
+        }
+    }
+
+    /// `GET` and `POST /api/diary/exchanges`: the Diary tab's recovery records for a day, and the
+    /// `dismiss` of an uncertain or failed one so it stops raising the banner. Only the record's own
+    /// `acknowledgedAt` changes; the diary is never touched.
+    async fn exchanges<B>(&self, ctx: &Ctx, method: &str, day: Option<String>, body: B) -> Reply
+    where
+        B: Body<Data = Bytes> + Unpin + Send,
+    {
+        let Some(dir) = workspace_dir(&ctx.data_dir, &ctx.identity.user.id) else {
+            return internal();
+        };
+        let start = ctx.start_id.clone();
+        let failed = |fault: exchanges::Fault| error_reply(fault.status, fault.message);
+        if method == "GET" {
+            let listed = tokio::task::spawn_blocking(move || {
+                exchanges::list(&dir, day.as_deref(), start.as_deref())
+            })
+            .await;
+            return match listed {
+                Ok(Ok(rows)) => json_reply(200, &JValue::obj([("exchanges", JValue::Arr(rows))])),
+                Ok(Err(fault)) => failed(fault),
+                Err(_) => error_reply(500, "Could not read recovery records"),
+            };
+        }
+        let deadline = Instant::now() + self.limits.small_body_deadline;
+        let raw = match read_body(body, EXCHANGE_BODY, deadline).await {
+            Ok(bytes) => bytes,
+            Err(BodyFault::TooLarge) => return error_reply(413, "Request exceeds size limit"),
+            Err(_) => return internal(),
+        };
+        let text = String::from_utf8_lossy(&raw);
+        let parsed = if text.is_empty() {
+            JValue::Obj(Vec::new())
+        } else {
+            match wtf16::parse(&text) {
+                Ok(v) => v,
+                Err(wtf16::Refusal::Invalid) => return error_reply(400, "invalid JSON"),
+                Err(wtf16::Refusal::Unsupported) => return internal(),
+            }
+        };
+        if !parsed.is_object() {
+            return error_reply(400, "request body must be a JSON object");
+        }
+        if parsed.get("action").as_str() != Some("dismiss") {
+            return error_reply(400, "Unknown action");
+        }
+        let now = now_ms();
+        let done = tokio::task::spawn_blocking(move || {
+            exchanges::acknowledge(
+                &dir,
+                parsed.get("day"),
+                parsed.get("id"),
+                start.as_deref(),
+                now,
+            )
+        })
+        .await;
+        match done {
+            Ok(Ok(row)) => json_reply(
+                200,
+                &JValue::obj([(
+                    "exchange",
+                    JValue::obj([
+                        ("id", row.get("id").clone()),
+                        ("day", row.get("day").clone()),
+                        ("state", row.get("state").clone()),
+                        ("acknowledgedAt", row.get("acknowledgedAt").clone()),
+                    ]),
+                )]),
+            ),
+            Ok(Err(fault)) => failed(fault),
+            Err(_) => error_reply(500, "Could not update the recovery record"),
         }
     }
 
@@ -417,19 +621,23 @@ impl Diary {
         };
         // `readBody` decodes UTF-8 (bad bytes become U+FFFD) and fetch sends that string.
         let text = Bytes::from(String::from_utf8_lossy(&raw).into_owned());
-        let reply = async {
-            let tenant = self.tenant(ctx).await?;
-            self.sidecar
+        // The import is the sidecar's to finish: a client that goes away must not cut the call off
+        // half-sent (core never tied it to the client's connection), so it runs on its own task.
+        let (this, owned) = (self.clone(), ctx.clone());
+        let reply = tokio::spawn(async move {
+            let tenant = this.tenant(&owned).await?;
+            this.sidecar
                 .fetch_json(
                     &tenant,
                     Method::POST,
                     "/api/storage-import",
                     Some(text),
-                    self.limits.storage_import_timeout,
+                    this.limits.storage_import_timeout,
                 )
                 .await
-        }
-        .await;
+        })
+        .await
+        .unwrap_or(Err(CallError::Transport));
         match reply {
             Ok(r) if r.ok => json_reply(r.status, &r.body.unwrap_or(JValue::Undefined)),
             Ok(r) => json_reply(
@@ -678,6 +886,7 @@ mod tests {
             assert!(Route::from_path(&format!("{p}/")).is_none());
         }
         assert!(Route::from_path("/api/diary/history").is_none());
-        assert!(Route::from_path("/api/diary/storage-status").is_none());
+        assert!(Route::from_path("/api/diary/local-exchange").is_none());
+        assert!(Route::from_path("/api/diary/storage-statusx").is_none());
     }
 }

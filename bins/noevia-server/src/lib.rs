@@ -25,12 +25,22 @@ pub mod legacy_proxy;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_broker;
 #[cfg(feature = "rust-storage-reads")]
+pub mod mcp_directory;
+#[cfg(feature = "rust-storage-reads")]
+pub mod mcp_directory_routes;
+#[cfg(feature = "rust-storage-reads")]
+pub mod mcp_discovery;
+#[cfg(feature = "rust-storage-reads")]
 pub mod mcp_egress;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_routes;
 pub mod model_kind;
+#[cfg(feature = "rust-storage-reads")]
+pub mod mcp_tools;
 pub mod model_routes;
 pub mod model_sizing;
+#[cfg(feature = "rust-storage-reads")]
+pub mod nextcloud_routes;
 pub mod offsite_engine;
 pub mod offsite_mirror;
 pub mod offsite_routes;
@@ -73,6 +83,8 @@ pub mod storage_integration_routes;
 pub mod storage_metadata_worker;
 #[cfg(feature = "rust-storage-reads")]
 pub mod storage_read_routes;
+#[cfg(feature = "rust-storage-reads")]
+pub mod toolbox_routes;
 pub mod upkeep;
 pub mod usage_routes;
 pub mod web_address_routes;
@@ -107,6 +119,13 @@ use std::sync::Arc;
 /// (`/api/diary/source`, `/today`, `/storage-import`, `/workspace-export`, `/workspace-import`;
 /// sbstndalton/noevia#2185), permanently and with no switch. Node refuses them (core
 /// rust-diary.cjs `RUST_DIARY_OWNED`), so the web supervisor must refuse a front without it.
+///
+/// `rust-diary-routes`: this build also answers the rest of the Diary routes the web client names
+/// except the local exchange (sbstndalton/noevia#2206): `/api/diary` (nothing), `/api/diary/context`,
+/// `/api/diary/exchanges`, `/api/diary/storage-status`, `/api/diary-connector` and
+/// `/api/profile/diary-connectors[/{id}]`. It is the only writer of `diary_connectors` and reads the
+/// running-exchange set Node publishes (`diary-conversations/active.json`). Node refuses them (core
+/// rust-diary-routes.cjs `RUST_DIARY_ROUTES_OWNED`), so the web supervisor pairs them.
 ///
 /// `rust-model-reads`: this build answers `GET /api/models/capabilities` and `GET
 /// /api/models/hardware` (sbstndalton/noevia#2187), permanently and with no switch. Node refuses
@@ -201,6 +220,20 @@ use std::sync::Arc;
 /// core refuses the routes (rust-mcp-credentials.cjs `RUST_MCP_CREDENTIALS_OWNED`) and every Node
 /// write of the tables.
 ///
+/// `rust-mcp-directory`: this build owns the admin MCP directory (mcp_directory.rs,
+/// mcp_directory_routes.rs, sbstndalton/noevia#2202 round 2): `GET|POST /api/admin/mcp-directory`,
+/// `POST .../custom` and `.../custom/preview`, `PUT .../{id}/keys` and `.../{id}/oauth-client`, `DELETE
+/// .../{id}`. It lists a candidate server's tools itself (initialize, tools/list over JSON or
+/// event-stream replies, public https only), is the only writer of `directory_mcp_servers` (the server
+/// rows and the administrators' shared key slot) and re-seals that slot for a secrets rotation. Node
+/// re-reads the table for its chat-time MCP client. The paired core refuses the routes
+/// (rust-mcp-directory.cjs `RUST_MCP_DIRECTORY_OWNED`), publishes the discovery snapshot
+/// (`mcp-discovery.json`) and writes nothing of the table.
+/// `rust-toolboxes-permitted`: `GET /api/toolboxes/permitted` (toolbox_routes.rs), computed here from
+/// the front's own state and that snapshot (core `RUST_TOOLBOXES_PERMITTED_OWNED`).
+/// `rust-connectors`: `GET /api/connectors` and `PUT /api/connectors/nextcloud/policy`
+/// (nextcloud_routes.rs; core `RUST_CONNECTORS_OWNED`).
+///
 /// `rust-model-sizing`: this build answers `GET /api/models/estimate` and `GET
 /// /api/models/preset/suggest` (sbstndalton/noevia#2189, src/model_sizing.rs), permanently and
 /// with no switch. Node refuses those two GETs (core rust-model-sizing.cjs `RUST_MODEL_SIZING_OWNED`),
@@ -282,6 +315,7 @@ pub const FEATURES: &[&str] = &[
     server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER,
     "rust-auth",
     "rust-diary",
+    "rust-diary-routes",
     "rust-model-reads",
     "rust-project-reads",
     "rust-project-lifecycle",
@@ -334,6 +368,12 @@ pub const FEATURES: &[&str] = &[
     "rust-providers-reseal",
     #[cfg(feature = "rust-storage-reads")]
     "rust-mcp-credentials",
+    #[cfg(feature = "rust-storage-reads")]
+    "rust-mcp-directory",
+    #[cfg(feature = "rust-storage-reads")]
+    "rust-toolboxes-permitted",
+    #[cfg(feature = "rust-storage-reads")]
+    "rust-connectors",
     "rust-vault-mirror-preferences",
     "rust-health",
     "rust-auto-roles",
@@ -404,6 +444,9 @@ pub struct App {
     /// The Diary sidecar client (sbstndalton/noevia#2185); `None` only if its HTTP client could
     /// not be built, when its routes answer 503.
     pub diary: Option<Arc<server_diary::Diary>>,
+    /// `connectorRate` of the Diary connector endpoint (core routes/diary.cjs): fixed windows, one
+    /// per bucket key, in this process's memory like core's.
+    diary_connector_rate: std::sync::Mutex<server_account::rate::RateLimiter>,
     pub reasoning_settings: Arc<tokio::sync::Semaphore>,
     pub sampling_settings: Arc<tokio::sync::Semaphore>,
     pub routing_mode: Arc<tokio::sync::Semaphore>,
@@ -423,6 +466,15 @@ pub struct App {
 }
 
 impl App {
+    /// `connectorRate.rateLimited(key, limit, 60000)`: counts this call, true when it is over.
+    pub(crate) fn connector_rate(&self, key: &str, limit: u64) -> bool {
+        self.diary_connector_rate
+            .lock()
+            .map(|mut r| r.limited(key, limit, 60_000, identity::now_ms()))
+            // A poisoned limiter cannot count; refusing is the safe side for a credential endpoint.
+            .unwrap_or(true)
+    }
+
     pub fn new(config: config::Config) -> Arc<Self> {
         Self::with_lookup(config, code_net::system_lookup())
     }
@@ -484,6 +536,9 @@ impl App {
             diary: server_diary::Diary::new(config.diary.clone())
                 .ok()
                 .map(Arc::new),
+            diary_connector_rate: std::sync::Mutex::new(server_account::rate::RateLimiter::new(
+                identity::now_ms(),
+            )),
             reasoning_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             sampling_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             routing_mode: Arc::new(tokio::sync::Semaphore::new(4)),
@@ -565,6 +620,8 @@ async fn handle(
                     | routes::Native::Health
                     | routes::Native::AutoRoles
                     | routes::Native::McpCredentials
+                    | routes::Native::McpDirectory
+                    | routes::Native::ToolboxesPermitted
             )
         ) {
             native = on_whatwg;
@@ -602,7 +659,9 @@ async fn handle(
             | routes::Native::Providers
             | routes::Native::Health
             | routes::Native::AutoRoles
-            | routes::Native::McpCredentials,
+            | routes::Native::McpCredentials
+            | routes::Native::McpDirectory
+            | routes::Native::ToolboxesPermitted,
         )
         | None => false,
     };
@@ -754,6 +813,42 @@ async fn handle(
                 reply::error(
                     StatusCode::SERVICE_UNAVAILABLE,
                     "MCP credentials unavailable",
+                    true,
+                )
+            }
+        }
+        Some(routes::Native::McpDirectory) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            #[cfg(feature = "rust-storage-reads")]
+            {
+                mcp_directory_routes::serve(&app, conn, req, p).await
+            }
+            #[cfg(not(feature = "rust-storage-reads"))]
+            {
+                let _ = (p, conn, req);
+                reply::error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "MCP directory unavailable",
+                    true,
+                )
+            }
+        }
+        Some(routes::Native::ToolboxesPermitted) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            #[cfg(feature = "rust-storage-reads")]
+            {
+                toolbox_routes::serve(&app, conn, req, p).await
+            }
+            #[cfg(not(feature = "rust-storage-reads"))]
+            {
+                let _ = (p, conn, req);
+                reply::error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Toolboxes unavailable",
                     true,
                 )
             }

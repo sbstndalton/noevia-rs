@@ -77,6 +77,8 @@ fn replay(core: &Path, corpus: &Path, out: &Path, name: &str, front: bool) -> Re
             "--state-ignore",
             "*auto-roles-snapshot.json",
             "--state-ignore",
+            "*mcp-discovery.json",
+            "--state-ignore",
             "*snapshot-demand",
         ])
         .arg("--seed")

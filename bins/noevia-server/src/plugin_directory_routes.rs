@@ -116,7 +116,7 @@ pub struct Directory {
 }
 
 #[derive(Debug)]
-struct Failed;
+pub(crate) struct Failed;
 
 /// Why a published skill could not be fetched.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -284,7 +284,7 @@ impl Directory {
     }
 
     /// core `findRegistryServer(name)`: the registry entry with exactly this name, or none.
-    async fn find_registry_server(&self, name: &str) -> Result<Option<JValue>, Failed> {
+    pub(crate) async fn find_registry_server(&self, name: &str) -> Result<Option<JValue>, Failed> {
         if name.is_empty() || js_json::js_len(name) > 200 {
             return Ok(None);
         }
@@ -461,7 +461,7 @@ fn hosted_url_ok(url: &str, loopback: bool) -> bool {
 }
 
 /// `RESERVED_HEADERS`, for a name already known to be `[A-Za-z0-9-]{1,64}`.
-fn reserved_header(name: &str) -> bool {
+pub(crate) fn reserved_header(name: &str) -> bool {
     let n = name.to_ascii_lowercase();
     matches!(
         n.as_str(),
@@ -479,7 +479,7 @@ fn reserved_header(name: &str) -> bool {
         || n.starts_with("x-forwarded-")
 }
 
-fn plain_header_name(name: &str) -> bool {
+pub(crate) fn plain_header_name(name: &str) -> bool {
     (1..=64).contains(&name.len()) && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
 }
 

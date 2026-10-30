@@ -55,9 +55,9 @@ pub enum Access {
     InsertUpdate,
     /// INSERT only. `audit_events` is shared: every Node module appends too, nobody rewrites.
     Append,
-    /// DELETE only: an account recovery revokes the account's Diary connectors, a table Node
-    /// otherwise owns.
-    DeleteOnly,
+    /// INSERT and DELETE, never an UPDATE: the Diary connectors (sbstndalton/noevia#2206), whose rows
+    /// are created once, listed and revoked, and never edited.
+    InsertDelete,
 }
 
 impl Access {
@@ -70,7 +70,10 @@ impl Access {
                     AuthAction::Insert { .. } | AuthAction::Update { .. }
                 )
                 | (Access::Append, AuthAction::Insert { .. })
-                | (Access::DeleteOnly, AuthAction::Delete { .. })
+                | (
+                    Access::InsertDelete,
+                    AuthAction::Insert { .. } | AuthAction::Delete { .. }
+                )
         )
     }
 }
@@ -94,7 +97,10 @@ pub const OWNED_TABLES: &[(&str, Access)] = &[
     ("device_tokens", Access::Full),
     ("app_passwords", Access::Full),
     ("audit_events", Access::Append),
-    ("diary_connectors", Access::DeleteOnly),
+    // sbstndalton/noevia#2206: the Diary connector credentials are the front's (created, listed and
+    // revoked by /api/profile/diary-connectors, verified by /api/diary-connector). Core's guard
+    // (rust-auth.cjs `FRONT_TABLES`) refuses every Node write; an account's rows go by cascade.
+    ("diary_connectors", Access::InsertDelete),
     // core dav-settings.cjs (Settings -> Sharing, #1071): created by core at boot; the DAV
     // listener only reads it.
     ("dav_settings", Access::InsertUpdate),
@@ -242,7 +248,9 @@ const CHATGPT_OAUTH_TOKENS: &str = "chatgpt_oauth_tokens";
 
 /// MCP server credentials (sbstndalton/noevia#2202): the Rust front is the broker of the OAuth
 /// sign-ins (`mcp_oauth_tokens`, `mcp_oauth_clients`) and of each account's own API keys for a
-/// directory server (`directory_mcp_user_keys`), and the only writer of those three tables. Core's
+/// directory server (`directory_mcp_user_keys`), and the only writer of those three tables. Since
+/// round 2 it also owns the directory itself (`directory_mcp_servers`: the rows, the administrator's
+/// shared key slot, the OAuth flag), with compare-and-swap writes. Core's
 /// guard (rust-auth.cjs `FRONT_TABLES`) refuses every Node write of them, even inside `exempt()`.
 /// Like [`RustChatgptOAuth`] the grant is per statement: only the [`WriteTx`] methods named
 /// `mcp_*` open it, each for its one statement.
@@ -294,10 +302,13 @@ impl RustToolPolicies {
 }
 
 /// The tables [`RustMcpCredentials`] writes.
-const MCP_TABLES: [&str; 3] = [
+const MCP_TABLES: [&str; 4] = [
     "mcp_oauth_tokens",
     "mcp_oauth_clients",
     "directory_mcp_user_keys",
+    // sbstndalton/noevia#2202 round 2: the server rows themselves (the directory), not only the
+    // credentials kept for them.
+    "directory_mcp_servers",
 ];
 /// The table [`RustToolPolicies`] writes.
 const TOOL_POLICIES: &str = "tool_policies";
@@ -328,8 +339,8 @@ pub const SHARED_PROJECT_FILES: &[&str] = &["projects.json", "free-chats.json", 
 pub const ROOT_PROVIDER_FILE: &str = "shared-providers.json";
 
 /// Columns Rust reads or writes, per table, with the core module that creates them. Each must
-/// exist; Node may add others. (`diary_connectors` is optional: diary-connectors.cjs creates it
-/// when the server wires it up, and Rust only deletes from it when it is there.)
+/// exist; Node may add others. (`diary_connectors` is optional: core still creates the table at boot
+/// (diary-connectors.cjs `ensureTable`); Rust reads and writes it only when it is there.)
 pub const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     ("schema_migrations", &["version"]),
     ("settings", &["key", "value"]),
@@ -1549,6 +1560,86 @@ impl WriteTx<'_> {
         self.mcp_statement(
             "DELETE FROM directory_mcp_user_keys WHERE user_id=?",
             rusqlite::params![user_id],
+        )
+    }
+
+    /// core directory-mcp.cjs `add`'s one INSERT. The caller has already refused a duplicate or a
+    /// full directory in the same transaction; a UNIQUE violation here is an error all the same.
+    #[allow(clippy::too_many_arguments)]
+    pub fn mcp_directory_insert(
+        &self,
+        _cap: RustMcpCredentials,
+        id: &str,
+        registry_name: &str,
+        title: &str,
+        url: &str,
+        added_by: Option<&str>,
+        added_at: i64,
+        headers_enc: Option<&str>,
+        oauth: bool,
+        personal: bool,
+        declared_json: &str,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "INSERT INTO directory_mcp_servers(id, registry_name, title, url, added_by, added_at, headers_enc, oauth, personal, declared_json) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            rusqlite::params![
+                id,
+                registry_name,
+                title,
+                url,
+                added_by,
+                added_at,
+                headers_enc,
+                i64::from(oauth),
+                i64::from(personal),
+                declared_json
+            ],
+        )
+    }
+
+    /// The shared key slot, replaced only while it still holds `was` (a compare-and-swap, so two
+    /// administrators changing the same key cannot both win). With `added_at` the row must also be
+    /// the one added then, as in [`Self::mcp_directory_delete_added`]: a server removed and added again
+    /// under the same id (and no key, so the same NULL) is another server, and a key meant for the old
+    /// one must not land on it. The re-seal of a rotation passes `None`: its `was` is a ciphertext, and
+    /// no other row holds that one.
+    pub fn mcp_directory_swap_headers(
+        &self,
+        _cap: RustMcpCredentials,
+        id: &str,
+        headers_enc: Option<&str>,
+        was: Option<&str>,
+        added_at: Option<i64>,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "UPDATE directory_mcp_servers SET headers_enc=?1 WHERE id=?2 AND headers_enc IS ?3 AND (?4 IS NULL OR added_at=?4)",
+            rusqlite::params![headers_enc, id, was, added_at],
+        )
+    }
+
+    /// core `remove`'s DELETE.
+    pub fn mcp_directory_delete(
+        &self,
+        _cap: RustMcpCredentials,
+        id: &str,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "DELETE FROM directory_mcp_servers WHERE id=?",
+            rusqlite::params![id],
+        )
+    }
+
+    /// The delete of a row the caller has just added: only if it is still the one added at `added_at`
+    /// (a rollback must not remove a server another administrator re-added under the same name).
+    pub fn mcp_directory_delete_added(
+        &self,
+        _cap: RustMcpCredentials,
+        id: &str,
+        added_at: i64,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "DELETE FROM directory_mcp_servers WHERE id=? AND added_at=?",
+            rusqlite::params![id, added_at],
         )
     }
 
