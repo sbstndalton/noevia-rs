@@ -295,8 +295,9 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     // the off-site backup's seven routes (its eighth path, new-store, was never a Node route) and the four
     // Google Drive connector writes: 57; #2202 moved the five MCP key and sign-in routes (the sign-in
     // callback was never a listed Node route): 52; the close-out moved GET /api/health, GET /api/auto-roles
-    // and GET /api/workspace: 49).
-    assert!(node_routes >= 49, "{node_routes} node routes");
+    // and GET /api/workspace: 49; #2191 round 9 moved a project's config, its two instruction-skill
+    // paths and the manifests, the skill install and an account's deletion: 44).
+    assert!(node_routes >= 44, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("POST", "/api/ready"),
@@ -391,8 +392,9 @@ async fn headers_cookies_and_forwarded_for() {
         let (res, _c) = call(
             front,
             "POST",
-            // A route Node answers (POST /api/projects is the front's since #2191 round 2).
-            "/api/projects/p1/config?x=1",
+            // A route Node answers (POST /api/projects is the front's since #2191 round 2, a project's
+            // config since round 9; the browser route is chat-bound and stays).
+            "/api/projects/p1/browser?x=1",
             &[
                 ("x-forwarded-for", "6.6.6.6"),
                 ("x-noevia-client-ip", "7.7.7.7"),
@@ -414,7 +416,7 @@ async fn headers_cookies_and_forwarded_for() {
         assert_eq!(cookies, vec!["a=1; Path=/; HttpOnly", "b=2; Path=/"]);
         assert!(res.headers().get("x-hop").is_none());
         let echo: serde_json::Value = serde_json::from_str(&text(res).await).unwrap();
-        assert_eq!(echo["path"], "/api/projects/p1/config");
+        assert_eq!(echo["path"], "/api/projects/p1/browser");
         assert_eq!(echo["bodyLen"], 7);
         let h = &echo["headers"];
         assert_eq!(h["host"][0], "front.test");

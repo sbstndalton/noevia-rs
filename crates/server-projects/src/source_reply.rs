@@ -273,6 +273,7 @@ mod tests {
             selectable: vec!["core".into(), "project-docs".into()],
             defaults: vec!["core".into()],
             icons: vec![],
+            known: None,
         }
     }
 

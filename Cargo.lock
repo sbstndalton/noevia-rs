@@ -3040,6 +3040,7 @@ dependencies = [
  "sha2",
  "storage-path",
  "tempfile",
+ "toolboxes-permitted",
  "unicode-normalization",
  "upload-sniff",
  "url",

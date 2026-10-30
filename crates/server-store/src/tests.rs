@@ -963,3 +963,95 @@ fn mcp_credential_tables_take_only_the_broker_statements() {
     let raw = w.write(|tx| tx.execute("DELETE FROM mcp_oauth_tokens", []));
     assert!(matches!(raw, Err(StoreError::NotOwned(_))), "{raw:?}");
 }
+
+/// Round 9: an account's deletion is one statement that opens one grant, and the cascade it sets off
+/// reaches only tables the grant names; outside the window every delete is refused as before.
+#[test]
+fn deleting_an_account_cascades_through_every_table_it_owns_and_only_through_its_own_window() {
+    let (dir, node) = node_db();
+    node.execute_batch(
+        "CREATE TABLE tool_policies(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, tool TEXT NOT NULL, mode TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY(user_id, tool));
+         CREATE TABLE dav_settings(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, scope TEXT NOT NULL, acknowledged_at INTEGER, updated_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS diary_connectors(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,token_hash TEXT NOT NULL,created_at INTEGER NOT NULL);
+         INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES('u2','B','b','B','member','x','w2',1,1);
+         INSERT INTO sessions VALUES('s1','u1','c',1,1,9,'ua','ip'),('s2','u2','c',1,1,9,'ua','ip');
+         INSERT INTO user_features(user_id,updated_at) VALUES('u1',1),('u2',1);
+         INSERT INTO user_appearance VALUES('u1','{}',1),('u2','{}',1);
+         INSERT INTO storage_connections(user_id,kind,updated_at) VALUES('u1','local',1),('u2','local',1);
+         INSERT INTO tool_policies VALUES('u1','t','allow',1),('u2','t','allow',1);
+         INSERT INTO dav_settings VALUES('u1','s',NULL,1),('u2','s',NULL,1);
+         INSERT INTO diary_connectors VALUES('c1','u1','n','h',1),('c2','u2','n','h',1);",
+    )
+    .unwrap();
+    let writer = Writer::open(dir.path(), RustAuth::for_tests()).unwrap();
+    // The same statement outside the window is still refused whole, and nothing is lost.
+    let res = writer.write(|w| w.execute("DELETE FROM users WHERE id='u1'", []));
+    assert!(matches!(res, Err(StoreError::NotOwned(_))), "{res:?}");
+    assert_eq!(count(&node, "SELECT count(*) FROM users"), 2);
+    // The window is closed again after a statement: a plain delete of a cascaded table stays refused.
+    let gone = writer
+        .write(|w| w.delete_user(RustAccountDeletion::owned(), "u1"))
+        .unwrap();
+    assert_eq!(gone, 1);
+    for table in [
+        "sessions",
+        "user_features",
+        "user_appearance",
+        "storage_connections",
+        "tool_policies",
+        "dav_settings",
+        "diary_connectors",
+    ] {
+        assert_eq!(
+            count(
+                &node,
+                &format!("SELECT count(*) FROM {table} WHERE user_id='u1'")
+            ),
+            0,
+            "{table}"
+        );
+        assert_eq!(
+            count(
+                &node,
+                &format!("SELECT count(*) FROM {table} WHERE user_id='u2'")
+            ),
+            1,
+            "{table} of the other account"
+        );
+    }
+    assert_eq!(count(&node, "SELECT count(*) FROM users"), 1);
+    for sql in [
+        "DELETE FROM storage_connections WHERE user_id='u2'",
+        "DELETE FROM tool_policies WHERE user_id='u2'",
+        "DELETE FROM user_features WHERE user_id='u2'",
+        "DELETE FROM users WHERE id='u2'",
+    ] {
+        let res = writer.write(|w| w.execute(sql, []));
+        assert!(
+            matches!(res, Err(StoreError::NotOwned(_))),
+            "{sql}: {res:?}"
+        );
+    }
+    // An account that is not there is no row.
+    assert_eq!(
+        writer
+            .write(|w| w.delete_user(RustAccountDeletion::owned(), "nobody"))
+            .unwrap(),
+        0
+    );
+    // An account whose invitation or recovery link created rows must clear those first.
+    node.execute_batch(
+        "INSERT INTO invitations(token_hash,created_by,role,expires_at,created_at) VALUES('i','u2','member',9,1);",
+    )
+    .unwrap();
+    let res = writer.write(|w| w.delete_user(RustAccountDeletion::owned(), "u2"));
+    assert!(res.is_err(), "the invitation's key has no action: {res:?}");
+    assert_eq!(count(&node, "SELECT count(*) FROM users"), 1);
+    writer
+        .write(|w| {
+            w.execute("DELETE FROM invitations WHERE created_by='u2'", [])?;
+            w.delete_user(RustAccountDeletion::owned(), "u2")
+        })
+        .unwrap();
+    assert_eq!(count(&node, "SELECT count(*) FROM users"), 0);
+}

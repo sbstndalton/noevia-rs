@@ -81,6 +81,14 @@ pub struct Sizing {
     meminfo: PathBuf,
 }
 
+impl Sizing {
+    /// `LLAMACPP_PRESET_PATH` (set and non-empty): where models.ini, and beside it models.roles.json,
+    /// are kept.
+    pub fn presets_path(&self) -> Option<&Path> {
+        self.presets.as_deref()
+    }
+}
+
 impl std::fmt::Debug for Sizing {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Sizing")

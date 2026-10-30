@@ -31,6 +31,8 @@ pub const DIRECTORY: &str = "/api/plugins/directory";
 
 const REGISTRY: &str = "https://registry.modelcontextprotocol.io";
 const SKILLS: &str = "https://api.github.com/repos/anthropics/skills/contents/skills";
+/// Where one published SKILL.md is fetched from (a project's skill install, round 9).
+const RAW: &str = "https://raw.githubusercontent.com";
 const TTL: Duration = Duration::from_secs(60 * 60);
 const DEADLINE: Duration = Duration::from_secs(8);
 /// A directory listing of 40 servers or one repo's skill folders; 4 MB is far above that (#920).
@@ -47,6 +49,8 @@ pub struct Sources {
     pub skills: String,
     /// `NOEVIA_QA_ALLOW_LOOPBACK_MCP === '1'`.
     pub loopback_mcp: bool,
+    /// The base a published SKILL.md is fetched from, no trailing slash.
+    pub skills_raw: String,
 }
 
 impl Default for Sources {
@@ -55,6 +59,7 @@ impl Default for Sources {
             registry: REGISTRY.into(),
             skills: SKILLS.into(),
             loopback_mcp: false,
+            skills_raw: RAW.into(),
         }
     }
 }
@@ -66,6 +71,9 @@ impl Sources {
             registry: set("NOEVIA_QA_MCP_REGISTRY").unwrap_or_else(|| REGISTRY.into()),
             skills: set("NOEVIA_QA_SKILLS_DIRECTORY").unwrap_or_else(|| SKILLS.into()),
             loopback_mcp: get("NOEVIA_QA_ALLOW_LOOPBACK_MCP").as_deref() == Some("1"),
+            skills_raw: set("NOEVIA_QA_SKILLS_RAW")
+                .map(|v| v.trim_end_matches('/').to_string())
+                .unwrap_or_else(|| RAW.into()),
         }
     }
 }
@@ -109,6 +117,17 @@ pub struct Directory {
 
 #[derive(Debug)]
 struct Failed;
+
+/// Why a published skill could not be fetched.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkillFetch {
+    /// The repository has no SKILL.md of that name (404).
+    Missing,
+    /// More than 32 KiB.
+    TooLarge,
+    /// Any other failure: the network, the deadline, a redirect, a non-public address, a bad status.
+    Unreachable,
+}
 
 impl Directory {
     pub fn new(sources: Sources) -> Self {
@@ -163,6 +182,73 @@ impl Directory {
             bytes.extend_from_slice(&chunk);
         }
         js_json::parse(&String::from_utf8_lossy(&bytes)).map_err(|_| Failed)
+    }
+
+    /// A published skill's SKILL.md (core `fetchPublishedSkill`; `name` was validated by
+    /// [`server_projects::skill_routes::skill_name`]): the fixed raw host over https, no redirect
+    /// (`redirect: 'error'`), an 8 s deadline for the whole exchange, at most 32 KiB of body. The
+    /// host's addresses are looked up here and must all be public (ssrf-policy), and the request is
+    /// pinned to them, so a poisoned answer cannot lead the install into the private network. Only
+    /// a QA base (`NOEVIA_QA_SKILLS_RAW`, unset in production) may be a loopback http address.
+    pub async fn fetch_skill(&self, name: &str) -> Result<String, SkillFetch> {
+        let url = format!(
+            "{}/{}",
+            self.sources.skills_raw,
+            server_projects::skill_routes::skill_path(name)
+        );
+        let parsed = url::Url::parse(&url).map_err(|_| SkillFetch::Unreachable)?;
+        let qa = self.sources.skills_raw != RAW;
+        let host = parsed
+            .host_str()
+            .ok_or(SkillFetch::Unreachable)?
+            .to_string();
+        let mut builder = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .no_proxy()
+            .timeout(DEADLINE);
+        if !qa {
+            if parsed.scheme() != "https" {
+                return Err(SkillFetch::Unreachable);
+            }
+            let found = tokio::time::timeout(
+                DEADLINE,
+                tokio::net::lookup_host((
+                    host.as_str(),
+                    parsed.port_or_known_default().unwrap_or(443),
+                )),
+            )
+            .await
+            .map_err(|_| SkillFetch::Unreachable)?
+            .map_err(|_| SkillFetch::Unreachable)?
+            .collect::<Vec<_>>();
+            let ips: Vec<String> = found.iter().map(|a| a.ip().to_string()).collect();
+            if found.is_empty() || !ssrf_policy::addresses_public(&ips) {
+                return Err(SkillFetch::Unreachable);
+            }
+            builder = builder.resolve_to_addrs(&host, &found);
+        }
+        let client = builder.build().map_err(|_| SkillFetch::Unreachable)?;
+        let mut res = client
+            .get(parsed)
+            .header("user-agent", "noevia")
+            .send()
+            .await
+            .map_err(|_| SkillFetch::Unreachable)?;
+        if res.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(SkillFetch::Missing);
+        }
+        if !res.status().is_success() {
+            return Err(SkillFetch::Unreachable);
+        }
+        let cap = server_projects::skill_routes::SKILL_CAP;
+        let mut bytes: Vec<u8> = Vec::new();
+        while let Some(chunk) = res.chunk().await.map_err(|_| SkillFetch::Unreachable)? {
+            if bytes.len() + chunk.len() > cap {
+                return Err(SkillFetch::TooLarge);
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
     }
 
     /// core `load(kind, q)`.

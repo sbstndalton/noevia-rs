@@ -1936,6 +1936,72 @@ async fn the_start_sweep_removes_what_deleted_accounts_and_servers_left_and_publ
     assert_eq!(after.mode() & 0o777, 0o600);
 }
 
+/// sbstndalton/noevia#2190, #2191 round 9: an administrator's deletion of an account asks the MCP and the
+/// ChatGPT brokers to forget it, and nothing of another account goes with it.
+#[tokio::test]
+async fn deleting_an_account_forgets_its_mcp_sign_ins_and_keys_and_its_chatgpt_tokens() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    db.execute_batch(
+        "CREATE TABLE IF NOT EXISTS chatgpt_oauth_tokens(user_id TEXT PRIMARY KEY, data_enc TEXT NOT NULL,
+         state TEXT NOT NULL DEFAULT 'connected', updated_at INTEGER NOT NULL);",
+    )
+    .unwrap();
+    add_server(
+        &db,
+        "dir-oauth",
+        "http://127.0.0.1:9/mcp",
+        true,
+        true,
+        DECLARED,
+    );
+    for who in [A, B] {
+        store_tokens(&db, who, "dir-oauth", "x", Some("y"), None, 5);
+        db.execute(
+            "INSERT INTO directory_mcp_user_keys VALUES(?1,'dir-oauth',?2,1)",
+            (who, seal(KEYS_JSON, Some(who), 6)),
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO chatgpt_oauth_tokens(user_id,data_enc,state,updated_at) VALUES(?1,'enc:v2:x','connected',1)",
+            [who],
+        )
+        .unwrap();
+    }
+    let f = front(d.path()).await;
+    let (st, body) = write(
+        f.addr,
+        "DELETE",
+        &format!("/api/admin/users/{B}"),
+        ADMIN,
+        r#"{"username":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}"#,
+    )
+    .await;
+    assert_eq!((st, body["ok"].as_bool()), (200, Some(true)), "{body}");
+    assert_eq!(token_row(&db, B, "dir-oauth"), None, "its sign-ins went");
+    assert_eq!(key_row(&db, B, "dir-oauth"), None, "its keys went");
+    let chatgpt = |who: &str| -> i64 {
+        db.query_row(
+            "SELECT count(*) FROM chatgpt_oauth_tokens WHERE user_id=?1",
+            [who],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+    assert_eq!(chatgpt(B), 0, "its ChatGPT tokens went");
+    assert!(
+        token_row(&db, A, "dir-oauth").is_some(),
+        "another account's sign-in stays"
+    );
+    assert!(
+        key_row(&db, A, "dir-oauth").is_some(),
+        "another account's key stays"
+    );
+    assert_eq!(chatgpt(A), 1);
+    assert!(!d.path().join("users").join(B).exists());
+    assert_eq!(audits(&db, "user.delete"), vec!["user.delete".to_string()]);
+}
+
 #[tokio::test]
 async fn a_key_check_the_caller_abandons_is_still_stored() {
     let d = tempfile::tempdir().unwrap();

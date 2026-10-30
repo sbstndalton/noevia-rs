@@ -42,7 +42,8 @@ pub struct Tenant {
     user_id: String,
     admin: bool,
     legacy_owner: bool,
-    storage: ProjectedConnection,
+    /// `None` for [`Tenant::bare`]: a call that must not carry storage.
+    storage: Option<ProjectedConnection>,
 }
 
 /// `workspaceStore.get`: `users/<id>` under the data directory, for ids core's `userDir` accepts
@@ -74,8 +75,20 @@ impl Tenant {
             user_id: identity.user.id.clone(),
             admin: identity.user.role == Role::Admin,
             legacy_owner,
-            storage,
+            storage: Some(storage),
         })
+    }
+
+    /// core diary.cjs `tenantHeaders(userId, method, url)`: the bearer, the tenant id and the
+    /// assertion only, for a call that must not carry storage (an account's tenant deletion, when the
+    /// account no longer exists to read a storage connection from).
+    pub fn bare(user_id: &str) -> Self {
+        Self {
+            user_id: user_id.to_owned(),
+            admin: false,
+            legacy_owner: false,
+            storage: None,
+        }
     }
 
     pub fn user_id(&self) -> &str {
@@ -130,7 +143,8 @@ impl Tenant {
         config: &DiaryConfig,
         include_secret: bool,
     ) -> Result<Zeroizing<String>, TenantError> {
-        let c = self.storage.connection();
+        let storage = self.storage.as_ref().ok_or(TenantError::Storage)?;
+        let c = storage.connection();
         let mut fields = vec![
             ("kind".to_owned(), s(kind_name(c.kind))),
             ("baseUrl".to_owned(), s(&c.base_url)),
@@ -141,14 +155,14 @@ impl Tenant {
         ];
         let flags = |fields: &mut Vec<(String, JValue)>| {
             // getStorage answers an absent row without the two credential flags.
-            if self.storage.row_present() {
+            if storage.row_present() {
                 fields.push((
                     "secretConfigured".into(),
-                    JValue::Bool(self.storage.secret_configured()),
+                    JValue::Bool(storage.secret_configured()),
                 ));
                 fields.push((
                     "secretNeedsReauth".into(),
-                    JValue::Bool(self.storage.secret_needs_reauth()),
+                    JValue::Bool(storage.secret_needs_reauth()),
                 ));
             }
         };
@@ -195,12 +209,23 @@ impl Tenant {
             h.push(("Authorization", format!("Bearer {}", config.token())));
         }
         h.push((USER_ID, self.user_id.clone()));
+        let Some(connection) = self.storage.as_ref() else {
+            // Bare: no storage, no legacy marker; the assertion binds the tenant, the target and an
+            // empty body (core signs the headers it has).
+            if !config.tenant_key().is_empty() && !self.user_id.is_empty() {
+                h.push((
+                    ASSERTION,
+                    self.assertion(config, method, url, "", false, content)?,
+                ));
+            }
+            return Ok(h);
+        };
         if self.legacy_owner {
             h.push((LEGACY_OWNER, "1".to_owned()));
         }
-        let blocked = self.storage.connection().kind != Kind::Local
+        let blocked = connection.connection().kind != Kind::Local
             && !protocol::endpoint_approved(
-                &self.storage.connection().base_url,
+                &connection.connection().base_url,
                 self.admin,
                 &config.member_origins(),
             );
@@ -259,5 +284,60 @@ impl Tenant {
             now: 0.0,
         };
         tenant_assertion::sign(&request, ts, &nonce).ok_or(TenantError::Entropy)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
+mod tests {
+    use super::*;
+
+    fn config(key: &str) -> DiaryConfig {
+        DiaryConfig::new("http://diary.test:8010", " token ", key, String::new)
+    }
+
+    /// core diary.cjs `tenantHeaders`: the bearer, the tenant id and the assertion; no storage, no legacy
+    /// marker, no blocked flag (an account's tenant deletion, when the account has no storage left to read).
+    #[test]
+    fn a_bare_tenant_carries_the_bearer_the_id_and_the_assertion_only() {
+        let url = Url::parse("http://diary.test:8010/api/internal/tenant").unwrap();
+        let tenant = Tenant::bare("11111111-2222-4333-8444-555555555555");
+        let keyed = config("synthetic-tenant-key");
+        let h = tenant
+            .headers(&keyed, "DELETE", &url, false, Content::Json(None))
+            .unwrap();
+        let names: Vec<&str> = h.iter().map(|(k, _)| *k).collect();
+        assert_eq!(names, ["Content-Type", "Authorization", USER_ID, ASSERTION]);
+        assert_eq!(h[1].1, "Bearer token");
+        assert_eq!(h[2].1, "11111111-2222-4333-8444-555555555555");
+        let parts: Vec<&str> = h[3].1.split('.').collect();
+        assert_eq!((parts[0], parts.len()), ("v2", 4));
+        // Signed over the tenant, the method, the path, an empty query and body, and nothing else.
+        let expected = tenant_assertion::sign(
+            &tenant_assertion::Request {
+                key: "synthetic-tenant-key",
+                user_id: "11111111-2222-4333-8444-555555555555",
+                assertion: "",
+                method: "DELETE",
+                path: "/api/internal/tenant",
+                query: b"",
+                body_hash: &hex(&Sha256::digest(b"")),
+                storage: "",
+                legacy_owner: "",
+                blocked: "",
+                now: 0.0,
+            },
+            parts[1].parse().unwrap(),
+            parts[2],
+        )
+        .unwrap();
+        assert_eq!(expected, h[3].1);
+        // Without a tenant key there is no assertion.
+        let plain = tenant
+            .headers(&config(""), "DELETE", &url, false, Content::Json(None))
+            .unwrap();
+        assert_eq!(plain.len(), 3);
+        // A bare tenant has no storage descriptor to give.
+        assert!(tenant.descriptor(&keyed, false).is_err());
     }
 }

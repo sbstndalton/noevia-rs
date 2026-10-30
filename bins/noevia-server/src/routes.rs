@@ -106,6 +106,8 @@ pub enum Native {
     /// Every method of the eight /api/admin/offsite-backup paths (sbstndalton/noevia#2190 round 7):
     /// offsite_routes.rs.
     Offsite,
+    /// DELETE /api/admin/users/{id} (sbstndalton/noevia#2190, #2191 round 9): admin_user_routes.rs.
+    AdminUsers,
     /// POST /api/connectors/gdrive/{connect,disconnect}, PUT .../{policy,backup-copy}
     /// (sbstndalton/noevia#2190 round 7): connector_routes.rs.
     Connectors,
@@ -166,6 +168,10 @@ const DIARY_ROUTES: &[&str] = &[
 /// The route [`Native::RoutingDefault`] implements (GET only; routes.toml).
 const ROUTING_DEFAULT: &str = "/api/routing-default";
 
+/// An account's deletion (DELETE only; routes.toml), the front's under `rust-admin-users`
+/// (sbstndalton/noevia#2190, #2191 round 9); Node refuses it (core rust-admin-users.cjs).
+pub(crate) const ADMIN_USER: &str = "/api/admin/users/{id}";
+
 /// The route [`Native::Stats`] implements (GET only; routes.toml), answered only in a build with
 /// the cargo feature `rust-stats` (listed by `--features`, so the supervisor confirms it to Node).
 const STATS: &str = "/api/stats";
@@ -203,6 +209,11 @@ const PROJECT_ROUTES: &[&str] = &[
     PROJECT_SYNC,
     PROJECT_FOLDER_IMPORT,
     PROJECT_SOURCE_JOB,
+    PROJECT_CONFIG,
+    SKILLS,
+    SKILL_MANIFESTS,
+    SKILL_CONTENT,
+    SKILL_INSTALL,
     server_projects::import::ROUTE,
     WORKSPACE,
 ];
@@ -230,6 +241,17 @@ pub(crate) const PROJECT_DOCUMENTS: &str = "/api/projects/{id}/documents";
 /// under `rust-project-files` (sbstndalton/noevia#2191 round 3); Node refuses it
 /// (core rust-project-files.cjs).
 pub(crate) const PROJECT_FILES: &str = "/api/projects/{id}/files";
+
+/// A project's configuration (POST only), its instruction skills (GET, PUT; the manifests and a
+/// manifest's content, GET) and a published skill's install (POST only; routes.toml), the front's
+/// under `rust-project-config` (sbstndalton/noevia#2191 round 9); Node refuses them (core
+/// rust-project-config.cjs).
+pub(crate) const PROJECT_CONFIG: &str = "/api/projects/{projectId}/config";
+pub(crate) const SKILLS: &str = "/api/projects/{projectId}/instruction-skills";
+pub(crate) const SKILL_MANIFESTS: &str = "/api/projects/{projectId}/instruction-skills/manifests";
+pub(crate) const SKILL_CONTENT: &str =
+    "/api/projects/{projectId}/instruction-skills/manifests/{skillId}/content";
+pub(crate) const SKILL_INSTALL: &str = "/api/projects/{project}/skills/install";
 
 /// A project's create (POST only) and delete (DELETE only; routes.toml), the front's under
 /// `rust-project-lifecycle` (sbstndalton/noevia#2191); Node refuses them
@@ -352,6 +374,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
     match route.path {
         STORAGE_FILE | STORAGE_FILES_ROUTE if auth => return Some(Native::StorageBrowse),
         STORAGE_METADATA if auth => return Some(Native::StorageMetadata),
+        ADMIN_USER if auth => return Some(Native::AdminUsers),
         "/api/routing-mode" | "/api/routing-mode/allowed" if auth => {
             return Some(Native::RoutingMode)
         }
@@ -630,6 +653,7 @@ mod tests {
                 Some(Native::ChatgptOAuth) if CHATGPT_OAUTH.contains(&r.path) => {}
                 Some(Native::ProviderModels) if r.path == PROVIDER_MODELS => {}
                 Some(Native::Offsite) if crate::offsite_routes::ROUTES.contains(&r.path) => {}
+                Some(Native::AdminUsers) if r.path == ADMIN_USER => {}
                 Some(Native::Connectors) if crate::connector_routes::ROUTES.contains(&r.path) => {}
                 Some(Native::Providers) if r.path == PROVIDERS_LIST || r.path == PROVIDER_ONE => {}
                 Some(_) => assert!(!is_account_path(r.path), "{} is an account path", r.path),
@@ -735,7 +759,8 @@ mod tests {
             ("PATCH", "/api/projects/p1/chats/c1"),
             // The project's own create and delete are the front's since #2191 round 2.
             ("GET", "/api/projects"),
-            ("POST", "/api/projects/p1/config"),
+            // The chat-bound project routes stay Node's (browser, code, research).
+            ("POST", "/api/projects/p1/browser"),
             ("PUT", "/api/projects/p1"),
         ] {
             assert_eq!(dispatch_under(m, p, both), None, "{m} {p}");
@@ -847,8 +872,16 @@ mod tests {
         ] {
             assert_eq!(dispatch(m, p), Some(Native::Account), "{m} {p}");
         }
+        // An account's deletion is the front's since #2190/#2191 round 9 (its own handler, not the account crate's).
+        assert_eq!(
+            dispatch("DELETE", "/api/admin/users/u1"),
+            Some(Native::AdminUsers)
+        );
+        for m in ["GET", "PUT", "PATCH", "POST"] {
+            assert_eq!(dispatch(m, "/api/admin/users/u1"), None, "{m}");
+        }
+        assert!(crate::FEATURES.contains(&"rust-admin-users"));
         for (m, p) in [
-            ("DELETE", "/api/admin/users/u1"),
             ("HEAD", "/api/admin/web-address"),
             ("POST", "/api/profile/sharing"),
             ("PUT", "/api/account/retention"),
@@ -1224,7 +1257,7 @@ mod tests {
                 assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
             }
         }
-        assert_eq!(dispatch_under("POST", "/api/projects/p1/config", on), None);
+        assert_eq!(dispatch_under("POST", "/api/projects/p1/browser", on), None);
         // `{*}/original` is matched by the table; project_routes::route sends any segment but
         // `uploads` on to Node.
         assert_eq!(
@@ -1232,6 +1265,79 @@ mod tests {
             None
         );
         assert!(crate::FEATURES.contains(&"rust-project-reads"));
+    }
+
+    /// sbstndalton/noevia#2191 round 9: a project's configuration, its instruction skills and a
+    /// published skill's install are the front's for their methods only; the browser, code and research
+    /// routes beside them are chat-bound and stay Node's.
+    #[test]
+    fn project_config_and_skills_are_rusts_for_their_methods_only() {
+        let on = Switches::default();
+        for (m, p) in [
+            ("POST", "/api/projects/p1/config"),
+            ("GET", "/api/projects/p1/instruction-skills"),
+            ("PUT", "/api/projects/p1/instruction-skills"),
+            ("GET", "/api/projects/p1/instruction-skills/manifests"),
+            (
+                "GET",
+                "/api/projects/p1/instruction-skills/manifests/skill_x/content",
+            ),
+            ("POST", "/api/projects/p1/skills/install"),
+        ] {
+            assert_eq!(dispatch_under(m, p, on), Some(Native::Projects), "{m} {p}");
+        }
+        for (m, p) in [
+            ("GET", "/api/projects/p1/config"),
+            ("PUT", "/api/projects/p1/config"),
+            ("POST", "/api/projects/p1/instruction-skills"),
+            ("DELETE", "/api/projects/p1/instruction-skills"),
+            ("POST", "/api/projects/p1/instruction-skills/manifests"),
+            (
+                "PUT",
+                "/api/projects/p1/instruction-skills/manifests/skill_x/content",
+            ),
+            ("GET", "/api/projects/p1/skills/install"),
+            ("POST", "/api/projects/p1/browser"),
+            ("POST", "/api/projects/p1/code"),
+            ("POST", "/api/projects/p1/research"),
+            ("GET", "/api/code/active"),
+        ] {
+            assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
+        }
+        use crate::project_routes::{route, Route};
+        assert_eq!(
+            route("POST", "/api/projects/p1/config"),
+            Some(Route::Config {
+                project: "p1".into()
+            })
+        );
+        assert_eq!(
+            route(
+                "GET",
+                "/api/projects/p1/instruction-skills/manifests/skill_x/content"
+            ),
+            Some(Route::SkillContent {
+                project: "p1".into(),
+                skill: "skill_x".into()
+            })
+        );
+        // Node's matchers took one segment for each parameter.
+        for (m, p) in [
+            ("POST", "/api/projects//config"),
+            ("POST", "/api/projects/a/b/config"),
+            (
+                "GET",
+                "/api/projects/p1/instruction-skills/manifests//content",
+            ),
+            (
+                "GET",
+                "/api/projects/p1/instruction-skills/manifests/a/b/content",
+            ),
+            ("POST", "/api/projects//skills/install"),
+        ] {
+            assert_eq!(route(m, p), None, "{m} {p}");
+        }
+        assert!(crate::FEATURES.contains(&"rust-project-config"));
     }
 
     /// sbstndalton/noevia#2191 round 2: a project's create (POST) and delete (DELETE) are the
@@ -1253,7 +1359,7 @@ mod tests {
         for m in ["GET", "PUT", "PATCH", "POST"] {
             assert_eq!(dispatch_under(m, "/api/projects/p1", on), None, "{m}");
         }
-        assert_eq!(dispatch_under("POST", "/api/projects/p1/config", on), None);
+        assert_eq!(dispatch_under("POST", "/api/projects/p1/browser", on), None);
         assert_eq!(
             crate::project_routes::route("DELETE", "/api/projects/"),
             None

@@ -254,6 +254,32 @@ impl RustMcpCredentials {
     }
 }
 
+/// An account's deletion (sbstndalton/noevia#2190, #2191 round 9): the Rust front deletes the `users` row
+/// (`DELETE /api/admin/users/{id}`), and with it, by the foreign keys' own cascade, everything the account
+/// owns in the auth database. Like [`RustToolPolicies`] the grant is per statement: only
+/// [`WriteTx::delete_user`] opens it, for the one `DELETE FROM users WHERE id=?`. While it is open
+/// the authorizer allows a delete in exactly the tables a cascade from `users` reaches that Rust
+/// does not otherwise delete from ([`DELETION_TABLES`]); core's guard (rust-auth.cjs) refuses every
+/// Node delete of an account, and its `exempt()` for it is gone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RustAccountDeletion(());
+impl RustAccountDeletion {
+    pub const fn owned() -> Self {
+        Self(())
+    }
+}
+
+/// The tables a delete is granted in while [`RustAccountDeletion`]'s window is open: the account row
+/// and its cascade into the tables [`OWNED_TABLES`] grants no delete in.
+const DELETION_TABLES: [&str; 6] = [
+    "users",
+    "user_features",
+    "user_appearance",
+    "dav_settings",
+    "storage_connections",
+    "tool_policies",
+];
+
 /// Settings -> Connectors (sbstndalton/noevia#2190 round 7): the Rust front is the only writer of
 /// `tool_policies`, the per-account allow/ask/block of each tool. Core's guard (rust-auth.cjs
 /// `FRONT_TABLES`) refuses every Node write of the table, and core re-reads it per call. Like
@@ -534,6 +560,7 @@ fn owned_authorizer(
     chatgpt_open: Arc<AtomicBool>,
     mcp_open: Arc<AtomicBool>,
     policy_open: Arc<AtomicBool>,
+    delete_open: Arc<AtomicBool>,
 ) -> impl FnMut(AuthContext<'_>) -> Authorization {
     move |ctx: AuthContext<'_>| match ctx.action {
         AuthAction::Insert { table_name }
@@ -549,6 +576,13 @@ fn owned_authorizer(
             // known set of those is checked when the writer opens (verify_write_topology).
             if ctx.accessor.is_some() {
                 return Authorization::Deny;
+            }
+            // An account's deletion: the row and the cascade it sets off, inside its one statement.
+            if delete_open.load(Ordering::SeqCst)
+                && matches!(ctx.action, AuthAction::Delete { .. })
+                && DELETION_TABLES.contains(&table_name)
+            {
+                return Authorization::Allow;
             }
             if table_name == "settings" {
                 // Fixed-key grants authorize the caller statement, never persisted trigger/view SQL.
@@ -1013,6 +1047,7 @@ pub struct WriteTx<'a> {
     chatgpt_open: &'a AtomicBool,
     mcp_open: &'a AtomicBool,
     policy_open: &'a AtomicBool,
+    delete_open: &'a AtomicBool,
 }
 
 /// Opens the `settings` grant for one statement (prepared uncached, so no authorized statement
@@ -1291,6 +1326,22 @@ impl WriteTx<'_> {
             "DELETE FROM chatgpt_oauth_tokens WHERE user_id NOT IN (SELECT id FROM users)",
             [],
         )
+    }
+
+    /// Deletes an account: `DELETE FROM users WHERE id=?`, whose foreign keys remove its sessions,
+    /// passkeys, recovery links, device grants, app passwords, features, appearance, storage
+    /// connection, tool policies, sharing opt-in and Diary connectors in the same statement. The rows
+    /// the account's invitations and recovery links created stay with their own owners' deletes,
+    /// which the caller makes first (those keys have no action). Returns the rows deleted (0 or 1).
+    pub fn delete_user(
+        &self,
+        _cap: RustAccountDeletion,
+        user_id: &str,
+    ) -> Result<usize, StoreError> {
+        self.delete_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.delete_open);
+        let mut stmt = self.conn.prepare("DELETE FROM users WHERE id=?1")?;
+        Ok(stmt.execute(rusqlite::params![user_id])?)
     }
 
     /// Opens the MCP credential tables' grant for one uncached statement.
@@ -1599,6 +1650,7 @@ pub struct Writer {
     chatgpt_open: Arc<AtomicBool>,
     mcp_open: Arc<AtomicBool>,
     policy_open: Arc<AtomicBool>,
+    delete_open: Arc<AtomicBool>,
 }
 
 impl Writer {
@@ -1620,6 +1672,7 @@ impl Writer {
         let chatgpt_open = Arc::new(AtomicBool::new(false));
         let mcp_open = Arc::new(AtomicBool::new(false));
         let policy_open = Arc::new(AtomicBool::new(false));
+        let delete_open = Arc::new(AtomicBool::new(false));
         // READ_WRITE without CREATE: the file must already exist (Node made it).
         let inner = open_inner(
             data_dir,
@@ -1632,6 +1685,7 @@ impl Writer {
                 Arc::clone(&chatgpt_open),
                 Arc::clone(&mcp_open),
                 Arc::clone(&policy_open),
+                Arc::clone(&delete_open),
             ),
         )?;
         Ok(Writer {
@@ -1641,6 +1695,7 @@ impl Writer {
             chatgpt_open,
             mcp_open,
             policy_open,
+            delete_open,
         })
     }
 
@@ -1661,6 +1716,7 @@ impl Writer {
             chatgpt_open: &self.chatgpt_open,
             mcp_open: &self.mcp_open,
             policy_open: &self.policy_open,
+            delete_open: &self.delete_open,
         })?;
         tx.commit()?;
         Ok(out)

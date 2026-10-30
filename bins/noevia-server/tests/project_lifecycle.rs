@@ -528,7 +528,7 @@ async fn delete_is_tenant_scoped_and_other_methods_stay_nodes() {
         ("GET", "/api/projects"),
         ("PUT", "/api/projects/p1"),
         ("GET", "/api/projects/p1"),
-        ("POST", "/api/projects/p1/config"),
+        ("POST", "/api/projects/p1/browser"),
     ] {
         let (status, _, _) = call(f.addr, m, path, &h, "").await;
         assert_eq!(status, 502, "{m} {path} goes to Node");

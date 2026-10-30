@@ -3,6 +3,7 @@
 //! gives to Rust and proxies every other request to Node ([`legacy_proxy`], deleted with Node).
 
 pub mod account_routes;
+pub mod admin_user_routes;
 pub mod auto_roles_routes;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_oauth_routes;
@@ -27,6 +28,7 @@ pub mod mcp_broker;
 pub mod mcp_egress;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_routes;
+pub mod model_kind;
 pub mod model_routes;
 pub mod model_sizing;
 pub mod offsite_engine;
@@ -35,6 +37,7 @@ pub mod offsite_routes;
 pub mod offsite_settings;
 pub mod offsite_store;
 pub mod plugin_directory_routes;
+pub mod project_config_routes;
 pub mod project_routes;
 #[cfg(feature = "rust-storage-browse")]
 pub mod project_storage_io;
@@ -290,6 +293,8 @@ pub const FEATURES: &[&str] = &[
     "rust-project-documents",
     "rust-source-jobs",
     "rust-project-source-work",
+    "rust-project-config",
+    "rust-admin-users",
     "rust-large-document-host-lock",
     "rust-public-pages",
     "rust-plugin-directory",
@@ -554,6 +559,7 @@ async fn handle(
                     | routes::Native::ChatgptOAuth
                     | routes::Native::ProviderModels
                     | routes::Native::Offsite
+                    | routes::Native::AdminUsers
                     | routes::Native::Connectors
                     | routes::Native::Providers
                     | routes::Native::Health
@@ -591,6 +597,7 @@ async fn handle(
             | routes::Native::ChatgptOAuth
             | routes::Native::ProviderModels
             | routes::Native::Offsite
+            | routes::Native::AdminUsers
             | routes::Native::Connectors
             | routes::Native::Providers
             | routes::Native::Health
@@ -768,6 +775,12 @@ async fn handle(
                     true,
                 )
             }
+        }
+        Some(routes::Native::AdminUsers) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            admin_user_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::Health) => {
             let Some(p) = whatwg else {
