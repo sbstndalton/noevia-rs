@@ -52,6 +52,9 @@ pub enum Error {
     Authentication,
     /// A manifest or config that is not what this format writes.
     Invalid,
+    /// The cipher refused to encrypt (no object is produced; a sealed object without its tag would
+    /// be unreadable).
+    Seal,
 }
 
 impl Error {
@@ -61,6 +64,7 @@ impl Error {
             Error::Truncated => "truncated",
             Error::Authentication => "authentication",
             Error::Invalid => "invalid",
+            Error::Seal => "seal",
         }
     }
 }
@@ -111,18 +115,20 @@ impl Keys {
         })
     }
 
-    /// `seal(keys, plaintext)` with the caller's nonce: `nonce | ciphertext | tag`.
-    pub fn seal(&self, plain: &[u8], nonce: &[u8; 12]) -> Vec<u8> {
+    /// `seal(keys, plaintext)` with the caller's nonce: `nonce | ciphertext | tag`. An encryption
+    /// error yields no object at all: a body without its tag would be written and only fail at
+    /// restore time.
+    pub fn seal(&self, plain: &[u8], nonce: &[u8; 12]) -> Result<Vec<u8>, Error> {
         let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(self.enc.as_slice()));
         let mut body = plain.to_vec();
-        let tag = cipher.encrypt_in_place_detached(Nonce::from_slice(nonce), b"", &mut body);
+        let tag = cipher
+            .encrypt_in_place_detached(Nonce::from_slice(nonce), b"", &mut body)
+            .map_err(|_| Error::Seal)?;
         let mut out = Vec::with_capacity(28 + body.len());
         out.extend_from_slice(nonce);
         out.extend_from_slice(&body);
-        if let Ok(tag) = tag {
-            out.extend_from_slice(tag.as_slice());
-        }
-        out
+        out.extend_from_slice(tag.as_slice());
+        Ok(out)
     }
 
     /// `open(keys, sealed)`.
@@ -223,8 +229,14 @@ impl Manifest {
         .unwrap_or_default()
     }
 
-    /// `readManifest`'s checks: this format and a `files` array. A file whose fields are not what
-    /// the format writes makes the manifest invalid (core would throw on use or restore).
+    /// `readManifest`'s checks: this format and a `files` array, nothing more. Core only ever
+    /// checked those two (every other field was read on use), and the first Node releases wrote
+    /// manifests without `incomplete` and, in a pre-release shape, without some of `root`, `size`,
+    /// `mode`, `mtime` or `time`. An entry missing a field takes a value that makes a restore refuse
+    /// the file (`size` 0 against its chunks, an empty `sha256`, an empty `path`) rather than making
+    /// the whole manifest unreadable: retention reads every kept manifest for its chunk list, and
+    /// a manifest counted as corrupt there is a manifest whose chunks are not protected. A missing
+    /// `time` is 0; the caller takes it from the snapshot's id ([`snapshot_time`]).
     pub fn parse(plain: &[u8]) -> Result<Manifest, Error> {
         let v = js_json::parse(&String::from_utf8_lossy(plain)).map_err(|_| Error::Invalid)?;
         if v.get("format").as_str() != Some(FORMAT) {
@@ -233,34 +245,34 @@ impl Manifest {
         let JValue::Arr(items) = v.get("files") else {
             return Err(Error::Invalid);
         };
-        let time = whole(v.get("time")).ok_or(Error::Invalid)?;
         let mut files = Vec::with_capacity(items.len());
         for f in items {
+            // Chunk ids that are not strings reference nothing a store holds.
             let chunks = match f.get("chunks") {
                 JValue::Arr(c) => c
                     .iter()
-                    .map(|x| x.as_str().map(str::to_owned).ok_or(Error::Invalid))
-                    .collect::<Result<Vec<_>, _>>()?,
-                _ => return Err(Error::Invalid),
+                    .filter_map(|x| x.as_str().map(str::to_owned))
+                    .collect(),
+                _ => Vec::new(),
             };
             files.push(FileEntry {
                 root: whole(f.get("root"))
                     .and_then(|n| usize::try_from(n).ok())
-                    .ok_or(Error::Invalid)?,
-                path: f.get("path").as_str().ok_or(Error::Invalid)?.to_owned(),
+                    .unwrap_or(0),
+                path: f.get("path").as_str().unwrap_or_default().to_owned(),
                 size: whole(f.get("size"))
                     .and_then(|n| u64::try_from(n).ok())
-                    .ok_or(Error::Invalid)?,
+                    .unwrap_or(0),
                 mode: whole(f.get("mode"))
                     .and_then(|n| u32::try_from(n).ok())
                     .unwrap_or(0o600),
                 mtime: whole(f.get("mtime")).unwrap_or(0),
-                sha256: f.get("sha256").as_str().ok_or(Error::Invalid)?.to_owned(),
+                sha256: f.get("sha256").as_str().unwrap_or_default().to_owned(),
                 chunks,
             });
         }
         Ok(Manifest {
-            time,
+            time: whole(v.get("time")).unwrap_or(0),
             roots: whole(v.get("roots"))
                 .and_then(|n| usize::try_from(n).ok())
                 .unwrap_or(0),
@@ -357,6 +369,36 @@ pub fn snapshot_id(time_ms: i64, random: [u8; 4]) -> String {
     format!("{}-{}", iso_dashed(time_ms), hex(&random))
 }
 
+/// The time a snapshot id starts with (`YYYY-MM-DDTHH-mm-ss-SSSZ-xxxxxxxx`), for a manifest that
+/// does not carry its own.
+pub fn snapshot_time(id: &str) -> Option<i64> {
+    let stamp = id.get(..24)?;
+    let b = stamp.as_bytes();
+    let n = |from: usize, to: usize| -> Option<i64> { stamp.get(from..to)?.parse().ok() };
+    let shape = [
+        (4, b'-'),
+        (7, b'-'),
+        (10, b'T'),
+        (13, b'-'),
+        (16, b'-'),
+        (19, b'-'),
+        (23, b'Z'),
+    ];
+    if shape.iter().any(|(i, c)| b.get(*i) != Some(c)) {
+        return None;
+    }
+    let (y, mo, d) = (
+        n(0, 4)?,
+        u32::try_from(n(5, 7)?).ok()?,
+        u32::try_from(n(8, 10)?).ok()?,
+    );
+    let (h, mi, s, ms) = (n(11, 13)?, n(14, 16)?, n(17, 19)?, n(20, 23)?);
+    if !(1..=12).contains(&mo) || !(1..=31).contains(&d) || h > 23 || mi > 59 || s > 59 {
+        return None;
+    }
+    Some(days_from_civil(y, mo, d) * 86_400_000 + h * 3_600_000 + mi * 60_000 + s * 1000 + ms)
+}
+
 fn bucket(time_ms: i64, kind: usize) -> String {
     let days = time_ms.div_euclid(86_400_000);
     let (y, m, d) = civil_from_days(days);
@@ -379,25 +421,49 @@ fn bucket(time_ms: i64, kind: usize) -> String {
 /// `retain(snapshots, policy)`: the ids to keep (the newest of each day, ISO week and month
 /// bucket, up to the policy, and always the newest snapshot).
 pub fn retain(snapshots: &[(String, i64)], policy: Retention) -> HashSet<String> {
-    let mut sorted: Vec<&(String, i64)> = snapshots.iter().collect();
+    let all: Vec<(String, i64, bool)> = snapshots
+        .iter()
+        .map(|(id, time)| (id.clone(), *time, true))
+        .collect();
+    retain_complete(&all, policy)
+}
+
+/// [`retain`] when some snapshots are `incomplete` (a skipped file, an unreadable folder). A bucket
+/// keeps its newest complete snapshot when it has one (a second, worse run on the same day must not
+/// displace the good one), and the newest complete snapshot overall is always kept beside the newest
+/// snapshot, so a run of bad nights never leaves nothing restorable. Items are `(id, time, complete)`.
+pub fn retain_complete(snapshots: &[(String, i64, bool)], policy: Retention) -> HashSet<String> {
+    let mut sorted: Vec<&(String, i64, bool)> = snapshots.iter().collect();
     sorted.sort_by_key(|a| std::cmp::Reverse(a.1));
     let mut keep = HashSet::new();
     if let Some(first) = sorted.first() {
         keep.insert(first.0.clone());
     }
+    if let Some(good) = sorted.iter().find(|s| s.2) {
+        keep.insert(good.0.clone());
+    }
     for (kind, limit) in [(0, policy.daily), (1, policy.weekly), (2, policy.monthly)] {
-        let mut seen = HashSet::new();
-        for (id, time) in &sorted {
+        let mut order: Vec<String> = Vec::new();
+        let mut best: std::collections::HashMap<String, (&str, bool)> =
+            std::collections::HashMap::new();
+        for (id, time, complete) in &sorted {
             let b = bucket(*time, kind);
-            if seen.contains(&b) {
-                continue;
+            match best.get_mut(&b) {
+                Some(slot) => {
+                    if !slot.1 && *complete {
+                        *slot = (id.as_str(), true);
+                    }
+                }
+                None => {
+                    if order.len() >= limit {
+                        break;
+                    }
+                    order.push(b.clone());
+                    best.insert(b, (id.as_str(), *complete));
+                }
             }
-            if seen.len() >= limit {
-                break;
-            }
-            seen.insert(b);
-            keep.insert(id.clone());
         }
+        keep.extend(best.values().map(|(id, _)| (*id).to_owned()));
     }
     keep
 }
@@ -446,7 +512,8 @@ mod tests {
     fn config_and_manifest_are_node_bytes() {
         let k = Keys::derive(&[9; 32]).unwrap();
         assert_eq!(
-            k.seal(config_json(1_700_000_000_000).as_bytes(), &NONCE),
+            k.seal(config_json(1_700_000_000_000).as_bytes(), &NONCE)
+                .unwrap(),
             b64(CONFIG_SEALED_B64)
         );
         assert!(config_is_current(&k.open(&b64(CONFIG_SEALED_B64)).unwrap()).unwrap());
@@ -466,7 +533,7 @@ mod tests {
         };
         assert_eq!(m.to_json(), MANIFEST_JSON);
         assert_eq!(
-            k.seal(m.to_json().as_bytes(), &NONCE),
+            k.seal(m.to_json().as_bytes(), &NONCE).unwrap(),
             b64(MANIFEST_SEALED_B64)
         );
         let opened = k.open(&b64(MANIFEST_SEALED_B64)).unwrap();
@@ -489,8 +556,106 @@ mod tests {
     fn manifests_of_another_format_or_shape_are_invalid() {
         assert!(Manifest::parse(br#"{"format":"x","files":[]}"#).is_err());
         assert!(Manifest::parse(br#"{"format":"noevia-offsite-v1","time":1}"#).is_err());
+        assert!(Manifest::parse(br#"{"format":"noevia-offsite-v1","files":{}}"#).is_err());
         assert!(Manifest::parse(b"nope").is_err());
         assert!(!config_is_current(br#"{"format":"x"}"#).unwrap());
+    }
+
+    #[test]
+    fn an_older_node_manifest_missing_fields_still_lists_its_chunks() {
+        // The first Node release wrote no `incomplete`; a pre-release shape lacked more. Retention
+        // protects the chunks a manifest names, so none of these may count as corrupt.
+        let chunk = "a".repeat(64);
+        let old = format!(
+            r#"{{"format":"noevia-offsite-v1","files":[{{"path":"x","sha256":"s","chunks":["{chunk}",7]}},{{"chunks":["{chunk}"]}},"junk"]}}"#
+        );
+        let m = Manifest::parse(old.as_bytes()).unwrap();
+        assert_eq!(m.time, 0, "the caller takes it from the id");
+        assert!(!m.incomplete);
+        assert_eq!(m.roots, 0);
+        assert_eq!(m.files.len(), 3);
+        assert_eq!(m.files[0].root, 0);
+        assert_eq!(m.files[0].size, 0, "a restore of it refuses on the size");
+        assert_eq!(m.files[0].chunks, std::slice::from_ref(&chunk));
+        assert_eq!(m.files[1].path, "");
+        assert!(m.files[2].chunks.is_empty());
+        // A file naming a fractional or negative size is read as absent too, never fatal.
+        let odd = br#"{"format":"noevia-offsite-v1","time":1.5,"files":[{"size":-3,"root":1.2,"chunks":[]}]}"#;
+        assert_eq!(Manifest::parse(odd).unwrap().files[0].size, 0);
+    }
+
+    #[test]
+    fn a_snapshot_id_carries_its_time() {
+        for t in [0, 1_700_000_000_123, 1_793_000_000_999] {
+            assert_eq!(snapshot_time(&snapshot_id(t, [1, 2, 3, 4])), Some(t));
+        }
+        for bad in [
+            "",
+            "nope",
+            "2023-11-14T22-13-20-123",
+            "2023-13-14T22-13-20-123Z-ab",
+            "2023-11-14X22-13-20-123Z-ab",
+        ] {
+            assert_eq!(snapshot_time(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn retention_keeps_the_newest_complete_snapshot_and_prefers_it_within_a_day() {
+        let day = 86_400_000i64;
+        let t0 = 1_767_268_800_000i64; // 2026-01-01T12:00:00Z
+                                       // Two runs on the same day: the later one is incomplete. The day keeps the good one.
+        let same_day = vec![
+            ("good".to_owned(), t0, true),
+            ("bad".to_owned(), t0 + 3_600_000, false),
+        ];
+        let keep = retain_complete(&same_day, RETENTION);
+        assert!(keep.contains("good") && keep.contains("bad"), "{keep:?}");
+        let old_ids: Vec<(String, i64, bool)> = (0..12)
+            .map(|i| (format!("d{i}"), t0 + i * day, i == 0))
+            .collect();
+        // Eleven incomplete nights after one complete one, far beyond the daily limit: the complete
+        // snapshot is still kept, because it is the newest one a restore could use.
+        let keep = retain_complete(
+            &old_ids,
+            Retention {
+                daily: 3,
+                weekly: 0,
+                monthly: 0,
+            },
+        );
+        assert!(
+            keep.contains("d0"),
+            "the newest complete snapshot survives: {keep:?}"
+        );
+        assert!(keep.contains("d11"), "and the newest overall");
+        assert_eq!(keep.len(), 4);
+        // With every snapshot complete this is exactly retain().
+        let plain: Vec<(String, i64)> = (0..90).map(|i| (format!("s{i}"), t0 + i * day)).collect();
+        let flagged: Vec<(String, i64, bool)> =
+            plain.iter().map(|(i, t)| (i.clone(), *t, true)).collect();
+        assert_eq!(
+            retain(&plain, RETENTION),
+            retain_complete(&flagged, RETENTION)
+        );
+        // Within a day the complete run wins even when it is the older of the two, and the worse
+        // later run on that day is the one forgotten.
+        let three = vec![
+            ("good".to_owned(), t0, true),
+            ("bad".to_owned(), t0 + 3_600_000, false),
+            ("next".to_owned(), t0 + day, true),
+        ];
+        let keep = retain_complete(
+            &three,
+            Retention {
+                daily: 2,
+                weekly: 0,
+                monthly: 0,
+            },
+        );
+        let mut ids: Vec<&String> = keep.iter().collect();
+        ids.sort();
+        assert_eq!(ids, ["good", "next"]);
     }
 
     #[test]

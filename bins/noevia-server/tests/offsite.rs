@@ -66,6 +66,17 @@ async fn world(extra: &[(&str, String)]) -> World {
     }
 }
 
+/// Makes a file look `hours` hours old (retention leaves a day's worth of chunks alone).
+fn age(path: &Path, hours: u64) {
+    let when = std::time::SystemTime::now() - Duration::from_secs(hours * 3600);
+    std::fs::File::options()
+        .write(true)
+        .open(path)
+        .unwrap()
+        .set_modified(when)
+        .unwrap();
+}
+
 fn files_under(root: &Path) -> Vec<String> {
     fn walk(dir: &Path, rel: &str, out: &mut Vec<String>) {
         for e in std::fs::read_dir(dir).unwrap().flatten() {
@@ -626,8 +637,8 @@ async fn a_run_backs_up_the_data_directory_including_a_live_sqlite_database_and_
         again["uploadedBytes"].as_u64().unwrap() < 4_000_000,
         "{again}"
     );
-    // Retention keeps the newest snapshot of a day: the first of today is forgotten, its unique chunk
-    // pruned, and the chunks the new snapshot shares with it stay.
+    // Retention keeps the newest snapshot of a day: the first of today is forgotten. (Its unique chunk
+    // stays for a day: no chunk under 24 hours old is pruned, see the retention tests.)
     assert_eq!(get(w.f.addr, ROOT, ADMIN).await.json()["snapshots"], 1);
     let now_listed = files_under(&w.dest);
     assert_eq!(
@@ -657,7 +668,9 @@ async fn a_store_another_key_wrote_is_refused_and_the_failure_is_recorded() {
     let other = offsite_backup_format::Keys::derive(&[1u8; 32]).unwrap();
     std::fs::write(
         w.dest.join("config"),
-        other.seal(offsite_backup_format::config_json(5).as_bytes(), &[2; 12]),
+        other
+            .seal(offsite_backup_format::config_json(5).as_bytes(), &[2; 12])
+            .unwrap(),
     )
     .unwrap();
     let r = send(w.f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "").await;
@@ -682,7 +695,9 @@ async fn a_store_another_key_wrote_is_refused_and_the_failure_is_recorded() {
     // A format this build does not know.
     std::fs::write(
         w.dest.join("config"),
-        Keys9().seal(br#"{"format":"restic-v9"}"#, &[2; 12]),
+        Keys9()
+            .seal(br#"{"format":"restic-v9"}"#, &[2; 12])
+            .unwrap(),
     )
     .unwrap();
     let r = send(w.f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "").await;
@@ -1345,7 +1360,12 @@ async fn the_copy_setting_gates_the_copy_and_turning_it_on_copies() {
 
 #[tokio::test]
 async fn the_nightly_schedule_runs_once_outside_the_quiet_windows() {
-    let w = world(&[("OFFSITE_BACKUP_HOUR", "3".into())]).await;
+    // The host's own clock is said to be UTC here, so the appdata window is 04:05-04:25 UTC.
+    let w = world(&[
+        ("OFFSITE_BACKUP_HOUR", "3".into()),
+        ("OFFSITE_BACKUP_TIMEZONE", "UTC".into()),
+    ])
+    .await;
     let service = Arc::clone(w.f.app.offsite.as_ref().unwrap());
     let app = Arc::clone(&w.f.app);
     let at = |h: i64, m: i64| {
@@ -1404,7 +1424,9 @@ async fn the_nightly_schedule_runs_once_outside_the_quiet_windows() {
         s2.tick_at(&a2, Arc::new(move || later)).await,
         "catches up once the window has ended"
     );
-    // A server on New York time holds the appdata window at 04:05-04:25 local (08:05-08:25 UTC).
+    // The host's default zone is New York (the production container has no TZ, the host runs
+    // Eastern): the appdata window is 04:05-04:25 EDT (08:05-08:25 UTC), and a process on New York
+    // time reads the hour there.
     let w3 = world(&[
         ("OFFSITE_BACKUP_HOUR", "3".into()),
         ("TZ", "America/New_York".into()),
@@ -1499,7 +1521,7 @@ async fn a_store_node_wrote_is_read_and_restored_by_rust() {
         wrong.snapshots().await.unwrap().is_empty(),
         "every manifest fails authentication and is skipped"
     );
-    assert!(wrong.verify(out.path()).await.is_err());
+    assert!(wrong.verify().await.is_err());
 }
 
 #[tokio::test]
@@ -1522,6 +1544,7 @@ async fn retention_forgets_old_snapshots_and_prunes_only_unreferenced_chunks() {
         b"orphan",
     )
     .unwrap();
+    age(&dest.path().join(format!("data/ff/{}", "f".repeat(64))), 48);
     // Eleven more snapshots on distinct days, written directly so the test needs no clock.
     let keys = offsite_backup_format::Keys::derive(&[9u8; 32]).unwrap();
     let manifest = |t: i64| offsite_backup_format::Manifest {
@@ -1536,11 +1559,12 @@ async fn retention_forgets_old_snapshots_and_prunes_only_unreferenced_chunks() {
         let id = offsite_backup_format::snapshot_id(t, [0, 0, 0, i as u8]);
         std::fs::write(
             dest.path().join(format!("snapshots/{id}")),
-            keys.seal(manifest(t).to_json().as_bytes(), &[1; 12]),
+            keys.seal(manifest(t).to_json().as_bytes(), &[1; 12])
+                .unwrap(),
         )
         .unwrap();
     }
-    let kept = engine.forget().await.unwrap();
+    let kept = engine.forget(&[]).await.unwrap();
     // 41 snapshots: the real one (now), and 40 daily ones from 2026-01-01. The newest is always kept.
     assert!(kept.kept < 41 && kept.removed.len() == 41 - kept.kept);
     assert!(kept.pruned_chunks >= 1);
@@ -1617,7 +1641,15 @@ async fn a_scheduled_run_waits_out_a_window_that_opens_while_it_runs() {
     clock.store(at(4, 10), Ordering::SeqCst);
     let (e, p) = (Arc::clone(&engine), pace.clone());
     let run = tokio::spawn(async move { e.backup(&p).await });
-    tokio::time::sleep(Duration::from_millis(250)).await;
+    // The run says it waits (its signal), however long it takes to get there.
+    let started = Instant::now();
+    while flips.lock().unwrap().len() < 3 {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the run never waited"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
     assert!(!run.is_finished(), "held back inside the window");
     assert!(
         files_under(dest.path()).iter().all(|f| f == "config"),
@@ -1656,22 +1688,39 @@ async fn a_database_that_cannot_be_copied_consistently_is_skipped_and_the_snapsh
                 .contains("this is not a sqlite file")
         );
     }
-    // A running backup refuses a second one and retention while it runs.
+    // A running backup refuses a second one and retention while it runs. The first is held at its
+    // first checkpoint, inside a quiet window, until the test lets it go: it is certainly running
+    // (its `waiting` signal fired), so nothing here depends on how fast a copy happens to be.
+    use offsite_backup_format::schedule::Zone;
+    use std::sync::atomic::AtomicI64;
     let again = Arc::new(engine);
-    let big = src.path().join("big.bin");
-    std::fs::write(&big, vec![7u8; 6 * 1024 * 1024]).unwrap();
+    let clock = Arc::new(AtomicI64::new(at(4, 10))); // the appdata window of a UTC host
+    let signal = Arc::new(tokio::sync::Notify::new());
+    let pace = {
+        let (c, n) = (Arc::clone(&clock), Arc::clone(&signal));
+        Pace {
+            zone: Some(Zone::Utc),
+            clock: Arc::new(move || c.load(Ordering::SeqCst)),
+            step: Duration::from_millis(10),
+            waiting: Arc::new(move |w| {
+                if w {
+                    n.notify_one();
+                }
+            }),
+        }
+    };
     let (e1, e2) = (Arc::clone(&again), Arc::clone(&again));
-    let first = tokio::spawn(async move { e1.backup(&Pace::none()).await });
-    let started = Instant::now();
-    while !e2.is_running() && !first.is_finished() {
-        assert!(started.elapsed() < Duration::from_secs(5));
-        tokio::task::yield_now().await;
-    }
-    if e2.is_running() {
-        assert_eq!(e2.backup(&Pace::none()).await.err().unwrap().status, 409);
-        assert_eq!(e2.forget().await.err().unwrap().status, 409);
-    }
+    let first = tokio::spawn(async move { e1.backup(&pace).await });
+    tokio::time::timeout(Duration::from_secs(10), signal.notified())
+        .await
+        .expect("the first backup never reached its wait");
+    assert!(e2.is_running());
+    assert_eq!(e2.backup(&Pace::none()).await.err().unwrap().status, 409);
+    assert_eq!(e2.forget(&[]).await.err().unwrap().status, 409);
+    clock.store(at(5, 0), Ordering::SeqCst);
     first.await.unwrap().unwrap();
+    assert!(!e2.is_running(), "the mark is released when the run ends");
+    e2.forget(&[]).await.unwrap();
 }
 
 #[test]
@@ -1695,12 +1744,34 @@ fn a_device_token_is_refused_on_every_route_the_front_took() {
     }
 }
 
+/// What a test can do to the synthetic S3 service while it runs.
+#[derive(Clone, Default)]
+struct S3Hooks {
+    /// Paths containing any of these answer a GET with 503 (a flaky read).
+    fail_get: Arc<Mutex<Vec<String>>>,
+    /// Keys containing any of these are left out of listings (a store that lists late).
+    hide: Arc<Mutex<Vec<String>>>,
+    /// Every DELETE is refused with 403.
+    fail_delete: Arc<std::sync::atomic::AtomicBool>,
+    /// Every listing is held for twenty seconds (a hung destination).
+    stall_list: Arc<std::sync::atomic::AtomicBool>,
+}
+
 /// A synthetic S3-compatible service (path-style) on 127.0.0.1: a map of objects, ListObjectsV2
 /// with a small page size so the continuation is exercised, and a record of every Authorization.
 fn install_s3(
     up: &Upstream,
     objects: Arc<Mutex<std::collections::BTreeMap<String, Vec<u8>>>>,
     page: usize,
+) {
+    install_s3_hooked(up, objects, page, S3Hooks::default());
+}
+
+fn install_s3_hooked(
+    up: &Upstream,
+    objects: Arc<Mutex<std::collections::BTreeMap<String, Vec<u8>>>>,
+    page: usize,
+    hooks: S3Hooks,
 ) {
     up.set(move |r: &Seen| {
         let url = url::Url::parse(&format!("http://x{}", r.path)).unwrap();
@@ -1713,31 +1784,44 @@ fn install_s3(
                 reply("200 OK", "")
             }
             "DELETE" => {
+                if hooks.fail_delete.load(Ordering::SeqCst) {
+                    return reply("403 Forbidden", "");
+                }
                 store.remove(&path);
                 (Duration::ZERO, b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec())
             }
             "GET" if q.contains_key("list-type") => {
+                let hidden = hooks.hide.lock().unwrap().clone();
                 let prefix = format!("/b/{}", q.get("prefix").cloned().unwrap_or_default());
-                let keys: Vec<&String> = store.keys().filter(|k| k.starts_with(&prefix)).collect();
+                let keys: Vec<&String> = store
+                    .keys()
+                    .filter(|k| k.starts_with(&prefix) && !hidden.iter().any(|h| k.contains(h.as_str())))
+                    .collect();
                 let start = q.get("continuation-token").and_then(|t| t.parse::<usize>().ok()).unwrap_or(0);
                 let slice: Vec<&&String> = keys.iter().skip(start).take(page).collect();
                 let truncated = start + page < keys.len();
                 let mut xml = String::from("<?xml version=\"1.0\"?><ListBucketResult>");
                 for k in slice {
                     // The bucket is the first path segment; keys come back without it, as S3 does.
-                    xml.push_str(&format!("<Contents><Key>{}</Key></Contents>", k.trim_start_matches("/b/").replace('&', "&amp;")));
+                    xml.push_str(&format!("<Contents><Key>{}</Key><LastModified>2020-01-01T00:00:00.000Z</LastModified></Contents>", k.trim_start_matches("/b/").replace('&', "&amp;")));
                 }
                 xml.push_str(&format!("<IsTruncated>{truncated}</IsTruncated>"));
                 if truncated {
                     xml.push_str(&format!("<NextContinuationToken>{}</NextContinuationToken>", start + page));
                 }
                 xml.push_str("</ListBucketResult>");
-                (Duration::ZERO, format!("HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{xml}", xml.len()).into_bytes())
+                let delay = if hooks.stall_list.load(Ordering::SeqCst) { Duration::from_secs(20) } else { Duration::ZERO };
+                (delay, format!("HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{xml}", xml.len()).into_bytes())
             }
-            "GET" => match store.get(&path) {
-                Some(b) => bytes_reply(b),
-                None => (Duration::ZERO, b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec()),
-            },
+            "GET" => {
+                if hooks.fail_get.lock().unwrap().iter().any(|f| path.contains(f.as_str())) {
+                    return reply("503 Slow Down", "");
+                }
+                match store.get(&path) {
+                    Some(b) => bytes_reply(b),
+                    None => (Duration::ZERO, b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec()),
+                }
+            }
             _ => reply("405 No", ""),
         }
     });
@@ -1868,4 +1952,1190 @@ async fn an_s3_compatible_destination_signs_lists_in_pages_and_restores() {
         (409, Some("Offsite backup endpoints must use HTTPS.".into()))
     );
     assert_eq!(up.seen().len(), before);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Round 7 review findings: retention that cannot lose chunks, an honest `incomplete`, backoff,
+// deadlines, locks and sweeps.
+
+fn fixture(name: &str) -> PathBuf {
+    std::fs::canonicalize(format!(
+        "{}/tests/fixtures/{name}",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap()
+}
+
+fn copy_dir(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for e in std::fs::read_dir(from).unwrap().flatten() {
+        let target = to.join(e.file_name());
+        if e.file_type().unwrap().is_dir() {
+            copy_dir(&e.path(), &target);
+        } else {
+            std::fs::copy(e.path(), target).unwrap();
+        }
+    }
+}
+
+fn age_all(root: &Path, hours: u64) {
+    for f in files_under(root) {
+        age(&root.join(f), hours);
+    }
+}
+
+fn dir_engine(dest: &Path, src: &Path) -> Engine {
+    Engine::new(
+        Store::Dir(DirStore::new(dest).unwrap()),
+        &[9u8; 32],
+        vec![src.to_path_buf()],
+    )
+    .unwrap()
+}
+
+const T_OCT30: i64 = 1_793_232_000_000; // 2026-10-30T00:00:00Z
+
+fn at(h: i64, m: i64) -> i64 {
+    T_OCT30 + h * 3_600_000 + m * 60_000
+}
+
+/// `n` deterministic bytes that do not repeat chunk for chunk.
+fn noise(n: usize) -> Vec<u8> {
+    let mut state = 12345u32;
+    (0..n)
+        .map(|_| {
+            state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            (state >> 24) as u8
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn the_first_release_store_with_no_incomplete_field_is_listed_restored_and_kept_by_retention()
+{
+    // tests/fixtures/offsite-node-store-first-release was written by the FIRST released engine
+    // (core commit d4e31d7: manifests without `incomplete`, two roots, an empty file), run over
+    // the key [9;32].
+    let engine = Engine::new(
+        Store::Dir(DirStore::new(&fixture("offsite-node-store-first-release")).unwrap()),
+        &[9u8; 32],
+        vec![],
+    )
+    .unwrap();
+    let snaps = engine.snapshots().await.unwrap();
+    assert!(snaps.failed.is_empty());
+    assert_eq!(snaps.len(), 1);
+    let s = &snaps[0];
+    assert_eq!(
+        (s.id.as_str(), s.time, s.files, s.bytes, s.incomplete),
+        (
+            "2023-11-14T22-13-20-000Z-3d981b16",
+            1_700_000_000_000,
+            4,
+            37,
+            false
+        )
+    );
+    let out = tempfile::tempdir().unwrap();
+    assert_eq!(
+        engine.restore(&s.id, &out.path().join("r")).await.unwrap(),
+        4
+    );
+    let r = out.path().join("r");
+    assert_eq!(std::fs::read(r.join("0/a.txt")).unwrap(), b"hello");
+    assert_eq!(
+        std::fs::read(r.join("0/sub/b.txt")).unwrap(),
+        b"first release, nested"
+    );
+    assert_eq!(std::fs::read(r.join("0/empty.txt")).unwrap(), b"");
+    assert_eq!(std::fs::read(r.join("1/c.txt")).unwrap(), b"second root");
+    assert_eq!(engine.verify().await.unwrap().1, 4);
+    // Retention over a copy keeps its snapshot and every chunk it names.
+    let copy = tempfile::tempdir().unwrap();
+    copy_dir(&fixture("offsite-node-store-first-release"), copy.path());
+    age_all(copy.path(), 48);
+    let engine = Engine::new(
+        Store::Dir(DirStore::new(copy.path()).unwrap()),
+        &[9u8; 32],
+        vec![],
+    )
+    .unwrap();
+    let kept = engine.forget(&[]).await.unwrap();
+    assert_eq!(
+        (
+            kept.kept,
+            kept.removed.len(),
+            kept.pruned_chunks,
+            kept.unreadable
+        ),
+        (1, 0, 0, 0)
+    );
+    assert_eq!(files_under(copy.path()).len(), 6);
+}
+
+#[tokio::test]
+async fn an_older_manifest_missing_fields_is_readable_and_protects_its_chunks() {
+    let dir = tempfile::tempdir().unwrap();
+    copy_dir(&fixture("offsite-node-store-first-release"), dir.path());
+    // Replace the snapshot with one in the oldest shape: no time, no root, no size, no mode.
+    let id = "2023-11-15T00-00-00-000Z-aaaa0001";
+    for f in std::fs::read_dir(dir.path().join("snapshots"))
+        .unwrap()
+        .flatten()
+    {
+        std::fs::remove_file(f.path()).unwrap();
+    }
+    let hello = "365572de215cae8a16117c1d112b38b9d523a76802382b1193c4be70f3537690";
+    let stripped = format!(
+        r#"{{"format":"noevia-offsite-v1","files":[{{"path":"a.txt","sha256":"x","chunks":["{hello}"]}}]}}"#
+    );
+    std::fs::write(
+        dir.path().join("snapshots").join(id),
+        Keys9().seal(stripped.as_bytes(), &[3; 12]).unwrap(),
+    )
+    .unwrap();
+    age_all(dir.path(), 48);
+    let engine = Engine::new(
+        Store::Dir(DirStore::new(dir.path()).unwrap()),
+        &[9u8; 32],
+        vec![],
+    )
+    .unwrap();
+    let snaps = engine.snapshots().await.unwrap();
+    assert!(snaps.failed.is_empty(), "an old shape is not corruption");
+    assert_eq!(
+        (snaps[0].time, snaps[0].files),
+        (1_700_006_400_000, 1),
+        "the time comes from the id"
+    );
+    let r = engine.forget(&[]).await.unwrap();
+    assert_eq!(
+        (r.unreadable, r.pruned_chunks),
+        (0, 3),
+        "the three unreferenced chunks go"
+    );
+    let left = files_under(dir.path());
+    assert!(
+        left.contains(&format!("data/36/{hello}")),
+        "the chunk it names stays: {left:?}"
+    );
+    assert_eq!(left.iter().filter(|f| f.starts_with("data/")).count(), 1);
+}
+
+async fn s3_engine(up: &Upstream, src: &Path) -> Engine {
+    Engine::new(
+        Store::S3(
+            noevia_server::offsite_store::S3Store::new(
+                &up.base(),
+                "b",
+                "us-east-1",
+                "ak",
+                "sk",
+                "p",
+            )
+            .unwrap(),
+        ),
+        &[9u8; 32],
+        vec![src.to_path_buf()],
+    )
+    .unwrap()
+}
+
+type Objects = Arc<Mutex<std::collections::BTreeMap<String, Vec<u8>>>>;
+
+/// Replaces a stored snapshot by the same manifest re-dated `days` ago under a new id.
+fn redate(objects: &Objects, id: &str, days: i64) -> String {
+    let mut map = objects.lock().unwrap();
+    let key = format!("/b/p/snapshots/{id}");
+    let sealed = map.remove(&key).unwrap();
+    let mut m = offsite_backup_format::Manifest::parse(&Keys9().open(&sealed).unwrap()).unwrap();
+    m.time -= days * 86_400_000;
+    let new_id = offsite_backup_format::snapshot_id(m.time, [9, 9, 9, 9]);
+    map.insert(
+        format!("/b/p/snapshots/{new_id}"),
+        Keys9().seal(m.to_json().as_bytes(), &[5; 12]).unwrap(),
+    );
+    new_id
+}
+
+fn chunk_count(objects: &Objects) -> usize {
+    objects
+        .lock()
+        .unwrap()
+        .keys()
+        .filter(|k| k.contains("/data/"))
+        .count()
+}
+
+#[tokio::test]
+async fn a_manifest_that_cannot_be_read_stops_the_prune_and_the_new_snapshot_is_always_kept() {
+    let up = upstream().await;
+    let objects: Objects = Arc::new(Mutex::new(std::collections::BTreeMap::new()));
+    let hooks = S3Hooks::default();
+    install_s3_hooked(&up, Arc::clone(&objects), 50, hooks.clone());
+    let src = tempfile::tempdir().unwrap();
+    let engine = s3_engine(&up, src.path()).await;
+    std::fs::write(src.path().join("a.txt"), "alpha, only in the old snapshot").unwrap();
+    let first = engine.backup(&Pace::none()).await.unwrap();
+    let old = redate(&objects, &first.id, 10);
+    std::fs::write(src.path().join("a.txt"), "beta, in the new snapshot").unwrap();
+    let second = engine.backup(&Pace::none()).await.unwrap();
+    assert_eq!(chunk_count(&objects), 2);
+
+    // The old manifest answers 503: it is listed but unreadable. Its chunk must survive.
+    hooks.fail_get.lock().unwrap().push(old.clone());
+    let r = engine
+        .forget(std::slice::from_ref(&second.id))
+        .await
+        .unwrap();
+    assert_eq!(
+        (r.unreadable, r.pruned_chunks),
+        (1, 0),
+        "no chunk is pruned while a manifest is unreadable"
+    );
+    assert_eq!(
+        chunk_count(&objects),
+        2,
+        "the old snapshot's chunk is still there"
+    );
+    let snaps = engine.snapshots().await.unwrap();
+    assert_eq!(snaps.len(), 1);
+    assert_eq!(snaps.failed, std::slice::from_ref(&old));
+
+    // Readable again: both are kept (different days), so both chunks are referenced.
+    hooks.fail_get.lock().unwrap().clear();
+    let r = engine
+        .forget(std::slice::from_ref(&second.id))
+        .await
+        .unwrap();
+    assert_eq!((r.unreadable, r.pruned_chunks, r.kept), (0, 0, 2));
+    assert_eq!(chunk_count(&objects), 2);
+
+    // A store that has not listed the snapshot just written yet: it is still kept and its chunks
+    // are still referenced, because the caller names it.
+    hooks.hide.lock().unwrap().push(second.id.clone());
+    let r = engine
+        .forget(std::slice::from_ref(&second.id))
+        .await
+        .unwrap();
+    assert_eq!((r.unreadable, r.pruned_chunks), (0, 0));
+    assert_eq!(
+        chunk_count(&objects),
+        2,
+        "the unlisted snapshot's chunk was not pruned"
+    );
+    assert!(objects
+        .lock()
+        .unwrap()
+        .contains_key(&format!("/b/p/snapshots/{}", second.id)));
+}
+
+#[tokio::test]
+async fn a_chunk_under_a_day_old_is_never_pruned_and_an_older_orphan_is() {
+    let src = tempfile::tempdir().unwrap();
+    let dest = tempfile::tempdir().unwrap();
+    std::fs::write(src.path().join("f.txt"), "kept").unwrap();
+    let engine = dir_engine(dest.path(), src.path());
+    let first = engine.backup(&Pace::none()).await.unwrap();
+    let (old, young) = ("e".repeat(64), "d".repeat(64));
+    for (id, hours) in [(&old, 25), (&young, 23)] {
+        std::fs::create_dir_all(dest.path().join(format!("data/{}", &id[..2]))).unwrap();
+        let f = dest.path().join(format!("data/{}/{id}", &id[..2]));
+        std::fs::write(&f, b"orphan").unwrap();
+        age(&f, hours);
+    }
+    let r = engine.forget(&[first.id]).await.unwrap();
+    assert_eq!((r.pruned_chunks, r.young_chunks), (1, 1));
+    let left = files_under(dest.path());
+    assert!(!left.iter().any(|f| f.ends_with(&old)) && left.iter().any(|f| f.ends_with(&young)));
+}
+
+#[tokio::test]
+async fn a_missing_folder_fails_the_run_and_every_skipped_entry_makes_it_incomplete() {
+    use std::os::unix::ffi::OsStrExt as _;
+    let dest = tempfile::tempdir().unwrap();
+    let base = tempfile::tempdir().unwrap();
+    // A folder that is not there is an error, and nothing at all is written to the destination.
+    let gone = dir_engine(dest.path(), &base.path().join("not-mounted"));
+    let e = gone.backup(&Pace::none()).await.err().unwrap();
+    assert_eq!(e.status, 409);
+    assert!(
+        e.message.contains("missing or cannot be read"),
+        "{}",
+        e.message
+    );
+    assert!(
+        files_under(dest.path()).is_empty(),
+        "not even the config was written"
+    );
+
+    // A name that is not UTF-8 cannot be told apart from another in a manifest: it is skipped,
+    // counted, and the snapshot says so.
+    let src = base.path().join("src");
+    std::fs::create_dir_all(src.join("sub")).unwrap();
+    std::fs::write(src.join("ok.txt"), "fine").unwrap();
+    std::fs::write(src.join(std::ffi::OsStr::from_bytes(b"bad\xff.txt")), "x").unwrap();
+    std::fs::write(src.join(std::ffi::OsStr::from_bytes(b"bad\xfe.txt")), "y").unwrap();
+    std::fs::write(src.join("sub/inner.txt"), "inner").unwrap();
+    let engine = dir_engine(dest.path(), &src);
+    let r = engine.backup(&Pace::none()).await.unwrap();
+    assert!(r.incomplete);
+    assert_eq!((r.files, r.skipped), (2, 2));
+    let snaps = engine.snapshots().await.unwrap();
+    assert!(snaps[0].incomplete);
+    // The restore of it does not abort on duplicate names.
+    let out = tempfile::tempdir().unwrap();
+    assert_eq!(
+        engine.restore(&r.id, &out.path().join("r")).await.unwrap(),
+        2
+    );
+    assert_eq!(engine.verify().await.unwrap().1, 2);
+
+    // A file or folder that cannot be opened is skipped too (running as root can open anything,
+    // so the exact count only means something for an ordinary user).
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::write(src.join("secret.txt"), "s").unwrap();
+    std::fs::create_dir_all(src.join("closed")).unwrap();
+    std::fs::write(src.join("closed/in.txt"), "i").unwrap();
+    std::fs::set_permissions(
+        src.join("secret.txt"),
+        std::fs::Permissions::from_mode(0o000),
+    )
+    .unwrap();
+    std::fs::set_permissions(src.join("closed"), std::fs::Permissions::from_mode(0o000)).unwrap();
+    let opened_anyway = std::fs::File::open(src.join("secret.txt")).is_ok();
+    // On its own, a file that cannot be opened is what makes a snapshot incomplete.
+    let lone = base.path().join("lone");
+    std::fs::create_dir_all(&lone).unwrap();
+    std::fs::write(lone.join("ok.txt"), "ok").unwrap();
+    std::fs::write(lone.join("shut.txt"), "shut").unwrap();
+    std::fs::set_permissions(
+        lone.join("shut.txt"),
+        std::fs::Permissions::from_mode(0o000),
+    )
+    .unwrap();
+    let lone_dest = tempfile::tempdir().unwrap();
+    let lone_run = dir_engine(lone_dest.path(), &lone)
+        .backup(&Pace::none())
+        .await
+        .unwrap();
+    std::fs::set_permissions(
+        lone.join("shut.txt"),
+        std::fs::Permissions::from_mode(0o644),
+    )
+    .unwrap();
+    if !opened_anyway {
+        assert!(
+            lone_run.incomplete,
+            "a skipped file makes the snapshot incomplete"
+        );
+        assert_eq!((lone_run.files, lone_run.skipped), (1, 1));
+    }
+    let r2 = engine.backup(&Pace::none()).await.unwrap();
+    std::fs::set_permissions(src.join("closed"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::set_permissions(
+        src.join("secret.txt"),
+        std::fs::Permissions::from_mode(0o644),
+    )
+    .unwrap();
+    assert!(r2.incomplete, "the bad names alone already make it so");
+    if !opened_anyway {
+        assert_eq!(
+            r2.skipped, 4,
+            "two bad names, the closed file and the closed folder"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_run_reports_what_it_skipped_in_its_answer_and_the_status() {
+    let w = world(&[]).await;
+    std::fs::write(w.data.path().join("broken.db"), "not a database").unwrap();
+    let r = send(w.f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "").await;
+    assert_eq!(r.status, 200, "{}", r.text);
+    let last = r.json();
+    assert_eq!(
+        (last["incomplete"].as_bool(), last["skipped"].as_i64()),
+        (Some(true), Some(1)),
+        "{last}"
+    );
+    let s = get(w.f.addr, ROOT, ADMIN).await.json();
+    assert_eq!(s["lastBackup"]["incomplete"], true);
+    assert_eq!(s["lastBackup"]["skipped"], 1);
+    // The next run, with the problem gone, says it is complete.
+    std::fs::remove_file(w.data.path().join("broken.db")).unwrap();
+    let again = send(w.f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "")
+        .await
+        .json();
+    assert_eq!(
+        (again["incomplete"].as_bool(), again["skipped"].as_i64()),
+        (Some(false), Some(0))
+    );
+}
+
+fn put_manifest(dest: &Path, t: i64, tag: u8, incomplete: bool, chunk: Option<&str>) -> String {
+    let id = offsite_backup_format::snapshot_id(t, [0, 0, 0, tag]);
+    let files = chunk.map_or(vec![], |c| {
+        vec![offsite_backup_format::FileEntry {
+            root: 0,
+            path: "kept.txt".into(),
+            size: 1,
+            mode: 0o600,
+            mtime: 0,
+            sha256: "0".repeat(64),
+            chunks: vec![c.to_owned()],
+        }]
+    });
+    let m = offsite_backup_format::Manifest {
+        time: t,
+        roots: 1,
+        files,
+        incomplete,
+    };
+    std::fs::write(
+        dest.join(format!("snapshots/{id}")),
+        Keys9().seal(m.to_json().as_bytes(), &[1; 12]).unwrap(),
+    )
+    .unwrap();
+    id
+}
+
+#[tokio::test]
+async fn retention_keeps_the_newest_complete_snapshot_whatever_came_after() {
+    let src = tempfile::tempdir().unwrap();
+    let dest = tempfile::tempdir().unwrap();
+    std::fs::write(src.path().join("f.txt"), "x").unwrap();
+    let engine = dir_engine(dest.path(), src.path());
+    let live = engine.backup(&Pace::none()).await.unwrap();
+    // One good snapshot 400 days ago, then incomplete ones in nine different months: more monthly
+    // buckets than the policy keeps, so only the newest-complete rule can save the good one.
+    let now = noevia_server::gdrive::now_ms();
+    let good_chunk = "c".repeat(64);
+    std::fs::create_dir_all(dest.path().join("data/cc")).unwrap();
+    let chunk_file = dest.path().join(format!("data/cc/{good_chunk}"));
+    std::fs::write(&chunk_file, b"x").unwrap();
+    age(&chunk_file, 48);
+    let good = put_manifest(
+        dest.path(),
+        now - 400 * 86_400_000,
+        1,
+        false,
+        Some(&good_chunk),
+    );
+    for d in 1..=9u8 {
+        put_manifest(
+            dest.path(),
+            now - i64::from(d) * 35 * 86_400_000,
+            10 + d,
+            true,
+            None,
+        );
+    }
+    // The live snapshot is complete; make it incomplete too so the good one is the only complete.
+    let live_path = dest.path().join(format!("snapshots/{}", live.id));
+    let mut m = offsite_backup_format::Manifest::parse(
+        &Keys9().open(&std::fs::read(&live_path).unwrap()).unwrap(),
+    )
+    .unwrap();
+    m.incomplete = true;
+    std::fs::write(
+        &live_path,
+        Keys9().seal(m.to_json().as_bytes(), &[2; 12]).unwrap(),
+    )
+    .unwrap();
+    let r = engine.forget(&[]).await.unwrap();
+    assert!(
+        !r.removed.contains(&good),
+        "the newest complete snapshot survives: {:?}",
+        r.removed
+    );
+    assert!(
+        files_under(dest.path()).contains(&format!("data/cc/{good_chunk}")),
+        "and so does its chunk"
+    );
+    assert!(
+        !r.removed.is_empty(),
+        "retention still removes: {} kept",
+        r.kept
+    );
+
+    // On one day a good run and then a worse one: the day keeps the good one.
+    let dest2 = tempfile::tempdir().unwrap();
+    let engine2 = dir_engine(dest2.path(), src.path());
+    engine2.backup(&Pace::none()).await.unwrap(); // makes the config and the snapshots directory
+    for f in std::fs::read_dir(dest2.path().join("snapshots"))
+        .unwrap()
+        .flatten()
+    {
+        std::fs::remove_file(f.path()).unwrap();
+    }
+    let t = T_OCT30 - 5 * 86_400_000 + 3_600_000;
+    let good_day = put_manifest(dest2.path(), t, 1, false, None);
+    let bad_day = put_manifest(dest2.path(), t + 3_600_000, 2, true, None);
+    let newest = put_manifest(dest2.path(), T_OCT30, 3, false, None);
+    let r = engine2.forget(&[]).await.unwrap();
+    assert!(
+        r.removed.contains(&bad_day),
+        "the worse later run of the day goes: {:?}",
+        r.removed
+    );
+    assert!(!r.removed.contains(&good_day) && !r.removed.contains(&newest));
+}
+
+#[tokio::test]
+async fn an_empty_destination_is_not_initialised_once_a_backup_was_made_to_it() {
+    let w = world(&[]).await;
+    let ok = send(w.f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "").await;
+    assert_eq!(ok.status, 200, "{}", ok.text);
+    // The NAS is not mounted: the destination is an empty directory.
+    for e in std::fs::read_dir(&w.dest).unwrap().flatten() {
+        if e.file_type().unwrap().is_dir() {
+            std::fs::remove_dir_all(e.path()).unwrap();
+        } else {
+            std::fs::remove_file(e.path()).unwrap();
+        }
+    }
+    let r = send(w.f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "").await;
+    assert_eq!(r.status, 409, "{}", r.text);
+    let msg = r.json()["error"].as_str().unwrap().to_owned();
+    assert!(msg.contains("mounted"), "{msg}");
+    assert!(
+        files_under(&w.dest).is_empty(),
+        "no fresh config, no second chain to confuse the Drive copy"
+    );
+    let s = get(w.f.addr, ROOT, ADMIN).await.json();
+    assert_eq!(s["lastError"]["during"], "backup");
+    assert!(
+        s["lastBackup"]["id"].is_string(),
+        "the last good backup is still the last backup"
+    );
+    // An administrator who really changed the destination (the recorded one differs) starts afresh.
+    let path = w.data.path().join("offsite-backup-status.json");
+    let mut st = j(&std::fs::read_to_string(&path).unwrap());
+    st["backupDestination"] = serde_json::json!("another-destination");
+    std::fs::write(&path, st.to_string()).unwrap();
+    let r = send(w.f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "").await;
+    assert_eq!(r.status, 200, "{}", r.text);
+    assert!(files_under(&w.dest).contains(&"config".to_string()));
+}
+
+#[tokio::test]
+async fn a_failing_scheduled_run_backs_off_is_capped_per_window_and_a_good_one_clears_it() {
+    let w = world(&[
+        ("OFFSITE_BACKUP_HOUR", "3".into()),
+        ("OFFSITE_BACKUP_TIMEZONE", "UTC".into()),
+    ])
+    .await;
+    let (service, app) = (
+        Arc::clone(w.f.app.offsite.as_ref().unwrap()),
+        Arc::clone(&w.f.app),
+    );
+    let tick = |now: i64| {
+        let (service, app) = (Arc::clone(&service), Arc::clone(&app));
+        async move { service.tick_at(&app, Arc::new(move || now)).await }
+    };
+    let status =
+        || j(&std::fs::read_to_string(w.data.path().join("offsite-backup-status.json")).unwrap());
+    // A destination another key wrote: every attempt fails, quickly and without writing.
+    let other = offsite_backup_format::Keys::derive(&[1u8; 32]).unwrap();
+    std::fs::write(
+        w.dest.join("config"),
+        other
+            .seal(b"{\"format\":\"noevia-offsite-v1\"}", &[2; 12])
+            .unwrap(),
+    )
+    .unwrap();
+
+    assert!(tick(at(3, 0)).await, "first attempt");
+    let st = status();
+    assert_eq!(st["lastError"]["at"], at(3, 0));
+    assert_eq!(st["lastError"]["failures"], 1);
+    assert_eq!(
+        st["backupRetry"],
+        serde_json::json!({"at": at(3, 0), "failures": 1, "attempts": 1})
+    );
+    assert!(!tick(at(3, 14)).await, "15 minutes of backoff");
+    assert!(tick(at(3, 15)).await, "second attempt");
+    assert_eq!(status()["lastError"]["failures"], 2);
+    assert!(!tick(at(3, 44)).await, "30 minutes of backoff");
+    assert!(tick(at(3, 45)).await, "third attempt");
+    assert_eq!(status()["backupRetry"]["attempts"], 3);
+    assert!(!tick(at(4, 44)).await, "an hour of backoff");
+    assert!(
+        !tick(at(5, 0)).await,
+        "the window's three attempts are spent"
+    );
+    assert!(!tick(at(8, 59)).await, "however late in the window");
+    assert!(status()["lastBackup"].is_null());
+
+    // The next night the cap is new; the destination is repaired and the backoff (two hours at most) passes.
+    let day = 86_400_000;
+    assert!(tick(at(3, 0) + day).await, "next night, failure 4");
+    assert_eq!(status()["backupRetry"]["failures"], 4);
+    assert_eq!(status()["backupRetry"]["attempts"], 1);
+    std::fs::remove_file(w.dest.join("config")).unwrap();
+    assert!(!tick(at(4, 59) + day).await, "119 minutes after failure 4");
+    assert!(tick(at(5, 0) + day).await, "two hours after it");
+    let st = status();
+    assert!(
+        st["lastError"].is_null() && st["backupRetry"].is_null(),
+        "{st}"
+    );
+    assert_eq!(
+        st["lastBackup"]["at"],
+        at(5, 0) + day,
+        "stamped with the schedule's clock"
+    );
+    assert_eq!(st["snapshots"], 1);
+    assert!(!tick(at(5, 30) + day).await, "done for the night");
+}
+
+/// A front over a synthetic S3 service with the given hooks and prefix `p`.
+async fn s3_front(
+    hooks: &S3Hooks,
+    seed_store: impl FnOnce(&mut std::collections::BTreeMap<String, Vec<u8>>),
+) -> (
+    tempfile::TempDir,
+    tempfile::TempDir,
+    Upstream,
+    Objects,
+    Front,
+) {
+    let data = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let key = outside.path().join("backup.key");
+    std::fs::write(&key, BACKUP_KEY_HEX).unwrap();
+    seed(data.path());
+    std::fs::write(data.path().join("notes.txt"), "synthetic notes").unwrap();
+    let up = upstream().await;
+    let objects: Objects = Arc::new(Mutex::new(std::collections::BTreeMap::new()));
+    seed_store(&mut objects.lock().unwrap());
+    install_s3_hooked(&up, Arc::clone(&objects), 100, hooks.clone());
+    let env = [
+        ("OFFSITE_BACKUP_S3_ENDPOINT", up.base()),
+        ("OFFSITE_BACKUP_S3_BUCKET", "b".to_string()),
+        (
+            "OFFSITE_BACKUP_S3_ACCESS_KEY_ID",
+            "AKIASYNTHETIC".to_string(),
+        ),
+        (
+            "OFFSITE_BACKUP_S3_SECRET_ACCESS_KEY",
+            "synthetic-s3-secret".to_string(),
+        ),
+        ("OFFSITE_BACKUP_S3_PREFIX", "p".to_string()),
+        ("OFFSITE_BACKUP_KEY_FILE", key.display().to_string()),
+        ("NOEVIA_FEATURE_OFFSITE_BACKUP", "1".to_string()),
+    ];
+    let f = front(data.path(), &up.base(), &env).await;
+    (data, outside, up, objects, f)
+}
+
+#[tokio::test]
+async fn a_retention_failure_is_recorded_on_its_own_and_does_not_repeat_the_backup() {
+    let hooks = S3Hooks::default();
+    // A store with config and forty old daily snapshots, so retention has deletions to make.
+    let (data, _outside, _up, objects, f) = s3_front(&hooks, |map| {
+        let keys = Keys9();
+        map.insert(
+            "/b/p/config".into(),
+            keys.seal(offsite_backup_format::config_json(5).as_bytes(), &[2; 12])
+                .unwrap(),
+        );
+        for i in 0..40i64 {
+            let t = 1_767_268_800_000 + i * 86_400_000;
+            let m = offsite_backup_format::Manifest {
+                time: t,
+                roots: 1,
+                files: vec![],
+                incomplete: false,
+            };
+            map.insert(
+                format!(
+                    "/b/p/snapshots/{}",
+                    offsite_backup_format::snapshot_id(t, [0, 0, 0, i as u8])
+                ),
+                keys.seal(m.to_json().as_bytes(), &[1; 12]).unwrap(),
+            );
+        }
+    })
+    .await;
+    hooks.fail_delete.store(true, Ordering::SeqCst);
+    let r = send(f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "").await;
+    assert_eq!(
+        r.status, 200,
+        "the snapshot was stored, so the run worked: {}",
+        r.text
+    );
+    let s = get(f.addr, ROOT, ADMIN).await.json();
+    assert_eq!(
+        s["lastBackup"]["id"],
+        r.json()["id"],
+        "recorded before retention"
+    );
+    assert_eq!(s["lastError"]["during"], "backup");
+    assert!(
+        s["lastError"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("saved, but applying retention failed"),
+        "{s}"
+    );
+    let st = j(&std::fs::read_to_string(data.path().join("offsite-backup-status.json")).unwrap());
+    assert!(
+        st["backupRetry"].is_null(),
+        "a retention failure is not a failed backup: {st}"
+    );
+    let snapshots = |objects: &Objects| {
+        objects
+            .lock()
+            .unwrap()
+            .keys()
+            .filter(|k| k.contains("/snapshots/"))
+            .count()
+    };
+    assert_eq!(snapshots(&objects), 41);
+    // The schedule is not asked to repeat it: the last backup is fresh.
+    let service = Arc::clone(f.app.offsite.as_ref().unwrap());
+    let last_at = st["lastBackup"]["at"].as_i64().unwrap();
+    assert!(
+        !service
+            .tick_at(&f.app, Arc::new(move || last_at + 3_600_000))
+            .await
+    );
+    // Retention works again on the next run.
+    hooks.fail_delete.store(false, Ordering::SeqCst);
+    let r = send(f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "").await;
+    assert_eq!(r.status, 200, "{}", r.text);
+    assert!(get(f.addr, ROOT, ADMIN).await.json()["lastError"].is_null());
+    assert!(snapshots(&objects) < 20, "{}", snapshots(&objects));
+}
+
+#[tokio::test]
+async fn the_copy_a_run_starts_survives_a_client_that_hangs_up() {
+    use tokio::io::AsyncWriteExt as _;
+    let w = world(&[]).await;
+    let drive = DriveModel::default();
+    install_drive(&w.up, Arc::clone(&w.g.granted), drive.clone());
+    connect_drive(&w).await;
+    // A backup long enough to catch in flight.
+    std::fs::write(w.data.path().join("big.bin"), noise(48 * 1024 * 1024)).unwrap();
+    // POST /run, and close the connection once the job is running, before the answer: the backup
+    // and the copy to Drive that follows it are the administrator's request, not the connection's.
+    let mut raw = tokio::net::TcpStream::connect(w.f.addr).await.unwrap();
+    raw.write_all(
+        format!("POST {ROOT}/run HTTP/1.1\r\nHost: x\r\nConnection: close\r\nCookie: {ADMIN}\r\nOrigin: http://{}\r\nX-CSRF-Token: csrf\r\nContent-Length: 0\r\n\r\n", w.f.addr).as_bytes(),
+    )
+    .await
+    .unwrap();
+    let started = Instant::now();
+    loop {
+        let s = get(w.f.addr, ROOT, ADMIN).await.json();
+        if s["busy"] == "backup" {
+            break;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(30) && s["lastBackup"].is_null(),
+            "the backup was never seen running: {s}"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    drop(raw);
+    wait_copy(w.f.addr, "ok").await;
+    let folder = drive.list().into_iter().find(|f| f.folder).unwrap();
+    assert!(
+        drive
+            .children(&folder.id)
+            .iter()
+            .any(|f| f.name.starts_with("snapshots/")),
+        "the snapshot reached Drive"
+    );
+}
+
+#[tokio::test]
+async fn a_destination_that_hangs_cannot_hold_the_job_forever() {
+    let hooks = S3Hooks::default();
+    let (_data, _outside, _up, _objects, f) = s3_front(&hooks, |_| {}).await;
+    let service = Arc::clone(f.app.offsite.as_ref().unwrap());
+    service.set_deadline(Duration::from_millis(1500));
+    hooks.stall_list.store(true, Ordering::SeqCst);
+    let started = Instant::now();
+    let r = send(f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "").await;
+    assert!(
+        started.elapsed() < Duration::from_secs(15),
+        "{:?}",
+        started.elapsed()
+    );
+    assert_eq!(r.status, 504, "{}", r.text);
+    assert!(r.text.contains("did not finish within"), "{}", r.text);
+    let s = get(f.addr, ROOT, ADMIN).await.json();
+    assert!(s["busy"].is_null(), "the busy mark is released");
+    assert_eq!(s["lastError"]["during"], "backup");
+    // The destination answers again: the next run works, and the lock was released too.
+    hooks.stall_list.store(false, Ordering::SeqCst);
+    service.set_deadline(Duration::from_secs(60));
+    assert_eq!(
+        send(f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "")
+            .await
+            .status,
+        200
+    );
+}
+
+#[tokio::test]
+async fn one_job_at_a_time_across_processes() {
+    let w = world(&[]).await;
+    let lock = w.data.path().join("offsite-backup.lock");
+    // Another process (or a second instance) holds the job lock.
+    let other = std::fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .truncate(false)
+        .open(&lock)
+        .unwrap();
+    other.lock().unwrap();
+    let r = send(w.f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "").await;
+    assert_eq!(
+        (r.status, r.json()["error"].as_str().map(str::to_owned)),
+        (
+            409,
+            Some("Another backup job is running in this installation.".into())
+        )
+    );
+    assert!(
+        files_under(&w.dest).is_empty(),
+        "nothing was written while the lock was held"
+    );
+    let v = send(w.f.addr, "POST", &format!("{ROOT}/verify"), ADMIN, "").await;
+    assert_eq!(v.status, 409);
+    drop(other);
+    assert_eq!(
+        send(w.f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "")
+            .await
+            .status,
+        200
+    );
+    // The lock file is not part of any snapshot.
+    let engine = dir_engine(&w.dest, w.data.path());
+    let out = tempfile::tempdir().unwrap();
+    let snap = engine.snapshots().await.unwrap();
+    engine
+        .restore(&snap[0].id, &out.path().join("r"))
+        .await
+        .unwrap();
+    assert!(!out.path().join("r/0/offsite-backup.lock").exists());
+    // Two engines on one lock file exclude each other directly.
+    let (a, b) = (
+        dir_engine(&w.dest, w.data.path()).with_lock_file(lock.clone()),
+        dir_engine(&w.dest, w.data.path()).with_lock_file(lock),
+    );
+    let held = a.lock_job().unwrap();
+    assert!(held.is_some());
+    assert_eq!(b.lock_job().err().unwrap().status, 409);
+    drop(held);
+    assert!(b.lock_job().unwrap().is_some());
+}
+
+#[tokio::test]
+async fn a_manual_run_is_told_a_scheduled_one_waits_for_a_quiet_window() {
+    use std::sync::atomic::AtomicI64;
+    let w = world(&[("OFFSITE_BACKUP_TIMEZONE", "UTC".into())]).await;
+    let (service, app) = (
+        Arc::clone(w.f.app.offsite.as_ref().unwrap()),
+        Arc::clone(&w.f.app),
+    );
+    let clock = Arc::new(AtomicI64::new(at(4, 10))); // inside the appdata window (UTC host)
+    let pace = {
+        let c = Arc::clone(&clock);
+        let mut p = service.scheduled_pace(Arc::new(move || c.load(Ordering::SeqCst)));
+        p.step = Duration::from_millis(20);
+        p
+    };
+    let run = tokio::spawn({
+        let (service, app) = (Arc::clone(&service), Arc::clone(&app));
+        async move { service.run_now(&app, pace).await }
+    });
+    let started = Instant::now();
+    loop {
+        let s = get(w.f.addr, ROOT, ADMIN).await.json();
+        if s["waitingForQuietWindow"] == true {
+            assert_eq!(s["busy"], "backup");
+            break;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "never waited: {s}"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let r = send(w.f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "").await;
+    assert_eq!(r.status, 409);
+    assert!(
+        r.json()["error"]
+            .as_str()
+            .unwrap()
+            .contains("waiting for a quiet window"),
+        "{}",
+        r.text
+    );
+    assert!(
+        files_under(&w.dest).is_empty(),
+        "nothing is written inside the window"
+    );
+    clock.store(at(5, 0), Ordering::SeqCst);
+    let done = tokio::time::timeout(Duration::from_secs(20), run)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert!(done.get("files").as_num().unwrap() > 0.0);
+    let s = get(w.f.addr, ROOT, ADMIN).await.json();
+    assert!(s.get("waitingForQuietWindow").is_none() && s["busy"].is_null());
+}
+
+#[tokio::test]
+async fn a_scheduled_run_pauses_between_files_never_inside_one() {
+    use offsite_backup_format::schedule::Zone;
+    use std::sync::atomic::AtomicUsize;
+    let src = tempfile::tempdir().unwrap();
+    let dest = tempfile::tempdir().unwrap();
+    std::fs::write(src.path().join("big.bin"), noise(9 * 1024 * 1024)).unwrap(); // three chunks
+    std::fs::write(src.path().join("small.txt"), "s").unwrap();
+    let engine = dir_engine(dest.path(), src.path());
+    let calls = Arc::new(AtomicUsize::new(0));
+    let pace = {
+        let c = Arc::clone(&calls);
+        Pace {
+            zone: Some(Zone::Utc),
+            clock: Arc::new(move || {
+                c.fetch_add(1, Ordering::SeqCst);
+                at(3, 0) // outside every window
+            }),
+            step: Duration::from_millis(10),
+            waiting: Arc::new(|_| {}),
+        }
+    };
+    let r = engine.backup(&pace).await.unwrap();
+    assert_eq!(r.uploaded_chunks, 4);
+    // One look before the destination is touched, one before each of the two files; none per chunk.
+    assert_eq!(calls.load(Ordering::SeqCst), 3);
+}
+
+#[tokio::test]
+async fn the_restore_test_tests_the_newest_snapshot_or_fails() {
+    let src = tempfile::tempdir().unwrap();
+    let dest = tempfile::tempdir().unwrap();
+    std::fs::write(src.path().join("f.txt"), "one").unwrap();
+    let engine = dir_engine(dest.path(), src.path());
+    let first = engine.backup(&Pace::none()).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    std::fs::write(src.path().join("f.txt"), "two").unwrap();
+    let second = engine.backup(&Pace::none()).await.unwrap();
+    assert_eq!(engine.verify().await.unwrap().0, second.id);
+    // The newest manifest is damaged: the test fails; it does not pass the older snapshot.
+    let newest = dest.path().join(format!("snapshots/{}", second.id));
+    std::fs::write(&newest, b"damaged damaged damaged damaged").unwrap();
+    let e = engine.verify().await.err().unwrap();
+    assert_eq!(e.status, 422);
+    assert!(
+        e.message.contains("newest snapshot cannot be read"),
+        "{}",
+        e.message
+    );
+    // An older damaged one does not stop the newest from being tested.
+    std::fs::remove_file(&newest).unwrap();
+    let older = offsite_backup_format::snapshot_id(1_000, [0; 4]);
+    std::fs::write(
+        dest.path().join(format!("snapshots/{older}")),
+        b"junk junk junk junk junk junk",
+    )
+    .unwrap();
+    assert_eq!(engine.verify().await.unwrap().0, first.id);
+}
+
+#[tokio::test]
+async fn a_killed_runs_leftovers_are_swept() {
+    let src = tempfile::tempdir().unwrap();
+    let dest = tempfile::tempdir().unwrap();
+    std::fs::write(src.path().join("f.txt"), "x").unwrap();
+    std::fs::create_dir_all(dest.path().join("data/ab")).unwrap();
+    let (stale, fresh) = (
+        dest.path().join("data/ab/.tmp-stale"),
+        dest.path().join("data/ab/.tmp-fresh"),
+    );
+    std::fs::write(&stale, "half").unwrap();
+    std::fs::write(&fresh, "half").unwrap();
+    age(&stale, 5);
+    let tag = hex(&format!("{:?}", dest.path()))[..8].to_string();
+    let scratch_old = std::env::temp_dir().join(format!("noevia-sqlite-sweeptest-{tag}"));
+    let scratch_new = std::env::temp_dir().join(format!("noevia-restore-test-sweeptest-{tag}"));
+    for d in [&scratch_old, &scratch_new] {
+        std::fs::create_dir_all(d).unwrap();
+        std::fs::write(d.join("copy.db"), "x").unwrap();
+    }
+    std::fs::File::open(&scratch_old)
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() - Duration::from_secs(9 * 3600))
+        .unwrap();
+    let engine = dir_engine(dest.path(), src.path());
+    engine.backup(&Pace::none()).await.unwrap();
+    assert!(
+        !stale.exists() && fresh.exists(),
+        "an old half file goes, a live one stays"
+    );
+    assert!(!scratch_old.exists(), "an old scratch directory goes");
+    assert!(
+        scratch_new.exists(),
+        "a recent one may belong to a live job"
+    );
+    std::fs::remove_dir_all(&scratch_new).unwrap();
+}
+
+#[tokio::test]
+async fn the_schedule_timer_delays_instead_of_bursting_after_a_slow_check() {
+    let period = Duration::from_millis(120);
+    let mut t = noevia_server::offsite_routes::scheduler_interval(period);
+    t.tick().await; // the first check, one period after the start
+                    // A check that takes four periods (a long failed backup).
+    tokio::time::sleep(period * 4).await;
+    t.tick().await; // the missed one fires at once
+    let before = Instant::now();
+    t.tick().await; // under Burst this too is immediate (three more were missed)
+    assert!(
+        before.elapsed() >= period - Duration::from_millis(30),
+        "the next check waits a period: {:?}",
+        before.elapsed()
+    );
+}
+
+#[tokio::test]
+async fn the_status_names_the_zone_the_hour_is_read_in() {
+    let w = world(&[]).await;
+    assert_eq!(
+        get(w.f.addr, ROOT, ADMIN).await.json()["scheduleZone"],
+        "UTC"
+    );
+    let w = world(&[("TZ", "America/New_York".into())]).await;
+    assert_eq!(
+        get(w.f.addr, ROOT, ADMIN).await.json()["scheduleZone"],
+        "America/New_York"
+    );
+}
+
+#[tokio::test]
+async fn an_upload_gets_the_transfer_budget_and_a_json_call_only_the_quick_one() {
+    let w = world(&[]).await;
+    let drive = DriveModel::default();
+    install_drive(&w.up, Arc::clone(&w.g.granted), drive.clone());
+    connect_drive(&w).await;
+    // The two budgets, shortened for the test: 30 s and 300 s in production. An upload that takes
+    // longer than the quick one (a slow uplink: a 35 s upload used to fail at the 30 s total) works.
+    w.f.app
+        .drive
+        .as_ref()
+        .unwrap()
+        .set_budgets(Duration::from_millis(300), Duration::from_secs(8));
+    let slow = drive.clone();
+    w.up.set(move |r: &Seen| {
+        if r.path.starts_with("/upload/") {
+            let (_, text) = slow.handle(r);
+            return (Duration::from_millis(600), text);
+        }
+        if r.path == "/token" {
+            return reply("200 OK", r#"{"access_token":"access-1","expires_in":3600}"#);
+        }
+        slow.handle(r)
+    });
+    assert_eq!(
+        send(w.f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "")
+            .await
+            .status,
+        200
+    );
+    wait_copy(w.f.addr, "ok").await;
+    let folder = drive.list().into_iter().find(|f| f.folder).unwrap();
+    assert!(
+        drive
+            .children(&folder.id)
+            .iter()
+            .any(|f| f.name == "config"),
+        "every object got through a 0.6 s upload (twice the 0.3 s quick budget)"
+    );
+    // A JSON call that stalls past the quick budget is a failure, not a wait.
+    let stall = drive.clone();
+    w.up.set(move |r: &Seen| {
+        if r.path.starts_with("/drive/v3/files?") {
+            let (_, text) = stall.handle(r);
+            return (Duration::from_millis(600), text);
+        }
+        if r.path == "/token" {
+            return reply("200 OK", r#"{"access_token":"access-1","expires_in":3600}"#);
+        }
+        stall.handle(r)
+    });
+    let r = send(w.f.addr, "POST", &format!("{ROOT}/copy"), ADMIN, "").await;
+    assert_eq!(r.status, 502, "{}", r.text);
+    assert_eq!(r.json()["error"], "Google Drive could not be reached.");
+}
+
+#[tokio::test]
+async fn an_unreadable_snapshot_is_reported_and_keeps_every_chunk_through_a_run() {
+    let w = world(&[]).await;
+    assert_eq!(
+        send(w.f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "")
+            .await
+            .status,
+        200
+    );
+    let chunks = |dest: &Path| -> std::collections::BTreeSet<String> {
+        files_under(dest)
+            .into_iter()
+            .filter(|f| f.starts_with("data/"))
+            .collect()
+    };
+    assert_eq!(
+        get(w.f.addr, ROOT, ADMIN).await.json()["unreadableSnapshots"],
+        0
+    );
+    // A manifest the store lists but that does not open (damaged on the NAS, or a flaky read).
+    let junk = offsite_backup_format::snapshot_id(1_000, [7; 4]);
+    std::fs::write(
+        w.dest.join(format!("snapshots/{junk}")),
+        b"damaged damaged damaged damaged",
+    )
+    .unwrap();
+    // The data changes, the new snapshot replaces today's old one, and the old one's chunk would be garbage...
+    std::fs::write(w.data.path().join("notes.txt"), "synthetic notes, edited").unwrap();
+    age_all(&w.dest, 48);
+    let before = chunks(&w.dest);
+    let r = send(w.f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "").await;
+    assert_eq!(r.status, 200, "{}", r.text);
+    let s = get(w.f.addr, ROOT, ADMIN).await.json();
+    assert_eq!(s["unreadableSnapshots"], 1, "{s}");
+    assert!(
+        before.is_subset(&chunks(&w.dest)) && chunks(&w.dest).len() > before.len(),
+        "...but nothing is pruned while a manifest cannot be read"
+    );
+    // Once it is gone, the next run prunes again and reports none.
+    std::fs::remove_file(w.dest.join(format!("snapshots/{junk}"))).unwrap();
+    age_all(&w.dest, 48);
+    std::fs::write(
+        w.data.path().join("notes.txt"),
+        "synthetic notes, edited again",
+    )
+    .unwrap();
+    assert_eq!(
+        send(w.f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "")
+            .await
+            .status,
+        200
+    );
+    assert_eq!(
+        get(w.f.addr, ROOT, ADMIN).await.json()["unreadableSnapshots"],
+        0
+    );
+    assert!(
+        !before.is_subset(&chunks(&w.dest)),
+        "and the chunks nothing names any more are gone"
+    );
 }

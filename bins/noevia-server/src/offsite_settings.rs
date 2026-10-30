@@ -5,6 +5,7 @@
 //! (`offsite-backup-status.json`, mode 0600, written whole by rename). Nothing here prints a key.
 use crate::gdrive::Fail;
 use js_json::JValue;
+use offsite_backup_format::schedule::Zone;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use zeroize::Zeroizing;
@@ -29,9 +30,14 @@ pub struct Settings {
     values: Vec<(&'static str, String)>,
     pub paths: Vec<String>,
     pub hour: u32,
-    /// The `TZ` name the scheduler reads the server clock from.
+    /// The `TZ` name the process runs with: the zone `OFFSITE_BACKUP_HOUR` is read in (core's
+    /// `getHours()`). None is UTC, which is what a process without `TZ` runs in.
     pub tz: Option<String>,
 }
+
+/// The host's own zone when `OFFSITE_BACKUP_TIMEZONE` does not say: the Unraid host runs on Eastern
+/// time while the web container has no `TZ`, so the appdata window is read there, never as UTC.
+pub const DEFAULT_HOST_ZONE: Zone = Zone::NewYork;
 
 impl std::fmt::Debug for Settings {
     /// Never prints a value: some are credentials.
@@ -43,7 +49,7 @@ impl std::fmt::Debug for Settings {
     }
 }
 
-const KEYS: [&str; 11] = [
+const KEYS: [&str; 12] = [
     "OFFSITE_BACKUP_S3_ENDPOINT",
     "OFFSITE_BACKUP_S3_BUCKET",
     "OFFSITE_BACKUP_S3_ACCESS_KEY_ID",
@@ -55,6 +61,7 @@ const KEYS: [&str; 11] = [
     "OFFSITE_BACKUP_S3_PREFIX",
     "OFFSITE_BACKUP_PATHS",
     "OFFSITE_BACKUP_HOUR",
+    "OFFSITE_BACKUP_TIMEZONE",
 ];
 
 /// JS `Number.parseInt(text, 10)` for the hour: leading whitespace, optional sign, digits.
@@ -106,6 +113,43 @@ impl Settings {
             paths,
             hour,
             tz: get("TZ"),
+        }
+    }
+
+    /// The zone `OFFSITE_BACKUP_HOUR` is read in, as core read it (`getHours()` on the process
+    /// clock): `TZ`, UTC without one. The second value is a warning for an unknown `TZ` name, which
+    /// is read as UTC exactly as Node did, but never silently.
+    pub fn hour_zone(&self) -> (Zone, Option<String>) {
+        let (zone, known) = Zone::from_tz(self.tz.as_deref());
+        let warning = (!known).then(|| {
+            format!(
+                "TZ is not a zone the off-site backup schedule knows (it knows America/New_York and UTC); OFFSITE_BACKUP_HOUR is read as {} time",
+                zone.name()
+            )
+        });
+        (zone, warning)
+    }
+
+    /// The zone of the host's own clock, for the appdata backup's quiet window:
+    /// `OFFSITE_BACKUP_TIMEZONE`, else [`DEFAULT_HOST_ZONE`]. A name the schedule does not know is
+    /// warned about and replaced by the default, never by UTC.
+    pub fn quiet_zone(&self) -> (Zone, Option<String>) {
+        let Some(name) = self
+            .raw("OFFSITE_BACKUP_TIMEZONE")
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+        else {
+            return (DEFAULT_HOST_ZONE, None);
+        };
+        match Zone::from_tz(Some(name)) {
+            (zone, true) => (zone, None),
+            _ => (
+                DEFAULT_HOST_ZONE,
+                Some(format!(
+                    "OFFSITE_BACKUP_TIMEZONE is not a zone the off-site backup schedule knows (it knows America/New_York and UTC); the appdata quiet window is read as {} time",
+                    DEFAULT_HOST_ZONE.name()
+                )),
+            ),
         }
     }
 
@@ -313,6 +357,31 @@ mod tests {
         // Set but empty: `'' ?? '3'` is '', parseInt('') is NaN, `|| 0` is 0.
         assert_eq!(settings(&[("OFFSITE_BACKUP_HOUR", "")], d).hour, 0);
         assert_eq!(settings(&[("OFFSITE_BACKUP_HOUR", "7pm")], d).hour, 7);
+    }
+
+    #[test]
+    fn the_hour_and_the_windows_are_read_in_named_zones() {
+        let d = Path::new("/data");
+        // No TZ: the hour is read on UTC (as Node's getHours() did in the container), and the
+        // appdata window on the host's Eastern time. Neither is a guess and neither warns.
+        let plain = settings(&[], d);
+        assert_eq!(plain.hour_zone(), (Zone::Utc, None));
+        assert_eq!(plain.quiet_zone(), (Zone::NewYork, None));
+        let utc_host = settings(&[("OFFSITE_BACKUP_TIMEZONE", "UTC")], d);
+        assert_eq!(utc_host.quiet_zone(), (Zone::Utc, None));
+        let ny_proc = settings(&[("TZ", "America/New_York")], d);
+        assert_eq!(ny_proc.hour_zone(), (Zone::NewYork, None));
+        // Unknown names warn, and a bad host zone falls to the default, not to UTC.
+        let (z, w) = settings(&[("TZ", "Mars/Olympus")], d).hour_zone();
+        assert_eq!(z, Zone::Utc);
+        assert!(w.unwrap().contains("TZ is not a zone"));
+        let (z, w) = settings(&[("OFFSITE_BACKUP_TIMEZONE", "Mars/Olympus")], d).quiet_zone();
+        assert_eq!(z, Zone::NewYork);
+        assert!(w.unwrap().contains("OFFSITE_BACKUP_TIMEZONE"));
+        assert_eq!(
+            settings(&[("OFFSITE_BACKUP_TIMEZONE", " ")], d).quiet_zone(),
+            (Zone::NewYork, None)
+        );
     }
 
     #[test]

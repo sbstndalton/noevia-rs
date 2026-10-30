@@ -24,7 +24,20 @@ const LIST_PAGES: usize = 1000;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 const TEMP: &str = ".tmp-";
 
-fn io_fail(_: std::io::Error) -> Fail {
+/// ENOSPC / EDQUOT: the destination is full, which an administrator fixes differently from an
+/// unmounted or unreachable one.
+pub fn is_full(e: &std::io::Error) -> bool {
+    e.kind() == std::io::ErrorKind::StorageFull
+        || matches!(e.raw_os_error(), Some(28 | 122))
+        || e.kind() == std::io::ErrorKind::QuotaExceeded
+}
+
+pub const FULL: &str = "The backup destination is out of space.";
+
+pub fn io_fail(e: std::io::Error) -> Fail {
+    if is_full(&e) {
+        return Fail::new(FULL, 507);
+    }
     Fail::new("The backup destination could not be reached.", 502)
 }
 
@@ -179,6 +192,122 @@ impl DirStore {
         .map_err(blocked)?
         .map_err(io_fail)
     }
+}
+
+/// An object's key and when it was last written (ms since the epoch; `None` when the destination
+/// did not say).
+pub type Aged = (String, Option<i64>);
+
+/// A leftover half-written file of an earlier run is deleted once it is this old.
+pub const STALE_TEMP: Duration = Duration::from_secs(2 * 3600);
+
+impl DirStore {
+    /// [`DirStore::list`] with each object's modification time.
+    pub async fn list_aged(&self, prefix: &str) -> Result<Vec<Aged>, Fail> {
+        let keys = self.list(prefix).await?;
+        let base = Arc::clone(&self.base);
+        tokio::task::spawn_blocking(move || {
+            keys.into_iter()
+                .map(|k| {
+                    let modified = k
+                        .split('/')
+                        .fold((*base).clone(), |mut p, seg| {
+                            p.push(seg);
+                            p
+                        })
+                        .metadata()
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .and_then(|d| i64::try_from(d.as_millis()).ok());
+                    (k, modified)
+                })
+                .collect()
+        })
+        .await
+        .map_err(blocked)
+    }
+
+    /// Deletes the `.tmp-` files a crashed or killed run left, once they are `older_than` old (a
+    /// live write is seconds old). Returns how many.
+    pub async fn sweep_temp(&self, older_than: Duration) -> usize {
+        let base = Arc::clone(&self.base);
+        tokio::task::spawn_blocking(move || {
+            fn walk(dir: &Path, older_than: Duration, removed: &mut usize) {
+                let Ok(entries) = std::fs::read_dir(dir) else {
+                    return;
+                };
+                for entry in entries.flatten() {
+                    let Ok(kind) = entry.file_type() else {
+                        continue;
+                    };
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    if kind.is_dir() {
+                        // Hidden directories are never ours; ours are the plain `data/xx` ones.
+                        if !name.starts_with('.') {
+                            walk(&entry.path(), older_than, removed);
+                        }
+                    } else if kind.is_file()
+                        && name.starts_with(TEMP)
+                        && entry
+                            .metadata()
+                            .and_then(|m| m.modified())
+                            .ok()
+                            .and_then(|t| t.elapsed().ok())
+                            .is_some_and(|age| age >= older_than)
+                        && std::fs::remove_file(entry.path()).is_ok()
+                    {
+                        *removed += 1;
+                    }
+                }
+            }
+            let mut removed = 0;
+            walk(&base, older_than, &mut removed);
+            removed
+        })
+        .await
+        .unwrap_or(0)
+    }
+}
+
+/// `2026-10-30T12:34:56.000Z` (S3's `LastModified`) as ms since the epoch.
+pub fn parse_iso_time(text: &str) -> Option<i64> {
+    let t = text.trim();
+    let (date, rest) = t.split_once('T')?;
+    let mut d = date.split('-');
+    let (y, mo, day): (i64, u32, u32) = (
+        d.next()?.parse().ok()?,
+        d.next()?.parse().ok()?,
+        d.next()?.parse().ok()?,
+    );
+    let rest = rest.strip_suffix('Z')?;
+    let (clock, frac) = match rest.split_once('.') {
+        Some((c, f)) => (c, f),
+        None => (rest, ""),
+    };
+    let mut c = clock.split(':');
+    let (h, mi, sec): (i64, i64, i64) = (
+        c.next()?.parse().ok()?,
+        c.next()?.parse().ok()?,
+        c.next()?.parse().ok()?,
+    );
+    if !(1..=12).contains(&mo) || !(1..=31).contains(&day) || h > 23 || mi > 59 || sec > 60 {
+        return None;
+    }
+    let ms: i64 = if frac.is_empty() {
+        0
+    } else {
+        format!("{:0<3}", frac.chars().take(3).collect::<String>())
+            .parse()
+            .ok()?
+    };
+    Some(
+        offsite_backup_format::days_from_civil(y, mo, day) * 86_400_000
+            + h * 3_600_000
+            + mi * 60_000
+            + sec * 1000
+            + ms,
+    )
 }
 
 /// `YYYYMMDDTHHMMSSZ` for a wall-clock time in ms.
@@ -412,6 +541,17 @@ impl S3Store {
     }
 
     pub async fn list(&self, key_prefix: &str) -> Result<Vec<String>, Fail> {
+        Ok(self
+            .list_aged(key_prefix)
+            .await?
+            .into_iter()
+            .map(|(k, _)| k)
+            .collect())
+    }
+
+    /// The listing with each object's `LastModified` (None when a page did not carry one for
+    /// every key).
+    pub async fn list_aged(&self, key_prefix: &str) -> Result<Vec<Aged>, Fail> {
         let full = if self.root.is_empty() {
             key_prefix.to_owned()
         } else {
@@ -423,7 +563,7 @@ impl S3Store {
             self.root.len() + 1
         };
         let (origin, path) = self.origin_and_path();
-        let mut keys = Vec::new();
+        let mut keys: Vec<Aged> = Vec::new();
         let mut token: Option<String> = None;
         for _ in 0..LIST_PAGES {
             let mut target = url::Url::parse(&format!(
@@ -449,9 +589,14 @@ impl S3Store {
                 )
             })?;
             let xml = String::from_utf8_lossy(&bytes);
-            for k in dav_parse::element_texts(&xml, "Key", 10_000) {
+            let names = dav_parse::element_texts(&xml, "Key", 10_000);
+            let stamps = dav_parse::element_texts(&xml, "LastModified", 10_000);
+            for (i, k) in names.iter().enumerate() {
                 let key = dav_parse::decode_xml_entities(k);
-                keys.push(key.get(skip..).unwrap_or_default().to_owned());
+                let modified = (stamps.len() == names.len())
+                    .then(|| stamps.get(i).and_then(|t| parse_iso_time(t)))
+                    .flatten();
+                keys.push((key.get(skip..).unwrap_or_default().to_owned(), modified));
             }
             let next = dav_parse::element_texts(&xml, "NextContinuationToken", 1)
                 .first()
@@ -499,6 +644,19 @@ impl Store {
             Store::S3(s) => s.list(prefix).await,
         }
     }
+    pub async fn list_aged(&self, prefix: &str) -> Result<Vec<Aged>, Fail> {
+        match self {
+            Store::Dir(s) => s.list_aged(prefix).await,
+            Store::S3(s) => s.list_aged(prefix).await,
+        }
+    }
+    /// Removes a crashed run's half-written files (a folder store only; S3 keeps none).
+    pub async fn sweep_temp(&self, older_than: Duration) -> usize {
+        match self {
+            Store::Dir(s) => s.sweep_temp(older_than).await,
+            Store::S3(_) => 0,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -510,6 +668,73 @@ mod tests {
     fn amz_dates_are_iso_without_separators() {
         assert_eq!(amz_date(1_700_000_000_123), "20231114T221320Z");
         assert_eq!(amz_date(0), "19700101T000000Z");
+    }
+
+    #[test]
+    fn s3_times_are_read_as_utc() {
+        assert_eq!(
+            parse_iso_time("2023-11-14T22:13:20.123Z"),
+            Some(1_700_000_000_123)
+        );
+        assert_eq!(
+            parse_iso_time("2023-11-14T22:13:20Z"),
+            Some(1_700_000_000_000)
+        );
+        assert_eq!(
+            parse_iso_time("2023-11-14T22:13:20.5Z"),
+            Some(1_700_000_000_500)
+        );
+        for bad in [
+            "",
+            "yesterday",
+            "2023-11-14",
+            "2023-13-14T22:13:20Z",
+            "2023-11-14T22:13:20+02:00",
+        ] {
+            assert_eq!(parse_iso_time(bad), None, "{bad}");
+        }
+    }
+
+    #[tokio::test]
+    async fn old_half_written_files_are_swept_and_young_ones_kept() {
+        let d = tempfile::tempdir().unwrap();
+        let s = DirStore::new(d.path()).unwrap();
+        s.put("data/ab/abcd", b"chunk".to_vec()).await.unwrap();
+        let old = d.path().join("data/ab/.tmp-old");
+        let young = d.path().join("data/ab/.tmp-young");
+        let lookalike = d.path().join("data/ab/keep-tmp-me");
+        for f in [&old, &young, &lookalike] {
+            std::fs::write(f, b"x").unwrap();
+        }
+        let long_ago = std::time::SystemTime::now() - Duration::from_secs(5 * 3600);
+        std::fs::File::options()
+            .write(true)
+            .open(&old)
+            .unwrap()
+            .set_modified(long_ago)
+            .unwrap();
+        assert_eq!(s.sweep_temp(STALE_TEMP).await, 1);
+        assert!(!old.exists() && young.exists() && lookalike.exists());
+        assert_eq!(
+            s.list("").await.unwrap(),
+            ["data/ab/abcd", "data/ab/keep-tmp-me"]
+        );
+        let aged = s.list_aged("data/").await.unwrap();
+        assert_eq!(aged.len(), 2);
+        assert!(aged
+            .iter()
+            .all(|(_, t)| t.is_some_and(|t| t > 1_700_000_000_000)));
+    }
+
+    #[test]
+    fn a_full_destination_has_its_own_message() {
+        let full = std::io::Error::from_raw_os_error(28);
+        assert!(is_full(&full));
+        assert_eq!(io_fail(full).message, FULL);
+        assert_eq!(
+            io_fail(std::io::Error::from(std::io::ErrorKind::NotFound)).message,
+            "The backup destination could not be reached."
+        );
     }
 
     #[test]

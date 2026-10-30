@@ -13,10 +13,22 @@
 //! never in the status file. Jobs run as spawned tasks the handler awaits, so a dropped request
 //! never strands the busy mark, a half-written status or a Drive sign-in.
 //!
-//! Scheduling: every 15 minutes, a run starts when the server clock is within six hours after
-//! `OFFSITE_BACKUP_HOUR`, the last backup is over 20 hours old and no quiet window is open (the
-//! appdata backup 04:05-04:25 server time, the NAS 02:20-04:30 America/New_York); a scheduled run
-//! also waits out a window that opens while it runs (offsite_backup_format::schedule).
+//! Scheduling: every 15 minutes (a slow check delays the next one rather than being followed by a
+//! burst), a run starts when the clock is within six hours after `OFFSITE_BACKUP_HOUR`, the last
+//! backup is over 20 hours old, no quiet window is open and the last failure's backoff (15 minutes
+//! doubling to 2 hours, three scheduled attempts per window) is over. Two zones are named, never
+//! guessed: the hour is read on the process clock as core's `getHours()` did (`TZ`, UTC without
+//! one); the quiet windows are the NAS's 02:20-04:30 America/New_York and the appdata backup's
+//! 04:05-04:25 on the host's clock (`OFFSITE_BACKUP_TIMEZONE`, default America/New_York). A scheduled
+//! run also waits out a window that opens while it runs, between files
+//! (offsite_backup_format::schedule).
+//!
+//! A job (a backup with its retention, the restore test, the copy to Drive) holds the one-at-a-time
+//! mark and an exclusive lock on `<data dir>/offsite-backup.lock`, and ends at the latest after
+//! [`JOB_DEADLINE`] (6 hours): a NAS that hangs a write can hold neither the mark nor the lock
+//! forever. The backup is recorded as soon as its snapshot is stored (`lastBackup`, with whether it
+//! is `incomplete` and how many files were `skipped`); a failure of the retention that follows is
+//! recorded on its own and does not count as a failed backup.
 use crate::gdrive::{now_ms, Drive, DriveState, Fail, Slot};
 use crate::offsite_engine::{log, Engine, Pace};
 use crate::offsite_settings::{KeyError, Settings, StatusFile};
@@ -26,7 +38,7 @@ use axum::body::Body;
 use axum::http::{header, HeaderValue, Method, Request, Response, StatusCode};
 use axum::response::IntoResponse;
 use js_json::JValue;
-use offsite_backup_format::schedule::{self, Zone};
+use offsite_backup_format::schedule;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -42,6 +54,10 @@ pub const ROUTES: &[&str] = &[
 ];
 const OTHER_ADMIN: &str = "Another administrator is connecting Google Drive.";
 const TICK: Duration = Duration::from_secs(15 * 60);
+/// The longest a backup, the restore test or the copy to Drive may run before it is stopped.
+pub const JOB_DEADLINE: Duration = Duration::from_secs(6 * 3600);
+/// The lock file every job holds (in the data directory, left out of the backup).
+pub const LOCK_FILE: &str = "offsite-backup.lock";
 
 fn s(v: &str) -> JValue {
     JValue::Str(v.to_owned())
@@ -49,6 +65,19 @@ fn s(v: &str) -> JValue {
 
 fn num(n: i64) -> JValue {
     JValue::Num(n as f64)
+}
+
+/// "6 hours", "90 seconds": a deadline in the words of an error message.
+fn human_duration(d: Duration) -> String {
+    let secs = d.as_secs();
+    if secs >= 3600 && secs.is_multiple_of(3600) {
+        let h = secs / 3600;
+        format!("{h} hour{}", if h == 1 { "" } else { "s" })
+    } else if secs >= 1 {
+        format!("{secs} second{}", if secs == 1 { "" } else { "s" })
+    } else {
+        format!("{} ms", d.as_millis())
+    }
 }
 
 /// Only short strings and numbers survive: the params end up in a page the client words.
@@ -137,6 +166,9 @@ impl Job {
 struct Built {
     engine: Arc<Engine>,
     dir: Option<DirStore>,
+    /// A digest naming the destination (never the credentials), so a changed destination is not
+    /// taken for an unmounted one.
+    dest_id: String,
 }
 
 pub struct Service {
@@ -148,6 +180,8 @@ pub struct Service {
     mirror_lock: tokio::sync::Mutex<()>,
     /// Whether a scheduled run is waiting out a quiet window (the status shows it).
     waiting: Arc<std::sync::atomic::AtomicBool>,
+    /// The job deadline in milliseconds ([`JOB_DEADLINE`]; shortened by tests).
+    deadline_ms: std::sync::atomic::AtomicU64,
 }
 
 struct Busy<'a>(&'a Service, String);
@@ -167,7 +201,22 @@ impl Service {
             built: tokio::sync::Mutex::new(None),
             mirror_lock: tokio::sync::Mutex::new(()),
             waiting: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            deadline_ms: std::sync::atomic::AtomicU64::new(
+                u64::try_from(JOB_DEADLINE.as_millis()).unwrap_or(u64::MAX),
+            ),
         }
+    }
+
+    /// Shortens the job deadline (tests; production keeps [`JOB_DEADLINE`]).
+    pub fn set_deadline(&self, d: Duration) {
+        self.deadline_ms.store(
+            u64::try_from(d.as_millis()).unwrap_or(u64::MAX).max(1),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    }
+
+    fn deadline(&self) -> Duration {
+        Duration::from_millis(self.deadline_ms.load(std::sync::atomic::Ordering::Relaxed))
     }
 
     fn busy_label(&self) -> String {
@@ -178,6 +227,15 @@ impl Service {
     fn begin(&self, label: &str, restore: &str) -> Result<Busy<'_>, Fail> {
         let mut b = self.busy.lock().unwrap_or_else(|e| e.into_inner());
         if !b.is_empty() {
+            if self.waiting.load(std::sync::atomic::Ordering::Relaxed) {
+                return Err(Fail::new(
+                    format!(
+                        "A scheduled {} is waiting for a quiet window to end and will carry on by itself.",
+                        *b
+                    ),
+                    409,
+                ));
+            }
             return Err(Fail::new(format!("A {} is already running.", *b), 409));
         }
         *b = label.to_owned();
@@ -320,6 +378,7 @@ impl Service {
                 JValue::Str(format!("Daily at {hour:02}:00 (server time)")),
             ),
             ("scheduleHour", num(i64::from(hour))),
+            ("scheduleZone", s(self.settings.hour_zone().0.name())),
             (
                 "retention",
                 JValue::Str(format!(
@@ -357,6 +416,13 @@ impl Service {
             (
                 "snapshots",
                 match st.get("snapshots") {
+                    JValue::Num(n) => JValue::Num(*n),
+                    _ => JValue::Null,
+                },
+            ),
+            (
+                "unreadableSnapshots",
+                match st.get("unreadableSnapshots") {
                     JValue::Num(n) => JValue::Num(*n),
                     _ => JValue::Null,
                 },
@@ -406,31 +472,84 @@ impl Service {
             .iter()
             .map(std::path::PathBuf::from)
             .collect();
+        let dest_id = {
+            use sha2::{Digest, Sha256};
+            let descriptor = match self.settings.dir() {
+                Some(d) => format!("dir:{d}"),
+                None => format!(
+                    "s3:{}|{}|{}",
+                    self.settings.text("OFFSITE_BACKUP_S3_ENDPOINT"),
+                    self.settings.text("OFFSITE_BACKUP_S3_BUCKET"),
+                    self.settings.text("OFFSITE_BACKUP_S3_PREFIX")
+                ),
+            };
+            crate::gdrive::hex_of(&Sha256::digest(descriptor.as_bytes()))
+                .chars()
+                .take(16)
+                .collect::<String>()
+        };
         let built = Arc::new(Built {
-            engine: Arc::new(Engine::new(store, key.as_slice(), paths)?),
+            engine: Arc::new(
+                Engine::new(store, key.as_slice(), paths)?
+                    .with_lock_file(self.settings.data_dir.join(LOCK_FILE)),
+            ),
             dir,
+            dest_id,
         });
         *slot = Some(Arc::clone(&built));
         Ok(built)
     }
 
-    fn record_error(&self, during: &str, e: &Fail) {
-        let message = js_json::js_slice(
+    fn failure_text(e: &Fail) -> String {
+        js_json::js_slice(
             if e.message.is_empty() {
                 "failed"
             } else {
                 &e.message
             },
             300,
-        );
-        self.status.patch(vec![(
-            "lastError",
-            JValue::obj([
-                ("at", num(now_ms())),
-                ("during", s(during)),
-                ("message", JValue::Str(message)),
-            ]),
-        )]);
+        )
+    }
+
+    /// The last failed backup, as the status file keeps it for the schedule's backoff.
+    fn retry_of(&self) -> Option<schedule::Retry> {
+        let st = self.status.read();
+        let r = st.get("backupRetry");
+        if !r.is_object() {
+            return None;
+        }
+        let whole = |k: &str| r.get(k).as_num().filter(|n| n.is_finite() && *n >= 0.0);
+        Some(schedule::Retry {
+            at: whole("at")? as i64,
+            failures: whole("failures")? as u32,
+            attempts: whole("attempts").unwrap_or(0.0) as u32,
+        })
+    }
+
+    /// A failed restore test or copy, or a backup that failed before its snapshot was stored.
+    fn record_failure(&self, job: Job, e: &Fail, pace: &Pace) {
+        let at = (pace.clock)();
+        let mut error = vec![
+            ("at", num(at)),
+            ("during", s(job.label())),
+            ("message", JValue::Str(Self::failure_text(e))),
+        ];
+        let mut patch = Vec::new();
+        if job == Job::Backup {
+            let zone = self.settings.hour_zone().0;
+            let retry = schedule::Retry::failed(self.retry_of(), zone, at, pace.is_scheduled());
+            error.push(("failures", num(i64::from(retry.failures))));
+            patch.push((
+                "backupRetry",
+                JValue::obj([
+                    ("at", num(retry.at)),
+                    ("failures", num(i64::from(retry.failures))),
+                    ("attempts", num(i64::from(retry.attempts))),
+                ]),
+            ));
+        }
+        patch.push(("lastError", JValue::obj(error)));
+        self.status.patch(patch);
     }
 
     /// `exclusive(label, work)` for a backup or the restore test.
@@ -461,59 +580,159 @@ impl Service {
             return Err(Fail::new(reason, 409));
         }
         let _busy = self.begin(job.label(), "")?;
-        let outcome = async {
-            let built = self.build().await?;
-            match job {
-                Job::Backup => {
-                    let snap = built.engine.backup(&pace).await?;
-                    let retention = built.engine.forget().await?;
-                    let last = JValue::obj([
-                        ("at", num(now_ms())),
-                        ("id", s(&snap.id)),
-                        ("files", num(snap.files as i64)),
-                        ("uploadedBytes", JValue::Num(snap.uploaded_bytes as f64)),
-                    ]);
-                    self.status.patch(vec![
-                        ("lastBackup", last.clone()),
-                        ("snapshots", num(retention.kept as i64)),
-                        ("lastError", JValue::Null),
-                    ]);
-                    Ok(last)
-                }
-                Job::Verify => {
-                    let (id, files, at) = built.engine.verify(&std::env::temp_dir()).await?;
-                    let last = JValue::obj([
-                        ("id", s(&id)),
-                        ("files", num(files as i64)),
-                        ("verifiedAt", num(at)),
-                    ]);
-                    self.status.patch(vec![
-                        ("lastVerify", last.clone()),
-                        ("lastError", JValue::Null),
-                    ]);
-                    Ok(last)
-                }
-            }
-        }
-        .await;
+        let saved = std::sync::atomic::AtomicBool::new(false);
+        let deadline = self.deadline();
+        let outcome = match tokio::time::timeout(deadline, self.run_job(job, &pace, &saved)).await {
+            Ok(r) => r,
+            Err(_) => Err(Fail::new(
+                format!(
+                    "The {} did not finish within {} and was stopped.",
+                    job.label(),
+                    human_duration(deadline)
+                ),
+                504,
+            )),
+        };
+        (pace.waiting)(false);
         if let Err(e) = &outcome {
-            self.record_error(job.label(), e);
+            if saved.load(std::sync::atomic::Ordering::SeqCst) {
+                // The snapshot is stored and recorded; only what came after it failed.
+                self.status.patch(vec![(
+                    "lastError",
+                    JValue::obj([
+                        ("at", num((pace.clock)())),
+                        ("during", s("backup")),
+                        (
+                            "message",
+                            JValue::Str(js_json::js_slice(
+                                &format!(
+                                    "The snapshot was saved, but applying retention did not finish: {}",
+                                    Self::failure_text(e)
+                                ),
+                                300,
+                            )),
+                        ),
+                    ]),
+                )]);
+            } else {
+                self.record_failure(job, e, &pace);
+            }
         }
         outcome
     }
 
-    /// `runNow()`: a snapshot and retention, then (in the background) the copy to Drive.
-    pub async fn run_now(self: &Arc<Self>, app: &Arc<App>, pace: Pace) -> Result<JValue, Fail> {
-        let saved = self.exclusive(app, Job::Backup, pace.clone()).await?;
-        // Start the mirror only after the backup mark was released: the upload runs in the
-        // background, so a slow Drive connection cannot hold the response.
-        if self.busy_label().is_empty() {
-            let me = Arc::clone(self);
-            tokio::spawn(async move {
-                let _ = me.copy_to_drive(&pace).await;
-            });
+    async fn run_job(
+        &self,
+        job: Job,
+        pace: &Pace,
+        saved: &std::sync::atomic::AtomicBool,
+    ) -> Result<JValue, Fail> {
+        let built = self.build().await?;
+        // One job at a time across processes too; held until this function returns.
+        let _lock = built.engine.lock_job()?;
+        match job {
+            Job::Backup => {
+                let expect_store = {
+                    let st = self.status.read();
+                    st.get("lastBackup").truthy()
+                        && st
+                            .get("backupDestination")
+                            .as_str()
+                            .is_none_or(|d| d == built.dest_id)
+                };
+                let snap = built.engine.backup_expecting(pace, expect_store).await?;
+                // Recorded now, before retention: a retention failure must not look like a failed
+                // backup and be repeated all night (every repeat would add a snapshot).
+                let last = JValue::obj([
+                    ("at", num((pace.clock)())),
+                    ("id", s(&snap.id)),
+                    ("files", num(snap.files as i64)),
+                    ("uploadedBytes", JValue::Num(snap.uploaded_bytes as f64)),
+                    ("incomplete", JValue::Bool(snap.incomplete)),
+                    ("skipped", num(snap.skipped as i64)),
+                ]);
+                self.status.patch(vec![
+                    ("lastBackup", last.clone()),
+                    ("backupDestination", s(&built.dest_id)),
+                    ("backupRetry", JValue::Null),
+                    ("lastError", JValue::Null),
+                ]);
+                saved.store(true, std::sync::atomic::Ordering::SeqCst);
+                // Retention runs outside a quiet window too.
+                pace.checkpoint().await;
+                match built.engine.forget(std::slice::from_ref(&snap.id)).await {
+                    Ok(retention) => {
+                        self.status.patch(vec![
+                            ("snapshots", num(retention.kept as i64)),
+                            ("unreadableSnapshots", num(retention.unreadable as i64)),
+                        ]);
+                    }
+                    Err(e) => {
+                        self.status.patch(vec![(
+                            "lastError",
+                            JValue::obj([
+                                ("at", num((pace.clock)())),
+                                ("during", s("backup")),
+                                (
+                                    "message",
+                                    JValue::Str(js_json::js_slice(
+                                        &format!(
+                                            "The snapshot was saved, but applying retention failed: {}",
+                                            Self::failure_text(&e)
+                                        ),
+                                        300,
+                                    )),
+                                ),
+                            ]),
+                        )]);
+                        log(
+                            "offsite.retention.failed",
+                            vec![("message", s(&js_json::js_slice(&e.message, 200)))],
+                        );
+                    }
+                }
+                Ok(last)
+            }
+            Job::Verify => {
+                let (id, files, at) = built.engine.verify().await?;
+                let last = JValue::obj([
+                    ("id", s(&id)),
+                    ("files", num(files as i64)),
+                    ("verifiedAt", num(at)),
+                ]);
+                self.status.patch(vec![
+                    ("lastVerify", last.clone()),
+                    ("lastError", JValue::Null),
+                ]);
+                Ok(last)
+            }
         }
-        Ok(saved)
+    }
+
+    /// `runNow()`: a snapshot and retention, then (in the background) the copy to Drive. The whole
+    /// of it, the copy's kick-off included, is one spawned task the handler awaits, so a client that
+    /// goes away cannot lose the copy it asked for.
+    pub async fn run_now(self: &Arc<Self>, app: &Arc<App>, pace: Pace) -> Result<JValue, Fail> {
+        let (me, app) = (Arc::clone(self), Arc::clone(app));
+        let task = tokio::spawn(async move {
+            let saved = me.exclusive_task(&app, Job::Backup, pace.clone()).await?;
+            // Start the mirror only after the backup mark was released: the upload runs in the
+            // background, so a slow Drive connection cannot hold the response.
+            if me.busy_label().is_empty() {
+                let copier = Arc::clone(&me);
+                tokio::spawn(async move {
+                    let _ = copier.copy_to_drive(&pace).await;
+                });
+            }
+            Ok(saved)
+        });
+        match task.await {
+            Ok(r) => r,
+            Err(_) => Err(Fail::new(
+                "The backup destination could not be reached.",
+                502,
+            )),
+        }
     }
 
     /// `copyNow()`.
@@ -556,10 +775,30 @@ impl Service {
                 .dir
                 .as_ref()
                 .ok_or_else(|| Fail::new("no folder", 409))?;
-            crate::offsite_mirror::mirror(&self.drive, dir, crate::offsite_mirror::MAX_DELETE, pace)
-                .await
+            let deadline = self.deadline();
+            match tokio::time::timeout(
+                deadline,
+                crate::offsite_mirror::mirror(
+                    &self.drive,
+                    dir,
+                    crate::offsite_mirror::MAX_DELETE,
+                    pace,
+                ),
+            )
+            .await
+            {
+                Ok(r) => r,
+                Err(_) => Err(Fail::new(
+                    format!(
+                        "The copy to Drive did not finish within {} and was stopped.",
+                        human_duration(deadline)
+                    ),
+                    504,
+                )),
+            }
         }
         .await;
+        (pace.waiting)(false);
         match outcome {
             Ok(r) => {
                 self.status.patch(vec![(
@@ -684,8 +923,19 @@ impl Service {
 
     // ── the nightly schedule ──
 
+    /// The pace of a scheduled run: it waits out the quiet windows (the host's zone for the
+    /// appdata window), tells the status when it does, and stamps the records with `clock`.
+    pub fn scheduled_pace(&self, clock: Arc<dyn Fn() -> i64 + Send + Sync>) -> Pace {
+        let mut pace = Pace::scheduled(self.settings.quiet_zone().0);
+        pace.clock = clock;
+        let waiting = Arc::clone(&self.waiting);
+        pace.waiting = Arc::new(move |w| waiting.store(w, std::sync::atomic::Ordering::Relaxed));
+        pace
+    }
+
     /// One check of the schedule against `clock` (Date.now(), replaceable in tests): whether a
-    /// scheduled run was due, outside the quiet windows, and was made.
+    /// scheduled run was due, outside the quiet windows, and was made (whether or not it worked:
+    /// a failure is recorded and the next attempt waits out its backoff).
     pub async fn tick_at(
         self: &Arc<Self>,
         app: &Arc<App>,
@@ -698,9 +948,10 @@ impl Service {
         if self.reason(enabled).is_some() {
             return false;
         }
-        let (zone, _) = Zone::from_tz(self.settings.tz.as_deref());
+        let (hour_zone, _) = self.settings.hour_zone();
+        let (quiet_zone, _) = self.settings.quiet_zone();
         let now = clock();
-        if schedule::quiet_until(zone, now).is_some() {
+        if schedule::quiet_until(quiet_zone, now).is_some() {
             return false;
         }
         let last = self
@@ -710,14 +961,10 @@ impl Service {
             .get("at")
             .as_num()
             .unwrap_or(0.0) as i64;
-        if !schedule::due(zone, now, self.settings.hour, last) {
+        if !schedule::due(hour_zone, now, self.settings.hour, last, self.retry_of()) {
             return false;
         }
-        let mut pace = Pace::scheduled(zone);
-        pace.clock = clock;
-        let waiting = Arc::clone(&self.waiting);
-        pace.waiting = Arc::new(move |w| waiting.store(w, std::sync::atomic::Ordering::Relaxed));
-        if let Err(e) = self.run_now(app, pace).await {
+        if let Err(e) = self.run_now(app, self.scheduled_pace(clock)).await {
             log(
                 "offsite.failed",
                 vec![("message", s(&js_json::js_slice(&e.message, 200)))],
@@ -728,18 +975,38 @@ impl Service {
 
     /// Checks every 15 minutes; runs once a day in the configured hour (and the grace after it).
     pub fn spawn_scheduler(self: &Arc<Self>, app: &Arc<App>) {
-        if let (_, false) = Zone::from_tz(self.settings.tz.as_deref()) {
-            eprintln!("noevia-server: TZ is not a zone the off-site backup schedule knows; it reads the server clock as UTC");
+        let (hour_zone, hour_warning) = self.settings.hour_zone();
+        let (quiet_zone, quiet_warning) = self.settings.quiet_zone();
+        for warning in hour_warning.into_iter().chain(quiet_warning) {
+            eprintln!("noevia-server: WARNING {warning}");
+            log("offsite.schedule.warning", vec![("message", s(&warning))]);
         }
+        log(
+            "offsite.schedule",
+            vec![
+                ("hour", num(i64::from(self.settings.hour))),
+                ("hourZone", s(hour_zone.name())),
+                ("quietZone", s(quiet_zone.name())),
+            ],
+        );
         let (me, app) = (Arc::clone(self), Arc::clone(app));
         tokio::spawn(async move {
-            let mut ticker = tokio::time::interval_at(tokio::time::Instant::now() + TICK, TICK);
+            let mut ticker = scheduler_interval(TICK);
             loop {
                 ticker.tick().await;
                 me.tick_at(&app, Arc::new(now_ms)).await;
             }
         });
     }
+}
+
+/// The schedule's timer: first check one period from now. A check that outlasts its period (a
+/// backup is hours) delays the next one by a full period instead of firing the missed ones back
+/// to back, which after a long failed run would be a burst of retries.
+pub fn scheduler_interval(period: Duration) -> tokio::time::Interval {
+    let mut ticker = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    ticker
 }
 
 // ---------------------------------------------------------------------------------------------

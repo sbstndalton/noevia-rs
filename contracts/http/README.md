@@ -649,9 +649,18 @@ endpoints other than a loopback QA server are not accepted (`GOOGLE_OAUTH_BASE_U
 **Node's chat tools** ask the broker over the internal store (`POST /v1/gdrive/<op>`, loopback, per-start secret):
 `session {user, admin, rejected?}` -> `{accessToken, expiresAt, generation}` or `{error, code, status}` with
 `disconnected`, `reconnect` or `transient`; `reject {user, admin, generation}`; `disconnect`; `forget {user}`
-(account deletion); and two more than the plan named: `view` (the Google Drive half of `GET /api/connectors`, whose
-Nextcloud half is Node's) and `policy {user, tools, writes, mode}` (the Nextcloud permissions, written by the front
-because it is `tool_policies`' only writer). A refresh token never reaches Node. The broker rewrites
+(account deletion); and three more than the plan named: `view` (the Google Drive half of `GET /api/connectors`, whose
+Nextcloud half is Node's), `policy {user, tools, writes, mode}` (the Nextcloud permissions, written by the front
+because it is `tool_policies`' only writer) and `reseal {}` -> `{current, rotated, empty, failed}` (counts only):
+`secrets:rotate` re-seals the accounts' token files under the current `secrets.key` here, under the same fence as
+every other change to them, loading the keys from disk at that moment; Node's rotation awaits it first and then only
+checks that every file opens under the current key (it writes none, so a rotation can never resurrect a disconnected
+account or drop a remembered folder). `admin: true` in a request is checked against `users.role`; a claim the table
+does not confirm is a member. A refresh token never reaches Node. Requests have two time budgets: 30 s for a token,
+form or JSON exchange and 300 s for an upload. The front also removes the connection files (revoked at Google first) of
+accounts the `users` table no longer has, once at start (never when the table is unreadable or empty), and checks the
+state file once a minute, rewriting it only when what it says changed (the backup key file appearing or going flips
+`backup.usable`); writes of it are serialized. The broker rewrites
 `gdrive-connections.json` after each change (no secret, no email: the accounts that have a connection file and its
 state, and the backup slot's `{usable, state, owner, expiresAt}`; at start only when there is a connection file or an older
 state file to correct, because Node reads a missing file as "nobody is connected" and the corpus replay compares the data
@@ -663,23 +672,57 @@ prove Node and the front agree on `ownsBackup`. `tool_policies`: a per-statement
 fingerprint or the state file moves.
 
 **The off-site backup** (offsite_*.rs): the format is core's `noevia-offsite-v1` byte for byte (crates/offsite-backup-format;
-a store Node wrote is read by Rust, tests/fixtures/offsite-node-store). The reusable crates:
+a store Node wrote is read by Rust, tests/fixtures/offsite-node-store and offsite-node-store-first-release, the latter
+written by the first released engine, core commit d4e31d7, whose manifests have no `incomplete`). A manifest missing
+`root`, `size`, `mode`, `mtime` or `time` still lists and still protects its chunks (core checked only `format` and
+`files`); a missing time is the snapshot id's. The reusable crates:
 `secret-envelope`'s `enc:v2` is the credential seal, not this format; `diary-backup-format` and
 `workspace-restore-verify` are the Diary workspace archive's and do not fit; `s3-sign` and `dav-parse` (the XML scan)
 do. Differences from core: a live SQLite file is copied with `VACUUM INTO` on a read-only connection (core used the
 online backup API), a file that cannot be copied consistently is skipped and the manifest flagged `incomplete`.
-**Schedule**: every 15 minutes a run starts when the server clock is within six hours after
-`OFFSITE_BACKUP_HOUR` (core: only inside that hour), the last backup is over 20 hours old and no quiet window is
-open: the appdata backup 04:05-04:25 server time and the NAS 02:20-04:30 America/New_York (the US daylight-saving
-rule). A scheduled run also pauses between files and objects while a window is open; "Run now" does not. "Server
-time" is the `TZ` name (`America/New_York`/`US/Eastern`/`EST5EDT` or UTC; any other is read as UTC with a warning).
+
+*What a run guarantees.* A backed-up folder that is missing or unreadable fails the run before anything is written.
+Every other skip (a file that vanished or cannot be opened or read, a name that is not UTF-8, an unreadable subfolder, a
+database without a consistent copy) is counted, flags the manifest `incomplete` and shows as `lastBackup.incomplete` and
+`lastBackup.skipped` in the status (the web page does not show them yet: a follow-up in noevia-web). A destination that has
+no `config` is not initialised once `lastBackup` exists for the same destination (`backupDestination` in the status
+file): an unmounted NAS is an empty directory, and a fresh store there would start a second chain and a `noevia-offsite (2)`
+folder on Drive; the error says to check the mount. The snapshot is recorded (`lastBackup`) as soon as it is stored; a
+retention failure after it is recorded on its own (`lastError` "saved, but applying retention failed") and is not a failed
+backup. Retention is 7 daily, 4 weekly, 6 monthly, always the newest snapshot and the newest complete one, and within a
+bucket the complete one; chunks are pruned only when every snapshot the store lists was read (a flaky or damaged manifest
+read must not turn its chunks into garbage), the snapshot just written is passed in and kept, and a chunk younger than
+24 hours is never pruned. The restore test reads the newest listed snapshot back chunk by chunk without writing it
+anywhere and fails when that snapshot cannot be read, instead of passing an older one. `<data dir>/offsite-backup.lock`
+(an exclusive `flock`, the file itself left out of the backup) holds the one-job-at-a-time rule across processes. A job
+ends at the latest after 6 hours (`JOB_DEADLINE`): the busy mark and the lock are released and the failure recorded.
+Leftovers of a killed run (`.tmp-` files in the destination older than 2 hours, `noevia-sqlite-*` and
+`noevia-restore-test-*` directories older than 7 hours in the system temp directory) are swept; a full destination has its
+own message.
+
+*Schedule.* Every 15 minutes (a slow check delays the next, it is not followed by a burst) a run starts when the clock
+is within six hours after `OFFSITE_BACKUP_HOUR` (core: only inside that hour), the last backup is over 20 hours old, no
+quiet window is open and the last failure's backoff is over: 15 minutes doubling to 2 hours, at most three scheduled
+attempts per window (`backupRetry` in the status file; `lastError.failures` shows the count). Three zones are named and none is guessed.
+The hour is read on the process clock, exactly as core's `new Date().getHours()` did: the `TZ` the process runs with, and
+UTC without one (the production web container sets no `TZ`, so there it is UTC; the status shows `scheduleZone`). The quiet
+windows are read in explicit zones: the NAS window 02:20-04:30 always in America/New_York, the appdata backup 04:05-04:25 in
+the host's zone, `OFFSITE_BACKUP_TIMEZONE`, default America/New_York (the Unraid host runs on Eastern time). Known names
+are `America/New_York` (also `US/Eastern`, `EST5EDT`, `America/Detroit`; the US daylight-saving rule) and `UTC`/`Etc/UTC`/
+`GMT`; an unknown `TZ` or `OFFSITE_BACKUP_TIMEZONE` is warned about at start (the unknown `TZ` is read as UTC, as Node did;
+an unknown host zone is replaced by the default, never by UTC). The start also logs the zones it uses. On the two daylight-
+saving days the windows follow the wall clock (the NAS window opens at 03:00 on the spring day, the repeated 01:00 hour of
+the autumn day is the same night). A scheduled run pauses between files, never inside one, before it touches the
+destination and between the backup and its retention; "Run now" does not pause, and a manual run asked while a scheduled one
+waits for a window is told so (409) while the status shows `waitingForQuietWindow`.
 Never in a response or a log: the recovery key (only its download), a token, the S3 secret. The mirror's folder rules
 (`noeviaStoreId`, `noevia-offsite (2)`, the 500 and quarter prune guards, same-name-other-size refusal) are core's.
 
 Behaviour changes (each a deliberate edit): the OAuth and Drive base URLs must be loopback; a sign-in whose token
 could not be saved says so instead of staying pending; an invalid connectors body is `400 invalid JSON` (core
 answered 400 `Google Drive could not be reached.`, or 502 for a non-object body); a missed nightly hour is caught up
-within six hours; the status gains `waitingForQuietWindow` while a scheduled run waits; `/api/admin/offsite-backup/<other>`
+within six hours; the status gains `waitingForQuietWindow` while a scheduled run waits, `scheduleZone`, and
+`unreadableSnapshots`; `lastBackup` gains `incomplete` and `skipped`; `/api/admin/offsite-backup/<other>`
 is Node's generic 404.
 
 ## sbstndalton/noevia#2189 (batch M2-A): the read-only model sizing reads
