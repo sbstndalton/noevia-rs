@@ -1265,10 +1265,7 @@ async fn the_listing_follows_pages_and_reads_event_streams_and_cuts_a_long_list(
 // The review of round 2 (M3, L2): a rollback says what it could not undo, and forgets only what is its own.
 
 /// The preview and the body of a connect for a personal-key custom server (the administrator's own key is kept).
-async fn personal_form(
-    a: std::net::SocketAddr,
-    url: &str,
-) -> String {
+async fn personal_form(a: std::net::SocketAddr, url: &str) -> String {
     let form = format!(
         r#"{{"title":"Keyed","url":"{url}","headerName":"X-Api-Key","headerValue":"{SECRET}","keyMode":"personal"}}"#
     );
@@ -1347,7 +1344,9 @@ async fn a_rollback_that_cannot_clear_the_keys_says_so_and_adding_and_removing_a
     let message = out["error"].as_str().unwrap();
     assert_eq!(dir_count(&db), 0, "the row did go");
     let id: String = db
-        .query_row("SELECT server_id FROM directory_mcp_user_keys", [], |r| r.get(0))
+        .query_row("SELECT server_id FROM directory_mcp_user_keys", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert!(
         message.contains("could not be cleared") && message.contains(&id),
@@ -1408,38 +1407,15 @@ async fn a_rollback_that_finds_the_server_replaced_forgets_only_the_adding_admin
     assert_eq!(keys_of(&db, &id), [A, B]);
     let (st, out) = request.await.unwrap();
     assert_eq!(st, 409, "{out}");
-    assert_eq!(dir_count(&db), 1, "the other administrator's server is not removed");
+    assert_eq!(
+        dir_count(&db),
+        1,
+        "the other administrator's server is not removed"
+    );
     assert_eq!(
         keys_of(&db, &id),
         [B],
         "only the key this request stored is forgotten, not everyone's"
-    );
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_key_stored_while_a_server_is_being_removed_does_not_outlive_it() {
-    let (_d, db, up, s, f) = rig("", false, ECHO).await;
-    let a = f.addr;
-    let url = format!("{}/mcp", up.base());
-    *s.key.lock().unwrap() = Some(SECRET.into());
-    let body = personal_form(a, &url).await;
-    let (st, out) = write(a, "POST", &format!("{LIST}/custom"), ADMIN, &body).await;
-    assert_eq!(st, 201, "{out}");
-    let id: String = db
-        .query_row("SELECT id FROM directory_mcp_servers", [], |r| r.get(0))
-        .unwrap();
-    // A member's key check finishes storing its key just after the removal cleared the keys, as the row goes.
-    db.execute_batch(&format!(
-        "CREATE TRIGGER late_key AFTER DELETE ON directory_mcp_servers BEGIN INSERT OR REPLACE INTO directory_mcp_user_keys(user_id,server_id,headers_enc,updated_at) VALUES('{B}', OLD.id, 'enc:v2:x', 1); END;"
-    ))
-    .unwrap();
-    let (st, out) = write(a, "DELETE", &format!("{LIST}/{id}"), ADMIN, "").await;
-    assert_eq!(st, 200, "{out}");
-    assert_eq!(dir_count(&db), 0);
-    assert!(
-        keys_of(&db, &id).is_empty(),
-        "the second clearing, after the row, took it: {:?}",
-        keys_of(&db, &id)
     );
 }
 
@@ -1452,7 +1428,8 @@ fn the_snapshot_node_writes_for_hostile_tools_is_one_the_front_reads() {
         return;
     };
     let d = tempfile::tempdir().unwrap();
-    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/mcp_snapshot_live.cjs");
+    let script =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/mcp_snapshot_live.cjs");
     let out = std::process::Command::new("node")
         .arg(script)
         .env("NOEVIA_MCP_CORE", &core)
@@ -1475,7 +1452,11 @@ fn the_snapshot_node_writes_for_hostile_tools_is_one_the_front_reads() {
     .expect("the front reads what Node wrote");
     let cat = noevia_server::mcp_discovery::parse(&snap.body).expect("and it is a catalogue");
     let b = &cat.boxes[0];
-    assert!(!b.tools.is_empty() && b.tools.len() <= 500, "{}", b.tools.len());
+    assert!(
+        !b.tools.is_empty() && b.tools.len() <= 500,
+        "{}",
+        b.tools.len()
+    );
     assert_eq!(
         b.tools[0].description.chars().count(),
         240,

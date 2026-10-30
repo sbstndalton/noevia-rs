@@ -431,7 +431,7 @@ async fn start_oauth_add(ctx: &Ctx, url: &str, challenge: &str, new: New) -> Res
         }
         Err(e) => {
             if let Err(loud) = undo_add(ctx, &added, Undo::Row).await {
-                return loud;
+                return error(500, &loud);
             }
             error(
                 422,
@@ -470,7 +470,7 @@ where
 /// When the row is not there to remove (another administrator removed it first, and may have added a
 /// server of the same name since), only the key the adding administrator typed is forgotten, never the
 /// keys and sign-ins of everyone for that name (L2).
-async fn undo_add(ctx: &Ctx, added: &Row, how: Undo) -> Result<(), Response<Body>> {
+async fn undo_add(ctx: &Ctx, added: &Row, how: Undo) -> Result<(), String> {
     let removed = twice(|| {
         let (row, id, actor) = (added.clone(), added.id.clone(), ctx.actor.clone());
         async move {
@@ -495,12 +495,9 @@ async fn undo_add(ctx: &Ctx, added: &Row, how: Undo) -> Result<(), Response<Body
     })
     .await;
     let removed = removed.map_err(|_| {
-        error(
-            500,
-            &format!(
-                "The server was not kept, but it could not be removed again. Remove “{}” from the list by hand; its keys go with it.",
-                added.id
-            ),
+        format!(
+            "The server was not kept, but it could not be removed again. Remove “{}” from the list by hand; its keys go with it.",
+            added.id
         )
     })?;
     // An id is derived from the server's name: adding the same server again would otherwise inherit a
@@ -508,19 +505,12 @@ async fn undo_add(ctx: &Ctx, added: &Row, how: Undo) -> Result<(), Response<Body
     let forgotten = if removed {
         twice(|| ctx.mcp.forget_all(&ctx.app, &added.id)).await
     } else {
-        twice(|| {
-            ctx.mcp
-                .forget_key_quietly(&ctx.app, &ctx.actor, &added.id)
-        })
-        .await
+        twice(|| ctx.mcp.forget_key_quietly(&ctx.app, &ctx.actor, &added.id)).await
     };
     forgotten.map_err(|_| {
-        error(
-            500,
-            &format!(
-                "The server was not kept, but its saved keys or sign-ins could not be cleared. Add “{}” again and remove it to clear them.",
-                added.id
-            ),
+        format!(
+            "The server was not kept, but its saved keys or sign-ins could not be cleared. Add “{}” again and remove it to clear them.",
+            added.id
         )
     })
 }
@@ -546,7 +536,7 @@ async fn keep_admin_key(
         .and_then(|r| r);
     let Err(e) = stored else { return None };
     if let Err(loud) = undo_add(ctx, added, Undo::Row).await {
-        return Some(loud);
+        return Some(error(500, &loud));
     }
     let status = if (400..600).contains(&e.status) {
         e.status
@@ -835,7 +825,7 @@ async fn custom(ctx: &Ctx, body: &JValue, preview: bool) -> Response<Body> {
     if !kept {
         // A concurrent delete may already have removed it; either way the answer is the same 409.
         if let Err(loud) = undo_add(ctx, &added, Undo::IfAdded).await {
-            return loud;
+            return error(500, &loud);
         }
         return error(
             409,
@@ -1042,7 +1032,9 @@ mod tests {
     #[tokio::test]
     async fn a_failed_step_of_a_rollback_is_tried_once_more_and_no_more() {
         use std::sync::atomic::{AtomicUsize, Ordering};
-        for (fail_first, outcome, tries) in [(0, true, 1), (1, true, 2), (2, false, 2), (9, false, 2)] {
+        for (fail_first, outcome, tries) in
+            [(0, true, 1), (1, true, 2), (2, false, 2), (9, false, 2)]
+        {
             let seen = AtomicUsize::new(0);
             let got = twice(|| {
                 let n = seen.fetch_add(1, Ordering::SeqCst);

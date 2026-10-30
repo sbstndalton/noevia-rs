@@ -8,9 +8,7 @@
 //! only while it still holds the ciphertext it started from, so two administrators cannot both win.
 //! A shared key is sealed unbound (`enc:v1`, as core sealed it) so a rollback to a Node that owns
 //! the table reads it. Nothing here logs or returns a key.
-use crate::mcp_broker::{
-    check_header_values, declared_of, fail, now_ms, Declared, Fail, Mcp,
-};
+use crate::mcp_broker::{check_header_values, declared_of, fail, now_ms, Declared, Fail, Mcp};
 use crate::mcp_egress;
 use crate::mcp_tools::{self, Tool};
 use crate::App;

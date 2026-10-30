@@ -687,12 +687,22 @@ mod differential {
         js_json::to_js_string(v).ok()
     }
 
+    /// The freeze script's description `LONG` stands for 300 characters.
+    fn expand(text: String) -> String {
+        if text == "LONG" {
+            "d".repeat(300)
+        } else {
+            text
+        }
+    }
+
     fn cut240(text: &str) -> String {
         String::from_utf16_lossy(&text.encode_utf16().take(240).collect::<Vec<_>>())
     }
 
-    /// The hash of what `compute` gives for the case, or `None` when the front cannot be asked it.
-    fn ours(case: &JValue) -> Option<String> {
+    /// What `compute` gives for the case (with the JS's printing of names and write flags put back), or `None`
+    /// when the front cannot be asked it.
+    fn built(case: &JValue) -> Option<JValue> {
         let i = case.get("in");
         let defaults = texts(i.get("defaultToolboxes"))?;
         let connector = texts(i.get("connectorBoxes"))?;
@@ -726,12 +736,17 @@ mod differential {
                     let flag = write.get(&text);
                     tools.push(ToolInfo {
                         name: text.clone(),
-                        description: cut240(&js_text(t.get("function").get("description"))?),
+                        description: cut240(&expand(js_text(
+                            t.get("function").get("description"),
+                        )?)),
                         write: flag.truthy(),
                     });
                     // The JS treated a mode other than block or ask as neither; the front's own reading of
                     // a stored mode makes anything else a block, so only these two are stored.
-                    if let Some(m) = policy.get(&text).as_str().filter(|m| *m == "block" || *m == "ask")
+                    if let Some(m) = policy
+                        .get(&text)
+                        .as_str()
+                        .filter(|m| *m == "block" || *m == "ask")
                     {
                         policies.insert(text, m.to_owned());
                     }
@@ -840,7 +855,7 @@ mod differential {
                 }
             }
         }
-        Some(hash_of(&JValue::Arr(out)))
+        Some(JValue::Arr(out))
     }
 
     #[test]
@@ -855,9 +870,10 @@ mod differential {
         let mut wrong = Vec::new();
         for case in cases {
             let catalogue = case.get("catalogue");
-            match ours(case) {
+            match built(case) {
                 None => skipped += 1,
-                Some(hash) => {
+                Some(out) => {
+                    let hash = hash_of(&out);
                     compared += 1;
                     assert_eq!(
                         catalogue.get("faulted").as_bool(),
@@ -872,7 +888,8 @@ mod differential {
             }
         }
         assert!(wrong.is_empty(), "differing cases: {}", wrong.join(" "));
-        // A comparison that quietly skipped everything would pass: the counts are the measured ones.
-        assert_eq!((compared, skipped), (0, 0));
+        // A comparison that quietly skipped everything would pass: the counts are the measured ones (853 of the
+        // 2500 are inputs the front can be asked; the JS faulted on none of those).
+        assert_eq!((compared, skipped), (853, 1647));
     }
 }

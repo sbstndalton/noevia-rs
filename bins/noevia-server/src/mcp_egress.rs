@@ -663,9 +663,7 @@ mod tests {
     }
 
     /// A synthetic MCP server on loopback (never anything else). `act(n)` answers the n-th `tools/list` (from 1).
-    async fn serve(
-        act: impl Fn(usize) -> Out + Send + Sync + 'static,
-    ) -> (String, Arc<Stats>) {
+    async fn serve(act: impl Fn(usize) -> Out + Send + Sync + 'static) -> (String, Arc<Stats>) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}/mcp", listener.local_addr().unwrap());
         let stats = Arc::new(Stats::default());
@@ -710,7 +708,11 @@ mod tests {
                     let id = body
                         .split("\"id\":")
                         .nth(1)
-                        .map(|r| r.chars().take_while(char::is_ascii_digit).collect::<String>())
+                        .map(|r| {
+                            r.chars()
+                                .take_while(char::is_ascii_digit)
+                                .collect::<String>()
+                        })
                         .unwrap_or_default();
                     let json = |extra: &str, result: &str| {
                         let message = format!(r#"{{"jsonrpc":"2.0","id":{id},"result":{result}}}"#);
@@ -718,7 +720,8 @@ mod tests {
                     };
                     let out = if head.starts_with("delete ") {
                         stats.deleted.fetch_add(1, Ordering::SeqCst);
-                        "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+                        "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                            .to_string()
                     } else if body.contains("\"method\":\"initialize\"") {
                         json("mcp-session-id: s1\r\n", "{}")
                     } else if body.contains("\"method\":\"tools/list\"") {
@@ -745,7 +748,8 @@ mod tests {
                         stats.now.fetch_sub(1, Ordering::SeqCst);
                         out
                     } else {
-                        "HTTP/1.1 202 Accepted\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+                        "HTTP/1.1 202 Accepted\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                            .to_string()
                     };
                     let _ = socket.write_all(out.as_bytes()).await;
                     let _ = socket.shutdown().await;
@@ -771,13 +775,19 @@ mod tests {
 
     fn tools_of(n: usize, kib: usize) -> String {
         let tools: Vec<String> = (0..n)
-            .map(|i| format!(r#"{{"name":"t{i}","description":"{}"}}"#, "a".repeat(kib * 1024)))
+            .map(|i| {
+                format!(
+                    r#"{{"name":"t{i}","description":"{}"}}"#,
+                    "a".repeat(kib * 1024)
+                )
+            })
             .collect();
         format!(r#"{{"tools":[{}]}}"#, tools.join(","))
     }
 
     #[tokio::test]
-    async fn a_listing_is_over_at_its_deadline_however_slowly_the_server_drips_and_its_session_is_closed() {
+    async fn a_listing_is_over_at_its_deadline_however_slowly_the_server_drips_and_its_session_is_closed(
+    ) {
         let (url, stats) = serve(|_| Out::Drip).await;
         let egress = egress_with(Duration::from_millis(800), Duration::from_secs(5));
         let counter = AtomicI64::new(0);
@@ -789,7 +799,11 @@ mod tests {
         .await
         .expect("the listing is cut off by its own deadline")
         .unwrap_err();
-        assert!(started.elapsed() < Duration::from_secs(6), "{:?}", started.elapsed());
+        assert!(
+            started.elapsed() < Duration::from_secs(6),
+            "{:?}",
+            started.elapsed()
+        );
         assert_eq!(why, "MCP: listing the tools took too long");
         for _ in 0..50 {
             if stats.deleted.load(Ordering::SeqCst) == 1 {
@@ -797,14 +811,19 @@ mod tests {
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
-        assert_eq!(stats.deleted.load(Ordering::SeqCst), 1, "the session is closed after the deadline");
+        assert_eq!(
+            stats.deleted.load(Ordering::SeqCst),
+            1,
+            "the session is closed after the deadline"
+        );
         // The place was given back: another listing runs.
         let (url2, _) = serve(|_| Out::Result(tools_of(1, 0))).await;
         assert_eq!(check_key(&egress, &url2, &[], &counter).await, Ok(1));
     }
 
     #[tokio::test]
-    async fn a_reply_over_8_mib_fails_and_a_listing_stops_at_16_mib_of_definitions_keeping_what_fit() {
+    async fn a_reply_over_8_mib_fails_and_a_listing_stops_at_16_mib_of_definitions_keeping_what_fit(
+    ) {
         let (url, _) = serve(|_| Out::Result(tools_of(9, 1024))).await;
         let egress = egress_with(Duration::from_secs(60), Duration::from_secs(5));
         let counter = AtomicI64::new(0);
@@ -814,12 +833,22 @@ mod tests {
         );
         // Three pages of six tools of about 1 MiB (each reply under 8 MiB): the 16 MiB budget ends the third.
         let (url, stats) = serve(|_| {
-            Out::Result(tools_of(6, 1024).trim_end_matches('}').to_string() + r#","nextCursor":"more"}"#)
+            Out::Result(
+                tools_of(6, 1024).trim_end_matches('}').to_string() + r#","nextCursor":"more"}"#,
+            )
         })
         .await;
         let kept = list(&egress, &url, &[], &counter, true).await.unwrap();
-        assert_eq!((kept.count, kept.tools.len()), (15, 15), "the 16th definition does not fit");
-        assert_eq!(stats.lists.load(Ordering::SeqCst), 3, "no page after the budget");
+        assert_eq!(
+            (kept.count, kept.tools.len()),
+            (15, 15),
+            "the 16th definition does not fit"
+        );
+        assert_eq!(
+            stats.lists.load(Ordering::SeqCst),
+            3,
+            "no page after the budget"
+        );
         // A key check counts the same tools without keeping them.
         let counted = list(&egress, &url, &[], &counter, false).await.unwrap();
         assert_eq!((counted.count, counted.tools.len()), (15, 0));
@@ -829,12 +858,17 @@ mod tests {
     #[tokio::test]
     async fn only_four_listings_run_at_once_and_one_that_finds_no_place_says_so_then_recovers() {
         let (url, stats) = serve(|_| Out::Held(Duration::from_millis(300), tools_of(1, 0))).await;
-        let egress = Arc::new(egress_with(Duration::from_secs(60), Duration::from_secs(30)));
+        let egress = Arc::new(egress_with(
+            Duration::from_secs(60),
+            Duration::from_secs(30),
+        ));
         let counter = Arc::new(AtomicI64::new(0));
         let mut all = Vec::new();
         for _ in 0..10 {
             let (e, u, c) = (Arc::clone(&egress), url.clone(), Arc::clone(&counter));
-            all.push(tokio::spawn(async move { check_key(&e, &u, &[], &c).await }));
+            all.push(tokio::spawn(
+                async move { check_key(&e, &u, &[], &c).await },
+            ));
         }
         for one in all {
             assert_eq!(one.await.unwrap(), Ok(1));
@@ -844,9 +878,16 @@ mod tests {
         assert!((2..=LIST_PERMITS).contains(&most), "{most} at once");
         // Every place taken for longer than a listing will wait: the answer is BUSY, quickly.
         let busy = egress_with(Duration::from_secs(60), Duration::from_millis(100));
-        let held = busy.listings.acquire_many(LIST_PERMITS as u32).await.unwrap();
+        let held = busy
+            .listings
+            .acquire_many(LIST_PERMITS as u32)
+            .await
+            .unwrap();
         let started = std::time::Instant::now();
-        assert_eq!(check_key(&busy, &url, &[], &counter).await, Err(BUSY.to_string()));
+        assert_eq!(
+            check_key(&busy, &url, &[], &counter).await,
+            Err(BUSY.to_string())
+        );
         assert!(started.elapsed() < Duration::from_secs(3));
         drop(held);
         assert_eq!(check_key(&busy, &url, &[], &counter).await, Ok(1));
