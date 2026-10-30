@@ -28,6 +28,11 @@
 //!   tokens are deleted first (a failed delete leaves the row), then the row, then the account's
 //!   projects that used it fall back to the default.
 //!
+//! Every change first makes the account's directory (a new account's first write; the legacy claim
+//! and the second gate are the project routes'), and a row in `shared-providers.json` is shared
+//! whatever its flag says. Core's key rotation does not write the files: the internal store's
+//! `POST /v1/providers/reseal` (provider_reseal.rs) re-seals them under the same locks.
+//!
 //! Every change runs as a spawned task the handler awaits, so a client that leaves mid-request
 //! cannot strand the multi-step ones (tokens, row, project fallbacks).
 //!
@@ -59,6 +64,10 @@ pub const LIST: &str = "/api/providers";
 const MAX_BASE_URL: usize = 2048;
 const NOT_APPROVED: &str =
     "Provider origin is not approved for member connections; contact an administrator.";
+const CREDENTIALS_UNAVAILABLE: &str = "The credential store is unavailable. Try again shortly.";
+/// L1: the answer when the row went but the account's projects could not be updated.
+const PROJECTS_NOT_UPDATED: &str =
+    "Removed; its projects could not be updated, remove again to finish";
 const OFF_MESSAGE: &str = "Sign in with ChatGPT is turned off on this server.";
 /// core providers.cjs: a context window is a whole number of tokens within these bounds.
 const CONTEXT_MIN: f64 = 2048.0;
@@ -356,7 +365,7 @@ struct ViewRow {
     from_shared_file: bool,
 }
 
-fn load_keys(data_dir: &Path) -> Option<SecretKeys> {
+pub(crate) fn load_keys(data_dir: &Path) -> Option<SecretKeys> {
     let previous = std::env::var("SECRETS_KEY_PREVIOUS")
         .ok()
         .map(Zeroizing::new);
@@ -373,6 +382,11 @@ fn open_key(raw: &JValue, keys: Option<&SecretKeys>) -> (Zeroizing<String>, bool
         },
         None => (Zeroizing::new(String::new()), false),
     }
+}
+
+/// Whether the row holds a stored key (as the file has it, sealed or not).
+fn has_stored_key(row: &JValue) -> bool {
+    !or_empty(row.get("apiKey")).is_empty()
 }
 
 fn user_dir_of(data_dir: &Path, user: &str) -> Option<PathBuf> {
@@ -434,6 +448,13 @@ fn is_chatgpt(raw: &JValue) -> bool {
     raw.get("kind").as_str() == Some(CHATGPT_KIND)
 }
 
+/// Whether a row is shared: the file it lives in says so, or its own flag does. A row in
+/// `shared-providers.json` is shared whatever its flag (a hand-edited or older file may leave it
+/// off), because that file is where an administrator's edit lands and where everyone reads it.
+fn is_shared(row: &ViewRow) -> bool {
+    row.from_shared_file || row.raw.get("shared").truthy()
+}
+
 /// core routes/providers.cjs `listRow(pr, authn)`.
 fn list_row(row: &ViewRow, dep: &Deployment, connection: &str) -> JValue {
     let raw = &row.raw;
@@ -448,7 +469,7 @@ fn list_row(row: &ViewRow, dep: &Deployment, connection: &str) -> JValue {
             "managed".into(),
             JValue::Bool(is_default && dep.manager_enabled),
         ),
-        ("shared".into(), JValue::Bool(raw.get("shared").truthy())),
+        ("shared".into(), JValue::Bool(is_shared(row))),
         (
             "defaultModel".into(),
             if raw.get("defaultModel").truthy() {
@@ -482,7 +503,7 @@ fn list_row(row: &ViewRow, dep: &Deployment, connection: &str) -> JValue {
 // ---------------------------------------------------------------------------------------------
 // Sealing.
 
-fn nonce() -> [u8; 12] {
+pub(crate) fn nonce() -> [u8; 12] {
     let mut out = [0u8; 12];
     OsRng.fill_bytes(&mut out);
     out
@@ -544,6 +565,21 @@ async fn connection_of(app: &Arc<App>, user: &str) -> Option<&'static str> {
 #[cfg(not(feature = "rust-chatgpt-status"))]
 async fn connection_of(_app: &Arc<App>, _user: &str) -> Option<&'static str> {
     None
+}
+
+#[cfg(feature = "rust-chatgpt-status")]
+async fn ensure_row_for_tokens(app: &Arc<App>, user: &str) -> Result<bool, String> {
+    match app.chatgpt_oauth.as_ref() {
+        Some(broker) => broker
+            .ensure_row_for_tokens(app, user)
+            .await
+            .map_err(|e| e.message),
+        None => Ok(false),
+    }
+}
+#[cfg(not(feature = "rust-chatgpt-status"))]
+async fn ensure_row_for_tokens(_app: &Arc<App>, _user: &str) -> Result<bool, String> {
+    Ok(false)
 }
 
 /// The broker deletes the account's tokens: `Err((status, message))` as core's catch words it.
@@ -632,6 +668,7 @@ pub async fn serve(
     let layer = Arc::clone(&app.identity);
     let now = identity::now_ms();
     let gate_path = path.clone();
+    let regate_creds = creds.clone();
     let id = match tokio::task::spawn_blocking(move || layer.gate_blocking(&creds, &gate_path, now))
         .await
     {
@@ -643,6 +680,25 @@ pub async fn serve(
         user: id.user.id.clone(),
         admin: id.user.role == server_auth::Role::Admin,
     };
+    // Node's workspace load made the account's directory on its first request, whichever route it
+    // was; the stores here never do, so a new account's first provider write would find none
+    // (503 "still being set up"). Every change makes it first, with the legacy claim and the second
+    // gate the project routes use (#2026), before the body is read. A listing needs none.
+    if !matches!(target, Target::List) {
+        if let Err(response) = crate::project_routes::ensure_account(
+            app,
+            &data_dir,
+            &regate_creds,
+            &path,
+            now,
+            &id.user.id,
+            id.account_role == server_auth::Role::Admin,
+        )
+        .await
+        {
+            return *response;
+        }
+    }
     match target {
         Target::List => list(app, data_dir, who).await,
         Target::Create => create(data_dir, who, body).await,
@@ -657,8 +713,30 @@ pub async fn serve(
 #[cfg(debug_assertions)]
 pub mod hooks {
     use std::path::PathBuf;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
     pub static PAUSE_AFTER_TOKENS: Mutex<Vec<(PathBuf, u64)>> = Mutex::new(Vec::new());
+
+    /// A pause driven by signals, not time: the listing says it got there (`reached`) and waits for
+    /// `release`.
+    #[derive(Default)]
+    pub struct Gate {
+        pub reached: tokio::sync::Notify,
+        pub release: tokio::sync::Notify,
+    }
+    /// Pauses a listing for the data directory it names, between reading the broker's connection
+    /// state and healing the ChatGPT provider row.
+    pub static PAUSE_AFTER_CONNECTION: Mutex<Vec<(PathBuf, Arc<Gate>)>> = Mutex::new(Vec::new());
+    pub async fn after_connection(data_dir: &std::path::Path) {
+        let gate = PAUSE_AFTER_CONNECTION.lock().ok().and_then(|v| {
+            v.iter()
+                .find(|(d, _)| d == data_dir)
+                .map(|(_, g)| Arc::clone(g))
+        });
+        if let Some(gate) = gate {
+            gate.reached.notify_one();
+            gate.release.notified().await;
+        }
+    }
     pub async fn after_tokens(data_dir: &std::path::Path) {
         let ms = PAUSE_AFTER_TOKENS
             .lock()
@@ -692,20 +770,24 @@ async fn list(app: &Arc<App>, data_dir: PathBuf, who: Who) -> Response<Body> {
         None
     };
     let reconcile = matches!(connection, Some("connected" | "reconnect"));
+    // The broker saved a sign-in whose row was not written (core's reconcileChatGptRow). The broker
+    // re-reads the token row and writes the row in one step under its fence, so a disconnect that
+    // landed since `connection` was read (its tokens gone, its row not yet) is not undone.
+    if reconcile {
+        #[cfg(debug_assertions)]
+        hooks::after_connection(&data_dir).await;
+        if let Err(e) = ensure_row_for_tokens(app, &who.user).await {
+            eprintln!("noevia-server: ChatGPT provider row not written ({e})");
+        }
+    }
     let user = who.user.clone();
     let rows = tokio::task::spawn_blocking(move || {
-        // The broker saved a sign-in whose row was not written (core's reconcileChatGptRow).
-        if reconcile {
-            if let Err(e) = provider_files::ensure_chatgpt_row(&data_dir, &user) {
-                eprintln!("noevia-server: ChatGPT provider row not written ({e:?})");
-            }
-        }
         let dep = deployment();
         let keys = load_keys(&data_dir);
         view(&data_dir, &user, keys.as_ref(), &dep)
             .into_iter()
             // A ChatGPT row is listed only while the flag is on, and only the account's own.
-            .filter(|r| !is_chatgpt(&r.raw) || (chatgpt && !r.raw.get("shared").truthy()))
+            .filter(|r| !is_chatgpt(&r.raw) || (chatgpt && !is_shared(r)))
             .map(|r| list_row(&r, &dep, connection.unwrap_or("disconnected")))
             .collect::<Vec<_>>()
     })
@@ -812,12 +894,7 @@ async fn create(data_dir: PathBuf, who: Who, body: Body) -> Response<Body> {
             let keys = load_keys(&data_dir);
             let sealed = match seal_key(keys.as_ref(), &api_key) {
                 Ok(s) => s,
-                Err(()) => {
-                    return Err((
-                        503,
-                        "The credential store is unavailable. Try again shortly.",
-                    ))
-                }
+                Err(()) => return Err((503, CREDENTIALS_UNAVAILABLE)),
             };
             let mut row = vec![
                 ("id".to_string(), JValue::Str(id)),
@@ -866,14 +943,17 @@ async fn create(data_dir: PathBuf, who: Who, body: Body) -> Response<Body> {
 // PUT /api/providers/{id}.
 
 /// core routes/providers.cjs `editRefusal` for a row found: why it may not be edited, or none.
-fn edit_refusal(raw: &JValue, admin: bool) -> Option<(u16, &'static str)> {
+///
+/// `from_shared_file`: the row lives in `shared-providers.json`, which makes it shared whatever its
+/// own flag says (the write goes to that file, so the check must follow it there).
+fn edit_refusal(raw: &JValue, admin: bool, from_shared_file: bool) -> Option<(u16, &'static str)> {
     if is_chatgpt(raw) || matches!(raw.get("external"), JValue::Bool(true)) {
         return Some((
             400,
             "this provider is managed by its sign-in and cannot be edited",
         ));
     }
-    if raw.get("shared").truthy() && !admin {
+    if (from_shared_file || raw.get("shared").truthy()) && !admin {
         return Some((403, "administrator required"));
     }
     None
@@ -905,8 +985,13 @@ fn edit_rows(
     let Some(row) = rows.get(at).cloned() else {
         return refuse(404, "no such provider");
     };
-    if let Some((status, message)) = edit_refusal(&row, who.admin) {
+    if let Some((status, message)) = edit_refusal(&row, who.admin, from_shared_file) {
         return refuse(status, message);
+    }
+    // Without the credential keys a stored key reads as empty, which would let a row carry its
+    // ciphertext to another address unchecked: nothing is changed while they are unavailable.
+    if keys.is_none() && has_stored_key(&row) {
+        return refuse(503, CREDENTIALS_UNAVAILABLE);
     }
     for field in ["label", "baseUrl", "apiKey", "defaultModel"] {
         if !matches!(
@@ -987,12 +1072,7 @@ fn edit_rows(
     } else {
         match seal_key(keys, &new_key) {
             Ok(s) => Some(s),
-            Err(()) => {
-                return refuse(
-                    503,
-                    "The credential store is unavailable. Try again shortly.",
-                )
-            }
+            Err(()) => return refuse(503, CREDENTIALS_UNAVAILABLE),
         }
     };
     let Some(JValue::Obj(items)) = rows.get_mut(at) else {
@@ -1058,7 +1138,7 @@ async fn edit(data_dir: PathBuf, who: Who, segment: &str, body: Body) -> Respons
     let Some((from_shared_file, raw)) = found else {
         return error(404, "no such provider");
     };
-    if let Some((status, message)) = edit_refusal(&raw, who.admin) {
+    if let Some((status, message)) = edit_refusal(&raw, who.admin, from_shared_file) {
         return error(status, message);
     }
     let body = match body_object(body, false).await {
@@ -1097,18 +1177,80 @@ async fn edit(data_dir: PathBuf, who: Who, segment: &str, body: Body) -> Respons
 // ---------------------------------------------------------------------------------------------
 // DELETE /api/providers/{id} and DELETE /api/providers/chatgpt.
 
-/// Removes `id`'s rows from the file it lives in, then the account's projects fall back.
-fn remove_and_fall_back(
-    data_dir: &Path,
-    user: &str,
-    id: &str,
-    shared: bool,
-) -> Result<bool, StoreError> {
-    let removed = provider_files::remove_rows(data_dir, user, id, shared)?;
-    if removed {
-        provider_files::clear_project_fallbacks(data_dir, user, id)?;
+/// What removing a row came to.
+#[derive(Debug, PartialEq, Eq)]
+enum Removal {
+    /// The row went (now or earlier) and the projects are clear.
+    Done,
+    /// There was no such row (its projects were cleared all the same).
+    NoSuchRow,
+    /// The row step failed: nothing was changed.
+    NotRemoved(StoreErrorKind),
+    /// The row is gone (now or earlier) but the account's projects could not be updated.
+    ProjectsNotUpdated(StoreErrorKind),
+}
+
+/// A store failure, kept to what the answer needs (`StoreError` itself is not `Eq`).
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum StoreErrorKind {
+    Busy,
+    Gone,
+    Corrupt,
+    Other,
+}
+
+impl From<&StoreError> for StoreErrorKind {
+    fn from(e: &StoreError) -> Self {
+        match e {
+            StoreError::Busy => Self::Busy,
+            StoreError::Gone => Self::Gone,
+            StoreError::Corrupt => Self::Corrupt,
+            _ => Self::Other,
+        }
     }
-    Ok(removed)
+}
+
+impl StoreErrorKind {
+    fn status(self) -> u16 {
+        match self {
+            Self::Busy | Self::Gone => 503,
+            Self::Corrupt | Self::Other => 500,
+        }
+    }
+}
+
+/// Removes `id`'s rows from the file it lives in, then the account's projects that used it fall
+/// back to the default. The fallbacks are cleared whether or not the row was still there: a removal
+/// that went through but could not update the projects is answered as such, and removing again
+/// (the row is gone, so it is a 404 otherwise) finishes the job instead of leaving projects that
+/// name a provider that no longer exists.
+fn remove_and_fall_back(data_dir: &Path, user: &str, id: &str, shared: bool) -> Removal {
+    let removed = match provider_files::remove_rows(data_dir, user, id, shared) {
+        Ok(removed) => removed,
+        Err(e) => return Removal::NotRemoved((&e).into()),
+    };
+    match provider_files::clear_project_fallbacks(data_dir, user, id) {
+        Ok(_) if removed => Removal::Done,
+        Ok(_) => Removal::NoSuchRow,
+        Err(e) => Removal::ProjectsNotUpdated((&e).into()),
+    }
+}
+
+fn removal_answer(outcome: Removal) -> Response<Body> {
+    match outcome {
+        Removal::Done => answer(200, &JValue::obj([("ok", JValue::Bool(true))])),
+        Removal::NoSuchRow => error(404, "no such provider"),
+        Removal::NotRemoved(kind) => {
+            let (status, message) = match kind {
+                StoreErrorKind::Busy => store_failure(&StoreError::Busy),
+                StoreErrorKind::Gone => store_failure(&StoreError::Gone),
+                StoreErrorKind::Corrupt => store_failure(&StoreError::Corrupt),
+                StoreErrorKind::Other => (500, "Internal error"),
+            };
+            error(status, message)
+        }
+        Removal::ProjectsNotUpdated(kind) => error(kind.status(), PROJECTS_NOT_UPDATED),
+    }
 }
 
 async fn remove(app: &Arc<App>, data_dir: PathBuf, who: Who, segment: &str) -> Response<Body> {
@@ -1123,27 +1265,38 @@ async fn remove(app: &Arc<App>, data_dir: PathBuf, who: Who, segment: &str) -> R
     let selected = tokio::task::spawn_blocking(move || {
         let keys = load_keys(&d);
         let dep = deployment();
+        let keys_unavailable = keys.is_none();
         view(&d, &u, keys.as_ref(), &dep)
             .into_iter()
             .find(|r| has_string_id(&r.raw, &i))
-            .map(|r| (r.from_shared_file, r.raw))
+            .map(|r| {
+                (
+                    is_shared(&r),
+                    has_stored_key(&r.raw),
+                    keys_unavailable,
+                    r.raw,
+                )
+            })
     })
     .await;
     let Ok(selected) = selected else {
         return failed();
     };
-    if selected
-        .as_ref()
-        .is_some_and(|(_, raw)| raw.get("shared").truthy() && !who.admin)
-    {
-        return error(403, "administrator required");
+    if let Some((shared, has_key, keys_unavailable, _)) = &selected {
+        if *shared && !who.admin {
+            return error(403, "administrator required");
+        }
+        // While the credential keys cannot be loaded nothing that holds a stored key is changed.
+        if *keys_unavailable && *has_key {
+            return error(503, CREDENTIALS_UNAVAILABLE);
+        }
     }
     let app = Arc::clone(app);
     let work = async move {
         // Removing the ChatGPT row is disconnecting: its tokens go too, flag on or off, and first
         // (the broker's), so a failed delete leaves the row rather than tokens without a row.
-        if let Some((_, raw)) = &selected {
-            if is_chatgpt(raw) && !raw.get("shared").truthy() && has_broker(&app) {
+        if let Some((shared, _, _, raw)) = &selected {
+            if is_chatgpt(raw) && !*shared && has_broker(&app) {
                 if let Err((status, message)) = disconnect_tokens(&app, &who.user).await {
                     return error(status, &message);
                 }
@@ -1151,17 +1304,14 @@ async fn remove(app: &Arc<App>, data_dir: PathBuf, who: Who, segment: &str) -> R
                 hooks::after_tokens(&data_dir).await;
             }
         }
-        let shared_file = selected.as_ref().is_some_and(|(shared, _)| *shared);
-        if selected.is_none() {
-            return error(404, "no such provider");
-        }
+        // The row's file is where it was found (none: it is gone, and only the caller's projects
+        // that still name it are cleared).
+        let shared_file = selected.as_ref().is_some_and(|(shared, ..)| *shared);
         let (d, u) = (data_dir, who.user);
         match tokio::task::spawn_blocking(move || remove_and_fall_back(&d, &u, &id, shared_file))
             .await
         {
-            Ok(Ok(true)) => answer(200, &JValue::obj([("ok", JValue::Bool(true))])),
-            Ok(Ok(false)) => error(404, "no such provider"),
-            Ok(Err(e)) => store_failed(&e),
+            Ok(outcome) => removal_answer(outcome),
             Err(_) => failed(),
         }
     };

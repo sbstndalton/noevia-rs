@@ -215,7 +215,6 @@ async fn gate_flag_tenant_and_node_answers_through_the_front() {
     // Everything else is Node's (dead upstream: 502).
     for (m, p) in [
         ("POST", PATH),
-        ("DELETE", PATH),
         ("HEAD", PATH),
         ("GET", "/api/providers/chatgpt/"),
         // The broker's siblings (sbstndalton/noevia#2190 round 5) keep their other methods on Node.
@@ -226,6 +225,14 @@ async fn gate_flag_tenant_and_node_answers_through_the_front() {
         let (s, _, _) = call(addr, m, p, MEMBER, Some("csrf")).await;
         assert_eq!(s, 502, "{m} {p}");
     }
+    // DELETE is the provider registry's since round 6 (provider_routes.rs), not Node's: the
+    // disconnect, which makes the account's directory first as any provider write does (this
+    // account had none; the 502 it answered before was the missing directory).
+    let (s, _, b) = call(addr, "DELETE", PATH, MEMBER, Some("csrf")).await;
+    assert_eq!(
+        (s, b.as_str()),
+        (200, r#"{"ok":true,"state":"disconnected"}"#)
+    );
     // A missing table is a sanitized 502, never created.
     db.execute_batch("DROP TABLE chatgpt_oauth_tokens").unwrap();
     let (s, _, b) = call(addr, "GET", PATH, MEMBER, None).await;

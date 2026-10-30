@@ -28,6 +28,8 @@ pub mod provider_files;
 #[cfg(feature = "rust-storage-reads")]
 pub mod provider_models_routes;
 #[cfg(feature = "rust-storage-reads")]
+pub mod provider_reseal;
+#[cfg(feature = "rust-storage-reads")]
 pub mod provider_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod provider_test_routes;
@@ -142,6 +144,10 @@ use std::sync::Arc;
 /// token broker writes when a sign-in is saved; Node re-reads the private rows by their file
 /// signal and saves only its seal-on-load migration, through the project store. The paired core
 /// refuses these methods (rust-providers.cjs `RUST_PROVIDERS_OWNED`).
+/// `rust-providers-reseal`: this build re-seals the provider keys in those two files on the internal
+/// store, `POST /v1/providers/reseal` (provider_reseal.rs, one pass per file under its lock with the
+/// current and the previous key), which core's secrets rotation (rust-providers-reseal.cjs) calls in
+/// place of rewriting the files itself; the pair is checked like `rust-providers`.
 ///
 /// `rust-model-sizing`: this build answers `GET /api/models/estimate` and `GET
 /// /api/models/preset/suggest` (sbstndalton/noevia#2189, src/model_sizing.rs), permanently and
@@ -259,6 +265,8 @@ pub const FEATURES: &[&str] = &[
     "rust-provider-models",
     #[cfg(feature = "rust-storage-reads")]
     "rust-providers",
+    #[cfg(feature = "rust-storage-reads")]
+    "rust-providers-reseal",
     "rust-vault-mirror-preferences",
     #[cfg(feature = "rust-reasoning-settings")]
     "rust-reasoning-settings",

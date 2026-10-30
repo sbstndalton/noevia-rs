@@ -286,69 +286,31 @@ fn respond(r: Reply) -> Response<Body> {
     }
 }
 
-/// One request for a Rust-owned project route; `path` is the WHATWG pathname.
-pub async fn serve(
+/// Node's workspace load makes the directory of every signed-in user on that user's first
+/// request, whichever route it is (core index.cjs handleRequestInner). The stores here never
+/// do, a missing directory there being a removed account (#1425), so a new account's first
+/// request needs it made, once, right after the gate has confirmed the session and before
+/// the body is read. Node refuses a removed account in process (`removed`); here the account
+/// may be removed between the gate and the mkdir, so the gate runs once more after it, and a
+/// directory this request made for an account that is gone is taken away again. Only the
+/// gate's own user id reaches the path, as `users/<uuid>` (#2026).
+///
+/// `Err` is the answer to send. The provider routes call it too (their writes need the account's
+/// directory, which no earlier request may have made).
+pub(crate) async fn ensure_account(
     app: &Arc<App>,
-    conn: crate::serve::Conn,
-    req: Request<Body>,
-    path: String,
-) -> Response<Body> {
-    let (mut parts, body) = req.into_parts();
-    // `url.searchParams.get('background') === '1'`: the first `background`, form-decoded.
-    let background = parts.uri.query().is_some_and(|q| {
-        url::form_urlencoded::parse(q.as_bytes())
-            .find(|(k, _)| k == "background")
-            .is_some_and(|(_, v)| v == "1")
-    });
-    let route = route(parts.method.as_str(), &path)
-        .filter(|r| background || !matches!(r, Route::BackgroundSource { .. }));
-    let Some(route) = route else {
-        // A synchronous upload or sync is Node's; only this front may ask for its worker form.
-        parts.headers.remove(crate::source_job_routes::WORK_HEADER);
-        return app
-            .proxy
-            .forward(conn.peer, Request::from_parts(parts, body))
-            .await;
-    };
-    let switch = app.config.rust_projects;
-    // The running-reply marker's start (#1071); none without Node beside the front.
-    let start_id = app.config.start_id.clone().unwrap_or_default();
-    let Some(data_dir) = app.config.data_dir.clone() else {
-        return Rejection::Unavailable.into_response();
-    };
-    let creds = identity::creds_of(&parts);
-    let layer = Arc::clone(&app.identity);
-    let now = identity::now_ms();
-    let gate_path = path.clone();
-    let (regate_layer, regate_creds) = (Arc::clone(&layer), creds.clone());
-    let authn =
-        match tokio::task::spawn_blocking(move || layer.gate_blocking(&creds, &gate_path, now))
-            .await
-        {
-            Ok(Ok(id)) => id,
-            Ok(Err(rejection)) => return rejection.into_response(),
-            Err(_) => return Rejection::Unavailable.into_response(),
-        };
-    // Node's workspace load makes the directory of every signed-in user on that user's first
-    // request, whichever route it is (core index.cjs handleRequestInner). The stores here never
-    // do, a missing directory there being a removed account (#1425), so a new account's first
-    // request needs it made, once, right after the gate has confirmed the session and before
-    // the body is read. Node refuses a removed account in process (`removed`); here the account
-    // may be removed between the gate and the mkdir, so the gate runs once more after it, and a
-    // directory this request made for an account that is gone is taken away again. Only the
-    // gate's own user id reaches the path, as `users/<uuid>` (#2026).
+    data_dir: &std::path::Path,
+    creds: &server_auth::Creds,
+    path: &str,
+    now: i64,
+    user: &str,
+    admin: bool,
+) -> Result<(), Box<Response<Body>>> {
     let step = {
-        let (data_dir, user) = (data_dir.clone(), authn.user.id.clone());
-        let (layer, creds, path) = (
-            Arc::clone(&regate_layer),
-            regate_creds.clone(),
-            path.clone(),
-        );
-        let (auth_writes, expected_id, expected_admin) = (
-            Arc::clone(&app.writes),
-            authn.user.id.clone(),
-            authn.account_role == server_auth::Role::Admin,
-        );
+        let (data_dir, user) = (data_dir.to_path_buf(), user.to_owned());
+        let (layer, creds, path) = (Arc::clone(&app.identity), creds.clone(), path.to_owned());
+        let (auth_writes, expected_id, expected_admin) =
+            (Arc::clone(&app.writes), user.clone(), admin);
         tokio::task::spawn_blocking(move || {
             #[cfg(debug_assertions)]
             hooks::before_ensure(&user);
@@ -395,18 +357,78 @@ pub async fn serve(
         .await
     };
     match step {
-        Ok(Step::Go) => {}
-        Ok(Step::SettingUp) => {
-            return reply::error(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "Your account is still being set up; try again in a moment.",
-                true,
-            )
-        }
-        Ok(Step::Refused(refused)) => return refusal(refused),
-        Ok(Step::Failed) | Err(_) => {
-            return reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true)
-        }
+        Ok(Step::Go) => Ok(()),
+        Ok(Step::SettingUp) => Err(Box::new(reply::error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Your account is still being set up; try again in a moment.",
+            true,
+        ))),
+        Ok(Step::Refused(refused)) => Err(Box::new(refusal(refused))),
+        Ok(Step::Failed) | Err(_) => Err(Box::new(reply::error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Internal error",
+            true,
+        ))),
+    }
+}
+
+/// One request for a Rust-owned project route; `path` is the WHATWG pathname.
+pub async fn serve(
+    app: &Arc<App>,
+    conn: crate::serve::Conn,
+    req: Request<Body>,
+    path: String,
+) -> Response<Body> {
+    let (mut parts, body) = req.into_parts();
+    // `url.searchParams.get('background') === '1'`: the first `background`, form-decoded.
+    let background = parts.uri.query().is_some_and(|q| {
+        url::form_urlencoded::parse(q.as_bytes())
+            .find(|(k, _)| k == "background")
+            .is_some_and(|(_, v)| v == "1")
+    });
+    let route = route(parts.method.as_str(), &path)
+        .filter(|r| background || !matches!(r, Route::BackgroundSource { .. }));
+    let Some(route) = route else {
+        // A synchronous upload or sync is Node's; only this front may ask for its worker form.
+        parts.headers.remove(crate::source_job_routes::WORK_HEADER);
+        return app
+            .proxy
+            .forward(conn.peer, Request::from_parts(parts, body))
+            .await;
+    };
+    let switch = app.config.rust_projects;
+    // The running-reply marker's start (#1071); none without Node beside the front.
+    let start_id = app.config.start_id.clone().unwrap_or_default();
+    let Some(data_dir) = app.config.data_dir.clone() else {
+        return Rejection::Unavailable.into_response();
+    };
+    let creds = identity::creds_of(&parts);
+    let layer = Arc::clone(&app.identity);
+    let now = identity::now_ms();
+    let gate_path = path.clone();
+    let (regate_layer, regate_creds) = (Arc::clone(&layer), creds.clone());
+    let authn =
+        match tokio::task::spawn_blocking(move || layer.gate_blocking(&creds, &gate_path, now))
+            .await
+        {
+            Ok(Ok(id)) => id,
+            Ok(Err(rejection)) => return rejection.into_response(),
+            Err(_) => return Rejection::Unavailable.into_response(),
+        };
+    // Node's workspace load makes the user's directory on their first request (see
+    // [`ensure_account`]).
+    if let Err(response) = ensure_account(
+        app,
+        &data_dir,
+        &regate_creds,
+        &path,
+        now,
+        &authn.user.id,
+        authn.account_role == server_auth::Role::Admin,
+    )
+    .await
+    {
+        return *response;
     }
     let limit = match &route {
         Route::Upload { .. } => Some(assets::BODY_LIMIT),

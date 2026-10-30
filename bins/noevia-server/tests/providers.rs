@@ -1246,3 +1246,580 @@ async fn simultaneous_changes_never_lose_each_others_rows() {
         assert!(open_v1(r["apiKey"].as_str().unwrap()).starts_with("sk-synthetic-key-"));
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// The settings round 6 review (sbstndalton/noevia#2190): M1 (re-seal under the lock), M2 (the file
+// decides what is shared), L1 (a removal finishes), L2 (a new account's first write), L3 (the
+// listing's heal against a disconnect), L4 (no credential keys).
+
+const PREVIOUS_KEY: [u8; 32] = [11; 32];
+const LOST_KEY: [u8; 32] = [13; 32];
+
+/// The file's lock, held by the test (flock on `<file>.lock`, as the front's own writers take it).
+fn hold_lock(file: &std::path::Path) -> std::fs::File {
+    let lock = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(format!("{}.lock", file.display()))
+        .unwrap();
+    lock.lock().unwrap();
+    lock
+}
+
+fn key_file_set_aside(dir: &std::path::Path) {
+    std::fs::rename(dir.join("secrets.key"), dir.join("secrets.key.aside")).unwrap();
+}
+
+fn key_file_restored(dir: &std::path::Path) {
+    std::fs::rename(dir.join("secrets.key.aside"), dir.join("secrets.key")).unwrap();
+}
+
+#[tokio::test]
+async fn m2_a_flagless_row_in_the_shared_file_is_shared_for_edits_and_removals() {
+    let d = tempfile::tempdir().unwrap();
+    let _db = seed(d.path());
+    let f = front(d.path(), "0").await;
+    // A hand-edited (or older) shared file: the row has no `shared` flag.
+    write_rows(
+        &shared_path(&f),
+        &serde_json::json!([{"id":"team","label":"Team","baseUrl":"https://approved.example.com/v1","apiKey":seal_v1("sk-team-0000111122", 1)}]),
+    );
+    let before = std::fs::read(shared_path(&f)).unwrap();
+    let forbidden = (403, j(r#"{"error":"administrator required"}"#));
+    assert_eq!(
+        call(
+            f.addr,
+            "PUT",
+            "/api/providers/team",
+            MEMBER,
+            r#"{"label":"Mine now","baseUrl":"https://approved.example.com/v1"}"#
+        )
+        .await,
+        forbidden
+    );
+    assert_eq!(
+        call(f.addr, "DELETE", "/api/providers/team", MEMBER, "").await,
+        forbidden
+    );
+    assert_eq!(
+        std::fs::read(shared_path(&f)).unwrap(),
+        before,
+        "the shared file is exactly as it was"
+    );
+    // The listing says it is shared, and an administrator may change it, in that file.
+    let (_, list) = call(f.addr, "GET", "/api/providers", MEMBER, "").await;
+    assert_eq!(find(&list, "team")["shared"], true);
+    let (status, edited) = call(
+        f.addr,
+        "PUT",
+        "/api/providers/team",
+        ADMIN,
+        r#"{"label":"Renamed"}"#,
+    )
+    .await;
+    assert_eq!((status, edited["label"].as_str()), (200, Some("Renamed")));
+    assert_eq!(read_rows(&shared_path(&f))[0]["label"], "Renamed");
+    assert_eq!(
+        call(f.addr, "DELETE", "/api/providers/team", ADMIN, "").await,
+        (200, j(r#"{"ok":true}"#))
+    );
+    assert!(read_rows(&shared_path(&f)).is_empty());
+}
+
+#[tokio::test]
+async fn l1_a_removal_whose_projects_could_not_be_updated_finishes_when_asked_again() {
+    let d = tempfile::tempdir().unwrap();
+    let _db = seed(d.path());
+    let f = front(d.path(), "0").await;
+    write_rows(
+        &private_path(&f, A),
+        &serde_json::json!([
+            {"id":"mine","label":"Mine","baseUrl":"http://127.0.0.1:2/v1","apiKey":"","shared":false},
+            {"id":"keep","label":"Keep","baseUrl":"http://127.0.0.1:3/v1","apiKey":"","shared":false},
+        ]),
+    );
+    let projects = f.dir.join("users").join(A).join("projects.json");
+    std::fs::write(
+        &projects,
+        r#"{"projects":[{"id":"p1","provider":"mine","model":"m"},{"id":"p2","provider":"keep","model":"k"}]}"#,
+    )
+    .unwrap();
+    // Another writer holds projects.json's lock for longer than the store waits (3 s).
+    let lock = hold_lock(&projects);
+    let (status, body) = call(f.addr, "DELETE", "/api/providers/mine", ADMIN, "").await;
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (
+            503,
+            Some("Removed; its projects could not be updated, remove again to finish")
+        ),
+        "{body}"
+    );
+    assert_eq!(read_rows(&private_path(&f, A)).len(), 1, "the row is gone");
+    assert!(std::fs::read_to_string(&projects)
+        .unwrap()
+        .contains(r#""provider":"mine""#));
+    lock.unlock().unwrap();
+    // Asking again: the row is gone (404), and the fallbacks are cleared all the same.
+    assert_eq!(
+        call(f.addr, "DELETE", "/api/providers/mine", ADMIN, "").await,
+        (404, j(r#"{"error":"no such provider"}"#))
+    );
+    let stored = j(&std::fs::read_to_string(&projects).unwrap());
+    assert_eq!(stored["projects"][0], j(r#"{"id":"p1"}"#));
+    assert_eq!(
+        stored["projects"][1]["provider"], "keep",
+        "others untouched"
+    );
+    // An id nobody has changes nothing.
+    let bytes = std::fs::read(&projects).unwrap();
+    assert_eq!(
+        call(f.addr, "DELETE", "/api/providers/never-was", ADMIN, "")
+            .await
+            .0,
+        404
+    );
+    assert_eq!(std::fs::read(&projects).unwrap(), bytes);
+}
+
+#[tokio::test]
+async fn l2_a_new_accounts_first_provider_write_makes_its_directory() {
+    let d = tempfile::tempdir().unwrap();
+    let _db = seed(d.path());
+    let f = front(d.path(), "0").await;
+    // Both accounts are new: the gate knows them, no request has made their directories.
+    std::fs::remove_dir_all(f.dir.join("users").join(A)).unwrap();
+    std::fs::remove_dir_all(f.dir.join("users").join(B)).unwrap();
+    // A listing needs none and makes none.
+    assert_eq!(
+        call(f.addr, "GET", "/api/providers", ADMIN, "").await.0,
+        200
+    );
+    assert!(!f.dir.join("users").join(A).exists());
+    let (status, made) = call(
+        f.addr,
+        "POST",
+        "/api/providers",
+        ADMIN,
+        r#"{"label":"First","baseUrl":"http://127.0.0.1:2/v1","apiKey":"sk-first-0000111122"}"#,
+    )
+    .await;
+    assert_eq!(status, 200, "{made}");
+    assert_eq!(read_rows(&private_path(&f, A)).len(), 1);
+    // A member's first request being an edit or a removal gets Node's answers, not a 503.
+    assert_eq!(
+        call(f.addr, "PUT", "/api/providers/nope", MEMBER, "{}")
+            .await
+            .0,
+        404
+    );
+    assert!(f.dir.join("users").join(B).is_dir());
+    std::fs::remove_dir_all(f.dir.join("users").join(B)).unwrap();
+    assert_eq!(
+        call(f.addr, "DELETE", "/api/providers/nope", MEMBER, "")
+            .await
+            .0,
+        404
+    );
+    assert!(f.dir.join("users").join(B).is_dir());
+    // The ChatGPT disconnect too (flag off: its 404, but the directory is made first as for any write).
+    std::fs::remove_dir_all(f.dir.join("users").join(B)).unwrap();
+    let on = front(d.path(), "1").await;
+    assert_eq!(
+        call(on.addr, "DELETE", "/api/providers/chatgpt", MEMBER, "")
+            .await
+            .0,
+        200
+    );
+}
+
+#[tokio::test]
+async fn l3_a_listing_does_not_put_the_chatgpt_row_back_after_a_disconnect_that_landed_first() {
+    use noevia_server::provider_routes::hooks::{Gate, PAUSE_AFTER_CONNECTION};
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let f = front(d.path(), "1").await;
+    // A sign-in whose provider row was never written: the listing heals it.
+    store_tokens(&db, A, "connected");
+    let gate = Arc::new(Gate::default());
+    PAUSE_AFTER_CONNECTION
+        .lock()
+        .unwrap()
+        .push((d.path().to_path_buf(), Arc::clone(&gate)));
+    let addr = f.addr;
+    let listing = tokio::spawn(async move { call(addr, "GET", "/api/providers", ADMIN, "").await });
+    // The listing has read the connection state ("connected") and waits; the disconnect lands whole.
+    tokio::time::timeout(Duration::from_secs(20), gate.reached.notified())
+        .await
+        .expect("the listing reached the pause");
+    PAUSE_AFTER_CONNECTION.lock().unwrap().clear();
+    assert_eq!(
+        call(f.addr, "DELETE", "/api/providers/chatgpt", ADMIN, "").await,
+        (200, j(r#"{"ok":true,"state":"disconnected"}"#))
+    );
+    assert_eq!(token_row(&db, A), None);
+    gate.release.notify_one();
+    let (status, list) = tokio::time::timeout(Duration::from_secs(20), listing)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(status, 200, "{list}");
+    assert!(
+        read_rows(&private_path(&f, A))
+            .iter()
+            .all(|r| r["id"] != "chatgpt-oauth"),
+        "no ghost row: the token row was read again under the broker's fence"
+    );
+    // Without a disconnect in between the heal still happens.
+    store_tokens(&db, A, "connected");
+    assert_eq!(
+        call(f.addr, "GET", "/api/providers", ADMIN, "").await.0,
+        200
+    );
+    assert_eq!(read_rows(&private_path(&f, A)).len(), 1);
+}
+
+#[tokio::test]
+async fn l4_without_the_credential_keys_nothing_that_holds_a_stored_key_changes() {
+    let d = tempfile::tempdir().unwrap();
+    let _db = seed(d.path());
+    let f = front(d.path(), "0").await;
+    write_rows(
+        &private_path(&f, A),
+        &serde_json::json!([
+            {"id":"keyed","label":"Keyed","baseUrl":"http://127.0.0.1:2/v1","apiKey":seal_v1("sk-keyed-0000111122", 1),"shared":false},
+            {"id":"bare","label":"Bare","baseUrl":"http://127.0.0.1:3/v1","apiKey":"","shared":false},
+        ]),
+    );
+    let before = std::fs::read(private_path(&f, A)).unwrap();
+    key_file_set_aside(d.path());
+    let unavailable = (
+        503,
+        j(r#"{"error":"The credential store is unavailable. Try again shortly."}"#),
+    );
+    // Moving the keyed row to another address would have carried its ciphertext there unchecked.
+    assert_eq!(
+        call(
+            f.addr,
+            "PUT",
+            "/api/providers/keyed",
+            ADMIN,
+            r#"{"baseUrl":"http://127.0.0.1:99/v1"}"#
+        )
+        .await,
+        unavailable
+    );
+    assert_eq!(
+        call(
+            f.addr,
+            "PUT",
+            "/api/providers/keyed",
+            ADMIN,
+            r#"{"label":"Renamed"}"#
+        )
+        .await,
+        unavailable
+    );
+    assert_eq!(
+        call(f.addr, "DELETE", "/api/providers/keyed", ADMIN, "").await,
+        unavailable
+    );
+    assert_eq!(
+        call(
+            f.addr,
+            "POST",
+            "/api/providers",
+            ADMIN,
+            r#"{"label":"New","baseUrl":"http://127.0.0.1:4/v1","apiKey":"sk-new-0000111122"}"#
+        )
+        .await,
+        unavailable
+    );
+    assert_eq!(
+        std::fs::read(private_path(&f, A)).unwrap(),
+        before,
+        "nothing was written"
+    );
+    // A row with no stored key, and a new row without one, need no keys.
+    assert_eq!(
+        call(
+            f.addr,
+            "PUT",
+            "/api/providers/bare",
+            ADMIN,
+            r#"{"label":"Bare 2"}"#
+        )
+        .await
+        .0,
+        200
+    );
+    assert_eq!(
+        call(
+            f.addr,
+            "POST",
+            "/api/providers",
+            ADMIN,
+            r#"{"label":"Keyless","baseUrl":"http://127.0.0.1:4/v1"}"#
+        )
+        .await
+        .0,
+        200
+    );
+    assert_eq!(
+        call(f.addr, "DELETE", "/api/providers/bare", ADMIN, "")
+            .await
+            .0,
+        200
+    );
+    // With the keys back the same edit is an ordinary one (and the origin rule holds again).
+    key_file_restored(d.path());
+    assert_eq!(
+        call(
+            f.addr,
+            "PUT",
+            "/api/providers/keyed",
+            ADMIN,
+            r#"{"baseUrl":"http://127.0.0.1:99/v1"}"#
+        )
+        .await,
+        (
+            400,
+            j(
+                r#"{"error":"Enter the API key again when moving a provider to a different address."}"#
+            )
+        )
+    );
+    assert_eq!(
+        call(
+            f.addr,
+            "PUT",
+            "/api/providers/keyed",
+            ADMIN,
+            r#"{"label":"Renamed"}"#
+        )
+        .await
+        .0,
+        200
+    );
+}
+
+/// Rows of one reseal fixture: the current key, the previous key, plaintext, a key nobody has, and
+/// an account-bound value.
+fn reseal_rows(prefix: &str, n: u8) -> serde_json::Value {
+    serde_json::json!([
+        {"id":"cur","label":"Cur","baseUrl":"http://127.0.0.1:1","apiKey":seal_v1(&format!("{prefix}-cur-secret"), n),"shared":false},
+        {"id":"old","label":"Old","baseUrl":"http://127.0.0.1:2","apiKey":seal_with(&PREVIOUS_KEY, &format!("{prefix}-old-secret"), n + 1),"shared":false},
+        {"id":"plain","label":"Plain","baseUrl":"http://127.0.0.1:3","apiKey":format!("{prefix}-plain-secret"),"shared":false},
+        {"id":"lost","label":"Lost","baseUrl":"http://127.0.0.1:4","apiKey":seal_with(&LOST_KEY, &format!("{prefix}-lost-secret"), n + 2),"shared":false},
+        {"id":"bound","label":"Bound","baseUrl":"http://127.0.0.1:5","apiKey":secret_envelope::seal(&KEY, &[n + 3; 12], b"bound-secret", Some(A.as_bytes())).unwrap(),"shared":false},
+        {"id":"none","label":"None","baseUrl":"http://127.0.0.1:6","apiKey":"","shared":false},
+    ])
+}
+
+fn open_with(keys: &[&[u8; 32]], value: &str) -> Option<String> {
+    let units: Vec<u16> = value.encode_utf16().collect();
+    keys.iter().find_map(|k| {
+        secret_envelope::open(*k, None, &units, None)
+            .ok()
+            .map(|(_, p)| String::from_utf8(p.to_vec()).unwrap())
+    })
+}
+
+#[tokio::test]
+async fn m1_the_front_reseals_every_provider_file_in_one_locked_pass() {
+    let d = tempfile::tempdir().unwrap();
+    let _db = seed(d.path());
+    std::fs::write(d.path().join("secrets.key.previous"), PREVIOUS_KEY).unwrap();
+    let f = front(d.path(), "0").await;
+    write_rows(&shared_path(&f), &reseal_rows("shared", 10));
+    write_rows(&private_path(&f, A), &reseal_rows("private", 20));
+    let lost_before = read_rows(&private_path(&f, A))[3]["apiKey"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let cur_before = read_rows(&private_path(&f, A))[0]["apiKey"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let (status, report) = store(f.store, "providers/reseal", r#"{"scope":"all"}"#).await;
+    assert_eq!(status, 200, "{report}");
+    assert_eq!(report["ok"], true);
+    let counts = |c: u64, r: u64, u: u64, e: u64, x: u64| {
+        j(&format!(
+            r#"{{"current":{c},"rotated":{r},"upgraded":{u},"empty":{e},"failed":{x}}}"#
+        ))
+    };
+    // cur is current, old rotated, plain upgraded, lost and bound failed; `none` is not a row.
+    assert_eq!(report["tables"]["shared_providers"], counts(1, 1, 1, 0, 2));
+    assert_eq!(
+        report["tables"][format!("user_providers:{A}")],
+        counts(1, 1, 1, 0, 2)
+    );
+    assert!(
+        report["tables"]
+            .get(format!("user_providers:{B}"))
+            .is_none(),
+        "an account with no file is not a table"
+    );
+    let failures = report["failures"].as_array().unwrap();
+    assert_eq!(failures.len(), 4);
+    assert!(failures
+        .iter()
+        .any(|x| x["table"] == format!("user_providers:{A}") && x["ref"] == 3));
+    assert!(failures
+        .iter()
+        .any(|x| x["table"] == "shared_providers" && x["ref"] == 4));
+    // Nothing secret is in the answer.
+    let text = report.to_string();
+    for needle in ["secret", "enc:v", "sk-"] {
+        assert!(!text.contains(needle), "{needle} in {text}");
+    }
+    // The files: every key opens with the current key alone, except those nobody could open, which
+    // are exactly as they were; a key that was already current is byte for byte the same.
+    for rows in [read_rows(&shared_path(&f)), read_rows(&private_path(&f, A))] {
+        let prefix = if rows[0]["apiKey"] == seal_v1("shared-cur-secret", 10) {
+            "shared"
+        } else {
+            "private"
+        };
+        for (at, id) in ["cur", "old", "plain"].iter().enumerate() {
+            let stored = rows[at]["apiKey"].as_str().unwrap();
+            assert!(stored.starts_with("enc:v1:"), "{id}");
+            assert_eq!(
+                open_with(&[&KEY], stored).as_deref(),
+                Some(format!("{prefix}-{id}-secret").as_str()),
+                "{id}"
+            );
+        }
+        assert_eq!(rows[5]["apiKey"], "");
+        assert_eq!(rows[1]["label"], "Old", "the rest of the row is as it was");
+    }
+    let rows = read_rows(&private_path(&f, A));
+    assert_eq!(rows[0]["apiKey"], cur_before.as_str());
+    assert_eq!(rows[3]["apiKey"], lost_before.as_str());
+    // A second pass has nothing to do and writes nothing.
+    let bytes = std::fs::read(private_path(&f, A)).unwrap();
+    let (_, again) = store(f.store, "providers/reseal", r#"{"scope":"user"}"#).await;
+    assert_eq!(
+        again["tables"][format!("user_providers:{A}")],
+        counts(3, 0, 0, 0, 2)
+    );
+    assert!(again["tables"].get("shared_providers").is_none());
+    assert_eq!(std::fs::read(private_path(&f, A)).unwrap(), bytes);
+    let (_, one) = store(
+        f.store,
+        "providers/reseal",
+        &format!(r#"{{"scope":"user","user":"{A}"}}"#),
+    )
+    .await;
+    assert_eq!(one["tables"].as_object().unwrap().len(), 1);
+    let (_, shared) = store(f.store, "providers/reseal", r#"{"scope":"shared"}"#).await;
+    assert_eq!(shared["tables"].as_object().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn m1_the_reseal_refuses_what_it_should_and_never_overwrites_a_damaged_file() {
+    let d = tempfile::tempdir().unwrap();
+    let _db = seed(d.path());
+    let f = front(d.path(), "0").await;
+    // The secret, the shape, the scope.
+    let mut s = TcpStream::connect(f.store).await.unwrap();
+    s.write_all(b"POST /v1/providers/reseal HTTP/1.1\r\nhost: store\r\nconnection: close\r\ncontent-length: 15\r\nx-noevia-store-token: wrong-token-0123456789abcdef0123\r\n\r\n{\"scope\":\"all\"}")
+        .await
+        .unwrap();
+    let mut out = String::new();
+    let _ = s.read_to_string(&mut out).await;
+    assert!(out.starts_with("HTTP/1.1 401"), "{out}");
+    for (body, status) in [
+        ("{}", 400),
+        (r#"{"scope":"everything"}"#, 400),
+        (r#"{"scope":"all","user":"x"}"#, 400),
+        (r#"{"scope":"shared","user":"x"}"#, 400),
+        ("[1]", 400),
+        ("nope", 400),
+    ] {
+        assert_eq!(
+            store(f.store, "providers/reseal", body).await.0,
+            status,
+            "{body}"
+        );
+    }
+    // Without credential keys: 503 and nothing touched.
+    write_rows(&private_path(&f, A), &reseal_rows("private", 20));
+    let before = std::fs::read(private_path(&f, A)).unwrap();
+    key_file_set_aside(d.path());
+    assert_eq!(
+        store(f.store, "providers/reseal", r#"{"scope":"all"}"#).await,
+        (503, j(r#"{"error":"credential store unavailable"}"#))
+    );
+    key_file_restored(d.path());
+    assert_eq!(std::fs::read(private_path(&f, A)).unwrap(), before);
+    // A damaged file is a failed table; it is not rewritten, and the other file is still done.
+    std::fs::write(private_path(&f, B), "{oops").unwrap();
+    write_rows(&shared_path(&f), &reseal_rows("shared", 10));
+    let (status, report) = store(f.store, "providers/reseal", r#"{"scope":"all"}"#).await;
+    assert_eq!(status, 200, "{report}");
+    assert_eq!(report["tables"][format!("user_providers:{B}")]["failed"], 1);
+    assert!(report["failures"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|x| x["table"] == format!("user_providers:{B}") && x["ref"].is_null()));
+    assert_eq!(
+        std::fs::read_to_string(private_path(&f, B)).unwrap(),
+        "{oops"
+    );
+    assert_eq!(report["tables"]["shared_providers"]["upgraded"], 1);
+}
+
+#[tokio::test]
+async fn m1_a_delete_interleaved_with_the_reseal_corrupts_no_row() {
+    let d = tempfile::tempdir().unwrap();
+    let _db = seed(d.path());
+    std::fs::write(d.path().join("secrets.key.previous"), PREVIOUS_KEY).unwrap();
+    let f = front(d.path(), "0").await;
+    // Two rows under the previous key: a rewrite by position after a delete would put row a's key
+    // on row b (sent to b's address), or bring a back.
+    write_rows(
+        &private_path(&f, A),
+        &serde_json::json!([
+            {"id":"a","label":"A","baseUrl":"http://127.0.0.1:1","apiKey":seal_with(&PREVIOUS_KEY, "key-of-row-a-0000", 1),"shared":false},
+            {"id":"b","label":"B","baseUrl":"http://127.0.0.1:2","apiKey":seal_with(&PREVIOUS_KEY, "key-of-row-b-0000", 2),"shared":false},
+        ]),
+    );
+    // Both requests are waiting for the file's lock when it is let go; whichever runs first, the
+    // other runs on what it left.
+    let lock = hold_lock(&private_path(&f, A));
+    let (store_addr, addr) = (f.store, f.addr);
+    let reseal =
+        tokio::spawn(
+            async move { store(store_addr, "providers/reseal", r#"{"scope":"user"}"#).await },
+        );
+    let delete =
+        tokio::spawn(async move { call(addr, "DELETE", "/api/providers/a", ADMIN, "").await });
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    lock.unlock().unwrap();
+    let (rs, report) = reseal.await.unwrap();
+    assert_eq!(rs, 200, "{report}");
+    assert_eq!(delete.await.unwrap(), (200, j(r#"{"ok":true}"#)));
+    let rows = read_rows(&private_path(&f, A));
+    assert_eq!(rows.len(), 1, "a is gone and stays gone");
+    assert_eq!(rows[0]["id"], "b");
+    assert!(rows[0]["apiKey"].as_str().unwrap().starts_with("enc:v1:"));
+    assert_eq!(
+        open_with(&[&KEY], rows[0]["apiKey"].as_str().unwrap()).as_deref(),
+        Some("key-of-row-b-0000"),
+        "row b has its own key, under the current key alone"
+    );
+    assert!(!std::fs::read_to_string(private_path(&f, A))
+        .unwrap()
+        .contains("key-of-row-a"));
+}
+
+#[tokio::test]
+async fn the_front_advertises_the_reseal_beside_the_registry() {
+    let features = noevia_server::FEATURES;
+    assert!(features.contains(&"rust-providers"));
+    assert!(features.contains(&"rust-providers-reseal"));
+}

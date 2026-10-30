@@ -1059,6 +1059,30 @@ impl Broker {
         }
     }
 
+    /// Adds the account's ChatGPT provider row if its token row still exists, as one step under the
+    /// connect/disconnect fence: `true` when the token row exists (the provider row is there now),
+    /// `false` when it does not (nothing is written). The listing heals a sign-in whose row was
+    /// not written with it; asking `connection` first and writing after would let a disconnect land
+    /// between the two (its tokens gone, its row not yet) and the listing put the row back.
+    pub async fn ensure_row_for_tokens(&self, app: &Arc<App>, user: &str) -> Result<bool, Fail> {
+        let (a, u) = (Arc::clone(app), user.to_owned());
+        tokio::task::spawn_blocking(move || {
+            let b = a
+                .chatgpt_oauth
+                .as_ref()
+                .ok_or_else(|| auth_error("transient"))?;
+            let _fence = b.fence.lock().unwrap_or_else(|e| e.into_inner());
+            if b.read_row(&a, &u)?.is_none() {
+                return Ok(false);
+            }
+            crate::provider_files::ensure_chatgpt_row(&b.data_dir, &u)
+                .map_err(|_| auth_error("transient"))?;
+            Ok(true)
+        })
+        .await
+        .unwrap_or_else(|_| Err(auth_error("transient")))
+    }
+
     /// Whether the account has a token row (any state): core then lists its ChatGPT provider row.
     pub async fn has_tokens(&self, app: &Arc<App>, user: &str) -> bool {
         matches!(self.row(app, user).await, Ok(Some(_)))

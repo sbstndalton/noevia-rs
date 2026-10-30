@@ -665,6 +665,41 @@ a save could drop a concurrent writer's rows (Node rewrote its whole cached list
 `/api/providers/chatgpt` disconnect and the row delete share one path, so a disconnect cannot leave
 tokens without a row or a re-added row.
 
+### Round 6 review: what the follow-up changed
+
+- **Key rotation goes through the front** (`rust-providers-reseal`; core `rust-providers-reseal.cjs`):
+  the internal store answers `POST /v1/providers/reseal { scope: "user" | "shared" | "all", user? }`
+  (provider_reseal.rs) with one pass per file under the file's own lock (`providers.json.lock`,
+  `shared-providers.json.lock`) and the current and previous key: a key under the previous key is
+  `rotated`, a plaintext one `upgraded`, one already `enc:v1` under the current key `current`; a key
+  no available key opens, an `enc:v2` one or a non-text one is a `failed` row left exactly as it was.
+  The answer is `{ ok, tables, failures }` (`shared_providers`, `user_providers:<id>` to
+  `{ current, rotated, upgraded, empty, failed }`; failures name the table and the row's position,
+  never a key); without credential keys it is 503 `credential store unavailable` and nothing is
+  touched. Core's rotation awaits it before its own table pass and no longer writes either file (it
+  wrote each key back by row position, so a delete in between could put one row's key on another).
+  The shell form of the rotation cannot reach the store (its secret is the web process's alone), so
+  it refuses and says to rotate through the running app (`POST /api/admin/secrets/rotate`). The pair
+  is checked like `rust-providers`: a Core that rotates through the store needs a front with the
+  capability and the reverse.
+- A row in `shared-providers.json` is shared whatever its `shared` flag says (the write goes to that
+  file, so the administrator check follows it there): a member's edit or removal of a flagless row
+  there is 403, and the listing shows `shared: true` for it.
+- A removal clears the caller's project fallbacks whether or not the row was still there, so a
+  removal that went through but could not update the projects (`503 Removed; its projects could not
+  be updated, remove again to finish`) is finished by removing again (the 404 of a gone row now
+  clears them first).
+- Every change makes the account's directory first, with the legacy claim and the second gate the
+  project routes use (`project_routes::ensure_account`): a new account's first provider write no
+  longer answers 503.
+- The listing's heal of a ChatGPT row whose sign-in was saved without it re-reads the token row and
+  writes the row in one step under the broker's fence, so a disconnect that landed in between is
+  not undone.
+- While the credential keys cannot be loaded, creating, editing or removing a row that holds (or
+  would hold) a stored key answers 503 `The credential store is unavailable. Try again shortly.`;
+  an edit used to read the stored key as empty and could move the row to another address with its
+  ciphertext.
+
 ### Round 6: still on Node, and the plan for each
 
 | route(s) | why it stays | plan |
