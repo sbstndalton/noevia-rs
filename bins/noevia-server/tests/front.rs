@@ -287,8 +287,8 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     // moved a project source's three stored reads and a project's create and delete, 85 after its
     // round 3 moved a source file's delete; #2190 rounds 3+4 then moved the storage integration
     // POSTs, the vault-mirror preferences and the provider test: 78; round 5 moved the ChatGPT
-    // device sign-in, its model list and the provider model lists: 76).
-    assert!(node_routes >= 76, "{node_routes} node routes");
+    // device sign-in, its model list and the provider model lists: 73).
+    assert!(node_routes >= 73, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("POST", "/api/ready"),
