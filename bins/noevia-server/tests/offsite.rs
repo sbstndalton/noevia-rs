@@ -3423,11 +3423,7 @@ async fn a_snapshot_that_is_stored_is_copied_to_drive_even_when_retention_hits_t
         );
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
-    let err = run
-        .await
-        .unwrap()
-        .err()
-        .expect("retention hit the deadline");
+    let err = run.await.unwrap().expect_err("retention hit the deadline");
     assert_eq!(err.status, 504, "{}", err.message);
     let st = read_status(&w);
     assert!(
