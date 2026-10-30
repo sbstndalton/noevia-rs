@@ -690,6 +690,56 @@ async fn forgetting_a_deleted_account_revokes_and_removes_only_its_file() {
     );
 }
 
+/// Review L5 (#2191 round 9): a personal sign-in that was starting when the front deleted the account
+/// (so the front's forget found nothing to remove) must not save a token file once Google approves.
+async fn sign_in_while(deleting: bool) -> Option<serde_json::Value> {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let up = upstream().await;
+    install_oauth(&up, "bob@example.test", Duration::ZERO);
+    let f = front(d.path(), &up.base(), &[]).await;
+    // Google is slow to start the sign-in; the code is approved as soon as it is asked about.
+    up.set(|r: &Seen| match r.path.as_str() {
+        "/device/code" => (Duration::from_millis(900), reply("200 OK", r#"{"device_code":"d","user_code":"WXYZ","verification_uri":"https://g.example/device","expires_in":1800,"interval":1}"#).1),
+        "/token" => reply(
+            "200 OK",
+            r#"{"access_token":"a","refresh_token":"rr","expires_in":3600}"#,
+        ),
+        _ => reply("404 Not Found", ""),
+    });
+    let addr = f.addr;
+    let connecting = tokio::spawn(async move { send(addr, "POST", CONNECT, MEMBER, "").await });
+    up.wait_for("/device/code", 1).await;
+    if deleting {
+        // The front deletes the account (the row), then forgets its connection: nothing is saved yet.
+        db.execute("DELETE FROM users WHERE id=?1", [B]).unwrap();
+        let (s, _) = store(
+            f.store,
+            "gdrive/forget",
+            STORE_TOKEN,
+            &format!(r#"{{"user":"{B}"}}"#),
+        )
+        .await;
+        assert_eq!(s, 200);
+    }
+    let _ = connecting.await.unwrap();
+    up.wait_for("/token", 1).await;
+    // The poll that asked has either saved the file or refused to; give it time to do either.
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    read_account_file(d.path(), B)
+}
+
+#[tokio::test]
+async fn a_sign_in_that_finishes_after_the_account_was_deleted_saves_no_file() {
+    // Control: the same sign-in for an account that still exists is saved.
+    let kept = sign_in_while(false).await;
+    assert_eq!(kept.unwrap()["refreshToken"], "rr");
+    assert!(
+        sign_in_while(true).await.is_none(),
+        "no token file for a deleted account"
+    );
+}
+
 #[tokio::test]
 async fn tool_permissions_are_the_fronts_single_write() {
     let d = tempfile::tempdir().unwrap();

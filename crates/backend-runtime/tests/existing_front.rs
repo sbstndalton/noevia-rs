@@ -390,10 +390,23 @@ async fn original_front_auth_history_and_native_execution_share_one_transcript(
         saved.pointer("/projects/0/name").unwrap_or(&Value::Null),
         "Configured natively"
     );
+    // The front saves as Node's workspace does (#1806): the text a source holds inline moves to its file in
+    // project-sources and the entry keeps a pointer, so the evidence is read through the pointer.
+    let entry = saved
+        .pointer("/projects/0/files/0")
+        .ok_or("the source entry")?;
+    assert_eq!(entry.get("content"), None, "{entry}");
+    let reference = entry
+        .get("textRef")
+        .and_then(Value::as_str)
+        .ok_or("the source's textRef")?;
     assert_eq!(
-        saved
-            .pointer("/projects/0/files/0/content")
-            .unwrap_or(&Value::Null),
+        std::fs::read_to_string(
+            user_dir
+                .join("project-sources")
+                .join("project1")
+                .join(format!("{reference}.txt"))
+        )?,
         "attached source evidence"
     );
     let mut project_state: Value =

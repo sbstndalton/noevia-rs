@@ -416,7 +416,13 @@ pub struct Drive {
     publish_lock: Mutex<String>,
     /// The two request budgets in milliseconds ([`QUICK`], [`TRANSFER`]; shortened by tests).
     budgets_ms: [std::sync::atomic::AtomicU64; 2],
+    /// Whether an account still has a row (set by the app; unset means every account does). A
+    /// personal sign-in that finishes for an account the front deleted meanwhile is not saved.
+    account_exists: std::sync::OnceLock<AccountCheck>,
 }
+
+/// See [`Drive::guard_accounts`].
+type AccountCheck = Box<dyn Fn(&str) -> bool + Send + Sync>;
 
 /// What a re-seal of the accounts' token files did, as counts.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -487,7 +493,19 @@ impl Drive {
                 std::sync::atomic::AtomicU64::new(QUICK.as_millis() as u64),
                 std::sync::atomic::AtomicU64::new(TRANSFER.as_millis() as u64),
             ],
+            account_exists: std::sync::OnceLock::new(),
         })
+    }
+
+    /// Tells the broker how to ask whether an account still exists (a deleted account's sign-in that
+    /// was in flight must not leave a token file behind; sbstndalton/noevia#2191 round 9). Set once;
+    /// a check that cannot be answered must say `false`.
+    pub fn guard_accounts(&self, exists: impl Fn(&str) -> bool + Send + Sync + 'static) {
+        let _ = self.account_exists.set(Box::new(exists));
+    }
+
+    fn account_there(&self, id: &str) -> bool {
+        self.account_exists.get().is_none_or(|exists| exists(id))
     }
 
     /// Shortens the request budgets (tests; production keeps 30 s and 300 s).
@@ -1144,6 +1162,17 @@ impl Drive {
             record.push(("owner", JValue::Str(o.to_owned())));
         }
         let record = JValue::obj(record);
+        // The account was deleted while its sign-in was open (the front forgot its slot first): the
+        // approval on Google's page must not bring a token file back for a person who is gone.
+        if let Slot::User(id) = slot {
+            if !self.account_there(id) {
+                self.with_slot(slot, |m| {
+                    m.pending = None;
+                    m.poll_error = None;
+                });
+                return false;
+            }
+        }
         if self.save(slot, &record).is_err() {
             // Core threw out of the poll here and left the sign-in pending; say so instead.
             self.with_slot(slot, |m| {

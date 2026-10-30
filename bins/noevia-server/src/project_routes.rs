@@ -133,6 +133,31 @@ pub enum Route {
         project: String,
         job: String,
     },
+    /// POST /api/projects/{projectId}/config (sbstndalton/noevia#2191 round 9, `rust-project-config`)
+    Config {
+        project: String,
+    },
+    /// GET /api/projects/{projectId}/instruction-skills (round 9)
+    SkillList {
+        project: String,
+    },
+    /// PUT /api/projects/{projectId}/instruction-skills (round 9)
+    SkillSelect {
+        project: String,
+    },
+    /// GET /api/projects/{projectId}/instruction-skills/manifests (round 9)
+    SkillManifests {
+        project: String,
+    },
+    /// GET /api/projects/{projectId}/instruction-skills/manifests/{skillId}/content (round 9)
+    SkillContent {
+        project: String,
+        skill: String,
+    },
+    /// POST /api/projects/{project}/skills/install (round 9)
+    SkillInstall {
+        project: String,
+    },
 }
 
 /// Node's matchers, `^\/api\/projects\/([^/]+)\/assets$`, `...\/assets\/([^/]+)$` and
@@ -226,6 +251,37 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
             Some(Route::SourceJob {
                 project: (*project).to_string(),
                 job: (*job).to_string(),
+            })
+        }
+        // routes/projects.cjs `projCfg` (POST), the instruction-skills block (GET, PUT, the manifests and
+        // a manifest's content, GET) and `skillInstall` (POST): one segment per parameter (round 9).
+        ("POST", [project, "config"]) if !project.is_empty() => Some(Route::Config {
+            project: (*project).to_string(),
+        }),
+        ("GET", [project, "instruction-skills"]) if !project.is_empty() => Some(Route::SkillList {
+            project: (*project).to_string(),
+        }),
+        ("PUT", [project, "instruction-skills"]) if !project.is_empty() => {
+            Some(Route::SkillSelect {
+                project: (*project).to_string(),
+            })
+        }
+        ("GET", [project, "instruction-skills", "manifests"]) if !project.is_empty() => {
+            Some(Route::SkillManifests {
+                project: (*project).to_string(),
+            })
+        }
+        ("GET", [project, "instruction-skills", "manifests", skill, "content"])
+            if !project.is_empty() && !skill.is_empty() =>
+        {
+            Some(Route::SkillContent {
+                project: (*project).to_string(),
+                skill: (*skill).to_string(),
+            })
+        }
+        ("POST", [project, "skills", "install"]) if !project.is_empty() => {
+            Some(Route::SkillInstall {
+                project: (*project).to_string(),
             })
         }
         ("POST", [project, "assets"]) if !project.is_empty() => Some(Route::Upload {
@@ -456,6 +512,11 @@ pub async fn serve(
         Route::SourceSync { .. } if background => Some(crate::legacy_proxy::BODY_CAP as usize),
         Route::SourceSync { .. } => None,
         Route::FolderImportPlan { .. } => Some(server_projects::upload::PLAN_LIMIT),
+        Route::Config { .. } => Some(server_projects::config::BODY_LIMIT),
+        Route::SkillSelect { .. } | Route::SkillInstall { .. } => {
+            Some(server_projects::skill_routes::BODY_LIMIT)
+        }
+        Route::SkillList { .. } | Route::SkillManifests { .. } | Route::SkillContent { .. } => None,
         Route::SourceJob { .. }
         | Route::DeleteProject { .. }
         | Route::One { .. }
@@ -477,6 +538,12 @@ pub async fn serve(
     let name = parts.uri.query().and_then(|q| {
         url::form_urlencoded::parse(q.as_bytes())
             .find(|(k, _)| k == "name")
+            .map(|(_, v)| v.into_owned())
+    });
+    // `url.searchParams.get('version')`: the first `version`, form-decoded.
+    let version = parts.uri.query().and_then(|q| {
+        url::form_urlencoded::parse(q.as_bytes())
+            .find(|(k, _)| k == "version")
             .map(|(_, v)| v.into_owned())
     });
     let query = parts.uri.query().map(str::to_owned);
@@ -505,6 +572,9 @@ pub async fn serve(
                     Route::SourceUpload { .. }
                         | Route::SourceSync { .. }
                         | Route::FolderImportPlan { .. }
+                        | Route::Config { .. }
+                        | Route::SkillSelect { .. }
+                        | Route::SkillInstall { .. }
                 ) =>
             {
                 return reply::error(StatusCode::BAD_REQUEST, "invalid JSON", true)
@@ -571,6 +641,44 @@ pub async fn serve(
         }
         _ => {}
     }
+    // The project configuration and a skill's install (round 9) wait on the engine and the network
+    // with the request still open: each runs as spawned work this handler awaits, so a client that
+    // goes away strands nothing.
+    match &route {
+        Route::Config { project } => {
+            let work = crate::project_config_routes::Config {
+                app: Arc::clone(app),
+                data_dir: data_dir.clone(),
+                user: authn.user.id.clone(),
+                project: project.clone(),
+                body: upload,
+                regate: Regate {
+                    layer: Arc::clone(&regate_layer),
+                    creds: regate_creds.clone(),
+                    path: path.clone(),
+                    now,
+                },
+            };
+            return crate::project_config_routes::config(work).await;
+        }
+        Route::SkillInstall { project } => {
+            let work = crate::project_config_routes::Install {
+                app: Arc::clone(app),
+                data_dir: data_dir.clone(),
+                user: authn.user.id.clone(),
+                project: project.clone(),
+                body: upload,
+                regate: Regate {
+                    layer: Arc::clone(&regate_layer),
+                    creds: regate_creds.clone(),
+                    path: path.clone(),
+                    now,
+                },
+            };
+            return crate::project_config_routes::install(work).await;
+        }
+        _ => {}
+    }
     let method = parts.method.clone();
     // routes/projects.cjs: `authn?.user?.role === 'admin'` (a device token acts as a member).
     let admin = authn.user.role == server_auth::Role::Admin;
@@ -619,6 +727,10 @@ pub async fn serve(
             | Route::Documents { .. }
             | Route::FolderImportPlan { .. }
             | Route::ImportConversations
+            | Route::SkillList { .. }
+            | Route::SkillSelect { .. }
+            | Route::SkillManifests { .. }
+            | Route::SkillContent { .. }
     ) || (matches!(route, Route::One { .. }) && method == "DELETE");
     let done = tokio::task::spawn_blocking(move || {
         if writes {
@@ -747,6 +859,24 @@ pub async fn serve(
                     .is_some_and(|(app, authn)| storage_kind(app, authn).is_some());
                 server_projects::upload::plan(ctx, &project, &b.bytes, b.over, remote)
             }
+            (Route::SkillList { project }, _) => server_projects::skill_routes::list(ctx, &project),
+            (Route::SkillSelect { project }, Some(b)) => {
+                server_projects::skill_routes::select(ctx, &project, &b.bytes, b.over)
+            }
+            (Route::SkillManifests { project }, _) => {
+                let known = lifecycle::Catalogue::read(&data_dir).and_then(|c| c.known);
+                server_projects::skill_routes::manifests(ctx, &project, known.as_deref())
+            }
+            (Route::SkillContent { project, skill }, _) => {
+                let known = lifecycle::Catalogue::read(&data_dir).and_then(|c| c.known);
+                server_projects::skill_routes::content(
+                    ctx,
+                    &project,
+                    &skill,
+                    version.as_deref(),
+                    known.as_deref(),
+                )
+            }
             (Route::DeleteProject { project }, _) => lifecycle::delete(ctx, &project),
             (Route::DeleteFile { project }, Some(b)) => match &file_inputs {
                 Some((app, authn)) => {
@@ -776,9 +906,12 @@ pub async fn serve(
                 | Route::SaveChats { .. }
                 | Route::SaveFreeChats
                 | Route::SaveHistory { .. }
-                | Route::MoveChat { .. },
+                | Route::MoveChat { .. }
+                | Route::SkillSelect { .. },
                 None,
             ) => Reply::internal(),
+            // Answered above (project_config_routes).
+            (Route::Config { .. } | Route::SkillInstall { .. }, _) => Reply::internal(),
             // Answered above (source_job_routes).
             (
                 Route::SourceUpload { .. } | Route::SourceSync { .. } | Route::SourceJob { .. },
@@ -914,6 +1047,31 @@ fn storage_kind(app: &Arc<App>, authn: &server_auth::Identity) -> Option<lifecyc
         Kind::S3 => Some(lifecycle::Storage::S3),
         Kind::WebDav | Kind::Nextcloud => Some(lifecycle::Storage::Dav),
         Kind::Local => None,
+    }
+}
+
+/// The gate once more, for the user the first pass let through: what a route that waits (the engine, the
+/// network) asks right before it writes. The gate only reads the store, so running it twice changes
+/// nothing.
+pub struct Regate {
+    pub layer: Arc<crate::identity::IdentityLayer>,
+    pub creds: server_auth::Creds,
+    pub path: String,
+    pub now: i64,
+}
+
+impl Regate {
+    /// `Err` is the answer to send: the account removed (410) or the gate's own refusal.
+    pub fn again(&self, data_dir: &std::path::Path, user: &str) -> Result<(), Box<Response<Body>>> {
+        regate(
+            &self.layer,
+            &self.creds,
+            &self.path,
+            self.now,
+            data_dir,
+            user,
+        )
+        .map_err(|refused| Box::new(refusal(refused)))
     }
 }
 

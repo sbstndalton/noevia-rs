@@ -31,6 +31,8 @@ pub const DIRECTORY: &str = "/api/plugins/directory";
 
 const REGISTRY: &str = "https://registry.modelcontextprotocol.io";
 const SKILLS: &str = "https://api.github.com/repos/anthropics/skills/contents/skills";
+/// Where one published SKILL.md is fetched from (a project's skill install, round 9).
+const RAW: &str = "https://raw.githubusercontent.com";
 const TTL: Duration = Duration::from_secs(60 * 60);
 const DEADLINE: Duration = Duration::from_secs(8);
 /// A directory listing of 40 servers or one repo's skill folders; 4 MB is far above that (#920).
@@ -47,6 +49,8 @@ pub struct Sources {
     pub skills: String,
     /// `NOEVIA_QA_ALLOW_LOOPBACK_MCP === '1'`.
     pub loopback_mcp: bool,
+    /// The base a published SKILL.md is fetched from, no trailing slash.
+    pub skills_raw: String,
 }
 
 impl Default for Sources {
@@ -55,6 +59,7 @@ impl Default for Sources {
             registry: REGISTRY.into(),
             skills: SKILLS.into(),
             loopback_mcp: false,
+            skills_raw: RAW.into(),
         }
     }
 }
@@ -66,6 +71,9 @@ impl Sources {
             registry: set("NOEVIA_QA_MCP_REGISTRY").unwrap_or_else(|| REGISTRY.into()),
             skills: set("NOEVIA_QA_SKILLS_DIRECTORY").unwrap_or_else(|| SKILLS.into()),
             loopback_mcp: get("NOEVIA_QA_ALLOW_LOOPBACK_MCP").as_deref() == Some("1"),
+            skills_raw: set("NOEVIA_QA_SKILLS_RAW")
+                .map(|v| v.trim_end_matches('/').to_string())
+                .unwrap_or_else(|| RAW.into()),
         }
     }
 }
@@ -109,6 +117,17 @@ pub struct Directory {
 
 #[derive(Debug)]
 pub(crate) struct Failed;
+
+/// Why a published skill could not be fetched.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkillFetch {
+    /// The repository has no SKILL.md of that name (404).
+    Missing,
+    /// More than 32 KiB.
+    TooLarge,
+    /// Any other failure: the network, the deadline, a redirect, a non-public address, a bad status.
+    Unreachable,
+}
 
 impl Directory {
     pub fn new(sources: Sources) -> Self {
@@ -163,6 +182,67 @@ impl Directory {
             bytes.extend_from_slice(&chunk);
         }
         js_json::parse(&String::from_utf8_lossy(&bytes)).map_err(|_| Failed)
+    }
+
+    /// A published skill's SKILL.md (core `fetchPublishedSkill`; `name` was validated by
+    /// [`server_projects::skill_routes::skill_name`]): the fixed raw host over https, no redirect
+    /// (`redirect: 'error'`), an 8 s deadline for the whole exchange, at most 32 KiB of body. The
+    /// host's addresses are looked up here and must all be public (ssrf-policy), and the request is
+    /// pinned to them, so a poisoned answer cannot lead the install into the private network
+    /// ([`vet_skill_target`] decides, with the lookup passed in so it is tested). A QA base
+    /// (`NOEVIA_QA_SKILLS_RAW`, unset in production) changes only one thing: ssrf-policy's QA
+    /// exemption for the literal `127.0.0.1` lets plain http reach it, with no lookup. Any other
+    /// base, from any value of the key, gets the production checks (https, public addresses) or is
+    /// refused (a private literal, a name over http, credentials in the URL).
+    pub async fn fetch_skill(&self, name: &str) -> Result<String, SkillFetch> {
+        let url = format!(
+            "{}/{}",
+            self.sources.skills_raw,
+            server_projects::skill_routes::skill_path(name)
+        );
+        let parsed = url::Url::parse(&url).map_err(|_| SkillFetch::Unreachable)?;
+        // Only a changed base (the QA key, unset in production) may be plain http, and then only to the
+        // literal loopback; every other base goes through the same checks as the fixed host.
+        let qa = self.sources.skills_raw != RAW;
+        let host = parsed
+            .host_str()
+            .ok_or(SkillFetch::Unreachable)?
+            .to_string();
+        let mut builder = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .no_proxy()
+            .timeout(DEADLINE);
+        let pinned = vet_skill_target(&parsed, qa, |name, port| async move {
+            Ok(tokio::net::lookup_host((name.as_str(), port))
+                .await?
+                .collect())
+        })
+        .await?;
+        if let Some(found) = pinned {
+            builder = builder.resolve_to_addrs(&host, &found);
+        }
+        let client = builder.build().map_err(|_| SkillFetch::Unreachable)?;
+        let mut res = client
+            .get(parsed)
+            .header("user-agent", "noevia")
+            .send()
+            .await
+            .map_err(|_| SkillFetch::Unreachable)?;
+        if res.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(SkillFetch::Missing);
+        }
+        if !res.status().is_success() {
+            return Err(SkillFetch::Unreachable);
+        }
+        let cap = server_projects::skill_routes::SKILL_CAP;
+        let mut bytes: Vec<u8> = Vec::new();
+        while let Some(chunk) = res.chunk().await.map_err(|_| SkillFetch::Unreachable)? {
+            if bytes.len() + chunk.len() > cap {
+                return Err(SkillFetch::TooLarge);
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
     }
 
     /// core `load(kind, q)`.
@@ -756,6 +836,49 @@ pub async fn serve(
     }
 }
 
+/// What a skill fetch may connect to (review L3, L4). `Ok(Some(addresses))` is a name whose every
+/// address is public: the request is pinned to them, so a second lookup cannot answer differently.
+/// `Ok(None)` is an IP literal that ssrf-policy accepts as it stands. The refusals, all `Unreachable`:
+/// a URL ssrf-policy refuses for a fetch (credentials, a private or reserved literal, a blocked name);
+/// plain http to anything but the literal loopback `qa` allows; a name that does not resolve in time, to
+/// nothing, or to any non-public address (one private record among public ones is enough).
+async fn vet_skill_target<R, F>(
+    url: &url::Url,
+    qa: bool,
+    resolve: R,
+) -> Result<Option<Vec<std::net::SocketAddr>>, SkillFetch>
+where
+    R: FnOnce(String, u16) -> F,
+    F: std::future::Future<Output = std::io::Result<Vec<std::net::SocketAddr>>>,
+{
+    let accepted = ssrf_policy::check_url(url.as_str(), ssrf_policy::Mode::Fetch, qa)
+        .map_err(|_| SkillFetch::Unreachable)?;
+    match accepted.kind {
+        ssrf_policy::Kind::Ip => {
+            let loopback = qa && accepted.host == "127.0.0.1";
+            if url.scheme() != "https" && !loopback {
+                return Err(SkillFetch::Unreachable);
+            }
+            Ok(None)
+        }
+        ssrf_policy::Kind::Name => {
+            if url.scheme() != "https" {
+                return Err(SkillFetch::Unreachable);
+            }
+            let port = url.port_or_known_default().unwrap_or(443);
+            let found = tokio::time::timeout(DEADLINE, resolve(accepted.host, port))
+                .await
+                .map_err(|_| SkillFetch::Unreachable)?
+                .map_err(|_| SkillFetch::Unreachable)?;
+            let ips: Vec<String> = found.iter().map(|a| a.ip().to_string()).collect();
+            if !ssrf_policy::addresses_public(&ips) {
+                return Err(SkillFetch::Unreachable);
+            }
+            Ok(Some(found))
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
@@ -871,5 +994,110 @@ mod tests {
             text(&with_why(parse(r#"{"id":"x","why":"old","z":1}"#), "new")),
             r#"{"id":"x","why":"new","z":1}"#
         );
+    }
+
+    fn sock(ip: &str) -> std::net::SocketAddr {
+        format!("{ip}:443").parse().unwrap_or_else(|_| {
+            // an IPv6 literal needs brackets
+            format!("[{ip}]:443").parse().unwrap()
+        })
+    }
+
+    /// The target check with a resolver that answers `ips` and counts its calls.
+    async fn vet(
+        url: &str,
+        qa: bool,
+        ips: &[&str],
+    ) -> (Result<Option<Vec<std::net::SocketAddr>>, SkillFetch>, usize) {
+        let asked = std::sync::atomic::AtomicUsize::new(0);
+        let answer: Vec<std::net::SocketAddr> = ips.iter().map(|i| sock(i)).collect();
+        let parsed = url::Url::parse(url).unwrap();
+        let got = vet_skill_target(&parsed, qa, |_, _| {
+            asked.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            async move { Ok(answer) }
+        })
+        .await;
+        (got, asked.load(std::sync::atomic::Ordering::SeqCst))
+    }
+
+    #[tokio::test]
+    async fn the_fixed_host_is_pinned_to_public_addresses_only() {
+        let url = "https://raw.githubusercontent.com/anthropics/skills/main/skills/x/SKILL.md";
+        // Public records: the request is pinned to exactly those.
+        let (got, asked) = vet(url, false, &["185.199.108.133", "185.199.109.133"]).await;
+        assert_eq!(asked, 1);
+        assert_eq!(
+            got.unwrap().unwrap(),
+            vec![sock("185.199.108.133"), sock("185.199.109.133")]
+        );
+        // A private A record (DNS rebinding, a poisoned answer): refused.
+        let (got, asked) = vet(url, false, &["10.0.0.5"]).await;
+        assert_eq!((got, asked), (Err(SkillFetch::Unreachable), 1));
+        // One private record among public ones is enough.
+        let (got, _) = vet(url, false, &["185.199.108.133", "192.168.1.9"]).await;
+        assert_eq!(got, Err(SkillFetch::Unreachable));
+        let (got, _) = vet(url, false, &["185.199.108.133", "127.0.0.1"]).await;
+        assert_eq!(got, Err(SkillFetch::Unreachable));
+        let (got, _) = vet(url, false, &["185.199.108.133", "fd00::1"]).await;
+        assert_eq!(got, Err(SkillFetch::Unreachable));
+        // No records at all.
+        let (got, _) = vet(url, false, &[]).await;
+        assert_eq!(got, Err(SkillFetch::Unreachable));
+    }
+
+    #[tokio::test]
+    async fn a_failing_lookup_is_unreachable() {
+        let url = url::Url::parse("https://raw.githubusercontent.com/x").unwrap();
+        let failed = vet_skill_target(&url, false, |_, _| async {
+            Err(std::io::Error::other("synthetic dns failure"))
+        })
+        .await;
+        assert_eq!(failed, Err(SkillFetch::Unreachable));
+    }
+
+    #[tokio::test]
+    async fn plain_http_and_other_schemes_are_refused_and_never_looked_up() {
+        for url in [
+            "http://raw.githubusercontent.com/x",
+            "ftp://raw.githubusercontent.com/x",
+            "file:///etc/passwd",
+        ] {
+            for qa in [false, true] {
+                let (got, asked) = vet(url, qa, &["185.199.108.133"]).await;
+                assert_eq!(got, Err(SkillFetch::Unreachable), "{url} qa={qa}");
+                assert_eq!(asked, 0, "{url}: no lookup for a refused scheme");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn the_qa_base_reaches_only_the_literal_loopback_over_http() {
+        // The one thing the QA key opens: http to the literal 127.0.0.1, with no lookup and no pin.
+        let (got, asked) = vet("http://127.0.0.1:8123/x/SKILL.md", true, &[]).await;
+        assert_eq!((got, asked), (Ok(None), 0));
+        // Without the QA key the same URL is a private address.
+        let (got, _) = vet("http://127.0.0.1:8123/x", false, &[]).await;
+        assert_eq!(got, Err(SkillFetch::Unreachable));
+        // With it, nothing else private or named is reachable by skipping the checks.
+        for url in [
+            "http://10.0.0.5/x",
+            "http://192.168.1.2/x",
+            "http://169.254.169.254/latest",
+            "http://[::1]/x",
+            "http://localhost:8123/x",
+            "http://metadata.google.internal/x",
+            "http://example.com/x",
+            "http://user:secret@127.0.0.1/x",
+            "https://10.0.0.5/x",
+        ] {
+            let (got, asked) = vet(url, true, &["10.0.0.5"]).await;
+            assert_eq!(got, Err(SkillFetch::Unreachable), "{url}");
+            assert_eq!(asked, 0, "{url}: refused before any lookup");
+        }
+        // A QA base over https to a name still gets the production checks.
+        let (got, asked) = vet("https://skills.example/x", true, &["10.0.0.5"]).await;
+        assert_eq!((got, asked), (Err(SkillFetch::Unreachable), 1));
+        let (got, _) = vet("https://skills.example/x", true, &["185.199.108.133"]).await;
+        assert_eq!(got.unwrap().unwrap(), vec![sock("185.199.108.133")]);
     }
 }

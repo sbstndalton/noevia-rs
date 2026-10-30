@@ -1109,6 +1109,77 @@ async fn an_oauth_sign_in_end_to_end_with_pkce_state_and_a_sealed_token() {
     assert!(audits(&db, "mcp.oauth.%").contains(&"mcp.oauth.disconnect".to_string()));
 }
 
+/// Review L5 (#2191 round 9): nothing ties the credential tables to `users`, so a sign-in or a key
+/// that finishes after the front deleted the account must be refused in its own transaction.
+#[tokio::test]
+async fn a_sign_in_that_finishes_after_the_account_was_deleted_saves_no_token() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let up = upstream().await;
+    let base = up.base();
+    let counts = Arc::new(Counts::default());
+    {
+        let (base, counts) = (base.clone(), Arc::clone(&counts));
+        up.set(move |r: &Seen| {
+            if let Some(answer) = oauth_reply(r, &base, &counts) {
+                return answer;
+            }
+            // /token: slow, so the account can be deleted while the code is being exchanged.
+            let (_, text) = reply(
+                "200 OK",
+                r#"{"access_token":"access-1","refresh_token":"refresh-1","expires_in":3600}"#,
+            );
+            (Duration::from_millis(900), text)
+        });
+    }
+    add_server(&db, "dir-oauth", &format!("{base}/mcp"), true, false, "[]");
+    let f = front(d.path()).await;
+    let a = f.addr;
+    let (st, body) = write(a, "POST", "/api/mcp-oauth/dir-oauth/connect", MEMBER, "").await;
+    assert_eq!(st, 200, "{body}");
+    let state = query(body["signIn"].as_str().unwrap())["state"].clone();
+    let callback = tokio::spawn(async move {
+        raw_text(
+            a,
+            "GET",
+            &format!("/api/mcp-oauth/callback?state={state}&code=c1"),
+            MEMBER,
+            "",
+            b"",
+        )
+        .await
+    });
+    up.wait_for("/token", 1).await;
+    // The front deletes the account (the row first) while the code is in the air.
+    db.execute("DELETE FROM users WHERE id=?1", [B]).unwrap();
+    let (st, _, page) = callback.await.unwrap();
+    // The callback answers every failure as its 400 page; the message is what says why.
+    assert_eq!(st, 400, "{page}");
+    assert!(page.contains("This account no longer exists."), "{page}");
+    assert_eq!(
+        token_row(&db, B, "dir-oauth"),
+        None,
+        "no token row for a deleted account"
+    );
+}
+
+#[tokio::test]
+async fn a_key_saved_after_the_account_was_deleted_is_refused_and_one_for_a_live_account_is_kept() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let f = front(d.path()).await;
+    let mcp = f._app.mcp.as_ref().unwrap();
+    let headers = vec![("Authorization".to_string(), "Bearer synthetic".to_string())];
+    // Control: an account with a row keeps its key.
+    mcp.store_key(&f._app, A, "dir-key", &headers).unwrap();
+    assert!(key_row(&db, A, "dir-key").is_some());
+    // The front deleted B (the row) while its key was being checked.
+    db.execute("DELETE FROM users WHERE id=?1", [B]).unwrap();
+    let refused = mcp.store_key(&f._app, B, "dir-key", &headers).unwrap_err();
+    assert_eq!(refused.status, 410);
+    assert_eq!(key_row(&db, B, "dir-key"), None);
+}
+
 #[tokio::test]
 async fn a_refresh_is_single_flight_rotates_the_token_and_never_double_spends() {
     let d = tempfile::tempdir().unwrap();
@@ -1961,6 +2032,72 @@ async fn the_start_sweep_removes_what_deleted_accounts_and_servers_left_and_publ
         (after.ino(), after.mtime_nsec())
     );
     assert_eq!(after.mode() & 0o777, 0o600);
+}
+
+/// sbstndalton/noevia#2190, #2191 round 9: an administrator's deletion of an account asks the MCP and the
+/// ChatGPT brokers to forget it, and nothing of another account goes with it.
+#[tokio::test]
+async fn deleting_an_account_forgets_its_mcp_sign_ins_and_keys_and_its_chatgpt_tokens() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    db.execute_batch(
+        "CREATE TABLE IF NOT EXISTS chatgpt_oauth_tokens(user_id TEXT PRIMARY KEY, data_enc TEXT NOT NULL,
+         state TEXT NOT NULL DEFAULT 'connected', updated_at INTEGER NOT NULL);",
+    )
+    .unwrap();
+    add_server(
+        &db,
+        "dir-oauth",
+        "http://127.0.0.1:9/mcp",
+        true,
+        true,
+        DECLARED,
+    );
+    for who in [A, B] {
+        store_tokens(&db, who, "dir-oauth", "x", Some("y"), None, 5);
+        db.execute(
+            "INSERT INTO directory_mcp_user_keys VALUES(?1,'dir-oauth',?2,1)",
+            (who, seal(KEYS_JSON, Some(who), 6)),
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO chatgpt_oauth_tokens(user_id,data_enc,state,updated_at) VALUES(?1,'enc:v2:x','connected',1)",
+            [who],
+        )
+        .unwrap();
+    }
+    let f = front(d.path()).await;
+    let (st, body) = write(
+        f.addr,
+        "DELETE",
+        &format!("/api/admin/users/{B}"),
+        ADMIN,
+        r#"{"username":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}"#,
+    )
+    .await;
+    assert_eq!((st, body["ok"].as_bool()), (200, Some(true)), "{body}");
+    assert_eq!(token_row(&db, B, "dir-oauth"), None, "its sign-ins went");
+    assert_eq!(key_row(&db, B, "dir-oauth"), None, "its keys went");
+    let chatgpt = |who: &str| -> i64 {
+        db.query_row(
+            "SELECT count(*) FROM chatgpt_oauth_tokens WHERE user_id=?1",
+            [who],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+    assert_eq!(chatgpt(B), 0, "its ChatGPT tokens went");
+    assert!(
+        token_row(&db, A, "dir-oauth").is_some(),
+        "another account's sign-in stays"
+    );
+    assert!(
+        key_row(&db, A, "dir-oauth").is_some(),
+        "another account's key stays"
+    );
+    assert_eq!(chatgpt(A), 1);
+    assert!(!d.path().join("users").join(B).exists());
+    assert_eq!(audits(&db, "user.delete"), vec!["user.delete".to_string()]);
 }
 
 #[tokio::test]

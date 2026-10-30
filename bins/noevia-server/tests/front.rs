@@ -298,9 +298,10 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     // and GET /api/workspace: 49; #2206 moved seven Diary entries (`/api/diary`, the connector endpoint,
     // the context, the exchanges, the storage status and the two connector-credential routes; the local
     // exchange stays Node's): 42; #2202 round 2 moved the six admin directory paths, the permitted view and
-    // the connectors list with the Nextcloud permissions: 33; #2210 moved the preset reload's POST, the
-    // evidence read and the model-card import: 30).
-    assert!(node_routes >= 30, "{node_routes} node routes");
+    // the connectors list with the Nextcloud permissions: 33; #2191 round 9 moved a project's config, its two
+    // instruction-skill paths and the manifests, the skill install and an account's deletion: 28; #2210 moved
+    // the preset reload's POST, the evidence read and the model-card import: 25).
+    assert!(node_routes >= 25, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("POST", "/api/ready"),
@@ -395,8 +396,9 @@ async fn headers_cookies_and_forwarded_for() {
         let (res, _c) = call(
             front,
             "POST",
-            // A route Node answers (POST /api/projects is the front's since #2191 round 2).
-            "/api/projects/p1/config?x=1",
+            // A route Node answers (POST /api/projects is the front's since #2191 round 2, a project's
+            // config since round 9; the browser route is chat-bound and stays).
+            "/api/projects/p1/browser?x=1",
             &[
                 ("x-forwarded-for", "6.6.6.6"),
                 ("x-noevia-client-ip", "7.7.7.7"),
@@ -418,7 +420,7 @@ async fn headers_cookies_and_forwarded_for() {
         assert_eq!(cookies, vec!["a=1; Path=/; HttpOnly", "b=2; Path=/"]);
         assert!(res.headers().get("x-hop").is_none());
         let echo: serde_json::Value = serde_json::from_str(&text(res).await).unwrap();
-        assert_eq!(echo["path"], "/api/projects/p1/config");
+        assert_eq!(echo["path"], "/api/projects/p1/browser");
         assert_eq!(echo["bodyLen"], 7);
         let h = &echo["headers"];
         assert_eq!(h["host"][0], "front.test");

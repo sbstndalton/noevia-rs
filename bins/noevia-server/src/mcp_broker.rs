@@ -1544,8 +1544,25 @@ impl Mcp {
                     return Err(fail("This server was removed while you were signing in.", 404));
                 }
                 let w = a.writes.writer().map_err(|_| auth_error("transient"))?;
-                w.write(|tx| tx.mcp_save_token(RustMcpCredentials::owned(), &u, &s, &sealed, now_ms()))
+                // In the save's own transaction: an account the front deleted while the code was being
+                // exchanged is not given a token row back (nothing ties the table to `users`), and one
+                // deleted just after has this row removed by its cleanup, which runs after its commit.
+                let saved = w
+                    .write(|tx| {
+                        let there = tx.reader().row(
+                            "SELECT 1 FROM users WHERE id=?1",
+                            [&u],
+                            |row| row.get::<_, i64>(0),
+                        )?;
+                        if there.is_none() {
+                            return Ok(0);
+                        }
+                        tx.mcp_save_token(RustMcpCredentials::owned(), &u, &s, &sealed, now_ms())
+                    })
                     .map_err(|_| auth_error("transient"))?;
+                if saved == 0 {
+                    return Err(fail("This account no longer exists.", 410));
+                }
                 m.audit(a, Some(&u), "mcp.oauth.connect", &JValue::obj([("serverId", JValue::Str(s.clone()))]));
                 m.publish(a);
                 Ok(())
@@ -2325,8 +2342,24 @@ impl Mcp {
         );
         let sealed = self.seal(&plain, Some(user))?;
         let w = app.writes.writer().map_err(|_| auth_error("transient"))?;
-        w.write(|tx| tx.mcp_save_key(RustMcpCredentials::owned(), user, server, &sealed, now_ms()))
+        // In the save's own transaction, like the sign-in's token: nothing ties the table to `users`, and an
+        // account the front deleted while its key was being checked must not get a row back.
+        let saved = w
+            .write(|tx| {
+                let there = tx
+                    .reader()
+                    .row("SELECT 1 FROM users WHERE id=?1", [user], |row| {
+                        row.get::<_, i64>(0)
+                    })?;
+                if there.is_none() {
+                    return Ok(0);
+                }
+                tx.mcp_save_key(RustMcpCredentials::owned(), user, server, &sealed, now_ms())
+            })
             .map_err(|_| auth_error("transient"))?;
+        if saved == 0 {
+            return Err(fail("This account no longer exists.", 410));
+        }
         Ok(())
     }
 

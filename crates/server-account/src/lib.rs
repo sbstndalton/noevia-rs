@@ -23,6 +23,7 @@ pub mod unicode;
 pub mod util;
 
 mod account;
+pub mod delete;
 mod device;
 pub mod feature_context;
 pub mod features;
