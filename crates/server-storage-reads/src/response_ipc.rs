@@ -1,5 +1,5 @@
 //! Separate M4HTTP01 response; BODY echo frames are never reinterpreted implicitly.
-use crate::{isolated::Error, protocol::TransportFailure, LIST_BYTES};
+use crate::{isolated::Error, protocol::TransportFailure, MAX_FRAME};
 pub const TAG: &[u8; 8] = b"M4HTTP01";
 pub const METADATA: usize = 18;
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -91,7 +91,7 @@ fn combination(phase: Phase, failure: TransportFailure) -> bool {
     }
 }
 pub fn encode(reply: Reply<'_>, cap: usize) -> Result<Vec<u8>, Error> {
-    if cap > LIST_BYTES {
+    if cap > MAX_FRAME {
         return Err(Error::Output);
     }
     let (kind, phase, status, code, flags, payload) = match reply {
@@ -133,7 +133,7 @@ pub fn encode(reply: Reply<'_>, cap: usize) -> Result<Vec<u8>, Error> {
     Ok(bytes)
 }
 fn metadata(bytes: &[u8], cap: usize) -> Result<usize, Error> {
-    if cap > LIST_BYTES || bytes.get(..8) != Some(TAG.as_slice()) {
+    if cap > MAX_FRAME || bytes.get(..8) != Some(TAG.as_slice()) {
         return Err(Error::Protocol);
     }
     let size: [u8; 4] = bytes
@@ -211,7 +211,7 @@ pub struct Frame {
 }
 impl Frame {
     pub fn new(cap: usize) -> Result<Self, Error> {
-        if cap > LIST_BYTES {
+        if cap > MAX_FRAME {
             return Err(Error::Output);
         }
         let mut bytes = Vec::new();

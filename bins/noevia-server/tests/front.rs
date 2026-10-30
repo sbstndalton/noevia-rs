@@ -255,13 +255,7 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
         match r.owner_under(Switches::default()) {
             Owner::Rust => {
                 let method = r.methods.first().copied().unwrap_or("GET");
-                // The upload's and the sync's POST are the front's as the background start
-                // (sbstndalton/noevia#2191 round 6); without `background=1` they are Node's.
-                let path = if r.path.ends_with("/upload") || r.path.ends_with("/sources/sync") {
-                    format!("{path}?background=1")
-                } else {
-                    path.clone()
-                };
+                // The upload, the sync and the folder plan are the front's whole (round 8).
                 let (res, _c) = call(front, method, &path, &[], b"").await;
                 assert!(
                     res.headers().get("x-upstream").is_none(),
@@ -295,9 +289,11 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     // round 3 moved a source file's delete; #2190 rounds 3+4 then moved the storage integration
     // POSTs, the vault-mirror preferences and the provider test: 78; #2191 round 4 moved the
     // conversation import and round 6 the upload's and the sync's POST, the background start: 75;
-    // #2190 round 5 moved the ChatGPT device sign-in, its model list and the provider model
-    // lists: 70; round 6 moved the provider registry's list and its one-row route: 68; round 7 the
-    // off-site backup's seven routes and the four Google Drive connector writes: 57).
+    // round 8 made the upload and the sync the front's whole and added the folder plan, which was never a
+    // listed Node route: still 75; #2190 round 5 moved the ChatGPT device sign-in, its model list and the
+    // provider model lists: 70; round 6 moved the provider registry's list and its one-row route: 68; round 7
+    // the off-site backup's seven routes (its eighth path, new-store, was never a Node route) and the four
+    // Google Drive connector writes: 57).
     assert!(node_routes >= 57, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
@@ -466,19 +462,6 @@ async fn request_body_cap() {
         "/api/chat",
         "/api/import",
         noevia_server::legacy_proxy::BODY_CAP,
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn upload_request_body_cap() {
-    check_request_body_cap(
-        "upload-cap",
-        // The synchronous upload is Node's, behind this cap; the background start is the front's
-        // since sbstndalton/noevia#2191 round 6 (tests/source_jobs.rs), gated before its body.
-        "/api/projects/synthetic/upload",
-        "/api/projects/synthetic/upload",
-        noevia_server::legacy_proxy::UPLOAD_BODY_CAP,
     )
     .await;
 }

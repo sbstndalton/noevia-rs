@@ -12,7 +12,7 @@
 //! The operation itself is the bin's (noevia-server source_job_routes.rs runs it); this module is
 //! the store side, with no network code.
 use crate::source_jobs::{self as jobs, Error};
-use crate::{js, originals, Ctx, Reply};
+use crate::{js, originals, Body, Ctx, Reply};
 use serde_json::Value;
 use std::collections::BTreeSet;
 use std::sync::Mutex;
@@ -124,14 +124,17 @@ pub struct Started {
     pub poll: String,
 }
 
-/// The background start up to the job (routes/projects.cjs): the project (404), the body cap
-/// (`over`: http.cjs `readBody`'s 413), then the job, persisted created+started, within the
-/// store's two-active cap.
-pub fn begin(ctx: Ctx<'_>, owner: &Owner, raw: &str, over: bool) -> Result<Started, Reply> {
+/// The background start up to the job (routes/projects.cjs): the project (404), then `check` (core's
+/// worker checked, before it accepted, the storage hold of an automatic sync and the body: 413, 400
+/// `invalid JSON`), then the job, persisted created+started, within the store's two-active cap.
+pub fn begin_with(
+    ctx: Ctx<'_>,
+    owner: &Owner,
+    raw: &str,
+    check: impl FnOnce() -> Result<(), Reply>,
+) -> Result<Started, Reply> {
     let project = project_of(ctx, raw)?;
-    if over {
-        return Err(Reply::error(413, "Request exceeds size limit"));
-    }
+    check()?;
     ensure_recovered(ctx, owner).map_err(|e| store_reply(&e))?;
     let request = jobs::new_id();
     let (id, run) = jobs::start(
@@ -157,6 +160,17 @@ pub fn begin(ctx: Ctx<'_>, owner: &Owner, raw: &str, over: bool) -> Result<Start
         return Err(Reply::internal());
     };
     Ok(started(format!("/api/projects/{encoded}/source-jobs/{id}")))
+}
+
+/// [`begin_with`] with only the body cap checked (`over`: http.cjs `readBody`'s 413).
+pub fn begin(ctx: Ctx<'_>, owner: &Owner, raw: &str, over: bool) -> Result<Started, Reply> {
+    begin_with(ctx, owner, raw, || {
+        if over {
+            Err(Reply::error(413, "Request exceeds size limit"))
+        } else {
+            Ok(())
+        }
+    })
 }
 
 /// The 202 answer.
@@ -228,6 +242,26 @@ pub enum Outcome {
     /// `job.failed` with `{ status }` and the message (`None`: core's default).
     Failed(u16, Option<&'static str>),
 }
+
+/// How long one operation may run before its job is ended as failed (the front's own bound, in place of
+/// the removed worker's 5 minute accept bound, so that a hung operation cannot hold one of the two slots
+/// for the store's 6 hours): 2 hours for a folder sync, which reads and extracts every file of a project, 30
+/// minutes for an upload.
+pub const SYNC_BOUND: std::time::Duration = std::time::Duration::from_secs(2 * 60 * 60);
+pub const UPLOAD_BOUND: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+
+/// The bound of an upload (`true`) or a sync.
+pub fn bound(upload: bool) -> std::time::Duration {
+    if upload {
+        UPLOAD_BOUND
+    } else {
+        SYNC_BOUND
+    }
+}
+
+/// What a job that passed its bound says.
+pub const OVER_BOUND: &str =
+    "Processing took too long and was stopped; refresh or re-upload to retry.";
 
 /// The message of a job whose worker went away before its result (core's interrupted wording).
 pub const RESTARTED: &str =
@@ -345,98 +379,49 @@ pub fn poll(ctx: Ctx<'_>, owner: &Owner, raw: &str, job: &str) -> Reply {
     }
 }
 
-/// One NDJSON line of the worker's answer (core routes/projects.cjs, `X-Noevia-Source-Work`).
-#[derive(Debug, Clone, PartialEq)]
-pub enum Line {
-    Accepted,
-    Stage(String),
-    Done(Value),
-    Failed(u16),
-    /// Anything else: the worker's answer cannot be trusted any further.
-    Invalid,
-}
-
-/// Parses one line (JSON as JSON.stringify writes it, lone surrogates included).
-pub fn parse_line(raw: &[u8]) -> Line {
-    let Ok(v) = jobs::parse_js(raw) else {
-        return Line::Invalid;
-    };
-    let Value::Object(map) = &v else {
-        return Line::Invalid;
-    };
-    if map.len() != 1 {
-        return Line::Invalid;
-    }
-    if map.get("accepted") == Some(&Value::Bool(true)) {
-        return Line::Accepted;
-    }
-    if let Some(Value::String(s)) = map.get("stage") {
-        return Line::Stage(s.clone());
-    }
-    if let Some(done @ Value::Object(d)) = map.get("done") {
-        if d.get("status").is_some_and(Value::is_number) {
-            return Line::Done(done.clone());
-        }
-    }
-    if let Some(Value::Object(f)) = map.get("failed") {
-        let status = f
-            .get("status")
-            .and_then(Value::as_u64)
-            .and_then(|s| u16::try_from(s).ok())
-            .filter(|s| (100..=599).contains(s))
-            .unwrap_or(500);
-        return Line::Failed(status);
-    }
-    Line::Invalid
-}
-
-/// Folds the worker's lines after `accepted` into progress writes and the outcome, as core's
-/// source-jobs.cjs `start` did: once a progress write fails, no further progress is written and
-/// the job ends failed with 503 whatever the operation answered; a stream that ends (or turns
-/// unreadable) before its result is the worker gone ([`RESTARTED`]).
+/// Counts a running operation's progress steps (`n` from 1) and remembers a write that failed: once
+/// one has, no clean completion follows it (core's source-jobs.cjs `start`): the job ends failed with 503
+/// whatever the operation answered.
 #[derive(Debug, Default)]
-pub struct Fold {
+pub struct Tracker {
     n: u64,
-    progress_failed: bool,
+    failed: bool,
 }
 
-/// What [`Fold::line`] asks the caller to do.
-#[derive(Debug, PartialEq)]
-pub enum Step {
-    /// Write this progress step (`n`), then report back with [`Fold::progress_result`].
-    Progress(String, u64),
-    Continue,
-    Finish(Outcome),
-}
-
-impl Fold {
-    pub fn line(&mut self, line: Option<Line>) -> Step {
-        match line {
-            Some(Line::Stage(stage)) if !self.progress_failed => {
-                self.n += 1;
-                Step::Progress(stage, self.n)
-            }
-            Some(Line::Stage(_)) => Step::Continue,
-            Some(Line::Done(v)) if !self.progress_failed => Step::Finish(Outcome::Done(v)),
-            Some(Line::Done(_)) => Step::Finish(Outcome::Failed(503, None)),
-            Some(Line::Failed(status)) => Step::Finish(Outcome::Failed(
-                if self.progress_failed { 503 } else { status },
-                None,
-            )),
-            Some(Line::Accepted | Line::Invalid) | None => {
-                Step::Finish(Outcome::Failed(503, Some(RESTARTED)))
-            }
-        }
+impl Tracker {
+    /// The next step number (a step written after a failed one is skipped by the caller's choice; the
+    /// number still advances).
+    pub fn advance(&mut self) -> u64 {
+        self.n += 1;
+        self.n
     }
     pub fn progress_result(&mut self, ok: bool) {
         if !ok {
-            self.progress_failed = true;
+            self.failed = true;
         }
+    }
+    pub fn failed(&self) -> bool {
+        self.failed
+    }
+}
+
+/// The terminal row for the answer the operation gave: the route's `{ status, body }` (any status), or
+/// a failed job (503, core's default message) when a progress write failed meanwhile.
+pub fn outcome(answer: &Reply, progress_failed: bool) -> Outcome {
+    if progress_failed {
+        return Outcome::Failed(503, None);
+    }
+    let Body::Json(text) = &answer.body else {
+        return Outcome::Failed(500, None);
+    };
+    match jobs::parse_js(text.as_bytes()) {
+        Ok(body) => Outcome::Done(serde_json::json!({ "status": answer.status, "body": body })),
+        Err(_) => Outcome::Failed(500, None),
     }
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::panic)]
+#[allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use std::path::Path;
@@ -595,64 +580,26 @@ mod tests {
     }
 
     #[test]
-    fn worker_lines_fold_into_progress_and_an_outcome() {
-        assert_eq!(parse_line(b"{\"accepted\":true}"), Line::Accepted);
-        assert_eq!(parse_line(b"{\"stage\":\"x\"}"), Line::Stage("x".into()));
-        assert_eq!(
-            parse_line(b"{\"failed\":{\"status\":422}}"),
-            Line::Failed(422)
-        );
-        assert_eq!(parse_line(b"{\"failed\":{}}"), Line::Failed(500));
-        assert!(matches!(
-            parse_line(b"{\"done\":{\"status\":200,\"body\":{\"a\":\"\\ud800\"}}}"),
-            Line::Done(_)
-        ));
-        for bad in [
-            &b"{\"done\":{}}"[..],
-            b"[]",
-            b"{",
-            b"{\"stage\":1}",
-            b"{\"accepted\":true,\"x\":1}",
-        ] {
-            assert_eq!(parse_line(bad), Line::Invalid);
+    fn an_operations_answer_becomes_the_jobs_terminal_row() {
+        // The route's answer, any status, is the result; a lone surrogate survives.
+        let ok = Reply::json(200, "{\"name\":\"a.txt\",\"note\":\"\\ud800\"}".into());
+        match outcome(&ok, false) {
+            Outcome::Done(v) => {
+                assert_eq!(v["status"], 200);
+                assert_eq!(v["body"]["name"], "a.txt");
+            }
+            other => panic!("{other:?}"),
         }
-        let mut f = Fold::default();
-        assert_eq!(
-            f.line(Some(Line::Stage("a".into()))),
-            Step::Progress("a".into(), 1)
-        );
-        f.progress_result(true);
-        assert_eq!(
-            f.line(Some(Line::Stage("b".into()))),
-            Step::Progress("b".into(), 2)
-        );
-        let done = serde_json::json!({"status":200});
-        assert_eq!(
-            f.line(Some(Line::Done(done.clone()))),
-            Step::Finish(Outcome::Done(done.clone()))
-        );
-        f.progress_result(false);
-        assert_eq!(f.line(Some(Line::Stage("c".into()))), Step::Continue);
-        assert_eq!(
-            f.line(Some(Line::Done(done))),
-            Step::Finish(Outcome::Failed(503, None))
-        );
-        assert_eq!(
-            f.line(Some(Line::Failed(422))),
-            Step::Finish(Outcome::Failed(503, None))
-        );
-        let mut g = Fold::default();
-        assert_eq!(
-            g.line(Some(Line::Failed(422))),
-            Step::Finish(Outcome::Failed(422, None))
-        );
-        assert_eq!(
-            g.line(None),
-            Step::Finish(Outcome::Failed(503, Some(RESTARTED)))
-        );
-        assert_eq!(
-            g.line(Some(Line::Invalid)),
-            Step::Finish(Outcome::Failed(503, Some(RESTARTED)))
-        );
+        let refused = Reply::error(422, "no");
+        assert!(matches!(outcome(&refused, false), Outcome::Done(v) if v["status"] == 422));
+        // A progress write that failed means no clean completion after it, whatever the answer was.
+        assert_eq!(outcome(&ok, true), Outcome::Failed(503, None));
+        let mut t = Tracker::default();
+        assert_eq!(t.advance(), 1);
+        t.progress_result(true);
+        assert!(!t.failed());
+        assert_eq!(t.advance(), 2);
+        t.progress_result(false);
+        assert!(t.failed());
     }
 }

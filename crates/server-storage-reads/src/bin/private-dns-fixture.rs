@@ -1,6 +1,7 @@
 //! Separate closed loopback fixture. Production has no resolver or trust switch.
 use server_storage_reads::{
-    child_request, isolated, protocol, response_ipc, ETAG_BYTES, LIST_BYTES, TEXT_BYTES,
+    child_request, isolated, protocol, response_ipc, CHUNK_FRAME, CHUNK_PREFIX, ETAG_BYTES,
+    LIST_BYTES, TEXT_BYTES,
 };
 #[allow(dead_code)]
 #[path = "../child_http.rs"]

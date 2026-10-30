@@ -2,7 +2,7 @@
 use crate::{
     isolated::{Error, INPUT},
     protocol::{Method, Request},
-    LIST_BYTES, TEXT_BYTES,
+    CHUNK_FRAME, LIST_BYTES, TEXT_BYTES,
 };
 use std::time::Duration;
 use zeroize::Zeroizing;
@@ -30,7 +30,9 @@ fn method_of(code: u8) -> Result<Method, Error> {
 fn valid(request: &Request) -> Result<(), Error> {
     if request.attempt_timeout.is_zero()
         || request.attempt_timeout > request.method.max_attempt()
-        || !matches!(request.body_cap, LIST_BYTES | TEXT_BYTES)
+        || !matches!(request.body_cap, LIST_BYTES | TEXT_BYTES | CHUNK_FRAME)
+        // A chunk reply (noevia#2191 round 8) is only ever a ranged GET's.
+        || (request.body_cap == CHUNK_FRAME && request.method != Method::Get)
         || request.body.len() > request.method.max_body()
         || request.url.len() > 65536
         || request.headers.len() > 100
