@@ -327,20 +327,25 @@ owner = "rust"
 methods = ["PUT"]
 
 [[route]]
+# sbstndalton/noevia#2206: the rest of the Diary routes the web client names, except POST
+# /api/diary/local-exchange (the shared model throttle and the inference gate are Node's, see
+# contracts/http/README.md). Every method unless `methods` is listed.
 path = "/api/diary"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/diary-connector"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/diary/context"
-owner = "node"
+owner = "rust"
+methods = ["GET", "POST"]
 
 [[route]]
 path = "/api/diary/exchanges"
-owner = "node"
+owner = "rust"
+methods = ["GET", "POST"]
 
 [[route]]
 path = "/api/diary/local-exchange"
@@ -359,7 +364,7 @@ owner = "rust"
 
 [[route]]
 path = "/api/diary/storage-status"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/diary/today"
@@ -614,11 +619,13 @@ owner = "rust"
 
 [[route]]
 path = "/api/profile/diary-connectors"
-owner = "node"
+owner = "rust"
+methods = ["GET", "POST"]
 
 [[route]]
 path = "/api/profile/diary-connectors/{*}"
-owner = "node"
+owner = "rust"
+methods = ["DELETE"]
 
 [[route]]
 path = "/api/profile/features"

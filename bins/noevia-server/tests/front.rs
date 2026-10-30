@@ -295,9 +295,11 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     // the off-site backup's seven routes (its eighth path, new-store, was never a Node route) and the four
     // Google Drive connector writes: 57; #2202 moved the five MCP key and sign-in routes (the sign-in
     // callback was never a listed Node route): 52; the close-out moved GET /api/health, GET /api/auto-roles
-    // and GET /api/workspace: 49; #2202 round 2 moved the six admin directory paths, the permitted view and the
-    // connectors list with the Nextcloud permissions: 40).
-    assert!(node_routes >= 40, "{node_routes} node routes");
+    // and GET /api/workspace: 49; #2206 moved seven Diary entries (`/api/diary`, the connector endpoint,
+    // the context, the exchanges, the storage status and the two connector-credential routes; the local
+    // exchange stays Node's): 42; #2202 round 2 moved the six admin directory paths, the permitted view and
+    // the connectors list with the Nextcloud permissions: 33).
+    assert!(node_routes >= 33, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("POST", "/api/ready"),

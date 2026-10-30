@@ -320,6 +320,44 @@ pub fn blocked(
     })
 }
 
+/// What a status view shows about a held account (core `status`): the kind and when the next
+/// automatic attempt is due (epoch ms).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Status {
+    /// `login` or `throttled`.
+    pub kind: &'static str,
+    pub next_attempt_at: i64,
+}
+
+/// core `status(userId, connection)` (sbstndalton/noevia#2206, the Diary storage status): the hold on
+/// this account's automatic calls, or none. Reading it never lets a probe through. A hold for other
+/// credentials is dropped, and a throttle that has run its course is settled, exactly as in
+/// [`blocked`].
+pub fn status(
+    data_dir: &Path,
+    user: &str,
+    fingerprint: &str,
+    now: i64,
+) -> Result<Option<Status>, Error> {
+    transaction(data_dir, |conn| {
+        let Some(row) = settle(conn, data_dir, user, now)? else {
+            return Ok(None);
+        };
+        if row.fingerprint != fingerprint {
+            delete(conn, user)?;
+            return Ok(None);
+        }
+        Ok(Some(Status {
+            kind: if row.kind == "login" {
+                "login"
+            } else {
+                "throttled"
+            },
+            next_attempt_at: row.until,
+        }))
+    })
+}
+
 /// `clear(userId)`: a call that worked.
 pub fn clear(data_dir: &Path, user: &str) -> Result<(), Error> {
     transaction(data_dir, |conn| delete(conn, user))
@@ -494,6 +532,60 @@ mod tests {
         // A refusal right after the throttle is the refused probe: the wait is 30 min, not 15.
         note(d.path(), "u1", &fp, LOGIN, 15 * MIN + 126_000).unwrap();
         assert!(held(d.path(), &fp, 15 * MIN + 126_000 + 29 * MIN).is_some());
+    }
+
+    #[test]
+    fn the_status_view_names_the_hold_and_never_lets_a_probe_through() {
+        let (d, fp) = fixture();
+        let seen = |at| status(d.path(), "u1", &fp, at).unwrap();
+        assert_eq!(seen(0), None, "no hold, no status");
+        note(d.path(), "u1", &fp, LOGIN, 0).unwrap();
+        assert_eq!(
+            seen(1),
+            Some(Status {
+                kind: "login",
+                next_attempt_at: 15 * MIN
+            })
+        );
+        // The wait has passed. A view is not the probe: the hold is still there, still due, and the
+        // next real automatic call still gets to be the probe.
+        assert_eq!(seen(16 * MIN).map(|s| s.kind), Some("login"));
+        assert_eq!(seen(16 * MIN).map(|s| s.kind), Some("login"));
+        assert_eq!(
+            held(d.path(), &fp, 16 * MIN),
+            None,
+            "this call is the probe"
+        );
+        // A throttle is shown with its end.
+        note(
+            d.path(),
+            "u1",
+            &fp,
+            Failure {
+                kind: "throttled",
+                retry_after: Some(30),
+            },
+            16 * MIN + 1,
+        )
+        .unwrap();
+        assert_eq!(
+            seen(16 * MIN + 2),
+            Some(Status {
+                kind: "throttled",
+                next_attempt_at: 16 * MIN + 1 + 30_000
+            })
+        );
+        // Other credentials: the hold is dropped, as `blocked` drops it.
+        let other = fingerprint("nextcloud", "https://cloud.example/dav", "", "ada", "new");
+        assert_eq!(status(d.path(), "u1", &other, 16 * MIN + 3).unwrap(), None);
+        assert_eq!(
+            seen(16 * MIN + 4),
+            None,
+            "and the old hold is gone for good"
+        );
+        // Another account is never shown this one's hold.
+        note(d.path(), "u1", &fp, LOGIN, 0).unwrap();
+        assert_eq!(status(d.path(), "u2", &fp, 1).unwrap(), None);
     }
 
     #[test]

@@ -171,15 +171,26 @@ const CHATGPT_OAUTH: &[&str] = &[
     "/api/providers/chatgpt/models",
 ];
 
-/// The routes [`Native::Diary`] implements, all methods (each answers its own 405 after the add-on
-/// gate, as core does). `/api/diary/history`, which core's handler shares with `today`, is not a
-/// route the web client names and stays Node's.
-const DIARY_ROUTES: &[&str] = &[
+/// The routes [`Native::Diary`] implements (diary_routes.rs). `/api/diary/history`, which core's
+/// handler shares with `today`, is not a route the web client names and stays Node's, as do `files`,
+/// `file`, `workspace-trash`, `external-sources` and `entries/edit`, and
+/// `POST /api/diary/local-exchange` (contracts/http/README.md says why). Paths marked `methods` in
+/// routes.toml answer only those; the rest answer every method and give their own 405 after the
+/// add-on gate, as core does.
+pub(crate) const DIARY_ROUTES: &[&str] = &[
     "/api/diary/source",
     "/api/diary/today",
     "/api/diary/storage-import",
     "/api/diary/workspace-export",
     "/api/diary/workspace-import",
+    // sbstndalton/noevia#2206:
+    "/api/diary",
+    "/api/diary-connector",
+    "/api/diary/context",
+    "/api/diary/exchanges",
+    "/api/diary/storage-status",
+    "/api/profile/diary-connectors",
+    "/api/profile/diary-connectors/{*}",
 ];
 
 /// The route [`Native::RoutingDefault`] implements (GET only; routes.toml).
@@ -660,6 +671,8 @@ mod tests {
                 Some(Native::ProviderModels) if r.path == PROVIDER_MODELS => {}
                 Some(Native::Offsite) if crate::offsite_routes::ROUTES.contains(&r.path) => {}
                 Some(Native::Connectors) if crate::connector_routes::ROUTES.contains(&r.path) => {}
+                // `/api/profile/diary-connectors` is under the account prefix and is not the account's.
+                Some(Native::Diary) if DIARY_ROUTES.contains(&r.path) => {}
                 Some(Native::Providers) if r.path == PROVIDERS_LIST || r.path == PROVIDER_ONE => {}
                 Some(Native::McpDirectory) if MCP_DIRECTORY.contains(&r.path) => {}
                 Some(Native::ToolboxesPermitted) if r.path == TOOLBOXES_PERMITTED => {}
@@ -950,7 +963,6 @@ mod tests {
             ("DELETE", "/api/chats/c1/context"),
             ("PUT", "/api/chats/c1/history"),
             ("GET", "/api/chats/c1/move"),
-            ("GET", "/api/diary/context"),
         ] {
             assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
         }
@@ -1119,29 +1131,50 @@ mod tests {
         assert!(!on.on("NOEVIA_RUST_PROJECTS"));
     }
 
-    /// sbstndalton/noevia#2185: the five proxy-only Diary routes are the front's for every method
-    /// (each answers its own 405 after the add-on gate); everything else Diary stays Node's.
+    /// sbstndalton/noevia#2185 and #2206: the Diary routes the front answers, with the methods
+    /// routes.toml gives each; everything else Diary stays Node's.
     #[test]
-    fn diary_proxy_routes_are_rusts_for_every_method_and_the_rest_stays_nodes() {
+    fn diary_routes_are_rusts_and_the_rest_stays_nodes() {
         let on = Switches::default();
-        for p in DIARY_ROUTES {
-            for m in ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] {
+        const EVERY: [&str; 7] = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
+        // Every method: the proxies, `/api/diary` itself, the storage status and the connector
+        // endpoint (which answers its own 405 before authentication).
+        for p in [
+            "/api/diary/source",
+            "/api/diary/today",
+            "/api/diary/storage-import",
+            "/api/diary/workspace-export",
+            "/api/diary/workspace-import",
+            "/api/diary",
+            "/api/diary-connector",
+            "/api/diary/storage-status",
+        ] {
+            assert!(DIARY_ROUTES.contains(&p), "{p}");
+            for m in EVERY {
                 assert_eq!(dispatch_under(m, p, on), Some(Native::Diary), "{m} {p}");
             }
         }
+        // The methods core mounted and no more: another method is Node's (its unknown-path answer).
+        for (p, methods) in [
+            ("/api/diary/context", &["GET", "POST"][..]),
+            ("/api/diary/exchanges", &["GET", "POST"][..]),
+            ("/api/profile/diary-connectors", &["GET", "POST"][..]),
+            (
+                "/api/profile/diary-connectors/0123456789abcdef0123456789abcdef",
+                &["DELETE"][..],
+            ),
+        ] {
+            for m in EVERY {
+                let want = methods.contains(&m).then_some(Native::Diary);
+                assert_eq!(dispatch_under(m, p, on), want, "{m} {p}");
+            }
+        }
         assert!(crate::FEATURES.contains(&"rust-diary"));
-        // Node keeps what reads its memory: the project list, the running-job set, the model
-        // throttle and inference gate, the storage-login latch; and its credential table.
+        assert!(crate::FEATURES.contains(&"rust-diary-routes"));
+        // Node keeps the local exchange (the model throttle chat shares and the inference gate, both
+        // Node memory), and what the web client never names is not in the route table at all.
         for p in [
-            "/api/diary",
-            "/api/diary-connector",
-            "/api/diary/context",
-            "/api/diary/exchanges",
             "/api/diary/local-exchange",
-            "/api/diary/storage-status",
-            "/api/profile/diary-connectors",
-            "/api/profile/diary-connectors/0123456789abcdef0123456789abcdef",
-            // not in the route table at all
             "/api/diary/history",
             "/api/diary/files",
             "/api/diary/file",

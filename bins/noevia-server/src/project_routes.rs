@@ -276,7 +276,7 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
     }
 }
 
-fn respond(r: Reply) -> Response<Body> {
+pub(crate) fn respond(r: Reply) -> Response<Body> {
     let status = StatusCode::from_u16(r.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
     match r.body {
         server_projects::Body::Json(text) => reply::json_text(status, text, true),

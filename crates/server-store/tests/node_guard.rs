@@ -37,8 +37,11 @@ fn node_refuses_exactly_what_rust_owns() {
         std::fs::read_to_string(std::path::Path::new(&core).join("server/rust-auth.cjs")).unwrap();
     let node_tables = js_set(&src, "OWNED_TABLES");
     let node_keys = js_set(&src, "OWNED_SETTING_KEYS");
-    // Shared on purpose: audit_events (both append) and diary_connectors (Node's; Rust only deletes
-    // a recovered account's rows). Every other owned table is Node-refused.
+    // Shared on purpose: audit_events (both append). diary_connectors is the front's alone since
+    // sbstndalton/noevia#2206, but core refuses it through FRONT_TABLES (even inside exempt()), not
+    // OWNED_TABLES, as it does storage_connections, chatgpt_oauth_tokens and tool_policies; the
+    // front's grants on it are per statement kind (`Access::InsertDelete`). Every other owned table is
+    // Node-refused through OWNED_TABLES.
     let rust_tables: BTreeSet<String> = server_store::OWNED_TABLES
         .iter()
         .filter(|(t, _)| *t != "audit_events" && *t != "diary_connectors")
@@ -107,4 +110,42 @@ fn node_detects_every_write_shape_on_every_owned_table() {
     );
     let missed = String::from_utf8(out.stdout).unwrap();
     assert_eq!(missed, "[]", "Node's guard misses these write shapes");
+}
+
+/// sbstndalton/noevia#2206: the front is the only writer of `diary_connectors`, so core's guard must
+/// refuse every Node statement on it (FRONT_TABLES: refused inside exempt() too, no statement
+/// allowed), and the front's grant on it is insert and delete, never an update.
+#[test]
+fn node_refuses_every_write_of_the_connector_table_the_front_writes() {
+    let Ok(core) = std::env::var("NOEVIA_CORE_CHECKOUT") else {
+        eprintln!("NOEVIA_CORE_CHECKOUT not set: skipped");
+        return;
+    };
+    let module = std::path::Path::new(&core).join("server/rust-auth.cjs");
+    let script = r#"
+      const { FRONT_TABLES } = require(process.argv[1]);
+      const t = FRONT_TABLES.diary_connectors;
+      process.stdout.write(JSON.stringify(t ? { allowed: t.allowed, code: t.code } : null));
+    "#;
+    let out = std::process::Command::new("node")
+        .arg("-e")
+        .arg(script)
+        .arg(&module)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("node runs");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(out.stdout).unwrap(),
+        r#"{"allowed":null,"code":"RUST_DIARY_ROUTES_OWNED"}"#
+    );
+    let access = server_store::OWNED_TABLES
+        .iter()
+        .find(|(t, _)| *t == "diary_connectors")
+        .map(|(_, a)| *a);
+    assert_eq!(access, Some(server_store::Access::InsertDelete));
 }
