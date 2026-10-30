@@ -53,7 +53,13 @@ const LOOK_EVERY: Duration = Duration::from_millis(100);
 
 /// The files Node publishes for the front and the marker: state of the running process that never
 /// belongs in a backup (the off-site walk leaves them out; so it does their `<name>.<pid>.<hex>.tmp`).
-pub const PUBLISHED_STATE: [&str; 3] = ["rag-status.json", "auto-roles-snapshot.json", DEMAND_FILE];
+pub const PUBLISHED_STATE: [&str; 4] = [
+    "rag-status.json",
+    "auto-roles-snapshot.json",
+    // sbstndalton/noevia#2202 round 2: the MCP discovery (mcp_discovery.rs).
+    "mcp-discovery.json",
+    DEMAND_FILE,
+];
 
 /// Whether `name` is one of [`PUBLISHED_STATE`] or a temporary file of one.
 pub fn is_published_state(name: &str) -> bool {
@@ -474,9 +480,11 @@ mod demand_tests {
         for name in [
             "rag-status.json",
             "auto-roles-snapshot.json",
+            "mcp-discovery.json",
             "snapshot-demand",
             "rag-status.json.123.deadbeef.tmp",
             "auto-roles-snapshot.json.9.00ff.tmp",
+            "mcp-discovery.json.9.00ff.tmp",
             "snapshot-demand.4242.7.tmp",
         ] {
             assert!(is_published_state(name), "{name}");

@@ -67,6 +67,19 @@ fn replay(core: &Path, corpus: &Path, out: &Path, name: &str, front: bool) -> Re
             "*chat-transcripts.lock",
             "--state-ignore",
             "*chat-changes.jsonl",
+            // sbstndalton/noevia#2191 close-out: the workspace list's sweep takes its lock in the front, and
+            // Node's publishers write the snapshots and the front's demand marker (state of the running
+            // process); Node's oracle writes none of them.
+            "--state-ignore",
+            "*chat-retention.json.lock",
+            "--state-ignore",
+            "*rag-status.json",
+            "--state-ignore",
+            "*auto-roles-snapshot.json",
+            "--state-ignore",
+            "*mcp-discovery.json",
+            "--state-ignore",
+            "*snapshot-demand",
         ])
         .arg("--seed")
         .arg(out.join("seed"))
