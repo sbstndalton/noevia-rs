@@ -331,8 +331,8 @@ fn index_job_times(rig: &Rig) -> Vec<i64> {
 }
 
 /// Re-review N5: a sync that waited for the project's lock (a job queued behind another operation) dates
-/// its records by when it runs, not by when its context was made. One that did not wait keeps the
-/// context's time.
+/// its records by when it runs, not by when its context was made. (That a call that did not wait keeps the
+/// context's time is `lock_restamped`'s own test; the project's lock is process-wide.)
 #[test]
 fn a_sync_that_waited_for_the_project_lock_dates_its_records_by_when_it_ran() {
     let rig = Rig::new(PROJECT);
@@ -349,15 +349,6 @@ fn a_sync_that_waited_for_the_project_lock_dates_its_records_by_when_it_ran() {
         "stamped when it ran, not at the context's time: {times:?} < {before}"
     );
 
-    let free = Rig::new(PROJECT);
-    free.storage.put("docs/a.md", b"a");
-    let (reply, _) = free.sync();
-    assert_eq!(reply.status, 200);
-    assert_eq!(
-        index_job_times(&free),
-        vec![1_700_000_000_000],
-        "no wait: the context's own time"
-    );
 }
 
 /// Part 1 M3 / part 2 M1: an account removed while a sync runs stays removed (#1425): the staging folder

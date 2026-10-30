@@ -479,41 +479,57 @@ mod tests {
         assert_eq!(doc.get("byteHash").as_str(), Some(job.byte_hash.as_str()));
     }
 
+    /// Re-review N5: the context's clock is brought to now only when the lock had to be waited for.
+    #[test]
+    fn a_context_is_restamped_only_when_the_lock_was_waited_for() {
+        let root = tempfile::tempdir().unwrap();
+        let old = ctx(root.path());
+        let lock = Mutex::new(());
+        let wait = std::time::Duration::from_secs(5);
+        let (guard, same) = lock_restamped(&lock, wait, old).unwrap();
+        assert_eq!(same.now_ms, old.now_ms, "no wait: the request's own time");
+        // Held by another thread for a while: the wait is taken and the clock is now.
+        let before = crate::wall_ms();
+        let waited = std::thread::scope(|s| {
+            let waiter = s.spawn(|| lock_restamped(&lock, wait, old).map(|(_g, c)| c.now_ms));
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            drop(guard);
+            waiter.join().unwrap()
+        });
+        assert!(waited.unwrap() >= before, "{waited:?} < {before}");
+        // Past the wait: no lock.
+        let held = lock.lock().unwrap();
+        let short = std::time::Duration::from_millis(30);
+        assert!(lock_restamped(&lock, short, old).is_none());
+        drop(held);
+    }
+
     /// #2191 round 8 re-review N4: the document route waits a bounded time for the project's source lock
     /// and then says 429, as the other source routes do; a hung holder cannot pile up its requests.
     #[test]
     fn a_document_waits_a_bounded_time_for_the_project_lock_and_then_says_429() {
+        // Its own account: the project's source lock is process-wide, keyed by account and project, and the
+        // other tests here hold it too.
+        const ALONE: &str = "aaaaaaaa-2222-4333-8444-555555555555";
         let root = tempfile::tempdir().unwrap();
-        let dir = root.path().join("users").join(USER);
+        let dir = root.path().join("users").join(ALONE);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(store::PROJECTS_FILE), PROJECTS).unwrap();
+        let alone = Ctx {
+            user_id: ALONE,
+            ..ctx(root.path())
+        };
         let fake = Fake::default();
-        let lock = source_lock(USER, "proj-a");
+        let lock = source_lock(ALONE, "proj-a");
         let held = lock.lock().unwrap();
         let started = std::time::Instant::now();
         let wait = std::time::Duration::from_millis(100);
-        let r = post_waiting(
-            ctx(root.path()),
-            "proj-a",
-            &body(),
-            false,
-            &fake,
-            &LIMITS,
-            wait,
-        );
+        let r = post_waiting(alone, "proj-a", &body(), false, &fake, &LIMITS, wait);
         assert_eq!(r.status, 429, "{r:?}");
         assert!(started.elapsed() >= wait && started.elapsed() < std::time::Duration::from_secs(5));
         assert_eq!(listed(&dir), 0, "nothing was saved");
         drop(held);
-        let r = post_waiting(
-            ctx(root.path()),
-            "proj-a",
-            &body(),
-            false,
-            &fake,
-            &LIMITS,
-            wait,
-        );
+        let r = post_waiting(alone, "proj-a", &body(), false, &fake, &LIMITS, wait);
         assert_eq!(r.status, 200, "{r:?}");
     }
 

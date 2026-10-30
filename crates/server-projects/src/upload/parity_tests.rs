@@ -869,7 +869,8 @@ fn updated_at(rig: &Rig) -> i64 {
 }
 
 /// Re-review N5: an upload that waited for the project's lock dates the project by when it ran (both
-/// forms); one that did not wait keeps the context's time.
+/// forms). (That a call that did not wait keeps the context's time is `lock_restamped`'s own test: the project's
+/// lock is process-wide, so a test here cannot know that no other test holds it.)
 #[test]
 fn an_upload_that_waited_for_the_project_lock_dates_its_save_by_when_it_ran() {
     // (the older form without storage saves the project; with storage it is the plain create-only write)
@@ -888,10 +889,6 @@ fn an_upload_that_waited_for_the_project_lock_dates_its_save_by_when_it_ran() {
         holder.join().unwrap();
         assert!(updated_at(&rig) >= before, "form {n}: {}", updated_at(&rig));
 
-        let free = Rig::new(PROJECT);
-        let (status, _) = free.post(remote, &body);
-        assert_eq!(status, 200);
-        assert_eq!(updated_at(&free), 1_700_000_000_000, "form {n}: no wait");
     }
 }
 
