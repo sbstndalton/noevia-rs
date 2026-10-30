@@ -632,21 +632,65 @@ pub fn router_with_context(
 }
 
 /// [`router_with_context`] plus the operations that need the front's [`crate::App`] (its cowork.db
-/// writer and credential keys): `POST /v1/storage/legacy-webdav` (sbstndalton/noevia#2190 round 4).
+/// writer and credential keys): `POST /v1/storage/legacy-webdav` (sbstndalton/noevia#2190 round 4)
+/// and `POST /v1/chatgpt/{session,reject,catalogue,models,disconnect,forget,connected}` (round 5).
 pub fn router_with_app(
     store: Store,
     context: Option<Arc<crate::feature_context::Layer>>,
     app: Option<Arc<crate::App>>,
 ) -> Router {
     let storage_store = store.clone();
-    router_with_context(store, context).route(
+    let storage_app = app.clone();
+    let mut router = router_with_context(store.clone(), context).route(
         "/v1/storage/legacy-webdav",
         post(move |headers: HeaderMap, raw: Bytes| {
             let store = storage_store.clone();
-            let app = app.clone();
+            let app = storage_app.clone();
             async move { legacy_webdav(store, app, headers, raw).await }
         }),
-    )
+    );
+    // sbstndalton/noevia#2190 round 5: Sign in with ChatGPT's token broker
+    // (chatgpt_oauth_routes.rs `internal_op`), behind the same secret.
+    for op in [
+        "session",
+        "reject",
+        "catalogue",
+        "models",
+        "disconnect",
+        "forget",
+        "connected",
+    ] {
+        let (store, app) = (store.clone(), app.clone());
+        router = router.route(
+            &format!("/v1/chatgpt/{op}"),
+            post(move |headers: HeaderMap, raw: Bytes| {
+                let (store, app) = (store.clone(), app.clone());
+                async move { chatgpt_op(store, app, headers, raw, op).await }
+            }),
+        );
+    }
+    router
+}
+
+async fn chatgpt_op(
+    store: Store,
+    app: Option<Arc<crate::App>>,
+    headers: HeaderMap,
+    raw: Bytes,
+    op: &'static str,
+) -> Response<Body> {
+    if !authorised(&store, &headers) {
+        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+    }
+    #[cfg(feature = "rust-chatgpt-status")]
+    {
+        crate::chatgpt_oauth_routes::internal_op(app, op, &raw).await
+    }
+    #[cfg(not(feature = "rust-chatgpt-status"))]
+    {
+        let _ = (app, raw, op);
+        error(StatusCode::NOT_FOUND, "not found")
+    }
 }
 
 /// `POST /v1/storage/legacy-webdav { user, baseUrl, username, secret, corpusRoot }` -> 200

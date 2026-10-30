@@ -163,6 +163,12 @@ fn flag_on(r: &Reader<'_>, env: Option<bool>) -> Result<bool, server_store::Stor
     .enabled)
 }
 
+/// The `chatgptOAuth` product flag as core features.cjs reads it (the env value wins, else the typed
+/// settings row, else off): the gate of every Sign in with ChatGPT route (sbstndalton/noevia#2190).
+pub fn enabled(r: &Reader<'_>, env: Option<bool>) -> Result<bool, server_store::StoreError> {
+    flag_on(r, env)
+}
+
 /// Spends `len` from `remaining`, refusing before anything is spent when it does not fit (#1377).
 fn spend(remaining: &mut usize, len: usize) -> Result<(), Fault> {
     *remaining = remaining.checked_sub(len).ok_or(Fault::Cap)?;

@@ -611,3 +611,85 @@ fn storage_connections_take_only_the_save_upsert() {
     }
     assert_eq!(count(&node, "SELECT count(*) FROM storage_connections"), 1);
 }
+
+#[test]
+fn chatgpt_tokens_take_only_the_broker_statements() {
+    // sbstndalton/noevia#2190 round 5: the token broker's four statements, nothing else.
+    let (dir, node) = node_db();
+    node.execute_batch(
+        "CREATE TABLE IF NOT EXISTS chatgpt_oauth_tokens(user_id TEXT PRIMARY KEY, data_enc TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'connected', updated_at INTEGER NOT NULL)",
+    )
+    .unwrap();
+    let w = Writer::open(dir.path(), RustAuth::owned()).unwrap();
+    for sql in [
+        "INSERT INTO chatgpt_oauth_tokens(user_id,data_enc,state,updated_at) VALUES('u1','x','connected',1)",
+        "UPDATE chatgpt_oauth_tokens SET state='connected'",
+        "DELETE FROM chatgpt_oauth_tokens",
+    ] {
+        let raw = w.write(|tx| tx.execute(sql, []));
+        assert!(matches!(raw, Err(StoreError::NotOwned(_))), "{sql}: {raw:?}");
+    }
+    let cap = RustChatgptOAuth::owned();
+    let read = || -> Option<(String, String, i64)> {
+        node.query_row(
+            "SELECT data_enc,state,updated_at FROM chatgpt_oauth_tokens WHERE user_id='u1'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .ok()
+    };
+    assert_eq!(
+        w.write(|tx| tx.save_chatgpt_tokens(cap, "u1", "a", "connected", 5))
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        w.write(|tx| tx.save_chatgpt_tokens(cap, "u1", "b", "connected", 6))
+            .unwrap(),
+        1
+    );
+    assert_eq!(read(), Some(("b".into(), "connected".into(), 6)));
+    // The refresh's compare-and-set: a stale start value changes nothing.
+    assert_eq!(
+        w.write(|tx| tx.swap_chatgpt_tokens(cap, "u1", "c", 7, "a"))
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        w.write(|tx| tx.swap_chatgpt_tokens(cap, "u1", "c", 7, "b"))
+            .unwrap(),
+        1
+    );
+    // Reconnect only for the sign-in that failed.
+    assert_eq!(
+        w.write(|tx| tx.mark_chatgpt_reconnect(cap, "u1", Some("b"), 8))
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        w.write(|tx| tx.mark_chatgpt_reconnect(cap, "u1", Some("c"), 8))
+            .unwrap(),
+        1
+    );
+    assert_eq!(read(), Some(("c".into(), "reconnect".into(), 8)));
+    // A reconnect-needed row is not refreshed into connected.
+    assert_eq!(
+        w.write(|tx| tx.swap_chatgpt_tokens(cap, "u1", "d", 9, "c"))
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        w.write(|tx| tx.mark_chatgpt_reconnect(cap, "u1", None, 9))
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        w.write(|tx| tx.delete_chatgpt_tokens(cap, "u1")).unwrap(),
+        1
+    );
+    assert_eq!(read(), None);
+    // The window closed again: a raw statement after the methods is still refused.
+    let raw = w.write(|tx| tx.execute("DELETE FROM chatgpt_oauth_tokens", []));
+    assert!(matches!(raw, Err(StoreError::NotOwned(_))), "{raw:?}");
+}

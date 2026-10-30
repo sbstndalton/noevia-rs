@@ -96,10 +96,21 @@ pub enum Native {
     StorageIntegrations,
     /// POST /api/providers/test (sbstndalton/noevia#2190 round 4): provider_test_routes.rs.
     ProviderTest,
+    /// POST /api/providers/chatgpt/{device,device/poll,device/cancel}, GET
+    /// /api/providers/chatgpt/models (sbstndalton/noevia#2190 round 5): chatgpt_oauth_routes.rs.
+    ChatgptOAuth,
 }
 
 /// The route [`Native::ProviderTest`] implements (POST only; routes.toml).
 const PROVIDER_TEST: &str = "/api/providers/test";
+
+/// The routes [`Native::ChatgptOAuth`] implements (the three POSTs and the models GET; routes.toml).
+const CHATGPT_OAUTH: &[&str] = &[
+    "/api/providers/chatgpt/device",
+    "/api/providers/chatgpt/device/poll",
+    "/api/providers/chatgpt/device/cancel",
+    "/api/providers/chatgpt/models",
+];
 
 /// The routes [`Native::Diary`] implements, all methods (each answers its own 405 after the add-on
 /// gate, as core does). `/api/diary/history`, which core's handler shares with `today`, is not a
@@ -125,7 +136,8 @@ const EXPORT: &str = "/api/export/conversations";
 
 /// The route [`Native::ChatgptStatus`] implements (GET only; routes.toml), answered only in a build
 /// with the cargo feature `rust-chatgpt-status` (listed by `--features`, so the supervisor confirms
-/// it to Node). Every sibling (`/device`, `/device/poll`, `/device/cancel`, `/models`) is Node's.
+/// it to Node). Its siblings `/device`, `/device/poll`, `/device/cancel` (POST) and `/models` (GET) are
+/// [`Native::ChatgptOAuth`]'s since sbstndalton/noevia#2190 round 5; DELETE stays Node's.
 const CHATGPT_STATUS: &str = "/api/providers/chatgpt";
 
 /// The routes [`Native::Projects`] implements.
@@ -226,6 +238,7 @@ fn compiled(route: &Route) -> bool {
         && (route.path != PROVIDER_TEST || cfg!(feature = "rust-storage-reads"))
         && (route.path != EXPORT || cfg!(feature = "rust-export"))
         && (route.path != CHATGPT_STATUS || cfg!(feature = "rust-chatgpt-status"))
+        && (!CHATGPT_OAUTH.contains(&route.path) || cfg!(feature = "rust-chatgpt-status"))
 }
 
 /// The native handler a rust-owned route is implemented by. The front read routes and the export
@@ -258,6 +271,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
         }
         p if auth && STORAGE_INTEGRATIONS.contains(&p) => return Some(Native::StorageIntegrations),
         PROVIDER_TEST if auth => return Some(Native::ProviderTest),
+        p if auth && CHATGPT_OAUTH.contains(&p) => return Some(Native::ChatgptOAuth),
         "/api/instance"
         | "/.well-known/webauthn"
         | "/api/admin/web-address"
@@ -496,6 +510,7 @@ mod tests {
                     if crate::decision_settings_routes::ROUTES.contains(&r.path) => {}
                 Some(Native::StorageIntegrations) if STORAGE_INTEGRATIONS.contains(&r.path) => {}
                 Some(Native::ProviderTest) if r.path == PROVIDER_TEST => {}
+                Some(Native::ChatgptOAuth) if CHATGPT_OAUTH.contains(&r.path) => {}
                 Some(_) => assert!(!is_account_path(r.path), "{} is an account path", r.path),
                 other @ None => assert!(
                     other.is_some(),
@@ -1054,17 +1069,27 @@ mod tests {
             dispatch_under("GET", "/api/providers/chatgpt", on),
             answered
         );
-        // Node keeps every other method (its 405), every sibling and the provider list.
+        // The device sign-in and the model list are the broker's (sbstndalton/noevia#2190 round 5).
+        let broker = cfg!(feature = "rust-chatgpt-status").then_some(Native::ChatgptOAuth);
+        for (m, p) in [
+            ("GET", "/api/providers/chatgpt/models"),
+            ("POST", "/api/providers/chatgpt/device"),
+            ("POST", "/api/providers/chatgpt/device/poll"),
+            ("POST", "/api/providers/chatgpt/device/cancel"),
+        ] {
+            assert_eq!(dispatch_under(m, p, on), broker, "{m} {p}");
+        }
+        // Node keeps every other method (its 405 or the disconnect), the siblings' other methods
+        // and the provider list.
         for (m, p) in [
             ("HEAD", "/api/providers/chatgpt"),
             ("POST", "/api/providers/chatgpt"),
             ("PUT", "/api/providers/chatgpt"),
             ("DELETE", "/api/providers/chatgpt"),
             ("OPTIONS", "/api/providers/chatgpt"),
-            ("GET", "/api/providers/chatgpt/models"),
-            ("POST", "/api/providers/chatgpt/device"),
-            ("POST", "/api/providers/chatgpt/device/poll"),
-            ("POST", "/api/providers/chatgpt/device/cancel"),
+            ("POST", "/api/providers/chatgpt/models"),
+            ("GET", "/api/providers/chatgpt/device"),
+            ("DELETE", "/api/providers/chatgpt/device/poll"),
             ("GET", "/api/providers/chatgptx"),
             ("GET", "/api/providers"),
             ("GET", "/api/providers/chatgpt-oauth/models"),
@@ -1100,6 +1125,23 @@ mod tests {
             ("GET", "/api/providers/chatgpt", Native::ChatgptStatus),
             ("GET", "/api/integrations/storage", Native::StorageMetadata),
             ("POST", "/api/providers/test", Native::ProviderTest),
+            // sbstndalton/noevia#2190 round 5: the ChatGPT token broker.
+            (
+                "POST",
+                "/api/providers/chatgpt/device",
+                Native::ChatgptOAuth,
+            ),
+            (
+                "POST",
+                "/api/providers/chatgpt/device/poll",
+                Native::ChatgptOAuth,
+            ),
+            (
+                "POST",
+                "/api/providers/chatgpt/device/cancel",
+                Native::ChatgptOAuth,
+            ),
+            ("GET", "/api/providers/chatgpt/models", Native::ChatgptOAuth),
             // sbstndalton/noevia#2190 round 4: the save.
             (
                 "PUT",
