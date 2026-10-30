@@ -706,8 +706,10 @@ path = "/api/providers/{id}"
 owner = "node"
 
 [[route]]
+# sbstndalton/noevia#2190 round 5 (rust-provider-models): a stored provider's model list, every
+# method (Node answered 405 for the others); a ChatGPT row's list is the token broker's.
 path = "/api/providers/{providerId}/models{*?}"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/ready"

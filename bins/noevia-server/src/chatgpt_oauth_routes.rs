@@ -969,6 +969,23 @@ impl Broker {
             .map_err(|_| ())
     }
 
+    /// The `chatgptOAuth` flag (read on the blocking pool), for the provider model list.
+    pub async fn enabled(&self, app: &Arc<App>) -> bool {
+        let a = Arc::clone(app);
+        tokio::task::spawn_blocking(move || {
+            a.chatgpt_oauth
+                .as_ref()
+                .is_some_and(|b| b.flag(&a) == Ok(true))
+        })
+        .await
+        .unwrap_or(false)
+    }
+
+    /// Whether the account has a token row (any state): core then lists its ChatGPT provider row.
+    pub async fn has_tokens(&self, app: &Arc<App>, user: &str) -> bool {
+        matches!(self.row(app, user).await, Ok(Some(_)))
+    }
+
     // ── device-code sign-in ──
 
     pub async fn start(&self, app: &Arc<App>, user: &str) -> Result<JValue, Fail> {

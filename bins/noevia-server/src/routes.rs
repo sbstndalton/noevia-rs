@@ -99,10 +99,16 @@ pub enum Native {
     /// POST /api/providers/chatgpt/{device,device/poll,device/cancel}, GET
     /// /api/providers/chatgpt/models (sbstndalton/noevia#2190 round 5): chatgpt_oauth_routes.rs.
     ChatgptOAuth,
+    /// /api/providers/{providerId}/models{*?} (sbstndalton/noevia#2190 round 5):
+    /// provider_models_routes.rs.
+    ProviderModels,
 }
 
 /// The route [`Native::ProviderTest`] implements (POST only; routes.toml).
 const PROVIDER_TEST: &str = "/api/providers/test";
+
+/// The route [`Native::ProviderModels`] implements (every method; routes.toml).
+const PROVIDER_MODELS: &str = "/api/providers/{providerId}/models{*?}";
 
 /// The routes [`Native::ChatgptOAuth`] implements (the three POSTs and the models GET; routes.toml).
 const CHATGPT_OAUTH: &[&str] = &[
@@ -239,6 +245,7 @@ fn compiled(route: &Route) -> bool {
         && (route.path != EXPORT || cfg!(feature = "rust-export"))
         && (route.path != CHATGPT_STATUS || cfg!(feature = "rust-chatgpt-status"))
         && (!CHATGPT_OAUTH.contains(&route.path) || cfg!(feature = "rust-chatgpt-status"))
+        && (route.path != PROVIDER_MODELS || cfg!(feature = "rust-storage-reads"))
 }
 
 /// The native handler a rust-owned route is implemented by. The front read routes and the export
@@ -272,6 +279,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
         p if auth && STORAGE_INTEGRATIONS.contains(&p) => return Some(Native::StorageIntegrations),
         PROVIDER_TEST if auth => return Some(Native::ProviderTest),
         p if auth && CHATGPT_OAUTH.contains(&p) => return Some(Native::ChatgptOAuth),
+        PROVIDER_MODELS if auth => return Some(Native::ProviderModels),
         "/api/instance"
         | "/.well-known/webauthn"
         | "/api/admin/web-address"
@@ -511,6 +519,7 @@ mod tests {
                 Some(Native::StorageIntegrations) if STORAGE_INTEGRATIONS.contains(&r.path) => {}
                 Some(Native::ProviderTest) if r.path == PROVIDER_TEST => {}
                 Some(Native::ChatgptOAuth) if CHATGPT_OAUTH.contains(&r.path) => {}
+                Some(Native::ProviderModels) if r.path == PROVIDER_MODELS => {}
                 Some(_) => assert!(!is_account_path(r.path), "{} is an account path", r.path),
                 other @ None => assert!(
                     other.is_some(),
@@ -1092,10 +1101,14 @@ mod tests {
             ("DELETE", "/api/providers/chatgpt/device/poll"),
             ("GET", "/api/providers/chatgptx"),
             ("GET", "/api/providers"),
-            ("GET", "/api/providers/chatgpt-oauth/models"),
         ] {
             assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
         }
+        // A provider row's model list, the ChatGPT row's included (round 5, provider_models_routes.rs).
+        assert_eq!(
+            dispatch_under("GET", "/api/providers/chatgpt-oauth/models", on),
+            cfg!(feature = "rust-storage-reads").then_some(Native::ProviderModels)
+        );
         assert!(!on.on("NOEVIA_RUST_CHATGPT_STATUS"));
     }
 
@@ -1142,6 +1155,8 @@ mod tests {
                 Native::ChatgptOAuth,
             ),
             ("GET", "/api/providers/chatgpt/models", Native::ChatgptOAuth),
+            ("GET", "/api/providers/mine/models", Native::ProviderModels),
+            ("POST", "/api/providers/mine/models", Native::ProviderModels),
             // sbstndalton/noevia#2190 round 4: the save.
             (
                 "PUT",
