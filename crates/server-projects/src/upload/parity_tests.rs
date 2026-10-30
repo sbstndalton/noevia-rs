@@ -845,6 +845,52 @@ fn a_refresh_of_the_projects_own_folder_keeps_a_folder_imports_nested_files() {
 
 // ── part 1 L5: a bounded wait for the project's source lock ──────────────────────────────────────────
 
+
+/// Holds the project's source lock on another thread for `ms`, and returns once it is held.
+fn hold_lock_for(user: &'static str, project: &'static str, ms: u64) -> std::thread::JoinHandle<()> {
+    let (held, ready) = std::sync::mpsc::channel();
+    let handle = std::thread::spawn(move || {
+        let lock = project_documents::source_lock(user, project);
+        let _held = lock.lock().unwrap();
+        held.send(()).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(ms));
+    });
+    ready.recv().unwrap();
+    handle
+}
+
+fn updated_at(rig: &Rig) -> i64 {
+    let list = store::read(&rig.dir()).unwrap();
+    store::find(&list, "proj-a")
+        .unwrap()
+        .get("updatedAt")
+        .as_num()
+        .unwrap() as i64
+}
+
+/// Re-review N5: an upload that waited for the project's lock dates the project by when it ran (both
+/// forms); one that did not wait keeps the context's time.
+#[test]
+fn an_upload_that_waited_for_the_project_lock_dates_its_save_by_when_it_ran() {
+    for (n, body) in [organized("a.md", b"x", ""), legacy_body("b.md", b"x", "")]
+        .into_iter()
+        .enumerate()
+    {
+        let rig = Rig::new(PROJECT);
+        let before = crate::wall_ms();
+        let holder = hold_lock_for(USER, "proj-a", 150);
+        let (status, _) = rig.post(true, &body);
+        assert_eq!(status, 200, "form {n}");
+        holder.join().unwrap();
+        assert!(updated_at(&rig) >= before, "form {n}: {}", updated_at(&rig));
+
+        let free = Rig::new(PROJECT);
+        let (status, _) = free.post(true, &body);
+        assert_eq!(status, 200);
+        assert_eq!(updated_at(&free), 1_700_000_000_000, "form {n}: no wait");
+    }
+}
+
 #[test]
 fn an_upload_waits_a_bounded_time_for_the_project_lock_and_then_says_429() {
     let rig = Rig::new(PROJECT);

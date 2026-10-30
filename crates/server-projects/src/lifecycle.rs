@@ -486,7 +486,7 @@ fn fsync_dir(d: &Path) -> std::io::Result<()> {
 /// existing file with that text is kept.
 fn write_text(dir: &Path, project_id: &str, reference: &str, text: &str) -> std::io::Result<()> {
     use std::io::Write;
-    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+    use std::os::unix::fs::OpenOptionsExt;
     let sources = dir.join("project-sources");
     let folder = sources.join(js::id_chars(project_id));
     let file = folder.join(format!("{reference}.txt"));
@@ -498,10 +498,9 @@ fn write_text(dir: &Path, project_id: &str, reference: &str, text: &str) -> std:
             return Ok(());
         }
     }
-    std::fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(&folder)?;
+    // Below the user's folder, never making it: an account removed meanwhile is `NotFound`, not a new
+    // `users/<id>` (#1425; [`externalize_reply`] answers it 410).
+    store::create_dirs_below(dir, &folder)?;
     let tmp = folder.join(format!("{reference}.txt.{}.tmp", std::process::id()));
     {
         let mut f = std::fs::OpenOptions::new()
@@ -556,6 +555,18 @@ pub(crate) fn externalize(dir: &Path, project: &mut JValue) -> std::io::Result<(
     Ok(())
 }
 
+/// [`externalize`] for a route that answers its failure: the account's folder gone (`NotFound`, see
+/// [`write_text`]) is 410 `account no longer exists`, any other failure the generic 500.
+pub(crate) fn externalize_reply(dir: &Path, project: &mut JValue) -> Result<(), Reply> {
+    externalize(dir, project).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            Reply::error(410, "account no longer exists")
+        } else {
+            Reply::internal()
+        }
+    })
+}
+
 /// `saveProjects(PROJECTS)`'s reconcile of every project, planned before any is changed.
 pub(crate) fn reconcile_all(projects: &mut [JValue]) -> bool {
     let mut plans = Vec::with_capacity(projects.len());
@@ -584,6 +595,8 @@ fn default_manual(dir: &Path) -> bool {
 enum Made {
     Project(JValue),
     Fail,
+    /// The account's folder went while the texts were written.
+    Gone,
 }
 
 /// POST /api/projects. `body` was read up to [`BODY_LIMIT`]; `over` when it was longer.
@@ -633,8 +646,9 @@ pub fn create(ctx: Ctx<'_>, body: &[u8], over: bool, env: &CreateEnv<'_>) -> Rep
             }
         }
         // workspace.cjs save: the texts are on disk before the projects.json that points at them.
-        if externalize(&dir, &mut project).is_err() {
-            return (Made::Fail, false);
+        if let Err(e) = externalize(&dir, &mut project) {
+            let gone = e.kind() == std::io::ErrorKind::NotFound;
+            return (if gone { Made::Gone } else { Made::Fail }, false);
         }
         projects.insert(0, project.clone());
         if !reconcile_all(projects) {
@@ -648,6 +662,7 @@ pub fn create(ctx: Ctx<'_>, body: &[u8], over: bool, env: &CreateEnv<'_>) -> Rep
     let mut project = match done {
         Ok(Made::Project(p)) => p,
         Ok(Made::Fail) => return Reply::internal(),
+        Ok(Made::Gone) => return Reply::error(410, "account no longer exists"),
         // A create's save failure is not caught in Node: the server's generic answer.
         Err(e) => return chats::store_failure(&e),
     };
@@ -887,6 +902,41 @@ mod tests {
             false,
             1_700_000_000_000,
         )
+    }
+
+    /// #2191 round 8 re-review N3: a text is written below the user's folder, never making it. An account
+    /// removed while a project is saved is not brought back by the text's `mkdir -p`; the route says 410.
+    #[test]
+    fn a_text_is_not_written_below_an_account_folder_that_is_gone() {
+        let root = tempfile::tempdir().unwrap();
+        let user = root.path().join("users").join("aaaaaaaa");
+        let mut project = wtf16::parse(r#"{"id":"p1","files":[{"name":"a.md","content":"hello"}]}"#)
+            .unwrap();
+        let err = externalize(&user, &mut project).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+        assert!(!user.exists(), "users/<id> was not made again");
+        assert_eq!(
+            externalize_reply(&user, &mut project).unwrap_err(),
+            Reply::error(410, "account no longer exists")
+        );
+        assert!(!user.exists());
+        // The folder there: the text lands below it, 0700, and the entry points at it.
+        std::fs::create_dir_all(&user).unwrap();
+        externalize_reply(&user, &mut project).unwrap();
+        let JValue::Arr(files) = project.get("files") else {
+            panic!("files");
+        };
+        let reference = files[0].get("textRef").as_str().unwrap().to_owned();
+        let folder = user.join("project-sources").join("p1");
+        assert_eq!(
+            std::fs::read_to_string(folder.join(format!("{reference}.txt"))).unwrap(),
+            "hello"
+        );
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&folder).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
     }
 
     #[test]

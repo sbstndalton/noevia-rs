@@ -303,6 +303,63 @@ fn a_sync_waits_a_bounded_time_for_the_project_lock_and_then_says_429() {
     assert_eq!(reply.status, 200);
 }
 
+
+/// Holds the project's source lock on another thread for `ms`, and returns once it is held.
+fn hold_lock_for(user: &'static str, project: &'static str, ms: u64) -> std::thread::JoinHandle<()> {
+    let (held, ready) = std::sync::mpsc::channel();
+    let handle = std::thread::spawn(move || {
+        let lock = project_documents::source_lock(user, project);
+        let _held = lock.lock().unwrap();
+        held.send(()).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(ms));
+    });
+    ready.recv().unwrap();
+    handle
+}
+
+fn index_job_times(rig: &Rig) -> Vec<i64> {
+    let conn = rusqlite::Connection::open(outbox::path(&rig.dir())).unwrap();
+    let mut stmt = conn
+        .prepare("SELECT created_at FROM jobs WHERE kind = 'index'")
+        .unwrap();
+    let times: Vec<i64> = stmt
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    times
+}
+
+/// Re-review N5: a sync that waited for the project's lock (a job queued behind another operation) dates
+/// its records by when it runs, not by when its context was made. One that did not wait keeps the
+/// context's time.
+#[test]
+fn a_sync_that_waited_for_the_project_lock_dates_its_records_by_when_it_ran() {
+    let rig = Rig::new(PROJECT);
+    rig.storage.put("docs/a.md", b"a");
+    let before = wall();
+    let holder = hold_lock_for(USER, "proj-a", 150);
+    let (reply, _) = rig.sync();
+    assert_eq!(reply.status, 200);
+    holder.join().unwrap();
+    let times = index_job_times(&rig);
+    assert!(!times.is_empty());
+    assert!(
+        times.iter().all(|t| *t >= before),
+        "stamped when it ran, not at the context's time: {times:?} < {before}"
+    );
+
+    let free = Rig::new(PROJECT);
+    free.storage.put("docs/a.md", b"a");
+    let (reply, _) = free.sync();
+    assert_eq!(reply.status, 200);
+    assert_eq!(
+        index_job_times(&free),
+        vec![1_700_000_000_000],
+        "no wait: the context's own time"
+    );
+}
+
 /// Part 1 M3 / part 2 M1: an account removed while a sync runs stays removed (#1425): the staging folder
 /// of the next file is not made below a user folder that is gone, and the sync ends 410.
 #[test]

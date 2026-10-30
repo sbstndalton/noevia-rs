@@ -475,6 +475,60 @@ async fn a_client_that_leaves_cannot_strand_the_job_and_the_slots_are_freed() {
     assert_eq!(status, 202, "a slot is free again: {body}");
 }
 
+fn listed_states(f: &Front) -> String {
+    std::fs::read_to_string(
+        f.data
+            .join("users")
+            .join(&f.user)
+            .join("source-file-ops.json"),
+    )
+    .unwrap_or_default()
+}
+
+/// Re-review N1: a client that disconnects from a synchronous sync leaves the operation running, and its
+/// listing says so (running, then ready), instead of failed while the work goes on.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_client_that_leaves_a_foreground_sync_does_not_fail_its_listing_while_it_runs() {
+    let f = front().await;
+    let h = headers(&f);
+    // The project's source lock is held, so the sync waits (its foreground wait is 30 s) once it is listed.
+    let lock = server_projects::project_documents::source_lock(&f.user, "p 1");
+    let held = lock.lock().unwrap();
+    let mut s = TcpStream::connect(f.addr).await.unwrap();
+    let mut req = String::from("POST /api/projects/p%201/sources/sync HTTP/1.1\r\nhost: front.test\r\nconnection: close\r\ncontent-length: 2\r\n");
+    for (k, v) in &h {
+        req.push_str(&format!("{k}: {v}\r\n"));
+    }
+    req.push_str("\r\n{}");
+    s.write_all(req.as_bytes()).await.unwrap();
+    for _ in 0..100 {
+        if listed_states(&f).contains(r#""state":"running""#) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert!(listed_states(&f).contains(r#""state":"running""#));
+    drop(s);
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let while_running = listed_states(&f);
+    assert!(
+        while_running.contains(r#""state":"running""#) && !while_running.contains("failed"),
+        "{while_running}"
+    );
+    drop(held);
+    for _ in 0..200 {
+        if listed_states(&f).contains(r#""state":"ready""#) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let after = listed_states(&f);
+    assert!(
+        after.contains(r#""state":"ready""#) && !after.contains("failed"),
+        "{after}"
+    );
+}
+
 /// A second person's session: the owner's projects are not theirs, whichever source route they use.
 fn insert_member_session(f: &Front) -> (String, String) {
     let user = "22222222-2222-4222-8222-222222222222";

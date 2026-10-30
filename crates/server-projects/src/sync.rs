@@ -416,7 +416,7 @@ fn run_budgeted(env: &SyncEnv<'_>, ocr_pages: usize) -> Reply {
         budget: OcrBudget::new(ocr_pages),
     };
     let lock = project_documents::source_lock(env.ctx.user_id, env.project);
-    let Some(_held) = project_documents::lock_within(&lock, env.lock_wait) else {
+    let Some((_held, ctx)) = project_documents::lock_restamped(&lock, env.lock_wait, env.ctx) else {
         return finish_log(
             env,
             &Stats::default(),
@@ -425,6 +425,8 @@ fn run_budgeted(env: &SyncEnv<'_>, ocr_pages: usize) -> Reply {
             project_documents::busy_reply(),
         );
     };
+    // What the sync writes is dated by when it runs, not by when a queued job was made.
+    let env = &SyncEnv { ctx, ..*env };
     match run_locked(env, &budgeted) {
         Ok((reply, stats, status)) => finish_log(env, &stats, status.to_string(), started, reply),
         Err(r) => {
@@ -1205,8 +1207,8 @@ fn finish(
         store::set(p, "files", JValue::Arr(next));
         // A file dropped into the project's own upload folder elsewhere is an upload too (#659).
         reply::apply_project_docs_default(p, env.catalogue, had_uploads);
-        if crate::lifecycle::externalize(dir, p).is_err() {
-            return (Err(Reply::internal()), false);
+        if let Err(r) = crate::lifecycle::externalize_reply(dir, p) {
+            return (Err(r), false);
         }
         if !crate::lifecycle::reconcile_all(std::slice::from_mut(p)) {
             return (Err(Reply::internal()), false);

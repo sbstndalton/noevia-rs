@@ -58,12 +58,41 @@ pub fn lock_within(
     lock: &Mutex<()>,
     wait: std::time::Duration,
 ) -> Option<std::sync::MutexGuard<'_, ()>> {
+    acquire(lock, wait).map(|(guard, _)| guard)
+}
+
+/// [`lock_within`] for an operation that dates what it writes by its context: the guard, and the context
+/// with its clock brought to now when the lock had to be waited for (a job queued behind another
+/// operation of the project can start hours after its context was made).
+pub fn lock_restamped<'l, 'c>(
+    lock: &'l Mutex<()>,
+    wait: std::time::Duration,
+    ctx: Ctx<'c>,
+) -> Option<(std::sync::MutexGuard<'l, ()>, Ctx<'c>)> {
+    let (guard, waited) = acquire(lock, wait)?;
+    let ctx = if waited {
+        Ctx {
+            now_ms: ctx.now_ms.max(crate::wall_ms()),
+            ..ctx
+        }
+    } else {
+        ctx
+    };
+    Some((guard, ctx))
+}
+
+/// The guard, and whether the first attempt found the lock held.
+fn acquire(
+    lock: &Mutex<()>,
+    wait: std::time::Duration,
+) -> Option<(std::sync::MutexGuard<'_, ()>, bool)> {
     let end = std::time::Instant::now() + wait;
+    let mut waited = false;
     loop {
         match lock.try_lock() {
-            Ok(g) => return Some(g),
-            Err(std::sync::TryLockError::Poisoned(p)) => return Some(p.into_inner()),
-            Err(std::sync::TryLockError::WouldBlock) => {}
+            Ok(g) => return Some((g, waited)),
+            Err(std::sync::TryLockError::Poisoned(p)) => return Some((p.into_inner(), waited)),
+            Err(std::sync::TryLockError::WouldBlock) => waited = true,
         }
         if std::time::Instant::now() >= end {
             return None;
@@ -145,6 +174,27 @@ pub fn post(
     engine: &dyn Engine,
     limits: &Limits,
 ) -> Reply {
+    post_waiting(
+        ctx,
+        raw,
+        body,
+        over,
+        engine,
+        limits,
+        FOREGROUND_LOCK_WAIT,
+    )
+}
+
+/// [`post`] that waits at most `lock_wait` for the project's source lock (429 past it).
+fn post_waiting(
+    ctx: Ctx<'_>,
+    raw: &str,
+    body: &[u8],
+    over: bool,
+    engine: &dyn Engine,
+    limits: &Limits,
+    lock_wait: std::time::Duration,
+) -> Reply {
     let Some(id) = js::decode_uri_component(raw) else {
         return Reply::internal();
     };
@@ -195,9 +245,8 @@ pub fn post(
     }
     let replace = parsed.get("replace").as_bool() == Some(true);
     let lock = source_lock(ctx.user_id, &id);
-    let _held = match lock.lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
+    let Some(_held) = lock_within(&lock, lock_wait) else {
+        return busy_reply();
     };
     // Under the lock: the project as it is now.
     let (_, project) = match crate::originals::project(ctx, &id) {
@@ -341,8 +390,8 @@ fn restore(dir: &std::path::Path, project: &str, name: &str, earlier: Option<ext
 }
 
 fn finish(dir: &std::path::Path, p: &mut JValue, _file: &JValue) -> (Result<(), Reply>, bool) {
-    if crate::lifecycle::externalize(dir, p).is_err() {
-        return (Err(Reply::internal()), false);
+    if let Err(r) = crate::lifecycle::externalize_reply(dir, p) {
+        return (Err(r), false);
     }
     if !crate::lifecycle::reconcile_all(std::slice::from_mut(p)) {
         return (Err(Reply::internal()), false);
@@ -436,6 +485,28 @@ mod tests {
         let doc = files[0].get("document");
         assert_eq!(doc.get("extraction").as_str(), Some("queued"));
         assert_eq!(doc.get("byteHash").as_str(), Some(job.byte_hash.as_str()));
+    }
+
+    /// #2191 round 8 re-review N4: the document route waits a bounded time for the project's source lock
+    /// and then says 429, as the other source routes do; a hung holder cannot pile up its requests.
+    #[test]
+    fn a_document_waits_a_bounded_time_for_the_project_lock_and_then_says_429() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("users").join(USER);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(store::PROJECTS_FILE), PROJECTS).unwrap();
+        let fake = Fake::default();
+        let lock = source_lock(USER, "proj-a");
+        let held = lock.lock().unwrap();
+        let started = std::time::Instant::now();
+        let wait = std::time::Duration::from_millis(100);
+        let r = post_waiting(ctx(root.path()), "proj-a", &body(), false, &fake, &LIMITS, wait);
+        assert_eq!(r.status, 429, "{r:?}");
+        assert!(started.elapsed() >= wait && started.elapsed() < std::time::Duration::from_secs(5));
+        assert_eq!(listed(&dir), 0, "nothing was saved");
+        drop(held);
+        let r = post_waiting(ctx(root.path()), "proj-a", &body(), false, &fake, &LIMITS, wait);
+        assert_eq!(r.status, 200, "{r:?}");
     }
 
     /// An engine that, when the ingest first asks whether Docling is configured (the upload asked

@@ -445,9 +445,10 @@ fn organized(env: &Env<'_>, dir: &Path, id: &str, body: &JValue, input_name_raw:
         return fail_reply(f);
     }
     let lock = project_documents::source_lock(ctx.user_id, id);
-    let Some(_held) = project_documents::lock_within(&lock, env.lock_wait) else {
+    let Some((_held, ctx)) = project_documents::lock_restamped(&lock, env.lock_wait, ctx) else {
         return project_documents::busy_reply();
     };
+    let env = &Env { ctx, ..*env };
     let reply = organized_locked(
         env,
         dir,
@@ -731,8 +732,8 @@ fn organized_locked(
             uploads::apply_assets(p, &ingested, ctx.now_ms);
             store::set(p, "updatedAt", JValue::Num(ctx.now_ms as f64));
             reply::apply_project_docs_default(p, env.catalogue, had_uploads);
-            if crate::lifecycle::externalize(dir, p).is_err() {
-                return (Err(Reply::internal()), false);
+            if let Err(r) = crate::lifecycle::externalize_reply(dir, p) {
+                return (Err(r), false);
             }
             if !crate::lifecycle::reconcile_all(std::slice::from_mut(p)) {
                 return (Err(Reply::internal()), false);
@@ -800,9 +801,10 @@ fn legacy(
 ) -> Reply {
     let ctx = env.ctx;
     let lock = project_documents::source_lock(ctx.user_id, id);
-    let Some(_held) = project_documents::lock_within(&lock, env.lock_wait) else {
+    let Some((_held, ctx)) = project_documents::lock_restamped(&lock, env.lock_wait, ctx) else {
         return project_documents::busy_reply();
     };
+    let env = &Env { ctx, ..*env };
     let reply = legacy_locked(env, dir, id, body, raw_name, bytes);
     prune(dir, ctx, id);
     reply
@@ -919,8 +921,8 @@ fn legacy_locked(
             store::set(p, "files", JValue::Arr(next));
             store::set(p, "updatedAt", JValue::Num(ctx.now_ms as f64));
             reply::apply_project_docs_default(p, env.catalogue, had_uploads);
-            if crate::lifecycle::externalize(dir, p).is_err() {
-                return (Err(Reply::internal()), false);
+            if let Err(r) = crate::lifecycle::externalize_reply(dir, p) {
+                return (Err(r), false);
             }
             if !crate::lifecycle::reconcile_all(std::slice::from_mut(p)) {
                 return (Err(Reply::internal()), false);
@@ -1146,8 +1148,8 @@ fn legacy_locked(
             next.push(f.clone());
             store::set(p, "files", JValue::Arr(next));
             reply::apply_project_docs_default(p, env.catalogue, had_uploads);
-            if crate::lifecycle::externalize(dir, p).is_err() {
-                return (Err(Reply::internal()), false);
+            if let Err(r) = crate::lifecycle::externalize_reply(dir, p) {
+                return (Err(r), false);
             }
             if !crate::lifecycle::reconcile_all(std::slice::from_mut(p)) {
                 return (Err(Reply::internal()), false);

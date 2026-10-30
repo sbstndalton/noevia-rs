@@ -161,6 +161,18 @@ pub fn hold(
     })
 }
 
+/// How long an operation waits for the project's source lock. A request waits briefly and then says 429; a
+/// job, already accepted, waits its turn, but at most half its bound: the bound runs from the job's start,
+/// so a wait of the whole bound would leave the operation no time (and a job that waited that long would
+/// be failed 504 while it ran).
+fn lock_wait(foreground: bool, upload: bool) -> Duration {
+    if foreground {
+        server_projects::project_documents::FOREGROUND_LOCK_WAIT
+    } else {
+        work::bound(upload) / 2
+    }
+}
+
 /// Runs one operation to its answer (blocking): the synchronous routes and every job. `progress` is told
 /// each stage; `check_hold` is false for a job, whose start already took the hold's probe.
 pub fn execute(
@@ -182,13 +194,7 @@ pub fn execute(
     let limits = server_projects::extract::Limits::from_env();
     let catalogue = lifecycle::Catalogue::read(&account.data_dir);
     let root = lifecycle::project_root_folder();
-    // A request waits briefly for the project's source lock and then says 429; a job, already accepted,
-    // waits its turn up to its own bound.
-    let lock_wait = if check_hold {
-        server_projects::project_documents::FOREGROUND_LOCK_WAIT
-    } else {
-        work::bound(work.kind == Kind::Upload)
-    };
+    let lock_wait = lock_wait(check_hold, work.kind == Kind::Upload);
     with_storage(app, authn, |storage| match work.kind {
         Kind::Upload => upload::post(
             &upload::Env {
@@ -296,6 +302,10 @@ async fn end_listing(op: Option<Op>, ok: bool) {
 
 /// The synchronous form: the operation, run on the blocking pool, answered as it ends (or, past the
 /// bound, as a 504).
+///
+/// The whole of it runs in a task of its own that this future only awaits: a client that disconnects
+/// (dropping this future) cannot drop the operation's listing while the operation still runs, which would
+/// show it as failed to the chat that waits on it.
 pub async fn run_sync(
     app: &Arc<App>,
     authn: server_auth::Identity,
@@ -303,6 +313,17 @@ pub async fn run_sync(
     work: Work,
 ) -> Response<Body> {
     let app = Arc::clone(app);
+    tokio::spawn(run_sync_task(app, authn, account, work))
+        .await
+        .unwrap_or_else(|_| reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true))
+}
+
+async fn run_sync_task(
+    app: Arc<App>,
+    authn: server_auth::Identity,
+    account: Account,
+    work: Work,
+) -> Response<Body> {
     let bound = work::bound(work.kind == Kind::Upload);
     let listed = {
         let (account, work) = (account.clone(), work.clone());
@@ -763,6 +784,18 @@ mod tests {
     fn the_bounds_are_two_hours_for_a_sync_and_half_an_hour_for_an_upload() {
         assert_eq!(work::bound(false), Duration::from_secs(7200));
         assert_eq!(work::bound(true), Duration::from_secs(1800));
+    }
+
+    /// Re-review N5: a job's wait for the project's lock is half its bound (the bound runs from its start, so
+    /// the whole of it would leave the operation nothing); a request's is the short foreground wait.
+    #[test]
+    fn a_job_waits_for_the_project_lock_half_its_bound_and_a_request_the_short_wait() {
+        let short = server_projects::project_documents::FOREGROUND_LOCK_WAIT;
+        assert_eq!(lock_wait(true, false), short);
+        assert_eq!(lock_wait(true, true), short);
+        assert_eq!(lock_wait(false, false), work::bound(false) / 2);
+        assert_eq!(lock_wait(false, true), work::bound(true) / 2);
+        assert!(lock_wait(false, true) < work::bound(true));
     }
 
     #[test]
