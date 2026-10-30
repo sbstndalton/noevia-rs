@@ -129,8 +129,14 @@ const PROJECT_ROUTES: &[&str] = &[
     PROJECT_CREATE,
     PROJECT_ONE,
     PROJECT_FILES,
+    PROJECT_DOCUMENTS,
     server_projects::import::ROUTE,
 ];
+
+/// A project document's upload (POST only; routes.toml), the front's under `rust-project-documents`
+/// (sbstndalton/noevia#2191 round 5), on the Rust extraction pipeline; Node refuses it
+/// (core rust-project-documents.cjs).
+pub(crate) const PROJECT_DOCUMENTS: &str = "/api/projects/{id}/documents";
 
 /// A project source file's delete from the user's storage (DELETE only; routes.toml), the front's
 /// under `rust-project-files` (sbstndalton/noevia#2191 round 3); Node refuses it
@@ -1083,6 +1089,32 @@ mod tests {
             None
         );
         assert!(crate::FEATURES.contains(&"rust-project-lifecycle"));
+    }
+
+    #[test]
+    fn a_document_upload_is_native_for_post_only() {
+        let on = Switches::default();
+        assert_eq!(
+            dispatch_under("POST", "/api/projects/p1/documents", on),
+            Some(Native::Projects)
+        );
+        for m in ["GET", "PUT", "PATCH", "DELETE"] {
+            assert_eq!(
+                dispatch_under(m, "/api/projects/p1/documents", on),
+                None,
+                "{m}"
+            );
+        }
+        assert!(matches!(
+            crate::project_routes::route("POST", "/api/projects/p1/documents"),
+            Some(crate::project_routes::Route::Documents { .. })
+        ));
+        assert_eq!(
+            crate::project_routes::route("POST", "/api/projects//documents"),
+            None
+        );
+        assert!(crate::FEATURES.contains(&"rust-project-documents"));
+        assert!(crate::FEATURES.contains(&"rust-document-extraction"));
     }
 
     #[test]

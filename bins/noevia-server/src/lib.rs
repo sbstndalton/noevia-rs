@@ -113,6 +113,10 @@ use std::sync::Arc;
 /// OCR worker for the per-page retry; crates/server-projects `extract`) and drains each user's
 /// durable extraction queue (`users/<id>/extraction-jobs.db`, sbstndalton/noevia#2191 round 5).
 ///
+/// `rust-project-documents`: this build answers `POST /api/projects/{id}/documents` on that pipeline
+/// (sbstndalton/noevia#2191 round 5). Node refuses the POST (core rust-project-documents.cjs
+/// `RUST_PROJECT_DOCUMENTS_OWNED`), so the web supervisor pairs them.
+///
 /// `project-store`: this build serves the internal project store Node writes projects.json and
 /// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
 /// supervisor confirms it to Node (NOEVIA_RUST_PROJECT_STORE_CONFIRMED) and hands both the secret.
@@ -145,6 +149,7 @@ pub const FEATURES: &[&str] = &[
     "rust-project-document-pages",
     "rust-conversation-import",
     "rust-document-extraction",
+    "rust-project-documents",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",

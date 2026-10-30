@@ -462,7 +462,8 @@ file whose name is a validated hex hash, never a request value.
 | `/api/projects/{id}/documents/pages` (GET) | rust | round 4, below |
 | `/api/projects` (POST), `/api/projects/{projectId}` (DELETE) | rust | round 2, below |
 | `/api/projects/{projectId}/config` | node | its model check reads Node's served-model catalogue and provider registry (live state, not persisted), and a `files` patch re-indexes through Node's RAG writer; next after the provider/model catalogue is published like the toolbox catalogue |
-| `/api/projects/{id}/upload`, `/sources/sync`, `/documents` (POST), `source-jobs`, `folder-import/plan` | node | the storage writes they make exist in the front since round 3 (`writes`, below); what keeps them on Node is the extraction pipeline they run in-process: docling/OCR extraction, `pdf-reduce`'s page ranges, the DOCX reader, the large-document lock and the background source jobs, then the index outbox for their RAG work |
+| `/api/projects/{id}/documents` (POST) | rust | round 5, below: the front's Docling pipeline and durable extraction queue |
+| `/api/projects/{id}/upload`, `/sources/sync`, `source-jobs`, `folder-import/plan` | node | the extraction core is the front's since round 5 (below); what keeps these on Node: the background source jobs (the browser uploads and syncs only with `?background=1`, and the source-job journal has one owning process per account), the upload's other readers (`pdf-reduce` through OCR, the DOCX reader, text decoding, image assets), the folder-import tickets the plan and the upload share in memory, and the sync's storage reads with its OCR budget and reopen pass |
 | `/api/projects/{projectId}/instruction-skills`, `.../manifests`, `/api/projects/{project}/skills/install` | node | the known-toolbox list (plugins, MCP) is Node's runtime catalogue; install fetches a published skill through Node's plugin directory |
 | `/api/projects/{projectId}/browser`, `/code`, `/research` | node | they drive a browser session, the code harness or research jobs |
 | `/api/code/active` | node | the code harness service's live task list |
@@ -577,3 +578,69 @@ one), lists merged as `mergeChats` merges them; a chat the list cap dropped is `
 back (origin `remove`) only while it is still the imported transcript. Any other failure is Node's
 503 `Import was interrupted…`, the journal kept for the next import. Imports of one account run one
 at a time (Node: per process; the front is the only process answering it now).
+
+## sbstndalton/noevia#2191 round 5 (groups rust-document-extraction, rust-project-documents): Docling is the extraction engine
+
+`--features` lists `rust-document-extraction` (the front's extraction pipeline and its worker) and
+`rust-project-documents`: `POST /api/projects/{id}/documents` is the front's
+(crates/server-projects `project_documents`), core refuses the POST (any query, `?background=1`
+included) with 503 `RUST_PROJECT_DOCUMENTS_OWNED` (`server/rust-project-documents.cjs`).
+
+**Behaviour change (the 2026-10-30 decision).** Docling, with the OCR worker for the per-page retry
+of pages Docling left incomplete, is THE extraction engine for new project documents. The front has
+no in-process PDF reader: core's pdf.js walk (`documents-native.cjs`) is not ported. Where core
+would have used it (Docling not configured, or a PDF over 25 MiB whose worker does not read page
+ranges), and whenever Docling is unreachable, busy or answers a transient error, the document is
+stored exactly as core stored an unreachable worker's result: the original, a result record with
+`retryable: true`, the source record with `document.state: "failed"` and the worker's own words in
+`document.error` (`fetch failed`, `Document extraction is busy; refresh to retry.`, `Document
+extraction unavailable (HTTP n); refresh to retry.`, `Document extraction is not configured.`),
+`indexing: "unavailable"`, or the last readable text kept (`stale: true`) when the upload replaced a
+readable document. One field is added, the smallest marker of the new state:
+`document.extraction: "queued"`, present while the document's job waits and gone once it is read.
+Without Docling, `isDocument` accepts a PDF only (it is queued); with Docling, its formats. A refusal
+(415, 422) is final and never queued, as in core. Documents already stored are never extracted again
+(a stored readable record is reused as it is; a record without the completion marker gets that pass).
+
+**Pipeline** (crates/server-projects `extract`, `document_ingest`, `extract_queue`; bins/noevia-server
+`extraction`): core documents.cjs / document-sources.cjs / docling.cjs / ocr.cjs on the Docling path,
+answer for answer. Routing: plain-text names are never documents. First pass: one whole-document
+request (`POST {DOCLING}/extract`, `application/octet-stream`, `X-Document-Name` the last path
+segment, Latin-1 or percent-encoded, `X-Document-Figures` with multimodal RAG, a deadline of 65
+minutes), or the first range (`X-Document-Pages`, 2 min + 1 min a page) of a PDF over 25 MiB when
+`/health` says `ranges` (and the size is within `rangedMaxBytes`). Completion pass
+(`ranges-ocr-retry-v1`): the pages past the first window in ranges through Docling up to
+`PROJECT_DOCUMENT_PAGE_LIMIT`/`_TEXT_LIMIT`/`_RANGE_PAGES`, then each incomplete page retried alone
+through OCR (`POST {OCR}/extract`, `X-OCR-Pages`, `X-OCR-DPI: 400`, at most 20 pages, 3 per request,
+330 to 610 s), with the busy waits (5 s, 15 s) and the 3-attempt bound; a stop for a passing reason
+leaves the marker off and the job queued. Reply caps 32 MiB (Docling), 16 MiB (OCR), 64 KiB
+(`/health`, kept 5 minutes). Large-document lock: one document over 25 MiB at a time in the front's
+process, a waiter busy after `LARGE_DOCUMENT_ACQUIRE_WAIT_MS` (2 min). Workers are where
+document-workers.cjs finds them: the machine Settings → Inference machines assigned (cowork.db
+`inference:machines`, read at call time; connected to only when every address of its name is on
+this network), else `DOCLING_BASE_URL` / `OCR_BASE_URL`; no redirect, no credential. Files, in core's
+formats: `project-documents/<sha256 id>/<byteHash>.pdf` (written once), `<version>.json` with
+`version = sha256(byteHash:docling-pages-v1:<docling VERSION>[:figures-v1])` (fsynced temp, rename,
+folder fsync, 0600/0700), `<version>.fig<n>.<ext>` figures; the source text in
+`project-sources/<id>/<textRef>.txt`; then an `index` job in the index outbox (core indexes).
+
+**Queue** (`users/<id>/extraction-jobs.db`): key `["extract", project, file]`, target `byte_hash`
+and `version`; queuing a key again replaces its target (idempotent; a newer upload supersedes).
+Claimed `running`, deleted only at the version claimed; a `running` row left by a crash or restart
+is pending again at the next start (at least once: a run re-reads the stored original and the
+source as listed, and results are content-addressed). A passing failure waits
+`min(30 s x 2^(attempts-1), 30 min)`; there is no last attempt. A source gone, renamed or holding
+other bytes by then drops its job. The worker looks for due jobs every 10 s, one extraction at a time.
+
+**Route** (core routes/projects.cjs `projDocs`, answer for answer): id decoded (bad escape 500),
+`getProject`, 404 `no such project`, body up to `ceil(25 MiB/3)*4 + 512 KiB` (413), `JSON.parse`
+(400 `invalid JSON`; `null` the TypeError's 500), `String(body.name || '').slice(0, 200)` and
+`isDocument` (400 `<name> is not a supported document (PDF).`), base64 data (empty 400, over 25 MiB
+413 with its size), then one source operation per project in the front's process: the 20-upload cap
+(400), an existing upload without `replace: true` (409 `sourceExists`), the ingest, the project and
+replaced upload unchanged (409 `Project changed; retry.`), the file listed last, `indexing` set as
+`indexSource` sets it, the save (texts first), the document folder pruned against the saved list,
+the `index` job, 200 `{ name, pages, characters, truncated, document }`. `?background=1` is answered
+the same way, synchronously (no client sends it for this route). Not serialized against a core
+source operation on the same project (core's source lock is in-process): the save is a
+read-modify-write of projects.json under its lock, as round 3's delete.

@@ -108,6 +108,10 @@ pub enum Route {
     DeleteFile {
         project: String,
     },
+    /// POST /api/projects/{id}/documents (sbstndalton/noevia#2191 round 5, `rust-project-documents`)
+    Documents {
+        project: String,
+    },
 }
 
 /// Node's matchers, `^\/api\/projects\/([^/]+)\/assets$`, `...\/assets\/([^/]+)$` and
@@ -174,6 +178,10 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
         }),
         // routes/projects.cjs `projFileDel`, DELETE only (sbstndalton/noevia#2191 round 3).
         ("DELETE", [project, "files"]) if !project.is_empty() => Some(Route::DeleteFile {
+            project: (*project).to_string(),
+        }),
+        // routes/projects.cjs `projDocs`, POST only (sbstndalton/noevia#2191 round 5).
+        ("POST", [project, "documents"]) if !project.is_empty() => Some(Route::Documents {
             project: (*project).to_string(),
         }),
         ("POST", [project, "assets"]) if !project.is_empty() => Some(Route::Upload {
@@ -368,6 +376,7 @@ pub async fn serve(
         Route::CreateProject => Some(lifecycle::BODY_LIMIT),
         Route::ImportConversations => Some(server_projects::import::MAX_BYTES),
         Route::DeleteFile { .. } => Some(server_projects::files::BODY_LIMIT),
+        Route::Documents { .. } => Some(server_projects::project_documents::BODY_LIMIT),
         Route::DeleteProject { .. }
         | Route::One { .. }
         | Route::Chats { .. }
@@ -405,6 +414,10 @@ pub async fn serve(
                     true,
                 )
             }
+            // routes/projects.cjs: a document body it could not read is `invalid JSON`.
+            Err(()) if matches!(route, Route::Documents { .. }) => {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid JSON", true)
+            }
             Err(()) if matches!(route, Route::SaveHistory { .. }) => {
                 return reply::error(StatusCode::BAD_REQUEST, "could not read the chat", true)
             }
@@ -423,6 +436,10 @@ pub async fn serve(
     // A source file's delete writes to the user's storage (round 3, #2191).
     let file_inputs =
         matches!(route, Route::DeleteFile { .. }).then(|| (Arc::clone(app), authn.clone()));
+    // A document upload extracts through the front's engine (round 5, #2191).
+    let engine = matches!(route, Route::Documents { .. })
+        .then(|| app.extraction.clone())
+        .flatten();
     // A create or delete runs the user's queued storage sweep afterwards (round 3, #2191).
     let sweep_inputs = matches!(
         route,
@@ -449,6 +466,7 @@ pub async fn serve(
             | Route::CreateProject
             | Route::DeleteProject { .. }
             | Route::DeleteFile { .. }
+            | Route::Documents { .. }
             | Route::ImportConversations
     ) || (matches!(route, Route::One { .. }) && method == "DELETE");
     let done = tokio::task::spawn_blocking(move || {
@@ -578,9 +596,21 @@ pub async fn serve(
                 }
                 None => Reply::internal(),
             },
+            (Route::Documents { project }, Some(b)) => match &engine {
+                Some(engine) => server_projects::project_documents::post(
+                    ctx,
+                    &project,
+                    &b.bytes,
+                    b.over,
+                    engine.as_ref(),
+                    &server_projects::extract::Limits::from_env(),
+                ),
+                None => Reply::error(503, "Document extraction is unavailable; retry shortly."),
+            },
             (
                 Route::CreateProject
                 | Route::ImportConversations
+                | Route::Documents { .. }
                 | Route::DeleteFile { .. }
                 | Route::Upload { .. }
                 | Route::SaveChats { .. }
