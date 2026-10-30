@@ -794,7 +794,8 @@ impl RealNode {
             .send()
             .await
             .unwrap();
-        (r.status().as_u16(), r.json().await.unwrap())
+        let status = r.status().as_u16();
+        (status, serde_json::from_slice(&r.bytes().await.unwrap()).unwrap())
     }
 }
 

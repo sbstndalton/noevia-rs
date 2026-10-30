@@ -94,7 +94,9 @@ impl NodeLeases {
         let res = req.send().await.map_err(|_| LeaseFault::Unavailable)?;
         match res.status().as_u16() {
             201 => {
-                let body: Value = res.json().await.map_err(|_| LeaseFault::Unavailable)?;
+                let bytes = res.bytes().await.map_err(|_| LeaseFault::Unavailable)?;
+                let body: Value =
+                    serde_json::from_slice(&bytes).map_err(|_| LeaseFault::Unavailable)?;
                 let id = body
                     .get("lease")
                     .and_then(Value::as_str)
