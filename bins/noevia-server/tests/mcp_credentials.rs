@@ -2196,3 +2196,75 @@ async fn a_deployment_that_never_used_these_credentials_gets_no_file() {
     );
     assert_eq!(state_file(d.path())["oauth"], j("{}"));
 }
+
+#[tokio::test]
+async fn a_registered_app_is_authenticated_the_way_its_registration_said() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let up = upstream().await;
+    let base = up.base();
+    add_server(&db, "dir-oauth", &format!("{base}/mcp"), true, false, "[]");
+    let f = front(d.path()).await;
+    let a = f.addr;
+    // The service hands the app a secret; what it registered the app for decides how the secret is sent.
+    let method = Arc::new(Mutex::new(String::new()));
+    {
+        let (base, method) = (base.clone(), Arc::clone(&method));
+        up.set(move |r: &Seen| match r.path.as_str() {
+            "/mcp" => reply_with("401 Unauthorized", &format!("www-authenticate: Bearer resource_metadata=\"{base}/.well-known/oauth-protected-resource/mcp\"\r\n"), ""),
+            "/.well-known/oauth-protected-resource/mcp" => reply("200 OK", &format!(r#"{{"resource":"{base}/mcp","authorization_servers":["{base}"]}}"#)),
+            "/.well-known/oauth-authorization-server" => reply(
+                "200 OK",
+                &format!(r#"{{"issuer":"{base}","authorization_endpoint":"{base}/authorize","token_endpoint":"{base}/token","registration_endpoint":"{base}/register","code_challenge_methods_supported":["S256"],"token_endpoint_auth_methods_supported":["client_secret_post","client_secret_basic"]}}"#),
+            ),
+            "/register" => {
+                let m = method.lock().unwrap().clone();
+                let field = if m.is_empty() { String::new() } else { format!(r#","token_endpoint_auth_method":"{m}""#) };
+                reply("201 Created", &format!(r#"{{"client_id":"registered","client_secret":"s3cret/+ x"{field}}}"#))
+            }
+            "/token" => reply("200 OK", r#"{"access_token":"a","refresh_token":"r","expires_in":3600}"#),
+            _ => reply("404 Not Found", ""),
+        });
+    }
+    let sign_in = |label: &'static str| {
+        let (a, up) = (a, up.clone());
+        async move {
+            let (st, body) = write(a, "POST", "/api/mcp-oauth/dir-oauth/connect", MEMBER, "").await;
+            assert_eq!(st, 200, "{label}: {body}");
+            let state = query(body["signIn"].as_str().unwrap())["state"].clone();
+            let (st, _, page) = raw_text(
+                a,
+                "GET",
+                &format!("/api/mcp-oauth/callback?state={state}&code=c"),
+                MEMBER,
+                "",
+                b"",
+            )
+            .await;
+            assert_eq!(st, 200, "{label}: {page}");
+            up.seen().into_iter().rfind(|s| s.path == "/token").unwrap()
+        }
+    };
+    // Registered for client_secret_post: the secret rides in the form, no Authorization header.
+    *method.lock().unwrap() = "client_secret_post".into();
+    let post = sign_in("post").await;
+    assert_eq!(post.form()["client_secret"], "s3cret/+ x");
+    assert!(!post.headers.contains("authorization:"));
+    // Registered for client_secret_basic: Basic with each part percent-encoded as encodeURIComponent does.
+    db.execute("DELETE FROM mcp_oauth_clients", []).unwrap();
+    *method.lock().unwrap() = "client_secret_basic".into();
+    let basic = sign_in("basic").await;
+    let want = base64::engine::general_purpose::STANDARD.encode("registered:s3cret%2F%2B%20x");
+    // (the stand-in lower-cases every header it records)
+    let want = want.to_ascii_lowercase();
+    assert_eq!(basic.header("authorization"), Some(format!("basic {want}")));
+    assert!(!basic.form().contains_key("client_secret"));
+    // No method named: the service's own metadata chooses (here its first supported, Basic is preferred).
+    db.execute("DELETE FROM mcp_oauth_clients", []).unwrap();
+    *method.lock().unwrap() = String::new();
+    let chosen = sign_in("default").await;
+    assert_eq!(
+        chosen.header("authorization"),
+        Some(format!("basic {want}"))
+    );
+}

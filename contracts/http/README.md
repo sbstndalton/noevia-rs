@@ -994,3 +994,25 @@ Behaviour changes (each a Node bug or gap, with a regression in `tests/mcp_crede
 
 Left on Node (chat-bound): the MCP client itself, discovery of a server's tools, the approval gate for MCP tool
 calls (Allow once, Decline, Allow for this chat), and the administrator's add/replace/remove of directory servers.
+
+### #2202 round 1: what the broker unblocks, and what stays on Node
+
+`GET /api/toolboxes/permitted` is still Node's. Its rules are Rust (the `toolboxes-permitted` crate, run in
+Node's wasm); its inputs are the project's selection (Rust's `projects.json`), the account's connections
+(Rust's storage row; Drive), the MCP readiness (this round: the broker's published file), the tool permission
+store, ENABLED_TOOLBOXES / Kiwix / CODE_REPOS (environment) and the discovered MCP catalogue. Three of those
+are still Node-live: the discovered boxes and their tool schemas (live MCP sessions), the per-user tool
+permission store, and the Drive state until the Drive broker (#2200) lands. What this round did for it: the
+readiness input is a file, and core's cache key now carries the project's toolbox selection, the connected
+connectors, the readiness and the last discovery (it omitted all of them, so a project edit or a new Nextcloud
+connection by the front showed up to 30 s late). The move itself needs Node to publish its offered catalogue
+(box ids, tool names, write flags) after each discovery as a signal-checked file and the permission store to get a
+Rust writer; then the view is a pure function of files the front already reads.
+
+`GET /api/connectors` is still Node's: the Drive half is Node's in-memory account state and sign-in flow (the
+Drive broker is #2200), and the Nextcloud half is the storage connection (Rust) joined with the tool permission
+store (Node). Both halves publish together or not at all.
+
+Chat-bound, by design: `POST /api/tool-approvals` (the parked approval promise lives in the live chat loop; the
+three actions - Allow once, Decline, Allow for this chat - and their tenant scope stay in Node) and `GET
+/api/toolboxes` (prefill samples come from the chat stream, the MCP block from live discovery state).
