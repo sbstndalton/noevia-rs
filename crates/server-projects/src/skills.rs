@@ -105,7 +105,7 @@ fn is_external(file: &JValue) -> bool {
 
 /// core instruction-skills.cjs `looksLikeSkill(file)`: by name or front matter; a source whose text
 /// is in its own file answers from the `skillHeader` flag Node saved beside the pointer (`=== true`).
-fn looks_like_skill(file: &JValue, name: &str) -> Result<bool, Unsupported> {
+pub(crate) fn looks_like_skill(file: &JValue, name: &str) -> Result<bool, Unsupported> {
     if is_external(file) {
         return Ok(skill_md_name(name) || matches!(file.get("skillHeader"), JValue::Bool(true)));
     }

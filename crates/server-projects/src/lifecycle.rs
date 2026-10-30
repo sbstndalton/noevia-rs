@@ -85,6 +85,10 @@ pub struct Catalogue {
     pub selectable: Vec<String>,
     pub defaults: Vec<String>,
     pub icons: Vec<String>,
+    /// Every toolbox id the server knows (`allToolboxes()`, the connector boxes included), which the
+    /// instruction skills' `requires` are judged against; `None` while a core that predates
+    /// round 9 publishes the file.
+    pub known: Option<Vec<String>>,
 }
 
 fn strings(v: &JValue) -> Option<Vec<String>> {
@@ -108,6 +112,7 @@ impl Catalogue {
             selectable: strings(v.get("selectable"))?,
             defaults: strings(v.get("defaults"))?,
             icons: strings(v.get("icons"))?,
+            known: strings(v.get("known")),
         })
     }
 
@@ -127,7 +132,7 @@ impl Catalogue {
     }
 
     /// toolboxes.cjs `sanitizeToolboxes(value)`.
-    fn sanitize(&self, value: &JValue) -> Option<Vec<String>> {
+    pub(crate) fn sanitize(&self, value: &JValue) -> Option<Vec<String>> {
         let JValue::Arr(items) = value else {
             return None;
         };
@@ -181,12 +186,12 @@ fn string_or_empty(v: &JValue) -> Result<String, Reply> {
     }
 }
 
-fn has_own(body: &JValue, key: &str) -> bool {
+pub(crate) fn has_own(body: &JValue, key: &str) -> bool {
     matches!(body, JValue::Obj(items) if items.iter().any(|(k, _)| k == key))
 }
 
 /// project-appearance.cjs `projectAppearance(body)`.
-fn appearance(body: &JValue, icons: &[String]) -> Result<Vec<(String, JValue)>, Reply> {
+pub(crate) fn appearance(body: &JValue, icons: &[String]) -> Result<Vec<(String, JValue)>, Reply> {
     let mut out = Vec::new();
     if has_own(body, "icon") {
         match body.get("icon").as_str() {
@@ -219,7 +224,7 @@ fn appearance(body: &JValue, icons: &[String]) -> Result<Vec<(String, JValue)>, 
 }
 
 /// project-modes.cjs `sanitize(value)`.
-fn modes(value: &JValue) -> Result<Vec<String>, Reply> {
+pub(crate) fn modes(value: &JValue) -> Result<Vec<String>, Reply> {
     let JValue::Arr(items) = value else {
         return Err(Reply::error(400, "modes must be an array"));
     };
@@ -892,6 +897,7 @@ mod tests {
             selectable: vec!["core".into(), "project-docs".into(), "web-search".into()],
             defaults: vec!["core".into()],
             icons: vec!["folder".into(), "book".into()],
+            known: None,
         }
     }
 

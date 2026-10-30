@@ -139,6 +139,24 @@ impl Sidecar {
         Ok((second, second_deadline))
     }
 
+    /// core routes/auth.cjs's last step of an account's deletion: `DELETE /api/internal/tenant` as
+    /// that tenant, with the bearer, the tenant id and the assertion only
+    /// ([`Tenant::bare`]: the account no longer exists to read a storage connection from), for at
+    /// most `timeout`. Whether the sidecar answered ok; a failure is never an error here (the
+    /// deletion has happened, and the sidecar's own start-up reconciliation owns what it kept).
+    pub async fn delete_tenant(&self, user_id: &str, timeout: Duration) -> bool {
+        let tenant = Tenant::bare(user_id);
+        self.fetch_json(
+            &tenant,
+            reqwest::Method::DELETE,
+            "/api/internal/tenant",
+            None,
+            timeout,
+        )
+        .await
+        .is_ok_and(|r| r.ok)
+    }
+
     /// `fetchJson` with the tenant headers and the 428 retry (`diaryFetchJson`).
     pub async fn fetch_json(
         &self,

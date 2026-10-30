@@ -47,6 +47,15 @@ fn features_cli_outputs_only_the_compiled_capabilities() {
         expected.lines().any(|line| line == "rust-project-writes"),
         cfg!(feature = "rust-project-writes")
     );
+    // An account's deletion forgets the MCP sign-ins and the ChatGPT tokens itself: advertised only
+    // with both brokers compiled in (a build with one would delete an account and keep the other's).
+    assert_eq!(
+        expected.lines().any(|line| line == "rust-admin-users"),
+        cfg!(all(
+            feature = "rust-storage-reads",
+            feature = "rust-chatgpt-status"
+        ))
+    );
 }
 
 #[cfg(unix)]

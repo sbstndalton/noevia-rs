@@ -178,6 +178,9 @@ async fn server_main() -> ExitCode {
         Ok(Err(e)) => println!("noevia-server: cowork.db writer not open yet: {e}"),
         Err(_) => eprintln!("noevia-server: warning: writer check did not run"),
     }
+    // sbstndalton/noevia#2191 round 9 (review L5): an account folder with no account row is named in the log
+    // (count and ids), never removed: a database restored from an older copy would make live data look orphaned.
+    noevia_server::admin_user_routes::report_orphan_folders(&app).await;
     // sbstndalton/noevia#2190 round 5: the token broker removes the rows of deleted accounts.
     #[cfg(feature = "rust-chatgpt-status")]
     if let Some(broker) = app.chatgpt_oauth.as_ref() {

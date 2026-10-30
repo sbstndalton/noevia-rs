@@ -132,9 +132,14 @@ path = "/api/admin/users"
 owner = "rust"
 methods = ["GET"]
 
+# sbstndalton/noevia#2190, #2191 round 9 (rust-admin-users): an account's deletion, complete (the rows,
+# the folder, the Drive, MCP and ChatGPT credentials and the Diary tenant), the front's
+# (bins/noevia-server admin_user_routes.rs, crates/server-account delete.rs); Node refuses it
+# (core rust-admin-users.cjs).
 [[route]]
 path = "/api/admin/users/{id}"
-owner = "node"
+owner = "rust"
+methods = ["DELETE"]
 
 [[route]]
 path = "/api/admin/users/{id}/disabled"
@@ -685,9 +690,14 @@ methods = ["DELETE"]
 path = "/api/projects/{projectId}/code"
 owner = "node"
 
+# sbstndalton/noevia#2191 round 9 (rust-project-config): a project's configuration, its instruction
+# skills and a published skill's install, the front's (crates/server-projects config.rs,
+# instruction_skills.rs, skill_routes.rs; bins/noevia-server project_config_routes.rs); Node refuses
+# them (core rust-project-config.cjs).
 [[route]]
 path = "/api/projects/{projectId}/config"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 # sbstndalton/noevia#2191 (rust-project-reads): a source's stored text or original, the front's
 # (bins/noevia-server project_routes.rs); Node refuses the GET (core rust-project-reads.cjs).
@@ -729,11 +739,21 @@ methods = ["POST"]
 
 [[route]]
 path = "/api/projects/{projectId}/instruction-skills"
-owner = "node"
+owner = "rust"
+methods = ["GET", "PUT"]
 
 [[route]]
 path = "/api/projects/{projectId}/instruction-skills/manifests"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
+
+# Not named by the web client (the portable manifests' content is for other clients), so not in
+# the corpus; Node answered it beside the manifests and refuses it with them.
+[[route]]
+path = "/api/projects/{projectId}/instruction-skills/manifests/{skillId}/content"
+owner = "rust"
+methods = ["GET"]
+client = false
 
 [[route]]
 path = "/api/projects/{projectId}/research"
@@ -741,7 +761,8 @@ owner = "node"
 
 [[route]]
 path = "/api/projects/{project}/skills/install"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 # sbstndalton/noevia#2191 round 8 (rust-project-source-work): the front's, in the foreground and (round 6,
 # rust-source-jobs: `?background=1`) as a source job it owns (crates/server-projects source_work.rs); the
