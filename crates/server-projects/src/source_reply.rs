@@ -76,6 +76,16 @@ pub fn failure_reply(failure: Option<Failure>) -> Option<Reply> {
     ))
 }
 
+/// A local file that could not be written for a request: the account having been removed meanwhile
+/// (`NotFound`: its folders are made below `users/<id>`, never that folder itself, #1425) is 410, as
+/// core's `assertActive` answered; anything else is an internal error.
+pub fn io_failure(e: &std::io::Error) -> Reply {
+    if e.kind() == std::io::ErrorKind::NotFound {
+        return Reply::error(410, crate::source_storage::GONE);
+    }
+    Reply::internal()
+}
+
 /// `holdReply(res, hold)`: the answer of an automatic call a latch holds.
 pub fn hold_reply(hold: crate::storage_latch::Hold) -> Reply {
     if hold.kind == "login" {

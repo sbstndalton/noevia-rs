@@ -13,6 +13,9 @@
 use crate::lifecycle;
 use std::time::Duration;
 
+/// What a 410 for a removed account says (http.cjs `errorResponse` of `assertActive`'s error).
+pub const GONE: &str = "account no longer exists";
+
 /// storage-client.cjs's thrown error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StorageError {
@@ -36,6 +39,14 @@ impl StorageError {
             upstream: None,
             retry_after: None,
         }
+    }
+    /// The account was removed while the operation ran (workspace.cjs `assertActive`, 410): nothing
+    /// more is read or written for it.
+    pub fn gone() -> Self {
+        StorageError::new(410, GONE)
+    }
+    pub fn is_gone(&self) -> bool {
+        self.status == 410 && self.message == GONE
     }
     pub fn with_code(mut self, code: &str) -> Self {
         self.code = Some(code.to_owned());
@@ -238,6 +249,11 @@ pub(crate) mod fake {
     use std::cell::RefCell;
     use std::collections::{BTreeMap, BTreeSet};
 
+    /// A hook told the path of a call.
+    pub type PathHook = Box<dyn Fn(&str)>;
+    /// A hook told the storage and the path of a write.
+    pub type WriteHook = Box<dyn Fn(&Fake, &str)>;
+
     /// A synthetic storage: files and folders in memory, calls recorded, failures scripted.
     #[derive(Default)]
     pub struct Fake {
@@ -251,6 +267,19 @@ pub(crate) mod fake {
         pub next_etag: RefCell<u64>,
         /// The declared size `read_binary` reports to its hook, when it should differ from the file's.
         pub declared: RefCell<Option<u64>>,
+        /// Folders whose creation fails with this error.
+        pub folder_errors: RefCell<BTreeMap<String, StorageError>>,
+        /// Paths whose write fails with this error (before anything is stored).
+        pub write_errors: RefCell<BTreeMap<String, StorageError>>,
+        /// What `discard` answers instead of its own check (a failing cleanup).
+        pub discard_override: RefCell<Option<(bool, &'static str)>>,
+        /// Runs after every stored write with the path (storage changing under the upload).
+        pub after_write: RefCell<Option<WriteHook>>,
+        /// Runs at every `create_folder` call with the path.
+        pub on_create_folder: RefCell<Option<PathHook>>,
+        /// Runs at the start of every text or binary read with the path (the account or the project
+        /// changing while a sync reads).
+        pub on_read: RefCell<Option<PathHook>>,
     }
 
     impl Fake {
@@ -332,6 +361,9 @@ pub(crate) mod fake {
         }
         fn read_text(&self, path: &str) -> Result<TextRead, StorageError> {
             self.calls.borrow_mut().push(format!("READ {path}"));
+            if let Some(hook) = self.on_read.borrow().as_ref() {
+                hook(path);
+            }
             if let Some(e) = self.read_errors.borrow().get(path) {
                 return Err(e.clone());
             }
@@ -351,6 +383,9 @@ pub(crate) mod fake {
             sink: &mut dyn FnMut(&[u8]) -> Result<(), StorageError>,
         ) -> Result<u64, StorageError> {
             self.calls.borrow_mut().push(format!("GET {path}"));
+            if let Some(hook) = self.on_read.borrow().as_ref() {
+                hook(path);
+            }
             if let Some(e) = self.read_errors.borrow().get(path) {
                 return Err(e.clone());
             }
@@ -379,6 +414,12 @@ pub(crate) mod fake {
         }
         fn create_folder(&self, path: &str) -> Result<bool, StorageError> {
             self.calls.borrow_mut().push(format!("MKCOL {path}"));
+            if let Some(hook) = self.on_create_folder.borrow().as_ref() {
+                hook(path);
+            }
+            if let Some(e) = self.folder_errors.borrow().get(path) {
+                return Err(e.clone());
+            }
             Ok(!self.dirs.borrow_mut().insert(path.to_owned()))
         }
         fn write(
@@ -388,6 +429,9 @@ pub(crate) mod fake {
             condition: &Condition,
         ) -> Result<Written, StorageError> {
             self.calls.borrow_mut().push(format!("PUT {path}"));
+            if let Some(e) = self.write_errors.borrow().get(path) {
+                return Err(e.clone());
+            }
             let existing = self.files.borrow().get(path).map(|(_, e)| *e);
             if *condition == Condition::IfNoneMatch && existing.is_some() {
                 return Err(StorageError::new(
@@ -403,13 +447,21 @@ pub(crate) mod fake {
             self.files
                 .borrow_mut()
                 .insert(path.to_owned(), (bytes.to_vec(), *next));
+            let etag = format!("\"v{}\"", *next);
+            drop(next);
+            if let Some(hook) = self.after_write.borrow().as_ref() {
+                hook(self, path);
+            }
             Ok(Written {
-                etag: format!("\"v{}\"", *next),
+                etag,
                 created: existing.is_none(),
             })
         }
         fn discard(&self, path: &str, etag: &str) -> (bool, &'static str) {
             self.calls.borrow_mut().push(format!("DISCARD {path}"));
+            if let Some(r) = *self.discard_override.borrow() {
+                return r;
+            }
             let mut files = self.files.borrow_mut();
             match files.get(path) {
                 Some((_, n)) if format!("\"v{n}\"") == etag => {

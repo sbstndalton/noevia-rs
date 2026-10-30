@@ -10,7 +10,9 @@
 //!
 //! Admission is per operation, not per session: a sync that runs for an hour holds no slot between its
 //! requests, so a project create or a file delete of the same account is not refused for its whole length.
-//! Each operation waits up to [`SLOT_WAIT`] for one of the four slots (one per account).
+//! Each operation waits up to [`SLOT_WAIT`] for one of the four slots (one per account). A streamed read of
+//! a large file takes the slot for each ranged request (one chunk, a few seconds), not for the whole read, so
+//! the account's other storage operations are not refused for its length ([`Gated`]).
 use crate::App;
 use server_projects::source_storage::{
     BinaryRead, Condition, Entry, SourceStorage, Storage, StorageError, TextRead, Written,
@@ -18,7 +20,9 @@ use server_projects::source_storage::{
 use server_storage_reads::{
     admission::Permit,
     owner_secret,
-    protocol::{self, Connection, Kind, Operation},
+    protocol::{
+        self, Chunk, Connection, Kind, Operation, Request, Response, Transport, TransportFailure,
+    },
     stream::{self, ReadOptions},
     transport::{ChildTransport, CHILD_ARG},
     writes::{self, Condition as WriteCondition},
@@ -31,6 +35,10 @@ use std::{
 };
 
 const BUSY: &str = "Storage is busy with other requests; try again shortly.";
+/// The saved storage login cannot be read (the credential store or its key). Not "no storage": a sync or an
+/// upload that quietly went on as if the account had none would keep the person's files only in noevia, or
+/// drop a folder's sources, without saying why.
+const UNREADABLE: &str = "The saved storage connection could not be read; try again shortly.";
 /// How long one operation waits for an admission slot.
 const SLOT_WAIT: Duration = Duration::from_secs(30);
 
@@ -70,10 +78,16 @@ pub fn open(app: &Arc<App>, authn: &server_auth::Identity) -> Opened {
     let keys =
         owner_secret::load_existing_keys(data_dir, previous.as_deref().map(String::as_str)).ok();
     let Ok(store) = app.identity.store_blocking() else {
-        return Opened::None;
+        eprintln!("noevia-server: a source operation could not open the account store");
+        return Opened::Refused(503, UNREADABLE);
     };
-    let Ok(projected) = owner_secret::project_connection_with(&store, authn, keys.as_ref()) else {
-        return Opened::None;
+    // No connection row is `Ok` (local storage); an error is a row that could not be read or opened.
+    let projected = match owner_secret::project_connection_with(&store, authn, keys.as_ref()) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("noevia-server: a source operation could not read the saved storage connection: {e}");
+            return Opened::Refused(503, UNREADABLE);
+        }
     };
     drop(store);
     let connection = projected.connection();
@@ -145,6 +159,41 @@ fn failure(f: Failure) -> StorageError {
         }
     }
     e
+}
+
+/// A transport that takes an admission slot (`acquire`) for each chunk request only, not for a whole
+/// streamed read: a read of 96 MiB is a dozen requests over minutes, and a slot held across them would
+/// refuse every other storage write of the account (a project create, a file delete) for that long. A
+/// chunk that finds no slot ends the read with the busy answer (`refused`).
+struct Gated<T, G, A: Fn() -> Result<G, StorageError>> {
+    acquire: A,
+    inner: T,
+    refused: Option<StorageError>,
+}
+
+impl<T: Transport, G, A: Fn() -> Result<G, StorageError>> Transport for Gated<T, G, A> {
+    fn elapsed(&self) -> Duration {
+        self.inner.elapsed()
+    }
+    fn amz_date(&self) -> String {
+        self.inner.amz_date()
+    }
+    fn attempt(&mut self, request: Request) -> Result<Response, TransportFailure> {
+        self.inner.attempt(request)
+    }
+    fn attempt_chunk(&mut self, request: Request) -> Result<Chunk, TransportFailure> {
+        let _slot = match (self.acquire)() {
+            Ok(slot) => slot,
+            Err(e) => {
+                self.refused = Some(e);
+                return Err(TransportFailure::Other);
+            }
+        };
+        self.inner.attempt_chunk(request)
+    }
+    fn delay(&mut self, delay: Duration) -> Result<(), TransportFailure> {
+        self.inner.delay(delay)
+    }
 }
 
 impl Session {
@@ -244,8 +293,11 @@ impl SourceStorage for Session {
         read: BinaryRead<'_>,
         sink: &mut dyn FnMut(&[u8]) -> Result<(), StorageError>,
     ) -> Result<u64, StorageError> {
-        let _slot = self.permit()?;
-        let mut t = self.transport();
+        let mut t = Gated {
+            acquire: || self.permit(),
+            inner: self.transport(),
+            refused: None,
+        };
         let BinaryRead {
             cap,
             timeout,
@@ -253,7 +305,7 @@ impl SourceStorage for Session {
         } = read;
         let mut hook = |d: Option<u64>| before_body(d).map_err(|e| back(&e));
         let mut take = |b: &[u8]| sink(b).map_err(|e| back(&e));
-        stream::read_binary(
+        let result = stream::read_binary(
             self.connection(),
             path,
             ReadOptions {
@@ -263,8 +315,12 @@ impl SourceStorage for Session {
             },
             &mut take,
             &mut t,
-        )
-        .map_err(convert)
+        );
+        match (result, t.refused.take()) {
+            // No slot for a chunk: the busy answer, not the transport failure it caused.
+            (Err(_), Some(busy)) => Err(busy),
+            (result, _) => result.map_err(convert),
+        }
     }
 
     fn create_folder(&self, path: &str) -> Result<bool, StorageError> {
@@ -309,6 +365,12 @@ impl SourceStorage for Session {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
 mod tests {
     use super::*;
 
@@ -335,5 +397,135 @@ mod tests {
         assert!(failure(Failure::new(502, "storage returned 404"))
             .failure()
             .is_none());
+    }
+
+    /// A streamed read takes the account's admission slot for each chunk request, not across the whole
+    /// read: between two chunks the slot is free for the account's other storage operations.
+    #[test]
+    fn a_streamed_read_holds_its_slot_per_chunk_not_across_the_read() {
+        use std::cell::Cell;
+        use std::rc::Rc;
+        use zeroize::Zeroizing;
+        struct Slot(Rc<Cell<usize>>);
+        impl Drop for Slot {
+            fn drop(&mut self) {
+                self.0.set(self.0.get() - 1);
+            }
+        }
+        struct File {
+            held: Rc<Cell<usize>>,
+            seen_held: Vec<usize>,
+            now: Duration,
+        }
+        impl Transport for File {
+            fn elapsed(&self) -> Duration {
+                self.now
+            }
+            fn amz_date(&self) -> String {
+                "20260101T000000Z".into()
+            }
+            fn attempt(&mut self, _: Request) -> Result<Response, TransportFailure> {
+                Err(TransportFailure::Other)
+            }
+            fn delay(&mut self, _: Duration) -> Result<(), TransportFailure> {
+                Ok(())
+            }
+            fn attempt_chunk(&mut self, r: Request) -> Result<Chunk, TransportFailure> {
+                self.seen_held.push(self.held.get());
+                let h = r
+                    .headers
+                    .iter()
+                    .find(|(k, _)| k == "Range")
+                    .unwrap()
+                    .1
+                    .as_str()
+                    .to_owned();
+                let (a, b) = h.strip_prefix("bytes=").unwrap().split_once('-').unwrap();
+                let (a, b): (u64, u64) = (a.parse().unwrap(), b.parse().unwrap());
+                let total = 20 * 1024 * 1024u64;
+                let end = b.min(total - 1);
+                Ok(Chunk {
+                    status: 206,
+                    total: Some(total),
+                    first: Some(a),
+                    last: Some(end),
+                    bytes: vec![0u8; (end - a + 1) as usize],
+                    capped: false,
+                    etag: None,
+                })
+            }
+        }
+        let held = Rc::new(Cell::new(0usize));
+        let (acquire_held, sink_held) = (Rc::clone(&held), Rc::clone(&held));
+        let mut t = Gated {
+            acquire: move || {
+                acquire_held.set(acquire_held.get() + 1);
+                Ok(Slot(Rc::clone(&acquire_held)))
+            },
+            inner: File {
+                held: Rc::clone(&held),
+                seen_held: Vec::new(),
+                now: Duration::ZERO,
+            },
+            refused: None,
+        };
+        let c = Connection {
+            kind: Kind::WebDav,
+            base_url: "http://storage.example/dav".into(),
+            username: "u".into(),
+            secret: Zeroizing::new(b"pw".to_vec()),
+            corpus_root: String::new(),
+            bucket: String::new(),
+            region: String::new(),
+        };
+        let mut between = Vec::new();
+        let mut hook = |_: Option<u64>| Ok(());
+        let mut sink = |_: &[u8]| {
+            between.push(sink_held.get());
+            Ok(())
+        };
+        let n = stream::read_binary(
+            &c,
+            "big.pdf",
+            ReadOptions {
+                cap: server_storage_reads::FILE_CAP,
+                timeout: Duration::from_secs(60),
+                before_body: &mut hook,
+            },
+            &mut sink,
+            &mut t,
+        );
+        assert_eq!(n.ok(), Some(20 * 1024 * 1024));
+        assert_eq!(
+            t.inner.seen_held,
+            vec![1, 1, 1],
+            "one slot while a chunk is fetched"
+        );
+        assert_eq!(between, vec![0, 0, 0], "none between chunks");
+        assert_eq!(held.get(), 0);
+        // A chunk that finds no slot is the busy answer.
+        let mut t = Gated {
+            acquire: || -> Result<(), StorageError> { Err(StorageError::new(503, BUSY)) },
+            inner: File {
+                held: Rc::new(Cell::new(0)),
+                seen_held: Vec::new(),
+                now: Duration::ZERO,
+            },
+            refused: None,
+        };
+        let mut hook = |_: Option<u64>| Ok(());
+        let r = stream::read_binary(
+            &c,
+            "big.pdf",
+            ReadOptions {
+                cap: server_storage_reads::FILE_CAP,
+                timeout: Duration::from_secs(60),
+                before_body: &mut hook,
+            },
+            &mut |_: &[u8]| Ok(()),
+            &mut t,
+        );
+        assert!(r.is_err());
+        assert_eq!(t.refused.map(|e| e.status), Some(503));
     }
 }

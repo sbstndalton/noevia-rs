@@ -57,6 +57,11 @@ pub enum Fail {
 
 impl From<std::io::Error> for Fail {
     fn from(e: std::io::Error) -> Self {
+        // The folders of a file are made below `users/<id>` and never that folder (#1425): `NotFound`
+        // there is the account having been removed meanwhile.
+        if e.kind() == std::io::ErrorKind::NotFound {
+            return Fail::Storage(StorageError::gone());
+        }
         Fail::Io(e)
     }
 }
@@ -151,6 +156,10 @@ pub struct Options<'a> {
     pub folder_path: &'a str,
     /// `ifMatch` / `ifNoneMatch: '*'`.
     pub condition: Option<Condition>,
+    /// A document whose completion pass was left open (the sync's OCR allowance ran out) is not queued:
+    /// the next sync continues it, as core's did. Only a document whose worker is down (`retryable`)
+    /// gets a job. An upload has no next sync, so it queues an open document too.
+    pub defer_open: bool,
 }
 
 /// A create-only write's record (core `created`): what [`discard_created`] removes.
@@ -285,7 +294,7 @@ pub fn ingest(
             env.engine,
             env.limits,
         )?;
-        queued = ingested.retryable || ingested.open;
+        queued = ingested.retryable || (ingested.open && !opts.defer_open);
         file = ingested.file;
         if queued {
             extract_queue::mark_queued(&mut file);

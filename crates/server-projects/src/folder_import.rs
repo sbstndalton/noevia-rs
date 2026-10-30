@@ -381,6 +381,15 @@ pub fn consume(import_id: &JValue, rel: &str, size: usize) {
     }
 }
 
+/// The ticket store is the process's: every test that resets it or counts tickets (here and in the
+/// upload's tests) takes turns on this one lock.
+#[cfg(test)]
+static SERIAL: Mutex<()> = Mutex::new(());
+#[cfg(test)]
+pub fn serial_tickets() -> std::sync::MutexGuard<'static, ()> {
+    SERIAL.lock().unwrap_or_else(|p| p.into_inner())
+}
+
 /// Tests: forget every ticket.
 #[cfg(test)]
 pub fn reset() {
@@ -722,11 +731,7 @@ pub fn contract_digest() -> String {
 mod tests {
     use super::*;
 
-    /// The ticket store is the process's: tests that count tickets take turns.
-    static SERIAL: Mutex<()> = Mutex::new(());
-    fn serial() -> std::sync::MutexGuard<'static, ()> {
-        SERIAL.lock().unwrap_or_else(|p| p.into_inner())
-    }
+    use super::serial_tickets as serial;
 
     fn s(v: &str) -> JValue {
         JValue::Str(v.into())

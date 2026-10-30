@@ -15,8 +15,8 @@
 //!    within the project's source and document limits and the sync's OCR allowance (#1871);
 //! 3. a refused or throttled login stops every further storage call of the refresh (#1429): the rest keep
 //!    what they had and say why. The latch is [`crate::storage_latch`];
-//! 4. a read that failed keeps the previous source (a document keeps its last readable text, stale), or,
-//!    for a stored result that can be reopened, that result (`reopenStored`);
+//! 4. a read that failed keeps the previous source (a document keeps its last readable text, stale);
+//!    a stored result is never extracted or reopened again from storage (there is no `reopenStored`);
 //! 5. the list is merged against the project as it is now (uploads and other folders' sources are never
 //!    dropped), saved, the stored originals and images pruned, and the RAG work left to core through the
 //!    index outbox (`index` for what arrived or changed, `unindex` for what is gone).
@@ -73,6 +73,9 @@ pub struct SyncEnv<'a> {
     pub project_root: &'a str,
     /// Stages progress for the job (`Saving original`, ...).
     pub progress: &'a dyn Fn(&str),
+    /// How long to wait for the project's source lock when another operation holds it, before answering
+    /// 429 (a request that waited without end would pile up threads and bodies).
+    pub lock_wait: Duration,
 }
 
 /// The refusal an automatic sync meets before it starts (#1429): the latch holds this account's
@@ -83,13 +86,23 @@ pub fn automatic_hold(ctx: Ctx<'_>, storage: &Storage<'_>, retry: bool) -> Optio
         return None;
     }
     let remote = storage.remote()?;
-    match storage_latch::blocked(ctx.data_dir, ctx.user_id, &remote.fingerprint(), ctx.now_ms) {
+    match storage_latch::blocked(
+        ctx.data_dir,
+        ctx.user_id,
+        &remote.fingerprint(),
+        crate::wall_ms(),
+    ) {
         Ok(Some(hold)) => Some(reply::hold_reply(hold)),
         Ok(None) => None,
-        // A latch that cannot be read holds nothing (core: a connection that cannot be read).
+        // A latch that cannot be read counts as held, for a minute (a throttle's default): the latch
+        // is what keeps a refused login from being fed to the storage server's brute-force protection
+        // (#1429), so when it cannot say, an automatic call waits; an explicit press (`retry`) still runs.
         Err(e) => {
-            eprintln!("noevia-server: the storage latch could not be read: {e:?}");
-            None
+            eprintln!("noevia-server: the storage latch could not be read; holding: {e:?}");
+            Some(reply::hold_reply(storage_latch::Hold {
+                kind: "throttled",
+                retry_after: Some(storage_latch::UNREADABLE_HOLD_SECONDS),
+            }))
         }
     }
 }
@@ -101,7 +114,6 @@ struct Stats {
     extracted: u32,
     reopened: u32,
     unchanged: u32,
-    reopened_stored: u32,
     errors: u32,
     skipped: usize,
 }
@@ -281,79 +293,6 @@ fn read_file(
     })
 }
 
-fn reopenable(stored: &JValue) -> bool {
-    let sab = |v: &JValue| {
-        v.as_str()
-            .is_some_and(|m| m.contains("SharedArrayBuffer is not allowed"))
-    };
-    let pages = match stored.get("pageTexts") {
-        JValue::Arr(a) => a.clone(),
-        _ => return false,
-    };
-    let size_blocked = |p: &JValue| {
-        p.get("retry").get("outcome").as_str() == Some("failed")
-            && p.get("retry")
-                .get("error")
-                .as_str()
-                .is_some_and(|e| e.starts_with("the PDF is larger than the OCR service accepts"))
-    };
-    stored.get("completion").as_str() == Some(extract::COMPLETION)
-        && (stored.get("errorId").as_str() == Some("ocrTooLarge")
-            || pages.iter().any(size_blocked)
-            || sab(stored.get("error"))
-            || sab(stored.get("stoppedAt").get("error"))
-            || pages.iter().any(|p| {
-                p.get("retry").get("outcome").as_str() == Some("failed")
-                    && sab(p.get("retry").get("error"))
-            }))
-}
-
-/// document-sources.cjs `reopenStored`: a document whose storage read failed, reopened from its own
-/// stored original and result when that result is reopenable (once: a reopened result is complete and no
-/// longer matches). `None` when there is nothing to reopen.
-fn reopen_stored(
-    dir: &Path,
-    project: &str,
-    name: &str,
-    previous: &JValue,
-    engine: &dyn Engine,
-    limits: &Limits,
-) -> Option<document_ingest::Ingested> {
-    let d = previous.get("document");
-    let version = d
-        .get("version")
-        .as_str()
-        .filter(|v| crate::originals::hex64(v))?;
-    let byte_hash = d
-        .get("byteHash")
-        .as_str()
-        .filter(|v| crate::originals::hex64(v))?;
-    // The version is keyed by the extractor: an older extractor's record is read in full on a good read.
-    let expected = extract::sha_hex(
-        format!(
-            "{byte_hash}:{}",
-            extract::extractor_version(extract::figures_on(engine))
-        )
-        .as_bytes(),
-    );
-    if version != expected {
-        return None;
-    }
-    let record = document_ingest::version_path(dir, project, version, ".json")?;
-    let stored = wtf16::parse(&std::fs::read_to_string(record).ok()?).ok()?;
-    if stored.get("retryable").truthy() || !reopenable(&stored) {
-        return None;
-    }
-    let original = document_ingest::version_path(dir, project, byte_hash, ".pdf")?;
-    let size = std::fs::metadata(&original).ok()?.len();
-    let _hold = extract::large_lock(size as usize, engine.large_lock_file().as_deref()).ok()?;
-    let bytes = std::fs::read(&original).ok()?;
-    if extract::sha_hex(&bytes) != byte_hash {
-        return None;
-    }
-    document_ingest::ingest(dir, project, name, &bytes, Some(previous), engine, limits).ok()
-}
-
 /// A refused or throttled login halts the rest of a refresh; what it says.
 type Halt = Option<(String, Option<&'static str>)>;
 
@@ -373,7 +312,9 @@ fn halt_for(
             env.ctx.user_id,
             &storage.fingerprint(),
             failure,
-            env.ctx.now_ms,
+            // The moment it happened: the request's own time is hours old for a long sync, and a
+            // hold written from it would be over before it began.
+            crate::wall_ms(),
         ) {
             eprintln!("noevia-server: the storage latch could not be written: {e:?}");
         }
@@ -464,15 +405,25 @@ fn push_opt<'a>(fields: &mut Vec<(&'a str, JValue)>, key: &'a str, v: Option<JVa
 
 /// The sync. The project's existence and the automatic hold ([`automatic_hold`]) are the route's.
 pub fn run(env: &SyncEnv<'_>) -> Reply {
+    run_budgeted(env, source_limits::sync_ocr_pages())
+}
+
+/// [`run`] with the OCR allowance (`PROJECT_SYNC_OCR_PAGES`) given.
+fn run_budgeted(env: &SyncEnv<'_>, ocr_pages: usize) -> Reply {
     let started = Instant::now();
     let budgeted = Budgeted {
         inner: env.engine,
-        budget: OcrBudget::new(source_limits::sync_ocr_pages()),
+        budget: OcrBudget::new(ocr_pages),
     };
     let lock = project_documents::source_lock(env.ctx.user_id, env.project);
-    let _held = match lock.lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
+    let Some(_held) = project_documents::lock_within(&lock, env.lock_wait) else {
+        return finish_log(
+            env,
+            &Stats::default(),
+            "429".to_owned(),
+            started,
+            project_documents::busy_reply(),
+        );
     };
     match run_locked(env, &budgeted) {
         Ok((reply, stats, status)) => finish_log(env, &stats, status.to_string(), started, reply),
@@ -493,14 +444,13 @@ fn finish_log(
     r: Reply,
 ) -> Reply {
     eprintln!(
-        "[sources] sync project={} status={status} seen={} ingested={} extracted={} reopened={} unchanged={} reopenedStored={} errors={} skipped={} ms={}",
+        "[sources] sync project={} status={status} seen={} ingested={} extracted={} reopened={} unchanged={} errors={} skipped={} ms={}",
         ref_hash(env.project),
         stats.seen,
         stats.ingested,
         stats.extracted,
         stats.reopened,
         stats.unchanged,
-        stats.reopened_stored,
         stats.errors,
         stats.skipped,
         started.elapsed().as_millis()
@@ -571,6 +521,22 @@ fn run_locked(env: &SyncEnv<'_>, engine: &Budgeted<'_>) -> Result<(Reply, Stats,
             })
             .ok();
             allocated = folder.clone();
+            // Saved at once, as an upload does: when every move below fails (storage refuses the
+            // writes) the folder it made is still the project's, and a retry finds it instead of
+            // allocating "Name (2)" and orphaning this one.
+            if let Some(held) = &allocated {
+                let held = held.clone();
+                let _ = store::update(dir.as_path(), ctx.switch, |projects| {
+                    let Some(p) = store::find_mut(projects, env.project) else {
+                        return ((), false);
+                    };
+                    if p.get("projectFolder").as_str().is_none_or(str::is_empty) {
+                        store::set(p, "projectFolder", s(&held));
+                        return ((), true);
+                    }
+                    ((), false)
+                });
+            }
         }
         if let Some(folder) = folder {
             for asset in &loose {
@@ -658,7 +624,10 @@ fn run_locked(env: &SyncEnv<'_>, engine: &Budgeted<'_>) -> Result<(Reply, Stats,
             .cloned()
             .collect();
         let halted = std::cell::RefCell::new(run.halted.clone());
-        let dir_errors: std::cell::RefCell<Vec<(String, StorageError)>> = Default::default();
+        // Each failed subfolder with the reason it is given when it fails: a refused login that a later
+        // folder meets must not rewrite what an earlier one said (core built the entry on the spot).
+        type DirError = (String, StorageError, Halt);
+        let dir_errors: std::cell::RefCell<Vec<DirError>> = Default::default();
         let tree = {
             let mut list = |d: &str| -> Result<Vec<Entry>, StorageError> {
                 if let Some((why, _)) = halted.borrow().as_ref() {
@@ -667,21 +636,23 @@ fn run_locked(env: &SyncEnv<'_>, engine: &Budgeted<'_>) -> Result<(Reply, Stats,
                 storage.list(d)
             };
             let mut on_err = |d: &str, e: &StorageError| {
-                dir_errors.borrow_mut().push((d.to_owned(), e.clone()));
                 halt_for(env, storage_ref, e, &mut halted.borrow_mut());
+                dir_errors
+                    .borrow_mut()
+                    .push((d.to_owned(), e.clone(), halted.borrow().clone()));
             };
             folder_import::list_tree(&mut list, folder, &exclude, &mut on_err)
         };
         // A listing that failed at the root halts through the same latch.
         run.halted = halted.into_inner();
-        for (d, e) in dir_errors.into_inner() {
+        for (d, e, halted_then) in dir_errors.into_inner() {
             run.from_folders
                 .extend(previous_of(&files_now).into_iter().filter(|f| {
                     f.get("name")
                         .as_str()
                         .is_some_and(|n| n.starts_with(&format!("{d}/")))
                 }));
-            let (why, code) = match &run.halted {
+            let (why, code) = match &halted_then {
                 Some((why, code)) => (why.clone(), *code),
                 None => (
                     "Could not read this subfolder; previous sources retained.".to_owned(),
@@ -727,9 +698,13 @@ fn run_locked(env: &SyncEnv<'_>, engine: &Budgeted<'_>) -> Result<(Reply, Stats,
                 ("reason", s(&words)),
             ]);
         }
-        // A listing that worked proves the login.
-        if let Err(e) = storage_latch::clear(ctx.data_dir, ctx.user_id) {
-            eprintln!("noevia-server: the storage latch could not be cleared: {e:?}");
+        // A listing that worked proves the login. Not one in which a subfolder was refused the login (or
+        // throttled): that is the latch just set, which clearing would undo (core cleared it here too,
+        // which let the next automatic sync straight into the same refusal).
+        if run.halted.is_none() {
+            if let Err(e) = storage_latch::clear(ctx.data_dir, ctx.user_id) {
+                eprintln!("noevia-server: the storage latch could not be cleared: {e:?}");
+            }
         }
         for entry in &tree.files {
             let ext = entry.ext.to_lowercase();
@@ -821,9 +796,13 @@ fn run_locked(env: &SyncEnv<'_>, engine: &Budgeted<'_>) -> Result<(Reply, Stats,
             );
             match outcome {
                 Ok(()) => run.stats.ingested += 1,
+                // The account was removed meanwhile: nothing more is read for it, and nothing is made.
+                Err(e) if e.is_gone() => {
+                    return Err(Reply::error(410, crate::source_storage::GONE))
+                }
                 Err(e) => {
                     run.stats.errors += 1;
-                    on_read_failure(&mut run, folder, entry, previous.as_ref(), kind, &e, engine);
+                    on_read_failure(&mut run, folder, entry, previous.as_ref(), kind.is_doc, &e);
                 }
             }
         }
@@ -973,6 +952,7 @@ fn read_entry(
             connection: true,
             source: Some(folder),
             remote_path: Some(&entry.path),
+            defer_open: true,
             ..Default::default()
         };
         let ingested = match uploads::ingest(&ingest_env, &entry.name, &read.bytes, &opts) {
@@ -1005,9 +985,9 @@ fn read_entry(
             run.skip(fields);
         }
         run.from_folders.push(file);
-        if ingested.asset.is_some() {
-            run.assets.push(ingested);
-        }
+        // Every ingest, not only one that made an image: the save retires the vision image this name
+        // used to have when it is replaced by a file too big to be one (uploads.cjs `ingest`'s finish).
+        run.assets.push(ingested);
     } else if is_doc {
         let read = read_file(dir, storage, run.engine, env.limits, entry)?;
         let prev_text = previous.map(|p| reply::with_text(dir, env.project, p));
@@ -1021,6 +1001,9 @@ fn read_entry(
             env.limits,
         )
         .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                return StorageError::gone();
+            }
             eprintln!(
                 "noevia-server: a synced document could not be stored: {}",
                 e.kind()
@@ -1032,7 +1015,10 @@ fn read_entry(
             "reopened" => run.stats.reopened += 1,
             _ => run.stats.unchanged += 1,
         }
-        let queued = ingested.retryable || ingested.open;
+        // Only a document whose worker is down gets a job. One the OCR allowance left open stays open with
+        // none: the next sync continues it, within that sync's own allowance (an unbudgeted queue would
+        // run every remaining page and hold the OCR slot for hours; source-limits.cjs).
+        let queued = ingested.retryable;
         let mut file = with_source(ingested.file, folder);
         if queued {
             extract_queue::mark_queued(&mut file);
@@ -1062,69 +1048,20 @@ fn read_entry(
 }
 
 /// The read failed, so ingest never ran: the previous source stays (a document keeps its last readable text,
-/// stale), or a reopenable stored result is reopened.
-#[allow(clippy::too_many_arguments)]
+/// stale).
 fn on_read_failure(
     run: &mut Run<'_>,
     folder: &str,
     entry: &Entry,
     previous: Option<&JValue>,
-    kind: Kind,
+    is_doc: bool,
     e: &StorageError,
-    engine: &Budgeted<'_>,
 ) {
     let env = run.env;
-    let Kind {
-        managed,
-        docx,
-        is_doc,
-    } = kind;
     run.halt_for(e);
     let why = reply::reason(e, "could not read");
     let code = reply::code(e);
     let prev_text = previous.map(|p| reply::with_text(run.dir, env.project, p));
-    if is_doc
-        && !managed
-        && !docx
-        && run.halted.is_none()
-        && e.code.as_deref() != Some(BUSY_CODE)
-        && previous.is_some_and(|p| p.get("document").truthy())
-    {
-        if let Some(p) = &prev_text {
-            if let Some(reopened) =
-                reopen_stored(run.dir, env.project, &entry.path, p, engine, env.limits)
-            {
-                run.stats.reopened_stored += 1;
-                let mut file = with_source(reopened.file, folder);
-                let had = file.get("content").as_str().is_some_and(|c| !c.is_empty());
-                if let JValue::Obj(items) = &mut file {
-                    let mut d = items
-                        .iter()
-                        .find(|(k, _)| k == "document")
-                        .map(|(_, v)| v.clone())
-                        .unwrap_or(JValue::Obj(Vec::new()));
-                    if let JValue::Obj(di) = &mut d {
-                        wtf16::set(di, "state", s("failed"));
-                        wtf16::set(di, "stale", JValue::Bool(had));
-                        wtf16::set(di, "error", s(&why));
-                    }
-                    wtf16::set(items, "document", d);
-                }
-                let (text, extra) = problem_fields(&file);
-                let mut fields = vec![
-                    ("folder", s(folder)),
-                    ("file", s(&entry.path)),
-                    ("reason", s(&text)),
-                ];
-                fields.extend(extra.iter().map(|(k, v)| (k.as_str(), v.clone())));
-                push_opt(&mut fields, "code", code.map(s));
-                fields.push(("retained", JValue::Bool(had)));
-                run.skip(fields);
-                run.from_folders.push(file);
-                return;
-            }
-        }
-    }
     if is_doc {
         run.from_folders.push(with_source(
             failed(prev_text.as_ref(), &entry.path, &why),
@@ -1462,6 +1399,7 @@ mod tests {
                 catalogue: None,
                 project_root: "root",
                 progress: &progress,
+                lock_wait: Duration::from_secs(5),
             });
             let Body::Json(text) = &reply.body else {
                 panic!()
@@ -1780,4 +1718,6 @@ mod tests {
                 .held()
         );
     }
+
+    include!("sync/parity_tests.rs");
 }

@@ -80,6 +80,7 @@ impl Transport for ChildTransport<'_> {
                 last: None,
                 bytes: Vec::new(),
                 capped: false,
+                etag: None,
             }),
             Ok(Reply::Http {
                 status,
@@ -94,6 +95,14 @@ impl Transport for ChildTransport<'_> {
                     .get(crate::CHUNK_PREFIX..)
                     .ok_or(TransportFailure::Body)?
                     .to_vec();
+                let etag = payload
+                    .get(24..26)
+                    .and_then(|l| <[u8; 2]>::try_from(l).ok())
+                    .map(|l| usize::from(u16::from_be_bytes(l)))
+                    .filter(|n| *n > 0 && *n <= crate::ETAG_BYTES)
+                    .and_then(|n| payload.get(26..26 + n))
+                    .and_then(|raw| std::str::from_utf8(raw).ok())
+                    .map(str::to_owned);
                 Ok(Chunk {
                     status,
                     total: number(0),
@@ -101,6 +110,7 @@ impl Transport for ChildTransport<'_> {
                     last: number(16),
                     bytes,
                     capped,
+                    etag,
                 })
             }
             Ok(Reply::Failure {

@@ -52,6 +52,37 @@ pub fn source_lock(user: &str, project: &str) -> Arc<Mutex<()>> {
     )
 }
 
+/// Waits for `lock` at most `wait` (polling, 5 ms apart): the guard, or `None` when another source
+/// operation of the project still holds it. A lock a panicked holder left is taken over.
+pub fn lock_within(
+    lock: &Mutex<()>,
+    wait: std::time::Duration,
+) -> Option<std::sync::MutexGuard<'_, ()>> {
+    let end = std::time::Instant::now() + wait;
+    loop {
+        match lock.try_lock() {
+            Ok(g) => return Some(g),
+            Err(std::sync::TryLockError::Poisoned(p)) => return Some(p.into_inner()),
+            Err(std::sync::TryLockError::WouldBlock) => {}
+        }
+        if std::time::Instant::now() >= end {
+            return None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+/// How long a foreground upload or sync waits for the project's source lock.
+pub const FOREGROUND_LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// The answer of a source operation that found the project's source lock held past its wait.
+pub fn busy_reply() -> Reply {
+    Reply::error(
+        429,
+        "Another upload or sync of this project is still running; try again shortly.",
+    )
+}
+
 fn source_exists(name: &str) -> Reply {
     let body = JValue::obj([
         ("code", JValue::Str("sourceExists".into())),
@@ -199,7 +230,7 @@ pub fn post(
         limits,
     ) {
         Ok(i) => i,
-        Err(_) => return Reply::internal(),
+        Err(e) => return crate::source_reply::io_failure(&e),
     };
     let mut file = ingested.file;
     let queued = ingested.retryable || ingested.open;

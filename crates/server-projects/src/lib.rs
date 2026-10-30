@@ -150,6 +150,16 @@ impl Reply {
     }
 }
 
+/// The wall clock now, in epoch milliseconds: for what is written when it happens (a latch hold, an
+/// operation's listing). [`Ctx::now_ms`] is the moment the request arrived, hours old by the end of a
+/// long sync or a job that waited its turn.
+pub fn wall_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+        .unwrap_or(0)
+}
+
 /// The signed-in request a handler serves.
 #[derive(Debug, Clone, Copy)]
 pub struct Ctx<'a> {

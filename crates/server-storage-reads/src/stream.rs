@@ -18,6 +18,13 @@
 //!   already took left to the caller to drop. A server that ignores `Range` (a 200) is accepted only
 //!   when the whole file fits one chunk; a larger file is refused (502), since it cannot be read in
 //!   bounded pieces.
+//! - **One file from end to end.** The first reply's strong `ETag` is carried as `If-Range` on every
+//!   later chunk, and every later reply must carry the same ETag: a file replaced by one of the same
+//!   size mid-read answers a 200 (or another ETag) and the read is refused (502 "the file changed in
+//!   storage while it was being read"), never a file made of two. A reply with no ETag, or a weak one
+//!   (`W/`, which `If-Range` cannot use), leaves only the size checks. A `416` after the first chunk
+//!   of a file of declared size is the file having shrunk, the same 502; it is the end only when the
+//!   first reply declared no size.
 //! - Retry and deadlines are core's: one repeat after 250 ms of a pre-header transport failure per
 //!   request, 404 is 404, any other status 502; the whole read ends at [`ReadOptions::timeout`]
 //!   (each request at most 20 s).
@@ -42,6 +49,10 @@ fn too_large(cap: u64) -> StorageError {
     StorageError::new(413, format!("file exceeds the {cap} byte limit"))
 }
 
+fn changed() -> StorageError {
+    StorageError::new(502, "the file changed in storage while it was being read")
+}
+
 fn lying(what: &str) -> StorageError {
     StorageError::new(
         502,
@@ -55,6 +66,7 @@ fn fetch(
     path: &str,
     first: u64,
     last: u64,
+    if_range: Option<&str>,
     deadline: Duration,
     t: &mut impl Transport,
 ) -> Result<protocol::Chunk, StorageError> {
@@ -63,9 +75,16 @@ fn fetch(
             .checked_sub(t.elapsed())
             .filter(|d| !d.is_zero())
             .ok_or_else(|| transport_error(TransportFailure::Timeout))?;
-        let request =
-            protocol::chunk_request(c, path, first, last, &t.amz_date(), remaining.min(ATTEMPT))
-                .map_err(|f| StorageError::new(f.status, f.message))?;
+        let request = protocol::chunk_request(
+            c,
+            path,
+            first,
+            last,
+            if_range,
+            &t.amz_date(),
+            remaining.min(ATTEMPT),
+        )
+        .map_err(|f| StorageError::new(f.status, f.message))?;
         match t.attempt_chunk(request) {
             Ok(chunk) => return Ok(chunk),
             Err(e) if attempt == 0 && e.node_retries() => {
@@ -109,19 +128,27 @@ pub fn read_binary(
     let step = CHUNK_BYTES as u64;
     let mut offset: u64 = 0;
     let mut declared: Option<Option<u64>> = None;
+    // The first reply's ETag; `If-Range` carries it when it is strong.
+    let mut first_etag: Option<String> = None;
+    let mut if_range: Option<String> = None;
     loop {
         let last = match declared {
             Some(Some(total)) => offset.saturating_add(step).min(total).saturating_sub(1),
             _ => offset.saturating_add(step - 1),
         };
         let want = last - offset + 1;
-        let chunk = fetch(c, &path, offset, last, deadline, t)?;
+        let chunk = fetch(c, &path, offset, last, if_range.as_deref(), deadline, t)?;
         match chunk.status {
-            // Nothing to read at `offset`: an empty file, or the end of a file of unknown size.
+            // Nothing to read at `offset`: an empty file (the first request), or the end of a file whose
+            // size was not declared. After a declared size it is a file that shrank under the read.
             416 => {
-                if declared.is_none() {
-                    refuse_if_over(cap, Some(0))?;
-                    before_body(Some(0))?;
+                match declared {
+                    None => {
+                        refuse_if_over(cap, Some(0))?;
+                        before_body(Some(0))?;
+                    }
+                    Some(Some(_)) => return Err(changed()),
+                    Some(None) => {}
                 }
                 return Ok(offset);
             }
@@ -137,6 +164,10 @@ pub fn read_binary(
         let len = chunk.bytes.len() as u64;
         if chunk.status == 200 {
             // The server ignored `Range`: only a whole file that fits one chunk can be taken.
+            if offset != 0 && if_range.is_some() {
+                // Asked "only if it is still this file": a whole file back says it is another.
+                return Err(changed());
+            }
             if offset != 0 || chunk.capped {
                 return Err(StorageError::new(
                     502,
@@ -165,14 +196,14 @@ pub fn read_binary(
                 refuse_if_over(cap, chunk.total)?;
                 before_body(chunk.total)?;
                 declared = Some(chunk.total);
+                if_range = chunk.etag.clone().filter(|e| !e.starts_with("W/"));
+                first_etag = chunk.etag.clone();
             }
-            Some(first) if first != chunk.total => {
-                return Err(StorageError::new(
-                    502,
-                    "the file changed in storage while it was being read",
-                ));
-            }
+            Some(first) if first != chunk.total => return Err(changed()),
             Some(_) => {}
+        }
+        if first_etag.is_some() && chunk.etag != first_etag {
+            return Err(changed());
         }
         if let Some(total) = chunk.total {
             if offset + len > total {
@@ -235,8 +266,18 @@ mod tests {
         Overshoots,
         /// Says `*` for the total and goes on for ever.
         UnknownTotalEndless,
+        /// Says `*` for the total, and the file ends (a 416 past its last byte).
+        UnknownSizeEnds,
         /// Fails with a transport error on the nth request (counting from 1).
         FailsAt(usize),
+        /// The file shrinks to 5 MiB after the nth request (its size is declared as 5 MiB from then on, and
+        /// a range past it is a 416).
+        ShrinksAfter(usize),
+        /// The file is replaced by one of the same size from the nth request on: its ETag is "v2"; a
+        /// server that honours `If-Range` answers the other ETag's ranges with the whole file (a 200).
+        ReplacedAt(usize),
+        /// The same replacement, by a server that ignores `If-Range` (it serves the 206 with the new ETag).
+        ReplacedIgnoringIfRangeAt(usize),
     }
 
     struct Fake {
@@ -245,6 +286,10 @@ mod tests {
         seen: RefCell<Vec<(u64, u64)>>,
         max_reply: std::cell::Cell<usize>,
         now: Duration,
+        /// The ETag the first reply carries (`None`: the server sends none).
+        etag: Option<&'static str>,
+        /// The `If-Range` of each request.
+        if_ranges: RefCell<Vec<Option<String>>>,
     }
     impl Fake {
         fn new(len: usize, mode: Mode) -> Self {
@@ -254,6 +299,8 @@ mod tests {
                 seen: RefCell::new(Vec::new()),
                 max_reply: std::cell::Cell::new(0),
                 now: Duration::ZERO,
+                etag: Some("\"v1\""),
+                if_ranges: RefCell::new(Vec::new()),
             }
         }
     }
@@ -295,7 +342,45 @@ mod tests {
             if self.mode == Mode::FailsAt(n) {
                 return Err(TransportFailure::Body);
             }
-            let total = self.file.len() as u64;
+            self.if_ranges.borrow_mut().push(
+                request
+                    .headers
+                    .iter()
+                    .find(|(k, _)| k == "If-Range")
+                    .map(|(_, v)| v.as_str().to_owned()),
+            );
+            let replaced = matches!(self.mode, Mode::ReplacedAt(k) | Mode::ReplacedIgnoringIfRangeAt(k) if n >= k);
+            let etag = if replaced {
+                Some("\"v2\"".to_owned())
+            } else {
+                self.etag.map(str::to_owned)
+            };
+            let shrunk = matches!(self.mode, Mode::ShrinksAfter(k) if n > k);
+            let total = if shrunk {
+                5 * MIB as u64
+            } else {
+                self.file.len() as u64
+            };
+            // A server that honours `If-Range` serves the whole file when the validator is not its ETag.
+            let validator = request
+                .headers
+                .iter()
+                .find(|(k, _)| k == "If-Range")
+                .map(|(_, v)| v.as_str().to_owned());
+            if let (Some(v), Some(now)) = (&validator, &etag) {
+                if v != now && matches!(self.mode, Mode::ReplacedAt(_)) && replaced {
+                    let cut = self.file.len().min(CHUNK_BYTES);
+                    return Ok(Chunk {
+                        status: 200,
+                        total: Some(self.file.len() as u64),
+                        first: Some(0),
+                        last: None,
+                        bytes: self.file[..cut].to_vec(),
+                        capped: self.file.len() > CHUNK_BYTES,
+                        etag,
+                    });
+                }
+            }
             if self.mode == Mode::IgnoresRange {
                 let cut = self.file.len().min(CHUNK_BYTES);
                 self.max_reply.set(cut);
@@ -306,6 +391,7 @@ mod tests {
                     last: None,
                     bytes: self.file[..cut].to_vec(),
                     capped: self.file.len() > CHUNK_BYTES,
+                    etag,
                 });
             }
             if first >= total && self.mode != Mode::UnknownTotalEndless {
@@ -316,6 +402,7 @@ mod tests {
                     last: None,
                     bytes: Vec::new(),
                     capped: false,
+                    etag: None,
                 });
             }
             let mut end = last.min(total.saturating_sub(1));
@@ -329,7 +416,7 @@ mod tests {
             };
             self.max_reply.set(self.max_reply.get().max(bytes.len()));
             let reported_total = match self.mode {
-                Mode::UnknownTotalEndless => None,
+                Mode::UnknownTotalEndless | Mode::UnknownSizeEnds => None,
                 Mode::TotalChanges if n == 3 => Some(total + 1),
                 _ => Some(total),
             };
@@ -341,6 +428,7 @@ mod tests {
                 last: Some(first + got - 1),
                 bytes,
                 capped: self.mode == Mode::Overshoots && n == 3 && got > last - first + 1,
+                etag,
             })
         }
     }
@@ -532,6 +620,71 @@ mod tests {
             &mut flaky,
         );
         assert_eq!(n, Ok(MIB as u64));
+    }
+
+    #[test]
+    fn a_file_that_shrinks_mid_read_is_refused_not_staged_short() {
+        // The second chunk read, the file is 5 MiB; the third range starts past it: 416. With a declared
+        // size that is a changed file, never "the end".
+        let mut fake = Fake::new(40 * MIB, Mode::ShrinksAfter(2));
+        let r = run(&mut fake, crate::FILE_CAP);
+        let e = r.result.unwrap_err();
+        assert_eq!(e.status, 502);
+        assert_eq!(
+            e.message,
+            "the file changed in storage while it was being read"
+        );
+        assert_eq!(r.sink_calls, 2);
+    }
+
+    #[test]
+    fn a_416_is_the_end_only_for_a_file_whose_size_was_not_declared() {
+        // Exactly one chunk, size `*`: the second request is the 416 that ends it.
+        let mut fake = Fake::new(8 * MIB, Mode::UnknownSizeEnds);
+        let r = run(&mut fake, crate::FILE_CAP);
+        assert_eq!(r.result, Ok((8 * MIB) as u64));
+        assert_eq!(r.got, fake.file);
+        assert_eq!(r.before, vec![None]);
+        assert_eq!(fake.seen.borrow().len(), 2);
+    }
+
+    #[test]
+    fn later_chunks_carry_the_first_replys_etag_as_if_range() {
+        let mut fake = Fake::new(20 * MIB, Mode::Honest);
+        let r = run(&mut fake, crate::FILE_CAP);
+        assert_eq!(r.result, Ok((20 * MIB) as u64));
+        assert_eq!(
+            *fake.if_ranges.borrow(),
+            vec![None, Some("\"v1\"".to_owned()), Some("\"v1\"".to_owned())],
+            "the first request asks for the file, the rest for that file only"
+        );
+        // No ETag, or a weak one (If-Range cannot use it): no If-Range, only the size checks.
+        for etag in [None, Some("W/\"w\"")] {
+            let mut fake = Fake::new(20 * MIB, Mode::Honest);
+            fake.etag = etag;
+            assert_eq!(
+                run(&mut fake, crate::FILE_CAP).result,
+                Ok((20 * MIB) as u64)
+            );
+            assert!(fake.if_ranges.borrow().iter().all(Option::is_none));
+        }
+    }
+
+    #[test]
+    fn a_file_replaced_by_one_of_the_same_size_is_never_mixed_into_the_read() {
+        let changed = "the file changed in storage while it was being read";
+        // A server that honours If-Range answers the old validator with the whole new file (a 200).
+        let mut fake = Fake::new(40 * MIB, Mode::ReplacedAt(3));
+        let r = run(&mut fake, crate::FILE_CAP);
+        let e = r.result.unwrap_err();
+        assert_eq!((e.status, e.message.as_str()), (502, changed));
+        assert_eq!(r.sink_calls, 2, "the third chunk never reached the sink");
+        // One that ignores If-Range still shows the new ETag on its 206.
+        let mut fake = Fake::new(40 * MIB, Mode::ReplacedIgnoringIfRangeAt(3));
+        let r = run(&mut fake, crate::FILE_CAP);
+        let e = r.result.unwrap_err();
+        assert_eq!((e.status, e.message.as_str()), (502, changed));
+        assert_eq!(r.sink_calls, 2);
     }
 
     #[test]

@@ -158,6 +158,33 @@ pub fn ensure_user_dir(data_dir: &Path, user_id: &str) -> Result<Ensured, StoreE
     }
 }
 
+/// Makes `dir` (below `user_dir`) and its missing levels, mode 0700, one at a time below the user's
+/// directory, never that directory itself: when the account was removed meanwhile the first level
+/// fails with `NotFound` instead of recreating `users/<id>` (sbstndalton/noevia#1425, the account
+/// deletion fence of core's `workspace.assertActive`). Every writer of a file under a user's directory
+/// that can run long (a storage read, an extraction) creates its folders this way.
+pub(crate) fn create_dirs_below(user_dir: &Path, dir: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::DirBuilderExt;
+    let below = dir
+        .strip_prefix(user_dir)
+        .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
+    let mut builder = std::fs::DirBuilder::new();
+    builder.mode(0o700);
+    let mut at = user_dir.to_path_buf();
+    for part in below.components() {
+        at.push(part);
+        match builder.create(&at) {
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && at.is_dir() => {}
+            other => other?,
+        }
+    }
+    // Nothing was made when `dir` is the user's directory itself: it must be there.
+    if below.as_os_str().is_empty() && !user_dir.is_dir() {
+        return Err(std::io::ErrorKind::NotFound.into());
+    }
+    Ok(())
+}
+
 /// workspace.cjs `assetDir(projectId)`: `project-assets/<id reduced to [A-Za-z0-9_-]>`.
 pub fn asset_dir(user_dir: &Path, project_id: &str) -> PathBuf {
     let id = crate::js::id_chars(project_id);

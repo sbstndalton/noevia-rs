@@ -167,6 +167,8 @@ pub struct Chunk {
     pub bytes: Vec<u8>,
     /// More bytes were sent than the chunk cap; `bytes` holds the first [`crate::CHUNK_BYTES`].
     pub capped: bool,
+    /// The response's `ETag` (else `OC-ETag`), when it has a usable one.
+    pub etag: Option<String>,
 }
 
 /// An adapter MUST enforce attempt + body deadlines, decoded byte caps, drop on
@@ -434,6 +436,9 @@ fn request(
     })
 }
 
+/// How many S3 listings were cut at their page or entry bound in this process (for the log's tests).
+pub static CUT_LISTINGS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 /// A ranged GET of bytes `first..=last` of one file (connection-absolute `path`, already checked):
 /// the read's request with a `Range` header, its reply the raw bytes behind a
 /// [`crate::CHUNK_PREFIX`]-byte header summary. For S3 the key is joined under the corpus root as a
@@ -443,6 +448,7 @@ pub(crate) fn chunk_request(
     path: &str,
     first: u64,
     last: u64,
+    if_range: Option<&str>,
     date: &str,
     remaining: Duration,
 ) -> Result<Request, Failure> {
@@ -457,6 +463,12 @@ pub(crate) fn chunk_request(
         "Range".into(),
         Zeroizing::new(format!("bytes={first}-{last}")),
     ));
+    // `If-Range` (RFC 9110 13.1.5): the range is served only while the file still has the ETag the
+    // first reply had; a changed file comes back whole, as a 200, which the stream refuses.
+    if let Some(etag) = if_range {
+        r.headers
+            .push(("If-Range".into(), Zeroizing::new(etag.to_owned())));
+    }
     r.body_cap = crate::CHUNK_FRAME;
     Ok(r)
 }
@@ -717,8 +729,12 @@ pub fn execute(
     };
     let mut token: Option<String> = None;
     let mut entries = Vec::new();
-    for _ in 0..MAX_PAGES {
+    // Whether the listing stopped at its page or entry bound with more still to list (noevia#2191
+    // round 8 review): core's listing is cut the same way; it is now said in the log.
+    let mut cut = false;
+    for page_no in 0..MAX_PAGES {
         if entries.len() >= MAX_ENTRIES {
+            cut = true;
             break;
         }
         let mut query = vec![
@@ -752,6 +768,16 @@ pub fn execute(
             Some(next) if !next.is_empty() && token.as_ref() != Some(&next) => token = Some(next),
             _ => break,
         }
+        cut = page_no + 1 == MAX_PAGES;
+    }
+    if entries.len() > MAX_ENTRIES {
+        cut = true;
+    }
+    if cut {
+        CUT_LISTINGS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        eprintln!(
+            "noevia-server: an S3 listing was cut at its bound of {MAX_ENTRIES} entries or {MAX_PAGES} pages; later entries are not listed"
+        );
     }
     entries.truncate(MAX_ENTRIES);
     entries_json(entries, &path)

@@ -494,7 +494,6 @@ pub async fn serve(
                 data_dir: data_dir.clone(),
                 user: authn.user.id.clone(),
                 start: start_id.clone(),
-                now_ms: now,
             };
             return crate::source_job_routes::poll(account, project.clone(), job.clone()).await;
         }
@@ -503,7 +502,6 @@ pub async fn serve(
                 data_dir: data_dir.clone(),
                 user: authn.user.id.clone(),
                 start: start_id.clone(),
-                now_ms: now,
             };
             let kind = if matches!(route, Route::SourceSync { .. }) {
                 crate::source_job_routes::Kind::Sync
@@ -518,7 +516,7 @@ pub async fn serve(
                 kind,
                 // The path as the client sent it (Node decodes the id itself).
                 project: project.clone(),
-                body: bytes,
+                body: Arc::new(bytes),
                 over,
                 retry: parts
                     .headers

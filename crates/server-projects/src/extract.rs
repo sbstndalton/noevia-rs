@@ -1428,6 +1428,8 @@ pub(crate) mod tests {
         pub ocr_replies: RefCell<Vec<Result<Vec<JValue>, EngineError>>>,
         pub asked: RefCell<Vec<Option<(u32, u32)>>>,
         pub caps: Option<OcrCaps>,
+        /// Runs when Docling is asked (the account or the project changing during an extraction).
+        pub on_docling: RefCell<Option<Box<dyn Fn()>>>,
     }
     impl Engine for Fake {
         fn docling_configured(&self) -> bool {
@@ -1441,6 +1443,9 @@ pub(crate) mod tests {
             pages: Option<(u32, u32)>,
         ) -> Result<JValue, EngineError> {
             self.asked.borrow_mut().push(pages);
+            if let Some(hook) = self.on_docling.borrow().as_ref() {
+                hook();
+            }
             let mut r = self.replies.borrow_mut();
             if r.is_empty() {
                 Err(EngineError::new("fetch failed"))

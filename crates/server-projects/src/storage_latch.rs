@@ -31,6 +31,10 @@ const LOGIN_PROBE_BASE_MS: i64 = 15 * 60 * 1000;
 const LOGIN_PROBE_MAX_MS: i64 = 6 * 60 * 60 * 1000;
 const PROBE_HOLD_MS: i64 = 60 * 1000;
 
+/// How long an automatic call waits when the latch cannot be read (it counts as held; see
+/// [`crate::sync::automatic_hold`]).
+pub const UNREADABLE_HOLD_SECONDS: u64 = 60;
+
 /// What holds an account's automatic calls.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Hold {
@@ -508,5 +512,48 @@ mod tests {
             "a proof at or after it ends the hold"
         );
         assert_eq!(dump(d.path(), "u1").unwrap(), None);
+    }
+
+    /// The fingerprint is how a change of credentials clears a hold, and both processes must agree on it:
+    /// core's `fingerprintOf` (storage-latch.cjs) is `sha256(JSON.stringify([kind, baseUrl, bucket,
+    /// username, secret]))`. These digests were produced by core's own function for these rows (core's
+    /// storage-latch-shared-2191.test.cjs asserts the same table), so a drift of either side shows in
+    /// whichever test runs against the changed one. JSON.stringify's escapes are exercised: quotes and
+    /// backslashes, control characters, DEL, U+2028, non-BMP text and empty fields.
+    #[test]
+    fn the_fingerprint_is_the_one_cores_function_gives_the_same_row() {
+        let rows: [([&str; 5], &str); 4] = [
+            (
+                [
+                    "nextcloud",
+                    "https://cloud.example/remote.php/dav/files/ada",
+                    "",
+                    "ada",
+                    "synthetic-app-pw",
+                ],
+                "376c824306ea55b08290b7b2521e766fe39afff0757b891649d850c05bbdd256",
+            ),
+            (
+                ["s3", "https://s3.example", "bkt", "AKIASYNTH", "a\"b\\c"],
+                "209700f4ed745b523d6a56309e9648f12b6de049d726e0538f7751872c35fe12",
+            ),
+            (
+                [
+                    "webdav",
+                    "https://dav.example/\u{e9}",
+                    "",
+                    "\u{65e5}\u{672c}\u{8a9e}",
+                    "\u{1f600} line\nbreak\ttab \u{1} \u{7f} \u{2028} </script>",
+                ],
+                "7170827e27c9ba8d1dcc86c74f8e8e744a9b53722a41d56a75cf2e1410f7dde8",
+            ),
+            (
+                ["", "", "", "", ""],
+                "6cfebf804e787d7f6f42ab4ec170a33635fc041b4fc37ad1e2f3c4a2b5bc8ece",
+            ),
+        ];
+        for ([kind, base, bucket, user, secret], expected) in rows {
+            assert_eq!(fingerprint(kind, base, bucket, user, secret), expected);
+        }
     }
 }

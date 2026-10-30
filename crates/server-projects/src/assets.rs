@@ -77,23 +77,7 @@ pub(crate) fn write_asset_file(
     name: &str,
     bytes: &[u8],
 ) -> std::io::Result<()> {
-    let below = dir
-        .strip_prefix(user_dir)
-        .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
-    let mut builder = std::fs::DirBuilder::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        builder.mode(0o700);
-    }
-    let mut at = user_dir.to_path_buf();
-    for part in below.components() {
-        at.push(part);
-        match builder.create(&at) {
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && at.is_dir() => {}
-            other => other?,
-        }
-    }
+    store::create_dirs_below(user_dir, dir)?;
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create(true).truncate(true);
     #[cfg(unix)]

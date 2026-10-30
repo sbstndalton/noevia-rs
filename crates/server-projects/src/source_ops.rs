@@ -121,7 +121,13 @@ pub struct Op {
 }
 
 /// `kind`: `upload`, `import` (a folder import's file) or `sync`; `name` the file's name (`""` for a sync).
-pub fn begin(dir: &Path, project: &str, kind: &str, name: &str, now_ms: i64) -> Op {
+/// Stamped with the wall clock now: a job that waited its turn must not be listed at the time its request
+/// arrived, or core would forget it as stale and prune it at once.
+pub fn begin(dir: &Path, project: &str, kind: &str, name: &str) -> Op {
+    begin_at(dir, project, kind, name, crate::wall_ms())
+}
+
+fn begin_at(dir: &Path, project: &str, kind: &str, name: &str, now_ms: i64) -> Op {
     let id = crate::source_jobs::new_id();
     let entry = JValue::obj([
         ("id", JValue::Str(id.clone())),
@@ -141,7 +147,10 @@ pub fn begin(dir: &Path, project: &str, kind: &str, name: &str, now_ms: i64) -> 
 
 impl Op {
     /// The operation ended: `ok` is `ready`, else `failed`.
-    pub fn end(mut self, ok: bool, now_ms: i64) {
+    pub fn end(self, ok: bool) {
+        self.end_at(ok, crate::wall_ms());
+    }
+    fn end_at(mut self, ok: bool, now_ms: i64) {
         self.finish(ok, now_ms);
     }
     fn finish(&mut self, ok: bool, now_ms: i64) {
@@ -169,15 +178,8 @@ impl Op {
 
 impl Drop for Op {
     fn drop(&mut self) {
-        self.finish(false, store_now());
+        self.finish(false, crate::wall_ms());
     }
-}
-
-fn store_now() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
 }
 
 /// For a test: the listed operations as `(kind, name, state)`.
@@ -202,15 +204,15 @@ mod tests {
     #[test]
     fn an_operation_is_listed_while_it_runs_and_for_a_while_after() {
         let d = tempfile::tempdir().unwrap();
-        let op = begin(d.path(), "p", "upload", "a.pdf", 1_000);
+        let op = begin_at(d.path(), "p", "upload", "a.pdf", 1_000);
         assert_eq!(
             listed(d.path()),
             vec![("upload".into(), "a.pdf".into(), "running".into())]
         );
-        op.end(true, 2_000);
+        op.end_at(true, 2_000);
         assert_eq!(listed(d.path())[0].2, "ready");
         // Past the keep time the next write drops it; a running one is never dropped.
-        let other = begin(d.path(), "p", "sync", "", 2_000 + KEEP_MS + 1);
+        let other = begin_at(d.path(), "p", "sync", "", 2_000 + KEEP_MS + 1);
         let l = listed(d.path());
         assert_eq!(l, vec![("sync".into(), "".into(), "running".into())]);
         drop(other);
@@ -226,18 +228,41 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let stale = r#"{"version":1,"ops":[{"id":"x","project":"p","kind":"upload","name":"old.pdf","state":"running","at":5}]}"#;
         std::fs::write(path(d.path()), stale).unwrap();
-        let _op = begin(d.path(), "p", "upload", "new.pdf", 10);
+        let _op = begin_at(d.path(), "p", "upload", "new.pdf", 10);
         let l = listed(d.path());
         assert_eq!(l[0], ("upload".into(), "old.pdf".into(), "failed".into()));
         assert_eq!(l[1].2, "running");
+    }
+
+    /// #2191 round 8 review: an operation is listed at the moment it begins and ends, not at the time its
+    /// request arrived (a job that waited, a sync that ran for hours): core forgets a `running` entry by
+    /// its `at` and prunes a finished one by it, so a stale stamp lost the operation at once.
+    #[test]
+    fn an_operation_is_stamped_with_the_wall_clock_when_it_begins_and_ends() {
+        let d = tempfile::tempdir().unwrap();
+        let before = crate::wall_ms();
+        let op = begin(d.path(), "p", "upload", "a.pdf");
+        let at = |d: &Path| read(d)[0].get("at").as_num().unwrap() as i64;
+        let began = at(d.path());
+        assert!(
+            (before..=crate::wall_ms()).contains(&began),
+            "stamped {began}, now {}",
+            crate::wall_ms()
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        op.end(false);
+        assert_eq!(listed(d.path())[0].2, "failed");
+        assert!(at(d.path()) > began, "ended later than it began");
+        // Still listed, as a finished one is for KEEP_MS from its end.
+        assert_eq!(listed(d.path()).len(), 1);
     }
 
     #[test]
     fn a_missing_user_directory_is_not_created() {
         let d = tempfile::tempdir().unwrap();
         let gone = d.path().join("users").join("gone");
-        let op = begin(&gone, "p", "upload", "a", 1);
-        op.end(true, 2);
+        let op = begin(&gone, "p", "upload", "a");
+        op.end(true);
         assert!(!gone.exists());
     }
 }

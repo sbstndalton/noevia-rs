@@ -243,6 +243,26 @@ pub enum Outcome {
     Failed(u16, Option<&'static str>),
 }
 
+/// How long one operation may run before its job is ended as failed (the front's own bound, in place of
+/// the removed worker's 5 minute accept bound, so that a hung operation cannot hold one of the two slots
+/// for the store's 6 hours): 2 hours for a folder sync, which reads and extracts every file of a project, 30
+/// minutes for an upload.
+pub const SYNC_BOUND: std::time::Duration = std::time::Duration::from_secs(2 * 60 * 60);
+pub const UPLOAD_BOUND: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+
+/// The bound of an upload (`true`) or a sync.
+pub fn bound(upload: bool) -> std::time::Duration {
+    if upload {
+        UPLOAD_BOUND
+    } else {
+        SYNC_BOUND
+    }
+}
+
+/// What a job that passed its bound says.
+pub const OVER_BOUND: &str =
+    "Processing took too long and was stopped; refresh or re-upload to retry.";
+
 /// The message of a job whose worker went away before its result (core's interrupted wording).
 pub const RESTARTED: &str =
     "The server restarted before processing finished; refresh or re-upload to retry.";

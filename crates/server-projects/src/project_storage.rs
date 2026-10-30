@@ -96,12 +96,10 @@ pub(crate) fn save_original(
     bytes: &[u8],
 ) -> std::io::Result<()> {
     use std::io::Write;
-    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+    use std::os::unix::fs::OpenOptionsExt;
     let folder = lifecycle::uploads_dir(dir, project_id);
-    std::fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(&folder)?;
+    // Never `users/<id>` itself: an account removed while the original was being read stays removed.
+    store::create_dirs_below(dir, &folder)?;
     let tmp = folder.join(format!("{id}.{}.{}", std::process::id(), js::random36(8)));
     {
         let mut f = std::fs::OpenOptions::new()

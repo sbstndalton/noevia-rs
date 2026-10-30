@@ -68,6 +68,9 @@ pub struct Env<'a> {
     /// index.cjs PROJECT_ROOT_FOLDER.
     pub project_root: &'a str,
     pub progress: &'a dyn Fn(&str),
+    /// How long to wait for the project's source lock when another operation holds it, before answering
+    /// 429 (a request that waited without end would pile up threads and bodies).
+    pub lock_wait: std::time::Duration,
 }
 
 fn s(v: &str) -> JValue {
@@ -442,9 +445,8 @@ fn organized(env: &Env<'_>, dir: &Path, id: &str, body: &JValue, input_name_raw:
         return fail_reply(f);
     }
     let lock = project_documents::source_lock(ctx.user_id, id);
-    let _held = match lock.lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
+    let Some(_held) = project_documents::lock_within(&lock, env.lock_wait) else {
+        return project_documents::busy_reply();
     };
     let reply = organized_locked(
         env,
@@ -798,9 +800,8 @@ fn legacy(
 ) -> Reply {
     let ctx = env.ctx;
     let lock = project_documents::source_lock(ctx.user_id, id);
-    let _held = match lock.lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
+    let Some(_held) = project_documents::lock_within(&lock, env.lock_wait) else {
+        return project_documents::busy_reply();
     };
     let reply = legacy_locked(env, dir, id, body, raw_name, bytes);
     prune(dir, ctx, id);
@@ -872,7 +873,7 @@ fn legacy_locked(
                     }
                     f
                 }
-                Err(_) => return Reply::internal(),
+                Err(e) => return reply::io_failure(&e),
             }
         } else {
             JValue::obj([
@@ -1064,7 +1065,7 @@ fn legacy_locked(
                 }
                 file = Some(f);
             }
-            Err(_) => return Reply::internal(),
+            Err(e) => return reply::io_failure(&e),
         }
     }
     let written = storage.write(
@@ -1357,6 +1358,7 @@ mod tests {
                 catalogue: None,
                 project_root: "root",
                 progress,
+                lock_wait: std::time::Duration::from_secs(5),
             };
             let r = post(&env, "proj-a", body.as_bytes(), false);
             let Body::Json(text) = &r.body else { panic!() };
@@ -1501,6 +1503,7 @@ mod tests {
 
     #[test]
     fn a_folder_import_uploads_only_what_its_plan_accepted_under_its_ticket() {
+        let _tickets = crate::folder_import::serial_tickets();
         crate::folder_import::reset();
         let rig = Rig::new(PROJECT);
         let plan = |entries: &str| -> JValue {
@@ -1824,6 +1827,7 @@ mod tests {
             catalogue: None,
             project_root: "root",
             progress: &|_| {},
+            lock_wait: std::time::Duration::from_secs(5),
         };
         assert_eq!(
             post(&env, "ghost", b"{}", false),
@@ -1839,4 +1843,6 @@ mod tests {
         );
         assert_eq!(post(&env, "proj-a", b"null", false), Reply::internal());
     }
+
+    include!("upload/parity_tests.rs");
 }

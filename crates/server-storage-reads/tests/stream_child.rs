@@ -37,12 +37,19 @@ enum Lab {
     Overshoots,
     /// The declared total changes (+1) from the third request on.
     TotalChanges,
+    /// The file is replaced by one of the same size from the third request on (a new ETag); a request
+    /// whose `If-Range` is not the new ETag is answered with the whole file, as RFC 9110 says.
+    Replaced,
+    /// A slow link: the body of the first chunk stalls for 11 s half way (a link of a few Mbit/s).
+    Slow,
 }
 
 struct Served {
     requests: AtomicUsize,
     bytes: AtomicU64,
     ranged: AtomicUsize,
+    /// The `If-Range` header of each request, in arrival order.
+    if_ranges: std::sync::Mutex<Vec<(usize, Option<String>)>>,
 }
 
 fn byte_at(i: u64) -> u8 {
@@ -57,6 +64,7 @@ fn server(size: u64, lab: Lab) -> (u16, Arc<Served>) {
         requests: AtomicUsize::new(0),
         bytes: AtomicU64::new(0),
         ranged: AtomicUsize::new(0),
+        if_ranges: std::sync::Mutex::new(Vec::new()),
     });
     let state = Arc::clone(&served);
     std::thread::spawn(move || {
@@ -88,7 +96,20 @@ fn server(size: u64, lab: Lab) -> (u16, Arc<Served>) {
                 if range.is_some() {
                     state.ranged.fetch_add(1, Ordering::SeqCst);
                 }
+                let if_range = head.lines().find_map(|l| {
+                    l.strip_prefix("If-Range: ")
+                        .or_else(|| l.strip_prefix("if-range: "))
+                        .map(|v| v.trim().to_owned())
+                });
+                state.if_ranges.lock().unwrap().push((n, if_range.clone()));
+                let etag = if lab == Lab::Replaced && n >= 3 {
+                    "\"v2\""
+                } else {
+                    "\"v1\""
+                };
+                let whole = lab == Lab::Replaced && if_range.as_deref().is_some_and(|v| v != etag);
                 let (status, first, last, total) = match (lab, range) {
+                    _ if whole => (200, 0, size.saturating_sub(1), size),
                     (Lab::IgnoresRange, _) | (_, None) => (200, 0, size.saturating_sub(1), size),
                     (_, Some((a, b))) => {
                         let mut b = b.min(size - 1);
@@ -105,7 +126,7 @@ fn server(size: u64, lab: Lab) -> (u16, Arc<Served>) {
                 };
                 let len = last - first + 1;
                 let mut head = format!(
-                    "HTTP/1.1 {status} Synthetic\r\nContent-Length: {len}\r\nConnection: close\r\n"
+                    "HTTP/1.1 {status} Synthetic\r\nContent-Length: {len}\r\nETag: {etag}\r\nConnection: close\r\n"
                 );
                 if status == 206 {
                     head.push_str(&format!("Content-Range: bytes {first}-{last}/{total}\r\n"));
@@ -116,7 +137,13 @@ fn server(size: u64, lab: Lab) -> (u16, Arc<Served>) {
                 }
                 let mut at = first;
                 let mut block = vec![0u8; 256 * 1024];
+                let mut stalled = lab != Lab::Slow || n != 1;
                 while at <= last {
+                    if !stalled && at - first >= (last - first).div_ceil(2) {
+                        stalled = true;
+                        let _ = stream.flush();
+                        std::thread::sleep(Duration::from_secs(11));
+                    }
                     let take = ((last - at + 1) as usize).min(block.len());
                     for (k, slot) in block[..take].iter_mut().enumerate() {
                         *slot = byte_at(at + k as u64);
@@ -310,6 +337,75 @@ fn a_lying_range_is_refused_mid_stream() {
         assert_eq!(e.status, 502, "{}", e.message);
         assert_eq!(taken, 2 * CHUNK_BYTES as u64, "stopped at the third chunk");
     }
+}
+
+#[test]
+fn later_chunks_ask_only_for_the_same_file_and_a_replaced_file_is_refused() {
+    if !linux_only() {
+        return;
+    }
+    let _one = serial();
+    // Honest: the first request has no validator, every later one carries the first reply's ETag.
+    let (port, served) = server(20 * MIB, Lab::Honest);
+    let cancelled = AtomicBool::new(false);
+    let mut w = watch(&cancelled);
+    assert_eq!(
+        read(port, FILE_CAP, &mut |_| Ok(()), &mut w).0,
+        Ok(20 * MIB)
+    );
+    assert_eq!(
+        *served.if_ranges.lock().unwrap(),
+        vec![
+            (1, None),
+            (2, Some("\"v1\"".to_owned())),
+            (3, Some("\"v1\"".to_owned()))
+        ]
+    );
+    // Replaced by a file of the same size at the third request: the whole new file comes back as a
+    // 200 and the read ends, with what was staged left to the caller to drop.
+    let (port, _) = server(40 * MIB, Lab::Replaced);
+    let mut w = watch(&cancelled);
+    let mut taken = 0u64;
+    let mut sink = |b: &[u8]| {
+        taken += b.len() as u64;
+        Ok(())
+    };
+    let (r, _) = read(port, FILE_CAP, &mut sink, &mut w);
+    let e = r.unwrap_err();
+    assert_eq!(
+        (e.status, e.message.as_str()),
+        (502, "the file changed in storage while it was being read")
+    );
+    assert_eq!(
+        taken,
+        2 * CHUNK_BYTES as u64,
+        "nothing of the new file was taken"
+    );
+}
+
+/// The body of a chunk has the whole attempt's time (20 s), not the 10 s every small reply gets: a slow link
+/// that needs 12 s for 8 MiB reads the file (core's whole-read deadline is 30 s plus a second a MiB).
+#[test]
+fn a_slow_link_gets_the_attempts_time_for_a_chunks_body() {
+    if !linux_only() {
+        return;
+    }
+    let _one = serial();
+    let (port, _) = server(3 * MIB, Lab::Slow);
+    let cancelled = AtomicBool::new(false);
+    let mut w = watch(&cancelled);
+    let mut got = 0u64;
+    let mut sink = |b: &[u8]| {
+        got += b.len() as u64;
+        Ok(())
+    };
+    let (r, _) = read(port, FILE_CAP, &mut sink, &mut w);
+    assert_eq!(
+        r,
+        Ok(3 * MIB),
+        "a stall of 11 s inside one chunk is within the attempt"
+    );
+    assert_eq!(got, 3 * MIB);
 }
 
 #[test]

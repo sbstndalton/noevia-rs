@@ -802,7 +802,13 @@ async fn exchange<IO: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             cap,
         );
     }
-    let body_deadline = deadline.min(Instant::now() + Duration::from_secs(10));
+    // A chunk (8 MiB) gets the whole attempt's time for its body, as the request's own timeout allows;
+    // every other reply is small and gets 10 s.
+    let body_deadline = if cap == crate::CHUNK_FRAME {
+        deadline
+    } else {
+        deadline.min(Instant::now() + Duration::from_secs(10))
+    };
     if etag_reply {
         // A write's answer is its status and ETag; core never reads a write's response body.
         let etag = etag_of(response.headers());
@@ -987,6 +993,14 @@ fn chunk_prefix(status: u16, headers: &HeaderMap) -> [u8; crate::CHUNK_PREFIX] {
         if let Some(slot) = out.get_mut(i * 8..i * 8 + 8) {
             slot.copy_from_slice(&value.to_be_bytes());
         }
+    }
+    // The ETag: a length, then the bytes (`etag_of` keeps it within `ETAG_BYTES`, so it fits).
+    let etag = etag_of(headers);
+    if let Some(len) = out.get_mut(24..26) {
+        len.copy_from_slice(&(etag.len() as u16).to_be_bytes());
+    }
+    if let Some(slot) = out.get_mut(26..26 + etag.len()) {
+        slot.copy_from_slice(&etag);
     }
     out
 }

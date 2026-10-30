@@ -475,6 +475,128 @@ async fn a_client_that_leaves_cannot_strand_the_job_and_the_slots_are_freed() {
     assert_eq!(status, 202, "a slot is free again: {body}");
 }
 
+/// A second person's session: the owner's projects are not theirs, whichever source route they use.
+fn insert_member_session(f: &Front) -> (String, String) {
+    let user = "22222222-2222-4222-8222-222222222222";
+    let token = "synthetic-member-session-token";
+    let csrf = "synthetic-member-csrf-token";
+    let c = Connection::open(server_store::db_path(&f.data)).unwrap();
+    c.execute(
+        "INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES(?1,'member','member','Synthetic member','member','x',?1,1,1)",
+        [user],
+    )
+    .unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    c.execute(
+        "INSERT INTO sessions(id_hash,user_id,csrf_hash,created_at,last_seen_at,expires_at,user_agent,ip) VALUES(?1,?2,?3,?4,?4,?5,'synthetic','127.0.0.1')",
+        (server_auth::js::digest(token), user, server_auth::js::digest(csrf), now, now + 86_400_000),
+    )
+    .unwrap();
+    std::fs::create_dir_all(f.data.join("users").join(user)).unwrap();
+    (
+        user.to_string(),
+        format!("cowork_session={token}; cowork_csrf={csrf}"),
+    )
+}
+
+/// Two users: a project id of the owner's is a 404 for the other person on the upload, the sync (both
+/// forms) and the folder-import plan, and nothing of the owner's changes or is written for them. (The
+/// OCR-front harness holds the same check against a separate front process.)
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn another_persons_project_is_a_404_on_every_source_work_route() {
+    let f = front().await;
+    let (member, cookie) = insert_member_session(&f);
+    let h = [
+        ("cookie", cookie.as_str()),
+        ("x-csrf-token", "synthetic-member-csrf-token"),
+        ("origin", ORIGIN),
+        ("content-type", "application/json"),
+    ];
+    let mine = headers(&f);
+    for (path, body, expected) in [
+        ("/api/projects/p%201/upload", UPLOAD, "no such project"),
+        (
+            "/api/projects/p%201/upload?background=1",
+            UPLOAD,
+            "project not found",
+        ),
+        ("/api/projects/p%201/sources/sync", "{}", "no such project"),
+        (
+            "/api/projects/p%201/sources/sync?background=1",
+            "{}",
+            "project not found",
+        ),
+        (
+            "/api/projects/p%201/folder-import/plan",
+            r#"{"entries":[{"path":"a.md","size":1}]}"#,
+            "no such project",
+        ),
+    ] {
+        let (status, text) = call(f.addr, "POST", path, &h, body).await;
+        assert_eq!(status, 404, "{path}: {text}");
+        assert!(text.contains(expected), "{path}: {text}");
+    }
+    assert!(
+        file_names(&f).is_empty(),
+        "the owner's project was not touched"
+    );
+    assert!(journals(&f).is_empty());
+    let theirs = f.data.join("users").join(&member);
+    assert!(
+        !theirs.join("jobs").exists(),
+        "no job was made for the member"
+    );
+    assert!(!theirs.join("project-uploads").exists() && !theirs.join("projects.json").exists());
+    // Whatever was listed for them (in their own folder) is over.
+    let ops = std::fs::read_to_string(theirs.join("source-file-ops.json")).unwrap_or_default();
+    assert!(!ops.contains(r#""state":"running""#), "{ops}");
+    // And the owner's own request still works.
+    let (status, _) = call(f.addr, "POST", "/api/projects/p%201/upload", &mine, UPLOAD).await;
+    assert_eq!(status, 200);
+}
+
+/// A saved storage login the front cannot open (its credential key is missing) is not "no storage": a sync
+/// of a project with attached folders says so (503), where it used to answer as if the person had no
+/// storage connected (400), and an upload does not quietly keep the file only in noevia.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_saved_storage_login_that_cannot_be_read_is_a_503_not_no_storage() {
+    let f = front().await;
+    let h = headers(&f);
+    let c = Connection::open(server_store::db_path(&f.data)).unwrap();
+    c.execute(
+        "INSERT INTO storage_connections(user_id,kind,base_url,bucket,region,username,secret,corpus_root,updated_at) VALUES(?1,'webdav','http://127.0.0.1:9/dav','','us-east-1','u','not-an-envelope','',1)",
+        [&f.user],
+    )
+    .unwrap();
+    let udir = f.data.join("users").join(&f.user);
+    std::fs::write(
+        udir.join("projects.json"),
+        r#"{"projects":[{"id":"p 1","name":"Synthetic","files":[],"chats":[],"sourceFolders":["docs"]}]}"#,
+    )
+    .unwrap();
+    let (status, body) = call(f.addr, "POST", "/api/projects/p%201/sources/sync", &h, "{}").await;
+    assert_eq!(status, 503, "{body}");
+    assert!(body.contains("could not be read"), "{body}");
+    let (status, body) = call(
+        f.addr,
+        "POST",
+        "/api/projects/p%201/sources/sync?background=1",
+        &h,
+        "{}",
+    )
+    .await;
+    assert_eq!(status, 202, "{body}");
+    let poll = serde_json::from_str::<serde_json::Value>(&body).unwrap()["poll"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let done = poll_until_done(&f, &poll).await;
+    assert_eq!(done["status"], 503, "{done}");
+}
+
 #[test]
 fn the_front_names_the_capability_beside_the_source_jobs() {
     assert!(noevia_server::FEATURES.contains(&"rust-project-source-work"));

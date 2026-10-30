@@ -9,7 +9,7 @@
 use crate::source_storage::{BinaryRead, SourceStorage, StorageError};
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
@@ -47,6 +47,9 @@ impl Drop for Staged {
 }
 
 fn io(e: &std::io::Error) -> StorageError {
+    if e.kind() == std::io::ErrorKind::NotFound {
+        return StorageError::gone();
+    }
     eprintln!("noevia-server: staging a storage read failed: {}", e.kind());
     StorageError::new(500, "Internal error")
 }
@@ -77,11 +80,9 @@ pub fn stage(
     read: BinaryRead<'_>,
 ) -> Result<Staged, StorageError> {
     let folder = user_dir.join(DIR);
-    std::fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(&folder)
-        .map_err(|e| io(&e))?;
+    // Only `source-staging/` is made, below the user's directory: an account removed meanwhile is
+    // gone (410), not recreated (#1425).
+    crate::store::create_dirs_below(user_dir, &folder).map_err(|e| io(&e))?;
     let temp = folder.join(format!("{}.part", crate::js::random36(24)));
     let mut file = std::fs::OpenOptions::new()
         .write(true)
