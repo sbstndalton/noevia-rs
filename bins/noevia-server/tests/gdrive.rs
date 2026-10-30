@@ -1478,7 +1478,18 @@ async fn the_reseal_and_a_disconnect_wait_for_the_fence() {
     let before_b = std::fs::read(d.path().join(format!("google-drive-users/{B}.sealed"))).unwrap();
 
     // Hold the fence, as another change to the files would while it reads and rewrites one.
-    let fence = drive.hold_fence();
+    // (On a thread of its own: a std guard must not be held across an await.)
+    let (held_tx, held_rx) = std::sync::mpsc::channel::<()>();
+    let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+    let holder = {
+        let drive = std::sync::Arc::clone(&drive);
+        std::thread::spawn(move || {
+            let _fence = drive.hold_fence();
+            held_tx.send(()).unwrap();
+            let _ = release_rx.recv();
+        })
+    };
+    held_rx.recv().unwrap();
     let (addr, token) = (f.store, STORE_TOKEN);
     let reseal = tokio::spawn(async move { store(addr, "gdrive/reseal", token, "{}").await });
     let disconnect = tokio::spawn(async move {
@@ -1509,7 +1520,8 @@ async fn the_reseal_and_a_disconnect_wait_for_the_fence() {
         before_b,
         "B's file is untouched while the fence is held"
     );
-    drop(fence);
+    release_tx.send(()).unwrap();
+    holder.join().unwrap();
     let (s, _) = reseal.await.unwrap();
     assert_eq!(s, 200);
     assert_eq!(disconnect.await.unwrap().0, 200);
