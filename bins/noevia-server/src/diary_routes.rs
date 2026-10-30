@@ -514,8 +514,8 @@ async fn connector_endpoint(
     // The audit entry travels with the write into the detached task that makes it, not after it
     // here: a client that disconnects once the sidecar has the write drops this handler's future,
     // and an entry made after the await would never be made.
-    let audit: Option<Box<dyn FnOnce() + Send>> =
-        (parsed.get("action").as_str() == Some("write")).then(|| {
+    let audit: Option<Box<dyn FnOnce() + Send>> = (parsed.get("action").as_str() == Some("write"))
+        .then(|| {
             let (writes, who, path) = (
                 Arc::clone(&app.writes),
                 who.clone(),
@@ -542,7 +542,12 @@ async fn connector_endpoint(
 /// The connector's write, in the audit trail: who, which path, how many bytes; never the content. The
 /// write has happened by now, so a failure here is logged, not turned into an error answer that would
 /// make the connector retry a write that went through. Blocking (SQLite): run it off the async threads.
-fn audit_write(writes: &Arc<crate::upkeep::WriterLayer>, who: &Verified, path: &JValue, bytes: usize) {
+fn audit_write(
+    writes: &Arc<crate::upkeep::WriterLayer>,
+    who: &Verified,
+    path: &JValue,
+    bytes: usize,
+) {
     let done = writes
         .writer()
         .and_then(|writer| connector::audit_write(&writer, who, path, bytes, identity::now_ms()));

@@ -133,7 +133,9 @@ fn by_started(a: &JValue, b: &JValue) -> std::cmp::Ordering {
             .filter(|n| !n.is_nan())
             .unwrap_or(f64::NEG_INFINITY)
     };
-    at(a).partial_cmp(&at(b)).unwrap_or(std::cmp::Ordering::Equal)
+    at(a)
+        .partial_cmp(&at(b))
+        .unwrap_or(std::cmp::Ordering::Equal)
 }
 
 /// `list(workspace, day)`: the day's records, oldest first, the newest [`LIST_CAP`]; a record that

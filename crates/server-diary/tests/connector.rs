@@ -606,7 +606,8 @@ async fn a_connector_speaks_as_its_owner_whatever_credential_the_identity_carrie
     let d = diary(&stub, TENANT_KEY);
     let cfg = d.sidecar().config().clone();
     let base = w.ctx(MEMBER, true).identity;
-    let mut tenants = vec![Tenant::load_user(MEMBER, Role::Member, &w.store, w.dir.path(), &cfg).unwrap()];
+    let mut tenants =
+        vec![Tenant::load_user(MEMBER, Role::Member, &w.store, w.dir.path(), &cfg).unwrap()];
     for credential in [
         Credential::Legacy,
         Credential::Session {
@@ -628,7 +629,13 @@ async fn a_connector_speaks_as_its_owner_whatever_credential_the_identity_carrie
     }
     for tenant in &tenants {
         d.sidecar()
-            .fetch_json(tenant, reqwest::Method::GET, "/api/files?path=", None, Duration::from_secs(5))
+            .fetch_json(
+                tenant,
+                reqwest::Method::GET,
+                "/api/files?path=",
+                None,
+                Duration::from_secs(5),
+            )
             .await
             .unwrap();
     }
@@ -639,7 +646,10 @@ async fn a_connector_speaks_as_its_owner_whatever_credential_the_identity_carrie
             .headers
             .iter()
             .filter(|(k, _)| {
-                !matches!(k.as_str(), "x-cowork-tenant-assertion" | "date" | "content-length")
+                !matches!(
+                    k.as_str(),
+                    "x-cowork-tenant-assertion" | "date" | "content-length"
+                )
             })
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
@@ -848,7 +858,11 @@ async fn the_audit_of_a_write_runs_with_the_call_even_when_the_client_goes_away(
     assert!(tokio::time::timeout(Duration::from_millis(100), call)
         .await
         .is_err());
-    assert_eq!(audited.load(Ordering::SeqCst), 0, "not before the sidecar has the write");
+    assert_eq!(
+        audited.load(Ordering::SeqCst),
+        0,
+        "not before the sidecar has the write"
+    );
     tokio::time::sleep(Duration::from_millis(900)).await;
     assert_eq!(stub.requests().len(), 1);
     assert_eq!(

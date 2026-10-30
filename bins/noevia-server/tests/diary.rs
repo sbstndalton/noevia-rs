@@ -801,7 +801,10 @@ async fn a_connector_write_is_audited_even_when_the_client_disconnects_after_the
     // The sidecar has the write (its PUT is in the log and is still being answered) ...
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
     while !seen.lock().unwrap().iter().any(|s| s.method == "PUT") {
-        assert!(std::time::Instant::now() < deadline, "the write never reached the sidecar");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the write never reached the sidecar"
+        );
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
     // ... and the client goes away: the handler's future is dropped.
@@ -817,7 +820,10 @@ async fn a_connector_write_is_audited_even_when_the_client_disconnects_after_the
             .map(Result::unwrap)
             .collect()
     };
-    assert!(rows(dir.path()).is_empty(), "not audited before the write is done");
+    assert!(
+        rows(dir.path()).is_empty(),
+        "not audited before the write is done"
+    );
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
     let audited = loop {
         let got = rows(dir.path());
