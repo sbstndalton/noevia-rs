@@ -252,7 +252,10 @@ tenant id, the legacy-owner marker, the base64url storage descriptor with the se
 #2185, the v2 assertion from `crates/tenant-assertion`, the once-only 428 retry, the member-origin
 policy, 8 MiB reply cap), and Core refuses each moved route with 503 `RUST_DIARY_ROUTES_OWNED`
 (core `server/rust-diary-routes.cjs`) under the capability `rust-diary-routes`, which the web supervisor
-and the release assembler pair (old/old stays valid; mixed pairs are refused).
+and the release assembler pair (old/old stays valid; mixed pairs are refused). Which methods Core
+refuses cannot drift from this file: `bins/noevia-server/tests/diary_core_pair.rs` asks the paired Core's
+own `owned()` functions about every method on every Diary route in `routes.toml` (CI job
+`corpus-replay-front`, Core at `front-core.ref`; `NOEVIA_DIARY_CORE` runs it locally).
 
 | route | methods | what the front does | what Node still does for it |
 |---|---|---|---|
@@ -285,6 +288,15 @@ record cannot be mislabelled by the order of the two reads (`exchanges::list`; t
 orders). A start that cannot publish refuses the exchange (the chat route's existing "no diary request
 was sent" 500).
 
+*Known trade-off (review L5).* The publish after a record's last write is best effort
+(`diary-jobs.cjs release`): a record that has finished must not turn into a failed chat turn because a
+file could not be written. If that one write fails (disk full, a permission fault), `active.json` keeps
+naming a record that no longer runs, so a dismissal of that record answers 409 "still running" and the
+list shows it `running`, until the next exchange of that account writes the whole set again or the
+container restarts (a set written by another start names nothing). It is never the other way round: a
+record cannot be missing from the set while it runs. Fixing it would mean failing the finished exchange
+or retrying in a timer, and a stale name only costs a delayed dismissal.
+
 **Kept on Node: `POST /api/diary/local-exchange`.** Re-evaluated with both techniques. It takes the 60 per
 minute model throttle that chat shares (`llmRateLimited`, one bucket per account for both routes) and, from
 `index.cjs handleRequest`, the inference maintenance gate for the whole life of its response
@@ -311,7 +323,10 @@ the local exchange.
    detail.
 3. `POST /api/diary/storage-import` (the #2185 route) is no longer abandoned half-sent when the client
    goes away: the sidecar call runs on its own task, as core's never-aborted `fetch` did. The connector
-   bridge's calls are detached the same way.
+   bridge's calls are detached the same way, and a connector write's audit event is made on that same
+   task, straight after the sidecar accepted the write, so a client that disconnects once the sidecar
+   has the write does not cost the `diary-connector.write` row (it was made after the await, in the
+   handler, which a disconnect drops).
 4. A dismissal whose `day` or `id` is not a string is a 400 (core coerced a number into the id pattern).
 5. The exchanges: any method but GET and POST gets the unknown-path 404 before the add-on is looked at, as
    core's mount did; a day is checked as a real calendar date (core: `Date.parse` round trip), 0000 to 9999.
@@ -319,6 +334,10 @@ the local exchange.
    120 s read deadline (core had only the server-wide 20 minutes).
 7. `automaticStorage` is computed from the same latch rows by the same transition; a latch that cannot be
    read shows no hold (core's `try/catch` did the same).
+8. The day's list sorts by `startedAt` as a total order: a record with no numeric `startedAt` (the Diary
+   never writes one without; a hand-edited or damaged record) is older than every dated one and the
+   undated keep file-name order. Core's `a.startedAt - b.startedAt` answered NaN for them, which sorted
+   them wherever the algorithm left them.
 
 ## sbstndalton/noevia#1071: Settings -> Sharing, and the small routes that stay Node's
 

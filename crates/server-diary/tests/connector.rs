@@ -371,6 +371,7 @@ async fn operate(d: &Diary, w: &World, token: &str, body: &str) -> (u16, JValue)
             token.to_owned(),
             who,
             json(body),
+            None,
         )
         .await
     {
@@ -592,6 +593,68 @@ async fn bad_requests_are_refused_in_cores_order_before_the_sidecar_is_called() 
     assert_eq!(operate(&d, &w, &made.token, &over).await.0, 400);
 }
 
+/// Review L2 (sbstndalton/noevia#2206): `Tenant::load_user` hands `Tenant::load` a placeholder
+/// credential. Whatever credential an identity carries, the same person with the same role gets the
+/// same headers (the assertion aside: it carries a time and a nonce).
+#[tokio::test]
+async fn a_connector_speaks_as_its_owner_whatever_credential_the_identity_carries() {
+    use server_auth::{Credential, Role};
+    use server_diary::Tenant;
+    let stub = Stub::start(|_, _| Out::json(200, "{}")).await;
+    let w = World::new(&[(MEMBER, webdav())]);
+    w.mark_legacy(MEMBER);
+    let d = diary(&stub, TENANT_KEY);
+    let cfg = d.sidecar().config().clone();
+    let base = w.ctx(MEMBER, true).identity;
+    let mut tenants = vec![Tenant::load_user(MEMBER, Role::Member, &w.store, w.dir.path(), &cfg).unwrap()];
+    for credential in [
+        Credential::Legacy,
+        Credential::Session {
+            id_hash: "h".into(),
+            csrf_hash: "c".into(),
+            credential_epoch: Some(3),
+        },
+        Credential::Device {
+            grant_id: "g".into(),
+            client_name: "Synthetic".into(),
+            expires_at: 9_999_999_999_999,
+        },
+    ] {
+        let identity = server_auth::Identity {
+            credential,
+            ..base.clone()
+        };
+        tenants.push(Tenant::load(&identity, &w.store, w.dir.path(), &cfg).unwrap());
+    }
+    for tenant in &tenants {
+        d.sidecar()
+            .fetch_json(tenant, reqwest::Method::GET, "/api/files?path=", None, Duration::from_secs(5))
+            .await
+            .unwrap();
+    }
+    let seen = stub.requests();
+    assert_eq!(seen.len(), 4);
+    let stable = |r: &Seen| -> Vec<(String, String)> {
+        let mut h: Vec<(String, String)> = r
+            .headers
+            .iter()
+            .filter(|(k, _)| {
+                !matches!(k.as_str(), "x-cowork-tenant-assertion" | "date" | "content-length")
+            })
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        h.sort();
+        h
+    };
+    assert!(seen[0].header("x-cowork-tenant-assertion").is_some());
+    assert_eq!(seen[0].header("x-cowork-user-id"), Some(MEMBER));
+    assert_eq!(seen[0].header("x-cowork-legacy-owner"), Some("1"));
+    for r in &seen[1..] {
+        assert_eq!(stable(r), stable(&seen[0]));
+        assert!(r.header("x-cowork-tenant-assertion").is_some());
+    }
+}
+
 #[tokio::test]
 async fn a_revoked_or_disabled_connector_is_refused_before_anything_is_sent() {
     let stub = Stub::start(|_, _| Out::json(200, "{}")).await;
@@ -607,6 +670,7 @@ async fn a_revoked_or_disabled_connector_is_refused_before_anything_is_sent() {
             made.token.to_string(),
             user,
             json(r#"{"action":"read","path":"a.md"}"#),
+            None,
         )
         .await;
     let fault: Fault = res.unwrap_err();
@@ -738,6 +802,7 @@ async fn the_call_runs_to_its_end_when_the_client_goes_away() {
         made.token.to_string(),
         user,
         json(r#"{"action":"write","path":"a.md","content":"x","version":null}"#),
+        None,
     );
     // The client leaves while the sidecar is still working.
     assert!(tokio::time::timeout(Duration::from_millis(100), call)
@@ -750,6 +815,76 @@ async fn the_call_runs_to_its_end_when_the_client_goes_away() {
         0,
         "and was answered, not abandoned half-sent"
     );
+}
+
+/// The audit entry belongs to the detached task (sbstndalton/noevia#2206 review M1): it runs after a
+/// write the sidecar accepted even though the caller is gone, and only then.
+#[tokio::test]
+async fn the_audit_of_a_write_runs_with_the_call_even_when_the_client_goes_away() {
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::Arc;
+    let stub =
+        Stub::start(|_, _| Out::json(200, r#"{"written":true}"#).slow(Duration::from_millis(400)))
+            .await;
+    let w = World::new(&[]);
+    let d = diary(&stub, TENANT_KEY);
+    let made = make(&w, MEMBER, "Phone");
+    let user = who(&w, &made.token);
+    let audited = Arc::new(AtomicUsize::new(0));
+    let mark = |n: &Arc<AtomicUsize>| -> Option<Box<dyn FnOnce() + Send>> {
+        let n = Arc::clone(n);
+        Some(Box::new(move || {
+            n.fetch_add(1, Ordering::SeqCst);
+        }))
+    };
+    let call = d.operate_connector(
+        w.store.clone(),
+        w.dir.path().to_owned(),
+        made.token.to_string(),
+        user.clone(),
+        json(r#"{"action":"write","path":"a.md","content":"x","version":null}"#),
+        mark(&audited),
+    );
+    assert!(tokio::time::timeout(Duration::from_millis(100), call)
+        .await
+        .is_err());
+    assert_eq!(audited.load(Ordering::SeqCst), 0, "not before the sidecar has the write");
+    tokio::time::sleep(Duration::from_millis(900)).await;
+    assert_eq!(stub.requests().len(), 1);
+    assert_eq!(
+        audited.load(Ordering::SeqCst),
+        1,
+        "the write was audited though nobody was waiting"
+    );
+    // A list, a read, and a write the sidecar refused or the credential's owner no longer may make
+    // are never audited as writes.
+    let silent = Arc::new(AtomicUsize::new(0));
+    let stub = Stub::start(|_, n| {
+        if n == 0 {
+            Out::json(200, r#"{"files":[]}"#)
+        } else {
+            Out::json(409, r#"{"detail":"The file changed; read it again"}"#)
+        }
+    })
+    .await;
+    let d = diary(&stub, TENANT_KEY);
+    for body in [
+        r#"{"action":"list","path":""}"#,
+        r#"{"action":"write","path":"a.md","content":"x","version":null}"#,
+        r#"{"action":"write","path":"a.txt","content":"x","version":null}"#,
+    ] {
+        let _ = d
+            .operate_connector(
+                w.store.clone(),
+                w.dir.path().to_owned(),
+                made.token.to_string(),
+                user.clone(),
+                json(body),
+                mark(&silent),
+            )
+            .await;
+    }
+    assert_eq!(silent.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]

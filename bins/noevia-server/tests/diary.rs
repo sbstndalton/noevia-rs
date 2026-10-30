@@ -47,6 +47,11 @@ struct Seen {
 
 /// A sidecar that answers `/api/months`, `/api/workspace-export` and `/api/workspace-import`.
 async fn sidecar() -> (String, Arc<Mutex<Vec<Seen>>>) {
+    sidecar_slow_put(std::time::Duration::ZERO).await
+}
+
+/// [`sidecar`] whose `PUT` answers only after `put_delay` (a write that takes a while).
+async fn sidecar_slow_put(put_delay: std::time::Duration) -> (String, Arc<Mutex<Vec<Seen>>>) {
     let seen = Arc::new(Mutex::new(Vec::<Seen>::new()));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
@@ -63,6 +68,7 @@ async fn sidecar() -> (String, Arc<Mutex<Vec<Seen>>>) {
                     async move {
                         let (parts, body) = req.into_parts();
                         let body = body.collect().await.unwrap().to_bytes().to_vec();
+                        let slow = parts.method == hyper::Method::PUT && !put_delay.is_zero();
                         let target = parts.uri.path_and_query().unwrap().as_str().to_owned();
                         log.lock().unwrap().push(Seen {
                             method: parts.method.to_string(),
@@ -76,6 +82,9 @@ async fn sidecar() -> (String, Arc<Mutex<Vec<Seen>>>) {
                                 .collect(),
                             body,
                         });
+                        if slow {
+                            tokio::time::sleep(put_delay).await;
+                        }
                         let (ctype, out): (&str, &[u8]) = if target.starts_with("/api/months") {
                             (
                                 "application/json",
@@ -430,11 +439,17 @@ fn json_of(a: &Answer) -> js_json::JValue {
 }
 
 async fn with_account() -> (tempfile::TempDir, Arc<App>, Arc<Mutex<Vec<Seen>>>) {
+    with_account_slow_put(std::time::Duration::ZERO).await
+}
+
+async fn with_account_slow_put(
+    put_delay: std::time::Duration,
+) -> (tempfile::TempDir, Arc<App>, Arc<Mutex<Vec<Seen>>>) {
     let dir = tempfile::tempdir().unwrap();
     seed(dir.path(), true);
     db(dir.path());
     std::fs::create_dir_all(dir.path().join("users").join(USER)).unwrap();
-    let (base, seen) = sidecar().await;
+    let (base, seen) = sidecar_slow_put(put_delay).await;
     let app = app(dir.path(), &base);
     (dir, app, seen)
 }
@@ -747,6 +762,75 @@ async fn connectors_are_made_listed_and_revoked_by_the_person_and_each_use_is_au
     assert_eq!(
         (a.status.as_u16(), a.body.as_slice()),
         (404, br#"{"error":"not found"}"#.as_slice())
+    );
+}
+
+/// Review M1 (sbstndalton/noevia#2206): the connector's write is audited once the sidecar has it,
+/// whether or not the client is still there to read the answer. The client here goes away while the
+/// sidecar is still writing; the handler's future is dropped, and the row must still appear.
+#[tokio::test]
+async fn a_connector_write_is_audited_even_when_the_client_disconnects_after_the_sidecar_has_it() {
+    let (dir, app, seen) = with_account_slow_put(std::time::Duration::from_millis(600)).await;
+    let a = call(
+        &app,
+        "POST",
+        "/api/profile/diary-connectors",
+        true,
+        br#"{"name":"Phone"}"#,
+    )
+    .await;
+    let made = json_of(&a);
+    let (id, token) = (
+        made.get("id").as_str().unwrap().to_owned(),
+        made.get("token").as_str().unwrap().to_owned(),
+    );
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/diary-connector")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(
+            r#"{"action":"write","path":"Notes/a.md","content":"hello","version":null}"#,
+        ))
+        .unwrap();
+    let served = {
+        let app = Arc::clone(&app);
+        tokio::spawn(async move {
+            diary_routes::serve(&app, conn(), req, "/api/diary-connector".into()).await
+        })
+    };
+    // The sidecar has the write (its PUT is in the log and is still being answered) ...
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !seen.lock().unwrap().iter().any(|s| s.method == "PUT") {
+        assert!(std::time::Instant::now() < deadline, "the write never reached the sidecar");
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    // ... and the client goes away: the handler's future is dropped.
+    served.abort();
+    assert!(served.await.unwrap_err().is_cancelled());
+    let rows = |dir: &std::path::Path| -> Vec<String> {
+        let c = db(dir);
+        let mut st = c
+            .prepare("SELECT detail FROM audit_events WHERE action='diary-connector.write'")
+            .unwrap();
+        st.query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
+    };
+    assert!(rows(dir.path()).is_empty(), "not audited before the write is done");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    let audited = loop {
+        let got = rows(dir.path());
+        if !got.is_empty() || std::time::Instant::now() > deadline {
+            break got;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    };
+    assert_eq!(
+        audited,
+        vec![format!(
+            r#"{{"credentialId":"{id}","path":"Notes/a.md","bytes":5}}"#
+        )]
     );
 }
 

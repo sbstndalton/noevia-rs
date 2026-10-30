@@ -485,6 +485,13 @@ impl Diary {
     /// `operate(identity, body, files, allowed)` for `POST /api/diary-connector`. The sidecar calls
     /// run to the end even if the client goes away (a write is not abandoned half-sent), as they did
     /// in core, which never tied them to the client's connection.
+    ///
+    /// `audit` is the write's audit entry (blocking work, run off the async threads). It runs in the
+    /// same detached task, straight after a write the sidecar accepted, so a client that disconnects
+    /// after the sidecar write cannot cost the audit row: the handler's own future is the one that
+    /// gets dropped, never this one. It does not run for a read or a list, for a refused or failed
+    /// write, or when `audit` is `None`; a failure inside it is the closure's to log (the write has
+    /// happened and must not turn into an error the connector would retry).
     pub async fn operate_connector(
         &self,
         store: Arc<Store>,
@@ -492,11 +499,20 @@ impl Diary {
         token: String,
         who: Verified,
         body: JValue,
+        audit: Option<Box<dyn FnOnce() + Send>>,
     ) -> Result<JValue, Fault> {
         let this = self.clone();
-        tokio::spawn(async move { this.operate(&store, &data_dir, &token, &who, &body).await })
-            .await
-            .map_err(|_| Fault::internal())?
+        tokio::spawn(async move {
+            let wrote = body.get("action").as_str() == Some("write");
+            let result = this.operate(&store, &data_dir, &token, &who, &body).await;
+            if let (true, Ok(_), Some(audit)) = (wrote, &result, audit) {
+                // The audit is blocking SQLite; a panic inside it must not lose the result.
+                let _ = tokio::task::spawn_blocking(audit).await;
+            }
+            result
+        })
+        .await
+        .map_err(|_| Fault::internal())?
     }
 
     async fn operate(

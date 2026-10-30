@@ -120,14 +120,20 @@ fn mark_uncertain(row: &mut JValue) {
     }
 }
 
-/// `(a, b) => a.startedAt - b.startedAt`, with the NaN of a missing field comparing equal.
+/// `(a, b) => a.startedAt - b.startedAt`, as a total order. Core's comparator answers NaN for a
+/// record with no numeric `startedAt`, which V8 reads as "equal" to everything, so such a record is
+/// neither before nor after its neighbours and the sorted list depends on the order the sort visits
+/// them in; a comparator that is not a total order may also panic Rust's sort. Here a record with no
+/// numeric `startedAt` is older than every record that has one (`-Infinity`), and records equal on it
+/// keep their file-name order (the sort is stable). Records the Diary writes always carry the field.
 fn by_started(a: &JValue, b: &JValue) -> std::cmp::Ordering {
-    match (a.get("startedAt").as_num(), b.get("startedAt").as_num()) {
-        (Some(x), Some(y)) => (x - y)
-            .partial_cmp(&0.0)
-            .unwrap_or(std::cmp::Ordering::Equal),
-        _ => std::cmp::Ordering::Equal,
-    }
+    let at = |v: &JValue| {
+        v.get("startedAt")
+            .as_num()
+            .filter(|n| !n.is_nan())
+            .unwrap_or(f64::NEG_INFINITY)
+    };
+    at(a).partial_cmp(&at(b)).unwrap_or(std::cmp::Ordering::Equal)
 }
 
 /// `list(workspace, day)`: the day's records, oldest first, the newest [`LIST_CAP`]; a record that

@@ -424,6 +424,39 @@ async fn a_day_lists_its_records_oldest_first_and_a_bad_day_is_a_400() {
     );
 }
 
+/// Review L4 (sbstndalton/noevia#2206): a record with no numeric `startedAt` has a place in the order
+/// (before every dated one, file-name order among themselves) instead of comparing equal to all.
+#[tokio::test]
+async fn a_record_without_a_start_time_sorts_before_the_dated_ones_and_the_order_is_total() {
+    let (_stub, d) = quiet().await;
+    let w = World::new(&[]);
+    let at = |n: &str| format!("exchange-{}", n.repeat(16));
+    for (id, start) in [
+        ("a", r#","startedAt":30"#),
+        ("b", ""),
+        ("c", r#","startedAt":10"#),
+        ("d", r#","startedAt":"soon""#),
+        ("e", r#","startedAt":20"#),
+        ("f", r#","startedAt":null"#),
+    ] {
+        write_record(
+            &w,
+            MEMBER,
+            DAY,
+            &at(id),
+            &format!(r#"{{"id":"{}","state":"complete"{start}}}"#, at(id)),
+        );
+    }
+    let (status, got) = list(&d, &w, MEMBER, &format!("?day={DAY}")).await;
+    assert_eq!(status, 200);
+    let order: Vec<String> = ids(&got).into_iter().map(|(id, _)| id).collect();
+    assert_eq!(
+        order,
+        ["b", "d", "f", "c", "e", "a"].map(at),
+        "undated first (by name), then oldest to newest"
+    );
+}
+
 #[tokio::test]
 async fn only_the_newest_hundred_records_of_a_day_are_listed() {
     let (_stub, d) = quiet().await;

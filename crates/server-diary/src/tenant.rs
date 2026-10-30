@@ -104,6 +104,13 @@ impl Tenant {
                 onboarded: true,
             },
             account_role: role,
+            // Not a claim that this person used UI_AUTH_TOKEN: `Credential` has no variant for a
+            // connector, and the credential is read by nothing in `load` (owner_secret binds the
+            // id and the role; the headers are built from the id, the role, the workspace marker
+            // and the connection). It is a placeholder, kept that way by the test
+            // `a_connector_speaks_as_its_owner_whatever_credential_the_identity_carries`
+            // (tests/connector.rs): were `load` to start reading it, that test fails, and a
+            // connector variant in server-auth is then the fix, not a different placeholder.
             credential: Credential::Legacy,
         };
         Self::load(&identity, store, data_dir, config)

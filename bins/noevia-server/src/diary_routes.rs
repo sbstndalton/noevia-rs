@@ -511,39 +511,42 @@ async fn connector_endpoint(
         Ok(v) => v,
         Err(response) => return *response,
     };
-    let write = parsed.get("action").as_str() == Some("write");
-    let (path, bytes) = (
-        parsed.get("path").clone(),
-        parsed.get("content").as_str().map(connector::byte_length),
-    );
+    // The audit entry travels with the write into the detached task that makes it, not after it
+    // here: a client that disconnects once the sidecar has the write drops this handler's future,
+    // and an entry made after the await would never be made.
+    let audit: Option<Box<dyn FnOnce() + Send>> =
+        (parsed.get("action").as_str() == Some("write")).then(|| {
+            let (writes, who, path) = (
+                Arc::clone(&app.writes),
+                who.clone(),
+                parsed.get("path").clone(),
+            );
+            let bytes = parsed
+                .get("content")
+                .as_str()
+                .map_or(0, connector::byte_length);
+            Box::new(move || audit_write(&writes, &who, &path, bytes)) as Box<dyn FnOnce() + Send>
+        });
     match diary
-        .operate_connector(store, data_dir, token, who.clone(), parsed)
+        .operate_connector(store, data_dir, token, who.clone(), parsed, audit)
         .await
     {
-        Ok(result) => {
-            if write {
-                audit_write(app, &who, &path, bytes.unwrap_or(0)).await;
-            }
-            json_text(
-                200,
-                wtf16::stringify(&result).unwrap_or_else(|| "null".to_owned()),
-            )
-        }
+        Ok(result) => json_text(
+            200,
+            wtf16::stringify(&result).unwrap_or_else(|| "null".to_owned()),
+        ),
         Err(fault) => fault_response(&fault),
     }
 }
 
 /// The connector's write, in the audit trail: who, which path, how many bytes; never the content. The
 /// write has happened by now, so a failure here is logged, not turned into an error answer that would
-/// make the connector retry a write that went through.
-async fn audit_write(app: &Arc<App>, who: &Verified, path: &JValue, bytes: usize) {
-    let (writes, who, path) = (Arc::clone(&app.writes), who.clone(), path.clone());
-    let done = tokio::task::spawn_blocking(move || {
-        let writer = writes.writer()?;
-        connector::audit_write(&writer, &who, &path, bytes, identity::now_ms())
-    })
-    .await;
-    if !matches!(done, Ok(Ok(()))) {
+/// make the connector retry a write that went through. Blocking (SQLite): run it off the async threads.
+fn audit_write(writes: &Arc<crate::upkeep::WriterLayer>, who: &Verified, path: &JValue, bytes: usize) {
+    let done = writes
+        .writer()
+        .and_then(|writer| connector::audit_write(&writer, who, path, bytes, identity::now_ms()));
+    if done.is_err() {
         eprintln!(
             "noevia-server: a Diary connector write could not be recorded in the audit trail"
         );

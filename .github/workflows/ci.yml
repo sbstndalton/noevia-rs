@@ -269,6 +269,13 @@ jobs:
       - run: cargo build --locked -p replay -p noevia-server
       - name: Front tests (SSE flush, client abort, forwarding, body cap, route ownership, code-net guard, timeouts)
         run: cargo test --locked -p noevia-server
+      - name: "Core refuses exactly the Diary methods routes.toml gives the front (#2206)"
+        # tests/diary_core_pair.rs asks the paired Core's own rust-diary-routes.cjs and rust-diary.cjs
+        # about every method on every Diary route in routes.toml. A missing Core or node is a failure here.
+        env:
+          NOEVIA_DIARY_CORE: ${{ github.workspace }}/front-core
+          NOEVIA_DIARY_CORE_REQUIRED: "1"
+        run: cargo test --locked -p noevia-server --test diary_core_pair -- --nocapture
       - name: Replay against Node directly (reference data dir)
         run: |
           set -euo pipefail
