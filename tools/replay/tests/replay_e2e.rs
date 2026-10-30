@@ -303,7 +303,9 @@ fn every_native_replay_invocation_requires_a_persisted_proof_including_negative_
     assert!(stats.contains("test ! -e \"$RUNNER_TEMP/stats-proof-state.json\""));
     assert!(stats.contains("proof = state['nativeMoveStateProof']"));
     assert!(stats.contains("set -euo pipefail"));
-    assert!(stats.contains("assert stats and len(stats) + len(caps) + len(hardware) + len(providers) == len(bad)"));
+    assert!(stats.contains(
+        "assert stats and len(stats) + len(caps) + len(hardware) + len(providers) == len(bad)"
+    ));
 }
 
 #[test]
