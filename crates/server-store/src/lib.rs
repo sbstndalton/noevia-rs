@@ -1294,6 +1294,21 @@ impl WriteTx<'_> {
         )
     }
 
+    /// The disconnect's compare-and-delete: the sign-in goes only while it is still `previous`, so
+    /// what the service is asked to revoke is what was removed.
+    pub fn mcp_delete_token_if(
+        &self,
+        _cap: RustMcpCredentials,
+        user_id: &str,
+        server_id: &str,
+        previous: &str,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "DELETE FROM mcp_oauth_tokens WHERE user_id=? AND server_id=? AND data_enc=?",
+            rusqlite::params![user_id, server_id, previous],
+        )
+    }
+
     /// Every account's sign-in to one server (core `forget`, `setClient`).
     pub fn mcp_delete_tokens_of_server(
         &self,
@@ -1343,6 +1358,20 @@ impl WriteTx<'_> {
         self.mcp_statement(
             "UPDATE mcp_oauth_clients SET data_enc=?, updated_at=? WHERE server_id=? AND data_enc=?",
             rusqlite::params![next, updated_at, server_id, previous],
+        )
+    }
+
+    /// The registration a service no longer knows (`invalid_client` on a refresh) goes only while it
+    /// is still `previous`: a registration made since is not removed.
+    pub fn mcp_delete_client_if(
+        &self,
+        _cap: RustMcpCredentials,
+        server_id: &str,
+        previous: &str,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "DELETE FROM mcp_oauth_clients WHERE server_id=? AND data_enc=?",
+            rusqlite::params![server_id, previous],
         )
     }
 

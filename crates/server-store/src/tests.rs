@@ -778,6 +778,24 @@ fn mcp_credential_tables_take_only_the_broker_statements() {
         .unwrap();
     w.write(|tx| tx.mcp_save_token(cap, "u2", "s1", "x", 1))
         .unwrap();
+    // The disconnect's compare-and-delete removes the row it read and no other (a sign-in made since
+    // stays), and only that account's.
+    assert_eq!(
+        w.write(|tx| tx.mcp_delete_token_if(cap, "u1", "s2", "replaced"))
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        count("SELECT count(*) FROM mcp_oauth_tokens WHERE user_id='u1'"),
+        2
+    );
+    assert_eq!(
+        w.write(|tx| tx.mcp_delete_token_if(cap, "u1", "s2", "x"))
+            .unwrap(),
+        1
+    );
+    w.write(|tx| tx.mcp_save_token(cap, "u1", "s2", "x", 1))
+        .unwrap();
     assert_eq!(
         w.write(|tx| tx.mcp_delete_token(cap, "u1", "s2")).unwrap(),
         1
@@ -813,6 +831,19 @@ fn mcp_credential_tables_take_only_the_broker_statements() {
             .unwrap(),
         1
     );
+    // A registration a service no longer knows goes only while it is still the one read.
+    assert_eq!(
+        w.write(|tx| tx.mcp_delete_client_if(cap, "s1", "k1"))
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        w.write(|tx| tx.mcp_delete_client_if(cap, "s1", "k2"))
+            .unwrap(),
+        1
+    );
+    w.write(|tx| tx.mcp_save_client(cap, "s1", "k3", 1))
+        .unwrap();
     assert_eq!(w.write(|tx| tx.mcp_delete_client(cap, "s1")).unwrap(), 1);
     assert_eq!(
         w.write(|tx| tx.mcp_save_key(cap, "u1", "s1", "h1", 1))

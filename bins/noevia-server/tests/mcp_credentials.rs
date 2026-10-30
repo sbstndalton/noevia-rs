@@ -2268,3 +2268,921 @@ async fn a_registered_app_is_authenticated_the_way_its_registration_said() {
         Some(format!("basic {want}"))
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// Round 1 review (sbstndalton/noevia#2202).
+
+fn client_row(db: &Connection, server: &str) -> Option<String> {
+    db.query_row(
+        "SELECT data_enc FROM mcp_oauth_clients WHERE server_id=?1",
+        [server],
+        |r| r.get(0),
+    )
+    .ok()
+}
+
+/// The synthetic service with its resource document and, optionally, its authorization-server
+/// metadata overridden (`prm`: the whole document, `meta`: the whole document).
+fn service_with(
+    up: &Upstream,
+    counts: &Arc<Counts>,
+    prm: Arc<Mutex<Option<String>>>,
+    meta: Arc<Mutex<Option<String>>>,
+) {
+    let (base, counts) = (up.base(), Arc::clone(counts));
+    up.set(move |r: &Seen| {
+        let path = r.path.split('?').next().unwrap_or("");
+        if path.starts_with("/.well-known/oauth-protected-resource") {
+            if let Some(text) = prm.lock().unwrap().clone() {
+                return reply("200 OK", &text);
+            }
+        }
+        if path == "/.well-known/oauth-authorization-server" {
+            if let Some(text) = meta.lock().unwrap().clone() {
+                return reply("200 OK", &text);
+            }
+        }
+        oauth_reply(r, &base, &counts).unwrap_or_else(|| {
+            reply(
+                "200 OK",
+                r#"{"access_token":"access-1","refresh_token":"refresh-1","expires_in":3600}"#,
+            )
+        })
+    });
+}
+
+#[tokio::test]
+async fn a_resource_document_may_describe_the_site_or_a_parent_of_the_server_but_not_another_one() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let up = upstream().await;
+    let base = up.base();
+    let counts = Arc::new(Counts::default());
+    let prm = Arc::new(Mutex::new(None::<String>));
+    service_with(&up, &counts, Arc::clone(&prm), Arc::new(Mutex::new(None)));
+    add_server(
+        &db,
+        "dir-oauth",
+        &format!("{base}/mcp/v1"),
+        true,
+        false,
+        "[]",
+    );
+    let f = front(d.path()).await;
+    let document = |resource: &str| {
+        Some(format!(
+            r#"{{"resource":"{resource}","authorization_servers":["{base}"]}}"#
+        ))
+    };
+    // Refused: another origin, a sibling that only shares letters, something deeper than the server.
+    for resource in [
+        "https://other.example/mcp/v1".to_string(),
+        format!("{base}/mcp/v"),
+        format!("{base}/mcp/v1/deeper"),
+    ] {
+        *prm.lock().unwrap() = document(&resource);
+        let (st, body) = write(
+            f.addr,
+            "POST",
+            "/api/mcp-oauth/dir-oauth/connect",
+            MEMBER,
+            "",
+        )
+        .await;
+        assert_eq!(
+            (st, body["error"].as_str()),
+            (
+                502,
+                Some("The server's sign-in information names a different resource.")
+            ),
+            "{resource}"
+        );
+    }
+    assert_eq!(counts.register.load(Ordering::SeqCst), 0);
+    // Accepted: the site the server is on, and a directory above it.
+    for resource in [base.clone(), format!("{base}/mcp")] {
+        db.execute("DELETE FROM mcp_oauth_clients", []).unwrap();
+        *prm.lock().unwrap() = document(&resource);
+        let (st, body) = write(
+            f.addr,
+            "POST",
+            "/api/mcp-oauth/dir-oauth/connect",
+            MEMBER,
+            "",
+        )
+        .await;
+        assert_eq!(st, 200, "{resource}: {body}");
+        // The sign-in is still for the server's own address.
+        assert_eq!(
+            query(body["signIn"].as_str().unwrap())["resource"],
+            format!("{base}/mcp/v1")
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_service_that_says_it_names_itself_in_its_answers_must_do_so() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let up = upstream().await;
+    let base = up.base();
+    let counts = Arc::new(Counts::default());
+    let meta = Arc::new(Mutex::new(Some(format!(
+        r#"{{"issuer":"{base}","authorization_endpoint":"{base}/authorize","token_endpoint":"{base}/token","registration_endpoint":"{base}/register","code_challenge_methods_supported":["S256"],"authorization_response_iss_parameter_supported":true}}"#
+    ))));
+    service_with(&up, &counts, Arc::new(Mutex::new(None)), meta);
+    add_server(&db, "dir-oauth", &format!("{base}/mcp"), true, false, "[]");
+    let f = front(d.path()).await;
+    let a = f.addr;
+    let start = || async {
+        let (st, body) = write(a, "POST", "/api/mcp-oauth/dir-oauth/connect", MEMBER, "").await;
+        assert_eq!(st, 200, "{body}");
+        query(body["signIn"].as_str().unwrap())["state"].clone()
+    };
+    let callback = |query: String| async move {
+        raw_text(
+            a,
+            "GET",
+            &format!("/api/mcp-oauth/callback?{query}"),
+            MEMBER,
+            "",
+            b"",
+        )
+        .await
+    };
+    // An answer without `iss` could be another service's: refused before the code is spent.
+    let state = start().await;
+    let (st, _, page) = callback(format!("state={state}&code=c1")).await;
+    assert_eq!(st, 400);
+    assert!(page.contains("did not say who answered"), "{page}");
+    assert_eq!(
+        up.count("/token"),
+        0,
+        "no code was spent on an unnamed answer"
+    );
+    // The support is remembered with the app, as an addition core ignores.
+    assert_eq!(
+        open(&client_row(&db, "dir-oauth").unwrap(), None)["issParameterSupported"],
+        true
+    );
+    // With the right `iss` it completes.
+    let state = start().await;
+    let (st, _, page) = callback(format!(
+        "state={state}&code=c1&iss={}",
+        url::form_urlencoded::byte_serialize(base.as_bytes()).collect::<String>()
+    ))
+    .await;
+    assert_eq!(st, 200, "{page}");
+    assert!(token_row(&db, B, "dir-oauth").is_some());
+}
+
+#[tokio::test]
+async fn a_service_that_never_said_so_is_not_asked_for_iss() {
+    // The ordinary case stays as it was (most services do not send `iss`): see the end-to-end test,
+    // whose callback carries none. Here the metadata says it plainly is false.
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let up = upstream().await;
+    let base = up.base();
+    let counts = Arc::new(Counts::default());
+    let meta = Arc::new(Mutex::new(Some(format!(
+        r#"{{"issuer":"{base}","authorization_endpoint":"{base}/authorize","token_endpoint":"{base}/token","registration_endpoint":"{base}/register","code_challenge_methods_supported":["S256"],"authorization_response_iss_parameter_supported":false}}"#
+    ))));
+    service_with(&up, &counts, Arc::new(Mutex::new(None)), meta);
+    add_server(&db, "dir-oauth", &format!("{base}/mcp"), true, false, "[]");
+    let f = front(d.path()).await;
+    let (_, body) = write(
+        f.addr,
+        "POST",
+        "/api/mcp-oauth/dir-oauth/connect",
+        MEMBER,
+        "",
+    )
+    .await;
+    let state = query(body["signIn"].as_str().unwrap())["state"].clone();
+    let (st, _, page) = raw_text(
+        f.addr,
+        "GET",
+        &format!("/api/mcp-oauth/callback?state={state}&code=c1"),
+        MEMBER,
+        "",
+        b"",
+    )
+    .await;
+    assert_eq!(st, 200, "{page}");
+    assert!(open(&client_row(&db, "dir-oauth").unwrap(), None)
+        .get("issParameterSupported")
+        .is_none());
+}
+
+#[tokio::test]
+async fn a_service_that_no_longer_knows_the_app_ends_the_sign_in_and_the_registration() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let up = upstream().await;
+    let base = up.base();
+    add_server(&db, "dir-oauth", &format!("{base}/mcp"), true, false, "[]");
+    let f = front(d.path()).await;
+    let redirect = format!("http://{}/api/mcp-oauth/callback", f.addr);
+    let answer = Arc::new(Mutex::new((String::new(), String::new())));
+    {
+        let answer = Arc::clone(&answer);
+        up.set(move |r: &Seen| {
+            if r.path != "/token" {
+                return reply("404 Not Found", "");
+            }
+            let (status, body) = answer.lock().unwrap().clone();
+            reply(&status, &body)
+        });
+    }
+    let ask = || async {
+        store(
+            f.store,
+            "session",
+            STORE_TOKEN,
+            &format!(r#"{{"user":"{B}","server":"dir-oauth"}}"#),
+        )
+        .await
+    };
+    let expired = |db: &Connection| {
+        store_tokens(
+            db,
+            B,
+            "dir-oauth",
+            "access-1",
+            Some("refresh-1"),
+            Some(now() - 5_000),
+            3,
+        )
+    };
+    store_client(&db, "dir-oauth", &base, &redirect, "");
+    // The same body on a service having a bad moment is no verdict: the sign-in and the app stay.
+    expired(&db);
+    *answer.lock().unwrap() = ("500 Oops".into(), r#"{"error":"invalid_client"}"#.into());
+    let (st, ans) = ask().await;
+    assert_eq!(
+        (st, ans["code"].as_str()),
+        (503, Some("transient")),
+        "{ans}"
+    );
+    assert!(client_row(&db, "dir-oauth").is_some());
+    assert!(open(&token_row(&db, B, "dir-oauth").unwrap(), Some(B))["refreshToken"] == "refresh-1");
+    // 401 invalid_client: no refresh will ever work. The account must sign in again, and the app
+    // registration that is gone is forgotten so that sign-in registers noevia afresh.
+    *answer.lock().unwrap() = (
+        "401 Unauthorized".into(),
+        r#"{"error":"invalid_client"}"#.into(),
+    );
+    let (st, ans) = ask().await;
+    assert_eq!(
+        (st, ans["code"].as_str()),
+        (401, Some("reconnect")),
+        "{ans}"
+    );
+    assert!(open(&token_row(&db, B, "dir-oauth").unwrap(), Some(B))["refreshToken"].is_null());
+    assert!(client_row(&db, "dir-oauth").is_none());
+    assert_eq!(state_file(d.path())["oauth"][B]["dir-oauth"], "reauth");
+    // unauthorized_client the same, on a 400.
+    store_client(&db, "dir-oauth", &base, &redirect, "");
+    expired(&db);
+    *answer.lock().unwrap() = (
+        "400 Bad Request".into(),
+        r#"{"error":"unauthorized_client"}"#.into(),
+    );
+    assert_eq!(ask().await.1["code"], "reconnect");
+    // A hand-registered app is the administrator's: the sign-in ends, the app stays.
+    store_client(&db, "dir-oauth", &base, &redirect, r#","manual":true"#);
+    expired(&db);
+    *answer.lock().unwrap() = (
+        "401 Unauthorized".into(),
+        r#"{"error":"invalid_client"}"#.into(),
+    );
+    assert_eq!(ask().await.1["code"], "reconnect");
+    assert!(client_row(&db, "dir-oauth").is_some());
+    // And `invalid_grant` keeps ending it as before (not an app problem: the app stays).
+    store_client(&db, "dir-oauth", &base, &redirect, "");
+    expired(&db);
+    *answer.lock().unwrap() = (
+        "400 Bad Request".into(),
+        r#"{"error":"invalid_grant"}"#.into(),
+    );
+    assert_eq!(ask().await.1["code"], "reconnect");
+    assert!(client_row(&db, "dir-oauth").is_some());
+}
+
+#[tokio::test]
+async fn a_token_the_server_refused_that_cannot_be_refreshed_is_marked_for_a_new_sign_in() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let up = upstream().await;
+    let base = up.base();
+    add_server(&db, "dir-oauth", &format!("{base}/mcp"), true, false, "[]");
+    let f = front(d.path()).await;
+    let redirect = format!("http://{}/api/mcp-oauth/callback", f.addr);
+    store_client(&db, "dir-oauth", &base, &redirect, "");
+    let ask = |user: &'static str, rejected: &'static str| {
+        let s = f.store;
+        async move {
+            store(
+                s,
+                "session",
+                STORE_TOKEN,
+                &format!(r#"{{"user":"{user}","server":"dir-oauth","rejected":"{rejected}"}}"#),
+            )
+            .await
+        }
+    };
+    // No refresh token: a token the MCP server refused is no use to anyone. The broker itself marks
+    // the sign-in (the caller's retry has nothing to ask a second time).
+    store_tokens(&db, B, "dir-oauth", "access-1", None, None, 3);
+    let (st, ans) = ask(B, "someone-elses-token").await;
+    assert_eq!(
+        (st, ans["accessToken"].as_str()),
+        (200, Some("access-1")),
+        "a different token proves nothing"
+    );
+    assert_eq!(state_file(d.path())["oauth"][B]["dir-oauth"], "connected");
+    let (st, ans) = ask(B, "access-1").await;
+    assert_eq!(
+        (st, ans["code"].as_str()),
+        (401, Some("reconnect")),
+        "{ans}"
+    );
+    assert_eq!(state_file(d.path())["oauth"][B]["dir-oauth"], "reauth");
+    // No app to refresh with: the same.
+    db.execute("DELETE FROM mcp_oauth_clients", []).unwrap();
+    store_tokens(
+        &db,
+        A,
+        "dir-oauth",
+        "access-a",
+        Some("refresh-a"),
+        Some(now() + 3_600_000),
+        4,
+    );
+    let (st, ans) = ask(A, "access-a").await;
+    assert_eq!(
+        (st, ans["code"].as_str()),
+        (401, Some("reconnect")),
+        "{ans}"
+    );
+    assert_eq!(state_file(d.path())["oauth"][A]["dir-oauth"], "reauth");
+}
+
+#[tokio::test]
+async fn a_server_list_that_cannot_be_read_is_an_outage_not_an_empty_list() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let f = front(d.path()).await;
+    let a = f.addr;
+    // Node has not made the table yet: there are no servers.
+    db.execute_batch("DROP TABLE directory_mcp_servers")
+        .unwrap();
+    assert_eq!(
+        get(a, "/api/mcp-oauth/servers", MEMBER).await,
+        (200, j(r#"{"servers":[]}"#))
+    );
+    assert_eq!(
+        write(a, "POST", "/api/mcp-oauth/dir-oauth/connect", MEMBER, "")
+            .await
+            .0,
+        404
+    );
+    // The table is there but cannot be read as the broker expects: that is not "no servers".
+    db.execute_batch("CREATE TABLE directory_mcp_servers(id TEXT PRIMARY KEY)")
+        .unwrap();
+    for path in ["/api/mcp-oauth/servers", "/api/mcp-keys/servers"] {
+        let (st, body) = get(a, path, MEMBER).await;
+        assert_eq!(st, 503, "{path}: {body}");
+        assert!(
+            body["error"].as_str().unwrap().contains("Try again"),
+            "{body}"
+        );
+    }
+    assert_eq!(
+        write(a, "POST", "/api/mcp-oauth/dir-oauth/connect", MEMBER, "")
+            .await
+            .0,
+        503
+    );
+    assert_eq!(
+        write(
+            a,
+            "PUT",
+            "/api/mcp-keys/dir-keyed",
+            MEMBER,
+            r#"{"headers":{}}"#
+        )
+        .await
+        .0,
+        503
+    );
+}
+
+#[tokio::test]
+async fn disconnect_finds_the_revocation_address_of_an_app_an_older_core_registered() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let up = upstream().await;
+    let base = up.base();
+    let counts = Arc::new(Counts::default());
+    let meta = Arc::new(Mutex::new(None::<String>));
+    service_with(&up, &counts, Arc::new(Mutex::new(None)), Arc::clone(&meta));
+    add_server(&db, "dir-oauth", &format!("{base}/mcp"), true, false, "[]");
+    let f = front(d.path()).await;
+    let a = f.addr;
+    let redirect = format!("http://{a}/api/mcp-oauth/callback");
+    let disconnect = || async { write(a, "DELETE", "/api/mcp-oauth/dir-oauth", MEMBER, "").await };
+    // The app row has no revocation address (core never looked for one): it is found when needed.
+    store_client(&db, "dir-oauth", &base, &redirect, "");
+    store_tokens(
+        &db,
+        B,
+        "dir-oauth",
+        "access-1",
+        Some("refresh-1"),
+        Some(now() + 3_600_000),
+        3,
+    );
+    assert_eq!(disconnect().await, (200, j(r#"{"ok":true}"#)));
+    assert_eq!(token_row(&db, B, "dir-oauth"), None);
+    up.wait_for("/revoke", 1).await;
+    let form = up
+        .seen()
+        .into_iter()
+        .find(|s| s.path == "/revoke")
+        .unwrap()
+        .form();
+    assert_eq!(
+        (form["token"].as_str(), form["token_type_hint"].as_str()),
+        ("refresh-1", "refresh_token")
+    );
+    // A service that cannot be described means no revocation, and the disconnect is not held up or
+    // failed by it.
+    *meta.lock().unwrap() = Some("{".into());
+    store_tokens(
+        &db,
+        B,
+        "dir-oauth",
+        "access-2",
+        Some("refresh-2"),
+        Some(now() + 3_600_000),
+        3,
+    );
+    assert_eq!(disconnect().await.0, 200);
+    assert_eq!(token_row(&db, B, "dir-oauth"), None);
+    // (the lookup runs after the answer: let it fail before the service is described again)
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    assert_eq!(
+        up.count("/revoke"),
+        1,
+        "nothing was revoked at a service that could not be found"
+    );
+    // A service that names an issuer other than the one the app was registered with is not sent a
+    // token it never issued.
+    *meta.lock().unwrap() = None;
+    let registered_elsewhere = format!(
+        r#"{{"resource":"{base}/mcp","issuer":"https://old.example","authorizationEndpoint":"{base}/authorize","tokenEndpoint":"{base}/token","registrationEndpoint":null,"secretMethod":"client_secret_basic","scopes":[],"clientId":"c","clientSecret":null,"redirectUri":"{redirect}"}}"#
+    );
+    db.execute(
+        "INSERT OR REPLACE INTO mcp_oauth_clients VALUES('dir-oauth',?1,1)",
+        [seal(&registered_elsewhere, None, 9)],
+    )
+    .unwrap();
+    store_tokens(
+        &db,
+        B,
+        "dir-oauth",
+        "access-3",
+        Some("refresh-3"),
+        Some(now() + 3_600_000),
+        3,
+    );
+    assert_eq!(disconnect().await.0, 200);
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    assert_eq!(
+        up.count("/revoke"),
+        1,
+        "only the first disconnect was revoked"
+    );
+}
+
+#[tokio::test]
+async fn an_account_may_run_only_a_few_key_checks_at_once() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let up = upstream().await;
+    up.set(|r: &Seen| {
+        let (_, text) =
+            mcp_reply(r, Some("good-key")).unwrap_or_else(|| reply("404 Not Found", ""));
+        let slow = r.body.contains("initialize");
+        (
+            if slow {
+                Duration::from_millis(1500)
+            } else {
+                Duration::ZERO
+            },
+            text,
+        )
+    });
+    add_server(
+        &db,
+        "dir-keyed",
+        &format!("{}/mcp", up.base()),
+        false,
+        true,
+        DECLARED,
+    );
+    let f = front(d.path()).await;
+    let a = f.addr;
+    let put = |cookie: &'static str| async move {
+        write(
+            a,
+            "PUT",
+            "/api/mcp-keys/dir-keyed",
+            cookie,
+            r#"{"headers":{"X-Api-Key":"good-key"}}"#,
+        )
+        .await
+    };
+    let mine: Vec<_> = (0..5).map(|_| tokio::spawn(put(MEMBER))).collect();
+    // All five have reached the broker (four checks reached the server) before any can finish.
+    up.wait_for("/mcp", 4).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    // Another account is not held up by it.
+    let other = tokio::spawn(put(ADMIN));
+    let mut statuses = Vec::new();
+    for h in mine {
+        let (st, body) = h.await.unwrap();
+        if st == 429 {
+            assert!(
+                body["error"]
+                    .as_str()
+                    .unwrap()
+                    .contains("Too many key checks"),
+                "{body}"
+            );
+        }
+        statuses.push(st);
+    }
+    statuses.sort_unstable();
+    assert_eq!(statuses, vec![200, 200, 200, 200, 429]);
+    assert_eq!(other.await.unwrap().0, 200);
+    // The slots are given back when the checks end.
+    assert_eq!(put(MEMBER).await.0, 200);
+}
+
+#[tokio::test]
+async fn a_hand_registered_app_is_not_replaced_by_a_registration_that_was_under_way() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let up = upstream().await;
+    let base = up.base();
+    let counts = Arc::new(Counts::default());
+    {
+        let (base, counts) = (base.clone(), Arc::clone(&counts));
+        up.set(move |r: &Seen| {
+            let (_, text) =
+                oauth_reply(r, &base, &counts).unwrap_or_else(|| reply("404 Not Found", ""));
+            // A registration that takes a while.
+            let slow = r.path == "/register";
+            (
+                if slow {
+                    Duration::from_millis(900)
+                } else {
+                    Duration::ZERO
+                },
+                text,
+            )
+        });
+    }
+    let url = format!("{base}/mcp");
+    add_server(&db, "dir-oauth", &url, true, false, "[]");
+    let f = front(d.path()).await;
+    let a = f.addr;
+    let connect = tokio::spawn(async move {
+        write(a, "POST", "/api/mcp-oauth/dir-oauth/connect", MEMBER, "").await
+    });
+    up.wait_for("/register", 1).await;
+    let (st, body) = store(
+        f.store,
+        "client",
+        STORE_TOKEN,
+        &format!(r#"{{"server":"dir-oauth","serverUrl":"{url}","clientId":"hand-made","clientSecret":""}}"#),
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(connect.await.unwrap().0, 200);
+    let client = open(&client_row(&db, "dir-oauth").unwrap(), None);
+    assert_eq!(
+        (client["clientId"].as_str(), client["manual"].as_bool()),
+        (Some("hand-made"), Some(true)),
+        "the registration that was under way must not replace the administrator's app"
+    );
+}
+
+#[tokio::test]
+async fn the_stores_refusals_carry_their_status_so_node_can_tell_them_from_an_outage() {
+    let d = tempfile::tempdir().unwrap();
+    seed(d.path());
+    let f = front(d.path()).await;
+    for (op, payload) in [
+        ("session", r#"{"user":"u"}"#),
+        ("key", r#"{"server":"s"}"#),
+        ("reject", "{}"),
+        ("start", r#"{"user":"u"}"#),
+        ("client", r#"{"server":"s"}"#),
+        ("client-info", "{}"),
+        ("forget", "{}"),
+        ("key-set", r#"{"user":"u"}"#),
+        ("session", "[]"),
+        ("session", "not json"),
+    ] {
+        let (st, body) = store(f.store, op, STORE_TOKEN, payload).await;
+        assert_eq!(st, 400, "{op} {payload}: {body}");
+        assert_eq!(body["status"], 400, "{op} {payload}: {body}");
+        assert!(body["error"].is_string(), "{op}: {body}");
+    }
+    // A credential failure already did.
+    let (st, body) = store(
+        f.store,
+        "session",
+        STORE_TOKEN,
+        &format!(r#"{{"user":"{B}","server":"dir-none"}}"#),
+    )
+    .await;
+    assert_eq!((st, body["status"].as_u64()), (401, Some(401)));
+}
+
+// ---------------------------------------------------------------------------------------------
+// The whole chain with Node's real code (sbstndalton/noevia#2202 round 1 review: "no cross-process run of
+// Node's real store client against the Rust listener").
+
+/// The paired Core checkout (`contracts/http/front-core.ref`) with its server dependencies installed and its
+/// dav-parse.wasm built, as `.github/actions/paired-core` leaves it. `NOEVIA_MCP_CORE=<path>` runs the test;
+/// without it the test says so and returns (the ordinary `cargo test --workspace`, which has no Core), unless
+/// `NOEVIA_MCP_CORE_REQUIRED=1` (the CI step that checks Core out), which makes a missing checkout a failure.
+fn paired_core() -> Option<std::path::PathBuf> {
+    match std::env::var("NOEVIA_MCP_CORE") {
+        Ok(path) if !path.is_empty() => Some(path.into()),
+        _ => {
+            assert!(
+                std::env::var("NOEVIA_MCP_CORE_REQUIRED").is_err(),
+                "NOEVIA_MCP_CORE_REQUIRED is set but NOEVIA_MCP_CORE is not"
+            );
+            eprintln!("SKIPPED node_signs_in_through_the_real_front: NOEVIA_MCP_CORE (a noevia-core checkout at contracts/http/front-core.ref) is not set");
+            None
+        }
+    }
+}
+
+/// What the synthetic MCP server and sign-in service remember between requests.
+#[derive(Default)]
+struct Live {
+    /// Access tokens the service has issued (the MCP server accepts them to initialize and list tools).
+    known: Vec<String>,
+    /// Access tokens a tool call is accepted with.
+    call_ok: Vec<String>,
+    /// The PKCE challenge the authorize page was asked with.
+    challenge: Option<String>,
+    /// Where the authorize page sent the browser (the callback with the code and the state).
+    redirect: Option<String>,
+    refreshes: usize,
+}
+
+fn live_service(up: &Upstream, counts: &Arc<Counts>) -> Arc<Mutex<Live>> {
+    let live = Arc::new(Mutex::new(Live::default()));
+    let (base, counts, state) = (up.base(), Arc::clone(counts), Arc::clone(&live));
+    up.set(move |r: &Seen| {
+        let path = r.path.split('?').next().unwrap_or("");
+        match path {
+            "/mcp" => {
+                let bearer = r
+                    .header("authorization")
+                    .and_then(|v| v.strip_prefix("bearer ").map(str::to_owned));
+                let Some(token) = bearer else {
+                    // The challenge that points a client at the resource document.
+                    return oauth_reply(r, &base, &counts).unwrap();
+                };
+                if r.method == "DELETE" {
+                    return reply("200 OK", "");
+                }
+                let st = state.lock().unwrap();
+                if !st.known.contains(&token) {
+                    return reply("401 Unauthorized", r#"{"error":"invalid_token"}"#);
+                }
+                let body = j(&r.body);
+                let id = body["id"].clone();
+                match body["method"].as_str().unwrap_or("") {
+                    "initialize" => reply_with(
+                        "200 OK",
+                        "mcp-session-id: live-session\r\n",
+                        &format!(r#"{{"jsonrpc":"2.0","id":{id},"result":{{"protocolVersion":"2025-06-18","serverInfo":{{"name":"synthetic"}}}}}}"#),
+                    ),
+                    "notifications/initialized" => reply("202 Accepted", ""),
+                    "tools/list" => reply(
+                        "200 OK",
+                        &format!(r#"{{"jsonrpc":"2.0","id":{id},"result":{{"tools":[{{"name":"live_echo","description":"Echo","inputSchema":{{"type":"object","properties":{{"text":{{"type":"string"}}}}}}}}]}}}}"#),
+                    ),
+                    "tools/call" if st.call_ok.contains(&token) => reply(
+                        "200 OK",
+                        &format!(r#"{{"jsonrpc":"2.0","id":{id},"result":{{"content":[{{"type":"text","text":"echo:hello"}}]}}}}"#),
+                    ),
+                    "tools/call" => reply("401 Unauthorized", r#"{"error":"token revoked"}"#),
+                    _ => reply("400 Bad", ""),
+                }
+            }
+            // The service's authorize page: it remembers the challenge and sends the browser back.
+            "/authorize" => {
+                let q = query(&format!("{base}{}", r.path));
+                let target = format!(
+                    "{}?code=live-code&state={}",
+                    q["redirect_uri"], q["state"]
+                );
+                let mut st = state.lock().unwrap();
+                st.challenge = Some(q["code_challenge"].clone());
+                st.redirect = Some(target.clone());
+                reply_with("302 Found", &format!("location: {target}\r\n"), "")
+            }
+            "/token" => {
+                let form = r.form();
+                let mut st = state.lock().unwrap();
+                match form["grant_type"].as_str() {
+                    "authorization_code" => {
+                        let proven = base64::engine::general_purpose::URL_SAFE_NO_PAD
+                            .encode(Sha256::digest(form["code_verifier"].as_bytes()));
+                        if form["code"] != "live-code" || st.challenge.as_deref() != Some(&proven) {
+                            return reply("400 Bad Request", r#"{"error":"invalid_grant"}"#);
+                        }
+                        st.known.push("access-1".into());
+                        st.call_ok.push("access-1".into());
+                        reply(
+                            "200 OK",
+                            r#"{"access_token":"access-1","refresh_token":"refresh-1","expires_in":3600}"#,
+                        )
+                    }
+                    // A rotating service: refresh-1 works once.
+                    "refresh_token" if form["refresh_token"] == "refresh-1" => {
+                        st.refreshes += 1;
+                        st.known.push("access-2".into());
+                        st.call_ok.push("access-2".into());
+                        reply(
+                            "200 OK",
+                            r#"{"access_token":"access-2","refresh_token":"refresh-2","expires_in":3600}"#,
+                        )
+                    }
+                    _ => reply("400 Bad Request", r#"{"error":"invalid_grant"}"#),
+                }
+            }
+            _ => oauth_reply(r, &base, &counts)
+                .unwrap_or_else(|| reply("404 Not Found", "")),
+        }
+    });
+    live
+}
+
+/// One phase of `mcp_node_live.cjs` in a real `node` process against the front's internal store.
+async fn node_phase(
+    core: &std::path::Path,
+    phase: &str,
+    f: &Front,
+    dir: &std::path::Path,
+    mcp_url: &str,
+) -> serde_json::Value {
+    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/mcp_node_live.cjs");
+    let mut command = std::process::Command::new("node");
+    command
+        .arg(script)
+        .arg(phase)
+        .env("NOEVIA_MCP_CORE", core)
+        .env("STORE_PORT", f.store.port().to_string())
+        .env("STORE_TOKEN", STORE_TOKEN)
+        .env("DATA_DIR", dir)
+        .env("MCP_URL", mcp_url)
+        .env("USER_ID", A);
+    // The front serves on this runtime: wait for node on a thread of its own.
+    let out = tokio::task::spawn_blocking(move || command.output())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "node {phase} failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    j(String::from_utf8(out.stdout).unwrap().trim())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn node_signs_in_through_the_real_front_calls_a_tool_retries_a_401_and_disconnects() {
+    let Some(core) = paired_core() else {
+        return;
+    };
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let up = upstream().await;
+    let base = up.base();
+    let counts = Arc::new(Counts::default());
+    let live = live_service(&up, &counts);
+    let url = format!("{base}/mcp");
+    // Added by the administrator A, who is also the person who signs in.
+    add_server(&db, "dir-live", &url, true, false, "[]");
+    let f = front(d.path()).await;
+    let a = f.addr;
+
+    // 1. Connect: the Rust route discovers the service, registers noevia and hands back the address.
+    let (st, body) = write(a, "POST", "/api/mcp-oauth/dir-live/connect", ADMIN, "").await;
+    assert_eq!(st, 200, "{body}");
+    let sign_in = url::Url::parse(body["signIn"].as_str().unwrap()).unwrap();
+    // 2. The person's browser is at the service's authorize page, which sends it back with a code.
+    let (st, _, _) = raw_text(
+        up.addr,
+        "GET",
+        &format!("{}?{}", sign_in.path(), sign_in.query().unwrap()),
+        "",
+        "",
+        b"",
+    )
+    .await;
+    assert_eq!(st, 302);
+    // 3. ...and to the front's callback, with the session cookie. The code is exchanged with the verifier
+    //    that matches the challenge the authorize page saw (the service refuses anything else).
+    let back = url::Url::parse(live.lock().unwrap().redirect.as_deref().unwrap()).unwrap();
+    let (st, _, page) = raw_text(
+        a,
+        "GET",
+        &format!("{}?{}", back.path(), back.query().unwrap()),
+        ADMIN,
+        "",
+        b"",
+    )
+    .await;
+    assert_eq!(st, 200, "{page}");
+    assert!(page.contains("Your account is connected."), "{page}");
+    assert_eq!(state_file(d.path())["oauth"][A]["dir-live"], "connected");
+
+    // 4. Node, in its own process: reads who is ready from the published file, lists the server's tools
+    //    with the sign-in, and runs a tool as that person, with a token the front handed it for the call.
+    let first = node_phase(&core, "call", &f, d.path(), &url).await;
+    assert_eq!(first["status"], "connected", "{first}");
+    assert_eq!(first["discoveryError"], serde_json::Value::Null, "{first}");
+    assert_eq!(first["tools"], j(r#"["live_echo"]"#), "{first}");
+    assert_eq!(first["text"], "echo:hello", "{first}");
+    assert_eq!(
+        first["sessionKeys"],
+        j(r#"["accessToken","expiresAt","generation"]"#)
+    );
+    assert_eq!(
+        first["sawRefreshToken"], false,
+        "a refresh token never reaches Node"
+    );
+
+    // 5. The MCP server stops accepting that token for calls (revoked on its side): Node's call gets a 401,
+    //    asks the front for a token past it, the front refreshes once at the service, and the retry works.
+    live.lock().unwrap().call_ok.retain(|t| t != "access-1");
+    let second = node_phase(&core, "call", &f, d.path(), &url).await;
+    assert_eq!(second["text"], "echo:hello", "{second}");
+    assert_eq!(
+        second["discoveryError"],
+        serde_json::Value::Null,
+        "{second}"
+    );
+    assert_eq!(live.lock().unwrap().refreshes, 1, "one refresh, spent once");
+    let calls: Vec<String> = up
+        .seen()
+        .into_iter()
+        .filter(|s| s.method == "POST" && s.path == "/mcp" && s.body.contains("tools/call"))
+        .map(|s| s.header("authorization").unwrap())
+        .collect();
+    assert_eq!(
+        calls,
+        ["bearer access-1", "bearer access-1", "bearer access-2"],
+        "the first run; then the refused token, then the one past it"
+    );
+    let stored = open(&token_row(&db, A, "dir-live").unwrap(), Some(A));
+    assert_eq!(
+        (
+            stored["accessToken"].as_str(),
+            stored["refreshToken"].as_str()
+        ),
+        (Some("access-2"), Some("refresh-2")),
+        "the rotated refresh token is the stored one"
+    );
+    assert_eq!(state_file(d.path())["oauth"][A]["dir-live"], "connected");
+
+    // 6. Disconnect (the Rust route): the service is told, and Node's next look says it has to sign in.
+    let (st, body) = write(a, "DELETE", "/api/mcp-oauth/dir-live", ADMIN, "").await;
+    assert_eq!((st, body), (200, j(r#"{"ok":true}"#)));
+    up.wait_for("/revoke", 1).await;
+    let revoked = up
+        .seen()
+        .into_iter()
+        .find(|s| s.path == "/revoke")
+        .unwrap()
+        .form();
+    assert_eq!(revoked["token"], "refresh-2");
+    let after = node_phase(&core, "after", &f, d.path(), &url).await;
+    assert_eq!(after["status"], "disconnected", "{after}");
+    assert_eq!(after["connected"], false);
+    assert_eq!(after["session"], serde_json::Value::Null, "{after}");
+}

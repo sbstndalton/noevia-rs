@@ -330,10 +330,16 @@ fn internal(status: u16, body: &JValue) -> Response<Body> {
     res
 }
 
+/// A refusal that is not a credential failure (a malformed call, an unknown operation). Like
+/// [`internal_fail`] it carries its own `status`: Node's client treats an answer without one as
+/// "unusable, try again" (503), which would hide a 400 or 404 as an outage.
 fn internal_error(status: u16, message: &str) -> Response<Body> {
     internal(
         status,
-        &JValue::obj([("error", JValue::Str(message.into()))]),
+        &JValue::obj([
+            ("error", JValue::Str(message.into())),
+            ("status", JValue::Num(f64::from(status))),
+        ]),
     )
 }
 
@@ -552,6 +558,7 @@ pub async fn internal_op(app: Option<Arc<App>>, op: &str, raw: &[u8]) -> Respons
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 
@@ -596,9 +603,26 @@ mod tests {
         }
     }
 
-    #[test]
-    fn the_page_escapes_what_a_service_said() {
+    #[tokio::test]
+    async fn the_page_escapes_what_a_service_said() {
         let page = page(false, "<script>alert(\"x\")</script> & more");
         assert_eq!(page.status(), 400);
+        let body = String::from_utf8(
+            page.into_body()
+                .collect()
+                .await
+                .unwrap()
+                .to_bytes()
+                .to_vec(),
+        )
+        .unwrap();
+        // What the service said is text on the page, never markup: no script of its own, only the
+        // page's own closing script, which is the one `setTimeout` line.
+        assert!(
+            body.contains("&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; &amp; more"),
+            "{body}"
+        );
+        assert!(!body.contains("<script>alert"), "{body}");
+        assert_eq!(body.matches("<script>").count(), 1, "{body}");
     }
 }

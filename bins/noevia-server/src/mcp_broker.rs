@@ -46,6 +46,13 @@ const EMPTY_STATE: &str = r#"{"version":1,"oauth":{},"keys":{}}"#;
 const STATE_TTL_MS: i64 = 10 * 60 * 1000;
 const MAX_PENDING_PER_USER: usize = 20;
 const MAX_PENDING: usize = 4000;
+/// How many key checks (each a short session with a stranger's server) one account may have running
+/// at once. A check is spawned work the client cannot abandon, so without a cap one account could
+/// pile up unbounded sessions by hanging up and asking again.
+const MAX_KEY_CHECKS_PER_USER: usize = 4;
+/// How long a disconnect waits for a discovery to find the revocation address of an app that an
+/// older core registered (see `disconnect`).
+const REVOKE_DISCOVERY_DEADLINE: Duration = Duration::from_secs(5);
 /// core `tokenFor`: a token inside this margin of its expiry is refreshed first.
 const REFRESH_MARGIN_MS: i64 = 60_000;
 /// core `fail(...)`'s default status.
@@ -254,6 +261,9 @@ pub struct Client {
     pub redirect_uri: String,
     pub token_auth: Option<String>,
     pub manual: bool,
+    /// RFC 9207: the service's metadata says it adds `iss` to its answers, so an answer without one
+    /// is refused (`authorization_response_iss_parameter_supported`). A row core wrote has none.
+    pub iss_supported: bool,
 }
 
 impl Client {
@@ -282,6 +292,7 @@ impl Client {
             redirect_uri: text(v.get("redirectUri"))?,
             token_auth: text(v.get("tokenAuth")),
             manual: v.get("manual").truthy(),
+            iss_supported: v.get("issParameterSupported").truthy(),
         })
     }
 
@@ -314,6 +325,9 @@ impl Client {
         }
         if let Some(r) = &self.revocation_endpoint {
             pairs.push(("revocationEndpoint", JValue::Str(r.clone())));
+        }
+        if self.iss_supported {
+            pairs.push(("issParameterSupported", JValue::Bool(true)));
         }
         Zeroizing::new(js_json::stringify(&JValue::obj(pairs)).unwrap_or_default())
     }
@@ -416,6 +430,8 @@ struct Pending {
     purpose: String,
     redirect: String,
     issuer: String,
+    /// The service said (at the start) that its answers carry `iss`: one without it is refused.
+    iss_required: bool,
 }
 
 /// What `finish` reports.
@@ -425,9 +441,77 @@ pub struct Finished {
 
 enum Refreshed {
     New(Tokens),
-    /// The service said the grant is gone (`invalid_grant`).
-    Rejected,
+    /// The service said the grant, or the app it was made for, is gone.
+    Rejected {
+        app_gone: bool,
+    },
     Transient,
+}
+
+/// Why a token request failed: the words for people, the OAuth `error` code the service gave, and
+/// the HTTP status (0: no answer).
+struct TokenFailure {
+    fail: Fail,
+    code: Option<String>,
+    status: u16,
+}
+
+impl TokenFailure {
+    /// RFC 6749 §5.2 on a refresh: `invalid_grant` (the refresh token is revoked or used),
+    /// `invalid_client` / `unauthorized_client` (the app is no longer valid, so no refresh will ever
+    /// work). A 400 or 401, as the RFC says; any other answer (a 5xx with such a body) is a service
+    /// having a bad moment, and never costs the sign-in.
+    fn grant_gone(&self) -> bool {
+        matches!(self.status, 400 | 401)
+            && matches!(
+                self.code.as_deref(),
+                Some("invalid_grant" | "invalid_client" | "unauthorized_client")
+            )
+    }
+
+    fn app_gone(&self) -> bool {
+        matches!(
+            self.code.as_deref(),
+            Some("invalid_client" | "unauthorized_client")
+        )
+    }
+}
+
+/// One running key check of one account (released on drop).
+struct KeyCheckSlot {
+    counts: Arc<Mutex<HashMap<String, usize>>>,
+    user: String,
+}
+
+impl KeyCheckSlot {
+    /// A slot, or a 429 when the account already has `MAX_KEY_CHECKS_PER_USER` checks running.
+    fn take(counts: &Arc<Mutex<HashMap<String, usize>>>, user: &str) -> Result<KeyCheckSlot, Fail> {
+        let mut map = counts.lock().unwrap_or_else(|e| e.into_inner());
+        let running = map.entry(user.to_owned()).or_insert(0);
+        if *running >= MAX_KEY_CHECKS_PER_USER {
+            return Err(fail(
+                "Too many key checks are already running for your account. Try again in a moment.",
+                429,
+            ));
+        }
+        *running += 1;
+        Ok(KeyCheckSlot {
+            counts: Arc::clone(counts),
+            user: user.to_owned(),
+        })
+    }
+}
+
+impl Drop for KeyCheckSlot {
+    fn drop(&mut self) {
+        let mut map = self.counts.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(n) = map.get_mut(&self.user) {
+            *n = n.saturating_sub(1);
+            if *n == 0 {
+                map.remove(&self.user);
+            }
+        }
+    }
 }
 
 /// Settings a deployment gives the broker.
@@ -462,6 +546,13 @@ fn pair_key(user: &str, server: &str) -> String {
     format!("{user}\u{0}{server}")
 }
 
+/// Runs a store step and, if it failed, once more. For the write that follows a token endpoint's
+/// answer (the rotated refresh token exists nowhere else), where a passing failure (a busy
+/// database, keys not loaded yet) must not cost the sign-in.
+fn retry_once<T>(mut step: impl FnMut() -> Result<T, Fail>) -> Result<T, Fail> {
+    step().or_else(|_| step())
+}
+
 /// The broker: the front's one owner of the MCP server credentials.
 pub struct Mcp {
     egress: Arc<Egress>,
@@ -474,6 +565,8 @@ pub struct Mcp {
     locks: Locks,
     /// Per server: the app registration.
     client_locks: Locks,
+    /// Key checks running per account (see `MAX_KEY_CHECKS_PER_USER`).
+    key_checks: Arc<Mutex<HashMap<String, usize>>>,
     /// The last published readiness (serialises the publisher).
     published: Mutex<Option<String>>,
     swept: std::sync::atomic::AtomicBool,
@@ -501,6 +594,7 @@ impl Mcp {
             pending: Mutex::new(HashMap::new()),
             locks: Mutex::new(HashMap::new()),
             client_locks: Mutex::new(HashMap::new()),
+            key_checks: Arc::new(Mutex::new(HashMap::new())),
             published: Mutex::new(None),
             swept: std::sync::atomic::AtomicBool::new(false),
             rpc_id: std::sync::atomic::AtomicI64::new(0),
@@ -575,10 +669,25 @@ impl Mcp {
         }
     }
 
-    /// The directory servers (`[]` while Node has not made the table).
+    /// The directory servers: `[]` only while Node has not made the table. A table that exists but
+    /// cannot be read is `Err` (transient), never an empty list: "no servers" would make a connect
+    /// answer 404, a listing show nothing, and a sign-in in flight look like one for a removed server.
     pub fn servers(&self, app: &App) -> Result<Vec<Server>, Fail> {
         let writer = app.writes.writer().map_err(|_| auth_error("transient"))?;
-        let rows = writer.read(|r| {
+        let made = writer
+            .read(|r| {
+                r.row(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='directory_mcp_servers'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+            })
+            .map_err(|_| auth_error("transient"))?;
+        if made.is_none() {
+            return Ok(Vec::new());
+        }
+        writer
+            .read(|r| {
             r.rows(
                 "SELECT id, title, url, added_by, oauth, personal, declared_json FROM directory_mcp_servers ORDER BY added_at",
                 [],
@@ -597,8 +706,8 @@ impl Mcp {
                     })
                 },
             )
-        });
-        Ok(rows.unwrap_or_default())
+            })
+            .map_err(|_| auth_error("transient"))
     }
 
     fn server(&self, app: &App, id: &str) -> Result<Option<Server>, Fail> {
@@ -988,6 +1097,8 @@ impl Mcp {
             redirect_uri: String::new(),
             token_auth: None,
             manual: false,
+            iss_supported: meta.get("authorization_response_iss_parameter_supported")
+                == &JValue::Bool(true),
         })
     }
 
@@ -1167,6 +1278,7 @@ impl Mcp {
                         purpose,
                         redirect: client.redirect_uri.clone(),
                         issuer: client.issuer.clone(),
+                        iss_required: client.iss_supported,
                     },
                 );
             }
@@ -1202,7 +1314,7 @@ impl Mcp {
         &self,
         client: &Client,
         params: &[(&str, &str)],
-    ) -> Result<(Tokens, u16), (Fail, Option<String>)> {
+    ) -> Result<(Tokens, u16), TokenFailure> {
         let mut pairs: Vec<(&str, &str)> = params.to_vec();
         pairs.push(("client_id", &client.client_id));
         pairs.push(("resource", &client.resource));
@@ -1216,11 +1328,10 @@ impl Mcp {
                 Duration::from_secs(10),
             )
             .await
-            .map_err(|_| {
-                (
-                    fail("The sign-in service did not answer.", BAD_GATEWAY),
-                    None,
-                )
+            .map_err(|_| TokenFailure {
+                fail: fail("The sign-in service did not answer.", BAD_GATEWAY),
+                code: None,
+                status: 0,
             })?;
         let body = reply.json();
         let error_code = body
@@ -1232,16 +1343,17 @@ impl Mcp {
                 .as_deref()
                 .map(|e| format!(": {}", js_json::js_slice(e, 60)))
                 .unwrap_or_default();
-            return Err((
-                fail(
+            return Err(TokenFailure {
+                fail: fail(
                     format!(
                         "The sign-in service did not issue a token ({}{why}).",
                         reply.status
                     ),
                     BAD_GATEWAY,
                 ),
-                error_code,
-            ));
+                code: error_code,
+                status: reply.status,
+            });
         };
         let expires_at = match body.get("expires_in") {
             JValue::Num(n) if n.is_finite() => Some(now_ms() as f64 + n * 1000.0),
@@ -1322,15 +1434,26 @@ impl Mcp {
             let Some(client) = known else {
                 return Err(fail("This server’s sign-in setup is missing. Start again.", 400));
             };
-            // RFC 9207: a response that names its issuer must name the one that was asked.
-            if let Some(iss) = iss.filter(|i| !i.is_empty()) {
-                let expected = if p.issuer.is_empty() { &client.issuer } else { &p.issuer };
-                if !expected.is_empty() && iss.trim_end_matches('/') != expected.trim_end_matches('/') {
+            // RFC 9207: a response that names its issuer must name the one that was asked, and a
+            // service that said it always names it (`authorization_response_iss_parameter_supported`)
+            // must have: an answer without `iss` could come from another service (mix-up).
+            match iss.filter(|i| !i.is_empty()) {
+                Some(iss) => {
+                    let expected = if p.issuer.is_empty() { &client.issuer } else { &p.issuer };
+                    if !expected.is_empty() && iss.trim_end_matches('/') != expected.trim_end_matches('/') {
+                        return Err(fail(
+                            "The answer came from a different sign-in service than the one that was asked. Start again.",
+                            400,
+                        ));
+                    }
+                }
+                None if p.iss_required => {
                     return Err(fail(
-                        "The answer came from a different sign-in service than the one that was asked. Start again.",
+                        "The sign-in service did not say who answered, which it always does. Start again.",
                         400,
                     ));
                 }
+                None => {}
             }
             if code.is_empty() {
                 return Err(fail("The sign-in service did not send a code. Start again.", 400));
@@ -1346,9 +1469,13 @@ impl Mcp {
                     ],
                 )
                 .await
-                .map_err(|(f, _)| f)?;
+                .map_err(|e| e.fail)?;
             let sealed = me.seal(&tokens.to_json(), Some(&user))?;
             let (u, s) = (user.clone(), p.server.clone());
+            // Under the same lock as the refresh, the re-seal and the disconnect: a new sign-in is
+            // never written between one of their reads and their write.
+            let lock = lock_for(&me.locks, &pair_key(&u, &s));
+            let _held = lock.lock().await;
             me.blocking(&app, move |m, a| {
                 // A sign-in for a server removed meanwhile is not kept.
                 if m.server(a, &s)?.is_none() {
@@ -1428,23 +1555,22 @@ impl Mcp {
             return Ok(issued(&row, &t));
         }
         let Some(refresh) = t.refresh.clone() else {
-            return if !stale && !t.expired(now) {
-                Ok(issued(&row, &t))
-            } else {
-                Err(auth_error("reconnect"))
-            };
+            return self
+                .unrefreshable(app, user, server, &row, &t, stale, now)
+                .await;
         };
         let name = server.to_owned();
-        let client = self
+        let (client_raw, client) = match self
             .blocking(app, move |me, a| me.read_client_row(a, &name))
             .await??
-            .and_then(|(_, c)| c);
+        {
+            Some((raw, client)) => (Some(raw), client),
+            None => (None, None),
+        };
         let Some(client) = client else {
-            return if !stale && !t.expired(now) {
-                Ok(issued(&row, &t))
-            } else {
-                Err(auth_error("reconnect"))
-            };
+            return self
+                .unrefreshable(app, user, server, &row, &t, stale, now)
+                .await;
         };
         let outcome = match self
             .token_request(
@@ -1454,54 +1580,96 @@ impl Mcp {
             .await
         {
             Ok((next, _)) => Refreshed::New(next),
-            Err((_, Some(code))) if code == "invalid_grant" => Refreshed::Rejected,
+            Err(e) if e.grant_gone() => Refreshed::Rejected {
+                app_gone: e.app_gone(),
+            },
             Err(_) => Refreshed::Transient,
         };
         match outcome {
             Refreshed::New(next) => {
-                let sealed = self.seal(&next.to_json(), Some(user))?;
-                let (u, s, raw, stored) = (
+                let (u, s, raw, kept) = (
                     user.to_owned(),
                     server.to_owned(),
                     row.raw.clone(),
-                    sealed.clone(),
+                    next.clone(),
                 );
-                let changed = self
-                    .blocking(app, move |_, a| {
-                        let w = a.writes.writer().map_err(|_| auth_error("transient"))?;
-                        w.write(|tx| {
-                            tx.mcp_swap_token(
-                                RustMcpCredentials::owned(),
-                                &u,
-                                &s,
-                                &stored,
-                                now_ms(),
-                                &raw,
-                            )
+                // The service has answered, and a rotating one has already spent the refresh token
+                // that was sent: the seal and the write are tried once more before giving up, because
+                // a failure here costs the sign-in at the next refresh.
+                let stored = self
+                    .blocking(app, move |me, a| {
+                        retry_once(|| {
+                            let sealed = me.seal(&kept.to_json(), Some(&u))?;
+                            let w = a.writes.writer().map_err(|_| auth_error("transient"))?;
+                            let changed = w
+                                .write(|tx| {
+                                    tx.mcp_swap_token(
+                                        RustMcpCredentials::owned(),
+                                        &u,
+                                        &s,
+                                        &sealed,
+                                        now_ms(),
+                                        &raw,
+                                    )
+                                })
+                                .map_err(|_| auth_error("transient"))?;
+                            Ok((changed, sealed))
                         })
-                        .map_err(|_| auth_error("transient"))
                     })
-                    .await??;
-                if changed == 0 {
-                    // A disconnect or a newer sign-in won: use what is there now.
-                    let (u, s) = (user.to_owned(), server.to_owned());
-                    let now_row = self
-                        .blocking(app, move |me, a| me.read_token(a, &u, &s))
-                        .await??
-                        .ok_or_else(|| auth_error("disconnected"))?;
-                    let t = now_row
-                        .tokens
-                        .clone()
-                        .ok_or_else(|| auth_error("reconnect"))?;
-                    return Ok(issued(&now_row, &t));
+                    .await?;
+                match stored {
+                    Ok((0, _)) => {
+                        // A disconnect or a newer sign-in won: use what is there now.
+                        let (u, s) = (user.to_owned(), server.to_owned());
+                        let now_row = self
+                            .blocking(app, move |me, a| me.read_token(a, &u, &s))
+                            .await??
+                            .ok_or_else(|| auth_error("disconnected"))?;
+                        let t = now_row
+                            .tokens
+                            .clone()
+                            .ok_or_else(|| auth_error("reconnect"))?;
+                        Ok(issued(&now_row, &t))
+                    }
+                    Ok((_, sealed)) => Ok(Issued {
+                        access: next.access.clone(),
+                        expires_at: next.expires_at,
+                        generation: generation_of(&sealed),
+                    }),
+                    Err(_) => {
+                        // Both attempts failed: the new access token is still good for this call (the
+                        // generation names no stored sign-in, so a late reject marks nothing).
+                        eprintln!("noevia-server: a refreshed MCP sign-in could not be stored");
+                        Ok(Issued {
+                            access: next.access.clone(),
+                            expires_at: next.expires_at,
+                            generation: generation_of("not stored"),
+                        })
+                    }
                 }
-                Ok(Issued {
-                    access: next.access.clone(),
-                    expires_at: next.expires_at,
-                    generation: generation_of(&sealed),
-                })
             }
-            Refreshed::Rejected => {
+            Refreshed::Rejected { app_gone } => {
+                // An app the service no longer knows (a registration made by this broker) is
+                // forgotten, so the next sign-in registers noevia again instead of failing at the
+                // service for good. A hand-registered app is the administrator's to fix.
+                if app_gone && !client.manual {
+                    if let Some(raw) = client_raw {
+                        let name = server.to_owned();
+                        let _ = self
+                            .blocking(app, move |_, a| {
+                                let w = a.writes.writer().map_err(|_| auth_error("transient"))?;
+                                w.write(|tx| {
+                                    tx.mcp_delete_client_if(
+                                        RustMcpCredentials::owned(),
+                                        &name,
+                                        &raw,
+                                    )
+                                })
+                                .map_err(|_| auth_error("transient"))
+                            })
+                            .await;
+                    }
+                }
                 self.strip(app, user, server, &row.raw).await?;
                 Err(auth_error("reconnect"))
             }
@@ -1513,6 +1681,31 @@ impl Mcp {
                 }
             }
         }
+    }
+
+    /// A sign-in nothing can refresh (it has no refresh token, or the app it was made for is
+    /// unknown). A token still inside its life is used as it is, unless the MCP server just refused
+    /// it (`stale`): then it is of no use to anyone, so it is marked as needing a new sign-in here
+    /// and the account is told so. The caller does not have to ask for that separately (and must not
+    /// when it could not even ask: see `reject`).
+    #[allow(clippy::too_many_arguments)]
+    async fn unrefreshable(
+        self: &Arc<Self>,
+        app: &Arc<App>,
+        user: &str,
+        server: &str,
+        row: &Row,
+        t: &Tokens,
+        stale: bool,
+        now: i64,
+    ) -> Result<Issued, Fail> {
+        if !stale && !t.expired(now) {
+            return Ok(issued(row, t));
+        }
+        if stale {
+            self.strip(app, user, server, &row.raw).await?;
+        }
+        Err(auth_error("reconnect"))
     }
 
     /// Marks a sign-in as needing a new one: its refresh token goes and it is expired, so every
@@ -1709,19 +1902,36 @@ impl Mcp {
         let (u, s) = (user.to_owned(), server.to_owned());
         let revoke = self
             .blocking(app, move |me, a| {
-                let before = me
-                    .read_token(a, &u, &s)
-                    .ok()
-                    .flatten()
-                    .and_then(|r| r.tokens);
                 let client = me
                     .read_client_row(a, &s)
                     .ok()
                     .flatten()
                     .and_then(|(_, c)| c);
                 let w = a.writes.writer().map_err(|_| auth_error("transient"))?;
-                w.write(|tx| tx.mcp_delete_token(RustMcpCredentials::owned(), &u, &s))
-                    .map_err(|_| auth_error("transient"))?;
+                // Delete exactly the row that was read, so the sign-in the service is asked to
+                // revoke is the one that was removed (a row replaced in between is read again).
+                let mut removed = None;
+                for _ in 0..3 {
+                    let Some(row) = me.read_token(a, &u, &s)? else {
+                        removed = Some(None);
+                        break;
+                    };
+                    let n = w
+                        .write(|tx| {
+                            tx.mcp_delete_token_if(RustMcpCredentials::owned(), &u, &s, &row.raw)
+                        })
+                        .map_err(|_| auth_error("transient"))?;
+                    if n > 0 {
+                        removed = Some(row.tokens);
+                        break;
+                    }
+                }
+                let Some(before) = removed else {
+                    return Err(fail(
+                        "Your sign-in changed while it was being disconnected. Try again.",
+                        409,
+                    ));
+                };
                 me.audit(
                     a,
                     Some(&u),
@@ -1734,12 +1944,35 @@ impl Mcp {
             .await??;
         // Once the row is gone the service is asked to drop the grant; a failure changes nothing.
         if let (Some(tokens), Some(client)) = revoke {
-            if client.revocation_endpoint.is_some() {
-                let me = Arc::clone(self);
-                tokio::spawn(async move { me.revoke(&client, &tokens).await });
-            }
+            let me = Arc::clone(self);
+            tokio::spawn(async move { me.revoke_after_disconnect(client, tokens).await });
         }
         Ok(())
+    }
+
+    /// The service is told the grant is gone. An app registered by an older core has no revocation
+    /// address stored (it never looked): it is found now, lazily, with a short deadline, and only
+    /// from a service that names the issuer the app was registered with (a refresh token goes to
+    /// no other service). Any failure along the way means no revocation, as before.
+    async fn revoke_after_disconnect(&self, mut client: Client, tokens: Tokens) {
+        if client.revocation_endpoint.is_none() {
+            let found = tokio::time::timeout(
+                REVOKE_DISCOVERY_DEADLINE,
+                self.discover(&client.resource, ""),
+            )
+            .await;
+            match found {
+                Ok(Ok(meta))
+                    if !client.issuer.is_empty()
+                        && meta.issuer.trim_end_matches('/')
+                            == client.issuer.trim_end_matches('/') =>
+                {
+                    client.revocation_endpoint = meta.revocation_endpoint;
+                }
+                _ => return,
+            }
+        }
+        self.revoke(&client, &tokens).await;
     }
 
     /// RFC 7009: the refresh token if there is one, else the access token. Never fails the caller.
@@ -1834,6 +2067,12 @@ impl Mcp {
             secret.to_owned(),
         );
         tokio::spawn(async move {
+            // The same lock as a registration (`client_for`): a sign-in that is registering noevia
+            // at the service must not finish after this and replace the hand-registered app with
+            // its own. Refreshes and re-seals that race the delete below are compare-and-swaps,
+            // and a disconnect finds nothing to remove; none needs the per-account locks.
+            let lock = lock_for(&me.client_locks, &server);
+            let _held = lock.lock().await;
             let meta = me.discover(&server_url, &challenge).await?;
             let redirect = {
                 let (m, a) = (Arc::clone(&me), Arc::clone(&app));
@@ -1923,6 +2162,9 @@ impl Mcp {
     ) -> Result<(), Fail> {
         let declared = server.declared_headers();
         let pending = check_header_values(&declared, values)?;
+        // The check is work the client cannot abandon, so the slot is held by the task itself and
+        // freed when it ends, not when the caller goes away.
+        let slot = KeyCheckSlot::take(&self.key_checks, user)?;
         let (me, app, user, server, values) = (
             Arc::clone(self),
             Arc::clone(app),
@@ -1931,6 +2173,7 @@ impl Mcp {
             values.clone(),
         );
         tokio::spawn(async move {
+            let _slot = slot;
             // Proven against the server first: a key it refuses is never kept.
             let checked =
                 mcp_egress::check_key(&me.egress, &server.url, &pending, &me.rpc_id).await;
@@ -2038,6 +2281,12 @@ impl Mcp {
             self.previous_key_env.as_deref().map(String::as_str),
         )
         .map_err(|_| fail("credential store unavailable", 503))?;
+        // A snapshot race, accepted: a seal that began on the previous snapshot just before this
+        // replaces it (a refresh, a sign-in, a key stored in the same moment) writes one row under
+        // the key that is now the previous one. Nothing is lost: that row still opens (the keys
+        // keep the previous key for exactly this), it is only not re-sealed by this pass, and the
+        // next rotation, or the next write of that row, moves it. Rows are read per row below, so
+        // a row written after its turn is not missed either, only left for the next pass.
         *self.keys.write().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(fresh));
         let mut report = ResealReport::default();
         // Tokens (bound), clients (unbound), keys (bound).
@@ -2290,13 +2539,26 @@ fn resource_metadata_hint(challenge: &str) -> Option<String> {
     Some(rest.get(..end)?.to_owned()).filter(|s| !s.is_empty())
 }
 
-/// Whether the resource a metadata document names is the server asked about (a trailing slash and
-/// the default port do not count).
+/// Whether the resource a metadata document names covers the server asked about (RFC 9728 §3.3):
+/// the same origin (a trailing slash and the default port do not count), and a path that is the
+/// server's own or a parent of it, on a path-segment boundary. A service that describes
+/// `https://a.example` for its MCP server at `https://a.example/mcp` is right; one that names
+/// another origin, a sibling (`/mcpx` for `/mcp`) or something deeper than the server is not.
 fn same_resource(named: &str, asked: &str) -> bool {
     let (Ok(a), Ok(b)) = (url::Url::parse(named), url::Url::parse(asked)) else {
         return false;
     };
-    a.origin() == b.origin() && a.path().trim_end_matches('/') == b.path().trim_end_matches('/')
+    if a.origin() != b.origin() {
+        return false;
+    }
+    let (named_path, asked_path) = (
+        a.path().trim_end_matches('/'),
+        b.path().trim_end_matches('/'),
+    );
+    named_path == asked_path
+        || asked_path
+            .strip_prefix(named_path)
+            .is_some_and(|rest| rest.starts_with('/'))
 }
 
 fn write_atomic(file: &Path, text: &str) -> std::io::Result<()> {
@@ -2416,6 +2678,116 @@ mod tests {
     }
 
     #[test]
+    fn a_resource_may_name_a_parent_of_the_server_path_on_the_same_origin() {
+        // RFC 9728 §3.3: the service describes its site (or a directory above the MCP endpoint).
+        for named in [
+            "https://a.example",
+            "https://a.example/",
+            "https://a.example/mcp",
+            "https://a.example/mcp/",
+            "https://a.example/mcp/v1",
+        ] {
+            assert!(
+                same_resource(named, "https://a.example/mcp/v1/stream"),
+                "{named}"
+            );
+        }
+        // Another origin is never accepted, whatever its path; nor is a sibling that merely starts
+        // with the same letters, something deeper than the server, or another scheme or port.
+        for named in [
+            "https://b.example/mcp",
+            "https://b.example",
+            "https://a.example.evil.test/mcp",
+            "https://a.example/mc",
+            "https://a.example/mcp/v1/stream/deeper",
+            "http://a.example/mcp",
+            "https://a.example:8443/mcp",
+            "not a url",
+        ] {
+            assert!(
+                !same_resource(named, "https://a.example/mcp/v1/stream"),
+                "{named}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_refused_refresh_costs_the_sign_in_only_when_the_service_says_the_grant_is_gone() {
+        let failure = |status: u16, code: Option<&str>| TokenFailure {
+            fail: fail("x", BAD_GATEWAY),
+            code: code.map(str::to_owned),
+            status,
+        };
+        // RFC 6749 §5.2: a 400 (or 401) with one of these errors.
+        for code in ["invalid_grant", "invalid_client", "unauthorized_client"] {
+            for status in [400, 401] {
+                assert!(failure(status, Some(code)).grant_gone(), "{status} {code}");
+            }
+            // The same body on a service having a bad moment is not a verdict.
+            for status in [0, 429, 500, 502, 503] {
+                assert!(!failure(status, Some(code)).grant_gone(), "{status} {code}");
+            }
+        }
+        // Other errors, and no error at all, never are.
+        for code in [
+            Some("temporarily_unavailable"),
+            Some("invalid_request"),
+            Some("server_error"),
+            None,
+        ] {
+            assert!(!failure(400, code).grant_gone(), "{code:?}");
+        }
+        // Only a vanished app (not a vanished grant) is forgotten so the next sign-in registers again.
+        assert!(failure(401, Some("invalid_client")).app_gone());
+        assert!(failure(400, Some("unauthorized_client")).app_gone());
+        assert!(!failure(400, Some("invalid_grant")).app_gone());
+    }
+
+    #[test]
+    fn the_write_after_a_token_answer_is_tried_once_more() {
+        let mut calls = 0;
+        let ok = retry_once(|| {
+            calls += 1;
+            if calls == 1 {
+                Err(auth_error("transient"))
+            } else {
+                Ok(calls)
+            }
+        });
+        assert_eq!((ok.map_err(|e| e.status), calls), (Ok(2), 2));
+        let mut calls = 0;
+        let err = retry_once(|| -> Result<(), Fail> {
+            calls += 1;
+            Err(auth_error("transient"))
+        });
+        assert_eq!((err.is_err(), calls), (true, 2), "once more, not forever");
+        let mut calls = 0;
+        assert!(retry_once(|| -> Result<(), Fail> {
+            calls += 1;
+            Ok(())
+        })
+        .is_ok());
+        assert_eq!(calls, 1, "a step that worked is not run again");
+    }
+
+    #[test]
+    fn an_account_has_a_bounded_number_of_key_checks_running() {
+        let counts = Arc::new(Mutex::new(HashMap::new()));
+        let held: Vec<_> = (0..MAX_KEY_CHECKS_PER_USER)
+            .map(|_| KeyCheckSlot::take(&counts, "u1").unwrap())
+            .collect();
+        let over = KeyCheckSlot::take(&counts, "u1").err().unwrap();
+        assert_eq!(over.status, 429);
+        // Another account is not held up by it.
+        let other = KeyCheckSlot::take(&counts, "u2").unwrap();
+        // A finished check frees its slot, and nothing is left behind for an idle account.
+        drop(held);
+        assert!(KeyCheckSlot::take(&counts, "u1").is_ok());
+        drop(other);
+        assert!(counts.lock().unwrap().is_empty());
+    }
+
+    #[test]
     fn tokens_expire_inside_the_margin_and_die_without_a_refresh_token() {
         let t = |refresh: bool, expires: Option<f64>| Tokens {
             access: Zeroizing::new("a".into()),
@@ -2457,6 +2829,7 @@ mod tests {
             redirect_uri: "https://noevia.example/api/mcp-oauth/callback".into(),
             token_auth: None,
             manual: false,
+            iss_supported: false,
         };
         let json = c.to_json();
         assert_eq!(
@@ -2468,6 +2841,17 @@ mod tests {
         assert!(!back.manual && back.client_secret.is_none());
         // A row core wrote for a registered app has no tokenAuth: the metadata's method is used.
         assert_eq!(back.auth_method(), "client_secret_basic");
+        // RFC 9207 support is an addition core ignores; a row without it is not required to carry `iss`.
+        assert!(!back.iss_supported);
+        let with = Client {
+            iss_supported: true,
+            ..c
+        };
+        assert!(with
+            .to_json()
+            .ends_with(r#","issParameterSupported":true}"#));
+        let back = Client::from_json(&js_json::parse(&with.to_json()).unwrap()).unwrap();
+        assert!(back.iss_supported);
     }
 
     #[test]

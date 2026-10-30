@@ -983,6 +983,18 @@ Behaviour changes (each a Node bug or gap, with a regression in `tests/mcp_crede
   field only hand-registered apps had, so an app handed a secret was always sent Basic. `expires_in: null`
   is no expiry (core read it as already expired).
 - Disconnect asks the service to revoke the grant (RFC 7009) when its metadata names a revocation endpoint.
+- Round 1 review fixes: the resource a service describes may be the site or a parent of the server's path
+  (RFC 9728 §3.3: same origin, a path on a segment boundary), never another origin; `invalid_client` and
+  `unauthorized_client` on a refresh (a 400 or 401) end the sign-in like `invalid_grant` and forget a registration
+  the broker made (a hand-registered app stays), while the same body on a 5xx is a bad moment; a service that
+  advertises `authorization_response_iss_parameter_supported` must send `iss` (remembered with the app as
+  `issParameterSupported`, an addition core ignores); a directory-server table that exists but cannot be read is an
+  outage (503), not "no servers"; a refreshed sign-in is sealed and written twice before giving up (the service has
+  already rotated the token); a token the MCP server refused that cannot be refreshed (no refresh token, no app)
+  is marked for a new sign-in by the broker itself; the disconnect deletes the very row it read and, for an app an
+  older core registered, finds the revocation address lazily (5 s, only a service of the issuer the app was
+  registered with); a hand-registered app waits for a registration under way; one account runs at most four key
+  checks at once (429); every internal-store refusal carries its `status`.
 - A sign-in that finishes for a server removed meanwhile is not kept; pending sign-ins are capped globally
   (4000) as well as per account (20); registrations for one server are serialized.
 - The start sweep removes the sign-ins and keys of accounts and servers that no longer exist; the rotation
