@@ -114,7 +114,26 @@ pub enum Native {
     Providers,
     /// /api/mcp-keys/* and /api/mcp-oauth/* (sbstndalton/noevia#2202): mcp_routes.rs.
     McpCredentials,
+    /// Every method of /api/admin/mcp-directory* (sbstndalton/noevia#2202 round 2):
+    /// mcp_directory_routes.rs.
+    McpDirectory,
+    /// GET /api/toolboxes/permitted (sbstndalton/noevia#2202 round 2): toolbox_routes.rs.
+    ToolboxesPermitted,
 }
+
+/// The routes [`Native::McpDirectory`] implements (every method; routes.toml).
+const MCP_DIRECTORY: &[&str] = &[
+    "/api/admin/mcp-directory",
+    "/api/admin/mcp-directory/custom",
+    "/api/admin/mcp-directory/custom/preview",
+    "/api/admin/mcp-directory/{*}",
+    "/api/admin/mcp-directory/{*}/keys",
+    "/api/admin/mcp-directory/{id}/oauth-client",
+];
+
+/// The route [`Native::ToolboxesPermitted`] implements (routes.toml gives Rust every method; the
+/// handler answers 405 to all but GET).
+const TOOLBOXES_PERMITTED: &str = "/api/toolboxes/permitted";
 
 /// The route [`Native::ProviderTest`] implements (POST only; routes.toml).
 const PROVIDER_TEST: &str = "/api/providers/test";
@@ -328,6 +347,14 @@ fn compiled(route: &Route) -> bool {
         && (![PROVIDERS_LIST, PROVIDER_ONE].contains(&route.path)
             || cfg!(feature = "rust-storage-reads"))
         && (!MCP_CREDENTIALS.contains(&route.path) || cfg!(feature = "rust-storage-reads"))
+        && (!MCP_DIRECTORY.contains(&route.path) || cfg!(feature = "rust-storage-reads"))
+        && (route.path != TOOLBOXES_PERMITTED || cfg!(feature = "rust-storage-reads"))
+        && (![
+            crate::connector_routes::LIST,
+            crate::connector_routes::NEXTCLOUD_POLICY,
+        ]
+        .contains(&route.path)
+            || cfg!(feature = "rust-storage-reads"))
 }
 
 /// The native handler a rust-owned route is implemented by. The front read routes and the export
@@ -368,6 +395,8 @@ pub fn native_for(route: &Route) -> Option<Native> {
         }
         PROVIDERS_LIST | PROVIDER_ONE if auth => return Some(Native::Providers),
         p if auth && MCP_CREDENTIALS.contains(&p) => return Some(Native::McpCredentials),
+        p if auth && MCP_DIRECTORY.contains(&p) => return Some(Native::McpDirectory),
+        TOOLBOXES_PERMITTED if auth => return Some(Native::ToolboxesPermitted),
         "/api/instance"
         | "/.well-known/webauthn"
         | "/api/admin/web-address"
@@ -619,6 +648,8 @@ mod tests {
                 Some(Native::Offsite) if crate::offsite_routes::ROUTES.contains(&r.path) => {}
                 Some(Native::Connectors) if crate::connector_routes::ROUTES.contains(&r.path) => {}
                 Some(Native::Providers) if r.path == PROVIDERS_LIST || r.path == PROVIDER_ONE => {}
+                Some(Native::McpDirectory) if MCP_DIRECTORY.contains(&r.path) => {}
+                Some(Native::ToolboxesPermitted) if r.path == TOOLBOXES_PERMITTED => {}
                 Some(_) => assert!(!is_account_path(r.path), "{} is an account path", r.path),
                 other @ None => assert!(
                     other.is_some(),

@@ -242,7 +242,9 @@ const CHATGPT_OAUTH_TOKENS: &str = "chatgpt_oauth_tokens";
 
 /// MCP server credentials (sbstndalton/noevia#2202): the Rust front is the broker of the OAuth
 /// sign-ins (`mcp_oauth_tokens`, `mcp_oauth_clients`) and of each account's own API keys for a
-/// directory server (`directory_mcp_user_keys`), and the only writer of those three tables. Core's
+/// directory server (`directory_mcp_user_keys`), and the only writer of those three tables. Since
+/// round 2 it also owns the directory itself (`directory_mcp_servers`: the rows, the administrator's
+/// shared key slot, the OAuth flag), with compare-and-swap writes. Core's
 /// guard (rust-auth.cjs `FRONT_TABLES`) refuses every Node write of them, even inside `exempt()`.
 /// Like [`RustChatgptOAuth`] the grant is per statement: only the [`WriteTx`] methods named
 /// `mcp_*` open it, each for its one statement.
@@ -268,10 +270,13 @@ impl RustToolPolicies {
 }
 
 /// The tables [`RustMcpCredentials`] writes.
-const MCP_TABLES: [&str; 3] = [
+const MCP_TABLES: [&str; 4] = [
     "mcp_oauth_tokens",
     "mcp_oauth_clients",
     "directory_mcp_user_keys",
+    // sbstndalton/noevia#2202 round 2: the server rows themselves (the directory), not only the
+    // credentials kept for them.
+    "directory_mcp_servers",
 ];
 /// The table [`RustToolPolicies`] writes.
 const TOOL_POLICIES: &str = "tool_policies";
@@ -1498,6 +1503,81 @@ impl WriteTx<'_> {
         self.mcp_statement(
             "DELETE FROM directory_mcp_user_keys WHERE user_id=?",
             rusqlite::params![user_id],
+        )
+    }
+
+    /// core directory-mcp.cjs `add`'s one INSERT. The caller has already refused a duplicate or a
+    /// full directory in the same transaction; a UNIQUE violation here is an error all the same.
+    #[allow(clippy::too_many_arguments)]
+    pub fn mcp_directory_insert(
+        &self,
+        _cap: RustMcpCredentials,
+        id: &str,
+        registry_name: &str,
+        title: &str,
+        url: &str,
+        added_by: Option<&str>,
+        added_at: i64,
+        headers_enc: Option<&str>,
+        oauth: bool,
+        personal: bool,
+        declared_json: &str,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "INSERT INTO directory_mcp_servers(id, registry_name, title, url, added_by, added_at, headers_enc, oauth, personal, declared_json) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            rusqlite::params![
+                id,
+                registry_name,
+                title,
+                url,
+                added_by,
+                added_at,
+                headers_enc,
+                i64::from(oauth),
+                i64::from(personal),
+                declared_json
+            ],
+        )
+    }
+
+    /// The shared key slot, replaced only while it still holds `was` (a compare-and-swap, so two
+    /// administrators changing the same key cannot both win).
+    pub fn mcp_directory_swap_headers(
+        &self,
+        _cap: RustMcpCredentials,
+        id: &str,
+        headers_enc: Option<&str>,
+        was: Option<&str>,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "UPDATE directory_mcp_servers SET headers_enc=? WHERE id=? AND headers_enc IS ?",
+            rusqlite::params![headers_enc, id, was],
+        )
+    }
+
+    /// core `remove`'s DELETE.
+    pub fn mcp_directory_delete(
+        &self,
+        _cap: RustMcpCredentials,
+        id: &str,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "DELETE FROM directory_mcp_servers WHERE id=?",
+            rusqlite::params![id],
+        )
+    }
+
+    /// The delete of a row the caller has just added: only if it is still the one added at `added_at`
+    /// (a rollback must not remove a server another administrator re-added under the same name).
+    pub fn mcp_directory_delete_added(
+        &self,
+        _cap: RustMcpCredentials,
+        id: &str,
+        added_at: i64,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "DELETE FROM directory_mcp_servers WHERE id=? AND added_at=?",
+            rusqlite::params![id, added_at],
         )
     }
 

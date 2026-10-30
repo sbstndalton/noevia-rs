@@ -8,11 +8,11 @@
 //! - `PUT  /api/connectors/gdrive/policy`       `{tools:[name...], mode:'allow'|'ask'|'block'}`
 //! - `PUT  /api/connectors/gdrive/backup-copy`  `{enabled}` (the administrator whose Drive holds backups)
 //!
-//! `GET /api/connectors` and `PUT /api/connectors/nextcloud/policy` stay with Node: the Nextcloud
-//! half lists the toolbox tools the live MCP servers offer and whether a tool is a write, state only
-//! the running chat process has. Node asks this module for the Google Drive half (`view`) and, for
-//! the Nextcloud permissions, for the one write of `tool_policies` (`policy`), so the table keeps
-//! a single writer; Node reads it per call and by content fingerprint for its permitted-tools cache.
+//! `GET /api/connectors` and `PUT /api/connectors/nextcloud/policy` are this front's since
+//! sbstndalton/noevia#2202 round 2 (nextcloud_routes.rs, capability `rust-connectors`): the Nextcloud
+//! half lists the toolbox tools the Nextcloud MCP server offers and whether each writes, which comes
+//! from the discovery snapshot Node publishes (mcp_discovery.rs), joined with the account's storage
+//! connection and its tool permissions, both this front's.
 //!
 //! Internal (`POST /v1/gdrive/<op>` on the store listener, loopback + per-start secret, `{ user,
 //! admin, ... }` from the authenticated request):
@@ -40,7 +40,18 @@ pub const CONNECT: &str = "/api/connectors/gdrive/connect";
 pub const DISCONNECT: &str = "/api/connectors/gdrive/disconnect";
 pub const POLICY: &str = "/api/connectors/gdrive/policy";
 pub const BACKUP_COPY: &str = "/api/connectors/gdrive/backup-copy";
-pub const ROUTES: &[&str] = &[CONNECT, DISCONNECT, POLICY, BACKUP_COPY];
+/// sbstndalton/noevia#2202 round 2: `GET /api/connectors` and `PUT /api/connectors/nextcloud/policy`
+/// (nextcloud_routes.rs).
+pub const LIST: &str = "/api/connectors";
+pub const NEXTCLOUD_POLICY: &str = "/api/connectors/nextcloud/policy";
+pub const ROUTES: &[&str] = &[
+    CONNECT,
+    DISCONNECT,
+    POLICY,
+    BACKUP_COPY,
+    LIST,
+    NEXTCLOUD_POLICY,
+];
 
 const BODY_LIMIT: usize = 1024 * 1024;
 const BODY_DEADLINE: Duration = Duration::from_secs(10);
@@ -75,7 +86,7 @@ fn s(v: &str) -> JValue {
     JValue::Str(v.to_owned())
 }
 
-fn answer(status: u16, body: &JValue) -> Response<Body> {
+pub(crate) fn answer(status: u16, body: &JValue) -> Response<Body> {
     reply::json_text(
         StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
         js_json::stringify(body).unwrap_or_else(|| "{}".into()),
@@ -83,7 +94,7 @@ fn answer(status: u16, body: &JValue) -> Response<Body> {
     )
 }
 
-fn failed(e: &Fail) -> Response<Body> {
+pub(crate) fn failed(e: &Fail) -> Response<Body> {
     let status = if e.status > 0 && e.status < 600 {
         e.status
     } else {
@@ -96,7 +107,7 @@ fn failed(e: &Fail) -> Response<Body> {
 }
 
 /// The mode that applies to one call (tool-policy.cjs `mode`): the stored row, or the default.
-fn mode_of(app: &App, user: &str, tool: &str, write: bool) -> &'static str {
+pub(crate) fn mode_of(app: &App, user: &str, tool: &str, write: bool) -> &'static str {
     let stored = app.writes.writer().ok().and_then(|w| {
         w.read(|r| {
             r.row(
@@ -113,7 +124,7 @@ fn mode_of(app: &App, user: &str, tool: &str, write: bool) -> &'static str {
 }
 
 /// Core's `view(user)`: the Google Drive connector object for this account.
-async fn view(app: &Arc<App>, user: &str, admin: bool) -> Result<JValue, Fail> {
+pub(crate) async fn view(app: &Arc<App>, user: &str, admin: bool) -> Result<JValue, Fail> {
     let drive = gdrive::of(app).ok_or_else(|| Fail::new(UNREACHABLE, 502))?;
     let slot = drive.slot_for(user, admin)?;
     let st = drive.state(&slot);
@@ -179,7 +190,7 @@ async fn view(app: &Arc<App>, user: &str, admin: bool) -> Result<JValue, Fail> {
     Ok(JValue::obj(out))
 }
 
-async fn read_object(body: Body) -> Result<JValue, Box<Response<Body>>> {
+pub(crate) async fn read_object(body: Body) -> Result<JValue, Box<Response<Body>>> {
     let mut body = body;
     let read = async {
         let mut out = Vec::new();
@@ -232,7 +243,7 @@ async fn read_object(body: Body) -> Result<JValue, Box<Response<Body>>> {
 }
 
 /// `[].concat(body.tools || [])` filtered to the names `offered` accepts.
-fn wanted_tools(body: &JValue, offered: impl Fn(&str) -> bool) -> Vec<String> {
+pub(crate) fn wanted_tools(body: &JValue, offered: impl Fn(&str) -> bool) -> Vec<String> {
     let tools = body.get("tools");
     let items: Vec<&JValue> = match tools {
         JValue::Arr(a) => a.iter().collect(),
@@ -249,7 +260,7 @@ fn wanted_tools(body: &JValue, offered: impl Fn(&str) -> bool) -> Vec<String> {
 
 /// tool-policy.cjs `set()`: the checks in core's order, then the upserts and the audit row in one
 /// transaction. `writes` are the caller's write flags per tool (only read for `allow`).
-fn set_policy(
+pub(crate) fn set_policy(
     app: &App,
     user: &str,
     tools: &[String],
@@ -311,6 +322,11 @@ pub async fn serve(
     req: Request<Body>,
     path: String,
 ) -> Response<Body> {
+    if (path == LIST && req.method() == Method::GET)
+        || (path == NEXTCLOUD_POLICY && req.method() == Method::PUT)
+    {
+        return crate::nextcloud_routes::serve(app, req, path).await;
+    }
     let Some(drive) = gdrive::of(app) else {
         return app.proxy.forward(conn.peer, req).await;
     };

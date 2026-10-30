@@ -325,6 +325,27 @@ pub async fn check_key(
     headers: &[(String, String)],
     next_id: &std::sync::atomic::AtomicI64,
 ) -> Result<usize, String> {
+    list_tools(egress, url, headers, next_id)
+        .await
+        .map(|tools| tools.len())
+}
+
+/// core mcp.cjs `listTools` budget: the bytes of tool definitions one listing may gather.
+const LIST_MAX_BYTES: usize = 16 * 1024 * 1024;
+
+/// The tools an MCP server offers, as it sent them (core `connect` + `listTools` + `disconnect`):
+/// `initialize`, the `initialized` notification, `tools/list` following `nextCursor` (at most
+/// [`MAX_PAGES`] pages and [`LIST_MAX_BYTES`] of definitions, keeping what was gathered), then the
+/// session is closed whatever happened. `headers` are the server's key headers (never the reserved
+/// ones). The failure is in core's words (`MCP 401: ...`, `MCP error -32000: ...`, `fetch failed`,
+/// `its address no longer resolves to a public host`). Every request is checked against the public
+/// address rules first, and again at connect time by the client's own resolver.
+pub async fn list_tools(
+    egress: &Egress,
+    url: &str,
+    headers: &[(String, String)],
+    next_id: &std::sync::atomic::AtomicI64,
+) -> Result<Vec<JValue>, String> {
     if !egress.url_allowed(url).await {
         return Err("its address no longer resolves to a public host".into());
     }
@@ -361,7 +382,8 @@ pub async fn check_key(
             JValue::Undefined,
         )
         .await?;
-        let mut count = 0usize;
+        let mut all: Vec<JValue> = Vec::new();
+        let mut bytes = 0usize;
         let mut cursor: Option<String> = None;
         for _ in 0..MAX_PAGES {
             let id = next_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
@@ -381,7 +403,14 @@ pub async fn check_key(
             .await?
             .unwrap_or(JValue::Null);
             if let JValue::Arr(tools) = result.get("tools") {
-                count += tools.len();
+                for tool in tools {
+                    let size = js_json::stringify(tool).map_or(0, |t| t.len());
+                    if bytes + size > LIST_MAX_BYTES {
+                        return Ok(all);
+                    }
+                    bytes += size;
+                    all.push(tool.clone());
+                }
             }
             cursor = result
                 .get("nextCursor")
@@ -392,7 +421,7 @@ pub async fn check_key(
                 break;
             }
         }
-        Ok(count)
+        Ok(all)
     }
     .await;
     // Closed whatever happened (a session that never got an id has nothing to close).
