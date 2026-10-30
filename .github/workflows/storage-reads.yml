@@ -101,6 +101,16 @@ jobs:
         env:
           NOEVIA_STORAGE_ORACLE_CORE: ${{ github.workspace }}/core
         run: cargo test --release --locked -p noevia-server --features rust-storage-browse --test storage_browse -- --nocapture
+      - name: "Node's real MCP client against the front's credential broker (#2202)"
+        # tests/mcp_credentials.rs runs a real `node` process (tests/mcp_node_live.cjs) that loads the paired Core's
+        # store client, broker adapter, MCP wiring and MCP client, against this front's internal store and a
+        # synthetic MCP server + sign-in service on loopback: connect, callback, a tool call with a token the
+        # front hands out, a 401 and the refresh past it, disconnect. A missing Core checkout is a failure here
+        # (elsewhere the test says it skipped).
+        env:
+          NOEVIA_MCP_CORE: ${{ github.workspace }}/front-core
+          NOEVIA_MCP_CORE_REQUIRED: "1"
+        run: cargo test --locked -p noevia-server --features rust-storage-reads --test mcp_credentials node_signs_in -- --nocapture
       - name: Replay against Node directly (reference data dir)
         run: |
           set -euo pipefail

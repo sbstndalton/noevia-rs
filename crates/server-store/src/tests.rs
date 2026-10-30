@@ -797,3 +797,195 @@ fn chatgpt_tokens_take_only_the_broker_statements() {
     let raw = w.write(|tx| tx.execute("DELETE FROM chatgpt_oauth_tokens", []));
     assert!(matches!(raw, Err(StoreError::NotOwned(_))), "{raw:?}");
 }
+
+#[test]
+fn mcp_credential_tables_take_only_the_broker_statements() {
+    // sbstndalton/noevia#2202: the MCP credential broker's statements on three tables, nothing else.
+    let (dir, node) = node_db();
+    node.execute_batch(
+        "CREATE TABLE IF NOT EXISTS mcp_oauth_clients(server_id TEXT PRIMARY KEY, data_enc TEXT NOT NULL, updated_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS mcp_oauth_tokens(user_id TEXT NOT NULL, server_id TEXT NOT NULL, data_enc TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY(user_id, server_id));
+         CREATE TABLE IF NOT EXISTS directory_mcp_servers(id TEXT PRIMARY KEY, registry_name TEXT NOT NULL UNIQUE, title TEXT NOT NULL, url TEXT NOT NULL, added_by TEXT, added_at INTEGER NOT NULL, headers_enc TEXT, oauth INTEGER NOT NULL DEFAULT 0, personal INTEGER NOT NULL DEFAULT 0, declared_json TEXT NOT NULL DEFAULT '[]');
+         CREATE TABLE IF NOT EXISTS directory_mcp_user_keys(user_id TEXT NOT NULL, server_id TEXT NOT NULL, headers_enc TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY(user_id, server_id));",
+    )
+    .unwrap();
+    let w = Writer::open(dir.path(), RustAuth::owned()).unwrap();
+    // A raw statement on any of the three is refused, and so is a write of the shared server list.
+    for sql in [
+        "INSERT INTO mcp_oauth_tokens VALUES('u','s','x',1)",
+        "UPDATE mcp_oauth_clients SET data_enc='x'",
+        "DELETE FROM directory_mcp_user_keys",
+        "INSERT INTO directory_mcp_servers(id,registry_name,title,url,added_at) VALUES('s','r','t','https://x',1)",
+        "DELETE FROM directory_mcp_servers",
+    ] {
+        let raw = w.write(|tx| tx.execute(sql, []));
+        assert!(matches!(raw, Err(StoreError::NotOwned(_))), "{sql}: {raw:?}");
+    }
+    let cap = RustMcpCredentials::owned();
+    let count = |sql: &str| -> i64 { node.query_row(sql, [], |r| r.get(0)).unwrap() };
+    let one = |sql: &str| -> Option<String> { node.query_row(sql, [], |r| r.get(0)).ok() };
+    // Tokens: upsert, compare-and-swap, the three deletes.
+    assert_eq!(
+        w.write(|tx| tx.mcp_save_token(cap, "u1", "s1", "a", 1))
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        w.write(|tx| tx.mcp_save_token(cap, "u1", "s1", "b", 2))
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        one("SELECT data_enc FROM mcp_oauth_tokens WHERE user_id='u1'"),
+        Some("b".into())
+    );
+    assert_eq!(
+        w.write(|tx| tx.mcp_swap_token(cap, "u1", "s1", "c", 3, "a"))
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        w.write(|tx| tx.mcp_swap_token(cap, "u1", "s1", "c", 3, "b"))
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        one("SELECT data_enc FROM mcp_oauth_tokens WHERE user_id='u1'"),
+        Some("c".into())
+    );
+    w.write(|tx| tx.mcp_save_token(cap, "u1", "s2", "x", 1))
+        .unwrap();
+    w.write(|tx| tx.mcp_save_token(cap, "u2", "s1", "x", 1))
+        .unwrap();
+    // The disconnect's compare-and-delete removes the row it read and no other (a sign-in made since
+    // stays), and only that account's.
+    assert_eq!(
+        w.write(|tx| tx.mcp_delete_token_if(cap, "u1", "s2", "replaced"))
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        count("SELECT count(*) FROM mcp_oauth_tokens WHERE user_id='u1'"),
+        2
+    );
+    assert_eq!(
+        w.write(|tx| tx.mcp_delete_token_if(cap, "u1", "s2", "x"))
+            .unwrap(),
+        1
+    );
+    w.write(|tx| tx.mcp_save_token(cap, "u1", "s2", "x", 1))
+        .unwrap();
+    assert_eq!(
+        w.write(|tx| tx.mcp_delete_token(cap, "u1", "s2")).unwrap(),
+        1
+    );
+    assert_eq!(
+        w.write(|tx| tx.mcp_delete_tokens_of_server(cap, "s1"))
+            .unwrap(),
+        2
+    );
+    w.write(|tx| tx.mcp_save_token(cap, "u1", "s1", "x", 1))
+        .unwrap();
+    w.write(|tx| tx.mcp_save_token(cap, "u1", "s9", "x", 1))
+        .unwrap();
+    assert_eq!(
+        w.write(|tx| tx.mcp_delete_tokens_of_user(cap, "u1"))
+            .unwrap(),
+        2
+    );
+    assert_eq!(count("SELECT count(*) FROM mcp_oauth_tokens"), 0);
+    // Clients and keys.
+    assert_eq!(
+        w.write(|tx| tx.mcp_save_client(cap, "s1", "k1", 1))
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        w.write(|tx| tx.mcp_swap_client(cap, "s1", "k2", 2, "nope"))
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        w.write(|tx| tx.mcp_swap_client(cap, "s1", "k2", 2, "k1"))
+            .unwrap(),
+        1
+    );
+    // A registration a service no longer knows goes only while it is still the one read.
+    assert_eq!(
+        w.write(|tx| tx.mcp_delete_client_if(cap, "s1", "k1"))
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        w.write(|tx| tx.mcp_delete_client_if(cap, "s1", "k2"))
+            .unwrap(),
+        1
+    );
+    w.write(|tx| tx.mcp_save_client(cap, "s1", "k3", 1))
+        .unwrap();
+    assert_eq!(w.write(|tx| tx.mcp_delete_client(cap, "s1")).unwrap(), 1);
+    assert_eq!(
+        w.write(|tx| tx.mcp_save_key(cap, "u1", "s1", "h1", 1))
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        w.write(|tx| tx.mcp_swap_key(cap, "u1", "s1", "h2", "zz"))
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        w.write(|tx| tx.mcp_swap_key(cap, "u1", "s1", "h2", "h1"))
+            .unwrap(),
+        1
+    );
+    assert_eq!(w.write(|tx| tx.mcp_delete_key(cap, "u1", "s1")).unwrap(), 1);
+    for (u, s) in [("u1", "s1"), ("u1", "s2"), ("u2", "s1")] {
+        w.write(|tx| tx.mcp_save_key(cap, u, s, "h", 1)).unwrap();
+    }
+    assert_eq!(
+        w.write(|tx| tx.mcp_delete_keys_of_server(cap, "s2"))
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        w.write(|tx| tx.mcp_delete_keys_of_user(cap, "u2")).unwrap(),
+        1
+    );
+    assert_eq!(count("SELECT count(*) FROM directory_mcp_user_keys"), 1);
+    // The sweeps: accounts that are gone, then servers that are gone.
+    node.execute_batch(
+        "INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES('kept','kept','kept','K','member','x','kept',1,1);
+         INSERT INTO directory_mcp_servers(id,registry_name,title,url,added_at) VALUES('s-kept','r','t','https://x',1)",
+    )
+    .unwrap();
+    w.write(|tx| tx.mcp_delete_keys_of_user(cap, "u1")).unwrap();
+    for (u, s) in [("kept", "s-kept"), ("gone", "s-kept"), ("kept", "s-gone")] {
+        w.write(|tx| {
+            tx.mcp_save_token(cap, u, s, "x", 1)?;
+            tx.mcp_save_key(cap, u, s, "x", 1)
+        })
+        .unwrap();
+    }
+    w.write(|tx| tx.mcp_save_client(cap, "s-gone", "k", 1))
+        .unwrap();
+    w.write(|tx| tx.mcp_save_client(cap, "s-kept", "k", 1))
+        .unwrap();
+    assert_eq!(
+        w.write(|tx| tx.mcp_delete_orphans_of_users(cap)).unwrap(),
+        2
+    );
+    assert_eq!(
+        w.write(|tx| tx.mcp_delete_orphans_of_servers(cap)).unwrap(),
+        3
+    );
+    assert_eq!(count("SELECT count(*) FROM mcp_oauth_tokens"), 1);
+    assert_eq!(count("SELECT count(*) FROM directory_mcp_user_keys"), 1);
+    assert_eq!(
+        one("SELECT server_id FROM mcp_oauth_clients"),
+        Some("s-kept".into())
+    );
+    // The window closed again after the methods.
+    let raw = w.write(|tx| tx.execute("DELETE FROM mcp_oauth_tokens", []));
+    assert!(matches!(raw, Err(StoreError::NotOwned(_))), "{raw:?}");
+}

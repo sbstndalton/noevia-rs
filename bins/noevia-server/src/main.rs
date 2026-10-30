@@ -183,6 +183,12 @@ async fn server_main() -> ExitCode {
     if let Some(broker) = app.chatgpt_oauth.as_ref() {
         broker.sweep_once(&app).await;
     }
+    // sbstndalton/noevia#2202: the MCP credential broker removes the credentials of deleted accounts
+    // and servers and publishes who is ready (Node re-reads the file's signal).
+    #[cfg(feature = "rust-storage-reads")]
+    if let Some(mcp) = app.mcp.as_ref() {
+        mcp.sweep_once(&app).await;
+    }
     // sbstndalton/noevia#2190 round 7: Google Drive's state file is brought up to date with the disk,
     // and the off-site backup's nightly schedule starts.
     if let Some(drive) = app.drive.as_ref() {
