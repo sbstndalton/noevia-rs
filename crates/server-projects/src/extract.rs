@@ -20,8 +20,10 @@
 //!   first window in ranges through Docling, up to the page and text ceilings
 //!   (source-limits.cjs `documentLimits`), then each incomplete page retried alone through OCR at
 //!   400 dpi (at most 20 pages, 3 per request, the busy waits, the attempt bound).
-//! - The large-document lock: one PDF over 25 MiB at a time in this process, a waiter gives up
-//!   after two minutes as "busy" (503), which is a passing failure.
+//! - The large-document lock: one PDF over 25 MiB at a time on the host, a waiter gives up
+//!   after two minutes as "busy" (503), which is a passing failure. In-process it is a Mutex; across
+//!   processes it is [`LARGE_LOCK_FILE`] in the data directory, which core's large-document-lock.cjs
+//!   takes too (review #2191 r4+5, #697: Node and the front must never extract two at once).
 use crate::files::js_string;
 use js_json::{wtf16, JValue};
 use sha2::{Digest, Sha256};
@@ -119,6 +121,11 @@ pub trait Engine {
     fn ocr_caps(&self) -> Option<OcrCaps>;
     /// multimodal-rag.cjs `enabled()` (NOEVIA_MULTIMODAL_RAG).
     fn multimodal(&self) -> bool;
+    /// The host-wide large-document lock file ([`LARGE_LOCK_FILE`] in UI_DATA_DIR); `None` holds
+    /// the lock in this process only (tests).
+    fn large_lock_file(&self) -> Option<std::path::PathBuf> {
+        None
+    }
     /// The busy waits (BUSY_WAITS_MS, 5 s and 15 s); a test shortens them.
     fn busy_waits(&self) -> Vec<Duration> {
         vec![Duration::from_secs(5), Duration::from_secs(15)]
@@ -570,7 +577,7 @@ pub fn extract_document_text(
     limits: &Limits,
     fig_bytes: &mut FigureBytes,
 ) -> Result<JValue, Permanent> {
-    let _held = match large_lock(bytes.len()) {
+    let _held = match large_lock(bytes.len(), engine.large_lock_file().as_deref()) {
         Ok(h) => h,
         Err(busy) => return Ok(unavailable(&busy)),
     };
@@ -597,7 +604,7 @@ pub fn complete_document(
     limits: &Limits,
     fig_bytes: &mut FigureBytes,
 ) -> JValue {
-    let _held = match large_lock(bytes.len()) {
+    let _held = match large_lock(bytes.len(), engine.large_lock_file().as_deref()) {
         Ok(h) => h,
         // A busy lock leaves the record as it is (no marker), so the job tries again.
         Err(_) => return out,
@@ -1169,11 +1176,23 @@ const BUSY: &str = "Large-document processing is busy; refresh to retry.";
 static LARGE: Mutex<bool> = Mutex::new(false);
 static FREED: Condvar = Condvar::new();
 
-/// The process-wide hold of one large document; released on drop.
-pub struct LargeHold(bool);
+/// The host-wide lock file in UI_DATA_DIR, shared with core's large-document-lock.cjs. It is an
+/// SQLite file: the holder keeps a `BEGIN IMMEDIATE` transaction open (SQLite's RESERVED lock, one
+/// writer per file across every process and connection), and a holder that dies frees it with its
+/// file locks. A waiter polls [`FILE_POLL`] apart with no busy timeout, so it never blocks past its
+/// deadline. Both sides keep this protocol: the file name, `BEGIN IMMEDIATE`, nothing ever written.
+pub const LARGE_LOCK_FILE: &str = "large-document.lock";
+const FILE_POLL: Duration = Duration::from_millis(200);
+
+/// The hold of one large document; released on drop (the file's transaction first).
+pub struct LargeHold(bool, Option<rusqlite::Connection>);
 
 impl Drop for LargeHold {
     fn drop(&mut self) {
+        if let Some(conn) = self.1.take() {
+            let _ = conn.execute_batch("ROLLBACK");
+            drop(conn);
+        }
         if self.0 {
             if let Ok(mut held) = LARGE.lock() {
                 *held = false;
@@ -1191,26 +1210,57 @@ fn acquire_wait() -> Duration {
     Duration::from_millis(ms as u64)
 }
 
-/// large-document-lock.cjs `ifLarge(size, fn)`: a document over 25 MiB waits for the one hold, at
-/// most the acquire wait (two minutes), then is "busy" (a passing failure; the job tries again).
-pub fn large_lock(size: usize) -> Result<LargeHold, String> {
-    if size <= LARGE_BYTES {
-        return Ok(LargeHold(false));
-    }
-    let deadline = Instant::now() + acquire_wait();
-    let mut held = LARGE.lock().map_err(|_| BUSY.to_string())?;
-    while *held {
+/// The file lock, polled until `deadline`; `None` past it. An error opening the file (not a busy
+/// one) is also `None`: the lock is never skipped.
+fn take_file(file: &std::path::Path, deadline: Instant) -> Option<rusqlite::Connection> {
+    let conn = rusqlite::Connection::open(file).ok()?;
+    conn.busy_timeout(Duration::ZERO).ok()?;
+    loop {
+        match conn.execute_batch("BEGIN IMMEDIATE") {
+            Ok(()) => return Some(conn),
+            Err(rusqlite::Error::SqliteFailure(e, _))
+                if matches!(
+                    e.code,
+                    rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
+                ) => {}
+            Err(_) => return None,
+        }
         let left = deadline.saturating_duration_since(Instant::now());
         if left.is_zero() {
-            return Err(BUSY.into());
+            return None;
         }
-        let (next, _) = FREED
-            .wait_timeout(held, left)
-            .map_err(|_| BUSY.to_string())?;
-        held = next;
+        std::thread::sleep(left.min(FILE_POLL));
     }
-    *held = true;
-    Ok(LargeHold(true))
+}
+
+/// large-document-lock.cjs `ifLarge(size, fn)`: a document over 25 MiB waits for the one hold (this
+/// process's, then the host's in `file`), at most the acquire wait (two minutes), then is "busy" (a
+/// passing failure; the job tries again).
+pub fn large_lock(size: usize, file: Option<&std::path::Path>) -> Result<LargeHold, String> {
+    if size <= LARGE_BYTES {
+        return Ok(LargeHold(false, None));
+    }
+    let deadline = Instant::now() + acquire_wait();
+    {
+        let mut held = LARGE.lock().map_err(|_| BUSY.to_string())?;
+        while *held {
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                return Err(BUSY.into());
+            }
+            let (next, _) = FREED
+                .wait_timeout(held, left)
+                .map_err(|_| BUSY.to_string())?;
+            held = next;
+        }
+        *held = true;
+    }
+    let mut hold = LargeHold(true, None);
+    if let Some(file) = file {
+        // Dropping `hold` on failure frees this process's turn for the next waiter.
+        hold.1 = Some(take_file(file, deadline).ok_or_else(|| BUSY.to_string())?);
+    }
+    Ok(hold)
 }
 
 /// SHA-256 hex.
@@ -1459,13 +1509,78 @@ pub(crate) mod tests {
         assert_eq!(fake.asked.borrow().len(), 1);
     }
 
+    /// Serialises the tests that take the process-wide lock.
+    static SERIAL: Mutex<()> = Mutex::new(());
+
     #[test]
     fn the_large_lock_waits_then_is_busy() {
+        let _s = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
         std::env::set_var("LARGE_DOCUMENT_ACQUIRE_WAIT_MS", "50");
-        let first = large_lock(LARGE_BYTES + 1).unwrap();
-        assert!(large_lock(10).is_ok());
-        assert_eq!(large_lock(LARGE_BYTES + 1).err().as_deref(), Some(BUSY));
+        let first = large_lock(LARGE_BYTES + 1, None).unwrap();
+        assert!(large_lock(10, None).is_ok());
+        assert_eq!(
+            large_lock(LARGE_BYTES + 1, None).err().as_deref(),
+            Some(BUSY)
+        );
         drop(first);
-        assert!(large_lock(LARGE_BYTES + 1).is_ok());
+        assert!(large_lock(LARGE_BYTES + 1, None).is_ok());
+    }
+
+    /// The child side of the two-process test: when NOEVIA_TEST_LARGE_LOCK_HOLD names a lock file,
+    /// takes the lock in it, writes `<file>.held`, and keeps it until `<file>.release` appears
+    /// (at most 30 s). Otherwise it does nothing.
+    #[test]
+    fn large_lock_child_holds() {
+        let Ok(file) = std::env::var("NOEVIA_TEST_LARGE_LOCK_HOLD") else {
+            return;
+        };
+        let file = std::path::PathBuf::from(file);
+        let _s = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let hold = large_lock(LARGE_BYTES + 1, Some(&file)).unwrap();
+        std::fs::write(file.with_extension("held"), b"1").unwrap();
+        let until = Instant::now() + Duration::from_secs(30);
+        while !file.with_extension("release").exists() && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        drop(hold);
+    }
+
+    /// Review #2191 r4+5 (#697): the lock was in-process only, so another process (Node's
+    /// large-document-lock.cjs, or a second front) could extract a large document at the same time.
+    #[test]
+    fn the_large_lock_is_held_across_processes() {
+        let _s = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let t = tempfile::tempdir().unwrap();
+        let file = t.path().join(LARGE_LOCK_FILE);
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "extract::tests::large_lock_child_holds",
+                "--nocapture",
+            ])
+            .env("NOEVIA_TEST_LARGE_LOCK_HOLD", &file)
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let until = Instant::now() + Duration::from_secs(20);
+        while !file.with_extension("held").exists() {
+            assert!(Instant::now() < until, "the child never took the lock");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        std::env::set_var("LARGE_DOCUMENT_ACQUIRE_WAIT_MS", "300");
+        let started = Instant::now();
+        assert_eq!(
+            large_lock(LARGE_BYTES + 1, Some(&file)).err().as_deref(),
+            Some(BUSY),
+            "another process holds the lock"
+        );
+        assert!(started.elapsed() >= Duration::from_millis(250));
+        // A failed file take frees this process's turn.
+        assert!(large_lock(LARGE_BYTES + 1, None).is_ok());
+        std::fs::write(file.with_extension("release"), b"1").unwrap();
+        assert!(child.wait().unwrap().success());
+        std::env::set_var("LARGE_DOCUMENT_ACQUIRE_WAIT_MS", "5000");
+        let hold = large_lock(LARGE_BYTES + 1, Some(&file));
+        assert!(hold.is_ok(), "free once the other process lets go");
     }
 }

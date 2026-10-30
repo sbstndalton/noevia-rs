@@ -477,6 +477,13 @@ impl Engine for HttpEngine {
     fn busy_waits(&self) -> Vec<Duration> {
         self.waits.clone()
     }
+
+    /// The host-wide lock core's large-document-lock.cjs also takes (review #2191 r4+5, #697).
+    fn large_lock_file(&self) -> Option<PathBuf> {
+        self.data_dir
+            .as_deref()
+            .map(|d| d.join(server_projects::extract::LARGE_LOCK_FILE))
+    }
 }
 
 fn now_ms() -> i64 {

@@ -708,3 +708,23 @@ next use of that account's store, as a Node restart did before; Node may still f
 (as when the old Node's journal writes failed). (4) The front's restart, not Node's, now interrupts
 active jobs.
 
+
+## sbstndalton/noevia#2191 round 7: review fixes for rounds 4+5
+
+- **The extraction job is written before the record that says "queued".** `POST /api/projects/{id}/documents`
+  wrote `document.extraction: "queued"` to projects.json and then the job to `extraction-jobs.db`; a
+  queue write that failed was logged and answered 200, so no worker ever read the document. The job is
+  now written first. A queue that cannot be written answers **503** `Document extraction could not be
+  queued; nothing was changed. Try again shortly.`, and nothing is saved (the stored original is
+  pruned). A save that fails after the job was written puts the name's earlier job back (or removes
+  the new one); a job whose record is never saved is dropped by the worker anyway (`find_source`
+  matches the byte hash).
+- **One large document on the host, not per process (#697).** The large-document lock (documents over
+  25 MiB) was a Mutex in the front and an in-process queue in core, so the two could hold a large
+  document each. Both now also take `UI_DATA_DIR/large-document.lock`: an SQLite file whose holder
+  keeps a `BEGIN IMMEDIATE` transaction open (one holder across processes; a holder that dies frees
+  it), polled 200 ms apart with no busy timeout, inside the same two-minute acquire wait. A waiter
+  past it is "busy" as before (`Large-document processing is busy; refresh to retry.`, a passing
+  failure). Core's side is `server/large-document-file-lock.cjs`, taken in large-document-lock.cjs
+  `acquire()`. It stays even once core extracts nothing large, so a rollback to an older front or
+  core still pairs safely.
