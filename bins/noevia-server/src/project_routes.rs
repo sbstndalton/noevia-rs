@@ -91,6 +91,11 @@ pub enum Route {
     UploadOriginal {
         project: String,
     },
+    /// GET /api/projects/{id}/documents/pages (sbstndalton/noevia#2191 round 4,
+    /// `rust-project-document-pages`)
+    DocumentPages {
+        project: String,
+    },
     /// POST /api/projects (sbstndalton/noevia#2191, `rust-project-lifecycle`)
     CreateProject,
     /// DELETE /api/projects/{projectId} (sbstndalton/noevia#2191, `rust-project-lifecycle`)
@@ -183,12 +188,17 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
             project: (*project).to_string(),
         }),
         // routes/projects.cjs `sourceTextRoute`, `docRead` (its `original` half) and
-        // `originalUpload`, GET only (sbstndalton/noevia#2191). `documents/pages` stays Node's.
+        // `originalUpload`, GET only (sbstndalton/noevia#2191); `docRead`'s page reader since round 4.
         ("GET", [project, "sources", "text"]) if !project.is_empty() => Some(Route::SourceText {
             project: (*project).to_string(),
         }),
         ("GET", [project, "documents", "original"]) if !project.is_empty() => {
             Some(Route::DocumentOriginal {
+                project: (*project).to_string(),
+            })
+        }
+        ("GET", [project, "documents", "pages"]) if !project.is_empty() => {
+            Some(Route::DocumentPages {
                 project: (*project).to_string(),
             })
         }
@@ -363,6 +373,7 @@ pub async fn serve(
         | Route::DeleteChat { .. }
         | Route::SourceText { .. }
         | Route::DocumentOriginal { .. }
+        | Route::DocumentPages { .. }
         | Route::UploadOriginal { .. } => None,
     };
     // `url.searchParams.get('name')`: the first `name`, form-decoded as WHATWG URLSearchParams.
@@ -371,6 +382,7 @@ pub async fn serve(
             .find(|(k, _)| k == "name")
             .map(|(_, v)| v.into_owned())
     });
+    let query = parts.uri.query().map(str::to_owned);
     let upload = match limit {
         Some(limit) => match crate::account_routes::read_body(body, limit).await {
             Ok(b) => Some(b),
@@ -407,6 +419,7 @@ pub async fn serve(
         Route::Upload { .. }
             | Route::SourceText { .. }
             | Route::DocumentOriginal { .. }
+            | Route::DocumentPages { .. }
             | Route::UploadOriginal { .. }
             | Route::SaveChats { .. }
             | Route::SaveFreeChats
@@ -478,6 +491,9 @@ pub async fn serve(
             }
             (Route::UploadOriginal { project }, _) => {
                 originals::upload(ctx, &project, name.as_deref())
+            }
+            (Route::DocumentPages { project }, _) => {
+                server_projects::document_pages::get(ctx, &project, query.as_deref())
             }
             (Route::CreateProject, Some(b)) => match &create_env {
                 Some((catalogue, storage, root, (app, authn))) => {

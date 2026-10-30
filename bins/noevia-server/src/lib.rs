@@ -98,6 +98,11 @@ use std::sync::Arc;
 /// `unindex` job in the index outbox. Node refuses the route (core rust-project-files.cjs
 /// `RUST_PROJECT_FILES_OWNED`) and runs `unindex` jobs, so the web supervisor pairs them.
 ///
+/// `rust-project-document-pages`: this build answers `GET /api/projects/{id}/documents/pages` (a
+/// stored document's page text and notice, sbstndalton/noevia#2191 round 4), permanently and with
+/// no switch. Node refuses the GET (core rust-project-document-pages.cjs
+/// `RUST_PROJECT_DOCUMENT_PAGES_OWNED`), so the web supervisor pairs them.
+///
 /// `project-store`: this build serves the internal project store Node writes projects.json and
 /// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
 /// supervisor confirms it to Node (NOEVIA_RUST_PROJECT_STORE_CONFIRMED) and hands both the secret.
@@ -127,6 +132,7 @@ pub const FEATURES: &[&str] = &[
     "rust-project-lifecycle",
     "rust-project-storage",
     "rust-project-files",
+    "rust-project-document-pages",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",

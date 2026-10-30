@@ -489,7 +489,7 @@ async fn signed_out_other_tenant_and_other_methods_are_not_served() {
         ("POST", "/api/projects/p1/sources/text"),
         ("DELETE", "/api/projects/p1/uploads/original"),
         ("GET", "/api/projects/p1/other/original?name=x"),
-        ("GET", "/api/projects/p1/documents/pages?name=x"),
+        ("POST", "/api/projects/p1/documents/pages?name=x"),
     ] {
         let (status, _, _) = call(f.addr, m, path, &h, "").await;
         assert_eq!(status, 502, "{m} {path} goes to Node");
@@ -499,4 +499,90 @@ async fn signed_out_other_tenant_and_other_methods_are_not_served() {
 #[test]
 fn the_build_lists_rust_project_reads() {
     assert!(noevia_server::FEATURES.contains(&"rust-project-reads"));
+    assert!(noevia_server::FEATURES.contains(&"rust-project-document-pages"));
+}
+
+/// sbstndalton/noevia#2191 round 4 (`rust-project-document-pages`): every answer equals Node's,
+/// byte for byte, as core's own `docRead` + document-sources.cjs `readPages` gave them on the same
+/// synthetic stored results (fixtures/document-pages-oracle.json, written by
+/// fixtures/document-pages-oracle.cjs against core e10b48b, the last with the Node route): page
+/// ranges, the UTF-16 offset cut through a surrogate pair, JS `Number()`
+/// of the query values, 400/404/422 refusals, a leading BOM and a missing result.
+/// Failing before round 4: the GET went to Node (absent here: 502).
+#[tokio::test]
+async fn document_pages_answer_as_node_does() {
+    let f = front().await;
+    let oracle: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/document-pages-oracle.json")).unwrap();
+    let dir = f.user_dir();
+    std::fs::write(
+        dir.join("projects.json"),
+        oracle["project"].as_str().unwrap(),
+    )
+    .unwrap();
+    let docs = dir.join("project-documents").join(hex_sha256("p1"));
+    std::fs::create_dir_all(&docs).unwrap();
+    for (version, text) in oracle["versions"].as_object().unwrap() {
+        std::fs::write(docs.join(format!("{version}.json")), text.as_str().unwrap()).unwrap();
+    }
+    let h = get_headers(&f);
+    let cases = oracle["cases"].as_array().unwrap();
+    assert!(cases.len() >= 20);
+    for case in cases {
+        let query = case[0].as_str().unwrap();
+        let path = format!("/api/projects/p1/documents/pages{query}");
+        let (status, head, body) = call(f.addr, "GET", &path, &h, "").await;
+        assert_eq!(
+            (u64::from(status), body.as_str()),
+            (case[1].as_u64().unwrap(), case[2].as_str().unwrap()),
+            "{query}"
+        );
+        assert!(head.contains("cache-control: no-store"), "{head}");
+    }
+    // A symlinked result is not followed (stricter than Node): its 422.
+    let v = "a".repeat(64);
+    let outside = f.data.join("outside.json");
+    std::fs::rename(docs.join(format!("{v}.json")), &outside).unwrap();
+    std::os::unix::fs::symlink(&outside, docs.join(format!("{v}.json"))).unwrap();
+    let (status, _, body) = call(
+        f.addr,
+        "GET",
+        "/api/projects/p1/documents/pages?name=Synthetic%2F%22report%22.pdf",
+        &h,
+        "",
+    )
+    .await;
+    assert_eq!(
+        (status, body.as_str()),
+        (
+            422,
+            r#"{"error":"Saved document data is unavailable; upload or refresh again."}"#
+        )
+    );
+    // Signed out 401; another account sees only its own workspace (no such project: 404).
+    let (status, _, _) = call(
+        f.addr,
+        "GET",
+        "/api/projects/p1/documents/pages?name=bom.pdf",
+        &[],
+        "",
+    )
+    .await;
+    assert_eq!(status, 401);
+    let (_, member) = insert_member_session(&f);
+    let (status, _, body) = call(
+        f.addr,
+        "GET",
+        "/api/projects/p1/documents/pages?name=bom.pdf",
+        &[("cookie", member.as_str())],
+        "",
+    )
+    .await;
+    assert_eq!(
+        (status, body.as_str()),
+        (404, r#"{"error":"no such document"}"#)
+    );
+    // A bad escape in the id is Node's URIError (500).
+    let (status, _, _) = call(f.addr, "GET", "/api/projects/%E0/documents/pages", &h, "").await;
+    assert_eq!(status, 500);
 }

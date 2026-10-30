@@ -459,7 +459,7 @@ file whose name is a validated hex hash, never a request value.
 | `/api/projects/{id}/sources/text` (GET) | rust | inline text, or `project-sources/<safe id>/<textRef>.txt`; a missing text is 404 `SOURCE_TEXT_MISSING`, the pointer kept |
 | `/api/projects/{id}/documents/original` (GET) | rust | `project-documents/<sha256 id>/<byteHash>.pdf`; unreadable is Node's 422 |
 | `/api/projects/{id}/{*}/original` (GET) | rust | `uploads/original` only (`project-uploads/<sha256 id>/<attachment.id>`, #786's 404); any other segment is Node's |
-| `/api/projects/{id}/documents/pages` | node | the page reader, beside the extraction state and the large-document lock |
+| `/api/projects/{id}/documents/pages` (GET) | rust | round 4, below |
 | `/api/projects` (POST), `/api/projects/{projectId}` (DELETE) | rust | round 2, below |
 | `/api/projects/{projectId}/config` | node | its model check reads Node's served-model catalogue and provider registry (live state, not persisted), and a `files` patch re-indexes through Node's RAG writer; next after the provider/model catalogue is published like the toolbox catalogue |
 | `/api/projects/{id}/upload`, `/sources/sync`, `/documents` (POST), `source-jobs`, `folder-import/plan` | node | the storage writes they make exist in the front since round 3 (`writes`, below); what keeps them on Node is the extraction pipeline they run in-process: docling/OCR extraction, `pdf-reduce`'s page ranges, the DOCX reader, the large-document lock and the background source jobs, then the index outbox for their RAG work |
@@ -540,3 +540,21 @@ and a pruned directory entry is never followed through a symlink. Not serialized
 in-process source lock (a concurrent core upload of the same project is merged through
 projects.json's version, not queued behind the delete). Every other method of the path is Node's.
 
+
+## sbstndalton/noevia#2191 round 4 (group rust-project-document-pages): a stored document's pages
+
+`GET /api/projects/{id}/documents/pages` is the front's (crates/server-projects `document_pages`);
+core refuses the GET with 503 `RUST_PROJECT_DOCUMENT_PAGES_OWNED`
+(`server/rust-project-document-pages.cjs`) and `--features` lists `rust-project-document-pages`.
+core routes/projects.cjs `docRead` with document-sources.cjs `readPages`, answer for answer: the id
+decoded (a bad escape 500), `getProject` (its self-heal saved), the file named by the first `name`
+query value with a `document`, else 404 `no such document`; `startPage`/`endPage`/`offset` as JS
+`Number(...)` (an empty value is the default); 1 to 5 whole pages and a whole non-negative offset,
+else 400; no `availableVersion` 422; past the document 400; a page the extraction did not keep 422;
+any other failure with the stored `project-documents/<sha256 id>/<version>.json` (missing, not
+JSON, a leading BOM, a shape the JS throws on) Node's 422 `Saved document data is unavailable;
+upload or refresh again.` The text is cut at the UTF-16 offset to 8 000 units (`nextOffset`), with
+the document's `notice` (quoted name, state, page outcomes and OCR-retry notes, versions, index).
+Stricter than Node: the result is opened with `O_NOFOLLOW` and read only up to 256 MiB. The file is
+written once per version by core's extraction (an atomic rename); reading it never takes the
+large-document lock (Node's reader did not either). Every other method of the path is Node's.

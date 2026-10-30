@@ -124,6 +124,7 @@ const PROJECT_ROUTES: &[&str] = &[
     PROJECT_CHAT,
     PROJECT_SOURCE_TEXT,
     PROJECT_DOCUMENT_ORIGINAL,
+    PROJECT_DOCUMENT_PAGES,
     PROJECT_ORIGINAL,
     PROJECT_CREATE,
     PROJECT_ONE,
@@ -147,6 +148,10 @@ pub(crate) const PROJECT_ONE: &str = "/api/projects/{projectId}";
 /// sent on to Node by project_routes::route.
 pub(crate) const PROJECT_SOURCE_TEXT: &str = "/api/projects/{id}/sources/text";
 pub(crate) const PROJECT_DOCUMENT_ORIGINAL: &str = "/api/projects/{id}/documents/original";
+/// A stored document's page text (GET only; routes.toml), the front's under
+/// `rust-project-document-pages` (sbstndalton/noevia#2191 round 4); Node refuses the GET (core
+/// rust-project-document-pages.cjs).
+pub(crate) const PROJECT_DOCUMENT_PAGES: &str = "/api/projects/{id}/documents/pages";
 pub(crate) const PROJECT_ORIGINAL: &str = "/api/projects/{id}/{*}/original";
 
 /// Settings → Data → Delete old chats, its preview (GET only; routes.toml): a read of the chat
@@ -1022,6 +1027,7 @@ mod tests {
         for p in [
             "/api/projects/p1/sources/text",
             "/api/projects/p1/documents/original",
+            "/api/projects/p1/documents/pages",
             "/api/projects/p1/uploads/original",
         ] {
             assert_eq!(
@@ -1034,7 +1040,6 @@ mod tests {
             }
         }
         for p in [
-            "/api/projects/p1/documents/pages",
             "/api/projects/p1/upload",
             "/api/projects/p1/sources/sync",
             "/api/projects/p1/config",
@@ -1102,6 +1107,11 @@ mod tests {
             None
         );
         assert!(crate::FEATURES.contains(&"rust-project-files"));
+        assert!(crate::FEATURES.contains(&"rust-project-document-pages"));
+        assert_eq!(
+            crate::project_routes::route("GET", "/api/projects//documents/pages"),
+            None
+        );
     }
 
     #[test]
