@@ -529,6 +529,10 @@ async fn retrieval_is_what_node_published_and_nothing_old_or_unprovable() {
     assert_eq!(ask().await, unavailable, "a symlink is not Node's file");
     std::fs::remove_file(&file).unwrap();
     // Stale: more than two intervals old is unavailable, two is not; a file from the future is not current.
+    // The clock is read again here: every unusable case above waits out the front's two-second look for a
+    // fresh publish, so the `now` taken before them is many seconds old on a slow runner and a file
+    // written "19 s ago" against it would be past the 20 s limit by the time it is read.
+    let now = noevia_server::identity::now_ms();
     publish(dir.path(), true, "available", now - 19_000, 10_000);
     assert_eq!(ask().await.1, "\"available\"");
     publish(dir.path(), true, "available", now - 25_000, 10_000);
