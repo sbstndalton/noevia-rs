@@ -26,7 +26,6 @@
 //! - `reject { user, generation }` -> `{ marked }`: the second 401 marks THIS sign-in (by its
 //!   generation, a digest of its ciphertext) as needing a reconnect; a newer one is left alone.
 //! - `catalogue { user }` -> `{ models: [{ slug, effort, summary, summaryParam, levels }] }`
-//! - `models { user, refresh }` -> the picker's answer, or `{ error, status }`
 //! - `disconnect { user }`, `forget { user }` -> `{ ok }`; `connected { user }` -> `{ exists }`
 //!
 //! Refresh lock: one async mutex per account serializes the refresh, the sign-in's save and the
@@ -512,6 +511,32 @@ impl Mem {
     }
 }
 
+/// Clears a sign-in's `polling` mark when its poll task ends, however it ends (a panic included).
+struct Polling<'a> {
+    broker: &'a Broker,
+    login_id: &'a str,
+}
+
+impl Drop for Polling<'_> {
+    fn drop(&mut self) {
+        if let Some(p) = self.broker.mem().pending.get_mut(self.login_id) {
+            p.polling = false;
+        }
+    }
+}
+
+/// Clears an account's `flying` (catalogue fetch running) mark when the fetch task ends.
+struct Flying<'a> {
+    broker: &'a Broker,
+    user: &'a str,
+}
+
+impl Drop for Flying<'_> {
+    fn drop(&mut self) {
+        self.broker.mem().flying.remove(self.user);
+    }
+}
+
 /// The broker: the front's one owner of Sign in with ChatGPT state.
 pub struct Broker {
     settings: Settings,
@@ -529,6 +554,8 @@ pub struct Broker {
     feature_env: Option<bool>,
     previous_key_env: Option<Zeroizing<String>>,
     keys: std::sync::OnceLock<Arc<SecretKeys>>,
+    /// Whether the start sweep of orphaned token rows has run (it retries until the table exists).
+    swept: std::sync::atomic::AtomicBool,
 }
 
 fn lock_for(
@@ -766,6 +793,7 @@ impl Broker {
             feature_env: status.feature_env,
             previous_key_env: status.previous_key_env.0.clone().map(Zeroizing::new),
             keys: std::sync::OnceLock::new(),
+            swept: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -961,6 +989,45 @@ impl Broker {
         Ok(())
     }
 
+    /// The broker-start sweep (blocking): deletes the token rows of accounts that no longer exist.
+    /// Core's admin delete removes the account first and asks the broker to forget its tokens
+    /// after; when that request fails the row is orphaned (sbstndalton/noevia#2190 round 5). Runs
+    /// once per start, at the first chance the database has the table (Node migrates it): until
+    /// then a failed attempt is simply retried by the next use.
+    pub fn sweep_orphans(&self, app: &App) {
+        use std::sync::atomic::Ordering;
+        if self.swept.load(Ordering::Acquire) {
+            return;
+        }
+        let Ok(writer) = app.writes.writer() else {
+            return;
+        };
+        let removed = writer
+            .write(|tx| tx.delete_orphan_chatgpt_tokens(RustChatgptOAuth::owned()))
+            .ok();
+        if let Some(n) = removed {
+            self.swept.store(true, Ordering::Release);
+            if n > 0 {
+                self.signal();
+                eprintln!("noevia-server: removed {n} ChatGPT sign-in(s) of deleted accounts");
+            }
+        }
+    }
+
+    /// [`Broker::sweep_orphans`] on the blocking pool (a no-op once it has run).
+    pub async fn sweep_once(&self, app: &Arc<App>) {
+        if self.swept.load(std::sync::atomic::Ordering::Acquire) {
+            return;
+        }
+        let a = Arc::clone(app);
+        let _ = tokio::task::spawn_blocking(move || {
+            if let Some(b) = a.chatgpt_oauth.as_ref() {
+                b.sweep_orphans(&a);
+            }
+        })
+        .await;
+    }
+
     /// The `chatgptOAuth` flag, read per request.
     fn flag(&self, app: &App) -> Result<bool, ()> {
         let writer = app.writes.writer().map_err(|_| ())?;
@@ -1120,7 +1187,41 @@ impl Broker {
         cancelled || m.generation(user) != generation
     }
 
-    pub async fn poll(&self, app: &Arc<App>, user: &str, login_id: &str) -> Result<JValue, Fail> {
+    /// The sign-in's "still wanted?" check and its removal from the pending map as ONE step of the
+    /// memory (`cancel` takes the same lock): a cancel lands wholly before it (the sign-in is
+    /// abandoned) or wholly after (the entry is gone, so the cancel finds nothing to cancel).
+    /// Returns whether the sign-in was abandoned (cancelled, or a disconnect bumped the generation).
+    fn settle(&self, login_id: &str, user: &str, generation: u64) -> bool {
+        let mut m = self.mem();
+        let cancelled = m
+            .pending
+            .remove(login_id)
+            .map(|p| p.cancelled)
+            .unwrap_or(true);
+        cancelled || m.generation(user) != generation
+    }
+
+    /// One poll. The exchange, the save and the `polling` mark's reset run as their own task: a
+    /// client that gives up mid-exchange must not strand the mark or burn the one-time
+    /// authorization code, so the handler only awaits the task.
+    pub async fn poll(
+        self: &Arc<Self>,
+        app: &Arc<App>,
+        user: &str,
+        login_id: &str,
+    ) -> Result<JValue, Fail> {
+        let (b, a, u, l) = (
+            Arc::clone(self),
+            Arc::clone(app),
+            user.to_owned(),
+            login_id.to_owned(),
+        );
+        tokio::spawn(async move { b.poll_task(&a, &u, &l).await })
+            .await
+            .unwrap_or_else(|_| Err(fail("ChatGPT sign-in failed.", 502)))
+    }
+
+    async fn poll_task(&self, app: &Arc<App>, user: &str, login_id: &str) -> Result<JValue, Fail> {
         let state = |s: &str| JValue::obj([("state", JValue::Str(s.into()))]);
         let pending = |interval: i64| {
             JValue::obj([
@@ -1156,21 +1257,20 @@ impl Broker {
                 p.generation,
             )
         };
-        let out = self
-            .poll_once(
-                app,
-                user,
-                login_id,
-                &device_auth_id,
-                &user_code,
-                interval,
-                generation,
-            )
-            .await;
-        if let Some(p) = self.mem().pending.get_mut(login_id) {
-            p.polling = false;
-        }
-        out
+        let _polling = Polling {
+            broker: self,
+            login_id,
+        };
+        self.poll_once(
+            app,
+            user,
+            login_id,
+            &device_auth_id,
+            &user_code,
+            interval,
+            generation,
+        )
+        .await
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1242,8 +1342,7 @@ impl Broker {
                 .ok_or_else(|| auth_error("transient"))?;
             // Checked and saved under the fence: a disconnect cannot land between the two.
             let fence = b.fence.lock().unwrap_or_else(|e| e.into_inner());
-            let abandoned = b.abandoned(&l, &u, generation);
-            b.mem().pending.remove(&l);
+            let abandoned = b.settle(&l, &u, generation);
             if abandoned {
                 drop(fence);
                 b.audit(&a, &u, "chatgpt.oauth.cancelled", &JValue::obj::<&str>([]));
@@ -1393,7 +1492,22 @@ impl Broker {
 
     /// core `refresh(userId, row)`, single-flight per account: a waiter that finds the row changed
     /// since it read it uses the newer sign-in instead of spending a refresh token again.
+    ///
+    /// The whole refresh runs as its own task: a caller that goes away after the issuer rotated the
+    /// refresh token must not lose it before the compare-and-swap writes it.
     async fn refresh(
+        self: &Arc<Self>,
+        app: &Arc<App>,
+        user: &str,
+        start: Row,
+    ) -> Result<(Tokens, String), Fail> {
+        let (b, a, u) = (Arc::clone(self), Arc::clone(app), user.to_owned());
+        tokio::spawn(async move { b.refresh_task(&a, &u, start).await })
+            .await
+            .unwrap_or_else(|_| Err(auth_error("transient")))
+    }
+
+    async fn refresh_task(
         &self,
         app: &Arc<App>,
         user: &str,
@@ -1492,7 +1606,7 @@ impl Broker {
 
     /// core `sessionRow(userId, { rejectedToken })`: usable tokens and the ciphertext they live in.
     pub async fn session(
-        &self,
+        self: &Arc<Self>,
         app: &Arc<App>,
         user: &str,
         rejected: Option<&str>,
@@ -1541,7 +1655,7 @@ impl Broker {
     // ── the model catalogue ──
 
     /// One authorised catalogue fetch with the refresh-once-on-401 rule (core `authorised`).
-    async fn fetch_catalogue(&self, app: &Arc<App>, user: &str, epoch: u64) -> Listed {
+    async fn fetch_catalogue(self: &Arc<Self>, app: &Arc<App>, user: &str, epoch: u64) -> Listed {
         let (t, _) = self.session(app, user, None).await?;
         let mut r = self.catalogue_request(&t).await;
         if matches!(&r, Ok(reply) if reply.status == 401) {
@@ -1666,7 +1780,7 @@ impl Broker {
 
     /// core `catalogueEntry(userId, { refresh })`: `(ids, cached, fetchedAt, throttled)`.
     pub async fn catalogue(
-        &self,
+        self: &Arc<Self>,
         app: &Arc<App>,
         user: &str,
         refresh: bool,
@@ -1712,6 +1826,21 @@ impl Broker {
             }
             (epoch, m.fetch_seq)
         };
+        // The fetch (and the `flying` mark) runs as its own task: a caller that goes away must not
+        // strand the mark or throw away the list the account's one request fetched.
+        let (b, a, u) = (Arc::clone(self), Arc::clone(app), user.to_owned());
+        tokio::spawn(async move { b.fetch_shared(&a, &u, epoch, seen).await })
+            .await
+            .unwrap_or_else(|_| Err(fail("ChatGPT sign-in failed.", 502)))
+    }
+
+    async fn fetch_shared(
+        self: &Arc<Self>,
+        app: &Arc<App>,
+        user: &str,
+        epoch: u64,
+        seen: u64,
+    ) -> Result<(Arc<Vec<Model>>, bool, i64, bool), Fail> {
         let lock = lock_for(&self.fetch_locks, user);
         let _held = lock.lock().await;
         // A fetch that finished while this call waited is this call's answer (one request shared).
@@ -1724,6 +1853,7 @@ impl Broker {
             }
         }
         self.mem().flying.insert(user.to_owned(), epoch);
+        let _flying = Flying { broker: self, user };
         let result = self.fetch_catalogue(app, user, epoch).await;
         let mut m = self.mem();
         m.flying.remove(user);
@@ -1739,7 +1869,7 @@ impl Broker {
 
     /// core `modelList(userId, { refresh })`: the picker's answer.
     pub async fn model_list(
-        &self,
+        self: &Arc<Self>,
         app: &Arc<App>,
         user: &str,
         refresh: bool,
@@ -1876,7 +2006,15 @@ pub async fn serve(
     };
     let user = id.user.id.clone();
     let (a, b) = (Arc::clone(app), Arc::clone(&broker));
-    match tokio::task::spawn_blocking(move || b.flag(&a)).await {
+    match tokio::task::spawn_blocking(move || {
+        let flag = b.flag(&a);
+        if flag == Ok(true) {
+            b.sweep_orphans(&a);
+        }
+        flag
+    })
+    .await
+    {
         Ok(Ok(true)) => {}
         Ok(Ok(false)) => {
             return answer(
@@ -1974,6 +2112,7 @@ pub async fn internal_op(app: Option<Arc<App>>, op: &str, raw: &[u8]) -> Respons
             )
         }
     };
+    broker.sweep_once(&app).await;
     match op {
         "session" => {
             let rejected = body.get("rejected").as_str().map(str::to_owned);
@@ -2009,13 +2148,6 @@ pub async fn internal_op(app: Option<Arc<App>>, op: &str, raw: &[u8]) -> Respons
             ),
             Err(e) => internal_fail(&e),
         },
-        "models" => {
-            let refresh = body.get("refresh").as_bool() == Some(true);
-            match broker.model_list(&app, &user, refresh).await {
-                Ok(v) => internal(200, &v),
-                Err(e) => internal_fail(&e),
-            }
-        }
         "disconnect" | "forget" => match broker.disconnect(&app, &user, op == "forget").await {
             Ok(()) => internal(200, &JValue::obj([("ok", JValue::Bool(true))])),
             Err(e) => internal_fail(&e),
@@ -2134,6 +2266,49 @@ mod tests {
             ),
             "Your ChatGPT account has no usage quota left."
         );
+    }
+
+    fn broker() -> Broker {
+        let env = std::collections::HashMap::from([
+            ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9"),
+            ("UI_DATA_DIR", "/nonexistent-synthetic"),
+        ]);
+        let config =
+            crate::config::Config::from_lookup(|k| env.get(k).map(|v| (*v).to_owned())).unwrap();
+        Broker::new(&config, None).unwrap()
+    }
+
+    fn pending(user: &str, generation: u64) -> Pending {
+        Pending {
+            user: user.into(),
+            device_auth_id: "d".into(),
+            user_code: "c".into(),
+            interval: 1,
+            expires: i64::MAX,
+            next_poll_at: 0,
+            polling: true,
+            cancelled: false,
+            generation,
+        }
+    }
+
+    #[test]
+    fn a_sign_in_that_passed_its_commit_point_cannot_be_cancelled() {
+        let b = broker();
+        b.mem().pending.insert("l1".into(), pending("u", 0));
+        // The check and the removal are one step: afterwards there is nothing left to cancel, so
+        // a cancel racing the save is told so rather than "cancelled" for a sign-in that connects.
+        assert!(!b.settle("l1", "u", 0), "wanted");
+        assert!(!b.cancel("u", "l1").unwrap());
+        // A cancel that came first wins: the sign-in is abandoned.
+        b.mem().pending.insert("l2".into(), pending("u", 0));
+        assert!(b.cancel("u", "l2").unwrap());
+        assert!(b.settle("l2", "u", 0), "abandoned");
+        // A disconnect (a newer generation) abandons it too, and the entry is removed either way.
+        b.mem().pending.insert("l3".into(), pending("u", 0));
+        b.mem().generations.insert("u".into(), 1);
+        assert!(b.settle("l3", "u", 0));
+        assert!(b.mem().pending.is_empty());
     }
 
     #[test]

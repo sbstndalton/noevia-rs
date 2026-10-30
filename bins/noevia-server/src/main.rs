@@ -177,6 +177,11 @@ async fn server_main() -> ExitCode {
         Ok(Err(e)) => println!("noevia-server: cowork.db writer not open yet: {e}"),
         Err(_) => eprintln!("noevia-server: warning: writer check did not run"),
     }
+    // sbstndalton/noevia#2190 round 5: the token broker removes the rows of deleted accounts.
+    #[cfg(feature = "rust-chatgpt-status")]
+    if let Some(broker) = app.chatgpt_oauth.as_ref() {
+        broker.sweep_once(&app).await;
+    }
     // #1071: permanent; NOEVIA_RUST_PROJECTS is retired (a leftover value is reported above).
     println!("noevia-server: Rust owns the project routes, projects.json and free-chats.json");
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);

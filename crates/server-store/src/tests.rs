@@ -689,6 +689,31 @@ fn chatgpt_tokens_take_only_the_broker_statements() {
         1
     );
     assert_eq!(read(), None);
+    // The start sweep removes the rows of accounts that no longer exist, and only those.
+    node.execute_batch(
+        "INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES('kept','kept','kept','K','member','x','kept',1,1)",
+    )
+    .unwrap();
+    for u in ["kept", "gone-1", "gone-2"] {
+        w.write(|tx| tx.save_chatgpt_tokens(cap, u, "x", "connected", 1))
+            .unwrap();
+    }
+    assert_eq!(
+        w.write(|tx| tx.delete_orphan_chatgpt_tokens(cap)).unwrap(),
+        2
+    );
+    let left: Vec<String> = node
+        .prepare("SELECT user_id FROM chatgpt_oauth_tokens")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(left, vec!["kept".to_string()]);
+    assert_eq!(
+        w.write(|tx| tx.delete_orphan_chatgpt_tokens(cap)).unwrap(),
+        0
+    );
     // The window closed again: a raw statement after the methods is still refused.
     let raw = w.write(|tx| tx.execute("DELETE FROM chatgpt_oauth_tokens", []));
     assert!(matches!(raw, Err(StoreError::NotOwned(_))), "{raw:?}");

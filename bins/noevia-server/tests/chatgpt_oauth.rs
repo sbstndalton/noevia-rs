@@ -133,9 +133,28 @@ struct Upstream {
     addr: std::net::SocketAddr,
     seen: Arc<Mutex<Vec<Seen>>>,
     handler: Arc<Mutex<Handler>>,
+    /// Signalled whenever a request arrives: what the tests wait on instead of sleeping.
+    hit: Arc<tokio::sync::Notify>,
 }
 
 impl Upstream {
+    /// Waits until the upstream has received `n` requests whose path starts with `path`: that
+    /// exchange is then in flight (a delayed handler answers only after its delay).
+    async fn wait_for(&self, path: &str, n: usize) {
+        let waiting = async {
+            loop {
+                let notified = self.hit.notified();
+                if self.count(path) >= n {
+                    return;
+                }
+                notified.await;
+            }
+        };
+        tokio::time::timeout(Duration::from_secs(20), waiting)
+            .await
+            .unwrap_or_else(|_| panic!("the upstream never saw request {n} of {path}"));
+    }
+
     fn set(&self, f: impl Fn(&Seen) -> (Duration, String) + Send + Sync + 'static) {
         *self.handler.lock().unwrap() = Arc::new(f);
     }
@@ -169,14 +188,19 @@ async fn upstream() -> Upstream {
         addr: l.local_addr().unwrap(),
         seen: Arc::new(Mutex::new(Vec::new())),
         handler: Arc::new(Mutex::new(Arc::new(|_: &Seen| reply("500 Oops", "")))),
+        hit: Arc::new(tokio::sync::Notify::new()),
     };
-    let (seen, handler) = (Arc::clone(&up.seen), Arc::clone(&up.handler));
+    let (seen, handler, hit) = (
+        Arc::clone(&up.seen),
+        Arc::clone(&up.handler),
+        Arc::clone(&up.hit),
+    );
     tokio::spawn(async move {
         loop {
             let Ok((mut s, _)) = l.accept().await else {
                 return;
             };
-            let (seen, handler) = (Arc::clone(&seen), Arc::clone(&handler));
+            let (seen, handler, hit) = (Arc::clone(&seen), Arc::clone(&handler), Arc::clone(&hit));
             tokio::spawn(async move {
                 let mut buf = Vec::new();
                 let mut chunk = [0u8; 4096];
@@ -218,6 +242,7 @@ async fn upstream() -> Upstream {
                     body: String::from_utf8_lossy(&buf[head_end..]).to_string(),
                 };
                 seen.lock().unwrap().push(request.clone());
+                hit.notify_waiters();
                 let f = handler.lock().unwrap().clone();
                 let (delay, text) = f(&request);
                 tokio::time::sleep(delay).await;
@@ -452,7 +477,7 @@ async fn device_sign_in_through_the_front() {
     assert_eq!(up.count("/api/accounts/deviceauth/token"), 0);
 
     // Authorization pending upstream: still pending.
-    tokio::time::sleep(Duration::from_millis(1100)).await;
+    tokio::time::sleep(Duration::from_millis(1300)).await;
     assert_eq!(
         post(addr, POLL, ADMIN, &body).await,
         (200, j(r#"{"state":"pending","interval":1}"#))
@@ -461,7 +486,7 @@ async fn device_sign_in_through_the_front() {
 
     // Granted: the exchange (a form), the save, the answer.
     granted.store(1, Ordering::SeqCst);
-    tokio::time::sleep(Duration::from_millis(1100)).await;
+    tokio::time::sleep(Duration::from_millis(1300)).await;
     let (s, done) = post(addr, POLL, ADMIN, &body).await;
     assert_eq!(
         (s, done),
@@ -944,14 +969,15 @@ async fn catalogue_is_cached_throttled_and_shared() {
             r#"[{"slug":"synthetic-model","effort":"medium","summary":"auto","summaryParam":true,"levels":["low","high"]},{"slug":"second","effort":null,"summary":null,"summaryParam":false,"levels":null}]"#
         )
     );
-    let (s, got) = store(
+    // The credential channel has no `models` operation (the picker's list is the public route).
+    let (s, _) = store(
         f.store,
         "models",
         STORE_TOKEN,
         &format!(r#"{{"user":"{A}","refresh":false}}"#),
     )
     .await;
-    assert_eq!((s, got["cached"].clone()), (200, j("true")));
+    assert_eq!(s, 404);
 
     // An account with an upstream failure: Node's message, remembered for a minute.
     store_tokens(
@@ -1048,7 +1074,7 @@ async fn races_are_won_by_the_disconnect_and_the_cancel() {
     );
     let (addr, u) = (f.store, user.clone());
     let refreshing = tokio::spawn(async move { store(addr, "session", STORE_TOKEN, &u).await });
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    up.wait_for("/oauth/token", 1).await;
     let t0 = std::time::Instant::now();
     assert_eq!(
         store(f.store, "disconnect", STORE_TOKEN, &user).await.0,
@@ -1067,10 +1093,10 @@ async fn races_are_won_by_the_disconnect_and_the_cancel() {
 
     // #454: a disconnect while the sign-in is being exchanged wins; nothing is stored.
     let body = started(f.addr, ADMIN).await;
-    tokio::time::sleep(Duration::from_millis(1100)).await;
+    tokio::time::sleep(Duration::from_millis(1300)).await;
     let (addr, b) = (f.addr, body.clone());
     let polling = tokio::spawn(async move { post(addr, POLL, ADMIN, &b).await });
-    tokio::time::sleep(Duration::from_millis(250)).await;
+    up.wait_for("/oauth/token", 2).await;
     assert_eq!(
         store(f.store, "disconnect", STORE_TOKEN, &user).await.0,
         200
@@ -1079,10 +1105,10 @@ async fn races_are_won_by_the_disconnect_and_the_cancel() {
     assert!(token_row(&db, A).is_none());
     // ... and so does a cancel.
     let body = started(f.addr, ADMIN).await;
-    tokio::time::sleep(Duration::from_millis(1100)).await;
+    tokio::time::sleep(Duration::from_millis(1300)).await;
     let (addr, b) = (f.addr, body.clone());
     let polling = tokio::spawn(async move { post(addr, POLL, ADMIN, &b).await });
-    tokio::time::sleep(Duration::from_millis(250)).await;
+    up.wait_for("/oauth/token", 3).await;
     assert_eq!(
         post(f.addr, CANCEL, ADMIN, &body).await,
         (200, j(r#"{"ok":true}"#))
@@ -1196,8 +1222,9 @@ async fn catalogue_failures_recover_and_never_replace_a_good_list() {
         3,
     );
     let addr = f.addr;
+    let in_flight = up.count("/backend-api/codex/models") + 1;
     let fetching = tokio::spawn(async move { get(addr, MODELS, ADMIN).await });
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    up.wait_for("/backend-api/codex/models", in_flight).await;
     store(
         f.store,
         "disconnect",
@@ -1222,4 +1249,275 @@ async fn catalogue_failures_recover_and_never_replace_a_good_list() {
         "fetched again for the new sign-in"
     );
     assert_eq!(calls(), before + 1);
+}
+
+// ---------------------------------------------------------------------------------------------
+// A client that gives up must not strand the broker (sbstndalton/noevia#2190 round 5 review).
+
+/// Waits (up to ten seconds) for a condition the broker reaches on its own.
+async fn eventually(what: &str, mut ok: impl FnMut() -> bool) {
+    let waiting = async {
+        while !ok() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(10), waiting)
+        .await
+        .unwrap_or_else(|_| panic!("never happened: {what}"));
+}
+
+/// Sends `request`, waits until `in_flight` says the upstream has the exchange, then closes the
+/// socket without reading the answer: the caller went away mid-request.
+async fn abandon(
+    addr: std::net::SocketAddr,
+    request: String,
+    in_flight: impl std::future::Future<Output = ()>,
+) {
+    let mut s = TcpStream::connect(addr).await.unwrap();
+    s.write_all(request.as_bytes()).await.unwrap();
+    in_flight.await;
+    drop(s);
+}
+
+fn front_request(addr: std::net::SocketAddr, method: &str, path: &str, body: &str) -> String {
+    format!("{method} {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\nCookie: {ADMIN}\r\nOrigin: http://{addr}\r\nX-CSRF-Token: csrf\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len())
+}
+
+fn rotated(id_token: &str) -> String {
+    format!(
+        r#"{{"access_token":"synthetic-access-9","refresh_token":"synthetic-refresh-9","id_token":"{id_token}","expires_in":3600}}"#
+    )
+}
+
+#[tokio::test]
+async fn a_client_that_leaves_mid_exchange_still_gets_its_sign_in_saved() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let up = upstream().await;
+    let f = front(d.path(), &up.base(), "1").await;
+    let id_token =
+        jwt(r#"{"https://api.openai.com/auth":{"chatgpt_account_id":"acct-synthetic"}}"#);
+    up.set(move |r: &Seen| match r.path.as_str() {
+        "/api/accounts/deviceauth/usercode" => reply(
+            "200 OK",
+            r#"{"device_auth_id":"synthetic-device","user_code":"ABCD-EFGH","interval":1}"#,
+        ),
+        "/api/accounts/deviceauth/token" => reply(
+            "200 OK",
+            r#"{"authorization_code":"synthetic-code","code_verifier":"synthetic-verifier"}"#,
+        ),
+        "/oauth/token" => (
+            Duration::from_millis(700),
+            reply("200 OK", &rotated(&id_token)).1,
+        ),
+        _ => reply("404 Not Found", ""),
+    });
+    let body = started(f.addr, ADMIN).await;
+    // The poll interval (1 s) is real time: nothing to signal, so a margin.
+    tokio::time::sleep(Duration::from_millis(1300)).await;
+    // The browser closes the tab while the authorization code is being exchanged.
+    abandon(
+        f.addr,
+        front_request(f.addr, "POST", POLL, &body),
+        up.wait_for("/oauth/token", 1),
+    )
+    .await;
+    // The exchange finishes on its own: the one-time code is not burnt, the tokens are stored.
+    eventually("the abandoned sign-in was saved", || {
+        token_row(&db, A).is_some()
+    })
+    .await;
+    let (raw, state) = token_row(&db, A).unwrap();
+    assert_eq!(state, "connected");
+    let tokens = open(&raw, A);
+    assert_eq!(tokens["accessToken"], "synthetic-access-9");
+    assert_eq!(tokens["refreshToken"], "synthetic-refresh-9");
+    eventually("the connect was audited", || {
+        audits(&db, A).iter().any(|a| a == "chatgpt.oauth.connect")
+    })
+    .await;
+    assert_eq!(
+        up.count("/oauth/token"),
+        1,
+        "the code was spent exactly once"
+    );
+    // Not stuck: the sign-in is settled, so a later poll is told so rather than left pending.
+    assert_eq!(
+        post(f.addr, POLL, ADMIN, &body).await,
+        (200, j(r#"{"state":"expired"}"#))
+    );
+}
+
+#[tokio::test]
+async fn a_client_that_leaves_mid_poll_does_not_strand_the_polling_mark() {
+    let d = tempfile::tempdir().unwrap();
+    let _db = seed(d.path());
+    let up = upstream().await;
+    let f = front(d.path(), &up.base(), "1").await;
+    up.set(|r: &Seen| match r.path.as_str() {
+        "/api/accounts/deviceauth/usercode" => reply(
+            "200 OK",
+            r#"{"device_auth_id":"synthetic-device","user_code":"ABCD-EFGH","interval":1}"#,
+        ),
+        // Still waiting for the person, and slow to say so.
+        "/api/accounts/deviceauth/token" => (
+            Duration::from_millis(700),
+            reply("403 Forbidden", r#"{"error":"authorization_pending"}"#).1,
+        ),
+        _ => reply("404 Not Found", ""),
+    });
+    let body = started(f.addr, ADMIN).await;
+    tokio::time::sleep(Duration::from_millis(1300)).await;
+    abandon(
+        f.addr,
+        front_request(f.addr, "POST", POLL, &body),
+        up.wait_for("/api/accounts/deviceauth/token", 1),
+    )
+    .await;
+    // A later poll reaches the issuer again once the interval is up (a stranded mark would keep
+    // answering `pending` from memory for the rest of the sign-in's life).
+    let polled = async {
+        while up.count("/api/accounts/deviceauth/token") < 2 {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            let (s, got) = post(f.addr, POLL, ADMIN, &body).await;
+            assert_eq!((s, got["state"].clone()), (200, j(r#""pending""#)));
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(15), polled)
+        .await
+        .expect("a later poll was never let through: the polling mark is stuck");
+}
+
+#[tokio::test]
+async fn a_client_that_leaves_mid_refresh_does_not_lose_the_rotated_token() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let up = upstream().await;
+    let f = front(d.path(), &up.base(), "1").await;
+    let now = noevia_server::identity::now_ms();
+    let id_token =
+        jwt(r#"{"https://api.openai.com/auth":{"chatgpt_account_id":"acct-synthetic"}}"#);
+    up.set(move |r: &Seen| match r.path.as_str() {
+        "/oauth/token" => (
+            Duration::from_millis(700),
+            reply("200 OK", &rotated(&id_token)).1,
+        ),
+        _ => reply("404 Not Found", ""),
+    });
+    // Inside the refresh-ahead window: the session call refreshes.
+    store_tokens(
+        &db,
+        A,
+        "synthetic-access-0",
+        "synthetic-refresh-0",
+        now + 60_000,
+        1,
+    );
+    let user = format!(r#"{{"user":"{A}"}}"#);
+    // Node's chat times out and drops the internal call while the issuer has rotated the token.
+    let request = format!("POST /v1/chatgpt/session HTTP/1.1\r\nhost: store\r\nconnection: close\r\ncontent-type: application/json\r\ncontent-length: {}\r\n{}: {STORE_TOKEN}\r\n\r\n{user}", user.len(), project_store::TOKEN_HEADER);
+    abandon(f.store, request, up.wait_for("/oauth/token", 1)).await;
+    eventually("the rotated tokens were written", || {
+        token_row(&db, A)
+            .is_some_and(|(raw, _)| open(&raw, A)["accessToken"] == "synthetic-access-9")
+    })
+    .await;
+    let (raw, state) = token_row(&db, A).unwrap();
+    assert_eq!(state, "connected");
+    assert_eq!(open(&raw, A)["refreshToken"], "synthetic-refresh-9");
+    // The next caller uses them; no second refresh is spent.
+    let (s, got) = store(f.store, "session", STORE_TOKEN, &user).await;
+    assert_eq!(
+        (s, got["accessToken"].clone()),
+        (200, j(r#""synthetic-access-9""#))
+    );
+    assert_eq!(up.count("/oauth/token"), 1);
+}
+
+#[tokio::test]
+async fn a_client_that_leaves_mid_fetch_does_not_waste_the_catalogue() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let up = upstream().await;
+    let f = front(d.path(), &up.base(), "1").await;
+    let now = noevia_server::identity::now_ms();
+    store_tokens(
+        &db,
+        A,
+        "synthetic-access-0",
+        "synthetic-refresh-0",
+        now + 3_600_000,
+        1,
+    );
+    up.set(|_: &Seen| {
+        (
+            Duration::from_millis(700),
+            reply("200 OK", r#"{"models":[{"slug":"synthetic-model"}]}"#).1,
+        )
+    });
+    abandon(
+        f.addr,
+        format!(
+            "GET {MODELS} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nCookie: {ADMIN}\r\n\r\n",
+            f.addr
+        ),
+        up.wait_for("/backend-api/codex/models", 1),
+    )
+    .await;
+    // The fetch the account paid for is kept (or shared), not thrown away and repeated.
+    let (s, got) = get(f.addr, MODELS, ADMIN).await;
+    assert_eq!(
+        (s, got["models"].clone()),
+        (200, j(r#"["synthetic-model"]"#))
+    );
+    assert_eq!(up.count("/backend-api/codex/models"), 1);
+}
+
+#[tokio::test]
+async fn tokens_of_deleted_accounts_are_swept_when_the_broker_starts() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let up = upstream().await;
+    let now = noevia_server::identity::now_ms();
+    // Core deleted the account, then its "forget" call to the broker failed: the row stayed.
+    store_tokens(&db, A, "a", "ra", now + 3_600_000, 1);
+    store_tokens(&db, B, "b", "rb", now + 3_600_000, 2);
+    store_tokens(&db, "cccccccc-cccc-cccc-cccc-cccccccccccc", "g", "rg", 1, 3);
+    store_tokens(&db, "dddddddd-dddd-dddd-dddd-dddddddddddd", "h", "rh", 1, 4);
+    let ghosts = || -> i64 {
+        db.query_row(
+            "SELECT count(*) FROM chatgpt_oauth_tokens WHERE user_id NOT IN (SELECT id FROM users)",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+    assert_eq!(ghosts(), 2);
+    // With the sign-in switched off nothing public is served, but the credential channel is the
+    // broker's too: its first call is the broker's first use.
+    let f = front(d.path(), &up.base(), "0").await;
+    let user = format!(r#"{{"user":"{A}"}}"#);
+    let (s, got) = store(f.store, "connected", STORE_TOKEN, &user).await;
+    assert_eq!((s, got["exists"].clone()), (200, j("true")));
+    assert_eq!(ghosts(), 0, "the orphaned rows are deleted");
+    assert!(token_row(&db, A).is_some() && token_row(&db, B).is_some());
+    assert!(
+        d.path().join("chatgpt-token-changes.json").exists(),
+        "Node's token cache is told"
+    );
+}
+
+#[tokio::test]
+async fn the_sweep_also_runs_on_the_first_public_request() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let up = upstream().await;
+    let now = noevia_server::identity::now_ms();
+    store_tokens(&db, A, "a", "ra", now + 3_600_000, 1);
+    store_tokens(&db, "cccccccc-cccc-cccc-cccc-cccccccccccc", "g", "rg", 1, 3);
+    let f = front(d.path(), &up.base(), "1").await;
+    up.set(|_: &Seen| reply("200 OK", r#"{"models":[{"slug":"synthetic-model"}]}"#));
+    assert_eq!(get(f.addr, MODELS, ADMIN).await.0, 200);
+    assert!(token_row(&db, "cccccccc-cccc-cccc-cccc-cccccccccccc").is_none());
+    assert!(token_row(&db, A).is_some());
 }

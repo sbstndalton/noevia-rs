@@ -225,9 +225,9 @@ const STORAGE_CONNECTIONS: &str = "storage_connections";
 
 /// Sign in with ChatGPT (sbstndalton/noevia#2190 round 5): the Rust front is the token broker and
 /// the only writer of `chatgpt_oauth_tokens` (the device sign-in's save, the single-flight refresh's
-/// compare-and-swap, "reconnect needed", disconnect and account removal). Core's guard (rust-auth.cjs
+/// compare-and-swap, "reconnect needed", disconnect, account removal and the start sweep of orphans). Core's guard (rust-auth.cjs
 /// `FRONT_TABLES`) refuses every Node write of the table but the rotation's same-plaintext reseal.
-/// Like [`RustStorageIntegrations`] the grant is per statement: only the four [`WriteTx`] methods
+/// Like [`RustStorageIntegrations`] the grant is per statement: only the five [`WriteTx`] methods
 /// named `*_chatgpt_tokens` open it, each for its one statement.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RustChatgptOAuth(());
@@ -1187,6 +1187,18 @@ impl WriteTx<'_> {
         self.chatgpt_statement(
             "DELETE FROM chatgpt_oauth_tokens WHERE user_id=?",
             rusqlite::params![user_id],
+        )
+    }
+
+    /// The broker-start sweep: the rows of accounts that no longer exist (core `forgetUser` failed
+    /// after `deleteUser` removed the account, so its tokens were left behind).
+    pub fn delete_orphan_chatgpt_tokens(
+        &self,
+        _cap: RustChatgptOAuth,
+    ) -> Result<usize, StoreError> {
+        self.chatgpt_statement(
+            "DELETE FROM chatgpt_oauth_tokens WHERE user_id NOT IN (SELECT id FROM users)",
+            [],
         )
     }
 

@@ -633,7 +633,7 @@ pub fn router_with_context(
 
 /// [`router_with_context`] plus the operations that need the front's [`crate::App`] (its cowork.db
 /// writer and credential keys): `POST /v1/storage/legacy-webdav` (sbstndalton/noevia#2190 round 4)
-/// and `POST /v1/chatgpt/{session,reject,catalogue,models,disconnect,forget,connected}` (round 5).
+/// and `POST /v1/chatgpt/{session,reject,catalogue,disconnect,forget,connected}` (round 5).
 pub fn router_with_app(
     store: Store,
     context: Option<Arc<crate::feature_context::Layer>>,
@@ -655,7 +655,6 @@ pub fn router_with_app(
         "session",
         "reject",
         "catalogue",
-        "models",
         "disconnect",
         "forget",
         "connected",
