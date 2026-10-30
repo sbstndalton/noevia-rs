@@ -448,3 +448,98 @@ impl Ending {
         settled(&blocking(move || work::interrupt(a.ctx(), &o, &j)).await)
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+
+    fn account(dir: &std::path::Path) -> Account {
+        let user = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+        let udir = dir.join("users").join(user);
+        std::fs::create_dir_all(&udir).unwrap();
+        std::fs::write(udir.join("projects.json"), r#"{"projects":[{"id":"a"}]}"#).unwrap();
+        Account {
+            data_dir: dir.to_path_buf(),
+            user: user.into(),
+            start: "0123456789abcdef0123456789abcdef".into(),
+            now_ms: 1,
+        }
+    }
+
+    fn polled(account: &Account, owner: &Owner, job: &Started) -> String {
+        match work::poll(account.ctx(), owner, "a", &job.id).body {
+            server_projects::Body::Json(text) => text,
+            server_projects::Body::Bytes { .. } => panic!("not JSON"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_result_over_the_stores_cap_fails_the_job_instead_of_leaving_it_active() {
+        let dir = tempfile::tempdir().unwrap();
+        let account = account(dir.path());
+        let owner = owner(&account.start);
+        let job = work::begin(account.ctx(), &owner, "a", false).unwrap();
+        let huge = Outcome::Done(serde_json::json!({ "body": "x".repeat(33 * 1024 * 1024) }));
+        finish_with(
+            account.clone(),
+            owner.clone(),
+            job.clone(),
+            huge,
+            Duration::ZERO,
+        )
+        .await;
+        assert_eq!(
+            polled(&account, &owner, &job),
+            r#"{"done":true,"status":500,"body":{"error":"Source processing failed; refresh or re-upload to retry."}}"#
+        );
+        // A result within the cap is written as it is.
+        let job = work::begin(account.ctx(), &owner, "a", false).unwrap();
+        let ok = Outcome::Done(serde_json::json!({ "status": 200, "body": {} }));
+        finish_with(
+            account.clone(),
+            owner.clone(),
+            job.clone(),
+            ok,
+            Duration::ZERO,
+        )
+        .await;
+        assert_eq!(
+            polled(&account, &owner, &job),
+            r#"{"done":true,"status":200,"body":{}}"#
+        );
+    }
+
+    /// A job this process ends without a result takes no tombstone, whatever the count.
+    #[tokio::test]
+    async fn ending_a_refused_job_writes_no_tombstone() {
+        let dir = tempfile::tempdir().unwrap();
+        let account = account(dir.path());
+        let owner = owner(&account.start);
+        for _ in 0..300 {
+            let job = work::begin(account.ctx(), &owner, "a", false).unwrap();
+            let ending = Ending {
+                account: account.clone(),
+                owner: owner.clone(),
+                job,
+            };
+            assert!(ending.once().await);
+        }
+        assert!(work::begin(account.ctx(), &owner, "a", false).is_ok());
+        let state = std::fs::read_to_string(
+            dir.path()
+                .join("users")
+                .join(&account.user)
+                .join("source-jobs-owner.json"),
+        )
+        .unwrap();
+        assert!(state.contains(r#""abandoned":[]"#), "{state}");
+    }
+
+    #[test]
+    fn one_owner_per_start() {
+        let a = owner("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        assert_eq!(a.owner, owner("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa").owner);
+        assert_ne!(a.owner, owner("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb").owner);
+    }
+}
