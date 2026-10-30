@@ -1240,7 +1240,7 @@ OCR is gone with pdf.js).
 
 Each is permanent with no switch. Core refuses exactly the GET before authentication; the web supervisor and
 the release assembler pair each marker with its capability in both directions (old/old stays valid). The
-node-route floor in `tests/front.rs` is 49.
+node-route floor in `tests/front.rs` is 49 (44 after round 9, below).
 
 **Snapshots (what only Node knows).** `GET /api/health` needs `ragAvailable` and the retrieval tri-state
 (rag.cjs: the native index dependencies, the embedding probe and its 45 s cache, the administrator's embedding
@@ -1323,3 +1323,83 @@ symlink, so a symlink counts as gone. Nothing in the list is chat-live, so no pa
    `machineModels`** (and reporting nothing missing) whenever the snapshot is unusable.
 7. A first request for an account now creates its directory from `/api/auto-roles` and `/api/workspace`, as
    Node's workspace load did; `/api/health` does not (Node's health did not read the workspace).
+
+## sbstndalton/noevia#2191 round 9 (capability `rust-project-config`) and #2190 (capability `rust-admin-users`)
+
+Two groups move, each as one owner (Core's refusal and the front's capability of the same name; the web supervisor
+and assemble-release.sh refuse a mixed pair, old/old stays valid). The node-route floor in `tests/front.rs` is 44.
+
+| Route | Owner | Core marker / capability | Where |
+|---|---|---|---|
+| `POST /api/projects/{projectId}/config` | rust | `rust-project-config.cjs` / `RUST_PROJECT_CONFIG_OWNED` | crates/server-projects `config.rs`, bins/noevia-server `project_config_routes.rs` |
+| `GET`, `PUT /api/projects/{projectId}/instruction-skills` | rust | same | `skill_routes.rs`, `instruction_skills.rs` |
+| `GET /api/projects/{projectId}/instruction-skills/manifests` and `.../manifests/{skillId}/content` | rust | same | same (the content route was Node's beside the manifests but is not named by the web client: `client = false`) |
+| `POST /api/projects/{project}/skills/install` | rust | same | `skill_routes.rs`, `plugin_directory_routes.rs` `fetch_skill` |
+| `DELETE /api/admin/users/{id}` | rust | `rust-admin-users.cjs` / `RUST_ADMIN_USERS_OWNED` | bins/noevia-server `admin_user_routes.rs`, crates/server-account `delete.rs` |
+
+**Kept on Node, and why.** `/api/projects/{projectId}/browser`, `/code`, `/research` and `GET /api/code/active` are
+chat-bound (the tool loop, the harness and the research jobs run in the chat process), so they stay Node's; core's
+`routes/projects.cjs` is gone with the last of its handlers.
+
+**The configuration.** Core's order and answers, field for field (`config.rs` header): the id decoded (URIError 500),
+the body (413 past 1 MiB, `invalid JSON`), `getProject` (its heal saved, 404 `no such project`), then the patch, the
+first refusal winning. A patch that leaves every field as stored is a read (`{ok: true, unchanged: true}`, no write, no
+timestamp). Otherwise: `updatedAt` moves, every project is reconciled, the new upload texts are written before the
+projects.json that points at them, and the RAG index follows through the user's index outbox (an `index` job per new or
+changed upload, an `unindex` job per removed one; core's executor re-reads the list, so a source listed again by then
+keeps its rows) and the removed sources' documents and originals are pruned once the list is on disk. Core re-reads
+projects.json at every request start, so a chat turn sees the change at once; the permitted-tools cache already keys on
+the project's toolbox selection. Two facts come from outside the store: whether a model can answer a chat (the engine's
+`/models` listing for the one model the patch names, `model_kind.rs`: an embedding or reranking flag, the `embed|rerank`
+name rule, `models.roles.json` and the Laya name rule; an unreadable listing judges by name, as core does with an
+unreadable catalogue) and whether a provider is registered (the shared rows and the account's own). Core publishes the
+icon ids, the selectable toolboxes and, since this round, every toolbox it knows (`known`, the connector boxes
+included) in `project-catalogue.json`; a patch that needs the catalogue (an icon, toolboxes) and the manifests answer
+503 while it is unpublished.
+
+**Instruction skills.** `instruction_skills.rs` is core's `inspect`, `list`, `listForClient`, `manifests`, `resolve`,
+`setSelection` and the metadata-index limit (32 entries, 6,144 characters); chat keeps core's `instruction-skills.cjs`
+(`inspect`, `manifests`, `resolvePinned`, `reconcile`, `snapshot`), which reads the same project data. Core's
+`setSelection`, `listForClient` and `resolve` are deleted. Texts are read from their own files (a missing file reads as
+empty, as core's accessor does), hashed and measured as core does (a lone surrogate counts as U+FFFD).
+
+**Skill install.** One published SKILL.md (never scripts or assets): the name must match `[a-z0-9][a-z0-9-]{0,79}`
+(checked before anything is fetched), the host is the fixed `raw.githubusercontent.com` over https with no redirect
+(`redirect: 'error'`), an 8 s deadline for the whole exchange and at most 32 KiB; the host's addresses are looked up
+and must all be public (ssrf-policy) and the request is pinned to them, so a poisoned answer cannot lead the install
+into the private network. The `NOEVIA_QA_SKILLS_RAW` base (unset in production) points synthetic runs at a loopback
+host and skips that lookup. The project is checked first (404), then the body, the name, the fetch, and one save under
+the store's lock; a source limit is a 409 with its code. The request runs as spawned work: a client that goes away
+does not strand the fetch or the save.
+
+**Account deletion.** In order: the gate and the administrator check; the id and the body (core's messages, 400);
+one transaction (`delete.rs`) that checks the typed username (exact), refuses the last active administrator
+(`cannot delete the last active administrator`, checked inside the transaction, where core counted before it opened
+one), revokes the invitations and recovery links the account created, deletes the `users` row (its sessions,
+passkeys, device grants, app passwords, features, appearance, storage connection, tool policies, sharing opt-in and
+Diary connectors go by the foreign keys, through the one-statement grant `RustAccountDeletion` in server-store) and
+writes the `user.delete` audit row; the acting administrator is re-checked inside the same transaction. Then, as work
+the handler awaits: the account's folder (`users/<id>`, retried; a link in its place is removed, never followed), the
+Google Drive connection (revoked at Google, then forgotten), the MCP sign-ins and keys, the ChatGPT tokens and the
+Diary tenant (`DELETE /api/internal/tenant`, bearer + tenant id + assertion only, 15 s), each broker asked up to three
+times; the starts' orphan sweeps remove what still fails. The answer is `{ok: true}`; a folder that could not be removed
+is the one failure reported (500, fixed text). Core has no way to delete an account any more: `deleteUser`, the route's
+cleanup and the `forgetUser`/`removeUser`/`*Forget` broker clients are deleted, and `users` is refused to every Node
+statement, inside `exempt()` too. What Node held for the account follows the folder: a workspace held for a folder that
+is gone is revoked (a turn in flight stops writing and nothing makes the folder again), and none is made for a user
+the database no longer has. The Drive and ChatGPT session caches are keyed to the brokers' state files, which the
+brokers rewrite when they forget the account. Core has no role-change route, so there is no role cache to invalidate.
+
+**Behaviour changes.**
+1. `POST .../config` with `Auto` routing no longer warms the role models in the engine (`ensureRolesLoaded`); with the
+   native router, the only one deployed, that call returned at once. The models load on the first turn.
+2. A body of JSON `null` on `PUT .../instruction-skills` is `File and enabled boolean required.` (400); core answered the
+   TypeError's own text (400).
+3. A skill install's network failure (a refused connection, the deadline) answers the fixed 502 text; core answered the
+   low-level error's message.
+4. The last-administrator rule is checked in the deletion's transaction (core counted before opening one).
+5. An account deletion that cannot remove the folder is a 500 after the rows are gone; core answered 400 with the
+   file system's message (a path), and its row was gone too.
+6. The deleted account's Drive, MCP and ChatGPT credentials are forgotten by the front itself (in process), no longer
+   by Node asking the internal store over HTTP; the internal `forget` operations stay in the store for old/old pairs.
+
