@@ -1150,26 +1150,23 @@ mod tests {
             file("tool/scripts/run.sh", "echo")
         );
         let hash_of_good = hash(GOOD);
+        // Reviewed at an earlier version of the text, then enabled.
         let mut project = project_with(
             &files,
-            &format!(r#"{{"tool/SKILL.md":{{"enabled":true,"reviewedHash":"{hash_of_good}"}}}}"#),
+            r#"{"tool/SKILL.md":{"enabled":true,"reviewedHash":"reviewed-earlier"}}"#,
         );
         let known = vec!["core".to_string()];
         let dir = Path::new("/nonexistent");
-        // Enabled before the script appeared: switching it off is allowed and keeps the reviewed hash.
+        // Enabled before the script appeared: switching it off is allowed and keeps the hash that was
+        // reviewed (core: `existing?.reviewedHash || skill.hash`), so the text now differs from it.
         let off = p(r#"{"file":"tool/SKILL.md","enabled":false}"#);
         set_selection(&mut project, dir, &known, &off, 9).unwrap();
+        let kept = project.get("instructionSkills").get("tool/SKILL.md");
+        assert_eq!(kept.get("reviewedHash").as_str(), Some("reviewed-earlier"));
+        assert_eq!(kept.get("enabled"), &JValue::Bool(false));
         assert_eq!(
             list(view(&project, dir, &known)).unwrap()[0].status,
-            "disabled"
-        );
-        assert_eq!(
-            project
-                .get("instructionSkills")
-                .get("tool/SKILL.md")
-                .get("reviewedHash")
-                .as_str(),
-            Some(hash_of_good.as_str())
+            "updated"
         );
         // The same call on a project without a script enables as usual.
         let mut plain = project_with(

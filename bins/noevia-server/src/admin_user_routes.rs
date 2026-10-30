@@ -134,6 +134,8 @@ impl Work {
                 Ok(_) => return Err(Rejection::Refused(server_auth::Refusal::Unauthorized)),
                 Err(rejection) => return Err(rejection),
             }
+            #[cfg(debug_assertions)]
+            hooks::before_write(&actor);
             let writer = app.writes.writer().map_err(|_| Rejection::Unavailable)?;
             writer
                 .write(|tx| {
@@ -289,6 +291,37 @@ pub fn remove_folder(data_dir: &std::path::Path, id: &str) -> bool {
             Ok(()) => true,
             Err(e) => e.kind() == std::io::ErrorKind::NotFound,
         },
+    }
+}
+
+/// Test hooks, compiled in debug builds only (`cargo test` and the CI replays); a release build has
+/// neither the module nor the call.
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub mod hooks {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    type Hook = Arc<dyn Fn() + Send + Sync>;
+    static BEFORE_WRITE: Mutex<Option<HashMap<String, Hook>>> = Mutex::new(None);
+
+    /// Runs `hook` when this administrator's delete has passed the second gate and not yet opened its
+    /// transaction (a test disables the administrator there).
+    pub fn on_before_write(actor: &str, hook: impl Fn() + Send + Sync + 'static) {
+        if let Ok(mut map) = BEFORE_WRITE.lock() {
+            map.get_or_insert_with(HashMap::new)
+                .insert(actor.to_owned(), Arc::new(hook));
+        }
+    }
+
+    pub(super) fn before_write(actor: &str) {
+        let hook = BEFORE_WRITE
+            .lock()
+            .ok()
+            .and_then(|map| map.as_ref().and_then(|m| m.get(actor).cloned()));
+        if let Some(hook) = hook {
+            hook();
+        }
     }
 }
 

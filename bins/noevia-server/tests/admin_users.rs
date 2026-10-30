@@ -27,6 +27,7 @@ const B: &str = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const C: &str = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const ADMIN: &str = "cowork_session=admin-token; cowork_csrf=csrf";
 const MEMBER: &str = "cowork_session=member-token; cowork_csrf=csrf";
+const OTHER_ADMIN: &str = "cowork_session=other-admin-token; cowork_csrf=csrf";
 const TENANT_KEY: &str = "synthetic-tenant-key-0123456789abcdef";
 
 fn hex(s: &str) -> String {
@@ -446,4 +447,28 @@ async fn a_client_that_goes_away_after_sending_the_request_cannot_leave_an_accou
     }
     assert_eq!(users(&db), vec![A, C]);
     assert!(!folder(d.path(), B).exists());
+}
+
+#[tokio::test]
+async fn an_administrator_disabled_between_the_gate_and_the_transaction_deletes_nothing() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let f = front(d.path(), None).await;
+    // Gamma passes both gates; then another administrator disables Gamma, before the delete's transaction
+    // opens. The transaction checks the acting administrator again. (The hook is keyed by the actor, so the
+    // other tests, whose actor is Alpha, are not touched.)
+    let path = server_store::db_path(d.path());
+    noevia_server::admin_user_routes::hooks::on_before_write(C, move || {
+        let other = Connection::open(&path).unwrap();
+        other
+            .execute("UPDATE users SET disabled_at=7 WHERE id=?1", [C])
+            .unwrap();
+    });
+    let (s, body) = delete(&f, B, OTHER_ADMIN, true, r#"{"username":"Beta"}"#).await;
+    assert_eq!(
+        (s, body["error"].as_str()),
+        (403, Some("administrator required"))
+    );
+    assert_eq!(users(&db), vec![A, B, C], "nothing was deleted");
+    assert!(folder(d.path(), B).join("projects.json").exists());
 }
