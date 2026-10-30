@@ -613,6 +613,59 @@ fn storage_connections_take_only_the_save_upsert() {
 }
 
 #[test]
+fn tool_policies_take_only_the_upsert() {
+    // sbstndalton/noevia#2190 round 7: Settings -> Connectors' one statement, never a delete.
+    let (dir, node) = node_db();
+    node.execute_batch(
+        "CREATE TABLE IF NOT EXISTS tool_policies(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tool TEXT NOT NULL, mode TEXT NOT NULL CHECK(mode IN ('allow','ask','block')), updated_at INTEGER NOT NULL,
+    PRIMARY KEY(user_id, tool))",
+    )
+    .unwrap();
+    node.execute(
+        "INSERT OR IGNORE INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES('u1','u1','u1','U','member','x','u1',1,1)",
+        [],
+    )
+    .unwrap();
+    let w = Writer::open(dir.path(), RustAuth::owned()).unwrap();
+    for sql in [
+        "INSERT INTO tool_policies VALUES('u1','t','allow',1)",
+        "UPDATE tool_policies SET mode='block'",
+        "DELETE FROM tool_policies",
+    ] {
+        let raw = w.write(|tx| tx.execute(sql, []));
+        assert!(
+            matches!(raw, Err(StoreError::NotOwned(_))),
+            "{sql}: {raw:?}"
+        );
+    }
+    let cap = RustToolPolicies::owned();
+    let read = || -> Option<(String, i64)> {
+        node.query_row(
+            "SELECT mode,updated_at FROM tool_policies WHERE user_id='u1' AND tool='drive_search_files'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .ok()
+    };
+    assert_eq!(
+        w.write(|tx| tx.upsert_tool_policy(cap, "u1", "drive_search_files", "ask", 5))
+            .unwrap(),
+        1
+    );
+    assert_eq!(read(), Some(("ask".into(), 5)));
+    assert_eq!(
+        w.write(|tx| tx.upsert_tool_policy(cap, "u1", "drive_search_files", "block", 6))
+            .unwrap(),
+        1
+    );
+    assert_eq!(read(), Some(("block".into(), 6)));
+    // The window is closed again: a raw statement is still refused.
+    let raw = w.write(|tx| tx.execute("DELETE FROM tool_policies", []));
+    assert!(matches!(raw, Err(StoreError::NotOwned(_))), "{raw:?}");
+}
+
+#[test]
 fn chatgpt_tokens_take_only_the_broker_statements() {
     // sbstndalton/noevia#2190 round 5: the token broker's four statements, nothing else.
     let (dir, node) = node_db();

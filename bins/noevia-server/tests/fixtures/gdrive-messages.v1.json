@@ -1,0 +1,49 @@
+{
+ "comment": "The translatable ids of the Google Drive copy's messages and the English the server sends (sbstndalton/noevia#2190 round 7). The Rust front sends them (noevia-rs offsite_mirror.rs, gdrive.rs) and Core's gdrive-broker.cjs sends driveAnswered; keep this file identical in both repos: each has a test that reads it.",
+ "messages": [
+  {
+   "id": "storeEmpty",
+   "english": "The local backup store looks empty, so nothing was copied (this protects the copy on Drive).",
+   "params": []
+  },
+  {
+   "id": "waitingFirstBackup",
+   "english": "Waiting for the first backup before copying.",
+   "params": []
+  },
+  {
+   "id": "differentStore",
+   "english": "The Drive folder holds a different backup store; nothing was copied or removed.",
+   "params": []
+  },
+  {
+   "id": "fileDiffers",
+   "english": "A file on Drive differs from the local copy ({name}); nothing was replaced or pruned.",
+   "params": [
+    "name"
+   ]
+  },
+  {
+   "id": "tooManyStale",
+   "english": "Copied, but more than {max} old files would be removed from Drive at once; nothing was removed, to be safe.",
+   "params": [
+    "max"
+   ]
+  },
+  {
+   "id": "staleShare",
+   "english": "Copied, but {stale} of the {total} files on Drive are not in the local store; nothing was removed, to be safe.",
+   "params": [
+    "stale",
+    "total"
+   ]
+  },
+  {
+   "id": "driveAnswered",
+   "english": "Google Drive answered {status}.",
+   "params": [
+    "status"
+   ]
+  }
+ ]
+}

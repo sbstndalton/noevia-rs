@@ -1,0 +1,197 @@
+{
+ "comment": "Whose Drive an account reaches (core drive-accounts.cjs ownsBackup). Shared with noevia-core server/gdrive-owns-backup.v1.json; keep the two files identical.",
+ "cases": [
+  {
+   "name": "a member never owns the backup slot",
+   "admin": false,
+   "user": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "backup": {
+    "usable": true,
+    "state": "connected",
+    "owner": null
+   },
+   "personalFile": false,
+   "owns": false
+  },
+  {
+   "name": "an unusable backup slot is nobody's",
+   "admin": true,
+   "user": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "backup": {
+    "usable": false,
+    "state": "connected",
+    "owner": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+   },
+   "personalFile": false,
+   "owns": false
+  },
+  {
+   "name": "a connected slot without an owner belongs to whichever administrator opens it",
+   "admin": true,
+   "user": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "backup": {
+    "usable": true,
+    "state": "connected",
+    "owner": null
+   },
+   "personalFile": false,
+   "owns": true
+  },
+  {
+   "name": "a connected slot belongs to its owner",
+   "admin": true,
+   "user": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "backup": {
+    "usable": true,
+    "state": "connected",
+    "owner": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+   },
+   "personalFile": false,
+   "owns": true
+  },
+  {
+   "name": "a connected slot is not another administrator's",
+   "admin": true,
+   "user": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+   "backup": {
+    "usable": true,
+    "state": "connected",
+    "owner": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+   },
+   "personalFile": false,
+   "owns": false
+  },
+  {
+   "name": "a connected slot of another owner stays theirs even with a personal file",
+   "admin": true,
+   "user": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+   "backup": {
+    "usable": true,
+    "state": "connected",
+    "owner": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+   },
+   "personalFile": true,
+   "owns": false
+  },
+  {
+   "name": "an unreadable slot is still its owner's",
+   "admin": true,
+   "user": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "backup": {
+    "usable": true,
+    "state": "error",
+    "owner": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+   },
+   "personalFile": false,
+   "owns": true
+  },
+  {
+   "name": "an unreadable slot without an owner is any administrator's",
+   "admin": true,
+   "user": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+   "backup": {
+    "usable": true,
+    "state": "error",
+    "owner": null
+   },
+   "personalFile": false,
+   "owns": true
+  },
+  {
+   "name": "an unreadable slot is not another administrator's",
+   "admin": true,
+   "user": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+   "backup": {
+    "usable": true,
+    "state": "error",
+    "owner": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+   },
+   "personalFile": false,
+   "owns": false
+  },
+  {
+   "name": "a pending sign-in belongs to who started it",
+   "admin": true,
+   "user": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "backup": {
+    "usable": true,
+    "state": "pending",
+    "owner": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+   },
+   "personalFile": false,
+   "owns": true
+  },
+  {
+   "name": "a pending sign-in is not another administrator's",
+   "admin": true,
+   "user": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+   "backup": {
+    "usable": true,
+    "state": "pending",
+    "owner": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+   },
+   "personalFile": false,
+   "owns": false
+  },
+  {
+   "name": "a pending sign-in with no recorded initiator follows the old rule",
+   "admin": true,
+   "user": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+   "backup": {
+    "usable": true,
+    "state": "pending",
+    "owner": null
+   },
+   "personalFile": false,
+   "owns": true
+  },
+  {
+   "name": "a pending sign-in with no initiator yields to a personal connection",
+   "admin": true,
+   "user": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+   "backup": {
+    "usable": true,
+    "state": "pending",
+    "owner": null
+   },
+   "personalFile": true,
+   "owns": false
+  },
+  {
+   "name": "an empty slot is filled by an administrator connecting from Connectors",
+   "admin": true,
+   "user": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "backup": {
+    "usable": true,
+    "state": "disconnected",
+    "owner": null
+   },
+   "personalFile": false,
+   "owns": true
+  },
+  {
+   "name": "an empty slot yields to an administrator's personal connection",
+   "admin": true,
+   "user": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "backup": {
+    "usable": true,
+    "state": "disconnected",
+    "owner": null
+   },
+   "personalFile": true,
+   "owns": false
+  },
+  {
+   "name": "a build without Google sign-in follows the empty-slot rule",
+   "admin": true,
+   "user": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "backup": {
+    "usable": true,
+    "state": "not-configured",
+    "owner": null
+   },
+   "personalFile": false,
+   "owns": true
+  }
+ ]
+}
