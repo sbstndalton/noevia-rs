@@ -79,8 +79,9 @@ pub enum Native {
     /// The Diary routes that are only a proxy and a policy (sbstndalton/noevia#2185):
     /// crates/server-diary. The others stay Node's (contracts/http/README.md).
     Diary,
-    /// GET /api/models/capabilities and GET /api/models/hardware (sbstndalton/noevia#2187):
-    /// model_routes.rs. The other model routes stay Node's.
+    /// GET /api/models/capabilities and GET /api/models/hardware (sbstndalton/noevia#2187), and GET
+    /// /api/models/estimate and GET /api/models/preset/suggest (#2189): model_routes.rs and
+    /// model_sizing.rs. The other model routes stay Node's.
     Models,
     /// GET|HEAD /about and /privacy, every method of /device (sbstndalton/noevia#2190):
     /// public_pages.rs.
@@ -978,8 +979,8 @@ mod tests {
         }
     }
 
-    /// sbstndalton/noevia#2187: the two configuration-only model reads are the front's, GET only;
-    /// every other method and every other model route (the 20 others in routes.toml) stays Node's.
+    /// sbstndalton/noevia#2187: the two configuration-only model reads are the front's, GET only, and
+    /// (#2189) the two sizing reads; every other method and every other model route stays Node's.
     #[test]
     fn model_reads_are_rusts_for_get_only_and_the_other_model_routes_stay_nodes() {
         let on = Switches::default();
@@ -994,6 +995,7 @@ mod tests {
             }
         }
         assert!(crate::FEATURES.contains(&"rust-model-reads"));
+        assert!(crate::FEATURES.contains(&"rust-model-sizing"));
         for p in [
             "/api/model-manager",
             "/api/model-manager/models",
@@ -1006,7 +1008,6 @@ mod tests {
             "/api/models/calibration",
             "/api/models/calibration/cancel",
             "/api/models/delete",
-            "/api/models/estimate",
             "/api/models/evidence",
             "/api/models/evidence/import",
             "/api/models/evidence/recheck",
@@ -1019,6 +1020,9 @@ mod tests {
             "/api/models/downloads",
             "/api/models/capabilitiesx",
             "/api/models/hardware/x",
+            "/api/models/estimate/x",
+            "/api/models/preset/suggestx",
+            "/api/models/preset/x",
         ] {
             for m in ["GET", "POST", "PUT", "DELETE"] {
                 assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
@@ -1037,7 +1041,9 @@ mod tests {
             rust,
             vec![
                 (crate::model_routes::CAPABILITIES, &["GET"][..]),
+                (crate::model_sizing::ESTIMATE, &["GET"][..]),
                 (crate::model_routes::HARDWARE, &["GET"][..]),
+                (crate::model_sizing::SUGGEST, &["GET"][..]),
             ]
         );
     }

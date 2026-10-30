@@ -486,9 +486,12 @@ methods = ["GET"]
 path = "/api/models/delete"
 owner = "node"
 
+# sbstndalton/noevia#2189: the read-only sizing reads, the front's (bins/noevia-server
+# model_sizing.rs); Node refuses the GET (core rust-model-sizing.cjs). Other methods stay Node's.
 [[route]]
 path = "/api/models/estimate"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/models/evidence"
@@ -523,6 +526,11 @@ owner = "node"
 [[route]]
 path = "/api/models/machines"
 owner = "node"
+
+[[route]]
+path = "/api/models/preset/suggest"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/models/presets/reload"
