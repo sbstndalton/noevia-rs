@@ -114,6 +114,9 @@ pub async fn serve(
     req: Request<Body>,
     path: String,
 ) -> Response<Body> {
+    if crate::model_maint::ROUTES.contains(&path.as_str()) {
+        return crate::model_maint::serve(app, conn, req, path).await;
+    }
     // Node matches the exact pathname and GET only; routes.toml matching also accepts a trailing
     // slash, and every other method is Node's.
     if !ROUTES.contains(&path.as_str()) || req.method() != Method::GET {

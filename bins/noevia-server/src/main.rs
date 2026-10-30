@@ -202,6 +202,9 @@ async fn server_main() -> ExitCode {
     if let Some(offsite) = app.offsite.as_ref() {
         offsite.spawn_scheduler(&app);
     }
+    // sbstndalton/noevia#2210: the front is the evidence store's only writer; Node's producers leave
+    // their records in the inbox, which is drained here.
+    app.config.maint.spawn_inbox();
     // #1071: permanent; NOEVIA_RUST_PROJECTS is retired (a leftover value is reported above).
     println!("noevia-server: Rust owns the project routes, projects.json and free-chats.json");
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);

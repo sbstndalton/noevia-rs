@@ -386,6 +386,8 @@ struct Section {
 
 pub struct Presets {
     pub revision: String,
+    /// The file's text as read (UTF-8, lossy), which `revision` hashes.
+    pub text: String,
     lines: Vec<String>,
     sections: Vec<Section>,
 }
@@ -444,6 +446,7 @@ pub fn read_presets(file: &Path) -> Result<Presets, Thrown> {
     }
     Ok(Presets {
         revision,
+        text,
         lines,
         sections,
     })
@@ -598,6 +601,11 @@ fn join(root: &str, rest: &str) -> String {
 }
 
 impl Sizing {
+    /// [`Sizing::local_file`] for a container path (the maintenance work, model_maint).
+    pub(crate) fn local_file_path(&self, container: &str) -> Option<(PathBuf, u64)> {
+        self.local_file(Some(&FileRef::Path(container.to_owned())))
+    }
+
     /// llamacpp-manager.cjs `localFile`: the real file and its size under a read-only mount.
     fn local_file(&self, r: Option<&FileRef>) -> Option<(PathBuf, u64)> {
         let Some(FileRef::Path(container)) = r else {

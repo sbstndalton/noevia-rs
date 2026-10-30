@@ -27,6 +27,7 @@ pub mod mcp_broker;
 pub mod mcp_egress;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_routes;
+pub mod model_maint;
 pub mod model_routes;
 pub mod model_sizing;
 pub mod offsite_engine;
@@ -210,6 +211,16 @@ use std::sync::Arc;
 /// with no switch. Node refuses those two GETs (core rust-model-sizing.cjs `RUST_MODEL_SIZING_OWNED`),
 /// so the web supervisor pairs this capability with that Core in both directions.
 ///
+/// `rust-model-maintenance`: this build answers `POST /api/models/presets/reload`, `GET
+/// /api/models/evidence` and `POST /api/models/evidence/import` (sbstndalton/noevia#2210,
+/// src/model_maint), permanently and with no switch: the inference gate's maintenance hold, the
+/// models.ini read, the reload guard state file (`native-preset-reload-<hash>.json`) and the
+/// evidence store (`evidence-<hash>/`, whose only writer this is; Node's producers queue their
+/// records in `evidence-inbox-<hash>/`). Node refuses those (core rust-model-maintenance.cjs
+/// `RUST_MODEL_MAINTENANCE_OWNED`) and keeps its own reloads' baselines in the same state file under
+/// the same lock file, so the web supervisor and the release assembly pair this capability with that
+/// Core in both directions.
+///
 /// `rust-project-storage`: this build writes to a user's connected storage for a project's
 /// lifecycle (sbstndalton/noevia#2191 round 3): a create stores its text files in the project's
 /// folder (#687) and the front runs the `sweep` jobs of its index outbox itself. Core then claims
@@ -305,6 +316,7 @@ pub const FEATURES: &[&str] = &[
     "rust-google-drive",
     "rust-offsite-backup",
     "rust-model-sizing",
+    "rust-model-maintenance",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",

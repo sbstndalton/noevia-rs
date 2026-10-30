@@ -262,7 +262,8 @@ async fn other_methods_trailing_slashes_and_the_other_model_routes_go_to_node() 
         ("GET", "/api/models/capabilities/"),
         ("GET", "/api/models/hardware/"),
         ("GET", "/api/models/installed"),
-        ("GET", "/api/models/evidence?model=m"),
+        // #2210: GET evidence is the front's; the other methods of its path are Node's.
+        ("POST", "/api/models/evidence?model=m"),
         ("POST", "/api/models/estimate?model=m"),
         ("HEAD", "/api/models/preset/suggest?model=m"),
         ("GET", "/api/models/estimate/"),

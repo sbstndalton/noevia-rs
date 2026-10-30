@@ -297,8 +297,8 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     // callback was never a listed Node route): 52; the close-out moved GET /api/health, GET /api/auto-roles
     // and GET /api/workspace: 49; #2206 moved seven Diary entries (`/api/diary`, the connector endpoint,
     // the context, the exchanges, the storage status and the two connector-credential routes; the local
-    // exchange stays Node's): 42).
-    assert!(node_routes >= 42, "{node_routes} node routes");
+    // exchange stays Node's): 42; #2210 moved the preset reload's POST: 41; the evidence read and the model-card import: 39).
+    assert!(node_routes >= 39, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("POST", "/api/ready"),

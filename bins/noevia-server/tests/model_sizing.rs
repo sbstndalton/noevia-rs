@@ -446,7 +446,8 @@ async fn nothing_is_written_and_signed_out_device_and_disabled_kinds_answer_like
         ("GET", "/api/models/estimate/?model=m"),
         ("GET", "/api/models/preset/suggest/?model=m"),
         ("GET", "/api/models/preset?model=m"),
-        ("GET", "/api/models/evidence?model=m"),
+        // #2210: GET evidence is the front's; the other methods of its path are Node's.
+        ("POST", "/api/models/evidence?model=m"),
         ("GET", "/api/models/inference-budget"),
     ] {
         let (s, _, b) = call(addr, m, p, &csrf).await;

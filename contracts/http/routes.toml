@@ -538,13 +538,18 @@ path = "/api/models/estimate"
 owner = "rust"
 methods = ["GET"]
 
+# sbstndalton/noevia#2210: the evidence read and the model-card import, the front's (bins/noevia-server
+# model_maint/evidence_live.rs). The recheck stays Node's: its image probe may load the model after
+# Node's admission check (the inference budget, the memory-watchdog quarantine, the probe cache).
 [[route]]
 path = "/api/models/evidence"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/models/evidence/import"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/models/evidence/recheck"
@@ -577,9 +582,12 @@ path = "/api/models/preset/suggest"
 owner = "rust"
 methods = ["GET"]
 
+# sbstndalton/noevia#2210: the preset reload, the front's (bins/noevia-server model_maint/reload.rs);
+# Node's core server/rust-model-reload.cjs refuses its POST. Other methods stay Node's (403/405).
 [[route]]
 path = "/api/models/presets/reload"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/models/{*}"

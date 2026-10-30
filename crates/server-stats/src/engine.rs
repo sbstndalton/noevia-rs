@@ -182,6 +182,11 @@ impl Engine {
         self.kind
     }
 
+    /// The engine's base URL as the adapter holds it (no trailing slash; for llama.cpp, no `/v1`).
+    pub fn base(&self) -> &str {
+        &self.base
+    }
+
     /// One shared answer's worth of reads, and the reply they give (routes/models.cjs `statsRead`
     /// and the handler). For llama.cpp only the reads whose results reach the reply are made: Node
     /// also calls `health()` and `listModels()` (more `/models` and a `/props` per loaded model),
