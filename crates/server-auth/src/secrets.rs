@@ -127,6 +127,16 @@ impl SecretKeys {
         self.previous.is_some()
     }
 
+    /// secrets.cjs `derive(label)` and `derivePrevious(label)`: applies the caller's derivation to
+    /// the current key and, when a retired key is configured, to it as well. The key bytes never
+    /// leave the closure's call; the derivation (HKDF, `google-token-seal`) is the caller's.
+    pub fn derive_with<R>(&self, derive: impl Fn(&[u8]) -> R) -> (R, Option<R>) {
+        (
+            derive(self.current.as_slice()),
+            self.previous.as_ref().map(|p| derive(p.as_slice())),
+        )
+    }
+
     /// secrets.cjs `open(value, userId)`: `(plain, keyUsed)`. A value that is not an envelope is
     /// returned as it is with [`KeyUsed::None`]. `user_id` is bound only when non-empty
     /// (secret-envelope.cjs `hasUser`).

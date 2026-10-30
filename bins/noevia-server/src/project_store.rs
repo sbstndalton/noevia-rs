@@ -662,7 +662,38 @@ pub fn router_with_app(
             }),
         );
     }
+    // sbstndalton/noevia#2190 round 7: Google Drive's token broker (connector_routes.rs `internal_op`).
+    for op in [
+        "session",
+        "reject",
+        "disconnect",
+        "forget",
+        "view",
+        "policy",
+    ] {
+        let (store, app) = (store.clone(), app.clone());
+        router = router.route(
+            &format!("/v1/gdrive/{op}"),
+            post(move |headers: HeaderMap, raw: Bytes| {
+                let (store, app) = (store.clone(), app.clone());
+                async move { gdrive_op(store, app, headers, raw, op).await }
+            }),
+        );
+    }
     router
+}
+
+async fn gdrive_op(
+    store: Store,
+    app: Option<Arc<crate::App>>,
+    headers: HeaderMap,
+    raw: Bytes,
+    op: &'static str,
+) -> Response<Body> {
+    if !authorised(&store, &headers) {
+        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+    }
+    crate::connector_routes::internal_op(app, op, &raw).await
 }
 
 async fn chatgpt_op(

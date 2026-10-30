@@ -32,7 +32,7 @@ default = [
 ]
 rust-reasoning-settings = []
 rust-routing-mode = []
-rust-storage-reads = ["dep:server-storage-reads", "dep:zeroize", "dep:s3-sign", "dep:storage-path", "dep:rand_core"]
+rust-storage-reads = ["dep:server-storage-reads", "dep:storage-path"]
 # M4 (#1368): connected-storage list/read (permanent under NOEVIA_RUST_AUTH, #1071; src/storage_browse_routes.rs).
 rust-storage-browse = ["rust-storage-reads"]
 # M6 (#1305): GET /api/routing-default (permanent under NOEVIA_RUST_AUTH; src/routes.rs ROUTING_DEFAULT).
@@ -43,7 +43,7 @@ rust-stats = []
 rust-export = []
 # M6 (#1373): GET /api/providers/chatgpt (permanent under NOEVIA_RUST_AUTH; src/routes.rs CHATGPT_STATUS,
 # crates/server-chatgpt-status).
-rust-chatgpt-status = ["dep:server-chatgpt-status", "dep:zeroize", "dep:rand_core"]
+rust-chatgpt-status = ["dep:server-chatgpt-status"]
 # M4's second slice: a project's chat list (permanent since #1071; src/routes.rs PROJECT_CHATS).
 rust-project-chats = []
 # M4's third slice: the free-chat list (permanent since #1071; src/routes.rs FREE_CHATS).
@@ -56,11 +56,17 @@ rust-project-writes = []
 server-features = { path = "../../crates/server-features" }
 server-diary = { path = "../../crates/server-diary" }
 server-storage-reads = { path = "../../crates/server-storage-reads", optional = true }
-zeroize = { version = "=1.9.1", default-features = false, features = ["alloc"], optional = true }
+# sbstndalton/noevia#2190 round 7: the Google Drive broker and the off-site backup (gdrive.rs,
+# offsite_*.rs) are permanent and need these without the storage or ChatGPT features.
+zeroize = { version = "=1.9.1", default-features = false, features = ["alloc"] }
 # sbstndalton/noevia#2190: the storage test/folder routes and the Nextcloud sign-in (storage_integration_routes.rs).
-s3-sign = { path = "../../crates/s3-sign", optional = true }
+s3-sign = { path = "../../crates/s3-sign" }
 storage-path = { path = "../../crates/storage-path", optional = true }
-rand_core = { version = "0.6", features = ["getrandom"], optional = true }
+rand_core = { version = "0.6", features = ["getrandom"] }
+google-token-seal = { path = "../../crates/google-token-seal" }
+offsite-backup-format = { path = "../../crates/offsite-backup-format" }
+dav-parse = { path = "../../crates/dav-parse" }
+policy-leaves = { path = "../../crates/policy-leaves" }
 server-routing-mode = { path = "../../crates/server-routing-mode" }
 server-reasoning-settings = { path = "../../crates/server-reasoning-settings" }
 server-sampling-settings = { path = "../../crates/server-sampling-settings" }
