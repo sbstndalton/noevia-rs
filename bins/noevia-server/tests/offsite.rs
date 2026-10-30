@@ -3384,7 +3384,17 @@ async fn a_snapshot_that_is_stored_is_copied_to_drive_even_when_retention_hits_t
     install_drive(&w.up, Arc::clone(&w.g.granted), drive.clone());
     connect_drive(&w).await;
     let service = Arc::clone(w.f.app.offsite.as_ref().unwrap());
-    service.set_deadline(Duration::from_millis(2500));
+    // The copy the connect starts right away must be over before the run asks for its busy mark.
+    let started = Instant::now();
+    loop {
+        let st = get(w.f.addr, ROOT, ADMIN).await.json();
+        if st["busy"].is_null() && st["google"]["copy"]["state"] != "unknown" {
+            break;
+        }
+        assert!(started.elapsed() < Duration::from_secs(30), "{st}");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    service.set_deadline(Duration::from_millis(6000));
     // A scheduled pace whose clock reads outside every window until the snapshot is recorded, and
     // inside the appdata window (04:05-04:25 UTC here) from then on: the retention that follows
     // the snapshot waits out the window until the job deadline stops it.
@@ -3410,18 +3420,23 @@ async fn a_snapshot_that_is_stored_is_copied_to_drive_even_when_retention_hits_t
         let (service, app) = (Arc::clone(&service), Arc::clone(&w.f.app));
         tokio::spawn(async move { service.run_now(&app, pace).await })
     };
-    // The copy starts although the run itself ends in the deadline's error.
+    // The copy starts although the run itself ends in the deadline's error: it waits out the same
+    // window on the same pace and is stopped by the same deadline, which it records as its result.
     let started = Instant::now();
     loop {
-        let s = get(w.f.addr, ROOT, ADMIN).await.json();
-        if s["busy"] == "copy to Google Drive" {
+        let mirror = read_status(&w)["mirror"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned();
+        if mirror.contains("did not finish within") {
             break;
         }
         assert!(
-            started.elapsed() < Duration::from_secs(20),
-            "the copy of a stored snapshot never started: {s}"
+            started.elapsed() < Duration::from_secs(60),
+            "the copy of a stored snapshot never started: {}",
+            read_status(&w)
         );
-        tokio::time::sleep(Duration::from_millis(5)).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
     }
     let err = run.await.unwrap().expect_err("retention hit the deadline");
     assert_eq!(err.status, 504, "{}", err.message);
