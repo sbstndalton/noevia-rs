@@ -66,6 +66,52 @@ pub fn text(
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
+/// Whether a source's text file can be opened (source-text.cjs's #1818 scan: `fs.access(file, R_OK)`
+/// in `users/<id>/project-sources/<safeId>/<ref>.txt`, here without following a symlink, as the read
+/// above). `Some(false)` is a file that is gone or cannot be opened (`ENOENT`, `EACCES`, `ENOTDIR`,
+/// `EPERM`, a refused symlink); any other failure is unknown (`None`) and flags nothing.
+pub fn text_readable(dir: &std::path::Path, project: &str, reference: &str) -> Option<bool> {
+    use rustix::fs::{open, openat, Mode, OFlags};
+    use rustix::io::Errno;
+    let id: String = project
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+        .collect();
+    if id.is_empty() {
+        return Some(false);
+    }
+    let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC | OFlags::NOFOLLOW;
+    let gone = |e: Errno| {
+        matches!(
+            e,
+            Errno::NOENT | Errno::ACCESS | Errno::NOTDIR | Errno::PERM | Errno::LOOP
+        )
+        .then_some(false)
+    };
+    let root = open(dir, flags, Mode::empty()).map_err(gone);
+    let root = match root {
+        Ok(fd) => fd,
+        Err(v) => return v,
+    };
+    let sources = match openat(&root, "project-sources", flags, Mode::empty()) {
+        Ok(fd) => fd,
+        Err(e) => return gone(e),
+    };
+    let project = match openat(&sources, id.as_str(), flags, Mode::empty()) {
+        Ok(fd) => fd,
+        Err(e) => return gone(e),
+    };
+    match openat(
+        &project,
+        format!("{reference}.txt"),
+        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
+        Mode::empty(),
+    ) {
+        Ok(_) => Some(true),
+        Err(e) => gone(e),
+    }
+}
+
 pub fn get(ctx: Ctx<'_>, raw_project: &str, name: Option<&str>) -> Reply {
     // decodeURIComponent's URIError reaches index.cjs's errorResponse: a 500.
     let Some(id) = js::decode_uri_component(raw_project) else {

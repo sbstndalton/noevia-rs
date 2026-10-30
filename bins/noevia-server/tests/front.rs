@@ -294,10 +294,11 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     // provider model lists: 70; round 6 moved the provider registry's list and its one-row route: 68; round 7
     // the off-site backup's seven routes (its eighth path, new-store, was never a Node route) and the four
     // Google Drive connector writes: 57; #2202 moved the five MCP key and sign-in routes (the sign-in
-    // callback was never a listed Node route): 52; #2206 moved seven Diary entries (`/api/diary`, the
-    // connector endpoint, the context, the exchanges, the storage status and the two connector-credential
-    // routes; the local exchange stays Node's): 45).
-    assert!(node_routes >= 45, "{node_routes} node routes");
+    // callback was never a listed Node route): 52; the close-out moved GET /api/health, GET /api/auto-roles
+    // and GET /api/workspace: 49; #2206 moved seven Diary entries (`/api/diary`, the connector endpoint,
+    // the context, the exchanges, the storage status and the two connector-credential routes; the local
+    // exchange stays Node's): 42).
+    assert!(node_routes >= 42, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("POST", "/api/ready"),
@@ -440,7 +441,7 @@ async fn headers_cookies_and_forwarded_for() {
     let (res, _c) = call(
         front,
         "GET",
-        "/api/workspace",
+        "/api/chats/search",
         &[("x-forwarded-for", "1.1.1.1, 203.0.113.7")],
         b"",
     )
@@ -450,7 +451,7 @@ async fn headers_cookies_and_forwarded_for() {
         echo["headers"]["x-forwarded-for"],
         serde_json::json!(["203.0.113.7"])
     );
-    let (res, _c) = call(front, "GET", "/api/workspace", &[], b"").await;
+    let (res, _c) = call(front, "GET", "/api/chats/search", &[], b"").await;
     let echo: serde_json::Value = serde_json::from_str(&text(res).await).unwrap();
     assert_eq!(
         echo["headers"]["x-forwarded-for"],
@@ -542,7 +543,7 @@ async fn node_down_is_a_502_and_ready_is_a_503() {
     let dist = dist_dir("down");
     std::fs::remove_file(dist.join("version.json")).unwrap();
     let front = start_front(free, &dist, false).await;
-    let (res, _c) = call(front, "GET", "/api/workspace", &[], b"").await;
+    let (res, _c) = call(front, "GET", "/api/chats/search", &[], b"").await;
     assert_eq!(res.status(), 502);
     let (res, _c) = call(front, "GET", "/api/ready", &[], b"").await;
     assert_eq!(res.status(), 503);

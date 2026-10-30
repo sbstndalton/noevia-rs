@@ -3,6 +3,7 @@
 //! gives to Rust and proxies every other request to Node ([`legacy_proxy`], deleted with Node).
 
 pub mod account_routes;
+pub mod auto_roles_routes;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_oauth_routes;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -17,6 +18,7 @@ pub mod extraction;
 pub mod feature_context;
 pub mod gdrive;
 pub mod health;
+pub mod health_routes;
 pub mod identity;
 pub mod legacy_proxy;
 #[cfg(feature = "rust-storage-reads")]
@@ -54,6 +56,7 @@ pub mod routing_default_routes;
 pub mod routing_mode_routes;
 pub mod sampling_settings_routes;
 pub mod serve;
+pub mod snapshot;
 pub mod source_job_routes;
 #[cfg(feature = "rust-storage-browse")]
 pub mod source_storage_io;
@@ -182,6 +185,15 @@ use std::sync::Arc;
 /// `/api/admin/offsite-backup` routes, the jobs, the nightly schedule (outside the appdata and NAS
 /// windows), the status file and the snapshot store; the paired core refuses the routes
 /// (rust-offsite-backup.cjs `RUST_OFFSITE_BACKUP_OWNED`) and has no backup code.
+/// `rust-health`: this build answers `GET /api/health` (health_routes.rs, sbstndalton/noevia#2190
+/// close-out): the default provider and the Diary sidecar it probes itself, retrieval from the
+/// `rag-status.json` snapshot Node publishes. `rust-auto-roles`: `GET /api/auto-roles`
+/// (auto_roles_routes.rs; the PUT stays Node's) from `auto-roles.json` and the
+/// `auto-roles-snapshot.json` Node publishes. `rust-workspace`: `GET /api/workspace`
+/// (sbstndalton/noevia#2191 close-out), with the delete-old-chats sweep and the orphan chat-context
+/// cleanup it runs. The paired core refuses each (rust-health.cjs `RUST_HEALTH_OWNED`,
+/// rust-auto-roles.cjs `RUST_AUTO_ROLES_OWNED`, rust-workspace.cjs `RUST_WORKSPACE_OWNED`) and
+/// publishes the snapshots, so the supervisor pairs each capability with its marker.
 ///
 /// `rust-mcp-credentials`: this build is the broker of the MCP server credentials (mcp_broker.rs,
 /// mcp_routes.rs, sbstndalton/noevia#2202). It answers `GET /api/mcp-keys/servers`, `PUT|DELETE
@@ -326,6 +338,9 @@ pub const FEATURES: &[&str] = &[
     #[cfg(feature = "rust-storage-reads")]
     "rust-mcp-credentials",
     "rust-vault-mirror-preferences",
+    "rust-health",
+    "rust-auto-roles",
+    "rust-workspace",
     #[cfg(feature = "rust-reasoning-settings")]
     "rust-reasoning-settings",
     #[cfg(feature = "rust-routing-mode")]
@@ -341,6 +356,8 @@ pub const FEATURES: &[&str] = &[
 ];
 
 pub struct App {
+    /// The demand marker and the wait for Node's published snapshots (snapshot.rs).
+    pub demand: Arc<snapshot::Demand>,
     /// Google Drive's token authority (sbstndalton/noevia#2190 round 7); `None` without UI_DATA_DIR.
     pub drive: Option<Arc<gdrive::Drive>>,
     /// The off-site backup (jobs, schedule, status); `None` without UI_DATA_DIR.
@@ -450,6 +467,7 @@ impl App {
             _ => None,
         };
         Arc::new(App {
+            demand: Arc::new(snapshot::Demand::default()),
             drive,
             offsite,
             #[cfg(feature = "rust-chatgpt-status")]
@@ -561,6 +579,8 @@ async fn handle(
                     | routes::Native::Offsite
                     | routes::Native::Connectors
                     | routes::Native::Providers
+                    | routes::Native::Health
+                    | routes::Native::AutoRoles
                     | routes::Native::McpCredentials
             )
         ) {
@@ -596,6 +616,8 @@ async fn handle(
             | routes::Native::Offsite
             | routes::Native::Connectors
             | routes::Native::Providers
+            | routes::Native::Health
+            | routes::Native::AutoRoles
             | routes::Native::McpCredentials,
         )
         | None => false,
@@ -769,6 +791,18 @@ async fn handle(
                     true,
                 )
             }
+        }
+        Some(routes::Native::Health) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            health_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::AutoRoles) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            auto_roles_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::ChatgptOAuth) => {
             let Some(p) = whatwg else {

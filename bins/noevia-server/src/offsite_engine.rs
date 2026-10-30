@@ -244,11 +244,14 @@ struct Walked {
 }
 
 /// Every regular file under `root`, directories in name order, symlinks and `-wal`/`-shm`/
-/// `-journal` files left out. A root that cannot be listed is an error; anything below it that
+/// `-journal` files left out, and so are the snapshots Node publishes for the front and the demand
+/// marker (`crate::snapshot::PUBLISHED_STATE`, with their temporary files) at the top of a root: they
+/// describe the running process and age out in seconds, so a copy of them is noise that a restore
+/// would put back as if it were current. A root that cannot be listed is an error; anything below it that
 /// cannot be read is counted in `skipped`. A name that is not UTF-8 cannot be written to a manifest
 /// (two such names would collapse into one path and make every restore refuse), so it is skipped.
 fn walk(root: &Path, leave_out: Option<&Path>) -> Result<Walked, std::io::Error> {
-    fn visit(dir: &Path, out: &mut Walked, leave_out: Option<&Path>) {
+    fn visit(dir: &Path, out: &mut Walked, leave_out: Option<&Path>, top: bool) {
         let read = match std::fs::read_dir(dir) {
             Ok(r) => r,
             Err(_) => {
@@ -279,7 +282,7 @@ fn walk(root: &Path, leave_out: Option<&Path>) -> Result<Walked, std::io::Error>
             };
             let path = entry.path();
             if kind.is_dir() {
-                visit(&path, out, leave_out);
+                visit(&path, out, leave_out, false);
             } else if kind.is_file() {
                 if ["-wal", "-shm", "-journal"]
                     .iter()
@@ -290,6 +293,9 @@ fn walk(root: &Path, leave_out: Option<&Path>) -> Result<Walked, std::io::Error>
                 if leave_out.is_some_and(|l| l == path) {
                     continue;
                 }
+                if top && crate::snapshot::is_published_state(name) {
+                    continue;
+                }
                 out.files.push(path);
             }
         }
@@ -297,7 +303,7 @@ fn walk(root: &Path, leave_out: Option<&Path>) -> Result<Walked, std::io::Error>
     // The root itself must be listable: a missing folder is not an empty backup.
     drop(std::fs::read_dir(root)?);
     let mut out = Walked::default();
-    visit(root, &mut out, leave_out);
+    visit(root, &mut out, leave_out, true);
     Ok(out)
 }
 

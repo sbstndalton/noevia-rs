@@ -21,7 +21,7 @@ use axum::http::{HeaderName, HeaderValue, Request, Response, StatusCode};
 use axum::response::IntoResponse;
 use server_projects::{
     assets, chat_delete, chat_move, chats, context, context_window, free_chats, history, lifecycle,
-    originals, retention, Ctx, Reply,
+    originals, retention, workspace, Ctx, Reply,
 };
 use std::sync::Arc;
 
@@ -67,6 +67,9 @@ pub enum Route {
     },
     /// GET /api/account/retention (sbstndalton/noevia#1071, no switch; `PUT` is Node's)
     Retention,
+    /// GET /api/workspace (sbstndalton/noevia#2191 close-out, `rust-workspace`): the projects and
+    /// free chats, after the delete-old-chats sweep and the orphan-context cleanup.
+    Workspace,
     MoveChat {
         chat: String,
     },
@@ -139,6 +142,10 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
     // routes/import.cjs `path === '/api/import/conversations'`, its POST only (Node answers 405).
     if path == server_projects::import::ROUTE {
         return (method == "POST").then_some(Route::ImportConversations);
+    }
+    // routes/chat-lists.cjs `p === '/api/workspace'` (any method there; the list is a GET).
+    if path == "/api/workspace" {
+        return (method == "GET").then_some(Route::Workspace);
     }
     // routes/account.cjs `path === '/api/account/retention'`, its GET only.
     if path == "/api/account/retention" {
@@ -458,6 +465,7 @@ pub async fn serve(
         | Route::ContextWindow { .. }
         | Route::History { .. }
         | Route::Retention
+        | Route::Workspace
         | Route::DeleteFreeChat { .. }
         | Route::DeleteChat { .. }
         | Route::SourceText { .. }
@@ -593,6 +601,7 @@ pub async fn serve(
     let writes = matches!(
         route,
         Route::Upload { .. }
+            | Route::Workspace
             | Route::SourceText { .. }
             | Route::DocumentOriginal { .. }
             | Route::DocumentPages { .. }
@@ -655,6 +664,7 @@ pub async fn serve(
                 history::post(ctx, &chat, &b.bytes, b.over, &start_id)
             }
             (Route::Retention, _) => retention::get(ctx),
+            (Route::Workspace, _) => workspace::get(ctx),
             (Route::MoveChat { chat }, Some(b)) => {
                 chat_move::post(ctx, &chat, &b.bytes, b.over, &start_id)
             }
