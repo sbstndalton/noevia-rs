@@ -112,6 +112,18 @@ pub enum Route {
     Documents {
         project: String,
     },
+    /// POST /api/projects/{id}/upload or .../sources/sync, answered here only with `background=1`
+    /// (sbstndalton/noevia#2191 round 6, `rust-source-jobs`); the synchronous form is Node's, the
+    /// front's worker call.
+    BackgroundSource {
+        project: String,
+        sync: bool,
+    },
+    /// GET /api/projects/{id}/source-jobs/{jobId} (sbstndalton/noevia#2191 round 6)
+    SourceJob {
+        project: String,
+        job: String,
+    },
 }
 
 /// Node's matchers, `^\/api\/projects\/([^/]+)\/assets$`, `...\/assets\/([^/]+)$` and
@@ -184,6 +196,24 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
         ("POST", [project, "documents"]) if !project.is_empty() => Some(Route::Documents {
             project: (*project).to_string(),
         }),
+        // routes/projects.cjs's background wrapper, `/^\/api\/projects\/([^/]+)\/(upload|sources\/sync)$/`
+        // and the poll, `/^\/api\/projects\/([^/]+)\/source-jobs\/([^/]+)$/` (round 6).
+        ("POST", [project, "upload"]) if !project.is_empty() => Some(Route::BackgroundSource {
+            project: (*project).to_string(),
+            sync: false,
+        }),
+        ("POST", [project, "sources", "sync"]) if !project.is_empty() => {
+            Some(Route::BackgroundSource {
+                project: (*project).to_string(),
+                sync: true,
+            })
+        }
+        ("GET", [project, "source-jobs", job]) if !project.is_empty() && !job.is_empty() => {
+            Some(Route::SourceJob {
+                project: (*project).to_string(),
+                job: (*job).to_string(),
+            })
+        }
         ("POST", [project, "assets"]) if !project.is_empty() => Some(Route::Upload {
             project: (*project).to_string(),
         }),
@@ -263,8 +293,18 @@ pub async fn serve(
     req: Request<Body>,
     path: String,
 ) -> Response<Body> {
-    let (parts, body) = req.into_parts();
-    let Some(route) = route(parts.method.as_str(), &path) else {
+    let (mut parts, body) = req.into_parts();
+    // `url.searchParams.get('background') === '1'`: the first `background`, form-decoded.
+    let background = parts.uri.query().is_some_and(|q| {
+        url::form_urlencoded::parse(q.as_bytes())
+            .find(|(k, _)| k == "background")
+            .is_some_and(|(_, v)| v == "1")
+    });
+    let route = route(parts.method.as_str(), &path)
+        .filter(|r| background || !matches!(r, Route::BackgroundSource { .. }));
+    let Some(route) = route else {
+        // A synchronous upload or sync is Node's; only this front may ask for its worker form.
+        parts.headers.remove(crate::source_job_routes::WORK_HEADER);
         return app
             .proxy
             .forward(conn.peer, Request::from_parts(parts, body))
@@ -377,7 +417,14 @@ pub async fn serve(
         Route::ImportConversations => Some(server_projects::import::MAX_BYTES),
         Route::DeleteFile { .. } => Some(server_projects::files::BODY_LIMIT),
         Route::Documents { .. } => Some(server_projects::project_documents::BODY_LIMIT),
-        Route::DeleteProject { .. }
+        // The legacy proxy's caps, which these bodies met before (core's own readJson caps lie
+        // within them).
+        Route::BackgroundSource { sync: false, .. } => {
+            Some(crate::legacy_proxy::UPLOAD_BODY_CAP as usize)
+        }
+        Route::BackgroundSource { sync: true, .. } => Some(crate::legacy_proxy::BODY_CAP as usize),
+        Route::SourceJob { .. }
+        | Route::DeleteProject { .. }
         | Route::One { .. }
         | Route::Chats { .. }
         | Route::FreeChats
@@ -418,6 +465,9 @@ pub async fn serve(
             Err(()) if matches!(route, Route::Documents { .. }) => {
                 return reply::error(StatusCode::BAD_REQUEST, "invalid JSON", true)
             }
+            Err(()) if matches!(route, Route::BackgroundSource { .. }) => {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid JSON", true)
+            }
             Err(()) if matches!(route, Route::SaveHistory { .. }) => {
                 return reply::error(StatusCode::BAD_REQUEST, "could not read the chat", true)
             }
@@ -425,6 +475,55 @@ pub async fn serve(
         },
         None => None,
     };
+    // The source jobs (round 6): the store side runs on the blocking pool, the operation is Node's.
+    match &route {
+        Route::SourceJob { project, job } => {
+            let account = crate::source_job_routes::Account {
+                data_dir: data_dir.clone(),
+                user: authn.user.id.clone(),
+                start: start_id.clone(),
+                now_ms: now,
+            };
+            return crate::source_job_routes::poll(account, project.clone(), job.clone()).await;
+        }
+        Route::BackgroundSource { project, .. } => {
+            let Some(b) = upload else {
+                return reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true);
+            };
+            let account = crate::source_job_routes::Account {
+                data_dir: data_dir.clone(),
+                user: authn.user.id.clone(),
+                start: start_id.clone(),
+                now_ms: now,
+            };
+            let (layer, creds, gate_path, dir, user) = (
+                Arc::clone(&regate_layer),
+                regate_creds.clone(),
+                path.clone(),
+                data_dir.clone(),
+                authn.user.id.clone(),
+            );
+            let again = move || {
+                regate(&layer, &creds, &gate_path, now, &dir, &user)
+                    .map_err(|r| Box::new(refusal(r)))
+            };
+            // The path as the client sent it (Node decodes the id itself).
+            let raw_path = parts.uri.path().to_owned();
+            return crate::source_job_routes::start(
+                app,
+                conn.peer,
+                account,
+                raw_path,
+                project.clone(),
+                parts.headers.clone(),
+                b.bytes,
+                b.over,
+                again,
+            )
+            .await;
+        }
+        _ => {}
+    }
     let method = parts.method.clone();
     // routes/projects.cjs: `authn?.user?.role === 'admin'` (a device token acts as a member).
     let admin = authn.user.role == server_auth::Role::Admin;
@@ -619,6 +718,8 @@ pub async fn serve(
                 | Route::MoveChat { .. },
                 None,
             ) => Reply::internal(),
+            // Answered above (source_job_routes).
+            (Route::BackgroundSource { .. } | Route::SourceJob { .. }, _) => Reply::internal(),
         })
     })
     .await;

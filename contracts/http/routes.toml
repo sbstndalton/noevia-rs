@@ -665,20 +665,37 @@ owner = "node"
 path = "/api/projects/{project}/skills/install"
 owner = "node"
 
+# sbstndalton/noevia#2191 round 6 (rust-source-jobs): the background start (`?background=1`), the
+# front's, which owns the source-job store (crates/server-projects source_work.rs) and runs the
+# operation by sending the synchronous POST to Node (`X-Noevia-Source-Work: 1`); that synchronous
+# form stays Node's answer. Node refuses the background start (core rust-source-jobs.cjs).
 [[route]]
 path = "/api/projects/{id}/sources/sync"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 # sbstndalton/noevia#2191 (rust-project-reads): a source's stored text or original, the front's
 # (bins/noevia-server project_routes.rs); Node refuses the GET (core rust-project-reads.cjs).
+# sbstndalton/noevia#2191 round 6 (rust-source-jobs): a source job's status, the front's
+# (crates/server-projects source_work.rs); Node refuses the GET (core rust-source-jobs.cjs).
+[[route]]
+path = "/api/projects/{id}/source-jobs/{jobId}"
+owner = "rust"
+methods = ["GET"]
+
 [[route]]
 path = "/api/projects/{id}/sources/text"
 owner = "rust"
 methods = ["GET"]
 
+# sbstndalton/noevia#2191 round 6 (rust-source-jobs): the background start (`?background=1`), the
+# front's, which owns the source-job store (crates/server-projects source_work.rs) and runs the
+# operation by sending the synchronous POST to Node (`X-Noevia-Source-Work: 1`); that synchronous
+# form stays Node's answer. Node refuses the background start (core rust-source-jobs.cjs).
 [[route]]
 path = "/api/projects/{id}/upload"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 # sbstndalton/noevia#2191 (rust-project-reads): a source's stored text or original, the front's
 # (bins/noevia-server project_routes.rs); Node refuses the GET (core rust-project-reads.cjs).

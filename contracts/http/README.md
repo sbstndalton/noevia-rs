@@ -463,7 +463,8 @@ file whose name is a validated hex hash, never a request value.
 | `/api/projects` (POST), `/api/projects/{projectId}` (DELETE) | rust | round 2, below |
 | `/api/projects/{projectId}/config` | node | its model check reads Node's served-model catalogue and provider registry (live state, not persisted), and a `files` patch re-indexes through Node's RAG writer; next after the provider/model catalogue is published like the toolbox catalogue |
 | `/api/projects/{id}/documents` (POST) | rust | round 5, below: the front's Docling pipeline and durable extraction queue |
-| `/api/projects/{id}/upload`, `/sources/sync`, `source-jobs`, `folder-import/plan` | node | the extraction core is the front's since round 5 (below); what keeps these on Node: the background source jobs (the browser uploads and syncs only with `?background=1`, and the source-job journal has one owning process per account), the upload's other readers (`pdf-reduce` through OCR, the DOCX reader, text decoding, image assets), the folder-import tickets the plan and the upload share in memory, and the sync's storage reads with its OCR budget and reopen pass |
+| `/api/projects/{id}/upload`, `/sources/sync` (POST with `?background=1`), `/api/projects/{id}/source-jobs/{jobId}` (GET) | rust | round 6, below: the front owns the source-job store, starts and answers every background job, and runs its operation through Node's synchronous route |
+| `/api/projects/{id}/upload`, `/sources/sync` (POST without `background`), `folder-import/plan` | node | the operation each job runs, and the plan whose tickets the organized upload consumes in Node's memory. What keeps them on Node: the upload's other readers (`pdf-reduce` through OCR `/reduce-pdf`, the DOCX reader, text decoding with its notes, image assets with retire/prune, the type groups, the create-only remote write with `discardCreated`), the sync's storage reads (a 96 MiB binary read with the large-document lock taken from Content-Length, the text reads, the breadth-first listing), its OCR budget and `reopenStored`, the storage latch (`automaticHold`, Node memory) and core's pdf.js reader for documents when Docling is off; the front has a storage list/text-preview/write client but no binary read yet |
 | `/api/projects/{projectId}/instruction-skills`, `.../manifests`, `/api/projects/{project}/skills/install` | node | the known-toolbox list (plugins, MCP) is Node's runtime catalogue; install fetches a published skill through Node's plugin directory |
 | `/api/projects/{projectId}/browser`, `/code`, `/research` | node | they drive a browser session, the code harness or research jobs |
 | `/api/code/active` | node | the code harness service's live task list |
@@ -644,3 +645,66 @@ the `index` job, 200 `{ name, pages, characters, truncated, document }`. `?backg
 the same way, synchronously (no client sends it for this route). Not serialized against a core
 source operation on the same project (core's source lock is in-process): the save is a
 read-modify-write of projects.json under its lock, as round 3's delete.
+
+## sbstndalton/noevia#2191 round 6 (group rust-source-jobs): the front owns the source jobs
+
+`--features` lists `rust-source-jobs` and no longer lists `noevia-source-jobs-store/1`. The front is
+the one owning process of the source-job store (crates/server-projects `source_jobs`, the journals
+`users/<id>/jobs/<uuid>.jsonl`; `source_work` for the route side). It answers
+`POST /api/projects/{id}/upload?background=1`, `POST /api/projects/{id}/sources/sync?background=1`
+(`url.searchParams.get('background') === '1'`: the first `background`, form-decoded) and
+`GET /api/projects/{id}/source-jobs/{jobId}`. Core refuses those three before authentication with 503
+`RUST_SOURCE_JOBS_OWNED` (`server/rust-source-jobs.cjs`); its `source-jobs.cjs`, the store client's
+`sourceJobsFor`, `SOURCE_JOBS_CLIENT_MARKER` and `workspace.sourceJobs` are deleted, and the internal
+`/v1/source-jobs/*` store routes are gone from the front. Two processes can no longer own the same
+account's journals, which was what kept these routes on Node (the store's `recover(owner)` admits one
+owner per account).
+
+**Start** (core routes/projects.cjs's background wrapper and source-jobs.cjs `start`, answer for
+answer): the session gate, the body up to the legacy proxy's cap (80 MiB + 512 KiB for the upload,
+33 MiB for the sync), the session gate again, the id decoded (bad escape 500), `getProject` (404
+`project not found`), the body cap (413 `Request exceeds size limit`), this process registered as
+the account's owner on its first use (earlier owners' active jobs interrupted: "The server restarted
+before this finished."), then the job persisted created+started within the two-active cap (429
+`Source processing is busy; wait for the current operation and retry.`; 409 for a newer owner, 410
+for a removed account, 404 for a project removed meanwhile, any other store failure 503 `Internal
+error`, as core's `sourceCall` and `errorResponse` worded them). The operation is then sent to Node
+as the synchronous route (the same path, no query) with the client's own headers (its session and
+CSRF pass Node's gate as before), the body as received and `X-Noevia-Source-Work: 1`. Node answers
+NDJSON: `{"accepted":true}` once it has taken the request, one `{"stage":...}` per progress step,
+then `{"done":{"status","body"}}` (the route's answer, any status) or `{"failed":{"status"}}` (it
+threw). An answer before `accepted` is a plain JSON refusal (Node's 404, the storage hold of an
+automatic sync, `invalid JSON`), which the front passes on unchanged while it abandons the job (the
+request key tombstoned, the job interrupted, its slot freed). After `accepted`, the client gets core's
+202 `{ "poll": "/api/projects/<encodeURIComponent(id)>/source-jobs/<job>" }`, and a task of the front
+writes each progress step (`n` from 1) and the terminal row, whether or not the client is still
+there: `job.completed` with `{status, body}`; `job.failed` with `{status}` and core's default
+message for a thrown operation, or 503 when a progress write failed (no clean completion after it,
+as core); a worker stream that ends before its result fails the job with 503 and core's restart
+wording. A terminal write the store refuses for a passing reason is retried (5 s apart, 12 times),
+then the job is abandoned so its slot is never held for good. A synchronous upload or sync a client
+sends is still proxied to Node, with any `X-Noevia-Source-Work` it carries dropped.
+
+**Poll** (source-jobs.cjs `read`): the gate, the id decoded, `getProject` (404 `project not
+found`), the owner registered, the job read (the job id as the path carries it; another project's or
+an expired job is 404 `Processing status expired or the server restarted; refresh or re-upload to
+retry.`): completed `{done:true,status,body}` (an absent key left out), failed
+`{done:true,status:result.status||500,body:{error}}`, interrupted or cancelled
+`{done:true,status:503,body:{error:"The server restarted before processing finished; refresh or
+re-upload to retry."}}`, otherwise `{done:false}` with `stage` when there is one. Keys in core's
+order; JSON as JSON.stringify writes it (lone surrogates stay escaped).
+
+**#1441 (a chat turn waits for a file it was just sent).** The operation still runs in Node, so
+Node's in-process registry of running file operations (core `source-work.cjs`, names memory-only)
+is what a chat turn waits on, as before; it no longer reads a journal.
+
+**Behaviour changes.** (1) Order: the body is read before the project lookup (core looked the
+project up first); the project 404 still wins over the 413, but a sync's storage hold and a
+malformed body are now answered after the job slot check (core: before it), so with two jobs
+running a held or malformed request is a 429 rather than its hold or 400. (2) A job whose Node
+worker restarts mid-operation is failed by the front at once (503, the restart wording) instead of
+at the next Node start. (3) A job whose front restarts mid-operation is interrupted at the front's
+next use of that account's store, as a Node restart did before; Node may still finish the operation
+(as when the old Node's journal writes failed). (4) The front's restart, not Node's, now interrupts
+active jobs.
+

@@ -1,5 +1,6 @@
-//! Source-processing status journals. The Node upload/OCR worker calls this internal store;
-//! Rust is the sole writer of source-kind jobs/<uuid>.jsonl. Other job kinds stay untouched.
+//! Source-processing status journals: the front is their one owning process (sbstndalton/noevia#2191
+//! round 6, [`crate::source_work`]); Node keeps no client. Rust is the sole writer of source-kind
+//! jobs/<uuid>.jsonl. Other job kinds stay untouched.
 use crate::{lock, store};
 use js_json::{wtf16, JValue};
 use rand_core::{OsRng, RngCore};
@@ -8,9 +9,6 @@ use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-
-/// Paired release guard: Node source journal clients require this internal store.
-pub const SOURCE_JOBS_STORE_MARKER: &str = "noevia-source-jobs-store/1";
 
 const RETAIN_MS: u64 = 15 * 60 * 1000;
 const MAX_JOBS: usize = 16;
@@ -145,6 +143,11 @@ fn uuid() -> String {
         u16::from_be_bytes([b[8], b[9]]),
         u64::from_be_bytes([0, 0, b[10], b[11], b[12], b[13], b[14], b[15]])
     )
+}
+
+/// A fresh random v4 UUID (a job id, a request key, an owner id).
+pub fn new_id() -> String {
+    uuid()
 }
 
 fn valid_id(id: &str) -> bool {

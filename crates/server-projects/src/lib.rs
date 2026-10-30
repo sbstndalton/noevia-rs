@@ -89,6 +89,7 @@ pub mod research_jobs;
 pub mod retention;
 pub mod skills;
 pub mod source_jobs;
+pub mod source_work;
 pub mod sources;
 pub mod store;
 pub mod store_api;

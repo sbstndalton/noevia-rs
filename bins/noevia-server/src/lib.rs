@@ -26,6 +26,7 @@ pub mod routing_default_routes;
 pub mod routing_mode_routes;
 pub mod sampling_settings_routes;
 pub mod serve;
+pub mod source_job_routes;
 pub mod static_files;
 pub mod stats_routes;
 #[cfg(feature = "rust-storage-browse")]
@@ -117,6 +118,15 @@ use std::sync::Arc;
 /// (sbstndalton/noevia#2191 round 5). Node refuses the POST (core rust-project-documents.cjs
 /// `RUST_PROJECT_DOCUMENTS_OWNED`), so the web supervisor pairs them.
 ///
+/// `rust-source-jobs`: this build is the one owning process of the source-job store
+/// (sbstndalton/noevia#2191 round 6, crates/server-projects `source_work`): it answers
+/// `POST /api/projects/{id}/upload?background=1`, `POST .../sources/sync?background=1` and
+/// `GET .../source-jobs/{jobId}`, and runs each job's operation by sending the synchronous route to
+/// Node with `X-Noevia-Source-Work: 1`. It serves no internal source-job store routes any more
+/// (`noevia-source-jobs-store/1` is gone). Node refuses the background starts and the poll (core
+/// rust-source-jobs.cjs `RUST_SOURCE_JOBS_OWNED`) and has no source journal client, so the web
+/// supervisor pairs them.
+///
 /// `project-store`: this build serves the internal project store Node writes projects.json and
 /// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
 /// supervisor confirms it to Node (NOEVIA_RUST_PROJECT_STORE_CONFIRMED) and hands both the secret.
@@ -137,7 +147,6 @@ pub const FEATURES: &[&str] = &[
     "rust-feature-owner",
     "legacy-root-claim",
     "project-store",
-    server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER,
     server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER,
     "rust-auth",
     "rust-diary",
@@ -150,6 +159,7 @@ pub const FEATURES: &[&str] = &[
     "rust-conversation-import",
     "rust-document-extraction",
     "rust-project-documents",
+    "rust-source-jobs",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",

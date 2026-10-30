@@ -130,8 +130,19 @@ const PROJECT_ROUTES: &[&str] = &[
     PROJECT_ONE,
     PROJECT_FILES,
     PROJECT_DOCUMENTS,
+    PROJECT_UPLOAD,
+    PROJECT_SYNC,
+    PROJECT_SOURCE_JOB,
     server_projects::import::ROUTE,
 ];
+
+/// A project upload's and folder sync's background start (POST only; routes.toml) and a source
+/// job's status (GET only), the front's under `rust-source-jobs` (sbstndalton/noevia#2191 round 6):
+/// it owns the source-job store and sends the synchronous POST, which stays Node's, as its worker
+/// call. Node refuses the background start and the poll (core rust-source-jobs.cjs).
+pub(crate) const PROJECT_UPLOAD: &str = "/api/projects/{id}/upload";
+pub(crate) const PROJECT_SYNC: &str = "/api/projects/{id}/sources/sync";
+pub(crate) const PROJECT_SOURCE_JOB: &str = "/api/projects/{id}/source-jobs/{jobId}";
 
 /// A project document's upload (POST only; routes.toml), the front's under `rust-project-documents`
 /// (sbstndalton/noevia#2191 round 5), on the Rust extraction pipeline; Node refuses it
@@ -556,7 +567,7 @@ mod tests {
             ("PUT", "/api/projects/p1/assets/img-1"),
             ("HEAD", "/api/projects/p1/assets/img-1"),
             ("POST", "/api/projects/p1/assets/img-1"),
-            ("POST", "/api/projects/p1/upload"),
+            ("GET", "/api/projects/p1/upload"),
             // DELETE /api/projects/p1 is the front's since #2191 round 2 (rust-project-lifecycle).
             ("GET", "/api/projects/p1"),
         ] {
@@ -1051,10 +1062,11 @@ mod tests {
             "/api/projects/p1/sources/sync",
             "/api/projects/p1/config",
         ] {
-            for m in ["GET", "POST", "DELETE"] {
+            for m in ["GET", "DELETE"] {
                 assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
             }
         }
+        assert_eq!(dispatch_under("POST", "/api/projects/p1/config", on), None);
         // `{*}/original` is matched by the table; project_routes::route sends any segment but
         // `uploads` on to Node.
         assert_eq!(
@@ -1115,6 +1127,55 @@ mod tests {
         );
         assert!(crate::FEATURES.contains(&"rust-project-documents"));
         assert!(crate::FEATURES.contains(&"rust-document-extraction"));
+    }
+
+    /// sbstndalton/noevia#2191 round 6: the source jobs are the front's: the upload's and sync's POST
+    /// (project_routes sends the synchronous form, without `background=1`, on to Node) and the poll.
+    #[test]
+    fn the_source_jobs_are_native_for_their_methods() {
+        use crate::project_routes::{route, Route};
+        let on = Switches::default();
+        for p in ["/api/projects/p1/upload", "/api/projects/p1/sources/sync"] {
+            assert_eq!(dispatch_under("POST", p, on), Some(Native::Projects), "{p}");
+            for m in ["GET", "PUT", "PATCH", "DELETE"] {
+                assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
+            }
+        }
+        let poll = "/api/projects/p1/source-jobs/j1";
+        assert_eq!(dispatch_under("GET", poll, on), Some(Native::Projects));
+        for m in ["POST", "PUT", "DELETE"] {
+            assert_eq!(dispatch_under(m, poll, on), None, "{m}");
+        }
+        assert_eq!(
+            route("POST", "/api/projects/p1/upload"),
+            Some(Route::BackgroundSource {
+                project: "p1".into(),
+                sync: false
+            })
+        );
+        assert_eq!(
+            route("POST", "/api/projects/p%201/sources/sync"),
+            Some(Route::BackgroundSource {
+                project: "p%201".into(),
+                sync: true
+            })
+        );
+        assert_eq!(
+            route("GET", poll),
+            Some(Route::SourceJob {
+                project: "p1".into(),
+                job: "j1".into()
+            })
+        );
+        for (m, p) in [
+            ("POST", "/api/projects//upload"),
+            ("GET", "/api/projects/p1/source-jobs/"),
+            ("GET", "/api/projects/p1/upload"),
+        ] {
+            assert_eq!(route(m, p), None, "{m} {p}");
+        }
+        assert!(crate::FEATURES.contains(&"rust-source-jobs"));
+        assert!(!crate::FEATURES.contains(&"noevia-source-jobs-store/1"));
     }
 
     #[test]
