@@ -89,7 +89,12 @@ fn source_limit() -> usize {
 
 /// uploads.cjs `ingest`'s original copy: `project-uploads/<sha256 id>/<sha256 bytes>`, 0600 in 0700,
 /// written to a temp name and renamed.
-fn save_original(dir: &Path, project_id: &str, id: &str, bytes: &[u8]) -> std::io::Result<()> {
+pub(crate) fn save_original(
+    dir: &Path,
+    project_id: &str,
+    id: &str,
+    bytes: &[u8],
+) -> std::io::Result<()> {
     use std::io::Write;
     use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
     let folder = lifecycle::uploads_dir(dir, project_id);

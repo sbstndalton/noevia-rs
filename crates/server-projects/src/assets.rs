@@ -71,7 +71,12 @@ fn ids(raw_project: &str, raw_asset: &str) -> Option<(String, String)> {
 /// Writes the image into `dir` (below `user_dir`), making `dir`'s missing levels (mode 0700) one
 /// at a time below the user's directory but never that directory itself: when the account was
 /// removed meanwhile, the write fails instead of recreating it (sbstndalton/noevia#1425).
-fn write_asset_file(user_dir: &Path, dir: &Path, name: &str, bytes: &[u8]) -> std::io::Result<()> {
+pub(crate) fn write_asset_file(
+    user_dir: &Path,
+    dir: &Path,
+    name: &str,
+    bytes: &[u8],
+) -> std::io::Result<()> {
     let below = dir
         .strip_prefix(user_dir)
         .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;

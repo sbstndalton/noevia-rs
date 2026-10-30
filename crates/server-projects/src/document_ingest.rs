@@ -27,6 +27,9 @@ pub struct Ingested {
     pub retryable: bool,
     /// The stored result is readable but its completion pass stopped for a passing reason.
     pub open: bool,
+    /// What this read came to, for a sync's log line: `extracted` (a new extraction), `reopened` (a
+    /// stored result completed) or `unchanged` (the stored result reused as it was).
+    pub outcome: &'static str,
 }
 
 fn valid_version(v: &str) -> bool {
@@ -206,6 +209,7 @@ pub fn ingest(
     let result_file = version_path(dir, project, &version, ".json").ok_or_else(bad)?;
     let cached = read_record(&result_file).filter(|c| !c.get("retryable").truthy());
     let mut figures = FigureBytes::new();
+    let mut outcome = "unchanged";
     let out = match cached {
         Some(c) if c.get("completion").as_str() != Some(extract::COMPLETION) => {
             let completed =
@@ -217,6 +221,7 @@ pub fn ingest(
                     &result_file,
                     wtf16::stringify(&completed).unwrap_or_default().as_bytes(),
                 )?;
+                outcome = "reopened";
                 completed
             } else {
                 c
@@ -224,6 +229,7 @@ pub fn ingest(
         }
         Some(c) => c,
         None => {
+            outcome = "extracted";
             let mut out =
                 match extract::extract_document_text(name, bytes, engine, limits, &mut figures) {
                     Ok(o) => o,
@@ -330,6 +336,7 @@ pub fn ingest(
             && out.get("pageTexts").truthy()
             && matches!(out.get("pageTexts"), JValue::Arr(a) if !a.is_empty())
             && extract::is_pdf(name),
+        outcome,
     })
 }
 

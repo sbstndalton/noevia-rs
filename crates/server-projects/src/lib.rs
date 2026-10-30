@@ -70,6 +70,7 @@ pub mod document_pages;
 pub mod extract;
 pub mod extract_queue;
 pub mod files;
+pub mod folder_import;
 pub mod frame;
 pub mod free_chats;
 pub mod history;
@@ -89,12 +90,25 @@ pub mod research_jobs;
 pub mod retention;
 pub mod skills;
 pub mod source_jobs;
+pub mod source_limits;
+pub mod source_ops;
+pub mod source_reply;
+pub mod source_storage;
 pub mod source_work;
 pub mod sources;
+pub mod staging;
+pub mod storage_latch;
 pub mod store;
 pub mod store_api;
+pub mod sync;
 pub mod transcript;
+pub mod upload;
+pub mod uploads_ingest;
 pub mod workspace;
+
+/// The whole-file cap of a streamed storage read (96 MiB, core's upload limit and the default of
+/// `PROJECT_DOCUMENT_READ_BYTES`); noevia-server checks it equals server-storage-reads' `FILE_CAP`.
+pub const SOURCE_FILE_CAP: u64 = 96 * 1024 * 1024;
 
 /// A handler's answer: Node's `json(res, status, body)` or a binary body with its headers.
 #[derive(Debug, Clone, PartialEq, Eq)]
