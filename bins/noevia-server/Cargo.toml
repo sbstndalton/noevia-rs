@@ -53,6 +53,10 @@ rust-free-chats = []
 rust-project-writes = []
 
 [dependencies]
+context-fit = { path = "../../crates/context-fit" }
+engine-admission = { path = "../../crates/engine-admission" }
+model-stream = { path = "../../crates/model-stream" }
+research-core = { path = "../../crates/research-core" }
 server-features = { path = "../../crates/server-features" }
 server-diary = { path = "../../crates/server-diary" }
 server-storage-reads = { path = "../../crates/server-storage-reads", optional = true }

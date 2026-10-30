@@ -1516,7 +1516,7 @@ and assemble-release.sh refuse a mixed pair, old/old stays valid). The node-rout
 | `POST /api/projects/{project}/skills/install` | rust | same | `skill_routes.rs`, `plugin_directory_routes.rs` `fetch_skill` |
 | `DELETE /api/admin/users/{id}` | rust | `rust-admin-users.cjs` / `RUST_ADMIN_USERS_OWNED` | bins/noevia-server `admin_user_routes.rs`, crates/server-account `delete.rs` |
 
-**Kept on Node, and why.** `/api/projects/{projectId}/browser`, `/code`, `/research` and `GET /api/code/active` are
+**Kept on Node, and why.** `/api/projects/{projectId}/browser`, `/code` (and `/research`, until #2218 below) and `GET /api/code/active` are
 chat-bound (the tool loop, the harness and the research jobs run in the chat process), so they stay Node's; core's
 `routes/projects.cjs` is gone with the last of its handlers.
 
@@ -1602,3 +1602,31 @@ brokers rewrite when they forget the account. Core has no role-change route, so 
     `rust-chatgpt-status` (the ChatGPT broker); a build with one would delete an account and keep the other's
     credentials. The supervisor and the assembler then refuse that front beside a Core that refuses the delete.
 
+## sbstndalton/noevia#2218 (capability `rust-research`)
+
+Deep research moves as one owner: Core's `rust-research.cjs` (`RUST_RESEARCH_OWNED`, every method, before
+authentication) and the front's capability; the web supervisor and assemble-release.sh refuse a mixed pair, old/old
+stays valid. The node-route floor in `tests/front.rs` is 27. The flag stays the owner's; off is the same 404.
+
+| Route | Owner | Where |
+|---|---|---|
+| `/api/projects/{projectId}/research`, `/plan`, `/{job}`, `/{job}/cancel`, `/{job}/save` | rust, all methods | bins/noevia-server `research_routes.rs`, crates/research-core, crates/server-projects `research_jobs.rs`, `research_report.rs` |
+
+The job, its budget, the plan, the sources and the verifier are `crates/research-core`, pinned against Node's answers
+(`tests/differential.rs`). The journal is the same files as before, so old/old rollback reads every job written here.
+A job is its own task: a client that leaves cannot strand it, a start that ends leaves it `interrupted` (or `failed`
+holding its report, which can still be saved), exactly as Node's recovery did.
+
+**What Node still does for a job, over loopback with the store token** (trust: loopback address, no proxied-client
+header, the token; anything else is an unknown path's 404): `/internal/inference-admission/lease` (the one-model rule,
+budget and maintenance gate stay in the one process that runs chat and tuning; TTL 30 s, renewed, ends itself if the
+front dies, and a lost lease stops the step), `/internal/research/{availability,tool,retrieve}` (the MCP wiring and
+rag.cjs; only the two search tools, in research's own shape, as the asking user). They go with those modules.
+
+**Behaviour changes, each a Node bug or a deliberate step.** The plan route answered 500 on every call
+(`AbortSignal.any([undefined, ...])`) and now works; search, extract and retrieve obey cancel; a search that answers
+`ERROR...` is reported as a failed search, not "no relevant information"; gather's result is capped when the web budget
+ran out; a progress stage over 4096 bytes is clipped instead of killing the job; `POST .../research/cancel` is a 404
+rather than a new job; a `.sources.json` retry now matches its first hash after the journal's key sort. Steps stream
+(`stream: true`) with a 120 s deadline and an idle limit, a local step takes the gate's lease when a gate exists, and
+deadline and connect failures have their own words. Availability still ignores `project.model`, as Node's did.

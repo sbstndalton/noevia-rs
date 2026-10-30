@@ -380,7 +380,7 @@ fn restore_job(dir: &Path, project: &str, name: &str, earlier: Option<extract_qu
 }
 
 /// `withSourceLock`'s end: the stored originals and images no source points at go (#1914).
-fn prune(dir: &Path, ctx: Ctx<'_>, project: &str) {
+pub(crate) fn prune(dir: &Path, ctx: Ctx<'_>, project: &str) {
     let r = store::update(dir, ctx.switch, |projects| {
         let Some(p) = store::find_mut(projects, project) else {
             return ((), false);
@@ -464,7 +464,7 @@ fn organized(env: &Env<'_>, dir: &Path, id: &str, body: &JValue, input_name_raw:
 }
 
 #[allow(clippy::too_many_arguments)]
-fn organized_locked(
+pub(crate) fn organized_locked(
     env: &Env<'_>,
     dir: &Path,
     id: &str,

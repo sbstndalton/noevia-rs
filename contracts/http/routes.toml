@@ -755,9 +755,31 @@ owner = "rust"
 methods = ["GET"]
 client = false
 
+# sbstndalton/noevia#2218 (rust-research): deep research, every method, the front's
+# (bins/noevia-server research_routes.rs, crates/research-core); Node refuses them (core rust-research.cjs).
 [[route]]
 path = "/api/projects/{projectId}/research"
-owner = "node"
+owner = "rust"
+
+[[route]]
+path = "/api/projects/{projectId}/research/plan"
+owner = "rust"
+client = false
+
+[[route]]
+path = "/api/projects/{projectId}/research/{job}"
+owner = "rust"
+client = false
+
+[[route]]
+path = "/api/projects/{projectId}/research/{job}/cancel"
+owner = "rust"
+client = false
+
+[[route]]
+path = "/api/projects/{projectId}/research/{job}/save"
+owner = "rust"
+client = false
 
 [[route]]
 path = "/api/projects/{project}/skills/install"

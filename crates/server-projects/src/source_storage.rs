@@ -187,6 +187,14 @@ pub trait SourceStorage {
     ) -> Result<Written, StorageError>;
     /// `discardWritten(conn, path, etag)`: never fails; (deleted, reason).
     fn discard(&self, path: &str, etag: &str) -> (bool, &'static str);
+    /// Whether this is Nextcloud, the one kind a research report's create-only write is tried on.
+    fn nextcloud(&self) -> bool {
+        false
+    }
+    /// project-edit-target.cjs `storageAccount(connection)`: the account's nonsecret digest.
+    fn account(&self) -> String {
+        String::new()
+    }
 }
 
 /// What the account's storage is for one operation.

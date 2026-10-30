@@ -91,6 +91,7 @@ pub mod project_documents;
 pub mod project_storage;
 pub mod provider_rows;
 pub mod research_jobs;
+pub mod research_report;
 pub mod retention;
 pub mod skill_routes;
 pub mod skills;

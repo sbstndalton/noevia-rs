@@ -228,6 +228,21 @@ fn kind_name(k: Kind) -> &'static str {
 }
 
 impl SourceStorage for Session {
+    fn nextcloud(&self) -> bool {
+        self.connection().kind == Kind::Nextcloud
+    }
+
+    fn account(&self) -> String {
+        let c = self.connection();
+        server_projects::research_report::storage_account(
+            kind_name(c.kind),
+            &c.base_url,
+            &c.bucket,
+            &c.region,
+            &c.username,
+        )
+    }
+
     fn s3(&self) -> bool {
         self.connection().kind == Kind::S3
     }

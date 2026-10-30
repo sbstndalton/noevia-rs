@@ -123,7 +123,7 @@ pub fn missing(roles: &JValue, published: &Published) -> Vec<JValue> {
 }
 
 /// The roles file as core's `readJson(file, null)` reads it.
-fn read_roles(dir: &Path) -> JValue {
+pub(crate) fn read_roles(dir: &Path) -> JValue {
     std::fs::read(dir.join(FILE))
         .ok()
         .and_then(|bytes| wtf16::parse(&String::from_utf8_lossy(&bytes)).ok())

@@ -1,0 +1,24 @@
+[package]
+name = "research-core"
+version = "0.1.0"
+description = "Deep research's rules: source reduction, the claim verifier, the plan, the report files and the runner (core research-*.cjs; sbstndalton/noevia#2218)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+context-fit = { path = "../context-fit" }
+js-json = { path = "../js-json" }
+model-stream = { path = "../model-stream" }
+prompt-framing = { path = "../prompt-framing" }
+regex = "1"
+serde_json = "1"
+sha2 = "=0.10.9"
+unicode-normalization = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "time"] }

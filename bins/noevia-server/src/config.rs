@@ -22,6 +22,9 @@ pub struct Config {
     pub port: u16,
     pub trust_proxy: bool,
     pub upstream: Upstream,
+    /// Deep research (sbstndalton/noevia#2218): the engine address, the bridge to Node and the flag's
+    /// environment override, as core index.cjs reads them.
+    pub research: std::sync::Arc<crate::research_routes::Research>,
     pub dist: PathBuf,
     pub stamp_version: Option<String>,
     /// COWORK_CODE_NET_ADDR, parsed as core code-net-guard.cjs does (empty: no guard).
@@ -336,6 +339,12 @@ impl Config {
             host,
             port,
             trust_proxy: get("TRUST_PROXY").as_deref() == Some("true"),
+            research: std::sync::Arc::new(crate::research_routes::Research::new(
+                crate::research_routes::Settings::from_lookup(
+                    &get,
+                    format!("http://{}", upstream.authority()),
+                )?,
+            )?),
             upstream,
             dist: get("NOEVIA_WEB_DIST")
                 .filter(|d| !d.is_empty())

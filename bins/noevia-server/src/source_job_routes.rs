@@ -129,7 +129,7 @@ pub struct Work {
 }
 
 /// The storage the operation uses, opened on the blocking pool.
-fn with_storage<T>(
+pub(crate) fn with_storage<T>(
     app: &Arc<App>,
     authn: &server_auth::Identity,
     f: impl FnOnce(&server_projects::source_storage::Storage<'_>) -> T,

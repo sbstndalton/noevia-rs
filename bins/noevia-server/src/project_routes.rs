@@ -158,12 +158,20 @@ pub enum Route {
     SkillInstall {
         project: String,
     },
+    /// /api/projects/{projectId}/research and below (sbstndalton/noevia#2218), every method.
+    Research {
+        project: String,
+        shape: crate::research_routes::Shape,
+    },
 }
 
 /// Node's matchers, `^\/api\/projects\/([^/]+)\/assets$`, `...\/assets\/([^/]+)$` and
 /// `^\/api\/projects\/([^/]+)\/chats$`, and routes/chat-lists.cjs's `p === '/api/freechats'`,
 /// with the methods its handlers answer; `None` sends the request on to Node.
 pub fn route(method: &str, path: &str) -> Option<Route> {
+    if let Some((project, shape)) = crate::research_routes::parse(path) {
+        return Some(Route::Research { project, shape });
+    }
     // routes/import.cjs `path === '/api/import/conversations'`, its POST only (Node answers 405).
     if path == server_projects::import::ROUTE {
         return (method == "POST").then_some(Route::ImportConversations);
@@ -497,7 +505,27 @@ pub async fn serve(
     {
         return *response;
     }
+    if let Route::Research { project, shape } = &route {
+        return crate::research_routes::serve(
+            app,
+            parts.method.clone(),
+            body,
+            authn.clone(),
+            data_dir.clone(),
+            start_id.clone(),
+            Regate {
+                layer: Arc::clone(&regate_layer),
+                creds: regate_creds.clone(),
+                path: path.clone(),
+                now,
+            },
+            project.clone(),
+            shape.clone(),
+        )
+        .await;
+    }
     let limit = match &route {
+        Route::Research { .. } => None,
         Route::Upload { .. } => Some(assets::BODY_LIMIT),
         Route::SaveChats { .. } | Route::SaveFreeChats => Some(chats::BODY_LIMIT),
         Route::SaveHistory { .. } => Some(history::BODY_LIMIT),
@@ -910,8 +938,10 @@ pub async fn serve(
                 | Route::SkillSelect { .. },
                 None,
             ) => Reply::internal(),
-            // Answered above (project_config_routes).
-            (Route::Config { .. } | Route::SkillInstall { .. }, _) => Reply::internal(),
+            // Answered above (project_config_routes, research_routes).
+            (Route::Config { .. } | Route::SkillInstall { .. } | Route::Research { .. }, _) => {
+                Reply::internal()
+            }
             // Answered above (source_job_routes).
             (
                 Route::SourceUpload { .. } | Route::SourceSync { .. } | Route::SourceJob { .. },

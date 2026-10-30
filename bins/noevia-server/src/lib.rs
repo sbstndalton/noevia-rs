@@ -64,6 +64,7 @@ pub mod provider_test_routes;
 pub mod public_pages;
 pub mod reasoning_settings_routes;
 pub mod reply;
+pub mod research_routes;
 pub mod routes;
 pub mod routing_default_routes;
 pub mod routing_mode_routes;
@@ -312,6 +313,7 @@ pub const FEATURES: &[&str] = &[
     "rust-feature-owner",
     "legacy-root-claim",
     "project-store",
+    "rust-research",
     server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER,
     "rust-auth",
     "rust-diary",
