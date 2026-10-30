@@ -501,6 +501,22 @@ impl Presets {
         }
         (m, mm)
     }
+
+    /// The speculative draft model's file: not an editable option, so `parse` does not keep it
+    /// (`draftFile` in core `llamacpp-presets.cjs`, sbstndalton/noevia#2215).
+    pub fn draft_file(&self, model: &str) -> Option<String> {
+        let s = self.section(model)?;
+        let mut file = None;
+        for line in self.lines.get(s.start + 1..s.end).into_iter().flatten() {
+            if let Some((key, value)) = line.split_once('=') {
+                let value = value.trim();
+                if key.trim() == "spec-draft-model" && !value.is_empty() {
+                    file = Some(value.to_owned());
+                }
+            }
+        }
+        file
+    }
 }
 
 // ── The model's files (llamacpp-manager.cjs modelFiles, localFile) ───────────────────────────

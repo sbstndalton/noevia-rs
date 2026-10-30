@@ -21,6 +21,9 @@ const CALL_TIMEOUT: Duration = Duration::from_secs(5);
 pub struct LeaseGrant {
     pub id: String,
     pub ttl: Duration,
+    pub renew_every: Duration,
+    /// Node ends the lease this long after granting it, however often it is renewed.
+    pub hard: Duration,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -107,9 +110,18 @@ impl NodeLeases {
                     .and_then(Value::as_u64)
                     .filter(|t| *t > 0)
                     .ok_or(LeaseFault::Unavailable)?;
+                let ms = |key: &str| {
+                    body.get(key)
+                        .and_then(Value::as_u64)
+                        .filter(|t| *t > 0)
+                        .map(Duration::from_millis)
+                        .ok_or(LeaseFault::Unavailable)
+                };
                 Ok(LeaseGrant {
                     id: id.to_owned(),
                     ttl: Duration::from_millis(ttl),
+                    renew_every: ms("renewMs")?,
+                    hard: ms("hardMs")?,
                 })
             }
             409 => Err(LeaseFault::Busy),

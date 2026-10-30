@@ -972,7 +972,7 @@ leaves it unset (https://huggingface.co).
   `model-maintenance-lease.cjs`, `model_maint/node_lease.rs`): loopback, the per-start store secret, not a proxied
   request. A lease IS a hold of Node's gate, so chat active refuses the reload with the 409, and a held lease holds
   back chat (503 after its short wait), tune, calibration, sweep, idle-unload, delete and prune. It ends by itself
-  when not renewed (30 s), so a front that dies frees Node. Node unreachable, or answering anything else: 503 with
+  when not renewed (180 s, longer than any one router call; a step starts only if the last confirmation and the lease's hard limit cover its whole limit), so a front that dies frees Node. Node unreachable, or answering anything else: 503 with
   nothing changed. A lease that ended or that Node stopped confirming stops the work before its next step, and is
   never taken again. With a gate and no admin token, `unload: true` is refused (503): the gate's hold is the only
   exclusion for other clients. The front prints Node's missing-token warning at start when a gate answers. The

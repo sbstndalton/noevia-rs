@@ -13,8 +13,8 @@
 //!
 //! Without an admin token, or when nothing at the engine address knows the hold (404), a hold is a
 //! lease on Node's own maintenance gate instead ([`node_lease`](super::node_lease)): renewed the same
-//! way, but a lease that ends is never taken again: [`Hold::lost`] tells the work to stop before its
-//! next step, because Node's work may be running from then on.
+//! way, but a lease that ends is never taken again: [`Hold::may_start`] stops the work before any step
+//! the lease is not sure to outlast, because Node's work may run once it ends.
 
 use super::node_lease::{LeaseGrant, NodeLeases};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE};
@@ -311,11 +311,18 @@ struct Shared {
     /// Node's lease only: when Node last confirmed it, and how long that confirmation lasts.
     confirmed: Mutex<Instant>,
     lease_ttl: Option<Duration>,
+    /// When Node ends the lease whatever happens.
+    lease_end: Option<Instant>,
     lost: AtomicBool,
 }
 
 impl Shared {
-    fn new(token: Option<String>, deadline: Instant, lease_ttl: Option<Duration>) -> Arc<Shared> {
+    fn new(
+        token: Option<String>,
+        deadline: Instant,
+        lease_ttl: Option<Duration>,
+        lease_end: Option<Instant>,
+    ) -> Arc<Shared> {
         Arc::new(Shared {
             token: Mutex::new(token),
             released: AtomicBool::new(false),
@@ -323,6 +330,7 @@ impl Shared {
             deadline: Mutex::new(deadline),
             confirmed: Mutex::new(Instant::now()),
             lease_ttl,
+            lease_end,
             lost: AtomicBool::new(false),
         })
     }
@@ -372,8 +380,13 @@ impl Hold {
         reason: &str,
         deadline: Instant,
     ) -> Hold {
-        let shared = Shared::new(Some(grant.id), deadline, Some(grant.ttl));
-        let every = (grant.ttl / 3).max(Duration::from_millis(50));
+        let shared = Shared::new(
+            Some(grant.id),
+            deadline,
+            Some(grant.ttl),
+            Some(Instant::now() + grant.hard),
+        );
+        let every = grant.renew_every;
         tokio::spawn(lease_loop(Arc::clone(&shared), Arc::clone(&node), every));
         Hold {
             shared,
@@ -392,7 +405,7 @@ impl Hold {
         reason: &str,
         deadline: Instant,
     ) -> Hold {
-        let shared = Shared::new(Some(grant.token), deadline, None);
+        let shared = Shared::new(Some(grant.token), deadline, None, None);
         let every = (grant.idle_ttl / 3).max(Duration::from_secs(1));
         tokio::spawn(renew_loop(
             Arc::clone(&shared),
@@ -418,18 +431,22 @@ impl Hold {
         self.shared.token.lock().ok().and_then(|t| t.clone())
     }
 
-    /// Whether Node's lease has ended or can no longer be vouched for: the work must not start its
-    /// next step. Always false for the gate's hold, which goes on as it always did.
-    pub fn lost(&self) -> bool {
+    /// May a step of at most `limit` start? For Node's lease: only if it has not ended and is sure to
+    /// outlast the step: Node's last confirmation and its hard limit both cover it, so the lease cannot
+    /// end under a call in flight, even if Node stops hearing renewals now. Always true for the gate's
+    /// hold, which goes on as it always did.
+    pub fn may_start(&self, limit: Duration) -> bool {
         let Some(ttl) = self.shared.lease_ttl else {
-            return false;
+            return true;
         };
-        self.shared.lost.load(Ordering::Acquire)
-            || self
+        let covered = |until: Instant| Instant::now() + limit < until;
+        !self.shared.lost.load(Ordering::Acquire)
+            && self
                 .shared
                 .confirmed
                 .lock()
-                .map_or(true, |at| at.elapsed() >= ttl)
+                .is_ok_and(|at| covered(*at + ttl))
+            && self.shared.lease_end.is_none_or(covered)
     }
 
     /// Makes the deadline at least `needed` from now: the work has found out how long it may take.
@@ -556,7 +573,7 @@ async fn lease_loop(shared: Arc<Shared>, node: Arc<NodeLeases>, every: Duration)
                 eprintln!("[models] Node ended this front's maintenance lease; the work stops before its next step");
                 return;
             }
-            // Not answered: `Hold::lost` turns true when the last confirmation runs out.
+            // Not answered: `Hold::may_start` refuses once the last confirmation cannot cover a step.
             None => {}
         }
     }

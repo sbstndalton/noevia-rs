@@ -22,7 +22,7 @@ const SECRET: &str = "synthetic-store-token-0123456789abcdef";
 const LEASE: &str = "/internal/model-maintenance/lease";
 const ID: &str = "0123456789abcdef0123456789abcdef";
 const IN_PROGRESS: &str = r#"{"error":"Requests are in progress. Try again when chats finish."}"#;
-const GRANT: &str = r#"{"lease":"0123456789abcdef0123456789abcdef","ttlMs":30000}"#;
+const GRANT: &str = r#"{"lease":"0123456789abcdef0123456789abcdef","ttlMs":180000,"renewMs":100,"hardMs":3600000}"#;
 
 type Order = Arc<Mutex<Vec<String>>>;
 
@@ -76,10 +76,14 @@ fn grant() -> Answer {
     Answer::Reply(201, GRANT.into())
 }
 fn short_grant() -> Answer {
-    Answer::Reply(201, json!({"lease": ID, "ttlMs": 300}).to_string())
+    Answer::Reply(
+        201,
+        // Covers a reload (120 s) by 300 ms only: the confirmation goes stale quickly.
+        json!({"lease": ID, "ttlMs": 120_300, "renewMs": 100, "hardMs": 3_600_000}).to_string(),
+    )
 }
 fn renewed() -> Answer {
-    Answer::Reply(200, r#"{"ttlMs":30000}"#.into())
+    Answer::Reply(200, "{}".into())
 }
 
 struct Setup {
@@ -205,6 +209,31 @@ async fn node_unreachable_or_refusing_fails_closed_with_nothing_changed() {
     let s = front(r, n, &[("NOEVIA_PROJECT_STORE_TOKEN", "")]).await;
     assert_eq!(reload(s.addr, b"{}").await.0, 503);
     assert!(order.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_step_the_lease_cannot_outlast_is_not_started() {
+    // Node's hard limit falls inside the reload's 120 s limit.
+    let order: Order = Arc::default();
+    let (r, _) = engine(router(Arc::clone(&order), &[], 0)).await;
+    let (n, _) = engine(node(
+        Arc::clone(&order),
+        || {
+            Answer::Reply(
+                201,
+                json!({"lease": ID, "ttlMs": 180_000, "renewMs": 100, "hardMs": 100_000})
+                    .to_string(),
+            )
+        },
+        renewed,
+    ))
+    .await;
+    let s = front(r, n, &[]).await;
+    assert_eq!(reload(s.addr, b"{}").await.0, 503);
+    assert!(!order
+        .lock()
+        .unwrap()
+        .contains(&"router GET /models?reload=1".to_owned()));
 }
 
 #[tokio::test]
@@ -629,6 +658,35 @@ async fn an_entry_left_by_a_rollback_has_no_identity_and_is_discarded_while_a_ra
 }
 
 #[tokio::test]
+async fn a_build_node_could_not_read_is_no_change_of_configuration() {
+    let i = inbox(0).await;
+    let body = i.m.evidence_body("fx").await.unwrap();
+    let identity_with_null_build = {
+        // Filed once under the real identity, then Node's hash is rebuilt from it with no build.
+        let hash = serde_json::from_str::<Value>(&body).unwrap()["identityHash"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        i.put("001.json", &result("passed", Some(&hash), None));
+        i.m.drain_inbox().await;
+        let mut identity = i.lines()[0]["identity"].clone();
+        identity["build"] = Value::Null;
+        let parsed = js_json::parse(&identity.to_string()).unwrap();
+        noevia_server::model_maint::evidence::identity_hash(&parsed)
+    };
+    let mut e = result("failed", Some(&identity_with_null_build), None);
+    e["buildUnknown"] = json!(true);
+    i.put("002.json", &e);
+    i.m.drain_inbox().await;
+    assert_eq!(i.lines().len(), 2, "filed under the live identity");
+    // Without the mark the same hash is a different configuration.
+    let unmarked = result("passed", Some(&identity_with_null_build), None);
+    i.put("003.json", &unmarked);
+    i.m.drain_inbox().await;
+    assert_eq!(i.lines().len(), 2);
+}
+
+#[tokio::test]
 async fn a_transient_failure_does_not_lose_the_record() {
     // The next identity reads have no build, so the hash differs: tried again, then filed.
     let j = inbox(2).await;
@@ -820,7 +878,7 @@ impl Drop for RealNode {
 
 #[tokio::test]
 async fn real_node_chat_refuses_the_reload_and_the_reload_holds_chat_and_tune_back() {
-    let Some(node) = RealNode::start(30_000).await else {
+    let Some(node) = RealNode::start(180_000).await else {
         return;
     };
     let order: Order = Arc::default();

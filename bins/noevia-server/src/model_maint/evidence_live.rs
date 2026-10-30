@@ -118,7 +118,7 @@ impl Maint {
                             .into_iter()
                             .map(|(k, v)| (k.to_owned(), v))
                             .collect();
-                        (fm, fp, options)
+                        (fm, fp, options, p.draft_file(&m))
                     })
                 })
                 .await
@@ -127,16 +127,12 @@ impl Maint {
             }
             None => None,
         };
-        let (preset_model, preset_mmproj, options) = presets.unwrap_or((None, None, Vec::new()));
+        let (preset_model, preset_mmproj, options, draft_file) =
+            presets.unwrap_or((None, None, Vec::new(), None));
         let model_file = flag(&["--model", "-m"]).or(preset_model);
         let mmproj_file = flag(&["--mmproj", "-mm"]).or(preset_mmproj);
         let sizing = std::sync::Arc::clone(&self.sizing);
         let (mf, mm) = (model_file.clone(), mmproj_file.clone());
-        let draft_file = options
-            .iter()
-            .find(|(k, _)| k == "spec-draft-model")
-            .map(|(_, v)| v.clone())
-            .filter(|v| !v.is_empty());
         let fingerprints = tokio::task::spawn_blocking(move || {
             let fp = |c: &Option<String>| {
                 c.as_deref()
@@ -1121,7 +1117,13 @@ impl Maint {
             Ok(None) => return Applied::Retry("the model's identity cannot be read now"),
             Err(_) => return Applied::Retry("the router failed"),
         };
-        if live.hash != carried {
+        // A /props that failed when Node measured is no change of configuration.
+        let matches = if entry.get("buildUnknown") == &JValue::Bool(true) {
+            ev::identity_hash(&without_build(&live.identity)) == carried
+        } else {
+            live.hash == carried
+        };
+        if !matches {
             // A /props that failed just now also changes the hash, and passes.
             if live.identity.get("build") == &JValue::Null {
                 return Applied::Retry("the identity differs while the engine's build is unknown");
@@ -1165,6 +1167,21 @@ where
             eprintln!("[evidence] the inbox drain failed; it starts again");
         }
         tokio::time::sleep(pause).await;
+    }
+}
+
+fn without_build(identity: &JValue) -> JValue {
+    match identity {
+        JValue::Obj(items) => JValue::Obj(
+            items
+                .iter()
+                .map(|(k, v)| {
+                    let v = if k == "build" { JValue::Null } else { v.clone() };
+                    (k.clone(), v)
+                })
+                .collect(),
+        ),
+        other => other.clone(),
     }
 }
 

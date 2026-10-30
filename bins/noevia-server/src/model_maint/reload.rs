@@ -480,13 +480,13 @@ impl Maint {
         if kept.is_empty() {
             holding.cover(worst_case(loaded.len()));
             for id in &loaded {
-                if holding.lost() {
+                if !holding.may_start(UNLOAD_LIMIT) {
                     return message(503, LEASE_LOST);
                 }
                 let _ = router.unload(id, hold).await;
             }
         }
-        if holding.lost() {
+        if !holding.may_start(RELOAD_LIMIT) {
             return message(503, LEASE_LOST);
         }
         let result = match self.router_reload(router, hold, expect.as_deref()).await {
