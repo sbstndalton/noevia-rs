@@ -157,7 +157,7 @@ fn remove(path: &Path) {
 }
 
 /// document-sources.cjs `prune(workspace, project)`.
-fn prune_documents(dir: &Path, project: &JValue) {
+pub(crate) fn prune_documents(dir: &Path, project: &JValue) {
     let id = project.get("id").as_str().unwrap_or("");
     let mut keep = BTreeSet::new();
     if let JValue::Arr(files) = project.get("files") {

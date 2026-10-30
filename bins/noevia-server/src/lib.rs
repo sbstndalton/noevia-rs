@@ -9,6 +9,7 @@ pub mod code_net;
 pub mod config;
 pub mod diary_routes;
 pub mod export_routes;
+pub mod extraction;
 pub mod feature_context;
 pub mod health;
 pub mod identity;
@@ -108,6 +109,10 @@ use std::sync::Arc;
 /// import Node left unfinished is finished here. Node refuses the POST (core
 /// rust-conversation-import.cjs `RUST_CONVERSATION_IMPORT_OWNED`), so the web supervisor pairs them.
 ///
+/// `rust-document-extraction`: this build extracts new project documents itself (Docling, with the
+/// OCR worker for the per-page retry; crates/server-projects `extract`) and drains each user's
+/// durable extraction queue (`users/<id>/extraction-jobs.db`, sbstndalton/noevia#2191 round 5).
+///
 /// `project-store`: this build serves the internal project store Node writes projects.json and
 /// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
 /// supervisor confirms it to Node (NOEVIA_RUST_PROJECT_STORE_CONFIRMED) and hands both the secret.
@@ -139,6 +144,7 @@ pub const FEATURES: &[&str] = &[
     "rust-project-files",
     "rust-project-document-pages",
     "rust-conversation-import",
+    "rust-document-extraction",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",
@@ -212,6 +218,10 @@ pub struct App {
     pub export: Arc<tokio::sync::Semaphore>,
     pub routing_files:
         Option<Result<server_routing_mode::storage::Root, server_routing_mode::storage::Fault>>,
+    /// The Docling/OCR client of the extraction pipeline (sbstndalton/noevia#2191 round 5); `None`
+    /// outside a Tokio runtime or when its HTTP client could not be built (the document route
+    /// answers 503).
+    pub extraction: Option<Arc<extraction::HttpEngine>>,
 }
 
 impl App {
@@ -263,6 +273,9 @@ impl App {
                 .as_ref()
                 .map(|engine| Arc::new(stats_routes::StatsLayer::new(Arc::clone(engine)))),
             routing_files,
+            extraction: tokio::runtime::Handle::try_current()
+                .ok()
+                .and_then(|rt| extraction::HttpEngine::new(rt, config.data_dir.clone())),
             proxy: legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy),
             statics: static_files::StaticFiles::new(config.dist.clone()),
             version,
