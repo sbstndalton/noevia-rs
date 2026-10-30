@@ -2547,7 +2547,7 @@ async fn an_empty_destination_is_not_initialised_once_a_backup_was_made_to_it() 
     let r = send(moved.addr, "POST", &format!("{ROOT}/run"), ADMIN, "").await;
     assert_eq!(r.status, 200, "{}", r.text);
     assert!(files_under(&other_dest).contains(&"config".to_string()));
-    let st = j(&std::fs::read_to_string(&status_path(&w)).unwrap());
+    let st = j(&std::fs::read_to_string(status_path(&w)).unwrap());
     assert_ne!(
         st["backupDestination"], first_digest,
         "the recorded destination is now the new folder's own digest"
