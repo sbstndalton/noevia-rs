@@ -10,7 +10,7 @@
 
 use reqwest::header::{HeaderName, HeaderValue};
 use serde_json::Value;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const PATH: &str = "/internal/model-maintenance/lease";
 const TOKEN_HEADER: &str = "x-noevia-store-token";
@@ -24,6 +24,8 @@ pub struct LeaseGrant {
     pub renew_every: Duration,
     /// Node ends the lease this long after granting it, however often it is renewed.
     pub hard: Duration,
+    /// Just before asking: Node's clocks started no earlier, so times counted from here are never long.
+    pub asked: Instant,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,6 +93,7 @@ impl NodeLeases {
     }
 
     pub async fn acquire(&self) -> Result<LeaseGrant, LeaseFault> {
+        let asked = Instant::now();
         let req = self
             .request(reqwest::Method::POST, PATH)
             .ok_or(LeaseFault::Unavailable)?;
@@ -122,6 +125,7 @@ impl NodeLeases {
                     ttl: Duration::from_millis(ttl),
                     renew_every: ms("renewMs")?,
                     hard: ms("hardMs")?,
+                    asked,
                 })
             }
             409 => Err(LeaseFault::Busy),

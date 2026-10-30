@@ -300,6 +300,9 @@ impl Gate {
     }
 }
 
+/// Added to a step's limit for what it does around its router call (reading models.ini).
+const STEP_MARGIN: Duration = Duration::from_secs(15);
+
 struct Shared {
     /// The gate's hold token, or the id of Node's lease.
     token: Mutex<Option<String>>,
@@ -384,8 +387,11 @@ impl Hold {
             Some(grant.id),
             deadline,
             Some(grant.ttl),
-            Some(Instant::now() + grant.hard),
+            Some(grant.asked + grant.hard),
         );
+        if let Ok(mut at) = shared.confirmed.lock() {
+            *at = grant.asked;
+        }
         let every = grant.renew_every;
         tokio::spawn(lease_loop(Arc::clone(&shared), Arc::clone(&node), every));
         Hold {
@@ -439,7 +445,7 @@ impl Hold {
         let Some(ttl) = self.shared.lease_ttl else {
             return true;
         };
-        let covered = |until: Instant| Instant::now() + limit < until;
+        let covered = |until: Instant| Instant::now() + limit + STEP_MARGIN < until;
         !self.shared.lost.load(Ordering::Acquire)
             && self
                 .shared
@@ -562,10 +568,11 @@ async fn lease_loop(shared: Arc<Shared>, node: Arc<NodeLeases>, every: Duration)
         let Some(id) = shared.token.lock().ok().and_then(|t| t.clone()) else {
             return;
         };
+        let asked = Instant::now();
         match node.renew(&id).await {
             Some(true) => {
                 if let Ok(mut at) = shared.confirmed.lock() {
-                    *at = Instant::now();
+                    *at = asked;
                 }
             }
             Some(false) => {

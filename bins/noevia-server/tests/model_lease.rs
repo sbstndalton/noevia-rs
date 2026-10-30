@@ -79,8 +79,8 @@ fn grant() -> Answer {
 fn short_grant() -> Answer {
     Answer::Reply(
         201,
-        // Covers a reload (120 s) by 300 ms only: the confirmation goes stale quickly.
-        json!({"lease": ID, "ttlMs": 120_300, "renewMs": 100, "hardMs": 3_600_000}).to_string(),
+        // Covers a reload (120 s, 15 s margin) by 300 ms only: the confirmation goes stale quickly.
+        json!({"lease": ID, "ttlMs": 135_300, "renewMs": 100, "hardMs": 3_600_000}).to_string(),
     )
 }
 fn renewed() -> Answer {
