@@ -3001,6 +3001,7 @@ dependencies = [
  "server-store",
  "sha2",
  "tempfile",
+ "upload-sniff",
 ]
 
 [[package]]

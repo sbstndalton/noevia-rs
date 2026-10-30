@@ -4,7 +4,8 @@
 //! Private storage row projection binds an already supplied Identity and loaded
 //! SecretKeys. Identity fields are public and require a real gate at a future route.
 //! No route is integrated; the snapshot is read only and does not upgrade envelopes.
-//! A future transport must enforce deadlines. Neither trait grants write access.
+//! A future transport must enforce deadlines. Writes (PUT/MKCOL/DELETE, noevia#2191 round 3) are
+//! only in [`writes`], each a port of one core storage-client.cjs write.
 #![forbid(unsafe_code)]
 
 pub mod admission;
@@ -19,6 +20,7 @@ pub mod protocol;
 pub mod request_ipc;
 pub mod response_ipc;
 pub mod transport;
+pub mod writes;
 
 pub const LIST_BYTES: usize = 4 * 1024 * 1024;
 pub const TEXT_BYTES: usize = 800_000;
@@ -29,6 +31,14 @@ pub const BODY_BYTES: usize = 1024 * 1024;
 pub const JSON_DEPTH: usize = 128;
 pub const LIST_ENTRY_BYTES: usize = 16 * 1024 * 1024;
 pub const LIST_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
+/// The largest body one storage write carries: core's DOCUMENT_UPLOAD_CAP (25 MiB, also
+/// upload-sniff's CAP). A larger original (a PDF up to pdf-reduce's 60 MiB) is not written through
+/// this client yet (noevia#2191 round 3 gap: it needs a streamed child body).
+pub const WRITE_BYTES: usize = 25 * 1024 * 1024;
+/// A PROPFIND's request body: the fixed `<d:propfind>` query, far below this.
+pub const PROPFIND_BODY_BYTES: usize = 4096;
+/// The longest ETag a write reply carries; a longer one is treated as none (no conditional cleanup).
+pub const ETAG_BYTES: usize = 1024;
 
 /// Public failure text is fixed or derived only from the requested filename/status.
 /// Do not insert transport diagnostics, endpoints, credentials or response text.

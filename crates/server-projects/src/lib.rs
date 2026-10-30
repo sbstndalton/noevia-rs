@@ -77,6 +77,7 @@ pub mod lock;
 pub mod originals;
 pub mod outbox;
 pub mod partial;
+pub mod project_storage;
 pub mod research_jobs;
 pub mod retention;
 pub mod skills;

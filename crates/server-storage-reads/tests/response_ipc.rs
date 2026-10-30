@@ -90,6 +90,7 @@ fn actual_request_consumption_separate_portable_artifact() {
             headers: vec![],
             attempt_timeout: Duration::from_secs(2),
             body_cap: TEXT_BYTES,
+            body: Default::default(),
         };
         let input = request_ipc::encode(&request).unwrap_or_else(|_| unreachable!());
         let admission = Admission::default();
@@ -125,6 +126,7 @@ fn response_is_not_committed_before_eof_exit_and_cleanup() {
             headers: vec![],
             attempt_timeout: Duration::from_secs(2),
             body_cap: TEXT_BYTES,
+            body: Default::default(),
         };
         let input = request_ipc::encode(&request).unwrap_or_else(|_| unreachable!());
         let admission = Admission::default();

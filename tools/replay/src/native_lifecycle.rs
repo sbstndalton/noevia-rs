@@ -3,7 +3,7 @@
 //! reads) and the front keeps each account's index outbox (`users/<id>/index-outbox.db`); a
 //! Node-direct reference has neither. They leave the differential comparison COPY only after this
 //! validates them: a well-formed catalogue, and every outbox fully drained (no pending, running or
-//! failed job: all index and sweep work the front queued was done by core) with a tombstone only
+//! failed job: all index work the front queued was done by core, every sweep by the front) with a tombstone only
 //! for a project the account no longer has. The full snapshot keeps them.
 use crate::{at, state};
 use serde_json::{json, Value};

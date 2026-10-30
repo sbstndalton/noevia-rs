@@ -2,7 +2,7 @@
 #[path = "support/dns_lab.rs"]
 mod lab;
 // Source inclusion accesses only the crate-private closed testing seam.
-use server_storage_reads::{isolated, protocol, response_ipc, LIST_BYTES, TEXT_BYTES};
+use server_storage_reads::{isolated, protocol, response_ipc, ETAG_BYTES, LIST_BYTES, TEXT_BYTES};
 #[allow(dead_code)]
 #[path = "../src/child_http.rs"]
 mod actual_transport;

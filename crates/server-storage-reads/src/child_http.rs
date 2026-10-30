@@ -119,22 +119,59 @@ mod tls_wire_tests {
     }
 }
 const STEP: usize = 4096;
-struct Empty;
-impl Body for Empty {
+/// The request body: empty for a read, a write's bytes (noevia#2191 round 3), sent as one frame
+/// with its exact length.
+struct Payload(Option<Bytes>);
+impl Payload {
+    fn of(body: zeroize::Zeroizing<Vec<u8>>) -> Self {
+        if body.is_empty() {
+            Self(None)
+        } else {
+            Self(Some(Bytes::from(body.to_vec())))
+        }
+    }
+}
+impl Body for Payload {
     type Data = Bytes;
     type Error = Infallible;
     fn poll_frame(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         _: &mut Context<'_>,
     ) -> Poll<Option<Result<Frame<Bytes>, Infallible>>> {
-        Poll::Ready(None)
+        Poll::Ready(self.0.take().map(|b| Ok(Frame::data(b))))
     }
     fn is_end_stream(&self) -> bool {
-        true
+        self.0.is_none()
     }
     fn size_hint(&self) -> SizeHint {
-        SizeHint::with_exact(0)
+        SizeHint::with_exact(self.0.as_ref().map_or(0, |b| b.len() as u64))
     }
+}
+fn method_name(method: Method) -> &'static str {
+    match method {
+        Method::Get => "GET",
+        Method::Propfind => "PROPFIND",
+        Method::Put => "PUT",
+        Method::Mkcol => "MKCOL",
+        Method::Delete => "DELETE",
+    }
+}
+/// A write reply's payload: the response's `ETag`, else `OC-ETag`, trimmed; empty when there is none,
+/// it is not visible ASCII, or it is longer than [`crate::ETAG_BYTES`] (core storage-client.cjs
+/// writeFile: an ETag with CR/LF is ''; without one a later cleanup is skipped).
+fn etag_of(headers: &HeaderMap) -> Vec<u8> {
+    let value = headers
+        .get("etag")
+        .filter(|v| !v.as_bytes().iter().all(u8::is_ascii_whitespace))
+        .or_else(|| headers.get("oc-etag"));
+    let Some(value) = value else {
+        return Vec::new();
+    };
+    let text = value.as_bytes().trim_ascii();
+    if text.len() > crate::ETAG_BYTES || text.iter().any(|b| !(0x20..0x7f).contains(b)) {
+        return Vec::new();
+    }
+    text.to_vec()
 }
 struct LimitedIo<IO> {
     socket: IO,
@@ -334,7 +371,7 @@ fn collect_addresses(
     Err(TransportFailure::Dns)
 }
 struct PreparedTransport {
-    outgoing: HttpRequest<Empty>,
+    outgoing: HttpRequest<Payload>,
     invalid_headers: Arc<AtomicBool>,
     tls: Option<Arc<rustls::ClientConfig>>,
     identity: Option<rustls::pki_types::ServerName<'static>>,
@@ -361,7 +398,8 @@ pub(crate) fn prepare_dns_inner<I: Iterator<Item = SocketAddr>>(
         || request.url.len() > 65536
         || request.headers.len() > 100
         || request.attempt_timeout.is_zero()
-        || request.attempt_timeout > Duration::from_secs(20)
+        || request.attempt_timeout > request.method.max_attempt()
+        || request.body.len() > request.method.max_body()
     {
         return Err(Error::Input);
     }
@@ -426,12 +464,9 @@ pub(crate) fn prepare_dns_inner<I: Iterator<Item = SocketAddr>>(
     };
     let path = uri.path_and_query().map(|s| s.as_str()).unwrap_or("/");
     let mut outgoing = match HttpRequest::builder()
-        .method(match request.method {
-            Method::Get => "GET",
-            Method::Propfind => "PROPFIND",
-        })
+        .method(method_name(request.method))
         .uri(path)
-        .body(Empty)
+        .body(Payload::of(request.body))
     {
         Ok(request) => request,
         Err(_) => return refuse(Phase::Headers, TransportFailure::Header),
@@ -545,7 +580,8 @@ pub(crate) async fn execute_inner(
         || request.url.len() > 65536
         || request.headers.len() > 100
         || request.attempt_timeout.is_zero()
-        || request.attempt_timeout > Duration::from_secs(20)
+        || request.attempt_timeout > request.method.max_attempt()
+        || request.body.len() > request.method.max_body()
     {
         return Err(Error::Input);
     }
@@ -592,12 +628,9 @@ pub(crate) async fn execute_inner(
     };
     let path = uri.path_and_query().map(|s| s.as_str()).unwrap_or("/");
     let mut outgoing = match HttpRequest::builder()
-        .method(match request.method {
-            Method::Get => "GET",
-            Method::Propfind => "PROPFIND",
-        })
+        .method(method_name(request.method))
         .uri(path)
-        .body(Empty)
+        .body(Payload::of(request.body))
     {
         Ok(r) => r,
         Err(_) => return failure(Phase::Headers, TransportFailure::Header, cap),
@@ -702,7 +735,7 @@ async fn connected(
 }
 async fn exchange<IO: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     socket: IO,
-    outgoing: HttpRequest<Empty>,
+    outgoing: HttpRequest<Payload>,
     invalid_headers: Arc<AtomicBool>,
     deadline: Instant,
     cap: usize,
@@ -731,6 +764,7 @@ async fn exchange<IO: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         Err(_) => return failure(Phase::Headers, TransportFailure::Timeout, cap),
     };
     let _driver = Driver(tokio::spawn(connection));
+    let etag_reply = matches!(outgoing.method().as_str(), "PUT" | "MKCOL" | "DELETE");
     let response = match timeout_at(deadline, sender.send_request(outgoing)).await {
         Ok(Ok(r)) => r,
         Ok(Err(e)) => {
@@ -763,6 +797,19 @@ async fn exchange<IO: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         );
     }
     let body_deadline = deadline.min(Instant::now() + Duration::from_secs(10));
+    if etag_reply {
+        // A write's answer is its status and ETag; core never reads a write's response body.
+        let etag = etag_of(response.headers());
+        return body_reply(
+            Reply::Http {
+                status,
+                capped: false,
+                payload: &etag,
+            },
+            cap,
+            body_deadline,
+        );
+    }
     if status == 204 || status == 205 {
         return body_reply(
             Reply::Http {

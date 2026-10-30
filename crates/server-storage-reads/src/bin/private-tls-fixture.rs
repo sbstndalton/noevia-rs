@@ -1,6 +1,6 @@
 //! Separate fixed loopback synthetic artifact, never a production trust switch.
 use server_storage_reads::{
-    child_request, isolated, protocol, response_ipc, LIST_BYTES, TEXT_BYTES,
+    child_request, isolated, protocol, response_ipc, ETAG_BYTES, LIST_BYTES, TEXT_BYTES,
 };
 #[allow(dead_code)]
 #[path = "../child_http.rs"]

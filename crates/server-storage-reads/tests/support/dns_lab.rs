@@ -96,6 +96,7 @@ pub fn request(host: &str, port: u16, timeout: Duration) -> Request {
             Zeroizing::new("different.synthetic.invalid".into()),
         )],
         body_cap: TEXT_BYTES,
+        body: Default::default(),
         attempt_timeout: timeout,
     }
 }

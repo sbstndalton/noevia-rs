@@ -484,6 +484,7 @@ fn new_partial_encoded_feed_parent_cancel_and_deadline_ownership() {
                     url: format!("http://{address}/synthetic"),
                     headers: vec![],
                     body_cap: TEXT_BYTES,
+                    body: Default::default(),
                     attempt_timeout: Duration::from_millis(100),
                 },
                 if cancel_mode {

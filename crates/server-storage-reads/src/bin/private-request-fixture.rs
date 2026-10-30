@@ -12,6 +12,7 @@ fn run() -> Result<(), ()> {
     let payload: &[u8] = match request.method {
         Method::Get => b"synthetic GET",
         Method::Propfind => b"synthetic PROPFIND",
+        Method::Put | Method::Mkcol | Method::Delete => b"synthetic WRITE",
     };
     let frame = response_ipc::encode(
         Reply::Http {

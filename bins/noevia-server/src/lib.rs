@@ -15,6 +15,8 @@ pub mod identity;
 pub mod legacy_proxy;
 pub mod model_routes;
 pub mod project_routes;
+#[cfg(feature = "rust-storage-browse")]
+pub mod project_storage_io;
 pub mod project_store;
 pub mod reasoning_settings_routes;
 pub mod reply;
@@ -84,6 +86,13 @@ use std::sync::Arc;
 /// toolbox catalogue a create reads (`project-catalogue.json`), so the web supervisor must refuse a
 /// front without it beside such a Core, and a front with it beside an older Core.
 ///
+/// `rust-project-storage`: this build writes to a user's connected storage for a project's
+/// lifecycle (sbstndalton/noevia#2191 round 3): a create stores its text files in the project's
+/// folder (#687) and the front runs the `sweep` jobs of its index outbox itself. Core then claims
+/// only its own job kinds (core rust-project-storage.cjs `CORE_KINDS`), so the web supervisor must
+/// refuse a front without it beside such a Core (its sweeps would never run), and a front with it
+/// beside an older Core (both would run them).
+///
 /// `project-store`: this build serves the internal project store Node writes projects.json and
 /// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
 /// supervisor confirms it to Node (NOEVIA_RUST_PROJECT_STORE_CONFIRMED) and hands both the secret.
@@ -111,6 +120,7 @@ pub const FEATURES: &[&str] = &[
     "rust-model-reads",
     "rust-project-reads",
     "rust-project-lifecycle",
+    "rust-project-storage",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",
@@ -153,6 +163,10 @@ pub struct App {
     /// This binary, run as the owned outbound child (`--storage-request-child`).
     #[cfg(feature = "rust-storage-browse")]
     pub storage_child: Option<std::path::PathBuf>,
+    /// Project storage write admission (round 3, #2191): four at once, one per account, apart
+    /// from the browse's.
+    #[cfg(feature = "rust-storage-browse")]
+    pub storage_writes: server_storage_reads::admission::Admission,
     pub config: config::Config,
     pub proxy: legacy_proxy::LegacyProxy,
     pub statics: static_files::StaticFiles,
@@ -211,6 +225,8 @@ impl App {
             storage_browse: server_storage_reads::admission::Admission::default(),
             #[cfg(feature = "rust-storage-browse")]
             storage_child: storage_browse_routes::child_command(),
+            #[cfg(feature = "rust-storage-browse")]
+            storage_writes: server_storage_reads::admission::Admission::default(),
             identity,
             writes,
             accounts,

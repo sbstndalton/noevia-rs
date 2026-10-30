@@ -17,6 +17,9 @@ use std::path::PathBuf;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
+#[path = "../../../crates/server-storage-reads/tests/support/dav_lab.rs"]
+mod dav_lab;
+
 const SCHEMA: &str = include_str!("../../../crates/server-store/tests/fixtures/node-schema.sql");
 const CODE: &str = "synthetic-project-lifecycle-code";
 const ORIGIN: &str = "http://127.0.0.1:18021";
@@ -97,7 +100,10 @@ async fn front_with_retired_value(value: Option<&str>) -> Front {
         env.insert("NOEVIA_RUST_PROJECT_WRITES", value.into());
         env.insert("NOEVIA_RUST_PROJECT_WRITES_CONFIRMED", value.into());
     }
-    let app = noevia_server::App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
+    let mut app = noevia_server::App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
+    // The test harness is not noevia-server: the owned storage child is the real binary.
+    std::sync::Arc::get_mut(&mut app).unwrap().storage_child =
+        Some(env!("CARGO_BIN_EXE_noevia-server").into());
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(serve(
@@ -392,7 +398,7 @@ fn seed_full(f: &Front) {
     .unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn delete_purges_the_project_its_chats_and_their_attachments_but_nothing_else() {
     let f = front().await;
     seed_full(&f);
@@ -451,14 +457,20 @@ async fn delete_purges_the_project_its_chats_and_their_attachments_but_nothing_e
     assert!(!dir.join("history-c1.json").exists());
     let tombstones = std::fs::read_to_string(dir.join("deleted-chats.json")).unwrap();
     assert!(tombstones.contains("c1"));
-    // The storage folder sweep is queued for core, once.
-    let jobs = server_projects::outbox::jobs(&dir).unwrap();
-    let sweeps: Vec<_> = jobs
-        .iter()
-        .filter(|j| j.kind == "sweep")
-        .map(|j| j.project.clone())
-        .collect();
-    assert_eq!(sweeps, vec!["p1"]);
+    // The storage folder sweep was queued once and is the front's own job since round 3: with no
+    // storage connected it removes nothing and is acknowledged (core afterDelete without a
+    // connection), so it leaves the outbox; core never sees a sweep.
+    let mut drained = false;
+    for _ in 0..100 {
+        let jobs = server_projects::outbox::jobs(&dir).unwrap();
+        assert!(jobs.iter().all(|j| j.kind != "sweep" || j.project == "p1"));
+        if jobs.iter().all(|j| j.kind != "sweep") {
+            drained = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert!(drained, "the sweep job is run by the front");
     // Again: no such project.
     let (status, _, text) = call(f.addr, "DELETE", "/api/projects/p1", &h, "").await;
     assert_eq!(
@@ -554,4 +566,148 @@ async fn a_failed_save_removes_nothing() {
 #[test]
 fn the_build_lists_rust_project_lifecycle() {
     assert!(noevia_server::FEATURES.contains(&"rust-project-lifecycle"));
+}
+
+/// The user's storage row: a synthetic WebDAV server (dav_lab), Basic `u:<secret>`.
+fn connect_storage(f: &Front, port: u16, secret: &str) {
+    let c = Connection::open(server_store::db_path(&f.data)).unwrap();
+    c.execute(
+        "INSERT INTO storage_connections(user_id,kind,base_url,bucket,region,username,secret,corpus_root,updated_at) VALUES(?1,'webdav',?2,'','us-east-1','u',?3,'Diary',1)",
+        [f.user.clone(), format!("http://127.0.0.1:{port}/dav"), secret.to_owned()],
+    )
+    .unwrap();
+}
+
+/// #687 (round 3): with storage connected, a create-time text file is stored in the project's
+/// folder (allocated now, attached as a source); a file that is not storable stays noevia's.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn create_with_storage_stores_its_text_files_in_the_project_folder() {
+    if !cfg!(target_os = "linux") {
+        eprintln!("skipped: the owned storage child runs only on Linux");
+        return;
+    }
+    let f = front().await;
+    publish_catalogue(&f);
+    let (port, dav) = dav_lab::server();
+    connect_storage(&f, port, "pw");
+    std::fs::write(f.data.join("secrets.key"), vec![7u8; 32]).unwrap();
+    let h = json_headers(&f);
+    let body = r#"{"name":"Stored","files":[{"name":"notes.md","content":"hello storage"},{"name":"blob.bin","content":"x"},{"name":"sub/a.md","content":"y"}]}"#;
+    let (status, _, text) = call(f.addr, "POST", "/api/projects", &h, body).await;
+    assert_eq!(status, 200, "{text}");
+    let made: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let id = made["id"].as_str().unwrap().to_string();
+    let folder = format!("noevia projects/{id}");
+    assert_eq!(made["reservedFolder"], folder.as_str());
+    assert_eq!(made["projectFolder"], folder.as_str());
+    assert_eq!(made["sourceFolders"], serde_json::json!([folder]));
+    let full = format!("{folder}/Text/notes.md");
+    assert_eq!(
+        made["files"][0],
+        serde_json::json!({"name": full, "attachment": {"id": hex_sha256("hello storage"), "bytes": 13, "group": "Text", "state": "ready"}, "source": folder, "textRef": hex_sha256("hello storage"), "chars": 13})
+    );
+    // Not storable: an Other-group file and a name with a folder stay plain.
+    assert_eq!(made["files"][1]["name"], "blob.bin");
+    assert_eq!(made["files"][2]["name"], "sub/a.md");
+    assert!(made["files"][1].get("source").is_none());
+    assert_eq!(projects(&f)[0], made);
+    {
+        let d = dav.lock().unwrap();
+        assert_eq!(d.files.get(&full).unwrap().0, b"hello storage");
+        assert!(d.dirs.contains("noevia projects") && d.dirs.contains(&folder));
+        assert!(d.seen.iter().any(|(m, _)| m == "PUT"));
+    }
+    // The original is kept as an upload's is.
+    let original = f
+        .user_dir()
+        .join("project-uploads")
+        .join(hex_sha256(&id))
+        .join(hex_sha256("hello storage"));
+    assert_eq!(std::fs::read(original).unwrap(), b"hello storage");
+    // The index jobs name the files as stored.
+    let jobs = server_projects::outbox::jobs(&f.user_dir()).unwrap();
+    let mut files: Vec<_> = jobs.iter().map(|j| j.file.clone().unwrap()).collect();
+    files.sort();
+    let mut want = vec![full.clone(), "blob.bin".to_string(), "sub/a.md".to_string()];
+    want.sort();
+    assert_eq!(files, want);
+
+    // A second project: the reservation is its own folder.
+    let (_, _, text) = call(
+        f.addr,
+        "POST",
+        "/api/projects",
+        &h,
+        r#"{"name":"Two","files":[{"name":"b.txt","content":"b"}]}"#,
+    )
+    .await;
+    let two: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_ne!(two["projectFolder"], made["projectFolder"]);
+
+    // Delete: the sweep runs in the front after the answer, removing only empty folders.
+    dav.lock().unwrap().files.remove(&full);
+    let (status, _, _) = call(f.addr, "DELETE", &format!("/api/projects/{id}"), &h, "").await;
+    assert_eq!(status, 200);
+    let mut swept = false;
+    for _ in 0..100 {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let gone = !dav.lock().unwrap().dirs.contains(&folder);
+        let queued = server_projects::outbox::jobs(&f.user_dir())
+            .unwrap()
+            .iter()
+            .any(|j| j.kind == "sweep");
+        if gone && !queued {
+            swept = true;
+            break;
+        }
+    }
+    assert!(
+        swept,
+        "the empty folder and its Text group are removed and the job acknowledged"
+    );
+    let d = dav.lock().unwrap();
+    assert!(!d.dirs.contains(&format!("{folder}/Text")));
+    assert!(
+        d.dirs.contains("noevia projects"),
+        "the root is never swept"
+    );
+    assert!(d.dirs.contains(two["projectFolder"].as_str().unwrap()));
+}
+
+/// A storage that refuses the saved login: the create still succeeds, its files stay noevia's
+/// plain-named copies and no folder is attached (core ensureProjectFolder failing).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn create_keeps_its_files_when_storage_refuses() {
+    if !cfg!(target_os = "linux") {
+        eprintln!("skipped: the owned storage child runs only on Linux");
+        return;
+    }
+    let f = front().await;
+    publish_catalogue(&f);
+    let (port, dav) = dav_lab::server();
+    connect_storage(&f, port, "wrong");
+    std::fs::write(f.data.join("secrets.key"), vec![7u8; 32]).unwrap();
+    let h = json_headers(&f);
+    let (status, _, text) = call(
+        f.addr,
+        "POST",
+        "/api/projects",
+        &h,
+        r#"{"name":"R","files":[{"name":"n.md","content":"n"}]}"#,
+    )
+    .await;
+    assert_eq!(status, 200, "{text}");
+    let made: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert!(made.get("projectFolder").is_none());
+    assert!(made["reservedFolder"].is_string());
+    assert_eq!(made["files"][0]["name"], "n.md");
+    assert!(!text.contains("wrong"));
+    let d = dav.lock().unwrap();
+    assert!(d.files.is_empty() && d.dirs.is_empty());
+    assert_eq!(
+        d.seen.len(),
+        1,
+        "one refused MKCOL, never retried: {:?}",
+        d.seen
+    );
 }

@@ -462,12 +462,12 @@ file whose name is a validated hex hash, never a request value.
 | `/api/projects/{id}/documents/pages` | node | the page reader, beside the extraction state and the large-document lock |
 | `/api/projects` (POST), `/api/projects/{projectId}` (DELETE) | rust | round 2, below |
 | `/api/projects/{projectId}/config` | node | its model check reads Node's served-model catalogue and provider registry (live state, not persisted), and a `files` patch re-indexes through Node's RAG writer; next after the provider/model catalogue is published like the toolbox catalogue |
-| `/api/projects/{id}/files`, `/upload`, `/sources/sync`, `/documents` (POST), `source-jobs`, `folder-import/plan` | node | each writes to remote storage (WebDAV `PUT`/`MKCOL`/`DELETE` with `If-None-Match`/`If-Match`; the front's storage client is the isolated read-only child: `GET`/`PROPFIND`) and runs docling/OCR extraction, `pdf-reduce`, the large-document lock and the background source jobs in Node; moving them needs a write-capable storage child first (security review), then the pipeline on the index outbox below |
+| `/api/projects/{id}/files`, `/upload`, `/sources/sync`, `/documents` (POST), `source-jobs`, `folder-import/plan` | node | the storage writes they make exist in the front since round 3 (`writes`, below); what keeps them on Node is the extraction pipeline they run in-process: docling/OCR extraction, `pdf-reduce`'s page ranges, the DOCX reader, the large-document lock and the background source jobs, then the index outbox for their RAG work |
 | `/api/projects/{projectId}/instruction-skills`, `.../manifests`, `/api/projects/{project}/skills/install` | node | the known-toolbox list (plugins, MCP) is Node's runtime catalogue; install fetches a published skill through Node's plugin directory |
 | `/api/projects/{projectId}/browser`, `/code`, `/research` | node | they drive a browser session, the code harness or research jobs |
 | `/api/code/active` | node | the code harness service's live task list |
 | `/api/workspace` | node | its load runs the retention sweep and the orphaned attachments-project reaper, whose delete (RAG index, uploads) is Node's |
-| `/api/import/conversations` | node | creates projects through Node's `createProject` (storage folder, RAG) and publishes transcripts; it can move onto `lifecycle.rs`'s create once the remaining storage step (#687's move of create-time files into the folder) has a write-capable storage client |
+| `/api/import/conversations` | node | creates projects through Node's `createProject` and publishes transcripts; the storage step it needed now exists in the front (round 3, `project_storage`), the import's own parsing and transcript publishing are what is left to port |
 
 ## sbstndalton/noevia#2191 round 2 (group rust-project-lifecycle): a project's create and delete
 
@@ -497,6 +497,27 @@ file whose name is a validated hex hash, never a request value.
   pending index jobs in one transaction before removing the RAG files; core's index run checks the
   tombstone against the generation it was queued at on every step and closes its handle (core
   `rust-index-outbox.cjs`, `rust-generation.cjs`, rag.cjs lifecycle guard).
-- Not ported: #687's move of create-time text files into the project's storage folder (a WebDAV
-  write). With storage connected they stay noevia's own plain-named copies, as Node left them when
-  that write failed; the first edit moves one into the folder.
+- #687's storage step and the sweep moved to the front in round 3 (below).
+
+## sbstndalton/noevia#2191 round 3 (group rust-project-storage): the front's storage writes
+
+No route moves. The front gains a storage write client (crates/server-storage-reads `writes`:
+core storage-client.cjs `createFolder`, `writeFile` with `If-None-Match: *` / `If-Match`,
+`discardWritten`, `deleteFile`, `removeEmptyFolder`, `fileVersion`; same `safeRelativePath` and
+`davUrl` encoding, same answers, `withRetry`'s one repeat of a pre-header transport failure, never
+for a conditional write; per-method deadlines PUT 60 s, DELETE 30 s, MKCOL/PROPFIND 15 s; S3 refused
+where core refuses it; core has no 428 retry for storage, nor does this). Every attempt runs in the
+owned storage child (request frame `M4REQ002`: the method byte names PUT/MKCOL/DELETE and a body
+follows the headers, a PUT's at most 25 MiB; a write's reply payload is its ETag, never the
+response body; redirects refused, no proxy, no cookies), after the browse's endpoint policy, with
+its own admission (four at once, one per account). With it:
+
+- a create with files stores its storable text files in the project's folder (core
+  `storeCreateFiles`, #687: the folder allocated as `allocateFolder` does and attached as a source,
+  each file written create-only to `<folder>/Text/<name>`, its original kept in `project-uploads/`;
+  a file storage refuses stays noevia's plain-named copy); its index jobs name the stored files;
+- the `sweep` jobs of the index outbox (a delete's empty-folder sweep, `sweepRemote`) are the
+  front's: run after the delete (or create) answers, claimed and acknowledged with the executor
+  contract, `running` rows of that kind taken back once per process. Core claims, recovers and
+  counts only `index` jobs (core `rust-project-storage.cjs` `CORE_KINDS`), and `--features` lists
+  `rust-project-storage`; the web supervisor and assemble-release pair the two.
