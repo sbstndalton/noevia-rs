@@ -233,9 +233,13 @@ path = "/api/auth/sessions/{id}"
 owner = "rust"
 methods = ["DELETE"]
 
+# sbstndalton/noevia#2190 close-out (rust-auto-roles): the GET is the front's, from the user's
+# auto-roles.json and the snapshot Node publishes (the served catalogue, the machine models). The PUT
+# stays Node's: a save warms the roles in the engine, which is chat-live (core rust-auto-roles.cjs).
 [[route]]
 path = "/api/auto-roles"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/chat"
@@ -369,9 +373,13 @@ path = "/api/freechats/{chatId}"
 owner = "rust"
 methods = ["DELETE"]
 
+# sbstndalton/noevia#2190 close-out (rust-health): authenticated, the GET only. The front probes the
+# default provider and the Diary itself and reads retrieval from the snapshot Node publishes
+# (rag-status.json); core refuses the GET (rust-health.cjs).
 [[route]]
 path = "/api/health"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 # sbstndalton/noevia#2191 round 4 (rust-conversation-import): Settings -> Data -> Import
 # conversations, the front's (crates/server-projects import.rs); Node refuses the POST (core
@@ -854,9 +862,12 @@ owner = "rust"
 path = "/api/usage/aggregate"
 owner = "rust"
 
+# sbstndalton/noevia#2191 close-out (rust-workspace): the GET, with the delete-old-chats sweep and the
+# orphan chat-context cleanup it runs; core refuses it (rust-workspace.cjs).
 [[route]]
 path = "/api/workspace"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 # Non-/api pages (M1). Node answers these before its static fallback, so they stay Node's.
 # sbstndalton/noevia#2190: the public pages and the device approval page are the front's

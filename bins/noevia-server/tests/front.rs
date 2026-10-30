@@ -291,8 +291,9 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     // conversation import and round 6 the upload's and the sync's POST, the background start: 75;
     // round 8 made the upload and the sync the front's whole and added the folder plan, which was never a
     // listed Node route: still 75; #2190 round 5 moved the ChatGPT device sign-in, its model list and the
-    // provider model lists: 70; round 6 moved the provider registry's list and its one-row route: 68).
-    assert!(node_routes >= 68, "{node_routes} node routes");
+    // provider model lists: 70; round 6 moved the provider registry's list and its one-row route: 68; the
+    // close-out moved GET /api/health, GET /api/auto-roles and GET /api/workspace: 65).
+    assert!(node_routes >= 65, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("POST", "/api/ready"),
@@ -435,7 +436,7 @@ async fn headers_cookies_and_forwarded_for() {
     let (res, _c) = call(
         front,
         "GET",
-        "/api/workspace",
+        "/api/chats/search",
         &[("x-forwarded-for", "1.1.1.1, 203.0.113.7")],
         b"",
     )
@@ -445,7 +446,7 @@ async fn headers_cookies_and_forwarded_for() {
         echo["headers"]["x-forwarded-for"],
         serde_json::json!(["203.0.113.7"])
     );
-    let (res, _c) = call(front, "GET", "/api/workspace", &[], b"").await;
+    let (res, _c) = call(front, "GET", "/api/chats/search", &[], b"").await;
     let echo: serde_json::Value = serde_json::from_str(&text(res).await).unwrap();
     assert_eq!(
         echo["headers"]["x-forwarded-for"],
@@ -537,7 +538,7 @@ async fn node_down_is_a_502_and_ready_is_a_503() {
     let dist = dist_dir("down");
     std::fs::remove_file(dist.join("version.json")).unwrap();
     let front = start_front(free, &dist, false).await;
-    let (res, _c) = call(front, "GET", "/api/workspace", &[], b"").await;
+    let (res, _c) = call(front, "GET", "/api/chats/search", &[], b"").await;
     assert_eq!(res.status(), 502);
     let (res, _c) = call(front, "GET", "/api/ready", &[], b"").await;
     assert_eq!(res.status(), 503);

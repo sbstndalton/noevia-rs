@@ -704,8 +704,8 @@ tokens without a row or a re-added row.
 | route(s) | why it stays | plan |
 |---|---|---|
 | `/api/connectors*` (Drive and the Nextcloud policy) | `drive-accounts.cjs` and `gdrive.cjs` hold the Drive device sign-in, the sealed refresh tokens (`google-drive-users/<id>.sealed`, HKDF key from `secrets.key`) and the access-token refresh in process; the chat tools (`gdrive-tools.cjs`) and the administrator's off-site backup mirror (`offsite-service.cjs`, the `google-drive.sealed` slot that doubles as that administrator's personal connection) call `drive.token()`/`call()`; the view needs the tool catalogue (`isWrite`) and the `tool_policies` table Node writes through policy-leaves | a Drive broker on the ChatGPT pattern (`/v1/gdrive/{session,reject,disconnect,forget}` on the internal store, enc-sealed rows, single-flight refresh, compare-and-swap writes, a change-signal file), with the backup slot's ownership rule (`ownsBackup`) ported with it; Node's tools and the mirror ask for access tokens only; the policies become a re-read of `tool_policies` by content fingerprint, as the decision settings are. The off-site backup stays Node's (its own round) and uses the broker's session |
-| `/api/health` | see the table above | Node writes `rag-status.json` (`{ version, ragAvailable, retrieval, at }`, atomically, on a timer and when the status changes); the front reads it per request, probes the default provider and the Diary itself, and reports a snapshot older than a bound as `retrieval: "unavailable"` |
-| `/api/auto-roles` | GET needs the served catalogue (names, `missingFile`) and the machine models, both Node-live; PUT warms the roles in the engine | publish the catalogue and machine-model names in the same snapshot; GET moves with it; PUT stays Node's (chat-live) unless the warm-up is split from the save |
+| `/api/health` | **moved in the close-out (below)** | ~~Node writes `rag-status.json` (`{ version, ragAvailable, retrieval, at }`, atomically, on a timer and when the status changes); the front reads it per request, probes the default provider and the Diary itself, and reports a snapshot older than a bound as `retrieval: "unavailable"`~~ |
+| `/api/auto-roles` | GET needs the served catalogue (names, `missingFile`) and the machine models, both Node-live; PUT warms the roles in the engine | publish the catalogue and machine-model names in the same snapshot; GET moves with it; PUT stays Node's (chat-live) unless the warm-up is split from the save. **GET moved in the close-out (below)** |
 
 ## sbstndalton/noevia#2189 (batch M2-A): the read-only model sizing reads
 
@@ -1010,3 +1010,72 @@ its extraction).
 
 **Not ported, by decision.** The OCR budget applies to the Docling completion pass only (the pdf.js walk's budgeted
 OCR is gone with pdf.js).
+
+## sbstndalton/noevia#2190 and #2191 close-out: `GET /api/health`, `GET /api/auto-roles`, `GET /api/workspace`
+
+| route | owner | capability / Core refusal | notes |
+|---|---|---|---|
+| `GET /api/health` | rust | `rust-health` / `RUST_HEALTH_OWNED` | health_routes.rs. Authenticated exactly as Node had it (a session or a device token; the gate's 401/403). Not `/api/ready`, which stays the unauthenticated process check |
+| `GET /api/auto-roles` | rust | `rust-auto-roles` / `RUST_AUTO_ROLES_OWNED` | auto_roles_routes.rs. **The PUT stays Node's**: a save warms the roles in the engine (`ensureRolesLoaded`), which is chat-live; Node remains the writer of `users/<id>/auto-roles.json` |
+| `GET /api/workspace` | rust | `rust-workspace` / `RUST_WORKSPACE_OWNED` | project_routes.rs `Route::Workspace`, crates/server-projects `workspace.rs`: the list, the hourly delete-old-chats sweep, the orphan chat-context cleanup and the text-missing scan |
+
+Each is permanent with no switch. Core refuses exactly the GET before authentication; the web supervisor and
+the release assembler pair each marker with its capability in both directions (old/old stays valid). The
+node-route floor in `tests/front.rs` is 65.
+
+**Snapshots (what only Node knows).** `GET /api/health` needs `ragAvailable` and the retrieval tri-state
+(rag.cjs: the native index dependencies, the embedding probe and its 45 s cache, the administrator's embedding
+switch); `GET /api/auto-roles` needs the served model catalogue, the roles other machines serve and their
+models. Node publishes each as a file in the data directory (core `published-snapshot.cjs`): `rag-status.json`
+every 10 s (`RAG_STATUS_PUBLISH_MS`) and `auto-roles-snapshot.json` every 15 s (`AUTO_ROLES_PUBLISH_MS`), and
+at once after the embedding service refreshes or a model write drops the shared model reads. A file is
+written atomically (temporary file in the directory, fsync, rename, directory fsync, mode 0600) and holds
+`{ version: 1, kind, writtenAt, everyMs, ...state }`. The front (snapshot.rs) reads it on every request and
+trusts it only when it is a regular file under 4 MiB of that version and kind with `writtenAt` within two
+`everyMs` of its own clock (and not more than 5 s ahead of it); **a missing, damaged, wrong-version, stale or
+future file is "unavailable", never old data**: health answers `ragAvailable: false, retrieval: "unavailable"`,
+and auto-roles answers as core does for an engine it cannot read (the catalogue is unknown, so nothing is
+reported missing and no machine models are listed). A publisher whose build fails writes nothing, so the
+file ages out. `auto-roles-snapshot.json` carries `catalogue` (`null` or `[{ name, missingFile }]`),
+`machineRoles` (the roles another machine serves, which are not checked against this machine's catalogue,
+#1840) and `machineModels` (their models the local catalogue does not list, #1849/#1855, filtered by Node).
+
+**Health's probes.** The front probes the default provider itself (the env-derived row: `INFERENCE_BASE_URL`,
+else `LEMONADE_BASE_URL`, else core's default address; the key as a bearer unless empty or `local`;
+`GET <base without trailing slashes or /v1>/v1/models`) and, for an account with the Diary add-on, the
+sidecar's `GET /api/health` through server-diary (the bearer and the person's tenant headers). Core's bounds:
+5 s each, the reply body counted in the bound and capped at 8 MiB, a redirect is a failure, 2xx is up, and no
+cache (core cached only the retrieval probe, which stays Node's). `inferenceUp` and `lemonadeUp` are one
+answer. Each probe runs in a task of its own that the handler awaits, so a client that hangs up leaves
+nothing behind but a probe that ends at its own deadline (a debug build counts them; tests/health.rs).
+
+**Workspace.** The list is core's, answer for answer: the account's projects without the internal ones, a
+source as metadata (`chars` for an inline text, the pointer for an external one, never the text), chat metas
+sanitized, and the load view core's workspace gave every route: a null or primitive `files` entry dropped
+(#1236), the retired `lemonade` provider id read as the default's, and the `modes` migration (#1576), none
+written back by a read. It first runs the delete-old-chats sweep (hourly at most, through the native tombstoned
+delete) and the cleanup of the attachments projects of chats deleted before #788: only a tombstoned chat that no
+list holds, only the account's own, ten per list, through the project delete without its chats
+(`lifecycle::remove`, `purgeChats: false`). `textMissing: true` (#1815/#1818) comes from the same scan core ran:
+a list never touches the disk per source; the first list of an account flags nothing and starts a background
+scan of the sources it showed (at most every 3 minutes, a thread of its own); a flagged source is looked at
+again by every list, so a text written back clears at once. A source's text is opened without following a
+symlink, so a symlink counts as gone. Nothing in the list is chat-live, so no part of it stays on Node.
+
+**Behaviour changes and Node bugs fixed.**
+1. Node answered `/api/workspace` and `/api/health` for **every method**; the workspace's sweep and cleanup
+   delete data, so a `POST`/`DELETE /api/workspace` ran them. Only the GET is the front's now and Node no
+   longer has either route (the other methods are its 404). No client used them.
+2. A delete-old-chats sweep that fails (a damaged setting, a busy lock) no longer fails the list: it is logged
+   and the list is answered, as core did (the crate's earlier function returned the failure).
+3. Retrieval is published on a timer, so Node now runs the embedding probe (cached 45 s; the router variant is
+   a side-effect-free `GET /v1/models`) while nobody polls `/api/health`, and the catalogue is read every 15 s
+   for the auto-roles snapshot; both previously ran only when a page asked.
+4. `retrieval` and the auto-roles `missing` can be up to one publishing interval old (10 s and 15 s, plus the
+   snapshot's two-interval bound before they read as unavailable). A model write or an embedding refresh
+   through the routes republishes at once; a load the engine does by itself shows at the next tick.
+5. The text-missing flag is the front's scan, not Node's memory: a read failure in Node's chat no longer flags
+   a source; the scan finds it within 3 minutes. The flag survives a front restart no better than before
+   (it is in memory; the next list starts a scan).
+6. A first request for an account now creates its directory from `/api/auto-roles` and `/api/workspace`, as
+   Node's workspace load did; `/api/health` does not (Node's health did not read the workspace).

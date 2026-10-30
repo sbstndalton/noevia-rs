@@ -37,6 +37,9 @@ use tokio::sync::mpsc;
 use tokio::time::{timeout_at, Instant};
 use url::Url;
 
+/// The bound core put on the health probe.
+pub const HEALTH_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// Node's caps and deadlines for these routes. [`Limits::default`] is exactly core's; tests lower
 /// them to reach a cap or a deadline without moving 272 MiB or waiting five minutes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -266,6 +269,20 @@ impl Diary {
             .map_err(|_| CallError::Transport)?
             .map(Arc::new)
             .map_err(CallError::from)
+    }
+
+    /// Whether the sidecar answers its `GET /api/health` for this person within [`HEALTH_TIMEOUT`]
+    /// (core routes/health.cjs: `fetchJson(`${DIARY_BASE}/api/health`, { headers: diaryHeaders(...) }, 5000)`
+    /// and its `ok`). Any failure, the tenant's included, is "not up"; nothing is said about why.
+    pub async fn health(&self, ctx: &Ctx) -> bool {
+        let reply = async {
+            let tenant = self.tenant(ctx).await?;
+            self.sidecar
+                .fetch_json(&tenant, Method::GET, "/api/health", None, HEALTH_TIMEOUT)
+                .await
+        }
+        .await;
+        reply.is_ok_and(|r| r.ok)
     }
 
     /// Answers `route`. `body` is the request body, read only where core read it.

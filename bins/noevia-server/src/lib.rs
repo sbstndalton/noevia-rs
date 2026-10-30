@@ -3,6 +3,7 @@
 //! gives to Rust and proxies every other request to Node ([`legacy_proxy`], deleted with Node).
 
 pub mod account_routes;
+pub mod auto_roles_routes;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_oauth_routes;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -15,6 +16,7 @@ pub mod export_routes;
 pub mod extraction;
 pub mod feature_context;
 pub mod health;
+pub mod health_routes;
 pub mod identity;
 pub mod legacy_proxy;
 pub mod model_routes;
@@ -41,6 +43,7 @@ pub mod routing_default_routes;
 pub mod routing_mode_routes;
 pub mod sampling_settings_routes;
 pub mod serve;
+pub mod snapshot;
 pub mod source_job_routes;
 #[cfg(feature = "rust-storage-browse")]
 pub mod source_storage_io;
@@ -150,6 +153,16 @@ use std::sync::Arc;
 /// store, `POST /v1/providers/reseal` (provider_reseal.rs, one pass per file under its lock with the
 /// current and the previous key), which core's secrets rotation (rust-providers-reseal.cjs) calls in
 /// place of rewriting the files itself; the pair is checked like `rust-providers`.
+///
+/// `rust-health`: this build answers `GET /api/health` (health_routes.rs, sbstndalton/noevia#2190
+/// close-out): the default provider and the Diary sidecar it probes itself, retrieval from the
+/// `rag-status.json` snapshot Node publishes. `rust-auto-roles`: `GET /api/auto-roles`
+/// (auto_roles_routes.rs; the PUT stays Node's) from `auto-roles.json` and the
+/// `auto-roles-snapshot.json` Node publishes. `rust-workspace`: `GET /api/workspace`
+/// (sbstndalton/noevia#2191 close-out), with the delete-old-chats sweep and the orphan chat-context
+/// cleanup it runs. The paired core refuses each (rust-health.cjs `RUST_HEALTH_OWNED`,
+/// rust-auto-roles.cjs `RUST_AUTO_ROLES_OWNED`, rust-workspace.cjs `RUST_WORKSPACE_OWNED`) and
+/// publishes the snapshots, so the supervisor pairs each capability with its marker.
 ///
 /// `rust-model-sizing`: this build answers `GET /api/models/estimate` and `GET
 /// /api/models/preset/suggest` (sbstndalton/noevia#2189, src/model_sizing.rs), permanently and
@@ -279,6 +292,9 @@ pub const FEATURES: &[&str] = &[
     #[cfg(feature = "rust-storage-reads")]
     "rust-providers-reseal",
     "rust-vault-mirror-preferences",
+    "rust-health",
+    "rust-auto-roles",
+    "rust-workspace",
     #[cfg(feature = "rust-reasoning-settings")]
     "rust-reasoning-settings",
     #[cfg(feature = "rust-routing-mode")]
@@ -477,6 +493,8 @@ async fn handle(
                     | routes::Native::ChatgptOAuth
                     | routes::Native::ProviderModels
                     | routes::Native::Providers
+                    | routes::Native::Health
+                    | routes::Native::AutoRoles
             )
         ) {
             native = on_whatwg;
@@ -508,7 +526,9 @@ async fn handle(
             | routes::Native::ProviderTest
             | routes::Native::ChatgptOAuth
             | routes::Native::ProviderModels
-            | routes::Native::Providers,
+            | routes::Native::Providers
+            | routes::Native::Health
+            | routes::Native::AutoRoles,
         )
         | None => false,
     };
@@ -663,6 +683,18 @@ async fn handle(
                     true,
                 )
             }
+        }
+        Some(routes::Native::Health) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            health_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::AutoRoles) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            auto_roles_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::ChatgptOAuth) => {
             let Some(p) = whatwg else {
