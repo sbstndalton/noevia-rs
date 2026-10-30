@@ -257,8 +257,104 @@ fn note_texts(d: &JValue) -> Result<Vec<String>, ()> {
     Ok(out)
 }
 
+/// document-sources.cjs `notes(file)` as the ids and parameters the browser words in its language
+/// (`[{ id, params }]`), for a skipped source's `notes`.
+pub(crate) fn notes_json(d: &JValue) -> Result<Vec<JValue>, ()> {
+    let mut out = Vec::new();
+    let stopped = d.get("stoppedAt");
+    if stopped.truthy() {
+        let mut params = vec![
+            ("page".to_owned(), stopped.get("page").clone()),
+            ("limit".to_owned(), stopped.get("limit").clone()),
+        ];
+        if stopped.get("error").truthy() {
+            params.push(("reason".to_owned(), stopped.get("error").clone()));
+        }
+        out.push(JValue::obj([
+            ("id", JValue::Str("stoppedAtPage".into())),
+            ("params", JValue::Obj(params)),
+        ]));
+    }
+    let searchable = d.get("searchable");
+    if searchable.truthy()
+        && searchable.get("version") == d.get("availableVersion")
+        && searchable.get("complete") == &JValue::Bool(false)
+        && matches!(searchable.get("page"), JValue::Num(n) if is_integer(*n))
+    {
+        out.push(JValue::obj([
+            ("id", JValue::Str("searchableToPage".into())),
+            (
+                "params",
+                JValue::obj([("page", searchable.get("page").clone())]),
+            ),
+        ]));
+    }
+    let pages: Vec<&JValue> = match d.get("pageStatus") {
+        JValue::Arr(a) => a.iter().collect(),
+        _ => Vec::new(),
+    };
+    if pages.iter().any(|p| p.is_nullish()) {
+        return Err(());
+    }
+    let by = |outcome: &str| -> Vec<&JValue> {
+        pages
+            .iter()
+            .copied()
+            .filter(|p| p.get("retry").get("outcome").as_str() == Some(outcome))
+            .collect()
+    };
+    let mut failed: Vec<(String, Vec<&JValue>)> = Vec::new();
+    for p in by("failed") {
+        let e = p.get("retry").get("error");
+        let reason = if e.truthy() {
+            text_of(e)
+        } else {
+            "unknown".into()
+        };
+        match failed.iter_mut().find(|(r, _)| *r == reason) {
+            Some((_, list)) => list.push(p),
+            None => failed.push((reason, vec![p])),
+        }
+    }
+    for (reason, list) in failed {
+        out.push(JValue::obj([
+            ("id", JValue::Str("ocrRetryFailed".into())),
+            (
+                "params",
+                JValue::obj([
+                    ("pages", JValue::Str(page_list(&list))),
+                    ("reason", JValue::Str(reason)),
+                ]),
+            ),
+        ]));
+    }
+    for (outcome, id) in [
+        ("empty", "ocrRetryEmpty"),
+        ("unavailable", "ocrRetryUnavailable"),
+        ("skipped", "ocrRetryLimit"),
+        ("recovered", "ocrRetryRecovered"),
+    ] {
+        let list = by(outcome);
+        if !list.is_empty() {
+            out.push(JValue::obj([
+                ("id", JValue::Str(id.into())),
+                (
+                    "params",
+                    JValue::obj([("pages", JValue::Str(page_list(&list)))]),
+                ),
+            ]));
+        }
+    }
+    Ok(out)
+}
+
 /// document-sources.cjs `problem(file)`.
-fn problem(d: &JValue) -> Result<String, ()> {
+pub(crate) fn problem(d: &JValue) -> Result<String, ()> {
+    problem_with(d, true)
+}
+
+/// `problem(file, { notes })`.
+pub(crate) fn problem_with(d: &JValue, with_notes: bool) -> Result<String, ()> {
     let pages: Vec<&JValue> = match d.get("pageStatus") {
         JValue::Arr(a) => a.iter().collect(),
         v if !v.truthy() => Vec::new(),
@@ -271,7 +367,11 @@ fn problem(d: &JValue) -> Result<String, ()> {
         .into_iter()
         .filter(|p| !matches!(p.get("status").as_str(), Some("native" | "blank" | "ocr")))
         .collect();
-    let extra = note_texts(d)?;
+    let extra = if with_notes {
+        note_texts(d)?
+    } else {
+        Vec::new()
+    };
     let mut s = text_of(d.get("state"));
     if d.get("stale").truthy() {
         s.push_str("; using STALE text from the last readable version");

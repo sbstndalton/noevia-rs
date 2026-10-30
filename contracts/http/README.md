@@ -465,8 +465,7 @@ file whose name is a validated hex hash, never a request value.
 | `/api/projects` (POST), `/api/projects/{projectId}` (DELETE) | rust | round 2, below |
 | `/api/projects/{projectId}/config` | node | its model check reads Node's served-model catalogue and provider registry (live state, not persisted), and a `files` patch re-indexes through Node's RAG writer; next after the provider/model catalogue is published like the toolbox catalogue |
 | `/api/projects/{id}/documents` (POST) | rust | round 5, below: the front's Docling pipeline and durable extraction queue |
-| `/api/projects/{id}/upload`, `/sources/sync` (POST with `?background=1`), `/api/projects/{id}/source-jobs/{jobId}` (GET) | rust | round 6, below: the front owns the source-job store, starts and answers every background job, and runs its operation through Node's synchronous route |
-| `/api/projects/{id}/upload`, `/sources/sync` (POST without `background`), `folder-import/plan` | node | the operation each job runs, and the plan whose tickets the organized upload consumes in Node's memory. What keeps them on Node: the upload's other readers (`pdf-reduce` through OCR `/reduce-pdf`, the DOCX reader, text decoding with its notes, image assets with retire/prune, the type groups, the create-only remote write with `discardCreated`), the sync's storage reads (a 96 MiB binary read with the large-document lock taken from Content-Length, the text reads, the breadth-first listing), its OCR budget and `reopenStored`, the storage latch (`automaticHold`, Node memory) and core's pdf.js reader for documents when Docling is off; the front has a storage list/text-preview/write client but no binary read yet |
+| `/api/projects/{id}/upload`, `/sources/sync`, `/folder-import/plan` (POST, with or without `?background=1`), `/api/projects/{id}/source-jobs/{jobId}` (GET) | rust | rounds 6 and 8, below: the front owns the source-job store and runs the operations itself (streamed storage reads, Docling, the OCR worker's `/reduce-pdf` and `/extract-docx`, the storage latch, the folder import's tickets); Node has no worker call and no copy of any of it |
 | `/api/projects/{projectId}/instruction-skills`, `.../manifests`, `/api/projects/{project}/skills/install` | node | the known-toolbox list (plugins, MCP) is Node's runtime catalogue; install fetches a published skill through Node's plugin directory |
 | `/api/projects/{projectId}/browser`, `/code`, `/research` | node | they drive a browser session, the code harness or research jobs |
 | `/api/code/active` | node | the code harness service's live task list |
@@ -927,3 +926,87 @@ active jobs.
   failure). Core's side is `server/large-document-file-lock.cjs`, taken in large-document-lock.cjs
   `acquire()`. It stays even once core extracts nothing large, so a rollback to an older front or
   core still pairs safely.
+
+
+## sbstndalton/noevia#2191 round 8 (group rust-project-source-work): the front runs the source operations
+
+`--features` lists `rust-project-source-work`. `POST /api/projects/{id}/upload`, `POST .../sources/sync` and
+`POST .../folder-import/plan` are the front's whole, in the foreground and (round 6) as source jobs
+(`?background=1`); core refuses the three POSTs, whatever the query, with 503
+`RUST_PROJECT_SOURCE_WORK_OWNED` (`server/rust-project-source-work.cjs`, before authentication), and
+`server/rust-source-jobs.cjs` now refuses only the poll. There is no `X-Noevia-Source-Work` worker call, no
+NDJSON answer, and core's `source-work.cjs`, `folder-import.cjs`, `pdf-reduce.cjs` and the routes' copies of the
+upload, the sync and the plan are deleted. The web supervisor and assemble-release.sh refuse a mixed pair (they
+also refuse a pair whose two halves name different storage-latch or file-operation files, or change the latch other
+than with `BEGIN IMMEDIATE`); old/old stays valid.
+
+**Streamed binary storage read** (crates/server-storage-reads `stream`). The storage child's sandbox is unchanged
+(RLIMIT_AS 256 MiB, the 64 MiB wire cap, 25 MiB `WRITE_BYTES`). A file is read as ranged GETs, each one attempt in
+a fresh child, and a reply carries at most 8 MiB (`CHUNK_BYTES`) behind a summary of the response's headers
+(`CHUNK_PREFIX`: the `Content-Range` total, first and last byte, and the ETag; a content coding is refused). The
+chunk's body has the whole attempt's time (20 s), not 10 s. The whole file
+is capped at 96 MiB (`FILE_CAP`) on the size the first reply declares, before the caller's hook runs and before a
+byte reaches the sink, and again on the bytes received. A 206 must carry exactly the range asked for and the same
+declared total throughout, else the read is refused mid-stream; a server that ignores `Range` (a 200) is served only
+when the whole file fits one chunk. The first reply's strong ETag is sent as `If-Range` on every later chunk and
+every reply must carry it: a file replaced by one of the same size mid-read is a 502 "the file changed in storage
+while it was being read", never a file made of two (a server with no ETag, or only a weak one, leaves only the size
+checks). A `416` after the first chunk of a file whose size was declared is that same 502 (the file shrank); it is
+the end of the file only when no size was declared. The front writes the chunks to a temp file under `users/<id>/source-staging/`,
+hashing and fsyncing, and renames it to its hash (`staging`); a failed read leaves nothing, and a file a dead process
+left is swept. The large-document lock is taken from the declared size before the body (`beforeBody`), or first when
+the listed size is large or unknown (#1872), and is re-entrant within the thread that holds it (the sync's read and
+its extraction).
+
+**Behaviour changes.**
+1. A file larger than 96 MiB is refused (413) on its declared size, whatever `PROJECT_DOCUMENT_READ_BYTES` says (core
+   would read up to that setting); the default is 96 MiB.
+2. A storage server that does not honour `Range` can still serve a file that fits one 8 MiB chunk, and no larger one.
+3. Docling is the only extraction engine: there is no pdf.js fallback, and a document whose Docling is down is
+   queued (`document.extraction: "queued"`, its job in `extraction-jobs.db` written before the record that says so;
+   a queue that cannot be written is a 503 and nothing is saved), in the sync and the uploads alike. A stored document
+   is never extracted again or reopened (there is no `reopenStored`). A document the sync's OCR allowance
+   (`PROJECT_SYNC_OCR_PAGES`) left open gets no job: it stays open and the next sync continues it, as core's did; only
+   a document whose Docling is down is queued.
+4. The storage latch is no longer Node's memory: it is `UI_DATA_DIR/storage-latch.db`, one row per account, changed
+   by both processes with the same transitions under `BEGIN IMMEDIATE` (core `storage-latch.cjs` for the Diary
+   backup worker, `storage_latch.rs` for the sync), so a refused login held by one holds the other's automatic calls.
+   The latch is durable: a hold survives a restart of either process (core's was Node's memory and did not). Holds
+   are dated by the moment of the refusal, not of the request. **A latch that cannot be read counts as held**: an
+   automatic sync is answered as throttled for 60 s (an explicit press, `X-Cowork-Storage-Retry: 1`, still runs),
+   because the latch is what keeps a refused login from being fed to the storage server's brute-force protection;
+   core's Diary worker keeps its own behaviour on an unreadable latch. A listing in which a subfolder was refused
+   the login leaves the hold set (core cleared it). Both sides compute the connection fingerprint the same way (a
+   fixed table of rows is checked in both repos). A 429's `Retry-After` is not surfaced by the child, so a throttle
+   holds for the 60 s default.
+5. The running file operations (#1441, #1815) are `users/<id>/source-file-ops.json`, written by the front and
+   re-read by core (`rust-source-ops.cjs`): a chat turn waits for the project's running named operations, and the
+   source-text collector skips a workspace while a sync or folder import runs. An operation is listed before the
+   client is told it was accepted and is stamped when it begins and ends. Core's reader fails closed for the
+   collector: an unreadable list (anything but a missing file) counts as an operation in flight, so nothing is
+   swept; a chat's wait still waits for nothing it cannot read.
+6. The order of a background start is core's again: the project (404), the storage hold of an automatic sync, then
+   the body (413, 400), and only then the job slot (429); round 6's reordering is gone.
+7. The folder-import tickets are in the front's memory with core's semantics (4 per person, 1024 overall, an hour); a
+   front restart ends them as a Node restart did.
+8. The storage endpoint policy (an admin any http(s) origin, a member only `MEMBER_OUTBOUND_ORIGINS`) now applies to
+   a sync and an upload as it does to the browse; the sync's admission is per storage operation (four at once, one per
+   account, 30 s wait), not per sync, so a long sync does not refuse the account's other storage writes; a streamed
+   read takes its slot for each ranged request, not across the read. A saved storage login that cannot be read is a
+   503, not "no storage".
+9. **Bounds.** The operation runs in a thread that cannot be stopped, so it is bounded from outside: past 2 hours
+   (a sync) or 30 minutes (an upload) its job ends as failed 504 and its listing as failed, whether or not the thread
+   has returned (the removed worker's 5 minute accept bound is gone; the store's 6 hour stale bound is the backstop).
+   A hung thread keeps the project's source lock; an upload, a sync or a `POST .../documents` that cannot take it
+   within 30 s (a request) or within half its bound (a job, so the operation keeps the other half) is answered 429.
+   An operation that waited for the lock dates what it writes by the clock after the wait. A synchronous upload or
+   sync runs in a task of its own: a client that disconnects does not end the operation or mark its listing failed. S3 listings are cut at 10,000 entries or 20 pages as before, and the cut
+   is now logged.
+10. **Account removal.** A source operation never makes `users/<id>` again: the staging folder, the stored original,
+   the result record and the image assets are made one level at a time below an existing user folder, and an account
+   removed meanwhile ends the operation 410 `account no longer exists` (core's `assertActive`); a project's source
+   texts (`project-sources/`) are made the same way, so a create or an upload that meets a removed account is 410
+   too.
+
+**Not ported, by decision.** The OCR budget applies to the Docling completion pass only (the pdf.js walk's budgeted
+OCR is gone with pdf.js).

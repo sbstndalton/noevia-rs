@@ -130,6 +130,105 @@ pub trait Engine {
     fn busy_waits(&self) -> Vec<Duration> {
         vec![Duration::from_secs(5), Duration::from_secs(15)]
     }
+    /// The OCR retry pages the source sync this read belongs to may still spend (documents.cjs
+    /// `ocrBudget`, noevia#2191 round 8); `None` for an upload or a queued job, which have none.
+    fn ocr_budget(&self) -> Option<&OcrBudget> {
+        None
+    }
+    /// docx.cjs `extract(bytes)`: the OCR worker's `/extract-docx`, the parsed reply `{ text, truncated }`.
+    fn extract_docx(&self, _bytes: &[u8]) -> Result<JValue, EngineError> {
+        Err(EngineError::new(
+            "DOCX reader is unavailable. Re-upload after the document worker is configured.",
+        ))
+    }
+    /// ocr.cjs's `/reduce-pdf` (pdf-reduce.cjs): the PDF compressed to fit, or its text, by the
+    /// OCR worker; the parsed reply. `None` when no OCR worker is configured.
+    fn reduce_pdf(&self, _bytes: &[u8]) -> Option<Result<JValue, EngineError>> {
+        None
+    }
+}
+
+/// documents.cjs `ocrBudget()` and its running counts (#1871, #1878): the OCR retry pages one source
+/// sync may spend across all its documents (`PROJECT_SYNC_OCR_PAGES`, default 40), and what it pushed to
+/// the next sync.
+#[derive(Debug)]
+pub struct OcrBudget {
+    pub remaining: std::cell::Cell<usize>,
+    pub deferred_pages: std::cell::Cell<usize>,
+    pub deferred_documents: std::cell::Cell<usize>,
+}
+
+impl OcrBudget {
+    pub fn new(pages: usize) -> Self {
+        OcrBudget {
+            remaining: std::cell::Cell::new(pages),
+            deferred_pages: std::cell::Cell::new(0),
+            deferred_documents: std::cell::Cell::new(0),
+        }
+    }
+    /// Takes up to `want` pages; the number granted.
+    fn take(&self, want: usize) -> usize {
+        let granted = want.min(self.remaining.get());
+        self.remaining.set(self.remaining.get() - granted);
+        granted
+    }
+}
+
+/// An engine that spends one sync's OCR retry allowance ([`OcrBudget`]); everything else is `inner`.
+pub struct Budgeted<'a> {
+    pub inner: &'a dyn Engine,
+    pub budget: OcrBudget,
+}
+
+impl Engine for Budgeted<'_> {
+    fn docling_configured(&self) -> bool {
+        self.inner.docling_configured()
+    }
+    fn docling(
+        &self,
+        name: &str,
+        bytes: &[u8],
+        figures: bool,
+        pages: Option<(u32, u32)>,
+    ) -> Result<JValue, EngineError> {
+        self.inner.docling(name, bytes, figures, pages)
+    }
+    fn docling_ranges(&self, bytes: usize) -> Option<bool> {
+        self.inner.docling_ranges(bytes)
+    }
+    fn ocr_configured(&self) -> bool {
+        self.inner.ocr_configured()
+    }
+    fn ocr_pages(
+        &self,
+        bytes: &[u8],
+        pages: &[u32],
+        dpi: Option<u32>,
+        timeout_ms: Option<u64>,
+    ) -> Result<Vec<JValue>, EngineError> {
+        self.inner.ocr_pages(bytes, pages, dpi, timeout_ms)
+    }
+    fn ocr_caps(&self) -> Option<OcrCaps> {
+        self.inner.ocr_caps()
+    }
+    fn multimodal(&self) -> bool {
+        self.inner.multimodal()
+    }
+    fn large_lock_file(&self) -> Option<std::path::PathBuf> {
+        self.inner.large_lock_file()
+    }
+    fn busy_waits(&self) -> Vec<Duration> {
+        self.inner.busy_waits()
+    }
+    fn ocr_budget(&self) -> Option<&OcrBudget> {
+        Some(&self.budget)
+    }
+    fn extract_docx(&self, bytes: &[u8]) -> Result<JValue, EngineError> {
+        self.inner.extract_docx(bytes)
+    }
+    fn reduce_pdf(&self, bytes: &[u8]) -> Option<Result<JValue, EngineError>> {
+        self.inner.reduce_pdf(bytes)
+    }
 }
 
 /// source-limits.cjs `documentLimits(env)`.
@@ -871,7 +970,7 @@ fn complete_unlocked(
         None
     };
     let room = limits.text.saturating_sub(text_length(&page_texts));
-    retry_incomplete_pages(
+    let deferred = retry_incomplete_pages(
         bytes,
         &mut page_texts,
         ocr_enabled,
@@ -880,7 +979,7 @@ fn complete_unlocked(
         &waits,
         capabilities.as_ref(),
     );
-    if page_texts.iter().any(retry_due) {
+    if page_texts.iter().any(retry_due) || deferred {
         passing = true;
     }
 
@@ -948,7 +1047,7 @@ pub fn retry_timeout_ms(pages: usize) -> u64 {
     (30_000 + pages as u64 * 240_000).clamp(330_000, 610_000)
 }
 
-/// documents.cjs `retryIncompletePages` (no sync budget: an upload has none).
+/// documents.cjs `retryIncompletePages`; true when the sync's OCR budget pushed pages to the next sync.
 fn retry_incomplete_pages(
     bytes: &[u8],
     pages: &mut [JValue],
@@ -957,7 +1056,7 @@ fn retry_incomplete_pages(
     mut room: usize,
     waits: &[Duration],
     capabilities: Option<&OcrCaps>,
-) {
+) -> bool {
     let finer = capabilities.is_some_and(|c| c.dpis.contains(&RETRY_DPI));
     let max_bytes = max_bytes_of(capabilities);
     let already_ocred = |p: &JValue| {
@@ -980,7 +1079,7 @@ fn retry_incomplete_pages(
         .map(|(i, _)| i)
         .collect();
     if candidates.is_empty() {
-        return;
+        return false;
     }
     let mark = |pages: &mut [JValue], which: &[usize], retry: &JValue| {
         for (i, p) in pages.iter_mut().enumerate() {
@@ -995,7 +1094,7 @@ fn retry_incomplete_pages(
             &candidates,
             &obj(vec![("outcome", JValue::Str("unavailable".into()))]),
         );
-        return;
+        return false;
     }
     if bytes.len() > max_bytes {
         let error = format!("{RETRY_TOO_LARGE} ({} MB)", max_bytes / (1024 * 1024));
@@ -1007,7 +1106,7 @@ fn retry_incomplete_pages(
                 ("error", JValue::Str(error)),
             ]),
         );
-        return;
+        return false;
     }
     let tried = pages
         .iter()
@@ -1022,13 +1121,24 @@ fn retry_incomplete_pages(
         })
         .count();
     let cap = RETRY_PAGE_CAP.saturating_sub(tried);
-    let chosen: Vec<usize> = candidates.iter().copied().take(cap).collect();
-    let skipped: Vec<usize> = candidates.iter().copied().skip(chosen.len()).collect();
+    let capped: Vec<usize> = candidates.iter().copied().take(cap).collect();
+    let skipped: Vec<usize> = candidates.iter().copied().skip(capped.len()).collect();
     mark(
         pages,
         &skipped,
         &obj(vec![("outcome", JValue::Str("skipped".into()))]),
     );
+    // #1871: and within what this sync may still spend on OCR (all its documents together). Pages
+    // past it are left as they are, and the document stays open (no completion marker), so a later
+    // sync goes on.
+    let allowed = engine
+        .ocr_budget()
+        .map_or(capped.len(), |b| b.take(capped.len()));
+    let chosen: Vec<usize> = capped.iter().copied().take(allowed).collect();
+    let deferred = chosen.len() < capped.len();
+    if deferred {
+        note_deferral(engine.ocr_budget(), capped.len() - chosen.len());
+    }
     for batch in chosen.chunks(RETRY_BATCH) {
         let numbers: Vec<u32> = pages
             .iter()
@@ -1077,6 +1187,24 @@ fn retry_incomplete_pages(
             }
         }
     }
+    deferred
+}
+
+/// #1878: pages the OCR budget pushed to the next sync, one content-free line per document.
+fn note_deferral(budget: Option<&OcrBudget>, pages: usize) {
+    let mut sync = String::new();
+    if let Some(b) = budget {
+        b.deferred_pages.set(b.deferred_pages.get() + pages);
+        b.deferred_documents.set(b.deferred_documents.get() + 1);
+        sync = format!(
+            " syncPagesDeferred={} syncDocumentsDeferred={}",
+            b.deferred_pages.get(),
+            b.deferred_documents.get()
+        );
+    }
+    eprintln!(
+        "[documents] OCR budget deferred pages to the next sync: pagesDeferred={pages} documentsDeferred=1{sync}"
+    );
 }
 
 /// One page's OCR retry answer, merged in place (retryIncompletePages's inner loop).
@@ -1184,6 +1312,13 @@ static FREED: Condvar = Condvar::new();
 pub const LARGE_LOCK_FILE: &str = "large-document.lock";
 const FILE_POLL: Duration = Duration::from_millis(200);
 
+thread_local! {
+    /// The thread that holds the lock. A source sync takes it around the storage read and the
+    /// extraction of one document, and the extraction takes it again: the inner take passes straight
+    /// through (large-document-lock.cjs is re-entrant within one async call chain; this is one thread).
+    static HELD_HERE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 /// The hold of one large document; released on drop (the file's transaction first).
 pub struct LargeHold(bool, Option<rusqlite::Connection>);
 
@@ -1194,6 +1329,7 @@ impl Drop for LargeHold {
             drop(conn);
         }
         if self.0 {
+            HELD_HERE.with(|h| h.set(false));
             if let Ok(mut held) = LARGE.lock() {
                 *held = false;
             }
@@ -1237,7 +1373,7 @@ fn take_file(file: &std::path::Path, deadline: Instant) -> Option<rusqlite::Conn
 /// process's, then the host's in `file`), at most the acquire wait (two minutes), then is "busy" (a
 /// passing failure; the job tries again).
 pub fn large_lock(size: usize, file: Option<&std::path::Path>) -> Result<LargeHold, String> {
-    if size <= LARGE_BYTES {
+    if size <= LARGE_BYTES || HELD_HERE.with(std::cell::Cell::get) {
         return Ok(LargeHold(false, None));
     }
     let deadline = Instant::now() + acquire_wait();
@@ -1256,6 +1392,7 @@ pub fn large_lock(size: usize, file: Option<&std::path::Path>) -> Result<LargeHo
         *held = true;
     }
     let mut hold = LargeHold(true, None);
+    HELD_HERE.with(|h| h.set(true));
     if let Some(file) = file {
         // Dropping `hold` on failure frees this process's turn for the next waiter.
         hold.1 = Some(take_file(file, deadline).ok_or_else(|| BUSY.to_string())?);
@@ -1291,6 +1428,8 @@ pub(crate) mod tests {
         pub ocr_replies: RefCell<Vec<Result<Vec<JValue>, EngineError>>>,
         pub asked: RefCell<Vec<Option<(u32, u32)>>>,
         pub caps: Option<OcrCaps>,
+        /// Runs when Docling is asked (the account or the project changing during an extraction).
+        pub on_docling: RefCell<Option<Box<dyn Fn()>>>,
     }
     impl Engine for Fake {
         fn docling_configured(&self) -> bool {
@@ -1304,6 +1443,9 @@ pub(crate) mod tests {
             pages: Option<(u32, u32)>,
         ) -> Result<JValue, EngineError> {
             self.asked.borrow_mut().push(pages);
+            if let Some(hook) = self.on_docling.borrow().as_ref() {
+                hook();
+            }
             let mut r = self.replies.borrow_mut();
             if r.is_empty() {
                 Err(EngineError::new("fetch failed"))
@@ -1342,6 +1484,69 @@ pub(crate) mod tests {
         }
     }
 
+    /// A [`Fake`] that also answers the OCR worker's `/reduce-pdf` and `/extract-docx` once each.
+    pub(crate) struct Wrap<'a> {
+        pub inner: &'a Fake,
+        pub reduce: RefCell<Option<Result<JValue, EngineError>>>,
+        pub docx: RefCell<Option<Result<JValue, EngineError>>>,
+    }
+    impl<'a> Wrap<'a> {
+        pub fn new(inner: &'a Fake) -> Self {
+            Wrap {
+                inner,
+                reduce: RefCell::new(None),
+                docx: RefCell::new(None),
+            }
+        }
+    }
+    impl Engine for Wrap<'_> {
+        fn docling_configured(&self) -> bool {
+            self.inner.docling_configured()
+        }
+        fn docling(
+            &self,
+            name: &str,
+            bytes: &[u8],
+            figures: bool,
+            pages: Option<(u32, u32)>,
+        ) -> Result<JValue, EngineError> {
+            self.inner.docling(name, bytes, figures, pages)
+        }
+        fn docling_ranges(&self, bytes: usize) -> Option<bool> {
+            self.inner.docling_ranges(bytes)
+        }
+        fn ocr_configured(&self) -> bool {
+            self.inner.ocr_configured() || self.reduce.borrow().is_some()
+        }
+        fn ocr_pages(
+            &self,
+            bytes: &[u8],
+            pages: &[u32],
+            dpi: Option<u32>,
+            timeout_ms: Option<u64>,
+        ) -> Result<Vec<JValue>, EngineError> {
+            self.inner.ocr_pages(bytes, pages, dpi, timeout_ms)
+        }
+        fn ocr_caps(&self) -> Option<OcrCaps> {
+            self.inner.ocr_caps()
+        }
+        fn multimodal(&self) -> bool {
+            false
+        }
+        fn busy_waits(&self) -> Vec<Duration> {
+            vec![Duration::ZERO, Duration::ZERO]
+        }
+        fn reduce_pdf(&self, _: &[u8]) -> Option<Result<JValue, EngineError>> {
+            self.reduce.borrow_mut().take()
+        }
+        fn extract_docx(&self, _: &[u8]) -> Result<JValue, EngineError> {
+            self.docx
+                .borrow_mut()
+                .take()
+                .unwrap_or_else(|| Err(EngineError::new("DOCX reader is unavailable.")))
+        }
+    }
+
     fn parse(t: &str) -> JValue {
         wtf16::parse(t).unwrap()
     }
@@ -1354,6 +1559,72 @@ pub(crate) mod tests {
         text: 8_000_000,
         range_pages: 25,
     };
+
+    /// A sync's OCR allowance (#1871): pages past it are left as they are, the document stays open (no
+    /// completion marker, so a later sync goes on), and the deferral is counted for the log (#1878).
+    #[test]
+    fn the_syncs_ocr_budget_defers_pages_and_leaves_the_document_open() {
+        let fake = Fake {
+            docling: true,
+            ocr: true,
+            ..Default::default()
+        };
+        // The first pass: three pages Docling could not read, nothing else.
+        fake.replies.borrow_mut().push(Ok(parse(
+            r#"{"total":3,"pages":[{"number":1,"text":"","status":"ocr-needed","method":"docling"},{"number":2,"text":"","status":"ocr-needed","method":"docling"},{"number":3,"text":"","status":"ocr-needed","method":"docling"}]}"#,
+        )));
+        // The OCR worker reads the two pages it is given.
+        fake.ocr_replies.borrow_mut().push(Ok(vec![
+            parse(r#"{"number":1,"text":"page one"}"#),
+            parse(r#"{"number":2,"text":"page two"}"#),
+        ]));
+        let engine = Budgeted {
+            inner: &fake,
+            budget: OcrBudget::new(2),
+        };
+        let out = extract_document_text(
+            "a.pdf",
+            b"%PDF-1",
+            &engine,
+            &LIMITS,
+            &mut FigureBytes::new(),
+        )
+        .unwrap();
+        assert_eq!(engine.budget.remaining.get(), 0);
+        assert_eq!(engine.budget.deferred_pages.get(), 1);
+        assert_eq!(engine.budget.deferred_documents.get(), 1);
+        let pages = pages_of(&out);
+        let outcome = |i: usize| s(&pages[i].get("retry").clone(), "outcome");
+        assert_eq!(
+            (outcome(0), outcome(1)),
+            ("recovered".into(), "recovered".into())
+        );
+        assert!(
+            pages[2].get("retry").is_nullish(),
+            "the third page waits for the next sync"
+        );
+        assert!(
+            out.get("completion").as_str() != Some(COMPLETION),
+            "a deferred document stays open"
+        );
+        // Without a budget (an upload, a queued job) nothing is deferred and the pass completes.
+        let plain = Fake {
+            docling: true,
+            ocr: true,
+            ..Default::default()
+        };
+        plain.replies.borrow_mut().push(Ok(parse(
+            r#"{"total":1,"pages":[{"number":1,"text":"","status":"ocr-needed","method":"docling"}]}"#,
+        )));
+        plain
+            .ocr_replies
+            .borrow_mut()
+            .push(Ok(vec![parse(r#"{"number":1,"text":"page one"}"#)]));
+        let out =
+            extract_document_text("a.pdf", b"%PDF-1", &plain, &LIMITS, &mut FigureBytes::new())
+                .unwrap();
+        assert_eq!(out.get("completion").as_str(), Some(COMPLETION));
+    }
 
     #[test]
     fn routing_matches_core() {
@@ -1510,7 +1781,7 @@ pub(crate) mod tests {
     }
 
     /// Serialises the tests that take the process-wide lock.
-    static SERIAL: Mutex<()> = Mutex::new(());
+    pub(crate) static SERIAL: Mutex<()> = Mutex::new(());
 
     #[test]
     fn the_large_lock_waits_then_is_busy() {
@@ -1518,10 +1789,19 @@ pub(crate) mod tests {
         std::env::set_var("LARGE_DOCUMENT_ACQUIRE_WAIT_MS", "50");
         let first = large_lock(LARGE_BYTES + 1, None).unwrap();
         assert!(large_lock(10, None).is_ok());
-        assert_eq!(
-            large_lock(LARGE_BYTES + 1, None).err().as_deref(),
-            Some(BUSY)
-        );
+        // Another thread waits, then is busy.
+        let other = std::thread::spawn(|| large_lock(LARGE_BYTES + 1, None).err())
+            .join()
+            .unwrap();
+        assert_eq!(other.as_deref(), Some(BUSY));
+        // The holder's own thread passes straight through (a sync's read, then its extraction), and
+        // the inner take never lets go of the outer one.
+        let inner = large_lock(LARGE_BYTES + 1, None).unwrap();
+        drop(inner);
+        let still = std::thread::spawn(|| large_lock(LARGE_BYTES + 1, None).err())
+            .join()
+            .unwrap();
+        assert_eq!(still.as_deref(), Some(BUSY), "the outer hold is still held");
         drop(first);
         assert!(large_lock(LARGE_BYTES + 1, None).is_ok());
     }

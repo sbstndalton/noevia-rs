@@ -3011,6 +3011,7 @@ dependencies = [
  "sha2",
  "storage-path",
  "tempfile",
+ "unicode-normalization",
  "upload-sniff",
  "url",
 ]

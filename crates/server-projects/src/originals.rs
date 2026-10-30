@@ -44,7 +44,7 @@ fn sha256_hex(s: &str) -> String {
 
 /// `getProject(id)` for a read route: the project as Node holds it afterwards, its effects saved
 /// under the lock when they changed it (chats::get's shape). `Ok(None)` is no such project.
-pub(crate) fn project(ctx: Ctx<'_>, id: &str) -> Result<(PathBuf, Option<JValue>), Reply> {
+pub fn project(ctx: Ctx<'_>, id: &str) -> Result<(PathBuf, Option<JValue>), Reply> {
     let dir = store::user_dir(ctx.data_dir, ctx.user_id).map_err(|e| chats::store_failure(&e))?;
     let projects = store::read(&dir).map_err(|e| chats::store_failure(&e))?;
     let found = match chats::locate(&projects, id) {
