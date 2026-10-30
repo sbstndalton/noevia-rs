@@ -875,7 +875,8 @@ mod tests {
         }
         assert_eq!(stats.lists.load(Ordering::SeqCst), 10);
         let most = stats.most.load(Ordering::SeqCst);
-        assert!((2..=LIST_PERMITS).contains(&most), "{most} at once");
+        // The number is the contract (four), not whatever the constant is changed to.
+        assert!((2..=4).contains(&most), "{most} at once");
         // Every place taken for longer than a listing will wait: the answer is BUSY, quickly.
         let busy = egress_with(Duration::from_secs(60), Duration::from_millis(100));
         let held = busy
