@@ -1039,6 +1039,30 @@ async fn remove(ctx: &Ctx, id: &str) -> Response<Body> {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn a_failed_step_of_a_rollback_is_tried_once_more_and_no_more() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        for (fail_first, outcome, tries) in [(0, true, 1), (1, true, 2), (2, false, 2), (9, false, 2)] {
+            let seen = AtomicUsize::new(0);
+            let got = twice(|| {
+                let n = seen.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if n < fail_first {
+                        Err(crate::mcp_broker::fail("busy", 503))
+                    } else {
+                        Ok(n)
+                    }
+                }
+            })
+            .await;
+            assert_eq!(
+                (got.is_ok(), seen.load(Ordering::SeqCst)),
+                (outcome, tries),
+                "{fail_first} failures"
+            );
+        }
+    }
+
     #[test]
     fn hmac_is_the_published_vector() {
         // RFC 4231 test case 2.

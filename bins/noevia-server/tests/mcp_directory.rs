@@ -1260,3 +1260,227 @@ async fn the_listing_follows_pages_and_reads_event_streams_and_cuts_a_long_list(
     .await;
     assert_eq!(pre["toolCount"], 60, "{pre}");
 }
+
+// ---------------------------------------------------------------------------------------------
+// The review of round 2 (M3, L2): a rollback says what it could not undo, and forgets only what is its own.
+
+/// The preview and the body of a connect for a personal-key custom server (the administrator's own key is kept).
+async fn personal_form(
+    a: std::net::SocketAddr,
+    url: &str,
+) -> String {
+    let form = format!(
+        r#"{{"title":"Keyed","url":"{url}","headerName":"X-Api-Key","headerValue":"{SECRET}","keyMode":"personal"}}"#
+    );
+    let (st, pre) = write(a, "POST", &format!("{LIST}/custom/preview"), ADMIN, &form).await;
+    assert_eq!(st, 200, "{pre}");
+    let token = pre["previewToken"].as_str().unwrap();
+    format!(
+        r#"{{"title":"Keyed","url":"{url}","headerName":"X-Api-Key","headerValue":"{SECRET}","keyMode":"personal","previewToken":"{token}"}}"#
+    )
+}
+
+/// The tools change after the connect's check, so the re-listing shows others and the add is rolled back.
+fn change_after_the_check(s: &Synth) {
+    let lists_now = s.lists.load(Ordering::SeqCst);
+    let other = r#"[{"name":"echo","description":"Echo","inputSchema":{"type":"object","properties":{"text":{"type":"string"}}}},{"name":"sneaky","inputSchema":{"type":"object"}}]"#;
+    *s.swap_after.lock().unwrap() = Some((lists_now + 1, other.to_owned()));
+}
+
+fn keys_of(db: &server_store::rusqlite::Connection, server: &str) -> Vec<String> {
+    let mut stmt = db
+        .prepare("SELECT user_id FROM directory_mcp_user_keys WHERE server_id=?1 ORDER BY user_id")
+        .unwrap();
+    stmt.query_map([server], |r| r.get::<_, String>(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_rollback_that_cannot_remove_the_row_is_loud_and_the_server_can_be_removed_by_hand() {
+    let (_d, db, up, s, f) = rig("", false, ECHO).await;
+    let a = f.addr;
+    let url = format!("{}/mcp", up.base());
+    *s.key.lock().unwrap() = Some(SECRET.into());
+    let body = personal_form(a, &url).await;
+    change_after_the_check(&s);
+    // The database refuses to delete a directory row (as a locked or read-only file would).
+    db.execute_batch(
+        "CREATE TRIGGER refuse_delete BEFORE DELETE ON directory_mcp_servers BEGIN SELECT RAISE(ABORT, 'locked'); END;",
+    )
+    .unwrap();
+    let (st, out) = write(a, "POST", &format!("{LIST}/custom"), ADMIN, &body).await;
+    let id: String = db
+        .query_row("SELECT id FROM directory_mcp_servers", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(st, 500, "not a quiet 409: {out}");
+    let message = out["error"].as_str().unwrap();
+    assert!(
+        message.contains("by hand") && message.contains(&id),
+        "it says which server is left and what to do: {message}"
+    );
+    assert_eq!(dir_count(&db), 1, "the server is still listed");
+    assert_eq!(keys_of(&db, &id), [A], "and so is the key it holds");
+    // By hand: once the database lets go, removing it from the list clears the server and its key.
+    db.execute_batch("DROP TRIGGER refuse_delete").unwrap();
+    let (st, out) = write(a, "DELETE", &format!("{LIST}/{id}"), ADMIN, "").await;
+    assert_eq!(st, 200, "{out}");
+    assert_eq!(dir_count(&db), 0);
+    assert!(keys_of(&db, &id).is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_rollback_that_cannot_clear_the_keys_says_so_and_adding_and_removing_again_clears_them() {
+    let (_d, db, up, s, f) = rig("", false, ECHO).await;
+    let a = f.addr;
+    let url = format!("{}/mcp", up.base());
+    *s.key.lock().unwrap() = Some(SECRET.into());
+    let body = personal_form(a, &url).await;
+    change_after_the_check(&s);
+    db.execute_batch(
+        "CREATE TRIGGER refuse_key_delete BEFORE DELETE ON directory_mcp_user_keys BEGIN SELECT RAISE(ABORT, 'locked'); END;",
+    )
+    .unwrap();
+    let (st, out) = write(a, "POST", &format!("{LIST}/custom"), ADMIN, &body).await;
+    assert_eq!(st, 500, "{out}");
+    let message = out["error"].as_str().unwrap();
+    assert_eq!(dir_count(&db), 0, "the row did go");
+    let id: String = db
+        .query_row("SELECT server_id FROM directory_mcp_user_keys", [], |r| r.get(0))
+        .unwrap();
+    assert!(
+        message.contains("could not be cleared") && message.contains(&id),
+        "{message}"
+    );
+    assert_eq!(keys_of(&db, &id), [A], "the key is what is left");
+    // As the message says: add it again, remove it, and nothing is left.
+    db.execute_batch("DROP TRIGGER refuse_key_delete").unwrap();
+    *s.swap_after.lock().unwrap() = None;
+    *s.tools.lock().unwrap() = ECHO.into();
+    let body = personal_form(a, &url).await;
+    let (st, out) = write(a, "POST", &format!("{LIST}/custom"), ADMIN, &body).await;
+    assert_eq!(st, 201, "{out}");
+    let (st, out) = write(a, "DELETE", &format!("{LIST}/{id}"), ADMIN, "").await;
+    assert_eq!(st, 200, "{out}");
+    assert!(keys_of(&db, &id).is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_rollback_that_finds_the_server_replaced_forgets_only_the_adding_administrators_key() {
+    let (_d, db, up, s, f) = rig("", false, ECHO).await;
+    let a = f.addr;
+    let url = format!("{}/mcp", up.base());
+    *s.key.lock().unwrap() = Some(SECRET.into());
+    let body = personal_form(a, &url).await;
+    change_after_the_check(&s);
+    let lists_before = s.lists.load(Ordering::SeqCst);
+    // Slow listings give the test the moment between the add and its rollback.
+    *s.list_delay.lock().unwrap() = Duration::from_millis(1500);
+    let request = tokio::spawn({
+        let body = body.clone();
+        async move { write(a, "POST", &format!("{LIST}/custom"), ADMIN, &body).await }
+    });
+    // The re-listing has started: the row is in, and the administrator's key is stored.
+    for _ in 0..200 {
+        if s.lists.load(Ordering::SeqCst) >= lists_before + 2 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    assert!(s.lists.load(Ordering::SeqCst) >= lists_before + 2);
+    let (id, added_at): (String, i64) = db
+        .query_row("SELECT id, added_at FROM directory_mcp_servers", [], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+        .unwrap();
+    // Another administrator removed that server and added one of the same name; a member has a key for it.
+    db.execute(
+        "UPDATE directory_mcp_servers SET added_at=?1 WHERE id=?2",
+        (added_at + 1, &id),
+    )
+    .unwrap();
+    db.execute(
+        "INSERT INTO directory_mcp_user_keys(user_id,server_id,headers_enc,updated_at) VALUES(?1,?2,'enc:v2:x',1)",
+        (B, &id),
+    )
+    .unwrap();
+    assert_eq!(keys_of(&db, &id), [A, B]);
+    let (st, out) = request.await.unwrap();
+    assert_eq!(st, 409, "{out}");
+    assert_eq!(dir_count(&db), 1, "the other administrator's server is not removed");
+    assert_eq!(
+        keys_of(&db, &id),
+        [B],
+        "only the key this request stored is forgotten, not everyone's"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_key_stored_while_a_server_is_being_removed_does_not_outlive_it() {
+    let (_d, db, up, s, f) = rig("", false, ECHO).await;
+    let a = f.addr;
+    let url = format!("{}/mcp", up.base());
+    *s.key.lock().unwrap() = Some(SECRET.into());
+    let body = personal_form(a, &url).await;
+    let (st, out) = write(a, "POST", &format!("{LIST}/custom"), ADMIN, &body).await;
+    assert_eq!(st, 201, "{out}");
+    let id: String = db
+        .query_row("SELECT id FROM directory_mcp_servers", [], |r| r.get(0))
+        .unwrap();
+    // A member's key check finishes storing its key just after the removal cleared the keys, as the row goes.
+    db.execute_batch(&format!(
+        "CREATE TRIGGER late_key AFTER DELETE ON directory_mcp_servers BEGIN INSERT OR REPLACE INTO directory_mcp_user_keys(user_id,server_id,headers_enc,updated_at) VALUES('{B}', OLD.id, 'enc:v2:x', 1); END;"
+    ))
+    .unwrap();
+    let (st, out) = write(a, "DELETE", &format!("{LIST}/{id}"), ADMIN, "").await;
+    assert_eq!(st, 200, "{out}");
+    assert_eq!(dir_count(&db), 0);
+    assert!(
+        keys_of(&db, &id).is_empty(),
+        "the second clearing, after the row, took it: {:?}",
+        keys_of(&db, &id)
+    );
+}
+
+#[test]
+fn the_snapshot_node_writes_for_hostile_tools_is_one_the_front_reads() {
+    // The review of round 2, H1: a description cut through an emoji left a lone surrogate, which this reader's
+    // JSON parser refuses, and twenty thousand tools passed the 4 MiB the reader accepts: either made the
+    // snapshot unreadable for every account. Node's real publisher writes both cases; the front's reader reads it.
+    let Some(core) = paired_core() else {
+        return;
+    };
+    let d = tempfile::tempdir().unwrap();
+    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/mcp_snapshot_live.cjs");
+    let out = std::process::Command::new("node")
+        .arg(script)
+        .env("NOEVIA_MCP_CORE", &core)
+        .env("DATA_DIR", d.path())
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "node: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let file = d.path().join("mcp-discovery.json");
+    let size = std::fs::metadata(&file).unwrap().len();
+    assert!(size < 4 * 1024 * 1024, "{size} bytes");
+    let snap = noevia_server::snapshot::read(
+        &file,
+        noevia_server::mcp_discovery::SNAPSHOT_KIND,
+        noevia_server::identity::now_ms(),
+    )
+    .expect("the front reads what Node wrote");
+    let cat = noevia_server::mcp_discovery::parse(&snap.body).expect("and it is a catalogue");
+    let b = &cat.boxes[0];
+    assert!(!b.tools.is_empty() && b.tools.len() <= 500, "{}", b.tools.len());
+    assert_eq!(
+        b.tools[0].description.chars().count(),
+        240,
+        "the cut keeps 239 letters and the replacement for the half of the pair"
+    );
+    assert!(b.tools[0].description.ends_with('\u{FFFD}'));
+    assert_eq!(cat.servers[0].tool_count, Some(20000));
+}
