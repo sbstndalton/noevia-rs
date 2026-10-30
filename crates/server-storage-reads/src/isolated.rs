@@ -10,7 +10,8 @@ use std::{
 };
 use zeroize::Zeroizing;
 
-pub const INPUT: usize = 16 * 1024 * 1024;
+/// One request frame: 16 MiB of URL and headers plus a write's body (noevia#2191 round 3).
+pub const INPUT: usize = 16 * 1024 * 1024 + crate::WRITE_BYTES;
 pub const READY: &[u8; 8] = b"M4READY1";
 pub const BODY: &[u8; 8] = b"M4BODY01";
 pub const NET: &[u8; 8] = b"M4NET001";

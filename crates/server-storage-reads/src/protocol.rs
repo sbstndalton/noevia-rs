@@ -58,6 +58,36 @@ pub enum Operation {
 pub enum Method {
     Get,
     Propfind,
+    /// The writes (noevia#2191 round 3, [`crate::writes`]): a reply carries the response's ETag
+    /// (`ETag`, else `OC-ETag`) as its payload, never the response body.
+    Put,
+    Mkcol,
+    Delete,
+}
+
+impl Method {
+    /// Whether the child answers with the response's ETag instead of its body.
+    pub fn etag_reply(self) -> bool {
+        matches!(self, Self::Put | Self::Mkcol | Self::Delete)
+    }
+    /// The longest one attempt may take: core storage-client.cjs's `AbortSignal.timeout` for the
+    /// method (PUT 60 s, DELETE 30 s, the rest at most 20 s).
+    pub fn max_attempt(self) -> Duration {
+        Duration::from_secs(match self {
+            Self::Put => 60,
+            Self::Delete => 30,
+            _ => 20,
+        })
+    }
+    /// The largest request body the method may carry: a PUT up to [`crate::WRITE_BYTES`], a
+    /// PROPFIND its fixed XML query, nothing for the others.
+    pub fn max_body(self) -> usize {
+        match self {
+            Self::Put => crate::WRITE_BYTES,
+            Self::Propfind => crate::PROPFIND_BODY_BYTES,
+            _ => 0,
+        }
+    }
 }
 
 /// Deliberately no Debug: headers and URL may contain credentials and private names.
@@ -67,6 +97,8 @@ pub struct Request {
     pub headers: Vec<(String, Zeroizing<String>)>,
     pub attempt_timeout: Duration,
     pub body_cap: usize,
+    /// The request body (a PUT's bytes, a PROPFIND's query); empty for a read.
+    pub body: Zeroizing<Vec<u8>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -133,7 +165,7 @@ pub trait Transport {
     fn delay(&mut self, delay: Duration) -> Result<(), TransportFailure>;
 }
 
-fn encode_component(value: &str) -> String {
+pub(crate) fn encode_component(value: &str) -> String {
     let mut out = String::new();
     const HEX: &[u8] = b"0123456789ABCDEF";
     for b in value.bytes() {
@@ -379,6 +411,7 @@ fn request(
         } else {
             LIST_BYTES
         },
+        body: Zeroizing::new(Vec::new()),
     })
 }
 

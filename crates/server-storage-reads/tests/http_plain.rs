@@ -29,6 +29,7 @@ fn request(url: String, method: Method, cap: usize) -> Request {
         ],
         attempt_timeout: Duration::from_secs(15),
         body_cap: cap,
+        body: Default::default(),
     }
 }
 fn transient(e: &std::io::Error) -> bool {
@@ -149,6 +150,7 @@ fn methods_signed_bytes_status_redirect_and_information() {
         assert!(text.starts_with(match method {
             Method::Get => "GET /a%2Fb?X=a%2Fb&X=2 HTTP/1.1\r\n",
             Method::Propfind => "PROPFIND /a%2Fb?X=a%2Fb&X=2 HTTP/1.1\r\n",
+            Method::Put | Method::Mkcol | Method::Delete => unreachable!("reads only here"),
         }));
         let text = text.to_ascii_lowercase();
         assert!(

@@ -18,6 +18,8 @@ pub mod model_routes;
 pub mod model_sizing;
 pub mod plugin_directory_routes;
 pub mod project_routes;
+#[cfg(feature = "rust-storage-browse")]
+pub mod project_storage_io;
 pub mod project_store;
 #[cfg(feature = "rust-storage-reads")]
 pub mod provider_test_routes;
@@ -79,6 +81,18 @@ use std::sync::Arc;
 /// those two GETs (core rust-models.cjs `RUST_MODELS_OWNED`), so the web supervisor must refuse a
 /// front without it beside such a Core, and a front with it beside an older Core.
 ///
+/// `rust-project-reads`: this build answers `GET /api/projects/{id}/sources/text`, `GET
+/// /api/projects/{id}/documents/original` and `GET /api/projects/{id}/uploads/original`
+/// (sbstndalton/noevia#2191), permanently and with no switch. Node refuses those GETs (core
+/// rust-project-reads.cjs `RUST_PROJECT_READS_OWNED`), so the web supervisor must refuse a front
+/// without it beside such a Core, and a front with it beside an older Core.
+///
+/// `rust-project-lifecycle`: this build answers `POST /api/projects` and `DELETE
+/// /api/projects/{projectId}` (sbstndalton/noevia#2191 round 2), permanently and with no switch,
+/// and writes the index outbox (`users/<id>/index-outbox.db`) core's executor drains. Node refuses
+/// those routes (core rust-project-lifecycle.cjs `RUST_PROJECT_LIFECYCLE_OWNED`) and publishes the
+/// toolbox catalogue a create reads (`project-catalogue.json`), so the web supervisor must refuse a
+/// front without it beside such a Core, and a front with it beside an older Core.
 /// `rust-public-pages`: this build answers `GET|HEAD /about` and `/privacy` and every method of
 /// `/device` (sbstndalton/noevia#2190); `rust-plugin-directory`: `/api/plugins/directory`. Both are
 /// permanent with no switch; Node refuses them (core rust-public-pages.cjs and
@@ -111,6 +125,18 @@ use std::sync::Arc;
 /// with no switch. Node refuses those two GETs (core rust-model-sizing.cjs `RUST_MODEL_SIZING_OWNED`),
 /// so the web supervisor pairs this capability with that Core in both directions.
 ///
+/// `rust-project-storage`: this build writes to a user's connected storage for a project's
+/// lifecycle (sbstndalton/noevia#2191 round 3): a create stores its text files in the project's
+/// folder (#687) and the front runs the `sweep` jobs of its index outbox itself. Core then claims
+/// only its own job kinds (core rust-project-storage.cjs `CORE_KINDS`), so the web supervisor must
+/// refuse a front without it beside such a Core (its sweeps would never run), and a front with it
+/// beside an older Core (both would run them).
+///
+/// `rust-project-files`: this build answers `DELETE /api/projects/{id}/files` (a source file's delete
+/// from the user's storage, sbstndalton/noevia#2191 round 3) and queues the file's RAG removal as an
+/// `unindex` job in the index outbox. Node refuses the route (core rust-project-files.cjs
+/// `RUST_PROJECT_FILES_OWNED`) and runs `unindex` jobs, so the web supervisor pairs them.
+///
 /// `project-store`: this build serves the internal project store Node writes projects.json and
 /// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
 /// supervisor confirms it to Node (NOEVIA_RUST_PROJECT_STORE_CONFIRMED) and hands both the secret.
@@ -136,6 +162,10 @@ pub const FEATURES: &[&str] = &[
     "rust-auth",
     "rust-diary",
     "rust-model-reads",
+    "rust-project-reads",
+    "rust-project-lifecycle",
+    "rust-project-storage",
+    "rust-project-files",
     "rust-public-pages",
     "rust-plugin-directory",
     "rust-decision-settings",
@@ -192,6 +222,10 @@ pub struct App {
     /// The Nextcloud sign-ins and the login proofs (#2190).
     #[cfg(feature = "rust-storage-reads")]
     pub storage_integrations: storage_integration_routes::State,
+    /// Project storage write admission (round 3, #2191): four at once, one per account, apart
+    /// from the browse's.
+    #[cfg(feature = "rust-storage-browse")]
+    pub storage_writes: server_storage_reads::admission::Admission,
     pub config: config::Config,
     pub proxy: legacy_proxy::LegacyProxy,
     pub statics: static_files::StaticFiles,
@@ -256,6 +290,8 @@ impl App {
             storage_integrations: storage_integration_routes::State::new(
                 config.storage_qa_ca.as_deref(),
             ),
+            #[cfg(feature = "rust-storage-browse")]
+            storage_writes: server_storage_reads::admission::Admission::default(),
             identity,
             writes,
             accounts,

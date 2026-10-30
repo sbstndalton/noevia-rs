@@ -1,6 +1,6 @@
 //! Original source-text read contract over existing projects.json and content-addressed text.
 //! No source pointer is rewritten when its blob disappears or becomes unreadable.
-use crate::{chats, js, store, Ctx, Reply};
+use crate::{js, Ctx, Reply};
 use js_json::{wtf16, JValue};
 use std::io::Read;
 const MAX_TEXT: u64 = 64 * 1024 * 1024;
@@ -13,8 +13,12 @@ pub fn text(
     project: &str,
     file: &JValue,
 ) -> Result<String, TextUnavailable> {
-    if let Some(content) = file.get("content").as_str() {
-        return Ok(content.to_owned());
+    // An own `content` (inline text) is what Node reads: attachFile leaves such a source alone, and
+    // the route answers `typeof file.content === 'string' ? file.content : ''`.
+    if let JValue::Obj(items) = file {
+        if let Some((_, content)) = items.iter().find(|(k, _)| k == "content") {
+            return Ok(content.as_str().unwrap_or_default().to_owned());
+        }
     }
     let Some(reference) = file.get("textRef").as_str() else {
         return Ok(String::new());
@@ -63,72 +67,66 @@ pub fn text(
 }
 
 pub fn get(ctx: Ctx<'_>, raw_project: &str, name: Option<&str>) -> Reply {
+    // decodeURIComponent's URIError reaches index.cjs's errorResponse: a 500.
     let Some(id) = js::decode_uri_component(raw_project) else {
-        return Reply::error(400, "Invalid project identifier");
+        return Reply::internal();
+    };
+    // getProject first (its self-heal and reconcile are saved even for an internal project),
+    // then the internal check, as routes/projects.cjs does.
+    let (dir, project) = match crate::originals::project(ctx, &id) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let Some(project) = project else {
+        return Reply::error(404, "no such project");
     };
     if id == "cowork-diary-extras" || id.starts_with("cowork-chat-context-") {
         return Reply::error(404, "no such project");
     }
-    let dir = match store::user_dir(ctx.data_dir, ctx.user_id) {
-        Ok(v) => v,
-        Err(_) => return Reply::internal(),
+    let Some(name) = name.filter(|s| !s.is_empty()) else {
+        return Reply::error(400, "a source name is required");
     };
-    // Read and apply getProject's existing normalization while holding the shared project lock.
-    match store::update(&dir, ctx.switch, |projects| {
-        let Some(project) = store::find_mut(projects, &id) else {
-            return (Reply::error(404, "no such project"), false);
-        };
-        let effects = match chats::get_project_effects(project) {
-            Ok(v) => v,
-            Err(_) => return (Reply::internal(), false),
-        };
-        let changed = effects.saved.is_some();
-        if let Some(saved) = effects.saved {
-            *project = saved;
-        }
-        let reply = (|| {
-            let Some(name) = name.filter(|s| !s.is_empty()) else {
-                return Reply::error(400, "a source name is required");
-            };
-            let JValue::Arr(files) = effects.memory.get("files") else {
-                return Reply::error(404, "no such source");
-            };
-            let Some(file) = files.iter().find(|f| f.get("name").as_str() == Some(name)) else {
-                return Reply::error(404, "no such source");
-            };
-            let content =
-                match text(&dir, &id, file) {
-                    Ok(v) => v,
-                    Err(TextUnavailable) => return Reply::json(
-                        404,
-                        wtf16::stringify(&JValue::obj([
-                            (
-                                "error",
-                                JValue::from(
-                                    "The text of this source is missing. Re-upload or refresh it.",
-                                ),
-                            ),
-                            ("code", JValue::from("SOURCE_TEXT_MISSING")),
-                            ("name", JValue::from(name)),
-                        ]))
-                        .unwrap_or_default(),
-                    ),
-                };
-            let chars = wtf16::len(&content);
-            Reply::json(
-                200,
+    // `(project.files || []).find((f) => f && f.name === name)`.
+    let file = match project.get("files") {
+        JValue::Arr(files) => files
+            .iter()
+            .find(|f| f.truthy() && f.get("name").as_str() == Some(name)),
+        v if !v.truthy() => None,
+        _ => return Reply::internal(),
+    };
+    let Some(file) = file else {
+        return Reply::error(404, "no such source");
+    };
+    let Some(file_name) = file.get("name").as_str() else {
+        return Reply::internal();
+    };
+    let content = match text(&dir, &id, file) {
+        Ok(v) => v,
+        Err(TextUnavailable) => {
+            return Reply::json(
+                404,
                 wtf16::stringify(&JValue::obj([
-                    ("name", JValue::from(name)),
-                    ("content", JValue::from(content)),
-                    ("chars", JValue::Num(chars as f64)),
+                    (
+                        "error",
+                        JValue::from(
+                            "The text of this source is missing. Re-upload or refresh it.",
+                        ),
+                    ),
+                    ("code", JValue::from("SOURCE_TEXT_MISSING")),
+                    ("name", JValue::from(file_name)),
                 ]))
                 .unwrap_or_default(),
             )
-        })();
-        (reply, changed)
-    }) {
-        Ok(v) => v,
-        Err(_) => Reply::internal(),
+        }
+    };
+    let chars = wtf16::len(&content);
+    match wtf16::stringify(&JValue::obj([
+        ("name", JValue::from(file_name)),
+        ("content", JValue::from(content)),
+        ("chars", JValue::Num(chars as f64)),
+    ])) {
+        Some(v) => Reply::json(200, v),
+        None => Reply::internal(),
     }
 }
 

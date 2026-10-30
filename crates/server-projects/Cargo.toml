@@ -16,9 +16,12 @@ js-json = { path = "../js-json" }
 sha2 = "0.10"
 rand_core = { version = "0.6", features = ["getrandom"] }
 libc = "0.2"
+rusqlite = { version = "0.40", features = ["bundled"] }
 rustix = { version = "=1.1.5", features = ["fs"] }
 serde_json = "1"
 prompt-framing = { path = "../prompt-framing" }
+upload-sniff = { path = "../upload-sniff" }
+storage-path = { path = "../storage-path" }
 
 [dev-dependencies]
 tempfile = "3"

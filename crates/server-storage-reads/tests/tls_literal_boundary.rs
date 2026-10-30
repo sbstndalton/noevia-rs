@@ -16,6 +16,7 @@ fn production_hostname_refuses_before_dns_or_socket() {
                 url: "https://localhost/".into(),
                 headers: vec![],
                 body_cap: TEXT_BYTES,
+                body: Default::default(),
                 attempt_timeout: Duration::from_secs(1),
             },
             &policy,

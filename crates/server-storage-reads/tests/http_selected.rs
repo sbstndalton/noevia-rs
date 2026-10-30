@@ -20,6 +20,7 @@ fn request(url: String, cap: usize) -> Request {
         headers: vec![],
         attempt_timeout: Duration::from_secs(15),
         body_cap: cap,
+        body: Default::default(),
     }
 }
 #[test]
