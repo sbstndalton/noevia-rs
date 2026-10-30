@@ -69,7 +69,8 @@ struct LiveCore {
 
 impl LiveCore {
     fn start(core: &std::path::Path, data: &std::path::Path) -> LiveCore {
-        let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/research_core_live.cjs");
+        let script =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/research_core_live.cjs");
         let mut child = Command::new("node")
             .arg(script)
             .arg(core)
@@ -152,10 +153,16 @@ async fn front(core_dir: &std::path::Path) -> Front {
     env.insert("INFERENCE_BASE_URL", "http://127.0.0.1:9".into());
     env.insert(flag_name, "true".into());
     let mut app = noevia_server::App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
-    Arc::get_mut(&mut app).unwrap().storage_child = Some(env!("CARGO_BIN_EXE_noevia-server").into());
+    Arc::get_mut(&mut app).unwrap().storage_child =
+        Some(env!("CARGO_BIN_EXE_noevia-server").into());
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    tokio::spawn(serve(listener, app, Limits::default(), std::future::pending()));
+    tokio::spawn(serve(
+        listener,
+        app,
+        Limits::default(),
+        std::future::pending(),
+    ));
     let user_dir = data.join("users").join(&live.user);
     std::fs::create_dir_all(&user_dir).unwrap();
     std::fs::write(
@@ -212,7 +219,13 @@ async fn a_real_core_answers_the_fronts_bridge_and_lease_calls() {
     lease.release().await;
 
     // Another secret is nobody: the same 404 as an unknown path, so no lease.
-    let stranger = Arc::new(Admission::new(&f.core.base(), Some("not-the-fronts-secret-0123456789abcdef")).unwrap());
+    let stranger = Arc::new(
+        Admission::new(
+            &f.core.base(),
+            Some("not-the-fronts-secret-0123456789abcdef"),
+        )
+        .unwrap(),
+    );
     assert!(
         stranger
             .enter(Ask::Engine { model: "small" }, &Cancel::new())
