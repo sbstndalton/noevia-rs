@@ -1577,7 +1577,10 @@ async fn a_scheduled_run_waits_out_a_window_that_opens_while_it_runs() {
     // Outside every window nothing waits.
     clock.store(at(3, 0), Ordering::SeqCst);
     pace.checkpoint().await;
-    assert!(flips.lock().unwrap().is_empty(), "outside every window nothing is announced as waiting");
+    assert!(
+        flips.lock().unwrap().is_empty(),
+        "outside every window nothing is announced as waiting"
+    );
     // Inside the appdata window (04:05-04:25 on a UTC server): it holds until the clock leaves it.
     clock.store(at(4, 10), Ordering::SeqCst);
     let c2 = Arc::clone(&clock);

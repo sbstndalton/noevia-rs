@@ -1010,3 +1010,49 @@ async fn a_connection_saved_before_owners_were_recorded_belongs_to_whichever_adm
     .await;
     assert_eq!(view["state"], "error", "{view}");
 }
+
+#[tokio::test]
+async fn the_state_file_exists_only_once_there_is_something_to_say() {
+    let d = tempfile::tempdir().unwrap();
+    seed(d.path());
+    let up = upstream().await;
+    install_oauth(&up, "x@example.test", Duration::ZERO);
+    let f = front(d.path(), &up.base(), &[]).await;
+    let drive = std::sync::Arc::clone(f.app.drive.as_ref().unwrap());
+    let state = d.path().join("gdrive-connections.json");
+    drive.publish_startup();
+    assert!(
+        !state.exists(),
+        "nobody is connected: no file (Node reads a missing file as nobody)"
+    );
+    // Asking for an unconnected account's Drive makes core's directory, and no state file.
+    let (s, v) = store(
+        f.store,
+        "gdrive/view",
+        STORE_TOKEN,
+        &format!(r#"{{"user":"{B}","admin":false}}"#),
+    )
+    .await;
+    assert_eq!((s, v["state"].as_str()), (200, Some("disconnected")));
+    assert!(d.path().join("google-drive-users").is_dir() && !state.exists());
+    let mode = std::os::unix::fs::PermissionsExt::mode(
+        &std::fs::metadata(d.path().join("google-drive-users"))
+            .unwrap()
+            .permissions(),
+    );
+    assert_eq!(mode & 0o777, 0o700);
+    // A connection Node saved before (or a stale file): the first publish of a start says so.
+    plant_account_file(d.path(), B, r#"{"refreshToken":"r","connectedAt":5}"#);
+    drive.publish_startup();
+    assert_eq!(state_file(d.path())["personal"][B], "connected");
+    // After that every committed change publishes, whatever the start did.
+    let (s, _) = store(
+        f.store,
+        "gdrive/disconnect",
+        STORE_TOKEN,
+        &format!(r#"{{"user":"{B}","admin":false}}"#),
+    )
+    .await;
+    assert_eq!(s, 200);
+    assert!(state_file(d.path())["personal"].get(B).is_none());
+}

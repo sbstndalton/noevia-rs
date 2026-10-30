@@ -677,6 +677,15 @@ impl Drive {
         if !safe_id(user) {
             return Err(Fail::new("Google Drive could not be reached.", 502));
         }
+        // core's forUser made the directory for a personal connection (mode 0700) the first time
+        // an account's Drive was asked for; the replay's state comparison sees it.
+        {
+            use std::os::unix::fs::DirBuilderExt as _;
+            let _ = std::fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(self.data_dir.join(USERS_DIR));
+        }
         Ok(Slot::User(user.to_owned()))
     }
 
@@ -733,10 +742,34 @@ impl Drive {
             .store(true, std::sync::atomic::Ordering::Release);
     }
 
-    /// Publishes once per start, at the first use (so a restart's state is never older than the disk).
+    /// Whether there is anything to say: a backup slot file, a personal connection file, or a state
+    /// file from an earlier start that a restart may have made untrue.
+    fn has_state(&self) -> bool {
+        let personal = std::fs::read_dir(self.data_dir.join(USERS_DIR))
+            .map(|d| {
+                d.flatten()
+                    .any(|e| e.file_name().to_string_lossy().ends_with(".sealed"))
+            })
+            .unwrap_or(false);
+        personal
+            || self.data_dir.join(BACKUP_FILE).exists()
+            || self.data_dir.join(STATE_FILE).exists()
+    }
+
+    /// The first publish of a start: brings the state file up to date with the disk, but writes
+    /// none while nothing is connected (Node reads a missing file as "nobody is").
+    pub fn publish_startup(&self) {
+        if self.has_state() {
+            self.publish();
+        }
+        self.published
+            .store(true, std::sync::atomic::Ordering::Release);
+    }
+
+    /// [`Drive::publish_startup`] once per start, at the first internal use.
     pub fn publish_once(&self) {
         if !self.published.load(std::sync::atomic::Ordering::Acquire) {
-            self.publish();
+            self.publish_startup();
         }
     }
 

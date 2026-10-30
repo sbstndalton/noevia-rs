@@ -187,7 +187,7 @@ async fn server_main() -> ExitCode {
     // and the off-site backup's nightly schedule starts.
     if let Some(drive) = app.drive.as_ref() {
         let drive = std::sync::Arc::clone(drive);
-        let _ = tokio::task::spawn_blocking(move || drive.publish()).await;
+        let _ = tokio::task::spawn_blocking(move || drive.publish_startup()).await;
     }
     if let Some(offsite) = app.offsite.as_ref() {
         offsite.spawn_scheduler(&app);
