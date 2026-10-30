@@ -97,6 +97,10 @@ pub enum Route {
     DeleteProject {
         project: String,
     },
+    /// DELETE /api/projects/{id}/files (sbstndalton/noevia#2191 round 3, `rust-project-files`)
+    DeleteFile {
+        project: String,
+    },
 }
 
 /// Node's matchers, `^\/api\/projects\/([^/]+)\/assets$`, `...\/assets\/([^/]+)$` and
@@ -155,6 +159,10 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
     match (method, parts.as_slice()) {
         // routes/projects.cjs `/^\/api\/projects\/([^/]+)$/` for DELETE (sbstndalton/noevia#2191).
         ("DELETE", [project]) if !project.is_empty() => Some(Route::DeleteProject {
+            project: (*project).to_string(),
+        }),
+        // routes/projects.cjs `projFileDel`, DELETE only (sbstndalton/noevia#2191 round 3).
+        ("DELETE", [project, "files"]) if !project.is_empty() => Some(Route::DeleteFile {
             project: (*project).to_string(),
         }),
         ("POST", [project, "assets"]) if !project.is_empty() => Some(Route::Upload {
@@ -342,6 +350,7 @@ pub async fn serve(
         Route::SaveHistory { .. } => Some(history::BODY_LIMIT),
         Route::MoveChat { .. } => Some(chat_move::BODY_LIMIT),
         Route::CreateProject => Some(lifecycle::BODY_LIMIT),
+        Route::DeleteFile { .. } => Some(server_projects::files::BODY_LIMIT),
         Route::DeleteProject { .. }
         | Route::One { .. }
         | Route::Chats { .. }
@@ -384,6 +393,12 @@ pub async fn serve(
     // blocking pool with the rest.
     let create_inputs =
         matches!(route, Route::CreateProject).then(|| (Arc::clone(app), authn.clone()));
+    // A source file's delete writes to the user's storage (round 3, #2191).
+    let file_inputs =
+        matches!(route, Route::DeleteFile { .. }).then(|| (Arc::clone(app), authn.clone()));
+    // A create or delete runs the user's queued storage sweep afterwards (round 3, #2191).
+    let sweep_inputs = matches!(route, Route::CreateProject | Route::DeleteProject { .. })
+        .then(|| (Arc::clone(app), authn.clone(), data_dir.clone()));
     let user = authn.user.id;
     // The context GET writes too (getProject's self-heal), so it is re-gated as well; so do the
     // source reads, whose getProject may save the same way.
@@ -402,6 +417,7 @@ pub async fn serve(
             | Route::DeleteChat { .. }
             | Route::CreateProject
             | Route::DeleteProject { .. }
+            | Route::DeleteFile { .. }
     ) || (matches!(route, Route::One { .. }) && method == "DELETE");
     let done = tokio::task::spawn_blocking(move || {
         if writes {
@@ -418,6 +434,7 @@ pub async fn serve(
                 lifecycle::Catalogue::read_waiting(&data_dir, std::time::Duration::from_secs(10)),
                 storage_kind(&app, &authn),
                 lifecycle::project_root_folder(),
+                (app, authn),
             )
         });
         Ok(match (route, upload) {
@@ -463,21 +480,33 @@ pub async fn serve(
                 originals::upload(ctx, &project, name.as_deref())
             }
             (Route::CreateProject, Some(b)) => match &create_env {
-                Some((catalogue, storage, root)) => lifecycle::create(
-                    ctx,
-                    &b.bytes,
-                    b.over,
-                    &lifecycle::CreateEnv {
-                        catalogue: catalogue.as_ref(),
-                        storage: *storage,
-                        root,
-                    },
-                ),
+                Some((catalogue, storage, root, (app, authn))) => {
+                    let opener = opener(app, authn);
+                    lifecycle::create(
+                        ctx,
+                        &b.bytes,
+                        b.over,
+                        &lifecycle::CreateEnv {
+                            catalogue: catalogue.as_ref(),
+                            storage: *storage,
+                            root,
+                            with_remote: Some(&opener),
+                        },
+                    )
+                }
                 None => Reply::internal(),
             },
             (Route::DeleteProject { project }, _) => lifecycle::delete(ctx, &project),
+            (Route::DeleteFile { project }, Some(b)) => match &file_inputs {
+                Some((app, authn)) => {
+                    let opener = opener(app, authn);
+                    server_projects::files::delete(ctx, &project, &b.bytes, b.over, &opener)
+                }
+                None => Reply::internal(),
+            },
             (
                 Route::CreateProject
+                | Route::DeleteFile { .. }
                 | Route::Upload { .. }
                 | Route::SaveChats { .. }
                 | Route::SaveFreeChats
@@ -488,10 +517,79 @@ pub async fn serve(
         })
     })
     .await;
+    if let (Some((app, authn, data_dir)), Ok(Ok(r))) = (sweep_inputs, &done) {
+        if r.status == 200 {
+            // Detached, as core's deleteProject never awaited its sweep; the job is durable in the
+            // outbox, so a restart or a busy storage slot only delays it.
+            tokio::task::spawn_blocking(move || sweep_queued(&app, &authn, &data_dir));
+        }
+    }
     match done {
         Ok(Ok(r)) => respond(r),
         Ok(Err(refused)) => refusal(refused),
         Err(_) => reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true),
+    }
+}
+
+/// The create's storage opener (higher-ranked over the step, as `OpenRemote` needs).
+fn opener<'a>(
+    app: &'a Arc<App>,
+    authn: &'a server_auth::Identity,
+) -> impl Fn(&mut server_projects::project_storage::StorageStep<'_>) + 'a {
+    move |step| with_remote(app, authn, step)
+}
+
+/// Runs `step` with the user's storage opened for writes (none without the storage features).
+#[cfg(feature = "rust-storage-browse")]
+fn with_remote(
+    app: &Arc<App>,
+    authn: &server_auth::Identity,
+    step: &mut dyn FnMut(&server_projects::project_storage::Remote<'_>),
+) {
+    let opened = crate::project_storage_io::open(app, authn);
+    step(&opened.remote());
+}
+
+#[cfg(not(feature = "rust-storage-browse"))]
+fn with_remote(
+    _app: &Arc<App>,
+    _authn: &server_auth::Identity,
+    step: &mut dyn FnMut(&server_projects::project_storage::Remote<'_>),
+) {
+    step(&server_projects::project_storage::Remote::None);
+}
+
+/// The user's pending `sweep` jobs (a delete's storage sweep), run by the front since round 3.
+fn sweep_queued(app: &Arc<App>, authn: &server_auth::Identity, data_dir: &std::path::Path) {
+    let Ok(dir) = server_projects::store::user_dir(data_dir, authn.user.id.as_str()) else {
+        return;
+    };
+    let queued = server_projects::outbox::jobs(&dir)
+        .map(|rows| {
+            rows.iter()
+                .any(|r| r.kind == "sweep" && r.state != "failed")
+        })
+        .unwrap_or(false);
+    if !queued {
+        return;
+    }
+    let root = lifecycle::project_root_folder();
+    #[cfg(feature = "rust-storage-browse")]
+    {
+        let opened = crate::project_storage_io::open(app, authn);
+        if matches!(opened, crate::project_storage_io::Opened::Refused(..)) {
+            return;
+        }
+        server_projects::project_storage::sweep_pending(
+            &dir,
+            &opened.remote(),
+            &root,
+            identity::now_ms(),
+        );
+    }
+    #[cfg(not(feature = "rust-storage-browse"))]
+    {
+        let _ = (app, &root);
     }
 }
 

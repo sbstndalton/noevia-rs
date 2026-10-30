@@ -20,6 +20,8 @@ rusqlite = { version = "0.40", features = ["bundled"] }
 rustix = { version = "=1.1.5", features = ["fs"] }
 serde_json = "1"
 prompt-framing = { path = "../prompt-framing" }
+upload-sniff = { path = "../upload-sniff" }
+storage-path = { path = "../storage-path" }
 
 [dev-dependencies]
 tempfile = "3"

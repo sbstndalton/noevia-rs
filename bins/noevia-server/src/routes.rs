@@ -137,7 +137,13 @@ const PROJECT_ROUTES: &[&str] = &[
     PROJECT_ORIGINAL,
     PROJECT_CREATE,
     PROJECT_ONE,
+    PROJECT_FILES,
 ];
+
+/// A project source file's delete from the user's storage (DELETE only; routes.toml), the front's
+/// under `rust-project-files` (sbstndalton/noevia#2191 round 3); Node refuses it
+/// (core rust-project-files.cjs).
+pub(crate) const PROJECT_FILES: &str = "/api/projects/{id}/files";
 
 /// A project's create (POST only) and delete (DELETE only; routes.toml), the front's under
 /// `rust-project-lifecycle` (sbstndalton/noevia#2191); Node refuses them
@@ -1059,7 +1065,6 @@ mod tests {
             "/api/projects/p1/documents/pages",
             "/api/projects/p1/upload",
             "/api/projects/p1/sources/sync",
-            "/api/projects/p1/files",
             "/api/projects/p1/config",
         ] {
             for m in ["GET", "POST", "DELETE"] {
@@ -1100,6 +1105,31 @@ mod tests {
             None
         );
         assert!(crate::FEATURES.contains(&"rust-project-lifecycle"));
+    }
+
+    #[test]
+    fn a_source_file_delete_is_native_and_nothing_else_of_its_path() {
+        let on = Switches::default();
+        assert_eq!(
+            dispatch_under("DELETE", "/api/projects/p1/files", on),
+            Some(Native::Projects)
+        );
+        for m in ["GET", "PUT", "POST", "PATCH"] {
+            assert_eq!(dispatch_under(m, "/api/projects/p1/files", on), None, "{m}");
+        }
+        assert!(matches!(
+            crate::project_routes::route("DELETE", "/api/projects/p1/files"),
+            Some(crate::project_routes::Route::DeleteFile { .. })
+        ));
+        assert_eq!(
+            crate::project_routes::route("GET", "/api/projects/p1/files"),
+            None
+        );
+        assert_eq!(
+            crate::project_routes::route("DELETE", "/api/projects//files"),
+            None
+        );
+        assert!(crate::FEATURES.contains(&"rust-project-files"));
     }
 
     #[test]

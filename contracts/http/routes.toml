@@ -635,9 +635,12 @@ path = "/api/projects/{id}/documents/original"
 owner = "rust"
 methods = ["GET"]
 
+# sbstndalton/noevia#2191 round 3 (rust-project-files): a source file's delete from the user's
+# storage, the front's (crates/server-projects files.rs); Node refuses it (core rust-project-files.cjs).
 [[route]]
 path = "/api/projects/{id}/files"
-owner = "node"
+owner = "rust"
+methods = ["DELETE"]
 
 [[route]]
 path = "/api/projects/{projectId}/instruction-skills"

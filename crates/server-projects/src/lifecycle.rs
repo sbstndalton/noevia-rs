@@ -31,8 +31,8 @@
 //! - Then: the project's upload originals, document pages/originals and images (its
 //!   `project-uploads/<sha256 id>`, `project-documents/<sha256 id>`, `project-assets/<id>`), the
 //!   RAG index (a tombstone in the outbox first, then `rag/<id>.db`, `-wal`, `-shm`), the empty
-//!   directories it leaves (never recursive), the storage folder sweep (queued for core's executor,
-//!   which runs project-sweep.cjs `sweepRemote`), and its chats: each through the store's
+//!   directories it leaves (never recursive), the storage folder sweep (a `sweep` job in the outbox,
+//!   run by the front after the answer: project-sweep.cjs `sweepRemote`), and its chats: each through the store's
 //!   `Unlisted` delete (a chat another list holds by now is left alone), then that chat's
 //!   attachments project, deleted the same way without its chats. Best effort after the save, as
 //!   in Node: a failure there is logged and the answer is still 200 `{ ok: true }`.
@@ -42,10 +42,10 @@
 //! project id that could name a path outside `rag/` (a `/`, `\`, NUL, `.` or `..`) removes no RAG
 //! file.
 //!
-//! Not ported (core keeps running it after a create, see contracts/http/README.md): #687's move of
-//! create-time text files into the project's storage folder. With storage connected those files
-//! stay noevia's own plain-named copies, exactly as Node left them when that storage write failed;
-//! the first edit of one moves it into the folder (core writeProjectTextFile `adoptTo`).
+//! #687 (round 3): with browsable storage the create-time text files are then stored in the
+//! project's folder ([`crate::project_storage::store_create_files`]); a file storage refuses stays
+//! noevia's own plain-named copy, as in core. The delete's storage sweep job is run by the front
+//! itself ([`crate::project_storage::sweep_pending`]).
 
 use crate::chat_delete::{self, DeleteError, Kind};
 use crate::chats;
@@ -323,6 +323,9 @@ pub struct CreateEnv<'a> {
     pub catalogue: Option<&'a Catalogue>,
     pub storage: Option<Storage>,
     pub root: &'a str,
+    /// Opens the user's storage for #687's step ([`crate::project_storage::store_create_files`])
+    /// and runs the given step with it; only called when the create has files.
+    pub with_remote: Option<&'a crate::project_storage::OpenRemote<'a>>,
 }
 
 /// The project createProject builds before its save (without the reservation, which is made
@@ -527,7 +530,7 @@ fn sha_hex_bytes(bytes: &[u8]) -> String {
 
 /// source-text.cjs `externalize` for the new project's files: each text is written to its file
 /// first, then the file entry becomes `{ name, textRef, chars, skillHeader? }`.
-fn externalize(dir: &Path, project: &mut JValue) -> std::io::Result<()> {
+pub(crate) fn externalize(dir: &Path, project: &mut JValue) -> std::io::Result<()> {
     let id = project.get("id").as_str().unwrap_or("").to_string();
     let JValue::Obj(fields) = project else {
         return Ok(());
@@ -554,7 +557,7 @@ fn externalize(dir: &Path, project: &mut JValue) -> std::io::Result<()> {
 }
 
 /// `saveProjects(PROJECTS)`'s reconcile of every project, planned before any is changed.
-fn reconcile_all(projects: &mut [JValue]) -> bool {
+pub(crate) fn reconcile_all(projects: &mut [JValue]) -> bool {
     let mut plans = Vec::with_capacity(projects.len());
     for p in projects.iter() {
         match skills::plan(p) {
@@ -608,6 +611,19 @@ pub fn create(ctx: Ctx<'_>, body: &[u8], over: bool, env: &CreateEnv<'_>) -> Rep
         Ok(p) => p,
         Err(reply) => return reply,
     };
+    // #687: the create-time files as sent, for the storage step after the save.
+    let inline: Vec<(String, String)> = match project.get("files") {
+        JValue::Arr(files) => files
+            .iter()
+            .filter_map(|f| {
+                Some((
+                    f.get("name").as_str()?.to_owned(),
+                    f.get("content").as_str()?.to_owned(),
+                ))
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
     let done = store::update(&dir, ctx.switch, |projects| {
         if let Some(storage) = env.storage {
             if let Some(id) = project.get("id").as_str().map(str::to_string) {
@@ -629,12 +645,27 @@ pub fn create(ctx: Ctx<'_>, body: &[u8], over: bool, env: &CreateEnv<'_>) -> Rep
             None => (Made::Fail, false),
         }
     });
-    let project = match done {
+    let mut project = match done {
         Ok(Made::Project(p)) => p,
         Ok(Made::Fail) => return Reply::internal(),
         // A create's save failure is not caught in Node: the server's generic answer.
         Err(e) => return chats::store_failure(&e),
     };
+    if let (false, Some(open), Some(id)) = (
+        inline.is_empty(),
+        env.with_remote,
+        project.get("id").as_str().map(str::to_owned),
+    ) {
+        let mut stored = None;
+        open(&mut |remote| {
+            stored = crate::project_storage::store_create_files(
+                ctx, &dir, &id, &inline, remote, env.root,
+            );
+        });
+        if let Some(p) = stored {
+            project = p;
+        }
+    }
     if let (Some(id), JValue::Arr(files)) = (project.get("id").as_str(), project.get("files")) {
         let jobs: Vec<outbox::Job<'_>> = files
             .iter()

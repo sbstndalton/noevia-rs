@@ -144,6 +144,7 @@ pub fn run(
                 Zeroizing::new("different.synthetic.invalid".into()),
             )],
             body_cap: cap,
+            body: Default::default(),
             attempt_timeout: timeout,
         };
         let result = isolated::attempt_http_observed(

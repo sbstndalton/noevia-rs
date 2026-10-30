@@ -15,6 +15,7 @@ fn owned_request_roundtrip_and_negative_lengths() {
             Zeroizing::new("Basic c3ludGhldGlj".into()),
         )],
         body_cap: LIST_BYTES,
+        body: Default::default(),
         attempt_timeout: Duration::from_nanos(15_000_000_001),
     };
     let bytes = encode(&request).unwrap_or_else(|_| unreachable!());

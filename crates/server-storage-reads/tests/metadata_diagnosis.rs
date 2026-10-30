@@ -17,6 +17,7 @@ fn request() -> Request {
         headers: vec![],
         attempt_timeout: Duration::from_secs(15),
         body_cap: TEXT_BYTES,
+        body: Default::default(),
     }
 }
 fn command(binary: &str, mode: &str) -> Command {

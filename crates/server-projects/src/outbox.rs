@@ -4,9 +4,11 @@
 //!
 //! The Rust front owns the project writes that cause this work (create, delete). The work itself
 //! runs where its engine is: the vector store is sqlite-vec's `vec0` tables, which only noevia-core
-//! loads (rag.cjs), and the empty-folder sweep in remote storage needs a WebDAV DELETE the front's
-//! storage client does not make. So the front records *what* is to be done, in the same request
-//! that changed projects.json, and core's executor (`server/rust-index-outbox.cjs`) drains it.
+//! loads (rag.cjs). So the front records *what* is to be done, in the same request that changed
+//! projects.json, and core's executor (`server/rust-index-outbox.cjs`) drains the `index` jobs.
+//! The `sweep` jobs (the empty-folder sweep in remote storage) are the front's own since round 3,
+//! which has a storage write client ([`drain_kind`], [`crate::project_storage`]); each side claims
+//! and recovers only its own kinds.
 //!
 //! - A job's key is its identity (`["index",<project>,<file>]`, `["sweep",<project>]`): enqueueing a key
 //!   already pending replaces it with a new generation, so the same work is never queued twice.
@@ -161,7 +163,7 @@ pub fn enqueue(dir: &Path, jobs: &[Job<'_>], now_ms: i64) -> Result<i64, OutboxE
     let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let generation = bump(&tx)?;
     for job in jobs {
-        if job.kind == "index" {
+        if job.kind == "index" || job.kind == "unindex" {
             let dead: Option<i64> = tx
                 .query_row(
                     "SELECT generation FROM tombstones WHERE project = ?1",
@@ -193,7 +195,8 @@ pub fn enqueue(dir: &Path, jobs: &[Job<'_>], now_ms: i64) -> Result<i64, OutboxE
     Ok(generation)
 }
 
-/// A project's delete: its tombstone at a new generation, its pending index jobs dropped, and
+/// A project's delete: its tombstone at a new generation, its pending index and unindex jobs
+/// (round 3: a removed file's RAG rows) dropped, and
 /// `sweep` (the storage sweep, if any) queued, in one transaction. Returns the generation.
 pub fn tombstone(
     dir: &Path,
@@ -210,7 +213,7 @@ pub fn tombstone(
         params![project, generation, now_ms],
     )?;
     tx.execute(
-        "DELETE FROM jobs WHERE project = ?1 AND kind = 'index'",
+        "DELETE FROM jobs WHERE project = ?1 AND kind IN ('index', 'unindex')",
         [project],
     )?;
     if let Some(payload) = sweep {
@@ -292,6 +295,93 @@ pub fn tombstoned(dir: &Path, project: &str) -> Result<Option<i64>, OutboxError>
         .optional()?)
 }
 
+/// The attempts after which a job is kept as `failed` (core rust-index-outbox.cjs MAX_ATTEMPTS).
+pub const MAX_ATTEMPTS: i64 = 5;
+
+/// A job this side claimed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Claimed {
+    pub key: String,
+    pub project: String,
+    pub payload: Option<String>,
+    pub generation: i64,
+    pub attempts: i64,
+}
+
+/// Runs every pending job of `kind` once, oldest first, with the executor contract core keeps for
+/// its kinds (sbstndalton/noevia#2191 round 3: the front executes `sweep` jobs itself, core only
+/// `index`): claim at the row's generation (`running`), run, delete at that generation only (work
+/// queued again meanwhile runs again); a failed run is pending again, `failed` after
+/// [`MAX_ATTEMPTS`]. `recover` first takes back this kind's `running` rows (a run this process
+/// never acknowledged: it restarted). Each side recovers and claims only its own kinds. Returns
+/// (done, failed).
+pub fn drain_kind(
+    dir: &Path,
+    kind: &str,
+    recover: bool,
+    now_ms: i64,
+    mut run: impl FnMut(&Claimed) -> bool,
+) -> Result<(usize, usize), OutboxError> {
+    if !path(dir).exists() {
+        return Ok((0, 0));
+    }
+    let conn = open(dir)?;
+    if recover {
+        conn.execute(
+            "UPDATE jobs SET state = 'pending', claimed_at = NULL WHERE state = 'running' AND kind = ?1",
+            [kind],
+        )?;
+    }
+    let rows = {
+        let mut stmt = conn.prepare(
+            "SELECT key, project, payload, generation, attempts FROM jobs
+             WHERE state = 'pending' AND kind = ?1 ORDER BY generation, key",
+        )?;
+        let rows = stmt
+            .query_map([kind], |r| {
+                Ok(Claimed {
+                    key: r.get(0)?,
+                    project: r.get(1)?,
+                    payload: r.get(2)?,
+                    generation: r.get(3)?,
+                    attempts: r.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows
+    };
+    let (mut done, mut failed) = (0, 0);
+    for row in rows {
+        let claimed = conn.execute(
+            "UPDATE jobs SET state = 'running', claimed_at = ?1, attempts = attempts + 1
+             WHERE key = ?2 AND generation = ?3 AND state = 'pending'",
+            params![now_ms, row.key, row.generation],
+        )?;
+        if claimed == 0 {
+            continue;
+        }
+        if run(&row) {
+            conn.execute(
+                "DELETE FROM jobs WHERE key = ?1 AND generation = ?2",
+                params![row.key, row.generation],
+            )?;
+            done += 1;
+        } else {
+            let state = if row.attempts + 1 >= MAX_ATTEMPTS {
+                "failed"
+            } else {
+                "pending"
+            };
+            conn.execute(
+                "UPDATE jobs SET state = ?1, claimed_at = NULL WHERE key = ?2 AND generation = ?3 AND state = 'running'",
+                params![state, row.key, row.generation],
+            )?;
+            failed += 1;
+        }
+    }
+    Ok((done, failed))
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
@@ -364,5 +454,73 @@ mod tests {
         assert_eq!(tombstoned(d.path(), "p").unwrap(), None);
         revive(d.path(), "p").unwrap();
         assert!(!path(d.path()).exists());
+    }
+
+    #[test]
+    fn a_kind_drains_only_its_own_jobs_and_retries_then_fails() {
+        let d = tempfile::tempdir().unwrap();
+        enqueue(d.path(), &[index("p", "a.md")], 1).unwrap();
+        tombstone(d.path(), "q", Some("{\"folder\":\"r/q\"}".into()), 2).unwrap();
+        let mut seen = Vec::new();
+        let r = drain_kind(d.path(), "sweep", true, 3, |c| {
+            seen.push((c.project.clone(), c.payload.clone()));
+            false
+        })
+        .unwrap();
+        assert_eq!(r, (0, 1));
+        assert_eq!(
+            seen,
+            vec![("q".to_string(), Some("{\"folder\":\"r/q\"}".to_string()))]
+        );
+        for _ in 0..(MAX_ATTEMPTS - 1) {
+            drain_kind(d.path(), "sweep", false, 4, |_| false).unwrap();
+        }
+        let rows = jobs(d.path()).unwrap();
+        let sweep = rows.iter().find(|r| r.kind == "sweep").unwrap();
+        assert_eq!(sweep.state, "failed");
+        let index_row = rows.iter().find(|r| r.kind == "index").unwrap();
+        assert_eq!(
+            index_row.state, "pending",
+            "never claimed by the sweep drain"
+        );
+        // Queued again: pending at a new generation, and an acknowledged run deletes it.
+        tombstone(d.path(), "q", Some("{}".into()), 5).unwrap();
+        assert_eq!(
+            drain_kind(d.path(), "sweep", false, 6, |_| true).unwrap(),
+            (1, 0)
+        );
+        assert!(jobs(d.path()).unwrap().iter().all(|r| r.kind == "index"));
+    }
+
+    #[test]
+    fn recovery_takes_back_only_its_own_kind() {
+        let d = tempfile::tempdir().unwrap();
+        enqueue(d.path(), &[index("p", "a.md")], 1).unwrap();
+        tombstone(d.path(), "q", Some("{}".into()), 2).unwrap();
+        let conn = open(d.path()).unwrap();
+        conn.execute("UPDATE jobs SET state = 'running'", [])
+            .unwrap();
+        drop(conn);
+        assert_eq!(
+            drain_kind(d.path(), "sweep", true, 3, |_| true).unwrap(),
+            (1, 0)
+        );
+        let rows = jobs(d.path()).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            (rows[0].kind.as_str(), rows[0].state.as_str()),
+            ("index", "running")
+        );
+        assert_eq!(
+            drain_kind(
+                tempfile::tempdir().unwrap().path(),
+                "sweep",
+                true,
+                1,
+                |_| true
+            )
+            .unwrap(),
+            (0, 0)
+        );
     }
 }

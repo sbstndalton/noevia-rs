@@ -283,8 +283,9 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     // sbstndalton/noevia#2185 moved five Diary routes, 100 after, 98 after #2187 moved the two
     // configuration-only model reads, 97 after #2189 moved GET /api/models/estimate, about 91 after
     // #2190 moved the plugin directory, the three pages and the decision settings, 86 after #2191
-    // moved a project source's three stored reads and a project's create and delete).
-    assert!(node_routes >= 86, "{node_routes} node routes");
+    // moved a project source's three stored reads and a project's create and delete, 85 after its
+    // round 3 moved a source file's delete).
+    assert!(node_routes >= 85, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("POST", "/api/ready"),
