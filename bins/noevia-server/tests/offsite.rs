@@ -761,20 +761,28 @@ async fn a_damaged_chunk_fails_the_restore_test() {
         .contains("failed authentication"));
     let s = get(w.f.addr, ROOT, ADMIN).await.json();
     assert_eq!(s["lastError"]["during"], "restore test");
-    // The scratch directory was removed.
-    let leftovers = std::fs::read_dir(std::env::temp_dir())
-        .unwrap()
-        .flatten()
-        .filter(|e| {
-            e.file_name()
-                .to_string_lossy()
-                .starts_with("noevia-restore-test-")
-                && e.metadata()
-                    .map(|m| m.modified().unwrap().elapsed().unwrap() < Duration::from_secs(30))
-                    .unwrap_or(false)
-        })
-        .count();
-    assert_eq!(leftovers, 0);
+    // The scratch directory was removed. The system temp directory is shared with the other tests of
+    // this binary (each restore test makes its own scratch directory for a moment), so a directory
+    // that is still there is given time to go: only one that stays is a leftover.
+    let leftovers = || {
+        std::fs::read_dir(std::env::temp_dir())
+            .unwrap()
+            .flatten()
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with("noevia-restore-test-")
+                    && e.metadata()
+                        .map(|m| m.modified().unwrap().elapsed().unwrap() < Duration::from_secs(30))
+                        .unwrap_or(false)
+            })
+            .count()
+    };
+    let started = Instant::now();
+    while leftovers() != 0 && started.elapsed() < Duration::from_secs(20) {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(leftovers(), 0);
 }
 
 #[tokio::test]
