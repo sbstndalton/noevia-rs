@@ -120,6 +120,14 @@ jobs:
           NOEVIA_MCP_CORE: ${{ github.workspace }}/front-core
           NOEVIA_MCP_CORE_REQUIRED: "1"
         run: cargo test --locked -p noevia-server --features rust-storage-reads --test mcp_directory node_lists_the_tools -- --nocapture
+      - name: "The reload's lease on Node's real maintenance gate (#2210)"
+        # tests/model_lease.rs runs the paired Core's lease route and maintenance gate in a real `node` process: chat
+        # refuses the reload, the reload holds chat and tune back, a lease whose front died expires. A missing Core
+        # is a failure here.
+        env:
+          NOEVIA_MCP_CORE: ${{ github.workspace }}/front-core
+          NOEVIA_MCP_CORE_REQUIRED: "1"
+        run: cargo test --locked -p noevia-server --features rust-storage-reads --test model_lease real_node -- --nocapture
       - name: Replay against Node directly (reference data dir)
         run: |
           set -euo pipefail

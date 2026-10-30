@@ -1,0 +1,2219 @@
+{
+ "core": "b6113b57",
+ "cases": [
+  {
+   "name": "nothing loaded: reload and record the baseline",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": null,
+   "expect": {
+    "status": 200,
+    "body": "{\"reloaded\":true,\"unloaded\":[]}",
+    "router": [
+     "GET /models hold",
+     "GET /models?reload=1 hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "nothing loaded, no body at all",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": ""
+   },
+   "state": null,
+   "expect": {
+    "status": 200,
+    "body": "{\"reloaded\":true,\"unloaded\":[]}",
+    "router": [
+     "GET /models hold",
+     "GET /models?reload=1 hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "nothing loaded, unload:true is the same",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"unload\":true}"
+   },
+   "state": null,
+   "expect": {
+    "status": 200,
+    "body": "{\"reloaded\":true,\"unloaded\":[]}",
+    "router": [
+     "GET /models hold",
+     "GET /models?reload=1 hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "a model loaded and no baseline refuses",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "loaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": null,
+   "expect": {
+    "status": 409,
+    "body": "{\"error\":\"A model is loaded. Unload it to apply the new settings.\",\"loaded\":[\"A\"],\"reason\":\"unknown\"}",
+    "router": [
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": null
+   }
+  },
+  {
+   "name": "a model loaded, baseline unchanged: reload keeps it",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "loaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": {
+    "text": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "view": "[[\"A\",\"p-A\"],[\"B\",\"p-B\"]]"
+   },
+   "expect": {
+    "status": 200,
+    "body": "{\"reloaded\":true,\"unloaded\":[],\"kept\":[\"A\"]}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold",
+     "GET /models?reload=1 hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "a model sleeping counts as loaded",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "sleeping",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": {
+    "text": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "view": "[[\"A\",\"p-A\"],[\"B\",\"p-B\"]]"
+   },
+   "expect": {
+    "status": 200,
+    "body": "{\"reloaded\":true,\"unloaded\":[],\"kept\":[\"A\"]}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold",
+     "GET /models?reload=1 hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "a loaded model whose section changed refuses",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 8192\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "loaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": {
+    "text": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "view": "[[\"A\",\"p-A\"],[\"B\",\"p-B\"]]"
+   },
+   "expect": {
+    "status": 409,
+    "body": "{\"error\":\"A model is loaded. Unload it to apply the new settings.\",\"loaded\":[\"A\"],\"reason\":\"changed\"}",
+    "router": [
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 8192\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "another model changed: the loaded one is kept",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b2.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "loaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": {
+    "text": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "view": "[[\"A\",\"p-A\"],[\"B\",\"p-B\"]]"
+   },
+   "expect": {
+    "status": 200,
+    "body": "{\"reloaded\":true,\"unloaded\":[],\"kept\":[\"A\"]}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold",
+     "GET /models?reload=1 hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b2.gguf\n",
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b2.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "the router moved since the baseline",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "loaded",
+         "preset": "other",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": {
+    "text": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "view": "[[\"A\",\"p-A\"],[\"B\",\"p-B\"]]"
+   },
+   "expect": {
+    "status": 409,
+    "body": "{\"error\":\"A model is loaded. Unload it to apply the new settings.\",\"loaded\":[\"A\"],\"reason\":\"engine_moved\"}",
+    "router": [
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "a tombstone baseline is unknown",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "loaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": "{}",
+   "expect": {
+    "status": 409,
+    "body": "{\"error\":\"A model is loaded. Unload it to apply the new settings.\",\"loaded\":[\"A\"],\"reason\":\"unknown\"}",
+    "router": [
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "{}"
+   }
+  },
+  {
+   "name": "an unreadable baseline file is unknown",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "loaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": "not json",
+   "expect": {
+    "status": 409,
+    "body": "{\"error\":\"A model is loaded. Unload it to apply the new settings.\",\"loaded\":[\"A\"],\"reason\":\"unknown\"}",
+    "router": [
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "not json"
+   }
+  },
+  {
+   "name": "a loaded model and unload:true unloads it first",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "loaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "loading",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"unload\":true}"
+   },
+   "state": null,
+   "expect": {
+    "status": 200,
+    "body": "{\"reloaded\":true,\"unloaded\":[\"A\",\"B\"]}",
+    "router": [
+     "GET /models hold",
+     "POST /models/unload hold {\"model\":\"A\"}",
+     "POST /models/unload hold {\"model\":\"B\"}",
+     "GET /models?reload=1 hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "a model that started loading between the listings refuses",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "loaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "loaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "loading",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": {
+    "text": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "view": "[[\"A\",\"p-A\"],[\"B\",\"p-B\"]]"
+   },
+   "expect": {
+    "status": 409,
+    "body": "{\"error\":\"A model is loaded. Unload it to apply the new settings.\",\"loaded\":[\"A\",\"B\"],\"reason\":\"loaded_changed\"}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "every model unloaded between the listings still reloads",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "loaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": {
+    "text": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "view": "[[\"A\",\"p-A\"],[\"B\",\"p-B\"]]"
+   },
+   "expect": {
+    "status": 200,
+    "body": "{\"reloaded\":true,\"unloaded\":[\"A\"]}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold",
+     "POST /models/unload hold {\"model\":\"A\"}",
+     "GET /models?reload=1 hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "the second listing fails",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "loaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "status": 500,
+      "text": "boom"
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": {
+    "text": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "view": "[[\"A\",\"p-A\"],[\"B\",\"p-B\"]]"
+   },
+   "expect": {
+    "status": 409,
+    "body": "{\"error\":\"A model is loaded. Unload it to apply the new settings.\",\"loaded\":[\"A\"],\"reason\":\"unknown\"}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "the second listing is not a listing",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "loaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "status": 200,
+      "text": "{\"data\":\"x\"}"
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": {
+    "text": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "view": "[[\"A\",\"p-A\"],[\"B\",\"p-B\"]]"
+   },
+   "expect": {
+    "status": 409,
+    "body": "{\"error\":\"A model is loaded. Unload it to apply the new settings.\",\"loaded\":[\"A\"],\"reason\":\"unknown\"}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "models.ini edited after it was judged refuses (file_changed)",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "loaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ],
+    "iniOnReloadCheck": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n; edited\n"
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": {
+    "text": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "view": "[[\"A\",\"p-A\"],[\"B\",\"p-B\"]]"
+   },
+   "expect": {
+    "status": 409,
+    "body": "{\"error\":\"A model is loaded. Unload it to apply the new settings.\",\"loaded\":[\"A\"],\"reason\":\"file_changed\"}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n; edited\n",
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "models.ini with a duplicate section cannot be judged",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n\n[A]\nmodel = /models/a2.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "loaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": {
+    "text": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "view": "[[\"A\",\"p-A\"],[\"B\",\"p-B\"]]"
+   },
+   "expect": {
+    "status": 409,
+    "body": "{\"error\":\"A model is loaded. Unload it to apply the new settings.\",\"loaded\":[\"A\"],\"reason\":\"unreadable\"}",
+    "router": [
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n\n[A]\nmodel = /models/a2.gguf\n",
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "the router listing fails: its answer is passed on",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 503,
+      "text": "{\"error\":\"router down\"}"
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": null,
+   "expect": {
+    "status": 503,
+    "body": "{\"error\":\"router down\"}",
+    "router": [
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": null
+   }
+  },
+  {
+   "name": "the router listing is plain text",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 502,
+      "text": "Bad Gateway"
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": null,
+   "expect": {
+    "status": 502,
+    "body": "\"Bad Gateway\"",
+    "router": [
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": null
+   }
+  },
+  {
+   "name": "the router listing is ok but has no data array",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "text": "{\"models\":[]}"
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": null,
+   "expect": {
+    "status": 200,
+    "body": "{\"reloaded\":true,\"unloaded\":[]}",
+    "router": [
+     "GET /models hold",
+     "GET /models?reload=1 hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "{}"
+   }
+  },
+  {
+   "name": "the router refuses the reload",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ],
+    "reload": {
+     "status": 500,
+     "text": "{\"error\":\"x\"}"
+    }
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": {
+    "text": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "view": "[[\"A\",\"p-A\"],[\"B\",\"p-B\"]]"
+   },
+   "expect": {
+    "status": 502,
+    "body": "{\"error\":\"The engine did not reload its settings. Check the Hardware tab.\"}",
+    "router": [
+     "GET /models hold",
+     "GET /models?reload=1 hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "{}"
+   }
+  },
+  {
+   "name": "the router drops the reload connection",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ],
+    "reload": {
+     "drop": true
+    }
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": {
+    "text": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "view": "[[\"A\",\"p-A\"],[\"B\",\"p-B\"]]"
+   },
+   "expect": {
+    "status": 500,
+    "body": "{\"error\":\"Could not reload model profiles.\"}",
+    "router": [
+     "GET /models hold",
+     "GET /models?reload=1 hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "{}"
+   }
+  },
+  {
+   "name": "the listing after the reload has no presets: baseline forgotten",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "status": 200,
+      "text": "{\"data\":[{\"id\":\"A\",\"status\":{\"value\":\"unloaded\"}}]}"
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": null,
+   "expect": {
+    "status": 200,
+    "body": "{\"reloaded\":true,\"unloaded\":[]}",
+    "router": [
+     "GET /models hold",
+     "GET /models?reload=1 hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "{}"
+   }
+  },
+  {
+   "name": "the file moved during the reload: baseline forgotten",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ],
+    "iniAfterReload": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n; moved\n"
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": {
+    "text": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "view": "[[\"A\",\"p-A\"],[\"B\",\"p-B\"]]"
+   },
+   "expect": {
+    "status": 200,
+    "body": "{\"reloaded\":true,\"unloaded\":[]}",
+    "router": [
+     "GET /models hold",
+     "GET /models?reload=1 hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n; moved\n",
+    "state": "{}"
+   }
+  },
+  {
+   "name": "unload failures are ignored",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "loaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "loaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ],
+    "unload": {
+     "status": 500,
+     "text": "no"
+    }
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"unload\":true}"
+   },
+   "state": null,
+   "expect": {
+    "status": 200,
+    "body": "{\"reloaded\":true,\"unloaded\":[\"A\",\"B\"]}",
+    "router": [
+     "GET /models hold",
+     "POST /models/unload hold {\"model\":\"A\"}",
+     "POST /models/unload hold {\"model\":\"B\"}",
+     "GET /models?reload=1 hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "the gate says the engine is busy",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": {
+    "refuse": {
+     "status": 409,
+     "code": "engine_busy",
+     "message": "The engine is busy."
+    }
+   },
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": null,
+   "expect": {
+    "status": 409,
+    "body": "{\"error\":\"Requests are in progress. Try again when chats finish.\"}",
+    "router": [],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": null
+   }
+  },
+  {
+   "name": "another client holds the gate",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": {
+    "refuse": {
+     "status": 503,
+     "code": "maintenance_held",
+     "message": "Held."
+    }
+   },
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": null,
+   "expect": {
+    "status": 409,
+    "body": "{\"error\":\"Requests are in progress. Try again when chats finish.\"}",
+    "router": [],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": null
+   }
+  },
+  {
+   "name": "the gate rejects the admin token",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": {
+    "refuse": {
+     "status": 403,
+     "code": "admin_required",
+     "message": "The maintenance hold needs the gate's admin token."
+    }
+   },
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": null,
+   "expect": {
+    "status": 403,
+    "body": "{\"error\":\"The maintenance hold needs the gate's admin token.\"}",
+    "router": [],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": null
+   }
+  },
+  {
+   "name": "the gate does not answer",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "drop",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": null,
+   "expect": {
+    "status": 502,
+    "body": "{\"error\":\"The local model engine is not answering. Try again shortly.\"}",
+    "router": [],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": null
+   }
+  },
+  {
+   "name": "no gate at the engine address: this process holds alone",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "absent",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": null,
+   "expect": {
+    "status": 200,
+    "body": "{\"reloaded\":true,\"unloaded\":[]}",
+    "router": [
+     "GET /models nohold",
+     "GET /models?reload=1 nohold",
+     "GET /models nohold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "no admin token: this process holds alone",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": false,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": null,
+   "expect": {
+    "status": 200,
+    "body": "{\"reloaded\":true,\"unloaded\":[]}",
+    "router": [
+     "GET /models nohold",
+     "GET /models?reload=1 nohold",
+     "GET /models nohold"
+    ],
+    "gate": [],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "a member is refused",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "member",
+    "body": "{}"
+   },
+   "state": null,
+   "expect": {
+    "status": 403,
+    "body": "{\"error\":\"administrator required\"}",
+    "router": [],
+    "gate": [],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": null
+   }
+  },
+  {
+   "name": "invalid JSON",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{nope"
+   },
+   "state": null,
+   "expect": {
+    "status": 400,
+    "body": "{\"error\":\"invalid JSON\"}",
+    "router": [],
+    "gate": [],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": null
+   }
+  },
+  {
+   "name": "a JSON array body",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "[1]"
+   },
+   "state": null,
+   "expect": {
+    "status": 200,
+    "body": "{\"reloaded\":true,\"unloaded\":[]}",
+    "router": [
+     "GET /models hold",
+     "GET /models?reload=1 hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "null body",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "null"
+   },
+   "state": null,
+   "expect": {
+    "status": 200,
+    "body": "{\"reloaded\":true,\"unloaded\":[]}",
+    "router": [
+     "GET /models hold",
+     "GET /models?reload=1 hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "unload:\"true\" is not true",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "loaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"unload\":\"true\"}"
+   },
+   "state": null,
+   "expect": {
+    "status": 409,
+    "body": "{\"error\":\"A model is loaded. Unload it to apply the new settings.\",\"loaded\":[\"A\"],\"reason\":\"unknown\"}",
+    "router": [
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": null
+   }
+  },
+  {
+   "name": "an engine without a preset file",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "none",
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{}"
+   },
+   "state": null,
+   "expect": {
+    "status": 404,
+    "body": "{\"error\":\"This engine does not use a preset file\"}",
+    "router": [],
+    "gate": [],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "state": null
+   }
+  }
+ ]
+}

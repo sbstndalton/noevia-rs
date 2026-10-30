@@ -18,6 +18,7 @@
 //! account finds its row and ends it as interrupted (`research_jobs::recover`).
 use crate::identity::Rejection;
 use crate::project_routes::Regate;
+use crate::project_store::TOKEN_HEADER;
 use crate::reply;
 use crate::App;
 use axum::body::Body;
@@ -54,7 +55,6 @@ const PICK_MODEL: &str =
 /// "no search tools here", which Node says in its own words.
 const NODE_UNREACHABLE: &str = "Research could not reach this server's search tools (the bridge to the web process did not answer). Try again shortly; if it keeps happening, ask an administrator to check the server.";
 const STREAM_FAILED: &str = "The model stream failed. Check the backend before retrying.";
-const TOKEN_HEADER: &str = "x-noevia-store-token";
 
 /// What the process's environment says, as core index.cjs reads it.
 #[derive(Debug, Clone, Default)]

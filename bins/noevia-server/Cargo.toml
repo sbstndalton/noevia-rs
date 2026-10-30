@@ -78,6 +78,7 @@ server-usage = { path = "../../crates/server-usage" }
 server-routing-default = { path = "../../crates/server-routing-default" }
 server-stats = { path = "../../crates/server-stats" }
 llamacpp-autoconfig = { path = "../../crates/llamacpp-autoconfig" }
+preset-reload = { path = "../../crates/preset-reload" }
 gguf = { path = "../../crates/gguf" }
 prompt-framing = { path = "../../crates/prompt-framing" }
 server-export = { path = "../../crates/server-export" }

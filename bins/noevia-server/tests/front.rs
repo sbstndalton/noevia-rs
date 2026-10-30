@@ -299,9 +299,10 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     // the context, the exchanges, the storage status and the two connector-credential routes; the local
     // exchange stays Node's): 42; #2202 round 2 moved the six admin directory paths, the permitted view and
     // the connectors list with the Nextcloud permissions: 33; #2191 round 9 moved a project's config, its two
-    // instruction-skill paths and the manifests, the skill install and an account's deletion: 28; #2218 moved
-    // the research paths, of which only the list was a listed Node route: 27).
-    assert!(node_routes >= 27, "{node_routes} node routes");
+    // instruction-skill paths and the manifests, the skill install and an account's deletion: 28; #2210 moved
+    // the preset reload's POST, the evidence read and the model-card import: 25; #2218 moved the research
+    // paths, of which only the list was a listed Node route: 24).
+    assert!(node_routes >= 24, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("POST", "/api/ready"),

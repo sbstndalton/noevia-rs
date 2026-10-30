@@ -394,6 +394,8 @@ struct Section {
 
 pub struct Presets {
     pub revision: String,
+    /// The file's text as read (UTF-8, lossy), which `revision` hashes.
+    pub text: String,
     lines: Vec<String>,
     sections: Vec<Section>,
 }
@@ -452,6 +454,7 @@ pub fn read_presets(file: &Path) -> Result<Presets, Thrown> {
     }
     Ok(Presets {
         revision,
+        text,
         lines,
         sections,
     })
@@ -497,6 +500,22 @@ impl Presets {
             }
         }
         (m, mm)
+    }
+
+    /// The speculative draft model's file: not an editable option, so `parse` does not keep it
+    /// (`draftFile` in core `llamacpp-presets.cjs`, sbstndalton/noevia#2215).
+    pub fn draft_file(&self, model: &str) -> Option<String> {
+        let s = self.section(model)?;
+        let mut file = None;
+        for line in self.lines.get(s.start + 1..s.end).into_iter().flatten() {
+            if let Some((key, value)) = line.split_once('=') {
+                let value = value.trim();
+                if key.trim() == "spec-draft-model" && !value.is_empty() {
+                    file = Some(value.to_owned());
+                }
+            }
+        }
+        file
     }
 }
 
@@ -606,6 +625,11 @@ fn join(root: &str, rest: &str) -> String {
 }
 
 impl Sizing {
+    /// [`Sizing::local_file`] for a container path (the maintenance work, model_maint).
+    pub(crate) fn local_file_path(&self, container: &str) -> Option<(PathBuf, u64)> {
+        self.local_file(Some(&FileRef::Path(container.to_owned())))
+    }
+
     /// llamacpp-manager.cjs `localFile`: the real file and its size under a read-only mount.
     fn local_file(&self, r: Option<&FileRef>) -> Option<(PathBuf, u64)> {
         let Some(FileRef::Path(container)) = r else {

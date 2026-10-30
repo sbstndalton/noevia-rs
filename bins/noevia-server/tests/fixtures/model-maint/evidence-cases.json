@@ -1,0 +1,2118 @@
+{
+ "core": "b6113b57",
+ "port": 18517,
+ "mtime": 1700000000,
+ "cases": [
+  {
+   "name": "nothing recorded for a model whose file is visible",
+   "model": "fx",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {},
+   "ops": [
+    {
+     "op": "get"
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"fx\",\"tracked\":true,\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     }
+    ],
+    "log": null
+   }
+  },
+  {
+   "name": "a member may read the evidence",
+   "model": "fx",
+   "role": "member",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {},
+   "ops": [
+    {
+     "op": "get"
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"fx\",\"tracked\":true,\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     }
+    ],
+    "log": null
+   }
+  },
+  {
+   "name": "recorded results are verified against the live identity",
+   "model": "fx",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {},
+   "ops": [
+    {
+     "op": "record",
+     "record": {
+      "category": "context_capacity",
+      "result": "passed",
+      "value": {
+       "ctx": 8192,
+       "appliedCtx": 8192,
+       "slots": 1
+      },
+      "suite": {
+       "name": "synthetic",
+       "version": 1
+      },
+      "source": "calibration",
+      "limitations": [
+       "prompt budget 120 s"
+      ]
+     }
+    },
+    {
+     "op": "record",
+     "record": {
+      "category": "vision",
+      "result": "passed",
+      "value": null,
+      "suite": {
+       "name": "synthetic",
+       "version": 1
+      },
+      "source": "test",
+      "limitations": [
+       "1×1 image accepted; not an accuracy test",
+       "A new sentence nobody translated"
+      ]
+     }
+    },
+    {
+     "op": "record",
+     "record": {
+      "category": "vision",
+      "result": "failed",
+      "value": null,
+      "suite": {
+       "name": "synthetic",
+       "version": 1
+      },
+      "source": "test",
+      "limitations": [
+       "The inference server needs a multimodal projector (mmproj) configured."
+      ]
+     }
+    },
+    {
+     "op": "record",
+     "record": {
+      "category": "throughput",
+      "result": "reported",
+      "value": {
+       "rate": 41.2
+      },
+      "suite": {
+       "name": "synthetic",
+       "version": 1
+      },
+      "source": "test",
+      "limitations": [
+       "median of 5 warm, uncontended requests; depends on prompt mix and max tokens"
+      ]
+     }
+    },
+    {
+     "op": "record",
+     "record": {
+      "category": "mtp_acceptance",
+      "result": "reported",
+      "value": {
+       "rate": 0.62,
+       "drafted": 100,
+       "accepted": 62
+      },
+      "suite": {
+       "name": "synthetic",
+       "version": 1
+      },
+      "source": "test",
+      "limitations": [
+       "single reply; depends on content"
+      ]
+     }
+    },
+    {
+     "op": "get"
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"fx\",\"tracked\":true,\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"verified\",\"value\":{\"ctx\":8192,\"appliedCtx\":8192,\"slots\":1},\"result\":\"passed\",\"at\":1793377714247,\"suite\":{\"name\":\"synthetic\",\"version\":1},\"limitations\":[\"prompt budget 120 s\"],\"limitationKeys\":[{\"id\":\"calibration-budget\",\"params\":{\"seconds\":120}}]},{\"category\":\"vision\",\"state\":\"failed\",\"value\":null,\"result\":\"failed\",\"at\":1793377714251,\"suite\":{\"name\":\"synthetic\",\"version\":1},\"limitations\":[\"The inference server needs a multimodal projector (mmproj) configured.\"],\"limitationKeys\":[null]},{\"category\":\"mtp_acceptance\",\"state\":\"reported\",\"value\":{\"rate\":0.62,\"drafted\":100,\"accepted\":62},\"result\":\"reported\",\"at\":1793377714253,\"suite\":{\"name\":\"synthetic\",\"version\":1},\"limitations\":[\"single reply; depends on content\"],\"limitationKeys\":[{\"id\":\"single-reply\",\"params\":{}}]},{\"category\":\"throughput\",\"state\":\"reported\",\"value\":{\"rate\":41.2},\"result\":\"reported\",\"at\":1793377714253,\"suite\":{\"name\":\"synthetic\",\"version\":1},\"limitations\":[\"median of 5 warm, uncontended requests; depends on prompt mix and max tokens\"],\"limitationKeys\":[{\"id\":\"benchmark-median\",\"params\":{\"n\":5}}]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     }
+    ],
+    "log": "{\"id\":\"ev_39c53cf6-289e-4984-a92c-674246f29287\",\"at\":1793377714247,\"limitations\":[\"prompt budget 120 s\"],\"model\":\"fx\",\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"identity\":{\"backend\":\"llamacpp\",\"build\":\"b-synthetic\",\"endpoint\":\"133c2168a49c7c92\",\"model\":\"fx\",\"artifact\":\"2048:1700000000000:e4fde89f39bc53b90e9935a8015b80dd\",\"projector\":null,\"preset\":\"afa22f5b50cff33ae766cee7aedc9d4d9bb7604cb2d838910bbc3bd7cceee0a5\",\"context\":{\"ctx\":\"8192\",\"parallel\":null,\"cacheK\":null,\"cacheV\":null},\"mtp\":null},\"category\":\"context_capacity\",\"result\":\"passed\",\"value\":{\"ctx\":8192,\"appliedCtx\":8192,\"slots\":1},\"suite\":{\"name\":\"synthetic\",\"version\":1},\"source\":\"calibration\"}\n{\"id\":\"ev_ee542388-1396-4dd4-90cd-5b270d5f0881\",\"at\":1793377714249,\"limitations\":[\"1×1 image accepted; not an accuracy test\",\"A new sentence nobody translated\"],\"model\":\"fx\",\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"identity\":{\"backend\":\"llamacpp\",\"build\":\"b-synthetic\",\"endpoint\":\"133c2168a49c7c92\",\"model\":\"fx\",\"artifact\":\"2048:1700000000000:e4fde89f39bc53b90e9935a8015b80dd\",\"projector\":null,\"preset\":\"afa22f5b50cff33ae766cee7aedc9d4d9bb7604cb2d838910bbc3bd7cceee0a5\",\"context\":{\"ctx\":\"8192\",\"parallel\":null,\"cacheK\":null,\"cacheV\":null},\"mtp\":null},\"category\":\"vision\",\"result\":\"passed\",\"value\":null,\"suite\":{\"name\":\"synthetic\",\"version\":1},\"source\":\"test\"}\n{\"id\":\"ev_495fc415-25b9-4887-b127-fec6125d130b\",\"at\":1793377714251,\"limitations\":[\"The inference server needs a multimodal projector (mmproj) configured.\"],\"model\":\"fx\",\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"identity\":{\"backend\":\"llamacpp\",\"build\":\"b-synthetic\",\"endpoint\":\"133c2168a49c7c92\",\"model\":\"fx\",\"artifact\":\"2048:1700000000000:e4fde89f39bc53b90e9935a8015b80dd\",\"projector\":null,\"preset\":\"afa22f5b50cff33ae766cee7aedc9d4d9bb7604cb2d838910bbc3bd7cceee0a5\",\"context\":{\"ctx\":\"8192\",\"parallel\":null,\"cacheK\":null,\"cacheV\":null},\"mtp\":null},\"category\":\"vision\",\"result\":\"failed\",\"value\":null,\"suite\":{\"name\":\"synthetic\",\"version\":1},\"source\":\"test\"}\n{\"id\":\"ev_0aa4eaf6-7098-4a3e-a817-7639e13dec44\",\"at\":1793377714253,\"limitations\":[\"median of 5 warm, uncontended requests; depends on prompt mix and max tokens\"],\"model\":\"fx\",\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"identity\":{\"backend\":\"llamacpp\",\"build\":\"b-synthetic\",\"endpoint\":\"133c2168a49c7c92\",\"model\":\"fx\",\"artifact\":\"2048:1700000000000:e4fde89f39bc53b90e9935a8015b80dd\",\"projector\":null,\"preset\":\"afa22f5b50cff33ae766cee7aedc9d4d9bb7604cb2d838910bbc3bd7cceee0a5\",\"context\":{\"ctx\":\"8192\",\"parallel\":null,\"cacheK\":null,\"cacheV\":null},\"mtp\":null},\"category\":\"throughput\",\"result\":\"reported\",\"value\":{\"rate\":41.2},\"suite\":{\"name\":\"synthetic\",\"version\":1},\"source\":\"test\"}\n{\"id\":\"ev_505128b5-7b3d-4852-b880-a7ebd74819eb\",\"at\":1793377714253,\"limitations\":[\"single reply; depends on content\"],\"model\":\"fx\",\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"identity\":{\"backend\":\"llamacpp\",\"build\":\"b-synthetic\",\"endpoint\":\"133c2168a49c7c92\",\"model\":\"fx\",\"artifact\":\"2048:1700000000000:e4fde89f39bc53b90e9935a8015b80dd\",\"projector\":null,\"preset\":\"afa22f5b50cff33ae766cee7aedc9d4d9bb7604cb2d838910bbc3bd7cceee0a5\",\"context\":{\"ctx\":\"8192\",\"parallel\":null,\"cacheK\":null,\"cacheV\":null},\"mtp\":null},\"category\":\"mtp_acceptance\",\"result\":\"reported\",\"value\":{\"rate\":0.62,\"drafted\":100,\"accepted\":62},\"suite\":{\"name\":\"synthetic\",\"version\":1},\"source\":\"test\"}\n"
+   }
+  },
+  {
+   "name": "the same result twice is one record; a rate within 0.05 is not a new one",
+   "model": "fx",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {},
+   "ops": [
+    {
+     "op": "record",
+     "record": {
+      "category": "context_capacity",
+      "result": "passed",
+      "value": {
+       "ctx": 4096
+      },
+      "suite": {
+       "name": "synthetic",
+       "version": 1
+      },
+      "source": "test",
+      "limitations": []
+     }
+    },
+    {
+     "op": "record",
+     "record": {
+      "category": "context_capacity",
+      "result": "passed",
+      "value": {
+       "ctx": 4096
+      },
+      "suite": {
+       "name": "synthetic",
+       "version": 1
+      },
+      "source": "test",
+      "limitations": []
+     }
+    },
+    {
+     "op": "record",
+     "record": {
+      "category": "mtp_acceptance",
+      "result": "reported",
+      "value": {
+       "rate": 0.5
+      },
+      "suite": {
+       "name": "synthetic",
+       "version": 1
+      },
+      "source": "test",
+      "limitations": []
+     }
+    },
+    {
+     "op": "record",
+     "record": {
+      "category": "mtp_acceptance",
+      "result": "reported",
+      "value": {
+       "rate": 0.52
+      },
+      "suite": {
+       "name": "synthetic",
+       "version": 1
+      },
+      "source": "test",
+      "limitations": []
+     }
+    },
+    {
+     "op": "record",
+     "record": {
+      "category": "mtp_acceptance",
+      "result": "reported",
+      "value": {
+       "rate": 0.7
+      },
+      "suite": {
+       "name": "synthetic",
+       "version": 1
+      },
+      "source": "test",
+      "limitations": []
+     }
+    },
+    {
+     "op": "get"
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"fx\",\"tracked\":true,\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"verified\",\"value\":{\"ctx\":4096},\"result\":\"passed\",\"at\":1793377714255,\"suite\":{\"name\":\"synthetic\",\"version\":1},\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"reported\",\"value\":{\"rate\":0.7},\"result\":\"reported\",\"at\":1793377714257,\"suite\":{\"name\":\"synthetic\",\"version\":1},\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     }
+    ],
+    "log": "{\"id\":\"ev_ee14ee71-4421-4963-99b1-aca428c1140a\",\"at\":1793377714255,\"limitations\":[],\"model\":\"fx\",\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"identity\":{\"backend\":\"llamacpp\",\"build\":\"b-synthetic\",\"endpoint\":\"133c2168a49c7c92\",\"model\":\"fx\",\"artifact\":\"2048:1700000000000:e4fde89f39bc53b90e9935a8015b80dd\",\"projector\":null,\"preset\":\"afa22f5b50cff33ae766cee7aedc9d4d9bb7604cb2d838910bbc3bd7cceee0a5\",\"context\":{\"ctx\":\"8192\",\"parallel\":null,\"cacheK\":null,\"cacheV\":null},\"mtp\":null},\"category\":\"context_capacity\",\"result\":\"passed\",\"value\":{\"ctx\":4096},\"suite\":{\"name\":\"synthetic\",\"version\":1},\"source\":\"test\"}\n{\"id\":\"ev_d96746b2-85c5-4494-a40c-47bac520c629\",\"at\":1793377714257,\"limitations\":[],\"model\":\"fx\",\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"identity\":{\"backend\":\"llamacpp\",\"build\":\"b-synthetic\",\"endpoint\":\"133c2168a49c7c92\",\"model\":\"fx\",\"artifact\":\"2048:1700000000000:e4fde89f39bc53b90e9935a8015b80dd\",\"projector\":null,\"preset\":\"afa22f5b50cff33ae766cee7aedc9d4d9bb7604cb2d838910bbc3bd7cceee0a5\",\"context\":{\"ctx\":\"8192\",\"parallel\":null,\"cacheK\":null,\"cacheV\":null},\"mtp\":null},\"category\":\"mtp_acceptance\",\"result\":\"reported\",\"value\":{\"rate\":0.5},\"suite\":{\"name\":\"synthetic\",\"version\":1},\"source\":\"test\"}\n{\"id\":\"ev_17677570-78aa-4a33-87da-8377e1b33960\",\"at\":1793377714257,\"limitations\":[],\"model\":\"fx\",\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"identity\":{\"backend\":\"llamacpp\",\"build\":\"b-synthetic\",\"endpoint\":\"133c2168a49c7c92\",\"model\":\"fx\",\"artifact\":\"2048:1700000000000:e4fde89f39bc53b90e9935a8015b80dd\",\"projector\":null,\"preset\":\"afa22f5b50cff33ae766cee7aedc9d4d9bb7604cb2d838910bbc3bd7cceee0a5\",\"context\":{\"ctx\":\"8192\",\"parallel\":null,\"cacheK\":null,\"cacheV\":null},\"mtp\":null},\"category\":\"mtp_acceptance\",\"result\":\"reported\",\"value\":{\"rate\":0.7},\"suite\":{\"name\":\"synthetic\",\"version\":1},\"source\":\"test\"}\n"
+   }
+  },
+  {
+   "name": "a changed preset or file makes it stale; restoring it verifies again; a missing file is unavailable",
+   "model": "fx",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {},
+   "ops": [
+    {
+     "op": "record",
+     "record": {
+      "category": "context_capacity",
+      "result": "passed",
+      "value": {
+       "ctx": 8192
+      },
+      "suite": {
+       "name": "synthetic",
+       "version": 1
+      },
+      "source": "test",
+      "limitations": []
+     }
+    },
+    {
+     "op": "get"
+    },
+    {
+     "op": "ini",
+     "text": "version = 1\n\n[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 16384\n"
+    },
+    {
+     "op": "get"
+    },
+    {
+     "op": "ini",
+     "text": "version = 1\n\n[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n"
+    },
+    {
+     "op": "get"
+    },
+    {
+     "op": "file",
+     "fill": 9,
+     "size": 4096
+    },
+    {
+     "op": "get"
+    },
+    {
+     "op": "rmfile"
+    },
+    {
+     "op": "get"
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"fx\",\"tracked\":true,\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"verified\",\"value\":{\"ctx\":8192},\"result\":\"passed\",\"at\":1793377714260,\"suite\":{\"name\":\"synthetic\",\"version\":1},\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"fx\",\"tracked\":true,\"identityHash\":\"8bd1117bb9ee3793a368e06b990c1fa411359fbfbbbd45c5775215cc24945a6f\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"stale\",\"value\":{\"ctx\":8192},\"result\":\"passed\",\"at\":1793377714260,\"suite\":{\"name\":\"synthetic\",\"version\":1},\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"fx\",\"tracked\":true,\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"verified\",\"value\":{\"ctx\":8192},\"result\":\"passed\",\"at\":1793377714260,\"suite\":{\"name\":\"synthetic\",\"version\":1},\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"fx\",\"tracked\":true,\"identityHash\":\"bb73cb5d0ecb6fc46d317cdcf87306be63cb81843ca17785cc3cea7d146ccc36\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"stale\",\"value\":{\"ctx\":8192},\"result\":\"passed\",\"at\":1793377714260,\"suite\":{\"name\":\"synthetic\",\"version\":1},\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"fx\",\"tracked\":true,\"identityHash\":null,\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unavailable\",\"value\":{\"ctx\":8192},\"result\":\"passed\",\"at\":1793377714260,\"suite\":{\"name\":\"synthetic\",\"version\":1},\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unavailable\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unavailable\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unavailable\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unavailable\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unavailable\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     }
+    ],
+    "log": "{\"id\":\"ev_3fd793a5-03f7-4baf-aae7-454a2672cab4\",\"at\":1793377714260,\"limitations\":[],\"model\":\"fx\",\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"identity\":{\"backend\":\"llamacpp\",\"build\":\"b-synthetic\",\"endpoint\":\"133c2168a49c7c92\",\"model\":\"fx\",\"artifact\":\"2048:1700000000000:e4fde89f39bc53b90e9935a8015b80dd\",\"projector\":null,\"preset\":\"afa22f5b50cff33ae766cee7aedc9d4d9bb7604cb2d838910bbc3bd7cceee0a5\",\"context\":{\"ctx\":\"8192\",\"parallel\":null,\"cacheK\":null,\"cacheV\":null},\"mtp\":null},\"category\":\"context_capacity\",\"result\":\"passed\",\"value\":{\"ctx\":8192},\"suite\":{\"name\":\"synthetic\",\"version\":1},\"source\":\"test\"}\n"
+   }
+  },
+  {
+   "name": "a speculative draft model in the preset",
+   "model": "fx",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\nspec-type = draft-simple\nspec-draft-model = /models/fx/draft.gguf\n",
+   "mmproj": false,
+   "hf": {},
+   "ops": [
+    {
+     "op": "get"
+    },
+    {
+     "op": "record",
+     "record": {
+      "category": "context_capacity",
+      "result": "passed",
+      "value": {
+       "ctx": 8192
+      },
+      "suite": {
+       "name": "synthetic",
+       "version": 1
+      },
+      "source": "test",
+      "limitations": []
+     }
+    },
+    {
+     "op": "get"
+    }
+   ],
+   "draft": true,
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"fx\",\"tracked\":true,\"identityHash\":\"020672eed05cd79afff0a83eb80abfcfb682271e57a2a7585caf35736c02a9d7\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"fx\",\"tracked\":true,\"identityHash\":\"020672eed05cd79afff0a83eb80abfcfb682271e57a2a7585caf35736c02a9d7\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"verified\",\"value\":{\"ctx\":8192},\"result\":\"passed\",\"at\":1793387731178,\"suite\":{\"name\":\"synthetic\",\"version\":1},\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     }
+    ],
+    "log": "{\"id\":\"ev_d5eb7bd9-be6a-498d-a102-5918ff390486\",\"at\":1793387731178,\"limitations\":[],\"model\":\"fx\",\"identityHash\":\"020672eed05cd79afff0a83eb80abfcfb682271e57a2a7585caf35736c02a9d7\",\"identity\":{\"backend\":\"llamacpp\",\"build\":\"b-synthetic\",\"endpoint\":\"133c2168a49c7c92\",\"model\":\"fx\",\"artifact\":\"2048:1700000000000:e4fde89f39bc53b90e9935a8015b80dd\",\"projector\":null,\"preset\":\"2ebc2b599bd42625b0aae9f0e398498149922c33cfc650ed09dfbddfa29d733c\",\"context\":{\"ctx\":\"8192\",\"parallel\":null,\"cacheK\":null,\"cacheV\":null},\"mtp\":{\"type\":\"draft-simple\",\"draft\":\"512:1700000000000:702afe5b5f6a15bb360d0ea9771e100d\"}},\"category\":\"context_capacity\",\"result\":\"passed\",\"value\":{\"ctx\":8192},\"suite\":{\"name\":\"synthetic\",\"version\":1},\"source\":\"test\"}\n"
+   }
+  },
+  {
+   "name": "a vision projector and cache settings are part of the identity",
+   "model": "fx",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\nmmproj = /models/fx/mm.gguf\ncache-type-k = q8_0\nparallel = 2\nspec-type = draft-mtp\n",
+   "mmproj": true,
+   "hf": {},
+   "ops": [
+    {
+     "op": "record",
+     "record": {
+      "category": "vision",
+      "result": "passed",
+      "value": null,
+      "suite": {
+       "name": "synthetic",
+       "version": 1
+      },
+      "source": "test",
+      "limitations": []
+     }
+    },
+    {
+     "op": "get"
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"fx\",\"tracked\":true,\"identityHash\":\"171a6ca55f0fa5393aa04ccbf31349dac50e2cd594d7619a72e45a569be76bc1\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"verified\",\"value\":null,\"result\":\"passed\",\"at\":1793377714267,\"suite\":{\"name\":\"synthetic\",\"version\":1},\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     }
+    ],
+    "log": "{\"id\":\"ev_61efe9e1-74b3-49de-89eb-6566b61705ff\",\"at\":1793377714267,\"limitations\":[],\"model\":\"fx\",\"identityHash\":\"171a6ca55f0fa5393aa04ccbf31349dac50e2cd594d7619a72e45a569be76bc1\",\"identity\":{\"backend\":\"llamacpp\",\"build\":\"b-synthetic\",\"endpoint\":\"133c2168a49c7c92\",\"model\":\"fx\",\"artifact\":\"2048:1700000000000:e4fde89f39bc53b90e9935a8015b80dd\",\"projector\":\"1024:1700000000000:fcb424e6d90e2da82f75e861af6e631e\",\"preset\":\"b2b6859f01cc74bcc7d5b5be3c0690453ad1ed4add68978362a4cc66e570a757\",\"context\":{\"ctx\":\"8192\",\"parallel\":\"2\",\"cacheK\":\"q8_0\",\"cacheV\":null},\"mtp\":{\"type\":\"draft-mtp\",\"draft\":null}},\"category\":\"vision\",\"result\":\"passed\",\"value\":null,\"suite\":{\"name\":\"synthetic\",\"version\":1},\"source\":\"test\"}\n"
+   }
+  },
+  {
+   "name": "a model that is not in the router listing but has a preset",
+   "model": "fx",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {},
+   "ops": [
+    {
+     "op": "get"
+    }
+   ],
+   "listing": "empty",
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"fx\",\"tracked\":true,\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     }
+    ],
+    "log": null
+   }
+  },
+  {
+   "name": "the router listing is down: the files come from the preset",
+   "model": "fx",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {},
+   "ops": [
+    {
+     "op": "record",
+     "record": {
+      "category": "context_capacity",
+      "result": "passed",
+      "value": {
+       "ctx": 1
+      },
+      "suite": {
+       "name": "synthetic",
+       "version": 1
+      },
+      "source": "test",
+      "limitations": []
+     }
+    },
+    {
+     "op": "get"
+    }
+   ],
+   "listing": "down",
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"fx\",\"tracked\":true,\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"verified\",\"value\":{\"ctx\":1},\"result\":\"passed\",\"at\":1793377714270,\"suite\":{\"name\":\"synthetic\",\"version\":1},\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     }
+    ],
+    "log": "{\"id\":\"ev_596283c7-3932-4985-b33d-cd6f763c0bf0\",\"at\":1793377714270,\"limitations\":[],\"model\":\"fx\",\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"identity\":{\"backend\":\"llamacpp\",\"build\":\"b-synthetic\",\"endpoint\":\"133c2168a49c7c92\",\"model\":\"fx\",\"artifact\":\"2048:1700000000000:e4fde89f39bc53b90e9935a8015b80dd\",\"projector\":null,\"preset\":\"afa22f5b50cff33ae766cee7aedc9d4d9bb7604cb2d838910bbc3bd7cceee0a5\",\"context\":{\"ctx\":\"8192\",\"parallel\":null,\"cacheK\":null,\"cacheV\":null},\"mtp\":null},\"category\":\"context_capacity\",\"result\":\"passed\",\"value\":{\"ctx\":1},\"suite\":{\"name\":\"synthetic\",\"version\":1},\"source\":\"test\"}\n"
+   }
+  },
+  {
+   "name": "the model-card import: card and sampling config",
+   "model": "acme/model-7b",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[acme/model-7b]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {
+    "/api/models/acme/model-7b": {
+     "status": 200,
+     "body": {
+      "id": "acme/model-7b",
+      "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "license": "apache-2.0",
+      "pipeline_tag": "text-generation",
+      "library_name": "gguf",
+      "tags": [
+       "gguf",
+       "chat",
+       "<b>bold</b>",
+       "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "cardData": {
+       "license": "apache-2.0",
+       "model_summary": "A  general-purpose\n chat <i>model</i>.",
+       "model-index": [
+        {
+         "results": [
+          {
+           "task": {
+            "type": "text-generation"
+           },
+           "dataset": {
+            "name": "MMLU"
+           },
+           "metrics": [
+            {
+             "type": "accuracy",
+             "value": 71.2
+            },
+            {
+             "name": "f1",
+             "value": "high"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     }
+    },
+    "/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json": {
+     "status": 200,
+     "body": {
+      "temperature": 0.7,
+      "top_p": 0.9,
+      "top_k": 40,
+      "min_p": 0.05,
+      "repetition_penalty": 1.1,
+      "do_sample": true
+     }
+    }
+   },
+   "ops": [
+    {
+     "op": "import",
+     "body": {
+      "model": "acme/model-7b"
+     }
+    },
+    {
+     "op": "get"
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"at\":1793377714274,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714274},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"reported\",\"values\":{\"temperature\":0.7,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"source\":\"generation_config.json\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714274,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"},\"limitations\":[\"Source-reported generation config, not measured locally or applied to the model\",\"Values may describe the source weights rather than this GGUF conversion or runtime\"]},\"samplingPlan\":{\"tier\":\"model-card\",\"source\":\"generation_config.json\",\"sourceId\":\"generation-config\",\"values\":{\"temperature\":0.7,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"family\":null,\"familyLabel\":null,\"presetId\":null,\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714274,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"}}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"at\":1793377714274,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714274},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"reported\",\"values\":{\"temperature\":0.7,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"source\":\"generation_config.json\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714274,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"},\"limitations\":[\"Source-reported generation config, not measured locally or applied to the model\",\"Values may describe the source weights rather than this GGUF conversion or runtime\"]},\"samplingPlan\":{\"tier\":\"model-card\",\"source\":\"generation_config.json\",\"sourceId\":\"generation-config\",\"values\":{\"temperature\":0.7,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"family\":null,\"familyLabel\":null,\"presetId\":null,\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714274,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"}}}"
+     }
+    ],
+    "log": "{\"id\":\"ev_cd95d87e-3cf3-46b8-b2cf-501a91284634\",\"at\":1793377714274,\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"model\":\"acme/model-7b\",\"category\":\"external_model_card\",\"result\":\"reported\",\"identityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"source\":\"external\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714274}}\n{\"id\":\"ev_cb2c3fe1-b025-42c8-bf1b-eeee7a7aa2ab\",\"at\":1793377714274,\"limitations\":[\"Source-reported generation config, not measured locally or applied to the model\",\"Values may describe the source weights rather than this GGUF conversion or runtime\"],\"model\":\"acme/model-7b\",\"category\":\"external_sampling_config\",\"result\":\"reported\",\"identityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\",\"value\":{\"temperature\":0.7,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"suite\":{\"name\":\"huggingface-generation-config\",\"version\":1},\"source\":\"external\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714274,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"}}\n"
+   }
+  },
+  {
+   "name": "importing again changes nothing; a changed card is a new record; a changed config too",
+   "model": "acme/model-7b",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[acme/model-7b]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {
+    "/api/models/acme/model-7b": {
+     "status": 200,
+     "body": {
+      "id": "acme/model-7b",
+      "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "license": "apache-2.0",
+      "pipeline_tag": "text-generation",
+      "library_name": "gguf",
+      "tags": [
+       "gguf",
+       "chat",
+       "<b>bold</b>",
+       "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "cardData": {
+       "license": "apache-2.0",
+       "model_summary": "A  general-purpose\n chat <i>model</i>.",
+       "model-index": [
+        {
+         "results": [
+          {
+           "task": {
+            "type": "text-generation"
+           },
+           "dataset": {
+            "name": "MMLU"
+           },
+           "metrics": [
+            {
+             "type": "accuracy",
+             "value": 71.2
+            },
+            {
+             "name": "f1",
+             "value": "high"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     }
+    },
+    "/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json": {
+     "status": 200,
+     "body": {
+      "temperature": 0.7,
+      "top_p": 0.9,
+      "top_k": 40,
+      "min_p": 0.05,
+      "repetition_penalty": 1.1,
+      "do_sample": true
+     }
+    }
+   },
+   "ops": [
+    {
+     "op": "import",
+     "body": {
+      "model": "acme/model-7b"
+     }
+    },
+    {
+     "op": "import",
+     "body": {
+      "model": "acme/model-7b",
+      "checkpoint": "acme/model-7b:Q4_K_M"
+     }
+    },
+    {
+     "op": "hf",
+     "set": {
+      "/api/models/acme/model-7b": {
+       "status": 200,
+       "body": {
+        "id": "acme/model-7b",
+        "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "license": "apache-2.0",
+        "pipeline_tag": "text-generation",
+        "library_name": "gguf",
+        "tags": [
+         "gguf",
+         "chat",
+         "<b>bold</b>",
+         "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        ],
+        "cardData": {
+         "license": "apache-2.0",
+         "model_summary": "A  general-purpose\n chat <i>model</i>.",
+         "model-index": [
+          {
+           "results": [
+            {
+             "task": {
+              "type": "text-generation"
+             },
+             "dataset": {
+              "name": "MMLU"
+             },
+             "metrics": [
+              {
+               "type": "accuracy",
+               "value": 71.2
+              },
+              {
+               "name": "f1",
+               "value": "high"
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       }
+      }
+     }
+    },
+    {
+     "op": "import",
+     "body": {
+      "model": "acme/model-7b"
+     }
+    },
+    {
+     "op": "hf",
+     "set": {
+      "/api/models/acme/model-7b": {
+       "status": 200,
+       "body": {
+        "id": "acme/model-7b",
+        "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "license": "mit",
+        "pipeline_tag": "text-generation",
+        "library_name": "gguf",
+        "tags": [
+         "gguf",
+         "chat",
+         "<b>bold</b>",
+         "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        ],
+        "cardData": {
+         "license": "mit"
+        }
+       }
+      }
+     }
+    },
+    {
+     "op": "import",
+     "body": {
+      "model": "acme/model-7b"
+     }
+    },
+    {
+     "op": "hf",
+     "set": {
+      "/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json": {
+       "status": 200,
+       "body": {
+        "temperature": 0.2,
+        "top_p": 0.9,
+        "top_k": 40,
+        "min_p": 0.05,
+        "repetition_penalty": 1.1,
+        "do_sample": true
+       }
+      }
+     }
+    },
+    {
+     "op": "import",
+     "body": {
+      "model": "acme/model-7b"
+     }
+    },
+    {
+     "op": "get"
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"at\":1793377714277,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714277},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"reported\",\"values\":{\"temperature\":0.7,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"source\":\"generation_config.json\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714278,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"},\"limitations\":[\"Source-reported generation config, not measured locally or applied to the model\",\"Values may describe the source weights rather than this GGUF conversion or runtime\"]},\"samplingPlan\":{\"tier\":\"model-card\",\"source\":\"generation_config.json\",\"sourceId\":\"generation-config\",\"values\":{\"temperature\":0.7,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"family\":null,\"familyLabel\":null,\"presetId\":null,\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714278,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"}}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"at\":1793377714277,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714277},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"reported\",\"values\":{\"temperature\":0.7,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"source\":\"generation_config.json\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714278,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"},\"limitations\":[\"Source-reported generation config, not measured locally or applied to the model\",\"Values may describe the source weights rather than this GGUF conversion or runtime\"]},\"samplingPlan\":{\"tier\":\"model-card\",\"source\":\"generation_config.json\",\"sourceId\":\"generation-config\",\"values\":{\"temperature\":0.7,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"family\":null,\"familyLabel\":null,\"presetId\":null,\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714278,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"}}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"at\":1793377714277,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714277},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":\"generation_config.json\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/generation_config.json\",\"retrievedAt\":1793377714282,\"revision\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"},\"limitations\":[\"Current source config has no supported sampling recommendation; previous source values were retired\"]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"mit\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[],\"cardExcerpt\":null},\"at\":1793377714283,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714283},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"reported\",\"values\":{\"temperature\":0.7,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"source\":\"generation_config.json\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714283,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"},\"limitations\":[\"Source-reported generation config, not measured locally or applied to the model\",\"Values may describe the source weights rather than this GGUF conversion or runtime\"]},\"samplingPlan\":{\"tier\":\"model-card\",\"source\":\"generation_config.json\",\"sourceId\":\"generation-config\",\"values\":{\"temperature\":0.7,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"family\":null,\"familyLabel\":null,\"presetId\":null,\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714283,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"}}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"mit\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[],\"cardExcerpt\":null},\"at\":1793377714283,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714283},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"reported\",\"values\":{\"temperature\":0.2,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"source\":\"generation_config.json\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714285,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"},\"limitations\":[\"Source-reported generation config, not measured locally or applied to the model\",\"Values may describe the source weights rather than this GGUF conversion or runtime\"]},\"samplingPlan\":{\"tier\":\"model-card\",\"source\":\"generation_config.json\",\"sourceId\":\"generation-config\",\"values\":{\"temperature\":0.2,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"family\":null,\"familyLabel\":null,\"presetId\":null,\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714285,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"}}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"mit\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[],\"cardExcerpt\":null},\"at\":1793377714283,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714283},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"reported\",\"values\":{\"temperature\":0.2,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"source\":\"generation_config.json\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714285,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"},\"limitations\":[\"Source-reported generation config, not measured locally or applied to the model\",\"Values may describe the source weights rather than this GGUF conversion or runtime\"]},\"samplingPlan\":{\"tier\":\"model-card\",\"source\":\"generation_config.json\",\"sourceId\":\"generation-config\",\"values\":{\"temperature\":0.2,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"family\":null,\"familyLabel\":null,\"presetId\":null,\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714285,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"}}}"
+     }
+    ],
+    "log": "{\"id\":\"ev_f4fd8c6c-f9c1-4530-9eae-084290d61920\",\"at\":1793377714277,\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"model\":\"acme/model-7b\",\"category\":\"external_model_card\",\"result\":\"reported\",\"identityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"source\":\"external\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714277}}\n{\"id\":\"ev_64dc95de-f2a7-4655-8386-8e7187ac4e17\",\"at\":1793377714278,\"limitations\":[\"Source-reported generation config, not measured locally or applied to the model\",\"Values may describe the source weights rather than this GGUF conversion or runtime\"],\"model\":\"acme/model-7b\",\"category\":\"external_sampling_config\",\"result\":\"reported\",\"identityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\",\"value\":{\"temperature\":0.7,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"suite\":{\"name\":\"huggingface-generation-config\",\"version\":1},\"source\":\"external\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714278,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"}}\n{\"id\":\"ev_9f9868ae-293f-4c3c-82ac-5b66763eed92\",\"at\":1793377714282,\"limitations\":[\"Current source config has no supported sampling recommendation; previous source values were retired\"],\"model\":\"acme/model-7b\",\"category\":\"external_sampling_config\",\"result\":\"reported\",\"identityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\",\"value\":null,\"source\":\"external\",\"suite\":{\"name\":\"huggingface-generation-config\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/generation_config.json\",\"retrievedAt\":1793377714282,\"revision\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"}}\n{\"id\":\"ev_40ec67e0-8be9-4173-a2a8-1c587619a1ec\",\"at\":1793377714283,\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"model\":\"acme/model-7b\",\"category\":\"external_model_card\",\"result\":\"reported\",\"identityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"mit\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[],\"cardExcerpt\":null},\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"source\":\"external\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714283}}\n{\"id\":\"ev_fc1a3f57-da8f-4128-853f-aa939029ce50\",\"at\":1793377714283,\"limitations\":[\"Source-reported generation config, not measured locally or applied to the model\",\"Values may describe the source weights rather than this GGUF conversion or runtime\"],\"model\":\"acme/model-7b\",\"category\":\"external_sampling_config\",\"result\":\"reported\",\"identityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\",\"value\":{\"temperature\":0.7,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"suite\":{\"name\":\"huggingface-generation-config\",\"version\":1},\"source\":\"external\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714283,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"}}\n{\"id\":\"ev_29cf96f8-2054-4652-bca4-871e0e156821\",\"at\":1793377714285,\"limitations\":[\"Source-reported generation config, not measured locally or applied to the model\",\"Values may describe the source weights rather than this GGUF conversion or runtime\"],\"model\":\"acme/model-7b\",\"category\":\"external_sampling_config\",\"result\":\"reported\",\"identityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\",\"value\":{\"temperature\":0.2,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"suite\":{\"name\":\"huggingface-generation-config\",\"version\":1},\"source\":\"external\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714285,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"}}\n"
+   }
+  },
+  {
+   "name": "a definite removal of the sampling config retires it; a failure keeps it",
+   "model": "acme/model-7b",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[acme/model-7b]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {
+    "/api/models/acme/model-7b": {
+     "status": 200,
+     "body": {
+      "id": "acme/model-7b",
+      "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "license": "apache-2.0",
+      "pipeline_tag": "text-generation",
+      "library_name": "gguf",
+      "tags": [
+       "gguf",
+       "chat",
+       "<b>bold</b>",
+       "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "cardData": {
+       "license": "apache-2.0",
+       "model_summary": "A  general-purpose\n chat <i>model</i>.",
+       "model-index": [
+        {
+         "results": [
+          {
+           "task": {
+            "type": "text-generation"
+           },
+           "dataset": {
+            "name": "MMLU"
+           },
+           "metrics": [
+            {
+             "type": "accuracy",
+             "value": 71.2
+            },
+            {
+             "name": "f1",
+             "value": "high"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     }
+    },
+    "/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json": {
+     "status": 200,
+     "body": {
+      "temperature": 0.7,
+      "top_p": 0.9,
+      "top_k": 40,
+      "min_p": 0.05,
+      "repetition_penalty": 1.1,
+      "do_sample": true
+     }
+    }
+   },
+   "ops": [
+    {
+     "op": "import",
+     "body": {
+      "model": "acme/model-7b"
+     }
+    },
+    {
+     "op": "hf",
+     "set": {
+      "/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json": {
+       "status": 503,
+       "body": {
+        "error": "down"
+       }
+      }
+     }
+    },
+    {
+     "op": "import",
+     "body": {
+      "model": "acme/model-7b"
+     }
+    },
+    {
+     "op": "hf",
+     "set": {
+      "/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json": {
+       "status": 404,
+       "body": {
+        "error": "gone"
+       }
+      }
+     }
+    },
+    {
+     "op": "import",
+     "body": {
+      "model": "acme/model-7b"
+     }
+    },
+    {
+     "op": "import",
+     "body": {
+      "model": "acme/model-7b"
+     }
+    },
+    {
+     "op": "get"
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"at\":1793377714289,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714289},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"reported\",\"values\":{\"temperature\":0.7,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"source\":\"generation_config.json\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714289,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"},\"limitations\":[\"Source-reported generation config, not measured locally or applied to the model\",\"Values may describe the source weights rather than this GGUF conversion or runtime\"]},\"samplingPlan\":{\"tier\":\"model-card\",\"source\":\"generation_config.json\",\"sourceId\":\"generation-config\",\"values\":{\"temperature\":0.7,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"family\":null,\"familyLabel\":null,\"presetId\":null,\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714289,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"}}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"at\":1793377714289,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714289},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"reported\",\"values\":{\"temperature\":0.7,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"source\":\"generation_config.json\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714289,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"},\"limitations\":[\"Source-reported generation config, not measured locally or applied to the model\",\"Values may describe the source weights rather than this GGUF conversion or runtime\"]},\"samplingPlan\":{\"tier\":\"model-card\",\"source\":\"generation_config.json\",\"sourceId\":\"generation-config\",\"values\":{\"temperature\":0.7,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"family\":null,\"familyLabel\":null,\"presetId\":null,\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714289,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"}}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"at\":1793377714289,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714289},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":\"generation_config.json\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714292,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"},\"limitations\":[\"Current source config has no supported sampling recommendation; previous source values were retired\"]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"at\":1793377714289,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714289},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":\"generation_config.json\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714292,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"},\"limitations\":[\"Current source config has no supported sampling recommendation; previous source values were retired\"]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"at\":1793377714289,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714289},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":\"generation_config.json\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714292,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"},\"limitations\":[\"Current source config has no supported sampling recommendation; previous source values were retired\"]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     }
+    ],
+    "log": "{\"id\":\"ev_add25240-7174-471a-980e-537dc2256540\",\"at\":1793377714289,\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"model\":\"acme/model-7b\",\"category\":\"external_model_card\",\"result\":\"reported\",\"identityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"source\":\"external\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714289}}\n{\"id\":\"ev_3c3a6062-9d9b-46db-bf99-1f7b3528c5c3\",\"at\":1793377714289,\"limitations\":[\"Source-reported generation config, not measured locally or applied to the model\",\"Values may describe the source weights rather than this GGUF conversion or runtime\"],\"model\":\"acme/model-7b\",\"category\":\"external_sampling_config\",\"result\":\"reported\",\"identityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\",\"value\":{\"temperature\":0.7,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"suite\":{\"name\":\"huggingface-generation-config\",\"version\":1},\"source\":\"external\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714289,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"}}\n{\"id\":\"ev_15b6ca9a-a164-4a67-a657-7d2ddc44042e\",\"at\":1793377714292,\"limitations\":[\"Current source config has no supported sampling recommendation; previous source values were retired\"],\"model\":\"acme/model-7b\",\"category\":\"external_sampling_config\",\"result\":\"reported\",\"identityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\",\"value\":null,\"source\":\"external\",\"suite\":{\"name\":\"huggingface-generation-config\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714292,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"}}\n"
+   }
+  },
+  {
+   "name": "a config that is not a sampling config retires the old values",
+   "model": "acme/model-7b",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[acme/model-7b]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {
+    "/api/models/acme/model-7b": {
+     "status": 200,
+     "body": {
+      "id": "acme/model-7b",
+      "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "license": "apache-2.0",
+      "pipeline_tag": "text-generation",
+      "library_name": "gguf",
+      "tags": [
+       "gguf",
+       "chat",
+       "<b>bold</b>",
+       "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "cardData": {
+       "license": "apache-2.0",
+       "model_summary": "A  general-purpose\n chat <i>model</i>.",
+       "model-index": [
+        {
+         "results": [
+          {
+           "task": {
+            "type": "text-generation"
+           },
+           "dataset": {
+            "name": "MMLU"
+           },
+           "metrics": [
+            {
+             "type": "accuracy",
+             "value": 71.2
+            },
+            {
+             "name": "f1",
+             "value": "high"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     }
+    },
+    "/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json": {
+     "status": 200,
+     "body": {
+      "temperature": 0.7,
+      "top_p": 0.9,
+      "top_k": 40,
+      "min_p": 0.05,
+      "repetition_penalty": 1.1,
+      "do_sample": true
+     }
+    }
+   },
+   "ops": [
+    {
+     "op": "import",
+     "body": {
+      "model": "acme/model-7b"
+     }
+    },
+    {
+     "op": "hf",
+     "set": {
+      "/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json": {
+       "status": 200,
+       "body": {
+        "do_sample": false,
+        "temperature": 0.1
+       }
+      }
+     }
+    },
+    {
+     "op": "import",
+     "body": {
+      "model": "acme/model-7b"
+     }
+    },
+    {
+     "op": "get"
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"at\":1793377714297,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714297},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"reported\",\"values\":{\"temperature\":0.7,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"source\":\"generation_config.json\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714297,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"},\"limitations\":[\"Source-reported generation config, not measured locally or applied to the model\",\"Values may describe the source weights rather than this GGUF conversion or runtime\"]},\"samplingPlan\":{\"tier\":\"model-card\",\"source\":\"generation_config.json\",\"sourceId\":\"generation-config\",\"values\":{\"temperature\":0.7,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"family\":null,\"familyLabel\":null,\"presetId\":null,\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714297,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"}}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"at\":1793377714297,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714297},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":\"generation_config.json\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714299,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"},\"limitations\":[\"Current source config has no supported sampling recommendation; previous source values were retired\"]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"at\":1793377714297,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714297},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":\"generation_config.json\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714299,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"},\"limitations\":[\"Current source config has no supported sampling recommendation; previous source values were retired\"]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     }
+    ],
+    "log": "{\"id\":\"ev_19890c04-c0f6-485b-9cbb-0c38ef93a956\",\"at\":1793377714297,\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"model\":\"acme/model-7b\",\"category\":\"external_model_card\",\"result\":\"reported\",\"identityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"source\":\"external\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714297}}\n{\"id\":\"ev_cbb59249-e0e6-4f4f-beff-2695be77a409\",\"at\":1793377714297,\"limitations\":[\"Source-reported generation config, not measured locally or applied to the model\",\"Values may describe the source weights rather than this GGUF conversion or runtime\"],\"model\":\"acme/model-7b\",\"category\":\"external_sampling_config\",\"result\":\"reported\",\"identityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\",\"value\":{\"temperature\":0.7,\"top_p\":0.9,\"top_k\":40,\"min_p\":0.05,\"repeat_penalty\":1.1},\"suite\":{\"name\":\"huggingface-generation-config\",\"version\":1},\"source\":\"external\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714297,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"}}\n{\"id\":\"ev_4460cf4a-dbb2-4dad-8921-f054701f9e6f\",\"at\":1793377714299,\"limitations\":[\"Current source config has no supported sampling recommendation; previous source values were retired\"],\"model\":\"acme/model-7b\",\"category\":\"external_sampling_config\",\"result\":\"reported\",\"identityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\",\"value\":null,\"source\":\"external\",\"suite\":{\"name\":\"huggingface-generation-config\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/resolve-cache/models/acme/model-7b/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/generation_config.json\",\"retrievedAt\":1793377714299,\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifactIdentityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\"}}\n"
+   }
+  },
+  {
+   "name": "a card without a full commit has no sampling source; a private or broken card is nothing",
+   "model": "acme/model-7b",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[acme/model-7b]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {
+    "/api/models/acme/model-7b": {
+     "status": 200,
+     "body": {
+      "id": "acme/model-7b",
+      "sha": "abc123",
+      "license": "apache-2.0",
+      "pipeline_tag": "text-generation",
+      "library_name": "gguf",
+      "tags": [
+       "gguf",
+       "chat",
+       "<b>bold</b>",
+       "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "cardData": {
+       "license": "apache-2.0",
+       "model_summary": "A  general-purpose\n chat <i>model</i>.",
+       "model-index": [
+        {
+         "results": [
+          {
+           "task": {
+            "type": "text-generation"
+           },
+           "dataset": {
+            "name": "MMLU"
+           },
+           "metrics": [
+            {
+             "type": "accuracy",
+             "value": 71.2
+            },
+            {
+             "name": "f1",
+             "value": "high"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     }
+    }
+   },
+   "ops": [
+    {
+     "op": "import",
+     "body": {
+      "model": "acme/model-7b"
+     }
+    },
+    {
+     "op": "get"
+    },
+    {
+     "op": "hf",
+     "set": {
+      "/api/models/acme/model-7b": {
+       "status": 200,
+       "body": {
+        "private": true
+       }
+      }
+     }
+    },
+    {
+     "op": "import",
+     "body": {
+      "model": "acme/model-7b"
+     }
+    },
+    {
+     "op": "hf",
+     "set": {
+      "/api/models/acme/model-7b": {
+       "status": 500,
+       "body": "oops"
+      }
+     }
+    },
+    {
+     "op": "import",
+     "body": {
+      "model": "acme/model-7b"
+     }
+    },
+    {
+     "op": "hf",
+     "set": {
+      "/api/models/acme/model-7b": {
+       "status": 200,
+       "body": [
+        1,
+        2
+       ]
+      }
+     }
+    },
+    {
+     "op": "import",
+     "body": {
+      "model": "acme/model-7b"
+     }
+    },
+    {
+     "op": "get"
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"abc123\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"at\":1793377714301,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714301},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"abc123\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"at\":1793377714301,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714301},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"abc123\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"at\":1793377714301,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714301},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"abc123\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"at\":1793377714301,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714301},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"abc123\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"at\":1793377714301,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714301},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"abc123\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"at\":1793377714301,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714301},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     }
+    ],
+    "log": "{\"id\":\"ev_5f08441a-89bc-45fa-a773-64ff115c8df7\",\"at\":1793377714301,\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"model\":\"acme/model-7b\",\"category\":\"external_model_card\",\"result\":\"reported\",\"identityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"abc123\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"source\":\"external\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714301}}\n"
+   }
+  },
+  {
+   "name": "a checkpoint override must name the same repository",
+   "model": "acme/model-7b",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[acme/model-7b]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {
+    "/api/models/acme/model-7b": {
+     "status": 200,
+     "body": {
+      "id": "acme/model-7b",
+      "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "license": "apache-2.0",
+      "pipeline_tag": "text-generation",
+      "library_name": "gguf",
+      "tags": [
+       "gguf",
+       "chat",
+       "<b>bold</b>",
+       "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "cardData": {
+       "license": "apache-2.0",
+       "model_summary": "A  general-purpose\n chat <i>model</i>.",
+       "model-index": [
+        {
+         "results": [
+          {
+           "task": {
+            "type": "text-generation"
+           },
+           "dataset": {
+            "name": "MMLU"
+           },
+           "metrics": [
+            {
+             "type": "accuracy",
+             "value": 71.2
+            },
+            {
+             "name": "f1",
+             "value": "high"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     }
+    },
+    "/api/models/evil/other": {
+     "status": 200,
+     "body": {
+      "id": "acme/model-7b",
+      "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "license": "evil",
+      "pipeline_tag": "text-generation",
+      "library_name": "gguf",
+      "tags": [
+       "gguf",
+       "chat",
+       "<b>bold</b>",
+       "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "cardData": {
+       "license": "apache-2.0",
+       "model_summary": "A  general-purpose\n chat <i>model</i>.",
+       "model-index": [
+        {
+         "results": [
+          {
+           "task": {
+            "type": "text-generation"
+           },
+           "dataset": {
+            "name": "MMLU"
+           },
+           "metrics": [
+            {
+             "type": "accuracy",
+             "value": 71.2
+            },
+            {
+             "name": "f1",
+             "value": "high"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     }
+    }
+   },
+   "ops": [
+    {
+     "op": "import",
+     "body": {
+      "model": "acme/model-7b",
+      "checkpoint": "evil/other"
+     }
+    },
+    {
+     "op": "import",
+     "body": {
+      "model": "acme/model-7b",
+      "checkpoint": "../x"
+     }
+    },
+    {
+     "op": "import",
+     "body": {
+      "model": "acme/model-7b",
+      "checkpoint": "acme/model-7b"
+     }
+    },
+    {
+     "op": "get"
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"at\":1793377714313,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714313},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"at\":1793377714313,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714313},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     }
+    ],
+    "log": "{\"id\":\"ev_0074fafd-5a4d-4939-803f-ef9e4502d762\",\"at\":1793377714313,\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"model\":\"acme/model-7b\",\"category\":\"external_model_card\",\"result\":\"reported\",\"identityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"apache-2.0\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"accuracy\",\"value\":\"71.2\"},{\"task\":\"text-generation\",\"dataset\":\"MMLU\",\"metric\":\"f1\",\"value\":\"high\"}],\"cardExcerpt\":\"A general-purpose chat model .\"},\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"source\":\"external\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714313}}\n"
+   }
+  },
+  {
+   "name": "a model whose name is not a repository imports nothing",
+   "model": "fx",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {
+    "/api/models/acme/model-7b": {
+     "status": 200,
+     "body": {
+      "id": "acme/model-7b",
+      "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "license": "apache-2.0",
+      "pipeline_tag": "text-generation",
+      "library_name": "gguf",
+      "tags": [
+       "gguf",
+       "chat",
+       "<b>bold</b>",
+       "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "cardData": {
+       "license": "apache-2.0",
+       "model_summary": "A  general-purpose\n chat <i>model</i>.",
+       "model-index": [
+        {
+         "results": [
+          {
+           "task": {
+            "type": "text-generation"
+           },
+           "dataset": {
+            "name": "MMLU"
+           },
+           "metrics": [
+            {
+             "type": "accuracy",
+             "value": 71.2
+            },
+            {
+             "name": "f1",
+             "value": "high"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     }
+    }
+   },
+   "ops": [
+    {
+     "op": "import",
+     "body": {
+      "model": "fx"
+     }
+    },
+    {
+     "op": "get"
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"fx\",\"tracked\":true,\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"fx\",\"tracked\":true,\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     }
+    ],
+    "log": null
+   }
+  },
+  {
+   "name": "card text is stripped, capped and bounded",
+   "model": "acme/model-7b",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[acme/model-7b]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {
+    "/api/models/acme/model-7b": {
+     "status": 200,
+     "body": {
+      "id": "acme/model-7b",
+      "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "license": "apache-2.0",
+      "pipeline_tag": "text-generation",
+      "library_name": "gguf",
+      "tags": [
+       "gguf",
+       "chat",
+       "<b>bold</b>",
+       "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "cardData": {
+       "license": "llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll",
+       "model_summary": "<p><p><p><p><p>word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word \u0001\u0007tail",
+       "model-index": [
+        1,
+        null,
+        {
+         "results": [
+          null,
+          {
+           "task": {
+            "name": "qa"
+           },
+           "dataset": {},
+           "metrics": [
+            {
+             "type": "em",
+             "value": 3
+            },
+            null,
+            {
+             "value": {
+              "nested": 1
+             }
+            },
+            {
+             "type": "x",
+             "value": 1
+            },
+            {
+             "type": "y",
+             "value": 2
+            }
+           ]
+          },
+          {
+           "task": {
+            "type": "t0"
+           },
+           "metrics": [
+            {
+             "type": "a",
+             "value": 0
+            },
+            {
+             "type": "b",
+             "value": 0
+            },
+            {
+             "type": "c",
+             "value": 0
+            }
+           ]
+          },
+          {
+           "task": {
+            "type": "t1"
+           },
+           "metrics": [
+            {
+             "type": "a",
+             "value": 1
+            },
+            {
+             "type": "b",
+             "value": 1
+            },
+            {
+             "type": "c",
+             "value": 1
+            }
+           ]
+          },
+          {
+           "task": {
+            "type": "t2"
+           },
+           "metrics": [
+            {
+             "type": "a",
+             "value": 2
+            },
+            {
+             "type": "b",
+             "value": 2
+            },
+            {
+             "type": "c",
+             "value": 2
+            }
+           ]
+          },
+          {
+           "task": {
+            "type": "t3"
+           },
+           "metrics": [
+            {
+             "type": "a",
+             "value": 3
+            },
+            {
+             "type": "b",
+             "value": 3
+            },
+            {
+             "type": "c",
+             "value": 3
+            }
+           ]
+          },
+          {
+           "task": {
+            "type": "t4"
+           },
+           "metrics": [
+            {
+             "type": "a",
+             "value": 4
+            },
+            {
+             "type": "b",
+             "value": 4
+            },
+            {
+             "type": "c",
+             "value": 4
+            }
+           ]
+          },
+          {
+           "task": {
+            "type": "t5"
+           },
+           "metrics": [
+            {
+             "type": "a",
+             "value": 5
+            },
+            {
+             "type": "b",
+             "value": 5
+            },
+            {
+             "type": "c",
+             "value": 5
+            }
+           ]
+          },
+          {
+           "task": {
+            "type": "t6"
+           },
+           "metrics": [
+            {
+             "type": "a",
+             "value": 6
+            },
+            {
+             "type": "b",
+             "value": 6
+            },
+            {
+             "type": "c",
+             "value": 6
+            }
+           ]
+          },
+          {
+           "task": {
+            "type": "t7"
+           },
+           "metrics": [
+            {
+             "type": "a",
+             "value": 7
+            },
+            {
+             "type": "b",
+             "value": 7
+            },
+            {
+             "type": "c",
+             "value": 7
+            }
+           ]
+          },
+          {
+           "task": {
+            "type": "t8"
+           },
+           "metrics": [
+            {
+             "type": "a",
+             "value": 8
+            },
+            {
+             "type": "b",
+             "value": 8
+            },
+            {
+             "type": "c",
+             "value": 8
+            }
+           ]
+          },
+          {
+           "task": {
+            "type": "t9"
+           },
+           "metrics": [
+            {
+             "type": "a",
+             "value": 9
+            },
+            {
+             "type": "b",
+             "value": 9
+            },
+            {
+             "type": "c",
+             "value": 9
+            }
+           ]
+          },
+          {
+           "task": {
+            "type": "t10"
+           },
+           "metrics": [
+            {
+             "type": "a",
+             "value": 10
+            },
+            {
+             "type": "b",
+             "value": 10
+            },
+            {
+             "type": "c",
+             "value": 10
+            }
+           ]
+          },
+          {
+           "task": {
+            "type": "t11"
+           },
+           "metrics": [
+            {
+             "type": "a",
+             "value": 11
+            },
+            {
+             "type": "b",
+             "value": 11
+            },
+            {
+             "type": "c",
+             "value": 11
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "results": []
+        },
+        {
+         "results": [
+          {
+           "metrics": []
+          }
+         ]
+        }
+       ]
+      }
+     }
+    }
+   },
+   "ops": [
+    {
+     "op": "import",
+     "body": {
+      "model": "acme/model-7b"
+     }
+    },
+    {
+     "op": "get"
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll…\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"qa\",\"dataset\":null,\"metric\":\"em\",\"value\":\"3\"},{\"task\":\"qa\",\"dataset\":null,\"metric\":null,\"value\":null},{\"task\":\"qa\",\"dataset\":null,\"metric\":null,\"value\":null},{\"task\":\"t0\",\"dataset\":null,\"metric\":\"a\",\"value\":\"0\"},{\"task\":\"t0\",\"dataset\":null,\"metric\":\"b\",\"value\":\"0\"},{\"task\":\"t0\",\"dataset\":null,\"metric\":\"c\",\"value\":\"0\"},{\"task\":\"t1\",\"dataset\":null,\"metric\":\"a\",\"value\":\"1\"},{\"task\":\"t1\",\"dataset\":null,\"metric\":\"b\",\"value\":\"1\"},{\"task\":\"t1\",\"dataset\":null,\"metric\":\"c\",\"value\":\"1\"}],\"cardExcerpt\":\"word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word …\"},\"at\":1793377714319,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714319},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"acme/model-7b\",\"tracked\":true,\"identityHash\":\"72068c25bdb2f520dccea2a2be0f9d1efe06e429eb0e8bd940e758eba59d6456\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"reported\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll…\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"qa\",\"dataset\":null,\"metric\":\"em\",\"value\":\"3\"},{\"task\":\"qa\",\"dataset\":null,\"metric\":null,\"value\":null},{\"task\":\"qa\",\"dataset\":null,\"metric\":null,\"value\":null},{\"task\":\"t0\",\"dataset\":null,\"metric\":\"a\",\"value\":\"0\"},{\"task\":\"t0\",\"dataset\":null,\"metric\":\"b\",\"value\":\"0\"},{\"task\":\"t0\",\"dataset\":null,\"metric\":\"c\",\"value\":\"0\"},{\"task\":\"t1\",\"dataset\":null,\"metric\":\"a\",\"value\":\"1\"},{\"task\":\"t1\",\"dataset\":null,\"metric\":\"b\",\"value\":\"1\"},{\"task\":\"t1\",\"dataset\":null,\"metric\":\"c\",\"value\":\"1\"}],\"cardExcerpt\":\"word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word …\"},\"at\":1793377714319,\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714319},\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"limitationKeys\":[{\"id\":\"source-unverified\",\"params\":{}}]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     }
+    ],
+    "log": "{\"id\":\"ev_08537084-7ec7-44a8-9b31-ab9faef08a4a\",\"at\":1793377714319,\"limitations\":[\"unverified, from source: published by the model repository, not measured locally\"],\"model\":\"acme/model-7b\",\"category\":\"external_model_card\",\"result\":\"reported\",\"identityHash\":\"cd1b23324c014665bdfd35d1529fc2692db69dcdfeff7d548a2e20f9443de81f\",\"value\":{\"repo\":\"acme/model-7b\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"license\":\"llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll…\",\"pipelineTag\":\"text-generation\",\"libraryName\":\"gguf\",\"tags\":[\"gguf\",\"chat\",\"bold\",\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"],\"evaluationClaims\":[{\"task\":\"qa\",\"dataset\":null,\"metric\":\"em\",\"value\":\"3\"},{\"task\":\"qa\",\"dataset\":null,\"metric\":null,\"value\":null},{\"task\":\"qa\",\"dataset\":null,\"metric\":null,\"value\":null},{\"task\":\"t0\",\"dataset\":null,\"metric\":\"a\",\"value\":\"0\"},{\"task\":\"t0\",\"dataset\":null,\"metric\":\"b\",\"value\":\"0\"},{\"task\":\"t0\",\"dataset\":null,\"metric\":\"c\",\"value\":\"0\"},{\"task\":\"t1\",\"dataset\":null,\"metric\":\"a\",\"value\":\"1\"},{\"task\":\"t1\",\"dataset\":null,\"metric\":\"b\",\"value\":\"1\"},{\"task\":\"t1\",\"dataset\":null,\"metric\":\"c\",\"value\":\"1\"}],\"cardExcerpt\":\"word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word …\"},\"suite\":{\"name\":\"huggingface-model-card\",\"version\":1},\"source\":\"external\",\"provenance\":{\"sourceUrl\":\"https://huggingface.co/api/models/acme/model-7b\",\"retrievedAt\":1793377714319}}\n"
+   }
+  },
+  {
+   "name": "model families set the sampling plan; a card source wins over a family",
+   "model": "Qwen3-8B",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[Qwen3-8B]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {},
+   "ops": [
+    {
+     "op": "get"
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"Qwen3-8B\",\"tracked\":true,\"identityHash\":\"b14c8021828a0043888f194e53ab1468bd872e712d6ad1d863ba07e46196af14\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"family\",\"source\":\"Qwen3 family table\",\"sourceId\":\"family-table\",\"values\":{\"temperature\":0.6,\"top_p\":0.95,\"top_k\":20,\"min_p\":0},\"family\":\"qwen3\",\"familyLabel\":\"Qwen3\",\"presetId\":null,\"quirks\":{},\"note\":\"thinking-mode values\",\"noteId\":\"thinking-mode\",\"provenance\":null}}"
+     }
+    ],
+    "log": null
+   }
+  },
+  {
+   "name": "gpt-oss quirks",
+   "model": "gpt-oss-20b",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[gpt-oss-20b]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {},
+   "ops": [
+    {
+     "op": "get"
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"gpt-oss-20b\",\"tracked\":true,\"identityHash\":\"141030fe40b250dcfabf2a29eea2fb4394344fc20393d9a6278a9d61e2cd8e9a\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"family\",\"source\":\"GPT-OSS family table\",\"sourceId\":\"family-table\",\"values\":{\"temperature\":1,\"top_p\":1,\"top_k\":0},\"family\":\"gpt-oss\",\"familyLabel\":\"GPT-OSS\",\"presetId\":null,\"quirks\":{\"harmony\":true,\"reasoningEffort\":\"low\",\"qualityBudget\":512},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     }
+    ],
+    "log": null
+   }
+  },
+  {
+   "name": "no model",
+   "model": "fx",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {},
+   "ops": [
+    {
+     "op": "raw",
+     "method": "GET",
+     "query": ""
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 400,
+      "body": "{\"error\":\"Choose a model\"}"
+     }
+    ],
+    "log": null
+   }
+  },
+  {
+   "name": "an empty model",
+   "model": "fx",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {},
+   "ops": [
+    {
+     "op": "raw",
+     "method": "GET",
+     "query": "?model="
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 400,
+      "body": "{\"error\":\"Choose a model\"}"
+     }
+    ],
+    "log": null
+   }
+  },
+  {
+   "name": "a model of 200 UTF-16 units is allowed, 201 is not",
+   "model": "fx",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {},
+   "ops": [
+    {
+     "op": "raw",
+     "method": "GET",
+     "query": "?model=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+     "op": "raw",
+     "method": "GET",
+     "query": "?model=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+     "op": "raw",
+     "method": "GET",
+     "query": "?model=😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+    },
+    {
+     "op": "raw",
+     "method": "GET",
+     "query": "?model=😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"tracked\":true,\"identityHash\":null,\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unavailable\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unavailable\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unavailable\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unavailable\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unavailable\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unavailable\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 400,
+      "body": "{\"error\":\"Choose a model\"}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"tracked\":true,\"identityHash\":null,\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unavailable\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unavailable\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unavailable\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unavailable\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unavailable\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unavailable\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 400,
+      "body": "{\"error\":\"Choose a model\"}"
+     }
+    ],
+    "log": null
+   }
+  },
+  {
+   "name": "the first model parameter wins and plus is a space",
+   "model": "fx",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {},
+   "ops": [
+    {
+     "op": "raw",
+     "method": "GET",
+     "query": "?model=fx&model=other"
+    },
+    {
+     "op": "raw",
+     "method": "GET",
+     "query": "?model=f+x"
+    },
+    {
+     "op": "raw",
+     "method": "GET",
+     "query": "?model=%66x"
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"fx\",\"tracked\":true,\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"f x\",\"tracked\":true,\"identityHash\":null,\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unavailable\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unavailable\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unavailable\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unavailable\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unavailable\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unavailable\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"fx\",\"tracked\":true,\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     }
+    ],
+    "log": null
+   }
+  },
+  {
+   "name": "import: a member is refused, a body that is not JSON or has no model is a 400",
+   "model": "fx",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {},
+   "ops": [
+    {
+     "op": "raw",
+     "method": "POST",
+     "path": "/api/models/evidence/import",
+     "role": "member",
+     "body": "{\"model\":\"fx\"}"
+    },
+    {
+     "op": "raw",
+     "method": "POST",
+     "path": "/api/models/evidence/import",
+     "body": "{nope"
+    },
+    {
+     "op": "raw",
+     "method": "POST",
+     "path": "/api/models/evidence/import",
+     "body": ""
+    },
+    {
+     "op": "raw",
+     "method": "POST",
+     "path": "/api/models/evidence/import",
+     "body": "{\"model\":5}"
+    },
+    {
+     "op": "raw",
+     "method": "POST",
+     "path": "/api/models/evidence/import",
+     "body": "[1]"
+    },
+    {
+     "op": "raw",
+     "method": "POST",
+     "path": "/api/models/evidence/import",
+     "body": "{\"model\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"
+    },
+    {
+     "op": "raw",
+     "method": "POST",
+     "path": "/api/models/evidence/import",
+     "body": "{\"model\":\"fx\",\"checkpoint\":5}"
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 403,
+      "body": "{\"error\":\"administrator required\"}"
+     },
+     {
+      "status": 400,
+      "body": "{\"error\":\"Choose a model\"}"
+     },
+     {
+      "status": 400,
+      "body": "{\"error\":\"Choose a model\"}"
+     },
+     {
+      "status": 400,
+      "body": "{\"error\":\"Choose a model\"}"
+     },
+     {
+      "status": 400,
+      "body": "{\"error\":\"Choose a model\"}"
+     },
+     {
+      "status": 400,
+      "body": "{\"error\":\"Choose a model\"}"
+     },
+     {
+      "status": 200,
+      "body": "{\"model\":\"fx\",\"tracked\":true,\"identityHash\":\"2f433e98b2cdfe2c702b41c980c0c62ac7f23ed4410555207dc7cf0d2e3979ae\",\"categories\":[{\"category\":\"context_capacity\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"vision\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"mtp_acceptance\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]},{\"category\":\"throughput\",\"state\":\"unverified\",\"value\":null,\"result\":null,\"at\":null,\"suite\":null,\"limitations\":[],\"limitationKeys\":[]}],\"external\":{\"category\":\"external_model_card\",\"state\":\"unverified\",\"value\":null,\"at\":null,\"suite\":null,\"provenance\":null,\"limitations\":[],\"limitationKeys\":[]},\"samplingRecommendation\":{\"state\":\"unverified\",\"values\":null,\"source\":null,\"provenance\":null,\"limitations\":[]},\"samplingPlan\":{\"tier\":\"preset\",\"source\":\"Task preset: general\",\"sourceId\":\"task-preset\",\"values\":{},\"family\":null,\"familyLabel\":null,\"presetId\":\"general\",\"quirks\":{},\"note\":null,\"noteId\":null,\"provenance\":null}}"
+     }
+    ],
+    "log": null
+   }
+  },
+  {
+   "name": "an engine without evidence: GET and import are 404",
+   "model": "fx",
+   "role": "admin",
+   "kind": "none",
+   "ini": "version = 1\n\n[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n",
+   "mmproj": false,
+   "hf": {},
+   "ops": [
+    {
+     "op": "raw",
+     "method": "GET",
+     "query": "?model=fx"
+    },
+    {
+     "op": "raw",
+     "method": "POST",
+     "path": "/api/models/evidence/import",
+     "body": "{\"model\":\"fx\"}"
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 404,
+      "body": "{\"error\":\"Qualification evidence needs the native engine\"}"
+     },
+     {
+      "status": 404,
+      "body": "{\"error\":\"Model evidence import needs the native engine\"}"
+     }
+    ],
+    "log": null
+   }
+  },
+  {
+   "name": "an unreadable models.ini (a duplicate section) is the preset error",
+   "model": "fx",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": "version = 1\n\n[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 8192\n\n[fx]\nmodel = /models/fx/x.gguf\n",
+   "mmproj": false,
+   "hf": {},
+   "ops": [
+    {
+     "op": "get"
+    }
+   ],
+   "expect": {
+    "answers": [
+     {
+      "status": 409,
+      "body": "{\"error\":\"Duplicate preset sections require operator repair\"}"
+     }
+    ],
+    "log": null
+   }
+  },
+  {
+   "name": "a models.ini over the editor limit",
+   "model": "fx",
+   "role": "admin",
+   "kind": "llamacpp",
+   "ini": null,
+   "mmproj": false,
+   "hf": {},
+   "ops": [
+    {
+     "op": "get"
+    }
+   ],
+   "iniPad": 1048576,
+   "expect": {
+    "answers": [
+     {
+      "status": 413,
+      "body": "{\"error\":\"Preset file exceeds the editor limit\"}"
+     }
+    ],
+    "log": null
+   }
+  }
+ ]
+}
