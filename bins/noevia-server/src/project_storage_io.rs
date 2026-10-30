@@ -8,7 +8,7 @@
 //! admission (four at once, one per account) so they never take a browse slot. Errors reach the
 //! log as the storage client words them (status, path), never with a credential or endpoint.
 use crate::App;
-use server_projects::project_storage::{ProjectStorage, Remote};
+use server_projects::project_storage::{FileError, ProjectStorage, Remote};
 use server_storage_reads::{
     admission::Permit,
     owner_secret,
@@ -21,6 +21,9 @@ use std::{
     sync::{atomic::AtomicBool, Arc},
     time::{Duration, Instant},
 };
+
+/// The answer when no write slot (or no child program) is there.
+const BUSY: &str = "Storage is busy with other requests; try again shortly.";
 
 /// How long a write waits for an admission slot.
 const SLOT_WAIT: Duration = Duration::from_secs(10);
@@ -40,8 +43,8 @@ pub enum Opened {
     S3,
     Dav(Box<RemoteStorage>),
     /// Storage is there but cannot be used now (no admission slot, no child program, endpoint
-    /// policy): a create keeps its files in noevia; a sweep job stays queued.
-    Unavailable,
+    /// policy): a create keeps its files in noevia, a sweep job stays queued, a route answers it.
+    Refused(u16, &'static str),
 }
 
 impl Opened {
@@ -49,7 +52,8 @@ impl Opened {
         match self {
             Opened::Dav(r) => Remote::Dav(r.as_ref()),
             Opened::S3 => Remote::S3,
-            Opened::None | Opened::Unavailable => Remote::None,
+            Opened::Refused(status, message) => Remote::Refused(*status, message),
+            Opened::None => Remote::None,
         }
     }
 }
@@ -81,10 +85,10 @@ pub fn open(app: &Arc<App>, authn: &server_auth::Identity) -> Opened {
     let members = std::env::var("MEMBER_OUTBOUND_ORIGINS").unwrap_or_default();
     if !protocol::endpoint_approved(&connection.base_url, admin, &members) {
         eprintln!("noevia-server: project storage write skipped: the storage endpoint is not approved for this account");
-        return Opened::Unavailable;
+        return Opened::Refused(400, protocol::ENDPOINT_REFUSAL);
     }
     let Some(program) = app.storage_child.clone() else {
-        return Opened::Unavailable;
+        return Opened::Refused(503, BUSY);
     };
     let end = Instant::now() + SLOT_WAIT;
     let permit = loop {
@@ -93,7 +97,7 @@ pub fn open(app: &Arc<App>, authn: &server_auth::Identity) -> Opened {
         }
         if Instant::now() >= end {
             eprintln!("noevia-server: project storage write skipped: no storage slot");
-            return Opened::Unavailable;
+            return Opened::Refused(503, BUSY);
         }
         std::thread::sleep(Duration::from_millis(50));
     };
@@ -135,8 +139,36 @@ impl ProjectStorage for RemoteStorage {
         let _ = written;
         Ok(())
     }
+    fn delete_file(&self, path: &str) -> Result<bool, FileError> {
+        writes::delete_file(self.connection(), path, &mut self.transport()).map_err(|e| FileError {
+            kind: failure_kind(&e),
+            status: e.status,
+            message: e.message,
+        })
+    }
     fn remove_empty_folder(&self, path: &str) -> Result<(bool, &'static str), String> {
         writes::remove_empty_folder(self.connection(), path, &mut self.transport())
             .map_err(|e| e.message)
+    }
+}
+
+/// storage-client.cjs `storageFailure(err)`: the kind a route words, or none.
+fn failure_kind(e: &writes::StorageError) -> Option<&'static str> {
+    match e.code {
+        Some("timeout") => return Some("timeout"),
+        Some("unreachable") => return Some("unreachable"),
+        _ => {}
+    }
+    let status = e.upstream.or_else(|| {
+        e.message
+            .strip_prefix("storage returned ")
+            .filter(|s| s.len() == 3 && s.bytes().all(|b| b.is_ascii_digit()))
+            .and_then(|s| s.parse().ok())
+    });
+    match status {
+        Some(401) => Some("login"),
+        Some(403) => Some("forbidden"),
+        Some(429) => Some("throttled"),
+        _ => None,
     }
 }

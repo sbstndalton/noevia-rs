@@ -38,6 +38,18 @@ pub trait ProjectStorage {
     fn write_new(&self, path: &str, bytes: &[u8]) -> Result<(), String>;
     /// `removeEmptyFolder`: (removed, reason).
     fn remove_empty_folder(&self, path: &str) -> Result<(bool, &'static str), String>;
+    /// `deleteFile`: `Ok(missing)`.
+    fn delete_file(&self, path: &str) -> Result<bool, FileError>;
+}
+
+/// A storage write's failure as a route answers it: its status and message, and its
+/// storage-client.cjs `storageFailure` kind (`login`, `forbidden`, `throttled`, `timeout`,
+/// `unreachable`) when it has one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileError {
+    pub status: u16,
+    pub message: String,
+    pub kind: Option<&'static str>,
 }
 
 /// One step run with the user's storage ([`OpenRemote`]).
@@ -52,6 +64,9 @@ pub enum Remote<'a> {
     /// S3: no folders and no writes (core: the folder path is named, every write is refused).
     S3,
     Dav(&'a dyn ProjectStorage),
+    /// Storage is there but cannot be used now (the endpoint policy, no write slot): a create keeps
+    /// its files in noevia, a sweep job stays queued, a route answers (status, message).
+    Refused(u16, &'static str),
 }
 
 fn sha_hex(bytes: &[u8]) -> String {
@@ -100,7 +115,7 @@ fn save_original(dir: &Path, project_id: &str, id: &str, bytes: &[u8]) -> std::i
 fn allocate(remote: &Remote<'_>, root: &str, id: &str, reserved: Option<&str>) -> Option<String> {
     let key = lifecycle::folder_key(id);
     let storage = match remote {
-        Remote::None => return None,
+        Remote::None | Remote::Refused(..) => return None,
         Remote::S3 => return Some(reserved.map_or_else(|| format!("{root}/{key}"), str::to_owned)),
         Remote::Dav(s) => *s,
     };
@@ -151,7 +166,7 @@ pub fn store_create_files(
     remote: &Remote<'_>,
     root: &str,
 ) -> Option<JValue> {
-    if matches!(remote, Remote::None) {
+    if matches!(remote, Remote::None | Remote::Refused(..)) {
         return None;
     }
     let pending: Vec<&(String, String)> = inline.iter().filter(|(n, c)| storable(n, c)).collect();
@@ -414,6 +429,10 @@ mod tests {
                 .borrow_mut()
                 .push((path.to_owned(), bytes.to_vec()));
             Ok(())
+        }
+        fn delete_file(&self, path: &str) -> Result<bool, FileError> {
+            self.calls.borrow_mut().push(format!("DELETE {path}"));
+            Ok(false)
         }
         fn remove_empty_folder(&self, path: &str) -> Result<(bool, &'static str), String> {
             self.calls.borrow_mut().push(format!("SWEEP {path}"));

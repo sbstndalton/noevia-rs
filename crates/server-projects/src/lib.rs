@@ -65,6 +65,7 @@ pub mod chat_move;
 pub mod chats;
 pub mod context;
 pub mod context_window;
+pub mod files;
 pub mod frame;
 pub mod free_chats;
 pub mod history;

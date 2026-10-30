@@ -3000,6 +3000,7 @@ dependencies = [
  "serde_json",
  "server-store",
  "sha2",
+ "storage-path",
  "tempfile",
  "upload-sniff",
 ]

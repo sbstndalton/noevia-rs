@@ -97,6 +97,10 @@ pub enum Route {
     DeleteProject {
         project: String,
     },
+    /// DELETE /api/projects/{id}/files (sbstndalton/noevia#2191 round 3, `rust-project-files`)
+    DeleteFile {
+        project: String,
+    },
 }
 
 /// Node's matchers, `^\/api\/projects\/([^/]+)\/assets$`, `...\/assets\/([^/]+)$` and
@@ -155,6 +159,10 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
     match (method, parts.as_slice()) {
         // routes/projects.cjs `/^\/api\/projects\/([^/]+)$/` for DELETE (sbstndalton/noevia#2191).
         ("DELETE", [project]) if !project.is_empty() => Some(Route::DeleteProject {
+            project: (*project).to_string(),
+        }),
+        // routes/projects.cjs `projFileDel`, DELETE only (sbstndalton/noevia#2191 round 3).
+        ("DELETE", [project, "files"]) if !project.is_empty() => Some(Route::DeleteFile {
             project: (*project).to_string(),
         }),
         ("POST", [project, "assets"]) if !project.is_empty() => Some(Route::Upload {
@@ -342,6 +350,7 @@ pub async fn serve(
         Route::SaveHistory { .. } => Some(history::BODY_LIMIT),
         Route::MoveChat { .. } => Some(chat_move::BODY_LIMIT),
         Route::CreateProject => Some(lifecycle::BODY_LIMIT),
+        Route::DeleteFile { .. } => Some(server_projects::files::BODY_LIMIT),
         Route::DeleteProject { .. }
         | Route::One { .. }
         | Route::Chats { .. }
@@ -384,6 +393,9 @@ pub async fn serve(
     // blocking pool with the rest.
     let create_inputs =
         matches!(route, Route::CreateProject).then(|| (Arc::clone(app), authn.clone()));
+    // A source file's delete writes to the user's storage (round 3, #2191).
+    let file_inputs =
+        matches!(route, Route::DeleteFile { .. }).then(|| (Arc::clone(app), authn.clone()));
     // A create or delete runs the user's queued storage sweep afterwards (round 3, #2191).
     let sweep_inputs = matches!(route, Route::CreateProject | Route::DeleteProject { .. })
         .then(|| (Arc::clone(app), authn.clone(), data_dir.clone()));
@@ -405,6 +417,7 @@ pub async fn serve(
             | Route::DeleteChat { .. }
             | Route::CreateProject
             | Route::DeleteProject { .. }
+            | Route::DeleteFile { .. }
     ) || (matches!(route, Route::One { .. }) && method == "DELETE");
     let done = tokio::task::spawn_blocking(move || {
         if writes {
@@ -484,8 +497,16 @@ pub async fn serve(
                 None => Reply::internal(),
             },
             (Route::DeleteProject { project }, _) => lifecycle::delete(ctx, &project),
+            (Route::DeleteFile { project }, Some(b)) => match &file_inputs {
+                Some((app, authn)) => {
+                    let opener = opener(app, authn);
+                    server_projects::files::delete(ctx, &project, &b.bytes, b.over, &opener)
+                }
+                None => Reply::internal(),
+            },
             (
                 Route::CreateProject
+                | Route::DeleteFile { .. }
                 | Route::Upload { .. }
                 | Route::SaveChats { .. }
                 | Route::SaveFreeChats
@@ -556,7 +577,7 @@ fn sweep_queued(app: &Arc<App>, authn: &server_auth::Identity, data_dir: &std::p
     #[cfg(feature = "rust-storage-browse")]
     {
         let opened = crate::project_storage_io::open(app, authn);
-        if matches!(opened, crate::project_storage_io::Opened::Unavailable) {
+        if matches!(opened, crate::project_storage_io::Opened::Refused(..)) {
             return;
         }
         server_projects::project_storage::sweep_pending(

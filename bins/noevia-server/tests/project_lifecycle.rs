@@ -566,6 +566,9 @@ async fn a_failed_save_removes_nothing() {
 #[test]
 fn the_build_lists_rust_project_lifecycle() {
     assert!(noevia_server::FEATURES.contains(&"rust-project-lifecycle"));
+    // Round 3: the storage writes and the source file delete.
+    assert!(noevia_server::FEATURES.contains(&"rust-project-storage"));
+    assert!(noevia_server::FEATURES.contains(&"rust-project-files"));
 }
 
 /// The user's storage row: a synthetic WebDAV server (dav_lab), Basic `u:<secret>`.
@@ -710,4 +713,165 @@ async fn create_keeps_its_files_when_storage_refuses() {
         "one refused MKCOL, never retried: {:?}",
         d.seen
     );
+}
+
+/// sbstndalton/noevia#2191 round 3 (`rust-project-files`): DELETE /api/projects/{id}/files, Node's
+/// order and answers, the storage delete through the owned child, then the list, the prune and the
+/// RAG removal queued for core.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_source_file_delete_removes_it_from_storage_then_the_project() {
+    if !cfg!(target_os = "linux") {
+        eprintln!("skipped: the owned storage child runs only on Linux");
+        return;
+    }
+    let f = front().await;
+    publish_catalogue(&f);
+    let h = json_headers(&f);
+    // No browsable storage yet: Node's answers in Node's order.
+    std::fs::write(
+        f.user_dir().join("projects.json"),
+        r#"{"projects":[{"id":"loc","name":"L","sourceFolders":["s"],"files":[],"chats":[]}]}"#,
+    )
+    .unwrap();
+    let del = |id: &str| format!("/api/projects/{id}/files");
+    for (path, body, want) in [
+        (
+            del("nope"),
+            r#"{"path":"s/a.md"}"#,
+            (404, r#"{"error":"no such project"}"#),
+        ),
+        (
+            del("loc"),
+            "null",
+            (400, r#"{"error":"request body must be a JSON object"}"#),
+        ),
+        (del("loc"), "{", (400, r#"{"error":"invalid JSON"}"#)),
+        (del("loc"), "", (400, r#"{"error":"a path is required"}"#)),
+        (
+            del("loc"),
+            r#"{"path":0}"#,
+            (400, r#"{"error":"a path is required"}"#),
+        ),
+        (
+            del("loc"),
+            r#"{"path":"s/../a.md"}"#,
+            (
+                400,
+                r#"{"error":"That file is not in any folder attached to this project, so it cannot be deleted from here."}"#,
+            ),
+        ),
+        (
+            del("loc"),
+            r#"{"path":"s/a.md"}"#,
+            (400, r#"{"error":"no browsable storage connected"}"#),
+        ),
+        (del("%E0%A4%A"), "{}", (500, "")),
+    ] {
+        let (status, _, text) = call(f.addr, "DELETE", &path, &h, body).await;
+        assert_eq!(status, want.0, "{path} {body}: {text}");
+        if !want.1.is_empty() {
+            assert_eq!(text, want.1, "{path} {body}");
+        }
+    }
+    // Signed out and without the CSRF token: the gate's answers.
+    let (status, _, _) = call(f.addr, "DELETE", &del("loc"), &[("origin", ORIGIN)], "{}").await;
+    assert_eq!(status, 401);
+
+    // With storage: a stored file, then its delete.
+    let (port, dav) = dav_lab::server();
+    connect_storage(&f, port, "pw");
+    std::fs::write(f.data.join("secrets.key"), vec![7u8; 32]).unwrap();
+    let (_, _, text) = call(f.addr, "POST", "/api/projects", &h, r#"{"name":"S","files":[{"name":"gone.md","content":"bye"},{"name":"keep.md","content":"stay"}]}"#).await;
+    let made: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let id = made["id"].as_str().unwrap().to_string();
+    let folder = made["projectFolder"].as_str().unwrap().to_string();
+    let target = format!("{folder}/Text/gone.md");
+    // A folder of its own is refused by storage-client's check, nothing removed.
+    let (status, _, text) = call(
+        f.addr,
+        "DELETE",
+        &del(&id),
+        &h,
+        &format!(r#"{{"path":"{folder}/Text"}}"#),
+    )
+    .await;
+    assert_eq!(
+        (status, text.as_str()),
+        (
+            400,
+            format!(r#"{{"error":"refusing to delete \"{folder}/Text\": it is a folder"}}"#)
+                .as_str()
+        )
+    );
+    let (status, _, text) = call(
+        f.addr,
+        "DELETE",
+        &del(&id),
+        &h,
+        &format!(r#"{{"path":"{target}"}}"#),
+    )
+    .await;
+    assert_eq!(
+        (status, text.as_str()),
+        (200, format!(r#"{{"ok":true,"path":"{target}"}}"#).as_str())
+    );
+    assert!(!dav.lock().unwrap().files.contains_key(&target));
+    assert!(dav
+        .lock()
+        .unwrap()
+        .files
+        .contains_key(&format!("{folder}/Text/keep.md")));
+    let stored = projects(&f);
+    let p = stored
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == id.as_str())
+        .unwrap();
+    let names: Vec<_> = p["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x["name"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(names, vec![format!("{folder}/Text/keep.md")]);
+    let uploads = f.user_dir().join("project-uploads").join(hex_sha256(&id));
+    assert!(
+        !uploads.join(hex_sha256("bye")).exists(),
+        "its original is pruned"
+    );
+    assert!(uploads.join(hex_sha256("stay")).exists());
+    let jobs = server_projects::outbox::jobs(&f.user_dir()).unwrap();
+    assert!(jobs.iter().any(|j| j.kind == "unindex"
+        && j.project == id
+        && j.file.as_deref() == Some(target.as_str())));
+    // Gone already: storage says missing, the list has nothing to drop: still Node's 200.
+    let (status, _, _) = call(
+        f.addr,
+        "DELETE",
+        &del(&id),
+        &h,
+        &format!(r#"{{"path":"{folder}/x.md"}}"#),
+    )
+    .await;
+    assert_eq!(status, 200);
+    // A refused login is core's storageLoginRejected (502), never the credential.
+    let c = Connection::open(server_store::db_path(&f.data)).unwrap();
+    c.execute("UPDATE storage_connections SET secret = 'wrong'", [])
+        .unwrap();
+    let (status, _, text) = call(
+        f.addr,
+        "DELETE",
+        &del(&id),
+        &h,
+        &format!(r#"{{"path":"{folder}/Text/keep.md"}}"#),
+    )
+    .await;
+    assert_eq!(status, 502, "{text}");
+    assert!(text.contains(r#""code":"storageLoginRejected""#) && !text.contains("wrong"));
+    assert!(dav
+        .lock()
+        .unwrap()
+        .files
+        .contains_key(&format!("{folder}/Text/keep.md")));
 }

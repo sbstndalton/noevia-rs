@@ -462,7 +462,7 @@ file whose name is a validated hex hash, never a request value.
 | `/api/projects/{id}/documents/pages` | node | the page reader, beside the extraction state and the large-document lock |
 | `/api/projects` (POST), `/api/projects/{projectId}` (DELETE) | rust | round 2, below |
 | `/api/projects/{projectId}/config` | node | its model check reads Node's served-model catalogue and provider registry (live state, not persisted), and a `files` patch re-indexes through Node's RAG writer; next after the provider/model catalogue is published like the toolbox catalogue |
-| `/api/projects/{id}/files`, `/upload`, `/sources/sync`, `/documents` (POST), `source-jobs`, `folder-import/plan` | node | the storage writes they make exist in the front since round 3 (`writes`, below); what keeps them on Node is the extraction pipeline they run in-process: docling/OCR extraction, `pdf-reduce`'s page ranges, the DOCX reader, the large-document lock and the background source jobs, then the index outbox for their RAG work |
+| `/api/projects/{id}/upload`, `/sources/sync`, `/documents` (POST), `source-jobs`, `folder-import/plan` | node | the storage writes they make exist in the front since round 3 (`writes`, below); what keeps them on Node is the extraction pipeline they run in-process: docling/OCR extraction, `pdf-reduce`'s page ranges, the DOCX reader, the large-document lock and the background source jobs, then the index outbox for their RAG work |
 | `/api/projects/{projectId}/instruction-skills`, `.../manifests`, `/api/projects/{project}/skills/install` | node | the known-toolbox list (plugins, MCP) is Node's runtime catalogue; install fetches a published skill through Node's plugin directory |
 | `/api/projects/{projectId}/browser`, `/code`, `/research` | node | they drive a browser session, the code harness or research jobs |
 | `/api/code/active` | node | the code harness service's live task list |
@@ -521,3 +521,22 @@ its own admission (four at once, one per account). With it:
   contract, `running` rows of that kind taken back once per process. Core claims, recovers and
   counts only `index` jobs (core `rust-project-storage.cjs` `CORE_KINDS`), and `--features` lists
   `rust-project-storage`; the web supervisor and assemble-release pair the two.
+
+## sbstndalton/noevia#2191 round 3 (group rust-project-files): a source file's delete
+
+`DELETE /api/projects/{id}/files` is the front's (crates/server-projects `files`); core refuses it
+with 503 `RUST_PROJECT_FILES_OWNED` (`server/rust-project-files.cjs`) and `--features` lists
+`rust-project-files`. Node's order and answers: 404 `no such project`, the body as `readJson`
+reads it (empty is `{}`; 400 `invalid JSON`; 413 past 1 MiB), 400 not an object, 400 `a path is
+required`, `ownsFile`'s 400, 400 `no browsable storage connected`, then `deleteFile` through the
+round-3 write client (a folder refused, conditional on the file's ETag) with
+`replyStorageFailure`'s answers (`storageLoginRejected`, `storageForbidden`, `storageThrottled`,
+`storageTimeout`, `storageUnreachable`) or the error's own status and message. The file leaves the
+list first (#1914); then its document pages, upload original and images go (an image a chat still
+names is retired), and its RAG rows are an `unindex` job in the index outbox, which core runs
+(rag.cjs `deleteProjectFile`) unless a file of that name is listed again by then; a delete's
+tombstone drops it. Stricter than Node: the storage endpoint policy (as the browse's) is applied,
+and a pruned directory entry is never followed through a symlink. Not serialized with core's
+in-process source lock (a concurrent core upload of the same project is merged through
+projects.json's version, not queued behind the delete). Every other method of the path is Node's.
+

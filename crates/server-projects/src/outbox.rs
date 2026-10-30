@@ -134,7 +134,7 @@ pub fn enqueue(dir: &Path, jobs: &[Job<'_>], now_ms: i64) -> Result<i64, OutboxE
     let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let generation = bump(&tx)?;
     for job in jobs {
-        if job.kind == "index" {
+        if job.kind == "index" || job.kind == "unindex" {
             let dead: Option<i64> = tx
                 .query_row(
                     "SELECT generation FROM tombstones WHERE project = ?1",
@@ -166,7 +166,8 @@ pub fn enqueue(dir: &Path, jobs: &[Job<'_>], now_ms: i64) -> Result<i64, OutboxE
     Ok(generation)
 }
 
-/// A project's delete: its tombstone at a new generation, its pending index jobs dropped, and
+/// A project's delete: its tombstone at a new generation, its pending index and unindex jobs
+/// (round 3: a removed file's RAG rows) dropped, and
 /// `sweep` (the storage sweep, if any) queued, in one transaction. Returns the generation.
 pub fn tombstone(
     dir: &Path,
@@ -183,7 +184,7 @@ pub fn tombstone(
         params![project, generation, now_ms],
     )?;
     tx.execute(
-        "DELETE FROM jobs WHERE project = ?1 AND kind = 'index'",
+        "DELETE FROM jobs WHERE project = ?1 AND kind IN ('index', 'unindex')",
         [project],
     )?;
     if let Some(payload) = sweep {
