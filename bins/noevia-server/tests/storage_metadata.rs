@@ -16,11 +16,12 @@ fn exact_get_is_always_the_fronts() {
     for method in ["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"] {
         assert_eq!(
             dispatch_under(method, "/api/integrations/storage", on),
-            // Only a build with the rust-storage-reads feature answers it (routes.rs compiled()).
-            if method == "GET" && cfg!(feature = "rust-storage-reads") {
-                Some(Native::StorageMetadata)
-            } else {
-                None
+            // Only a build with the rust-storage-reads feature answers it (routes.rs compiled());
+            // its PUT is the storage connection save (sbstndalton/noevia#2190 round 4).
+            match method {
+                "GET" if cfg!(feature = "rust-storage-reads") => Some(Native::StorageMetadata),
+                "PUT" if cfg!(feature = "rust-storage-reads") => Some(Native::StorageIntegrations),
+                _ => None,
             }
         );
     }
