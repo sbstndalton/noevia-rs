@@ -22,11 +22,14 @@ use std::path::Path;
 /// The largest file text accepted (Node's projects.json holds no source text since #1806).
 pub const TEXT_LIMIT: usize = 32 * 1024 * 1024;
 
-/// The two files Node writes through here.
+/// The files Node writes through here. `Providers` (sbstndalton/noevia#2190 round 6) is the
+/// account's private provider rows: Node saves only its seal-on-load migration through here; the
+/// Rust front's provider routes are the file's writer otherwise ([`crate::provider_rows`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StoreFile {
     Projects,
     FreeChats,
+    Providers,
 }
 
 impl StoreFile {
@@ -34,6 +37,7 @@ impl StoreFile {
         match name {
             store::PROJECTS_FILE => Some(StoreFile::Projects),
             crate::chats::FREE_CHATS_FILE => Some(StoreFile::FreeChats),
+            crate::provider_rows::FILE => Some(StoreFile::Providers),
             _ => None,
         }
     }
@@ -42,6 +46,7 @@ impl StoreFile {
         match self {
             StoreFile::Projects => store::PROJECTS_FILE,
             StoreFile::FreeChats => crate::chats::FREE_CHATS_FILE,
+            StoreFile::Providers => crate::provider_rows::FILE,
         }
     }
 }
@@ -117,10 +122,12 @@ fn valid(which: StoreFile, text: &str) -> Result<(), &'static str> {
     let ok = match which {
         StoreFile::Projects => matches!(parsed.get("projects"), JValue::Arr(_)),
         StoreFile::FreeChats => matches!(parsed, JValue::Arr(_)),
+        StoreFile::Providers => matches!(parsed.get("providers"), JValue::Arr(_)),
     };
     ok.then_some(()).ok_or(match which {
         StoreFile::Projects => "projects.json must be { \"projects\": [...] }",
         StoreFile::FreeChats => "free-chats.json must be a list",
+        StoreFile::Providers => "providers.json must be { \"providers\": [...] }",
     })
 }
 
@@ -138,7 +145,10 @@ pub fn write(
     existing_dir(&dir)?;
     let file = dir.join(which.name());
     let _held = lock::acquire(&file).map_err(StoreError::from)?;
-    crate::chat_move::fence(&dir)?;
+    // The chat-move fence guards the chat lists only; the provider rows take no part in a move.
+    if which != StoreFile::Providers {
+        crate::chat_move::fence(&dir)?;
+    }
     let now = snapshot(&file)?;
     if now.version != version {
         return Err(WriteError::Conflict(now));

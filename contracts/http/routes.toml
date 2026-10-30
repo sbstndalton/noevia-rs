@@ -733,15 +733,19 @@ owner = "rust"
 methods = ["GET"]
 
 [[route]]
+# sbstndalton/noevia#2190 round 6 (rust-providers): the registry's list and create; the Rust front is
+# the only writer of providers.json and shared-providers.json (provider_routes.rs).
 path = "/api/providers"
-owner = "node"
+owner = "rust"
+methods = ["GET", "POST"]
 
 [[route]]
-# M6 (#1373): GET only (crates/server-chatgpt-status, read-only). DELETE (disconnect, which also
-# removes the provider row Node writes) stays Node's; it asks the broker to delete the tokens.
+# M6 (#1373): GET (crates/server-chatgpt-status, read-only). Round 6 (rust-providers): DELETE is the
+# disconnect (the broker's tokens, the provider row and the projects' fallbacks, provider_routes.rs);
+# the other methods stay Node's (its 404/405).
 path = "/api/providers/chatgpt"
 owner = "rust"
-methods = ["GET"]
+methods = ["GET", "DELETE"]
 
 [[route]]
 # sbstndalton/noevia#2190 round 5 (rust-chatgpt-oauth): the device sign-in, the token store and the
@@ -766,15 +770,17 @@ owner = "rust"
 methods = ["GET"]
 
 [[route]]
-# sbstndalton/noevia#2190 round 4 (rust-provider-test): the probe. Node keeps the other methods
-# (its PUT|DELETE /api/providers/{id} handler reads `test` as a provider id).
+# sbstndalton/noevia#2190 round 4 (rust-provider-test): the probe (POST). Round 6 (rust-providers):
+# PUT and DELETE read `test` as a provider id, the registry's like any other.
 path = "/api/providers/test"
 owner = "rust"
-methods = ["POST"]
+methods = ["POST", "PUT", "DELETE"]
 
 [[route]]
+# sbstndalton/noevia#2190 round 6 (rust-providers): edit and remove one row.
 path = "/api/providers/{id}"
-owner = "node"
+owner = "rust"
+methods = ["PUT", "DELETE"]
 
 [[route]]
 # sbstndalton/noevia#2190 round 5 (rust-provider-models): a stored provider's model list, every

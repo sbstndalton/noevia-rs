@@ -86,6 +86,7 @@ pub mod outbox;
 pub mod partial;
 pub mod project_documents;
 pub mod project_storage;
+pub mod provider_rows;
 pub mod research_jobs;
 pub mod retention;
 pub mod skills;

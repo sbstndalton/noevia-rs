@@ -283,8 +283,18 @@ fn seed(dir: &std::path::Path) -> Connection {
             (hex(t), uid, hex("csrf"), now, now + 86400000),
         )
         .unwrap();
+        // Core's workspace load makes the account's directory on its first request.
+        std::fs::create_dir_all(dir.join("users").join(uid)).unwrap();
     }
     db
+}
+
+/// The rows of `users/<user>/providers.json`.
+fn provider_rows(dir: &std::path::Path, user: &str) -> Vec<serde_json::Value> {
+    match std::fs::read_to_string(dir.join("users").join(user).join("providers.json")) {
+        Ok(t) => j(&t)["providers"].as_array().cloned().unwrap_or_default(),
+        Err(_) => Vec::new(),
+    }
 }
 
 async fn front(dir: &std::path::Path, issuer: &str, flag: &str) -> Front {
@@ -523,6 +533,15 @@ async fn device_sign_in_through_the_front() {
         audits(&db, A),
         ["chatgpt.oauth.start", "chatgpt.oauth.connect"]
     );
+    // Round 6: the account's ChatGPT provider row is written in the same step as the tokens, by
+    // the front (core's row, no credential in it).
+    assert_eq!(
+        provider_rows(d.path(), A),
+        [j(
+            r#"{"id":"chatgpt-oauth","kind":"chatgpt-oauth","label":"ChatGPT","baseUrl":"https://chatgpt.com/backend-api/codex","apiKey":"","defaultModel":"","shared":false,"external":true}"#
+        )]
+    );
+    assert!(provider_rows(d.path(), B).is_empty());
     // #1838: the connect audit row carries only the short plan identifier.
     let detail: String = db
         .query_row(
@@ -1103,6 +1122,10 @@ async fn races_are_won_by_the_disconnect_and_the_cancel() {
     );
     assert_eq!(polling.await.unwrap(), (200, j(r#"{"state":"cancelled"}"#)));
     assert!(token_row(&db, A).is_none());
+    assert!(
+        provider_rows(d.path(), A).is_empty(),
+        "no provider row for a sign-in the disconnect won"
+    );
     // ... and so does a cancel.
     let body = started(f.addr, ADMIN).await;
     tokio::time::sleep(Duration::from_millis(1300)).await;

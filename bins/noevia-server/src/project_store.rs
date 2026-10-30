@@ -57,6 +57,18 @@
 //!   takes back the tombstone and removes nothing (the error below). The attachments project is
 //!   Node's to free (its orphan reaper, once the chat is tombstoned and in no list).
 //!
+//! The provider keys' re-seal (sbstndalton/noevia#2190 round 6, capability `rust-providers-reseal`;
+//! provider_reseal.rs), the Rust front being the only writer of `providers.json` and
+//! `shared-providers.json`: core's secrets rotation asks for one pass per file under its lock, with
+//! the current and the previous key, instead of rewriting the files itself:
+//!
+//! `POST /v1/providers/reseal { scope, user? }`    -> 200 `{ ok, tables, failures }`
+//!                                                   | 503 `credential store unavailable` (no usable keys)
+//!   `scope` is `user` (every account's file, or `user`'s alone), `shared` or `all`; `tables` maps
+//!   `shared_providers` / `user_providers:<id>` to `{ current, rotated, upgraded, empty, failed }`,
+//!   `failures` lists `{ table, ref, error }`. A key no available key opens is a failure, never an
+//!   error, and its row is left as it was.
+//!
 //! Errors use Node's shapes: 503 `{ error, code: "PROJECTS_BUSY" }` (the lock was held past its
 //! wait), 410 `account no longer exists`, 400 a bad request, 413 a body over the limit, 500 else.
 //! The body limit is [`BODY_LIMIT`]; a request's file work runs on the blocking pool.
@@ -154,7 +166,7 @@ fn target(body: &Value) -> Result<(String, StoreFile), &'static str> {
         .get("file")
         .and_then(Value::as_str)
         .and_then(StoreFile::parse)
-        .ok_or("file must be projects.json or free-chats.json")?;
+        .ok_or("file must be projects.json, free-chats.json or providers.json")?;
     Ok((user.to_string(), file))
 }
 
@@ -643,6 +655,15 @@ pub fn router_with_app(
             async move { legacy_webdav(store, app, headers, raw).await }
         }),
     );
+    // sbstndalton/noevia#2190 round 6: the provider keys' re-seal (provider_reseal.rs).
+    let reseal_store = store.clone();
+    router = router.route(
+        "/v1/providers/reseal",
+        post(move |headers: HeaderMap, raw: Bytes| {
+            let store = reseal_store.clone();
+            async move { providers_reseal(store, headers, raw).await }
+        }),
+    );
     // sbstndalton/noevia#2190 round 5: Sign in with ChatGPT's token broker
     // (chatgpt_oauth_routes.rs `internal_op`), behind the same secret.
     for op in [
@@ -663,6 +684,44 @@ pub fn router_with_app(
         );
     }
     router
+}
+
+/// `POST /v1/providers/reseal { scope, user? }` (see the header).
+async fn providers_reseal(store: Store, headers: HeaderMap, raw: Bytes) -> Response<Body> {
+    if !authorised(&store, &headers) {
+        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+    }
+    #[cfg(feature = "rust-storage-reads")]
+    {
+        use crate::provider_reseal::{fresh_nonce, run, Scope};
+        let Ok(body) = serde_json::from_slice::<Value>(&raw) else {
+            return error(StatusCode::BAD_REQUEST, "invalid JSON");
+        };
+        let text = |k: &str| body.get(k).and_then(Value::as_str);
+        let scope = match Scope::parse(text("scope"), text("user")) {
+            Ok(s) => s,
+            Err(why) => return error(StatusCode::BAD_REQUEST, why),
+        };
+        let data_dir = store.data_dir.clone();
+        let done = tokio::task::spawn_blocking(move || {
+            let keys = crate::provider_routes::load_keys(&data_dir)?;
+            Some(run(&data_dir, &scope, &keys, fresh_nonce))
+        })
+        .await;
+        match done {
+            Ok(Some(report)) => reply(StatusCode::OK, &report.json()),
+            Ok(None) => error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "credential store unavailable",
+            ),
+            Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error"),
+        }
+    }
+    #[cfg(not(feature = "rust-storage-reads"))]
+    {
+        let _ = raw;
+        error(StatusCode::NOT_FOUND, "not found")
+    }
 }
 
 async fn chatgpt_op(
