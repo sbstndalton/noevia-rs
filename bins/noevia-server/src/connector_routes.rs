@@ -325,7 +325,15 @@ pub async fn serve(
     if (path == LIST && req.method() == Method::GET)
         || (path == NEXTCLOUD_POLICY && req.method() == Method::PUT)
     {
-        return crate::nextcloud_routes::serve(app, req, path).await;
+        #[cfg(feature = "rust-storage-reads")]
+        {
+            return crate::nextcloud_routes::serve(app, req, path).await;
+        }
+        #[cfg(not(feature = "rust-storage-reads"))]
+        {
+            // The storage features carry the connection this page reads: without them Node's refusal (503) answers.
+            return app.proxy.forward(conn.peer, req).await;
+        }
     }
     let Some(drive) = gdrive::of(app) else {
         return app.proxy.forward(conn.peer, req).await;

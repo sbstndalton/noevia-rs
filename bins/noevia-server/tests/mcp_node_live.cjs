@@ -43,7 +43,7 @@ const wiring = createMcpWiring({
   manifest: [],
   mcp: core('mcp.cjs'),
   bindBoxes: ({ manifest }) => manifest.map(() => ({})),
-  directoryMcp: { asServers: () => [], boxFor: () => ({}), headersFor: () => ({}) },
+  directoryMcp: { signal: () => 0, asServers: () => [], boxFor: () => ({}), headersFor: () => ({}) },
   mcpOAuth: credentials.oauth,
   mcpKeys: credentials.keys,
   directoryUrlAllowed: async () => true,
