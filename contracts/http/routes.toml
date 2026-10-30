@@ -729,27 +729,33 @@ path = "/api/providers"
 owner = "node"
 
 [[route]]
-# M6 (#1373): GET only (crates/server-chatgpt-status, read-only); every other method and every
-# /api/providers/chatgpt/* sibling stays Node's.
+# M6 (#1373): GET only (crates/server-chatgpt-status, read-only). DELETE (disconnect, which also
+# removes the provider row Node writes) stays Node's; it asks the broker to delete the tokens.
 path = "/api/providers/chatgpt"
 owner = "rust"
 methods = ["GET"]
 
 [[route]]
+# sbstndalton/noevia#2190 round 5 (rust-chatgpt-oauth): the device sign-in, the token store and the
+# catalogue are the Rust broker's (chatgpt_oauth_routes.rs). Node answered only these methods.
 path = "/api/providers/chatgpt/device"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/providers/chatgpt/device/cancel"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/providers/chatgpt/device/poll"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/providers/chatgpt/models"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 # sbstndalton/noevia#2190 round 4 (rust-provider-test): the probe. Node keeps the other methods
@@ -763,8 +769,10 @@ path = "/api/providers/{id}"
 owner = "node"
 
 [[route]]
+# sbstndalton/noevia#2190 round 5 (rust-provider-models): a stored provider's model list, every
+# method (Node answered 405 for the others); a ChatGPT row's list is the token broker's.
 path = "/api/providers/{providerId}/models{*?}"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/ready"

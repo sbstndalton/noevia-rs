@@ -218,10 +218,10 @@ async fn gate_flag_tenant_and_node_answers_through_the_front() {
         ("DELETE", PATH),
         ("HEAD", PATH),
         ("GET", "/api/providers/chatgpt/"),
-        ("GET", "/api/providers/chatgpt/models"),
-        ("POST", "/api/providers/chatgpt/device"),
-        ("POST", "/api/providers/chatgpt/device/poll"),
-        ("POST", "/api/providers/chatgpt/device/cancel"),
+        // The broker's siblings (sbstndalton/noevia#2190 round 5) keep their other methods on Node.
+        ("POST", "/api/providers/chatgpt/models"),
+        ("GET", "/api/providers/chatgpt/device"),
+        ("GET", "/api/providers/chatgpt/device/poll"),
     ] {
         let (s, _, _) = call(addr, m, p, MEMBER, Some("csrf")).await;
         assert_eq!(s, 502, "{m} {p}");
