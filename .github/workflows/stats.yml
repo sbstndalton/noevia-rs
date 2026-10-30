@@ -141,12 +141,20 @@ jobs:
           # engine, so it is managed and carries the engine's capabilities instead of the recorded
           # unmanaged row.
           providers = get('/api/providers')
-          assert stats and len(stats) + len(caps) + len(hardware) + len(providers) == len(bad), [(r['method'], r['path'], r['diffs']) for r in bad]
+          # The evidence read and the preset reload (#2210) are native too. Against the front's own llama.cpp
+          # engine the evidence read refuses the corpus's request without a model (400) where the recorded
+          # "none" kind answered 404, and the reload meets the engine's loaded model and, with no recorded
+          # baseline of what the router read, refuses (409) where the recorded kind answered 404.
+          evidence = get('/api/models/evidence')
+          reload = [r for r in bad if r['method'] == 'POST' and r['path'] == '/api/models/presets/reload']
+          assert stats and len(stats) + len(caps) + len(hardware) + len(providers) + len(evidence) + len(reload) == len(bad), [(r['method'], r['path'], r['diffs']) for r in bad]
+          assert len(evidence) == 1 and all(r['status'] == 400 and r['expectedStatus'] == 404 and any(d['at'] == 'body/error' and d['actual'] == '"Choose a model"' for d in r['diffs']) for r in evidence), evidence
+          assert len(reload) == 1 and all(r['status'] == 409 and r['expectedStatus'] == 404 and any(d['at'] == 'body/loaded' and 'synthetic' in d['actual'] for d in r['diffs']) for r in reload), reload
           assert all(r['status'] == 200 and any(d['at'].endswith('up') for d in r['diffs']) for r in stats), stats
           assert len(caps) == 1 and all(r['status'] == 200 and any(d['at'].endswith('kind') and 'llamacpp' in d['actual'] for d in r['diffs']) for r in caps), caps
           assert len(providers) == 1 and all(r['status'] == 200 and any(d['at'] == 'body/providers/0/managed' and d['actual'] == 'true' for d in r['diffs']) for r in providers), providers
           assert len(hardware) == 1 and all(r['status'] == 200 and r['expectedStatus'] == 404 and any(d['at'].endswith('supported') and d['actual'] == 'false' for d in r['diffs']) for r in hardware), hardware
-          print('only GET /api/stats, the model reads and the provider list differ, natively:', len(bad))
+          print('only GET /api/stats, the model reads, the provider list, the evidence read and the preset reload differ, natively:', len(bad))
           PY
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
