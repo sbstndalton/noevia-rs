@@ -28,6 +28,8 @@ pub const OTHER: &str = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 pub const TENANT_KEY: &str = "synthetic-tenant-key-for-tests";
 pub const BEARER: &str = "synthetic-sidecar-bearer";
 pub const SECRET: &str = "synthetic-storage-password";
+/// The container start the synthetic Node and the front share.
+pub const START: &str = "0123456789abcdef0123456789abcdef";
 
 #[derive(Clone, Debug)]
 pub struct Seen {
@@ -175,6 +177,8 @@ pub struct Stub {
     pub seen: Arc<Mutex<Vec<Seen>>>,
     /// Bytes an endless stream has written.
     pub streamed: Arc<AtomicUsize>,
+    /// Requests the stub was still answering when the client went away.
+    pub cancelled: Arc<AtomicUsize>,
     task: tokio::task::JoinHandle<()>,
 }
 
@@ -191,25 +195,40 @@ impl Stub {
         let addr = listener.local_addr().unwrap();
         let seen = Arc::new(Mutex::new(Vec::new()));
         let streamed = Arc::new(AtomicUsize::new(0));
-        let (seen2, streamed2) = (Arc::clone(&seen), Arc::clone(&streamed));
+        let cancelled = Arc::new(AtomicUsize::new(0));
+        let (seen2, streamed2, cancelled2) = (
+            Arc::clone(&seen),
+            Arc::clone(&streamed),
+            Arc::clone(&cancelled),
+        );
         let task = tokio::spawn(async move {
             loop {
                 let Ok((stream, _)) = listener.accept().await else {
                     return;
                 };
-                let (script, seen, streamed) = (
+                let (script, seen, streamed, cancelled) = (
                     Arc::clone(&script),
                     Arc::clone(&seen2),
                     Arc::clone(&streamed2),
+                    Arc::clone(&cancelled2),
                 );
                 tokio::spawn(async move {
                     let service = service_fn(move |req: Request<Incoming>| {
-                        let (script, seen, streamed) = (
+                        let (script, seen, streamed, cancelled) = (
                             Arc::clone(&script),
                             Arc::clone(&seen),
                             Arc::clone(&streamed),
+                            Arc::clone(&cancelled),
                         );
-                        async move { answer(req, script, seen, streamed).await }
+                        async move {
+                            let mut guard = Cancelled {
+                                counter: cancelled,
+                                done: false,
+                            };
+                            let out = answer(req, script, seen, streamed).await;
+                            guard.done = true;
+                            out
+                        }
                     });
                     let _ = hyper::server::conn::http1::Builder::new()
                         .serve_connection(TokioIo::new(stream), service)
@@ -221,6 +240,7 @@ impl Stub {
             addr,
             seen,
             streamed,
+            cancelled,
             task,
         }
     }
@@ -234,6 +254,20 @@ impl Stub {
 }
 
 type Body = BoxBody<Bytes, std::io::Error>;
+
+/// Counts a request whose answer was dropped before it was complete: the client left.
+struct Cancelled {
+    counter: Arc<AtomicUsize>,
+    done: bool,
+}
+
+impl Drop for Cancelled {
+    fn drop(&mut self) {
+        if !self.done {
+            self.counter.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+}
 
 async fn answer(
     req: Request<Incoming>,
@@ -353,6 +387,8 @@ impl World {
             "../../../server-store/tests/fixtures/node-schema.sql"
         ))
         .unwrap();
+        // core diary-connectors.cjs creates this at boot.
+        db.execute_batch("CREATE TABLE IF NOT EXISTS diary_connectors(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,token_hash TEXT NOT NULL,created_at INTEGER NOT NULL)").unwrap();
         for (id, role) in [(ADMIN, "admin"), (MEMBER, "member"), (OTHER, "member")] {
             db.execute(
                 "INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES(?1,?1,?1,'Synthetic',?2,'x',?1,1,1)",
@@ -407,7 +443,29 @@ impl World {
             },
             store: Arc::clone(&self.store),
             data_dir: self.dir.path().to_owned(),
+            latch: None,
+            start_id: Some(START.to_owned()),
         }
+    }
+
+    /// [`World::ctx`] with a storage-login latch.
+    pub fn ctx_with_latch(&self, id: &str, latch: Arc<dyn server_diary::StorageLatch>) -> Ctx {
+        Ctx {
+            latch: Some(latch),
+            ..self.ctx(id, true)
+        }
+    }
+
+    /// The front's writer on the same database.
+    pub fn writer(&self) -> server_store::Writer {
+        server_store::Writer::open(self.dir.path(), server_store::RustAuth::owned()).unwrap()
+    }
+
+    /// The account's workspace directory.
+    pub fn user_dir(&self, id: &str) -> std::path::PathBuf {
+        let dir = self.dir.path().join("users").join(id);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
     }
 
     /// `users/<id>/migration.json`, the legacy-owner marker.

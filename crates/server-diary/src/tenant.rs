@@ -9,7 +9,7 @@ use crate::config::DiaryConfig;
 use base64::Engine as _;
 use js_json::JValue;
 use rand_core::{OsRng, RngCore};
-use server_auth::{Identity, Role};
+use server_auth::{Credential, Identity, PublicUser, Role};
 use server_storage_reads::owner_secret::{self, ProjectedConnection};
 use server_storage_reads::protocol::{self, Kind};
 use server_store::Store;
@@ -47,7 +47,7 @@ pub struct Tenant {
 
 /// `workspaceStore.get`: `users/<id>` under the data directory, for ids core's `userDir` accepts
 /// (`/^[0-9a-f-]{36}$/i`). Anything else has no workspace here and so no marker.
-fn workspace_dir(data_dir: &Path, user_id: &str) -> Option<std::path::PathBuf> {
+pub(crate) fn workspace_dir(data_dir: &Path, user_id: &str) -> Option<std::path::PathBuf> {
     let ok = user_id.len() == 36
         && user_id
             .bytes()
@@ -81,6 +81,55 @@ impl Tenant {
     pub fn user_id(&self) -> &str {
         &self.user_id
     }
+
+    /// [`Tenant::load`] for an account that is not signed in: a Diary connector speaks for its
+    /// owner with no session (core `callDiaryFile` runs as `{ user, legacy: false }`). Only the id
+    /// and the role are read from an identity, so only they are given; `role` is the account's
+    /// own, which the member-origin policy looks at.
+    pub fn load_user(
+        user_id: &str,
+        role: Role,
+        store: &Store,
+        data_dir: &Path,
+        config: &DiaryConfig,
+    ) -> Result<Self, TenantError> {
+        let identity = Identity {
+            user: PublicUser {
+                id: user_id.to_owned(),
+                username: String::new(),
+                display_name: String::new(),
+                role,
+                disabled: false,
+                diary_enabled: true,
+                onboarded: true,
+            },
+            account_role: role,
+            credential: Credential::Legacy,
+        };
+        Self::load(&identity, store, data_dir, config)
+    }
+
+    /// The saved connection as the storage-login latch names it: kind, address, bucket, user and
+    /// the secret (core `fingerprintOf`). The secret is lent, never copied out.
+    pub fn storage_identity(&self) -> StorageIdentity<'_> {
+        let c = self.storage.connection();
+        StorageIdentity {
+            kind: kind_name(c.kind),
+            base_url: &c.base_url,
+            bucket: &c.bucket,
+            username: &c.username,
+            secret: Zeroizing::new(String::from_utf8_lossy(&c.secret).into_owned()),
+        }
+    }
+}
+
+/// What core's `fingerprintOf(connection)` hashes. No `Debug`: it holds the secret.
+pub struct StorageIdentity<'a> {
+    pub kind: &'static str,
+    pub base_url: &'a str,
+    pub bucket: &'a str,
+    pub username: &'a str,
+    pub secret: Zeroizing<String>,
 }
 
 /// How a request's body is bound into the assertion (diary-tenant-assertion.cjs `bodyIsHashed`):

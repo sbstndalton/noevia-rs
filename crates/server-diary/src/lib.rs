@@ -16,9 +16,15 @@
 //!   (32 MiB body, 120 s, 24 MiB reply), answer for answer with core `routes/diary.cjs`,
 //!   `workspace-export.cjs` and `workspace-import.cjs` (deleted there once the front answers).
 //!
+//! * [`exchanges`] and [`connector`] (sbstndalton/noevia#2206): the Diary tab's recovery records
+//!   (`GET`/`POST /api/diary/exchanges`, with the set of running exchanges Node publishes), the
+//!   connector credentials in `diary_connectors` and the file bridge they open
+//!   (`/api/diary-connector`, `/api/profile/diary-connectors`); and `GET /api/diary/storage-status`
+//!   with the storage-login latch (a [`StorageLatch`] the front implements over its shared file).
+//!
 //! The sidecar stays the single writer of the Diary: nothing here writes it except by passing on
 //! the request the signed-in person made. What stays Node's, and why, is in
-//! `contracts/http/README.md` ("sbstndalton/noevia#2185").
+//! `contracts/http/README.md` ("sbstndalton/noevia#2185", "sbstndalton/noevia#2206").
 //!
 //! Secrets: the storage secret and the keys are never formatted into an error, a log line or a
 //! `Debug` output, and every failure is one of a few fixed answers.
@@ -28,11 +34,13 @@
 pub mod body;
 pub mod client;
 pub mod config;
+pub mod connector;
+pub mod exchanges;
 pub mod routes;
 pub mod tenant;
 
 pub use body::{ChannelBody, StreamError};
 pub use client::{CallError, JsonReply, Sidecar};
 pub use config::DiaryConfig;
-pub use routes::{Ctx, Diary, Limits, Reply, ReplyBody, Request, Route};
-pub use tenant::{Tenant, TenantError};
+pub use routes::{Ctx, Diary, Held, Limits, Reply, ReplyBody, Request, Route, StorageLatch};
+pub use tenant::{StorageIdentity, Tenant, TenantError};
