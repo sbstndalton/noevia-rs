@@ -30,6 +30,17 @@ const MCP_CAP: usize = 8 * 1024 * 1024;
 const LOOKUP_DEADLINE: Duration = Duration::from_secs(5);
 /// The most pages of `tools/list` a key check follows (core `MCP_LIST_TOOLS_MAX_PAGES`).
 const MAX_PAGES: usize = 20;
+/// One whole listing (connect, every page, close) may take this long. Each request has its own
+/// deadline, but a server that answers each page a byte at a time could otherwise hold one for
+/// twenty-two requests of thirty seconds (sbstndalton/noevia#2202 round 2 review, M2).
+const LIST_DEADLINE: Duration = Duration::from_secs(60);
+/// How many listings this front runs at once, for every member together: a listing may hold up to
+/// [`LIST_MAX_BYTES`] of definitions, so the number in flight is what bounds the memory (M1).
+const LIST_PERMITS: usize = 4;
+/// How long a listing waits for one of those places before it says the front is busy.
+const LIST_QUEUE_WAIT: Duration = Duration::from_secs(20);
+/// What a listing that found no free place says (a person can try again in a moment).
+pub const BUSY: &str = "noevia is checking other servers right now; try again in a moment";
 
 /// `directory-mcp.cjs` `hostedUrlOk`.
 pub fn hosted_url_ok(url: &str, qa_loopback: bool) -> bool {
@@ -116,6 +127,11 @@ impl Reply {
 pub struct Egress {
     client: reqwest::Client,
     qa_loopback: bool,
+    /// The places for listings that run at once ([`LIST_PERMITS`]).
+    listings: tokio::sync::Semaphore,
+    /// [`LIST_DEADLINE`] and [`LIST_QUEUE_WAIT`] (shortened by the unit tests).
+    list_deadline: Duration,
+    list_queue_wait: Duration,
 }
 
 impl Egress {
@@ -130,6 +146,9 @@ impl Egress {
         Some(Arc::new(Egress {
             client,
             qa_loopback,
+            listings: tokio::sync::Semaphore::new(LIST_PERMITS),
+            list_deadline: LIST_DEADLINE,
+            list_queue_wait: LIST_QUEUE_WAIT,
         }))
     }
 
@@ -325,11 +344,59 @@ pub async fn check_key(
     headers: &[(String, String)],
     next_id: &std::sync::atomic::AtomicI64,
 ) -> Result<usize, String> {
+    // Counted, not kept: a listing can be 16 MiB of definitions and a check only asks whether it works.
+    list(egress, url, headers, next_id, false)
+        .await
+        .map(|listing| listing.count)
+}
+
+/// What a listing found: how many tools, and the tools themselves when they were asked for.
+pub struct Listing {
+    pub count: usize,
+    pub tools: Vec<JValue>,
+}
+
+/// core mcp.cjs `listTools` budget: the bytes of tool definitions one listing may gather.
+const LIST_MAX_BYTES: usize = 16 * 1024 * 1024;
+
+/// The tools an MCP server offers, as it sent them (core `connect` + `listTools` + `disconnect`):
+/// `initialize`, the `initialized` notification, `tools/list` following `nextCursor` (at most
+/// [`MAX_PAGES`] pages and [`LIST_MAX_BYTES`] of definitions, keeping what was gathered), then the
+/// session is closed whatever happened. `headers` are the server's key headers (never the reserved
+/// ones). The failure is in core's words (`MCP 401: ...`, `MCP error -32000: ...`, `fetch failed`,
+/// `its address no longer resolves to a public host`). Every request is checked against the public
+/// address rules first, and again at connect time by the client's own resolver.
+pub async fn list_tools(
+    egress: &Egress,
+    url: &str,
+    headers: &[(String, String)],
+    next_id: &std::sync::atomic::AtomicI64,
+) -> Result<Vec<JValue>, String> {
+    list(egress, url, headers, next_id, true)
+        .await
+        .map(|listing| listing.tools)
+}
+
+/// [`list_tools`] with the choice of keeping the tools. At most [`LIST_PERMITS`] listings run at once
+/// in this process (one that finds no place for [`LIST_QUEUE_WAIT`] answers [`BUSY`]), and one listing
+/// is over after [`LIST_DEADLINE`] whatever its pages are doing; the session is closed either way.
+async fn list(
+    egress: &Egress,
+    url: &str,
+    headers: &[(String, String)],
+    next_id: &std::sync::atomic::AtomicI64,
+    retain: bool,
+) -> Result<Listing, String> {
     if !egress.url_allowed(url).await {
         return Err("its address no longer resolves to a public host".into());
     }
+    let _place = match tokio::time::timeout(egress.list_queue_wait, egress.listings.acquire()).await
+    {
+        Ok(Ok(place)) => place,
+        _ => return Err(BUSY.into()),
+    };
     let mut session: Option<String> = None;
-    let outcome = async {
+    let outcome = tokio::time::timeout(egress.list_deadline, async {
         let init = next_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
         rpc(
             egress,
@@ -361,7 +428,9 @@ pub async fn check_key(
             JValue::Undefined,
         )
         .await?;
+        let mut all: Vec<JValue> = Vec::new();
         let mut count = 0usize;
+        let mut bytes = 0usize;
         let mut cursor: Option<String> = None;
         for _ in 0..MAX_PAGES {
             let id = next_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
@@ -381,7 +450,17 @@ pub async fn check_key(
             .await?
             .unwrap_or(JValue::Null);
             if let JValue::Arr(tools) = result.get("tools") {
-                count += tools.len();
+                for tool in tools {
+                    let size = js_json::stringify(tool).map_or(0, |t| t.len());
+                    if bytes + size > LIST_MAX_BYTES {
+                        return Ok(Listing { count, tools: all });
+                    }
+                    bytes += size;
+                    count += 1;
+                    if retain {
+                        all.push(tool.clone());
+                    }
+                }
             }
             cursor = result
                 .get("nextCursor")
@@ -392,9 +471,10 @@ pub async fn check_key(
                 break;
             }
         }
-        Ok(count)
-    }
-    .await;
+        Ok(Listing { count, tools: all })
+    })
+    .await
+    .unwrap_or_else(|_| Err("MCP: listing the tools took too long".to_string()));
     // Closed whatever happened (a session that never got an id has nothing to close).
     if let Some(id) = session.take() {
         let mut request = egress
@@ -488,7 +568,7 @@ async fn rpc(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use reqwest::dns::Resolve;
@@ -557,5 +637,260 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(why, "its address no longer resolves to a public host");
+    }
+
+    // ── the listing's limits (sbstndalton/noevia#2202 round 2 review, M1 and M2) ──
+
+    use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// What the synthetic server does with a `tools/list`.
+    enum Out {
+        /// A `result` object, answered at once.
+        Result(String),
+        /// A result held for this long first.
+        Held(Duration, String),
+        /// Headers promising a long body, then one byte every 20 ms for as long as the client listens.
+        Drip,
+    }
+
+    #[derive(Default)]
+    struct Stats {
+        deleted: AtomicUsize,
+        lists: AtomicUsize,
+        now: AtomicUsize,
+        most: AtomicUsize,
+    }
+
+    /// A synthetic MCP server on loopback (never anything else). `act(n)` answers the n-th `tools/list` (from 1).
+    async fn serve(act: impl Fn(usize) -> Out + Send + Sync + 'static) -> (String, Arc<Stats>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/mcp", listener.local_addr().unwrap());
+        let stats = Arc::new(Stats::default());
+        let act = Arc::new(act);
+        let seen = Arc::clone(&stats);
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    return;
+                };
+                let (act, stats) = (Arc::clone(&act), Arc::clone(&seen));
+                tokio::spawn(async move {
+                    let mut buf = Vec::new();
+                    let mut chunk = [0u8; 8192];
+                    let head_end = loop {
+                        let Ok(n) = socket.read(&mut chunk).await else {
+                            return;
+                        };
+                        if n == 0 {
+                            return;
+                        }
+                        buf.extend_from_slice(&chunk[..n]);
+                        if let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                            break i + 4;
+                        }
+                    };
+                    let head = String::from_utf8_lossy(&buf[..head_end]).to_ascii_lowercase();
+                    let len = head
+                        .lines()
+                        .find_map(|l| l.strip_prefix("content-length:")?.trim().parse().ok())
+                        .unwrap_or(0usize);
+                    while buf.len() < head_end + len {
+                        let Ok(n) = socket.read(&mut chunk).await else {
+                            return;
+                        };
+                        if n == 0 {
+                            break;
+                        }
+                        buf.extend_from_slice(&chunk[..n]);
+                    }
+                    let body = String::from_utf8_lossy(&buf[head_end..]).to_string();
+                    let id = body
+                        .split("\"id\":")
+                        .nth(1)
+                        .map(|r| {
+                            r.chars()
+                                .take_while(char::is_ascii_digit)
+                                .collect::<String>()
+                        })
+                        .unwrap_or_default();
+                    let json = |extra: &str, result: &str| {
+                        let message = format!(r#"{{"jsonrpc":"2.0","id":{id},"result":{result}}}"#);
+                        format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n{message}", message.len())
+                    };
+                    let out = if head.starts_with("delete ") {
+                        stats.deleted.fetch_add(1, Ordering::SeqCst);
+                        "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                            .to_string()
+                    } else if body.contains("\"method\":\"initialize\"") {
+                        json("mcp-session-id: s1\r\n", "{}")
+                    } else if body.contains("\"method\":\"tools/list\"") {
+                        let n = stats.lists.fetch_add(1, Ordering::SeqCst) + 1;
+                        let running = stats.now.fetch_add(1, Ordering::SeqCst) + 1;
+                        stats.most.fetch_max(running, Ordering::SeqCst);
+                        let out = match act(n) {
+                            Out::Result(r) => json("", &r),
+                            Out::Held(d, r) => {
+                                tokio::time::sleep(d).await;
+                                json("", &r)
+                            }
+                            Out::Drip => {
+                                let _ = socket
+                                    .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 100000000\r\n\r\n")
+                                    .await;
+                                while socket.write_all(b" ").await.is_ok() {
+                                    tokio::time::sleep(Duration::from_millis(20)).await;
+                                }
+                                stats.now.fetch_sub(1, Ordering::SeqCst);
+                                return;
+                            }
+                        };
+                        stats.now.fetch_sub(1, Ordering::SeqCst);
+                        out
+                    } else {
+                        "HTTP/1.1 202 Accepted\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                            .to_string()
+                    };
+                    let _ = socket.write_all(out.as_bytes()).await;
+                    let _ = socket.shutdown().await;
+                });
+            }
+        });
+        (url, stats)
+    }
+
+    fn egress_with(deadline: Duration, queue_wait: Duration) -> Egress {
+        Egress {
+            client: reqwest::Client::builder()
+                .no_proxy()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .unwrap(),
+            qa_loopback: true,
+            listings: tokio::sync::Semaphore::new(LIST_PERMITS),
+            list_deadline: deadline,
+            list_queue_wait: queue_wait,
+        }
+    }
+
+    fn tools_of(n: usize, kib: usize) -> String {
+        let tools: Vec<String> = (0..n)
+            .map(|i| {
+                format!(
+                    r#"{{"name":"t{i}","description":"{}"}}"#,
+                    "a".repeat(kib * 1024)
+                )
+            })
+            .collect();
+        format!(r#"{{"tools":[{}]}}"#, tools.join(","))
+    }
+
+    #[tokio::test]
+    async fn a_listing_is_over_at_its_deadline_however_slowly_the_server_drips_and_its_session_is_closed(
+    ) {
+        let (url, stats) = serve(|_| Out::Drip).await;
+        let egress = egress_with(Duration::from_millis(800), Duration::from_secs(5));
+        let counter = AtomicI64::new(0);
+        let started = std::time::Instant::now();
+        let why = tokio::time::timeout(
+            Duration::from_secs(10),
+            list_tools(&egress, &url, &[], &counter),
+        )
+        .await
+        .expect("the listing is cut off by its own deadline")
+        .unwrap_err();
+        assert!(
+            started.elapsed() < Duration::from_secs(6),
+            "{:?}",
+            started.elapsed()
+        );
+        assert_eq!(why, "MCP: listing the tools took too long");
+        for _ in 0..50 {
+            if stats.deleted.load(Ordering::SeqCst) == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        assert_eq!(
+            stats.deleted.load(Ordering::SeqCst),
+            1,
+            "the session is closed after the deadline"
+        );
+        // The place was given back: another listing runs.
+        let (url2, _) = serve(|_| Out::Result(tools_of(1, 0))).await;
+        assert_eq!(check_key(&egress, &url2, &[], &counter).await, Ok(1));
+    }
+
+    #[tokio::test]
+    async fn a_reply_over_8_mib_fails_and_a_listing_stops_at_16_mib_of_definitions_keeping_what_fit(
+    ) {
+        let (url, _) = serve(|_| Out::Result(tools_of(9, 1024))).await;
+        let egress = egress_with(Duration::from_secs(60), Duration::from_secs(5));
+        let counter = AtomicI64::new(0);
+        assert_eq!(
+            list_tools(&egress, &url, &[], &counter).await.unwrap_err(),
+            "MCP: response body exceeded the 8 MB limit"
+        );
+        // Three pages of six tools of about 1 MiB (each reply under 8 MiB): the 16 MiB budget ends the third.
+        let (url, stats) = serve(|_| {
+            Out::Result(
+                tools_of(6, 1024).trim_end_matches('}').to_string() + r#","nextCursor":"more"}"#,
+            )
+        })
+        .await;
+        let kept = list(&egress, &url, &[], &counter, true).await.unwrap();
+        assert_eq!(
+            (kept.count, kept.tools.len()),
+            (15, 15),
+            "the 16th definition does not fit"
+        );
+        assert_eq!(
+            stats.lists.load(Ordering::SeqCst),
+            3,
+            "no page after the budget"
+        );
+        // A key check counts the same tools without keeping them.
+        let counted = list(&egress, &url, &[], &counter, false).await.unwrap();
+        assert_eq!((counted.count, counted.tools.len()), (15, 0));
+        assert_eq!(check_key(&egress, &url, &[], &counter).await, Ok(15));
+    }
+
+    #[tokio::test]
+    async fn only_four_listings_run_at_once_and_one_that_finds_no_place_says_so_then_recovers() {
+        let (url, stats) = serve(|_| Out::Held(Duration::from_millis(300), tools_of(1, 0))).await;
+        let egress = Arc::new(egress_with(
+            Duration::from_secs(60),
+            Duration::from_secs(30),
+        ));
+        let counter = Arc::new(AtomicI64::new(0));
+        let mut all = Vec::new();
+        for _ in 0..10 {
+            let (e, u, c) = (Arc::clone(&egress), url.clone(), Arc::clone(&counter));
+            all.push(tokio::spawn(
+                async move { check_key(&e, &u, &[], &c).await },
+            ));
+        }
+        for one in all {
+            assert_eq!(one.await.unwrap(), Ok(1));
+        }
+        assert_eq!(stats.lists.load(Ordering::SeqCst), 10);
+        let most = stats.most.load(Ordering::SeqCst);
+        // The number is the contract (four), not whatever the constant is changed to.
+        assert!((2..=4).contains(&most), "{most} at once");
+        // Every place taken for longer than a listing will wait: the answer is BUSY, quickly.
+        let busy = egress_with(Duration::from_secs(60), Duration::from_millis(100));
+        let held = busy
+            .listings
+            .acquire_many(LIST_PERMITS as u32)
+            .await
+            .unwrap();
+        let started = std::time::Instant::now();
+        assert_eq!(
+            check_key(&busy, &url, &[], &counter).await,
+            Err(BUSY.to_string())
+        );
+        assert!(started.elapsed() < Duration::from_secs(3));
+        drop(held);
+        assert_eq!(check_key(&busy, &url, &[], &counter).await, Ok(1));
     }
 }

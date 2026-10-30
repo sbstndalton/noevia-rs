@@ -989,3 +989,134 @@ fn mcp_credential_tables_take_only_the_broker_statements() {
     let raw = w.write(|tx| tx.execute("DELETE FROM mcp_oauth_tokens", []));
     assert!(matches!(raw, Err(StoreError::NotOwned(_))), "{raw:?}");
 }
+
+#[test]
+fn the_directory_rows_take_only_the_directory_statements_and_the_shared_key_is_a_compare_and_swap()
+{
+    // sbstndalton/noevia#2202 round 2: the front writes directory_mcp_servers, per statement.
+    let (dir, node) = node_db();
+    node.execute_batch(
+        "CREATE TABLE IF NOT EXISTS directory_mcp_servers(id TEXT PRIMARY KEY, registry_name TEXT NOT NULL UNIQUE, title TEXT NOT NULL, url TEXT NOT NULL, added_by TEXT, added_at INTEGER NOT NULL, headers_enc TEXT, oauth INTEGER NOT NULL DEFAULT 0, personal INTEGER NOT NULL DEFAULT 0, declared_json TEXT NOT NULL DEFAULT '[]');",
+    )
+    .unwrap();
+    let w = Writer::open(dir.path(), RustAuth::owned()).unwrap();
+    let cap = RustMcpCredentials::owned();
+    let count = |sql: &str| -> i64 { node.query_row(sql, [], |r| r.get(0)).unwrap() };
+    let key = |id: &str| -> Option<String> {
+        node.query_row(
+            "SELECT headers_enc FROM directory_mcp_servers WHERE id=?1",
+            [id],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+    // A raw statement is refused, as before.
+    for sql in [
+        "INSERT INTO directory_mcp_servers(id,registry_name,title,url,added_at) VALUES('s','r','t','https://x',1)",
+        "UPDATE directory_mcp_servers SET headers_enc='x'",
+        "DELETE FROM directory_mcp_servers",
+    ] {
+        let raw = w.write(|tx| tx.execute(sql, []));
+        assert!(matches!(raw, Err(StoreError::NotOwned(_))), "{sql}: {raw:?}");
+    }
+    let add = |id: &str, name: &str, key: Option<&str>| {
+        w.write(|tx| {
+            tx.mcp_directory_insert(
+                cap,
+                id,
+                name,
+                "t",
+                "https://x/mcp",
+                Some("admin"),
+                7,
+                key,
+                false,
+                true,
+                "[]",
+            )
+        })
+    };
+    assert_eq!(add("dir-a", "a", Some("k1")).unwrap(), 1);
+    // A repeated registry name is the table's UNIQUE refusing, not a silent second row.
+    assert!(add("dir-b", "a", None).is_err());
+    assert_eq!(add("dir-b", "b", None).unwrap(), 1);
+    assert_eq!(count("SELECT count(*) FROM directory_mcp_servers"), 2);
+    assert_eq!(
+        count("SELECT personal FROM directory_mcp_servers WHERE id='dir-a'"),
+        1
+    );
+    // The shared key changes only from the value it started from (None means "no key yet").
+    assert_eq!(
+        w.write(|tx| tx.mcp_directory_swap_headers(cap, "dir-a", Some("k2"), Some("stale"), None))
+            .unwrap(),
+        0
+    );
+    assert_eq!(key("dir-a").as_deref(), Some("k1"));
+    assert_eq!(
+        w.write(|tx| tx.mcp_directory_swap_headers(cap, "dir-a", Some("k2"), Some("k1"), None))
+            .unwrap(),
+        1
+    );
+    assert_eq!(key("dir-a").as_deref(), Some("k2"));
+    assert_eq!(
+        w.write(|tx| tx.mcp_directory_swap_headers(cap, "dir-b", Some("first"), None, None))
+            .unwrap(),
+        1,
+        "a missing key is NULL, matched as such"
+    );
+    assert_eq!(
+        w.write(|tx| tx.mcp_directory_swap_headers(cap, "dir-b", None, Some("first"), None))
+            .unwrap(),
+        1,
+        "and a cleared key is NULL again"
+    );
+    assert_eq!(key("dir-b"), None);
+    assert_eq!(
+        w.write(|tx| tx.mcp_directory_swap_headers(cap, "nope", Some("x"), None, None))
+            .unwrap(),
+        0
+    );
+    // The same server by the time it was added, not only by its key: a row removed and added again under the
+    // same id with no key (NULL, which matches NULL) is another server.
+    assert_eq!(
+        w.write(|tx| tx.mcp_directory_swap_headers(cap, "dir-b", Some("mine"), None, Some(8)))
+            .unwrap(),
+        0,
+        "added at another time: someone else's row"
+    );
+    assert_eq!(key("dir-b"), None);
+    assert_eq!(
+        w.write(|tx| tx.mcp_directory_swap_headers(cap, "dir-b", Some("mine"), None, Some(7)))
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        w.write(|tx| tx.mcp_directory_swap_headers(cap, "dir-b", None, Some("mine"), None))
+            .unwrap(),
+        1
+    );
+    // A rollback removes only the row it added.
+    assert_eq!(
+        w.write(|tx| tx.mcp_directory_delete_added(cap, "dir-a", 8))
+            .unwrap(),
+        0,
+        "another time: someone else's row"
+    );
+    assert_eq!(
+        w.write(|tx| tx.mcp_directory_delete_added(cap, "dir-a", 7))
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        w.write(|tx| tx.mcp_directory_delete(cap, "dir-b")).unwrap(),
+        1
+    );
+    assert_eq!(
+        w.write(|tx| tx.mcp_directory_delete(cap, "dir-b")).unwrap(),
+        0
+    );
+    assert_eq!(count("SELECT count(*) FROM directory_mcp_servers"), 0);
+    // The window closed again after the methods.
+    let raw = w.write(|tx| tx.execute("DELETE FROM directory_mcp_servers", []));
+    assert!(matches!(raw, Err(StoreError::NotOwned(_))), "{raw:?}");
+}

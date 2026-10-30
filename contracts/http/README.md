@@ -1242,6 +1242,90 @@ Chat-bound, by design: `POST /api/tool-approvals` (the parked approval promise l
 three actions - Allow once, Decline, Allow for this chat - and their tenant scope stay in Node) and `GET
 /api/toolboxes` (prefill samples come from the chat stream, the MCP block from live discovery state).
 
+## sbstndalton/noevia#2202 round 2: the admin MCP directory, the permitted tools and the connectors list
+
+Three capabilities, each paired with a Core refusal (`RUST_MCP_DIRECTORY_OWNED`, `RUST_TOOLBOXES_PERMITTED_OWNED`,
+`RUST_CONNECTORS_OWNED`; both guard scripts refuse a mixed pair, old/old stays valid), all three needing the discovery
+snapshot Core publishes:
+
+| capability | routes (routes.toml) | where |
+|---|---|---|
+| `rust-mcp-directory` | every method of `/api/admin/mcp-directory`, `/custom`, `/custom/preview`, `/{*}`, `/{*}/keys`, `/{id}/oauth-client` | `mcp_directory_routes.rs`, `mcp_directory.rs`, `mcp_tools.rs`, `mcp_egress.rs` |
+| `rust-toolboxes-permitted` | every method of `/api/toolboxes/permitted` (non-GET is its 405) | `toolbox_routes.rs` |
+| `rust-connectors` | GET `/api/connectors`, PUT `/api/connectors/nextcloud/policy` | `nextcloud_routes.rs`, `connector_routes.rs` |
+
+**The directory.** The front is the single writer of `directory_mcp_servers` (the server rows, the administrators'
+shared key slot, the OAuth and per-account flags): one transaction per write that checks what it relies on, the
+shared key replaced only while it still holds the ciphertext it started from (compare-and-swap), an add that
+cannot exceed 20 servers or repeat a name even when two administrators race. Core re-reads the table
+(`directory-mcp.cjs`, `shared-reread.cjs` on the table's content; an unreadable table is no directory servers) and
+keeps only the chat-time MCP client. A candidate server is probed and its tools listed **by the front**
+(`mcp_egress::list_tools`: initialize, tools/list over JSON or event-stream replies, the same public-https-only
+egress as round 1 - QA loopback flag, no redirect, caps, deadlines), then each tool is judged as core's `convertTool`
+judged it (`mcp_tools.rs`, over mcp-frame's `$ref` resolver). Every state-changing request runs as one spawned task
+the handler awaits, so a client that goes away strands nothing half-done. The custom add keeps the "tools changed"
+rollback: after the save the tools are listed again with the credentials as stored, and a catalogue other than the one
+previewed removes the server **and forgets the key the administrator stored** (the M3 fix of round 1). The secrets
+rotation re-seals the shared key slot through the broker (`directory_mcp_servers` is its fourth table; `POST
+/v1/mcp/reseal`), and Core's rotation no longer lists it.
+
+**Node's discovery, published.** `mcp-discovery.json` (`mcp_discovery.rs`; Core `mcp-discovery-snapshot.cjs`) carries what
+only the live MCP client knows: the offered boxes with their tools and whether each writes, the configured boxes,
+each server's last discovery, the coding harness switch, whether a repository is registered, whether a Nextcloud MCP
+server is configured and `MCP_NEXTCLOUD_ORIGINS`. It is written atomically (0600) every 3 s **only while the front asks**
+(the demand marker `snapshot-demand`, snapshot.rs), and the front trusts it only while it is two intervals young;
+otherwise the answer is "not ready" (the permitted view: 503 `Retry-After: 2`; the admin listing: no tool counts; the
+connectors page: Drive plus a Nextcloud entry that says it is being prepared). `snapshot.rs` and Core's
+`published-snapshot.cjs` are the close-out round's files (#2190 group D) copied unchanged so the two branches merge
+without a conflict; `mcp-discovery.json` joins `PUBLISHED_STATE` (the off-site walk and the replay state comparison leave it out).
+
+**Permitted tools, with no stale window.** The view is computed per request from the `toolboxes-permitted` crate, the
+project (tenant-scoped `users/<id>/projects.json`), the account's `tool_policies`, Drive connection, MCP sign-ins and
+keys (the broker, read from the tables), the Diary preference and the directory, plus the snapshot. Core cached it
+for 30 s under a key that left out the project's toolbox edits, the Drive/Nextcloud connection and the MCP readiness;
+the cache and its fingerprints are deleted, and none replaces them.
+
+**Connectors.** The Nextcloud half is the account's storage connection (Nextcloud or WebDAV, a user name and a credential
+that opens), the operator's declared origins and `tool_policies`, joined with the Nextcloud boxes and write flags of the
+snapshot. `PUT /api/connectors/nextcloud/policy` writes `tool_policies` (it already had a single writer) for the tools
+Node's catalogue offers. The Nextcloud toolbox is MCP-live only for the list of tools and their write flags; that is the
+whole of what stays on Node behind the snapshot.
+
+Behaviour changes (Node bugs fixed on the way):
+
+1. `PUT .../{id}/keys` on a **custom** server asked the registry about `url:...`, found nothing, and so checked with no
+   header and then **cleared** the shared key. The stored declaration is used (the registry only for a row that never
+   stored one).
+2. The permitted view was up to 30 s stale after any write the front makes (see above).
+3. A mixed `GET /api/connectors` keeps working when Node's catalogue is not ready: Drive is listed and Nextcloud says why
+   it is missing (Node's page failed whole when its own discovery threw).
+4. Two administrators adding one server at once: one 201, one 409 (core checked, then inserted, in two steps).
+5. Methods other than the listed ones on `/api/connectors` and a trailing slash on it are 404 from Node, not core's 405/404 mix.
+
+Review of round 2 (the limits and the rollbacks):
+
+6. One listing of a server's tools (connect, every page, close) is over after 60 s whatever its pages are doing, and at
+   most four listings run at once in the front, for every account together; one that finds no place for 20 s answers 503
+   "noevia is checking other servers right now". A key check counts the tools it finds and keeps none (a listing can be
+   16 MiB of definitions). The session is closed after a deadline as after any other end.
+7. A rollback of an add (the tools changed while connecting, the administrator's key could not be kept, the sign-in could
+   not start) tries each step a second time and, if the row or the keys still cannot be removed, answers 500 with the
+   server's id and what to do (remove it by hand; add it again and remove it) instead of a quiet 409/422. When the row is
+   not there to remove (another administrator removed or replaced it), only the key this request stored is forgotten.
+   Removing a server clears its keys and sign-ins once more after the row is gone.
+8. The key replacement checks the row is the one it read (`added_at`), not only the key it held.
+9. `toolbox_routes.rs` carries a differential against the 2500 frozen JS answers (`tests/fixtures/toolboxes-permitted-js.v1.json`,
+   byte-identical to noevia-core's, same sha256): 853 inputs the front can be asked are compared; the rest (an id list holding
+   something that is not text, a box id that is not text, a manifest entry that is not an object with a text id) are counted
+   and skipped. The publisher's three presentation differences (a boolean write flag, a tool named by a number, a 240-character
+   description) are put back on the output so everything else is compared exactly.
+10. Scheduled removal: the Drive broker's `/v1/gdrive/view` and `/v1/gdrive/policy` ops are unused by the paired Core and stay
+   only for the Core of a rollback pair; delete them in the first release after that floor has passed.
+
+Still Node's, on purpose: the MCP client itself (a chat's live sessions, `mcp.cjs`, `mcp-wiring.cjs`),
+`POST /api/tool-approvals/{id}` (the parked approval is in the live chat loop) and `GET /api/toolboxes` (prefill
+samples come from the chat stream; the MCP block from live discovery).
+
 ## sbstndalton/noevia#2191 round 8 (group rust-project-source-work): the front runs the source operations
 
 `--features` lists `rust-project-source-work`. `POST /api/projects/{id}/upload`, `POST .../sources/sync` and

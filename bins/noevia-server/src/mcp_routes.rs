@@ -97,7 +97,7 @@ fn op_for(method: &str, path: &str) -> Option<Op> {
     }
 }
 
-fn answer(status: u16, body: &JValue) -> Response<Body> {
+pub(crate) fn answer(status: u16, body: &JValue) -> Response<Body> {
     reply::json_text(
         StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
         js_json::stringify(body).unwrap_or_else(|| "{}".into()),
@@ -105,7 +105,7 @@ fn answer(status: u16, body: &JValue) -> Response<Body> {
     )
 }
 
-fn error(status: u16, message: &str) -> Response<Body> {
+pub(crate) fn error(status: u16, message: &str) -> Response<Body> {
     answer(
         status,
         &JValue::obj([("error", JValue::Str(message.into()))]),
@@ -113,7 +113,7 @@ fn error(status: u16, message: &str) -> Response<Body> {
 }
 
 /// A failure as core's routes answered it: `e.status || 502`, `{ error }`.
-fn failed(e: &Fail) -> Response<Body> {
+pub(crate) fn failed(e: &Fail) -> Response<Body> {
     let status = if (400..600).contains(&e.status) {
         e.status
     } else {
@@ -124,7 +124,7 @@ fn failed(e: &Fail) -> Response<Body> {
 
 /// core http.cjs `readJson` + `readObject`: an empty body is `{}`; anything that is not a JSON
 /// object is `Err` (the 400 `invalid JSON`).
-async fn read_object(mut body: Body) -> Result<JValue, ()> {
+pub(crate) async fn read_object(mut body: Body) -> Result<JValue, ()> {
     let read = async {
         let mut out = Vec::new();
         while let Some(frame) = body.frame().await {
