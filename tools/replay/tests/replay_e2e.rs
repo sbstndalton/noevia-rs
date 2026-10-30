@@ -304,7 +304,7 @@ fn every_native_replay_invocation_requires_a_persisted_proof_including_negative_
     assert!(stats.contains("proof = state['nativeMoveStateProof']"));
     assert!(stats.contains("set -euo pipefail"));
     assert!(stats.contains(
-        "assert stats and len(stats) + len(caps) + len(hardware) + len(providers) == len(bad)"
+        "assert stats and len(stats) + len(caps) + len(hardware) + len(providers) + len(evidence) + len(reload) == len(bad)"
     ));
 }
 
@@ -329,6 +329,8 @@ fn deliberate_stats_difference_cannot_mask_missing_or_invalid_native_proof() {
         {"method":"GET","path":"/api/models/capabilities","diffs":[{"at":"body/kind","expected":"\"none\"","actual":"\"llamacpp\""}],"error":null,"status":200,"expectedStatus":200},
         {"method":"GET","path":"/api/models/hardware","diffs":[{"at":"status","expected":"404","actual":"200"},{"at":"body/supported","expected":"(absent)","actual":"false"}],"error":null,"status":200,"expectedStatus":404},
         {"method":"GET","path":"/api/providers","diffs":[{"at":"body/providers/0/managed","expected":"false","actual":"true"}],"error":null,"status":200,"expectedStatus":200},
+        {"method":"GET","path":"/api/models/evidence","diffs":[{"at":"body/error","expected":"\"Not found\"","actual":"\"Choose a model\""}],"error":null,"status":400,"expectedStatus":404},
+        {"method":"POST","path":"/api/models/presets/reload","diffs":[{"at":"status","expected":"404","actual":"503"}],"error":null,"status":503,"expectedStatus":404},
     ]);
     std::fs::write(&report, rows.to_string()).unwrap();
     let check = || {
