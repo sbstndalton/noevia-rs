@@ -1176,7 +1176,11 @@ fn without_build(identity: &JValue) -> JValue {
             items
                 .iter()
                 .map(|(k, v)| {
-                    let v = if k == "build" { JValue::Null } else { v.clone() };
+                    let v = if k == "build" {
+                        JValue::Null
+                    } else {
+                        v.clone()
+                    };
                     (k.clone(), v)
                 })
                 .collect(),

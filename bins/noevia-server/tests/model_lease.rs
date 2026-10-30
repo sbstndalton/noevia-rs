@@ -22,7 +22,8 @@ const SECRET: &str = "synthetic-store-token-0123456789abcdef";
 const LEASE: &str = "/internal/model-maintenance/lease";
 const ID: &str = "0123456789abcdef0123456789abcdef";
 const IN_PROGRESS: &str = r#"{"error":"Requests are in progress. Try again when chats finish."}"#;
-const GRANT: &str = r#"{"lease":"0123456789abcdef0123456789abcdef","ttlMs":180000,"renewMs":100,"hardMs":3600000}"#;
+const GRANT: &str =
+    r#"{"lease":"0123456789abcdef0123456789abcdef","ttlMs":180000,"renewMs":100,"hardMs":3600000}"#;
 
 type Order = Arc<Mutex<Vec<String>>>;
 
