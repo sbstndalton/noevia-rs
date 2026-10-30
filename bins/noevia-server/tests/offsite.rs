@@ -3537,9 +3537,11 @@ async fn the_snapshots_node_publishes_and_the_demand_marker_are_not_backed_up() 
     for name in [
         "rag-status.json",
         "auto-roles-snapshot.json",
+        "mcp-discovery.json",
         "snapshot-demand",
         "rag-status.json.4242.deadbeef.tmp",
         "auto-roles-snapshot.json.4242.00ff.tmp",
+        "mcp-discovery.json.4242.00ff.tmp",
         "snapshot-demand.4242.7.tmp",
     ] {
         std::fs::write(src.join(name), "synthetic published state").unwrap();

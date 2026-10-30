@@ -12,8 +12,12 @@
 //   node mcp_node_live.cjs <phase>      env: NOEVIA_MCP_CORE, STORE_PORT, STORE_TOKEN, DATA_DIR, MCP_URL, USER_ID
 //
 // phases
-//   call   discover the server's tools with the user's sign-in, then run one tool call as that user
-//   after  what Node can see once the user has disconnected
+//   call       discover the server's tools with the user's sign-in, then run one tool call as that user
+//   after      what Node can see once the user has disconnected
+//   directory  (sbstndalton/noevia#2202 round 2) the chat-time client over the REAL directory re-reader
+//              (directory-mcp.cjs on the shared database): before the front adds a server, after (its tools
+//              listed and one called, with the shared key the front sealed), and after the front removed it.
+//              The test moves the stages by creating `go-added` and `go-removed` in DATA_DIR.
 // Prints ONE line of JSON for the test to read. It never prints a token: it reports whether anything it
 // saw looked like a refresh token instead.
 const path = require('node:path');
@@ -39,7 +43,7 @@ const wiring = createMcpWiring({
   manifest: [],
   mcp: core('mcp.cjs'),
   bindBoxes: ({ manifest }) => manifest.map(() => ({})),
-  directoryMcp: { asServers: () => [], boxFor: () => ({}), headersFor: () => ({}) },
+  directoryMcp: { signal: () => 0, asServers: () => [], boxFor: () => ({}), headersFor: () => ({}) },
   mcpOAuth: credentials.oauth,
   mcpKeys: credentials.keys,
   directoryUrlAllowed: async () => true,
@@ -80,4 +84,39 @@ async function main(phase) {
   process.stdout.write(`${JSON.stringify(out)}\n`);
 }
 
-main(process.argv[2]).then(() => process.exit(0), (error) => { console.error(String((error && error.stack) || error).slice(0, 2000)); process.exit(1); });
+/** The directory phase: one process over the shared database, asked again after each change the front makes. */
+async function directoryPhase() {
+  const fs = require('node:fs');
+  const Database = require(path.join(server, 'node_modules', 'better-sqlite3'));
+  const db = new Database(path.join(env('DATA_DIR'), 'cowork.db'));
+  const secrets = core('secrets.cjs').createSecretStore(env('DATA_DIR'), { env: {} });
+  const directoryMcp = core('directory-mcp.cjs').createDirectoryMcp({ db, secrets });
+  const w = createMcpWiring({
+    servers: [], manifest: [], mcp: core('mcp.cjs'), bindBoxes: ({ manifest }) => manifest.map((m) => m), directoryMcp,
+    mcpOAuth: credentials.oauth, mcpKeys: credentials.keys, directoryUrlAllowed: async () => true,
+    credentialOriginAllowed: createCredentialOriginCheck(''), scope, storageFor: () => ({ kind: 'local' }), isWriteTool: () => false,
+    internal: { mintToken: () => 'unused' }, internalKey: 'unused', reduceToolResult: (text) => ({ text, reduced: false }), env: {},
+    logger: { log() {}, warn() {} },
+  });
+  const emit = (o) => process.stdout.write(`${JSON.stringify(o)}\n`);
+  const waitFor = async (name) => {
+    for (let i = 0; i < 600; i++) { if (fs.existsSync(path.join(env('DATA_DIR'), name))) return; await new Promise((r) => setTimeout(r, 50)); }
+    throw new Error(`timed out waiting for ${name}`);
+  };
+  const stage = async (name, extra = {}) => {
+    // An ordinary, unforced discovery: the re-reader is what notices the change.
+    const state = await w.discoverMcpTools();
+    emit({ stage: name, servers: w.servers.map((sv) => sv.id), auth: w.servers.map((sv) => sv.auth), tools: [...state.tools.keys()], boxes: state.boxes.map((b) => b.id), errors: [...state.servers.values()].map((sv) => sv.error), ...extra });
+  };
+  await stage('before');
+  await waitFor('go-added');
+  const state = await w.discoverMcpTools();
+  const text = await asUser(() => w.executeMcpToolCall('echo', { text: 'hi' }));
+  await stage('added', { text, toolCount: state.servers.get(w.servers[0]?.id)?.toolCount ?? null });
+  await waitFor('go-removed');
+  await stage('removed');
+}
+
+if (process.argv[2] === 'directory') {
+  directoryPhase().then(() => process.exit(0), (error) => { console.error(String((error && error.stack) || error).slice(0, 2000)); process.exit(1); });
+} else main(process.argv[2]).then(() => process.exit(0), (error) => { console.error(String((error && error.stack) || error).slice(0, 2000)); process.exit(1); });

@@ -64,29 +64,33 @@ path = "/api/admin/invitations"
 owner = "rust"
 methods = ["POST"]
 
+# sbstndalton/noevia#2202 round 2 (rust-mcp-directory): the admin MCP directory, every method of
+# the six paths (an administrator gets 403 or 405 as core answered). Rust lists a candidate
+# server's tools itself and is the only writer of directory_mcp_servers; Node re-reads the table
+# for its chat-time MCP client and refuses the routes (core rust-mcp-directory.cjs).
 [[route]]
 path = "/api/admin/mcp-directory"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/admin/mcp-directory/custom"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/admin/mcp-directory/custom/preview"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/admin/mcp-directory/{*}"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/admin/mcp-directory/{*}/keys"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/admin/mcp-directory/{id}/oauth-client"
-owner = "node"
+owner = "rust"
 
 # sbstndalton/noevia#2190 round 7 (rust-offsite-backup): the off-site backup, every method of the eight
 # paths (each answers its own 403/405); Rust owns the jobs, the schedule, the status and the store.
@@ -290,11 +294,13 @@ owner = "node"
 
 [[route]]
 path = "/api/connectors"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
-# sbstndalton/noevia#2190 round 7 (rust-google-drive): the Google Drive connector writes. GET
-# /api/connectors and PUT /api/connectors/nextcloud/policy stay Node's (the Nextcloud half lists the
-# live MCP servers' tools); Node asks the broker for the Drive half.
+# sbstndalton/noevia#2190 round 7 (rust-google-drive): the Google Drive connector writes.
+# sbstndalton/noevia#2202 round 2 (rust-connectors): GET /api/connectors and PUT
+# /api/connectors/nextcloud/policy are Rust's too; the Nextcloud tools come from the discovery
+# snapshot Node publishes.
 [[route]]
 path = "/api/connectors/gdrive/backup-copy"
 owner = "rust"
@@ -317,7 +323,8 @@ methods = ["PUT"]
 
 [[route]]
 path = "/api/connectors/nextcloud/policy"
-owner = "node"
+owner = "rust"
+methods = ["PUT"]
 
 [[route]]
 # sbstndalton/noevia#2206: the rest of the Diary routes the web client names, except POST
@@ -893,9 +900,11 @@ owner = "node"
 path = "/api/toolboxes"
 owner = "node"
 
+# sbstndalton/noevia#2202 round 2 (rust-toolboxes-permitted): computed by the front, every method
+# (non-GET is its 405). GET /api/toolboxes stays Node's (prefill samples and live MCP state).
 [[route]]
 path = "/api/toolboxes/permitted"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/usage"

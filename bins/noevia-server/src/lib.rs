@@ -24,12 +24,22 @@ pub mod legacy_proxy;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_broker;
 #[cfg(feature = "rust-storage-reads")]
+pub mod mcp_directory;
+#[cfg(feature = "rust-storage-reads")]
+pub mod mcp_directory_routes;
+#[cfg(feature = "rust-storage-reads")]
+pub mod mcp_discovery;
+#[cfg(feature = "rust-storage-reads")]
 pub mod mcp_egress;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_routes;
 pub mod model_maint;
+#[cfg(feature = "rust-storage-reads")]
+pub mod mcp_tools;
 pub mod model_routes;
 pub mod model_sizing;
+#[cfg(feature = "rust-storage-reads")]
+pub mod nextcloud_routes;
 pub mod offsite_engine;
 pub mod offsite_mirror;
 pub mod offsite_routes;
@@ -71,6 +81,8 @@ pub mod storage_integration_routes;
 pub mod storage_metadata_worker;
 #[cfg(feature = "rust-storage-reads")]
 pub mod storage_read_routes;
+#[cfg(feature = "rust-storage-reads")]
+pub mod toolbox_routes;
 pub mod upkeep;
 pub mod usage_routes;
 pub mod web_address_routes;
@@ -205,6 +217,20 @@ use std::sync::Arc;
 /// `mcp-credential-state.json` and re-seals the three tables for a secrets rotation. The paired
 /// core refuses the routes (rust-mcp-credentials.cjs `RUST_MCP_CREDENTIALS_OWNED`) and every Node
 /// write of the tables.
+///
+/// `rust-mcp-directory`: this build owns the admin MCP directory (mcp_directory.rs,
+/// mcp_directory_routes.rs, sbstndalton/noevia#2202 round 2): `GET|POST /api/admin/mcp-directory`,
+/// `POST .../custom` and `.../custom/preview`, `PUT .../{id}/keys` and `.../{id}/oauth-client`, `DELETE
+/// .../{id}`. It lists a candidate server's tools itself (initialize, tools/list over JSON or
+/// event-stream replies, public https only), is the only writer of `directory_mcp_servers` (the server
+/// rows and the administrators' shared key slot) and re-seals that slot for a secrets rotation. Node
+/// re-reads the table for its chat-time MCP client. The paired core refuses the routes
+/// (rust-mcp-directory.cjs `RUST_MCP_DIRECTORY_OWNED`), publishes the discovery snapshot
+/// (`mcp-discovery.json`) and writes nothing of the table.
+/// `rust-toolboxes-permitted`: `GET /api/toolboxes/permitted` (toolbox_routes.rs), computed here from
+/// the front's own state and that snapshot (core `RUST_TOOLBOXES_PERMITTED_OWNED`).
+/// `rust-connectors`: `GET /api/connectors` and `PUT /api/connectors/nextcloud/policy`
+/// (nextcloud_routes.rs; core `RUST_CONNECTORS_OWNED`).
 ///
 /// `rust-model-sizing`: this build answers `GET /api/models/estimate` and `GET
 /// /api/models/preset/suggest` (sbstndalton/noevia#2189, src/model_sizing.rs), permanently and
@@ -349,6 +375,12 @@ pub const FEATURES: &[&str] = &[
     "rust-providers-reseal",
     #[cfg(feature = "rust-storage-reads")]
     "rust-mcp-credentials",
+    #[cfg(feature = "rust-storage-reads")]
+    "rust-mcp-directory",
+    #[cfg(feature = "rust-storage-reads")]
+    "rust-toolboxes-permitted",
+    #[cfg(feature = "rust-storage-reads")]
+    "rust-connectors",
     "rust-vault-mirror-preferences",
     "rust-health",
     "rust-auto-roles",
@@ -594,6 +626,8 @@ async fn handle(
                     | routes::Native::Health
                     | routes::Native::AutoRoles
                     | routes::Native::McpCredentials
+                    | routes::Native::McpDirectory
+                    | routes::Native::ToolboxesPermitted
             )
         ) {
             native = on_whatwg;
@@ -630,7 +664,9 @@ async fn handle(
             | routes::Native::Providers
             | routes::Native::Health
             | routes::Native::AutoRoles
-            | routes::Native::McpCredentials,
+            | routes::Native::McpCredentials
+            | routes::Native::McpDirectory
+            | routes::Native::ToolboxesPermitted,
         )
         | None => false,
     };
@@ -782,6 +818,42 @@ async fn handle(
                 reply::error(
                     StatusCode::SERVICE_UNAVAILABLE,
                     "MCP credentials unavailable",
+                    true,
+                )
+            }
+        }
+        Some(routes::Native::McpDirectory) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            #[cfg(feature = "rust-storage-reads")]
+            {
+                mcp_directory_routes::serve(&app, conn, req, p).await
+            }
+            #[cfg(not(feature = "rust-storage-reads"))]
+            {
+                let _ = (p, conn, req);
+                reply::error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "MCP directory unavailable",
+                    true,
+                )
+            }
+        }
+        Some(routes::Native::ToolboxesPermitted) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            #[cfg(feature = "rust-storage-reads")]
+            {
+                toolbox_routes::serve(&app, conn, req, p).await
+            }
+            #[cfg(not(feature = "rust-storage-reads"))]
+            {
+                let _ = (p, conn, req);
+                reply::error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Toolboxes unavailable",
                     true,
                 )
             }

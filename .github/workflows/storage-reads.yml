@@ -111,6 +111,15 @@ jobs:
           NOEVIA_MCP_CORE: ${{ github.workspace }}/front-core
           NOEVIA_MCP_CORE_REQUIRED: "1"
         run: cargo test --locked -p noevia-server --features rust-storage-reads --test mcp_credentials node_signs_in -- --nocapture
+      - name: "Node's real MCP client over the directory the front writes (#2202 round 2)"
+        # tests/mcp_directory.rs runs a real `node` process (tests/mcp_node_live.cjs, phase `directory`) with the paired
+        # Core's directory re-reader, MCP wiring and MCP client over the shared database: the front adds a custom
+        # server with a shared key (preview, connect), Node lists its tools and runs one with the key the front
+        # sealed, the front removes it and Node drops it, all without a restart. A missing Core is a failure here.
+        env:
+          NOEVIA_MCP_CORE: ${{ github.workspace }}/front-core
+          NOEVIA_MCP_CORE_REQUIRED: "1"
+        run: cargo test --locked -p noevia-server --features rust-storage-reads --test mcp_directory node_lists_the_tools -- --nocapture
       - name: Replay against Node directly (reference data dir)
         run: |
           set -euo pipefail
@@ -127,7 +136,7 @@ jobs:
             --ignore-body hours --ignore-body peakHour/hour \
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-storage" \
             --native-move-state --server-cmd "exec env NOEVIA_RUST_AUTH=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/front-core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
-            --report "$RUNNER_TEMP/storage-positive.json" --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' --state-ignore '*chat-transcripts.lock' --state-ignore '*chat-changes.jsonl' --state-ignore '*chat-retention.json.lock' --state-ignore '*rag-status.json' --state-ignore '*auto-roles-snapshot.json' --state-ignore '*snapshot-demand' --expect-state "$RUNNER_TEMP/node-state.json"
+            --report "$RUNNER_TEMP/storage-positive.json" --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' --state-ignore '*chat-transcripts.lock' --state-ignore '*chat-changes.jsonl' --state-ignore '*chat-retention.json.lock' --state-ignore '*rag-status.json' --state-ignore '*auto-roles-snapshot.json' --state-ignore '*mcp-discovery.json' --state-ignore '*snapshot-demand' --expect-state "$RUNNER_TEMP/node-state.json"
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:

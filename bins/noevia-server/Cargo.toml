@@ -84,6 +84,8 @@ server-chatgpt-status = { path = "../../crates/server-chatgpt-status", optional 
 secret-envelope = { path = "../../crates/secret-envelope" }
 ssrf-policy = { path = "../../crates/ssrf-policy" }
 mcp-frame = { path = "../../crates/mcp-frame" }
+# sbstndalton/noevia#2202 round 2: GET /api/toolboxes/permitted (toolbox_routes.rs).
+toolboxes-permitted = { path = "../../crates/toolboxes-permitted" }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 base64 = "0.22"
 brotli = "8"
