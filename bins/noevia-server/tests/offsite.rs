@@ -3524,3 +3524,47 @@ async fn a_manifest_entry_without_a_chunk_array_stops_the_prune() {
     let r = engine.forget(&[]).await.unwrap();
     assert_eq!((r.unreadable, r.pruned_chunks), (0, 1));
 }
+
+#[tokio::test]
+async fn the_snapshots_node_publishes_and_the_demand_marker_are_not_backed_up() {
+    // The files that describe the running process (and their temporary files) are left out at the top
+    // of a backed-up folder, however the folder is configured; a file of the same name anywhere else,
+    // and every other file, is backed up as always.
+    let dest = tempfile::tempdir().unwrap();
+    let base = tempfile::tempdir().unwrap();
+    let src = base.path().join("src");
+    std::fs::create_dir_all(src.join("users/u1")).unwrap();
+    for name in [
+        "rag-status.json",
+        "auto-roles-snapshot.json",
+        "snapshot-demand",
+        "rag-status.json.4242.deadbeef.tmp",
+        "auto-roles-snapshot.json.4242.00ff.tmp",
+        "snapshot-demand.4242.7.tmp",
+    ] {
+        std::fs::write(src.join(name), "synthetic published state").unwrap();
+    }
+    std::fs::write(src.join("cowork.db.keep"), "kept").unwrap();
+    std::fs::write(src.join("auto-roles.json"), "kept too").unwrap();
+    std::fs::write(
+        src.join("users/u1/rag-status.json"),
+        "an account's own file",
+    )
+    .unwrap();
+    let engine = dir_engine(dest.path(), &src);
+    let r = engine.backup(&Pace::none()).await.unwrap();
+    assert_eq!((r.files, r.skipped, r.incomplete), (3, 0, false));
+    let out = tempfile::tempdir().unwrap();
+    let restored = out.path().join("r");
+    assert_eq!(engine.restore(&r.id, &restored).await.unwrap(), 3);
+    let mut names = files_under(&restored);
+    names.sort();
+    assert_eq!(
+        names,
+        [
+            "0/auto-roles.json",
+            "0/cowork.db.keep",
+            "0/users/u1/rag-status.json"
+        ]
+    );
+}

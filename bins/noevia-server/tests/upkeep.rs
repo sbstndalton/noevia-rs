@@ -158,7 +158,8 @@ async fn the_front_keeps_sessions_alive_like_node() {
     assert!(after > before, "last_seen_at did not move");
 
     // A rejected session's row goes, before Node sees the request.
-    let res = get(addr, "/api/health", "cowork_session=idle").await;
+    // (GET /api/health is the front's since #2190 close-out; /api/projects is still Node's.)
+    let res = get(addr, "/api/projects", "cowork_session=idle").await;
     assert!(res.headers().get("x-upstream").is_some());
     let _ = res.into_body().collect().await;
     assert_eq!(last_seen(&node, "idle"), None);

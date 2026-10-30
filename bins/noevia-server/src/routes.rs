@@ -112,6 +112,11 @@ pub enum Native {
     /// GET|POST /api/providers, PUT|DELETE /api/providers/{id}, DELETE /api/providers/chatgpt
     /// (sbstndalton/noevia#2190 round 6): provider_routes.rs.
     Providers,
+    /// GET /api/health (sbstndalton/noevia#2190 close-out, `rust-health`): health_routes.rs.
+    Health,
+    /// GET /api/auto-roles (sbstndalton/noevia#2190 close-out, `rust-auto-roles`):
+    /// auto_roles_routes.rs. The PUT stays Node's.
+    AutoRoles,
     /// /api/mcp-keys/* and /api/mcp-oauth/* (sbstndalton/noevia#2202): mcp_routes.rs.
     McpCredentials,
 }
@@ -199,7 +204,13 @@ const PROJECT_ROUTES: &[&str] = &[
     PROJECT_FOLDER_IMPORT,
     PROJECT_SOURCE_JOB,
     server_projects::import::ROUTE,
+    WORKSPACE,
 ];
+
+/// The projects and free chats (GET only; routes.toml), the front's under `rust-workspace`
+/// (sbstndalton/noevia#2191 close-out); Node refuses the GET (core rust-workspace.cjs
+/// `RUST_WORKSPACE_OWNED`). It runs the delete-old-chats sweep and the orphan-context cleanup too.
+pub(crate) const WORKSPACE: &str = "/api/workspace";
 
 /// A project upload, folder sync and folder-import plan (POST only; routes.toml), the front's under
 /// `rust-project-source-work` (sbstndalton/noevia#2191 round 8), and a source job's status (GET only),
@@ -359,6 +370,8 @@ pub fn native_for(route: &Route) -> Option<Native> {
             return Some(Native::DecisionSettings)
         }
         p if auth && STORAGE_INTEGRATIONS.contains(&p) => return Some(Native::StorageIntegrations),
+        crate::health_routes::PATH if auth => return Some(Native::Health),
+        crate::auto_roles_routes::PATH if auth => return Some(Native::AutoRoles),
         PROVIDER_TEST if auth => return Some(Native::ProviderTest),
         p if auth && CHATGPT_OAUTH.contains(&p) => return Some(Native::ChatgptOAuth),
         PROVIDER_MODELS if auth => return Some(Native::ProviderModels),
@@ -734,7 +747,17 @@ mod tests {
         assert_eq!(dispatch("GET", "/api/ready"), Some(Native::Ready));
         assert_eq!(dispatch("HEAD", "/api/ready"), None);
         assert_eq!(dispatch("POST", "/api/ready"), None);
-        assert_eq!(dispatch("GET", "/api/health"), None);
+        // sbstndalton/noevia#2190 close-out: GET only is the front's; the other methods stay Node's.
+        assert_eq!(dispatch("GET", "/api/health"), Some(Native::Health));
+        assert_eq!(dispatch("POST", "/api/health"), None);
+        assert_eq!(dispatch("GET", "/api/auto-roles"), Some(Native::AutoRoles));
+        for m in ["PUT", "POST", "DELETE", "HEAD"] {
+            assert_eq!(dispatch(m, "/api/auto-roles"), None, "{m}");
+        }
+        assert_eq!(dispatch("GET", "/api/workspace"), Some(Native::Projects));
+        for m in ["POST", "PUT", "DELETE", "HEAD"] {
+            assert_eq!(dispatch(m, "/api/workspace"), None, "{m}");
+        }
         assert_eq!(dispatch("GET", "/api/not-listed/at/all"), None);
         assert_eq!(dispatch("GET", "/api"), None);
         assert_eq!(dispatch("GET", "/"), Some(Native::Static));
@@ -930,7 +953,7 @@ mod tests {
             ("DELETE", "/api/freechats"),
             ("HEAD", "/api/freechats"),
             ("GET", "/api/chats/c1/move"),
-            ("GET", "/api/workspace"),
+            ("POST", "/api/workspace"),
         ] {
             assert_eq!(dispatch_under(m, p, both), None, "{m} {p}");
         }
