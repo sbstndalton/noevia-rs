@@ -240,6 +240,20 @@ impl RustChatgptOAuth {
 /// The table [`RustChatgptOAuth`] writes.
 const CHATGPT_OAUTH_TOKENS: &str = "chatgpt_oauth_tokens";
 
+/// MCP server credentials (sbstndalton/noevia#2202): the Rust front is the broker of the OAuth
+/// sign-ins (`mcp_oauth_tokens`, `mcp_oauth_clients`) and of each account's own API keys for a
+/// directory server (`directory_mcp_user_keys`), and the only writer of those three tables. Core's
+/// guard (rust-auth.cjs `FRONT_TABLES`) refuses every Node write of them, even inside `exempt()`.
+/// Like [`RustChatgptOAuth`] the grant is per statement: only the [`WriteTx`] methods named
+/// `mcp_*` open it, each for its one statement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RustMcpCredentials(());
+impl RustMcpCredentials {
+    pub const fn owned() -> Self {
+        Self(())
+    }
+}
+
 /// Settings -> Connectors (sbstndalton/noevia#2190 round 7): the Rust front is the only writer of
 /// `tool_policies`, the per-account allow/ask/block of each tool. Core's guard (rust-auth.cjs
 /// `FRONT_TABLES`) refuses every Node write of the table, and core re-reads it per call. Like
@@ -253,6 +267,12 @@ impl RustToolPolicies {
     }
 }
 
+/// The tables [`RustMcpCredentials`] writes.
+const MCP_TABLES: [&str; 3] = [
+    "mcp_oauth_tokens",
+    "mcp_oauth_clients",
+    "directory_mcp_user_keys",
+];
 /// The table [`RustToolPolicies`] writes.
 const TOOL_POLICIES: &str = "tool_policies";
 
@@ -512,6 +532,7 @@ fn owned_authorizer(
     settings_open: Arc<AtomicBool>,
     storage_open: Arc<AtomicBool>,
     chatgpt_open: Arc<AtomicBool>,
+    mcp_open: Arc<AtomicBool>,
     policy_open: Arc<AtomicBool>,
 ) -> impl FnMut(AuthContext<'_>) -> Authorization {
     move |ctx: AuthContext<'_>| match ctx.action {
@@ -562,6 +583,14 @@ fn owned_authorizer(
             if table_name == CHATGPT_OAUTH_TOKENS {
                 // sbstndalton/noevia#2190 round 5: only inside the `*_chatgpt_tokens` methods.
                 return if chatgpt_open.load(Ordering::SeqCst) {
+                    Authorization::Allow
+                } else {
+                    Authorization::Deny
+                };
+            }
+            if MCP_TABLES.contains(&table_name) {
+                // sbstndalton/noevia#2202: only inside the `mcp_*` methods.
+                return if mcp_open.load(Ordering::SeqCst) {
                     Authorization::Allow
                 } else {
                     Authorization::Deny
@@ -982,6 +1011,7 @@ pub struct WriteTx<'a> {
     settings_open: &'a AtomicBool,
     storage_open: &'a AtomicBool,
     chatgpt_open: &'a AtomicBool,
+    mcp_open: &'a AtomicBool,
     policy_open: &'a AtomicBool,
 }
 
@@ -1263,6 +1293,251 @@ impl WriteTx<'_> {
         )
     }
 
+    /// Opens the MCP credential tables' grant for one uncached statement.
+    fn mcp_statement<P: Params>(&self, sql: &str, params: P) -> Result<usize, StoreError> {
+        self.mcp_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.mcp_open);
+        let mut stmt = self.conn.prepare(sql)?;
+        Ok(stmt.execute(params)?)
+    }
+
+    /// Exactly core mcp-oauth.cjs's token upsert (`finish`).
+    pub fn mcp_save_token(
+        &self,
+        _cap: RustMcpCredentials,
+        user_id: &str,
+        server_id: &str,
+        data_enc: &str,
+        updated_at: i64,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "INSERT INTO mcp_oauth_tokens VALUES(?,?,?,?) ON CONFLICT(user_id, server_id) DO UPDATE SET data_enc=excluded.data_enc, updated_at=excluded.updated_at",
+            rusqlite::params![user_id, server_id, data_enc, updated_at],
+        )
+    }
+
+    /// The refresh's and the re-seal's compare-and-swap: `next` replaces `previous` only while
+    /// the row still holds it.
+    pub fn mcp_swap_token(
+        &self,
+        _cap: RustMcpCredentials,
+        user_id: &str,
+        server_id: &str,
+        next: &str,
+        updated_at: i64,
+        previous: &str,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "UPDATE mcp_oauth_tokens SET data_enc=?, updated_at=? WHERE user_id=? AND server_id=? AND data_enc=?",
+            rusqlite::params![next, updated_at, user_id, server_id, previous],
+        )
+    }
+
+    /// One account's sign-in to one server (core `disconnect`).
+    pub fn mcp_delete_token(
+        &self,
+        _cap: RustMcpCredentials,
+        user_id: &str,
+        server_id: &str,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "DELETE FROM mcp_oauth_tokens WHERE user_id=? AND server_id=?",
+            rusqlite::params![user_id, server_id],
+        )
+    }
+
+    /// The disconnect's compare-and-delete: the sign-in goes only while it is still `previous`, so
+    /// what the service is asked to revoke is what was removed.
+    pub fn mcp_delete_token_if(
+        &self,
+        _cap: RustMcpCredentials,
+        user_id: &str,
+        server_id: &str,
+        previous: &str,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "DELETE FROM mcp_oauth_tokens WHERE user_id=? AND server_id=? AND data_enc=?",
+            rusqlite::params![user_id, server_id, previous],
+        )
+    }
+
+    /// Every account's sign-in to one server (core `forget`, `setClient`).
+    pub fn mcp_delete_tokens_of_server(
+        &self,
+        _cap: RustMcpCredentials,
+        server_id: &str,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "DELETE FROM mcp_oauth_tokens WHERE server_id=?",
+            rusqlite::params![server_id],
+        )
+    }
+
+    /// Every sign-in of one account (core `forgetUser`).
+    pub fn mcp_delete_tokens_of_user(
+        &self,
+        _cap: RustMcpCredentials,
+        user_id: &str,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "DELETE FROM mcp_oauth_tokens WHERE user_id=?",
+            rusqlite::params![user_id],
+        )
+    }
+
+    /// The registered app of one server (core `clientFor`, `setClient`).
+    pub fn mcp_save_client(
+        &self,
+        _cap: RustMcpCredentials,
+        server_id: &str,
+        data_enc: &str,
+        updated_at: i64,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "INSERT INTO mcp_oauth_clients VALUES(?,?,?) ON CONFLICT(server_id) DO UPDATE SET data_enc=excluded.data_enc, updated_at=excluded.updated_at",
+            rusqlite::params![server_id, data_enc, updated_at],
+        )
+    }
+
+    pub fn mcp_swap_client(
+        &self,
+        _cap: RustMcpCredentials,
+        server_id: &str,
+        next: &str,
+        updated_at: i64,
+        previous: &str,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "UPDATE mcp_oauth_clients SET data_enc=?, updated_at=? WHERE server_id=? AND data_enc=?",
+            rusqlite::params![next, updated_at, server_id, previous],
+        )
+    }
+
+    /// The registration a service no longer knows (`invalid_client` on a refresh) goes only while it
+    /// is still `previous`: a registration made since is not removed.
+    pub fn mcp_delete_client_if(
+        &self,
+        _cap: RustMcpCredentials,
+        server_id: &str,
+        previous: &str,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "DELETE FROM mcp_oauth_clients WHERE server_id=? AND data_enc=?",
+            rusqlite::params![server_id, previous],
+        )
+    }
+
+    pub fn mcp_delete_client(
+        &self,
+        _cap: RustMcpCredentials,
+        server_id: &str,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "DELETE FROM mcp_oauth_clients WHERE server_id=?",
+            rusqlite::params![server_id],
+        )
+    }
+
+    /// Exactly core directory-mcp.cjs `setUserKey`'s upsert.
+    pub fn mcp_save_key(
+        &self,
+        _cap: RustMcpCredentials,
+        user_id: &str,
+        server_id: &str,
+        headers_enc: &str,
+        updated_at: i64,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "INSERT INTO directory_mcp_user_keys VALUES(?,?,?,?) ON CONFLICT(user_id, server_id) DO UPDATE SET headers_enc=excluded.headers_enc, updated_at=excluded.updated_at",
+            rusqlite::params![user_id, server_id, headers_enc, updated_at],
+        )
+    }
+
+    pub fn mcp_swap_key(
+        &self,
+        _cap: RustMcpCredentials,
+        user_id: &str,
+        server_id: &str,
+        next: &str,
+        previous: &str,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "UPDATE directory_mcp_user_keys SET headers_enc=? WHERE user_id=? AND server_id=? AND headers_enc=?",
+            rusqlite::params![next, user_id, server_id, previous],
+        )
+    }
+
+    pub fn mcp_delete_key(
+        &self,
+        _cap: RustMcpCredentials,
+        user_id: &str,
+        server_id: &str,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "DELETE FROM directory_mcp_user_keys WHERE user_id=? AND server_id=?",
+            rusqlite::params![user_id, server_id],
+        )
+    }
+
+    pub fn mcp_delete_keys_of_server(
+        &self,
+        _cap: RustMcpCredentials,
+        server_id: &str,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "DELETE FROM directory_mcp_user_keys WHERE server_id=?",
+            rusqlite::params![server_id],
+        )
+    }
+
+    pub fn mcp_delete_keys_of_user(
+        &self,
+        _cap: RustMcpCredentials,
+        user_id: &str,
+    ) -> Result<usize, StoreError> {
+        self.mcp_statement(
+            "DELETE FROM directory_mcp_user_keys WHERE user_id=?",
+            rusqlite::params![user_id],
+        )
+    }
+
+    /// The start sweep: sign-ins and keys of accounts that no longer exist (core's account delete
+    /// removes the account first and asks the broker to forget after; a failed ask leaves them).
+    pub fn mcp_delete_orphans_of_users(
+        &self,
+        _cap: RustMcpCredentials,
+    ) -> Result<usize, StoreError> {
+        let mut n = self.mcp_statement(
+            "DELETE FROM mcp_oauth_tokens WHERE user_id NOT IN (SELECT id FROM users)",
+            [],
+        )?;
+        n += self.mcp_statement(
+            "DELETE FROM directory_mcp_user_keys WHERE user_id NOT IN (SELECT id FROM users)",
+            [],
+        )?;
+        Ok(n)
+    }
+
+    /// The same for servers that were removed (only where `directory_mcp_servers` exists).
+    pub fn mcp_delete_orphans_of_servers(
+        &self,
+        _cap: RustMcpCredentials,
+    ) -> Result<usize, StoreError> {
+        let mut n = self.mcp_statement(
+            "DELETE FROM mcp_oauth_tokens WHERE server_id NOT IN (SELECT id FROM directory_mcp_servers)",
+            [],
+        )?;
+        n += self.mcp_statement(
+            "DELETE FROM mcp_oauth_clients WHERE server_id NOT IN (SELECT id FROM directory_mcp_servers)",
+            [],
+        )?;
+        n += self.mcp_statement(
+            "DELETE FROM directory_mcp_user_keys WHERE server_id NOT IN (SELECT id FROM directory_mcp_servers)",
+            [],
+        )?;
+        Ok(n)
+    }
+
     /// Exactly the routing allowed-list statement, under its own capability.
     pub fn set_routing_allowed(
         &self,
@@ -1322,6 +1597,7 @@ pub struct Writer {
     settings_open: Arc<AtomicBool>,
     storage_open: Arc<AtomicBool>,
     chatgpt_open: Arc<AtomicBool>,
+    mcp_open: Arc<AtomicBool>,
     policy_open: Arc<AtomicBool>,
 }
 
@@ -1342,6 +1618,7 @@ impl Writer {
         let settings_open = Arc::new(AtomicBool::new(false));
         let storage_open = Arc::new(AtomicBool::new(false));
         let chatgpt_open = Arc::new(AtomicBool::new(false));
+        let mcp_open = Arc::new(AtomicBool::new(false));
         let policy_open = Arc::new(AtomicBool::new(false));
         // READ_WRITE without CREATE: the file must already exist (Node made it).
         let inner = open_inner(
@@ -1353,6 +1630,7 @@ impl Writer {
                 Arc::clone(&settings_open),
                 Arc::clone(&storage_open),
                 Arc::clone(&chatgpt_open),
+                Arc::clone(&mcp_open),
                 Arc::clone(&policy_open),
             ),
         )?;
@@ -1361,6 +1639,7 @@ impl Writer {
             settings_open,
             storage_open,
             chatgpt_open,
+            mcp_open,
             policy_open,
         })
     }
@@ -1380,6 +1659,7 @@ impl Writer {
             settings_open: &self.settings_open,
             storage_open: &self.storage_open,
             chatgpt_open: &self.chatgpt_open,
+            mcp_open: &self.mcp_open,
             policy_open: &self.policy_open,
         })?;
         tx.commit()?;

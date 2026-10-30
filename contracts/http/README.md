@@ -1043,6 +1043,109 @@ active jobs.
   `acquire()`. It stays even once core extracts nothing large, so a rollback to an older front or
   core still pairs safely.
 
+## sbstndalton/noevia#2202 round 1: MCP keys and sign-ins (capability `rust-mcp-credentials`)
+
+The front is the broker of every MCP server credential an account holds, ported from core
+`mcp-oauth.cjs`, `directory-mcp.cjs` (the per-account keys) and `routes/mcp-directory.cjs`
+(`mcp_broker.rs`, `mcp_egress.rs`, `mcp_routes.rs`; core's `rust-mcp-credentials.cjs` refuses the
+routes with `RUST_MCP_CREDENTIALS_OWNED`, and the web supervisor and the release assembly pair the two).
+Node keeps the MCP client (a chat's live session) and the administrator's directory routes
+(`/api/admin/mcp-directory*`, the registry, the shared key); the sign-ins, the registered apps and every
+account's key are the front's.
+
+| route | owner | notes |
+| --- | --- | --- |
+| `GET /api/mcp-keys/servers`, `PUT`/`DELETE /api/mcp-keys/{id}` | rust | the servers whose key each person supplies and whether this account has one; a key is proven against the server (a short MCP session: `initialize`, `initialized`, `tools/list` to its end, close) before it is kept, sealed `enc:v2` for its owner in `directory_mcp_user_keys` |
+| `GET /api/mcp-oauth/servers`, `POST /api/mcp-oauth/{id}/connect`, `DELETE /api/mcp-oauth/{id}` | rust | the sign-in servers and this account's state (`connected`, `needsReauth`); discovery (RFC 9728, RFC 8414), registration (RFC 7591), PKCE S256 and a resource indicator; the disconnect deletes the row and asks the service to revoke it (RFC 7009, best effort) |
+| `GET /api/mcp-oauth/callback` | rust (`client = false`) | the service's browser return: the state is bound to the account and server that started it and spent once; the code is exchanged with the verifier and the redirect address of the start; the tokens are sealed `enc:v2` for the account in `mcp_oauth_tokens` |
+
+Internal store ops for Node (`POST /v1/mcp/{session,key,reject,start,client,client-info,forget,key-set,reseal}`,
+loopback, the per-start secret): `session` hands one call's access token (never a refresh token) with a
+generation digest; `key` one call's key headers; `reject` marks the sign-in a server twice refused;
+`start`/`client`/`client-info`/`forget`/`key-set` are the administrator's directory routes' needs; `reseal`
+re-seals the three tables for a secrets rotation (core's `runRotation` awaits it, like the providers' pass).
+Node holds neither past the request.
+
+What the front publishes: `mcp-credential-state.json` (0600, atomic, rewritten only when its content
+changes): `{ version, oauth: { user: { server: connected|reauth } }, keys: { user: [server] } }`, no secret.
+Node re-reads it with `createReread` for "is this account ready for this server?" (the permitted-tools view,
+the chat turn's box filter) and for the permitted-tools cache key; a file it cannot read means nobody is ready.
+
+Locking: one async mutex per (account, server) serializes the single-flight refresh, the re-seal and the
+disconnect (a waiter re-reads the row, so a rotated refresh token is never spent twice), every write is a
+compare-and-swap on the ciphertext it started from, one mutex per server serializes the app registration.
+Work a client could abandon (the token exchange, a refresh, a key check and store, a registration) runs on a
+spawned task the handler awaits; the revoke after a disconnect is detached.
+
+Outbound rules (`mcp_egress.rs`, the `ssrf-policy` crate): `https://` with no placeholder or whitespace and no
+credentials in the URL (a QA run may use `http://127.0.0.1:<port>/…` with `NOEVIA_QA_ALLOW_LOOPBACK_MCP=1`);
+a public address, judged for a literal and for EVERY answer of a name, before the request and again at connect
+time by the client's own resolver (DNS rebinding); no redirect is ever followed, no environment proxy, 8 s for
+metadata and registration, 10 s for a token, 30 s per MCP step, replies capped (256 KiB OAuth, 8 MiB MCP).
+
+Behaviour changes (each a Node bug or gap, with a regression in `tests/mcp_credentials.rs`):
+
+- A grant the service reports gone (`invalid_grant`) now needs a new sign-in: the refresh token is dropped and
+  the row expired, so the list says `needsReauth` instead of `connected`, and a dead sign-in is not tried again.
+  A flaky service (5xx, timeout) never costs the sign-in, and a token still inside its life is kept; Node
+  returned "no token" for any refresh failure.
+- A server that refuses the token it was just given gets one retry with a token the broker issued past it
+  (`rejected`); a second refusal marks that sign-in by its generation. Node had no retry.
+- The sign-in service's issuer must be the one asked (RFC 8414 §3.3), the resource document must name the
+  server asked about (RFC 9728 §3.3), and a callback that names its issuer (`iss`, RFC 9207) must name the
+  one asked; Node checked none. A callback without a code is refused before anything is spent.
+- A registered app is authenticated the way its registration said (`token_endpoint_auth_method`); core read a
+  field only hand-registered apps had, so an app handed a secret was always sent Basic. `expires_in: null`
+  is no expiry (core read it as already expired).
+- Disconnect asks the service to revoke the grant (RFC 7009) when its metadata names a revocation endpoint.
+- Round 1 review fixes: the resource a service describes may be the site or a parent of the server's path
+  (RFC 9728 §3.3: same origin, a path on a segment boundary), never another origin; `invalid_client` and
+  `unauthorized_client` on a refresh (a 400 or 401) end the sign-in like `invalid_grant` and forget a registration
+  the broker made (a hand-registered app stays), while the same body on a 5xx is a bad moment; a service that
+  advertises `authorization_response_iss_parameter_supported` must send `iss` (remembered with the app as
+  `issParameterSupported`, an addition core ignores); a directory-server table that exists but cannot be read is an
+  outage (503), not "no servers"; a refreshed sign-in is sealed and written twice before giving up (the service has
+  already rotated the token); a token the MCP server refused that cannot be refreshed (no refresh token, no app)
+  is marked for a new sign-in by the broker itself; the disconnect deletes the very row it read and, for an app an
+  older core registered, finds the revocation address lazily (5 s, only a service of the issuer the app was
+  registered with); a hand-registered app waits for a registration under way; one account runs at most four key
+  checks at once (429); every internal-store refusal carries its `status`.
+- A sign-in that finishes for a server removed meanwhile is not kept; pending sign-ins are capped globally
+  (4000) as well as per account (20); registrations for one server are serialized.
+- The start sweep removes the sign-ins and keys of accounts and servers that no longer exist; the rotation
+  re-seals a sign-in under its refresh lock (a refresh during a rotation no longer loses the rotated token).
+- URLs with credentials, names with a trailing dot or an internationalized label are refused for the MCP
+  server and its OAuth service (the `ssrf-policy` rules; the JS check resolved them).
+- The key check uses the front's own short MCP session; it needs the server to answer `initialize` and
+  `tools/list`, and no longer converts the tools (a server whose tools noevia cannot convert still takes a key).
+
+Left on Node (chat-bound): the MCP client itself, discovery of a server's tools, the approval gate for MCP tool
+calls (Allow once, Decline, Allow for this chat), and the administrator's add/replace/remove of directory servers.
+
+### #2202 round 1: what the broker unblocks, and what stays on Node
+
+`GET /api/toolboxes/permitted` is still Node's. Its rules are Rust (the `toolboxes-permitted` crate, run in
+Node's wasm); its inputs are the project's selection (Rust's `projects.json`), the account's connections
+(Rust's storage row; Drive), the MCP readiness (this round: the broker's published file), the tool permission
+store, ENABLED_TOOLBOXES / Kiwix / CODE_REPOS (environment) and the discovered MCP catalogue. Three of those
+are still Node-live: the discovered boxes and their tool schemas (live MCP sessions), the per-user tool
+permission store (its reads are Node's; `tool_policies` has had the front as its only writer since settings round 7, #2200), and the
+Drive state, which the front's Drive broker now answers per call (`/v1/gdrive/view`) but which this view does not
+yet read as a file. What this round did for it: the
+readiness input is a file, and core's cache key now carries the project's toolbox selection, the connected
+connectors, the readiness and the last discovery (it omitted all of them, so a project edit or a new Nextcloud
+connection by the front showed up to 30 s late). The move itself needs Node to publish its offered catalogue
+(box ids, tool names, write flags) after each discovery as a signal-checked file and the permission store to get a
+Rust writer; then the view is a pure function of files the front already reads.
+
+`GET /api/connectors` is still Node's: the Drive half is the Drive broker's view (the front, `/v1/gdrive/view`, since
+settings round 7), and the Nextcloud half is the storage connection (Rust) joined with the tool permission
+store, whose reads are Node's (it knows which live MCP tools write; the front is the table's only writer).
+Both halves publish together or not at all.
+
+Chat-bound, by design: `POST /api/tool-approvals` (the parked approval promise lives in the live chat loop; the
+three actions - Allow once, Decline, Allow for this chat - and their tenant scope stay in Node) and `GET
+/api/toolboxes` (prefill samples come from the chat stream, the MCP block from live discovery state).
 
 ## sbstndalton/noevia#2191 round 8 (group rust-project-source-work): the front runs the source operations
 
@@ -1137,7 +1240,7 @@ OCR is gone with pdf.js).
 
 Each is permanent with no switch. Core refuses exactly the GET before authentication; the web supervisor and
 the release assembler pair each marker with its capability in both directions (old/old stays valid). The
-node-route floor in `tests/front.rs` is 54.
+node-route floor in `tests/front.rs` is 49.
 
 **Snapshots (what only Node knows).** `GET /api/health` needs `ragAvailable` and the retrieval tri-state
 (rag.cjs: the native index dependencies, the embedding probe and its 45 s cache, the administrator's embedding

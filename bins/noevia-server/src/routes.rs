@@ -117,6 +117,8 @@ pub enum Native {
     /// GET /api/auto-roles (sbstndalton/noevia#2190 close-out, `rust-auto-roles`):
     /// auto_roles_routes.rs. The PUT stays Node's.
     AutoRoles,
+    /// /api/mcp-keys/* and /api/mcp-oauth/* (sbstndalton/noevia#2202): mcp_routes.rs.
+    McpCredentials,
 }
 
 /// The route [`Native::ProviderTest`] implements (POST only; routes.toml).
@@ -127,6 +129,17 @@ const PROVIDER_TEST: &str = "/api/providers/test";
 /// /api/providers/test` are the same handler's, picked by method in [`dispatch_under`].
 pub(crate) const PROVIDERS_LIST: &str = "/api/providers";
 pub(crate) const PROVIDER_ONE: &str = "/api/providers/{id}";
+
+/// The routes [`Native::McpCredentials`] implements (sbstndalton/noevia#2202; routes.toml gives
+/// Rust exactly the methods mcp_routes.rs answers).
+const MCP_CREDENTIALS: &[&str] = &[
+    "/api/mcp-keys/servers",
+    "/api/mcp-keys/{*}",
+    "/api/mcp-oauth/servers",
+    "/api/mcp-oauth/{id}",
+    "/api/mcp-oauth/{id}/connect",
+    "/api/mcp-oauth/callback",
+];
 
 /// The route [`Native::ProviderModels`] implements (every method; routes.toml).
 const PROVIDER_MODELS: &str = "/api/providers/{providerId}/models{*?}";
@@ -325,6 +338,7 @@ fn compiled(route: &Route) -> bool {
         && (route.path != PROVIDER_MODELS || cfg!(feature = "rust-storage-reads"))
         && (![PROVIDERS_LIST, PROVIDER_ONE].contains(&route.path)
             || cfg!(feature = "rust-storage-reads"))
+        && (!MCP_CREDENTIALS.contains(&route.path) || cfg!(feature = "rust-storage-reads"))
 }
 
 /// The native handler a rust-owned route is implemented by. The front read routes and the export
@@ -366,6 +380,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
             return Some(Native::Connectors)
         }
         PROVIDERS_LIST | PROVIDER_ONE if auth => return Some(Native::Providers),
+        p if auth && MCP_CREDENTIALS.contains(&p) => return Some(Native::McpCredentials),
         "/api/instance"
         | "/.well-known/webauthn"
         | "/api/admin/web-address"

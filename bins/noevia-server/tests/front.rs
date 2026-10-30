@@ -293,9 +293,10 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     // listed Node route: still 75; #2190 round 5 moved the ChatGPT device sign-in, its model list and the
     // provider model lists: 70; round 6 moved the provider registry's list and its one-row route: 68; round 7
     // the off-site backup's seven routes (its eighth path, new-store, was never a Node route) and the four
-    // Google Drive connector writes: 57; the close-out moved GET /api/health, GET /api/auto-roles and
-    // GET /api/workspace: 54).
-    assert!(node_routes >= 54, "{node_routes} node routes");
+    // Google Drive connector writes: 57; #2202 moved the five MCP key and sign-in routes (the sign-in
+    // callback was never a listed Node route): 52; the close-out moved GET /api/health, GET /api/auto-roles
+    // and GET /api/workspace: 49).
+    assert!(node_routes >= 49, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("POST", "/api/ready"),

@@ -21,6 +21,12 @@ pub mod health;
 pub mod health_routes;
 pub mod identity;
 pub mod legacy_proxy;
+#[cfg(feature = "rust-storage-reads")]
+pub mod mcp_broker;
+#[cfg(feature = "rust-storage-reads")]
+pub mod mcp_egress;
+#[cfg(feature = "rust-storage-reads")]
+pub mod mcp_routes;
 pub mod model_routes;
 pub mod model_sizing;
 pub mod offsite_engine;
@@ -182,6 +188,16 @@ use std::sync::Arc;
 /// rust-auto-roles.cjs `RUST_AUTO_ROLES_OWNED`, rust-workspace.cjs `RUST_WORKSPACE_OWNED`) and
 /// publishes the snapshots, so the supervisor pairs each capability with its marker.
 ///
+/// `rust-mcp-credentials`: this build is the broker of the MCP server credentials (mcp_broker.rs,
+/// mcp_routes.rs, sbstndalton/noevia#2202). It answers `GET /api/mcp-keys/servers`, `PUT|DELETE
+/// /api/mcp-keys/{id}`, `GET /api/mcp-oauth/servers`, `POST /api/mcp-oauth/{id}/connect`, `DELETE
+/// /api/mcp-oauth/{id}` and the sign-in callback, is the only writer of `mcp_oauth_tokens`,
+/// `mcp_oauth_clients` and `directory_mcp_user_keys`, hands Node's chat access tokens and key
+/// headers per call over the internal store (`/v1/mcp/*`), publishes who is ready in
+/// `mcp-credential-state.json` and re-seals the three tables for a secrets rotation. The paired
+/// core refuses the routes (rust-mcp-credentials.cjs `RUST_MCP_CREDENTIALS_OWNED`) and every Node
+/// write of the tables.
+///
 /// `rust-model-sizing`: this build answers `GET /api/models/estimate` and `GET
 /// /api/models/preset/suggest` (sbstndalton/noevia#2189, src/model_sizing.rs), permanently and
 /// with no switch. Node refuses those two GETs (core rust-model-sizing.cjs `RUST_MODEL_SIZING_OWNED`),
@@ -311,6 +327,8 @@ pub const FEATURES: &[&str] = &[
     "rust-providers",
     #[cfg(feature = "rust-storage-reads")]
     "rust-providers-reseal",
+    #[cfg(feature = "rust-storage-reads")]
+    "rust-mcp-credentials",
     "rust-vault-mirror-preferences",
     "rust-health",
     "rust-auto-roles",
@@ -343,6 +361,9 @@ pub struct App {
     /// the token store and refresh, the catalogue cache; Node's chat asks it for access tokens.
     #[cfg(feature = "rust-chatgpt-status")]
     pub chatgpt_oauth: Option<Arc<chatgpt_oauth_routes::Broker>>,
+    /// The MCP credential broker (sbstndalton/noevia#2202): OAuth sign-ins and per-account keys.
+    #[cfg(feature = "rust-storage-reads")]
+    pub mcp: Option<Arc<mcp_broker::Mcp>>,
     /// GET /api/providers/{id}/models: the per-account list cache (sbstndalton/noevia#2190 round 5).
     #[cfg(feature = "rust-storage-reads")]
     pub provider_models: provider_models_routes::Lists,
@@ -434,6 +455,8 @@ impl App {
             #[cfg(feature = "rust-chatgpt-status")]
             chatgpt_oauth: chatgpt_oauth_routes::Broker::new(&config, version.as_deref())
                 .map(Arc::new),
+            #[cfg(feature = "rust-storage-reads")]
+            mcp: mcp_broker::Mcp::new(&config).map(Arc::new),
             #[cfg(feature = "rust-storage-reads")]
             provider_models: provider_models_routes::Lists::default(),
             #[cfg(feature = "rust-storage-reads")]
@@ -535,6 +558,7 @@ async fn handle(
                     | routes::Native::Providers
                     | routes::Native::Health
                     | routes::Native::AutoRoles
+                    | routes::Native::McpCredentials
             )
         ) {
             native = on_whatwg;
@@ -570,7 +594,8 @@ async fn handle(
             | routes::Native::Connectors
             | routes::Native::Providers
             | routes::Native::Health
-            | routes::Native::AutoRoles,
+            | routes::Native::AutoRoles
+            | routes::Native::McpCredentials,
         )
         | None => false,
     };
@@ -704,6 +729,24 @@ async fn handle(
                 reply::error(
                     StatusCode::SERVICE_UNAVAILABLE,
                     "Provider models unavailable",
+                    true,
+                )
+            }
+        }
+        Some(routes::Native::McpCredentials) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            #[cfg(feature = "rust-storage-reads")]
+            {
+                mcp_routes::serve(&app, conn, req, p).await
+            }
+            #[cfg(not(feature = "rust-storage-reads"))]
+            {
+                let _ = (p, conn, req);
+                reply::error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "MCP credentials unavailable",
                     true,
                 )
             }
