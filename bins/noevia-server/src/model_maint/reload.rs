@@ -397,7 +397,7 @@ impl Maint {
             self.guard_op(|g| g.forget()).await;
             return Ok(Ok(reply));
         }
-        match router.models(hold).await {
+        match router.models(token.as_deref()).await {
             Ok(after) if after.ok => {
                 let after_text = self.ini_text().await;
                 match (rows(&after.body), before) {
