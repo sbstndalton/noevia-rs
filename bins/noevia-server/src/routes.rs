@@ -160,11 +160,30 @@ const PROJECT_ROUTES: &[&str] = &[
     PROJECT_CHAT,
     PROJECT_SOURCE_TEXT,
     PROJECT_DOCUMENT_ORIGINAL,
+    PROJECT_DOCUMENT_PAGES,
     PROJECT_ORIGINAL,
     PROJECT_CREATE,
     PROJECT_ONE,
     PROJECT_FILES,
+    PROJECT_DOCUMENTS,
+    PROJECT_UPLOAD,
+    PROJECT_SYNC,
+    PROJECT_SOURCE_JOB,
+    server_projects::import::ROUTE,
 ];
+
+/// A project upload's and folder sync's background start (POST only; routes.toml) and a source
+/// job's status (GET only), the front's under `rust-source-jobs` (sbstndalton/noevia#2191 round 6):
+/// it owns the source-job store and sends the synchronous POST, which stays Node's, as its worker
+/// call. Node refuses the background start and the poll (core rust-source-jobs.cjs).
+pub(crate) const PROJECT_UPLOAD: &str = "/api/projects/{id}/upload";
+pub(crate) const PROJECT_SYNC: &str = "/api/projects/{id}/sources/sync";
+pub(crate) const PROJECT_SOURCE_JOB: &str = "/api/projects/{id}/source-jobs/{jobId}";
+
+/// A project document's upload (POST only; routes.toml), the front's under `rust-project-documents`
+/// (sbstndalton/noevia#2191 round 5), on the Rust extraction pipeline; Node refuses it
+/// (core rust-project-documents.cjs).
+pub(crate) const PROJECT_DOCUMENTS: &str = "/api/projects/{id}/documents";
 
 /// A project source file's delete from the user's storage (DELETE only; routes.toml), the front's
 /// under `rust-project-files` (sbstndalton/noevia#2191 round 3); Node refuses it
@@ -183,6 +202,10 @@ pub(crate) const PROJECT_ONE: &str = "/api/projects/{projectId}";
 /// sent on to Node by project_routes::route.
 pub(crate) const PROJECT_SOURCE_TEXT: &str = "/api/projects/{id}/sources/text";
 pub(crate) const PROJECT_DOCUMENT_ORIGINAL: &str = "/api/projects/{id}/documents/original";
+/// A stored document's page text (GET only; routes.toml), the front's under
+/// `rust-project-document-pages` (sbstndalton/noevia#2191 round 4); Node refuses the GET (core
+/// rust-project-document-pages.cjs).
+pub(crate) const PROJECT_DOCUMENT_PAGES: &str = "/api/projects/{id}/documents/pages";
 pub(crate) const PROJECT_ORIGINAL: &str = "/api/projects/{id}/{*}/original";
 
 /// Settings → Data → Delete old chats, its preview (GET only; routes.toml): a read of the chat
@@ -613,7 +636,7 @@ mod tests {
             ("PUT", "/api/projects/p1/assets/img-1"),
             ("HEAD", "/api/projects/p1/assets/img-1"),
             ("POST", "/api/projects/p1/assets/img-1"),
-            ("POST", "/api/projects/p1/upload"),
+            ("GET", "/api/projects/p1/upload"),
             // DELETE /api/projects/p1 is the front's since #2191 round 2 (rust-project-lifecycle).
             ("GET", "/api/projects/p1"),
         ] {
@@ -1107,6 +1130,7 @@ mod tests {
         for p in [
             "/api/projects/p1/sources/text",
             "/api/projects/p1/documents/original",
+            "/api/projects/p1/documents/pages",
             "/api/projects/p1/uploads/original",
         ] {
             assert_eq!(
@@ -1119,15 +1143,15 @@ mod tests {
             }
         }
         for p in [
-            "/api/projects/p1/documents/pages",
             "/api/projects/p1/upload",
             "/api/projects/p1/sources/sync",
             "/api/projects/p1/config",
         ] {
-            for m in ["GET", "POST", "DELETE"] {
+            for m in ["GET", "DELETE"] {
                 assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
             }
         }
+        assert_eq!(dispatch_under("POST", "/api/projects/p1/config", on), None);
         // `{*}/original` is matched by the table; project_routes::route sends any segment but
         // `uploads` on to Node.
         assert_eq!(
@@ -1165,6 +1189,83 @@ mod tests {
     }
 
     #[test]
+    fn a_document_upload_is_native_for_post_only() {
+        let on = Switches::default();
+        assert_eq!(
+            dispatch_under("POST", "/api/projects/p1/documents", on),
+            Some(Native::Projects)
+        );
+        for m in ["GET", "PUT", "PATCH", "DELETE"] {
+            assert_eq!(
+                dispatch_under(m, "/api/projects/p1/documents", on),
+                None,
+                "{m}"
+            );
+        }
+        assert!(matches!(
+            crate::project_routes::route("POST", "/api/projects/p1/documents"),
+            Some(crate::project_routes::Route::Documents { .. })
+        ));
+        assert_eq!(
+            crate::project_routes::route("POST", "/api/projects//documents"),
+            None
+        );
+        assert!(crate::FEATURES.contains(&"rust-project-documents"));
+        assert!(crate::FEATURES.contains(&"rust-document-extraction"));
+        // Round 7: the large-document lock is the host's, shared with core.
+        assert!(crate::FEATURES.contains(&"rust-large-document-host-lock"));
+    }
+
+    /// sbstndalton/noevia#2191 round 6: the source jobs are the front's: the upload's and sync's POST
+    /// (project_routes sends the synchronous form, without `background=1`, on to Node) and the poll.
+    #[test]
+    fn the_source_jobs_are_native_for_their_methods() {
+        use crate::project_routes::{route, Route};
+        let on = Switches::default();
+        for p in ["/api/projects/p1/upload", "/api/projects/p1/sources/sync"] {
+            assert_eq!(dispatch_under("POST", p, on), Some(Native::Projects), "{p}");
+            for m in ["GET", "PUT", "PATCH", "DELETE"] {
+                assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
+            }
+        }
+        let poll = "/api/projects/p1/source-jobs/j1";
+        assert_eq!(dispatch_under("GET", poll, on), Some(Native::Projects));
+        for m in ["POST", "PUT", "DELETE"] {
+            assert_eq!(dispatch_under(m, poll, on), None, "{m}");
+        }
+        assert_eq!(
+            route("POST", "/api/projects/p1/upload"),
+            Some(Route::BackgroundSource {
+                project: "p1".into(),
+                sync: false
+            })
+        );
+        assert_eq!(
+            route("POST", "/api/projects/p%201/sources/sync"),
+            Some(Route::BackgroundSource {
+                project: "p%201".into(),
+                sync: true
+            })
+        );
+        assert_eq!(
+            route("GET", poll),
+            Some(Route::SourceJob {
+                project: "p1".into(),
+                job: "j1".into()
+            })
+        );
+        for (m, p) in [
+            ("POST", "/api/projects//upload"),
+            ("GET", "/api/projects/p1/source-jobs/"),
+            ("GET", "/api/projects/p1/upload"),
+        ] {
+            assert_eq!(route(m, p), None, "{m} {p}");
+        }
+        assert!(crate::FEATURES.contains(&"rust-source-jobs"));
+        assert!(!crate::FEATURES.contains(&"noevia-source-jobs-store/1"));
+    }
+
+    #[test]
     fn a_source_file_delete_is_native_and_nothing_else_of_its_path() {
         let on = Switches::default();
         assert_eq!(
@@ -1187,6 +1288,27 @@ mod tests {
             None
         );
         assert!(crate::FEATURES.contains(&"rust-project-files"));
+        assert!(crate::FEATURES.contains(&"rust-project-document-pages"));
+        // Round 4: the conversation import, POST only (Node keeps its 405).
+        assert_eq!(
+            dispatch_under("POST", "/api/import/conversations", on),
+            Some(Native::Projects)
+        );
+        for m in ["GET", "PUT", "DELETE"] {
+            assert_eq!(
+                crate::project_routes::route(m, "/api/import/conversations"),
+                None
+            );
+        }
+        assert_eq!(
+            crate::project_routes::route("POST", "/api/import/conversations/"),
+            None
+        );
+        assert!(crate::FEATURES.contains(&"rust-conversation-import"));
+        assert_eq!(
+            crate::project_routes::route("GET", "/api/projects//documents/pages"),
+            None
+        );
     }
 
     #[test]

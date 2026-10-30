@@ -3011,6 +3011,7 @@ dependencies = [
  "storage-path",
  "tempfile",
  "upload-sniff",
+ "url",
 ]
 
 [[package]]

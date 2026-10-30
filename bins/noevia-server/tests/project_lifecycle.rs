@@ -875,3 +875,268 @@ async fn a_source_file_delete_removes_it_from_storage_then_the_project() {
         .files
         .contains_key(&format!("{folder}/Text/keep.md")));
 }
+
+// ── sbstndalton/noevia#2191 round 4 (`rust-conversation-import`) ─────────────────────────────
+
+const EXPORT_HEAD: &str = r#"{"format":"noevia-conversations-v1","chats":["#;
+
+fn history_of(f: &Front, chat: &str) -> String {
+    let now = server_projects::transcript::read(&f.data, &f.user, chat).unwrap();
+    assert!(now.exists, "{chat} has a transcript");
+    js_json::wtf16::stringify(&now.history).unwrap()
+}
+
+fn audits(f: &Front) -> Vec<String> {
+    let c = Connection::open(server_store::db_path(&f.data)).unwrap();
+    let mut q = c
+        .prepare("SELECT detail FROM audit_events WHERE action='import.conversations' AND actor_user_id=?1 AND target_user_id=?1 ORDER BY id")
+        .unwrap();
+    q.query_map([&f.user], |r| r.get::<_, String>(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+}
+
+fn free_ids(f: &Front) -> Vec<String> {
+    let text = std::fs::read_to_string(f.user_dir().join("free-chats.json")).unwrap_or("[]".into());
+    serde_json::from_str::<serde_json::Value>(&text)
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["id"].as_str().unwrap().to_string())
+        .collect()
+}
+
+/// Node's answers and files, end to end: refusals before anything is written, free and project
+/// chats (a project matched by name, another created through the round-2 create), the audit row,
+/// an idempotent re-import, a pre-existing unlisted transcript never overwritten.
+/// Failing before round 4: the POST went to Node (absent here: 502).
+#[tokio::test]
+async fn import_adds_chats_as_node_does_and_never_overwrites() {
+    let f = front().await;
+    publish_catalogue(&f);
+    let dir = f.user_dir();
+    std::fs::write(
+        dir.join("projects.json"),
+        r#"{"projects":[{"id":"p-work","name":" Work ","files":[],"chats":[{"id":"c-old","title":"Old","updatedAt":1}]},{"id":"cowork-chat-context-c9","name":"fresh","files":[],"chats":[]}]}"#,
+    )
+    .unwrap();
+    // An unlisted transcript already holds c-taken (a chat whose list save never landed).
+    server_projects::transcript::write(
+        &f.data,
+        &f.user,
+        "c-taken",
+        &[js_json::wtf16::parse(r#"{"role":"user","content":"mine"}"#).unwrap()],
+        &server_projects::transcript::Base::Any,
+        None,
+    )
+    .unwrap();
+    let h = json_headers(&f);
+    let post = |body: String| {
+        let h = h.clone();
+        async move { call(f.addr, "POST", "/api/import/conversations", &h, &body).await }
+    };
+    let not_export =
+        r#"{"error":"Choose a conversations.json from a noevia conversations export."}"#;
+    for body in ["{", "[]", r#"{"format":"x","chats":[]}"#] {
+        let (status, _, text) = post(body.into()).await;
+        assert_eq!((status, text.as_str()), (400, not_export), "{body}");
+    }
+    assert!(
+        !dir.join("conversation-imports").exists(),
+        "a refusal writes nothing"
+    );
+    let export = format!(
+        "{EXPORT_HEAD}{}]}}",
+        [
+            r#"{"id":"c-old","title":"Old"}"#,
+            r#"{"id":"c-free","title":"Free one","updatedAt":5,"history":[{"role":"user","content":"hi","reasoning":"secret"},{"role":"assistant","content":"yo","failure":" broke ","toolCalls":[{"name":"web","args":{}}]}]}"#,
+            r#"{"id":"c-work","title":"In work","updatedAt":6,"project":{"name":"work"},"history":[{"role":"user","content":"w"}]}"#,
+            r#"{"id":"c-new","title":"","updatedAt":7,"project":{"name":"Fresh"},"history":[]}"#,
+            r#"{"id":"c-taken","title":"Taken","updatedAt":8,"history":[{"role":"user","content":"theirs"}]}"#,
+        ]
+        .join(",")
+    );
+    let (status, _, text) = post(export.clone()).await;
+    assert_eq!(
+        (status, text.as_str()),
+        (
+            200,
+            r#"{"imported":4,"skipped":[{"title":"Old","reason":"already in this account"}],"projectsCreated":1}"#
+        )
+    );
+    assert_eq!(
+        history_of(&f, "c-free"),
+        // The store bounds it as chat-sources.cjs sanitizeHistory does (`failure` last), the
+        // same transcript Node's import published through it.
+        r#"[{"role":"user","content":"hi"},{"role":"assistant","content":"yo","toolCalls":[{"name":"web","status":"done"}],"failure":"broke"}]"#
+    );
+    assert_eq!(
+        history_of(&f, "c-taken"),
+        r#"[{"role":"user","content":"mine"}]"#,
+        "never overwritten"
+    );
+    let free = free_ids(&f);
+    assert!(
+        free.contains(&"c-free".to_string()) && !free.contains(&"c-taken".to_string()),
+        "{free:?}"
+    );
+    let renamed = free
+        .iter()
+        .find(|id| id.starts_with("c-") && *id != "c-free")
+        .unwrap()
+        .clone();
+    assert_eq!(
+        history_of(&f, &renamed),
+        r#"[{"role":"user","content":"theirs"}]"#
+    );
+    let all = projects(&f);
+    let work = all
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == "p-work")
+        .unwrap();
+    let ids: Vec<&str> = work["chats"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["c-work", "c-old"]);
+    // "Fresh" is a free chat's context project (internal): a new project is made, not matched.
+    let fresh = all
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["name"] == "Fresh")
+        .unwrap();
+    assert!(fresh["id"].as_str().unwrap().starts_with("proj-"));
+    assert_eq!(fresh["chats"][0]["id"], "c-new");
+    assert_eq!(fresh["toolboxes"], serde_json::json!([]));
+    assert_eq!(
+        std::fs::read_dir(dir.join("conversation-imports"))
+            .unwrap()
+            .count(),
+        0
+    );
+    assert_eq!(
+        audits(&f),
+        [r#"{"imported":4,"skipped":1,"projectsCreated":1}"#]
+    );
+    // The same file again adds nothing but the chat whose id was taken: its own id is in no list,
+    // so planImport takes it again, as Node did (it is published under yet another id).
+    let (status, _, text) = post(export).await;
+    assert_eq!(status, 200);
+    let again: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(
+        (
+            again["imported"].as_u64(),
+            again["skipped"].as_array().unwrap().len(),
+            again["projectsCreated"].as_u64()
+        ),
+        (Some(1), 4, Some(0))
+    );
+    assert_eq!(audits(&f).len(), 2);
+}
+
+/// A journal Node left (crashed after staging, before its lists) is finished by the next import,
+/// file for file as conversation-import.cjs wrote it; a deleted chat is reported, not imported.
+#[tokio::test]
+async fn import_finishes_a_journal_node_left() {
+    let f = front().await;
+    publish_catalogue(&f);
+    let dir = f.user_dir();
+    std::fs::write(dir.join("projects.json"), r#"{"projects":[]}"#).unwrap();
+    std::fs::write(dir.join("deleted-chats.json"), r#"["c-gone"]"#).unwrap();
+    let journal = dir.join("conversation-imports").join("a".repeat(64));
+    std::fs::create_dir_all(&journal).unwrap();
+    std::fs::write(
+        journal.join("0.json"),
+        r#"{"history":[{"role":"user","content":"left"}]}"#,
+    )
+    .unwrap();
+    std::fs::write(journal.join("1.json"), r#"{"history":[]}"#).unwrap();
+    std::fs::write(
+        journal.join("manifest.json"),
+        r#"{"version":1,"plan":{"freeChats":[{"id":"c-left","title":"Left","updatedAt":3},{"id":"c-gone","title":"Gone","updatedAt":2}],"projectChats":[],"skipped":[],"imported":2},"files":[{"id":"c-left","stage":"0.json"},{"id":"c-gone","stage":"1.json"}],"projectsCreated":0}"#,
+    )
+    .unwrap();
+    // A staging directory without a manifest is discarded.
+    std::fs::create_dir_all(dir.join("conversation-imports").join("b".repeat(64))).unwrap();
+    let (status, _, text) = call(
+        f.addr,
+        "POST",
+        "/api/import/conversations",
+        &json_headers(&f),
+        &format!("{EXPORT_HEAD}]}}"),
+    )
+    .await;
+    assert_eq!(
+        (status, text.as_str()),
+        (200, r#"{"imported":0,"skipped":[],"projectsCreated":0}"#)
+    );
+    assert_eq!(free_ids(&f), ["c-left"]);
+    assert_eq!(
+        history_of(&f, "c-left"),
+        r#"[{"role":"user","content":"left"}]"#
+    );
+    assert_eq!(
+        std::fs::read_dir(dir.join("conversation-imports"))
+            .unwrap()
+            .count(),
+        0
+    );
+    assert_eq!(
+        audits(&f),
+        [
+            r#"{"imported":1,"skipped":1,"projectsCreated":0}"#,
+            r#"{"imported":0,"skipped":0,"projectsCreated":0}"#
+        ]
+    );
+}
+
+/// Signed out 401; another account's import lands in its own lists only; other methods are Node's.
+#[tokio::test]
+async fn import_is_tenant_scoped_and_post_only() {
+    let f = front().await;
+    publish_catalogue(&f);
+    std::fs::write(f.user_dir().join("projects.json"), r#"{"projects":[]}"#).unwrap();
+    let body = format!(r#"{EXPORT_HEAD}{{"id":"c-m","title":"M","history":[]}}]}}"#);
+    let (status, _, _) = call(
+        f.addr,
+        "POST",
+        "/api/import/conversations",
+        &[("origin", ORIGIN)],
+        &body,
+    )
+    .await;
+    assert_eq!(status, 401);
+    let (member, cookie) = insert_member_session(&f);
+    std::fs::create_dir_all(f.data.join("users").join(&member)).unwrap();
+    let csrf = "synthetic-member-csrf-token";
+    let mh = [
+        ("cookie", cookie.as_str()),
+        ("x-csrf-token", csrf),
+        ("origin", ORIGIN),
+        ("content-type", "application/json"),
+    ];
+    let (status, _, text) = call(f.addr, "POST", "/api/import/conversations", &mh, &body).await;
+    assert_eq!(
+        (status, text.as_str()),
+        (200, r#"{"imported":1,"skipped":[],"projectsCreated":0}"#)
+    );
+    assert!(f
+        .data
+        .join("users")
+        .join(&member)
+        .join("free-chats.json")
+        .exists());
+    assert!(free_ids(&f).is_empty(), "the admin's lists are untouched");
+    for m in ["GET", "PUT"] {
+        let (status, _, _) = call(f.addr, m, "/api/import/conversations", &headers(&f), "").await;
+        assert_eq!(status, 502, "{m} goes to Node");
+    }
+    assert!(noevia_server::FEATURES.contains(&"rust-conversation-import"));
+}

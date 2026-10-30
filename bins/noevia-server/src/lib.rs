@@ -12,6 +12,7 @@ pub mod config;
 pub mod decision_settings_routes;
 pub mod diary_routes;
 pub mod export_routes;
+pub mod extraction;
 pub mod feature_context;
 pub mod health;
 pub mod identity;
@@ -35,6 +36,7 @@ pub mod routing_default_routes;
 pub mod routing_mode_routes;
 pub mod sampling_settings_routes;
 pub mod serve;
+pub mod source_job_routes;
 pub mod static_files;
 pub mod stats_routes;
 #[cfg(feature = "rust-storage-browse")]
@@ -149,6 +151,39 @@ use std::sync::Arc;
 /// `unindex` job in the index outbox. Node refuses the route (core rust-project-files.cjs
 /// `RUST_PROJECT_FILES_OWNED`) and runs `unindex` jobs, so the web supervisor pairs them.
 ///
+/// `rust-project-document-pages`: this build answers `GET /api/projects/{id}/documents/pages` (a
+/// stored document's page text and notice, sbstndalton/noevia#2191 round 4), permanently and with
+/// no switch. Node refuses the GET (core rust-project-document-pages.cjs
+/// `RUST_PROJECT_DOCUMENT_PAGES_OWNED`), so the web supervisor pairs them.
+///
+/// `rust-conversation-import`: this build answers `POST /api/import/conversations` (Settings → Data
+/// → Import conversations, sbstndalton/noevia#2191 round 4) with Node's recovery journal, so an
+/// import Node left unfinished is finished here. Node refuses the POST (core
+/// rust-conversation-import.cjs `RUST_CONVERSATION_IMPORT_OWNED`), so the web supervisor pairs them.
+///
+/// `rust-document-extraction`: this build extracts new project documents itself (Docling, with the
+/// OCR worker for the per-page retry; crates/server-projects `extract`) and drains each user's
+/// durable extraction queue (`users/<id>/extraction-jobs.db`, sbstndalton/noevia#2191 round 5).
+///
+/// `rust-project-documents`: this build answers `POST /api/projects/{id}/documents` on that pipeline
+/// (sbstndalton/noevia#2191 round 5). Node refuses the POST (core rust-project-documents.cjs
+/// `RUST_PROJECT_DOCUMENTS_OWNED`), so the web supervisor pairs them.
+///
+/// `rust-source-jobs`: this build is the one owning process of the source-job store
+/// (sbstndalton/noevia#2191 round 6, crates/server-projects `source_work`): it answers
+/// `POST /api/projects/{id}/upload?background=1`, `POST .../sources/sync?background=1` and
+/// `GET .../source-jobs/{jobId}`, and runs each job's operation by sending the synchronous route to
+/// Node with `X-Noevia-Source-Work: 1`. It serves no internal source-job store routes any more
+/// (`noevia-source-jobs-store/1` is gone). Node refuses the background starts and the poll (core
+/// rust-source-jobs.cjs `RUST_SOURCE_JOBS_OWNED`) and has no source journal client, so the web
+/// supervisor pairs them.
+///
+/// `rust-large-document-host-lock`: this build takes the host-wide large-document lock
+/// (`UI_DATA_DIR/large-document.lock`, crates/server-projects `extract::large_lock`,
+/// sbstndalton/noevia#2191 round 7) that core's large-document-lock.cjs also takes through
+/// large-document-file-lock.cjs, so the two never hold a document over 25 MiB at once (#697). A
+/// front without it beside a core with it (or the reverse) could, so the web supervisor pairs them.
+///
 /// `project-store`: this build serves the internal project store Node writes projects.json and
 /// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
 /// supervisor confirms it to Node (NOEVIA_RUST_PROJECT_STORE_CONFIRMED) and hands both the secret.
@@ -169,7 +204,6 @@ pub const FEATURES: &[&str] = &[
     "rust-feature-owner",
     "legacy-root-claim",
     "project-store",
-    server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER,
     server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER,
     "rust-auth",
     "rust-diary",
@@ -178,6 +212,12 @@ pub const FEATURES: &[&str] = &[
     "rust-project-lifecycle",
     "rust-project-storage",
     "rust-project-files",
+    "rust-project-document-pages",
+    "rust-conversation-import",
+    "rust-document-extraction",
+    "rust-project-documents",
+    "rust-source-jobs",
+    "rust-large-document-host-lock",
     "rust-public-pages",
     "rust-plugin-directory",
     "rust-decision-settings",
@@ -276,6 +316,10 @@ pub struct App {
     pub export: Arc<tokio::sync::Semaphore>,
     pub routing_files:
         Option<Result<server_routing_mode::storage::Root, server_routing_mode::storage::Fault>>,
+    /// The Docling/OCR client of the extraction pipeline (sbstndalton/noevia#2191 round 5); `None`
+    /// outside a Tokio runtime or when its HTTP client could not be built (the document route
+    /// answers 503).
+    pub extraction: Option<Arc<extraction::HttpEngine>>,
     /// GET /api/plugins/directory: its client and hour-long cache (#2190).
     pub plugin_directory: plugin_directory_routes::Directory,
 }
@@ -338,6 +382,9 @@ impl App {
                 .as_ref()
                 .map(|engine| Arc::new(stats_routes::StatsLayer::new(Arc::clone(engine)))),
             routing_files,
+            extraction: tokio::runtime::Handle::try_current()
+                .ok()
+                .and_then(|rt| extraction::HttpEngine::new(rt, config.data_dir.clone())),
             plugin_directory: plugin_directory_routes::Directory::new(
                 config.plugin_directory.clone(),
             ),

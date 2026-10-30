@@ -1,5 +1,6 @@
-//! Source-processing status journals. The Node upload/OCR worker calls this internal store;
-//! Rust is the sole writer of source-kind jobs/<uuid>.jsonl. Other job kinds stay untouched.
+//! Source-processing status journals: the front is their one owning process (sbstndalton/noevia#2191
+//! round 6, [`crate::source_work`]); Node keeps no client. Rust is the sole writer of source-kind
+//! jobs/<uuid>.jsonl. Other job kinds stay untouched.
 use crate::{lock, store};
 use js_json::{wtf16, JValue};
 use rand_core::{OsRng, RngCore};
@@ -9,13 +10,17 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-/// Paired release guard: Node source journal clients require this internal store.
-pub const SOURCE_JOBS_STORE_MARKER: &str = "noevia-source-jobs-store/1";
-
 const RETAIN_MS: u64 = 15 * 60 * 1000;
 const MAX_JOBS: usize = 16;
 const MAX_ACTIVE: usize = 2;
+/// The most request tombstones kept: past it [`abandon`] drops the oldest, so the list can never
+/// refuse a start. The front itself writes none for a refusal it saw (it ends the job with
+/// [`interrupt`]); a tombstone is only for a start reply that was lost.
 const MAX_ABANDONED: usize = 256;
+/// A job that has written no row for this long is not running (an operation that waits for a
+/// sidecar for minutes still writes its stages); the next start interrupts it, so a task that was
+/// lost can never hold one of the two slots until a restart.
+const ACTIVE_STALE_MS: u64 = 6 * 60 * 60 * 1000;
 const MAX_JOURNAL_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_ROWS: usize = 10_000;
 const MAX_STAGE_BYTES: usize = 300;
@@ -145,6 +150,11 @@ fn uuid() -> String {
         u16::from_be_bytes([b[8], b[9]]),
         u64::from_be_bytes([0, 0, b[10], b[11], b[12], b[13], b[14], b[15]])
     )
+}
+
+/// A fresh random v4 UUID (a job id, a request key, an owner id).
+pub fn new_id() -> String {
+    uuid()
 }
 
 fn valid_id(id: &str) -> bool {
@@ -643,12 +653,12 @@ pub fn start(
         if abandoned_requests.iter().any(|a| a == request) {
             return Err(Error::Stale);
         }
-        if abandoned_requests.len() >= MAX_ABANDONED {
-            return Err(Error::Busy);
-        }
         let before = all_source(p)?;
         reconcile_abandoned(p, &abandoned_requests, &before)?;
-        let all = all_source(p)?;
+        let mut all = all_source(p)?;
+        if interrupt_stale(p, &all, request)? {
+            all = all_source(p)?;
+        }
         if let Some((id, rows)) = all.iter().find(|(_, rows)| {
             rows.first()
                 .and_then(|row| row.pointer("/data/request"))
@@ -721,6 +731,72 @@ pub fn start(
     })
 }
 
+/// Interrupts the active jobs (but the one of `request`) that have been silent for
+/// [`ACTIVE_STALE_MS`]; whether any was.
+fn interrupt_stale(p: &Paths, all: &[(String, Vec<Value>)], request: &str) -> Result<bool, Error> {
+    let now = now_ms();
+    let mut any = false;
+    for (id, rows) in all {
+        if terminal(status(rows)) {
+            continue;
+        }
+        let first = rows.first();
+        if first
+            .and_then(|row| row.pointer("/data/request"))
+            .and_then(Value::as_str)
+            == Some(request)
+        {
+            continue;
+        }
+        let last = rows
+            .last()
+            .and_then(|r| r.pointer("/at"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        if now.saturating_sub(last) > ACTIVE_STALE_MS {
+            append(
+                p,
+                id,
+                rows,
+                "job.interrupted",
+                json!({"reason":"Source processing stopped answering; refresh or re-upload to retry."}),
+            )?;
+            any = true;
+        }
+    }
+    Ok(any)
+}
+
+/// Ends a job whose operation did not begin, when the caller itself saw that (the worker refused
+/// it, or the request went away before the worker answered): `job.interrupted`, so its slot is
+/// free and it never runs, and no request tombstone is written. Ending one that is already over
+/// is `Ok`; a job of another owner or run is [`Error::Stale`].
+pub fn interrupt(
+    ctx: Context<'_>,
+    user: &str,
+    start: &str,
+    born: &str,
+    owner: &str,
+    ids: (&str, &str),
+) -> Result<(), Error> {
+    let (id, run) = ids;
+    check_start(ctx, start)?;
+    with_lock(ctx, user, |p| {
+        current(p, start, born, owner)?;
+        let rows = owned_rows(p, id, owner, run)?;
+        if !terminal(status(&rows)) {
+            append(
+                p,
+                id,
+                &rows,
+                "job.interrupted",
+                json!({"reason":"Source processing did not begin; refresh or re-upload to retry."}),
+            )?;
+        }
+        Ok(())
+    })
+}
+
 /// A start whose reply never reached Node is not executable. Persist a request tombstone
 /// before terminalizing its journal, so an earlier in-flight start cannot commit afterward.
 pub fn abandon(
@@ -741,7 +817,12 @@ pub fn abandon(
         let mut requests = abandoned(&state)?;
         if !requests.iter().any(|a| a == request) {
             if requests.len() >= MAX_ABANDONED {
-                return Err(Error::Busy);
+                // The oldest tombstone goes (its job, if it ever began, is ended first), so the
+                // list is bounded and never refuses another.
+                let all = all_source(p)?;
+                reconcile_abandoned(p, &requests, &all)?;
+                let excess = requests.len() + 1 - MAX_ABANDONED;
+                requests.drain(..excess);
             }
             requests.push(request.to_owned());
             write_owner(p, start, born, owner, &requests)?;
@@ -915,7 +996,7 @@ pub fn read(ctx: Context<'_>, user: &str, project: &str, id: &str) -> Result<Opt
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
@@ -1373,5 +1454,155 @@ if (job?.status !== 'completed' || JSON.stringify(job.result?.body?.text) !== '"
             Err(Error::Stale)
         ));
         assert!(start(c, USER, START, "100", OWNER1, "a", REQ2).is_ok());
+    }
+
+    fn owner_file(user: &Path) -> Value {
+        serde_json::from_slice(&fs::read(user.join("source-jobs-owner.json")).unwrap()).unwrap()
+    }
+
+    fn request(n: usize) -> String {
+        format!("{n:08x}-1111-4111-8111-111111111111")
+    }
+
+    /// Review #2191 r6+7: past 256 tombstones both `abandon` and `start` answered `Busy` for good.
+    #[test]
+    fn the_tombstone_list_is_bounded_and_never_refuses_a_start() {
+        let (dir, user) = fixture();
+        let c = ctx(dir.path());
+        recover(c, USER, START, "100", OWNER1).unwrap();
+        for n in 0..300 {
+            abandon(c, USER, START, "100", OWNER1, &request(n)).unwrap();
+        }
+        let kept = owner_file(&user)["abandoned"].as_array().unwrap().clone();
+        assert_eq!(kept.len(), MAX_ABANDONED);
+        // The newest are kept, the oldest dropped.
+        assert_eq!(kept.last().unwrap(), &Value::from(request(299)));
+        assert_eq!(
+            kept.first().unwrap(),
+            &Value::from(request(300 - MAX_ABANDONED))
+        );
+        assert!(matches!(
+            start(c, USER, START, "100", OWNER1, "a", &request(299)),
+            Err(Error::Stale)
+        ));
+        assert!(start(c, USER, START, "100", OWNER1, "a", REQ1).is_ok());
+        // A list the store already holds at its bound does not stop a start either.
+        recover(c, USER, START, "100", OWNER1).unwrap();
+        assert!(start(c, USER, START, "100", OWNER1, "a", REQ2).is_ok());
+    }
+
+    /// Dropping the oldest tombstone ends its job first, so it cannot run after losing its fence
+    /// (a crash between writing a tombstone and ending the job leaves exactly that).
+    #[test]
+    fn dropping_a_tombstone_ends_a_job_that_had_begun() {
+        let (dir, user) = fixture();
+        let c = ctx(dir.path());
+        recover(c, USER, START, "100", OWNER1).unwrap();
+        let (id, _) = start(c, USER, START, "100", OWNER1, "a", REQ1).unwrap();
+        let mut full = vec![REQ1.to_owned()];
+        full.extend((1..MAX_ABANDONED).map(request));
+        fs::write(
+            user.join("source-jobs-owner.json"),
+            serde_json::json!({"start":START,"born":"100","owner":OWNER1,"abandoned":full})
+                .to_string(),
+        )
+        .unwrap();
+        assert_eq!(
+            read(c, USER, "a", &id).unwrap().unwrap()["status"],
+            "running"
+        );
+        abandon(c, USER, START, "100", OWNER1, REQ2).unwrap();
+        assert_eq!(
+            read(c, USER, "a", &id).unwrap().unwrap()["status"],
+            "interrupted"
+        );
+        let kept = owner_file(&user)["abandoned"].as_array().unwrap().clone();
+        assert_eq!(kept.len(), MAX_ABANDONED);
+        assert_eq!(kept.last().unwrap(), &Value::from(REQ2));
+        assert!(!kept.contains(&Value::from(REQ1)));
+    }
+
+    /// A refusal the caller saw ends the job with no tombstone and frees its slot.
+    #[test]
+    fn interrupt_frees_the_slot_and_writes_no_tombstone() {
+        let (dir, user) = fixture();
+        let c = ctx(dir.path());
+        recover(c, USER, START, "100", OWNER1).unwrap();
+        let (id1, run1) = start(c, USER, START, "100", OWNER1, "a", REQ1).unwrap();
+        let (id2, run2) = start(c, USER, START, "100", OWNER1, "a", REQ2).unwrap();
+        assert!(matches!(
+            start(c, USER, START, "100", OWNER1, "a", REQ3),
+            Err(Error::TooMany)
+        ));
+        interrupt(c, USER, START, "100", OWNER1, (&id1, &run1)).unwrap();
+        interrupt(c, USER, START, "100", OWNER1, (&id1, &run1)).unwrap();
+        assert_eq!(
+            read(c, USER, "a", &id1).unwrap().unwrap()["status"],
+            "interrupted"
+        );
+        assert_eq!(
+            read(c, USER, "a", &id2).unwrap().unwrap()["status"],
+            "running"
+        );
+        assert_eq!(owner_file(&user)["abandoned"], serde_json::json!([]));
+        assert!(start(c, USER, START, "100", OWNER1, "a", REQ3).is_ok());
+        // Another run of the job, or another owner, cannot end it.
+        assert!(matches!(
+            interrupt(c, USER, START, "100", OWNER1, (&id2, REQ1)),
+            Err(Error::Stale)
+        ));
+        // A finished job stays as it was.
+        finish(
+            c,
+            USER,
+            START,
+            "100",
+            OWNER1,
+            CompletionUpdate {
+                id: &id2,
+                run: &run2,
+                ok: true,
+                result: &serde_json::json!({"status":200,"body":{}}),
+                error: None,
+            },
+        )
+        .unwrap();
+        interrupt(c, USER, START, "100", OWNER1, (&id2, &run2)).unwrap();
+        assert_eq!(
+            read(c, USER, "a", &id2).unwrap().unwrap()["status"],
+            "completed"
+        );
+    }
+
+    /// A job that wrote nothing for hours holds no slot: the next start interrupts it.
+    #[test]
+    fn a_silent_active_job_is_interrupted_by_the_next_start() {
+        let (dir, user) = fixture();
+        let c = ctx(dir.path());
+        recover(c, USER, START, "100", OWNER1).unwrap();
+        let (id1, _) = start(c, USER, START, "100", OWNER1, "a", REQ1).unwrap();
+        let (id2, _) = start(c, USER, START, "100", OWNER1, "a", REQ2).unwrap();
+        // Both are active; the first last wrote seven hours ago.
+        let file = user.join("jobs").join(format!("{id1}.jsonl"));
+        let old = now_ms() - 7 * 60 * 60 * 1000;
+        let aged: String = fs::read_to_string(&file)
+            .unwrap()
+            .lines()
+            .map(|l| {
+                let mut row: Value = serde_json::from_str(l).unwrap();
+                row["at"] = Value::from(old);
+                format!("{row}\n")
+            })
+            .collect();
+        fs::write(&file, aged).unwrap();
+        assert!(start(c, USER, START, "100", OWNER1, "a", REQ3).is_ok());
+        assert_eq!(
+            read(c, USER, "a", &id1).unwrap().unwrap()["status"],
+            "interrupted"
+        );
+        assert_eq!(
+            read(c, USER, "a", &id2).unwrap().unwrap()["status"],
+            "running"
+        );
     }
 }
