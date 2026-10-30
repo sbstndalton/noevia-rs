@@ -486,9 +486,12 @@ methods = ["GET"]
 path = "/api/models/delete"
 owner = "node"
 
+# sbstndalton/noevia#2189: the read-only sizing reads, the front's (bins/noevia-server
+# model_sizing.rs); Node refuses the GET (core rust-model-sizing.cjs). Other methods stay Node's.
 [[route]]
 path = "/api/models/estimate"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/models/evidence"
@@ -523,6 +526,11 @@ owner = "node"
 [[route]]
 path = "/api/models/machines"
 owner = "node"
+
+[[route]]
+path = "/api/models/preset/suggest"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/models/presets/reload"
@@ -580,13 +588,19 @@ path = "/api/profile/sharing"
 owner = "rust"
 methods = ["GET", "PUT"]
 
+# sbstndalton/noevia#2191 (rust-project-lifecycle): a project's create and delete, the front's
+# (bins/noevia-server project_routes.rs, crates/server-projects lifecycle.rs); Node refuses them
+# (core rust-project-lifecycle.cjs).
 [[route]]
 path = "/api/projects"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
+# sbstndalton/noevia#2191 (rust-project-lifecycle), see /api/projects.
 [[route]]
 path = "/api/projects/{projectId}"
-owner = "node"
+owner = "rust"
+methods = ["DELETE"]
 
 [[route]]
 path = "/api/projects/{id}/assets"
@@ -621,13 +635,19 @@ owner = "node"
 path = "/api/projects/{projectId}/config"
 owner = "node"
 
+# sbstndalton/noevia#2191 (rust-project-reads): a source's stored text or original, the front's
+# (bins/noevia-server project_routes.rs); Node refuses the GET (core rust-project-reads.cjs).
 [[route]]
 path = "/api/projects/{id}/documents/original"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
+# sbstndalton/noevia#2191 round 3 (rust-project-files): a source file's delete from the user's
+# storage, the front's (crates/server-projects files.rs); Node refuses it (core rust-project-files.cjs).
 [[route]]
 path = "/api/projects/{id}/files"
-owner = "node"
+owner = "rust"
+methods = ["DELETE"]
 
 [[route]]
 path = "/api/projects/{projectId}/instruction-skills"
@@ -649,17 +669,23 @@ owner = "node"
 path = "/api/projects/{id}/sources/sync"
 owner = "node"
 
+# sbstndalton/noevia#2191 (rust-project-reads): a source's stored text or original, the front's
+# (bins/noevia-server project_routes.rs); Node refuses the GET (core rust-project-reads.cjs).
 [[route]]
 path = "/api/projects/{id}/sources/text"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/projects/{id}/upload"
 owner = "node"
 
+# sbstndalton/noevia#2191 (rust-project-reads): a source's stored text or original, the front's
+# (bins/noevia-server project_routes.rs); Node refuses the GET (core rust-project-reads.cjs).
 [[route]]
 path = "/api/projects/{id}/{*}/original"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/providers"

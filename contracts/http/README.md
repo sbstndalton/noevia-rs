@@ -418,7 +418,7 @@ and `--features` lists `rust-model-reads`. The rest wait for batch M2 (the job r
 | `/api/models/calibration` | node | GET is the calibration job's in-memory state; POST starts it (M2) |
 | `/api/models/calibration/cancel` | node | write to the running job (M2) |
 | `/api/models/delete` | node | write: unload, delete, roles, preset section (M2) |
-| `/api/models/estimate` | node | sizes with the boot-time budget fault and the inference budget store held in Node |
+| `/api/models/estimate` (GET) | rust | moved in #2189 (below); other methods keep Node's admin check and 405 |
 | `/api/models/evidence` | node | fills Node's in-memory identity cache that evidence writes use |
 | `/api/models/evidence/import` | node | write (M2) |
 | `/api/models/evidence/recheck` | node | write that may load a model (M2) |
@@ -427,7 +427,8 @@ and `--features` lists `rust-model-reads`. The rest wait for batch M2 (the job r
 | `/api/models/load` | node | write through Node's lease and maintenance gate (M2) |
 | `/api/models/machines` | node | machine health probe and tune caches in Node memory; POST writes |
 | `/api/models/presets/reload` | node | write under the maintenance hold (M2) |
-| `/api/models/{*}` | node | preset, suggest, idle-unload, assignments, reranker, prune, mtp-artifact, pull, downloads: mixed reads of Node state and writes |
+| `/api/models/preset/suggest` (GET) | rust | moved in #2189 (below); other methods keep Node's admin check and 405 |
+| `/api/models/{*}` | node | preset, idle-unload, assignments, reranker, prune, mtp-artifact, pull, downloads: mixed reads of Node state and writes |
 
 ### PR notes (#2187)
 
@@ -444,6 +445,102 @@ and `--features` lists `rust-model-reads`. The rest wait for batch M2 (the job r
   under a hold only if the hold it names is still the one held (the key, not a flag).
 - Exempt work in flight does not keep a hold from being taken (it runs while one is held).
 
+## sbstndalton/noevia#2191 (group rust-project-reads): a project source's stored reads
+
+Three GETs that read projects.json and a content-addressed file Node writes once and never changes
+in place move to the front (crates/server-projects `sources` and `originals`, served by
+`src/project_routes.rs`); core refuses those GETs with 503 `RUST_PROJECT_READS_OWNED`
+(`server/rust-project-reads.cjs`) and `--features` lists `rust-project-reads`. Each looks the
+project up as `getProject` does (the context self-heal and the instruction-skills reconcile are
+saved under the projects.json lock), opens every component below the user directory with
+`O_NOFOLLOW` (a symlink is never followed out of the tenant directory) and serves only a regular
+file whose name is a validated hex hash, never a request value.
+
+| route | owner | why |
+|---|---|---|
+| `/api/projects/{id}/sources/text` (GET) | rust | inline text, or `project-sources/<safe id>/<textRef>.txt`; a missing text is 404 `SOURCE_TEXT_MISSING`, the pointer kept |
+| `/api/projects/{id}/documents/original` (GET) | rust | `project-documents/<sha256 id>/<byteHash>.pdf`; unreadable is Node's 422 |
+| `/api/projects/{id}/{*}/original` (GET) | rust | `uploads/original` only (`project-uploads/<sha256 id>/<attachment.id>`, #786's 404); any other segment is Node's |
+| `/api/projects/{id}/documents/pages` | node | the page reader, beside the extraction state and the large-document lock |
+| `/api/projects` (POST), `/api/projects/{projectId}` (DELETE) | rust | round 2, below |
+| `/api/projects/{projectId}/config` | node | its model check reads Node's served-model catalogue and provider registry (live state, not persisted), and a `files` patch re-indexes through Node's RAG writer; next after the provider/model catalogue is published like the toolbox catalogue |
+| `/api/projects/{id}/upload`, `/sources/sync`, `/documents` (POST), `source-jobs`, `folder-import/plan` | node | the storage writes they make exist in the front since round 3 (`writes`, below); what keeps them on Node is the extraction pipeline they run in-process: docling/OCR extraction, `pdf-reduce`'s page ranges, the DOCX reader, the large-document lock and the background source jobs, then the index outbox for their RAG work |
+| `/api/projects/{projectId}/instruction-skills`, `.../manifests`, `/api/projects/{project}/skills/install` | node | the known-toolbox list (plugins, MCP) is Node's runtime catalogue; install fetches a published skill through Node's plugin directory |
+| `/api/projects/{projectId}/browser`, `/code`, `/research` | node | they drive a browser session, the code harness or research jobs |
+| `/api/code/active` | node | the code harness service's live task list |
+| `/api/workspace` | node | its load runs the retention sweep and the orphaned attachments-project reaper, whose delete (RAG index, uploads) is Node's |
+| `/api/import/conversations` | node | creates projects through Node's `createProject` and publishes transcripts; the storage step it needed now exists in the front (round 3, `project_storage`), the import's own parsing and transcript publishing are what is left to port |
+
+## sbstndalton/noevia#2191 round 2 (group rust-project-lifecycle): a project's create and delete
+
+`POST /api/projects` and `DELETE /api/projects/{projectId}` are the front's (crates/server-projects
+`lifecycle`, served by `src/project_routes.rs`); core refuses both with 503
+`RUST_PROJECT_LIFECYCLE_OWNED` (`server/rust-project-lifecycle.cjs`) and `--features` lists
+`rust-project-lifecycle`. Every other method of both paths is Node's.
+
+- Create: Node's validation order and messages, Node's keys in Node's order, the folder reserved
+  (#589) as `reserveProjectFolder` names it under the projects.json lock, create-time texts written to
+  `project-sources/<id>/<sha256>.txt` before the projects.json that points at them (#1806), first in
+  the list, every project's skills reconciled. The toolbox ids a project may select (MCP boxes
+  included) are core's runtime state: core publishes them with the default list and the icon ids as
+  `UI_DATA_DIR/project-catalogue.json` (core `project-catalogue.cjs`, written on change at startup
+  and at each request start); the create answers 503 until it exists.
+- Delete: the record removed under the lock (a failed save removes nothing, #1914), then the
+  project's upload originals, document pages, images, RAG index, empty directories (never through
+  a symlink, never recursive), its chats (the store's `Unlisted` delete) and their attachments
+  projects.
+- The index outbox (crates/server-projects `outbox`, `users/<id>/index-outbox.db`, SQLite WAL): the
+  RAG index of create-time files and the storage folder sweep run where their engines are (core's
+  sqlite-vec index, core's WebDAV client), so the front records them in the same request:
+  idempotent job keys (`["index",project,file]`, `["sweep",project]`; a pending key is re-queued at
+  a new generation, never duplicated), claim/acknowledge at a generation (work asked again while a
+  job runs runs again), a `running` row taken back at core's next start (at least once; every job
+  is idempotent), 5 attempts then `failed`. A delete writes the project's tombstone and drops its
+  pending index jobs in one transaction before removing the RAG files; core's index run checks the
+  tombstone against the generation it was queued at on every step and closes its handle (core
+  `rust-index-outbox.cjs`, `rust-generation.cjs`, rag.cjs lifecycle guard).
+- #687's storage step and the sweep moved to the front in round 3 (below).
+
+## sbstndalton/noevia#2191 round 3 (group rust-project-storage): the front's storage writes
+
+No route moves. The front gains a storage write client (crates/server-storage-reads `writes`:
+core storage-client.cjs `createFolder`, `writeFile` with `If-None-Match: *` / `If-Match`,
+`discardWritten`, `deleteFile`, `removeEmptyFolder`, `fileVersion`; same `safeRelativePath` and
+`davUrl` encoding, same answers, `withRetry`'s one repeat of a pre-header transport failure, never
+for a conditional write; per-method deadlines PUT 60 s, DELETE 30 s, MKCOL/PROPFIND 15 s; S3 refused
+where core refuses it; core has no 428 retry for storage, nor does this). Every attempt runs in the
+owned storage child (request frame `M4REQ002`: the method byte names PUT/MKCOL/DELETE and a body
+follows the headers, a PUT's at most 25 MiB; a write's reply payload is its ETag, never the
+response body; redirects refused, no proxy, no cookies), after the browse's endpoint policy, with
+its own admission (four at once, one per account). With it:
+
+- a create with files stores its storable text files in the project's folder (core
+  `storeCreateFiles`, #687: the folder allocated as `allocateFolder` does and attached as a source,
+  each file written create-only to `<folder>/Text/<name>`, its original kept in `project-uploads/`;
+  a file storage refuses stays noevia's plain-named copy); its index jobs name the stored files;
+- the `sweep` jobs of the index outbox (a delete's empty-folder sweep, `sweepRemote`) are the
+  front's: run after the delete (or create) answers, claimed and acknowledged with the executor
+  contract, `running` rows of that kind taken back once per process. Core claims, recovers and
+  counts only `index` jobs (core `rust-project-storage.cjs` `CORE_KINDS`), and `--features` lists
+  `rust-project-storage`; the web supervisor and assemble-release pair the two.
+
+## sbstndalton/noevia#2191 round 3 (group rust-project-files): a source file's delete
+
+`DELETE /api/projects/{id}/files` is the front's (crates/server-projects `files`); core refuses it
+with 503 `RUST_PROJECT_FILES_OWNED` (`server/rust-project-files.cjs`) and `--features` lists
+`rust-project-files`. Node's order and answers: 404 `no such project`, the body as `readJson`
+reads it (empty is `{}`; 400 `invalid JSON`; 413 past 1 MiB), 400 not an object, 400 `a path is
+required`, `ownsFile`'s 400, 400 `no browsable storage connected`, then `deleteFile` through the
+round-3 write client (a folder refused, conditional on the file's ETag) with
+`replyStorageFailure`'s answers (`storageLoginRejected`, `storageForbidden`, `storageThrottled`,
+`storageTimeout`, `storageUnreachable`) or the error's own status and message. The file leaves the
+list first (#1914); then its document pages, upload original and images go (an image a chat still
+names is retired), and its RAG rows are an `unindex` job in the index outbox, which core runs
+(rag.cjs `deleteProjectFile`) unless a file of that name is listed again by then; a delete's
+tombstone drops it. Stricter than Node: the storage endpoint policy (as the browse's) is applied,
+and a pruned directory entry is never followed through a symlink. Not serialized with core's
+in-process source lock (a concurrent core upload of the same project is merged through
+projects.json's version, not queued behind the delete). Every other method of the path is Node's.
 ## sbstndalton/noevia#2190: the settings and integrations singles that need nothing of Node's memory
 
 Two groups move to the front, each with its own Core marker and front capability so either can be
@@ -527,3 +624,37 @@ job that chat or another Node route reads):
 | `/api/admin/users/{id}` (DELETE) | the clean-up spans Node's workspace cache, MCP OAuth and directory MCP keys in memory (the ChatGPT tokens through the broker's `/v1/chatgpt/forget`) |
 | `/api/auto-roles` | GET reads the served catalogue and machine models; an admin PUT warms the roles in Node's engine (`ensureRolesLoaded`) |
 | `/api/health` | the retrieval probe is Node's cached RAG status, and the default provider is Node's in-memory registry |
+
+## sbstndalton/noevia#2189 (batch M2-A): the read-only model sizing reads
+
+`GET /api/models/estimate?model=` (the "Will it fit?" inputs) and `GET /api/models/preset/suggest?model=`
+(the size-based preset suggestion) are the front's (`src/model_sizing.rs`), permanently and GET only. Core
+refuses both GETs before authentication with 503 `RUST_MODEL_SIZING_OWNED` (`server/rust-model-sizing.cjs`,
+required from `index.cjs`) and `--features` lists `rust-model-sizing`; the web supervisor and the release
+assembly pair the two. Every other method stays Node's (an administrator check, then 405; corpus 000174).
+
+| route | owner | reads |
+|---|---|---|
+| `/api/models/estimate` (GET) | rust | `LLAMACPP_PRESET_PATH` (models.ini, read only), `LLAMACPP_MODELS_PATH`/`LLAMACPP_CACHE_PATH` (the GGUF header and file sizes), the router's `GET /models` (the model's argv), the saved inference budget (`settings` key `inference:memory-budget`, `INFERENCE_MEMORY_BUDGET_GIB`, host RAM) lowered only by `LLAMACPP_AUTOCONFIG_MEMORY_GIB` |
+| `/api/models/preset/suggest` (GET) | rust | the same, and the prompt-cache cap (`LLAMACPP_AUTOCONFIG_CACHE_RAM_MAX_MIB`, `LLAMACPP_CACHE_RAM_HARD_MAX_MIB`) |
+
+The sizing is crates/llamacpp-autoconfig's strict operations 1 and 2 and the header summary is crates/gguf's,
+the same code Core ran through dav-parse.wasm; Core's answer was its JS estimator's confirmed by that port,
+and the recorded answers are the port's text in every case. `tests/model_sizing.rs` replays 178 answers Core
+gave for synthetic fixtures (`tests/fixtures/model-sizing/record-node.cjs`, recorded at Core `fbac2e4`) byte
+for byte, and proves nothing is written and the router is asked only for its listing. Nothing is cached.
+
+Kept on Node, and why: `GET /api/models/evidence` computes the model's identity from router args, the
+engine's `/props`, a file fingerprint and the preset hash, and keeps it in a 30 s cache the evidence writers
+(calibration, auto-tune, recheck, import) read and clear; serving it from a second process would need that
+cache or a second identity writer, so it moves with the evidence writers (batch B). `inference-budget` (its
+PUT and the boot-time saved value), `installed`, load/unload, delete, calibration, auto-tune, machines, preset
+GET/PUT and `/api/model-manager` stay too.
+
+Not Node's answer, each unreachable in a working deployment: Core always has an inference budget of at least
+2 GiB, so the boot-time `LLAMACPP_MEMORY_LIMIT` fault and the "no budget" 501 never show (both kept or
+documented in model_sizing.rs); a settings store the front cannot read answers 503 (Node holds the value in
+memory); GGUF metadata with NaN, Infinity or -0 in a raw field (float-typed headers only) asks the port with
+`null`/`0` where the JS estimator saw the number; a router listing nested 64 deep at the fields read counts as
+no listing.
+

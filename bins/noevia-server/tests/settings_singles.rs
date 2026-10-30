@@ -191,11 +191,11 @@ fn registry(target: &str) -> (u16, Vec<(&'static str, String)>, Vec<u8>) {
         return (500, vec![], b"{}".to_vec());
     }
     if target.contains("search=moved") {
-        return (
-            302,
-            vec![("Location", "https://example.invalid/".into())],
-            Vec::new(),
-        );
+        // A same-host target that answers 200: following it would turn the 502 into a listing.
+        return (302, vec![("Location", "/landed".into())], Vec::new());
+    }
+    if target.starts_with("/landed") {
+        return (200, vec![], br#"{"servers":[]}"#.to_vec());
     }
     if target.contains("search=huge") {
         let mut body = b"{\"servers\":[\"".to_vec();
@@ -421,7 +421,7 @@ async fn the_directory_lists_caches_and_fails_like_core() {
         .lock()
         .unwrap()
         .iter()
-        .all(|h| !h.contains("example.invalid")));
+        .all(|h| !h.starts_with("get /landed")));
     let _ = stop.send(());
 }
 

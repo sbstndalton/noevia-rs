@@ -67,6 +67,9 @@ server-sampling-settings = { path = "../../crates/server-sampling-settings" }
 server-usage = { path = "../../crates/server-usage" }
 server-routing-default = { path = "../../crates/server-routing-default" }
 server-stats = { path = "../../crates/server-stats" }
+llamacpp-autoconfig = { path = "../../crates/llamacpp-autoconfig" }
+gguf = { path = "../../crates/gguf" }
+prompt-framing = { path = "../../crates/prompt-framing" }
 server-export = { path = "../../crates/server-export" }
 server-chatgpt-status = { path = "../../crates/server-chatgpt-status", optional = true }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }

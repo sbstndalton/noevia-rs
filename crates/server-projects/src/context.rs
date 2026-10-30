@@ -52,7 +52,7 @@ fn invalid() -> Reply {
 }
 
 /// diary-extras.cjs `chatProjectId(chatId)`, for the decoded id.
-fn chat_project_id(chat: &str) -> Option<String> {
+pub(crate) fn chat_project_id(chat: &str) -> Option<String> {
     let ok = !chat.is_empty()
         && chat.chars().count() <= CHAT_ID_MAX
         && chat

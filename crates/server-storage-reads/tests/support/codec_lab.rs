@@ -135,6 +135,7 @@ pub fn run(
             url: format!("http://{address}/synthetic"),
             headers: vec![],
             body_cap: cap,
+            body: Default::default(),
             attempt_timeout: Duration::from_secs(5),
         };
         let frame = child_http::runtime()

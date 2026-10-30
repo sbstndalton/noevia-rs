@@ -290,11 +290,20 @@ pub fn update<T>(
     let mut projects = read(dir)?;
     let (out, changed) = change(&mut projects);
     if changed {
-        let text = serialise(projects);
+        let text = serialise(projects.clone());
         server_store::json::write_shared_projects(dir, PROJECTS_FILE, &text, switch)
             .map_err(|e| gone_if_missing(StoreError::Write(e)))?;
+        revive_listed(dir, &projects);
     }
     Ok(out)
+}
+
+/// After a projects.json write: the listed projects' index tombstones go ([`crate::outbox::revive_listed`]).
+/// Best effort: the file is already saved, and a failure only keeps a re-created id unindexed.
+pub(crate) fn revive_listed(dir: &Path, projects: &[JValue]) {
+    if let Err(e) = crate::outbox::revive_listed(dir, projects) {
+        eprintln!("noevia-server: index tombstones of listed projects not cleared: {e:?}");
+    }
 }
 
 /// One read-modify-write of `dir/free-chats.json` under its lock shared with Node
