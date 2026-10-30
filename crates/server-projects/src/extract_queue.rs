@@ -414,6 +414,30 @@ pub fn clear(dir: &Path, project: &str, file: &str) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// Writes `job` back as it was (its state, attempts and due time), replacing the name's row.
+pub fn put_back(dir: &Path, job: &Job) -> rusqlite::Result<()> {
+    let conn = open(dir)?;
+    conn.execute(
+        "INSERT INTO jobs (key, project, file, byte_hash, version, state, attempts, next_at, last_error, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?8)
+         ON CONFLICT(key) DO UPDATE SET byte_hash = excluded.byte_hash, version = excluded.version,
+           state = excluded.state, attempts = excluded.attempts, next_at = excluded.next_at,
+           last_error = excluded.last_error",
+        params![
+            job.key,
+            job.project,
+            job.file,
+            job.byte_hash,
+            job.version,
+            job.state,
+            job.attempts,
+            job.next_at,
+            job.last_error
+        ],
+    )?;
+    Ok(())
+}
+
 /// The pending job of a source, if any (tests and the route's answer).
 pub fn pending(dir: &Path, project: &str, file: &str) -> Option<Job> {
     if !path(dir).exists() {

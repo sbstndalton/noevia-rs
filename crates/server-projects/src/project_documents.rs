@@ -10,7 +10,9 @@
 //! time in this process: the 20-upload cap (400), an existing upload of the name without
 //! `replace: true` (409 `sourceExists`), the extraction, the project and the replaced upload still as
 //! they were (409 `Project changed; retry.`), the file listed last in place of any upload of its name,
-//! `document.indexing` set as `indexSource` sets it, the save (texts first), the document folder
+//! `document.indexing` set as `indexSource` sets it, a queued document's extraction job written
+//! (a queue that cannot be written is a 503 [`QUEUE_FAILED`] and nothing is saved), the save (texts
+//! first; a failed save puts back the name's earlier job), the document folder
 //! pruned, an `index` job queued in the index outbox, and 200 `{ name, pages, characters,
 //! truncated, document }`.
 //!
@@ -205,6 +207,30 @@ pub fn post(
         extract_queue::mark_queued(&mut file);
     }
     mark_indexing(&mut file);
+    // The job is written before the record that says "queued" (review #2191 r4+5): a record
+    // saved first and a queue write that failed after it would leave a queued document no
+    // worker ever reads. A job whose record is never saved is dropped by the worker
+    // (`find_source` matches the byte hash), and an earlier job of the name is put back.
+    let earlier = if queued {
+        let earlier = extract_queue::pending(&dir, &id, &name);
+        let document = file.get("document");
+        if let Err(e) = extract_queue::enqueue(
+            &dir,
+            &id,
+            &name,
+            document.get("byteHash").as_str().unwrap_or(""),
+            document.get("version").as_str().unwrap_or(""),
+            document.get("error").as_str(),
+            ctx.now_ms,
+        ) {
+            eprintln!("noevia-server: extraction queue write failed: {e}");
+            document_ingest::prune_now(&dir, &id);
+            return Reply::error(503, QUEUE_FAILED);
+        }
+        Some(earlier)
+    } else {
+        None
+    };
     let saved = store::update(&dir, ctx.switch, |projects| {
         let Some(p) = store::find_mut(projects, &id) else {
             return (Err(Reply::error(409, "Project changed; retry.")), false);
@@ -231,25 +257,19 @@ pub fn post(
         store::set(p, "files", JValue::Arr(kept));
         finish(&dir, p, &file)
     });
-    match saved {
-        Ok(Ok(())) => {}
-        Ok(Err(reply)) => return reply,
-        Err(e) => return chats::store_failure(&e),
+    let failed = match saved {
+        Ok(Ok(())) => None,
+        Ok(Err(reply)) => Some(reply),
+        Err(e) => Some(chats::store_failure(&e)),
+    };
+    if let Some(reply) = failed {
+        if let Some(earlier) = earlier {
+            restore(&dir, &id, &name, earlier);
+        }
+        return reply;
     }
     let document = file.get("document").clone();
-    if queued {
-        if let Err(e) = extract_queue::enqueue(
-            &dir,
-            &id,
-            &name,
-            document.get("byteHash").as_str().unwrap_or(""),
-            document.get("version").as_str().unwrap_or(""),
-            document.get("error").as_str(),
-            ctx.now_ms,
-        ) {
-            eprintln!("noevia-server: extraction queue write failed: {e}");
-        }
-    } else if extract_queue::pending(&dir, &id, &name).is_some() {
+    if !queued && extract_queue::pending(&dir, &id, &name).is_some() {
         // A newer upload of the name was read now: the older queued job has nothing left to do.
         let _ = extract_queue::clear(&dir, &id, &name);
     }
@@ -274,6 +294,21 @@ pub fn post(
     Reply::json(200, wtf16::stringify(&body).unwrap_or_default())
 }
 
+/// The answer when the extraction job could not be written: nothing was saved.
+pub const QUEUE_FAILED: &str =
+    "Document extraction could not be queued; nothing was changed. Try again shortly.";
+
+/// Puts back the job the name had before this upload's job replaced it (the save failed).
+fn restore(dir: &std::path::Path, project: &str, name: &str, earlier: Option<extract_queue::Job>) {
+    let put = match earlier {
+        Some(j) => extract_queue::put_back(dir, &j),
+        None => extract_queue::clear(dir, project, name),
+    };
+    if let Err(e) = put {
+        eprintln!("noevia-server: extraction queue restore failed: {e}");
+    }
+}
+
 fn finish(dir: &std::path::Path, p: &mut JValue, _file: &JValue) -> (Result<(), Reply>, bool) {
     if crate::lifecycle::externalize(dir, p).is_err() {
         return (Err(Reply::internal()), false);
@@ -294,4 +329,101 @@ fn with_text(dir: &std::path::Path, project: &str, file: &JValue) -> JValue {
         }
     }
     f
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::expect_used
+)]
+mod tests {
+    use super::*;
+    use crate::extract::tests::Fake;
+
+    const USER: &str = "11111111-2222-4333-8444-555555555555";
+    const PROJECTS: &str =
+        "{\n  \"projects\": [\n    {\n      \"id\": \"proj-a\",\n      \"name\": \"A\",\n      \"chats\": [],\n      \"instructionSkills\": {}\n    }\n  ]\n}";
+    const LIMITS: Limits = Limits {
+        read_bytes: 1 << 30,
+        pages: 1000,
+        text: 8_000_000,
+        range_pages: 25,
+    };
+
+    fn ctx(root: &std::path::Path) -> Ctx<'_> {
+        Ctx {
+            data_dir: root,
+            user_id: USER,
+            switch: server_store::RustProjects::owned(),
+            now_ms: 1_700_000_000_000,
+        }
+    }
+
+    fn body() -> Vec<u8> {
+        // "%PDF-1.4 synthetic" in base64.
+        br#"{"name":"a.pdf","dataBase64":"JVBERi0xLjQgc3ludGhldGlj"}"#.to_vec()
+    }
+
+    fn listed(dir: &std::path::Path) -> usize {
+        let projects = store::read(dir).unwrap();
+        match store::find(&projects, "proj-a").unwrap().get("files") {
+            JValue::Arr(f) => f.len(),
+            _ => 0,
+        }
+    }
+
+    /// Review #2191 r4+5: the record said "queued" before the job was written, and a queue write
+    /// that failed only logged and answered 200, so no worker ever read the document.
+    #[test]
+    fn an_unwritable_queue_is_a_503_and_saves_nothing_then_a_retry_queues_the_job() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("users").join(USER);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(store::PROJECTS_FILE), PROJECTS).unwrap();
+        // A directory where the queue file should be: SQLite cannot open it.
+        std::fs::create_dir(extract_queue::path(&dir)).unwrap();
+        let fake = Fake::default();
+        let r = post(ctx(root.path()), "proj-a", &body(), false, &fake, &LIMITS);
+        assert_eq!(r.status, 503, "{r:?}");
+        assert_eq!(listed(&dir), 0, "nothing saved without its job");
+
+        std::fs::remove_dir(extract_queue::path(&dir)).unwrap();
+        let r = post(ctx(root.path()), "proj-a", &body(), false, &fake, &LIMITS);
+        assert_eq!(r.status, 200, "{r:?}");
+        assert_eq!(listed(&dir), 1);
+        let job = extract_queue::pending(&dir, "proj-a", "a.pdf").expect("the job is queued");
+        let projects = store::read(&dir).unwrap();
+        let JValue::Arr(files) = store::find(&projects, "proj-a")
+            .unwrap()
+            .get("files")
+            .clone()
+        else {
+            panic!()
+        };
+        let doc = files[0].get("document");
+        assert_eq!(doc.get("extraction").as_str(), Some("queued"));
+        assert_eq!(doc.get("byteHash").as_str(), Some(job.byte_hash.as_str()));
+    }
+
+    /// A save that fails after the job was written puts the name's earlier job back.
+    #[test]
+    fn a_failed_save_puts_the_earlier_job_back() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("users").join(USER);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(store::PROJECTS_FILE), PROJECTS).unwrap();
+        extract_queue::enqueue(&dir, "proj-a", "a.pdf", "old", "v0", Some("busy"), 5).unwrap();
+        let before = extract_queue::pending(&dir, "proj-a", "a.pdf").unwrap();
+        restore(&dir, "proj-a", "a.pdf", Some(before.clone()));
+        extract_queue::enqueue(&dir, "proj-a", "a.pdf", "new", "v1", None, 9).unwrap();
+        restore(&dir, "proj-a", "a.pdf", Some(before.clone()));
+        assert_eq!(
+            extract_queue::pending(&dir, "proj-a", "a.pdf"),
+            Some(before)
+        );
+        restore(&dir, "proj-a", "a.pdf", None);
+        assert_eq!(extract_queue::pending(&dir, "proj-a", "a.pdf"), None);
+    }
 }

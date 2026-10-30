@@ -1228,7 +1228,7 @@ pub fn sha_hex(bytes: &[u8]) -> String {
     clippy::panic,
     clippy::expect_used
 )]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::cell::RefCell;
 
