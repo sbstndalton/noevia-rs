@@ -120,6 +120,17 @@ jobs:
           NOEVIA_MCP_CORE: ${{ github.workspace }}/front-core
           NOEVIA_MCP_CORE_REQUIRED: "1"
         run: cargo test --locked -p noevia-server --features rust-storage-reads --test mcp_directory node_lists_the_tools -- --nocapture
+      - name: "The front's research calls against a real Core (#2218)"
+        # tests/research_core_live.rs boots the paired Core's real server/index.cjs (tests/research_core_live.cjs: a
+        # stand-in project store, router and Diary on loopback) and shows its research bridge and admission lease
+        # answering the front's own calls: the secret the web supervisor hands both processes has to be the one Core
+        # wired (review H1 of #2218: Core read it after its store client deleted it, and every call was a 404). The
+        # synthetic Node of tests/research.rs accepts any token and could not see that. A missing Core is a failure.
+        env:
+          NOEVIA_RESEARCH_CORE: ${{ github.workspace }}/front-core
+          NOEVIA_RESEARCH_CORE_REQUIRED: "1"
+          DAV_PARSE_WASM_REQUIRED: "1"
+        run: cargo test --locked -p noevia-server --features rust-storage-reads --test research_core_live -- --nocapture
       - name: "The reload's lease on Node's real maintenance gate (#2210)"
         # tests/model_lease.rs runs the paired Core's lease route and maintenance gate in a real `node` process: chat
         # refuses the reload, the reload holds chat and tune back, a lease whose front died expires. A missing Core

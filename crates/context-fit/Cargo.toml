@@ -1,0 +1,20 @@
+[package]
+name = "context-fit"
+version = "0.1.0"
+description = "Context fitting, compaction, sampling and thinking-budget rules of core chat-context.cjs, sampling-presets.cjs and thinking-budget.cjs (sbstndalton/noevia#2218)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+regex = "1"
+sha2 = "=0.10.9"
+
+[dev-dependencies]
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt"] }

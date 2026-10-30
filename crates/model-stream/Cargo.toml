@@ -1,0 +1,22 @@
+[package]
+name = "model-stream"
+version = "0.1.0"
+description = "The streaming OpenAI-compatible model client the Rust front's model work shares: SSE parse, cancel, deadlines, caps, the on-this-network rule (sbstndalton/noevia#2218)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+provider-error = { path = "../provider-error" }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+serde_json = "1"
+url = "2.5"
+tokio = { version = "1", features = ["macros", "net", "sync", "time", "rt"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "net", "sync", "time", "rt-multi-thread", "io-util"] }

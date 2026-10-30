@@ -1,0 +1,21 @@
+[package]
+name = "engine-admission"
+version = "0.1.0"
+description = "Admission to the shared model engine from the Rust front: a lease on Node's inference gate, and which machine serves a chat role (sbstndalton/noevia#2218)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+model-stream = { path = "../model-stream" }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "sync", "time", "rt"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "net", "sync", "time", "rt-multi-thread", "io-util"] }

@@ -488,6 +488,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
 
 [[package]]
+name = "context-fit"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "regex",
+ "serde_json",
+ "sha2",
+ "tokio",
+]
+
+[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -913,6 +924,17 @@ dependencies = [
  "sec1",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "engine-admission"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "model-stream",
+ "reqwest",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -1773,6 +1795,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "model-stream"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "provider-error",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "nix"
 version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1888,7 +1922,9 @@ dependencies = [
  "brotli",
  "bytes",
  "code-net-guard",
+ "context-fit",
  "dav-parse",
+ "engine-admission",
  "flate2",
  "gguf",
  "google-token-seal",
@@ -1899,6 +1935,7 @@ dependencies = [
  "js-json",
  "llamacpp-autoconfig",
  "mcp-frame",
+ "model-stream",
  "offsite-backup-format",
  "policy-leaves",
  "preset-reload",
@@ -1906,6 +1943,7 @@ dependencies = [
  "provider-egress",
  "rand_core 0.6.4",
  "reqwest",
+ "research-core",
  "rustls",
  "s3-sign",
  "secret-envelope",
@@ -2525,6 +2563,21 @@ dependencies = [
  "wasm-streams",
  "web-sys",
  "webpki-roots",
+]
+
+[[package]]
+name = "research-core"
+version = "0.1.0"
+dependencies = [
+ "context-fit",
+ "js-json",
+ "model-stream",
+ "prompt-framing",
+ "regex",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "unicode-normalization",
 ]
 
 [[package]]

@@ -244,9 +244,22 @@ const PROJECT_ROUTES: &[&str] = &[
     SKILL_MANIFESTS,
     SKILL_CONTENT,
     SKILL_INSTALL,
+    RESEARCH,
+    RESEARCH_PLAN,
+    RESEARCH_JOB,
+    RESEARCH_CANCEL,
+    RESEARCH_SAVE,
     server_projects::import::ROUTE,
     WORKSPACE,
 ];
+
+/// Deep research (every method; routes.toml), the front's under `rust-research` (sbstndalton/noevia#2218);
+/// Node refuses them (core rust-research.cjs).
+pub(crate) const RESEARCH: &str = "/api/projects/{projectId}/research";
+pub(crate) const RESEARCH_PLAN: &str = "/api/projects/{projectId}/research/plan";
+pub(crate) const RESEARCH_JOB: &str = "/api/projects/{projectId}/research/{job}";
+pub(crate) const RESEARCH_CANCEL: &str = "/api/projects/{projectId}/research/{job}/cancel";
+pub(crate) const RESEARCH_SAVE: &str = "/api/projects/{projectId}/research/{job}/save";
 
 /// The projects and free chats (GET only; routes.toml), the front's under `rust-workspace`
 /// (sbstndalton/noevia#2191 close-out); Node refuses the GET (core rust-workspace.cjs
@@ -1395,7 +1408,6 @@ mod tests {
             ("GET", "/api/projects/p1/skills/install"),
             ("POST", "/api/projects/p1/browser"),
             ("POST", "/api/projects/p1/code"),
-            ("POST", "/api/projects/p1/research"),
             ("GET", "/api/code/active"),
         ] {
             assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
