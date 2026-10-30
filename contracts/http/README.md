@@ -621,11 +621,64 @@ job that chat or another Node route reads):
 |---|---|
 | `/api/providers`, `/api/providers/{id}` | the private rows are cached on Node's workspace (`privateProviders`) that every chat turn reads in-process, and the list carries the env-derived default row, the model manager state and the ChatGPT connection; a Rust writer needs Node to re-read `providers.json` per turn by its file signal. Since round 5 the ChatGPT row follows the broker's token row: Node adds it when it lists or uses providers and a token row exists (`/v1/chatgpt/connected`), so Node stays the file's single writer until the rows move |
 | `/api/providers/chatgpt` (DELETE) | the disconnect also removes the ChatGPT provider row and the projects' fallbacks, which Node writes; the tokens go through the broker (`/v1/chatgpt/disconnect`) |
-| `/api/connectors`, `/api/connectors/gdrive/*`, `/api/connectors/nextcloud/policy` | drive-accounts.cjs holds personal Drive tokens in memory and the chat tools read the policies in-process |
-| `/api/admin/offsite-backup` and its six children | offsite-service.cjs runs the backup, copy and verify jobs and their busy lock and 15-minute timer in-process |
+| `/api/connectors`, `/api/connectors/nextcloud/policy` | the Nextcloud half lists the live MCP servers' tools and which write (round 7 moved the Google Drive writes and the off-site backup, below) |
 | `/api/admin/users/{id}` (DELETE) | the clean-up spans Node's workspace cache, MCP OAuth and directory MCP keys in memory (the ChatGPT tokens through the broker's `/v1/chatgpt/forget`) |
 | `/api/auto-roles` | GET reads the served catalogue and machine models; an admin PUT warms the roles in Node's engine (`ensureRolesLoaded`) |
 | `/api/health` | the retrieval probe is Node's cached RAG status, and the default provider is Node's in-memory registry |
+
+### Round 7: Google Drive's token authority and the off-site backup
+
+| route | owner | capability / Core refusal | notes |
+|---|---|---|---|
+| `/api/connectors/gdrive/connect`, `/disconnect` (POST), `/policy`, `/backup-copy` (PUT) | rust | `rust-google-drive` / `RUST_GOOGLE_DRIVE_OWNED` | connector_routes.rs: any signed-in account, its own connection only (`ownsBackup`: the backup slot doubles as the administrator's Drive); answers core's connector object; other methods stay Node's 404 |
+| `/api/admin/offsite-backup`, `/run`, `/verify`, `/copy`, `/google/connect`, `/google/disconnect`, `/recovery-key` (every method) | rust | `rust-offsite-backup` / `RUST_OFFSITE_BACKUP_OWNED` | offsite_routes.rs: administrators only (403 `Administrator required`), 405 for the wrong method |
+
+Node's `server/gdrive.cjs`, `drive-accounts.cjs`, `offsite-*.cjs` and `routes/offsite-backup.cjs` are deleted.
+
+**The broker** (gdrive.rs) owns all Google OAuth state: each account's device sign-in and sealed refresh token
+(`google-drive-users/<id>.sealed`, key `secrets.cjs derive('google-drive-user')`, the retired key still read
+until a rotation re-seals it) and the backup slot (`google-drive.sealed`, key `OFFSITE_BACKUP_KEY_FILE`). The
+on-disk format is unchanged (crates/google-token-seal: HKDF-SHA256 file key, AES-256-GCM, base64 of
+iv|tag|body), so a Node build reads what Rust saved; the golden vector is in both repos. The refresh is single
+flight per slot; a disconnect never waits for it and a refresh that finishes after a disconnect or a newer
+sign-in is discarded (the sign-in's identity is a digest of the refresh token and `connectedAt`, never the
+token); every state-changing request runs as a spawned task, so a dropped request strands nothing. Google
+endpoints other than a loopback QA server are not accepted (`GOOGLE_OAUTH_BASE_URL`, `GOOGLE_DRIVE_API_BASE_URL`,
+`GOOGLE_DRIVE_UPLOAD_BASE_URL`; core took any URL).
+
+**Node's chat tools** ask the broker over the internal store (`POST /v1/gdrive/<op>`, loopback, per-start secret):
+`session {user, admin, rejected?}` -> `{accessToken, expiresAt, generation}` or `{error, code, status}` with
+`disconnected`, `reconnect` or `transient`; `reject {user, admin, generation}`; `disconnect`; `forget {user}`
+(account deletion); and two more than the plan named: `view` (the Google Drive half of `GET /api/connectors`, whose
+Nextcloud half is Node's) and `policy {user, tools, writes, mode}` (the Nextcloud permissions, written by the front
+because it is `tool_policies`' only writer). A refresh token never reaches Node. The broker rewrites
+`gdrive-connections.json` after each change (no secret, no email: the accounts that have a connection file and its
+state, and the backup slot's `{usable, state, owner, expiresAt}`); Node's sync `connected(user)` and its
+60-second access-token cache follow that file's signal, and the shared cases in `gdrive-owns-backup.v1.json`
+prove Node and the front agree on `ownsBackup`. `tool_policies`: a per-statement grant (server-store
+`RustToolPolicies`, `upsert_tool_policy`, never a delete); core's guard refuses every Node write even inside
+`exempt()`; Node reads it per call and its permitted-tools cache empties itself when the table's content
+fingerprint or the state file moves.
+
+**The off-site backup** (offsite_*.rs): the format is core's `noevia-offsite-v1` byte for byte (crates/offsite-backup-format;
+a store Node wrote is read by Rust, tests/fixtures/offsite-node-store). The reusable crates:
+`secret-envelope`'s `enc:v2` is the credential seal, not this format; `diary-backup-format` and
+`workspace-restore-verify` are the Diary workspace archive's and do not fit; `s3-sign` and `dav-parse` (the XML scan)
+do. Differences from core: a live SQLite file is copied with `VACUUM INTO` on a read-only connection (core used the
+online backup API), a file that cannot be copied consistently is skipped and the manifest flagged `incomplete`.
+**Schedule**: every 15 minutes a run starts when the server clock is within six hours after
+`OFFSITE_BACKUP_HOUR` (core: only inside that hour), the last backup is over 20 hours old and no quiet window is
+open: the appdata backup 04:05-04:25 server time and the NAS 02:20-04:30 America/New_York (the US daylight-saving
+rule). A scheduled run also pauses between files and objects while a window is open; "Run now" does not. "Server
+time" is the `TZ` name (`America/New_York`/`US/Eastern`/`EST5EDT` or UTC; any other is read as UTC with a warning).
+Never in a response or a log: the recovery key (only its download), a token, the S3 secret. The mirror's folder rules
+(`noeviaStoreId`, `noevia-offsite (2)`, the 500 and quarter prune guards, same-name-other-size refusal) are core's.
+
+Behaviour changes (each a deliberate edit): the OAuth and Drive base URLs must be loopback; a sign-in whose token
+could not be saved says so instead of staying pending; an invalid connectors body is `400 invalid JSON` (core
+answered 400 `Google Drive could not be reached.`, or 502 for a non-object body); a missed nightly hour is caught up
+within six hours; the status gains `waitingForQuietWindow` while a scheduled run waits; `/api/admin/offsite-backup/<other>`
+is Node's generic 404.
 
 ## sbstndalton/noevia#2189 (batch M2-A): the read-only model sizing reads
 
