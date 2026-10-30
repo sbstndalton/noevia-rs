@@ -8,8 +8,8 @@
 //! processes. If Node cannot be reached the reload fails closed with nothing changed. The lease ends by
 //! itself if it is not renewed, so a front that dies frees Node.
 
-use reqwest::header::{HeaderName, HeaderValue};
 use crate::project_store::TOKEN_HEADER;
+use reqwest::header::{HeaderName, HeaderValue};
 use serde_json::Value;
 use std::time::{Duration, Instant};
 
