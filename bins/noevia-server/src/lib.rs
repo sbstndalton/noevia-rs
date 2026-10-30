@@ -75,6 +75,18 @@ use std::sync::Arc;
 /// those two GETs (core rust-models.cjs `RUST_MODELS_OWNED`), so the web supervisor must refuse a
 /// front without it beside such a Core, and a front with it beside an older Core.
 ///
+/// `rust-project-reads`: this build answers `GET /api/projects/{id}/sources/text`, `GET
+/// /api/projects/{id}/documents/original` and `GET /api/projects/{id}/uploads/original`
+/// (sbstndalton/noevia#2191), permanently and with no switch. Node refuses those GETs (core
+/// rust-project-reads.cjs `RUST_PROJECT_READS_OWNED`), so the web supervisor must refuse a front
+/// without it beside such a Core, and a front with it beside an older Core.
+///
+/// `rust-project-lifecycle`: this build answers `POST /api/projects` and `DELETE
+/// /api/projects/{projectId}` (sbstndalton/noevia#2191 round 2), permanently and with no switch,
+/// and writes the index outbox (`users/<id>/index-outbox.db`) core's executor drains. Node refuses
+/// those routes (core rust-project-lifecycle.cjs `RUST_PROJECT_LIFECYCLE_OWNED`) and publishes the
+/// toolbox catalogue a create reads (`project-catalogue.json`), so the web supervisor must refuse a
+/// front without it beside such a Core, and a front with it beside an older Core.
 /// `rust-public-pages`: this build answers `GET|HEAD /about` and `/privacy` and every method of
 /// `/device` (sbstndalton/noevia#2190); `rust-plugin-directory`: `/api/plugins/directory`. Both are
 /// permanent with no switch; Node refuses them (core rust-public-pages.cjs and
@@ -115,6 +127,8 @@ pub const FEATURES: &[&str] = &[
     "rust-auth",
     "rust-diary",
     "rust-model-reads",
+    "rust-project-reads",
+    "rust-project-lifecycle",
     "rust-public-pages",
     "rust-plugin-directory",
     "rust-decision-settings",

@@ -20,8 +20,8 @@ use axum::body::Body;
 use axum::http::{HeaderName, HeaderValue, Request, Response, StatusCode};
 use axum::response::IntoResponse;
 use server_projects::{
-    assets, chat_delete, chat_move, chats, context, context_window, free_chats, history, retention,
-    Ctx, Reply,
+    assets, chat_delete, chat_move, chats, context, context_window, free_chats, history, lifecycle,
+    originals, retention, Ctx, Reply,
 };
 use std::sync::Arc;
 
@@ -79,6 +79,24 @@ pub enum Route {
         project: String,
         chat: String,
     },
+    /// GET /api/projects/{id}/sources/text (sbstndalton/noevia#2191, `rust-project-reads`)
+    SourceText {
+        project: String,
+    },
+    /// GET /api/projects/{id}/documents/original (sbstndalton/noevia#2191)
+    DocumentOriginal {
+        project: String,
+    },
+    /// GET /api/projects/{id}/uploads/original (sbstndalton/noevia#2191)
+    UploadOriginal {
+        project: String,
+    },
+    /// POST /api/projects (sbstndalton/noevia#2191, `rust-project-lifecycle`)
+    CreateProject,
+    /// DELETE /api/projects/{projectId} (sbstndalton/noevia#2191, `rust-project-lifecycle`)
+    DeleteProject {
+        project: String,
+    },
 }
 
 /// Node's matchers, `^\/api\/projects\/([^/]+)\/assets$`, `...\/assets\/([^/]+)$` and
@@ -128,9 +146,17 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
             _ => None,
         };
     }
+    // routes/projects.cjs `p === '/api/projects'` for POST (sbstndalton/noevia#2191).
+    if path == "/api/projects" {
+        return (method == "POST").then_some(Route::CreateProject);
+    }
     let rest = path.strip_prefix("/api/projects/")?;
     let parts: Vec<&str> = rest.split('/').collect();
     match (method, parts.as_slice()) {
+        // routes/projects.cjs `/^\/api\/projects\/([^/]+)$/` for DELETE (sbstndalton/noevia#2191).
+        ("DELETE", [project]) if !project.is_empty() => Some(Route::DeleteProject {
+            project: (*project).to_string(),
+        }),
         ("POST", [project, "assets"]) if !project.is_empty() => Some(Route::Upload {
             project: (*project).to_string(),
         }),
@@ -148,6 +174,21 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
         ("POST", [project, "chats"]) if !project.is_empty() => Some(Route::SaveChats {
             project: (*project).to_string(),
         }),
+        // routes/projects.cjs `sourceTextRoute`, `docRead` (its `original` half) and
+        // `originalUpload`, GET only (sbstndalton/noevia#2191). `documents/pages` stays Node's.
+        ("GET", [project, "sources", "text"]) if !project.is_empty() => Some(Route::SourceText {
+            project: (*project).to_string(),
+        }),
+        ("GET", [project, "documents", "original"]) if !project.is_empty() => {
+            Some(Route::DocumentOriginal {
+                project: (*project).to_string(),
+            })
+        }
+        ("GET", [project, "uploads", "original"]) if !project.is_empty() => {
+            Some(Route::UploadOriginal {
+                project: (*project).to_string(),
+            })
+        }
         // routes/projects.cjs `/^\/api\/projects\/([^/]+)\/chats\/([^/]+)$/` for DELETE.
         ("DELETE", [project, "chats", chat]) if !project.is_empty() && !chat.is_empty() => {
             Some(Route::DeleteChat {
@@ -300,7 +341,9 @@ pub async fn serve(
         Route::SaveChats { .. } | Route::SaveFreeChats => Some(chats::BODY_LIMIT),
         Route::SaveHistory { .. } => Some(history::BODY_LIMIT),
         Route::MoveChat { .. } => Some(chat_move::BODY_LIMIT),
-        Route::One { .. }
+        Route::CreateProject => Some(lifecycle::BODY_LIMIT),
+        Route::DeleteProject { .. }
+        | Route::One { .. }
         | Route::Chats { .. }
         | Route::FreeChats
         | Route::Context { .. }
@@ -308,8 +351,17 @@ pub async fn serve(
         | Route::History { .. }
         | Route::Retention
         | Route::DeleteFreeChat { .. }
-        | Route::DeleteChat { .. } => None,
+        | Route::DeleteChat { .. }
+        | Route::SourceText { .. }
+        | Route::DocumentOriginal { .. }
+        | Route::UploadOriginal { .. } => None,
     };
+    // `url.searchParams.get('name')`: the first `name`, form-decoded as WHATWG URLSearchParams.
+    let name = parts.uri.query().and_then(|q| {
+        url::form_urlencoded::parse(q.as_bytes())
+            .find(|(k, _)| k == "name")
+            .map(|(_, v)| v.into_owned())
+    });
     let upload = match limit {
         Some(limit) => match crate::account_routes::read_body(body, limit).await {
             Ok(b) => Some(b),
@@ -327,11 +379,20 @@ pub async fn serve(
     let method = parts.method.clone();
     // routes/projects.cjs: `authn?.user?.role === 'admin'` (a device token acts as a member).
     let admin = authn.user.role == server_auth::Role::Admin;
+    // What a create reads besides the request (sbstndalton/noevia#2191): core's published toolbox
+    // catalogue and whether the user's storage is browsable (folder reservation, #589); read on the
+    // blocking pool with the rest.
+    let create_inputs =
+        matches!(route, Route::CreateProject).then(|| (Arc::clone(app), authn.clone()));
     let user = authn.user.id;
-    // The context GET writes too (getProject's self-heal), so it is re-gated as well.
+    // The context GET writes too (getProject's self-heal), so it is re-gated as well; so do the
+    // source reads, whose getProject may save the same way.
     let writes = matches!(
         route,
         Route::Upload { .. }
+            | Route::SourceText { .. }
+            | Route::DocumentOriginal { .. }
+            | Route::UploadOriginal { .. }
             | Route::SaveChats { .. }
             | Route::SaveFreeChats
             | Route::SaveHistory { .. }
@@ -339,6 +400,8 @@ pub async fn serve(
             | Route::Context { .. }
             | Route::DeleteFreeChat { .. }
             | Route::DeleteChat { .. }
+            | Route::CreateProject
+            | Route::DeleteProject { .. }
     ) || (matches!(route, Route::One { .. }) && method == "DELETE");
     let done = tokio::task::spawn_blocking(move || {
         if writes {
@@ -350,6 +413,13 @@ pub async fn serve(
             switch,
             now_ms: now,
         };
+        let create_env = create_inputs.map(|(app, authn)| {
+            (
+                lifecycle::Catalogue::read_waiting(&data_dir, std::time::Duration::from_secs(10)),
+                storage_kind(&app, &authn),
+                lifecycle::project_root_folder(),
+            )
+        });
         Ok(match (route, upload) {
             (Route::Upload { project }, Some(b)) => assets::post(ctx, &project, &b.bytes, b.over),
             (Route::One { project, asset }, _) if method == "DELETE" => {
@@ -383,8 +453,32 @@ pub async fn serve(
             (Route::DeleteChat { project, chat }, _) => {
                 chat_delete::delete_project_route(ctx, &project, &chat)
             }
+            (Route::SourceText { project }, _) => {
+                server_projects::sources::get(ctx, &project, name.as_deref())
+            }
+            (Route::DocumentOriginal { project }, _) => {
+                originals::document(ctx, &project, name.as_deref())
+            }
+            (Route::UploadOriginal { project }, _) => {
+                originals::upload(ctx, &project, name.as_deref())
+            }
+            (Route::CreateProject, Some(b)) => match &create_env {
+                Some((catalogue, storage, root)) => lifecycle::create(
+                    ctx,
+                    &b.bytes,
+                    b.over,
+                    &lifecycle::CreateEnv {
+                        catalogue: catalogue.as_ref(),
+                        storage: *storage,
+                        root,
+                    },
+                ),
+                None => Reply::internal(),
+            },
+            (Route::DeleteProject { project }, _) => lifecycle::delete(ctx, &project),
             (
-                Route::Upload { .. }
+                Route::CreateProject
+                | Route::Upload { .. }
                 | Route::SaveChats { .. }
                 | Route::SaveFreeChats
                 | Route::SaveHistory { .. }
@@ -398,6 +492,32 @@ pub async fn serve(
         Ok(Ok(r)) => respond(r),
         Ok(Err(refused)) => refusal(refused),
         Err(_) => reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true),
+    }
+}
+
+/// The user's storage kind as core's createProject reads it (`authService.getStorage(userId, true)`
+/// then `storageClient.isBrowsable`): `None` for local storage, and for a row whose credential
+/// cannot be opened (Node's try/catch skips the folder reservation then).
+#[cfg(not(feature = "rust-storage-reads"))]
+fn storage_kind(_app: &Arc<App>, _authn: &server_auth::Identity) -> Option<lifecycle::Storage> {
+    None
+}
+
+#[cfg(feature = "rust-storage-reads")]
+fn storage_kind(app: &Arc<App>, authn: &server_auth::Identity) -> Option<lifecycle::Storage> {
+    use server_storage_reads::{owner_secret, protocol::Kind};
+    let data_dir = app.config.data_dir.as_ref()?;
+    let previous = std::env::var("SECRETS_KEY_PREVIOUS")
+        .ok()
+        .map(zeroize::Zeroizing::new);
+    let keys =
+        owner_secret::load_existing_keys(data_dir, previous.as_deref().map(String::as_str)).ok();
+    let store = app.identity.store_blocking().ok()?;
+    let projected = owner_secret::project_connection_with(&store, authn, keys.as_ref()).ok()?;
+    match projected.connection().kind {
+        Kind::S3 => Some(lifecycle::Storage::S3),
+        Kind::WebDav | Kind::Nextcloud => Some(lifecycle::Storage::Dav),
+        Kind::Local => None,
     }
 }
 

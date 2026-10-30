@@ -49,6 +49,10 @@
 //! - [`chat_move`]: slice7 foundation, canonical generations, tagged grant contexts, strict
 //!   prepared metadata moves and pending-intent fences for every participating list writer.
 //!   The public move route and Node grant enforcement are intentionally unchanged in this slice.
+//! - [`lifecycle`]: a project's create and delete (core `POST /api/projects`, `DELETE
+//!   /api/projects/{projectId}`, sbstndalton/noevia#2191 round 2), with the purge of its files, RAG
+//!   index, chats and their attachments projects; [`outbox`]: the durable index outbox those writes
+//!   leave for core's RAG and storage engines (`users/<id>/index-outbox.db`).
 //! - [`js`]: the JavaScript built-ins those handlers rely on.
 //!
 //! The caller (bins/noevia-server) has already run Node's request gate (session, origin, CSRF);
@@ -68,7 +72,10 @@ pub mod history_sanitize;
 pub mod journal;
 pub mod js;
 pub mod legacy_claim;
+pub mod lifecycle;
 pub mod lock;
+pub mod originals;
+pub mod outbox;
 pub mod partial;
 pub mod research_jobs;
 pub mod retention;
