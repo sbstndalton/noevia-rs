@@ -1098,8 +1098,16 @@ async fn a_client_that_leaves_mid_disconnect_still_gets_the_whole_disconnect() {
         read_rows(&private_path(&f, A)).is_empty(),
         "the row went after them although nobody was waiting"
     );
-    let stored =
-        j(&std::fs::read_to_string(f.dir.join("users").join(A).join("projects.json")).unwrap());
+    // The projects' fallbacks go after the row (the last step), so wait for them too.
+    let projects = f.dir.join("users").join(A).join("projects.json");
+    let mut stored = j(&std::fs::read_to_string(&projects).unwrap());
+    for _ in 0..100 {
+        if stored["projects"][0] == j(r#"{"id":"p1"}"#) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        stored = j(&std::fs::read_to_string(&projects).unwrap());
+    }
     assert_eq!(stored["projects"][0], j(r#"{"id":"p1"}"#));
 }
 
@@ -1140,8 +1148,16 @@ async fn a_removal_waits_for_the_files_lock_and_survives_the_client_leaving() {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     assert!(read_rows(&private_path(&f, A)).is_empty());
-    let stored =
-        j(&std::fs::read_to_string(f.dir.join("users").join(A).join("projects.json")).unwrap());
+    // The projects' fallbacks go after the row (the last step), so wait for them too.
+    let projects = f.dir.join("users").join(A).join("projects.json");
+    let mut stored = j(&std::fs::read_to_string(&projects).unwrap());
+    for _ in 0..100 {
+        if stored["projects"][0] == j(r#"{"id":"p1"}"#) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        stored = j(&std::fs::read_to_string(&projects).unwrap());
+    }
     assert_eq!(stored["projects"][0], j(r#"{"id":"p1"}"#));
 }
 
