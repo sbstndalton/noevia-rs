@@ -381,7 +381,6 @@ impl Service {
                 JValue::Str(format!("Daily at {hour:02}:00 (server time)")),
             ),
             ("scheduleHour", num(i64::from(hour))),
-            ("scheduleZone", s(self.settings.hour_zone().0.name())),
             (
                 "retention",
                 JValue::Str(format!(
@@ -423,14 +422,16 @@ impl Service {
                     _ => JValue::Null,
                 },
             ),
-            (
-                "unreadableSnapshots",
-                match st.get("unreadableSnapshots") {
-                    JValue::Num(n) => JValue::Num(*n),
-                    _ => JValue::Null,
-                },
-            ),
         ];
+        // Fields core's status never had are added only when they say something, so the answer of a
+        // feature that is off (what the recorded corpus holds) stays core's byte for byte: the zone
+        // the hour is read in once the feature is on, the unreadable count once a retention counted.
+        if enabled {
+            out.push(("scheduleZone", s(self.settings.hour_zone().0.name())));
+        }
+        if let JValue::Num(n) = st.get("unreadableSnapshots") {
+            out.push(("unreadableSnapshots", JValue::Num(*n)));
+        }
         if self.waiting.load(std::sync::atomic::Ordering::Relaxed) {
             out.push(("waitingForQuietWindow", JValue::Bool(true)));
         }

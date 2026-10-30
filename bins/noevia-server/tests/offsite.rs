@@ -398,6 +398,18 @@ async fn the_status_says_why_it_is_off_or_not_configured() {
         "Off-site backups are turned off (Settings → Features)."
     );
     assert_eq!(s["reasonGaps"], serde_json::json!([]));
+    // A feature that is off answers exactly what core's status did (the recorded corpus replays it
+    // through the front): none of the fields this front added.
+    for added in [
+        "scheduleZone",
+        "unreadableSnapshots",
+        "waitingForQuietWindow",
+    ] {
+        assert!(
+            s.get(added).is_none(),
+            "{added} is not in the status of a feature that is off: {s}"
+        );
+    }
     for action in ["run", "verify", "copy"] {
         let r = send(w.f.addr, "POST", &format!("{ROOT}/{action}"), ADMIN, "").await;
         assert_eq!(

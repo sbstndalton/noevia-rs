@@ -818,8 +818,9 @@ Never in a response or a log: the recovery key (only its download), a token, the
 Behaviour changes (each a deliberate edit): the OAuth and Drive base URLs must be loopback; a sign-in whose token
 could not be saved says so instead of staying pending; an invalid connectors body is `400 invalid JSON` (core
 answered 400 `Google Drive could not be reached.`, or 502 for a non-object body); a missed nightly hour is caught up
-within six hours; the status gains `waitingForQuietWindow` while a scheduled run waits, `scheduleZone`, and
-`unreadableSnapshots`; `lastBackup` gains `incomplete` and `skipped`; `/api/admin/offsite-backup/<other>`
+within six hours; the status gains `waitingForQuietWindow` while a scheduled run waits, `scheduleZone` (once the
+feature is on) and `unreadableSnapshots` (once a retention counted), none of them while the feature is off, so the
+recorded corpus's answer of a disabled backup replays byte for byte; `lastBackup` gains `incomplete` and `skipped`; `/api/admin/offsite-backup/<other>`
 is Node's generic 404.
 
 ## sbstndalton/noevia#2189 (batch M2-A): the read-only model sizing reads
