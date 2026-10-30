@@ -562,6 +562,10 @@ pub struct Synth {
     /// Whether the server wants an OAuth sign-in (answers 401 with a challenge to an unauthenticated initialize).
     pub oauth: Mutex<bool>,
     pub lists: AtomicUsize,
+    /// Answer in an event stream (`text/event-stream`, a comment line and an unrelated event first) instead of JSON.
+    pub sse: Mutex<bool>,
+    /// Serve `tools/list` three tools per page (`nextCursor`).
+    pub paged: Mutex<bool>,
     /// After the Nth `tools/list` is answered, the tools become these (a server that changes its mind).
     pub swap_after: Mutex<Option<(usize, String)>>,
 }
@@ -576,6 +580,8 @@ pub fn synth(up: &Upstream, tools: &str) -> Arc<Synth> {
         list_delay: Mutex::new(Duration::ZERO),
         oauth: Mutex::new(false),
         lists: AtomicUsize::new(0),
+        sse: Mutex::new(false),
+        paged: Mutex::new(false),
         swap_after: Mutex::new(None),
     });
     let (me, base) = (Arc::clone(&s), up.base());
@@ -608,7 +614,36 @@ pub fn synth(up: &Upstream, tools: &str) -> Arc<Synth> {
         }
         let body = j(&r.body);
         let id = body["id"].clone();
+        // One reply, as JSON or as the event stream a streamable-HTTP server may answer with.
+        let answer = |extra: &str, result: String| -> (Duration, String) {
+            let message = format!(r#"{{"jsonrpc":"2.0","id":{id},"result":{result}}}"#);
+            if *me.sse.lock().unwrap() {
+                let stream = format!(": keep-alive\r\n\r\nevent: ping\r\ndata: {{\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\"}}\r\n\r\nevent: message\r\ndata: {message}\r\n\r\n");
+                (
+                    Duration::ZERO,
+                    format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n{stream}", stream.len()),
+                )
+            } else {
+                reply_with("200 OK", extra, &message)
+            }
+        };
         match body["method"].as_str().unwrap_or("") {
+            "initialize" if *me.sse.lock().unwrap() => answer(
+                "mcp-session-id: synthetic-session\r\n",
+                r#"{"protocolVersion":"2025-06-18","serverInfo":{"name":"synthetic"}}"#.into(),
+            ),
+            "tools/list" if *me.paged.lock().unwrap() || *me.sse.lock().unwrap() => {
+                let n = me.lists.fetch_add(1, Ordering::SeqCst) + 1;
+                let all: Vec<serde_json::Value> = serde_json::from_str(&me.tools.lock().unwrap()).unwrap();
+                let at: usize = body["params"]["cursor"].as_str().and_then(|c| c.strip_prefix('p')).and_then(|c| c.parse().ok()).unwrap_or(0);
+                let (page, next) = if *me.paged.lock().unwrap() {
+                    (all.get(at..at + 3).or_else(|| all.get(at..)).unwrap_or(&[]).to_vec(), (at + 3 < all.len()).then(|| format!("p{}", at + 3)))
+                } else {
+                    (all, None)
+                };
+                let _ = n;
+                answer("", serde_json::json!({"tools": page, "nextCursor": next}).to_string())
+            }
             "initialize" => reply_with(
                 "200 OK",
                 "mcp-session-id: synthetic-session\r\n",

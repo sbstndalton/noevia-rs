@@ -1198,3 +1198,65 @@ async fn node_lists_the_tools_of_a_server_the_front_added_through_its_reread_dir
         .unwrap();
     assert!(status.success());
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_listing_follows_pages_and_reads_event_streams_and_cuts_a_long_list() {
+    let many: Vec<String> = (0..45)
+        .map(|i| {
+            format!(
+                r#"{{"name":"t{i}","description":"{}","inputSchema":{{"type":"object"}}}}"#,
+                "d".repeat(300)
+            )
+        })
+        .collect();
+    let (_d, db, up, s, f) = rig("", false, &format!("[{}]", many.join(","))).await;
+    let a = f.addr;
+    *s.paged.lock().unwrap() = true;
+    *s.sse.lock().unwrap() = true;
+    let url = format!("{}/mcp", up.base());
+    let form = format!(r#"{{"title":"Paged","url":"{url}"}}"#);
+    let (st, pre) = write(a, "POST", &format!("{LIST}/custom/preview"), ADMIN, &form).await;
+    assert_eq!(st, 200, "{pre}");
+    // 15 pages of three tools, each an event stream with a keep-alive comment and an unrelated event before the reply.
+    assert_eq!(pre["toolCount"], 45, "{pre}");
+    assert_eq!(
+        pre["tools"].as_array().unwrap().len(),
+        40,
+        "the first 40 are shown"
+    );
+    assert_eq!(pre["toolsTruncated"], true);
+    assert_eq!(pre["tools"][0]["name"], "t0");
+    assert_eq!(
+        pre["tools"][0]["description"].as_str().unwrap().len(),
+        240,
+        "a description is cut at 240"
+    );
+    assert!(s.lists.load(Ordering::SeqCst) >= 15, "one request per page");
+    let token = pre["previewToken"].as_str().unwrap();
+    let (st, out) = write(
+        a,
+        "POST",
+        &format!("{LIST}/custom"),
+        ADMIN,
+        &format!(r#"{{"title":"Paged","url":"{url}","previewToken":"{token}"}}"#),
+    )
+    .await;
+    assert_eq!(st, 201, "{out}");
+    assert_eq!(out["servers"][0]["toolCount"], 45);
+    assert_eq!(out["servers"][0]["toolsTruncated"], true);
+    assert_eq!(dir_count(&db), 1);
+    // A server that pages forever stops at twenty pages and keeps what it gathered (core mcp.cjs MCP_LIST_TOOLS_MAX_PAGES).
+    let hundred: Vec<String> = (0..100)
+        .map(|i| format!(r#"{{"name":"u{i}","inputSchema":{{"type":"object"}}}}"#))
+        .collect();
+    *s.tools.lock().unwrap() = format!("[{}]", hundred.join(","));
+    let (_, pre) = write(
+        a,
+        "POST",
+        &format!("{LIST}/custom/preview"),
+        ADMIN,
+        &format!(r#"{{"title":"Endless","url":"{url}"}}"#),
+    )
+    .await;
+    assert_eq!(pre["toolCount"], 60, "{pre}");
+}
