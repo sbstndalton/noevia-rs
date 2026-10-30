@@ -88,33 +88,40 @@ owner = "node"
 path = "/api/admin/mcp-directory/{id}/oauth-client"
 owner = "node"
 
+# sbstndalton/noevia#2190 round 7 (rust-offsite-backup): the off-site backup, every method of the eight
+# paths (each answers its own 403/405); Rust owns the jobs, the schedule, the status and the store.
+# new-store (POST, administrators, CSRF) is the review's remedy for a legitimately empty destination.
 [[route]]
 path = "/api/admin/offsite-backup"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/admin/offsite-backup/copy"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/admin/offsite-backup/google/connect"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/admin/offsite-backup/google/disconnect"
-owner = "node"
+owner = "rust"
+
+[[route]]
+path = "/api/admin/offsite-backup/new-store"
+owner = "rust"
 
 [[route]]
 path = "/api/admin/offsite-backup/recovery-key"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/admin/offsite-backup/run"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/admin/offsite-backup/verify"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/admin/users"
@@ -285,21 +292,28 @@ owner = "node"
 path = "/api/connectors"
 owner = "node"
 
+# sbstndalton/noevia#2190 round 7 (rust-google-drive): the Google Drive connector writes. GET
+# /api/connectors and PUT /api/connectors/nextcloud/policy stay Node's (the Nextcloud half lists the
+# live MCP servers' tools); Node asks the broker for the Drive half.
 [[route]]
 path = "/api/connectors/gdrive/backup-copy"
-owner = "node"
+owner = "rust"
+methods = ["PUT"]
 
 [[route]]
 path = "/api/connectors/gdrive/connect"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/connectors/gdrive/disconnect"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/connectors/gdrive/policy"
-owner = "node"
+owner = "rust"
+methods = ["PUT"]
 
 [[route]]
 path = "/api/connectors/nextcloud/policy"

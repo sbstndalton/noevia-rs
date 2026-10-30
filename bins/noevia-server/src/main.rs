@@ -183,6 +183,19 @@ async fn server_main() -> ExitCode {
     if let Some(broker) = app.chatgpt_oauth.as_ref() {
         broker.sweep_once(&app).await;
     }
+    // sbstndalton/noevia#2190 round 7: Google Drive's state file is brought up to date with the disk,
+    // and the off-site backup's nightly schedule starts.
+    if let Some(drive) = app.drive.as_ref() {
+        let drive = std::sync::Arc::clone(drive);
+        let _ = tokio::task::spawn_blocking(move || drive.publish_startup()).await;
+    }
+    if let Some(drive) = app.drive.as_ref() {
+        // The orphan sweep (accounts deleted while this process was down) and the state file's check.
+        drive.spawn_background(&app);
+    }
+    if let Some(offsite) = app.offsite.as_ref() {
+        offsite.spawn_scheduler(&app);
+    }
     // #1071: permanent; NOEVIA_RUST_PROJECTS is retired (a leftover value is reported above).
     println!("noevia-server: Rust owns the project routes, projects.json and free-chats.json");
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);

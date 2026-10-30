@@ -618,8 +618,7 @@ job that chat or another Node route reads):
 
 | route | why it stays |
 |---|---|
-| `/api/connectors`, `/api/connectors/gdrive/*`, `/api/connectors/nextcloud/policy` | drive-accounts.cjs holds personal Drive tokens in memory and the chat tools read the policies in-process |
-| `/api/admin/offsite-backup` and its six children | offsite-service.cjs runs the backup, copy and verify jobs and their busy lock and 15-minute timer in-process |
+| `/api/connectors`, `/api/connectors/nextcloud/policy` | the Nextcloud half lists the live MCP servers' tools and which write (round 7 moved the Google Drive writes and the off-site backup, below) |
 | `/api/admin/users/{id}` (DELETE) | the clean-up spans Node's workspace cache, MCP OAuth and directory MCP keys in memory (the ChatGPT tokens through the broker's `/v1/chatgpt/forget`) |
 | `/api/auto-roles` | GET reads the served catalogue and machine models; an admin PUT warms the roles in Node's engine (`ensureRolesLoaded`) |
 | `/api/health` | `ragAvailable` and the `retrieval` tri-state are Node's cached RAG status (Node-live); the default provider row is now env-derived in the front (provider_routes.rs `Deployment`), so only that status needs publishing (round 6 below) |
@@ -703,9 +702,126 @@ tokens without a row or a re-added row.
 
 | route(s) | why it stays | plan |
 |---|---|---|
-| `/api/connectors*` (Drive and the Nextcloud policy) | `drive-accounts.cjs` and `gdrive.cjs` hold the Drive device sign-in, the sealed refresh tokens (`google-drive-users/<id>.sealed`, HKDF key from `secrets.key`) and the access-token refresh in process; the chat tools (`gdrive-tools.cjs`) and the administrator's off-site backup mirror (`offsite-service.cjs`, the `google-drive.sealed` slot that doubles as that administrator's personal connection) call `drive.token()`/`call()`; the view needs the tool catalogue (`isWrite`) and the `tool_policies` table Node writes through policy-leaves | a Drive broker on the ChatGPT pattern (`/v1/gdrive/{session,reject,disconnect,forget}` on the internal store, enc-sealed rows, single-flight refresh, compare-and-swap writes, a change-signal file), with the backup slot's ownership rule (`ownsBackup`) ported with it; Node's tools and the mirror ask for access tokens only; the policies become a re-read of `tool_policies` by content fingerprint, as the decision settings are. The off-site backup stays Node's (its own round) and uses the broker's session |
+| `/api/connectors*` (Nextcloud policy and the list's Nextcloud half) | the Nextcloud half lists the live MCP servers' tools and which of them write | Google Drive's half moved in round 7 (below): the Drive device sign-in, the sealed refresh tokens and the access-token refresh are the front's, and Node's chat tools ask it over `/v1/gdrive/*` |
 | `/api/health` | **moved in the close-out (below)** | ~~Node writes `rag-status.json` (`{ version, ragAvailable, retrieval, at }`, atomically, on a timer and when the status changes); the front reads it per request, probes the default provider and the Diary itself, and reports a snapshot older than a bound as `retrieval: "unavailable"`~~ |
 | `/api/auto-roles` | GET needs the served catalogue (names, `missingFile`) and the machine models, both Node-live; PUT warms the roles in the engine | publish the catalogue and machine-model names in the same snapshot; GET moves with it; PUT stays Node's (chat-live) unless the warm-up is split from the save. **GET moved in the close-out (below)** |
+
+### Round 7: Google Drive's token authority and the off-site backup
+
+| route | owner | capability / Core refusal | notes |
+|---|---|---|---|
+| `/api/connectors/gdrive/connect`, `/disconnect` (POST), `/policy`, `/backup-copy` (PUT) | rust | `rust-google-drive` / `RUST_GOOGLE_DRIVE_OWNED` | connector_routes.rs: any signed-in account, its own connection only (`ownsBackup`: the backup slot doubles as the administrator's Drive); answers core's connector object; other methods stay Node's 404 |
+| `/api/admin/offsite-backup`, `/run`, `/verify`, `/copy`, `/google/connect`, `/google/disconnect`, `/new-store`, `/recovery-key` (every method) | rust | `rust-offsite-backup` / `RUST_OFFSITE_BACKUP_OWNED` | offsite_routes.rs: administrators only (403 `Administrator required`), 405 for the wrong method; `POST /new-store` is the review's "this is a new store" action (below), behind the CSRF check like every POST |
+
+Node's `server/gdrive.cjs`, `drive-accounts.cjs`, `offsite-*.cjs` and `routes/offsite-backup.cjs` are deleted.
+
+**The broker** (gdrive.rs) owns all Google OAuth state: each account's device sign-in and sealed refresh token
+(`google-drive-users/<id>.sealed`, key `secrets.cjs derive('google-drive-user')`, the retired key still read
+until a rotation re-seals it) and the backup slot (`google-drive.sealed`, key `OFFSITE_BACKUP_KEY_FILE`). The
+on-disk format is unchanged (crates/google-token-seal: HKDF-SHA256 file key, AES-256-GCM, base64 of
+iv|tag|body), so a Node build reads what Rust saved; the golden vector is in both repos. The refresh is single
+flight per slot; a disconnect never waits for it and a refresh that finishes after a disconnect or a newer
+sign-in is discarded (the sign-in's identity is a digest of the refresh token and `connectedAt`, never the
+token); every state-changing request runs as a spawned task, so a dropped request strands nothing. Google
+endpoints other than a loopback QA server are not accepted (`GOOGLE_OAUTH_BASE_URL`, `GOOGLE_DRIVE_API_BASE_URL`,
+`GOOGLE_DRIVE_UPLOAD_BASE_URL`; core took any URL).
+
+**Node's chat tools** ask the broker over the internal store (`POST /v1/gdrive/<op>`, loopback, per-start secret):
+`session {user, admin, rejected?}` -> `{accessToken, expiresAt, generation}` or `{error, code, status}` with
+`disconnected`, `reconnect` or `transient`; `reject {user, admin, generation}`; `disconnect`; `forget {user}`
+(account deletion); and three more than the plan named: `view` (the Google Drive half of `GET /api/connectors`, whose
+Nextcloud half is Node's), `policy {user, tools, writes, mode}` (the Nextcloud permissions, written by the front
+because it is `tool_policies`' only writer) and `reseal {}` -> `{current, rotated, empty, failed}` (counts only):
+`secrets:rotate` re-seals the accounts' token files under the current `secrets.key` here, under the same fence as
+every other change to them, loading the keys from disk at that moment; Node's rotation awaits it first and then only
+checks that every file opens under the current key (it writes none, so a rotation can never resurrect a disconnected
+account or drop a remembered folder). `admin: true` in a request is checked against `users.role`; a claim the table
+does not confirm is a member, and a table that cannot be read is a 503, not a member. A refresh token never reaches Node. Requests have two time budgets: 30 s for a token,
+form or JSON exchange and 300 s for an upload. The front also removes the connection files (revoked at Google first) of
+accounts the `users` table no longer has, once at start (never when the table is unreadable or empty), and checks the
+state file once a minute, rewriting it only when what it says changed (the backup key file appearing or going flips
+`backup.usable`); writes of it are serialized. The broker rewrites
+`gdrive-connections.json` after each change (no secret, no email: the accounts that have a connection file and its
+state, and the backup slot's `{usable, state, owner, expiresAt}`; at start only when there is a connection file or an older
+state file to correct, because Node reads a missing file as "nobody is connected" and the corpus replay compares the data
+directory; the front makes `google-drive-users/` (0700) the first time an account's Drive is asked for, as core's `forUser` did); Node's sync `connected(user)` and its
+60-second access-token cache follow that file's signal, and the shared cases in `gdrive-owns-backup.v1.json`
+prove Node and the front agree on `ownsBackup`. `tool_policies`: a per-statement grant (server-store
+`RustToolPolicies`, `upsert_tool_policy`, never a delete); core's guard refuses every Node write even inside
+`exempt()`; Node reads it per call and its permitted-tools cache empties itself when the table's content
+fingerprint or the state file moves.
+
+**The off-site backup** (offsite_*.rs): the format is core's `noevia-offsite-v1` byte for byte (crates/offsite-backup-format;
+a store Node wrote is read by Rust, tests/fixtures/offsite-node-store and offsite-node-store-first-release, the latter
+written by the first released engine, core commit d4e31d7, whose manifests have no `incomplete`). A manifest missing
+`root`, `size`, `mode`, `mtime` or `time` still lists and still protects its chunks (core checked only `format` and
+`files`); a missing time is the snapshot id's. The reusable crates:
+`secret-envelope`'s `enc:v2` is the credential seal, not this format; `diary-backup-format` and
+`workspace-restore-verify` are the Diary workspace archive's and do not fit; `s3-sign` and `dav-parse` (the XML scan)
+do. Differences from core: a live SQLite file is copied with `VACUUM INTO` on a read-only connection (core used the
+online backup API), a file that cannot be copied consistently is skipped and the manifest flagged `incomplete`.
+
+*What a run guarantees.* A backed-up folder that is missing or unreadable fails the run before anything is written.
+Every other skip (a file that vanished or cannot be opened or read, a name that is not UTF-8, an unreadable subfolder, a
+database without a consistent copy) is counted, flags the manifest `incomplete` and shows as `lastBackup.incomplete` and
+`lastBackup.skipped` in the status (the web page does not show them yet: a follow-up in noevia-web). A destination that has
+no `config` is not initialised once `lastBackup` exists for the same destination (`backupDestination` in the status
+file): an unmounted NAS is an empty directory, and a fresh store there would start a second chain and a `noevia-offsite (2)`
+folder on Drive; the error says to check the mount, and names the remedy for a destination that really is new (a replaced
+disk, a recreated bucket at the same path or name, which no digest tells from an unmounted one): an administrator confirms
+it with `POST /api/admin/offsite-backup/new-store` (administrators only, CSRF-gated, no body, 409 while a job runs or when
+another process holds the job lock). That clears `lastBackup`, `backupDestination`, `backupRetry`, `snapshots` and
+`unreadableSnapshots` from the status file, and `lastError` when it is the empty-destination refusal (any other failure
+stays), so the next backup initialises the destination and records it again. It refuses (409, nothing changed) when the
+destination already holds a store (`config`): that is not a new store, and the status of a working one is not forgotten.
+*A status file from before this release* (it has `lastBackup` and no `backupDestination`) counts its last backup as made to
+the current destination: the digest is only compared when one was recorded, so an empty destination is refused after the
+upgrade too, until a good backup stamps the digest, and the same action applies. The snapshot is recorded (`lastBackup`) as soon as it is stored; a
+retention failure after it is recorded on its own (`lastError` "saved, but applying retention failed") and is not a failed
+backup. Retention is 7 daily, 4 weekly, 6 monthly, always the newest snapshot and the newest complete one, and within a
+bucket the complete one; chunks are pruned only when every snapshot the store lists was read (a flaky or damaged manifest
+read must not turn its chunks into garbage), the snapshot just written is passed in and kept, and a chunk younger than
+24 hours is never pruned. The restore test reads the newest listed snapshot back chunk by chunk without writing it
+anywhere and fails when that snapshot cannot be read, instead of passing an older one. A manifest with an entry that
+names no `chunks` array still lists, restores and is kept, but what it protects is unknown, so it counts as unreadable
+for the prune (nothing is pruned while it is there; `unreadableSnapshots` counts it). A restore test that passes clears
+`lastError` only when that error is its own (`during` "restore test"), not a backup's.
+`<data dir>/offsite-backup.lock` (an exclusive `flock`) holds the one-job-at-a-time rule across processes. It lives in the
+UI data directory (production: btrfs, where `flock` works), never in the destination (production `/offsite` is a FUSE
+mount), and is left out of the backup. A job that finds it held is refused with a 409 that is nobody's failure: it writes
+neither `backupRetry` nor `lastError`. A `flock` that fails for any other reason (a file system without locks) logs a
+warning and the job runs unlocked: the in-process busy mark still holds. A job ends at the latest after 6 hours
+(`JOB_DEADLINE`): the busy mark and the lock are released and the failure recorded. "Run now" copies the stored snapshot
+to Drive even when the retention after it hit that deadline.
+Leftovers of a killed run (`.tmp-` files in the destination older than 2 hours, `noevia-sqlite-*` and
+`noevia-restore-test-*` directories older than 7 hours in the system temp directory) are swept; a full destination has its
+own message.
+
+*Schedule.* Every 15 minutes (a slow check delays the next, it is not followed by a burst) a run starts when the clock
+is within six hours after `OFFSITE_BACKUP_HOUR` (core: only inside that hour), the last backup is over 20 hours old, no
+quiet window is open and the last failure's backoff is over: 15 minutes doubling to 2 hours, at most three scheduled
+attempts per window (`backupRetry` in the status file; `lastError.failures` shows the count). Three zones are named and none is guessed.
+The hour is read on the process clock, exactly as core's `new Date().getHours()` did: the `TZ` the process runs with, and
+UTC without one (the production web container sets no `TZ` and its `/etc/localtime` is `Etc/UTC`, so there Node's `getHours()` and this agree on UTC; the status shows `scheduleZone`). The quiet
+windows are read in explicit zones: the NAS window 02:20-04:30 always in America/New_York, the appdata backup 04:05-04:25 in
+the host's zone, `OFFSITE_BACKUP_TIMEZONE`, default America/New_York (the Unraid host runs on Eastern time). Known names
+are `America/New_York` (also `US/Eastern`, `EST5EDT`, `America/Detroit`; the US daylight-saving rule) and `UTC`/`Etc/UTC`/
+`GMT`; an unknown `TZ` or `OFFSITE_BACKUP_TIMEZONE` is warned about at start (the unknown `TZ` is read as UTC, as Node did;
+an unknown host zone is replaced by the default, never by UTC). The start also logs the zones it uses. On the two daylight-
+saving days the windows follow the wall clock (the NAS window opens at 03:00 on the spring day, the repeated 01:00 hour of
+the autumn day is the same night). A scheduled run pauses between files, never inside one, before it touches the
+destination and between the backup and its retention; "Run now" does not pause, and a manual run asked while a scheduled one
+waits for a window is told so (409) while the status shows `waitingForQuietWindow`.
+Never in a response or a log: the recovery key (only its download), a token, the S3 secret. The mirror's folder rules
+(`noeviaStoreId`, `noevia-offsite (2)`, the 500 and quarter prune guards, same-name-other-size refusal) are core's.
+
+Behaviour changes (each a deliberate edit): the OAuth and Drive base URLs must be loopback; a sign-in whose token
+could not be saved says so instead of staying pending; an invalid connectors body is `400 invalid JSON` (core
+answered 400 `Google Drive could not be reached.`, or 502 for a non-object body); a missed nightly hour is caught up
+within six hours; the status gains `waitingForQuietWindow` while a scheduled run waits, `scheduleZone` (once the
+feature is on) and `unreadableSnapshots` (once a retention counted), none of them while the feature is off, so the
+recorded corpus's answer of a disabled backup replays byte for byte; `lastBackup` gains `incomplete` and `skipped`; `/api/admin/offsite-backup/<other>`
+is Node's generic 404.
 
 ## sbstndalton/noevia#2189 (batch M2-A): the read-only model sizing reads
 

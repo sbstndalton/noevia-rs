@@ -10,17 +10,24 @@ pub mod chatgpt_oauth_routes;
 pub mod chatgpt_status_routes;
 pub mod code_net;
 pub mod config;
+pub mod connector_routes;
 pub mod decision_settings_routes;
 pub mod diary_routes;
 pub mod export_routes;
 pub mod extraction;
 pub mod feature_context;
+pub mod gdrive;
 pub mod health;
 pub mod health_routes;
 pub mod identity;
 pub mod legacy_proxy;
 pub mod model_routes;
 pub mod model_sizing;
+pub mod offsite_engine;
+pub mod offsite_mirror;
+pub mod offsite_routes;
+pub mod offsite_settings;
+pub mod offsite_store;
 pub mod plugin_directory_routes;
 pub mod project_routes;
 #[cfg(feature = "rust-storage-browse")]
@@ -154,6 +161,17 @@ use std::sync::Arc;
 /// current and the previous key), which core's secrets rotation (rust-providers-reseal.cjs) calls in
 /// place of rewriting the files itself; the pair is checked like `rust-providers`.
 ///
+/// `rust-google-drive`: this build is Google Drive's token authority (gdrive.rs, sbstndalton/noevia#2190
+/// round 7): the per-account device sign-in, the sealed refresh tokens (`google-drive-users/<id>.sealed`)
+/// and the off-site backup's slot (`google-drive.sealed`), and the refresh. Node's Drive chat tools ask it
+/// for access tokens over the internal store (`/v1/gdrive/*`) and never see a refresh token. It answers
+/// `POST /api/connectors/gdrive/{connect,disconnect}` and `PUT .../{policy,backup-copy}`
+/// (connector_routes.rs) and is the single writer of `tool_policies`; the paired core refuses them
+/// (rust-google-drive.cjs `RUST_GOOGLE_DRIVE_OWNED`).
+/// `rust-offsite-backup`: this build runs the off-site backup (offsite_*.rs): the eight
+/// `/api/admin/offsite-backup` routes, the jobs, the nightly schedule (outside the appdata and NAS
+/// windows), the status file and the snapshot store; the paired core refuses the routes
+/// (rust-offsite-backup.cjs `RUST_OFFSITE_BACKUP_OWNED`) and has no backup code.
 /// `rust-health`: this build answers `GET /api/health` (health_routes.rs, sbstndalton/noevia#2190
 /// close-out): the default provider and the Diary sidecar it probes itself, retrieval from the
 /// `rag-status.json` snapshot Node publishes. `rust-auto-roles`: `GET /api/auto-roles`
@@ -260,6 +278,8 @@ pub const FEATURES: &[&str] = &[
     "rust-public-pages",
     "rust-plugin-directory",
     "rust-decision-settings",
+    "rust-google-drive",
+    "rust-offsite-backup",
     "rust-model-sizing",
     "rust-web-address-read",
     "rust-web-address-write",
@@ -310,6 +330,10 @@ pub const FEATURES: &[&str] = &[
 ];
 
 pub struct App {
+    /// Google Drive's token authority (sbstndalton/noevia#2190 round 7); `None` without UI_DATA_DIR.
+    pub drive: Option<Arc<gdrive::Drive>>,
+    /// The off-site backup (jobs, schedule, status); `None` without UI_DATA_DIR.
+    pub offsite: Option<Arc<offsite_routes::Service>>,
     /// GET /api/providers/chatgpt under NOEVIA_RUST_AUTH (M6, #1373; permanent since #1071).
     #[cfg(feature = "rust-chatgpt-status")]
     pub chatgpt_status: Option<Arc<chatgpt_status_routes::StatusLayer>>,
@@ -390,7 +414,18 @@ impl App {
                 .ok_or(server_routing_mode::storage::Fault::Unavailable)
                 .and_then(server_routing_mode::storage::Root::open)
         });
+        let off = config.offsite.as_ref().map(|o| Arc::new(o.clone()));
+        let drive = off
+            .as_ref()
+            .and_then(|o| gdrive::Drive::new(&config, Arc::clone(o)))
+            .map(Arc::new);
+        let offsite = match (off, drive.as_ref()) {
+            (Some(o), Some(d)) => Some(Arc::new(offsite_routes::Service::new(o, Arc::clone(d)))),
+            _ => None,
+        };
         Arc::new(App {
+            drive,
+            offsite,
             #[cfg(feature = "rust-chatgpt-status")]
             chatgpt_status: chatgpt_status_routes::StatusLayer::new(&config).map(Arc::new),
             #[cfg(feature = "rust-chatgpt-status")]
@@ -492,6 +527,8 @@ async fn handle(
                     | routes::Native::ProviderTest
                     | routes::Native::ChatgptOAuth
                     | routes::Native::ProviderModels
+                    | routes::Native::Offsite
+                    | routes::Native::Connectors
                     | routes::Native::Providers
                     | routes::Native::Health
                     | routes::Native::AutoRoles
@@ -526,6 +563,8 @@ async fn handle(
             | routes::Native::ProviderTest
             | routes::Native::ChatgptOAuth
             | routes::Native::ProviderModels
+            | routes::Native::Offsite
+            | routes::Native::Connectors
             | routes::Native::Providers
             | routes::Native::Health
             | routes::Native::AutoRoles,
@@ -713,6 +752,18 @@ async fn handle(
                     true,
                 )
             }
+        }
+        Some(routes::Native::Offsite) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            offsite_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::Connectors) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            connector_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::Export) => {
             let Some(p) = whatwg else {
