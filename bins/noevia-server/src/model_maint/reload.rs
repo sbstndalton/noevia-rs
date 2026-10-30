@@ -369,7 +369,7 @@ impl Maint {
     async fn router_reload(
         &self,
         router: &Router,
-        hold: Option<&str>,
+        holding: &Hold,
         expect: Option<&str>,
     ) -> Result<Result<super::router::Reply, &'static str>, ()> {
         let before = self.ini_text().await;
@@ -378,8 +378,13 @@ impl Maint {
                 return Ok(Err("file_changed"));
             }
         }
+        // Checked again here, right at the call: reading the file above takes what it takes.
+        if !holding.may_start(RELOAD_LIMIT) {
+            return Ok(Err("lease_lost"));
+        }
+        let token = holding.token();
         let result = router
-            .get("/models?reload=1", hold, Duration::from_secs(120))
+            .get("/models?reload=1", token.as_deref(), RELOAD_LIMIT)
             .await;
         let reply = match result {
             Ok(r) => r,
@@ -489,11 +494,12 @@ impl Maint {
         if !holding.may_start(RELOAD_LIMIT) {
             return message(503, LEASE_LOST);
         }
-        let result = match self.router_reload(router, hold, expect.as_deref()).await {
+        let result = match self.router_reload(router, holding, expect.as_deref()).await {
             Ok(r) => r,
             Err(()) => return message(500, COULD_NOT),
         };
         match result {
+            Err("lease_lost") => message(503, LEASE_LOST),
             Err(why) => refuse(&kept, Some(why)),
             Ok(reply) if !reply.ok => message(502, NOT_RELOADED),
             Ok(_) => {
