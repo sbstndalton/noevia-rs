@@ -34,10 +34,10 @@ pub mod mcp_discovery;
 pub mod mcp_egress;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_routes;
-pub mod model_maint;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_tools;
 pub mod model_kind;
+pub mod model_maint;
 pub mod model_routes;
 pub mod model_sizing;
 #[cfg(feature = "rust-storage-reads")]

@@ -45,7 +45,9 @@ const OTHER_STEPS: Duration = Duration::from_secs(60);
 
 /// The worst case of unloading `models` models one by one and then reloading.
 pub fn worst_case(models: usize) -> Duration {
-    UNLOAD_LIMIT.saturating_mul(u32::try_from(models).unwrap_or(u32::MAX)) + RELOAD_LIMIT + OTHER_STEPS
+    UNLOAD_LIMIT.saturating_mul(u32::try_from(models).unwrap_or(u32::MAX))
+        + RELOAD_LIMIT
+        + OTHER_STEPS
 }
 
 /// Statuses the router counts as running (server-models.h `is_running()`).

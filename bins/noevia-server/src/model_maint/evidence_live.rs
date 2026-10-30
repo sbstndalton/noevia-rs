@@ -1054,9 +1054,7 @@ impl Maint {
         });
         tried.attempts += 1;
         if tried.attempts >= MAX_ATTEMPTS {
-            eprintln!(
-                "[evidence] an inbox entry was discarded after {MAX_ATTEMPTS} tries: {why}"
-            );
+            eprintln!("[evidence] an inbox entry was discarded after {MAX_ATTEMPTS} tries: {why}");
             return false;
         }
         tried.next = Instant::now() + base.saturating_mul(1u32 << (tried.attempts - 1));

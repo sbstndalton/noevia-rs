@@ -161,10 +161,7 @@ async fn every_recorded_core_answer_is_the_fronts_byte_for_byte() {
         // was its own hold in the recording.
         let (node_port, _) = engine(Arc::new(|req: &Req| {
             if req.method == "POST" && req.target == "/internal/model-maintenance/lease" {
-                Answer::Reply(
-                    201,
-                    json!({"lease": TOKEN, "ttlMs": 600_000}).to_string(),
-                )
+                Answer::Reply(201, json!({"lease": TOKEN, "ttlMs": 600_000}).to_string())
             } else {
                 Answer::Reply(204, String::new())
             }

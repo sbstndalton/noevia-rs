@@ -296,10 +296,9 @@ async fn a_gate_that_grants_is_the_arbiter_and_node_is_not_asked() {
     let (r, seen) = engine(Arc::new(move |req: &Req| {
         log.lock().unwrap().push(req.target.clone());
         match (req.method.as_str(), req.target.as_str()) {
-            ("POST", "/gate/v1/maintenance") => Answer::Reply(
-                201,
-                json!({"hold": ID, "idle_ttl_ms": 600_000}).to_string(),
-            ),
+            ("POST", "/gate/v1/maintenance") => {
+                Answer::Reply(201, json!({"hold": ID, "idle_ttl_ms": 600_000}).to_string())
+            }
             ("GET", "/models") => Answer::Reply(200, r#"{"data":[]}"#.into()),
             ("GET", "/models?reload=1") => Answer::Reply(200, "{}".into()),
             _ => Answer::Reply(204, String::new()),
@@ -462,7 +461,9 @@ async fn the_missing_token_warning_is_for_a_configured_gate_only() {
     let d = tempfile::tempdir().unwrap();
     let (gate, _) = engine(gate_without_hold_access(Arc::default())).await;
     let warning = maint(gate, d.path(), &[]).missing_token_warning().await;
-    assert!(warning.unwrap().contains("INFERENCE_GATE_ADMIN_TOKEN is not set"));
+    assert!(warning
+        .unwrap()
+        .contains("INFERENCE_GATE_ADMIN_TOKEN is not set"));
     let with_token = maint(
         gate,
         d.path(),
@@ -584,7 +585,10 @@ fn result(result: &str, hash: Option<&str>, at: Option<i64>) -> Value {
 async fn a_result_is_filed_only_under_the_identity_it_was_measured_on_with_its_own_time() {
     let i = inbox(0).await;
     let hash = i.live().await;
-    i.put("001.json", &result("passed", Some(&hash), Some(1_700_000_000_123)));
+    i.put(
+        "001.json",
+        &result("passed", Some(&hash), Some(1_700_000_000_123)),
+    );
     assert_eq!(i.m.drain_inbox().await, 1);
     let lines = i.lines();
     assert_eq!(lines.len(), 1);
@@ -592,8 +596,15 @@ async fn a_result_is_filed_only_under_the_identity_it_was_measured_on_with_its_o
     assert_eq!(lines[0]["at"], json!(1_700_000_000_123i64));
 
     // The configuration changes between the record and the drain: discarded, not refiled.
-    std::fs::write(&i.ini, "[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 4096\n").unwrap();
-    i.put("002.json", &result("failed", Some(&hash), Some(1_700_000_000_456)));
+    std::fs::write(
+        &i.ini,
+        "[fx]\nmodel = /models/fx/fx.gguf\nctx-size = 4096\n",
+    )
+    .unwrap();
+    i.put(
+        "002.json",
+        &result("failed", Some(&hash), Some(1_700_000_000_456)),
+    );
     assert_eq!(i.m.drain_inbox().await, 1);
     assert_eq!(i.lines().len(), 1, "measured on another configuration");
     assert!(i.left().is_empty());
@@ -644,16 +655,14 @@ async fn a_transient_failure_does_not_lose_the_record() {
 }
 
 #[tokio::test]
-async fn a_record_that_keeps_failing_is_discarded_after_a_bounded_number_of_tries_without_blocking() {
+async fn a_record_that_keeps_failing_is_discarded_after_a_bounded_number_of_tries_without_blocking()
+{
     let i = inbox(0).await;
     // The model file is gone: no identity, every try.
     std::fs::remove_file(i.d.path().join("models/fx/fx.gguf")).unwrap();
     let hash = "a".repeat(64);
     i.put("001.json", &result("passed", Some(&hash), None));
-    i.put(
-        "002.json",
-        &json!({"kind": "frobnicate", "model": "fx"}),
-    );
+    i.put("002.json", &json!({"kind": "frobnicate", "model": "fx"}));
     i.m.drain_inbox().await;
     assert_eq!(i.left(), ["001.json"], "the one behind it was not held up");
     let mut tries = 1;
@@ -795,7 +804,10 @@ impl RealNode {
             .await
             .unwrap();
         let status = r.status().as_u16();
-        (status, serde_json::from_slice(&r.bytes().await.unwrap()).unwrap())
+        (
+            status,
+            serde_json::from_slice(&r.bytes().await.unwrap()).unwrap(),
+        )
     }
 }
 
