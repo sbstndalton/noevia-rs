@@ -916,12 +916,16 @@ its extraction).
 9. **Bounds.** The operation runs in a thread that cannot be stopped, so it is bounded from outside: past 2 hours
    (a sync) or 30 minutes (an upload) its job ends as failed 504 and its listing as failed, whether or not the thread
    has returned (the removed worker's 5 minute accept bound is gone; the store's 6 hour stale bound is the backstop).
-   A hung thread keeps the project's source lock; an upload or sync that cannot take it within 30 s (a request) or
-   within its bound (a job) is answered 429. S3 listings are cut at 10,000 entries or 20 pages as before, and the cut
+   A hung thread keeps the project's source lock; an upload, a sync or a `POST .../documents` that cannot take it
+   within 30 s (a request) or within half its bound (a job, so the operation keeps the other half) is answered 429.
+   An operation that waited for the lock dates what it writes by the clock after the wait. A synchronous upload or
+   sync runs in a task of its own: a client that disconnects does not end the operation or mark its listing failed. S3 listings are cut at 10,000 entries or 20 pages as before, and the cut
    is now logged.
 10. **Account removal.** A source operation never makes `users/<id>` again: the staging folder, the stored original,
    the result record and the image assets are made one level at a time below an existing user folder, and an account
-   removed meanwhile ends the operation 410 `account no longer exists` (core's `assertActive`).
+   removed meanwhile ends the operation 410 `account no longer exists` (core's `assertActive`); a project's source
+   texts (`project-sources/`) are made the same way, so a create or an upload that meets a removed account is 410
+   too.
 
 **Not ported, by decision.** The OCR budget applies to the Docling completion pass only (the pdf.js walk's budgeted
 OCR is gone with pdf.js).
