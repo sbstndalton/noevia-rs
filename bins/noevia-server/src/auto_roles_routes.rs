@@ -197,21 +197,16 @@ pub async fn serve(
     // Asks Node to publish (the demand marker); when it was idle the snapshot is waited for, up to
     // two seconds, while the roles file is read.
     let published_dir = data_dir.clone();
-    let state = app
-        .demand
-        .read(data_dir.clone(), move |now| {
-            published_checked(&published_dir, now)
-        });
+    let state = app.demand.read(data_dir.clone(), move |now| {
+        published_checked(&published_dir, now)
+    });
     let done = tokio::task::spawn_blocking(move || {
         let dir = server_projects::store::user_dir(&data_dir, &user).ok()?;
         Some(read_roles(&dir))
     })
     .await;
     let done = match done {
-        Ok(Some(roles)) => Ok(Some(answer(
-            roles,
-            &state.await.unwrap_or_default(),
-        ))),
+        Ok(Some(roles)) => Ok(Some(answer(roles, &state.await.unwrap_or_default()))),
         Ok(None) => Ok(None),
         Err(e) => Err(e),
     };

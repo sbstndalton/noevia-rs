@@ -624,12 +624,24 @@ async fn a_signed_in_request_asks_node_to_publish_and_a_refused_one_does_not() {
     let addr = front(dir.path(), "http://127.0.0.1:9").await;
     // Signed out, and a session that is not valid: the gate refuses, nothing is requested of Node.
     assert_eq!(call(addr, "GET", "/api/health", "").await.status, 401);
-    let r = call(addr, "GET", "/api/health", "cowork_session=nope; cowork_csrf=csrf").await;
+    let r = call(
+        addr,
+        "GET",
+        "/api/health",
+        "cowork_session=nope; cowork_csrf=csrf",
+    )
+    .await;
     assert!(r.status == 401 || r.status == 403, "{}", r.status);
-    assert!(!marker(dir.path()).exists(), "a refused request touched the marker");
+    assert!(
+        !marker(dir.path()).exists(),
+        "a refused request touched the marker"
+    );
     // A signed-in one leaves a private marker, and only that, behind.
     assert_eq!(call(addr, "GET", "/api/health", COOKIE_B).await.status, 200);
-    let mode = std::fs::metadata(marker(dir.path())).unwrap().permissions().mode();
+    let mode = std::fs::metadata(marker(dir.path()))
+        .unwrap()
+        .permissions()
+        .mode();
     assert_eq!(mode & 0o777, 0o600);
     let stray: Vec<String> = std::fs::read_dir(dir.path())
         .unwrap()
@@ -648,14 +660,21 @@ async fn a_signed_in_request_asks_node_to_publish_and_a_refused_one_does_not() {
 }
 
 #[tokio::test]
-async fn after_idle_the_request_waits_up_to_two_seconds_for_node_and_answers_with_what_it_published() {
+async fn after_idle_the_request_waits_up_to_two_seconds_for_node_and_answers_with_what_it_published(
+) {
     let _env = ENV.lock().await;
     let dir = data();
     let provider = stand(Canned::ok()).await;
     set_provider(&provider.base, None);
     let addr = front(dir.path(), "http://127.0.0.1:9").await;
     // An old file from the last time Node was asked; no marker: Node is idle.
-    publish(dir.path(), true, "available", noevia_server::identity::now_ms() - 120_000, 10_000);
+    publish(
+        dir.path(),
+        true,
+        "available",
+        noevia_server::identity::now_ms() - 120_000,
+        10_000,
+    );
     let writer = {
         let path = dir.path().to_path_buf();
         tokio::spawn(async move {
@@ -668,9 +687,22 @@ async fn after_idle_the_request_waits_up_to_two_seconds_for_node_and_answers_wit
     let r = call(addr, "GET", "/api/health", COOKIE_B).await;
     writer.await.unwrap();
     assert_eq!(r.status, 200, "{}", r.text);
-    assert!(r.text.contains(r#""ragAvailable":true,"retrieval":"degraded""#), "{}", r.text);
-    assert!(started.elapsed() >= Duration::from_millis(550), "{:?}", started.elapsed());
-    assert!(started.elapsed() < Duration::from_millis(1900), "{:?}", started.elapsed());
+    assert!(
+        r.text
+            .contains(r#""ragAvailable":true,"retrieval":"degraded""#),
+        "{}",
+        r.text
+    );
+    assert!(
+        started.elapsed() >= Duration::from_millis(550),
+        "{:?}",
+        started.elapsed()
+    );
+    assert!(
+        started.elapsed() < Duration::from_millis(1900),
+        "{:?}",
+        started.elapsed()
+    );
 }
 
 #[tokio::test]
@@ -682,24 +714,50 @@ async fn when_node_does_not_answer_the_wait_ends_at_two_seconds_and_a_live_marke
     let addr = front(dir.path(), "http://127.0.0.1:9").await;
     let unavailable = r#""ragAvailable":false,"retrieval":"unavailable""#;
     // Idle and nobody publishes: unavailable after the wait, still a 200 (Node's route used to be a 502 without Core).
-    publish(dir.path(), true, "available", noevia_server::identity::now_ms() - 120_000, 10_000);
+    publish(
+        dir.path(),
+        true,
+        "available",
+        noevia_server::identity::now_ms() - 120_000,
+        10_000,
+    );
     let started = std::time::Instant::now();
     let r = call(addr, "GET", "/api/health", COOKIE_B).await;
     assert_eq!(r.status, 200, "{}", r.text);
-    assert!(r.text.contains(unavailable), "an old value is never shown: {}", r.text);
-    assert!(started.elapsed() >= Duration::from_millis(1900), "{:?}", started.elapsed());
-    assert!(started.elapsed() < Duration::from_millis(4500), "{:?}", started.elapsed());
+    assert!(
+        r.text.contains(unavailable),
+        "an old value is never shown: {}",
+        r.text
+    );
+    assert!(
+        started.elapsed() >= Duration::from_millis(1900),
+        "{:?}",
+        started.elapsed()
+    );
+    assert!(
+        started.elapsed() < Duration::from_millis(4500),
+        "{:?}",
+        started.elapsed()
+    );
     // The marker is live now (Node had its chance): the next request is answered at once.
     let started = std::time::Instant::now();
     let r = call(addr, "GET", "/api/health", COOKIE_B).await;
     assert!(r.text.contains(unavailable), "{}", r.text);
-    assert!(started.elapsed() < Duration::from_millis(1000), "{:?}", started.elapsed());
+    assert!(
+        started.elapsed() < Duration::from_millis(1000),
+        "{:?}",
+        started.elapsed()
+    );
     // A marker that went idle again makes the next request wait again.
     age_marker(dir.path(), 61_000);
     let started = std::time::Instant::now();
     let r = call(addr, "GET", "/api/health", COOKIE_B).await;
     assert!(r.text.contains(unavailable), "{}", r.text);
-    assert!(started.elapsed() >= Duration::from_millis(1900), "{:?}", started.elapsed());
+    assert!(
+        started.elapsed() >= Duration::from_millis(1900),
+        "{:?}",
+        started.elapsed()
+    );
 }
 
 #[tokio::test]
@@ -722,5 +780,9 @@ async fn a_client_that_leaves_during_the_wait_is_not_waited_for() {
     let started = std::time::Instant::now();
     let r = call(addr, "GET", "/api/health", COOKIE_B).await;
     assert_eq!(r.status, 200);
-    assert!(started.elapsed() < Duration::from_millis(2500), "{:?}", started.elapsed());
+    assert!(
+        started.elapsed() < Duration::from_millis(2500),
+        "{:?}",
+        started.elapsed()
+    );
 }

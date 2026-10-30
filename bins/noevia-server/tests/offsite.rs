@@ -3546,7 +3546,11 @@ async fn the_snapshots_node_publishes_and_the_demand_marker_are_not_backed_up() 
     }
     std::fs::write(src.join("cowork.db.keep"), "kept").unwrap();
     std::fs::write(src.join("auto-roles.json"), "kept too").unwrap();
-    std::fs::write(src.join("users/u1/rag-status.json"), "an account's own file").unwrap();
+    std::fs::write(
+        src.join("users/u1/rag-status.json"),
+        "an account's own file",
+    )
+    .unwrap();
     let engine = dir_engine(dest.path(), &src);
     let r = engine.backup(&Pace::none()).await.unwrap();
     assert_eq!((r.files, r.skipped, r.incomplete), (3, 0, false));
@@ -3557,6 +3561,10 @@ async fn the_snapshots_node_publishes_and_the_demand_marker_are_not_backed_up() 
     names.sort();
     assert_eq!(
         names,
-        ["0/auto-roles.json", "0/cowork.db.keep", "0/users/u1/rag-status.json"]
+        [
+            "0/auto-roles.json",
+            "0/cowork.db.keep",
+            "0/users/u1/rag-status.json"
+        ]
     );
 }

@@ -53,11 +53,7 @@ const LOOK_EVERY: Duration = Duration::from_millis(100);
 
 /// The files Node publishes for the front and the marker: state of the running process that never
 /// belongs in a backup (the off-site walk leaves them out; so it does their `<name>.<pid>.<hex>.tmp`).
-pub const PUBLISHED_STATE: [&str; 3] = [
-    "rag-status.json",
-    "auto-roles-snapshot.json",
-    DEMAND_FILE,
-];
+pub const PUBLISHED_STATE: [&str; 3] = ["rag-status.json", "auto-roles-snapshot.json", DEMAND_FILE];
 
 /// Whether `name` is one of [`PUBLISHED_STATE`] or a temporary file of one.
 pub fn is_published_state(name: &str) -> bool {
@@ -431,7 +427,9 @@ mod demand_tests {
         age_marker(d.path(), 30_000);
         // Live (the window is 60 s), but old enough to be rewritten.
         assert!(!demand.touch(d.path(), crate::identity::now_ms()));
-        assert!(marker_age(&d.path().join(DEMAND_FILE), crate::identity::now_ms()).unwrap() < 5_000);
+        assert!(
+            marker_age(&d.path().join(DEMAND_FILE), crate::identity::now_ms()).unwrap() < 5_000
+        );
         age_marker(d.path(), 59_000);
         assert!(!demand.touch(d.path(), crate::identity::now_ms()));
         age_marker(d.path(), 61_000);
@@ -444,11 +442,15 @@ mod demand_tests {
         f.set_modified(std::time::SystemTime::now() + Duration::from_secs(3_600))
             .unwrap();
         assert!(demand.touch(d.path(), crate::identity::now_ms()));
-        assert!(live(marker_age(&d.path().join(DEMAND_FILE), crate::identity::now_ms())));
+        assert!(live(marker_age(
+            &d.path().join(DEMAND_FILE),
+            crate::identity::now_ms()
+        )));
     }
 
     #[test]
-    fn a_marker_that_is_not_a_plain_file_is_replaced_and_a_directory_that_cannot_be_written_waits_for_nothing() {
+    fn a_marker_that_is_not_a_plain_file_is_replaced_and_a_directory_that_cannot_be_written_waits_for_nothing(
+    ) {
         let d = tempfile::tempdir().unwrap();
         let demand = Demand::default();
         // A symlink in the marker's place is replaced by the rename, never written through.
@@ -521,7 +523,10 @@ mod demand_tests {
         assert!(snap.written_at > crate::identity::now_ms() - 5_000);
         assert!(started.elapsed() >= Duration::from_millis(250));
         assert!(started.elapsed() < Duration::from_millis(1_400));
-        assert!(live(marker_age(&d.path().join(DEMAND_FILE), crate::identity::now_ms())));
+        assert!(live(marker_age(
+            &d.path().join(DEMAND_FILE),
+            crate::identity::now_ms()
+        )));
     }
 
     #[tokio::test]
@@ -533,7 +538,9 @@ mod demand_tests {
         let started = Instant::now();
         let read_from = file.clone();
         let got = demand
-            .read(d.path().to_path_buf(), move |now| read(&read_from, "k", now).ok())
+            .read(d.path().to_path_buf(), move |now| {
+                read(&read_from, "k", now).ok()
+            })
             .await;
         assert!(got.is_none());
         assert!(started.elapsed() >= Duration::from_millis(350));
@@ -547,7 +554,9 @@ mod demand_tests {
         let file = d.path().join("snap.json");
         let ask = |demand: &Arc<Demand>| {
             let file = file.clone();
-            demand.read(d.path().to_path_buf(), move |now| read(&file, "k", now).ok())
+            demand.read(d.path().to_path_buf(), move |now| {
+                read(&file, "k", now).ok()
+            })
         };
         // The first request finds the marker idle and waits out its 600 ms.
         let first = ask(&demand);
@@ -555,12 +564,20 @@ mod demand_tests {
         // The second finds the marker live (the first touched it) but joins the wait that is open.
         let started = Instant::now();
         assert!(ask(&demand).await.is_none());
-        assert!(started.elapsed() >= Duration::from_millis(300), "{:?}", started.elapsed());
+        assert!(
+            started.elapsed() >= Duration::from_millis(300),
+            "{:?}",
+            started.elapsed()
+        );
         assert!(first.await.is_none());
         // Once the wait has closed and the marker is live (Node is down), the answer is immediate.
         let started = Instant::now();
         assert!(ask(&demand).await.is_none());
-        assert!(started.elapsed() < Duration::from_millis(250), "{:?}", started.elapsed());
+        assert!(
+            started.elapsed() < Duration::from_millis(250),
+            "{:?}",
+            started.elapsed()
+        );
     }
 
     #[tokio::test]
