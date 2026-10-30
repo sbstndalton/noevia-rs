@@ -30,6 +30,8 @@ const LEASE: &str = "0123456789abcdef0123456789abcdef";
 #[derive(Clone)]
 enum Answer {
     Now(u16, String),
+    /// A 302 to this location.
+    Redirect(String),
     /// Holds the connection until the peer goes away, then records `what`.
     Hang(&'static str),
 }
@@ -89,6 +91,12 @@ impl Stub {
                             let out = format!(
                                 "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{text}",
                                 text.len()
+                            );
+                            let _ = s.write_all(out.as_bytes()).await;
+                        }
+                        Answer::Redirect(to) => {
+                            let out = format!(
+                                "HTTP/1.1 302 Found\r\nlocation: {to}\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
                             );
                             let _ = s.write_all(out.as_bytes()).await;
                         }
@@ -744,7 +752,10 @@ async fn a_lost_lease_stops_the_step() {
         node_answer(p, b)
     });
     let f = front(Some("true"), node, hang).await;
-    let (s, v) = f.plan().await;
+    // Long before the step's own 120 s deadline.
+    let (s, v) = tokio::time::timeout(Duration::from_secs(20), f.plan())
+        .await
+        .expect("a lost lease ends the step at once");
     assert!(s >= 500, "{s} {v}");
     assert_eq!(f.engine.count("engine-dropped"), 1);
 }
@@ -822,7 +833,7 @@ async fn a_machine_address_off_this_network_never_gets_a_connection_and_redirect
     let target = Stub::start(engine_saying(r#"["x"]"#)).await;
     let there = format!("http://{}/v1/chat/completions", target.addr);
     let redirecting =
-        Stub::start(Arc::new(move |_m, _p, _b| Answer::Now(302, there.clone()))).await;
+        Stub::start(Arc::new(move |_m, _p, _b| Answer::Redirect(there.clone()))).await;
     set_machine_row(&f, &format!("http://{}", redirecting.addr), "machine-model");
     let (s, _) = f.plan().await;
     assert_eq!(s, 500);
@@ -891,4 +902,19 @@ async fn a_job_of_an_earlier_start_reads_as_interrupted_and_its_report_can_be_sa
         .call("POST", &format!("/api/projects/p1/research/{id}/save"), "")
         .await;
     assert!(s >= 400, "{s} {again}");
+}
+
+#[tokio::test]
+async fn the_local_engine_never_redirects_a_step() {
+    let target = Stub::start(engine_saying(r#"{"subQuestions":["a","b","c"]}"#)).await;
+    let there = format!("http://{}/v1/chat/completions", target.addr);
+    let f = front(
+        Some("true"),
+        lease_node(),
+        Arc::new(move |_m, _p, _b| Answer::Redirect(there.clone())),
+    )
+    .await;
+    let (s, v) = f.plan().await;
+    assert_eq!(s, 500, "{v}");
+    assert_eq!(target.seen().len(), 0, "nothing followed");
 }
