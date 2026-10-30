@@ -66,6 +66,10 @@ jobs:
           set -euo pipefail
           cargo build --locked --target-dir target/chatgpt-featureless -p noevia-server --no-default-features
           if target/chatgpt-featureless/debug/noevia-server --features | grep -qx rust-chatgpt-status; then exit 1; fi
+          # An account's deletion forgets the MCP sign-ins and the ChatGPT tokens itself: advertised with both compiled in only.
+          if target/chatgpt-featureless/debug/noevia-server --features | grep -qx rust-admin-users; then exit 1; fi
+          cargo test --locked --target-dir target/admin-users-one -p noevia-server --no-default-features --features rust-storage-reads --test features_cli features_cli_outputs_only_the_compiled_capabilities
+          cargo test --locked --target-dir target/admin-users-one -p noevia-server --no-default-features --features rust-chatgpt-status --test features_cli features_cli_outputs_only_the_compiled_capabilities
           if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 UI_DATA_DIR=/tmp target/chatgpt-featureless/debug/noevia-server > "$RUNNER_TEMP/chatgpt-featureless.log" 2>&1; then exit 1; fi
           grep -q 'needs compiled rust-chatgpt-status' "$RUNNER_TEMP/chatgpt-featureless.log"
           cargo build --locked -p replay -p noevia-server --features noevia-server/rust-chatgpt-status

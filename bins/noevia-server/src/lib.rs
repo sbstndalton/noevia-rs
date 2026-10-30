@@ -34,9 +34,9 @@ pub mod mcp_discovery;
 pub mod mcp_egress;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_routes;
-pub mod model_kind;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_tools;
+pub mod model_kind;
 pub mod model_routes;
 pub mod model_sizing;
 #[cfg(feature = "rust-storage-reads")]
@@ -328,7 +328,6 @@ pub const FEATURES: &[&str] = &[
     "rust-source-jobs",
     "rust-project-source-work",
     "rust-project-config",
-    "rust-admin-users",
     "rust-large-document-host-lock",
     "rust-public-pages",
     "rust-plugin-directory",
@@ -374,6 +373,11 @@ pub const FEATURES: &[&str] = &[
     "rust-toolboxes-permitted",
     #[cfg(feature = "rust-storage-reads")]
     "rust-connectors",
+    // An account's deletion forgets the MCP sign-ins (rust-storage-reads) and the ChatGPT tokens
+    // (rust-chatgpt-status) itself: a build without either must not be offered beside a Core that no
+    // longer deletes accounts (admin_user_routes.rs `cleanup`).
+    #[cfg(all(feature = "rust-storage-reads", feature = "rust-chatgpt-status"))]
+    "rust-admin-users",
     "rust-vault-mirror-preferences",
     "rust-health",
     "rust-auto-roles",
@@ -391,6 +395,24 @@ pub const FEATURES: &[&str] = &[
     #[cfg(feature = "rust-chatgpt-status")]
     "rust-chatgpt-status",
 ];
+
+/// Whether the auth database has a row for this account; an unreadable database says `false` (a caller
+/// that asks before saving something for the account keeps nothing it cannot vouch for).
+pub(crate) fn account_row_exists(writes: &upkeep::WriterLayer, id: &str) -> bool {
+    writes
+        .writer()
+        .ok()
+        .and_then(|w| {
+            w.read(|r| {
+                r.row("SELECT 1 FROM users WHERE id=?1", [id], |row| {
+                    row.get::<_, i64>(0)
+                })
+            })
+            .ok()
+        })
+        .flatten()
+        .is_some()
+}
 
 pub struct App {
     /// The demand marker and the wait for Node's published snapshots (snapshot.rs).
@@ -499,6 +521,11 @@ impl App {
             .as_ref()
             .and_then(|o| gdrive::Drive::new(&config, Arc::clone(o)))
             .map(Arc::new);
+        if let Some(drive) = drive.as_ref() {
+            // A sign-in that finishes for a deleted account saves nothing (review L5).
+            let writes = Arc::clone(&writes);
+            drive.guard_accounts(move |id| account_row_exists(&writes, id));
+        }
         let offsite = match (off, drive.as_ref()) {
             (Some(o), Some(d)) => Some(Arc::new(offsite_routes::Service::new(o, Arc::clone(d)))),
             _ => None,

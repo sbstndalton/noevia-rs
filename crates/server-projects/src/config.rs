@@ -562,6 +562,18 @@ fn patch_project(
 
 /// POST /api/projects/{projectId}/config. `body` was read up to [`BODY_LIMIT`] (`over` past it).
 pub fn post(ctx: Ctx<'_>, raw: &str, body: &[u8], over: bool, env: &Env<'_>) -> Reply {
+    post_with(ctx, raw, body, over, env, prune_after)
+}
+
+/// [`post`] with the pass after the save passed in, so a test can make it fail.
+fn post_with(
+    ctx: Ctx<'_>,
+    raw: &str,
+    body: &[u8],
+    over: bool,
+    env: &Env<'_>,
+    prune: impl FnOnce(Ctx<'_>, &Path, &str) -> Result<(), store::StoreError>,
+) -> Reply {
     let Some(id) = js::decode_uri_component(raw) else {
         return Reply::internal();
     };
@@ -617,11 +629,19 @@ pub fn post(ctx: Ctx<'_>, raw: &str, body: &[u8], over: bool, env: &Env<'_>) -> 
     });
     match done {
         Ok(Ok(Done::Unchanged)) => Reply::json(200, "{\"ok\":true,\"unchanged\":true}".into()),
-        Ok(Ok(Done::Saved { index, gone, prune })) => {
+        Ok(Ok(Done::Saved {
+            index,
+            gone,
+            prune: prune_wanted,
+        })) => {
             queue(&dir, &id, &index, &gone, ctx.now_ms);
-            if prune {
-                if let Err(reply) = prune_after(ctx, &dir, &id) {
-                    return reply;
+            // The list is saved by now: a failing prune is logged and ignored, like the index jobs. The
+            // next change of the list prunes again; "nothing was changed" would be untrue.
+            if prune_wanted {
+                if let Err(e) = prune(ctx, &dir, &id) {
+                    eprintln!(
+                        "noevia-server: pruning the documents of a saved project config failed: {e:?}"
+                    );
                 }
             }
             Reply::json(200, "{\"ok\":true}".into())
@@ -659,19 +679,16 @@ fn queue(dir: &Path, id: &str, index: &[String], gone: &[String], now_ms: i64) {
 
 /// document-sources.cjs and uploads.cjs `prune` against the list as saved (#1914: only once it is
 /// on disk).
-fn prune_after(ctx: Ctx<'_>, dir: &Path, id: &str) -> Result<(), Reply> {
-    let done = store::update(dir, ctx.switch, |projects| {
+fn prune_after(ctx: Ctx<'_>, dir: &Path, id: &str) -> Result<(), store::StoreError> {
+    store::update(dir, ctx.switch, |projects| {
         let Some(p) = store::find_mut(projects, id) else {
             return (false, false);
         };
         files::prune_documents(dir, p);
         files::prune_uploads(dir, p, ctx.now_ms);
         (true, true)
-    });
-    match done {
-        Ok(_) => Ok(()),
-        Err(e) => Err(chats::save_failure(&e, SAVE_FAILED)),
-    }
+    })
+    .map(|_| ())
 }
 
 #[cfg(test)]
@@ -778,6 +795,46 @@ mod tests {
             crate::Body::Json(t) => (r.status, t),
             crate::Body::Bytes { bytes, .. } => (r.status, String::from_utf8(bytes).unwrap()),
         }
+    }
+
+    #[test]
+    fn a_failing_prune_after_the_save_is_logged_and_the_save_still_answers_ok() {
+        // Review L2: the list is on disk before the pass runs, so "nothing was changed" would be untrue.
+        let f = Fixture::new(BASE);
+        let c = catalogue();
+        let known = |p: &str| p == "cloud-1";
+        let chat = |m: &str| !m.contains("embed");
+        let mut asked = 0;
+        let r = post_with(
+            f.ctx(),
+            "p1",
+            br#"{"name":"Renamed","files":[{"name":"a.md","content":"fresh"}]}"#,
+            false,
+            &env(&c, &known, &chat),
+            |_, _, _| {
+                asked += 1;
+                Err(store::StoreError::Io(std::io::Error::other(
+                    "synthetic disk failure",
+                )))
+            },
+        );
+        assert_eq!(asked, 1, "the prune was asked for");
+        assert_eq!(r.status, 200);
+        let crate::Body::Json(text) = &r.body else {
+            panic!("json")
+        };
+        assert_eq!(text, r#"{"ok":true}"#);
+        assert_eq!(f.project().get("name").as_str(), Some("Renamed"));
+        // A patch without a files list never asks.
+        let r = post_with(
+            f.ctx(),
+            "p1",
+            br#"{"name":"Again"}"#,
+            false,
+            &env(&c, &known, &chat),
+            |_, _, _| panic!("no prune without files"),
+        );
+        assert_eq!(r.status, 200);
     }
 
     #[test]

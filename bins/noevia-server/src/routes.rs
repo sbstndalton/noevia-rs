@@ -924,7 +924,14 @@ mod tests {
         for m in ["GET", "PUT", "PATCH", "POST"] {
             assert_eq!(dispatch(m, "/api/admin/users/u1"), None, "{m}");
         }
-        assert!(crate::FEATURES.contains(&"rust-admin-users"));
+        // Advertised only when the MCP and ChatGPT brokers its cleanup asks are compiled in (review L6).
+        assert_eq!(
+            crate::FEATURES.contains(&"rust-admin-users"),
+            cfg!(all(
+                feature = "rust-storage-reads",
+                feature = "rust-chatgpt-status"
+            ))
+        );
         for (m, p) in [
             ("HEAD", "/api/admin/web-address"),
             ("POST", "/api/profile/sharing"),

@@ -408,7 +408,7 @@ impl Diary {
                         ctx.identity.user.id.clone(),
                     );
                     tokio::task::spawn_blocking(move || {
-                        latch.held(&user, &tenant.storage_identity())
+                        latch.held(&user, &tenant.storage_identity()?)
                     })
                     .await
                     .ok()

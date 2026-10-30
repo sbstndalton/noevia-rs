@@ -1109,6 +1109,77 @@ async fn an_oauth_sign_in_end_to_end_with_pkce_state_and_a_sealed_token() {
     assert!(audits(&db, "mcp.oauth.%").contains(&"mcp.oauth.disconnect".to_string()));
 }
 
+/// Review L5 (#2191 round 9): nothing ties the credential tables to `users`, so a sign-in or a key
+/// that finishes after the front deleted the account must be refused in its own transaction.
+#[tokio::test]
+async fn a_sign_in_that_finishes_after_the_account_was_deleted_saves_no_token() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let up = upstream().await;
+    let base = up.base();
+    let counts = Arc::new(Counts::default());
+    {
+        let (base, counts) = (base.clone(), Arc::clone(&counts));
+        up.set(move |r: &Seen| {
+            if let Some(answer) = oauth_reply(r, &base, &counts) {
+                return answer;
+            }
+            // /token: slow, so the account can be deleted while the code is being exchanged.
+            let (_, text) = reply(
+                "200 OK",
+                r#"{"access_token":"access-1","refresh_token":"refresh-1","expires_in":3600}"#,
+            );
+            (Duration::from_millis(900), text)
+        });
+    }
+    add_server(&db, "dir-oauth", &format!("{base}/mcp"), true, false, "[]");
+    let f = front(d.path()).await;
+    let a = f.addr;
+    let (st, body) = write(a, "POST", "/api/mcp-oauth/dir-oauth/connect", MEMBER, "").await;
+    assert_eq!(st, 200, "{body}");
+    let state = query(body["signIn"].as_str().unwrap())["state"].clone();
+    let callback = tokio::spawn(async move {
+        raw_text(
+            a,
+            "GET",
+            &format!("/api/mcp-oauth/callback?state={state}&code=c1"),
+            MEMBER,
+            "",
+            b"",
+        )
+        .await
+    });
+    up.wait_for("/token", 1).await;
+    // The front deletes the account (the row first) while the code is in the air.
+    db.execute("DELETE FROM users WHERE id=?1", [B]).unwrap();
+    let (st, _, page) = callback.await.unwrap();
+    // The callback answers every failure as its 400 page; the message is what says why.
+    assert_eq!(st, 400, "{page}");
+    assert!(page.contains("This account no longer exists."), "{page}");
+    assert_eq!(
+        token_row(&db, B, "dir-oauth"),
+        None,
+        "no token row for a deleted account"
+    );
+}
+
+#[tokio::test]
+async fn a_key_saved_after_the_account_was_deleted_is_refused_and_one_for_a_live_account_is_kept() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let f = front(d.path()).await;
+    let mcp = f._app.mcp.as_ref().unwrap();
+    let headers = vec![("Authorization".to_string(), "Bearer synthetic".to_string())];
+    // Control: an account with a row keeps its key.
+    mcp.store_key(&f._app, A, "dir-key", &headers).unwrap();
+    assert!(key_row(&db, A, "dir-key").is_some());
+    // The front deleted B (the row) while its key was being checked.
+    db.execute("DELETE FROM users WHERE id=?1", [B]).unwrap();
+    let refused = mcp.store_key(&f._app, B, "dir-key", &headers).unwrap_err();
+    assert_eq!(refused.status, 410);
+    assert_eq!(key_row(&db, B, "dir-key"), None);
+}
+
 #[tokio::test]
 async fn a_refresh_is_single_flight_rotates_the_token_and_never_double_spends() {
     let d = tempfile::tempdir().unwrap();

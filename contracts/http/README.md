@@ -1546,8 +1546,10 @@ empty, as core's accessor does), hashed and measured as core does (a lone surrog
 (checked before anything is fetched), the host is the fixed `raw.githubusercontent.com` over https with no redirect
 (`redirect: 'error'`), an 8 s deadline for the whole exchange and at most 32 KiB; the host's addresses are looked up
 and must all be public (ssrf-policy) and the request is pinned to them, so a poisoned answer cannot lead the install
-into the private network. The `NOEVIA_QA_SKILLS_RAW` base (unset in production) points synthetic runs at a loopback
-host and skips that lookup. The project is checked first (404), then the body, the name, the fetch, and one save under
+into the private network. The `NOEVIA_QA_SKILLS_RAW` base (unset in production) points synthetic runs at the literal
+`127.0.0.1` over plain http and skips the lookup there, and nowhere else: any other base must pass ssrf-policy for a
+fetch (a private literal, credentials or a name over http are refused, a name over https is looked up and pinned like the
+fixed host). The project is checked first (404), then the body, the name, the fetch, and one save under
 the store's lock; a source limit is a 409 with its code. The request runs as spawned work: a client that goes away
 does not strand the fetch or the save.
 
@@ -1564,9 +1566,13 @@ Diary tenant (`DELETE /api/internal/tenant`, bearer + tenant id + assertion only
 times; the starts' orphan sweeps remove what still fails. The answer is `{ok: true}`; a folder that could not be removed
 is the one failure reported (500, fixed text). Core has no way to delete an account any more: `deleteUser`, the route's
 cleanup and the `forgetUser`/`removeUser`/`*Forget` broker clients are deleted, and `users` is refused to every Node
-statement, inside `exempt()` too. What Node held for the account follows the folder: a workspace held for a folder that
-is gone is revoked (a turn in flight stops writing and nothing makes the folder again), and none is made for a user
-the database no longer has. The Drive and ChatGPT session caches are keyed to the brokers' state files, which the
+statement, inside `exempt()` too. What Node held for the account follows the auth database first and the folder second.
+`workspaceStore.isRemoved` (what rag's `userActive` and the background walks ask) reads the `users` table: an "exists"
+answer is kept for about a second, because rag asks once per chunk, and "gone" is latched and revokes a workspace held
+for the account at once. So an embed in flight when the row is deleted stops writing within that second, `openIndex` makes
+no `users/<id>/rag` folder for an account without a row (it used to, because Node never learned of the deletion), and no
+workspace is made for it. The folder check (at most every 250 ms, latched) only backs this for a workspace held when the
+folder goes. The Drive and ChatGPT session caches are keyed to the brokers' state files, which the
 brokers rewrite when they forget the account. Core has no role-change route, so there is no role cache to invalidate.
 
 **Behaviour changes.**
@@ -1581,4 +1587,18 @@ brokers rewrite when they forget the account. Core has no role-change route, so 
    file system's message (a path), and its row was gone too.
 6. The deleted account's Drive, MCP and ChatGPT credentials are forgotten by the front itself (in process), no longer
    by Node asking the internal store over HTTP; the internal `forget` operations stay in the store for old/old pairs.
+7. `POST .../config`: the pass that prunes the documents of sources that left runs after the list is saved; when it
+   fails the failure is logged and the answer stays `{ok: true}` (it used to say "nothing was changed" after the save).
+8. A folder that could not be removed after the rows are gone is logged at warn with its path. At every start the
+   front logs, never removes, the `users/<id>` folders that have no `users` row (a count and the first twenty ids): a
+   database restored from an older copy would make live data look orphaned.
+9. A sign-in or a key that finishes after the account's row is gone saves nothing: the MCP OAuth callback and the
+   directory key are checked inside the save's own transaction (the callback page says `This account no longer
+   exists.`), and a personal Google Drive sign-in checks the row before it writes its token file. Nothing ties the
+   MCP tables to `users`, and the cleanup that follows the deletion runs once, so without the check a sign-in that was
+   in flight would bring its row back until the next start's sweep. The ChatGPT sign-in is already safe: the
+   cleanup bumps the account's generation and drops its pending sign-ins under the same fence the save takes.
+10. `rust-admin-users` is advertised only by a build with both `rust-storage-reads` (the MCP broker) and
+    `rust-chatgpt-status` (the ChatGPT broker); a build with one would delete an account and keep the other's
+    credentials. The supervisor and the assembler then refuse that front beside a Core that refuses the delete.
 

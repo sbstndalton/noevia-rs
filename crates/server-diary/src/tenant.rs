@@ -131,15 +131,16 @@ impl Tenant {
 
     /// The saved connection as the storage-login latch names it: kind, address, bucket, user and
     /// the secret (core `fingerprintOf`). The secret is lent, never copied out.
-    pub fn storage_identity(&self) -> StorageIdentity<'_> {
-        let c = self.storage.connection();
-        StorageIdentity {
+    /// `None` for [`Tenant::bare`], which carries no storage.
+    pub fn storage_identity(&self) -> Option<StorageIdentity<'_>> {
+        let c = self.storage.as_ref()?.connection();
+        Some(StorageIdentity {
             kind: kind_name(c.kind),
             base_url: &c.base_url,
             bucket: &c.bucket,
             username: &c.username,
             secret: Zeroizing::new(String::from_utf8_lossy(&c.secret).into_owned()),
-        }
+        })
     }
 }
 

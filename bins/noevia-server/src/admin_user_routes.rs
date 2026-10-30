@@ -221,15 +221,25 @@ pub struct Left {
 pub async fn cleanup(app: &Arc<App>, data_dir: &std::path::Path, id: &str) -> Left {
     let (dir_root, dir_id) = (data_dir.to_path_buf(), id.to_owned());
     let folder = async move {
+        let mut last = None;
         for wait in [0u64, 50, 250, 1000] {
             if wait > 0 {
                 tokio::time::sleep(Duration::from_millis(wait)).await;
             }
             let (root, user) = (dir_root.clone(), dir_id.clone());
-            let removed = tokio::task::spawn_blocking(move || remove_folder(&root, &user)).await;
-            if matches!(removed, Ok(true)) {
-                return true;
+            match tokio::task::spawn_blocking(move || try_remove_folder(&root, &user)).await {
+                Ok(Ok(())) => return true,
+                Ok(Err(failed)) => last = Some(failed),
+                Err(_) => {}
             }
+        }
+        // The row is gone and nothing else will remove this: say where it is, so it can be removed by hand.
+        match last {
+            Some(failed) => eprintln!("noevia-server: warning: {}", failed.warning()),
+            None => eprintln!(
+                "noevia-server: warning: the folder of a deleted account was not removed ({})",
+                folder_path(&dir_root, &dir_id).display()
+            ),
         }
         false
     };
@@ -277,21 +287,129 @@ where
     eprintln!("noevia-server: a deleted account's credentials were not removed; the next start removes them");
 }
 
-/// Removes `users/<id>` below the data directory: true when it is gone (it may never have been).
+/// Why `users/<id>` could not be removed: where it is and what the file system said.
+#[derive(Debug)]
+pub struct FolderFailure {
+    pub path: PathBuf,
+    pub error: std::io::Error,
+}
+
+impl FolderFailure {
+    /// The log line (a warning: the account row is gone, so the folder stays until someone removes it).
+    pub fn warning(&self) -> String {
+        format!(
+            "the folder of a deleted account could not be removed ({}): {}. Remove it by hand.",
+            self.path.display(),
+            self.error
+        )
+    }
+}
+
+/// `users/<id>` below the data directory, as [`remove_folder`] would name it.
+fn folder_path(data_dir: &std::path::Path, id: &str) -> PathBuf {
+    server_projects::store::user_dir(data_dir, id)
+        .unwrap_or_else(|_| data_dir.join("users").join("(invalid id)"))
+}
+
+/// Removes `users/<id>` below the data directory: `Ok` when it is gone (it may never have been).
 /// Only a canonical account id names a folder, and a symlink in its place is removed as a link,
 /// never followed.
-pub fn remove_folder(data_dir: &std::path::Path, id: &str) -> bool {
+pub fn try_remove_folder(data_dir: &std::path::Path, id: &str) -> Result<(), FolderFailure> {
     let Ok(dir) = server_projects::store::user_dir(data_dir, id) else {
-        return true;
+        return Ok(());
+    };
+    let failed = |error| FolderFailure {
+        path: dir.clone(),
+        error,
     };
     match std::fs::symlink_metadata(&dir) {
-        Err(e) => e.kind() == std::io::ErrorKind::NotFound,
-        Ok(m) if m.file_type().is_symlink() || !m.is_dir() => std::fs::remove_file(&dir).is_ok(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(failed(e)),
+        Ok(m) if m.file_type().is_symlink() || !m.is_dir() => {
+            std::fs::remove_file(&dir).map_err(failed)
+        }
         Ok(_) => match std::fs::remove_dir_all(&dir) {
-            Ok(()) => true,
-            Err(e) => e.kind() == std::io::ErrorKind::NotFound,
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(failed(e)),
         },
     }
+}
+
+/// [`try_remove_folder`] as a yes or no.
+pub fn remove_folder(data_dir: &std::path::Path, id: &str) -> bool {
+    try_remove_folder(data_dir, id).is_ok()
+}
+
+/// How many orphan ids a start names in its log (the count is always given).
+const ORPHANS_LISTED: usize = 20;
+
+/// The `users/<uuid>` folders below the data directory whose id has no row in `known`, sorted. Only a
+/// canonical account id counts as a candidate, and nothing is read from or removed in them. An empty
+/// `known` proves nothing (an unreadable or fresh database) and names none.
+pub fn orphan_folders(data_dir: &std::path::Path, known: &[String]) -> Vec<String> {
+    if known.is_empty() {
+        return Vec::new();
+    }
+    let Ok(entries) = std::fs::read_dir(data_dir.join("users")) else {
+        return Vec::new();
+    };
+    let mut ids: Vec<String> = entries
+        .flatten()
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|name| server_projects::store::user_dir(data_dir, name).is_ok())
+        .filter(|name| !known.contains(name))
+        .collect();
+    ids.sort();
+    ids
+}
+
+/// The start-up line for [`orphan_folders`]: a count and the first ids. These folders are never
+/// removed here: a database restored from an older copy makes live accounts look orphaned.
+pub fn orphan_report(ids: &[String]) -> Option<String> {
+    if ids.is_empty() {
+        return None;
+    }
+    let shown = ids
+        .iter()
+        .take(ORPHANS_LISTED)
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join(", ");
+    let more = ids.len().saturating_sub(ORPHANS_LISTED);
+    Some(format!(
+        "{} account folder(s) under users/ have no account row (left in place, never removed automatically): {shown}{}",
+        ids.len(),
+        if more > 0 {
+            format!(" and {more} more")
+        } else {
+            String::new()
+        }
+    ))
+}
+
+/// At start: logs the account folders that have no row. Nothing is removed.
+pub async fn report_orphan_folders(app: &Arc<App>) -> usize {
+    let Some(data_dir) = app.config.data_dir.clone() else {
+        return 0;
+    };
+    let a = Arc::clone(app);
+    let found = tokio::task::spawn_blocking(move || -> Option<Vec<String>> {
+        let writer = a.writes.writer().ok()?;
+        let known: Vec<String> = writer
+            .read(|r| r.rows("SELECT id FROM users", [], |row| row.get::<_, String>(0)))
+            .ok()?;
+        Some(orphan_folders(&data_dir, &known))
+    })
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or_default();
+    if let Some(line) = orphan_report(&found) {
+        eprintln!("noevia-server: warning: {line}");
+    }
+    found.len()
 }
 
 /// Test hooks, compiled in debug builds only (`cargo test` and the CI replays); a release build has
@@ -398,5 +516,72 @@ mod tests {
         assert!(remove_folder(root.path(), ID));
         assert!(std::fs::symlink_metadata(&dir).is_err());
         assert!(outside.join("keep").exists());
+    }
+
+    #[test]
+    fn a_folder_that_cannot_be_removed_is_reported_with_its_path() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("users").join(ID);
+        let inner = dir.join("project-sources");
+        std::fs::create_dir_all(&inner).unwrap();
+        std::fs::write(inner.join("t.txt"), "t").unwrap();
+        // A directory its owner cannot write to: the file inside cannot be unlinked.
+        std::fs::set_permissions(&inner, std::fs::Permissions::from_mode(0o500)).unwrap();
+        let restore = || std::fs::set_permissions(&inner, std::fs::Permissions::from_mode(0o700));
+        if std::fs::write(inner.join("probe"), "p").is_ok() {
+            // Running as root: permissions do not stop it, so there is no failure to observe.
+            restore().unwrap();
+            return;
+        }
+        let failed = try_remove_folder(root.path(), ID).unwrap_err();
+        assert_eq!(failed.path, dir, "the path of the folder");
+        let line = failed.warning();
+        assert!(
+            line.contains(&dir.display().to_string()),
+            "the warning names the path: {line}"
+        );
+        assert!(!remove_folder(root.path(), ID));
+        assert!(dir.exists(), "nothing else removes it");
+        restore().unwrap();
+        assert!(remove_folder(root.path(), ID), "and it goes once it can");
+    }
+
+    #[test]
+    fn folders_with_no_account_row_are_named_and_never_removed() {
+        let root = tempfile::tempdir().unwrap();
+        let users = root.path().join("users");
+        let (a, b, c) = (
+            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        );
+        for id in [a, b, c, "not-an-account", "shared"] {
+            std::fs::create_dir_all(users.join(id).join("rag")).unwrap();
+        }
+        // A file shaped like an id is not a folder.
+        std::fs::write(users.join("dddddddd-dddd-4ddd-8ddd-dddddddddddd"), "x").unwrap();
+        let known = vec![a.to_owned()];
+        let orphans = orphan_folders(root.path(), &known);
+        assert_eq!(orphans, vec![b.to_owned(), c.to_owned()]);
+        for id in [a, b, c] {
+            assert!(users.join(id).join("rag").exists(), "{id} is still there");
+        }
+        // An empty or unreadable table proves nothing; no data directory has no folders.
+        assert!(orphan_folders(root.path(), &[]).is_empty());
+        assert!(orphan_folders(&root.path().join("nowhere"), &known).is_empty());
+        // The line: a count and the ids.
+        let line = orphan_report(&orphans).unwrap();
+        assert!(line.starts_with("2 account folder(s)"), "{line}");
+        assert!(
+            line.contains(b) && line.contains(c) && !line.contains(a),
+            "{line}"
+        );
+        assert!(line.contains("never removed"), "{line}");
+        assert_eq!(orphan_report(&[]), None);
+        let many: Vec<String> = (0..25).map(|i| format!("{i:036}")).collect();
+        let line = orphan_report(&many).unwrap();
+        assert!(line.starts_with("25 account folder(s)"), "{line}");
+        assert!(line.ends_with("and 5 more"), "{line}");
     }
 }
