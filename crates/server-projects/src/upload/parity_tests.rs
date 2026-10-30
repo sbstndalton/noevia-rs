@@ -872,20 +872,24 @@ fn updated_at(rig: &Rig) -> i64 {
 /// forms); one that did not wait keeps the context's time.
 #[test]
 fn an_upload_that_waited_for_the_project_lock_dates_its_save_by_when_it_ran() {
-    for (n, body) in [organized("a.md", b"x", ""), legacy_body("b.md", b"x", "")]
-        .into_iter()
-        .enumerate()
+    // (the older form without storage saves the project; with storage it is the plain create-only write)
+    for (n, (remote, body)) in [
+        (true, organized("a.md", b"x", "")),
+        (false, legacy_body("b.md", b"x", "")),
+    ]
+    .into_iter()
+    .enumerate()
     {
         let rig = Rig::new(PROJECT);
         let before = crate::wall_ms();
         let holder = hold_lock_for(USER, "proj-a", 150);
-        let (status, _) = rig.post(true, &body);
+        let (status, _) = rig.post(remote, &body);
         assert_eq!(status, 200, "form {n}");
         holder.join().unwrap();
         assert!(updated_at(&rig) >= before, "form {n}: {}", updated_at(&rig));
 
         let free = Rig::new(PROJECT);
-        let (status, _) = free.post(true, &body);
+        let (status, _) = free.post(remote, &body);
         assert_eq!(status, 200);
         assert_eq!(updated_at(&free), 1_700_000_000_000, "form {n}: no wait");
     }

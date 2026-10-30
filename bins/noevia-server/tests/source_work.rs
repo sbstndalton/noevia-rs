@@ -492,8 +492,17 @@ async fn a_client_that_leaves_a_foreground_sync_does_not_fail_its_listing_while_
     let f = front().await;
     let h = headers(&f);
     // The project's source lock is held, so the sync waits (its foreground wait is 30 s) once it is listed.
-    let lock = server_projects::project_documents::source_lock(&f.user, "p 1");
-    let held = lock.lock().unwrap();
+    // (on a thread of its own: a guard is not held across this test's awaits)
+    let (release, released) = std::sync::mpsc::channel::<()>();
+    let (held, ready) = std::sync::mpsc::channel::<()>();
+    let user = f.user.clone();
+    let holder = std::thread::spawn(move || {
+        let lock = server_projects::project_documents::source_lock(&user, "p 1");
+        let _held = lock.lock().unwrap();
+        held.send(()).unwrap();
+        let _ = released.recv();
+    });
+    ready.recv().unwrap();
     let mut s = TcpStream::connect(f.addr).await.unwrap();
     let mut req = String::from("POST /api/projects/p%201/sources/sync HTTP/1.1\r\nhost: front.test\r\nconnection: close\r\ncontent-length: 2\r\n");
     for (k, v) in &h {
@@ -515,7 +524,8 @@ async fn a_client_that_leaves_a_foreground_sync_does_not_fail_its_listing_while_
         while_running.contains(r#""state":"running""#) && !while_running.contains("failed"),
         "{while_running}"
     );
-    drop(held);
+    release.send(()).unwrap();
+    holder.join().unwrap();
     for _ in 0..200 {
         if listed_states(&f).contains(r#""state":"ready""#) {
             break;

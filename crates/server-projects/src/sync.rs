@@ -416,7 +416,8 @@ fn run_budgeted(env: &SyncEnv<'_>, ocr_pages: usize) -> Reply {
         budget: OcrBudget::new(ocr_pages),
     };
     let lock = project_documents::source_lock(env.ctx.user_id, env.project);
-    let Some((_held, ctx)) = project_documents::lock_restamped(&lock, env.lock_wait, env.ctx) else {
+    let Some((_held, ctx)) = project_documents::lock_restamped(&lock, env.lock_wait, env.ctx)
+    else {
         return finish_log(
             env,
             &Stats::default(),

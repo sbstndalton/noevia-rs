@@ -174,15 +174,7 @@ pub fn post(
     engine: &dyn Engine,
     limits: &Limits,
 ) -> Reply {
-    post_waiting(
-        ctx,
-        raw,
-        body,
-        over,
-        engine,
-        limits,
-        FOREGROUND_LOCK_WAIT,
-    )
+    post_waiting(ctx, raw, body, over, engine, limits, FOREGROUND_LOCK_WAIT)
 }
 
 /// [`post`] that waits at most `lock_wait` for the project's source lock (429 past it).
@@ -500,12 +492,28 @@ mod tests {
         let held = lock.lock().unwrap();
         let started = std::time::Instant::now();
         let wait = std::time::Duration::from_millis(100);
-        let r = post_waiting(ctx(root.path()), "proj-a", &body(), false, &fake, &LIMITS, wait);
+        let r = post_waiting(
+            ctx(root.path()),
+            "proj-a",
+            &body(),
+            false,
+            &fake,
+            &LIMITS,
+            wait,
+        );
         assert_eq!(r.status, 429, "{r:?}");
         assert!(started.elapsed() >= wait && started.elapsed() < std::time::Duration::from_secs(5));
         assert_eq!(listed(&dir), 0, "nothing was saved");
         drop(held);
-        let r = post_waiting(ctx(root.path()), "proj-a", &body(), false, &fake, &LIMITS, wait);
+        let r = post_waiting(
+            ctx(root.path()),
+            "proj-a",
+            &body(),
+            false,
+            &fake,
+            &LIMITS,
+            wait,
+        );
         assert_eq!(r.status, 200, "{r:?}");
     }
 

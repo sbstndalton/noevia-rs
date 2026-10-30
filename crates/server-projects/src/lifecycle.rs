@@ -910,8 +910,8 @@ mod tests {
     fn a_text_is_not_written_below_an_account_folder_that_is_gone() {
         let root = tempfile::tempdir().unwrap();
         let user = root.path().join("users").join("aaaaaaaa");
-        let mut project = wtf16::parse(r#"{"id":"p1","files":[{"name":"a.md","content":"hello"}]}"#)
-            .unwrap();
+        let mut project =
+            wtf16::parse(r#"{"id":"p1","files":[{"name":"a.md","content":"hello"}]}"#).unwrap();
         let err = externalize(&user, &mut project).unwrap_err();
         assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
         assert!(!user.exists(), "users/<id> was not made again");
