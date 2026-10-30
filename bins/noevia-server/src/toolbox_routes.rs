@@ -104,7 +104,8 @@ struct Facts {
     project: Result<Option<Project>, ()>,
     policies: HashMap<String, String>,
     diary: bool,
-    connected: bool,
+    /// The connectors this account is connected to (Google Drive is the only one this front can say).
+    connected: Vec<String>,
     /// Directory servers each account signs in to (`true`) or brings its own key for (`false`).
     oauth: HashMap<String, bool>,
     ready: crate::mcp_broker::Ready,
@@ -157,12 +158,16 @@ fn gather(app: &Arc<App>, user: &str, admin: bool, project_id: Option<&str>) -> 
         })
         .map_err(|_| ())?
         .is_some_and(|d| d != 0);
-    let connected = crate::gdrive::of(app).is_some_and(|drive| {
-        drive
-            .slot_for(user, admin)
-            .map(|slot| drive.state(&slot).state == "connected")
-            .unwrap_or(false)
-    });
+    let connected: Vec<String> = crate::gdrive::of(app)
+        .is_some_and(|drive| {
+            drive
+                .slot_for(user, admin)
+                .map(|slot| drive.state(&slot).state == "connected")
+                .unwrap_or(false)
+        })
+        .then(|| "gdrive".to_owned())
+        .into_iter()
+        .collect();
     let (oauth, ready) = match &app.mcp {
         Some(mcp) => {
             let oauth = mcp
@@ -233,11 +238,7 @@ fn permission_name(p: Permission) -> &'static str {
 fn compute(cat: &Catalogue, facts: &Facts, admin: bool, cowork: bool) -> Result<Vec<JValue>, ()> {
     let project = facts.project.as_ref().ok().and_then(Option::as_ref);
     let connector: HashSet<&str> = cat.connector_boxes.iter().map(String::as_str).collect();
-    let connected: Vec<&str> = if facts.connected {
-        vec!["gdrive"]
-    } else {
-        Vec::new()
-    };
+    let connected: Vec<&str> = facts.connected.iter().map(String::as_str).collect();
     let is_connected = |id: &str| connected.contains(&id);
 
     let mut listed: Vec<Listed> = Vec::new();
@@ -597,4 +598,281 @@ pub async fn serve(
             ("computedAt", JValue::Num(identity::now_ms() as f64)),
         ]),
     )
+}
+
+/// The old JS rules' frozen answers against `compute` (sbstndalton/noevia#2202 round 2 review, M4).
+///
+/// Until round 2 the catalogue was core's `computePermittedTools`, checked against 2500 frozen answers of
+/// the JS (core tests/fixtures/toolboxes-permitted-js.v1.json, byte-identical, sha256-pinned in core's
+/// differential test). The computation is this file's now, and core's copy of that check is gone, so this
+/// is the one that keeps the port honest: each frozen input is rebuilt as what the front reads (the
+/// catalogue as the publisher projects it, the account's facts as the front gathers them), `compute` runs,
+/// and the hash of its key-sorted JSON is the frozen `catalogue.live` one.
+///
+/// Three presentation differences are the publisher's by design, and are put back on the output before the
+/// hash, tool by tool, so that everything else (every state, permission, reason and flag) is compared
+/// exactly: a tool's `write` is the flag `!!isWriteTool(name)` (the JS printed whatever the callback
+/// returned), a name is a text (a tool named by a number is the number's text here, and printed as the
+/// number again), and a description is cut at 240 characters (the same). A case the front cannot be
+/// asked is skipped, and counted: an id list holding something that is not text, a box whose id is not
+/// text, a manifest entry that is not an object with a text id. The JS faulted on the first two (every box
+/// "unchecked"); the publisher cannot write the third.
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
+mod differential {
+    use super::*;
+    use crate::mcp_discovery::{ManifestBox, ToolInfo};
+    use sha2::{Digest, Sha256};
+
+    const FROZEN: &str = include_str!("../tests/fixtures/toolboxes-permitted-js.v1.json");
+    /// core tests/server/toolboxes-permitted-differential.test.cjs `PINS`: the same bytes.
+    const PIN: &str = "1aff93ac23e096837f167433a569b6193521656aba35f7702fdddcaeed6f685e";
+
+    fn hex(bytes: &[u8]) -> String {
+        bytes.iter().map(|b| format!("{b:02x}")).collect()
+    }
+
+    /// core's `canon` in the differential test: key-sorted JSON, `undefined` as null.
+    fn canon(v: &JValue) -> String {
+        match v {
+            JValue::Arr(items) => format!(
+                "[{}]",
+                items.iter().map(canon).collect::<Vec<_>>().join(",")
+            ),
+            JValue::Obj(pairs) => {
+                let mut sorted: Vec<&(String, JValue)> = pairs.iter().collect();
+                sorted.sort_by(|a, b| a.0.encode_utf16().cmp(b.0.encode_utf16()));
+                format!(
+                    "{{{}}}",
+                    sorted
+                        .iter()
+                        .map(|(k, v)| format!(
+                            "{}:{}",
+                            js_json::stringify(&JValue::Str(k.clone())).unwrap(),
+                            canon(v)
+                        ))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )
+            }
+            JValue::Undefined => "null".into(),
+            other => js_json::stringify(other).unwrap(),
+        }
+    }
+
+    fn hash_of(v: &JValue) -> String {
+        hex(&Sha256::digest(canon(v).as_bytes()))[..16].to_owned()
+    }
+
+    fn texts(list: &JValue) -> Option<Vec<String>> {
+        match list {
+            JValue::Arr(items) => items
+                .iter()
+                .map(|x| x.as_str().map(str::to_owned))
+                .collect(),
+            _ => None,
+        }
+    }
+
+    /// `String(v || '')`.
+    fn js_text(v: &JValue) -> Option<String> {
+        if !v.truthy() {
+            return Some(String::new());
+        }
+        js_json::to_js_string(v).ok()
+    }
+
+    fn cut240(text: &str) -> String {
+        String::from_utf16_lossy(&text.encode_utf16().take(240).collect::<Vec<_>>())
+    }
+
+    /// The hash of what `compute` gives for the case, or `None` when the front cannot be asked it.
+    fn ours(case: &JValue) -> Option<String> {
+        let i = case.get("in");
+        let defaults = texts(i.get("defaultToolboxes"))?;
+        let connector = texts(i.get("connectorBoxes"))?;
+        let connected = texts(i.get("connected"))?;
+        let oauth_ids = texts(i.get("oauthServerIds"))?;
+        let policy = i.get("policy");
+        let write = i.get("write");
+
+        let JValue::Arr(raw_boxes) = i.get("boxes") else {
+            return None;
+        };
+        let mut boxes = Vec::new();
+        // Per box and tool, what the JS printed that the front prints differently.
+        let mut raw: Vec<Vec<(JValue, JValue)>> = Vec::new();
+        let mut policies: HashMap<String, String> = HashMap::new();
+        for b in raw_boxes {
+            let id = b.get("id").as_str()?.to_owned();
+            let mut tools = Vec::new();
+            let mut printed = Vec::new();
+            if let JValue::Arr(items) = b.get("tools") {
+                for t in items {
+                    let name = t.get("function").get("name");
+                    if !name.truthy() {
+                        continue;
+                    }
+                    let text = match name {
+                        JValue::Str(n) => n.clone(),
+                        JValue::Num(_) => js_json::to_js_string(name).ok()?,
+                        _ => return None,
+                    };
+                    let flag = write.get(&text);
+                    tools.push(ToolInfo {
+                        name: text.clone(),
+                        description: cut240(&js_text(t.get("function").get("description"))?),
+                        write: flag.truthy(),
+                    });
+                    // The JS treated a mode other than block or ask as neither; the front's own reading of
+                    // a stored mode makes anything else a block, so only these two are stored.
+                    if let Some(m) = policy.get(&text).as_str().filter(|m| *m == "block" || *m == "ask")
+                    {
+                        policies.insert(text, m.to_owned());
+                    }
+                    printed.push((name.clone(), flag.clone()));
+                }
+            }
+            raw.push(printed);
+            boxes.push(BoxInfo {
+                id,
+                label: b.get("label").as_str()?.to_owned(),
+                description: b.get("description").as_str()?.to_owned(),
+                source: b.get("source").as_str()?.to_owned(),
+                in_app: b.get("source").as_str() == Some("builtin"),
+                server: None,
+                tools,
+            });
+        }
+        let mut manifest = Vec::new();
+        if let JValue::Arr(entries) = i.get("manifest") {
+            for e in entries {
+                let id = e.get("id").as_str()?.to_owned();
+                if !matches!(e, JValue::Obj(_)) {
+                    return None;
+                }
+                let label = if e.get("label").truthy() {
+                    e.get("label").as_str()?.to_owned()
+                } else {
+                    id.clone()
+                };
+                manifest.push(ManifestBox {
+                    id,
+                    label,
+                    description: js_text(e.get("description"))?,
+                    in_app: true,
+                });
+            }
+        }
+        let project = {
+            let p = i.get("project");
+            if p.truthy() {
+                Some(Project {
+                    auto: p.get("toolsMode").as_str() == Some("auto"),
+                    docs_defaulted: p.get("docsToolboxDefaulted").as_bool() == Some(true),
+                    toolboxes: match p.get("toolboxes") {
+                        JValue::Arr(items) => {
+                            Some(items.iter().map(|x| x.as_str().map(units)).collect())
+                        }
+                        _ => None,
+                    },
+                })
+            } else {
+                None
+            }
+        };
+        let cat = Catalogue {
+            mcp_enabled: true,
+            harness_enabled: i.get("harnessEnabled").truthy(),
+            has_repositories: matches!(i.get("repositories"), JValue::Arr(r) if !r.is_empty()),
+            nextcloud_configured: false,
+            nextcloud_origins: Vec::new(),
+            defaults,
+            connector_boxes: connector,
+            boxes,
+            manifest,
+            servers: Vec::new(),
+        };
+        let ready = i.get("ready");
+        let facts = Facts {
+            project: Ok(project),
+            policies,
+            diary: i.get("diaryEnabled").truthy(),
+            connected,
+            oauth: oauth_ids.iter().map(|id| (id.clone(), true)).collect(),
+            ready: crate::mcp_broker::Ready {
+                signed_in: oauth_ids
+                    .iter()
+                    .filter(|id| ready.get(id).truthy())
+                    .cloned()
+                    .collect(),
+                keys: Default::default(),
+            },
+        };
+        let admin = i.get("user").get("role").as_str() == Some("admin");
+        let cowork = i.get("mode").as_str() == Some("cowork");
+        let mut out = compute(&cat, &facts, admin, cowork).ok()?;
+        // Put the JS's own printing of a tool's name and write flag back (see the module note).
+        for (shown, printed) in out.iter_mut().zip(&raw) {
+            let JValue::Obj(pairs) = shown else {
+                panic!("a box is an object")
+            };
+            let tools = pairs.iter_mut().find(|(k, _)| k == "tools").unwrap();
+            let JValue::Arr(tools) = &mut tools.1 else {
+                panic!("tools is a list")
+            };
+            assert_eq!(tools.len(), printed.len());
+            for (tool, (name, flag)) in tools.iter_mut().zip(printed) {
+                let JValue::Obj(fields) = tool else {
+                    panic!("a tool is an object")
+                };
+                for (k, v) in fields.iter_mut() {
+                    match k.as_str() {
+                        "name" => *v = name.clone(),
+                        "write" => *v = flag.clone(),
+                        _ => {}
+                    }
+                }
+            }
+        }
+        Some(hash_of(&JValue::Arr(out)))
+    }
+
+    #[test]
+    fn the_front_gives_the_catalogue_the_old_js_gave_for_every_frozen_input_it_can_be_asked() {
+        assert_eq!(hex(&Sha256::digest(FROZEN.as_bytes())), PIN);
+        let frozen = js_json::parse(FROZEN).unwrap();
+        let JValue::Arr(cases) = frozen.get("cases") else {
+            panic!("cases")
+        };
+        assert_eq!(cases.len(), 2500);
+        let (mut compared, mut skipped) = (0usize, 0usize);
+        let mut wrong = Vec::new();
+        for case in cases {
+            let catalogue = case.get("catalogue");
+            match ours(case) {
+                None => skipped += 1,
+                Some(hash) => {
+                    compared += 1;
+                    assert_eq!(
+                        catalogue.get("faulted").as_bool(),
+                        Some(false),
+                        "case {:?}: a case the front can be asked was a fault in the JS",
+                        case.get("i")
+                    );
+                    if Some(hash.as_str()) != catalogue.get("live").as_str() {
+                        wrong.push(js_json::stringify(case.get("i")).unwrap());
+                    }
+                }
+            }
+        }
+        assert!(wrong.is_empty(), "differing cases: {}", wrong.join(" "));
+        // A comparison that quietly skipped everything would pass: the counts are the measured ones.
+        assert_eq!((compared, skipped), (0, 0));
+    }
 }

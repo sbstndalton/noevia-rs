@@ -2078,6 +2078,25 @@ impl Mcp {
         .await?
     }
 
+    /// One account's key for a server, forgotten without an audit entry: the clean-up of a failed add (the
+    /// key the adding administrator typed), not a decision of the account.
+    pub async fn forget_key_quietly(
+        self: &Arc<Self>,
+        app: &Arc<App>,
+        user: &str,
+        server: &str,
+    ) -> Result<(), Fail> {
+        let (u, s) = (user.to_owned(), server.to_owned());
+        self.blocking(app, move |me, a| {
+            let w = a.writes.writer().map_err(|_| auth_error("transient"))?;
+            w.write(|tx| tx.mcp_delete_key(RustMcpCredentials::owned(), &u, &s))
+                .map_err(|_| auth_error("transient"))?;
+            me.publish(a);
+            Ok(())
+        })
+        .await?
+    }
+
     /// A deleted account takes every one of its sign-ins and keys with it.
     pub async fn forget_user(self: &Arc<Self>, app: &Arc<App>, user: &str) -> Result<(), Fail> {
         let u = user.to_owned();
@@ -2240,6 +2259,10 @@ impl Mcp {
             let checked =
                 mcp_egress::check_key(&me.egress, &server.url, &pending, &me.rpc_id).await;
             if let Err(why) = checked {
+                // No place for the check yet is the front's own state, not the server's answer.
+                if why == mcp_egress::BUSY {
+                    return Err(fail(mcp_egress::BUSY, 503));
+                }
                 return Err(fail(
                     format!(
                         "The server did not accept that key: {}",
@@ -2470,7 +2493,7 @@ impl Mcp {
             "mcp_oauth_tokens" => tx.mcp_swap_token(cap, user, server, &next, now_ms(), &raw),
             "directory_mcp_user_keys" => tx.mcp_swap_key(cap, user, server, &next, &raw),
             "directory_mcp_servers" => {
-                tx.mcp_directory_swap_headers(cap, server, Some(&next), Some(&raw))
+                tx.mcp_directory_swap_headers(cap, server, Some(&next), Some(&raw), None)
             }
             _ => tx.mcp_swap_client(cap, server, &next, now_ms(), &raw),
         });

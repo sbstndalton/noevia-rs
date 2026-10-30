@@ -1,11 +1,12 @@
 //! What a listing of an MCP server's tools means to noevia (sbstndalton/noevia#2202 round 2): core
-//! mcp.cjs `convertTool` and `readOnlyHint`, applied to the tools [`crate::mcp_egress::list_tools`]
+//! mcp.cjs `convertTool`, applied to the tools [`crate::mcp_egress::list_tools`]
 //! brought back, so the admin directory can say how many tools it can use before a server is added.
 //!
 //! A tool is usable when its name is `[A-Za-z0-9_-]{1,64}`, its `inputSchema` is an object schema
 //! (`type: "object"`, `properties` absent or an object, `required` absent or an array) and its
 //! `$ref`s resolve (mcp-frame's `resolve_schema_refs`, the port core calls). Anything else is dropped
-//! with a reason, which is only logged. Two tools with one name count once (core keeps them in a map
+//! with a reason: [`usable`] returns the reasons, and no caller shows or logs them (core only logged them,
+//! and the front's admin pages say only how many tools are usable). Two tools with one name count once (core keeps them in a map
 //! by name, the later one replacing the earlier). The catalogue a preview was shown is a digest of the
 //! usable tools' name, description and schema, so a server whose tools changed between the preview
 //! and the connect is noticed.
@@ -18,8 +19,6 @@ pub struct Tool {
     pub name: String,
     /// core `description`: the tool's own, else its title, else empty.
     pub description: String,
-    /// The tool's `annotations.readOnlyHint`, if it said.
-    pub read_only: Option<bool>,
     /// The input schema as the server sent it (a digest input only).
     schema: String,
 }
@@ -74,11 +73,9 @@ pub fn convert(tool: &JValue) -> Result<Tool, String> {
         (_, JValue::Str(t)) => t.clone(),
         _ => String::new(),
     };
-    let read_only = tool.get("annotations").get("readOnlyHint").as_bool();
     Ok(Tool {
         name,
         description,
-        read_only,
         schema: text,
     })
 }
@@ -168,8 +165,8 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(
-            (ok.name.as_str(), ok.description.as_str(), ok.read_only),
-            ("echo-1", "Echo", Some(true))
+            (ok.name.as_str(), ok.description.as_str()),
+            ("echo-1", "Echo")
         );
         // The title stands in for a missing or empty description.
         let titled = convert(&j(

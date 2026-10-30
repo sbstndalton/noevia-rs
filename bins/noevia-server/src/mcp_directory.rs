@@ -9,7 +9,7 @@
 //! A shared key is sealed unbound (`enc:v1`, as core sealed it) so a rollback to a Node that owns
 //! the table reads it. Nothing here logs or returns a key.
 use crate::mcp_broker::{
-    check_header_values, declared_of, fail, now_ms, text, Declared, Fail, Mcp,
+    check_header_values, declared_of, fail, now_ms, Declared, Fail, Mcp,
 };
 use crate::mcp_egress;
 use crate::mcp_tools::{self, Tool};
@@ -348,6 +348,7 @@ impl Mcp {
                     id,
                     enc.as_deref(),
                     row.headers_enc.as_deref(),
+                    Some(row.added_at),
                 )?;
                 if n == 1 {
                     let detail = js_json::stringify(&JValue::obj([
@@ -414,21 +415,19 @@ impl Mcp {
     }
 
     /// A rollback of a server this request added: removed only if it is still the row it added.
-    pub fn remove_added(&self, app: &App, row: &Row) -> bool {
-        app.writes
+    /// `Ok(false)`: nothing was there to remove (another administrator removed or replaced it first).
+    /// `Err`: the database could not be written, which the caller must not mistake for "nothing there".
+    pub fn remove_added(&self, app: &App, row: &Row) -> Result<bool, Fail> {
+        let writer = app
+            .writes
             .writer()
-            .ok()
-            .and_then(|w| {
-                w.write(|tx| {
-                    tx.mcp_directory_delete_added(
-                        RustMcpCredentials::owned(),
-                        &row.id,
-                        row.added_at,
-                    )
-                })
-                .ok()
+            .map_err(|_| crate::mcp_broker::auth_error("transient"))?;
+        let n = writer
+            .write(|tx| {
+                tx.mcp_directory_delete_added(RustMcpCredentials::owned(), &row.id, row.added_at)
             })
-            .is_some_and(|n| n == 1)
+            .map_err(|_| crate::mcp_broker::auth_error("transient"))?;
+        Ok(n == 1)
     }
 
     /// core `discoverOneServer`'s listing: the server's tools, the usable ones in its order. The error
@@ -466,11 +465,6 @@ fn row_of(row: &server_store::rusqlite::Row<'_>) -> server_store::rusqlite::Resu
             .filter(|v| matches!(v, JValue::Arr(_)))
             .unwrap_or(JValue::Arr(Vec::new())),
     })
-}
-
-/// A name or title from a registry item or the form, as text.
-pub fn string_of(v: &JValue) -> String {
-    text(v).unwrap_or_default()
 }
 
 #[cfg(test)]

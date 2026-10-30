@@ -1541,17 +1541,22 @@ impl WriteTx<'_> {
     }
 
     /// The shared key slot, replaced only while it still holds `was` (a compare-and-swap, so two
-    /// administrators changing the same key cannot both win).
+    /// administrators changing the same key cannot both win). With `added_at` the row must also be
+    /// the one added then, as in [`Self::mcp_directory_delete_added`]: a server removed and added again
+    /// under the same id (and no key, so the same NULL) is another server, and a key meant for the old
+    /// one must not land on it. The re-seal of a rotation passes `None`: its `was` is a ciphertext, and
+    /// no other row holds that one.
     pub fn mcp_directory_swap_headers(
         &self,
         _cap: RustMcpCredentials,
         id: &str,
         headers_enc: Option<&str>,
         was: Option<&str>,
+        added_at: Option<i64>,
     ) -> Result<usize, StoreError> {
         self.mcp_statement(
-            "UPDATE directory_mcp_servers SET headers_enc=? WHERE id=? AND headers_enc IS ?",
-            rusqlite::params![headers_enc, id, was],
+            "UPDATE directory_mcp_servers SET headers_enc=?1 WHERE id=?2 AND headers_enc IS ?3 AND (?4 IS NULL OR added_at=?4)",
+            rusqlite::params![headers_enc, id, was, added_at],
         )
     }
 

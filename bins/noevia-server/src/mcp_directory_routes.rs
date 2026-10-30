@@ -369,6 +369,10 @@ async fn add_blocking(ctx: &Ctx, new: New) -> Result<Row, Fail> {
 
 /// The failure of a registry or listing, as core worded it.
 fn listing_failure(has_key: bool, why: &str) -> Response<Body> {
+    // No place to run the listing is the front's own state, not the server's answer.
+    if why == crate::mcp_egress::BUSY {
+        return error(503, crate::mcp_egress::BUSY);
+    }
     error(
         422,
         &format!(
@@ -426,21 +430,99 @@ async fn start_oauth_add(ctx: &Ctx, url: &str, challenge: &str, new: New) -> Res
             .await
         }
         Err(e) => {
-            let id = added.id.clone();
-            let _ = ctx
-                .mcp
-                .blocking(&ctx.app, {
-                    let actor = ctx.actor.clone();
-                    move |me, a| me.remove_row(a, &id, &actor)
-                })
-                .await;
-            let _ = ctx.mcp.forget_all(&ctx.app, &added.id).await;
+            if let Err(loud) = undo_add(ctx, &added, Undo::Row).await {
+                return loud;
+            }
             error(
                 422,
                 &format!("The server needs a sign-in noevia cannot do: {}", e.message),
             )
         }
     }
+}
+
+/// How a server this request added is taken out again.
+#[derive(Clone, Copy)]
+enum Undo {
+    /// By its id, with the audit entry core's `remove` wrote.
+    Row,
+    /// Only if it is still the row this request added (the 409 path: another administrator may have
+    /// removed it and added one of the same name since).
+    IfAdded,
+}
+
+/// Runs `attempt`, and once more if it failed (a busy database usually clears in that time).
+async fn twice<T, F, Fut>(mut attempt: F) -> Result<T, Fail>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, Fail>>,
+{
+    match attempt().await {
+        Ok(v) => Ok(v),
+        Err(_) => attempt().await,
+    }
+}
+
+/// Takes back a server this request added and could not keep: its row, then its keys and sign-ins.
+/// A failure to do either is not hidden (the review of this round, M3): the answer is a 500 that says
+/// what is left and how to clear it, because a server nobody was told about keeps a credential.
+///
+/// When the row is not there to remove (another administrator removed it first, and may have added a
+/// server of the same name since), only the key the adding administrator typed is forgotten, never the
+/// keys and sign-ins of everyone for that name (L2).
+async fn undo_add(ctx: &Ctx, added: &Row, how: Undo) -> Result<(), Response<Body>> {
+    let removed = twice(|| {
+        let (row, id, actor) = (added.clone(), added.id.clone(), ctx.actor.clone());
+        async move {
+            match how {
+                Undo::Row => match ctx
+                    .mcp
+                    .blocking(&ctx.app, move |me, a| me.remove_row(a, &id, &actor))
+                    .await
+                    .and_then(|r| r)
+                {
+                    Ok(_) => Ok(true),
+                    Err(e) if e.status == 404 => Ok(false),
+                    Err(e) => Err(e),
+                },
+                Undo::IfAdded => ctx
+                    .mcp
+                    .blocking(&ctx.app, move |me, a| me.remove_added(a, &row))
+                    .await
+                    .and_then(|r| r),
+            }
+        }
+    })
+    .await;
+    let removed = removed.map_err(|_| {
+        error(
+            500,
+            &format!(
+                "The server was not kept, but it could not be removed again. Remove “{}” from the list by hand; its keys go with it.",
+                added.id
+            ),
+        )
+    })?;
+    // An id is derived from the server's name: adding the same server again would otherwise inherit a
+    // key that was never kept on purpose.
+    let forgotten = if removed {
+        twice(|| ctx.mcp.forget_all(&ctx.app, &added.id)).await
+    } else {
+        twice(|| {
+            ctx.mcp
+                .forget_key_quietly(&ctx.app, &ctx.actor, &added.id)
+        })
+        .await
+    };
+    forgotten.map_err(|_| {
+        error(
+            500,
+            &format!(
+                "The server was not kept, but its saved keys or sign-ins could not be cleared. Add “{}” again and remove it to clear them.",
+                added.id
+            ),
+        )
+    })
 }
 
 /// core `keepAdminKey`: a personal server's adding administrator keeps the key they typed as their
@@ -463,12 +545,9 @@ async fn keep_admin_key(
         .await
         .and_then(|r| r);
     let Err(e) = stored else { return None };
-    let (actor, id) = (ctx.actor.clone(), added.id.clone());
-    let _ = ctx
-        .mcp
-        .blocking(&ctx.app, move |me, a| me.remove_row(a, &id, &actor))
-        .await;
-    let _ = ctx.mcp.forget_all(&ctx.app, &added.id).await;
+    if let Err(loud) = undo_add(ctx, added, Undo::Row).await {
+        return Some(loud);
+    }
     let status = if (400..600).contains(&e.status) {
         e.status
     } else {
@@ -516,6 +595,7 @@ async fn add_registry(ctx: &Ctx, body: &JValue) -> Response<Body> {
     let title = item.get("name").as_str().unwrap_or("").to_owned();
     let found = match ctx.mcp.discover_server(&url, &pending).await {
         Ok(f) => f,
+        Err(why) if why == crate::mcp_egress::BUSY => return listing_failure(has_key, &why),
         Err(why) => {
             // No key and the server asks for sign-in: add it as an OAuth server and send the
             // administrator to sign in.
@@ -646,6 +726,7 @@ async fn custom(ctx: &Ctx, body: &JValue, preview: bool) -> Response<Body> {
     };
     let found = match ctx.mcp.discover_server(&url, &pending).await {
         Ok(f) => f,
+        Err(why) if why == crate::mcp_egress::BUSY => return listing_failure(has_key, &why),
         Err(why) => {
             let (status, challenge) = if has_key {
                 (0, String::new())
@@ -753,14 +834,9 @@ async fn custom(ctx: &Ctx, body: &JValue, preview: bool) -> Response<Body> {
         .is_some_and(|again| consent(&mcp_tools::catalogue_digest(&again.tools)));
     if !kept {
         // A concurrent delete may already have removed it; either way the answer is the same 409.
-        let row = added.clone();
-        let _ = ctx
-            .mcp
-            .blocking(&ctx.app, move |me, a| me.remove_added(a, &row))
-            .await;
-        // The administrator's key goes with the server it was for. An id is derived from the server's
-        // name, so adding the same server again would otherwise inherit a key never kept on purpose.
-        let _ = ctx.mcp.forget_all(&ctx.app, &added.id).await;
+        if let Err(loud) = undo_add(ctx, &added, Undo::IfAdded).await {
+            return loud;
+        }
         return error(
             409,
             "The server’s tools changed while connecting. It was not kept; preview again.",
@@ -850,6 +926,7 @@ async fn replace_keys(ctx: &Ctx, id: &str, body: &JValue) -> Response<Body> {
     };
     let found = match ctx.mcp.discover_server(&row.url, &pending).await {
         Ok(f) => f,
+        Err(why) if why == crate::mcp_egress::BUSY => return listing_failure(true, &why),
         Err(why) => {
             return error(
                 422,
@@ -950,6 +1027,10 @@ async fn remove(ctx: &Ctx, id: &str) -> Response<Body> {
         };
         return error(status, &e.message);
     }
+    // A key an account's check finished storing between the first clearing and the row going is cleared
+    // now: nothing can be stored for a server that is no longer there. Best effort; the start sweep
+    // (orphans of removed servers) is the last net.
+    let _ = ctx.mcp.forget_all(&ctx.app, id).await;
     servers_reply(ctx, 200, Vec::new(), &[]).await
 }
 

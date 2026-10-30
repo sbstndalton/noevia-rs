@@ -1021,34 +1021,53 @@ fn the_directory_rows_take_only_the_directory_statements_and_the_shared_key_is_a
     );
     // The shared key changes only from the value it started from (None means "no key yet").
     assert_eq!(
-        w.write(|tx| tx.mcp_directory_swap_headers(cap, "dir-a", Some("k2"), Some("stale")))
+        w.write(|tx| tx.mcp_directory_swap_headers(cap, "dir-a", Some("k2"), Some("stale"), None))
             .unwrap(),
         0
     );
     assert_eq!(key("dir-a").as_deref(), Some("k1"));
     assert_eq!(
-        w.write(|tx| tx.mcp_directory_swap_headers(cap, "dir-a", Some("k2"), Some("k1")))
+        w.write(|tx| tx.mcp_directory_swap_headers(cap, "dir-a", Some("k2"), Some("k1"), None))
             .unwrap(),
         1
     );
     assert_eq!(key("dir-a").as_deref(), Some("k2"));
     assert_eq!(
-        w.write(|tx| tx.mcp_directory_swap_headers(cap, "dir-b", Some("first"), None))
+        w.write(|tx| tx.mcp_directory_swap_headers(cap, "dir-b", Some("first"), None, None))
             .unwrap(),
         1,
         "a missing key is NULL, matched as such"
     );
     assert_eq!(
-        w.write(|tx| tx.mcp_directory_swap_headers(cap, "dir-b", None, Some("first")))
+        w.write(|tx| tx.mcp_directory_swap_headers(cap, "dir-b", None, Some("first"), None))
             .unwrap(),
         1,
         "and a cleared key is NULL again"
     );
     assert_eq!(key("dir-b"), None);
     assert_eq!(
-        w.write(|tx| tx.mcp_directory_swap_headers(cap, "nope", Some("x"), None))
+        w.write(|tx| tx.mcp_directory_swap_headers(cap, "nope", Some("x"), None, None))
             .unwrap(),
         0
+    );
+    // The same server by the time it was added, not only by its key: a row removed and added again under the
+    // same id with no key (NULL, which matches NULL) is another server.
+    assert_eq!(
+        w.write(|tx| tx.mcp_directory_swap_headers(cap, "dir-b", Some("mine"), None, Some(8)))
+            .unwrap(),
+        0,
+        "added at another time: someone else's row"
+    );
+    assert_eq!(key("dir-b"), None);
+    assert_eq!(
+        w.write(|tx| tx.mcp_directory_swap_headers(cap, "dir-b", Some("mine"), None, Some(7)))
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        w.write(|tx| tx.mcp_directory_swap_headers(cap, "dir-b", None, Some("mine"), None))
+            .unwrap(),
+        1
     );
     // A rollback removes only the row it added.
     assert_eq!(

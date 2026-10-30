@@ -23,6 +23,12 @@
 //! - `reseal {}` -> `{ current, rotated, empty, failed }`: secrets:rotate re-seals every account's
 //!   token file under the current secrets.key, under the same fence as every other change
 //!
+//! Scheduled for removal: `view` and `policy` served core's `GET /api/connectors` and its Drive/Nextcloud
+//! policy writes; since sbstndalton/noevia#2202 round 2 the front answers those itself and the paired
+//! Core no longer calls either (`gdriveView`, `toolPolicySet` are gone from rust-google-drive.cjs). They
+//! stay only so the Core of a rollback pair still works; delete both ops (and `view` with its helpers) in
+//! the first release after that rollback floor has passed.
+//!
 //! `admin: true` is checked against `users.role`; a claim the table does not confirm is a member.
 //!
 //! A refresh token never leaves this process; an access token is in no log.
