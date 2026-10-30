@@ -1302,6 +1302,26 @@ Behaviour changes (Node bugs fixed on the way):
 4. Two administrators adding one server at once: one 201, one 409 (core checked, then inserted, in two steps).
 5. Methods other than the listed ones on `/api/connectors` and a trailing slash on it are 404 from Node, not core's 405/404 mix.
 
+Review of round 2 (the limits and the rollbacks):
+
+6. One listing of a server's tools (connect, every page, close) is over after 60 s whatever its pages are doing, and at
+   most four listings run at once in the front, for every account together; one that finds no place for 20 s answers 503
+   "noevia is checking other servers right now". A key check counts the tools it finds and keeps none (a listing can be
+   16 MiB of definitions). The session is closed after a deadline as after any other end.
+7. A rollback of an add (the tools changed while connecting, the administrator's key could not be kept, the sign-in could
+   not start) tries each step a second time and, if the row or the keys still cannot be removed, answers 500 with the
+   server's id and what to do (remove it by hand; add it again and remove it) instead of a quiet 409/422. When the row is
+   not there to remove (another administrator removed or replaced it), only the key this request stored is forgotten.
+   Removing a server clears its keys and sign-ins once more after the row is gone.
+8. The key replacement checks the row is the one it read (`added_at`), not only the key it held.
+9. `toolbox_routes.rs` carries a differential against the 2500 frozen JS answers (`tests/fixtures/toolboxes-permitted-js.v1.json`,
+   byte-identical to noevia-core's, same sha256): 853 inputs the front can be asked are compared; the rest (an id list holding
+   something that is not text, a box id that is not text, a manifest entry that is not an object with a text id) are counted
+   and skipped. The publisher's three presentation differences (a boolean write flag, a tool named by a number, a 240-character
+   description) are put back on the output so everything else is compared exactly.
+10. Scheduled removal: the Drive broker's `/v1/gdrive/view` and `/v1/gdrive/policy` ops are unused by the paired Core and stay
+   only for the Core of a rollback pair; delete them in the first release after that floor has passed.
+
 Still Node's, on purpose: the MCP client itself (a chat's live sessions, `mcp.cjs`, `mcp-wiring.cjs`),
 `POST /api/tool-approvals/{id}` (the parked approval is in the live chat loop) and `GET /api/toolboxes` (prefill
 samples come from the chat stream; the MCP block from live discovery).
