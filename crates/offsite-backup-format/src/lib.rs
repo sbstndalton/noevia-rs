@@ -282,6 +282,24 @@ impl Manifest {
     }
 }
 
+/// Whether every entry of the manifest's `files` names its chunks as an array. [`Manifest::parse`]
+/// reads an entry without one as having no chunks (a restore refuses it on its size), but retention
+/// must not take that to mean the entry references nothing: a manifest where this is false protects
+/// chunks nobody can list, so the caller treats it as unreadable when deciding what to prune.
+/// Everything the engines wrote has the array (an empty file has an empty one); a manifest that is
+/// not valid at all is [`Manifest::parse`]'s error, not this function's `false`.
+pub fn every_entry_lists_chunks(plain: &[u8]) -> bool {
+    let Ok(v) = js_json::parse(&String::from_utf8_lossy(plain)) else {
+        return false;
+    };
+    match v.get("files") {
+        JValue::Arr(items) => items
+            .iter()
+            .all(|f| matches!(f.get("chunks"), JValue::Arr(_))),
+        _ => false,
+    }
+}
+
 fn whole(v: &JValue) -> Option<i64> {
     let n = v.as_num()?;
     (n.is_finite() && n.fract() == 0.0 && n.abs() < 9.0e15).then_some(n as i64)
@@ -582,6 +600,31 @@ mod tests {
         // A file naming a fractional or negative size is read as absent too, never fatal.
         let odd = br#"{"format":"noevia-offsite-v1","time":1.5,"files":[{"size":-3,"root":1.2,"chunks":[]}]}"#;
         assert_eq!(Manifest::parse(odd).unwrap().files[0].size, 0);
+    }
+
+    #[test]
+    fn an_entry_without_a_chunk_array_is_noticed() {
+        let chunk = "a".repeat(64);
+        let ok = format!(
+            r#"{{"format":"noevia-offsite-v1","files":[{{"chunks":["{chunk}"]}},{{"chunks":[]}}]}}"#
+        );
+        assert!(every_entry_lists_chunks(ok.as_bytes()));
+        assert!(every_entry_lists_chunks(
+            br#"{"format":"noevia-offsite-v1","files":[]}"#
+        ));
+        for bad in [
+            r#"{"format":"noevia-offsite-v1","files":[{"path":"x"}]}"#,
+            r#"{"format":"noevia-offsite-v1","files":[{"chunks":"abc"}]}"#,
+            r#"{"format":"noevia-offsite-v1","files":[{"chunks":[]},"junk"]}"#,
+            r#"{"format":"noevia-offsite-v1","files":{}}"#,
+            "nope",
+        ] {
+            assert!(!every_entry_lists_chunks(bad.as_bytes()), "{bad}");
+        }
+        // ...while the lenient parse still reads such a manifest (a restore of it refuses the file).
+        assert!(
+            Manifest::parse(br#"{"format":"noevia-offsite-v1","files":[{"path":"x"}]}"#).is_ok()
+        );
     }
 
     #[test]

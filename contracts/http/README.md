@@ -712,7 +712,7 @@ tokens without a row or a re-added row.
 | route | owner | capability / Core refusal | notes |
 |---|---|---|---|
 | `/api/connectors/gdrive/connect`, `/disconnect` (POST), `/policy`, `/backup-copy` (PUT) | rust | `rust-google-drive` / `RUST_GOOGLE_DRIVE_OWNED` | connector_routes.rs: any signed-in account, its own connection only (`ownsBackup`: the backup slot doubles as the administrator's Drive); answers core's connector object; other methods stay Node's 404 |
-| `/api/admin/offsite-backup`, `/run`, `/verify`, `/copy`, `/google/connect`, `/google/disconnect`, `/recovery-key` (every method) | rust | `rust-offsite-backup` / `RUST_OFFSITE_BACKUP_OWNED` | offsite_routes.rs: administrators only (403 `Administrator required`), 405 for the wrong method |
+| `/api/admin/offsite-backup`, `/run`, `/verify`, `/copy`, `/google/connect`, `/google/disconnect`, `/new-store`, `/recovery-key` (every method) | rust | `rust-offsite-backup` / `RUST_OFFSITE_BACKUP_OWNED` | offsite_routes.rs: administrators only (403 `Administrator required`), 405 for the wrong method; `POST /new-store` is the review's "this is a new store" action (below), behind the CSRF check like every POST |
 
 Node's `server/gdrive.cjs`, `drive-accounts.cjs`, `offsite-*.cjs` and `routes/offsite-backup.cjs` are deleted.
 
@@ -737,7 +737,7 @@ because it is `tool_policies`' only writer) and `reseal {}` -> `{current, rotate
 every other change to them, loading the keys from disk at that moment; Node's rotation awaits it first and then only
 checks that every file opens under the current key (it writes none, so a rotation can never resurrect a disconnected
 account or drop a remembered folder). `admin: true` in a request is checked against `users.role`; a claim the table
-does not confirm is a member. A refresh token never reaches Node. Requests have two time budgets: 30 s for a token,
+does not confirm is a member, and a table that cannot be read is a 503, not a member. A refresh token never reaches Node. Requests have two time budgets: 30 s for a token,
 form or JSON exchange and 300 s for an upload. The front also removes the connection files (revoked at Google first) of
 accounts the `users` table no longer has, once at start (never when the table is unreadable or empty), and checks the
 state file once a minute, rewriting it only when what it says changed (the backup key file appearing or going flips
@@ -768,15 +768,32 @@ database without a consistent copy) is counted, flags the manifest `incomplete` 
 `lastBackup.skipped` in the status (the web page does not show them yet: a follow-up in noevia-web). A destination that has
 no `config` is not initialised once `lastBackup` exists for the same destination (`backupDestination` in the status
 file): an unmounted NAS is an empty directory, and a fresh store there would start a second chain and a `noevia-offsite (2)`
-folder on Drive; the error says to check the mount. The snapshot is recorded (`lastBackup`) as soon as it is stored; a
+folder on Drive; the error says to check the mount, and names the remedy for a destination that really is new (a replaced
+disk, a recreated bucket at the same path or name, which no digest tells from an unmounted one): an administrator confirms
+it with `POST /api/admin/offsite-backup/new-store` (administrators only, CSRF-gated, no body, 409 while a job runs or when
+another process holds the job lock). That clears `lastBackup`, `backupDestination`, `backupRetry`, `snapshots` and
+`unreadableSnapshots` from the status file, and `lastError` when it is the empty-destination refusal (any other failure
+stays), so the next backup initialises the destination and records it again. It refuses (409, nothing changed) when the
+destination already holds a store (`config`): that is not a new store, and the status of a working one is not forgotten.
+*A status file from before this release* (it has `lastBackup` and no `backupDestination`) counts its last backup as made to
+the current destination: the digest is only compared when one was recorded, so an empty destination is refused after the
+upgrade too, until a good backup stamps the digest, and the same action applies. The snapshot is recorded (`lastBackup`) as soon as it is stored; a
 retention failure after it is recorded on its own (`lastError` "saved, but applying retention failed") and is not a failed
 backup. Retention is 7 daily, 4 weekly, 6 monthly, always the newest snapshot and the newest complete one, and within a
 bucket the complete one; chunks are pruned only when every snapshot the store lists was read (a flaky or damaged manifest
 read must not turn its chunks into garbage), the snapshot just written is passed in and kept, and a chunk younger than
 24 hours is never pruned. The restore test reads the newest listed snapshot back chunk by chunk without writing it
-anywhere and fails when that snapshot cannot be read, instead of passing an older one. `<data dir>/offsite-backup.lock`
-(an exclusive `flock`, the file itself left out of the backup) holds the one-job-at-a-time rule across processes. A job
-ends at the latest after 6 hours (`JOB_DEADLINE`): the busy mark and the lock are released and the failure recorded.
+anywhere and fails when that snapshot cannot be read, instead of passing an older one. A manifest with an entry that
+names no `chunks` array still lists, restores and is kept, but what it protects is unknown, so it counts as unreadable
+for the prune (nothing is pruned while it is there; `unreadableSnapshots` counts it). A restore test that passes clears
+`lastError` only when that error is its own (`during` "restore test"), not a backup's.
+`<data dir>/offsite-backup.lock` (an exclusive `flock`) holds the one-job-at-a-time rule across processes. It lives in the
+UI data directory (production: btrfs, where `flock` works), never in the destination (production `/offsite` is a FUSE
+mount), and is left out of the backup. A job that finds it held is refused with a 409 that is nobody's failure: it writes
+neither `backupRetry` nor `lastError`. A `flock` that fails for any other reason (a file system without locks) logs a
+warning and the job runs unlocked: the in-process busy mark still holds. A job ends at the latest after 6 hours
+(`JOB_DEADLINE`): the busy mark and the lock are released and the failure recorded. "Run now" copies the stored snapshot
+to Drive even when the retention after it hit that deadline.
 Leftovers of a killed run (`.tmp-` files in the destination older than 2 hours, `noevia-sqlite-*` and
 `noevia-restore-test-*` directories older than 7 hours in the system temp directory) are swept; a full destination has its
 own message.
@@ -786,7 +803,7 @@ is within six hours after `OFFSITE_BACKUP_HOUR` (core: only inside that hour), t
 quiet window is open and the last failure's backoff is over: 15 minutes doubling to 2 hours, at most three scheduled
 attempts per window (`backupRetry` in the status file; `lastError.failures` shows the count). Three zones are named and none is guessed.
 The hour is read on the process clock, exactly as core's `new Date().getHours()` did: the `TZ` the process runs with, and
-UTC without one (the production web container sets no `TZ`, so there it is UTC; the status shows `scheduleZone`). The quiet
+UTC without one (the production web container sets no `TZ` and its `/etc/localtime` is `Etc/UTC`, so there Node's `getHours()` and this agree on UTC; the status shows `scheduleZone`). The quiet
 windows are read in explicit zones: the NAS window 02:20-04:30 always in America/New_York, the appdata backup 04:05-04:25 in
 the host's zone, `OFFSITE_BACKUP_TIMEZONE`, default America/New_York (the Unraid host runs on Eastern time). Known names
 are `America/New_York` (also `US/Eastern`, `EST5EDT`, `America/Detroit`; the US daylight-saving rule) and `UTC`/`Etc/UTC`/

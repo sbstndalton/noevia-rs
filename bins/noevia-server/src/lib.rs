@@ -163,7 +163,7 @@ use std::sync::Arc;
 /// `POST /api/connectors/gdrive/{connect,disconnect}` and `PUT .../{policy,backup-copy}`
 /// (connector_routes.rs) and is the single writer of `tool_policies`; the paired core refuses them
 /// (rust-google-drive.cjs `RUST_GOOGLE_DRIVE_OWNED`).
-/// `rust-offsite-backup`: this build runs the off-site backup (offsite_*.rs): the seven
+/// `rust-offsite-backup`: this build runs the off-site backup (offsite_*.rs): the eight
 /// `/api/admin/offsite-backup` routes, the jobs, the nightly schedule (outside the appdata and NAS
 /// windows), the status file and the snapshot store; the paired core refuses the routes
 /// (rust-offsite-backup.cjs `RUST_OFFSITE_BACKUP_OWNED`) and has no backup code.

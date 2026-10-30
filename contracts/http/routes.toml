@@ -88,8 +88,9 @@ owner = "node"
 path = "/api/admin/mcp-directory/{id}/oauth-client"
 owner = "node"
 
-# sbstndalton/noevia#2190 round 7 (rust-offsite-backup): the off-site backup, every method of the seven
+# sbstndalton/noevia#2190 round 7 (rust-offsite-backup): the off-site backup, every method of the eight
 # paths (each answers its own 403/405); Rust owns the jobs, the schedule, the status and the store.
+# new-store (POST, administrators, CSRF) is the review's remedy for a legitimately empty destination.
 [[route]]
 path = "/api/admin/offsite-backup"
 owner = "rust"
@@ -104,6 +105,10 @@ owner = "rust"
 
 [[route]]
 path = "/api/admin/offsite-backup/google/disconnect"
+owner = "rust"
+
+[[route]]
+path = "/api/admin/offsite-backup/new-store"
 owner = "rust"
 
 [[route]]

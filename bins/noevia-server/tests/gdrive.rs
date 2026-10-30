@@ -1445,3 +1445,133 @@ async fn after_a_rotation_the_front_reads_and_saves_under_the_keys_it_resealed_w
         .unwrap()
         .contains("remembered"));
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_reseal_and_a_disconnect_wait_for_the_fence() {
+    let d = tempfile::tempdir().unwrap();
+    seed(d.path());
+    std::fs::write(d.path().join("secrets.key.previous"), [5u8; 32]).unwrap();
+    let up = upstream().await;
+    install_oauth(&up, "x@example.test", Duration::ZERO);
+    up.set(|r: &Seen| {
+        if r.path == "/revoke" {
+            reply("200 OK", "{}")
+        } else {
+            reply("404 Not Found", "")
+        }
+    });
+    let f = front(d.path(), &up.base(), &[]).await;
+    plant_with(
+        d.path(),
+        A,
+        &previous_sealer(),
+        r#"{"refreshToken":"ra","connectedAt":5}"#,
+    );
+    plant_with(
+        d.path(),
+        B,
+        &previous_sealer(),
+        r#"{"refreshToken":"rb","connectedAt":6}"#,
+    );
+    let drive = std::sync::Arc::clone(f.app.drive.as_ref().unwrap());
+    let before_a = std::fs::read(d.path().join(format!("google-drive-users/{A}.sealed"))).unwrap();
+    let before_b = std::fs::read(d.path().join(format!("google-drive-users/{B}.sealed"))).unwrap();
+
+    // Hold the fence, as another change to the files would while it reads and rewrites one.
+    let fence = drive.hold_fence();
+    let (addr, token) = (f.store, STORE_TOKEN);
+    let reseal = tokio::spawn(async move { store(addr, "gdrive/reseal", token, "{}").await });
+    let disconnect = tokio::spawn(async move {
+        store(
+            addr,
+            "gdrive/disconnect",
+            token,
+            &format!(r#"{{"user":"{A}","admin":false}}"#),
+        )
+        .await
+    });
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    assert!(
+        !reseal.is_finished(),
+        "the re-seal does not run while the fence is held"
+    );
+    assert!(
+        !disconnect.is_finished(),
+        "nor does a disconnect (it deletes a file under the fence)"
+    );
+    assert_eq!(
+        std::fs::read(d.path().join(format!("google-drive-users/{A}.sealed"))).unwrap(),
+        before_a,
+        "A's file is untouched while the fence is held"
+    );
+    assert_eq!(
+        std::fs::read(d.path().join(format!("google-drive-users/{B}.sealed"))).unwrap(),
+        before_b,
+        "B's file is untouched while the fence is held"
+    );
+    drop(fence);
+    let (s, _) = reseal.await.unwrap();
+    assert_eq!(s, 200);
+    assert_eq!(disconnect.await.unwrap().0, 200);
+    // Whichever of the two went first, the end state is the same: A gone and not brought back by
+    // the re-seal, B sealed under the current key.
+    assert!(read_account_file(d.path(), A).is_none());
+    assert_eq!(
+        read_account_file(d.path(), B).unwrap()["refreshToken"],
+        "rb"
+    );
+}
+
+#[tokio::test]
+async fn an_unreadable_users_table_is_a_503_not_a_member() {
+    let d = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let backups = root.path().join("backups");
+    std::fs::create_dir_all(&backups).unwrap();
+    let key = root.path().join("backup.key");
+    std::fs::write(&key, BACKUP_KEY_HEX).unwrap();
+    let up = upstream().await;
+    install_oauth(&up, "x@example.test", Duration::ZERO);
+    let env = [
+        ("OFFSITE_BACKUP_DIR", backups.display().to_string()),
+        ("OFFSITE_BACKUP_KEY_FILE", key.display().to_string()),
+    ];
+    let f = front(d.path(), &up.base(), &env).await;
+    std::fs::write(
+        d.path().join("google-drive.sealed"),
+        backup_sealer()
+            .seal(br#"{"refreshToken":"legacy","connectedAt":5}"#, &[4; 12])
+            .unwrap(),
+    )
+    .unwrap();
+    let (s, v) = session(&f, A, true, None).await;
+    assert_eq!(
+        s, 200,
+        "the table answers: an administrator reaches the backup slot: {v}"
+    );
+    // Node changed the schema under the front: the table cannot be read now.
+    db.execute("INSERT INTO schema_migrations VALUES(99,0)", [])
+        .unwrap();
+    for op in ["session", "view", "disconnect"] {
+        let (s, v) = store(
+            f.store,
+            &format!("gdrive/{op}"),
+            STORE_TOKEN,
+            &format!(r#"{{"user":"{A}","admin":true}}"#),
+        )
+        .await;
+        assert_eq!(
+            s, 503,
+            "{op}: an administrator's claim cannot be checked: {v}"
+        );
+        assert!(v["accessToken"].is_null(), "{op}");
+    }
+    assert!(
+        d.path().join("google-drive.sealed").exists(),
+        "the disconnect did not run against the wrong (or any) slot"
+    );
+    // A request that makes no claim of being an administrator needs no check of the table.
+    let (s, _) = session(&f, B, false, None).await;
+    assert_eq!(s, 409, "a member's own Drive is not connected: not a 503");
+}

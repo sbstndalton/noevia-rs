@@ -190,6 +190,38 @@ impl Drop for Running<'_> {
     }
 }
 
+/// The refusal of an empty destination once a backup was made to it (see [`Engine::ensure_config`]).
+/// It names the remedy: a destination that really is new (a replaced disk, a recreated bucket) is
+/// confirmed by an administrator with `POST /api/admin/offsite-backup/new-store`.
+pub const EMPTY_DESTINATION: &str = "The backup destination is empty, but backups were made to it before. Check that it is mounted and is the right folder or bucket; nothing was written. If it really is a new store, an administrator confirms that with POST /api/admin/offsite-backup/new-store.";
+
+/// The message of the lock's own refusal: another job holds the file (a 409 that is nobody's
+/// failure: it is never recorded as one, see `offsite_routes::Service::run_job`).
+pub const LOCK_HELD: &str = "Another backup job is running in this installation.";
+
+/// What a `try_lock` on the job lock file means. `WouldBlock` is somebody else's job (409); any
+/// other error is the file system's inability to lock, which warns and runs unlocked.
+fn lock_outcome(
+    file: std::fs::File,
+    try_lock: impl FnOnce(&std::fs::File) -> Result<(), std::fs::TryLockError>,
+) -> Result<Option<JobLock>, Fail> {
+    match try_lock(&file) {
+        Ok(()) => Ok(Some(JobLock { _file: file })),
+        Err(std::fs::TryLockError::WouldBlock) => Err(fail(LOCK_HELD, 409)),
+        Err(std::fs::TryLockError::Error(e)) => {
+            eprintln!(
+                "noevia-server: WARNING the backup lock could not be taken ({}); the job runs without the cross-process lock",
+                e.kind()
+            );
+            log(
+                "offsite.lock.unavailable",
+                vec![("kind", js_json::JValue::Str(format!("{:?}", e.kind())))],
+            );
+            Ok(None)
+        }
+    }
+}
+
 /// Holds the cross-process lock of a backup job until dropped.
 pub struct JobLock {
     _file: std::fs::File,
@@ -388,6 +420,9 @@ fn unreachable_fail() -> Fail {
 struct ReadAll {
     ok: Vec<(String, fmt::Manifest)>,
     failed: Vec<String>,
+    /// Manifests (also in `ok`) with an entry that names no `chunks` array: they list and restore,
+    /// but what they protect is unknown, so retention treats each as unreadable when it prunes.
+    chunkless: Vec<String>,
 }
 
 impl Engine {
@@ -415,7 +450,11 @@ impl Engine {
     /// An exclusive `flock` on the lock file, held for a whole job (a backup and its retention, or
     /// a restore test). A second process, or a second instance started beside the first, is
     /// refused instead of racing it: retention of one must never see the other's chunks without
-    /// their manifest.
+    /// their manifest. The file lives in the UI data directory (production: btrfs, where `flock`
+    /// works), never in the destination (production `/offsite` is a FUSE mount that may not
+    /// support it). A `flock` that fails for any reason but "somebody holds it" (a file system
+    /// without locks) warns and lets the job run unlocked: the in-process busy mark still holds,
+    /// and a backup that cannot run at all is worse than one that lacks the cross-process rule.
     pub fn lock_job(&self) -> Result<Option<JobLock>, Fail> {
         use std::os::unix::fs::OpenOptionsExt as _;
         let Some(path) = &self.lock_file else {
@@ -429,16 +468,7 @@ impl Engine {
             .mode(0o600)
             .open(path)
             .map_err(|_| fail("The backup lock could not be opened.", 502))?;
-        match file.try_lock() {
-            Ok(()) => Ok(Some(JobLock { _file: file })),
-            Err(std::fs::TryLockError::WouldBlock) => Err(fail(
-                "Another backup job is running in this installation.",
-                409,
-            )),
-            Err(std::fs::TryLockError::Error(_)) => {
-                Err(fail("The backup lock could not be taken.", 502))
-            }
-        }
+        lock_outcome(file, |f| f.try_lock())
     }
 
     async fn seal(&self, plain: Vec<u8>) -> Result<Vec<u8>, Fail> {
@@ -457,6 +487,11 @@ impl Engine {
             .map_err(format_fail)
     }
 
+    /// Whether the destination already holds a backup store (a `config` object).
+    pub async fn has_config(&self) -> Result<bool, Fail> {
+        Ok(self.store.get("config").await?.is_some())
+    }
+
     /// Opens `config`, or creates it. With `expect_store` an absent `config` is an error instead:
     /// backups were made here before, so an empty destination is far more likely an unmounted
     /// disk or the wrong bucket than a new store (initialising it would start a second, unrelated
@@ -473,10 +508,7 @@ impl Engine {
             return Ok(());
         }
         if expect_store {
-            return Err(fail(
-                "The backup destination is empty, but backups were made to it before. Check that the destination is mounted and is the right folder or bucket; nothing was written.",
-                409,
-            ));
+            return Err(fail(EMPTY_DESTINATION, 409));
         }
         let sealed = self.seal(fmt::config_json(now).into_bytes()).await?;
         self.store.put("config", sealed).await
@@ -759,6 +791,12 @@ impl Engine {
     }
 
     async fn read_manifest(&self, id: &str) -> Result<fmt::Manifest, Fail> {
+        self.read_manifest_checked(id).await.map(|(m, _)| m)
+    }
+
+    /// [`Engine::read_manifest`] and whether every entry names its chunks as an array
+    /// ([`fmt::every_entry_lists_chunks`]).
+    async fn read_manifest_checked(&self, id: &str) -> Result<(fmt::Manifest, bool), Fail> {
         if !fmt::valid_snapshot_id(id) {
             return Err(fail("Invalid snapshot id.", 400));
         }
@@ -773,7 +811,7 @@ impl Engine {
             // An older manifest without its own time: the id begins with it.
             manifest.time = fmt::snapshot_time(id).unwrap_or(0);
         }
-        Ok(manifest)
+        Ok((manifest, fmt::every_entry_lists_chunks(&plain)))
     }
 
     /// Every snapshot object the store lists, read: the manifests that opened and the ids that did
@@ -788,10 +826,19 @@ impl Engine {
             .filter_map(|k| k.strip_prefix("snapshots/").map(str::to_owned))
             .filter(|id| fmt::valid_snapshot_id(id))
             .collect();
-        let (mut ok, mut failed) = (Vec::new(), Vec::new());
+        let (mut ok, mut failed, mut chunkless) = (Vec::new(), Vec::new(), Vec::new());
         for id in ids {
-            match self.read_manifest(&id).await {
-                Ok(m) => ok.push((id, m)),
+            match self.read_manifest_checked(&id).await {
+                Ok((m, listed)) => {
+                    if !listed {
+                        log(
+                            "offsite.snapshot.chunkless-entry",
+                            vec![("id", js_json::JValue::Str(id.clone()))],
+                        );
+                        chunkless.push(id.clone());
+                    }
+                    ok.push((id, m));
+                }
                 Err(_) => {
                     log(
                         "offsite.snapshot.corrupt",
@@ -801,7 +848,11 @@ impl Engine {
                 }
             }
         }
-        Ok(ReadAll { ok, failed })
+        Ok(ReadAll {
+            ok,
+            failed,
+            chunkless,
+        })
     }
 
     /// Every readable snapshot, newest first, and the ids that could not be read: one corrupt
@@ -1007,7 +1058,14 @@ impl Engine {
             ));
         }
         self.sweep().await;
-        let ReadAll { ok, mut failed } = self.read_all().await?;
+        let ReadAll {
+            ok,
+            mut failed,
+            chunkless,
+        } = self.read_all().await?;
+        // A manifest with an entry that names no chunk array protects chunks nobody can list: it
+        // still lists, restores and is kept like any other, but nothing is pruned while it is there.
+        failed.extend(chunkless);
         let listed: Vec<(String, i64, bool)> = ok
             .iter()
             .map(|(id, m)| (id.clone(), m.time, !m.incomplete))
@@ -1028,8 +1086,13 @@ impl Engine {
         // not show it yet (a store that lists late); if it cannot be read, nothing is pruned.
         for id in must_keep {
             if !kept.iter().any(|(k, _)| k == id) {
-                match self.read_manifest(id).await {
-                    Ok(m) => kept.push((id.clone(), m)),
+                match self.read_manifest_checked(id).await {
+                    Ok((m, listed)) => {
+                        if !listed {
+                            failed.push(id.clone());
+                        }
+                        kept.push((id.clone(), m));
+                    }
                     Err(_) => failed.push(id.clone()),
                 }
             }
@@ -1082,4 +1145,47 @@ impl Engine {
 enum Stored {
     Entry(fmt::FileEntry),
     Skipped,
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use std::fs::TryLockError;
+
+    fn lock_file() -> (tempfile::TempDir, std::fs::File) {
+        let dir = tempfile::tempdir().unwrap();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(dir.path().join("offsite-backup.lock"))
+            .unwrap();
+        (dir, file)
+    }
+
+    #[test]
+    fn a_lock_somebody_holds_is_a_409_and_one_the_file_system_cannot_take_runs_unlocked() {
+        let (_dir, file) = lock_file();
+        assert!(lock_outcome(file, |_| Ok(())).unwrap().is_some());
+        // Somebody else's job holds it.
+        let (_dir, file) = lock_file();
+        let held = lock_outcome(file, |_| Err(TryLockError::WouldBlock))
+            .err()
+            .unwrap();
+        assert_eq!((held.status, held.message.as_str()), (409, LOCK_HELD));
+        // The file system cannot lock at all (a mount without locks): a warning, no lock, no error.
+        for kind in [
+            std::io::ErrorKind::Unsupported,
+            std::io::ErrorKind::Other,
+            std::io::ErrorKind::PermissionDenied,
+        ] {
+            let (_dir, file) = lock_file();
+            let out = lock_outcome(file, |_| {
+                Err(TryLockError::Error(std::io::Error::new(kind, "no flock")))
+            });
+            assert!(matches!(out, Ok(None)), "{kind:?}");
+        }
+    }
 }

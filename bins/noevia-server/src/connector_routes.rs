@@ -428,26 +428,27 @@ fn internal_fail(e: &Fail) -> Response<Body> {
     )
 }
 
-/// Whether `users.role` of this account is `admin` right now (false when it cannot be read).
-async fn is_admin(app: &Arc<App>, user: &str) -> bool {
+/// Whether `users.role` of this account is `admin` right now: `Ok(false)` for a member and for an
+/// id the table does not know, `Err` (503) when the table cannot be read. An unreadable table is
+/// not an answer: calling the caller a member would send an administrator to their own Drive
+/// instead of the backup's, and the request would look like it worked.
+async fn is_admin(app: &Arc<App>, user: &str) -> Result<bool, Fail> {
     let (a, u) = (Arc::clone(app), user.to_owned());
+    let unreadable = || Fail::new("The account could not be checked. Try again shortly.", 503);
     tokio::task::spawn_blocking(move || {
-        a.writes
-            .writer()
-            .ok()
-            .and_then(|w| {
-                w.read(|r| {
-                    r.row("SELECT role FROM users WHERE id=?1", [u.as_str()], |row| {
-                        row.get::<_, String>(0)
-                    })
+        let writer = a.writes.writer().map_err(|_| ())?;
+        let role = writer
+            .read(|r| {
+                r.row("SELECT role FROM users WHERE id=?1", [u.as_str()], |row| {
+                    row.get::<_, String>(0)
                 })
-                .ok()
-                .flatten()
             })
-            .is_some_and(|role| role == "admin")
+            .map_err(|_| ())?;
+        Ok::<bool, ()>(role.is_some_and(|role| role == "admin"))
     })
     .await
-    .unwrap_or(false)
+    .map_err(|_| unreadable())?
+    .map_err(|()| unreadable())
 }
 
 /// `POST /v1/gdrive/<op>` after the store secret was checked.
@@ -486,8 +487,14 @@ pub async fn internal_op(app: Option<Arc<App>>, op: &str, raw: &[u8]) -> Respons
     // Node says whether the account is an administrator; a claim of `true` is checked against the
     // users table, so a mistaken or forged request cannot reach the backup slot (the one Drive that
     // is not the account's own). Anything short of a confirmed administrator is a member.
-    let admin =
-        body.get("admin").as_bool() == Some(true) && op != "forget" && is_admin(&app, &user).await;
+    let admin = if body.get("admin").as_bool() == Some(true) && op != "forget" {
+        match is_admin(&app, &user).await {
+            Ok(admin) => admin,
+            Err(e) => return internal_fail(&e),
+        }
+    } else {
+        false
+    };
     drive.publish_once();
     match op {
         "session" => {

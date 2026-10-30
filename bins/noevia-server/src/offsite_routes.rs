@@ -8,6 +8,8 @@
 //! - `POST /api/admin/offsite-backup/{run,verify,copy}`  a snapshot + retention, the restore test, the copy to Drive
 //! - `POST /api/admin/offsite-backup/google/{connect,disconnect}`
 //! - `GET  /api/admin/offsite-backup/recovery-key`      the key as a text file download
+//! - `POST /api/admin/offsite-backup/new-store`         "this destination is a new store": forgets the
+//!   recorded destination and last backup so a legitimately empty destination can be initialised
 //!
 //! A recovery key or token is never in a response body beyond that download, never in a log, and
 //! never in the status file. Jobs run as spawned tasks the handler awaits, so a dropped request
@@ -30,7 +32,7 @@
 //! is `incomplete` and how many files were `skipped`); a failure of the retention that follows is
 //! recorded on its own and does not count as a failed backup.
 use crate::gdrive::{now_ms, Drive, DriveState, Fail, Slot};
-use crate::offsite_engine::{log, Engine, Pace};
+use crate::offsite_engine::{log, Engine, Pace, LOCK_HELD};
 use crate::offsite_settings::{KeyError, Settings, StatusFile};
 use crate::offsite_store::{DirStore, S3Store, Store};
 use crate::{identity, reply, App};
@@ -48,6 +50,7 @@ pub const ROUTES: &[&str] = &[
     "/api/admin/offsite-backup/copy",
     "/api/admin/offsite-backup/google/connect",
     "/api/admin/offsite-backup/google/disconnect",
+    "/api/admin/offsite-backup/new-store",
     "/api/admin/offsite-backup/recovery-key",
     "/api/admin/offsite-backup/run",
     "/api/admin/offsite-backup/verify",
@@ -575,11 +578,25 @@ impl Service {
         job: Job,
         pace: Pace,
     ) -> Result<JValue, Fail> {
+        self.exclusive_inner(app, job, pace).await.0
+    }
+
+    /// [`Service::exclusive_task`], and whether a snapshot was stored (and so recorded) before the
+    /// outcome, which can still be an error: retention that did not finish, or hit the deadline.
+    async fn exclusive_inner(
+        self: &Arc<Self>,
+        app: &Arc<App>,
+        job: Job,
+        pace: Pace,
+    ) -> (Result<JValue, Fail>, bool) {
         let enabled = self.enabled(app).await;
         if let Some(reason) = self.reason(enabled) {
-            return Err(Fail::new(reason, 409));
+            return (Err(Fail::new(reason, 409)), false);
         }
-        let _busy = self.begin(job.label(), "")?;
+        let _busy = match self.begin(job.label(), "") {
+            Ok(b) => b,
+            Err(e) => return (Err(e), false),
+        };
         let saved = std::sync::atomic::AtomicBool::new(false);
         let deadline = self.deadline();
         let outcome = match tokio::time::timeout(deadline, self.run_job(job, &pace, &saved)).await {
@@ -594,8 +611,12 @@ impl Service {
             )),
         };
         (pace.waiting)(false);
+        let saved = saved.load(std::sync::atomic::Ordering::SeqCst);
         if let Err(e) = &outcome {
-            if saved.load(std::sync::atomic::Ordering::SeqCst) {
+            if e.status == 409 && e.message == LOCK_HELD {
+                // Another process's job holds the lock: nothing of ours failed, so there is no
+                // failure to record and no backoff to start (the schedule asks again next tick).
+            } else if saved {
                 // The snapshot is stored and recorded; only what came after it failed.
                 self.status.patch(vec![(
                     "lastError",
@@ -618,7 +639,7 @@ impl Service {
                 self.record_failure(job, e, &pace);
             }
         }
-        outcome
+        (outcome, saved)
     }
 
     async fn run_job(
@@ -700,10 +721,15 @@ impl Service {
                     ("files", num(files as i64)),
                     ("verifiedAt", num(at)),
                 ]);
-                self.status.patch(vec![
-                    ("lastVerify", last.clone()),
-                    ("lastError", JValue::Null),
-                ]);
+                // A restore test that passes clears its own failure, not a backup's: the last
+                // backup's error stays until a backup works.
+                let mut patch = vec![("lastVerify", last.clone())];
+                if self.status.read().get("lastError").get("during").as_str()
+                    == Some(Job::Verify.label())
+                {
+                    patch.push(("lastError", JValue::Null));
+                }
+                self.status.patch(patch);
                 Ok(last)
             }
         }
@@ -715,16 +741,18 @@ impl Service {
     pub async fn run_now(self: &Arc<Self>, app: &Arc<App>, pace: Pace) -> Result<JValue, Fail> {
         let (me, app) = (Arc::clone(self), Arc::clone(app));
         let task = tokio::spawn(async move {
-            let saved = me.exclusive_task(&app, Job::Backup, pace.clone()).await?;
+            let (outcome, saved) = me.exclusive_inner(&app, Job::Backup, pace.clone()).await;
             // Start the mirror only after the backup mark was released: the upload runs in the
-            // background, so a slow Drive connection cannot hold the response.
-            if me.busy_label().is_empty() {
+            // background, so a slow Drive connection cannot hold the response. A stored snapshot is
+            // copied even when what came after it (retention) failed or hit the deadline: the
+            // snapshot is as good as any, and the next night's copy would be a day late.
+            if saved && me.busy_label().is_empty() {
                 let copier = Arc::clone(&me);
                 tokio::spawn(async move {
                     let _ = copier.copy_to_drive(&pace).await;
                 });
             }
-            Ok(saved)
+            outcome
         });
         match task.await {
             Ok(r) => r,
@@ -733,6 +761,76 @@ impl Service {
                 502,
             )),
         }
+    }
+
+    /// "This destination is a new store": forgets the destination the last backup was made to and
+    /// the last backup itself (and the counts and failure that belong to that store), so that the
+    /// refusal of an empty destination ([`EMPTY_DESTINATION`]) no longer applies and the next backup
+    /// starts a new chain there. For a replaced disk or a recreated bucket at the same path or name,
+    /// which no digest of the destination can tell from an unmounted one. Refused while a job runs,
+    /// and when the destination holds a store (`config`) already: then it is not new, and nothing
+    /// is changed. Runs as a spawned task, so a client that leaves cannot half-do it.
+    pub async fn new_store(self: &Arc<Self>, app: &Arc<App>) -> Result<JValue, Fail> {
+        let (me, app) = (Arc::clone(self), Arc::clone(app));
+        match tokio::spawn(async move { me.new_store_task(&app).await }).await {
+            Ok(r) => r,
+            Err(_) => Err(Fail::new(
+                "The backup destination could not be reached.",
+                502,
+            )),
+        }
+    }
+
+    async fn new_store_task(self: &Arc<Self>, app: &Arc<App>) -> Result<JValue, Fail> {
+        let enabled = self.enabled(app).await;
+        if let Some(reason) = self.reason(enabled) {
+            return Err(Fail::new(reason, 409));
+        }
+        let _busy = self.begin("new store", "")?;
+        let deadline = self.deadline();
+        let held = tokio::time::timeout(deadline, async {
+            let built = self.build().await?;
+            let _lock = built.engine.lock_job()?;
+            if built.engine.has_config().await? {
+                return Err(Fail::new(
+                    "This destination already holds a backup store, so it is not a new one; nothing was changed.",
+                    409,
+                ));
+            }
+            Ok::<(), Fail>(())
+        })
+        .await
+        .unwrap_or_else(|_| {
+            Err(Fail::new(
+                format!(
+                    "The destination did not answer within {}.",
+                    human_duration(deadline)
+                ),
+                504,
+            ))
+        });
+        held?;
+        let mut patch = vec![
+            ("lastBackup", JValue::Null),
+            ("backupDestination", JValue::Null),
+            ("backupRetry", JValue::Null),
+            ("snapshots", JValue::Null),
+            ("unreadableSnapshots", JValue::Null),
+        ];
+        // The refusal this answers goes; any other failure stays until something works.
+        let refused = self
+            .status
+            .read()
+            .get("lastError")
+            .get("message")
+            .as_str()
+            .is_some_and(|m| m.starts_with("The backup destination is empty"));
+        if refused {
+            patch.push(("lastError", JValue::Null));
+        }
+        self.status.patch(patch);
+        log("offsite.new-store", vec![]);
+        Ok(JValue::obj([("newStore", JValue::Bool(true))]))
     }
 
     /// `copyNow()`.
@@ -1156,6 +1254,7 @@ pub async fn serve(
         "run" => service.run_now(app, Pace::none()).await,
         "verify" => service.exclusive(app, Job::Verify, Pace::none()).await,
         "copy" => service.copy_now(app).await,
+        "new-store" => service.new_store(app).await,
         "google/connect" => {
             if foreign(&service) {
                 return answer(409, &JValue::obj([("error", s(OTHER_ADMIN))]));

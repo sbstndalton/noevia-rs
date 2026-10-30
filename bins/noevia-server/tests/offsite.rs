@@ -322,6 +322,7 @@ async fn only_an_administrator_and_only_the_documented_methods() {
         ROOT,
         &format!("{ROOT}/run"),
         &format!("{ROOT}/recovery-key"),
+        &format!("{ROOT}/new-store"),
     ] {
         assert_eq!(get(a, path, "").await.status, 401, "{path}");
         let r = get(a, path, MEMBER).await;
@@ -349,12 +350,25 @@ async fn only_an_administrator_and_only_the_documented_methods() {
         "copy",
         "google/connect",
         "google/disconnect",
+        "new-store",
     ] {
         assert_eq!(
             get(a, &format!("{ROOT}/{action}"), ADMIN).await.status,
             405,
             "{action}"
         );
+    }
+    // The new-store action is administrators only and behind the CSRF check like every POST here.
+    let ns = format!("{ROOT}/new-store");
+    assert_eq!(send(a, "POST", &ns, MEMBER, "").await.status, 403);
+    assert_eq!(
+        http(a, "POST", &ns, ADMIN, "", b"").await.status,
+        403,
+        "no CSRF header"
+    );
+    assert_eq!(send(a, "POST", &ns, "", "").await.status, 401);
+    for m in ["PUT", "DELETE", "PATCH"] {
+        assert_eq!(send(a, m, &ns, ADMIN, "").await.status, 405, "{m}");
     }
     assert_eq!(
         send(a, "POST", &format!("{ROOT}/recovery-key"), ADMIN, "")
@@ -1734,6 +1748,7 @@ fn a_device_token_is_refused_on_every_route_the_front_took() {
         ("POST", "/api/admin/offsite-backup/copy"),
         ("POST", "/api/admin/offsite-backup/google/connect"),
         ("POST", "/api/admin/offsite-backup/google/disconnect"),
+        ("POST", "/api/admin/offsite-backup/new-store"),
         ("GET", "/api/admin/offsite-backup/recovery-key"),
         ("POST", "/api/connectors/gdrive/connect"),
         ("POST", "/api/connectors/gdrive/disconnect"),
@@ -2487,6 +2502,11 @@ async fn an_empty_destination_is_not_initialised_once_a_backup_was_made_to_it() 
     let w = world(&[]).await;
     let ok = send(w.f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "").await;
     assert_eq!(ok.status, 200, "{}", ok.text);
+    let first_digest =
+        j(&std::fs::read_to_string(w.data.path().join("offsite-backup-status.json")).unwrap())
+            ["backupDestination"]
+            .clone();
+    assert!(first_digest.is_string());
     // The NAS is not mounted: the destination is an empty directory.
     for e in std::fs::read_dir(&w.dest).unwrap().flatten() {
         if e.file_type().unwrap().is_dir() {
@@ -2509,14 +2529,182 @@ async fn an_empty_destination_is_not_initialised_once_a_backup_was_made_to_it() 
         s["lastBackup"]["id"].is_string(),
         "the last good backup is still the last backup"
     );
-    // An administrator who really changed the destination (the recorded one differs) starts afresh.
-    let path = w.data.path().join("offsite-backup-status.json");
-    let mut st = j(&std::fs::read_to_string(&path).unwrap());
-    st["backupDestination"] = serde_json::json!("another-destination");
-    std::fs::write(&path, st.to_string()).unwrap();
-    let r = send(w.f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "").await;
+    // An administrator who really changed the destination (a different folder, so the recorded
+    // digest differs) starts afresh: the digest comes from the settings, not from a value written
+    // into the status file. The same data directory, a front started with another folder.
+    let other_dest = w.outside.path().join("another-backups");
+    std::fs::create_dir_all(&other_dest).unwrap();
+    let moved = front(
+        w.data.path(),
+        &w.up.base(),
+        &[
+            ("OFFSITE_BACKUP_DIR", other_dest.display().to_string()),
+            ("OFFSITE_BACKUP_KEY_FILE", w.key.display().to_string()),
+            ("NOEVIA_FEATURE_OFFSITE_BACKUP", "1".to_string()),
+        ],
+    )
+    .await;
+    let r = send(moved.addr, "POST", &format!("{ROOT}/run"), ADMIN, "").await;
+    assert_eq!(r.status, 200, "{}", r.text);
+    assert!(files_under(&other_dest).contains(&"config".to_string()));
+    let st = j(&std::fs::read_to_string(&status_path(&w)).unwrap());
+    assert_ne!(
+        st["backupDestination"], first_digest,
+        "the recorded destination is now the new folder's own digest"
+    );
+}
+
+fn status_path(w: &World) -> PathBuf {
+    w.data.path().join("offsite-backup-status.json")
+}
+
+fn read_status(w: &World) -> serde_json::Value {
+    std::fs::read_to_string(status_path(w)).map_or(serde_json::json!({}), |t| j(&t))
+}
+
+fn write_status(w: &World, st: &serde_json::Value) {
+    std::fs::write(status_path(w), st.to_string()).unwrap();
+}
+
+/// Empties the destination folder, as an unmounted disk or a replaced one looks.
+fn empty_destination(dest: &Path) {
+    for e in std::fs::read_dir(dest).unwrap().flatten() {
+        if e.file_type().unwrap().is_dir() {
+            std::fs::remove_dir_all(e.path()).unwrap();
+        } else {
+            std::fs::remove_file(e.path()).unwrap();
+        }
+    }
+}
+
+#[tokio::test]
+async fn an_administrator_can_say_a_legitimately_empty_destination_is_a_new_store() {
+    let w = world(&[]).await;
+    let run = format!("{ROOT}/run");
+    let ns = format!("{ROOT}/new-store");
+    assert_eq!(send(w.f.addr, "POST", &run, ADMIN, "").await.status, 200);
+    // A destination that still holds its store is not new: nothing is changed.
+    let before = read_status(&w);
+    let r = send(w.f.addr, "POST", &ns, ADMIN, "").await;
+    assert_eq!(r.status, 409, "{}", r.text);
+    assert!(
+        r.text.contains("already holds a backup store"),
+        "{}",
+        r.text
+    );
+    assert_eq!(
+        read_status(&w),
+        before,
+        "a store that is there loses nothing"
+    );
+    // The same path now holds a replaced, empty disk: refused, and the refusal names the remedy.
+    empty_destination(&w.dest);
+    let r = send(w.f.addr, "POST", &run, ADMIN, "").await;
+    assert_eq!(r.status, 409, "{}", r.text);
+    let msg = r.json()["error"].as_str().unwrap().to_owned();
+    assert!(
+        msg.contains("POST /api/admin/offsite-backup/new-store"),
+        "{msg}"
+    );
+    let s = get(w.f.addr, ROOT, ADMIN).await.json();
+    assert!(
+        s["lastError"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("new-store"),
+        "the status keeps the remedy in its (300 character) message too: {s}"
+    );
+    assert!(files_under(&w.dest).is_empty());
+    // A member cannot say it; an administrator can.
+    assert_eq!(send(w.f.addr, "POST", &ns, MEMBER, "").await.status, 403);
+    assert_eq!(read_status(&w)["lastBackup"], before["lastBackup"]);
+    let r = send(w.f.addr, "POST", &ns, ADMIN, "").await;
+    assert_eq!(r.status, 200, "{}", r.text);
+    assert_eq!(r.json()["newStore"], true);
+    let st = read_status(&w);
+    for k in [
+        "lastBackup",
+        "backupDestination",
+        "backupRetry",
+        "snapshots",
+        "lastError",
+    ] {
+        assert!(st[k].is_null(), "{k} is cleared: {st}");
+    }
+    // The next backup starts the new chain there, and the destination is recorded again.
+    let r = send(w.f.addr, "POST", &run, ADMIN, "").await;
     assert_eq!(r.status, 200, "{}", r.text);
     assert!(files_under(&w.dest).contains(&"config".to_string()));
+    let st = read_status(&w);
+    assert!(st["backupDestination"].is_string() && st["lastBackup"]["id"].is_string());
+    // ...and from then on an emptied destination is refused again.
+    empty_destination(&w.dest);
+    assert_eq!(send(w.f.addr, "POST", &run, ADMIN, "").await.status, 409);
+}
+
+#[tokio::test]
+async fn new_store_leaves_a_failure_that_is_not_the_empty_refusal_and_waits_for_a_running_job() {
+    let w = world(&[]).await;
+    let ns = format!("{ROOT}/new-store");
+    assert_eq!(
+        send(w.f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "")
+            .await
+            .status,
+        200
+    );
+    empty_destination(&w.dest);
+    // Another failure is recorded (not the empty refusal): the action leaves it.
+    let mut st = read_status(&w);
+    st["lastError"] =
+        serde_json::json!({"at": 1, "during": "restore test", "message": "a damaged chunk"});
+    write_status(&w, &st);
+    assert_eq!(send(w.f.addr, "POST", &ns, ADMIN, "").await.status, 200);
+    let st = read_status(&w);
+    assert_eq!(st["lastError"]["message"], "a damaged chunk");
+    assert!(st["lastBackup"].is_null());
+    // A job in progress holds the action off, like any other job.
+    let lock = w.data.path().join("offsite-backup.lock");
+    let other = std::fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .truncate(false)
+        .open(&lock)
+        .unwrap();
+    other.lock().unwrap();
+    let r = send(w.f.addr, "POST", &ns, ADMIN, "").await;
+    assert_eq!(r.status, 409, "{}", r.text);
+    assert_eq!(
+        read_status(&w),
+        st,
+        "nothing is written while another job holds the lock"
+    );
+}
+
+#[tokio::test]
+async fn a_status_file_from_before_the_upgrade_counts_its_last_backup_as_made_here() {
+    // The first release recorded `lastBackup` without `backupDestination`. Such a status is taken
+    // to be this destination's (the digest is only compared when it was recorded), so an empty
+    // destination is refused until the next good backup stamps the digest, and the remedy applies.
+    let w = world(&[]).await;
+    let run = format!("{ROOT}/run");
+    assert_eq!(send(w.f.addr, "POST", &run, ADMIN, "").await.status, 200);
+    let mut st = read_status(&w);
+    st.as_object_mut().unwrap().remove("backupDestination");
+    write_status(&w, &st);
+    empty_destination(&w.dest);
+    let r = send(w.f.addr, "POST", &run, ADMIN, "").await;
+    assert_eq!(r.status, 409, "{}", r.text);
+    assert!(r.text.contains("new-store"), "{}", r.text);
+    assert!(files_under(&w.dest).is_empty(), "nothing was written");
+    assert_eq!(
+        send(w.f.addr, "POST", &format!("{ROOT}/new-store"), ADMIN, "")
+            .await
+            .status,
+        200
+    );
+    assert_eq!(send(w.f.addr, "POST", &run, ADMIN, "").await.status, 200);
+    assert!(read_status(&w)["backupDestination"].is_string());
 }
 
 #[tokio::test]
@@ -2808,12 +2996,31 @@ async fn one_job_at_a_time_across_processes() {
     );
     let v = send(w.f.addr, "POST", &format!("{ROOT}/verify"), ADMIN, "").await;
     assert_eq!(v.status, 409);
+    // The lock's own refusal is somebody else's job, not a failure of this one: it starts no
+    // backoff (`backupRetry`) and records no error.
+    let st = read_status(&w);
+    assert!(
+        st["backupRetry"].is_null(),
+        "no backoff from a lock refusal: {st}"
+    );
+    assert!(
+        st["lastError"].is_null(),
+        "no error from a lock refusal: {st}"
+    );
+    // The lock lives in the UI data directory, never in the destination.
+    assert!(lock.exists());
     drop(other);
     assert_eq!(
         send(w.f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "")
             .await
             .status,
         200
+    );
+    assert!(
+        !files_under(&w.dest)
+            .iter()
+            .any(|f| f.contains("offsite-backup.lock")),
+        "no lock file in the destination (production /offsite is a FUSE mount)"
     );
     // The lock file is not part of any snapshot.
     let engine = dir_engine(&w.dest, w.data.path());
@@ -3138,4 +3345,151 @@ async fn an_unreadable_snapshot_is_reported_and_keeps_every_chunk_through_a_run(
         !before.is_subset(&chunks(&w.dest)),
         "and the chunks nothing names any more are gone"
     );
+}
+
+#[tokio::test]
+async fn a_passing_restore_test_clears_its_own_failure_and_not_the_last_backups() {
+    let w = world(&[]).await;
+    assert_eq!(
+        send(w.f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "")
+            .await
+            .status,
+        200
+    );
+    let set_error = |during: &str| {
+        let mut st = read_status(&w);
+        st["lastError"] =
+            serde_json::json!({"at": 1, "during": during, "message": "synthetic failure"});
+        write_status(&w, &st);
+    };
+    let verify_url = format!("{ROOT}/verify");
+    let verify = || send(w.f.addr, "POST", &verify_url, ADMIN, "");
+    // The backup's failure is not the restore test's to clear.
+    set_error("backup");
+    assert_eq!(verify().await.status, 200);
+    let st = read_status(&w);
+    assert_eq!(st["lastError"]["during"], "backup", "{st}");
+    assert!(st["lastVerify"]["verifiedAt"].is_number());
+    // Its own failure is.
+    set_error("restore test");
+    assert_eq!(verify().await.status, 200);
+    assert!(read_status(&w)["lastError"].is_null());
+}
+
+#[tokio::test]
+async fn a_snapshot_that_is_stored_is_copied_to_drive_even_when_retention_hits_the_deadline() {
+    use offsite_backup_format::schedule::Zone;
+    let w = world(&[]).await;
+    let drive = DriveModel::default();
+    install_drive(&w.up, Arc::clone(&w.g.granted), drive.clone());
+    connect_drive(&w).await;
+    let service = Arc::clone(w.f.app.offsite.as_ref().unwrap());
+    service.set_deadline(Duration::from_millis(2500));
+    // A scheduled pace whose clock reads outside every window until the snapshot is recorded, and
+    // inside the appdata window (04:05-04:25 UTC here) from then on: the retention that follows
+    // the snapshot waits out the window until the job deadline stops it.
+    let status = status_path(&w);
+    let clock: Arc<dyn Fn() -> i64 + Send + Sync> = Arc::new(move || {
+        let recorded = std::fs::read_to_string(&status)
+            .ok()
+            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+            .is_some_and(|st| st["lastBackup"].is_object());
+        if recorded {
+            at(4, 10)
+        } else {
+            at(3, 0)
+        }
+    });
+    let pace = Pace {
+        zone: Some(Zone::Utc),
+        clock,
+        step: Duration::from_millis(20),
+        waiting: Arc::new(|_| {}),
+    };
+    let run = {
+        let (service, app) = (Arc::clone(&service), Arc::clone(&w.f.app));
+        tokio::spawn(async move { service.run_now(&app, pace).await })
+    };
+    // The copy starts although the run itself ends in the deadline's error.
+    let started = Instant::now();
+    loop {
+        let s = get(w.f.addr, ROOT, ADMIN).await.json();
+        if s["busy"] == "copy to Google Drive" {
+            break;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "the copy of a stored snapshot never started: {s}"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    let err = run
+        .await
+        .unwrap()
+        .err()
+        .expect("retention hit the deadline");
+    assert_eq!(err.status, 504, "{}", err.message);
+    let st = read_status(&w);
+    assert!(
+        st["lastBackup"]["id"].is_string(),
+        "the snapshot is recorded: {st}"
+    );
+    assert!(
+        st["lastError"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("saved, but applying retention did not finish"),
+        "{st}"
+    );
+}
+
+#[tokio::test]
+async fn a_manifest_entry_without_a_chunk_array_stops_the_prune() {
+    let dest = tempfile::tempdir().unwrap();
+    let src = tempfile::tempdir().unwrap();
+    for d in ["snapshots", "data"] {
+        std::fs::create_dir_all(dest.path().join(d)).unwrap();
+    }
+    std::fs::write(
+        dest.path().join("config"),
+        Keys9()
+            .seal(offsite_backup_format::config_json(5).as_bytes(), &[2; 12])
+            .unwrap(),
+    )
+    .unwrap();
+    // A kept snapshot whose one entry names no `chunks` array at all (so what it protects is
+    // unknown), and an unreferenced chunk old enough to be garbage.
+    let id = offsite_backup_format::snapshot_id(at(1, 0), [0, 0, 0, 7]);
+    let plain = format!(
+        r#"{{"format":"noevia-offsite-v1","time":{},"roots":1,"files":[{{"root":0,"path":"x.txt","size":1,"mode":384,"mtime":0,"sha256":"{}"}}],"incomplete":false}}"#,
+        at(1, 0),
+        "0".repeat(64)
+    );
+    std::fs::write(
+        dest.path().join("snapshots").join(&id),
+        Keys9().seal(plain.as_bytes(), &[1; 12]).unwrap(),
+    )
+    .unwrap();
+    let garbage = "b".repeat(64);
+    std::fs::create_dir_all(dest.path().join("data/bb")).unwrap();
+    std::fs::write(dest.path().join(format!("data/bb/{garbage}")), b"orphan").unwrap();
+    age_all(dest.path(), 48);
+    let engine = dir_engine(dest.path(), src.path());
+    // It still lists and is kept...
+    let snaps = engine.snapshots().await.unwrap();
+    assert!(snaps.failed.is_empty() && snaps.list.len() == 1);
+    // ...but nothing is pruned while a manifest's chunks cannot be listed, and it is counted.
+    let r = engine.forget(&[]).await.unwrap();
+    assert_eq!((r.unreadable, r.pruned_chunks), (1, 0), "no prune");
+    assert!(files_under(dest.path()).contains(&format!("data/bb/{garbage}")));
+    // The same store with the array present prunes the orphan.
+    let fixed = plain.replace(r#""sha256":"#, r#""chunks":[],"sha256":"#);
+    std::fs::write(
+        dest.path().join("snapshots").join(&id),
+        Keys9().seal(fixed.as_bytes(), &[1; 12]).unwrap(),
+    )
+    .unwrap();
+    age_all(dest.path(), 48);
+    let r = engine.forget(&[]).await.unwrap();
+    assert_eq!((r.unreadable, r.pruned_chunks), (0, 1));
 }

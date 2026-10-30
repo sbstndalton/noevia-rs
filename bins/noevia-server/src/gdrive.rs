@@ -517,6 +517,13 @@ impl Drive {
         self.fence.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// Holds the fence until the guard is dropped. For tests that prove a change to the token files
+    /// waits for it (a disconnect, a sign-in's commit, the re-seal); nothing else takes it from outside.
+    #[doc(hidden)]
+    pub fn hold_fence(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.fence()
+    }
+
     fn with_slot<R>(&self, slot: &Slot, f: impl FnOnce(&mut SlotMem) -> R) -> R {
         let mut m = self.mem();
         f(m.entry(slot.key()).or_default())

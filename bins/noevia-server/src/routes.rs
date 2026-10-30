@@ -103,7 +103,7 @@ pub enum Native {
     /// /api/providers/{providerId}/models{*?} (sbstndalton/noevia#2190 round 5):
     /// provider_models_routes.rs.
     ProviderModels,
-    /// Every method of the seven /api/admin/offsite-backup paths (sbstndalton/noevia#2190 round 7):
+    /// Every method of the eight /api/admin/offsite-backup paths (sbstndalton/noevia#2190 round 7):
     /// offsite_routes.rs.
     Offsite,
     /// POST /api/connectors/gdrive/{connect,disconnect}, PUT .../{policy,backup-copy}
