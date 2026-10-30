@@ -201,10 +201,13 @@ pub async fn serve(
             else {
                 return false;
             };
+            // The health probe asks the sidecar only: no storage-login latch, no exchange set.
             let ctx = server_diary::Ctx {
                 identity: id,
                 store,
                 data_dir,
+                latch: None,
+                start_id: None,
             };
             diary.health(&ctx).await
         });

@@ -105,6 +105,13 @@ use std::sync::Arc;
 /// sbstndalton/noevia#2185), permanently and with no switch. Node refuses them (core
 /// rust-diary.cjs `RUST_DIARY_OWNED`), so the web supervisor must refuse a front without it.
 ///
+/// `rust-diary-routes`: this build also answers the rest of the Diary routes the web client names
+/// except the local exchange (sbstndalton/noevia#2206): `/api/diary` (nothing), `/api/diary/context`,
+/// `/api/diary/exchanges`, `/api/diary/storage-status`, `/api/diary-connector` and
+/// `/api/profile/diary-connectors[/{id}]`. It is the only writer of `diary_connectors` and reads the
+/// running-exchange set Node publishes (`diary-conversations/active.json`). Node refuses them (core
+/// rust-diary-routes.cjs `RUST_DIARY_ROUTES_OWNED`), so the web supervisor pairs them.
+///
 /// `rust-model-reads`: this build answers `GET /api/models/capabilities` and `GET
 /// /api/models/hardware` (sbstndalton/noevia#2187), permanently and with no switch. Node refuses
 /// those two GETs (core rust-models.cjs `RUST_MODELS_OWNED`), so the web supervisor must refuse a
@@ -279,6 +286,7 @@ pub const FEATURES: &[&str] = &[
     server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER,
     "rust-auth",
     "rust-diary",
+    "rust-diary-routes",
     "rust-model-reads",
     "rust-project-reads",
     "rust-project-lifecycle",
@@ -399,6 +407,9 @@ pub struct App {
     /// The Diary sidecar client (sbstndalton/noevia#2185); `None` only if its HTTP client could
     /// not be built, when its routes answer 503.
     pub diary: Option<Arc<server_diary::Diary>>,
+    /// `connectorRate` of the Diary connector endpoint (core routes/diary.cjs): fixed windows, one
+    /// per bucket key, in this process's memory like core's.
+    diary_connector_rate: std::sync::Mutex<server_account::rate::RateLimiter>,
     pub reasoning_settings: Arc<tokio::sync::Semaphore>,
     pub sampling_settings: Arc<tokio::sync::Semaphore>,
     pub routing_mode: Arc<tokio::sync::Semaphore>,
@@ -418,6 +429,15 @@ pub struct App {
 }
 
 impl App {
+    /// `connectorRate.rateLimited(key, limit, 60000)`: counts this call, true when it is over.
+    pub(crate) fn connector_rate(&self, key: &str, limit: u64) -> bool {
+        self.diary_connector_rate
+            .lock()
+            .map(|mut r| r.limited(key, limit, 60_000, identity::now_ms()))
+            // A poisoned limiter cannot count; refusing is the safe side for a credential endpoint.
+            .unwrap_or(true)
+    }
+
     pub fn new(config: config::Config) -> Arc<Self> {
         Self::with_lookup(config, code_net::system_lookup())
     }
@@ -479,6 +499,9 @@ impl App {
             diary: server_diary::Diary::new(config.diary.clone())
                 .ok()
                 .map(Arc::new),
+            diary_connector_rate: std::sync::Mutex::new(server_account::rate::RateLimiter::new(
+                identity::now_ms(),
+            )),
             reasoning_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             sampling_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             routing_mode: Arc::new(tokio::sync::Semaphore::new(4)),
