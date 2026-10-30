@@ -36,7 +36,7 @@ const NOT_OWNED: &str =
     "That file is not in any folder attached to this project, so it cannot be deleted from here.";
 
 /// JS `String(v)` for the values a JSON body holds.
-fn js_string(v: &JValue) -> String {
+pub(crate) fn js_string(v: &JValue) -> String {
     match v {
         JValue::Str(s) => s.clone(),
         JValue::Num(n) => js_json::number_to_string(*n),
@@ -157,7 +157,7 @@ fn remove(path: &Path) {
 }
 
 /// document-sources.cjs `prune(workspace, project)`.
-fn prune_documents(dir: &Path, project: &JValue) {
+pub(crate) fn prune_documents(dir: &Path, project: &JValue) {
     let id = project.get("id").as_str().unwrap_or("");
     let mut keep = BTreeSet::new();
     if let JValue::Arr(files) = project.get("files") {

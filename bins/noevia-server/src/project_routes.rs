@@ -91,6 +91,13 @@ pub enum Route {
     UploadOriginal {
         project: String,
     },
+    /// GET /api/projects/{id}/documents/pages (sbstndalton/noevia#2191 round 4,
+    /// `rust-project-document-pages`)
+    DocumentPages {
+        project: String,
+    },
+    /// POST /api/import/conversations (sbstndalton/noevia#2191 round 4, `rust-conversation-import`)
+    ImportConversations,
     /// POST /api/projects (sbstndalton/noevia#2191, `rust-project-lifecycle`)
     CreateProject,
     /// DELETE /api/projects/{projectId} (sbstndalton/noevia#2191, `rust-project-lifecycle`)
@@ -101,12 +108,32 @@ pub enum Route {
     DeleteFile {
         project: String,
     },
+    /// POST /api/projects/{id}/documents (sbstndalton/noevia#2191 round 5, `rust-project-documents`)
+    Documents {
+        project: String,
+    },
+    /// POST /api/projects/{id}/upload or .../sources/sync, answered here only with `background=1`
+    /// (sbstndalton/noevia#2191 round 6, `rust-source-jobs`); the synchronous form is Node's, the
+    /// front's worker call.
+    BackgroundSource {
+        project: String,
+        sync: bool,
+    },
+    /// GET /api/projects/{id}/source-jobs/{jobId} (sbstndalton/noevia#2191 round 6)
+    SourceJob {
+        project: String,
+        job: String,
+    },
 }
 
 /// Node's matchers, `^\/api\/projects\/([^/]+)\/assets$`, `...\/assets\/([^/]+)$` and
 /// `^\/api\/projects\/([^/]+)\/chats$`, and routes/chat-lists.cjs's `p === '/api/freechats'`,
 /// with the methods its handlers answer; `None` sends the request on to Node.
 pub fn route(method: &str, path: &str) -> Option<Route> {
+    // routes/import.cjs `path === '/api/import/conversations'`, its POST only (Node answers 405).
+    if path == server_projects::import::ROUTE {
+        return (method == "POST").then_some(Route::ImportConversations);
+    }
     // routes/account.cjs `path === '/api/account/retention'`, its GET only.
     if path == "/api/account/retention" {
         return (method == "GET").then_some(Route::Retention);
@@ -165,6 +192,28 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
         ("DELETE", [project, "files"]) if !project.is_empty() => Some(Route::DeleteFile {
             project: (*project).to_string(),
         }),
+        // routes/projects.cjs `projDocs`, POST only (sbstndalton/noevia#2191 round 5).
+        ("POST", [project, "documents"]) if !project.is_empty() => Some(Route::Documents {
+            project: (*project).to_string(),
+        }),
+        // routes/projects.cjs's background wrapper, `/^\/api\/projects\/([^/]+)\/(upload|sources\/sync)$/`
+        // and the poll, `/^\/api\/projects\/([^/]+)\/source-jobs\/([^/]+)$/` (round 6).
+        ("POST", [project, "upload"]) if !project.is_empty() => Some(Route::BackgroundSource {
+            project: (*project).to_string(),
+            sync: false,
+        }),
+        ("POST", [project, "sources", "sync"]) if !project.is_empty() => {
+            Some(Route::BackgroundSource {
+                project: (*project).to_string(),
+                sync: true,
+            })
+        }
+        ("GET", [project, "source-jobs", job]) if !project.is_empty() && !job.is_empty() => {
+            Some(Route::SourceJob {
+                project: (*project).to_string(),
+                job: (*job).to_string(),
+            })
+        }
         ("POST", [project, "assets"]) if !project.is_empty() => Some(Route::Upload {
             project: (*project).to_string(),
         }),
@@ -183,12 +232,17 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
             project: (*project).to_string(),
         }),
         // routes/projects.cjs `sourceTextRoute`, `docRead` (its `original` half) and
-        // `originalUpload`, GET only (sbstndalton/noevia#2191). `documents/pages` stays Node's.
+        // `originalUpload`, GET only (sbstndalton/noevia#2191); `docRead`'s page reader since round 4.
         ("GET", [project, "sources", "text"]) if !project.is_empty() => Some(Route::SourceText {
             project: (*project).to_string(),
         }),
         ("GET", [project, "documents", "original"]) if !project.is_empty() => {
             Some(Route::DocumentOriginal {
+                project: (*project).to_string(),
+            })
+        }
+        ("GET", [project, "documents", "pages"]) if !project.is_empty() => {
+            Some(Route::DocumentPages {
                 project: (*project).to_string(),
             })
         }
@@ -239,8 +293,18 @@ pub async fn serve(
     req: Request<Body>,
     path: String,
 ) -> Response<Body> {
-    let (parts, body) = req.into_parts();
-    let Some(route) = route(parts.method.as_str(), &path) else {
+    let (mut parts, body) = req.into_parts();
+    // `url.searchParams.get('background') === '1'`: the first `background`, form-decoded.
+    let background = parts.uri.query().is_some_and(|q| {
+        url::form_urlencoded::parse(q.as_bytes())
+            .find(|(k, _)| k == "background")
+            .is_some_and(|(_, v)| v == "1")
+    });
+    let route = route(parts.method.as_str(), &path)
+        .filter(|r| background || !matches!(r, Route::BackgroundSource { .. }));
+    let Some(route) = route else {
+        // A synchronous upload or sync is Node's; only this front may ask for its worker form.
+        parts.headers.remove(crate::source_job_routes::WORK_HEADER);
         return app
             .proxy
             .forward(conn.peer, Request::from_parts(parts, body))
@@ -350,8 +414,17 @@ pub async fn serve(
         Route::SaveHistory { .. } => Some(history::BODY_LIMIT),
         Route::MoveChat { .. } => Some(chat_move::BODY_LIMIT),
         Route::CreateProject => Some(lifecycle::BODY_LIMIT),
+        Route::ImportConversations => Some(server_projects::import::MAX_BYTES),
         Route::DeleteFile { .. } => Some(server_projects::files::BODY_LIMIT),
-        Route::DeleteProject { .. }
+        Route::Documents { .. } => Some(server_projects::project_documents::BODY_LIMIT),
+        // The legacy proxy's caps, which these bodies met before (core's own readJson caps lie
+        // within them).
+        Route::BackgroundSource { sync: false, .. } => {
+            Some(crate::legacy_proxy::UPLOAD_BODY_CAP as usize)
+        }
+        Route::BackgroundSource { sync: true, .. } => Some(crate::legacy_proxy::BODY_CAP as usize),
+        Route::SourceJob { .. }
+        | Route::DeleteProject { .. }
         | Route::One { .. }
         | Route::Chats { .. }
         | Route::FreeChats
@@ -363,6 +436,7 @@ pub async fn serve(
         | Route::DeleteChat { .. }
         | Route::SourceText { .. }
         | Route::DocumentOriginal { .. }
+        | Route::DocumentPages { .. }
         | Route::UploadOriginal { .. } => None,
     };
     // `url.searchParams.get('name')`: the first `name`, form-decoded as WHATWG URLSearchParams.
@@ -371,12 +445,28 @@ pub async fn serve(
             .find(|(k, _)| k == "name")
             .map(|(_, v)| v.into_owned())
     });
+    let query = parts.uri.query().map(str::to_owned);
     let upload = match limit {
         Some(limit) => match crate::account_routes::read_body(body, limit).await {
             Ok(b) => Some(b),
             // routes/chat-lists.cjs answers a history save it could not read so.
             Err(()) if matches!(route, Route::MoveChat { .. }) => {
                 return reply::error(StatusCode::BAD_REQUEST, "invalid JSON", true);
+            }
+            // routes/import.cjs: a body it could not read is the "not an export" 400.
+            Err(()) if matches!(route, Route::ImportConversations) => {
+                return reply::error(
+                    StatusCode::BAD_REQUEST,
+                    server_projects::import::NOT_EXPORT,
+                    true,
+                )
+            }
+            // routes/projects.cjs: a document body it could not read is `invalid JSON`.
+            Err(()) if matches!(route, Route::Documents { .. }) => {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid JSON", true)
+            }
+            Err(()) if matches!(route, Route::BackgroundSource { .. }) => {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid JSON", true)
             }
             Err(()) if matches!(route, Route::SaveHistory { .. }) => {
                 return reply::error(StatusCode::BAD_REQUEST, "could not read the chat", true)
@@ -385,20 +475,76 @@ pub async fn serve(
         },
         None => None,
     };
+    // The source jobs (round 6): the store side runs on the blocking pool, the operation is Node's.
+    match &route {
+        Route::SourceJob { project, job } => {
+            let account = crate::source_job_routes::Account {
+                data_dir: data_dir.clone(),
+                user: authn.user.id.clone(),
+                start: start_id.clone(),
+                now_ms: now,
+            };
+            return crate::source_job_routes::poll(account, project.clone(), job.clone()).await;
+        }
+        Route::BackgroundSource { project, .. } => {
+            let Some(b) = upload else {
+                return reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true);
+            };
+            let account = crate::source_job_routes::Account {
+                data_dir: data_dir.clone(),
+                user: authn.user.id.clone(),
+                start: start_id.clone(),
+                now_ms: now,
+            };
+            let (layer, creds, gate_path, dir, user) = (
+                Arc::clone(&regate_layer),
+                regate_creds.clone(),
+                path.clone(),
+                data_dir.clone(),
+                authn.user.id.clone(),
+            );
+            let again = move || {
+                regate(&layer, &creds, &gate_path, now, &dir, &user)
+                    .map_err(|r| Box::new(refusal(r)))
+            };
+            // The path as the client sent it (Node decodes the id itself).
+            let raw_path = parts.uri.path().to_owned();
+            return crate::source_job_routes::start(
+                app,
+                conn.peer,
+                account,
+                raw_path,
+                project.clone(),
+                parts.headers.clone(),
+                b.bytes,
+                b.over,
+                again,
+            )
+            .await;
+        }
+        _ => {}
+    }
     let method = parts.method.clone();
     // routes/projects.cjs: `authn?.user?.role === 'admin'` (a device token acts as a member).
     let admin = authn.user.role == server_auth::Role::Admin;
     // What a create reads besides the request (sbstndalton/noevia#2191): core's published toolbox
     // catalogue and whether the user's storage is browsable (folder reservation, #589); read on the
     // blocking pool with the rest.
-    let create_inputs =
-        matches!(route, Route::CreateProject).then(|| (Arc::clone(app), authn.clone()));
+    let create_inputs = matches!(route, Route::CreateProject | Route::ImportConversations)
+        .then(|| (Arc::clone(app), authn.clone()));
     // A source file's delete writes to the user's storage (round 3, #2191).
     let file_inputs =
         matches!(route, Route::DeleteFile { .. }).then(|| (Arc::clone(app), authn.clone()));
+    // A document upload extracts through the front's engine (round 5, #2191).
+    let engine = matches!(route, Route::Documents { .. })
+        .then(|| app.extraction.clone())
+        .flatten();
     // A create or delete runs the user's queued storage sweep afterwards (round 3, #2191).
-    let sweep_inputs = matches!(route, Route::CreateProject | Route::DeleteProject { .. })
-        .then(|| (Arc::clone(app), authn.clone(), data_dir.clone()));
+    let sweep_inputs = matches!(
+        route,
+        Route::CreateProject | Route::DeleteProject { .. } | Route::ImportConversations
+    )
+    .then(|| (Arc::clone(app), authn.clone(), data_dir.clone()));
     let user = authn.user.id;
     // The context GET writes too (getProject's self-heal), so it is re-gated as well; so do the
     // source reads, whose getProject may save the same way.
@@ -407,6 +553,7 @@ pub async fn serve(
         Route::Upload { .. }
             | Route::SourceText { .. }
             | Route::DocumentOriginal { .. }
+            | Route::DocumentPages { .. }
             | Route::UploadOriginal { .. }
             | Route::SaveChats { .. }
             | Route::SaveFreeChats
@@ -418,6 +565,8 @@ pub async fn serve(
             | Route::CreateProject
             | Route::DeleteProject { .. }
             | Route::DeleteFile { .. }
+            | Route::Documents { .. }
+            | Route::ImportConversations
     ) || (matches!(route, Route::One { .. }) && method == "DELETE");
     let done = tokio::task::spawn_blocking(move || {
         if writes {
@@ -479,6 +628,9 @@ pub async fn serve(
             (Route::UploadOriginal { project }, _) => {
                 originals::upload(ctx, &project, name.as_deref())
             }
+            (Route::DocumentPages { project }, _) => {
+                server_projects::document_pages::get(ctx, &project, query.as_deref())
+            }
             (Route::CreateProject, Some(b)) => match &create_env {
                 Some((catalogue, storage, root, (app, authn))) => {
                     let opener = opener(app, authn);
@@ -496,6 +648,45 @@ pub async fn serve(
                 }
                 None => Reply::internal(),
             },
+            (Route::ImportConversations, Some(b)) => match &create_env {
+                Some((catalogue, storage, root, (app, authn))) => {
+                    let opener = opener(app, authn);
+                    let env = lifecycle::CreateEnv {
+                        catalogue: catalogue.as_ref(),
+                        storage: *storage,
+                        root,
+                        with_remote: Some(&opener),
+                    };
+                    // conversation-import.cjs `ctx.createProject({ name, toolboxes: [] })`.
+                    let create = |name: &str| {
+                        let body = js_json::wtf16::stringify(&js_json::JValue::obj([
+                            ("name", js_json::JValue::Str(name.to_string())),
+                            ("toolboxes", js_json::JValue::Arr(Vec::new())),
+                        ]))
+                        .unwrap_or_default();
+                        let made = lifecycle::create(ctx, body.as_bytes(), false, &env);
+                        let id = match (&made.status, &made.body) {
+                            (200, server_projects::Body::Json(text)) => js_json::wtf16::parse(text)
+                                .ok()
+                                .and_then(|v| v.get("id").as_str().map(str::to_owned)),
+                            _ => None,
+                        };
+                        id.ok_or(if made.status == 400 { 400 } else { 503 })
+                    };
+                    let audit =
+                        |result: &js_json::JValue| import_audit(app, &authn.user.id, result);
+                    server_projects::import::post(
+                        ctx,
+                        &b.bytes,
+                        b.over,
+                        &server_projects::import::ImportEnv {
+                            create: &create,
+                            audit: &audit,
+                        },
+                    )
+                }
+                None => Reply::internal(),
+            },
             (Route::DeleteProject { project }, _) => lifecycle::delete(ctx, &project),
             (Route::DeleteFile { project }, Some(b)) => match &file_inputs {
                 Some((app, authn)) => {
@@ -504,8 +695,21 @@ pub async fn serve(
                 }
                 None => Reply::internal(),
             },
+            (Route::Documents { project }, Some(b)) => match &engine {
+                Some(engine) => server_projects::project_documents::post(
+                    ctx,
+                    &project,
+                    &b.bytes,
+                    b.over,
+                    engine.as_ref(),
+                    &server_projects::extract::Limits::from_env(),
+                ),
+                None => Reply::error(503, "Document extraction is unavailable; retry shortly."),
+            },
             (
                 Route::CreateProject
+                | Route::ImportConversations
+                | Route::Documents { .. }
                 | Route::DeleteFile { .. }
                 | Route::Upload { .. }
                 | Route::SaveChats { .. }
@@ -514,6 +718,8 @@ pub async fn serve(
                 | Route::MoveChat { .. },
                 None,
             ) => Reply::internal(),
+            // Answered above (source_job_routes).
+            (Route::BackgroundSource { .. } | Route::SourceJob { .. }, _) => Reply::internal(),
         })
     })
     .await;
@@ -532,6 +738,34 @@ pub async fn serve(
 }
 
 /// The create's storage opener (higher-ranked over the step, as `OpenRemote` needs).
+/// The import's audit row: core auth.cjs `audit('import.conversations', actor, actor, { imported,
+/// skipped: <count>, projectsCreated })`, appended to cowork.db's audit_events as Node appends it.
+fn import_audit(app: &App, user: &str, result: &js_json::JValue) -> Result<(), ()> {
+    let skipped = match result.get("skipped") {
+        js_json::JValue::Arr(list) => list.len(),
+        _ => 0,
+    };
+    let detail = js_json::wtf16::stringify(&js_json::JValue::obj([
+        ("imported", result.get("imported").clone()),
+        ("skipped", js_json::JValue::Num(skipped as f64)),
+        ("projectsCreated", result.get("projectsCreated").clone()),
+    ]))
+    .ok_or(())?;
+    let at = identity::now_ms();
+    app.writes
+        .writer()
+        .and_then(|w| {
+            w.write(|tx| {
+                tx.execute(
+                    "INSERT INTO audit_events(actor_user_id,target_user_id,action,detail,created_at) VALUES(?1,?2,?3,?4,?5)",
+                    server_store::rusqlite::params![user, user, server_projects::import::AUDIT_ACTION, detail, at],
+                )?;
+                Ok(())
+            })
+        })
+        .map_err(|_| ())
+}
+
 fn opener<'a>(
     app: &'a Arc<App>,
     authn: &'a server_auth::Identity,

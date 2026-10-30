@@ -373,9 +373,13 @@ methods = ["DELETE"]
 path = "/api/health"
 owner = "node"
 
+# sbstndalton/noevia#2191 round 4 (rust-conversation-import): Settings -> Data -> Import
+# conversations, the front's (crates/server-projects import.rs); Node refuses the POST (core
+# rust-conversation-import.cjs) and answers other methods' 405 as before.
 [[route]]
 path = "/api/import/conversations"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 # GET: the metadata worker (#1071). PUT, the save (sbstndalton/noevia#2190 round 4,
@@ -642,6 +646,22 @@ path = "/api/projects/{id}/documents/original"
 owner = "rust"
 methods = ["GET"]
 
+# sbstndalton/noevia#2191 round 4 (rust-project-document-pages): a stored document's page text, the
+# front's (crates/server-projects document_pages.rs); Node refuses the GET
+# (core rust-project-document-pages.cjs).
+[[route]]
+path = "/api/projects/{id}/documents/pages"
+owner = "rust"
+methods = ["GET"]
+
+# sbstndalton/noevia#2191 round 5 (rust-project-documents): a project document's upload, the
+# front's (crates/server-projects project_documents.rs) on the Rust extraction pipeline (Docling,
+# the durable extraction queue); Node refuses the POST (core rust-project-documents.cjs).
+[[route]]
+path = "/api/projects/{id}/documents"
+owner = "rust"
+methods = ["POST"]
+
 # sbstndalton/noevia#2191 round 3 (rust-project-files): a source file's delete from the user's
 # storage, the front's (crates/server-projects files.rs); Node refuses it (core rust-project-files.cjs).
 [[route]]
@@ -665,20 +685,37 @@ owner = "node"
 path = "/api/projects/{project}/skills/install"
 owner = "node"
 
+# sbstndalton/noevia#2191 round 6 (rust-source-jobs): the background start (`?background=1`), the
+# front's, which owns the source-job store (crates/server-projects source_work.rs) and runs the
+# operation by sending the synchronous POST to Node (`X-Noevia-Source-Work: 1`); that synchronous
+# form stays Node's answer. Node refuses the background start (core rust-source-jobs.cjs).
 [[route]]
 path = "/api/projects/{id}/sources/sync"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 # sbstndalton/noevia#2191 (rust-project-reads): a source's stored text or original, the front's
 # (bins/noevia-server project_routes.rs); Node refuses the GET (core rust-project-reads.cjs).
+# sbstndalton/noevia#2191 round 6 (rust-source-jobs): a source job's status, the front's
+# (crates/server-projects source_work.rs); Node refuses the GET (core rust-source-jobs.cjs).
+[[route]]
+path = "/api/projects/{id}/source-jobs/{jobId}"
+owner = "rust"
+methods = ["GET"]
+
 [[route]]
 path = "/api/projects/{id}/sources/text"
 owner = "rust"
 methods = ["GET"]
 
+# sbstndalton/noevia#2191 round 6 (rust-source-jobs): the background start (`?background=1`), the
+# front's, which owns the source-job store (crates/server-projects source_work.rs) and runs the
+# operation by sending the synchronous POST to Node (`X-Noevia-Source-Work: 1`); that synchronous
+# form stays Node's answer. Node refuses the background start (core rust-source-jobs.cjs).
 [[route]]
 path = "/api/projects/{id}/upload"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 # sbstndalton/noevia#2191 (rust-project-reads): a source's stored text or original, the front's
 # (bins/noevia-server project_routes.rs); Node refuses the GET (core rust-project-reads.cjs).

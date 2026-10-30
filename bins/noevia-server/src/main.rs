@@ -145,6 +145,7 @@ async fn server_main() -> ExitCode {
         config.trust_proxy
     );
     let app = App::new(config);
+    noevia_server::extraction::spawn(&app);
     // sbstndalton/noevia#2153: every chat change journal entry carries this start.
     server_projects::journal::set_start_id(app.config.start_id.as_deref().unwrap_or(""));
     app.statics.warm();

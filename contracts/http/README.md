@@ -461,15 +461,17 @@ file whose name is a validated hex hash, never a request value.
 | `/api/projects/{id}/sources/text` (GET) | rust | inline text, or `project-sources/<safe id>/<textRef>.txt`; a missing text is 404 `SOURCE_TEXT_MISSING`, the pointer kept |
 | `/api/projects/{id}/documents/original` (GET) | rust | `project-documents/<sha256 id>/<byteHash>.pdf`; unreadable is Node's 422 |
 | `/api/projects/{id}/{*}/original` (GET) | rust | `uploads/original` only (`project-uploads/<sha256 id>/<attachment.id>`, #786's 404); any other segment is Node's |
-| `/api/projects/{id}/documents/pages` | node | the page reader, beside the extraction state and the large-document lock |
+| `/api/projects/{id}/documents/pages` (GET) | rust | round 4, below |
 | `/api/projects` (POST), `/api/projects/{projectId}` (DELETE) | rust | round 2, below |
 | `/api/projects/{projectId}/config` | node | its model check reads Node's served-model catalogue and provider registry (live state, not persisted), and a `files` patch re-indexes through Node's RAG writer; next after the provider/model catalogue is published like the toolbox catalogue |
-| `/api/projects/{id}/upload`, `/sources/sync`, `/documents` (POST), `source-jobs`, `folder-import/plan` | node | the storage writes they make exist in the front since round 3 (`writes`, below); what keeps them on Node is the extraction pipeline they run in-process: docling/OCR extraction, `pdf-reduce`'s page ranges, the DOCX reader, the large-document lock and the background source jobs, then the index outbox for their RAG work |
+| `/api/projects/{id}/documents` (POST) | rust | round 5, below: the front's Docling pipeline and durable extraction queue |
+| `/api/projects/{id}/upload`, `/sources/sync` (POST with `?background=1`), `/api/projects/{id}/source-jobs/{jobId}` (GET) | rust | round 6, below: the front owns the source-job store, starts and answers every background job, and runs its operation through Node's synchronous route |
+| `/api/projects/{id}/upload`, `/sources/sync` (POST without `background`), `folder-import/plan` | node | the operation each job runs, and the plan whose tickets the organized upload consumes in Node's memory. What keeps them on Node: the upload's other readers (`pdf-reduce` through OCR `/reduce-pdf`, the DOCX reader, text decoding with its notes, image assets with retire/prune, the type groups, the create-only remote write with `discardCreated`), the sync's storage reads (a 96 MiB binary read with the large-document lock taken from Content-Length, the text reads, the breadth-first listing), its OCR budget and `reopenStored`, the storage latch (`automaticHold`, Node memory) and core's pdf.js reader for documents when Docling is off; the front has a storage list/text-preview/write client but no binary read yet |
 | `/api/projects/{projectId}/instruction-skills`, `.../manifests`, `/api/projects/{project}/skills/install` | node | the known-toolbox list (plugins, MCP) is Node's runtime catalogue; install fetches a published skill through Node's plugin directory |
 | `/api/projects/{projectId}/browser`, `/code`, `/research` | node | they drive a browser session, the code harness or research jobs |
 | `/api/code/active` | node | the code harness service's live task list |
 | `/api/workspace` | node | its load runs the retention sweep and the orphaned attachments-project reaper, whose delete (RAG index, uploads) is Node's |
-| `/api/import/conversations` | node | creates projects through Node's `createProject` and publishes transcripts; the storage step it needed now exists in the front (round 3, `project_storage`), the import's own parsing and transcript publishing are what is left to port |
+| `/api/import/conversations` (POST) | rust | round 4, below |
 
 ## sbstndalton/noevia#2191 round 2 (group rust-project-lifecycle): a project's create and delete
 
@@ -657,3 +659,189 @@ memory); GGUF metadata with NaN, Infinity or -0 in a raw field (float-typed head
 `null`/`0` where the JS estimator saw the number; a router listing nested 64 deep at the fields read counts as
 no listing.
 
+
+## sbstndalton/noevia#2191 round 4 (group rust-project-document-pages): a stored document's pages
+
+`GET /api/projects/{id}/documents/pages` is the front's (crates/server-projects `document_pages`);
+core refuses the GET with 503 `RUST_PROJECT_DOCUMENT_PAGES_OWNED`
+(`server/rust-project-document-pages.cjs`) and `--features` lists `rust-project-document-pages`.
+core routes/projects.cjs `docRead` with document-sources.cjs `readPages`, answer for answer: the id
+decoded (a bad escape 500), `getProject` (its self-heal saved), the file named by the first `name`
+query value with a `document`, else 404 `no such document`; `startPage`/`endPage`/`offset` as JS
+`Number(...)` (an empty value is the default); 1 to 5 whole pages and a whole non-negative offset,
+else 400; no `availableVersion` 422; past the document 400; a page the extraction did not keep 422;
+any other failure with the stored `project-documents/<sha256 id>/<version>.json` (missing, not
+JSON, a leading BOM, a shape the JS throws on) Node's 422 `Saved document data is unavailable;
+upload or refresh again.` The text is cut at the UTF-16 offset to 8 000 units (`nextOffset`), with
+the document's `notice` (quoted name, state, page outcomes and OCR-retry notes, versions, index).
+Stricter than Node: the result is opened with `O_NOFOLLOW` and read only up to 256 MiB. The file is
+written once per version by core's extraction (an atomic rename); reading it never takes the
+large-document lock (Node's reader did not either). Every other method of the path is Node's.
+
+## sbstndalton/noevia#2191 round 4 (group rust-conversation-import): Settings → Data → Import conversations
+
+`POST /api/import/conversations` is the front's (crates/server-projects `import`); core refuses the
+POST with 503 `RUST_CONVERSATION_IMPORT_OWNED` (`server/rust-conversation-import.cjs`), keeps its
+405 for every other method, and `--features` lists `rust-conversation-import`. core routes/import.cjs
+with conversation-import.cjs and chat-import.cjs, answer for answer: the body read up to 64 MiB
+(413 `That file is over 64 MB…`; unreadable or not JSON 400 `Choose a conversations.json…`),
+`planImport`'s refusals (400 with their words) before anything is written, then Node's recovery
+journal, file for file (`conversation-imports/<sha256 of JSON.stringify(body)>/` with `<n>.json`
+stages and `manifest.json`, `atomicJson` 0600), so a journal Node left is finished here: every
+pending journal is applied, audited (`import.conversations`, `{imported, skipped, projectsCreated}`)
+and removed first, and the same file's finished journal answers its own result. Projects are
+matched by name or created through the round-2 create (`{name, toolboxes: []}`, its storage step
+included); transcripts are published only where none is (origin `import`, a taken id gets a new
+one), lists merged as `mergeChats` merges them; a chat the list cap dropped is `capped` and taken
+back (origin `remove`) only while it is still the imported transcript. Any other failure is Node's
+503 `Import was interrupted…`, the journal kept for the next import. Imports of one account run one
+at a time (Node: per process; the front is the only process answering it now).
+
+## sbstndalton/noevia#2191 round 5 (groups rust-document-extraction, rust-project-documents): Docling is the extraction engine
+
+`--features` lists `rust-document-extraction` (the front's extraction pipeline and its worker) and
+`rust-project-documents`: `POST /api/projects/{id}/documents` is the front's
+(crates/server-projects `project_documents`), core refuses the POST (any query, `?background=1`
+included) with 503 `RUST_PROJECT_DOCUMENTS_OWNED` (`server/rust-project-documents.cjs`).
+
+**Behaviour change (the 2026-10-30 decision).** Docling, with the OCR worker for the per-page retry
+of pages Docling left incomplete, is THE extraction engine for new project documents. The front has
+no in-process PDF reader: core's pdf.js walk (`documents-native.cjs`) is not ported. Where core
+would have used it (Docling not configured, or a PDF over 25 MiB whose worker does not read page
+ranges), and whenever Docling is unreachable, busy or answers a transient error, the document is
+stored exactly as core stored an unreachable worker's result: the original, a result record with
+`retryable: true`, the source record with `document.state: "failed"` and the worker's own words in
+`document.error` (`fetch failed`, `Document extraction is busy; refresh to retry.`, `Document
+extraction unavailable (HTTP n); refresh to retry.`, `Document extraction is not configured.`),
+`indexing: "unavailable"`, or the last readable text kept (`stale: true`) when the upload replaced a
+readable document. One field is added, the smallest marker of the new state:
+`document.extraction: "queued"`, present while the document's job waits and gone once it is read.
+Without Docling, `isDocument` accepts a PDF only (it is queued); with Docling, its formats. A refusal
+(415, 422) is final and never queued, as in core. Documents already stored are never extracted again
+(a stored readable record is reused as it is; a record without the completion marker gets that pass).
+
+**Pipeline** (crates/server-projects `extract`, `document_ingest`, `extract_queue`; bins/noevia-server
+`extraction`): core documents.cjs / document-sources.cjs / docling.cjs / ocr.cjs on the Docling path,
+answer for answer. Routing: plain-text names are never documents. First pass: one whole-document
+request (`POST {DOCLING}/extract`, `application/octet-stream`, `X-Document-Name` the last path
+segment, Latin-1 or percent-encoded, `X-Document-Figures` with multimodal RAG, a deadline of 65
+minutes), or the first range (`X-Document-Pages`, 2 min + 1 min a page) of a PDF over 25 MiB when
+`/health` says `ranges` (and the size is within `rangedMaxBytes`). Completion pass
+(`ranges-ocr-retry-v1`): the pages past the first window in ranges through Docling up to
+`PROJECT_DOCUMENT_PAGE_LIMIT`/`_TEXT_LIMIT`/`_RANGE_PAGES`, then each incomplete page retried alone
+through OCR (`POST {OCR}/extract`, `X-OCR-Pages`, `X-OCR-DPI: 400`, at most 20 pages, 3 per request,
+330 to 610 s), with the busy waits (5 s, 15 s) and the 3-attempt bound; a stop for a passing reason
+leaves the marker off and the job queued. Reply caps 32 MiB (Docling), 16 MiB (OCR), 64 KiB
+(`/health`, kept 5 minutes). Large-document lock: one document over 25 MiB at a time in the front's
+process, a waiter busy after `LARGE_DOCUMENT_ACQUIRE_WAIT_MS` (2 min). Workers are where
+document-workers.cjs finds them: the machine Settings → Inference machines assigned (cowork.db
+`inference:machines`, read at call time; connected to only when every address of its name is on
+this network), else `DOCLING_BASE_URL` / `OCR_BASE_URL`; no redirect, no credential. Files, in core's
+formats: `project-documents/<sha256 id>/<byteHash>.pdf` (written once), `<version>.json` with
+`version = sha256(byteHash:docling-pages-v1:<docling VERSION>[:figures-v1])` (fsynced temp, rename,
+folder fsync, 0600/0700), `<version>.fig<n>.<ext>` figures; the source text in
+`project-sources/<id>/<textRef>.txt`; then an `index` job in the index outbox (core indexes).
+
+**Queue** (`users/<id>/extraction-jobs.db`): key `["extract", project, file]`, target `byte_hash`
+and `version`; queuing a key again replaces its target (idempotent; a newer upload supersedes).
+Claimed `running`, deleted only at the version claimed; a `running` row left by a crash or restart
+is pending again at the next start (at least once: a run re-reads the stored original and the
+source as listed, and results are content-addressed). A passing failure waits
+`min(30 s x 2^(attempts-1), 30 min)`; there is no last attempt. A source gone, renamed or holding
+other bytes by then drops its job. The worker looks for due jobs every 10 s, one extraction at a time.
+
+**Route** (core routes/projects.cjs `projDocs`, answer for answer): id decoded (bad escape 500),
+`getProject`, 404 `no such project`, body up to `ceil(25 MiB/3)*4 + 512 KiB` (413), `JSON.parse`
+(400 `invalid JSON`; `null` the TypeError's 500), `String(body.name || '').slice(0, 200)` and
+`isDocument` (400 `<name> is not a supported document (PDF).`), base64 data (empty 400, over 25 MiB
+413 with its size), then one source operation per project in the front's process: the 20-upload cap
+(400), an existing upload without `replace: true` (409 `sourceExists`), the ingest, the project and
+replaced upload unchanged (409 `Project changed; retry.`), the file listed last, `indexing` set as
+`indexSource` sets it, the save (texts first), the document folder pruned against the saved list,
+the `index` job, 200 `{ name, pages, characters, truncated, document }`. `?background=1` is answered
+the same way, synchronously (no client sends it for this route). Not serialized against a core
+source operation on the same project (core's source lock is in-process): the save is a
+read-modify-write of projects.json under its lock, as round 3's delete.
+
+## sbstndalton/noevia#2191 round 6 (group rust-source-jobs): the front owns the source jobs
+
+`--features` lists `rust-source-jobs` and no longer lists `noevia-source-jobs-store/1`. The front is
+the one owning process of the source-job store (crates/server-projects `source_jobs`, the journals
+`users/<id>/jobs/<uuid>.jsonl`; `source_work` for the route side). It answers
+`POST /api/projects/{id}/upload?background=1`, `POST /api/projects/{id}/sources/sync?background=1`
+(`url.searchParams.get('background') === '1'`: the first `background`, form-decoded) and
+`GET /api/projects/{id}/source-jobs/{jobId}`. Core refuses those three before authentication with 503
+`RUST_SOURCE_JOBS_OWNED` (`server/rust-source-jobs.cjs`); its `source-jobs.cjs`, the store client's
+`sourceJobsFor`, `SOURCE_JOBS_CLIENT_MARKER` and `workspace.sourceJobs` are deleted, and the internal
+`/v1/source-jobs/*` store routes are gone from the front. Two processes can no longer own the same
+account's journals, which was what kept these routes on Node (the store's `recover(owner)` admits one
+owner per account).
+
+**Start** (core routes/projects.cjs's background wrapper and source-jobs.cjs `start`, answer for
+answer): the session gate, the body up to the legacy proxy's cap (80 MiB + 512 KiB for the upload,
+33 MiB for the sync), the session gate again, the id decoded (bad escape 500), `getProject` (404
+`project not found`), the body cap (413 `Request exceeds size limit`), this process registered as
+the account's owner on its first use (earlier owners' active jobs interrupted: "The server restarted
+before this finished."), then the job persisted created+started within the two-active cap (429
+`Source processing is busy; wait for the current operation and retry.`; 409 for a newer owner, 410
+for a removed account, 404 for a project removed meanwhile, any other store failure 503 `Internal
+error`, as core's `sourceCall` and `errorResponse` worded them). The operation is then sent to Node
+as the synchronous route (the same path, no query) with the client's own headers (its session and
+CSRF pass Node's gate as before), the body as received and `X-Noevia-Source-Work: 1`. Node answers
+NDJSON: `{"accepted":true}` once it has taken the request, one `{"stage":...}` per progress step,
+then `{"done":{"status","body"}}` (the route's answer, any status) or `{"failed":{"status"}}` (it
+threw). An answer before `accepted` is a plain JSON refusal (Node's 404, the storage hold of an
+automatic sync, `invalid JSON`), which the front passes on unchanged while it abandons the job (the
+request key tombstoned, the job interrupted, its slot freed). After `accepted`, the client gets core's
+202 `{ "poll": "/api/projects/<encodeURIComponent(id)>/source-jobs/<job>" }`, and a task of the front
+writes each progress step (`n` from 1) and the terminal row, whether or not the client is still
+there: `job.completed` with `{status, body}`; `job.failed` with `{status}` and core's default
+message for a thrown operation, or 503 when a progress write failed (no clean completion after it,
+as core); a worker stream that ends before its result fails the job with 503 and core's restart
+wording. A terminal write the store refuses for a passing reason is retried (5 s apart, 12 times),
+then the job is abandoned so its slot is never held for good. A synchronous upload or sync a client
+sends is still proxied to Node, with any `X-Noevia-Source-Work` it carries dropped.
+
+**Poll** (source-jobs.cjs `read`): the gate, the id decoded, `getProject` (404 `project not
+found`), the owner registered, the job read (the job id as the path carries it; another project's or
+an expired job is 404 `Processing status expired or the server restarted; refresh or re-upload to
+retry.`): completed `{done:true,status,body}` (an absent key left out), failed
+`{done:true,status:result.status||500,body:{error}}`, interrupted or cancelled
+`{done:true,status:503,body:{error:"The server restarted before processing finished; refresh or
+re-upload to retry."}}`, otherwise `{done:false}` with `stage` when there is one. Keys in core's
+order; JSON as JSON.stringify writes it (lone surrogates stay escaped).
+
+**#1441 (a chat turn waits for a file it was just sent).** The operation still runs in Node, so
+Node's in-process registry of running file operations (core `source-work.cjs`, names memory-only)
+is what a chat turn waits on, as before; it no longer reads a journal.
+
+**Behaviour changes.** (1) Order: the body is read before the project lookup (core looked the
+project up first); the project 404 still wins over the 413, but a sync's storage hold and a
+malformed body are now answered after the job slot check (core: before it), so with two jobs
+running a held or malformed request is a 429 rather than its hold or 400. (2) A job whose Node
+worker restarts mid-operation is failed by the front at once (503, the restart wording) instead of
+at the next Node start. (3) A job whose front restarts mid-operation is interrupted at the front's
+next use of that account's store, as a Node restart did before; Node may still finish the operation
+(as when the old Node's journal writes failed). (4) The front's restart, not Node's, now interrupts
+active jobs.
+
+
+## sbstndalton/noevia#2191 round 7: review fixes for rounds 4+5
+
+- **The extraction job is written before the record that says "queued".** `POST /api/projects/{id}/documents`
+  wrote `document.extraction: "queued"` to projects.json and then the job to `extraction-jobs.db`; a
+  queue write that failed was logged and answered 200, so no worker ever read the document. The job is
+  now written first. A queue that cannot be written answers **503** `Document extraction could not be
+  queued; nothing was changed. Try again shortly.`, and nothing is saved (the stored original is
+  pruned). A save that fails after the job was written puts the name's earlier job back (or removes
+  the new one); a job whose record is never saved is dropped by the worker anyway (`find_source`
+  matches the byte hash).
+- **One large document on the host, not per process (#697).** The large-document lock (documents over
+  25 MiB) was a Mutex in the front and an in-process queue in core, so the two could hold a large
+  document each. Both now also take `UI_DATA_DIR/large-document.lock`: an SQLite file whose holder
+  keeps a `BEGIN IMMEDIATE` transaction open (one holder across processes; a holder that dies frees
+  it), polled 200 ms apart with no busy timeout, inside the same two-minute acquire wait. A waiter
+  past it is "busy" as before (`Large-document processing is busy; refresh to retry.`, a passing
+  failure). Core's side is `server/large-document-file-lock.cjs`, taken in large-document-lock.cjs
+  `acquire()`. It stays even once core extracts nothing large, so a rollback to an older front or
+  core still pairs safely.
