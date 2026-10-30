@@ -407,6 +407,106 @@ mod tests {
         assert_eq!(doc.get("byteHash").as_str(), Some(job.byte_hash.as_str()));
     }
 
+    /// An engine that, when the ingest first asks whether Docling is configured (the upload asked
+    /// once before reading the project), saves another upload of the same name into the project:
+    /// a second request landing between this one's read and its save.
+    struct Racing {
+        inner: Fake,
+        dir: std::path::PathBuf,
+        asked: std::cell::Cell<u32>,
+        fired: std::cell::Cell<bool>,
+    }
+    impl Racing {
+        fn new(dir: &std::path::Path) -> Self {
+            Racing {
+                inner: Fake::default(),
+                dir: dir.to_path_buf(),
+                asked: std::cell::Cell::new(0),
+                fired: std::cell::Cell::new(false),
+            }
+        }
+        fn race(&self) {
+            self.fired.set(true);
+            std::fs::write(
+                self.dir.join(store::PROJECTS_FILE),
+                r#"{"projects":[{"id":"proj-a","name":"A","chats":[],"instructionSkills":{},"files":[{"name":"a.pdf","content":"another upload"}]}]}"#,
+            )
+            .unwrap();
+        }
+    }
+    impl Engine for Racing {
+        fn docling_configured(&self) -> bool {
+            self.asked.set(self.asked.get() + 1);
+            if self.asked.get() == 2 {
+                self.race();
+            }
+            self.inner.docling_configured()
+        }
+        fn docling(
+            &self,
+            name: &str,
+            bytes: &[u8],
+            figures: bool,
+            pages: Option<(u32, u32)>,
+        ) -> Result<JValue, crate::extract::EngineError> {
+            self.inner.docling(name, bytes, figures, pages)
+        }
+        fn docling_ranges(&self, bytes: usize) -> Option<bool> {
+            self.inner.docling_ranges(bytes)
+        }
+        fn ocr_configured(&self) -> bool {
+            self.inner.ocr_configured()
+        }
+        fn ocr_pages(
+            &self,
+            bytes: &[u8],
+            pages: &[u32],
+            dpi: Option<u32>,
+            timeout_ms: Option<u64>,
+        ) -> Result<Vec<JValue>, crate::extract::EngineError> {
+            self.inner.ocr_pages(bytes, pages, dpi, timeout_ms)
+        }
+        fn ocr_caps(&self) -> Option<crate::extract::OcrCaps> {
+            self.inner.ocr_caps()
+        }
+        fn multimodal(&self) -> bool {
+            self.inner.multimodal()
+        }
+        fn busy_waits(&self) -> Vec<std::time::Duration> {
+            self.inner.busy_waits()
+        }
+    }
+
+    /// Review #2191 r6+7: no test drove `post`'s own failed-save branch, so deleting its restore
+    /// failed nothing. The save is forced to a 409 (another upload of the name landed first) after
+    /// this upload's job replaced the name's earlier one: the earlier job must be back.
+    #[test]
+    fn a_save_that_loses_a_race_through_post_is_a_409_and_restores_the_earlier_job() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("users").join(USER);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(store::PROJECTS_FILE), PROJECTS).unwrap();
+        extract_queue::enqueue(&dir, "proj-a", "a.pdf", "old", "v0", Some("busy"), 5).unwrap();
+        let earlier = extract_queue::pending(&dir, "proj-a", "a.pdf").unwrap();
+        let engine = Racing::new(&dir);
+        let r = post(ctx(root.path()), "proj-a", &body(), false, &engine, &LIMITS);
+        assert!(engine.fired.get(), "the race happened during the upload");
+        assert_eq!(r.status, 409, "{r:?}");
+        assert_eq!(
+            extract_queue::pending(&dir, "proj-a", "a.pdf"),
+            Some(earlier),
+            "the failed save put the earlier job back"
+        );
+        // And with no earlier job there is none left over.
+        extract_queue::clear(&dir, "proj-a", "a.pdf").unwrap();
+        std::fs::write(dir.join(store::PROJECTS_FILE), PROJECTS).unwrap();
+        let engine = Racing::new(&dir);
+        let r = post(ctx(root.path()), "proj-a", &body(), false, &engine, &LIMITS);
+        assert!(engine.fired.get());
+        assert_eq!(r.status, 409, "{r:?}");
+        assert_eq!(extract_queue::pending(&dir, "proj-a", "a.pdf"), None);
+    }
+
     /// A save that fails after the job was written puts the name's earlier job back.
     #[test]
     fn a_failed_save_puts_the_earlier_job_back() {

@@ -97,6 +97,25 @@ async fn worker() -> (u16, Seen) {
                         .await
                         .unwrap();
                     }
+                    "slow" => {
+                        // `accepted` comes late: the client may be gone by then.
+                        tokio::time::sleep(Duration::from_millis(800)).await;
+                        s.write_all(format!("{stream}{{\"accepted\":true}}\n").as_bytes())
+                            .await
+                            .ok();
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        s.write_all(
+                            b"{\"done\":{\"status\":200,\"body\":{\"name\":\"late.txt\"}}}\n",
+                        )
+                        .await
+                        .ok();
+                    }
+                    "slow-refuse" => {
+                        tokio::time::sleep(Duration::from_millis(800)).await;
+                        let b = r#"{"error":"Storage login rejected."}"#;
+                        let r = format!("HTTP/1.1 502 Bad Gateway\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{b}", b.len());
+                        s.write_all(r.as_bytes()).await.ok();
+                    }
                     "hold" => {
                         s.write_all(format!("{stream}{{\"accepted\":true}}\n").as_bytes())
                             .await
@@ -482,6 +501,128 @@ async fn a_background_upload_runs_as_the_fronts_own_job() {
     assert!(!hs
         .iter()
         .any(|l| l.to_ascii_lowercase().starts_with("x-noevia-source-work:")));
+}
+
+/// Every job's journal in the data dir: its last event type.
+fn last_types(f: &Front) -> Vec<String> {
+    journals(f)
+        .iter()
+        .map(|j| {
+            let last = j.lines().last().unwrap_or("{}");
+            serde_json::from_str::<serde_json::Value>(last).unwrap()["type"]
+                .as_str()
+                .unwrap_or("")
+                .to_owned()
+        })
+        .collect()
+}
+
+/// Sends a request and drops the socket `after` later, without reading the answer.
+async fn leave(f: &Front, path: &str, body: &str, after: Duration) {
+    let mut s = TcpStream::connect(f.addr).await.unwrap();
+    let mut req = format!(
+        "POST {path} HTTP/1.1\r\nhost: front.test\r\ncontent-length: {}\r\n",
+        body.len()
+    );
+    for (k, v) in headers(f) {
+        req.push_str(&format!("{k}: {v}\r\n"));
+    }
+    req.push_str("\r\n");
+    req.push_str(body);
+    s.write_all(req.as_bytes()).await.unwrap();
+    tokio::time::sleep(after).await;
+    drop(s);
+}
+
+async fn ended(f: &Front, want: usize) {
+    for _ in 0..300 {
+        let types = last_types(f);
+        if types.len() == want
+            && types.iter().all(|t| {
+                matches!(
+                    t.as_str(),
+                    "job.completed" | "job.failed" | "job.interrupted"
+                )
+            })
+        {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("a job stayed active: {:?}", last_types(f));
+}
+
+/// Review #2191 r6+7 (high): a refusal the front itself saw wrote a request tombstone, and the
+/// store holds 256 of them, so the 257th refused start (any failed upload or sync, or a worker that
+/// was down) answered 503 to every background start of the account until the front restarted.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn any_number_of_refused_starts_leaves_the_account_able_to_start() {
+    let (node, seen) = worker().await;
+    let f = front(node).await;
+    let h = headers(&f);
+    for i in 0..300 {
+        let (status, _) = call(
+            f.addr,
+            "POST",
+            "/api/projects/p%201/upload?background=1",
+            &h,
+            r#"{"mode":"refuse"}"#,
+        )
+        .await;
+        assert_eq!(status, 502, "refusal {i}");
+    }
+    let (status, body) = call(
+        f.addr,
+        "POST",
+        "/api/projects/p%201/upload?background=1",
+        &h,
+        r#"{"name":"after.txt"}"#,
+    )
+    .await;
+    assert_eq!(status, 202, "{body}");
+    let poll = serde_json::from_str::<serde_json::Value>(&body).unwrap()["poll"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(poll_until_done(&f, &poll).await["status"], 200);
+    assert_eq!(seen.lock().unwrap().len(), 301);
+    let owner = std::fs::read_to_string(
+        f.data
+            .join("users")
+            .join(&f.user)
+            .join("source-jobs-owner.json"),
+    )
+    .unwrap();
+    assert!(owner.contains(r#""abandoned":[]"#), "{owner}");
+}
+
+/// Review #2191 r6+7 (medium): a client that left between the job's first write and the worker's
+/// `accepted` dropped the request's future (hyper), and the job stayed `running` for good; two of
+/// them were the 429.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_client_that_leaves_before_accepted_cannot_strand_the_job() {
+    let (node, _seen) = worker().await;
+    let f = front(node).await;
+    let up = "/api/projects/p%201/upload?background=1";
+    // Gone while the worker has not answered: its late `accepted` and result still finish the job.
+    leave(&f, up, r#"{"mode":"slow"}"#, Duration::from_millis(250)).await;
+    ended(&f, 1).await;
+    assert!(journals(&f)[0].contains("late.txt"));
+    // Gone before a refusal: the job is ended too.
+    leave(
+        &f,
+        up,
+        r#"{"mode":"slow-refuse"}"#,
+        Duration::from_millis(250),
+    )
+    .await;
+    ended(&f, 2).await;
+    // Neither holds a slot: two held jobs and the cap's 429 only after them.
+    let h = headers(&f);
+    for _ in 0..2 {
+        let (status, _) = call(f.addr, "POST", up, &h, r#"{"mode":"hold"}"#).await;
+        assert_eq!(status, 202);
+    }
 }
 
 #[tokio::test]

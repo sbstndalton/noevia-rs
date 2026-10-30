@@ -144,17 +144,19 @@ pub fn begin(ctx: Ctx<'_>, owner: &Owner, raw: &str, over: bool) -> Result<Start
         &request,
     )
     .map_err(|e| store_reply(&e))?;
+    let started = |poll: String| Started {
+        poll,
+        project: project.clone(),
+        id: id.clone(),
+        run: run.clone(),
+        request: request.clone(),
+    };
     let Some(encoded) = originals::encode_uri_component(&project) else {
-        abandon(ctx, owner, &request);
+        // This process wrote the job a moment ago and knows it never began.
+        let _ = interrupt(ctx, owner, &started(String::new()));
         return Err(Reply::internal());
     };
-    Ok(Started {
-        poll: format!("/api/projects/{encoded}/source-jobs/{id}"),
-        project,
-        id,
-        run,
-        request,
-    })
+    Ok(started(format!("/api/projects/{encoded}/source-jobs/{id}")))
 }
 
 /// The 202 answer.
@@ -165,8 +167,23 @@ pub fn accepted(started: &Started) -> Reply {
     Reply::json(202, text)
 }
 
-/// A start whose operation never began (the worker refused it first): its request is tombstoned
-/// and the job interrupted, so it frees its slot and never runs.
+/// A job whose operation never began, because this process saw the worker refuse it (or the client
+/// leave before the worker answered): the job is interrupted, so it frees its slot and never runs.
+/// No request tombstone is kept, so refusals can never fill the store's bounded tombstone list.
+pub fn interrupt(ctx: Ctx<'_>, owner: &Owner, job: &Started) -> Result<(), Error> {
+    jobs::interrupt(
+        jctx(ctx, owner),
+        ctx.user_id,
+        &owner.start,
+        &owner.born,
+        &owner.owner,
+        (&job.id, &job.run),
+    )
+}
+
+/// A start whose reply was lost, so the caller cannot tell whether it began (it holds no job): its
+/// request is tombstoned (the oldest tombstone goes past the store's bound) and any job of it
+/// interrupted, so it frees its slot and never runs. A refusal this process saw is [`interrupt`].
 pub fn abandon(ctx: Ctx<'_>, owner: &Owner, request: &str) -> bool {
     jobs::abandon(
         jctx(ctx, owner),
