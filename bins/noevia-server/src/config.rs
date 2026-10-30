@@ -60,6 +60,12 @@ pub struct Config {
     /// GET /api/models/capabilities and /api/models/hardware (sbstndalton/noevia#2187): the engine
     /// kind (the same one /api/stats reads), the preset file and the model management service.
     pub models: crate::model_routes::ModelReads,
+    /// GET /api/plugins/directory (sbstndalton/noevia#2190): the fixed directory hosts, or the
+    /// synthetic ones a QA run names.
+    pub plugin_directory: crate::plugin_directory_routes::Sources,
+    /// /api/admin/decision-settings (sbstndalton/noevia#2190): the deployment's
+    /// COWORK_DECISION_URL, the view's fallback.
+    pub decision: crate::decision_settings_routes::Deployment,
     /// GET /api/models/estimate and /api/models/preset/suggest (sbstndalton/noevia#2189): the
     /// preset file, the model mounts, the sizing budget keys and the same engine /api/stats reads.
     pub sizing: std::sync::Arc<crate::model_sizing::Sizing>,
@@ -342,6 +348,8 @@ impl Config {
             rust_routing_default,
             rust_stats,
             models,
+            plugin_directory: crate::plugin_directory_routes::Sources::from_lookup(&get),
+            decision: crate::decision_settings_routes::Deployment::from_lookup(&get),
             sizing,
             rust_export,
             project_store,

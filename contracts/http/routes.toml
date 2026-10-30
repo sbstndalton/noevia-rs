@@ -40,13 +40,16 @@ path = "/api/account/retention"
 owner = "rust"
 methods = ["GET"]
 
+# sbstndalton/noevia#2190: Settings -> Models -> Decision service, every method (each answers its
+# own 405); Rust alone writes decision:configuration, Node re-reads it per decision and refuses the
+# routes (core rust-decision-settings.cjs).
 [[route]]
 path = "/api/admin/decision-settings"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/admin/decision-settings/test"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/admin/features"
@@ -530,9 +533,11 @@ owner = "node"
 path = "/api/models/{*}"
 owner = "node"
 
+# sbstndalton/noevia#2190: the front's (bins/noevia-server plugin_directory_routes.rs); Node
+# refuses it (core rust-plugin-directory.cjs).
 [[route]]
 path = "/api/plugins/directory"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/profile"
@@ -767,14 +772,19 @@ path = "/api/workspace"
 owner = "node"
 
 # Non-/api pages (M1). Node answers these before its static fallback, so they stay Node's.
+# sbstndalton/noevia#2190: the public pages and the device approval page are the front's
+# (bins/noevia-server public_pages.rs); Node refuses them (core rust-public-pages.cjs). The other
+# methods of /about and /privacy stay Node's.
 [[route]]
 path = "/about"
-owner = "node"
+owner = "rust"
+methods = ["GET", "HEAD"]
 client = false
 
 [[route]]
 path = "/privacy"
-owner = "node"
+owner = "rust"
+methods = ["GET", "HEAD"]
 client = false
 
 [[route]]
@@ -786,7 +796,7 @@ client = false
 # /device answers a JSON 404 while the nativeClientAuth feature is off (routes/device-auth.cjs).
 [[route]]
 path = "/device"
-owner = "node"
+owner = "rust"
 client = false
 
 # The built web client: a file of the bundle (cache headers, ETag, br/gzip as static-files.cjs),
