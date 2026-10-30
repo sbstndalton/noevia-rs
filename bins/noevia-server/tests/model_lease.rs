@@ -84,14 +84,14 @@ fn renewed() -> Answer {
 
 struct Setup {
     _d: tempfile::TempDir,
-    _db: rusqlite::Connection,
+    _db: Box<dyn std::any::Any>,
     addr: std::net::SocketAddr,
     _stop: tokio::sync::oneshot::Sender<()>,
 }
 
 async fn front(router_port: u16, node_port: u16, extra: &[(&str, &str)]) -> Setup {
     let d = tempfile::tempdir().unwrap();
-    let db = seed_database(d.path());
+    let db: Box<dyn std::any::Any> = Box::new(seed_database(d.path()));
     let ini = d.path().join("models.ini");
     std::fs::write(&ini, "[A]\nmodel = /models/a.gguf\n").unwrap();
     let mut env: Vec<(String, String)> = vec![

@@ -383,7 +383,6 @@ async fn the_front_is_the_only_writer_and_a_bad_inbox_entry_is_dropped_without_h
         ("007-model.json", json!({"kind": "record", "model": "x".repeat(201), "record": {"category": "vision", "result": "passed"}}).to_string()),
         ("008-huge.json", format!("{{\"kind\":\"record\",\"model\":\"fx\",\"pad\":\"{}\"}}", "x".repeat(70_000))),
         ("009-partial.tmp", "{".into()),
-        ("010-good.json", json!({"kind": "record", "model": "fx", "record": {"category": "vision", "result": "reported", "value": null, "limitations": []}}).to_string()),
     ];
     for (n, t) in &bad {
         std::fs::write(inbox.join(n), t).unwrap();
@@ -402,6 +401,23 @@ async fn the_front_is_the_only_writer_and_a_bad_inbox_entry_is_dropped_without_h
         ],
     )
     .await;
+    // The good one carries the identity it was measured on, as Node's producers do.
+    let (_, _, live) = call(
+        addr,
+        "GET",
+        "/api/models/evidence?model=fx",
+        Some(MEMBER),
+        b"",
+    )
+    .await;
+    let live: Value = serde_json::from_str(&live).unwrap();
+    std::fs::write(
+        inbox.join("010-good.json"),
+        json!({"kind": "record", "model": "fx", "identityHash": live["identityHash"], "at": 1_700_000_000_000u64,
+            "record": {"category": "vision", "result": "passed", "value": null, "limitations": []}})
+        .to_string(),
+    )
+    .unwrap();
     let started = std::time::Instant::now();
     loop {
         let left: Vec<String> = std::fs::read_dir(&inbox)
