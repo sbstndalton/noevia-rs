@@ -79,6 +79,10 @@ prompt-framing = { path = "../../crates/prompt-framing" }
 server-export = { path = "../../crates/server-export" }
 provider-egress = { path = "../../crates/provider-egress" }
 server-chatgpt-status = { path = "../../crates/server-chatgpt-status", optional = true }
+# sbstndalton/noevia#2202: the MCP credential broker (mcp_broker.rs, mcp_egress.rs, mcp_routes.rs).
+secret-envelope = { path = "../../crates/secret-envelope" }
+ssrf-policy = { path = "../../crates/ssrf-policy" }
+mcp-frame = { path = "../../crates/mcp-frame" }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 base64 = "0.22"
 brotli = "8"
@@ -106,7 +110,6 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.9"
 
 [dev-dependencies]
-secret-envelope = { path = "../../crates/secret-envelope" }
 # tests/storage_integrations.rs: a synthetic https Nextcloud on 127.0.0.1 (tests/fixtures/synthetic-tls).
 rustls = { version = "=0.23.45", default-features = false, features = ["std", "ring", "tls12"] }
 tokio-rustls = { version = "=0.26.6", default-features = false, features = ["ring", "tls12"] }

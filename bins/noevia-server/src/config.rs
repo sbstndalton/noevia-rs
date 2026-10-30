@@ -66,6 +66,9 @@ pub struct Config {
     /// /api/admin/decision-settings (sbstndalton/noevia#2190): the deployment's
     /// COWORK_DECISION_URL, the view's fallback.
     pub decision: crate::decision_settings_routes::Deployment,
+    /// The MCP credential broker (sbstndalton/noevia#2202): NOEVIA_QA_ALLOW_LOOPBACK_MCP.
+    #[cfg(feature = "rust-storage-reads")]
+    pub mcp: crate::mcp_broker::Settings,
     /// The storage test/folder routes and the Nextcloud sign-in (sbstndalton/noevia#2190): a QA
     /// run's extra trusted root (`NOEVIA_QA_STORAGE_CA`, a DER file), for synthetic https
     /// servers; production leaves it unset and trusts the public roots only.
@@ -364,6 +367,8 @@ impl Config {
             models,
             plugin_directory: crate::plugin_directory_routes::Sources::from_lookup(&get),
             decision: crate::decision_settings_routes::Deployment::from_lookup(&get),
+            #[cfg(feature = "rust-storage-reads")]
+            mcp: crate::mcp_broker::Settings::from_lookup(&get),
             storage_qa_ca: get("NOEVIA_QA_STORAGE_CA")
                 .filter(|p| !p.is_empty())
                 .and_then(|p| std::fs::read(p).ok()),
