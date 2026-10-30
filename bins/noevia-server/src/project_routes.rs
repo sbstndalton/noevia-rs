@@ -112,12 +112,18 @@ pub enum Route {
     Documents {
         project: String,
     },
-    /// POST /api/projects/{id}/upload or .../sources/sync, answered here only with `background=1`
-    /// (sbstndalton/noevia#2191 round 6, `rust-source-jobs`); the synchronous form is Node's, the
-    /// front's worker call.
-    BackgroundSource {
+    /// POST /api/projects/{id}/upload (sbstndalton/noevia#2191 round 8, `rust-project-source-work`):
+    /// the synchronous form answers with the result, `?background=1` starts a source job.
+    SourceUpload {
         project: String,
-        sync: bool,
+    },
+    /// POST /api/projects/{id}/sources/sync (round 8), likewise.
+    SourceSync {
+        project: String,
+    },
+    /// POST /api/projects/{id}/folder-import/plan (round 8).
+    FolderImportPlan {
+        project: String,
     },
     /// GET /api/projects/{id}/source-jobs/{jobId} (sbstndalton/noevia#2191 round 6)
     SourceJob {
@@ -196,18 +202,19 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
         ("POST", [project, "documents"]) if !project.is_empty() => Some(Route::Documents {
             project: (*project).to_string(),
         }),
-        // routes/projects.cjs's background wrapper, `/^\/api\/projects\/([^/]+)\/(upload|sources\/sync)$/`
-        // and the poll, `/^\/api\/projects\/([^/]+)\/source-jobs\/([^/]+)$/` (round 6).
-        ("POST", [project, "upload"]) if !project.is_empty() => Some(Route::BackgroundSource {
+        // routes/projects.cjs `projUpload`, `projSync` and `folderPlan` (round 8), POST only.
+        ("POST", [project, "upload"]) if !project.is_empty() => Some(Route::SourceUpload {
             project: (*project).to_string(),
-            sync: false,
         }),
-        ("POST", [project, "sources", "sync"]) if !project.is_empty() => {
-            Some(Route::BackgroundSource {
+        ("POST", [project, "sources", "sync"]) if !project.is_empty() => Some(Route::SourceSync {
+            project: (*project).to_string(),
+        }),
+        ("POST", [project, "folder-import", "plan"]) if !project.is_empty() => {
+            Some(Route::FolderImportPlan {
                 project: (*project).to_string(),
-                sync: true,
             })
         }
+        // The poll, `/^\/api\/projects\/([^/]+)\/source-jobs\/([^/]+)$/` (round 6).
         ("GET", [project, "source-jobs", job]) if !project.is_empty() && !job.is_empty() => {
             Some(Route::SourceJob {
                 project: (*project).to_string(),
@@ -379,18 +386,15 @@ pub async fn serve(
     req: Request<Body>,
     path: String,
 ) -> Response<Body> {
-    let (mut parts, body) = req.into_parts();
+    let (parts, body) = req.into_parts();
     // `url.searchParams.get('background') === '1'`: the first `background`, form-decoded.
     let background = parts.uri.query().is_some_and(|q| {
         url::form_urlencoded::parse(q.as_bytes())
             .find(|(k, _)| k == "background")
             .is_some_and(|(_, v)| v == "1")
     });
-    let route = route(parts.method.as_str(), &path)
-        .filter(|r| background || !matches!(r, Route::BackgroundSource { .. }));
+    let route = route(parts.method.as_str(), &path);
     let Some(route) = route else {
-        // A synchronous upload or sync is Node's; only this front may ask for its worker form.
-        parts.headers.remove(crate::source_job_routes::WORK_HEADER);
         return app
             .proxy
             .forward(conn.peer, Request::from_parts(parts, body))
@@ -439,12 +443,12 @@ pub async fn serve(
         Route::ImportConversations => Some(server_projects::import::MAX_BYTES),
         Route::DeleteFile { .. } => Some(server_projects::files::BODY_LIMIT),
         Route::Documents { .. } => Some(server_projects::project_documents::BODY_LIMIT),
-        // The legacy proxy's caps, which these bodies met before (core's own readJson caps lie
-        // within them).
-        Route::BackgroundSource { sync: false, .. } => {
-            Some(crate::legacy_proxy::UPLOAD_BODY_CAP as usize)
-        }
-        Route::BackgroundSource { sync: true, .. } => Some(crate::legacy_proxy::BODY_CAP as usize),
+        // core's `readBody` caps (round 8): the upload ceil(60 MiB / 3) * 4 + 512 KiB, the folder plan
+        // 4 MiB; the sync's body is read only for a background start (the worker's check).
+        Route::SourceUpload { .. } => Some(server_projects::upload::BODY_LIMIT),
+        Route::SourceSync { .. } if background => Some(crate::legacy_proxy::BODY_CAP as usize),
+        Route::SourceSync { .. } => None,
+        Route::FolderImportPlan { .. } => Some(server_projects::upload::PLAN_LIMIT),
         Route::SourceJob { .. }
         | Route::DeleteProject { .. }
         | Route::One { .. }
@@ -487,7 +491,14 @@ pub async fn serve(
             Err(()) if matches!(route, Route::Documents { .. }) => {
                 return reply::error(StatusCode::BAD_REQUEST, "invalid JSON", true)
             }
-            Err(()) if matches!(route, Route::BackgroundSource { .. }) => {
+            Err(())
+                if matches!(
+                    route,
+                    Route::SourceUpload { .. }
+                        | Route::SourceSync { .. }
+                        | Route::FolderImportPlan { .. }
+                ) =>
+            {
                 return reply::error(StatusCode::BAD_REQUEST, "invalid JSON", true)
             }
             Err(()) if matches!(route, Route::SaveHistory { .. }) => {
@@ -497,27 +508,46 @@ pub async fn serve(
         },
         None => None,
     };
-    // The source jobs (round 6): the store side runs on the blocking pool, the operation is Node's.
+    // The source jobs (round 6): the store side runs on the blocking pool; the operation is the front's
+    // own since round 8 (crates/server-projects `upload`, `sync`).
     match &route {
         Route::SourceJob { project, job } => {
             let account = crate::source_job_routes::Account {
                 data_dir: data_dir.clone(),
                 user: authn.user.id.clone(),
                 start: start_id.clone(),
-                now_ms: now,
             };
             return crate::source_job_routes::poll(account, project.clone(), job.clone()).await;
         }
-        Route::BackgroundSource { project, .. } => {
-            let Some(b) = upload else {
-                return reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true);
-            };
+        Route::SourceUpload { project } | Route::SourceSync { project } => {
             let account = crate::source_job_routes::Account {
                 data_dir: data_dir.clone(),
                 user: authn.user.id.clone(),
                 start: start_id.clone(),
-                now_ms: now,
             };
+            let kind = if matches!(route, Route::SourceSync { .. }) {
+                crate::source_job_routes::Kind::Sync
+            } else {
+                crate::source_job_routes::Kind::Upload
+            };
+            let (bytes, over) = match upload {
+                Some(b) => (b.bytes, b.over),
+                None => (Vec::new(), false),
+            };
+            let work = crate::source_job_routes::Work {
+                kind,
+                // The path as the client sent it (Node decodes the id itself).
+                project: project.clone(),
+                body: Arc::new(bytes),
+                over,
+                retry: parts
+                    .headers
+                    .get("x-cowork-storage-retry")
+                    .is_some_and(|v| v.as_bytes() == b"1"),
+            };
+            if !background {
+                return crate::source_job_routes::run_sync(app, authn.clone(), account, work).await;
+            }
             let (layer, creds, gate_path, dir, user) = (
                 Arc::clone(&regate_layer),
                 regate_creds.clone(),
@@ -529,20 +559,7 @@ pub async fn serve(
                 regate(&layer, &creds, &gate_path, now, &dir, &user)
                     .map_err(|r| Box::new(refusal(r)))
             };
-            // The path as the client sent it (Node decodes the id itself).
-            let raw_path = parts.uri.path().to_owned();
-            return crate::source_job_routes::start(
-                app,
-                conn.peer,
-                account,
-                raw_path,
-                project.clone(),
-                parts.headers.clone(),
-                b.bytes,
-                b.over,
-                again,
-            )
-            .await;
+            return crate::source_job_routes::start(app, authn.clone(), account, work, again).await;
         }
         _ => {}
     }
@@ -554,6 +571,9 @@ pub async fn serve(
     // blocking pool with the rest.
     let create_inputs = matches!(route, Route::CreateProject | Route::ImportConversations)
         .then(|| (Arc::clone(app), authn.clone()));
+    // A folder import's plan needs to know whether the account's storage is browsable (round 8).
+    let plan_inputs =
+        matches!(route, Route::FolderImportPlan { .. }).then(|| (Arc::clone(app), authn.clone()));
     // A source file's delete writes to the user's storage (round 3, #2191).
     let file_inputs =
         matches!(route, Route::DeleteFile { .. }).then(|| (Arc::clone(app), authn.clone()));
@@ -588,6 +608,7 @@ pub async fn serve(
             | Route::DeleteProject { .. }
             | Route::DeleteFile { .. }
             | Route::Documents { .. }
+            | Route::FolderImportPlan { .. }
             | Route::ImportConversations
     ) || (matches!(route, Route::One { .. }) && method == "DELETE");
     let done = tokio::task::spawn_blocking(move || {
@@ -709,6 +730,13 @@ pub async fn serve(
                 }
                 None => Reply::internal(),
             },
+            (Route::FolderImportPlan { project }, Some(b)) => {
+                // Whether the account's storage is browsable (core `isBrowsable(getStorage(...))`).
+                let remote = plan_inputs
+                    .as_ref()
+                    .is_some_and(|(app, authn)| storage_kind(app, authn).is_some());
+                server_projects::upload::plan(ctx, &project, &b.bytes, b.over, remote)
+            }
             (Route::DeleteProject { project }, _) => lifecycle::delete(ctx, &project),
             (Route::DeleteFile { project }, Some(b)) => match &file_inputs {
                 Some((app, authn)) => {
@@ -733,6 +761,7 @@ pub async fn serve(
                 | Route::ImportConversations
                 | Route::Documents { .. }
                 | Route::DeleteFile { .. }
+                | Route::FolderImportPlan { .. }
                 | Route::Upload { .. }
                 | Route::SaveChats { .. }
                 | Route::SaveFreeChats
@@ -741,7 +770,10 @@ pub async fn serve(
                 None,
             ) => Reply::internal(),
             // Answered above (source_job_routes).
-            (Route::BackgroundSource { .. } | Route::SourceJob { .. }, _) => Reply::internal(),
+            (
+                Route::SourceUpload { .. } | Route::SourceSync { .. } | Route::SourceJob { .. },
+                _,
+            ) => Reply::internal(),
         })
     })
     .await;

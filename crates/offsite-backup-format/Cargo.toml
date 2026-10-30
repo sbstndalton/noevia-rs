@@ -1,0 +1,19 @@
+[package]
+name = "offsite-backup-format"
+version = "0.1.0"
+description = "The off-site backup store format of noevia-core's offsite-backup.cjs (noevia-offsite-v1: sealed config, chunks and snapshot manifests, restic-style retention) and the quiet-window rule of its scheduler, pure, for the Rust off-site backup (sbstndalton/noevia#2190 round 7)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Pinned like secret-envelope: this crate opens every sealed backup object.
+[dependencies]
+js-json = { path = "../js-json" }
+aes-gcm = { version = "=0.10.3", default-features = false, features = ["aes", "zeroize"] }
+hmac = "=0.12.1"
+sha2 = "=0.10.9"
+zeroize = { version = "=1.9.1", default-features = false, features = ["alloc"] }

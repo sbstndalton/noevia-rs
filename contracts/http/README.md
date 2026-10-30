@@ -465,8 +465,7 @@ file whose name is a validated hex hash, never a request value.
 | `/api/projects` (POST), `/api/projects/{projectId}` (DELETE) | rust | round 2, below |
 | `/api/projects/{projectId}/config` | node | its model check reads Node's served-model catalogue and provider registry (live state, not persisted), and a `files` patch re-indexes through Node's RAG writer; next after the provider/model catalogue is published like the toolbox catalogue |
 | `/api/projects/{id}/documents` (POST) | rust | round 5, below: the front's Docling pipeline and durable extraction queue |
-| `/api/projects/{id}/upload`, `/sources/sync` (POST with `?background=1`), `/api/projects/{id}/source-jobs/{jobId}` (GET) | rust | round 6, below: the front owns the source-job store, starts and answers every background job, and runs its operation through Node's synchronous route |
-| `/api/projects/{id}/upload`, `/sources/sync` (POST without `background`), `folder-import/plan` | node | the operation each job runs, and the plan whose tickets the organized upload consumes in Node's memory. What keeps them on Node: the upload's other readers (`pdf-reduce` through OCR `/reduce-pdf`, the DOCX reader, text decoding with its notes, image assets with retire/prune, the type groups, the create-only remote write with `discardCreated`), the sync's storage reads (a 96 MiB binary read with the large-document lock taken from Content-Length, the text reads, the breadth-first listing), its OCR budget and `reopenStored`, the storage latch (`automaticHold`, Node memory) and core's pdf.js reader for documents when Docling is off; the front has a storage list/text-preview/write client but no binary read yet |
+| `/api/projects/{id}/upload`, `/sources/sync`, `/folder-import/plan` (POST, with or without `?background=1`), `/api/projects/{id}/source-jobs/{jobId}` (GET) | rust | rounds 6 and 8, below: the front owns the source-job store and runs the operations itself (streamed storage reads, Docling, the OCR worker's `/reduce-pdf` and `/extract-docx`, the storage latch, the folder import's tickets); Node has no worker call and no copy of any of it |
 | `/api/projects/{projectId}/instruction-skills`, `.../manifests`, `/api/projects/{project}/skills/install` | node | the known-toolbox list (plugins, MCP) is Node's runtime catalogue; install fetches a published skill through Node's plugin directory |
 | `/api/projects/{projectId}/browser`, `/code`, `/research` | node | they drive a browser session, the code harness or research jobs |
 | `/api/code/active` | node | the code harness service's live task list |
@@ -619,8 +618,7 @@ job that chat or another Node route reads):
 
 | route | why it stays |
 |---|---|
-| `/api/connectors`, `/api/connectors/gdrive/*`, `/api/connectors/nextcloud/policy` | drive-accounts.cjs holds personal Drive tokens in memory and the chat tools read the policies in-process |
-| `/api/admin/offsite-backup` and its six children | offsite-service.cjs runs the backup, copy and verify jobs and their busy lock and 15-minute timer in-process |
+| `/api/connectors`, `/api/connectors/nextcloud/policy` | the Nextcloud half lists the live MCP servers' tools and which write (round 7 moved the Google Drive writes and the off-site backup, below) |
 | `/api/admin/users/{id}` (DELETE) | the clean-up spans Node's workspace cache, MCP OAuth and directory MCP keys in memory (the ChatGPT tokens through the broker's `/v1/chatgpt/forget`) |
 | `/api/auto-roles` | GET reads the served catalogue and machine models; an admin PUT warms the roles in Node's engine (`ensureRolesLoaded`) |
 | `/api/health` | `ragAvailable` and the `retrieval` tri-state are Node's cached RAG status (Node-live); the default provider row is now env-derived in the front (provider_routes.rs `Deployment`), so only that status needs publishing (round 6 below) |
@@ -704,9 +702,126 @@ tokens without a row or a re-added row.
 
 | route(s) | why it stays | plan |
 |---|---|---|
-| `/api/connectors*` (Drive and the Nextcloud policy) | `drive-accounts.cjs` and `gdrive.cjs` hold the Drive device sign-in, the sealed refresh tokens (`google-drive-users/<id>.sealed`, HKDF key from `secrets.key`) and the access-token refresh in process; the chat tools (`gdrive-tools.cjs`) and the administrator's off-site backup mirror (`offsite-service.cjs`, the `google-drive.sealed` slot that doubles as that administrator's personal connection) call `drive.token()`/`call()`; the view needs the tool catalogue (`isWrite`) and the `tool_policies` table Node writes through policy-leaves | a Drive broker on the ChatGPT pattern (`/v1/gdrive/{session,reject,disconnect,forget}` on the internal store, enc-sealed rows, single-flight refresh, compare-and-swap writes, a change-signal file), with the backup slot's ownership rule (`ownsBackup`) ported with it; Node's tools and the mirror ask for access tokens only; the policies become a re-read of `tool_policies` by content fingerprint, as the decision settings are. The off-site backup stays Node's (its own round) and uses the broker's session |
+| `/api/connectors*` (Nextcloud policy and the list's Nextcloud half) | the Nextcloud half lists the live MCP servers' tools and which of them write | Google Drive's half moved in round 7 (below): the Drive device sign-in, the sealed refresh tokens and the access-token refresh are the front's, and Node's chat tools ask it over `/v1/gdrive/*` |
 | `/api/health` | see the table above | Node writes `rag-status.json` (`{ version, ragAvailable, retrieval, at }`, atomically, on a timer and when the status changes); the front reads it per request, probes the default provider and the Diary itself, and reports a snapshot older than a bound as `retrieval: "unavailable"` |
 | `/api/auto-roles` | GET needs the served catalogue (names, `missingFile`) and the machine models, both Node-live; PUT warms the roles in the engine | publish the catalogue and machine-model names in the same snapshot; GET moves with it; PUT stays Node's (chat-live) unless the warm-up is split from the save |
+
+### Round 7: Google Drive's token authority and the off-site backup
+
+| route | owner | capability / Core refusal | notes |
+|---|---|---|---|
+| `/api/connectors/gdrive/connect`, `/disconnect` (POST), `/policy`, `/backup-copy` (PUT) | rust | `rust-google-drive` / `RUST_GOOGLE_DRIVE_OWNED` | connector_routes.rs: any signed-in account, its own connection only (`ownsBackup`: the backup slot doubles as the administrator's Drive); answers core's connector object; other methods stay Node's 404 |
+| `/api/admin/offsite-backup`, `/run`, `/verify`, `/copy`, `/google/connect`, `/google/disconnect`, `/new-store`, `/recovery-key` (every method) | rust | `rust-offsite-backup` / `RUST_OFFSITE_BACKUP_OWNED` | offsite_routes.rs: administrators only (403 `Administrator required`), 405 for the wrong method; `POST /new-store` is the review's "this is a new store" action (below), behind the CSRF check like every POST |
+
+Node's `server/gdrive.cjs`, `drive-accounts.cjs`, `offsite-*.cjs` and `routes/offsite-backup.cjs` are deleted.
+
+**The broker** (gdrive.rs) owns all Google OAuth state: each account's device sign-in and sealed refresh token
+(`google-drive-users/<id>.sealed`, key `secrets.cjs derive('google-drive-user')`, the retired key still read
+until a rotation re-seals it) and the backup slot (`google-drive.sealed`, key `OFFSITE_BACKUP_KEY_FILE`). The
+on-disk format is unchanged (crates/google-token-seal: HKDF-SHA256 file key, AES-256-GCM, base64 of
+iv|tag|body), so a Node build reads what Rust saved; the golden vector is in both repos. The refresh is single
+flight per slot; a disconnect never waits for it and a refresh that finishes after a disconnect or a newer
+sign-in is discarded (the sign-in's identity is a digest of the refresh token and `connectedAt`, never the
+token); every state-changing request runs as a spawned task, so a dropped request strands nothing. Google
+endpoints other than a loopback QA server are not accepted (`GOOGLE_OAUTH_BASE_URL`, `GOOGLE_DRIVE_API_BASE_URL`,
+`GOOGLE_DRIVE_UPLOAD_BASE_URL`; core took any URL).
+
+**Node's chat tools** ask the broker over the internal store (`POST /v1/gdrive/<op>`, loopback, per-start secret):
+`session {user, admin, rejected?}` -> `{accessToken, expiresAt, generation}` or `{error, code, status}` with
+`disconnected`, `reconnect` or `transient`; `reject {user, admin, generation}`; `disconnect`; `forget {user}`
+(account deletion); and three more than the plan named: `view` (the Google Drive half of `GET /api/connectors`, whose
+Nextcloud half is Node's), `policy {user, tools, writes, mode}` (the Nextcloud permissions, written by the front
+because it is `tool_policies`' only writer) and `reseal {}` -> `{current, rotated, empty, failed}` (counts only):
+`secrets:rotate` re-seals the accounts' token files under the current `secrets.key` here, under the same fence as
+every other change to them, loading the keys from disk at that moment; Node's rotation awaits it first and then only
+checks that every file opens under the current key (it writes none, so a rotation can never resurrect a disconnected
+account or drop a remembered folder). `admin: true` in a request is checked against `users.role`; a claim the table
+does not confirm is a member, and a table that cannot be read is a 503, not a member. A refresh token never reaches Node. Requests have two time budgets: 30 s for a token,
+form or JSON exchange and 300 s for an upload. The front also removes the connection files (revoked at Google first) of
+accounts the `users` table no longer has, once at start (never when the table is unreadable or empty), and checks the
+state file once a minute, rewriting it only when what it says changed (the backup key file appearing or going flips
+`backup.usable`); writes of it are serialized. The broker rewrites
+`gdrive-connections.json` after each change (no secret, no email: the accounts that have a connection file and its
+state, and the backup slot's `{usable, state, owner, expiresAt}`; at start only when there is a connection file or an older
+state file to correct, because Node reads a missing file as "nobody is connected" and the corpus replay compares the data
+directory; the front makes `google-drive-users/` (0700) the first time an account's Drive is asked for, as core's `forUser` did); Node's sync `connected(user)` and its
+60-second access-token cache follow that file's signal, and the shared cases in `gdrive-owns-backup.v1.json`
+prove Node and the front agree on `ownsBackup`. `tool_policies`: a per-statement grant (server-store
+`RustToolPolicies`, `upsert_tool_policy`, never a delete); core's guard refuses every Node write even inside
+`exempt()`; Node reads it per call and its permitted-tools cache empties itself when the table's content
+fingerprint or the state file moves.
+
+**The off-site backup** (offsite_*.rs): the format is core's `noevia-offsite-v1` byte for byte (crates/offsite-backup-format;
+a store Node wrote is read by Rust, tests/fixtures/offsite-node-store and offsite-node-store-first-release, the latter
+written by the first released engine, core commit d4e31d7, whose manifests have no `incomplete`). A manifest missing
+`root`, `size`, `mode`, `mtime` or `time` still lists and still protects its chunks (core checked only `format` and
+`files`); a missing time is the snapshot id's. The reusable crates:
+`secret-envelope`'s `enc:v2` is the credential seal, not this format; `diary-backup-format` and
+`workspace-restore-verify` are the Diary workspace archive's and do not fit; `s3-sign` and `dav-parse` (the XML scan)
+do. Differences from core: a live SQLite file is copied with `VACUUM INTO` on a read-only connection (core used the
+online backup API), a file that cannot be copied consistently is skipped and the manifest flagged `incomplete`.
+
+*What a run guarantees.* A backed-up folder that is missing or unreadable fails the run before anything is written.
+Every other skip (a file that vanished or cannot be opened or read, a name that is not UTF-8, an unreadable subfolder, a
+database without a consistent copy) is counted, flags the manifest `incomplete` and shows as `lastBackup.incomplete` and
+`lastBackup.skipped` in the status (the web page does not show them yet: a follow-up in noevia-web). A destination that has
+no `config` is not initialised once `lastBackup` exists for the same destination (`backupDestination` in the status
+file): an unmounted NAS is an empty directory, and a fresh store there would start a second chain and a `noevia-offsite (2)`
+folder on Drive; the error says to check the mount, and names the remedy for a destination that really is new (a replaced
+disk, a recreated bucket at the same path or name, which no digest tells from an unmounted one): an administrator confirms
+it with `POST /api/admin/offsite-backup/new-store` (administrators only, CSRF-gated, no body, 409 while a job runs or when
+another process holds the job lock). That clears `lastBackup`, `backupDestination`, `backupRetry`, `snapshots` and
+`unreadableSnapshots` from the status file, and `lastError` when it is the empty-destination refusal (any other failure
+stays), so the next backup initialises the destination and records it again. It refuses (409, nothing changed) when the
+destination already holds a store (`config`): that is not a new store, and the status of a working one is not forgotten.
+*A status file from before this release* (it has `lastBackup` and no `backupDestination`) counts its last backup as made to
+the current destination: the digest is only compared when one was recorded, so an empty destination is refused after the
+upgrade too, until a good backup stamps the digest, and the same action applies. The snapshot is recorded (`lastBackup`) as soon as it is stored; a
+retention failure after it is recorded on its own (`lastError` "saved, but applying retention failed") and is not a failed
+backup. Retention is 7 daily, 4 weekly, 6 monthly, always the newest snapshot and the newest complete one, and within a
+bucket the complete one; chunks are pruned only when every snapshot the store lists was read (a flaky or damaged manifest
+read must not turn its chunks into garbage), the snapshot just written is passed in and kept, and a chunk younger than
+24 hours is never pruned. The restore test reads the newest listed snapshot back chunk by chunk without writing it
+anywhere and fails when that snapshot cannot be read, instead of passing an older one. A manifest with an entry that
+names no `chunks` array still lists, restores and is kept, but what it protects is unknown, so it counts as unreadable
+for the prune (nothing is pruned while it is there; `unreadableSnapshots` counts it). A restore test that passes clears
+`lastError` only when that error is its own (`during` "restore test"), not a backup's.
+`<data dir>/offsite-backup.lock` (an exclusive `flock`) holds the one-job-at-a-time rule across processes. It lives in the
+UI data directory (production: btrfs, where `flock` works), never in the destination (production `/offsite` is a FUSE
+mount), and is left out of the backup. A job that finds it held is refused with a 409 that is nobody's failure: it writes
+neither `backupRetry` nor `lastError`. A `flock` that fails for any other reason (a file system without locks) logs a
+warning and the job runs unlocked: the in-process busy mark still holds. A job ends at the latest after 6 hours
+(`JOB_DEADLINE`): the busy mark and the lock are released and the failure recorded. "Run now" copies the stored snapshot
+to Drive even when the retention after it hit that deadline.
+Leftovers of a killed run (`.tmp-` files in the destination older than 2 hours, `noevia-sqlite-*` and
+`noevia-restore-test-*` directories older than 7 hours in the system temp directory) are swept; a full destination has its
+own message.
+
+*Schedule.* Every 15 minutes (a slow check delays the next, it is not followed by a burst) a run starts when the clock
+is within six hours after `OFFSITE_BACKUP_HOUR` (core: only inside that hour), the last backup is over 20 hours old, no
+quiet window is open and the last failure's backoff is over: 15 minutes doubling to 2 hours, at most three scheduled
+attempts per window (`backupRetry` in the status file; `lastError.failures` shows the count). Three zones are named and none is guessed.
+The hour is read on the process clock, exactly as core's `new Date().getHours()` did: the `TZ` the process runs with, and
+UTC without one (the production web container sets no `TZ` and its `/etc/localtime` is `Etc/UTC`, so there Node's `getHours()` and this agree on UTC; the status shows `scheduleZone`). The quiet
+windows are read in explicit zones: the NAS window 02:20-04:30 always in America/New_York, the appdata backup 04:05-04:25 in
+the host's zone, `OFFSITE_BACKUP_TIMEZONE`, default America/New_York (the Unraid host runs on Eastern time). Known names
+are `America/New_York` (also `US/Eastern`, `EST5EDT`, `America/Detroit`; the US daylight-saving rule) and `UTC`/`Etc/UTC`/
+`GMT`; an unknown `TZ` or `OFFSITE_BACKUP_TIMEZONE` is warned about at start (the unknown `TZ` is read as UTC, as Node did;
+an unknown host zone is replaced by the default, never by UTC). The start also logs the zones it uses. On the two daylight-
+saving days the windows follow the wall clock (the NAS window opens at 03:00 on the spring day, the repeated 01:00 hour of
+the autumn day is the same night). A scheduled run pauses between files, never inside one, before it touches the
+destination and between the backup and its retention; "Run now" does not pause, and a manual run asked while a scheduled one
+waits for a window is told so (409) while the status shows `waitingForQuietWindow`.
+Never in a response or a log: the recovery key (only its download), a token, the S3 secret. The mirror's folder rules
+(`noeviaStoreId`, `noevia-offsite (2)`, the 500 and quarter prune guards, same-name-other-size refusal) are core's.
+
+Behaviour changes (each a deliberate edit): the OAuth and Drive base URLs must be loopback; a sign-in whose token
+could not be saved says so instead of staying pending; an invalid connectors body is `400 invalid JSON` (core
+answered 400 `Google Drive could not be reached.`, or 502 for a non-object body); a missed nightly hour is caught up
+within six hours; the status gains `waitingForQuietWindow` while a scheduled run waits, `scheduleZone` (once the
+feature is on) and `unreadableSnapshots` (once a retention counted), none of them while the feature is off, so the
+recorded corpus's answer of a disabled backup replays byte for byte; `lastBackup` gains `incomplete` and `skipped`; `/api/admin/offsite-backup/<other>`
+is Node's generic 404.
 
 ## sbstndalton/noevia#2189 (batch M2-A): the read-only model sizing reads
 
@@ -1014,17 +1129,103 @@ Node's wasm); its inputs are the project's selection (Rust's `projects.json`), t
 (Rust's storage row; Drive), the MCP readiness (this round: the broker's published file), the tool permission
 store, ENABLED_TOOLBOXES / Kiwix / CODE_REPOS (environment) and the discovered MCP catalogue. Three of those
 are still Node-live: the discovered boxes and their tool schemas (live MCP sessions), the per-user tool
-permission store, and the Drive state until the Drive broker (#2200) lands. What this round did for it: the
+permission store (its reads are Node's; `tool_policies` has had the front as its only writer since settings round 7, #2200), and the
+Drive state, which the front's Drive broker now answers per call (`/v1/gdrive/view`) but which this view does not
+yet read as a file. What this round did for it: the
 readiness input is a file, and core's cache key now carries the project's toolbox selection, the connected
 connectors, the readiness and the last discovery (it omitted all of them, so a project edit or a new Nextcloud
 connection by the front showed up to 30 s late). The move itself needs Node to publish its offered catalogue
 (box ids, tool names, write flags) after each discovery as a signal-checked file and the permission store to get a
 Rust writer; then the view is a pure function of files the front already reads.
 
-`GET /api/connectors` is still Node's: the Drive half is Node's in-memory account state and sign-in flow (the
-Drive broker is #2200), and the Nextcloud half is the storage connection (Rust) joined with the tool permission
-store (Node). Both halves publish together or not at all.
+`GET /api/connectors` is still Node's: the Drive half is the Drive broker's view (the front, `/v1/gdrive/view`, since
+settings round 7), and the Nextcloud half is the storage connection (Rust) joined with the tool permission
+store, whose reads are Node's (it knows which live MCP tools write; the front is the table's only writer).
+Both halves publish together or not at all.
 
 Chat-bound, by design: `POST /api/tool-approvals` (the parked approval promise lives in the live chat loop; the
 three actions - Allow once, Decline, Allow for this chat - and their tenant scope stay in Node) and `GET
 /api/toolboxes` (prefill samples come from the chat stream, the MCP block from live discovery state).
+
+## sbstndalton/noevia#2191 round 8 (group rust-project-source-work): the front runs the source operations
+
+`--features` lists `rust-project-source-work`. `POST /api/projects/{id}/upload`, `POST .../sources/sync` and
+`POST .../folder-import/plan` are the front's whole, in the foreground and (round 6) as source jobs
+(`?background=1`); core refuses the three POSTs, whatever the query, with 503
+`RUST_PROJECT_SOURCE_WORK_OWNED` (`server/rust-project-source-work.cjs`, before authentication), and
+`server/rust-source-jobs.cjs` now refuses only the poll. There is no `X-Noevia-Source-Work` worker call, no
+NDJSON answer, and core's `source-work.cjs`, `folder-import.cjs`, `pdf-reduce.cjs` and the routes' copies of the
+upload, the sync and the plan are deleted. The web supervisor and assemble-release.sh refuse a mixed pair (they
+also refuse a pair whose two halves name different storage-latch or file-operation files, or change the latch other
+than with `BEGIN IMMEDIATE`); old/old stays valid.
+
+**Streamed binary storage read** (crates/server-storage-reads `stream`). The storage child's sandbox is unchanged
+(RLIMIT_AS 256 MiB, the 64 MiB wire cap, 25 MiB `WRITE_BYTES`). A file is read as ranged GETs, each one attempt in
+a fresh child, and a reply carries at most 8 MiB (`CHUNK_BYTES`) behind a summary of the response's headers
+(`CHUNK_PREFIX`: the `Content-Range` total, first and last byte, and the ETag; a content coding is refused). The
+chunk's body has the whole attempt's time (20 s), not 10 s. The whole file
+is capped at 96 MiB (`FILE_CAP`) on the size the first reply declares, before the caller's hook runs and before a
+byte reaches the sink, and again on the bytes received. A 206 must carry exactly the range asked for and the same
+declared total throughout, else the read is refused mid-stream; a server that ignores `Range` (a 200) is served only
+when the whole file fits one chunk. The first reply's strong ETag is sent as `If-Range` on every later chunk and
+every reply must carry it: a file replaced by one of the same size mid-read is a 502 "the file changed in storage
+while it was being read", never a file made of two (a server with no ETag, or only a weak one, leaves only the size
+checks). A `416` after the first chunk of a file whose size was declared is that same 502 (the file shrank); it is
+the end of the file only when no size was declared. The front writes the chunks to a temp file under `users/<id>/source-staging/`,
+hashing and fsyncing, and renames it to its hash (`staging`); a failed read leaves nothing, and a file a dead process
+left is swept. The large-document lock is taken from the declared size before the body (`beforeBody`), or first when
+the listed size is large or unknown (#1872), and is re-entrant within the thread that holds it (the sync's read and
+its extraction).
+
+**Behaviour changes.**
+1. A file larger than 96 MiB is refused (413) on its declared size, whatever `PROJECT_DOCUMENT_READ_BYTES` says (core
+   would read up to that setting); the default is 96 MiB.
+2. A storage server that does not honour `Range` can still serve a file that fits one 8 MiB chunk, and no larger one.
+3. Docling is the only extraction engine: there is no pdf.js fallback, and a document whose Docling is down is
+   queued (`document.extraction: "queued"`, its job in `extraction-jobs.db` written before the record that says so;
+   a queue that cannot be written is a 503 and nothing is saved), in the sync and the uploads alike. A stored document
+   is never extracted again or reopened (there is no `reopenStored`). A document the sync's OCR allowance
+   (`PROJECT_SYNC_OCR_PAGES`) left open gets no job: it stays open and the next sync continues it, as core's did; only
+   a document whose Docling is down is queued.
+4. The storage latch is no longer Node's memory: it is `UI_DATA_DIR/storage-latch.db`, one row per account, changed
+   by both processes with the same transitions under `BEGIN IMMEDIATE` (core `storage-latch.cjs` for the Diary
+   backup worker, `storage_latch.rs` for the sync), so a refused login held by one holds the other's automatic calls.
+   The latch is durable: a hold survives a restart of either process (core's was Node's memory and did not). Holds
+   are dated by the moment of the refusal, not of the request. **A latch that cannot be read counts as held**: an
+   automatic sync is answered as throttled for 60 s (an explicit press, `X-Cowork-Storage-Retry: 1`, still runs),
+   because the latch is what keeps a refused login from being fed to the storage server's brute-force protection;
+   core's Diary worker keeps its own behaviour on an unreadable latch. A listing in which a subfolder was refused
+   the login leaves the hold set (core cleared it). Both sides compute the connection fingerprint the same way (a
+   fixed table of rows is checked in both repos). A 429's `Retry-After` is not surfaced by the child, so a throttle
+   holds for the 60 s default.
+5. The running file operations (#1441, #1815) are `users/<id>/source-file-ops.json`, written by the front and
+   re-read by core (`rust-source-ops.cjs`): a chat turn waits for the project's running named operations, and the
+   source-text collector skips a workspace while a sync or folder import runs. An operation is listed before the
+   client is told it was accepted and is stamped when it begins and ends. Core's reader fails closed for the
+   collector: an unreadable list (anything but a missing file) counts as an operation in flight, so nothing is
+   swept; a chat's wait still waits for nothing it cannot read.
+6. The order of a background start is core's again: the project (404), the storage hold of an automatic sync, then
+   the body (413, 400), and only then the job slot (429); round 6's reordering is gone.
+7. The folder-import tickets are in the front's memory with core's semantics (4 per person, 1024 overall, an hour); a
+   front restart ends them as a Node restart did.
+8. The storage endpoint policy (an admin any http(s) origin, a member only `MEMBER_OUTBOUND_ORIGINS`) now applies to
+   a sync and an upload as it does to the browse; the sync's admission is per storage operation (four at once, one per
+   account, 30 s wait), not per sync, so a long sync does not refuse the account's other storage writes; a streamed
+   read takes its slot for each ranged request, not across the read. A saved storage login that cannot be read is a
+   503, not "no storage".
+9. **Bounds.** The operation runs in a thread that cannot be stopped, so it is bounded from outside: past 2 hours
+   (a sync) or 30 minutes (an upload) its job ends as failed 504 and its listing as failed, whether or not the thread
+   has returned (the removed worker's 5 minute accept bound is gone; the store's 6 hour stale bound is the backstop).
+   A hung thread keeps the project's source lock; an upload, a sync or a `POST .../documents` that cannot take it
+   within 30 s (a request) or within half its bound (a job, so the operation keeps the other half) is answered 429.
+   An operation that waited for the lock dates what it writes by the clock after the wait. A synchronous upload or
+   sync runs in a task of its own: a client that disconnects does not end the operation or mark its listing failed. S3 listings are cut at 10,000 entries or 20 pages as before, and the cut
+   is now logged.
+10. **Account removal.** A source operation never makes `users/<id>` again: the staging folder, the stored original,
+   the result record and the image assets are made one level at a time below an existing user folder, and an account
+   removed meanwhile ends the operation 410 `account no longer exists` (core's `assertActive`); a project's source
+   texts (`project-sources/`) are made the same way, so a create or an upload that meets a removed account is 410
+   too.
+
+**Not ported, by decision.** The OCR budget applies to the Docling completion pass only (the pdf.js walk's budgeted
+OCR is gone with pdf.js).

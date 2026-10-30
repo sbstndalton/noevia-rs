@@ -27,7 +27,10 @@ impl Envelope {
         Ok(Self::Body { cap })
     }
     fn http(cap: usize) -> Result<Self, Error> {
-        if !matches!(cap, crate::LIST_BYTES | crate::TEXT_BYTES) {
+        if !matches!(
+            cap,
+            crate::LIST_BYTES | crate::TEXT_BYTES | crate::CHUNK_FRAME
+        ) {
             return Err(Error::Input);
         }
         Ok(Self::Http { cap })
@@ -254,9 +257,20 @@ fn transient(error: &std::io::Error) -> bool {
         std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted
     )
 }
-fn read_step(pipe: &mut impl Read, output: &mut Vec<u8>, cap: usize) -> Result<bool, Error> {
-    let mut scratch = [0; STEP];
-    match pipe.read(&mut scratch) {
+/// How much one pass of the pump reads from the child's stdout: a chunk reply (8 MiB) is drained in
+/// 64 KiB steps, everything else in the fixed 4 KiB.
+const BIG_STEP: usize = 64 * 1024;
+fn read_step(
+    pipe: &mut impl Read,
+    output: &mut Vec<u8>,
+    cap: usize,
+    big: bool,
+) -> Result<bool, Error> {
+    let mut scratch = [0; BIG_STEP];
+    let scratch = scratch
+        .get_mut(..if big { BIG_STEP } else { STEP })
+        .ok_or(Error::Output)?;
+    match pipe.read(scratch) {
         Ok(0) => Ok(true),
         Ok(n) => {
             if output.len().checked_add(n).is_none_or(|v| v > cap) {
@@ -360,6 +374,7 @@ fn pump(
         out.try_reserve_exact(cap).map_err(|_| Error::Output)?;
         let mut err = Vec::new();
         err.try_reserve_exact(STDERR).map_err(|_| Error::Output)?;
+        let big = envelope.maximum() > crate::LIST_BYTES + crate::response_ipc::METADATA + 1;
         let mut ready = false;
         let mut sent = 0;
         let mut out_done = false;
@@ -378,13 +393,13 @@ fn pump(
             }
             if !out_done {
                 let previous = out.len();
-                out_done = read_step(&mut stdout, &mut out, cap)?;
+                out_done = read_step(&mut stdout, &mut out, cap, big)?;
                 if out.len() != previous {
                     observe(PumpObservation::OutputProgress(out.len()), owned.child.id());
                 }
             }
             if !err_done {
-                err_done = read_step(&mut stderr, &mut err, STDERR)?;
+                err_done = read_step(&mut stderr, &mut err, STDERR, false)?;
             }
             envelope.validate(&out)?;
             if !ready && out.len() >= READY.len() {

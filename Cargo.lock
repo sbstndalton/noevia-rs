@@ -1147,6 +1147,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "google-token-seal"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm",
+ "base64 0.22.1",
+ "hmac",
+ "secret-envelope",
+ "sha2",
+ "zeroize",
+]
+
+[[package]]
 name = "group"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1876,8 +1888,10 @@ dependencies = [
  "brotli",
  "bytes",
  "code-net-guard",
+ "dav-parse",
  "flate2",
  "gguf",
+ "google-token-seal",
  "http-body",
  "http-body-util",
  "hyper",
@@ -1885,6 +1899,8 @@ dependencies = [
  "js-json",
  "llamacpp-autoconfig",
  "mcp-frame",
+ "offsite-backup-format",
+ "policy-leaves",
  "prompt-framing",
  "provider-egress",
  "rand_core 0.6.4",
@@ -1965,6 +1981,17 @@ checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
  "libm",
+]
+
+[[package]]
+name = "offsite-backup-format"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm",
+ "hmac",
+ "js-json",
+ "sha2",
+ "zeroize",
 ]
 
 [[package]]
@@ -3013,6 +3040,7 @@ dependencies = [
  "sha2",
  "storage-path",
  "tempfile",
+ "unicode-normalization",
  "upload-sniff",
  "url",
 ]

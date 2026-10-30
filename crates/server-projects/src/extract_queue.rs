@@ -316,6 +316,7 @@ fn run_one(
         mut file,
         retryable,
         open,
+        ..
     } = ingested;
     if retryable {
         let error = file

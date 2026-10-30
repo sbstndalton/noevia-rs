@@ -378,6 +378,64 @@ impl Engine for HttpEngine {
         self.resolve("ocr").is_some()
     }
 
+    /// docx.cjs `extract(bytes)`: the OCR worker's `/extract-docx` (60 s, a 2 MiB reply).
+    fn extract_docx(&self, bytes: &[u8]) -> Result<JValue, EngineError> {
+        let Some((url, machine)) = self.resolve("ocr") else {
+            return Err(EngineError::new(
+                "DOCX reader is unavailable. Re-upload after the document worker is configured.",
+            ));
+        };
+        let req = self
+            .client
+            .post(format!("{}/extract-docx", url.trim_end_matches('/')))
+            .header(
+                "Content-Type",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+            .timeout(Duration::from_secs(60))
+            .body(bytes.to_vec());
+        let (status, body) = self.send(&url, machine, req, 2 * 1024 * 1024)?;
+        if !(200..300).contains(&status) {
+            return Err(EngineError::new(if status == 503 {
+                "Document reader is busy. Re-upload or refresh connected storage to retry."
+            } else {
+                "DOCX could not be read; it may be malformed, encrypted, oversized, or the reader is unavailable."
+            }));
+        }
+        let invalid = || EngineError::new("Invalid DOCX reader response.");
+        let body = body.ok_or_else(invalid)?;
+        wtf16::parse(&String::from_utf8_lossy(&body)).map_err(|_| invalid())
+    }
+
+    /// pdf-reduce.cjs: the OCR worker's `/reduce-pdf` (180 s); `None` without an OCR worker.
+    fn reduce_pdf(&self, bytes: &[u8]) -> Option<Result<JValue, EngineError>> {
+        let (url, machine) = self.resolve("ocr")?;
+        // The largest honest answer is a base64 PDF at 25 MiB plus a small JSON envelope.
+        let cap = (25 * 1024 * 1024usize).div_ceil(3) * 4 + 64 * 1024;
+        let req = self
+            .client
+            .post(format!("{}/reduce-pdf", url.trim_end_matches('/')))
+            .header("Content-Type", "application/pdf")
+            .timeout(Duration::from_secs(180))
+            .body(bytes.to_vec());
+        Some(match self.send(&url, machine, req, cap) {
+            Err(e) => Err(e),
+            Ok((status, _)) if !(200..300).contains(&status) => Err(EngineError {
+                message: format!("storage returned {status}"),
+                status: Some(status),
+                ..Default::default()
+            }),
+            Ok((_, None)) => Err(EngineError {
+                message: "Document processor response was too large.".into(),
+                status: Some(502),
+                permanent: true,
+                ..Default::default()
+            }),
+            Ok((_, Some(body))) => wtf16::parse(&String::from_utf8_lossy(&body))
+                .map_err(|_| EngineError::new("Invalid PDF reduction response")),
+        })
+    }
+
     fn ocr_pages(
         &self,
         bytes: &[u8],

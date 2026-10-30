@@ -34,24 +34,6 @@ use std::task::{Context, Poll};
 
 /// Default request limit: 33 MiB (stored history and workspace imports allow 32 MiB).
 pub const BODY_CAP: u64 = 33 * 1024 * 1024;
-/// Matches core's upload readBody limit: base64 for 60 MiB + a 512 KiB JSON envelope.
-pub const UPLOAD_BODY_CAP: u64 = 80 * 1024 * 1024 + 512 * 1024;
-
-fn request_body_cap(req: &Request<Body>) -> u64 {
-    let upload_id = req
-        .uri()
-        .path()
-        .strip_prefix("/api/projects/")
-        .and_then(|suffix| suffix.strip_suffix("/upload"));
-    if req.method() == axum::http::Method::POST
-        && upload_id.is_some_and(|id| !id.is_empty() && !id.contains('/'))
-    {
-        UPLOAD_BODY_CAP
-    } else {
-        BODY_CAP
-    }
-}
-
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 const HOP_BY_HOP: &[&str] = &[
@@ -254,7 +236,7 @@ impl LegacyProxy {
                 api,
             )
         };
-        let cap = request_body_cap(&req);
+        let cap = BODY_CAP;
         let declared = req
             .headers()
             .get(header::CONTENT_LENGTH)
@@ -367,38 +349,6 @@ mod tests {
                 .await
                 .is_err()
         );
-    }
-
-    #[test]
-    fn upload_limit_is_restricted_to_exact_post_route() {
-        for route in [
-            "/api/projects/synthetic/upload",
-            "/api/projects/synthetic/upload?background=1",
-            "/api/projects/encoded%20id/upload",
-        ] {
-            let req = Request::post(route).body(Body::empty()).unwrap();
-            assert_eq!(request_body_cap(&req), UPLOAD_BODY_CAP);
-        }
-        for route in [
-            "/api/projects//upload",
-            "/api/projects/a/b/upload",
-            "/api/projects/a/upload/",
-            "/api/projects/a/documents",
-            "/api/chat",
-            "/api/import",
-            "/api/projects/a/upload-extra",
-        ] {
-            let req = Request::post(route).body(Body::empty()).unwrap();
-            assert_eq!(request_body_cap(&req), BODY_CAP, "{route}");
-        }
-        for method in ["GET", "PUT", "DELETE"] {
-            let req = Request::builder()
-                .method(method)
-                .uri("/api/projects/synthetic/upload")
-                .body(Body::empty())
-                .unwrap();
-            assert_eq!(request_body_cap(&req), BODY_CAP, "{method}");
-        }
     }
 
     fn xff(values: &[&str]) -> HeaderMap {

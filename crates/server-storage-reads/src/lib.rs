@@ -19,6 +19,7 @@ pub mod json;
 pub mod protocol;
 pub mod request_ipc;
 pub mod response_ipc;
+pub mod stream;
 pub mod transport;
 pub mod writes;
 
@@ -35,6 +36,24 @@ pub const LIST_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
 /// upload-sniff's CAP). A larger original (a PDF up to pdf-reduce's 60 MiB) is not written through
 /// this client yet (noevia#2191 round 3 gap: it needs a streamed child body).
 pub const WRITE_BYTES: usize = 25 * 1024 * 1024;
+/// One ranged chunk of a streamed binary read (noevia#2191 round 8, [`stream`]): the most one child
+/// reply carries. The child's 256 MiB address-space limit, the 64 MiB wire cap and `WRITE_BYTES`
+/// are unchanged; a file larger than this is read as several `Range` requests, each in its own child.
+pub const CHUNK_BYTES: usize = 8 * 1024 * 1024;
+/// The reply payload cap on the wire of a chunk request: [`CHUNK_PREFIX`] bytes the child derives
+/// from the response headers, then at most [`CHUNK_BYTES`] of body.
+pub const CHUNK_FRAME: usize = CHUNK_BYTES + CHUNK_PREFIX;
+/// A chunk reply's prefix: three big-endian u64, `u64::MAX` for what the response does not say: the
+/// declared total (the `Content-Range` total of a 206, the `Content-Length` of a 200), the first and the
+/// last byte of the range the response claims to carry (a 200 claims the whole file: 0 and unknown); then
+/// the response's ETag as a big-endian u16 length and [`ETAG_BYTES`] bytes (zero padded; length 0 when the
+/// response has none, or an unusable one), which the next chunk's `If-Range` carries (#2191 round 8).
+pub const CHUNK_PREFIX: usize = 24 + 2 + ETAG_BYTES;
+/// The largest reply payload cap any request may carry.
+pub const MAX_FRAME: usize = CHUNK_FRAME;
+/// The whole-file cap of a streamed binary read: noevia's upload limit (core `PROJECT_DOCUMENT_READ_BYTES`
+/// default), checked on the declared size before the body and on the bytes actually received.
+pub const FILE_CAP: u64 = 96 * 1024 * 1024;
 /// A PROPFIND's request body: the fixed `<d:propfind>` query, far below this.
 pub const PROPFIND_BODY_BYTES: usize = 4096;
 /// The longest ETag a write reply carries; a longer one is treated as none (no conditional cleanup).

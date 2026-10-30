@@ -209,7 +209,7 @@ pub(crate) fn prune_documents(dir: &Path, project: &JValue) {
 
 /// uploads.cjs `prune(workspace, project)`, on the project in the list (its assets lists changed
 /// in place); the files it removes are removed here too.
-fn prune_uploads(dir: &Path, project: &mut JValue, now_ms: i64) {
+pub(crate) fn prune_uploads(dir: &Path, project: &mut JValue, now_ms: i64) {
     let id = project.get("id").as_str().unwrap_or("").to_owned();
     let files: Vec<JValue> = match project.get("files") {
         JValue::Arr(a) => a.clone(),

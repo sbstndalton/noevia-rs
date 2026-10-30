@@ -281,9 +281,16 @@ fn s3_repeated_token_and_twenty_page_cap() -> TestResult {
     assert_eq!(out.matches("9007199254740992").count(), 2);
     let responses = (0..21).map(|i| Ok((200, format!("<IsTruncated>true</IsTruncated><NextContinuationToken>{i}</NextContinuationToken>").into_bytes()))).collect();
     let mut t = Fake::new(responses);
+    let cut_before =
+        server_storage_reads::protocol::CUT_LISTINGS.load(std::sync::atomic::Ordering::Relaxed);
     assert_eq!(
         execute(&connection(Kind::S3), &[], Operation::List, &mut t)?,
         "[]"
+    );
+    assert!(
+        server_storage_reads::protocol::CUT_LISTINGS.load(std::sync::atomic::Ordering::Relaxed)
+            > cut_before,
+        "a listing stopped at its page bound with more to list is logged (noevia#2191 round 8 review)"
     );
     assert_eq!(t.requests.len(), MAX_PAGES);
     assert_eq!(t.replies.len(), 1);

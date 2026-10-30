@@ -103,6 +103,12 @@ pub enum Native {
     /// /api/providers/{providerId}/models{*?} (sbstndalton/noevia#2190 round 5):
     /// provider_models_routes.rs.
     ProviderModels,
+    /// Every method of the eight /api/admin/offsite-backup paths (sbstndalton/noevia#2190 round 7):
+    /// offsite_routes.rs.
+    Offsite,
+    /// POST /api/connectors/gdrive/{connect,disconnect}, PUT .../{policy,backup-copy}
+    /// (sbstndalton/noevia#2190 round 7): connector_routes.rs.
+    Connectors,
     /// GET|POST /api/providers, PUT|DELETE /api/providers/{id}, DELETE /api/providers/chatgpt
     /// (sbstndalton/noevia#2190 round 6): provider_routes.rs.
     Providers,
@@ -190,16 +196,18 @@ const PROJECT_ROUTES: &[&str] = &[
     PROJECT_DOCUMENTS,
     PROJECT_UPLOAD,
     PROJECT_SYNC,
+    PROJECT_FOLDER_IMPORT,
     PROJECT_SOURCE_JOB,
     server_projects::import::ROUTE,
 ];
 
-/// A project upload's and folder sync's background start (POST only; routes.toml) and a source
-/// job's status (GET only), the front's under `rust-source-jobs` (sbstndalton/noevia#2191 round 6):
-/// it owns the source-job store and sends the synchronous POST, which stays Node's, as its worker
-/// call. Node refuses the background start and the poll (core rust-source-jobs.cjs).
+/// A project upload, folder sync and folder-import plan (POST only; routes.toml), the front's under
+/// `rust-project-source-work` (sbstndalton/noevia#2191 round 8), and a source job's status (GET only),
+/// the front's under `rust-source-jobs` (round 6). Node refuses all of them (core
+/// rust-project-source-work.cjs, rust-source-jobs.cjs).
 pub(crate) const PROJECT_UPLOAD: &str = "/api/projects/{id}/upload";
 pub(crate) const PROJECT_SYNC: &str = "/api/projects/{id}/sources/sync";
+pub(crate) const PROJECT_FOLDER_IMPORT: &str = "/api/projects/{id}/folder-import/plan";
 pub(crate) const PROJECT_SOURCE_JOB: &str = "/api/projects/{id}/source-jobs/{jobId}";
 
 /// A project document's upload (POST only; routes.toml), the front's under `rust-project-documents`
@@ -354,6 +362,10 @@ pub fn native_for(route: &Route) -> Option<Native> {
         PROVIDER_TEST if auth => return Some(Native::ProviderTest),
         p if auth && CHATGPT_OAUTH.contains(&p) => return Some(Native::ChatgptOAuth),
         PROVIDER_MODELS if auth => return Some(Native::ProviderModels),
+        p if auth && crate::offsite_routes::ROUTES.contains(&p) => return Some(Native::Offsite),
+        p if auth && crate::connector_routes::ROUTES.contains(&p) => {
+            return Some(Native::Connectors)
+        }
         PROVIDERS_LIST | PROVIDER_ONE if auth => return Some(Native::Providers),
         p if auth && MCP_CREDENTIALS.contains(&p) => return Some(Native::McpCredentials),
         "/api/instance"
@@ -604,6 +616,8 @@ mod tests {
                 Some(Native::ProviderTest) if r.path == PROVIDER_TEST => {}
                 Some(Native::ChatgptOAuth) if CHATGPT_OAUTH.contains(&r.path) => {}
                 Some(Native::ProviderModels) if r.path == PROVIDER_MODELS => {}
+                Some(Native::Offsite) if crate::offsite_routes::ROUTES.contains(&r.path) => {}
+                Some(Native::Connectors) if crate::connector_routes::ROUTES.contains(&r.path) => {}
                 Some(Native::Providers) if r.path == PROVIDERS_LIST || r.path == PROVIDER_ONE => {}
                 Some(_) => assert!(!is_account_path(r.path), "{} is an account path", r.path),
                 other @ None => assert!(
@@ -1258,7 +1272,11 @@ mod tests {
     fn the_source_jobs_are_native_for_their_methods() {
         use crate::project_routes::{route, Route};
         let on = Switches::default();
-        for p in ["/api/projects/p1/upload", "/api/projects/p1/sources/sync"] {
+        for p in [
+            "/api/projects/p1/upload",
+            "/api/projects/p1/sources/sync",
+            "/api/projects/p1/folder-import/plan",
+        ] {
             assert_eq!(dispatch_under("POST", p, on), Some(Native::Projects), "{p}");
             for m in ["GET", "PUT", "PATCH", "DELETE"] {
                 assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
@@ -1271,16 +1289,14 @@ mod tests {
         }
         assert_eq!(
             route("POST", "/api/projects/p1/upload"),
-            Some(Route::BackgroundSource {
-                project: "p1".into(),
-                sync: false
+            Some(Route::SourceUpload {
+                project: "p1".into()
             })
         );
         assert_eq!(
             route("POST", "/api/projects/p%201/sources/sync"),
-            Some(Route::BackgroundSource {
-                project: "p%201".into(),
-                sync: true
+            Some(Route::SourceSync {
+                project: "p%201".into()
             })
         );
         assert_eq!(
@@ -1298,7 +1314,14 @@ mod tests {
             assert_eq!(route(m, p), None, "{m} {p}");
         }
         assert!(crate::FEATURES.contains(&"rust-source-jobs"));
+        assert!(crate::FEATURES.contains(&"rust-project-source-work"));
         assert!(!crate::FEATURES.contains(&"noevia-source-jobs-store/1"));
+        assert_eq!(
+            route("POST", "/api/projects/p1/folder-import/plan"),
+            Some(Route::FolderImportPlan {
+                project: "p1".into()
+            })
+        );
     }
 
     #[test]

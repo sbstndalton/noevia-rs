@@ -16,7 +16,7 @@
 use crate::extract::{self, Engine, FigureBytes, Limits};
 use js_json::{wtf16, JValue};
 use std::io::Write;
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 /// The result of one ingest.
@@ -27,6 +27,9 @@ pub struct Ingested {
     pub retryable: bool,
     /// The stored result is readable but its completion pass stopped for a passing reason.
     pub open: bool,
+    /// What this read came to, for a sync's log line: `extracted` (a new extraction), `reopened` (a
+    /// stored result completed) or `unchanged` (the stored result reused as it was).
+    pub outcome: &'static str,
 }
 
 fn valid_version(v: &str) -> bool {
@@ -41,15 +44,14 @@ pub fn version_path(dir: &Path, project: &str, version: &str, ext: &str) -> Opti
         .then(|| crate::lifecycle::documents_dir(dir, project).join(format!("{version}{ext}")))
 }
 
-/// document-sources.cjs `writeOnce`: temp file fsynced, renamed over, folder fsynced.
-pub fn write_once(file: &Path, bytes: &[u8]) -> std::io::Result<()> {
+/// document-sources.cjs `writeOnce`: temp file fsynced, renamed over, folder fsynced. The folders are made
+/// below `user_dir` one at a time and never `users/<id>` itself: an account removed while the document was
+/// being extracted stays removed (`NotFound`, which the routes answer as 410; #1425).
+pub fn write_once(user_dir: &Path, file: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let parent = file
         .parent()
         .ok_or_else(|| std::io::Error::other("no folder"))?;
-    std::fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(parent)?;
+    crate::store::create_dirs_below(user_dir, parent)?;
     let name = file
         .file_name()
         .and_then(|n| n.to_str())
@@ -120,7 +122,7 @@ fn store_figures(
             &format!(".fig{}.{ext}", js_json::number_to_string(index)),
         ) {
             if !path.exists() {
-                write_once(&path, b)?;
+                write_once(dir, &path, b)?;
             }
         }
         let mut fig = JValue::obj([
@@ -201,11 +203,12 @@ pub fn ingest(
     let bad = || std::io::Error::other("invalid document version");
     let original = version_path(dir, project, &byte_hash, ".pdf").ok_or_else(bad)?;
     if !original.exists() {
-        write_once(&original, bytes)?;
+        write_once(dir, &original, bytes)?;
     }
     let result_file = version_path(dir, project, &version, ".json").ok_or_else(bad)?;
     let cached = read_record(&result_file).filter(|c| !c.get("retryable").truthy());
     let mut figures = FigureBytes::new();
+    let mut outcome = "unchanged";
     let out = match cached {
         Some(c) if c.get("completion").as_str() != Some(extract::COMPLETION) => {
             let completed =
@@ -214,9 +217,11 @@ pub fn ingest(
                 let mut completed = completed;
                 store_figures(dir, project, &version, &mut completed, &figures)?;
                 write_once(
+                    dir,
                     &result_file,
                     wtf16::stringify(&completed).unwrap_or_default().as_bytes(),
                 )?;
+                outcome = "reopened";
                 completed
             } else {
                 c
@@ -224,6 +229,7 @@ pub fn ingest(
         }
         Some(c) => c,
         None => {
+            outcome = "extracted";
             let mut out =
                 match extract::extract_document_text(name, bytes, engine, limits, &mut figures) {
                     Ok(o) => o,
@@ -231,6 +237,7 @@ pub fn ingest(
                 };
             store_figures(dir, project, &version, &mut out, &figures)?;
             write_once(
+                dir,
                 &result_file,
                 wtf16::stringify(&out).unwrap_or_default().as_bytes(),
             )?;
@@ -330,6 +337,7 @@ pub fn ingest(
             && out.get("pageTexts").truthy()
             && matches!(out.get("pageTexts"), JValue::Arr(a) if !a.is_empty())
             && extract::is_pdf(name),
+        outcome,
     })
 }
 

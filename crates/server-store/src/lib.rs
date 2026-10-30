@@ -254,12 +254,27 @@ impl RustMcpCredentials {
     }
 }
 
+/// Settings -> Connectors (sbstndalton/noevia#2190 round 7): the Rust front is the only writer of
+/// `tool_policies`, the per-account allow/ask/block of each tool. Core's guard (rust-auth.cjs
+/// `FRONT_TABLES`) refuses every Node write of the table, and core re-reads it per call. Like
+/// [`RustChatgptOAuth`] the grant is per statement: only [`WriteTx::upsert_tool_policy`] opens it,
+/// for core tool-policy.cjs's one upsert, never a delete (a deleted account's rows go by cascade).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RustToolPolicies(());
+impl RustToolPolicies {
+    pub const fn owned() -> Self {
+        Self(())
+    }
+}
+
 /// The tables [`RustMcpCredentials`] writes.
 const MCP_TABLES: [&str; 3] = [
     "mcp_oauth_tokens",
     "mcp_oauth_clients",
     "directory_mcp_user_keys",
 ];
+/// The table [`RustToolPolicies`] writes.
+const TOOL_POLICIES: &str = "tool_policies";
 
 /// Dedicated routing configuration capability; native auth alone grants neither its file nor key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -518,6 +533,7 @@ fn owned_authorizer(
     storage_open: Arc<AtomicBool>,
     chatgpt_open: Arc<AtomicBool>,
     mcp_open: Arc<AtomicBool>,
+    policy_open: Arc<AtomicBool>,
 ) -> impl FnMut(AuthContext<'_>) -> Authorization {
     move |ctx: AuthContext<'_>| match ctx.action {
         AuthAction::Insert { table_name }
@@ -575,6 +591,20 @@ fn owned_authorizer(
             if MCP_TABLES.contains(&table_name) {
                 // sbstndalton/noevia#2202: only inside the `mcp_*` methods.
                 return if mcp_open.load(Ordering::SeqCst) {
+                    Authorization::Allow
+                } else {
+                    Authorization::Deny
+                };
+            }
+            if table_name == TOOL_POLICIES {
+                // sbstndalton/noevia#2190 round 7: only the upsert inside
+                // [`WriteTx::upsert_tool_policy`]; never a delete.
+                let open = policy_open.load(Ordering::SeqCst)
+                    && matches!(
+                        ctx.action,
+                        AuthAction::Insert { .. } | AuthAction::Update { .. }
+                    );
+                return if open {
                     Authorization::Allow
                 } else {
                     Authorization::Deny
@@ -722,8 +752,12 @@ fn verify_write_topology(
     conn: &Connection,
     owned: &[(&'static str, Access)],
 ) -> Result<(), StoreError> {
-    let written =
-        |t: &str| t == "settings" || t == STORAGE_CONNECTIONS || owned.iter().any(|(o, _)| *o == t);
+    let written = |t: &str| {
+        t == "settings"
+            || t == STORAGE_CONNECTIONS
+            || t == TOOL_POLICIES
+            || owned.iter().any(|(o, _)| *o == t)
+    };
     let mut tables = conn.prepare(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY name LIMIT ?1",
     )?;
@@ -978,6 +1012,7 @@ pub struct WriteTx<'a> {
     storage_open: &'a AtomicBool,
     chatgpt_open: &'a AtomicBool,
     mcp_open: &'a AtomicBool,
+    policy_open: &'a AtomicBool,
 }
 
 /// Opens the `settings` grant for one statement (prepared uncached, so no authorized statement
@@ -1155,6 +1190,23 @@ impl WriteTx<'_> {
             corpus_root,
             updated_at
         ])?)
+    }
+
+    /// Exactly core tool-policy.cjs `set()`'s statement for one tool: the account's mode upsert.
+    pub fn upsert_tool_policy(
+        &self,
+        _cap: RustToolPolicies,
+        user_id: &str,
+        tool: &str,
+        mode: &str,
+        updated_at: i64,
+    ) -> Result<usize, StoreError> {
+        self.policy_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.policy_open);
+        let mut stmt = self.conn.prepare(
+            "INSERT INTO tool_policies VALUES(?,?,?,?) ON CONFLICT(user_id, tool) DO UPDATE SET mode=excluded.mode, updated_at=excluded.updated_at",
+        )?;
+        Ok(stmt.execute(rusqlite::params![user_id, tool, mode, updated_at])?)
     }
 
     /// Opens the `chatgpt_oauth_tokens` grant for one uncached statement.
@@ -1546,6 +1598,7 @@ pub struct Writer {
     storage_open: Arc<AtomicBool>,
     chatgpt_open: Arc<AtomicBool>,
     mcp_open: Arc<AtomicBool>,
+    policy_open: Arc<AtomicBool>,
 }
 
 impl Writer {
@@ -1566,6 +1619,7 @@ impl Writer {
         let storage_open = Arc::new(AtomicBool::new(false));
         let chatgpt_open = Arc::new(AtomicBool::new(false));
         let mcp_open = Arc::new(AtomicBool::new(false));
+        let policy_open = Arc::new(AtomicBool::new(false));
         // READ_WRITE without CREATE: the file must already exist (Node made it).
         let inner = open_inner(
             data_dir,
@@ -1577,6 +1631,7 @@ impl Writer {
                 Arc::clone(&storage_open),
                 Arc::clone(&chatgpt_open),
                 Arc::clone(&mcp_open),
+                Arc::clone(&policy_open),
             ),
         )?;
         Ok(Writer {
@@ -1585,6 +1640,7 @@ impl Writer {
             storage_open,
             chatgpt_open,
             mcp_open,
+            policy_open,
         })
     }
 
@@ -1604,6 +1660,7 @@ impl Writer {
             storage_open: &self.storage_open,
             chatgpt_open: &self.chatgpt_open,
             mcp_open: &self.mcp_open,
+            policy_open: &self.policy_open,
         })?;
         tx.commit()?;
         Ok(out)

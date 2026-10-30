@@ -23,6 +23,7 @@ prompt-framing = { path = "../prompt-framing" }
 upload-sniff = { path = "../upload-sniff" }
 storage-path = { path = "../storage-path" }
 url = "2.5"
+unicode-normalization = "0.1"
 
 [dev-dependencies]
 tempfile = "3"

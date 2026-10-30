@@ -1,0 +1,20 @@
+[package]
+name = "google-token-seal"
+version = "0.1.0"
+description = "The sealed Google Drive token file format of noevia-core's gdrive.cjs (HKDF-SHA256 key, AES-256-GCM, base64 of iv|tag|body) and secrets.cjs's derive(label), for the Rust Drive broker (sbstndalton/noevia#2190 round 7)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Pinned like secret-envelope and s3-sign: this crate opens every stored Google refresh token.
+[dependencies]
+secret-envelope = { path = "../secret-envelope" }
+aes-gcm = { version = "=0.10.3", default-features = false, features = ["aes", "zeroize"] }
+hmac = "=0.12.1"
+sha2 = "=0.10.9"
+base64 = "0.22"
+zeroize = { version = "=1.9.1", default-features = false, features = ["alloc"] }

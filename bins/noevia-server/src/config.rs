@@ -103,6 +103,11 @@ pub struct Config {
     /// NOEVIA_CHATGPT_CODEX_VERSION.
     #[cfg(feature = "rust-chatgpt-status")]
     pub chatgpt_oauth: Option<crate::chatgpt_oauth_routes::Settings>,
+    /// Google OAuth for Drive (sbstndalton/noevia#2190 round 7): the client registration and, for a QA
+    /// run, loopback endpoints.
+    pub google: crate::gdrive::Settings,
+    /// The off-site backup's deployment settings; `None` without UI_DATA_DIR.
+    pub offsite: Option<crate::offsite_settings::Settings>,
     pub rust_sampling_settings: Option<server_store::RustSamplingSettings>,
     pub usage_clock: Result<server_usage::summary::Clock, server_usage::Fault>,
     /// Retired deployment switches still set in the environment (#1071): reported at startup,
@@ -377,6 +382,10 @@ impl Config {
                 &get, None,
             )),
             diary: server_diary::DiaryConfig::from_lookup(&get)?,
+            google: crate::gdrive::Settings::from_lookup(&get),
+            offsite: get("UI_DATA_DIR").filter(|d| !d.is_empty()).map(|d| {
+                crate::offsite_settings::Settings::from_lookup(&get, std::path::PathBuf::from(d))
+            }),
             usage_clock: server_usage::summary::Clock::system(&get),
             retired,
         })

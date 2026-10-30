@@ -394,7 +394,10 @@ pub(crate) fn prepare_dns_inner<I: Iterator<Item = SocketAddr>>(
     tls: Arc<rustls::ClientConfig>,
     resolver: impl FnOnce(&str, u16) -> io::Result<I>,
 ) -> Result<OwnedDnsAttempt, Error> {
-    if !matches!(request.body_cap, crate::LIST_BYTES | crate::TEXT_BYTES)
+    if !matches!(
+        request.body_cap,
+        crate::LIST_BYTES | crate::TEXT_BYTES | crate::CHUNK_FRAME
+    ) || (request.body_cap == crate::CHUNK_FRAME && request.method != Method::Get)
         || request.url.len() > 65536
         || request.headers.len() > 100
         || request.attempt_timeout.is_zero()
@@ -576,7 +579,10 @@ pub(crate) async fn execute_inner(
     tls: Option<Arc<rustls::ClientConfig>>,
     fixture_target: Option<SocketAddr>,
 ) -> Result<Vec<u8>, Error> {
-    if !matches!(request.body_cap, crate::LIST_BYTES | crate::TEXT_BYTES)
+    if !matches!(
+        request.body_cap,
+        crate::LIST_BYTES | crate::TEXT_BYTES | crate::CHUNK_FRAME
+    ) || (request.body_cap == crate::CHUNK_FRAME && request.method != Method::Get)
         || request.url.len() > 65536
         || request.headers.len() > 100
         || request.attempt_timeout.is_zero()
@@ -796,7 +802,13 @@ async fn exchange<IO: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             cap,
         );
     }
-    let body_deadline = deadline.min(Instant::now() + Duration::from_secs(10));
+    // A chunk (8 MiB) gets the whole attempt's time for its body, as the request's own timeout allows;
+    // every other reply is small and gets 10 s.
+    let body_deadline = if cap == crate::CHUNK_FRAME {
+        deadline
+    } else {
+        deadline.min(Instant::now() + Duration::from_secs(10))
+    };
     if etag_reply {
         // A write's answer is its status and ETag; core never reads a write's response body.
         let etag = etag_of(response.headers());
@@ -821,6 +833,16 @@ async fn exchange<IO: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             body_deadline,
         );
     }
+    // A chunk reply (noevia#2191 round 8): the payload starts with what the headers declare, and the
+    // range is counted in the bytes as sent, so a content coding is refused.
+    let chunk_prefix = if cap == crate::CHUNK_FRAME {
+        if encoded(response.headers()) {
+            return failure(Phase::Body, TransportFailure::Body, cap);
+        }
+        Some(chunk_prefix(status, response.headers()))
+    } else {
+        None
+    };
     let codec_plan = match response_codecs::Plan::headers(response.headers()) {
         Ok(plan) => plan,
         Err(_) => return failure(Phase::Body, TransportFailure::Body, cap),
@@ -839,6 +861,9 @@ async fn exchange<IO: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     payload
         .try_reserve_exact(cap + 1)
         .map_err(|_| Error::Output)?;
+    if let Some(prefix) = chunk_prefix {
+        payload.extend_from_slice(&prefix);
+    }
     loop {
         let frame = match timeout_at(
             body_deadline,
@@ -910,6 +935,74 @@ async fn exchange<IO: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         cap,
         body_deadline,
     )
+}
+/// Whether the response carries any content coding other than `identity`.
+fn encoded(headers: &HeaderMap) -> bool {
+    headers.get_all("content-encoding").iter().any(|value| {
+        value
+            .as_bytes()
+            .split(|b| *b == b',')
+            .map(<[u8]>::trim_ascii)
+            .any(|token| !token.is_empty() && !token.eq_ignore_ascii_case(b"identity"))
+    })
+}
+fn header_u64(value: &[u8]) -> Option<u64> {
+    let text = std::str::from_utf8(value).ok()?.trim();
+    (!text.is_empty() && text.bytes().all(|b| b.is_ascii_digit()))
+        .then(|| text.parse().ok())
+        .flatten()
+}
+/// A chunk reply's prefix ([`crate::CHUNK_PREFIX`]): total, first and last byte as the response says.
+fn chunk_prefix(status: u16, headers: &HeaderMap) -> [u8; crate::CHUNK_PREFIX] {
+    let none = u64::MAX;
+    let (total, first, last) = if status == 206 {
+        // `Content-Range: bytes <first>-<last>/<total or *>`
+        let parsed = headers
+            .get("content-range")
+            .and_then(|v| std::str::from_utf8(v.as_bytes()).ok())
+            .and_then(|v| v.trim().strip_prefix("bytes "))
+            .and_then(|v| {
+                let (range, total) = v.trim().split_once('/')?;
+                let (first, last) = range.trim().split_once('-')?;
+                Some((
+                    header_u64(total.as_bytes()),
+                    header_u64(first.as_bytes()),
+                    header_u64(last.as_bytes()),
+                ))
+            });
+        match parsed {
+            Some((total, first, last)) => (
+                total.unwrap_or(none),
+                first.unwrap_or(none),
+                last.unwrap_or(none),
+            ),
+            None => (none, none, none),
+        }
+    } else {
+        (
+            headers
+                .get("content-length")
+                .and_then(|v| header_u64(v.as_bytes()))
+                .unwrap_or(none),
+            0,
+            none,
+        )
+    };
+    let mut out = [0u8; crate::CHUNK_PREFIX];
+    for (i, value) in [total, first, last].into_iter().enumerate() {
+        if let Some(slot) = out.get_mut(i * 8..i * 8 + 8) {
+            slot.copy_from_slice(&value.to_be_bytes());
+        }
+    }
+    // The ETag: a length, then the bytes (`etag_of` keeps it within `ETAG_BYTES`, so it fits).
+    let etag = etag_of(headers);
+    if let Some(len) = out.get_mut(24..26) {
+        len.copy_from_slice(&(etag.len() as u16).to_be_bytes());
+    }
+    if let Some(slot) = out.get_mut(26..26 + etag.len()) {
+        slot.copy_from_slice(&etag);
+    }
+    out
 }
 fn body_reply(reply: Reply<'_>, cap: usize, deadline: Instant) -> Result<Vec<u8>, Error> {
     if Instant::now() >= deadline {
