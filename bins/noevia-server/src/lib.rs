@@ -127,6 +127,12 @@ use std::sync::Arc;
 /// rust-source-jobs.cjs `RUST_SOURCE_JOBS_OWNED`) and has no source journal client, so the web
 /// supervisor pairs them.
 ///
+/// `rust-large-document-host-lock`: this build takes the host-wide large-document lock
+/// (`UI_DATA_DIR/large-document.lock`, crates/server-projects `extract::large_lock`,
+/// sbstndalton/noevia#2191 round 7) that core's large-document-lock.cjs also takes through
+/// large-document-file-lock.cjs, so the two never hold a document over 25 MiB at once (#697). A
+/// front without it beside a core with it (or the reverse) could, so the web supervisor pairs them.
+///
 /// `project-store`: this build serves the internal project store Node writes projects.json and
 /// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
 /// supervisor confirms it to Node (NOEVIA_RUST_PROJECT_STORE_CONFIRMED) and hands both the secret.
@@ -160,6 +166,7 @@ pub const FEATURES: &[&str] = &[
     "rust-document-extraction",
     "rust-project-documents",
     "rust-source-jobs",
+    "rust-large-document-host-lock",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",

@@ -1127,6 +1127,8 @@ mod tests {
         );
         assert!(crate::FEATURES.contains(&"rust-project-documents"));
         assert!(crate::FEATURES.contains(&"rust-document-extraction"));
+        // Round 7: the large-document lock is the host's, shared with core.
+        assert!(crate::FEATURES.contains(&"rust-large-document-host-lock"));
     }
 
     /// sbstndalton/noevia#2191 round 6: the source jobs are the front's: the upload's and sync's POST
