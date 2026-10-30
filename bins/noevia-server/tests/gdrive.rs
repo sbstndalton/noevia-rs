@@ -1066,3 +1066,382 @@ async fn the_state_file_exists_only_once_there_is_something_to_say() {
     assert_eq!(s, 200);
     assert!(state_file(d.path())["personal"].get(B).is_none());
 }
+
+// ---------------------------------------------------------------------------------------------
+// Round 7 review findings: secrets.key rotation through the broker, the retired key, the role
+// check, the orphan sweep, the state file and the messages.
+
+/// The sealer of the retired secrets.key [5;32] (an account's file as an older start sealed it).
+fn previous_sealer() -> google_token_seal::Sealer {
+    let key = google_token_seal::derive_secret_key(&[5; 32], google_token_seal::USER_LABEL);
+    google_token_seal::Sealer::new(key.as_slice()).unwrap()
+}
+
+fn plant_with(dir: &std::path::Path, user: &str, sealer: &google_token_seal::Sealer, record: &str) {
+    let d = dir.join("google-drive-users");
+    std::fs::create_dir_all(&d).unwrap();
+    std::fs::write(
+        d.join(format!("{user}.sealed")),
+        sealer.seal(record.as_bytes(), &[3; 12]).unwrap(),
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn a_file_sealed_under_the_retired_key_is_read_without_being_rewritten() {
+    let d = tempfile::tempdir().unwrap();
+    seed(d.path());
+    // After a rotation: [7;32] is current, [5;32] the retired key (a file next to it).
+    std::fs::write(d.path().join("secrets.key.previous"), [5u8; 32]).unwrap();
+    let up = upstream().await;
+    install_oauth(&up, "ada@example.test", Duration::ZERO);
+    let f = front(d.path(), &up.base(), &[]).await;
+    let record = r#"{"refreshToken":"synthetic-old-key-refresh","email":"ada@example.test","connectedAt":5,"owner":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}"#;
+    plant_with(d.path(), B, &previous_sealer(), record);
+    let file = d
+        .path()
+        .join("google-drive-users")
+        .join(format!("{B}.sealed"));
+    let before = std::fs::read(&file).unwrap();
+    // The refresh token under the retired key still signs the account in...
+    let (s, v) = session(&f, B, false, None).await;
+    assert_eq!(s, 200, "{v}");
+    assert_eq!(v["accessToken"], "access-1");
+    assert!(
+        refresh_bodies(&up)[0].contains("refresh_token=synthetic-old-key-refresh"),
+        "the retired key's record was opened"
+    );
+    let view = store(
+        f.store,
+        "gdrive/view",
+        STORE_TOKEN,
+        &format!(r#"{{"user":"{B}","admin":false}}"#),
+    )
+    .await
+    .1;
+    assert_eq!(
+        (view["state"].as_str(), view["email"].as_str()),
+        (Some("connected"), Some("ada@example.test"))
+    );
+    // ...and a read never rewrites the file (only the rotation does, and under the fence).
+    assert_eq!(std::fs::read(&file).unwrap(), before);
+    // A file neither key opens reads as an unreadable connection, never as a disconnected one.
+    std::fs::write(
+        d.path()
+            .join("google-drive-users")
+            .join(format!("{C}.sealed")),
+        previous_sealer()
+            .seal(b"{}", &[1; 12])
+            .unwrap()
+            .replacen('A', "B", 1)
+            + "xx",
+    )
+    .unwrap();
+    let (s, v) = session(&f, C, false, None).await;
+    assert_eq!((s, v["code"].as_str()), (409, Some("reconnect")), "{v}");
+}
+
+#[tokio::test]
+async fn the_rotation_reseals_through_the_fence_and_a_disconnect_in_flight_is_not_undone() {
+    let d = tempfile::tempdir().unwrap();
+    seed(d.path());
+    std::fs::write(d.path().join("secrets.key.previous"), [5u8; 32]).unwrap();
+    let up = upstream().await;
+    install_oauth(&up, "x@example.test", Duration::ZERO);
+    let f = front(d.path(), &up.base(), &[]).await;
+    let a_record = r#"{"refreshToken":"ra","connectedAt":5,"folderId":"remembered-folder","owner":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}"#;
+    plant_with(d.path(), A, &previous_sealer(), a_record);
+    plant_with(
+        d.path(),
+        B,
+        &previous_sealer(),
+        r#"{"refreshToken":"rb","connectedAt":6}"#,
+    );
+    plant_account_file(d.path(), C, r#"{"refreshToken":"rc","connectedAt":7}"#); // already current
+    std::fs::write(
+        d.path().join("google-drive-users").join("u-empty.sealed"),
+        "",
+    )
+    .unwrap();
+    std::fs::write(
+        d.path().join("google-drive-users").join("u-lost.sealed"),
+        "AAAAnotasealedfile",
+    )
+    .unwrap();
+    let lost_before = std::fs::read(d.path().join("google-drive-users/u-lost.sealed")).unwrap();
+
+    // A's disconnect is in flight (Google's revoke is slow) when the rotation re-seals every file.
+    up.set(|r: &Seen| {
+        if r.path == "/revoke" {
+            (Duration::from_millis(1200), reply("200 OK", "{}").1)
+        } else {
+            reply("404 Not Found", "")
+        }
+    });
+    let (addr, token) = (f.store, STORE_TOKEN);
+    let disconnect = tokio::spawn(async move {
+        store(
+            addr,
+            "gdrive/disconnect",
+            token,
+            &format!(r#"{{"user":"{A}","admin":false}}"#),
+        )
+        .await
+    });
+    up.wait_for("/revoke", 1).await;
+    let (s, report) = store(f.store, "gdrive/reseal", STORE_TOKEN, "{}").await;
+    assert_eq!(s, 200, "{report}");
+    assert_eq!(
+        report,
+        serde_json::json!({"current": 1, "rotated": 2, "empty": 1, "failed": 1}),
+        "counts only"
+    );
+    assert_eq!(
+        report.as_object().unwrap().len(),
+        4,
+        "no name, id or token in it"
+    );
+    assert_eq!(disconnect.await.unwrap().0, 200);
+    assert!(
+        read_account_file(d.path(), A).is_none(),
+        "the disconnect finished after the re-seal and the file stayed deleted"
+    );
+    // B was re-sealed under the current key, field for field, and C is untouched.
+    assert_eq!(
+        read_account_file(d.path(), B).unwrap(),
+        serde_json::json!({"refreshToken":"rb","connectedAt":6})
+    );
+    assert!(previous_sealer()
+        .open(
+            &std::fs::read_to_string(
+                d.path()
+                    .join("google-drive-users")
+                    .join(format!("{B}.sealed"))
+            )
+            .unwrap()
+        )
+        .is_err());
+    assert_eq!(
+        read_account_file(d.path(), C).unwrap()["refreshToken"],
+        "rc"
+    );
+    assert_eq!(
+        std::fs::read(d.path().join("google-drive-users/u-lost.sealed")).unwrap(),
+        lost_before
+    );
+    // Idempotent, and a re-seal can never bring a disconnected account back.
+    let (_, again) = store(f.store, "gdrive/reseal", STORE_TOKEN, "{}").await;
+    assert_eq!(
+        again,
+        serde_json::json!({"current": 2, "rotated": 0, "empty": 1, "failed": 1})
+    );
+    assert!(read_account_file(d.path(), A).is_none());
+    // The key never leaves: without the store token nothing happens, and the retired key is gone
+    // from the answer path (no previous key: a file under it is failed, not guessed).
+    assert_eq!(
+        store(f.store, "gdrive/reseal", "wrong-token", "{}").await.0,
+        401
+    );
+}
+
+#[tokio::test]
+async fn a_claim_of_administrator_is_checked_against_the_users_table() {
+    let d = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    seed(d.path());
+    let backups = root.path().join("backups");
+    std::fs::create_dir_all(&backups).unwrap();
+    let key = root.path().join("backup.key");
+    std::fs::write(&key, BACKUP_KEY_HEX).unwrap();
+    let up = upstream().await;
+    install_oauth(&up, "x@example.test", Duration::ZERO);
+    let env = [
+        ("OFFSITE_BACKUP_DIR", backups.display().to_string()),
+        ("OFFSITE_BACKUP_KEY_FILE", key.display().to_string()),
+    ];
+    let f = front(d.path(), &up.base(), &env).await;
+    // The backup slot is an old, ownerless connection: whichever administrator opens it owns it.
+    std::fs::write(
+        d.path().join("google-drive.sealed"),
+        backup_sealer()
+            .seal(br#"{"refreshToken":"legacy","connectedAt":5}"#, &[4; 12])
+            .unwrap(),
+    )
+    .unwrap();
+    let (s, v) = session(&f, A, true, None).await;
+    assert_eq!(s, 200, "a real administrator reaches it: {v}");
+    // A member whom a request calls an administrator does not: the table says member.
+    let (s, v) = session(&f, B, true, None).await;
+    assert_eq!((s, v["code"].as_str()), (409, Some("disconnected")), "{v}");
+    let view = store(
+        f.store,
+        "gdrive/view",
+        STORE_TOKEN,
+        &format!(r#"{{"user":"{B}","admin":true}}"#),
+    )
+    .await
+    .1;
+    assert!(view["backup"].is_null(), "{view}");
+    // An id the table does not know is a member too.
+    let (s, _) = session(&f, "ffffffff-ffff-ffff-ffff-ffffffffffff", true, None).await;
+    assert_eq!(s, 409);
+}
+
+#[tokio::test]
+async fn accounts_deleted_while_the_front_was_down_lose_their_connection_at_start() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let up = upstream().await;
+    install_oauth(&up, "x@example.test", Duration::ZERO);
+    let f = front(d.path(), &up.base(), &[]).await;
+    let ghost = "dddddddd-dddd-dddd-dddd-dddddddddddd";
+    plant_account_file(d.path(), B, r#"{"refreshToken":"rb","connectedAt":5}"#);
+    plant_account_file(
+        d.path(),
+        ghost,
+        r#"{"refreshToken":"r-ghost","connectedAt":5}"#,
+    );
+    let drive = std::sync::Arc::clone(f.app.drive.as_ref().unwrap());
+    assert_eq!(drive.sweep_orphans(&f.app).await, 1);
+    assert!(read_account_file(d.path(), ghost).is_none());
+    assert_eq!(
+        read_account_file(d.path(), B).unwrap()["refreshToken"],
+        "rb"
+    );
+    assert!(
+        up.seen()
+            .iter()
+            .any(|s| s.path == "/revoke" && s.body.contains("token=r-ghost")),
+        "revoked at Google, not just deleted"
+    );
+    assert!(!up.seen().iter().any(|s| s.body.contains("token=rb")));
+    // An empty users table proves nothing (a database that is not the real one): nothing is swept.
+    db.execute("DELETE FROM sessions", []).unwrap();
+    db.execute("DELETE FROM users", []).unwrap();
+    assert_eq!(drive.sweep_orphans(&f.app).await, 0);
+    assert!(read_account_file(d.path(), B).is_some());
+}
+
+#[tokio::test]
+async fn the_state_file_follows_the_backup_key_file_without_a_request() {
+    let d = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    seed(d.path());
+    let backups = root.path().join("backups");
+    std::fs::create_dir_all(&backups).unwrap();
+    let key = root.path().join("backup.key");
+    std::fs::write(&key, BACKUP_KEY_HEX).unwrap();
+    let up = upstream().await;
+    install_oauth(&up, "x@example.test", Duration::ZERO);
+    let env = [
+        ("OFFSITE_BACKUP_DIR", backups.display().to_string()),
+        ("OFFSITE_BACKUP_KEY_FILE", key.display().to_string()),
+    ];
+    let f = front(d.path(), &up.base(), &env).await;
+    std::fs::write(
+        d.path().join("google-drive.sealed"),
+        backup_sealer()
+            .seal(br#"{"refreshToken":"legacy","connectedAt":5}"#, &[4; 12])
+            .unwrap(),
+    )
+    .unwrap();
+    let drive = std::sync::Arc::clone(f.app.drive.as_ref().unwrap());
+    drive.publish_startup();
+    let first = state_file(d.path());
+    assert_eq!(first["backup"]["usable"], true);
+    // Nothing changed: the check writes nothing (the file signal Node watches stays still).
+    drive.republish_if_changed();
+    assert_eq!(state_file(d.path())["nonce"], first["nonce"]);
+    // The key file goes away (an unmounted secret volume): the next check says the slot is unusable.
+    std::fs::remove_file(&key).unwrap();
+    drive.republish_if_changed();
+    let second = state_file(d.path());
+    assert_eq!(second["backup"]["usable"], false);
+    assert_ne!(second["nonce"], first["nonce"]);
+    // Concurrent publishes leave a file that says what the disk says.
+    plant_account_file(d.path(), B, r#"{"refreshToken":"rb","connectedAt":5}"#);
+    let handles: Vec<_> = (0..8)
+        .map(|_| {
+            let d2 = std::sync::Arc::clone(&drive);
+            std::thread::spawn(move || {
+                for _ in 0..20 {
+                    d2.publish();
+                }
+            })
+        })
+        .collect();
+    for h in handles {
+        h.join().unwrap();
+    }
+    assert_eq!(state_file(d.path())["personal"][B], "connected");
+}
+
+#[tokio::test]
+async fn a_failed_permission_write_does_not_blame_google_drive() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let up = upstream().await;
+    install_oauth(&up, "x@example.test", Duration::ZERO);
+    let f = front(d.path(), &up.base(), &[]).await;
+    db.execute("DROP TABLE tool_policies", []).unwrap();
+    let r = send(
+        f.addr,
+        "PUT",
+        POLICY,
+        MEMBER,
+        r#"{"tools":["drive_search_files"],"mode":"allow"}"#,
+    )
+    .await;
+    assert_eq!(r.status, 502, "{}", r.text);
+    let msg = r.json()["error"].as_str().unwrap().to_owned();
+    assert_eq!(msg, "The tool permissions could not be saved.");
+    let (s, b) = store(
+        f.store,
+        "gdrive/policy",
+        STORE_TOKEN,
+        &format!(r#"{{"user":"{B}","tools":["x"],"writes":[false],"mode":"ask"}}"#),
+    )
+    .await;
+    assert_eq!(
+        (s, b["error"].as_str()),
+        (502, Some("The tool permissions could not be saved."))
+    );
+}
+
+#[tokio::test]
+async fn after_a_rotation_the_front_reads_and_saves_under_the_keys_it_resealed_with() {
+    let d = tempfile::tempdir().unwrap();
+    seed(d.path());
+    let up = upstream().await;
+    install_oauth(&up, "x@example.test", Duration::ZERO);
+    let f = front(d.path(), &up.base(), &[]).await;
+    plant_account_file(d.path(), B, r#"{"refreshToken":"rb","connectedAt":5}"#);
+    assert_eq!(
+        session(&f, B, false, None).await.0,
+        200,
+        "the key snapshot is loaded"
+    );
+    // The operator swaps the key files while the process runs: [8;32] is current, [7;32] retired.
+    std::fs::write(d.path().join("secrets.key.previous"), [7u8; 32]).unwrap();
+    std::fs::write(d.path().join("secrets.key"), [8u8; 32]).unwrap();
+    let (_, report) = store(f.store, "gdrive/reseal", STORE_TOKEN, "{}").await;
+    assert_eq!(report["rotated"], 1, "{report}");
+    let new_key = google_token_seal::derive_secret_key(&[8; 32], google_token_seal::USER_LABEL);
+    let new = google_token_seal::Sealer::new(new_key.as_slice()).unwrap();
+    let file = d
+        .path()
+        .join("google-drive-users")
+        .join(format!("{B}.sealed"));
+    assert!(new.open(&std::fs::read_to_string(&file).unwrap()).is_ok());
+    // What it reads afterwards is what it re-sealed, and what it saves afterwards is under the new key.
+    assert_eq!(session(&f, B, false, None).await.0, 200);
+    let drive = std::sync::Arc::clone(f.app.drive.as_ref().unwrap());
+    assert!(drive.save_patch(
+        &noevia_server::gdrive::Slot::User(B.to_owned()),
+        vec![("folderId", js_json::JValue::Str("remembered".into()))]
+    ));
+    let saved = new.open(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    assert!(std::str::from_utf8(saved.as_slice())
+        .unwrap()
+        .contains("remembered"));
+}

@@ -22,7 +22,16 @@
 //!
 //! After each committed change the broker rewrites `gdrive-connections.json` (no secret in it:
 //! which accounts have a connection and in what state, and the backup slot's), whose file signal
-//! tells Node's sync `connected(user)` and its short access-token cache to look again.
+//! tells Node's sync `connected(user)` and its short access-token cache to look again. Writes of it
+//! are serialized (a publish that read an older state can never land after a newer one), and a
+//! minute-by-minute check republishes it when something it says changed without a request (the
+//! backup key file appearing or going, which flips `backup.usable`).
+//!
+//! A secrets.key rotation re-seals the accounts' files here ([`Drive::reseal_users`], `POST
+//! /v1/gdrive/reseal`) under the same fence as every other change, so a disconnect or a sign-in
+//! during the rotation can never be undone by a stale rewrite. Requests have two time budgets:
+//! 30 s for a token, form or JSON exchange, and 300 s for an upload or a large read (a 4 MiB chunk
+//! over a slow uplink takes minutes and is not a hung connection).
 use crate::{identity, offsite_settings, App};
 use js_json::JValue;
 use rand_core::{OsRng, RngCore};
@@ -41,7 +50,10 @@ const SCOPE: &str = "https://www.googleapis.com/auth/drive.file openid email";
 const OAUTH: &str = "https://oauth2.googleapis.com";
 const API: &str = "https://www.googleapis.com/drive/v3";
 const UPLOAD: &str = "https://www.googleapis.com/upload/drive/v3";
-const TIMEOUT: Duration = Duration::from_secs(30);
+/// A token, form or JSON exchange.
+const QUICK: Duration = Duration::from_secs(30);
+/// An upload or a large read.
+const TRANSFER: Duration = Duration::from_secs(300);
 const FORM_CAP: usize = 256 * 1024;
 pub const JSON_CAP: usize = 8 * 1024 * 1024;
 
@@ -397,10 +409,26 @@ pub struct Drive {
     locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     data_dir: PathBuf,
     previous_key_env: Option<Zeroizing<String>>,
-    keys: std::sync::OnceLock<Arc<SecretKeys>>,
+    keys: Mutex<Option<Arc<SecretKeys>>>,
     /// The first publish of the state file after start (it reconciles the file with the disk).
     published: std::sync::atomic::AtomicBool,
+    /// One publish at a time, holding the content the file carries now.
+    publish_lock: Mutex<String>,
+    /// The two request budgets in milliseconds ([`QUICK`], [`TRANSFER`]; shortened by tests).
+    budgets_ms: [std::sync::atomic::AtomicU64; 2],
 }
+
+/// What a re-seal of the accounts' token files did, as counts.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ResealReport {
+    pub current: usize,
+    pub rotated: usize,
+    pub empty: usize,
+    pub failed: usize,
+}
+
+/// How often the state file is checked against what it says.
+const REPUBLISH: Duration = Duration::from_secs(60);
 
 /// What a Drive API reply carried.
 pub struct ApiReply {
@@ -409,12 +437,22 @@ pub struct ApiReply {
     pub capped: bool,
 }
 
+/// How long one request may take in all.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Budget {
+    /// 30 s: a token, form or JSON exchange.
+    Quick,
+    /// 300 s: an upload or a large read.
+    Transfer,
+}
+
 pub struct ApiRequest<'a> {
     pub method: &'a str,
     pub url: &'a str,
     pub headers: Vec<(&'a str, String)>,
     pub body: Option<Vec<u8>>,
     pub cap: usize,
+    pub budget: Budget,
 }
 
 impl Drive {
@@ -442,9 +480,33 @@ impl Drive {
                 .as_ref()
                 .and_then(|s| s.previous_key_env.0.clone())
                 .map(Zeroizing::new),
-            keys: std::sync::OnceLock::new(),
+            keys: Mutex::new(None),
             published: std::sync::atomic::AtomicBool::new(false),
+            publish_lock: Mutex::new(String::new()),
+            budgets_ms: [
+                std::sync::atomic::AtomicU64::new(QUICK.as_millis() as u64),
+                std::sync::atomic::AtomicU64::new(TRANSFER.as_millis() as u64),
+            ],
         })
+    }
+
+    /// Shortens the request budgets (tests; production keeps 30 s and 300 s).
+    pub fn set_budgets(&self, quick: Duration, transfer: Duration) {
+        for (slot, d) in self.budgets_ms.iter().zip([quick, transfer]) {
+            slot.store(
+                u64::try_from(d.as_millis()).unwrap_or(u64::MAX).max(1),
+                std::sync::atomic::Ordering::Relaxed,
+            );
+        }
+    }
+
+    fn budget(&self, b: Budget) -> Duration {
+        let i = usize::from(b == Budget::Transfer);
+        Duration::from_millis(
+            self.budgets_ms
+                .get(i)
+                .map_or(30_000, |m| m.load(std::sync::atomic::Ordering::Relaxed)),
+        )
     }
 
     fn mem(&self) -> std::sync::MutexGuard<'_, HashMap<String, SlotMem>> {
@@ -469,17 +531,22 @@ impl Drive {
         )
     }
 
-    /// The key snapshot (core loads its keys once at start).
+    /// The key snapshot (core loads its keys once at start); a rotation's re-seal replaces it with
+    /// the keys it just read from disk, so what is read and saved afterwards agrees with the files.
     fn keys(&self) -> Option<Arc<SecretKeys>> {
-        if let Some(k) = self.keys.get() {
+        let mut held = self.keys.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(k) = held.as_ref() {
             return Some(Arc::clone(k));
         }
-        let loaded = server_auth::secrets::load_existing(
-            &self.data_dir,
-            self.previous_key_env.as_deref().map(String::as_str),
-        )
-        .ok()?;
-        Some(Arc::clone(self.keys.get_or_init(|| Arc::new(loaded))))
+        let loaded = Arc::new(
+            server_auth::secrets::load_existing(
+                &self.data_dir,
+                self.previous_key_env.as_deref().map(String::as_str),
+            )
+            .ok()?,
+        );
+        *held = Some(Arc::clone(&loaded));
+        Some(loaded)
     }
 
     /// The sealers that may open a slot's file: the current key and, for an account's own file, the
@@ -671,7 +738,9 @@ impl Drive {
                 .join(USERS_DIR)
                 .join(format!("{user}.sealed"))
                 .exists();
-        if owns_backup(admin, user, &self.backup_facts(), personal_file) {
+        // Only an administrator can own the backup slot: a member's request never reads the key
+        // file and the slot (backup_facts opens both).
+        if admin && owns_backup(admin, user, &self.backup_facts(), personal_file) {
             return Ok(Slot::Backup);
         }
         if !safe_id(user) {
@@ -694,6 +763,19 @@ impl Drive {
     /// Rewrites `gdrive-connections.json`: the accounts that have a connection file and in what
     /// state, and the backup slot's. No secret, no email. Called after every committed change.
     pub fn publish(&self) {
+        self.publish_inner(true);
+    }
+
+    /// [`Drive::publish`] only when what the file says changed (the check that catches a change no
+    /// request made: the backup key file appearing or going).
+    pub fn republish_if_changed(&self) {
+        self.publish_inner(false);
+    }
+
+    fn publish_inner(&self, force: bool) {
+        // One publish at a time: the state is read and the file written under this lock, so a
+        // publish that read an older state cannot land after a newer one.
+        let mut last = self.publish_lock.lock().unwrap_or_else(|e| e.into_inner());
         // Nothing connected, nothing pending and no earlier file to correct: nothing to say (a
         // disconnect of an account that never connected leaves the data directory as core did).
         let pending = self
@@ -723,30 +805,40 @@ impl Drive {
             }
         }
         personal.sort_by(|a, b| a.0.cmp(&b.0));
+        let backup_doc = JValue::obj([
+            ("usable", JValue::Bool(self.off.drive_usable())),
+            ("state", JValue::Str(backup.state.into())),
+            ("owner", backup.owner.map_or(JValue::Null, JValue::Str)),
+            (
+                "expiresAt",
+                backup
+                    .expires_at
+                    .map_or(JValue::Null, |e| JValue::Num(e as f64)),
+            ),
+        ]);
+        let content = js_json::stringify(&JValue::obj([
+            ("backup", backup_doc.clone()),
+            ("personal", JValue::Obj(personal.clone())),
+        ]))
+        .unwrap_or_default();
+        if !force && *last == content {
+            return;
+        }
         let doc = JValue::obj([
             ("version", JValue::Num(1.0)),
             ("at", JValue::Num(now_ms() as f64)),
             ("nonce", JValue::Str(hex_of(&random::<8>()))),
-            (
-                "backup",
-                JValue::obj([
-                    ("usable", JValue::Bool(self.off.drive_usable())),
-                    ("state", JValue::Str(backup.state.into())),
-                    ("owner", backup.owner.map_or(JValue::Null, JValue::Str)),
-                    (
-                        "expiresAt",
-                        backup
-                            .expires_at
-                            .map_or(JValue::Null, |e| JValue::Num(e as f64)),
-                    ),
-                ]),
-            ),
+            ("backup", backup_doc),
             ("personal", JValue::Obj(personal)),
         ]);
-        let _ = write_atomic(
+        let wrote = write_atomic(
             &self.data_dir.join(STATE_FILE),
             &js_json::stringify(&doc).unwrap_or_default(),
-        );
+        )
+        .is_ok();
+        if wrote {
+            *last = content;
+        }
         self.published
             .store(true, std::sync::atomic::Ordering::Release);
     }
@@ -788,6 +880,7 @@ impl Drive {
         &self,
         request: reqwest::RequestBuilder,
         cap: usize,
+        budget: Budget,
     ) -> Result<(u16, Vec<u8>, bool), ()> {
         let exchange = async {
             let mut response = request.send().await.map_err(|_| ())?;
@@ -814,7 +907,7 @@ impl Drive {
             }
             Ok((status, body, capped))
         };
-        tokio::time::timeout(TIMEOUT, exchange)
+        tokio::time::timeout(self.budget(budget), exchange)
             .await
             .unwrap_or(Err(()))
     }
@@ -829,7 +922,7 @@ impl Drive {
             .post(url)
             .header("content-type", "application/x-www-form-urlencoded")
             .body(body);
-        let (status, bytes, capped) = self.send(request, FORM_CAP).await?;
+        let (status, bytes, capped) = self.send(request, FORM_CAP, Budget::Quick).await?;
         let json = if capped {
             JValue::Obj(Vec::new())
         } else {
@@ -1132,6 +1225,126 @@ impl Drive {
         self.publish();
     }
 
+    // ── secrets.key rotation ──
+
+    /// Re-seals every account's token file that is still under the retired `secrets.key` under
+    /// the current one (#866), the way `secrets:rotate` needs. It runs under the fence, so a
+    /// disconnect, a sign-in or a patch cannot interleave with a file's read-and-rewrite (a rewrite
+    /// from an older read would bring back a disconnected account or drop a remembered folder).
+    /// The keys are loaded from the disk now, not taken from the start-up snapshot: the rotation
+    /// runs after the key files were swapped. The plaintext is carried over byte for byte (every
+    /// field, known or not). Counts only; no name, id or token.
+    pub fn reseal_users(&self) -> Result<ResealReport, Fail> {
+        let keys = Arc::new(
+            server_auth::secrets::load_existing(
+                &self.data_dir,
+                self.previous_key_env.as_deref().map(String::as_str),
+            )
+            .map_err(|_| Fail::new("The secrets key could not be read.", 503))?,
+        );
+        let (cur, prev) = keys.derive_with(|k| {
+            google_token_seal::derive_secret_key(k, google_token_seal::USER_LABEL)
+        });
+        let current = google_token_seal::Sealer::new(cur.as_slice())
+            .map_err(|_| Fail::new("The secrets key could not be read.", 503))?;
+        let previous = prev.and_then(|p| google_token_seal::Sealer::new(p.as_slice()).ok());
+        let mut report = ResealReport::default();
+        let _fence = self.fence();
+        // From now on this process reads and saves under the keys the files are being sealed under.
+        *self.keys.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::clone(&keys));
+        let Ok(dir) = std::fs::read_dir(self.data_dir.join(USERS_DIR)) else {
+            return Ok(report);
+        };
+        let mut names: Vec<String> = dir
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.strip_suffix(".sealed").is_some_and(safe_id))
+            .collect();
+        names.sort();
+        for name in names {
+            let file = self.data_dir.join(USERS_DIR).join(&name);
+            let Ok(text) = std::fs::read_to_string(&file) else {
+                report.failed += 1;
+                continue;
+            };
+            if text.trim().is_empty() {
+                report.empty += 1;
+            } else if current.open(&text).is_ok() {
+                report.current += 1;
+            } else if let Some(plain) = previous.as_ref().and_then(|p| p.open(&text).ok()) {
+                let sealed = current.seal(plain.as_slice(), &random::<12>());
+                match sealed.map(|t| write_atomic(&file, &t)) {
+                    Ok(Ok(())) => report.rotated += 1,
+                    _ => report.failed += 1,
+                }
+            } else {
+                report.failed += 1;
+            }
+        }
+        Ok(report)
+    }
+
+    /// Forgets (revokes at Google, deletes) the token files of accounts that no longer exist: a
+    /// deletion that happened while this process was down, or whose `forget` never arrived, would
+    /// otherwise leave a live refresh token for a deleted person. Only runs when the `users` table
+    /// could be read and holds at least one account (an empty or unreadable table proves nothing).
+    pub async fn sweep_orphans(self: &Arc<Self>, app: &Arc<App>) -> usize {
+        let Ok(dir) = std::fs::read_dir(self.data_dir.join(USERS_DIR)) else {
+            return 0;
+        };
+        let ids: Vec<String> = dir
+            .flatten()
+            .filter_map(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .strip_suffix(".sealed")
+                    .map(str::to_owned)
+            })
+            .filter(|id| safe_id(id))
+            .collect();
+        if ids.is_empty() {
+            return 0;
+        }
+        let a = Arc::clone(app);
+        let orphans = tokio::task::spawn_blocking(move || -> Option<Vec<String>> {
+            let writer = a.writes.writer().ok()?;
+            let known: Vec<String> = writer
+                .read(|r| r.rows("SELECT id FROM users", [], |row| row.get::<_, String>(0)))
+                .ok()?;
+            if known.is_empty() {
+                return None;
+            }
+            Some(ids.into_iter().filter(|id| !known.contains(id)).collect())
+        })
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+        for id in &orphans {
+            self.forget(id).await;
+        }
+        orphans.len()
+    }
+
+    /// The background work of a start: the orphan sweep once, then the state file's minute-by-
+    /// minute check.
+    pub fn spawn_background(self: &Arc<Self>, app: &Arc<App>) {
+        let (me, app) = (Arc::clone(self), Arc::clone(app));
+        tokio::spawn(async move {
+            let swept = me.sweep_orphans(&app).await;
+            if swept > 0 {
+                eprintln!(
+                    "noevia-server: removed {swept} Google Drive connection(s) of deleted accounts"
+                );
+            }
+            loop {
+                tokio::time::sleep(REPUBLISH).await;
+                let again = Arc::clone(&me);
+                let _ = tokio::task::spawn_blocking(move || again.republish_if_changed()).await;
+            }
+        });
+    }
+
     // ── tokens ──
 
     fn cached(&self, slot: &Slot, current: &str, rejected: Option<&str>) -> Option<(String, i64)> {
@@ -1276,7 +1489,7 @@ impl Drive {
             builder = builder.body(body);
         }
         let (status, body, capped) = self
-            .send(builder, req.cap)
+            .send(builder, req.cap, req.budget)
             .await
             .map_err(|_| Fail::new("Google Drive could not be reached.", 502))?;
         Ok(ApiReply {
@@ -1295,6 +1508,32 @@ impl Drive {
         content_type: Option<&str>,
         body: Option<Vec<u8>>,
     ) -> Result<JValue, Fail> {
+        self.call_within(slot, method, url, content_type, body, Budget::Quick)
+            .await
+    }
+
+    /// [`Drive::call`] for an upload: the transfer budget instead of the quick one.
+    pub async fn upload(
+        self: &Arc<Self>,
+        slot: &Slot,
+        method: &str,
+        url: &str,
+        content_type: Option<&str>,
+        body: Option<Vec<u8>>,
+    ) -> Result<JValue, Fail> {
+        self.call_within(slot, method, url, content_type, body, Budget::Transfer)
+            .await
+    }
+
+    async fn call_within(
+        self: &Arc<Self>,
+        slot: &Slot,
+        method: &str,
+        url: &str,
+        content_type: Option<&str>,
+        body: Option<Vec<u8>>,
+        budget: Budget,
+    ) -> Result<JValue, Fail> {
         let headers = content_type
             .map(|c| vec![("content-type", c.to_owned())])
             .unwrap_or_default();
@@ -1307,6 +1546,7 @@ impl Drive {
                     headers,
                     body,
                     cap: JSON_CAP,
+                    budget,
                 },
             )
             .await?;

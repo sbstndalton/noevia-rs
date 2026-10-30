@@ -145,6 +145,7 @@ impl Mirror<'_> {
                     headers: vec![],
                     body: None,
                     cap: local_config.len() + 1,
+                    budget: crate::gdrive::Budget::Quick,
                 },
             )
             .await?;
@@ -393,13 +394,16 @@ pub async fn mirror(
         let len = body.len() as u64;
         multipart.extend_from_slice(&body);
         multipart.extend_from_slice(format!("\r\n--{boundary}--").as_bytes());
-        m.call(
-            "POST",
-            &format!("{}/files?uploadType=multipart&fields=id", m.upload),
-            Some(&format!("multipart/related; boundary={boundary}")),
-            Some(multipart),
-        )
-        .await?;
+        // A 4 MiB chunk over a slow uplink takes minutes: the transfer budget, not the quick one.
+        m.drive
+            .upload(
+                &Slot::Backup,
+                "POST",
+                &format!("{}/files?uploadType=multipart&fields=id", m.upload),
+                Some(&format!("multipart/related; boundary={boundary}")),
+                Some(multipart),
+            )
+            .await?;
         uploaded += 1;
         bytes += len;
     }

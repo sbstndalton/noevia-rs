@@ -189,6 +189,10 @@ async fn server_main() -> ExitCode {
         let drive = std::sync::Arc::clone(drive);
         let _ = tokio::task::spawn_blocking(move || drive.publish_startup()).await;
     }
+    if let Some(drive) = app.drive.as_ref() {
+        // The orphan sweep (accounts deleted while this process was down) and the state file's check.
+        drive.spawn_background(&app);
+    }
     if let Some(offsite) = app.offsite.as_ref() {
         offsite.spawn_scheduler(&app);
     }

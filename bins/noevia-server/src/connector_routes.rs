@@ -20,6 +20,10 @@
 //!   `{ error, code, status }` with code `disconnected`, `reconnect` or `transient`
 //! - `reject { generation }` -> `{ dropped }`; `disconnect` -> `{ ok, state }`; `forget { user }` -> `{ ok }`
 //! - `view` -> the Google Drive connector object; `policy { tools, mode, writes }` -> `{ ok }`
+//! - `reseal {}` -> `{ current, rotated, empty, failed }`: secrets:rotate re-seals every account's
+//!   token file under the current secrets.key, under the same fence as every other change
+//!
+//! `admin: true` is checked against `users.role`; a claim the table does not confirm is a member.
 //!
 //! A refresh token never leaves this process; an access token is in no log.
 use crate::gdrive::{self, now_ms, Fail, Slot};
@@ -41,6 +45,9 @@ pub const ROUTES: &[&str] = &[CONNECT, DISCONNECT, POLICY, BACKUP_COPY];
 const BODY_LIMIT: usize = 1024 * 1024;
 const BODY_DEADLINE: Duration = Duration::from_secs(10);
 const UNREACHABLE: &str = "Google Drive could not be reached.";
+/// A failure to store tool permissions: the same table serves the Nextcloud permissions, so it is
+/// not Google Drive's to blame.
+const POLICY_UNSAVED: &str = "The tool permissions could not be saved.";
 
 /// core gdrive-tools.cjs TOOLS (the order Settings lists them), their labels, and READS.
 pub const TOOLS: [(&str, &str); 7] = [
@@ -265,7 +272,7 @@ fn set_policy(
     let writer = app
         .writes
         .writer()
-        .map_err(|_| Fail::new(UNREACHABLE, 502))?;
+        .map_err(|_| Fail::new(POLICY_UNSAVED, 502))?;
     let now = now_ms();
     let detail = js_json::stringify(&JValue::obj([
         ("tools", JValue::Arr(tools.iter().map(|t| s(t)).collect())),
@@ -283,7 +290,7 @@ fn set_policy(
             )?;
             Ok(())
         })
-        .map_err(|_| Fail::new(UNREACHABLE, 502))
+        .map_err(|_| Fail::new(POLICY_UNSAVED, 502))
 }
 
 /// Why a connector request stopped: a failure with Node's words, or a ready refusal.
@@ -354,7 +361,7 @@ pub async fn serve(
                 let (a, u, mode) = (Arc::clone(app), user.clone(), body.get("mode").clone());
                 tokio::task::spawn_blocking(move || set_policy(&a, &u, &tools, &mode, &writes))
                     .await
-                    .map_err(|_| Fail::new(UNREACHABLE, 502))??;
+                    .map_err(|_| Fail::new(POLICY_UNSAVED, 502))??;
             }
             _ => {
                 if drive.slot_for(&user, admin)? != Slot::Backup {
@@ -421,6 +428,28 @@ fn internal_fail(e: &Fail) -> Response<Body> {
     )
 }
 
+/// Whether `users.role` of this account is `admin` right now (false when it cannot be read).
+async fn is_admin(app: &Arc<App>, user: &str) -> bool {
+    let (a, u) = (Arc::clone(app), user.to_owned());
+    tokio::task::spawn_blocking(move || {
+        a.writes
+            .writer()
+            .ok()
+            .and_then(|w| {
+                w.read(|r| {
+                    r.row("SELECT role FROM users WHERE id=?1", [u.as_str()], |row| {
+                        row.get::<_, String>(0)
+                    })
+                })
+                .ok()
+                .flatten()
+            })
+            .is_some_and(|role| role == "admin")
+    })
+    .await
+    .unwrap_or(false)
+}
+
 /// `POST /v1/gdrive/<op>` after the store secret was checked.
 pub async fn internal_op(app: Option<Arc<App>>, op: &str, raw: &[u8]) -> Response<Body> {
     let unavailable = || internal(503, &JValue::obj([("error", s("unavailable"))]));
@@ -432,11 +461,33 @@ pub async fn internal_op(app: Option<Arc<App>>, op: &str, raw: &[u8]) -> Respons
         Ok(b @ JValue::Obj(_)) => b,
         _ => return internal(400, &JValue::obj([("error", s("invalid JSON"))])),
     };
+    if op == "reseal" {
+        // secrets:rotate: every account's token file under the retired key is sealed under the
+        // current one, here, under the same fence as every other change to those files. Counts only.
+        let d = Arc::clone(&drive);
+        return match tokio::task::spawn_blocking(move || d.reseal_users()).await {
+            Ok(Ok(r)) => internal(
+                200,
+                &JValue::obj([
+                    ("current", JValue::Num(r.current as f64)),
+                    ("rotated", JValue::Num(r.rotated as f64)),
+                    ("empty", JValue::Num(r.empty as f64)),
+                    ("failed", JValue::Num(r.failed as f64)),
+                ]),
+            ),
+            Ok(Err(e)) => internal_fail(&e),
+            Err(_) => internal_fail(&Fail::new("The re-seal did not finish.", 502)),
+        };
+    }
     let user = match body.get("user") {
         JValue::Str(u) if !u.is_empty() && u.len() <= 256 => u.clone(),
         _ => return internal(400, &JValue::obj([("error", s("invalid user"))])),
     };
-    let admin = body.get("admin").as_bool() == Some(true);
+    // Node says whether the account is an administrator; a claim of `true` is checked against the
+    // users table, so a mistaken or forged request cannot reach the backup slot (the one Drive that
+    // is not the account's own). Anything short of a confirmed administrator is a member.
+    let admin =
+        body.get("admin").as_bool() == Some(true) && op != "forget" && is_admin(&app, &user).await;
     drive.publish_once();
     match op {
         "session" => {
@@ -501,7 +552,7 @@ pub async fn internal_op(app: Option<Arc<App>>, op: &str, raw: &[u8]) -> Respons
             {
                 Ok(Ok(())) => internal(200, &JValue::obj([("ok", JValue::Bool(true))])),
                 Ok(Err(e)) => internal_fail(&e),
-                Err(_) => internal_fail(&Fail::new(UNREACHABLE, 502)),
+                Err(_) => internal_fail(&Fail::new(POLICY_UNSAVED, 502)),
             }
         }
         _ => internal(404, &JValue::obj([("error", s("not found"))])),

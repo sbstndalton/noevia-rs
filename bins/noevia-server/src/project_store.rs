@@ -670,6 +670,7 @@ pub fn router_with_app(
         "forget",
         "view",
         "policy",
+        "reseal",
     ] {
         let (store, app) = (store.clone(), app.clone());
         router = router.route(
