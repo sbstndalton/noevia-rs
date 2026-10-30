@@ -424,24 +424,38 @@ owner = "rust"
 methods = ["POST"]
 
 [[route]]
+# sbstndalton/noevia#2202 (rust-mcp-credentials): the MCP server credentials are the Rust broker's
+# (mcp_routes.rs): each account's own API keys and OAuth sign-ins. Node answered exactly these
+# methods on these paths; the sign-in callback is the service's browser return, not a web client call.
 path = "/api/mcp-keys/servers"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/mcp-keys/{*}"
-owner = "node"
+owner = "rust"
+methods = ["DELETE", "PUT"]
+
+[[route]]
+path = "/api/mcp-oauth/callback"
+owner = "rust"
+methods = ["GET"]
+client = false
 
 [[route]]
 path = "/api/mcp-oauth/servers"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/mcp-oauth/{id}"
-owner = "node"
+owner = "rust"
+methods = ["DELETE"]
 
 [[route]]
 path = "/api/mcp-oauth/{id}/connect"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/model-manager"

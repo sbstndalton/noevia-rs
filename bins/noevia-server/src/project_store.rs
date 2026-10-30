@@ -683,7 +683,49 @@ pub fn router_with_app(
             }),
         );
     }
+    // sbstndalton/noevia#2202: the MCP credential broker (mcp_routes.rs `internal_op`), same secret.
+    for op in [
+        "session",
+        "key",
+        "reject",
+        "start",
+        "client",
+        "client-info",
+        "forget",
+        "key-set",
+        "reseal",
+    ] {
+        let (store, app) = (store.clone(), app.clone());
+        router = router.route(
+            &format!("/v1/mcp/{op}"),
+            post(move |headers: HeaderMap, raw: Bytes| {
+                let (store, app) = (store.clone(), app.clone());
+                async move { mcp_op(store, app, headers, raw, op).await }
+            }),
+        );
+    }
     router
+}
+
+async fn mcp_op(
+    store: Store,
+    app: Option<Arc<crate::App>>,
+    headers: HeaderMap,
+    raw: Bytes,
+    op: &'static str,
+) -> Response<Body> {
+    if !authorised(&store, &headers) {
+        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+    }
+    #[cfg(feature = "rust-storage-reads")]
+    {
+        crate::mcp_routes::internal_op(app, op, &raw).await
+    }
+    #[cfg(not(feature = "rust-storage-reads"))]
+    {
+        let _ = (app, raw, op);
+        error(StatusCode::NOT_FOUND, "not found")
+    }
 }
 
 /// `POST /v1/providers/reseal { scope, user? }` (see the header).

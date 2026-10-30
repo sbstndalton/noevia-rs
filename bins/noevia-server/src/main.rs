@@ -183,6 +183,12 @@ async fn server_main() -> ExitCode {
     if let Some(broker) = app.chatgpt_oauth.as_ref() {
         broker.sweep_once(&app).await;
     }
+    // sbstndalton/noevia#2202: the MCP credential broker removes the credentials of deleted accounts
+    // and servers and publishes who is ready (Node re-reads the file's signal).
+    #[cfg(feature = "rust-storage-reads")]
+    if let Some(mcp) = app.mcp.as_ref() {
+        mcp.sweep_once(&app).await;
+    }
     // #1071: permanent; NOEVIA_RUST_PROJECTS is retired (a leftover value is reported above).
     println!("noevia-server: Rust owns the project routes, projects.json and free-chats.json");
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
