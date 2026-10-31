@@ -291,6 +291,11 @@ fn plain_text(name: &str) -> bool {
     !s.is_empty() && PLAIN_TEXT.contains(&&s[1..])
 }
 
+/// Whether `name` is read as plain text, with no extraction service involved.
+pub fn is_plain_text(name: &str) -> bool {
+    plain_text(name)
+}
+
 pub fn is_pdf(name: &str) -> bool {
     suffix(name) == ".pdf"
 }
