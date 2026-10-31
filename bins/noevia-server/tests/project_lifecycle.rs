@@ -1025,8 +1025,10 @@ async fn import_adds_chats_as_node_does_and_never_overwrites() {
         audits(&f),
         [r#"{"imported":4,"skipped":1,"projectsCreated":1}"#]
     );
-    // The same file again adds nothing but the chat whose id was taken: its own id is in no list,
-    // so planImport takes it again, as Node did (it is published under yet another id).
+    // sbstndalton/noevia#2196: the same file again adds nothing, not even the chat whose id was
+    // taken (it went in under a new id; the ledger knows which) and nothing stored changes.
+    let stored = |file: &str| std::fs::read(dir.join(file)).unwrap_or_default();
+    let before = (stored("projects.json"), stored("free-chats.json"));
     let (status, _, text) = post(export).await;
     assert_eq!(status, 200);
     let again: serde_json::Value = serde_json::from_str(&text).unwrap();
@@ -1036,9 +1038,102 @@ async fn import_adds_chats_as_node_does_and_never_overwrites() {
             again["skipped"].as_array().unwrap().len(),
             again["projectsCreated"].as_u64()
         ),
-        (Some(1), 4, Some(0))
+        (Some(0), 5, Some(0))
     );
     assert_eq!(audits(&f).len(), 2);
+    assert_eq!(before, (stored("projects.json"), stored("free-chats.json")));
+}
+
+/// sbstndalton/noevia#2196: importing twice leaves one copy; a changed chat keeps the existing copy
+/// and says so; a chat without an id is known by its content (changed content is a new chat); a
+/// deleted id comes back once; a chat the user then deletes can be restored.
+#[tokio::test]
+async fn import_twice_leaves_one_copy() {
+    let f = front().await;
+    publish_catalogue(&f);
+    let dir = f.user_dir();
+    std::fs::write(dir.join("deleted-chats.json"), "[]").unwrap();
+    let h = json_headers(&f);
+    let post = |body: String| {
+        let h = h.clone();
+        async move {
+            let (status, _, text) =
+                call(f.addr, "POST", "/api/import/conversations", &h, &body).await;
+            assert_eq!(status, 200, "{text}");
+            serde_json::from_str::<serde_json::Value>(&text).unwrap()
+        }
+    };
+    let listed = || -> Vec<String> {
+        let text = std::fs::read_to_string(dir.join("free-chats.json")).unwrap();
+        let list: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let mut ids: Vec<String> = list
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["id"].as_str().unwrap().to_string())
+            .collect();
+        ids.sort();
+        ids
+    };
+    let chat = |id: &str, content: &str| {
+        format!(
+            r#"{{{id}"title":"T","updatedAt":5,"history":[{{"role":"user","content":"{content}"}}]}}"#
+        )
+    };
+    let export = |chats: &[String]| format!("{EXPORT_HEAD}{}]}}", chats.join(","));
+    let first = export(&[chat(r#""id":"c-one","#, "hello"), chat("", "no id")]);
+    let got = post(first.clone()).await;
+    assert_eq!(got["imported"], 2);
+    let ids = listed();
+    assert_eq!(ids.len(), 2);
+
+    let got = post(first.clone()).await;
+    assert_eq!(
+        (
+            got["imported"].as_u64(),
+            got["skipped"].as_array().unwrap().len()
+        ),
+        (Some(0), 2)
+    );
+    assert_eq!(listed(), ids);
+
+    // Changed under the same id: the existing chat stays as it was, and the answer says so.
+    let revision = || {
+        server_projects::transcript::read(&f.data, &f.user, "c-one")
+            .unwrap()
+            .revision
+    };
+    let saved = revision();
+    let got = post(export(&[chat(r#""id":"c-one","#, "edited")])).await;
+    assert_eq!(got["imported"], 0);
+    assert!(got["skipped"][0]["reason"]
+        .as_str()
+        .unwrap()
+        .contains("differs"));
+    assert_eq!(listed(), ids);
+    assert_eq!(saved, revision());
+    // No id, other content: nothing says it is the same chat, so it is a new one, once.
+    let edited = export(&[chat("", "no id, edited")]);
+    assert_eq!(post(edited.clone()).await["imported"], 1);
+    assert_eq!(post(edited).await["imported"], 0);
+    assert_eq!(listed().len(), 3);
+
+    // The ledger holds ids and hashes, none of the chat's words.
+    let ledger = std::fs::read_to_string(dir.join("imported-chats.json")).unwrap();
+    assert!(!ledger.contains("hello") && ledger.contains("id:c-one"));
+
+    // A tombstoned id imports under a new id, once; deleting that copy allows one restore.
+    std::fs::write(dir.join("deleted-chats.json"), r#"["c-gone"]"#).unwrap();
+    let gone = export(&[chat(r#""id":"c-gone","#, "bye")]);
+    assert_eq!(post(gone.clone()).await["imported"], 1);
+    assert_eq!(post(gone.clone()).await["imported"], 0);
+    let list = std::fs::read_to_string(dir.join("free-chats.json")).unwrap();
+    let mut list: serde_json::Value = serde_json::from_str(&list).unwrap();
+    list.as_array_mut()
+        .unwrap()
+        .retain(|c| c["title"] != "T" || ids.contains(&c["id"].as_str().unwrap().to_string()));
+    std::fs::write(dir.join("free-chats.json"), list.to_string()).unwrap();
+    assert_eq!(post(gone).await["imported"], 1);
 }
 
 /// A journal Node left (crashed after staging, before its lists) is finished by the next import,

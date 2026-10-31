@@ -17,6 +17,14 @@
 //! `import`), a taken id gets a new one; lists are merged as `mergeChats` merges them; a chat the
 //! list cap dropped is `capped` and its transcript taken back (origin `remove`) only while it is
 //! still what this import published. Imports of one account run one at a time.
+//!
+//! sbstndalton/noevia#2196: `imported-chats.json` in the user's directory (`{version, chats}`, written
+//! with `atomicJson`, ids and hashes only) remembers which local chat each source chat became, so a
+//! re-import skips it whichever id it got. A source chat is its export id, or the SHA-256 of its title
+//! and cleaned history when it has no usable id. It is skipped while that local chat is listed, even
+//! if the file's copy changed (existing chats are never touched; the reason says so); a chat the user
+//! deleted can be restored from the export again. The file appears with the first import after
+//! upgrade; nothing existing is rewritten, and chats imported before it have no entry.
 use crate::chats::{self, FREE_CHATS_FILE};
 use crate::transcript::{self, Base, Saved};
 use crate::{free_chats, journal::Origin, js, store, Ctx, Reply};
@@ -45,6 +53,10 @@ const TOO_LARGE: &str = "That file is over 64 MB. Split the export and import ea
 pub const NOT_EXPORT: &str = "Choose a conversations.json from a noevia conversations export.";
 const INTERRUPTED: &str = "Import was interrupted. Some conversations may already be available. Retry the same file to finish; unfinished imports are kept for recovery.";
 const ROOT: &str = "conversation-imports";
+const LEDGER: &str = "imported-chats.json";
+const ALREADY: &str = "already in this account";
+const DIFFERS: &str = "already in this account; the copy in this file differs and was not imported";
+const REPEATED: &str = "repeated in this file";
 
 /// What the route needs besides the request: a project's create (the id it made, or the status
 /// it refused with) and the audit row (core auth.cjs `audit('import.conversations', …)`).
@@ -194,6 +206,76 @@ struct Account {
     projects: Vec<Listed>,
     existing: HashSet<String>,
     tombstones: HashSet<String>,
+    ledger: Ledger,
+}
+
+/// Source key (`id:<export id>` or `hash:<content hash>`) to `(local chat id, content hash)`.
+type Ledger = HashMap<String, (String, String)>;
+
+/// A ledger that is valid JSON of another shape counts as empty; an unreadable one fails the import.
+fn read_ledger(dir: &Path) -> Result<Ledger, Fail> {
+    let Some(value) = read_json(&dir.join(LEDGER))? else {
+        return Ok(Ledger::new());
+    };
+    let JValue::Obj(chats) = value.get("chats") else {
+        return Ok(Ledger::new());
+    };
+    Ok(chats
+        .iter()
+        .filter_map(|(key, entry)| {
+            let chat = entry.get("chat").as_str()?;
+            let hash = entry.get("hash").as_str()?;
+            Some((key.clone(), (chat.to_string(), hash.to_string())))
+        })
+        .collect())
+}
+
+/// Adds what this import made visible and forgets entries whose chat is no longer listed. A journal
+/// without source keys (an older import's) adds nothing and leaves the file alone.
+fn record_ledger(dir: &Path, files: &[JValue], visible: &HashSet<String>) -> Result<(), Fail> {
+    let added: Vec<(&str, &str, &str)> = files
+        .iter()
+        .filter_map(|f| {
+            let chat = f.get("id").as_str()?;
+            Some((f.get("source").as_str()?, chat, f.get("hash").as_str()?))
+        })
+        .filter(|(_, chat, _)| visible.contains(*chat))
+        .collect();
+    if added.is_empty() {
+        return Ok(());
+    }
+    let mut ledger = read_ledger(dir)?;
+    ledger.retain(|_, (chat, _)| visible.contains(chat));
+    for (source, chat, hash) in added {
+        ledger.insert(source.to_string(), (chat.to_string(), hash.to_string()));
+    }
+    let mut chats: Vec<(String, JValue)> = ledger
+        .into_iter()
+        .map(|(key, (chat, hash))| {
+            (
+                key,
+                JValue::obj([("chat", JValue::Str(chat)), ("hash", JValue::Str(hash))]),
+            )
+        })
+        .collect();
+    chats.sort_by(|a, b| a.0.cmp(&b.0));
+    atomic_json(
+        &dir.join(LEDGER),
+        &JValue::obj([("version", JValue::Num(1.0)), ("chats", JValue::Obj(chats))]),
+    )
+}
+
+/// What identifies a chat's content: its title and cleaned history, not when or where it was filed.
+fn content_hash(title: &str, history: &[JValue]) -> Result<String, Fail> {
+    let text = wtf16::stringify(&JValue::Arr(vec![
+        JValue::Str(title.to_string()),
+        JValue::Arr(history.to_vec()),
+    ]))
+    .ok_or(Fail::Interrupted)?;
+    Ok(sha2::Sha256::digest(text.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect())
 }
 
 fn read_projects(dir: &Path) -> Result<Vec<JValue>, Fail> {
@@ -240,13 +322,14 @@ fn account(dir: &Path) -> Result<Account, Fail> {
         projects,
         existing: persisted(dir)?,
         tombstones: tombstones(dir)?,
+        ledger: read_ledger(dir)?,
     })
 }
 
 /// chat-import.cjs `planImport`: `{ freeChats, projectChats, histories, skipped, imported }`, the
 /// histories apart (in plan order).
-/// Each planned chat's id and cleaned history, in plan order.
-type Histories = Vec<(String, Vec<JValue>)>;
+/// Each planned chat's id, cleaned history, source key and content hash, in plan order.
+type Histories = Vec<(String, Vec<JValue>, String, String)>;
 
 fn plan(data: &JValue, acc: &Account) -> Result<(JValue, Histories), Fail> {
     let chats_list = match (data, data.get("format").as_str(), data.get("chats")) {
@@ -267,6 +350,8 @@ fn plan(data: &JValue, acc: &Account) -> Result<(JValue, Histories), Fail> {
     let mut histories = Vec::new();
     let mut skipped = Vec::new();
     let mut used: HashSet<String> = HashSet::new();
+    let mut first_of_id: HashMap<&str, String> = HashMap::new();
+    let mut seen_hashes: HashSet<String> = HashSet::new();
     for raw in chats_list {
         if !matches!(raw, JValue::Obj(_) | JValue::Arr(_)) {
             continue;
@@ -281,7 +366,34 @@ fn plan(data: &JValue, acc: &Account) -> Result<(JValue, Histories), Fail> {
             200,
         );
         let id = raw.get("id").as_str().unwrap_or("");
-        if safe_id(id) && acc.existing.contains(id) {
+        let history = clean_history(raw.get("history"));
+        let hash = content_hash(&title, &history)?;
+        // The first chat of an id goes by the id; a later one with other content by its hash.
+        let mut source = format!("hash:{hash}");
+        let mut reason = None;
+        if safe_id(id) {
+            match first_of_id.get(id) {
+                None => {
+                    first_of_id.insert(id, hash.clone());
+                    source = format!("id:{id}");
+                }
+                Some(first) if *first == hash => reason = Some(REPEATED),
+                Some(_) => {}
+            }
+        }
+        if reason.is_none() && source.starts_with("hash:") && !seen_hashes.insert(hash.clone()) {
+            reason = Some(REPEATED);
+        }
+        if reason.is_none() {
+            reason = match acc.ledger.get(&source) {
+                Some((chat, known)) if acc.existing.contains(chat) => {
+                    Some(if *known == hash { ALREADY } else { DIFFERS })
+                }
+                _ if safe_id(id) && acc.existing.contains(id) => Some(ALREADY),
+                _ => None,
+            };
+        }
+        if let Some(reason) = reason {
             let shown = if title.is_empty() {
                 "Untitled chat".to_string()
             } else {
@@ -289,7 +401,7 @@ fn plan(data: &JValue, acc: &Account) -> Result<(JValue, Histories), Fail> {
             };
             skipped.push(JValue::obj([
                 ("title", JValue::Str(shown)),
-                ("reason", JValue::Str("already in this account".into())),
+                ("reason", JValue::Str(reason.into())),
             ]));
             continue;
         }
@@ -311,7 +423,7 @@ fn plan(data: &JValue, acc: &Account) -> Result<(JValue, Histories), Fail> {
             ("title", JValue::Str(title)),
             ("updatedAt", updated),
         ]);
-        histories.push((chat_id, clean_history(raw.get("history"))));
+        histories.push((chat_id, history, source, hash));
         let project = raw.get("project");
         let project_name = match project.get("name") {
             JValue::Str(s) if project.truthy() => wtf16::slice(js::trim(s), 120),
@@ -692,6 +804,7 @@ fn apply_record(
     }) {
         return Err(Fail::Interrupted);
     }
+    record_ledger(dir, &files, &visible)?;
     let (mut imported, mut skipped, created) = result_for(record);
     let plan = record.get("plan");
     let mut removed = Vec::new();
@@ -805,7 +918,7 @@ fn import(ctx: Ctx<'_>, dir: &Path, data: &JValue, env: &ImportEnv<'_>) -> Resul
         std::fs::DirBuilder::new().mode(0o700).create(&directory)?;
     }
     let mut files = Vec::with_capacity(histories.len());
-    for (index, (id, history)) in histories.into_iter().enumerate() {
+    for (index, (id, history, source, hash)) in histories.into_iter().enumerate() {
         let stage = format!("{index}.json");
         atomic_json(
             &directory.join(&stage),
@@ -814,6 +927,8 @@ fn import(ctx: Ctx<'_>, dir: &Path, data: &JValue, env: &ImportEnv<'_>) -> Resul
         files.push(JValue::obj([
             ("id", JValue::Str(id)),
             ("stage", JValue::Str(stage)),
+            ("source", JValue::Str(source)),
+            ("hash", JValue::Str(hash)),
         ]));
     }
     let mut record = JValue::obj([
@@ -862,6 +977,7 @@ mod tests {
             }],
             existing: ["c-old".to_string()].into_iter().collect(),
             tombstones: ["c-gone".to_string()].into_iter().collect(),
+            ledger: Ledger::new(),
         }
     }
 
@@ -897,6 +1013,58 @@ mod tests {
             wtf16::stringify(&JValue::Arr(histories[0].1.clone())).unwrap(),
             r#"[{"role":"user","content":"hi"},{"role":"assistant","content":"yo","failure":"broke","toolCalls":[{"name":"t","status":"done"}]}]"#
         );
+    }
+
+    #[test]
+    fn a_known_source_is_skipped_while_its_chat_is_listed() {
+        let hash = |title: &str, content: &str| {
+            let message = wtf16::parse(&format!(r#"{{"role":"user","content":"{content}"}}"#));
+            content_hash(title, &[message.unwrap()]).unwrap()
+        };
+        let chat = |id: &str, content: &str| {
+            format!(
+                r#"{{"id":"{id}","title":"T","history":[{{"role":"user","content":"{content}"}}]}}"#
+            )
+        };
+        let export = |chats: &[String]| {
+            wtf16::parse(&format!(
+                r#"{{"format":"noevia-conversations-v1","chats":[{}]}}"#,
+                chats.join(",")
+            ))
+            .unwrap()
+        };
+        let reasons = |plan: &JValue| -> Vec<String> {
+            items(plan.get("skipped"))
+                .iter()
+                .map(|s| s.get("reason").as_str().unwrap().to_string())
+                .collect()
+        };
+        let mut a = acc();
+        for (key, title, content) in [("id:c-gone", "T", "same"), ("id:c-moved", "T", "old")] {
+            a.ledger
+                .insert(key.into(), ("c-old".into(), hash(title, content)));
+        }
+        a.ledger
+            .insert("id:c-stale".into(), ("c-deleted".into(), hash("T", "x")));
+        let (p, h) = plan(
+            &export(&[
+                chat("c-gone", "same"),
+                chat("c-moved", "new"),
+                chat("c-stale", "x"),
+                chat("c-twice", "a"),
+                chat("c-twice", "a"),
+                chat("c-twice", "b"),
+                r#"{"title":"No id","history":[]}"#.into(),
+                r#"{"id":"bad id","title":"No id","history":[]}"#.into(),
+            ]),
+            &a,
+        )
+        .unwrap();
+        assert_eq!(reasons(&p), [ALREADY, DIFFERS, REPEATED, REPEATED]);
+        // A chat the user deleted comes back; a repeated id with other content is its own chat.
+        let sources: Vec<&str> = h.iter().map(|x| x.2.split(':').next().unwrap()).collect();
+        assert_eq!(sources, ["id", "id", "hash", "hash"]);
+        assert_eq!(h[0].2, "id:c-stale");
     }
 
     #[test]
