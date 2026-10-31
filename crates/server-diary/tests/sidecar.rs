@@ -1021,12 +1021,101 @@ async fn an_unreachable_or_gateway_failing_diary_is_a_clear_503_on_every_route()
         assert_eq!((got.status(), got.text()), (503, UNAVAILABLE), "{path}");
         assert!(!got.text().contains("127.0.0.1"), "{path}");
     }
+    // A gateway-class answer is the same on every route that relays the sidecar.
     for status in [502, 503, 504] {
         let stub = Stub::start(move |_, _| Out::json(status, "{}")).await;
         let d = diary(&stub, TENANT_KEY);
-        let got = run(&d, &w, MEMBER, Route::Today, "GET", "/api/diary/today", b"").await;
-        assert_eq!((got.status(), got.text()), (503, UNAVAILABLE), "{status}");
+        for (route, method, path, body) in [
+            (Route::Today, "GET", "/api/diary/today", &b""[..]),
+            (
+                Route::StorageStatus,
+                "GET",
+                "/api/diary/storage-status",
+                b"",
+            ),
+            (
+                Route::StorageImport,
+                "POST",
+                "/api/diary/storage-import",
+                b"{}",
+            ),
+        ] {
+            let got = run(&d, &w, MEMBER, route, method, path, body).await;
+            assert_eq!(
+                (got.status(), got.text()),
+                (503, UNAVAILABLE),
+                "{status} {path}"
+            );
+        }
     }
+}
+
+/// The sidecar's own coded answers about the person's storage server (app.py) are not "the Diary is down":
+/// they keep their status and code, and a throttle its wait (body and `Retry-After`), on all three routes.
+#[tokio::test]
+async fn the_sidecars_storage_codes_pass_through_and_are_not_unavailable() {
+    let w = World::new(&[]);
+    let cases: [(u16, &str, &str); 3] = [
+        (
+            503,
+            r#"{"detail":"Storage is limiting sign-ins","code":"storageThrottled","retryAfter":7}"#,
+            r#"{"error":"Storage is limiting sign-ins","code":"storageThrottled","retryAfter":7}"#,
+        ),
+        (
+            502,
+            r#"{"detail":"Storage upstream failed","code":"storageUpstream"}"#,
+            r#"{"error":"Storage upstream failed","code":"storageUpstream"}"#,
+        ),
+        (
+            424,
+            r#"{"detail":"Login rejected","code":"storageLoginRejected"}"#,
+            r#"{"error":"Login rejected","code":"storageLoginRejected"}"#,
+        ),
+    ];
+    for (status, sent, expect) in cases {
+        let stub = Stub::start(move |_, _| Out::json(status, sent)).await;
+        let d = diary(&stub, TENANT_KEY);
+        for (route, method, path, body) in [
+            (Route::Today, "GET", "/api/diary/today", &b""[..]),
+            (
+                Route::StorageStatus,
+                "GET",
+                "/api/diary/storage-status",
+                b"",
+            ),
+            (
+                Route::StorageImport,
+                "POST",
+                "/api/diary/storage-import",
+                b"{}",
+            ),
+        ] {
+            let got = run(&d, &w, MEMBER, route, method, path, body).await;
+            assert_eq!((got.status(), got.text()), (status, expect), "{path}");
+        }
+    }
+    // The wait also rides as Retry-After (clamped to a day), for the front to send.
+    let stub = Stub::start(|_, _| {
+        Out::json(
+            503,
+            r#"{"detail":"x","code":"storageThrottled","retryAfter":999999}"#,
+        )
+    })
+    .await;
+    let d = diary(&stub, TENANT_KEY);
+    let reply = d
+        .serve(
+            Route::Today,
+            w.ctx(MEMBER, true),
+            Request {
+                method: "GET".into(),
+                target: "/api/diary/today".into(),
+                content_length: None,
+            },
+            Full::new(Bytes::new()),
+        )
+        .await;
+    assert_eq!(reply.retry_after, Some(86_400));
 }
 
 #[tokio::test]
