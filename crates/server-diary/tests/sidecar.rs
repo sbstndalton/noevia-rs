@@ -1243,15 +1243,16 @@ async fn storage_import_error_shapes_follow_the_detail_or_fall_back() {
             r#"{"detail":""}"#,
             r#"{"error":"Diary storage request failed"}"#,
         ),
+        // A gateway-class status without one of the sidecar's storage codes is the Diary being down (#2232).
         (
             502,
             r#"{"error":"journal locked"}"#,
-            r#"{"error":"Diary storage request failed"}"#,
+            r#"{"error":"Diary is unavailable right now. Try again shortly.","code":"diaryUnavailable"}"#,
         ),
         (
             503,
             "gateway down",
-            r#"{"error":"Diary storage request failed"}"#,
+            r#"{"error":"Diary is unavailable right now. Try again shortly.","code":"diaryUnavailable"}"#,
         ),
         (400, "null", r#"{"error":"Diary storage request failed"}"#),
         (404, "", r#"{"error":"Diary storage request failed"}"#),
@@ -1259,6 +1260,11 @@ async fn storage_import_error_shapes_follow_the_detail_or_fall_back() {
         let stub = Stub::start(move |_, _| Out::json(status, body)).await;
         let d = diary(&stub, TENANT_KEY);
         let got = run(&d, &w, MEMBER, Route::StorageImport, "POST", "/x", b"{}").await;
+        let status = if matches!(status, 502 | 503) {
+            503
+        } else {
+            status
+        };
         assert_eq!((got.status(), got.text()), (status, expect), "{body}");
     }
     // An OK reply that is not JSON is relayed as the JSON string it parsed to.
