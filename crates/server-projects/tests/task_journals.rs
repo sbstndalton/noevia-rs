@@ -178,6 +178,72 @@ fn a_journal_too_big_or_not_a_file_is_unreadable_and_never_followed() {
     }
 }
 
+#[test]
+fn a_too_big_journal_keeps_its_owner_and_a_damaged_one_of_another_project_is_missing() {
+    let data = tempfile::tempdir().unwrap();
+    let dir = jobs_dir(data.path());
+    // Over the bound: first line intact, then padding past MAX_JOURNAL_BYTES.
+    let big = id(10);
+    let path = dir.join(format!("{big}.jsonl"));
+    let f = fs::File::create(&path).unwrap();
+    f.set_len(tj::MAX_JOURNAL_BYTES + 1).unwrap();
+    drop(f);
+    let mut f = OpenOptions::new().write(true).open(&path).unwrap();
+    f.write_all(format!("{}\n", created(&big, "code", "p1")).as_bytes())
+        .unwrap();
+    drop(f);
+    match tj::load(&path, &big) {
+        Loaded::Unreadable { kind, project } => {
+            assert_eq!(kind.as_deref(), Some("code"));
+            assert_eq!(project.as_deref(), Some("p1"));
+        }
+        _ => panic!("not unreadable"),
+    }
+    let mine = |project: &str, surface| tj::get(data.path(), USER, surface, project, &big).unwrap();
+    assert!(matches!(mine("p1", Surface::Code), Found::Unreadable));
+    assert!(matches!(mine("p2", Surface::Code), Found::Missing));
+    assert!(matches!(mine("p1", Surface::Browser), Found::Missing));
+    // It is listed as a stub in its own project only.
+    assert_eq!(
+        tj::list(data.path(), USER, Surface::Code, Some("p1"), false)
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        tj::list(data.path(), USER, Surface::Code, Some("p2"), false)
+            .unwrap()
+            .is_empty()
+    );
+
+    // A damaged (mid-file fault) small journal answers the same.
+    let bad = id(11);
+    fs::write(
+        dir.join(format!("{bad}.jsonl")),
+        format!(
+            "{}\nnot json\n{}\n",
+            created(&bad, "browser", "p3"),
+            event(&bad, 3, "job.started", "{}")
+        ),
+    )
+    .unwrap();
+    let get = |project: &str, surface| tj::get(data.path(), USER, surface, project, &bad).unwrap();
+    assert!(matches!(get("p3", Surface::Browser), Found::Unreadable));
+    assert!(matches!(get("p4", Surface::Browser), Found::Missing));
+    assert!(matches!(get("p3", Surface::Code), Found::Missing));
+
+    // A symlink to an over-size journal stays refused with no owner read through it.
+    #[cfg(unix)]
+    {
+        let link = dir.join(format!("{}.jsonl", id(12)));
+        std::os::unix::fs::symlink(&path, &link).unwrap();
+        match tj::load(&link, &id(12)) {
+            Loaded::Unreadable { kind, project } => assert!(kind.is_none() && project.is_none()),
+            _ => panic!("link followed"),
+        }
+    }
+}
+
 /// jobs.cjs `append`: cut back a line that lost its newline, then one write of the whole line. `chunks`
 /// splits the write so a reader can see it half done, which a single write can also show.
 fn append_like_node(path: &Path, line: &str, chunks: usize) {

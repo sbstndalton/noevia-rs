@@ -119,10 +119,33 @@ fn stamp_of(m: &fs::Metadata) -> Stamp {
     Stamp(m.len(), m.modified().ok(), ino)
 }
 
+/// How much of an over-size journal is read to learn whose it is: the first line is its `job.created`.
+const OWNER_HEAD_BYTES: u64 = 1024 * 1024;
+
 enum Bytes {
     Absent,
     Refused,
+    /// A regular file past [`MAX_JOURNAL_BYTES`]: refused whole, but its head is kept for the owner.
+    TooBig(Vec<u8>),
     Read(Vec<u8>, Stamp),
+}
+
+/// The head of an over-size journal. Only a regular file is read: a swap for a link since the
+/// check reads nothing.
+fn too_big(path: &Path) -> Bytes {
+    let mut head = Vec::new();
+    let read = fs::File::open(path).and_then(|f| {
+        let regular = f.metadata()?.file_type().is_file()
+            && fs::symlink_metadata(path)?.file_type().is_file();
+        if regular {
+            f.take(OWNER_HEAD_BYTES).read_to_end(&mut head)?;
+        }
+        Ok(())
+    });
+    match read {
+        Ok(()) => Bytes::TooBig(head),
+        Err(_) => Bytes::Refused,
+    }
 }
 
 /// One read of a regular file that nothing changed across, or the last read if it kept changing.
@@ -139,7 +162,7 @@ fn read_settled(path: &Path) -> Bytes {
             Err(_) => return Bytes::Refused,
         };
         if before.len() > MAX_JOURNAL_BYTES {
-            return Bytes::Refused;
+            return too_big(path);
         }
         let mut raw = Vec::new();
         let read = fs::File::open(path).and_then(|f| {
@@ -152,7 +175,8 @@ fn read_settled(path: &Path) -> Bytes {
             Err(_) => return Bytes::Refused,
         };
         if raw.len() as u64 > MAX_JOURNAL_BYTES {
-            return Bytes::Refused;
+            raw.truncate(OWNER_HEAD_BYTES as usize);
+            return Bytes::TooBig(raw);
         }
         let stamp = stamp_of(&after);
         if stamp_of(&before) == stamp {
@@ -260,6 +284,10 @@ pub fn load(path: &Path, id: &str) -> Loaded {
                     project: None,
                 }
             }
+            Bytes::TooBig(head) => {
+                let (kind, project) = first_line_owner(&head);
+                return Loaded::Unreadable { kind, project };
+            }
             Bytes::Read(raw, stamp) => (raw, stamp),
         };
         if let Parsed::Rows(rows) = parse_rows(id, &raw) {
@@ -306,7 +334,16 @@ pub fn get(
     let path = jobs_dir(data_dir, user)?.join(format!("{id}.jsonl"));
     Ok(match load(&path, id) {
         Loaded::Absent => Found::Missing,
-        Loaded::Unreadable { .. } => Found::Unreadable,
+        // A damaged task of another kind or project is not this project's: as absent as a sound one.
+        Loaded::Unreadable { kind, project: own } => {
+            let other = kind.as_deref().is_some_and(|k| k != surface.kind())
+                || own.as_deref().is_some_and(|p| p != project);
+            if other {
+                Found::Missing
+            } else {
+                Found::Unreadable
+            }
+        }
         Loaded::Job(job) => {
             if job.kind.as_str() == Some(surface.kind()) && job.project_id.as_str() == Some(project)
             {

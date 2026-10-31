@@ -315,20 +315,50 @@ async fn a_client_that_leaves_strands_neither_the_reload_nor_its_hold() {
         ],
     )
     .await;
-    // The client gives up after 200 ms, in the middle of the router's reload.
-    let gone = tokio::time::timeout(
-        Duration::from_millis(200),
-        call(
+    // The client gives up in the middle of the router's reload: once the router has been asked to
+    // reload, not at a fixed time a loaded runner may reach before the request has even arrived.
+    let arrived = |seen: &std::sync::Mutex<Vec<Req>>| {
+        seen.lock()
+            .unwrap()
+            .iter()
+            .any(|r| r.target == "/models?reload=1")
+    };
+    let call_leaves = async {
+        let request = call(
             addr,
             "POST",
             "/api/models/presets/reload",
             Some(ADMIN),
             b"{}",
-        ),
-    )
-    .await;
-    assert!(gone.is_err(), "the client left before the answer");
-    tokio::time::sleep(Duration::from_millis(1500)).await;
+        );
+        tokio::pin!(request);
+        loop {
+            tokio::select! {
+                _ = &mut request => return false,
+                () = tokio::time::sleep(Duration::from_millis(5)) => {
+                    if arrived(&seen) { return true; }
+                }
+            }
+        }
+    };
+    let left = tokio::time::timeout(Duration::from_secs(30), call_leaves).await;
+    assert_eq!(
+        left,
+        Ok(true),
+        "the client left before the answer, mid-reload"
+    );
+    // Then the work must still run to its end and give the hold back: waited for with a deadline,
+    // not for a fixed time.
+    let finished = |seen: &std::sync::Mutex<Vec<Req>>| {
+        let (router, gate) = lines(&seen.lock().unwrap());
+        gate.len() >= 2 && router.last().map(String::as_str) == Some("GET /models hold")
+    };
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    while !finished(&seen) && std::time::Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    // A short settle, so a stray extra call after the end would still show in the exact lists.
+    tokio::time::sleep(Duration::from_millis(200)).await;
     let (router, gate) = lines(&seen.lock().unwrap());
     assert_eq!(
         gate,
