@@ -759,6 +759,20 @@ async fn a_wedged_document_service_neither_blocks_text_uploads_nor_holds_the_slo
     // A text file for the project the wedged PDF is converting in waits only briefly for the project lock,
     // then answers the retryable "still running" (429) instead of holding a slot for minutes.
     let same = Instant::now();
+    // The foreground form of the same upload waits the same short time (#2252: it waited 30 s).
+    let foreground = {
+        let owned: Vec<(String, String)> = h
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        let (addr, body) = (f.addr, UPLOAD.replace("notes", "fore"));
+        tokio::spawn(async move {
+            let h: Vec<(&str, &str)> = owned.iter().map(|(k, v)| (&**k, &**v)).collect();
+            let began = Instant::now();
+            let (status, text) = call(addr, "POST", "/api/projects/p%201/upload", &h, &body).await;
+            (status, text, began.elapsed())
+        })
+    };
     let (t3, t3_body) = start("p%201", UPLOAD.replace("notes", "same")).await;
     assert_eq!(t3, 202, "{t3_body}");
     let t3_poll = serde_json::from_str::<serde_json::Value>(&t3_body).unwrap()["poll"]
@@ -772,6 +786,14 @@ async fn a_wedged_document_service_neither_blocks_text_uploads_nor_holds_the_slo
         same.elapsed() < Duration::from_secs(18),
         "{:?}",
         same.elapsed()
+    );
+
+    let (fg_status, fg_body, fg_elapsed) = foreground.await.unwrap();
+    assert_eq!(fg_status, 429, "{fg_body} after {fg_elapsed:?}");
+    assert!(fg_body.contains("still running"), "{fg_body}");
+    assert!(
+        fg_elapsed < Duration::from_secs(16),
+        "a foreground text upload waited {fg_elapsed:?}, not the 10 s of a plain one"
     );
 
     // The wedged PDFs end within a few asks (1 s apart, two misses), not at the 30-minute bound:

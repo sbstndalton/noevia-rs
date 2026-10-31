@@ -174,8 +174,9 @@ const PLAIN_LOCK_WAIT: Duration = Duration::from_secs(10);
 /// be failed 504 while it ran). A plain-text job waits [`PLAIN_LOCK_WAIT`].
 fn lock_wait(foreground: bool, upload: bool, plain: bool) -> Duration {
     // A plain-text upload to a project whose lock a PDF holds (a conversion runs inside it) answers the
-    // retryable "another upload is still running" (429) after the short wait instead of queueing for minutes.
-    if plain && !foreground {
+    // retryable "another upload is still running" (429) after the short wait instead of queueing for minutes,
+    // in a request as in a job (#2252: a foreground one waited the full 30 s).
+    if plain {
         return PLAIN_LOCK_WAIT;
     }
     if foreground {
@@ -360,11 +361,16 @@ async fn run_sync_task(
             let parsed = (work.kind == Kind::Upload)
                 .then(|| parse_body(&work.body))
                 .flatten();
-            list_operation(&account, &work, parsed.as_ref())
+            let plain = needs_no_extraction(&work, parsed.as_ref());
+            (list_operation(&account, &work, parsed.as_ref()), plain)
         })
         .await
     };
-    let op = listed.flatten();
+    let (op, plain) = match listed {
+        Some((op, plain)) => (op, plain),
+        None => (None, false),
+    };
+    let work = Work { plain, ..work };
     let answer = within(bound, move || {
         execute(&app, &authn, &account, &work, true, &|_| {})
     })
@@ -834,6 +840,12 @@ mod tests {
             PLAIN_LOCK_WAIT,
             "a plain upload never queues behind a conversion"
         );
+        assert_eq!(
+            lock_wait(true, true, true),
+            PLAIN_LOCK_WAIT,
+            "nor does a foreground one (#2252: it waited the 30 s of a document)"
+        );
+        assert!(PLAIN_LOCK_WAIT < short);
     }
 
     #[test]
