@@ -185,6 +185,68 @@ async fn call(app: &Arc<App>, method: &str, path: &str, signed_in: bool, body: &
     }
 }
 
+/// A sidecar that answers every request with one fixed status and JSON body.
+async fn fixed_sidecar(status: u16, body: &'static str) -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move {
+        loop {
+            let Ok((stream, _)) = listener.accept().await else {
+                return;
+            };
+            tokio::spawn(async move {
+                let service = service_fn(
+                    move |req: hyper::Request<hyper::body::Incoming>| async move {
+                        let _ = req.into_body().collect().await;
+                        Ok::<_, Infallible>(
+                            hyper::Response::builder()
+                                .status(status)
+                                .header("content-type", "application/json")
+                                .body(Full::new(bytes::Bytes::from_static(body.as_bytes())))
+                                .unwrap(),
+                        )
+                    },
+                );
+                let _ = hyper::server::conn::http1::Builder::new()
+                    .serve_connection(TokioIo::new(stream), service)
+                    .await;
+            });
+        }
+    });
+    base
+}
+
+/// sbstndalton/noevia#2245 (rs#360 review): the wait of a storage throttle reaches the person as the
+/// `Retry-After` header and the body's `retryAfter`, through the front's own reply (`into_response`).
+/// The sidecar-client tests assert the reply struct; this is the header on the wire.
+#[tokio::test]
+async fn a_throttled_diary_read_carries_its_wait_as_retry_after_on_the_wire() {
+    let dir = tempfile::tempdir().unwrap();
+    seed(dir.path(), true);
+    let marker = dir.path().join("users").join(USER);
+    std::fs::create_dir_all(&marker).unwrap();
+    std::fs::write(marker.join("migration.json"), "{}").unwrap();
+    let base = fixed_sidecar(
+        503,
+        r#"{"detail":"Storage is limiting sign-ins","code":"storageThrottled","retryAfter":7}"#,
+    )
+    .await;
+    let app = app(dir.path(), &base);
+    let a = call(&app, "GET", "/api/diary/today?month=2026-10", true, b"").await;
+    assert_eq!(a.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(a.headers.get("retry-after").unwrap(), "7");
+    assert_eq!(
+        a.body,
+        br#"{"error":"Storage is limiting sign-ins","code":"storageThrottled","retryAfter":7}"#
+    );
+    // A plain outage has no wait to give.
+    let down = fixed_sidecar(503, r#"{"detail":"down"}"#).await;
+    let app = self::app(dir.path(), &down);
+    let a = call(&app, "GET", "/api/diary/today?month=2026-10", true, b"").await;
+    assert_eq!(a.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(a.headers.get("retry-after").is_none());
+}
+
 #[test]
 fn the_front_lists_the_capabilities_and_owns_exactly_these_routes() {
     assert!(noevia_server::FEATURES.contains(&"rust-diary"));
