@@ -10,13 +10,12 @@
 
 use noevia_server::extraction::HttpEngine;
 use server_projects::extract::Engine;
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
 /// The tests set the process environment (`DOCLING_BASE_URL`): one at a time.
-static ENV: Mutex<()> = Mutex::new(());
+static ENV: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 const PAGES: &str = r#"{"total":1,"pages":[{"number":1,"text":"Synthetic total 42","status":"native","method":"docling"}]}"#;
 
@@ -107,7 +106,7 @@ async fn read(every: Duration, misses: u32) -> (Instant, Result<(), String>, boo
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_service_that_holds_the_request_and_stops_answering_is_given_up_on_within_a_few_asks() {
-    let _env = ENV.lock().unwrap_or_else(|p| p.into_inner());
+    let _env = ENV.lock().await;
     let url = service(false, None).await;
     std::env::set_var("DOCLING_BASE_URL", &url);
     let (started, outcome, timed_out) = read(Duration::from_millis(200), 2).await;
@@ -128,7 +127,7 @@ async fn a_service_that_holds_the_request_and_stops_answering_is_given_up_on_wit
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_service_that_keeps_answering_health_is_waited_for_beyond_the_asks() {
-    let _env = ENV.lock().unwrap_or_else(|p| p.into_inner());
+    let _env = ENV.lock().await;
     // The read takes 2 s, ten times the ask interval times two: a long scan on a healthy service.
     let url = service(true, Some(Duration::from_secs(2))).await;
     std::env::set_var("DOCLING_BASE_URL", &url);
