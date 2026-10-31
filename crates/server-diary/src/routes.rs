@@ -3,7 +3,7 @@
 //!
 //! | route | core |
 //! |---|---|
-//! | any method `/api/diary/source` | the month list, an empty one when the sidecar fails |
+//! | any method `/api/diary/source` | the month list; an empty one when the sidecar answers without one, the 503 below when it cannot be reached (#2252) |
 //! | any method `/api/diary/today` | one day or month of the log and the standing text |
 //! | `POST /api/diary/storage-import` | 4 KiB body, 300 s |
 //! | `GET /api/diary/workspace-export` | 300 s, 272 MiB, streamed |
@@ -289,6 +289,56 @@ fn relay_failure(r: &JsonReply) -> Reply {
             detail_or(r.body.as_ref(), "Diary storage request failed"),
         )]),
     )
+}
+
+fn source_reply(months: Vec<JValue>) -> Reply {
+    json_reply(
+        200,
+        &JValue::obj([
+            ("source", JValue::Str("sidecar".to_owned())),
+            ("months", JValue::Arr(months)),
+        ]),
+    )
+}
+
+/// The sidecar's month list, filtered and sorted as core's `listMonths` did; empty when the body has none.
+fn month_list(reply: &JsonReply) -> Vec<JValue> {
+    let Some(JValue::Arr(items)) = reply
+        .body
+        .as_ref()
+        .filter(|_| reply.ok)
+        .map(|b| b.get("months").clone())
+    else {
+        return Vec::new();
+    };
+    // `/^\d{4}-\d{2}$/`: ASCII digits only, nothing after the end.
+    let month_shaped = |id: &str| {
+        let b = id.as_bytes();
+        b.len() == 7
+            && b.iter().enumerate().all(|(i, c)| {
+                if i == 4 {
+                    *c == b'-'
+                } else {
+                    c.is_ascii_digit()
+                }
+            })
+    };
+    let mut months: Vec<(String, JValue)> = items
+        .iter()
+        .filter_map(|m| {
+            let id = m.get("id").as_str().filter(|id| month_shaped(id))?;
+            let id_value = JValue::Str(id.to_owned());
+            // `label: m.label || m.id`
+            let label = truthy_or(m.get("label"), &id_value).clone();
+            Some((
+                id.to_owned(),
+                JValue::obj([("id", id_value), ("label", label)]),
+            ))
+        })
+        .collect();
+    // localeCompare over these ASCII ids is their byte order; the sort is stable.
+    months.sort_by(|a, b| a.0.cmp(&b.0));
+    months.into_iter().map(|(_, v)| v).collect()
 }
 
 fn disabled() -> Reply {
@@ -604,54 +654,16 @@ impl Diary {
 
     /// `corpusSource.listMonths()`: the real months, sorted; any failure is an empty list.
     async fn source(&self, ctx: &Ctx) -> Reply {
-        let months = self.list_months(ctx).await.unwrap_or_default();
-        json_reply(
-            200,
-            &JValue::obj([
-                ("source", JValue::Str("sidecar".to_owned())),
-                ("months", JValue::Arr(months)),
-            ]),
-        )
-    }
-
-    async fn list_months(&self, ctx: &Ctx) -> Result<Vec<JValue>, CallError> {
-        let reply = self.read_json(ctx, "/api/months").await?;
-        let Some(JValue::Arr(items)) = reply
-            .body
-            .as_ref()
-            .filter(|_| reply.ok)
-            .map(|b| b.get("months").clone())
-        else {
-            return Ok(Vec::new());
+        // A sidecar that cannot be reached, or that fails with a gateway status or a storage code, is
+        // reported as `today` reports it: an empty list there would read as a Diary with no months
+        // (#2252). One that answered without a month list still is that (the page opens an empty Diary).
+        let reply = match self.read_json(ctx, "/api/months").await {
+            Ok(r) if r.ok => r,
+            Ok(r) if coded(&r).is_some() || upstream_down(r.status) => return relay_failure(&r),
+            Err(CallError::Transport | CallError::Timeout) => return diary_unavailable(),
+            _ => return source_reply(Vec::new()),
         };
-        // `/^\d{4}-\d{2}$/`: ASCII digits only, nothing after the end.
-        let month_shaped = |id: &str| {
-            let b = id.as_bytes();
-            b.len() == 7
-                && b.iter().enumerate().all(|(i, c)| {
-                    if i == 4 {
-                        *c == b'-'
-                    } else {
-                        c.is_ascii_digit()
-                    }
-                })
-        };
-        let mut months: Vec<(String, JValue)> = items
-            .iter()
-            .filter_map(|m| {
-                let id = m.get("id").as_str().filter(|id| month_shaped(id))?;
-                let id_value = JValue::Str(id.to_owned());
-                // `label: m.label || m.id`
-                let label = truthy_or(m.get("label"), &id_value).clone();
-                Some((
-                    id.to_owned(),
-                    JValue::obj([("id", id_value), ("label", label)]),
-                ))
-            })
-            .collect();
-        // localeCompare over these ASCII ids is their byte order; the sort is stable.
-        months.sort_by(|a, b| a.0.cmp(&b.0));
-        Ok(months.into_iter().map(|(_, v)| v).collect())
+        source_reply(month_list(&reply))
     }
 
     /// `corpusSource.readMonth(month)`: a failure is core's thrown `Error('sidecar <status>')`, a 500.
