@@ -881,6 +881,96 @@ async fn source_says_unavailable_when_the_diary_cannot_be_reached() {
     );
 }
 
+/// sbstndalton/noevia#2255: an uncoded 5xx or a refused call (401/403) from `/api/months` is the sidecar
+/// failing, not an empty Diary; a 404 and a 200 without a list stay the empty list.
+#[tokio::test]
+async fn source_relays_an_uncoded_server_error_or_a_refusal_and_keeps_404_empty() {
+    let w = World::new(&[]);
+    for (status, text) in [
+        (500, r#"{"error":"boom"}"#),
+        (501, r#"{"error":"boom"}"#),
+        (401, r#"{"error":"boom"}"#),
+        (403, r#"{"error":"boom"}"#),
+    ] {
+        let stub = Stub::start(move |_, _| Out::json(status, r#"{"detail":"boom"}"#)).await;
+        let d = diary(&stub, TENANT_KEY);
+        let got = run(
+            &d,
+            &w,
+            MEMBER,
+            Route::Source,
+            "GET",
+            "/api/diary/source",
+            b"",
+        )
+        .await;
+        assert_eq!((got.status(), got.text()), (status, text), "{status}");
+    }
+    let stub = Stub::start(|_, _| Out::json(404, r#"{"detail":"no such route"}"#)).await;
+    let d = diary(&stub, TENANT_KEY);
+    let got = run(
+        &d,
+        &w,
+        MEMBER,
+        Route::Source,
+        "GET",
+        "/api/diary/source",
+        b"",
+    )
+    .await;
+    assert_eq!(
+        (got.status(), got.text()),
+        (200, r#"{"source":"sidecar","months":[]}"#)
+    );
+}
+
+/// sbstndalton/noevia#2255: a tenant that cannot be built is a failure, not an empty Diary.
+#[tokio::test]
+async fn source_fails_when_the_tenant_cannot_be_built() {
+    let stub = Stub::start(|_, _| Out::json(200, r#"{"months":[]}"#)).await;
+    let w = World::new(&[(MEMBER, webdav(SECRET))]);
+    std::fs::remove_file(w.dir.path().join("secrets.key")).unwrap();
+    let d = diary(&stub, TENANT_KEY);
+    let got = run(
+        &d,
+        &w,
+        MEMBER,
+        Route::Source,
+        "GET",
+        "/api/diary/source",
+        b"",
+    )
+    .await;
+    assert_eq!(got.status(), 500, "{}", got.text());
+    assert!(stub.requests().is_empty());
+}
+
+/// sbstndalton/noevia#2255: a reply this port cannot hold as JS would is a failure too.
+#[tokio::test]
+async fn source_fails_when_the_reply_cannot_be_held() {
+    // U+10F800 is the character the port reserves for a lone surrogate, so the text is refused.
+    let stub = Stub::start(|_, _| {
+        Out::json(
+            200,
+            "{\"months\":[{\"id\":\"2026-09\",\"label\":\"\u{10F800}\"}]}",
+        )
+    })
+    .await;
+    let w = World::new(&[]);
+    let d = diary(&stub, TENANT_KEY);
+    let got = run(
+        &d,
+        &w,
+        MEMBER,
+        Route::Source,
+        "GET",
+        "/api/diary/source",
+        b"",
+    )
+    .await;
+    assert_eq!(got.status(), 500, "{}", got.text());
+}
+
 #[tokio::test]
 async fn source_gives_up_on_a_stalled_sidecar_after_its_read_timeout() {
     let stub = Stub::start(|_, _| {

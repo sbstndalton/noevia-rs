@@ -656,11 +656,20 @@ impl Diary {
     async fn source(&self, ctx: &Ctx) -> Reply {
         // A sidecar that cannot be reached, or that fails with a gateway status or a storage code, is
         // reported as `today` reports it: an empty list there would read as a Diary with no months
-        // (#2252). One that answered without a month list still is that (the page opens an empty Diary).
+        // (#2252, #2255). One that answered without a month list still is that (the page opens an empty Diary).
         let reply = match self.read_json(ctx, "/api/months").await {
             Ok(r) if r.ok => r,
-            Ok(r) if coded(&r).is_some() || upstream_down(r.status) => return relay_failure(&r),
-            Err(CallError::Transport | CallError::Timeout) => return diary_unavailable(),
+            // Any 5xx, and a refusal of the call (401/403), is the sidecar failing, not an empty Diary; so is
+            // a tenant that cannot be built or a reply this port cannot hold. A 404 stays an empty list.
+            Ok(r) if coded(&r).is_some() || r.status >= 500 || matches!(r.status, 401 | 403) => {
+                return relay_failure(&r)
+            }
+            Err(
+                e @ (CallError::Transport
+                | CallError::Timeout
+                | CallError::Tenant(_)
+                | CallError::Unsupported),
+            ) => return call_failed(e),
             _ => return source_reply(Vec::new()),
         };
         source_reply(month_list(&reply))

@@ -508,6 +508,22 @@ mod tests {
             files[0].get("document").clone()
         };
         assert_eq!(record(&dir).get("state").as_str(), Some("queued"));
+        // The upload's attachment, as the client sends it with the file.
+        store::update(&dir, ctx(root.path()).switch, |projects| {
+            let p = store::find_mut(projects, "proj-a").unwrap();
+            let JValue::Arr(mut files) = p.get("files").clone() else {
+                panic!()
+            };
+            if let JValue::Obj(items) = &mut files[0] {
+                items.push((
+                    "attachment".into(),
+                    JValue::obj([("state", JValue::Str("queued".into()))]),
+                ));
+            }
+            store::set(p, "files", JValue::Arr(files));
+            ((), true)
+        })
+        .unwrap();
         let original = crate::document_ingest::version_path(&dir, "proj-a", &job.byte_hash, ".pdf")
             .expect("path");
         std::fs::remove_file(&original).expect("the original was stored");
@@ -527,6 +543,17 @@ mod tests {
         assert!(
             d.get("extraction").is_nullish() && d.get("errorId").is_nullish(),
             "{d:?}"
+        );
+        let projects = store::read(&dir).unwrap();
+        let files = store::find(&projects, "proj-a")
+            .unwrap()
+            .get("files")
+            .clone();
+        let JValue::Arr(files) = files else { panic!() };
+        assert_eq!(
+            files[0].get("attachment").get("state").as_str(),
+            Some("failed"),
+            "the attachment says what the document says"
         );
     }
 
