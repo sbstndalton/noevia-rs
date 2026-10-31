@@ -309,6 +309,7 @@ enum OutputPhase {
     Writing,
 }
 
+#[derive(Debug)]
 enum OutputDrain {
     Finished,
     Idle,
@@ -622,15 +623,9 @@ async fn connection(
     );
     if partial_output {
         // A partial ACP frame must surface as a TCP error, not clean EOF.
-        // Tokio zero linger sends RST and never blocks this async worker.
         eprintln!(
-            "code-sandbox: output forwarding exceeded its post-exit bound; response may be incomplete"
+            "code-sandbox: output forwarding exceeded its post-exit bound ({output_drain:?}); response may be incomplete"
         );
-        if let Ok(sink) = tokio::time::timeout(Duration::from_millis(200), writer.lock()).await {
-            if sink.as_ref().set_zero_linger().is_err() {
-                eprintln!("code-sandbox: failed to abort incomplete output connection");
-            }
-        }
     }
     if matches!(reason, Stop::Wall) {
         let message = json!({"jsonrpc":"2.0","id":null,"error":{"code":-32000,
@@ -653,10 +648,22 @@ async fn connection(
         }
     }
     if partial_output {
-        // OwnedWriteHalf::drop sends FIN even with zero linger. Suppress that
-        // shutdown so closing the underlying socket sends RST instead.
+        // The forwarding task has been cancelled and joined. Take the actual
+        // write half before arming reset: a timed mutex acquisition must not
+        // silently skip SO_LINGER and then close incomplete output normally.
+        // OwnedWriteHalf::drop sends FIN even with zero linger, so suppress it.
         match Arc::try_unwrap(writer) {
-            Ok(mutex) => mutex.into_inner().forget(),
+            Ok(mutex) => {
+                let sink = mutex.into_inner();
+                if sink.as_ref().set_zero_linger().is_err() {
+                    eprintln!("code-sandbox: failed to abort incomplete output connection");
+                } else if matches!(sink.as_ref().linger(), Ok(Some(value)) if value.is_zero()) {
+                    eprintln!("code-sandbox: incomplete output reset armed with zero linger");
+                } else {
+                    eprintln!("code-sandbox: incomplete output zero linger could not be verified");
+                }
+                sink.forget();
+            }
             Err(writer) => {
                 eprintln!("code-sandbox: incomplete output socket still has a writer");
                 drop(writer);
