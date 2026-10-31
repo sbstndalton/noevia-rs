@@ -302,6 +302,44 @@ async fn a_background_upload_runs_in_the_front_and_its_job_reads_back_in_cores_w
     assert_eq!(status, 404);
 }
 
+/// #2272: a stray `notes.jsonl` and a damaged journal in the user's jobs folder (the shapes of
+/// `mk_journals.js`) must not turn a background upload into a 503, and they stay as they were.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_stray_file_and_a_damaged_journal_in_the_jobs_folder_do_not_stop_a_background_upload() {
+    let f = front().await;
+    let h = headers(&f);
+    let jobs = f.data.join("users").join(&f.user).join("jobs");
+    std::fs::create_dir_all(&jobs).unwrap();
+    let bad = "66666666-6666-4666-8666-666666666666";
+    let damaged = format!(
+        "{{\"job\":\"{bad}\",\"seq\":1,\"type\":\"job.created\",\"at\":1,\"data\":{{\"kind\":\"source\",\"projectId\":\"p 1\"}}}}\n{{\"job\":\"{bad}\",\"seq\":2,\"type\":\"progr\n{{\"job\":\"{bad}\",\"seq\":3,\"type\":\"job.started\",\"at\":3,\"data\":{{}}}}\n"
+    );
+    std::fs::write(jobs.join("notes.jsonl"), "stray file, not a job\n").unwrap();
+    std::fs::write(jobs.join(format!("{bad}.jsonl")), &damaged).unwrap();
+    let (status, body) = call(
+        f.addr,
+        "POST",
+        "/api/projects/p%201/upload?background=1",
+        &h,
+        UPLOAD,
+    )
+    .await;
+    assert_eq!(status, 202, "{body}");
+    let poll = serde_json::from_str::<serde_json::Value>(&body).unwrap()["poll"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    poll_until_done(&f, &poll).await;
+    assert_eq!(
+        std::fs::read_to_string(jobs.join("notes.jsonl")).unwrap(),
+        "stray file, not a job\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(jobs.join(format!("{bad}.jsonl"))).unwrap(),
+        damaged
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn the_synchronous_forms_answer_with_their_result_and_a_background_sync_is_a_job() {
     let f = front().await;

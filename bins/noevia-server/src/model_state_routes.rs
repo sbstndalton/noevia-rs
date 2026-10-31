@@ -442,7 +442,8 @@ async fn installed_list(
             let up = sidecar && sidecar_loaded.contains(name);
             let preset = string_at(row, "source").as_deref() == Some("preset");
             let no_file = scan.is_some() && preset && file.is_none();
-            let system = crate::model_kind::is_system_model(&roles, name);
+            let system =
+                crate::model_kind::is_system_model_at(&roles, name, model_path(&args_of(row)));
             let elsewhere =
                 !up && preset && ((system && (scan.is_none() || no_file)) || (no_file && sidecar));
             let missing = !up && no_file && !elsewhere;
