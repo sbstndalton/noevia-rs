@@ -1295,6 +1295,94 @@ this is not JSON
         );
     }
 
+    // #2272: one stray or damaged file in a user's jobs folder must not stop recovery or new uploads.
+    fn seed_bad_journals(user: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+        let jobs = user.join("jobs");
+        fs::create_dir_all(&jobs).unwrap();
+        let mut kept = Vec::new();
+        let mut put = |name: &str, bytes: &[u8]| {
+            let path = jobs.join(name);
+            fs::write(&path, bytes).unwrap();
+            kept.push((path, bytes.to_vec()));
+        };
+        put("notes.jsonl", b"stray file, not a job\n");
+        put("stray.txt", b"stray text\n");
+        // A source journal whose middle line is not JSON.
+        let bad = "66666666-6666-4666-8666-666666666666";
+        let bytes = format!(
+            "{{\"job\":\"{bad}\",\"seq\":1,\"type\":\"job.created\",\"at\":1,\"data\":{{\"kind\":\"source\",\"projectId\":\"a\"}}}}\n{{\"job\":\"{bad}\",\"seq\":2,\"type\":\"progr\n{{\"job\":\"{bad}\",\"seq\":3,\"type\":\"job.started\",\"at\":3,\"data\":{{}}}}\n"
+        );
+        put(&format!("{bad}.jsonl"), bytes.as_bytes());
+        // A journal whose first line is not JSON.
+        put("77777777-7777-4777-8777-777777777777.jsonl", b"not json at all\n");
+        kept
+    }
+
+    #[test]
+    fn a_stray_file_and_damaged_journals_do_not_stop_recover_or_new_starts() {
+        let (dir, user) = fixture();
+        let c = ctx(dir.path());
+        let kept = seed_bad_journals(&user);
+        recover(c, USER, START, "100", OWNER1).unwrap();
+        let (id, run) = start(c, USER, START, "100", OWNER1, "a", REQ1).unwrap();
+        finish(
+            c,
+            USER,
+            START,
+            "100",
+            OWNER1,
+            CompletionUpdate {
+                id: &id,
+                run: &run,
+                ok: true,
+                result: &json!({"status":200}),
+                error: None,
+            },
+        )
+        .unwrap();
+        // A later process still recovers (interrupting nothing here) and starts again.
+        recover(c, USER, START, "200", OWNER2).unwrap();
+        start(c, USER, START, "200", OWNER2, "a", REQ2).unwrap();
+        for (path, bytes) in kept {
+            assert_eq!(fs::read(&path).unwrap(), bytes, "{path:?} is untouched");
+        }
+    }
+
+    #[test]
+    fn a_damaged_journal_is_read_as_its_own_error_and_other_jobs_still_list() {
+        let (dir, user) = fixture();
+        let c = ctx(dir.path());
+        seed_bad_journals(&user);
+        recover(c, USER, START, "100", OWNER1).unwrap();
+        let (id, _) = start(c, USER, START, "100", OWNER1, "a", REQ1).unwrap();
+        let listed = all_source(&paths(c, USER).unwrap()).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].0, id);
+        assert!(matches!(
+            read(c, USER, "a", "66666666-6666-4666-8666-666666666666"),
+            Err(Error::Corrupt)
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_job_name_is_skipped_and_its_target_untouched() {
+        let (dir, user) = fixture();
+        let c = ctx(dir.path());
+        let target = dir.path().join("elsewhere");
+        fs::write(&target, "untouched").unwrap();
+        fs::create_dir_all(user.join("jobs")).unwrap();
+        std::os::unix::fs::symlink(
+            &target,
+            user.join("jobs")
+                .join("88888888-8888-4888-8888-888888888888.jsonl"),
+        )
+        .unwrap();
+        recover(c, USER, START, "100", OWNER1).unwrap();
+        start(c, USER, START, "100", OWNER1, "a", REQ1).unwrap();
+        assert_eq!(fs::read_to_string(target).unwrap(), "untouched");
+    }
+
     #[cfg(unix)]
     #[test]
     fn source_owner_lock_symlink_is_refused_without_touching_target() {
