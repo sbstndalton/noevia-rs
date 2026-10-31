@@ -44,6 +44,18 @@ pub fn j(s: &str) -> serde_json::Value {
     serde_json::from_str(s).unwrap_or_else(|_| panic!("not JSON: {s}"))
 }
 
+/// The Drive half of `GET /api/connectors`, as this cookie's account sees it.
+pub async fn gdrive_view(f: &Front, cookie: &str) -> (u16, serde_json::Value) {
+    let r = send(f.addr, "GET", "/api/connectors", cookie, "").await;
+    let list = r.json();
+    let drive = list["connectors"]
+        .as_array()
+        .and_then(|l| l.iter().find(|c| c["id"] == "gdrive"))
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    (r.status, drive)
+}
+
 pub struct Res {
     pub status: u16,
     pub head: String,

@@ -376,13 +376,7 @@ async fn the_device_sign_in_through_the_connectors_routes() {
     assert_eq!(mode & 0o777, 0o600);
     assert_eq!(state_file(d.path())["personal"][B], "connected");
 
-    let (_, v) = store(
-        f.store,
-        "gdrive/view",
-        STORE_TOKEN,
-        &format!(r#"{{"user":"{B}","admin":false}}"#),
-    )
-    .await;
+    let (_, v) = gdrive_view(&f, MEMBER).await;
     assert_eq!(
         (v["state"].as_str(), v["email"].as_str()),
         (Some("connected"), Some("bob@example.test"))
@@ -428,13 +422,7 @@ async fn a_declined_or_expired_code_says_so_and_a_registered_build_is_required()
     );
     let started = Instant::now();
     loop {
-        let (_, v) = store(
-            f.store,
-            "gdrive/view",
-            STORE_TOKEN,
-            &format!(r#"{{"user":"{B}","admin":false}}"#),
-        )
-        .await;
+        let (_, v) = gdrive_view(&f, MEMBER).await;
         if v["state"] == "disconnected" {
             assert_eq!(
                 v["message"],
@@ -462,13 +450,7 @@ async fn a_declined_or_expired_code_says_so_and_a_registered_build_is_required()
             Some("This noevia build has no Google sign-in registered.".into())
         )
     );
-    let (_, v) = store(
-        f2.store,
-        "gdrive/view",
-        STORE_TOKEN,
-        &format!(r#"{{"user":"{B}","admin":false}}"#),
-    )
-    .await;
+    let (_, v) = gdrive_view(&f2, MEMBER).await;
     assert_eq!(
         (v["configured"].as_bool(), v["state"].as_str()),
         (Some(false), Some("not-configured"))
@@ -582,13 +564,7 @@ async fn a_client_that_leaves_mid_request_strands_nothing() {
     }
     let started = Instant::now();
     loop {
-        let (_, v) = store(
-            f.store,
-            "gdrive/view",
-            STORE_TOKEN,
-            &format!(r#"{{"user":"{B}","admin":false}}"#),
-        )
-        .await;
+        let (_, v) = gdrive_view(&f, MEMBER).await;
         if v["state"] == "pending" {
             assert_eq!(v["userCode"], "SLOW-CODE");
             break;
@@ -648,14 +624,8 @@ async fn forgetting_a_deleted_account_revokes_and_removes_only_its_file() {
     let f = front(d.path(), &up.base(), &[]).await;
     plant_account_file(d.path(), A, r#"{"refreshToken":"ra","connectedAt":5}"#);
     plant_account_file(d.path(), B, r#"{"refreshToken":"rb","connectedAt":5}"#);
-    let (s, b) = store(
-        f.store,
-        "gdrive/forget",
-        STORE_TOKEN,
-        &format!(r#"{{"user":"{A}"}}"#),
-    )
-    .await;
-    assert_eq!((s, b["ok"].as_bool()), (200, Some(true)));
+    let drive = f.app.drive.as_ref().unwrap();
+    drive.forget(A).await;
     assert!(read_account_file(d.path(), A).is_none());
     assert_eq!(
         read_account_file(d.path(), B).unwrap()["refreshToken"],
@@ -667,27 +637,10 @@ async fn forgetting_a_deleted_account_revokes_and_removes_only_its_file() {
         .any(|s| s.path == "/revoke" && s.body.contains("token=ra")));
     // A hostile id touches nothing outside the directory and is not an error.
     std::fs::write(d.path().join("keep.sealed"), "x").unwrap();
-    let (s, _) = store(
-        f.store,
-        "gdrive/forget",
-        STORE_TOKEN,
-        r#"{"user":"../keep"}"#,
-    )
-    .await;
-    assert_eq!(s, 200);
+    drive.forget("../keep").await;
     assert!(d.path().join("keep.sealed").exists());
     // Forgetting an account that never connected is a no-op.
-    assert_eq!(
-        store(
-            f.store,
-            "gdrive/forget",
-            STORE_TOKEN,
-            &format!(r#"{{"user":"{C}"}}"#)
-        )
-        .await
-        .0,
-        200
-    );
+    drive.forget(C).await;
 }
 
 /// Review L5 (#2191 round 9): a personal sign-in that was starting when the front deleted the account
@@ -713,14 +666,7 @@ async fn sign_in_while(deleting: bool) -> Option<serde_json::Value> {
     if deleting {
         // The front deletes the account (the row), then forgets its connection: nothing is saved yet.
         db.execute("DELETE FROM users WHERE id=?1", [B]).unwrap();
-        let (s, _) = store(
-            f.store,
-            "gdrive/forget",
-            STORE_TOKEN,
-            &format!(r#"{{"user":"{B}"}}"#),
-        )
-        .await;
-        assert_eq!(s, 200);
+        f.app.drive.as_ref().unwrap().forget(B).await;
     }
     let _ = connecting.await.unwrap();
     up.wait_for("/token", 1).await;
@@ -841,13 +787,7 @@ async fn tool_permissions_are_the_fronts_single_write() {
         [B],
     )
     .unwrap();
-    let (_, v) = store(
-        f.store,
-        "gdrive/view",
-        STORE_TOKEN,
-        &format!(r#"{{"user":"{B}","admin":false}}"#),
-    )
-    .await;
+    let (_, v) = gdrive_view(&f, MEMBER).await;
     assert_eq!(v["tools"][6]["mode"], "ask");
     // Bodies: not JSON, not an object, too large.
     assert_eq!(put("nope").await.status, 400);
@@ -858,36 +798,6 @@ async fn tool_permissions_are_the_fronts_single_write() {
             .status,
         413
     );
-    // The Nextcloud half stays Node's, but its permissions are written here, on Node's behalf, with
-    // Node's write flags (it knows the live MCP tools; this process does not).
-    let (s, b) = store(f.store, "gdrive/policy", STORE_TOKEN, &format!(r#"{{"user":"{B}","tools":["nc_read","nc_write"],"writes":[false,true],"mode":"block"}}"#)).await;
-    assert_eq!((s, b["ok"].as_bool()), (200, Some(true)), "{b}");
-    assert_eq!(
-        db.query_row::<String, _, _>(
-            "SELECT mode FROM tool_policies WHERE user_id=?1 AND tool='nc_write'",
-            [B],
-            |r| r.get(0)
-        )
-        .unwrap(),
-        "block"
-    );
-    let (s, b) = store(f.store, "gdrive/policy", STORE_TOKEN, &format!(r#"{{"user":"{B}","tools":["nc_read","nc_write"],"writes":[false,true],"mode":"allow"}}"#)).await;
-    assert_eq!(
-        (s, b["error"].as_str()),
-        (
-            400,
-            Some("Writes always ask first, so they cannot be set to Always allow.")
-        )
-    );
-    // Mismatched flags fail closed.
-    let (s, _) = store(
-        f.store,
-        "gdrive/policy",
-        STORE_TOKEN,
-        &format!(r#"{{"user":"{B}","tools":["nc_read"],"writes":[],"mode":"allow"}}"#),
-    )
-    .await;
-    assert_eq!(s, 400);
     // Only an administrator whose Drive holds backups can change the copy setting.
     let r = send(f.addr, "PUT", BACKUP_COPY, MEMBER, r#"{"enabled":false}"#).await;
     assert_eq!(
@@ -928,13 +838,7 @@ async fn the_backup_slot_doubles_as_one_administrators_drive() {
     assert_eq!(v["backup"]["enabled"], true);
     assert_eq!(v["backup"]["copyEnabled"], true);
     // While it is pending, another administrator neither sees its code nor shares the slot: theirs is personal.
-    let (_, other) = store(
-        f.store,
-        "gdrive/view",
-        STORE_TOKEN,
-        &format!(r#"{{"user":"{C}","admin":true}}"#),
-    )
-    .await;
+    let (_, other) = gdrive_view(&f, ADMIN2).await;
     assert_eq!(other["state"], "disconnected", "{other}");
     assert!(other["backup"].is_null());
     assert!(other.get("userCode").is_none());
@@ -969,13 +873,7 @@ async fn the_backup_slot_doubles_as_one_administrators_drive() {
     );
     assert_eq!(session(&f, B, false, None).await.0, 409);
     // The connector page shows A the backup block; the backup-copy toggle is A's alone.
-    let (_, view) = store(
-        f.store,
-        "gdrive/view",
-        STORE_TOKEN,
-        &format!(r#"{{"user":"{A}","admin":true}}"#),
-    )
-    .await;
+    let (_, view) = gdrive_view(&f, ADMIN).await;
     assert_eq!(
         (
             view["state"].as_str(),
@@ -1051,13 +949,7 @@ async fn a_connection_saved_before_owners_were_recorded_belongs_to_whichever_adm
             .unwrap(),
     )
     .unwrap();
-    let (_, view) = store(
-        f2.store,
-        "gdrive/view",
-        STORE_TOKEN,
-        &format!(r#"{{"user":"{A}","admin":true}}"#),
-    )
-    .await;
+    let (_, view) = gdrive_view(&f2, ADMIN).await;
     assert_eq!(view["state"], "error", "{view}");
 }
 
@@ -1076,13 +968,7 @@ async fn the_state_file_exists_only_once_there_is_something_to_say() {
         "nobody is connected: no file (Node reads a missing file as nobody)"
     );
     // Asking for an unconnected account's Drive makes core's directory, and no state file.
-    let (s, v) = store(
-        f.store,
-        "gdrive/view",
-        STORE_TOKEN,
-        &format!(r#"{{"user":"{B}","admin":false}}"#),
-    )
-    .await;
+    let (s, v) = gdrive_view(&f, MEMBER).await;
     assert_eq!((s, v["state"].as_str()), (200, Some("disconnected")));
     assert!(d.path().join("google-drive-users").is_dir() && !state.exists());
     let mode = std::os::unix::fs::PermissionsExt::mode(
@@ -1161,14 +1047,7 @@ async fn a_file_sealed_under_the_retired_key_is_read_without_being_rewritten() {
         refresh_bodies(&up)[0].contains("refresh_token=synthetic-old-key-refresh"),
         "the retired key's record was opened"
     );
-    let view = store(
-        f.store,
-        "gdrive/view",
-        STORE_TOKEN,
-        &format!(r#"{{"user":"{B}","admin":false}}"#),
-    )
-    .await
-    .1;
+    let view = gdrive_view(&f, MEMBER).await.1;
     assert_eq!(
         (view["state"].as_str(), view["email"].as_str()),
         (Some("connected"), Some("ada@example.test"))
@@ -1323,14 +1202,7 @@ async fn a_claim_of_administrator_is_checked_against_the_users_table() {
     // A member whom a request calls an administrator does not: the table says member.
     let (s, v) = session(&f, B, true, None).await;
     assert_eq!((s, v["code"].as_str()), (409, Some("disconnected")), "{v}");
-    let view = store(
-        f.store,
-        "gdrive/view",
-        STORE_TOKEN,
-        &format!(r#"{{"user":"{B}","admin":true}}"#),
-    )
-    .await
-    .1;
+    let view = gdrive_view(&f, MEMBER).await.1;
     assert!(view["backup"].is_null(), "{view}");
     // An id the table does not know is a member too.
     let (s, _) = session(&f, "ffffffff-ffff-ffff-ffff-ffffffffffff", true, None).await;
@@ -1445,17 +1317,6 @@ async fn a_failed_permission_write_does_not_blame_google_drive() {
     assert_eq!(r.status, 502, "{}", r.text);
     let msg = r.json()["error"].as_str().unwrap().to_owned();
     assert_eq!(msg, "The tool permissions could not be saved.");
-    let (s, b) = store(
-        f.store,
-        "gdrive/policy",
-        STORE_TOKEN,
-        &format!(r#"{{"user":"{B}","tools":["x"],"writes":[false],"mode":"ask"}}"#),
-    )
-    .await;
-    assert_eq!(
-        (s, b["error"].as_str()),
-        (502, Some("The tool permissions could not be saved."))
-    );
 }
 
 #[tokio::test]
@@ -1615,7 +1476,7 @@ async fn an_unreadable_users_table_is_a_503_not_a_member() {
     // Node changed the schema under the front: the table cannot be read now.
     db.execute("INSERT INTO schema_migrations VALUES(99,0)", [])
         .unwrap();
-    for op in ["session", "view", "disconnect"] {
+    for op in ["session", "disconnect"] {
         let (s, v) = store(
             f.store,
             &format!("gdrive/{op}"),

@@ -5,7 +5,7 @@
 //! (`google-drive.sealed`, sealed under `OFFSITE_BACKUP_KEY_FILE`'s key), which doubles as the
 //! administrator's personal connection (`ownsBackup`, [`owns_backup`]). Node's chat tools hold no
 //! refresh token: they ask this broker (loopback internal store, `/v1/gdrive/{session,reject,
-//! disconnect,forget}`, plus `view` and `policy`; connector_routes.rs) for a short-lived access token.
+//! disconnect}`; connector_routes.rs) for a short-lived access token.
 //!
 //! The on-disk format is unchanged (`google-token-seal`: HKDF key, AES-256-GCM, base64 of
 //! iv|tag|body), so a Node build can read what Rust saved. Concurrency:

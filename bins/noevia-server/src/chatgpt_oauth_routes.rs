@@ -26,7 +26,7 @@
 //! - `reject { user, generation }` -> `{ marked }`: the second 401 marks THIS sign-in (by its
 //!   generation, a digest of its ciphertext) as needing a reconnect; a newer one is left alone.
 //! - `catalogue { user }` -> `{ models: [{ slug, effort, summary, summaryParam, levels }] }`
-//! - `disconnect { user }`, `forget { user }` -> `{ ok }`; `connected { user }` -> `{ exists }`
+//! - `disconnect { user }` -> `{ ok }`; `connected { user }` -> `{ exists }`
 //!
 //! Refresh lock: one async mutex per account serializes the refresh, the sign-in's save and the
 //! disconnect. A waiter re-reads the row after taking it, so a refresh that completed meanwhile is
@@ -2190,7 +2190,7 @@ pub async fn internal_op(app: Option<Arc<App>>, op: &str, raw: &[u8]) -> Respons
             ),
             Err(e) => internal_fail(&e),
         },
-        "disconnect" | "forget" => match broker.disconnect(&app, &user, op == "forget").await {
+        "disconnect" => match broker.disconnect(&app, &user, false).await {
             Ok(()) => internal(200, &JValue::obj([("ok", JValue::Bool(true))])),
             Err(e) => internal_fail(&e),
         },
