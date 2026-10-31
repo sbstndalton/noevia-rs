@@ -511,6 +511,10 @@ mod tests {
         let original = crate::document_ingest::version_path(&dir, "proj-a", &job.byte_hash, ".pdf")
             .expect("path");
         std::fs::remove_file(&original).expect("the original was stored");
+        rusqlite::Connection::open(extract_queue::path(&dir))
+            .unwrap()
+            .execute("UPDATE jobs SET next_at = 0", [])
+            .unwrap();
         let ran = extract_queue::run_due(ctx(root.path()), &fake, &LIMITS);
         assert_eq!(ran.len(), 1, "{ran:?}");
         assert!(
