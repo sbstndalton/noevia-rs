@@ -978,15 +978,61 @@ async fn today_takes_js_truthiness_of_the_sidecars_fields() {
     }
 }
 
+const UNAVAILABLE: &str =
+    r#"{"error":"Diary is unavailable right now. Try again shortly.","code":"diaryUnavailable"}"#;
+
+/// sbstndalton/noevia#2232: a Diary that cannot be reached is a 503 the page can word, with a
+/// stable code and nothing about the address or the cause. Replies that are not about
+/// reachability (a 404, a redirect) stay core's generic 500.
+#[tokio::test]
+async fn an_unreachable_or_gateway_failing_diary_is_a_clear_503_on_every_route() {
+    let w = World::new(&[]);
+    let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let dead = format!("http://{}", l.local_addr().unwrap());
+    drop(l);
+    let d = Diary::new(server_diary::DiaryConfig::new(
+        dead.clone(),
+        BEARER,
+        TENANT_KEY,
+        String::new,
+    ))
+    .unwrap();
+    for (route, method, path, body) in [
+        (
+            Route::Today,
+            "GET",
+            "/api/diary/today?month=2026-10",
+            &b""[..],
+        ),
+        (
+            Route::StorageImport,
+            "POST",
+            "/api/diary/storage-import",
+            b"{}",
+        ),
+        (
+            Route::StorageStatus,
+            "GET",
+            "/api/diary/storage-status",
+            b"",
+        ),
+    ] {
+        let got = run(&d, &w, MEMBER, route, method, path, body).await;
+        assert_eq!((got.status(), got.text()), (503, UNAVAILABLE), "{path}");
+        assert!(!got.text().contains("127.0.0.1"), "{path}");
+    }
+    for status in [502, 503, 504] {
+        let stub = Stub::start(move |_, _| Out::json(status, "{}")).await;
+        let d = diary(&stub, TENANT_KEY);
+        let got = run(&d, &w, MEMBER, Route::Today, "GET", "/api/diary/today", b"").await;
+        assert_eq!((got.status(), got.text()), (503, UNAVAILABLE), "{status}");
+    }
+}
+
 #[tokio::test]
 async fn today_failures_are_nodes_generic_500() {
     let w = World::new(&[]);
-    for out in [
-        || Out::json(404, "{}"),
-        || Out::json(503, "{}"),
-        || Out::json(302, "{}"),
-        || Out::Hangup,
-    ] {
+    for out in [|| Out::json(404, "{}"), || Out::json(302, "{}")] {
         let stub = Stub::start(move |_, _| out()).await;
         let d = diary(&stub, TENANT_KEY);
         let got = run(&d, &w, MEMBER, Route::Today, "GET", "/api/diary/today", b"").await;
@@ -1134,17 +1180,19 @@ async fn storage_import_error_shapes_follow_the_detail_or_fall_back() {
 }
 
 #[tokio::test]
-async fn storage_import_transport_failures_are_nodes_generic_500() {
+async fn storage_import_transport_failures_are_unavailable_and_a_redirect_is_nodes_generic_500() {
     let w = World::new(&[]);
-    for out in [|| Out::Hangup, || Out::json(307, "{}")] {
-        let stub = Stub::start(move |_, _| out()).await;
-        let d = diary(&stub, TENANT_KEY);
-        let got = run(&d, &w, MEMBER, Route::StorageImport, "POST", "/x", b"{}").await;
-        assert_eq!(
-            (got.status(), got.text()),
-            (500, r#"{"error":"Internal error"}"#)
-        );
-    }
+    let stub = Stub::start(|_, _| Out::Hangup).await;
+    let d = diary(&stub, TENANT_KEY);
+    let got = run(&d, &w, MEMBER, Route::StorageImport, "POST", "/x", b"{}").await;
+    assert_eq!((got.status(), got.text()), (503, UNAVAILABLE));
+    let stub = Stub::start(|_, _| Out::json(307, "{}")).await;
+    let d = diary(&stub, TENANT_KEY);
+    let got = run(&d, &w, MEMBER, Route::StorageImport, "POST", "/x", b"{}").await;
+    assert_eq!(
+        (got.status(), got.text()),
+        (500, r#"{"error":"Internal error"}"#)
+    );
     let stub = Stub::start(|_, _| Out::json(200, "{}").slow(Duration::from_secs(5))).await;
     let d = diary_with(
         &stub,
@@ -1155,10 +1203,7 @@ async fn storage_import_transport_failures_are_nodes_generic_500() {
         },
     );
     let got = run(&d, &w, MEMBER, Route::StorageImport, "POST", "/x", b"{}").await;
-    assert_eq!(
-        (got.status(), got.text()),
-        (500, r#"{"error":"Internal error"}"#)
-    );
+    assert_eq!((got.status(), got.text()), (503, UNAVAILABLE));
 }
 
 // ── workspace-export ───────────────────────────────────────────────────────────

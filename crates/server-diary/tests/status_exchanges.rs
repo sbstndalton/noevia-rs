@@ -241,9 +241,13 @@ async fn the_status_is_gated_on_the_addon_then_the_method_and_a_dead_sidecar_is_
         b"",
     )
     .await;
+    // A sidecar that drops the call is unavailable, not a bug (#2232).
     assert_eq!(
         (status, text.as_str()),
-        (500, r#"{"error":"Internal error"}"#)
+        (
+            503,
+            r#"{"error":"Diary is unavailable right now. Try again shortly.","code":"diaryUnavailable"}"#
+        )
     );
 }
 

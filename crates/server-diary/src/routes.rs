@@ -207,6 +207,34 @@ fn internal() -> Reply {
     error_reply(500, "Internal error")
 }
 
+/// What a person is told when the Diary service cannot be reached (#2232): a status the page can
+/// word, a stable `code` it can translate, and nothing about where the service is or why it failed.
+pub const DIARY_UNAVAILABLE: &str = "Diary is unavailable right now. Try again shortly.";
+
+fn diary_unavailable() -> Reply {
+    json_reply(
+        503,
+        &JValue::obj([
+            ("error", JValue::Str(DIARY_UNAVAILABLE.to_owned())),
+            ("code", JValue::Str("diaryUnavailable".to_owned())),
+        ]),
+    )
+}
+
+/// A call that produced no reply: a service that refuses, drops or stalls is unavailable; anything
+/// else (a bad URL, a redirect, an unreadable storage row) stays core's generic 500.
+fn call_failed(error: CallError) -> Reply {
+    match error {
+        CallError::Transport | CallError::Timeout => diary_unavailable(),
+        _ => internal(),
+    }
+}
+
+/// A gateway-class status from the service in front of the sidecar says the same thing.
+fn upstream_down(status: u16) -> bool {
+    matches!(status, 502..=504)
+}
+
 fn disabled() -> Reply {
     error_reply(404, "Diary add-on is disabled")
 }
@@ -446,7 +474,7 @@ impl Diary {
                     detail_or(r.body.as_ref(), "Diary storage request failed"),
                 )]),
             ),
-            Err(_) => internal(),
+            Err(e) => call_failed(e),
         }
     }
 
@@ -584,7 +612,9 @@ impl Diary {
         };
         let reply = match self.read_json(ctx, &path).await {
             Ok(r) if r.ok => r,
-            _ => return internal(),
+            Ok(r) if upstream_down(r.status) => return diary_unavailable(),
+            Err(e) => return call_failed(e),
+            Ok(_) => return internal(),
         };
         let body = reply.body.unwrap_or(JValue::Undefined);
         let empty = JValue::Str(String::new());
@@ -647,7 +677,7 @@ impl Diary {
                     detail_or(r.body.as_ref(), "Diary storage request failed"),
                 )]),
             ),
-            Err(_) => internal(),
+            Err(e) => call_failed(e),
         }
     }
 
