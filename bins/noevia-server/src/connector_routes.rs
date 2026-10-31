@@ -18,16 +18,12 @@
 //! admin, ... }` from the authenticated request):
 //! - `session { rejected? }` -> `{ accessToken, expiresAt, generation }` or 401/409/502
 //!   `{ error, code, status }` with code `disconnected`, `reconnect` or `transient`
-//! - `reject { generation }` -> `{ dropped }`; `disconnect` -> `{ ok, state }`; `forget { user }` -> `{ ok }`
-//! - `view` -> the Google Drive connector object; `policy { tools, mode, writes }` -> `{ ok }`
+//! - `reject { generation }` -> `{ dropped }`; `disconnect` -> `{ ok, state }`
 //! - `reseal {}` -> `{ current, rotated, empty, failed }`: secrets:rotate re-seals every account's
 //!   token file under the current secrets.key, under the same fence as every other change
 //!
-//! Scheduled for removal: `view` and `policy` served core's `GET /api/connectors` and its Drive/Nextcloud
-//! policy writes; since sbstndalton/noevia#2202 round 2 the front answers those itself and the paired
-//! Core no longer calls either (`gdriveView`, `toolPolicySet` are gone from rust-google-drive.cjs). They
-//! stay only so the Core of a rollback pair still works; delete both ops (and `view` with its helpers) in
-//! the first release after that rollback floor has passed.
+//! (`view` and `policy` served core's `GET /api/connectors` and the policy writes; the front answers
+//! those itself since sbstndalton/noevia#2202 round 2 and both ops are gone.)
 //!
 //! `admin: true` is checked against `users.role`; a claim the table does not confirm is a member.
 //!
@@ -264,6 +260,22 @@ pub(crate) fn wanted_tools(body: &JValue, offered: impl Fn(&str) -> bool) -> Vec
         .collect()
 }
 
+/// The write flag `set()` checks per tool: the caller's, for `allow` (the only mode a write may not take),
+/// none otherwise. Flags that do not line up with the tools are not trusted: every tool counts as a write, so
+/// `allow` is refused rather than granted on a guess.
+fn write_flags(mode: &JValue, tools: usize, writes: &[bool]) -> Vec<bool> {
+    let flags: Vec<bool> = if mode.as_str() == Some("allow") {
+        writes.to_vec()
+    } else {
+        vec![false; tools]
+    };
+    if flags.len() == tools {
+        flags
+    } else {
+        vec![true; tools]
+    }
+}
+
 /// tool-policy.cjs `set()`: the checks in core's order, then the upserts and the audit row in one
 /// transaction. `writes` are the caller's write flags per tool (only read for `allow`).
 pub(crate) fn set_policy(
@@ -274,16 +286,7 @@ pub(crate) fn set_policy(
     writes: &[bool],
 ) -> Result<(), Fail> {
     let units: Option<Vec<u16>> = mode.as_str().map(|m| m.encode_utf16().collect());
-    let flags: Vec<bool> = if mode.as_str() == Some("allow") {
-        writes.to_vec()
-    } else {
-        vec![false; tools.len()]
-    };
-    let flags = if flags.len() == tools.len() {
-        flags
-    } else {
-        vec![true; tools.len()]
-    };
+    let flags = write_flags(mode, tools.len(), writes);
     let stored = policy_leaves::check_set(units.as_deref(), &flags)
         .map_err(|r| Fail::new(r.message(), 400))?;
     let writer = app
@@ -576,6 +579,36 @@ pub async fn internal_op(app: Option<Arc<App>>, op: &str, raw: &[u8]) -> Respons
 )]
 mod tests {
     use super::*;
+
+    /// #2241: the write flags and the mismatch rule of `set_policy`, before any account or database.
+    #[test]
+    fn allow_is_refused_for_a_write_and_for_flags_that_do_not_line_up_with_the_tools() {
+        let units = |m: &str| m.encode_utf16().collect::<Vec<u16>>();
+        let check = |mode: &str, tools: usize, writes: &[bool]| {
+            let flags = write_flags(&JValue::Str(mode.into()), tools, writes);
+            policy_leaves::check_set(Some(&units(mode)), &flags).map(|m| m.name().to_owned())
+        };
+        // Reads may be allowed; a write may not; the other modes take either.
+        assert_eq!(check("allow", 2, &[false, false]), Ok("allow".to_owned()));
+        assert!(
+            check("allow", 2, &[false, true]).is_err(),
+            "one write refuses the call"
+        );
+        assert_eq!(check("ask", 2, &[true, true]), Ok("ask".to_owned()));
+        assert_eq!(check("block", 1, &[true]), Ok("block".to_owned()));
+        // Fewer or more flags than tools: counted as writes, so `allow` is refused ...
+        assert!(check("allow", 2, &[false]).is_err());
+        assert!(check("allow", 1, &[false, false]).is_err());
+        assert!(check("allow", 2, &[]).is_err());
+        // ... and the same mismatch costs `ask` and `block` nothing; no tools at all is refused.
+        assert_eq!(check("ask", 2, &[false]), Ok("ask".to_owned()));
+        assert_eq!(check("block", 2, &[]), Ok("block".to_owned()));
+        assert!(check("ask", 0, &[]).is_err());
+        // A mode that is not text is refused whatever the flags.
+        assert!(
+            policy_leaves::check_set(None, &write_flags(&JValue::Num(1.0), 1, &[false])).is_err()
+        );
+    }
 
     #[test]
     fn the_tool_list_is_the_file_core_checks_its_own_against() {

@@ -1080,3 +1080,72 @@ async fn a_job_task_that_dies_frees_its_slot_and_its_row() {
         .await;
     assert_eq!(s, 202, "the project's slot is free again: {v}");
 }
+
+/// The public replacement of the removed `tests/research_jobs.rs` cross-account case: a second
+/// administrator with a project of the same id sees none of the first account's jobs. Research is
+/// scoped by account first and by project id second, so equal ids must not meet (sbstndalton/noevia#2241).
+#[tokio::test]
+async fn a_second_account_with_the_same_project_id_cannot_read_list_cancel_or_save_the_first_ones_job(
+) {
+    let f = front(
+        Some("true"),
+        lease_node(),
+        engine_saying("The tower is 50 metres tall [S1]."),
+    )
+    .await;
+    let (s, v) = f
+        .call(
+            "POST",
+            "/api/projects/p1/research",
+            r#"{"question":"How tall is the tower?"}"#,
+        )
+        .await;
+    assert_eq!(s, 202, "{v}");
+    let id = v["id"].as_str().unwrap().to_owned();
+    let done = f.job_until(&id, |j| j["status"] != "running").await;
+    assert_eq!(done["status"], "completed", "{done}");
+
+    // A second administrator, whose own project has the same id.
+    let other = "33333333-3333-4333-8333-333333333333";
+    let c = Connection::open(server_store::db_path(&f.data)).unwrap();
+    c.execute("INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES(?1,'second','second','Synthetic second admin','admin','x',?1,1,1)", [other]).unwrap();
+    let now = noevia_server::identity::now_ms();
+    c.execute(
+        "INSERT INTO sessions(id_hash,user_id,csrf_hash,created_at,last_seen_at,expires_at,user_agent,ip) VALUES(?1,?2,?3,?4,?4,?5,'synthetic','127.0.0.1')",
+        (server_auth::js::digest("second-token"), other, server_auth::js::digest("second-csrf"), now, now + 86_400_000),
+    ).unwrap();
+    seed_project(&f.data.join("users").join(other));
+    let jar = "cowork_session=second-token; cowork_csrf=second-csrf";
+    let as_second = |method: &'static str, path: String, body: &'static str| {
+        let addr = f.addr;
+        async move { call(addr, method, &path, jar, "second-csrf", body).await }
+    };
+
+    // The project is theirs, so the list is answered, and it is empty.
+    let (s, v) = as_second("GET", "/api/projects/p1/research".into(), "").await;
+    assert_eq!(s, 200, "{v}");
+    assert_eq!(
+        v["jobs"],
+        json!([]),
+        "the first account's job is not listed: {v}"
+    );
+    assert!(!v.to_string().contains(&id), "{v}");
+    // The job's own id is unknown to them: read, cancel and save are all the 404.
+    let missing = json!({"error":"No such research job."});
+    for (method, tail) in [("GET", ""), ("POST", "/cancel"), ("POST", "/save")] {
+        let (s, v) = as_second(
+            method,
+            format!("/api/projects/p1/research/{id}{tail}"),
+            "{}",
+        )
+        .await;
+        assert_eq!((s, &v), (404, &missing), "{method} {tail}: {v}");
+    }
+    // The first account still has it, untouched by the attempts.
+    let (s, v) = f
+        .call("GET", &format!("/api/projects/p1/research/{id}"), "")
+        .await;
+    assert_eq!((s, v["status"].as_str()), (200, Some("completed")), "{v}");
+    let (_, list) = f.call("GET", "/api/projects/p1/research", "").await;
+    assert_eq!(list["jobs"].as_array().map(Vec::len), Some(1), "{list}");
+}
