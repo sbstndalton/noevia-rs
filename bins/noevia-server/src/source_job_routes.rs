@@ -164,14 +164,14 @@ pub fn hold(
     })
 }
 
-/// How long an operation waits for the project's source lock. A request waits briefly and then says 429; a
-/// job, already accepted, waits its turn, but at most half its bound: the bound runs from the job's start,
-/// so a wait of the whole bound would leave the operation no time (and a job that waited that long would
-/// be failed 504 while it ran).
 /// How long a plain-text upload waits for a project's source lock: a conversion in the project may hold it
 /// for minutes, so the upload answers the retryable 429 after this instead of holding its slot.
 const PLAIN_LOCK_WAIT: Duration = Duration::from_secs(10);
 
+/// How long an operation waits for the project's source lock. A request waits briefly and then says 429; a
+/// job, already accepted, waits its turn, but at most half its bound: the bound runs from the job's start,
+/// so a wait of the whole bound would leave the operation no time (and a job that waited that long would
+/// be failed 504 while it ran). A plain-text job waits [`PLAIN_LOCK_WAIT`].
 fn lock_wait(foreground: bool, upload: bool, plain: bool) -> Duration {
     // A plain-text upload to a project whose lock a PDF holds (a conversion runs inside it) answers the
     // retryable "another upload is still running" (429) after the short wait instead of queueing for minutes.
