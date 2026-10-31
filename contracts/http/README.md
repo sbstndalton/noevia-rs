@@ -1026,7 +1026,8 @@ with conversation-import.cjs and chat-import.cjs, answer for answer: the body re
 journal, file for file (`conversation-imports/<sha256 of JSON.stringify(body)>/` with `<n>.json`
 stages and `manifest.json`, `atomicJson` 0600), so a journal Node left is finished here: every
 pending journal is applied, audited (`import.conversations`, `{imported, skipped, projectsCreated}`)
-and removed first, and the same file's finished journal answers its own result. Projects are
+and removed first, and the same file's finished journal answers its own result. `imported-chats.json`
+(#2196) maps each source chat to its local chat, so a re-import skips it while that chat is listed. Projects are
 matched by name or created through the round-2 create (`{name, toolboxes: []}`, its storage step
 included); transcripts are published only where none is (origin `import`, a taken id gets a new
 one), lists merged as `mergeChats` merges them; a chat the list cap dropped is `capped` and taken
