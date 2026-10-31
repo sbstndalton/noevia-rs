@@ -756,3 +756,158 @@ fn a_refresh_keeps_managed_images_documents_and_text_and_batches_past_forty() {
     };
     assert_eq!(assets.len(), 1);
 }
+
+/// noevia#2245: the queue worker replaced a queued record with only `name`, `content` and `document`.
+/// A synced document lost its `source`, so the next sync took it for an upload: it was kept for good (the
+/// folder could no longer retire it) and the folder's own copy of the same name came in beside it.
+#[test]
+fn a_queued_synced_document_keeps_its_source_when_the_worker_reads_it_and_a_later_sync_adds_no_copy() {
+    let rig = Rig::new(PROJECT);
+    rig.storage.put("docs/r.pdf", b"%PDF-1.4 synthetic");
+    rig.sync(); // Docling unreachable: the document is queued, as the sync's own record
+    let queued = rig.files();
+    assert_eq!(queued[0].get("source").as_str(), Some("docs"));
+    assert_eq!(queued[0].get("document").get("state").as_str(), Some("queued"));
+    // The worker, long after the backoff, with Docling back.
+    rig.engine
+        .replies
+        .borrow_mut()
+        .push(Ok(wtf16::parse(GOOD).unwrap()));
+    let later = Ctx {
+        now_ms: wall() + 3_600_000, // a sync dates its jobs by the wall clock
+        ..rig.ctx()
+    };
+    let ran = extract_queue::run_due(later, &rig.engine, &LIMITS);
+    assert_eq!(ran.len(), 1);
+    let read = rig.files();
+    assert_eq!(read.len(), 1);
+    assert_eq!(read[0].get("document").get("state").as_str(), Some("ready"));
+    assert_eq!(
+        read[0].get("source").as_str(),
+        Some("docs"),
+        "the record still names the folder it came from: {:?}",
+        read[0]
+    );
+    // The next sync sees the same file in the same folder: still one record, still the folder's.
+    rig.engine
+        .replies
+        .borrow_mut()
+        .push(Ok(wtf16::parse(GOOD).unwrap()));
+    rig.sync();
+    assert_eq!(rig.names(), vec!["docs/r.pdf".to_string()]);
+    assert_eq!(rig.files()[0].get("source").as_str(), Some("docs"));
+    // And when the file leaves the folder the sync retires the record (an upload would have stayed).
+    rig.storage.files.borrow_mut().remove("docs/r.pdf");
+    rig.sync();
+    assert!(
+        rig.names().is_empty(),
+        "a folder file that is gone is retired, not kept as an upload: {:?}",
+        rig.names()
+    );
+}
+
+/// A worker pass at a time far past any backoff (a sync dates its jobs by the wall clock).
+fn worker_at(rig: &Rig, hours: i64) -> Vec<(extract_queue::Job, extract_queue::Outcome)> {
+    let ctx = Ctx {
+        now_ms: wall() + hours * 3_600_000,
+        ..rig.ctx()
+    };
+    extract_queue::run_due(ctx, &rig.engine, &LIMITS)
+}
+
+fn queued_rig() -> Rig {
+    let rig = Rig::new(PROJECT);
+    rig.storage.put("docs/r.pdf", b"%PDF-1.4 synthetic");
+    rig.sync(); // Docling unreachable: queued
+    assert_eq!(
+        rig.files()[0].get("document").get("state").as_str(),
+        Some("queued")
+    );
+    rig
+}
+
+/// noevia#2245: a record that could not be rewritten as failed (a save fault) must not lose its job: the
+/// record says "will be read automatically", and with no job nothing ever would.
+#[test]
+fn a_job_whose_failed_record_could_not_be_saved_stays_pending() {
+    let rig = queued_rig();
+    let hash = rig.files()[0]
+        .get("document")
+        .get("byteHash")
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let original = document_ingest::version_path(&rig.dir(), "proj-a", &hash, ".pdf").unwrap();
+    std::fs::remove_file(&original).unwrap(); // the stored original is gone: the document is given up on
+    {
+        // The projects file is held by another writer for longer than a save waits: the save fails.
+        let _held = crate::lock::acquire(&rig.dir().join(store::PROJECTS_FILE)).unwrap();
+        let ran = worker_at(&rig, 1);
+        assert_eq!(ran.len(), 1);
+        assert!(
+            matches!(ran[0].1, extract_queue::Outcome::Waiting),
+            "{:?}",
+            ran[0].1
+        );
+    }
+    assert!(
+        extract_queue::pending(&rig.dir(), "proj-a", "docs/r.pdf").is_some(),
+        "the job is kept"
+    );
+    assert_eq!(
+        rig.files()[0].get("document").get("state").as_str(),
+        Some("queued"),
+        "the record is untouched"
+    );
+    // Once it can be saved the record says why it was given up on, and the job goes.
+    let ran = worker_at(&rig, 48);
+    assert!(matches!(ran[0].1, extract_queue::Outcome::Dropped));
+    let d = rig.files()[0].get("document").clone();
+    assert_eq!(d.get("state").as_str(), Some("failed"));
+    assert_eq!(d.get("error").as_str(), Some(extract_queue::ORIGINAL_GONE));
+    assert!(extract_queue::pending(&rig.dir(), "proj-a", "docs/r.pdf").is_none());
+}
+
+/// noevia#2245: when the extracted text cannot be written to disk, the record still says it is waiting, so
+/// the job keeps waiting (it was dropped, leaving a record that would never be read).
+#[test]
+fn a_job_whose_text_could_not_be_written_stays_pending_and_runs_again() {
+    let rig = queued_rig();
+    let sources = rig.dir().join("project-sources");
+    let away = rig.dir().join("project-sources.away");
+    std::fs::rename(&sources, &away).unwrap();
+    std::fs::write(&sources, b"not a folder").unwrap(); // the text folder cannot be made
+    rig.engine
+        .replies
+        .borrow_mut()
+        .push(Ok(wtf16::parse(GOOD).unwrap()));
+    let ran = worker_at(&rig, 1);
+    assert_eq!(ran.len(), 1);
+    assert!(
+        matches!(ran[0].1, extract_queue::Outcome::Waiting),
+        "{:?}",
+        ran[0].1
+    );
+    assert!(
+        extract_queue::pending(&rig.dir(), "proj-a", "docs/r.pdf").is_some(),
+        "the job is kept"
+    );
+    assert_eq!(
+        rig.files()[0].get("document").get("state").as_str(),
+        Some("queued")
+    );
+    // The disk is back: the next pass reads it.
+    std::fs::remove_file(&sources).unwrap();
+    std::fs::rename(&away, &sources).unwrap();
+    rig.engine
+        .replies
+        .borrow_mut()
+        .push(Ok(wtf16::parse(GOOD).unwrap()));
+    let ran = worker_at(&rig, 48);
+    assert!(matches!(ran[0].1, extract_queue::Outcome::Stored), "{:?}", ran[0].1);
+    assert_eq!(
+        rig.files()[0].get("document").get("state").as_str(),
+        Some("ready")
+    );
+    assert!(extract_queue::pending(&rig.dir(), "proj-a", "docs/r.pdf").is_none());
+}

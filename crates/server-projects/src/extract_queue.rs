@@ -279,8 +279,13 @@ fn run_one(
     };
     // The record exists but its original cannot be read again: the record says "will be read automatically",
     // which would stay true forever. It is rewritten as failed with the real reason before the job goes.
+    // If the record cannot be rewritten (a disk fault), the job stays: dropping it would leave a record that says
+    // "will be read automatically" and nothing that reads it (#2245).
     let give_up = |reason: &str| {
-        fail_record(ctx, dir, job, reason);
+        if !fail_record(ctx, dir, job, reason) {
+            let _ = again(conn, job, "projects save failed", ctx.now_ms);
+            return Outcome::Waiting;
+        }
         drop_it()
     };
     let Ok(projects) = store::read(dir) else {
@@ -338,29 +343,49 @@ fn run_one(
         mark_queued(&mut file, false);
     }
     document_ingest::mark_indexing(&mut file);
+    // `Gone`: the project or the record is not there any more, nothing is left to read. `Disk`: the text
+    // could not be written; the record still says it is waiting, so the job must too (#2245).
+    enum Saved {
+        Stored,
+        Gone,
+        Disk,
+    }
     let saved = store::update(dir, ctx.switch, |projects| {
         let Some(p) = store::find_mut(projects, &job.project) else {
-            return (false, false);
+            return (Saved::Gone, false);
         };
         let JValue::Arr(mut files) = p.get("files").clone() else {
-            return (false, false);
+            return (Saved::Gone, false);
         };
         let Some(i) = files.iter().position(|f| {
             f.get("name").as_str() == Some(job.file.as_str())
                 && f.get("document").get("byteHash").as_str() == Some(job.byte_hash.as_str())
         }) else {
-            return (false, false);
+            return (Saved::Gone, false);
         };
-        files.remove(i);
-        files.push(file.clone());
+        // noevia#2245: the record as it is now takes the new fields, so what the worker did not read
+        // (a synced document's `source`, an `attachment`) is kept. Only the old text reference goes:
+        // `content` is the new text and `externalize` writes it out again.
+        let mut record = files.remove(i);
+        if let JValue::Obj(items) = &mut record {
+            items.retain(|(k, _)| k != "textRef" && k != "chars" && k != "skillHeader");
+            if let JValue::Obj(fresh) = &file {
+                for (k, v) in fresh {
+                    js_json::wtf16::set(items, k, v.clone());
+                }
+            }
+        } else {
+            record = file.clone();
+        }
+        files.push(record);
         store::set(p, "files", JValue::Arr(files));
         if crate::lifecycle::externalize(dir, p).is_err() {
-            return (false, false);
+            return (Saved::Disk, false);
         }
-        (true, true)
+        (Saved::Stored, true)
     });
     match saved {
-        Ok(true) => {
+        Ok(Saved::Stored) => {
             document_ingest::prune_now(dir, &job.project);
             let index = outbox::Job {
                 kind: "index",
@@ -381,7 +406,11 @@ fn run_one(
                 Outcome::Stored
             }
         }
-        Ok(false) => drop_it(),
+        Ok(Saved::Gone) => drop_it(),
+        Ok(Saved::Disk) => {
+            let _ = again(conn, job, "text save failed", ctx.now_ms);
+            Outcome::Waiting
+        }
         Err(_) => {
             let _ = again(conn, job, "projects save failed", ctx.now_ms);
             Outcome::Waiting
@@ -401,10 +430,11 @@ pub const WAITING_ID: &str = "extractionWaiting";
 pub const ORIGINAL_GONE: &str =
     "The stored original of this document is no longer available, so it cannot be read. Upload it again.";
 
-/// Rewrites the queued record of `job` as `failed` with `reason` (and no queued marker). Best effort: the job
-/// is dropped by the caller either way.
-fn fail_record(ctx: Ctx<'_>, dir: &Path, job: &Job, reason: &str) {
-    let _ = store::update(dir, ctx.switch, |projects| {
+/// Rewrites the queued record of `job` as `failed` with `reason` (and no queued marker). `true` when that is
+/// saved or the record is no longer there to rewrite (the caller drops the job); `false` when the save itself
+/// failed (the caller keeps the job).
+fn fail_record(ctx: Ctx<'_>, dir: &Path, job: &Job, reason: &str) -> bool {
+    store::update(dir, ctx.switch, |projects| {
         let Some(p) = store::find_mut(projects, &job.project) else {
             return (false, false);
         };
@@ -426,7 +456,8 @@ fn fail_record(ctx: Ctx<'_>, dir: &Path, job: &Job, reason: &str) {
         }
         store::set(p, "files", JValue::Arr(files));
         (true, true)
-    });
+    })
+    .is_ok()
 }
 
 /// Marks a source record as queued for extraction (`document.extraction: "queued"`).
