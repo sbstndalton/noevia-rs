@@ -733,7 +733,7 @@ mod tests {
         let owner = owner(&account.start);
         let work = upload_work(r#"{"name":"Notes/report.pdf","dataBase64":"AA=="}"#);
         let parse = || Ok(parse_body(&work.body));
-        let (job, op) = accept(&account, &owner, &work, parse).unwrap();
+        let (job, op, _) = accept(&account, &owner, &work, parse).unwrap();
         let user = server_projects::store::user_dir(dir.path(), &account.user).unwrap();
         assert_eq!(
             source_ops::listed(&user),
@@ -745,7 +745,7 @@ mod tests {
         drop(op);
         let work = upload_work(r#"{"name":"b.md","relativePath":"x/b.md"}"#);
         let parse = || Ok(parse_body(&work.body));
-        let (_, op) = accept(&account, &owner, &work, parse).unwrap();
+        let (_, op, _) = accept(&account, &owner, &work, parse).unwrap();
         assert!(source_ops::listed(&user).contains(&(
             "import".into(),
             "b.md".into(),
@@ -779,7 +779,7 @@ mod tests {
         let owner = owner(&account.start);
         let work = upload_work(r#"{"name":"hung.pdf"}"#);
         let parse = || Ok(parse_body(&work.body));
-        let (job, op) = accept(&account, &owner, &work, parse).unwrap();
+        let (job, op, _) = accept(&account, &owner, &work, parse).unwrap();
         let user = server_projects::store::user_dir(dir.path(), &account.user).unwrap();
         let (release, hold) = std::sync::mpsc::channel::<()>();
         let started = std::time::Instant::now();
