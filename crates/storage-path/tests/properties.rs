@@ -51,6 +51,19 @@ proptest! {
         assert_safe(&safe_relative_path(&raw).unwrap())?;
     }
 
+    // noevia#2125: a stored answer reads back as itself (it did not for "Reports /").
+    #[test]
+    fn safe_relative_path_is_idempotent(raw in any::<String>()) {
+        let once = safe_relative_path(&raw).unwrap();
+        prop_assert_eq!(safe_relative_path(&once).unwrap(), once);
+    }
+
+    #[test]
+    fn safe_relative_path_is_idempotent_on_pathish(raw in pathish()) {
+        let once = safe_relative_path(&raw).unwrap();
+        prop_assert_eq!(safe_relative_path(&once).unwrap(), once);
+    }
+
     #[test]
     fn safe_relative_path_output_is_safe_on_any_string(raw in any::<String>()) {
         assert_safe(&safe_relative_path(&raw).unwrap())?;

@@ -8,6 +8,7 @@
 //! - [`safe_relative_path`]: trim JS whitespace, turn `\` into `/`; refuse (return `""`) a value
 //!   that is empty, longer than 500 UTF-16 code units, starts with `/`, contains NUL, has no
 //!   segment, or has a `.`/`..` segment; otherwise the non-empty segments joined by `/`.
+//!   A last segment's trailing white space is trimmed (noevia#2125), so the answer is stable.
 //!   Percent escapes (`%2e`) are not decoded here: they stay literal name characters.
 //! - [`clean_root`]: strip every leading and trailing `/`.
 //! - [`join_root`]: `clean_root(root)` and `relative`, empty parts dropped, joined by `/`.
@@ -18,7 +19,7 @@
 //! `STORAGE_PATH_IMPL=wasm` path fails closed on any error.
 #![forbid(unsafe_code)]
 
-use dav_parse::js_trim;
+use dav_parse::{is_js_whitespace, js_trim};
 use std::fmt;
 
 /// Largest single argument accepted, in UTF-8 bytes. Real paths are capped at 500 UTF-16 units by
@@ -83,7 +84,18 @@ pub fn safe_relative_path(raw: &str) -> Result<String, Error> {
     if value.starts_with('/') || value.contains('\0') {
         return Ok(String::new());
     }
-    let segments: Vec<&str> = value.split('/').filter(|s| !s.is_empty()).collect();
+    let mut segments: Vec<&str> = value.split('/').filter(|s| !s.is_empty()).collect();
+    // noevia#2125: the whole-value trim leaves white space on the last segment when a slash
+    // follows it ("Reports /"). That value read back trimmed ("Reports "), a different folder, so
+    // the rule was not idempotent. The last segment is trimmed at its end too; a last segment that
+    // is only white space is dropped. Inner segments stay as they are (stored folders keep working).
+    while let Some(last) = segments.pop() {
+        let trimmed = last.trim_end_matches(is_js_whitespace);
+        if !trimmed.is_empty() {
+            segments.push(trimmed);
+            break;
+        }
+    }
     if segments.is_empty() || segments.iter().any(|s| *s == "." || *s == "..") {
         return Ok(String::new());
     }
@@ -179,6 +191,31 @@ pub fn reply_json(op: Op, a: &str, b: &str) -> (bool, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn trailing_white_space_on_the_last_segment_is_stable() {
+        // noevia#2125: "Reports /" used to answer "Reports " and "Reports " answered "Reports".
+        for (raw, want) in [
+            ("Reports /", "Reports"),
+            ("Reports ", "Reports"),
+            ("a/Reports \u{a0}/", "a/Reports"),
+            ("a/ /", "a"),
+            ("a/ b /", "a/ b"),
+            ("a /b", "a /b"),
+            ("a/ /b", "a/ /b"),
+        ] {
+            let once = safe_relative_path(raw).unwrap_or_default();
+            assert_eq!(once, want, "{raw:?}");
+            assert_eq!(
+                safe_relative_path(&once).unwrap_or_default(),
+                once,
+                "{raw:?} is stable"
+            );
+        }
+        // The trim must not let a traversal segment through.
+        assert_eq!(safe_relative_path("a/.. /").as_deref(), Ok(""));
+        assert_eq!(safe_relative_path("a/.\u{a0}/").as_deref(), Ok(""));
+    }
 
     #[test]
     fn rules() {

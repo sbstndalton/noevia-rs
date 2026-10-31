@@ -403,6 +403,86 @@
    }
   },
   {
+   "name": "trailing space before slash",
+   "op": "safeRelativePath",
+   "a": "Reports /",
+   "expect": {
+    "value": "Reports"
+   }
+  },
+  {
+   "name": "trailing space last segment",
+   "op": "safeRelativePath",
+   "a": "Reports ",
+   "expect": {
+    "value": "Reports"
+   }
+  },
+  {
+   "name": "trailing nbsp before slash",
+   "op": "safeRelativePath",
+   "a": "a/Reports  /",
+   "expect": {
+    "value": "a/Reports"
+   }
+  },
+  {
+   "name": "white-space-only last segment",
+   "op": "safeRelativePath",
+   "a": "a/ /",
+   "expect": {
+    "value": "a"
+   }
+  },
+  {
+   "name": "inner leading space kept, last end trimmed",
+   "op": "safeRelativePath",
+   "a": "a/ b /",
+   "expect": {
+    "value": "a/ b"
+   }
+  },
+  {
+   "name": "inner trailing space kept",
+   "op": "safeRelativePath",
+   "a": "a /b",
+   "expect": {
+    "value": "a /b"
+   }
+  },
+  {
+   "name": "inner white-space segment kept",
+   "op": "safeRelativePath",
+   "a": "a/ /b",
+   "expect": {
+    "value": "a/ /b"
+   }
+  },
+  {
+   "name": "dot dot with trailing space",
+   "op": "safeRelativePath",
+   "a": "a/.. /",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "dot with nbsp",
+   "op": "safeRelativePath",
+   "a": "a/. /",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "only white-space segments",
+   "op": "safeRelativePath",
+   "a": " / /",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
    "name": "query-like",
    "op": "safeRelativePath",
    "a": "a?b=c#d",
@@ -4689,7 +4769,7 @@
    "op": "safeRelativePath",
    "a": "‮\n//\\",
    "expect": {
-    "value": "‮\n"
+    "value": "‮"
    }
   },
   {
