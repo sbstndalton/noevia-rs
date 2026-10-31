@@ -777,6 +777,7 @@ impl Diary {
         Reply {
             status: 200,
             body: ReplyBody::Zip(ChannelBody::new(rx)),
+            retry_after: None,
         }
     }
 
