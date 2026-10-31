@@ -383,10 +383,31 @@ fn run_one(
     }
 }
 
+/// What a person reads about a document whose extraction is queued (#2237): the file is fine, the
+/// reading service is not there yet. The service's own words ("fetch failed") stay in the job's
+/// `last_error`, never on the record.
+pub const WAITING: &str =
+    "Waiting for document reading to come back. The file is saved and will be read automatically.";
+/// The stable id of [`WAITING`], so the browser can word it in the interface language.
+pub const WAITING_ID: &str = "extractionWaiting";
+
 /// Marks a source record as queued for extraction (`document.extraction: "queued"`).
+///
+/// A record has one state (#2237): a document that failed to read only because the service was
+/// unavailable is `state: "queued"` with the plain waiting reason, not `failed` and queued at once.
+/// A record that already has text (`ready`, `partial`: a completion pass left open) keeps its state.
+/// The worker finds the record by name and byte hash, never by state, and a successful run replaces it.
 pub fn mark_queued(file: &mut JValue) {
     if let JValue::Obj(items) = file {
         if let Some((_, JValue::Obj(d))) = items.iter_mut().find(|(k, _)| k == "document") {
+            let failed = d
+                .iter()
+                .any(|(k, v)| k == "state" && v.as_str() == Some("failed"));
+            if failed {
+                js_json::wtf16::set(d, "state", JValue::Str(QUEUED.into()));
+                js_json::wtf16::set(d, "error", JValue::Str(WAITING.into()));
+                js_json::wtf16::set(d, "errorId", JValue::Str(WAITING_ID.into()));
+            }
             js_json::wtf16::set(d, "extraction", JValue::Str(QUEUED.into()));
         }
     }

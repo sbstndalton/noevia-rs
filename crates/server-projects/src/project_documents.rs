@@ -476,6 +476,11 @@ mod tests {
         };
         let doc = files[0].get("document");
         assert_eq!(doc.get("extraction").as_str(), Some("queued"));
+        // #2237: one state, and words a person can read; the service's own text stays in the job.
+        assert_eq!(doc.get("state").as_str(), Some("queued"));
+        assert_eq!(doc.get("error").as_str(), Some(extract_queue::WAITING));
+        assert_eq!(doc.get("errorId").as_str(), Some("extractionWaiting"));
+        assert!(!wtf16::stringify(doc).unwrap().contains("fetch failed"));
         assert_eq!(doc.get("byteHash").as_str(), Some(job.byte_hash.as_str()));
     }
 

@@ -365,8 +365,14 @@ async fn documents_are_extracted_by_docling_and_queued_while_it_is_down() {
     let (s, body) = call(f.addr, "POST", &url, &h, &upload).await;
     assert_eq!(s, 200, "{body}");
     let answer: serde_json::Value = serde_json::from_str(&body).unwrap();
-    assert_eq!(answer["document"]["state"], "failed");
-    assert_eq!(answer["document"]["error"], "fetch failed");
+    // #2237: one state, in words a person can read; "fetch failed" is not shown.
+    assert_eq!(answer["document"]["state"], "queued");
+    assert_eq!(
+        answer["document"]["error"],
+        "Waiting for document reading to come back. The file is saved and will be read automatically."
+    );
+    assert_eq!(answer["document"]["errorId"], "extractionWaiting");
+    assert!(!body.contains("fetch failed"), "{body}");
     assert_eq!(answer["document"]["extraction"], "queued");
     assert_eq!(answer["document"]["indexing"], "unavailable");
     assert_eq!(answer["characters"], 0);
@@ -505,6 +511,7 @@ async fn documents_are_extracted_by_docling_and_queued_while_it_is_down() {
     assert_eq!(s, 200, "{body}");
     let answer: serde_json::Value = serde_json::from_str(&body).unwrap();
     assert_eq!(answer["document"]["stale"], true);
+    assert_eq!(answer["document"]["state"], "queued");
     assert_eq!(answer["document"]["extraction"], "queued");
     assert!(answer["characters"].as_u64().unwrap() > 0);
     assert_eq!(queue(&f).len(), 1);

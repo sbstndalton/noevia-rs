@@ -1703,6 +1703,14 @@ mod tests {
             body.get("document").get("extraction").as_str(),
             Some("queued")
         );
+        // #2237: the upload answer is one state in plain words, for the document and the attachment.
+        assert_eq!(body.get("document").get("state").as_str(), Some("queued"));
+        assert_eq!(body.get("attachment").get("state").as_str(), Some("queued"));
+        assert_eq!(
+            body.get("document").get("error").as_str(),
+            Some(extract_queue::WAITING)
+        );
+        assert!(!format!("{body:?}").contains("fetch failed"));
         let job = extract_queue::pending(&rig.dir(), "proj-a", "root/proj-a/Documents/r.pdf")
             .expect("job");
         assert_eq!(
