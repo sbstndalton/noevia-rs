@@ -304,7 +304,7 @@ fn every_native_replay_invocation_requires_a_persisted_proof_including_negative_
     assert!(stats.contains("proof = state['nativeMoveStateProof']"));
     assert!(stats.contains("set -euo pipefail"));
     assert!(stats.contains(
-        "assert stats and len(stats) + len(caps) + len(hardware) + len(providers) + len(evidence) + len(reload) == len(bad)"
+        "assert stats and len(stats) + len(caps) + len(hardware) + len(providers) + len(evidence) + len(reload) + len(budget) + len(installed) == len(bad)"
     ));
 }
 
@@ -331,6 +331,8 @@ fn deliberate_stats_difference_cannot_mask_missing_or_invalid_native_proof() {
         {"method":"GET","path":"/api/providers","diffs":[{"at":"body/providers/0/managed","expected":"false","actual":"true"}],"error":null,"status":200,"expectedStatus":200},
         {"method":"GET","path":"/api/models/evidence","diffs":[{"at":"body/error","expected":"\"Not found\"","actual":"\"Choose a model\""}],"error":null,"status":400,"expectedStatus":404},
         {"method":"POST","path":"/api/models/presets/reload","diffs":[{"at":"status","expected":"404","actual":"503"}],"error":null,"status":503,"expectedStatus":404},
+        {"method":"GET","path":"/api/models/inference-budget","diffs":[{"at":"body/models","expected":"null","actual":"[]"}],"error":null,"status":200,"expectedStatus":200},
+        {"method":"GET","path":"/api/models/installed","diffs":[{"at":"status","expected":"502","actual":"200"}],"error":null,"status":200,"expectedStatus":502},
     ]);
     std::fs::write(&report, rows.to_string()).unwrap();
     let check = || {
@@ -369,7 +371,10 @@ fn deliberate_stats_difference_cannot_mask_missing_or_invalid_native_proof() {
     supported[2]["diffs"][1]["actual"] = serde_json::json!("true");
     let mut caps_none = rows.clone();
     caps_none[1]["diffs"][0]["actual"] = serde_json::json!("\"none\"");
-    for bad in [extra, no_caps, supported, caps_none] {
+    // The budget's figure must never drift: it is Node's, over the facts bridge (#2262).
+    let mut figure = rows.clone();
+    figure[6]["diffs"][0]["at"] = serde_json::json!("body/budgetGib");
+    for bad in [extra, no_caps, supported, caps_none, figure] {
         std::fs::write(&report, bad.to_string()).unwrap();
         assert!(!check(), "only the expected engine drifts may pass: {bad}");
     }
