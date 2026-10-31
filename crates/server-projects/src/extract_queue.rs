@@ -464,6 +464,10 @@ fn fail_record(ctx: Ctx<'_>, dir: &Path, job: &Job, reason: &str) -> bool {
                 js_json::wtf16::set(d, "state", JValue::Str("failed".into()));
                 js_json::wtf16::set(d, "error", JValue::Str(reason.into()));
             }
+            // The upload's attachment says what the document says, as the success path keeps it.
+            if let Some((_, JValue::Obj(a))) = items.iter_mut().find(|(k, _)| k == "attachment") {
+                js_json::wtf16::set(a, "state", JValue::Str("failed".into()));
+            }
         }
         store::set(p, "files", JValue::Arr(files));
         (true, true)

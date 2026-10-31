@@ -294,7 +294,9 @@ pub fn search(ctx: Ctx<'_>, query: &str) -> Reply {
         let Some(id) = chat.get("id").as_str() else {
             continue;
         };
-        if deleted.contains(id) {
+        // `tombstoned` (the transcript read) compares the reduced id, so the search does too (a raw id is
+        // also kept, as a delete writes both).
+        if deleted.contains(id) || deleted.contains(&crate::history::safe_chat_id(id)) {
             continue;
         }
         if scanned >= 500 {
@@ -378,6 +380,21 @@ mod tests {
         assert_eq!(
             crate::transcript::TOMBSTONE_READS.with(std::cell::Cell::get),
             0
+        );
+        // A tombstone written for the reduced id still hides a chat listed under an unusual raw id.
+        std::fs::write(
+            dir.join("free-chats.json"),
+            r#"[{"id":"c.1"},{"id":"gone"},{"id":"tool-only"}]"#,
+        )?;
+        std::fs::write(
+            dir.join("history-c1.json"),
+            r#"{"history":[{"role":"user","content":"Synthetic EVIDENCE"}]}"#,
+        )?;
+        std::fs::write(dir.join("deleted-chats.json"), r#"["gone","c1"]"#)?;
+        let reply = search(ctx, "evidence");
+        assert_eq!(
+            reply,
+            Reply::json(200, r#"{"chats":[],"truncated":false}"#.into())
         );
         std::fs::write(dir.join(retention::FILE), r#"{"days":30}"#)?;
         assert_eq!(get(ctx).status, 200);
