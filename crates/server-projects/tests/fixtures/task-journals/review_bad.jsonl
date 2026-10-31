@@ -1,0 +1,2 @@
+{"job":"00000000-0000-4000-8000-000000000006","seq":1,"type":"job.created","at":1001,"data":{"kind":"code","projectId":"p1"}}
+{"job":"00000000-0000-4000-8000-000000000006","seq":2,"type":"review.completed","at":1002,"data":{"baseSha":"no","verdict":"maybe"}}

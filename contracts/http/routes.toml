@@ -295,7 +295,7 @@ methods = ["POST"]
 
 [[route]]
 path = "/api/code/active"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/connectors"
@@ -680,9 +680,19 @@ path = "/api/projects/{id}/assets/{assetId}"
 owner = "rust"
 methods = ["GET", "DELETE"]
 
+# sbstndalton/noevia#2257 (rust-task-reads): the reads of a project's Code and Browser tasks, and the active
+# list above, are the front's (bins/noevia-server task_routes.rs, crates/server-projects task_journals.rs); Node
+# refuses them (core rust-task-reads.cjs), keeps the POSTs and the tasks, and is still the journals' only writer.
 [[route]]
 path = "/api/projects/{projectId}/browser"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
+
+[[route]]
+path = "/api/projects/{projectId}/browser/{task}"
+owner = "rust"
+methods = ["GET"]
+client = false
 
 [[route]]
 path = "/api/projects/{projectId}/chats"
@@ -696,7 +706,14 @@ methods = ["DELETE"]
 
 [[route]]
 path = "/api/projects/{projectId}/code"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
+
+[[route]]
+path = "/api/projects/{projectId}/code/{task}"
+owner = "rust"
+methods = ["GET"]
+client = false
 
 # sbstndalton/noevia#2191 round 9 (rust-project-config): a project's configuration, its instruction
 # skills and a published skill's install, the front's (crates/server-projects config.rs,

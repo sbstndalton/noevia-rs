@@ -562,8 +562,7 @@ file whose name is a validated hex hash, never a request value.
 | `/api/projects/{id}/documents` (POST) | rust | round 5, below: the front's Docling pipeline and durable extraction queue |
 | `/api/projects/{id}/upload`, `/sources/sync`, `/folder-import/plan` (POST, with or without `?background=1`), `/api/projects/{id}/source-jobs/{jobId}` (GET) | rust | rounds 6 and 8, below: the front owns the source-job store and runs the operations itself (streamed storage reads, Docling, the OCR worker's `/reduce-pdf` and `/extract-docx`, the storage latch, the folder import's tickets); Node has no worker call and no copy of any of it |
 | `/api/projects/{projectId}/instruction-skills`, `.../manifests`, `/api/projects/{project}/skills/install` | node | the known-toolbox list (plugins, MCP) is Node's runtime catalogue; install fetches a published skill through Node's plugin directory |
-| `/api/projects/{projectId}/browser`, `/code`, `/research` | node | they drive a browser session, the code harness or research jobs |
-| `/api/code/active` | node | the code harness service's live task list |
+| `/api/projects/{projectId}/browser`, `/code` POSTs and their task POSTs | node | they drive a browser session or the code harness; the reads are the front's (#2257, below) |
 | `/api/workspace` | node | its load runs the retention sweep and the orphaned attachments-project reaper, whose delete (RAG index, uploads) is Node's |
 | `/api/import/conversations` (POST) | rust | round 4, below |
 
@@ -1559,7 +1558,7 @@ and assemble-release.sh refuse a mixed pair, old/old stays valid). The node-rout
 | `POST /api/projects/{project}/skills/install` | rust | same | `skill_routes.rs`, `plugin_directory_routes.rs` `fetch_skill` |
 | `DELETE /api/admin/users/{id}` | rust | `rust-admin-users.cjs` / `RUST_ADMIN_USERS_OWNED` | bins/noevia-server `admin_user_routes.rs`, crates/server-account `delete.rs` |
 
-**Kept on Node, and why.** `/api/projects/{projectId}/browser`, `/code` (and `/research`, until #2218 below) and `GET /api/code/active` are
+**Kept on Node, and why.** (The reads below moved in #2257, at the end of this file.) `/api/projects/{projectId}/browser`, `/code` (and `/research`, until #2218 below) and `GET /api/code/active` were
 chat-bound (the tool loop, the harness and the research jobs run in the chat process), so they stay Node's; core's
 `routes/projects.cjs` is gone with the last of its handlers.
 
@@ -1673,3 +1672,26 @@ ran out; a progress stage over 4096 bytes is clipped instead of killing the job;
 rather than a new job; a `.sources.json` retry now matches its first hash after the journal's key sort. Steps stream
 (`stream: true`) with one 120 s deadline for the whole step and no separate idle limit (Node's step had only that deadline; a stream that goes quiet runs to it), a local step takes the gate's lease when a gate exists, and
 deadline and connect failures have their own words, and so does a bridge to Node that does not answer or refuses the front ("unreachable", not "Web search is not configured"). Availability still ignores `project.model`, as Node's did.
+
+## Code and Browser task reads (rust-task-reads, sbstndalton/noevia#2257)
+
+`GET /api/code/active` (every method: the others were only its 405) and the GETs of
+`/api/projects/{projectId}/code[/{task}]` and `/browser[/{task}]` are the front's (bins/noevia-server task_routes.rs,
+crates/server-projects task_journals.rs); Node refuses them (core rust-task-reads.cjs, `RUST_TASK_READS_OWNED`). Node keeps
+every POST, the running tasks, and is still the only writer of these journals.
+
+**Reading beside Node's append.** jobs.cjs writes each event in one write, and cuts a newline-less last line back before
+the next append. The reader takes a read only if size, mtime and inode did not move across it, drops an unterminated last
+line of a plain journal as Node does, and judges a line that does not parse only once the file has stopped moving, so an
+append in flight never reads as corruption and real damage still does (`status: "unreadable"`, a get's 409).
+
+**What Node still answers, over loopback with the store token:** `POST /internal/tasks/facts` (core rust-task-facts.cjs).
+The flags (Browser mode's Playwright check is in that process), waiting approval cards (held in memory on purpose so a
+restart re-asks), the egress proxy's health, the Code configuration, and first of all per-account journal recovery, which
+marks a dead process's task as interrupted. So these reads need Node up: no usable answer is a 503, never a task list
+without its approvals. A native read of those facts follows the move of task supervision, not before.
+
+**Behaviour changes, each a Node bug.** A stray `x.jsonl` whose name is not a job id took the whole list down with a 400;
+it is skipped. An unreadable journal was listed in every project and for every kind, deep research's included; now only
+where its first line says it belongs (one with no readable first line is still shown everywhere). A journal over 64 MiB,
+or a symlink, is unreadable rather than loaded. A list's ties on `createdAt` order by id rather than directory order.

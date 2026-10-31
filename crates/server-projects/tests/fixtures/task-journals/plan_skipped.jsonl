@@ -1,0 +1,3 @@
+{"job":"00000000-0000-4000-8000-000000000004","seq":1,"type":"job.created","at":1001,"data":{"kind":"code","projectId":"p1","capabilities":["read_repository"]}}
+{"job":"00000000-0000-4000-8000-000000000004","seq":2,"type":"plan.skipped","at":1002,"data":{"question":"q"}}
+{"job":"00000000-0000-4000-8000-000000000004","seq":3,"type":"job.cancelled","at":1003,"data":{}}

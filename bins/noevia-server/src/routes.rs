@@ -249,6 +249,11 @@ const PROJECT_ROUTES: &[&str] = &[
     RESEARCH_JOB,
     RESEARCH_CANCEL,
     RESEARCH_SAVE,
+    CODE_ACTIVE,
+    PROJECT_CODE,
+    PROJECT_CODE_TASK,
+    PROJECT_BROWSER,
+    PROJECT_BROWSER_TASK,
     server_projects::import::ROUTE,
     WORKSPACE,
 ];
@@ -260,6 +265,14 @@ pub(crate) const RESEARCH_PLAN: &str = "/api/projects/{projectId}/research/plan"
 pub(crate) const RESEARCH_JOB: &str = "/api/projects/{projectId}/research/{job}";
 pub(crate) const RESEARCH_CANCEL: &str = "/api/projects/{projectId}/research/{job}/cancel";
 pub(crate) const RESEARCH_SAVE: &str = "/api/projects/{projectId}/research/{job}/save";
+
+/// The Code and Browser task reads, the front's under `rust-task-reads` (sbstndalton/noevia#2257); Node refuses
+/// them (core rust-task-reads.cjs) and keeps the POSTs: starting, approving, cancelling and the tasks themselves.
+pub(crate) const CODE_ACTIVE: &str = "/api/code/active";
+pub(crate) const PROJECT_CODE: &str = "/api/projects/{projectId}/code";
+pub(crate) const PROJECT_CODE_TASK: &str = "/api/projects/{projectId}/code/{task}";
+pub(crate) const PROJECT_BROWSER: &str = "/api/projects/{projectId}/browser";
+pub(crate) const PROJECT_BROWSER_TASK: &str = "/api/projects/{projectId}/browser/{task}";
 
 /// The projects and free chats (GET only; routes.toml), the front's under `rust-workspace`
 /// (sbstndalton/noevia#2191 close-out); Node refuses the GET (core rust-workspace.cjs
@@ -821,7 +834,7 @@ mod tests {
             ("PATCH", "/api/projects/p1/chats/c1"),
             // The project's own create and delete are the front's since #2191 round 2.
             ("GET", "/api/projects"),
-            // The chat-bound project routes stay Node's (browser, code, research).
+            // A task's start and supervision stay Node's.
             ("POST", "/api/projects/p1/browser"),
             ("PUT", "/api/projects/p1"),
         ] {
@@ -1376,9 +1389,33 @@ mod tests {
         assert!(crate::FEATURES.contains(&"rust-project-reads"));
     }
 
+    /// sbstndalton/noevia#2257: the task reads are the front's; a task's start and supervision are not.
+    #[test]
+    fn task_reads_are_rusts_and_their_writes_are_nodes() {
+        let on = Switches::default();
+        let task = "01234567-89ab-cdef-0123-456789abcdef";
+        for (m, p) in [
+            ("GET", "/api/code/active".to_owned()),
+            ("POST", "/api/code/active".to_owned()),
+            ("GET", "/api/projects/p1/code".to_owned()),
+            ("GET", format!("/api/projects/p1/code/{task}")),
+            ("GET", "/api/projects/p1/browser".to_owned()),
+            ("GET", format!("/api/projects/p1/browser/{task}")),
+        ] {
+            assert_eq!(dispatch_under(m, &p, on), Some(Native::Projects), "{m} {p}");
+        }
+        for (m, p) in [
+            ("POST", "/api/projects/p1/code".to_owned()),
+            ("POST", format!("/api/projects/p1/code/{task}/cancel")),
+            ("HEAD", "/api/projects/p1/browser".to_owned()),
+        ] {
+            assert_eq!(dispatch_under(m, &p, on), None, "{m} {p}");
+        }
+        assert!(crate::FEATURES.contains(&"rust-task-reads"));
+    }
+
     /// sbstndalton/noevia#2191 round 9: a project's configuration, its instruction skills and a
-    /// published skill's install are the front's for their methods only; the browser, code and research
-    /// routes beside them are chat-bound and stay Node's.
+    /// published skill's install are the front's for their methods only.
     #[test]
     fn project_config_and_skills_are_rusts_for_their_methods_only() {
         let on = Switches::default();
@@ -1408,7 +1445,6 @@ mod tests {
             ("GET", "/api/projects/p1/skills/install"),
             ("POST", "/api/projects/p1/browser"),
             ("POST", "/api/projects/p1/code"),
-            ("GET", "/api/code/active"),
         ] {
             assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
         }

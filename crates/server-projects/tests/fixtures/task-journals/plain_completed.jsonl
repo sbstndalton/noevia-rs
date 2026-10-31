@@ -1,0 +1,16 @@
+{"job":"00000000-0000-4000-8000-000000000001","seq":1,"type":"job.created","at":1001,"data":{"kind":"code","projectId":"p1","parentId":null,"capabilities":["read_repository","edit_file"]}}
+{"job":"00000000-0000-4000-8000-000000000001","seq":2,"type":"job.started","at":1002,"data":{}}
+{"job":"00000000-0000-4000-8000-000000000001","seq":3,"type":"checkpoint.created","at":1003,"data":{"task":"Fix the tests","branch":"noevia/task-1","baseSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","headSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","meta":{"harness":"pi"},"identityHash":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}
+{"job":"00000000-0000-4000-8000-000000000001","seq":4,"type":"progress","at":1004,"data":{"stage":"Working"}}
+{"job":"00000000-0000-4000-8000-000000000001","seq":5,"type":"step.started","at":1005,"data":{"id":"s1","title":"First"}}
+{"job":"00000000-0000-4000-8000-000000000001","seq":6,"type":"step.started","at":1006,"data":{"id":"s2"}}
+{"job":"00000000-0000-4000-8000-000000000001","seq":7,"type":"step.completed","at":1007,"data":{"id":"s1"}}
+{"job":"00000000-0000-4000-8000-000000000001","seq":8,"type":"step.completed","at":1008,"data":{"id":"s2","failed":true}}
+{"job":"00000000-0000-4000-8000-000000000001","seq":9,"type":"assistant.output","at":1009,"data":{"text":"Hello é😀","truncated":false}}
+{"job":"00000000-0000-4000-8000-000000000001","seq":10,"type":"assistant.output","at":1010,"data":{"text":"more","truncated":true}}
+{"job":"00000000-0000-4000-8000-000000000001","seq":11,"type":"plan.proposed","at":1011,"data":{"subQuestions":["one",2,null,{"x":1},"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"],"truncated":false}}
+{"job":"00000000-0000-4000-8000-000000000001","seq":12,"type":"approval.requested","at":1012,"data":{"action":"edit_file","taskId":"00000000-0000-4000-8000-000000000001"}}
+{"job":"00000000-0000-4000-8000-000000000001","seq":13,"type":"approval.decided","at":1013,"data":{"decision":"approve","action":"edit_file"}}
+{"job":"00000000-0000-4000-8000-000000000001","seq":14,"type":"artifact.created","at":1014,"data":{"name":"net","kind":"native-network-report","network":{"allowed":1}}}
+{"job":"00000000-0000-4000-8000-000000000001","seq":15,"type":"tool.uncertain","at":1015,"data":{"tool":"x"}}
+{"job":"00000000-0000-4000-8000-000000000001","seq":16,"type":"job.completed","at":1016,"data":{"result":{"ok":true}}}

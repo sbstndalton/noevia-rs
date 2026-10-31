@@ -249,6 +249,26 @@ impl Research {
         )
     }
 
+    /// One call on the same loopback bridge for another route's module, with the reply's bytes as they came
+    /// (so a lone surrogate in them survives). `None`: no secret, no answer, or a reply over the cap.
+    pub(crate) async fn node_call(
+        &self,
+        path: &str,
+        body: &Value,
+        timeout: Duration,
+    ) -> Option<(u16, Vec<u8>)> {
+        let mut res = self.bridge_post(path, body, timeout)?.send().await.ok()?;
+        let status = res.status().as_u16();
+        let mut bytes = Vec::new();
+        while let Some(chunk) = res.chunk().await.ok()? {
+            bytes.extend_from_slice(&chunk);
+            if bytes.len() > MAX_BRIDGE_BYTES {
+                return None;
+            }
+        }
+        Some((status, bytes))
+    }
+
     /// One bridge call: (status, JSON). `None`: no answer, a cancel, or a reply over the cap.
     async fn bridge_call(
         &self,
