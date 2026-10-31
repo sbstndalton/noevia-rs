@@ -87,6 +87,15 @@ impl Sizing {
     pub fn presets_path(&self) -> Option<&Path> {
         self.presets.as_deref()
     }
+
+    pub(crate) fn kind(&self) -> server_stats::Kind {
+        self.kind
+    }
+
+    /// The router's `/models` listing (bounded by the engine's listing timeout).
+    pub(crate) async fn listing(&self) -> Read {
+        self.engine.listing().await
+    }
 }
 
 impl std::fmt::Debug for Sizing {
@@ -1093,6 +1102,28 @@ impl Sizing {
                 (200, spread(&lead, &result))
             }
         }
+    }
+}
+
+impl Sizing {
+    /// llamacpp-manager.cjs `footprint`: what loading `model` with its current preset would use, as the port's JSON
+    /// text, or `None` when it cannot be told (no presets or model mount, unreadable metadata, a port refusal).
+    pub(crate) fn footprint(&self, model: &str, listing: &Read) -> Option<String> {
+        let file = self.presets.as_deref()?;
+        if self.models_path.is_empty() {
+            return None;
+        }
+        let current = read_presets(file).ok()?.current(model);
+        let read = self.read_model(file, model, listing).ok()?;
+        let args = format!(
+            r#"{{"meta":{},"modelBytes":{},"mmprojBytes":{},"options":{},"model":{}}}"#,
+            meta_json(&read.summary),
+            num(read.model_bytes as f64),
+            num(read.mmproj_bytes as f64),
+            current_json(&current),
+            js_string(model),
+        );
+        port(3, &args)
     }
 }
 

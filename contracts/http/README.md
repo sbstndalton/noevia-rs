@@ -1695,3 +1695,11 @@ without its approvals. A native read of those facts follows the move of task sup
 it is skipped. An unreadable journal was listed in every project and for every kind, deep research's included; now only
 where its first line says it belongs (one with no readable first line is still shown everywhere). A journal over 64 MiB,
 or a symlink, is unreadable rather than loaded. A list's ties on `createdAt` order by id rather than directory order.
+
+## The inference budget and installed reads (sbstndalton/noevia#2262)
+
+`GET /api/models/inference-budget` and `GET /api/models/installed` are the front's (`model_state_routes.rs`) under
+the capability `rust-model-state-reads`; Core refuses both with 503 `RUST_MODEL_STATE_READS_OWNED`
+(`server/rust-model-state-reads.cjs`). The budget's PUT stays Node's. `POST /internal/models/facts` (trusted-front
+check) gives the front the budget Node enforces, the sidecar names and reports and the shared folder scan; no answer
+from it is a 503. The figure is never read from `settings`: Node's boot copy decides what is enforced.

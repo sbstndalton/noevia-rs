@@ -572,13 +572,17 @@ path = "/api/models/hardware"
 owner = "rust"
 methods = ["GET"]
 
+# sbstndalton/noevia#2262: the GETs are the front's (bins/noevia-server model_state_routes.rs); Node refuses them
+# (core rust-model-state-reads.cjs) and keeps the budget's PUT, on the loopback facts bridge for what only it holds.
 [[route]]
 path = "/api/models/inference-budget"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/models/installed"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/models/load"

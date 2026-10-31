@@ -22,9 +22,9 @@
 //! Kept on Node (each needs its memory or its job state), with the rest of the 22 model routes:
 //! `/api/model-manager` (the folder scan cache), `/api/models/autotune*` and
 //! `/api/models/calibration*` (the job runners, M2), `/api/models/evidence` (the identity cache it
-//! fills), `/api/models/inference-budget` (the inference budget store, its PUT and the shared
-//! installed list), `/api/models/installed` (the shared
-//! installed list), `/api/models/machines` (probe and tune caches), the writes and `/api/models/{*}`.
+//! fills), the budget's PUT, `/api/models/machines` (probe and tune caches), the writes and
+//! `/api/models/{*}`. GET inference-budget and GET installed moved in sbstndalton/noevia#2262
+//! (model_state_routes.rs).
 
 use crate::{identity, reply, App};
 use axum::body::Body;
@@ -37,12 +37,15 @@ pub const CAPABILITIES: &str = "/api/models/capabilities";
 pub const HARDWARE: &str = "/api/models/hardware";
 
 /// The model reads this front answers (GET only; routes.toml): the two configuration-only reads
-/// (#2187) and the two sizing reads (#2189, model_sizing.rs).
+/// (#2187), the two sizing reads (#2189, model_sizing.rs) and the two state reads (#2262,
+/// model_state_routes.rs).
 pub const ROUTES: &[&str] = &[
     CAPABILITIES,
     HARDWARE,
     crate::model_sizing::ESTIMATE,
     crate::model_sizing::SUGGEST,
+    crate::model_state_routes::BUDGET,
+    crate::model_state_routes::INSTALLED,
 ];
 
 /// What the model reads answer from: the keys core index.cjs read at startup.
@@ -144,6 +147,9 @@ pub async fn serve(
             .answer(route, id.user.role == Role::Admin, model, budget)
             .await;
         return crate::model_sizing::respond(status, body);
+    }
+    if crate::model_state_routes::ROUTES.contains(&path.as_str()) {
+        return crate::model_state_routes::serve(app, &path, id.user.role == Role::Admin).await;
     }
     let reads = app.config.models;
     if path == CAPABILITIES {
