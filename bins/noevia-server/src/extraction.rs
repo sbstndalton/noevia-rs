@@ -45,6 +45,38 @@ pub struct HttpEngine {
     ranges: Mutex<Option<Cached<Ranges>>>,
     caps: Mutex<Option<Cached<Option<OcrCaps>>>>,
     waits: Vec<Duration>,
+    /// How often a request that is waiting for its answer asks `/health` whether the service is
+    /// still there, and how many asks in a row may go unanswered before the request is given up.
+    liveness: (Duration, u32),
+}
+
+/// A request to the document service has no answer until the whole document is read, and a large
+/// scan can take many minutes with the service healthy (its own limit is an hour), so no total
+/// deadline of minutes can tell slow from stuck. While such a request waits, `/health` is asked every
+/// [`LIVENESS_EVERY`]; [`LIVENESS_MISSES`] asks in a row without a 2xx answer (5 minutes of silence)
+/// end the wait. That catches a dead host, container, network or HTTP front (#2240: a service that
+/// accepted the request and never answered held the account's upload slots for the 30 minutes of the
+/// job bound; Node gave up after 5 minutes). It does NOT catch a worker that hangs while the HTTP front
+/// still answers `/health`: that needs a heartbeat from the worker, and such a request is bounded only by
+/// its own deadline and the job bound. The window is generous on purpose: the service stops its worker
+/// when the connection goes, so giving up on a healthy long document restarts it from zero.
+pub const LIVENESS_EVERY: Duration = Duration::from_secs(30);
+pub const LIVENESS_MISSES: u32 = 10;
+/// One `/health` ask must answer within this.
+const LIVENESS_ASK: Duration = Duration::from_secs(10);
+
+/// `DOCLING_LIVENESS_SECONDS` / `DOCLING_LIVENESS_MISSES`: positive whole numbers, else the defaults.
+fn liveness_from_env() -> (Duration, u32) {
+    let number = |name: &str| {
+        std::env::var(name)
+            .ok()
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .filter(|n| *n > 0 && *n <= 3600)
+    };
+    (
+        number("DOCLING_LIVENESS_SECONDS").map_or(LIVENESS_EVERY, Duration::from_secs),
+        number("DOCLING_LIVENESS_MISSES").map_or(LIVENESS_MISSES, |n| n.min(100) as u32),
+    )
 }
 
 impl HttpEngine {
@@ -61,7 +93,16 @@ impl HttpEngine {
             ranges: Mutex::new(None),
             caps: Mutex::new(None),
             waits: vec![Duration::from_secs(5), Duration::from_secs(15)],
+            liveness: liveness_from_env(),
         }))
+    }
+
+    /// A test's engine that asks `/health` every `every` and gives up after `misses` misses.
+    pub fn with_liveness(mut self: Arc<Self>, every: Duration, misses: u32) -> Arc<Self> {
+        if let Some(e) = Arc::get_mut(&mut self) {
+            e.liveness = (every, misses);
+        }
+        self
     }
 
     /// A test's engine with no busy waits.
@@ -98,23 +139,50 @@ impl HttpEngine {
         if machine && !on_this_network(url) {
             return Err(EngineError::new("fetch failed"));
         }
+        self.rt.block_on(fetch(req, cap))
+    }
+
+    /// [`Self::send`] for a request that may legitimately wait for minutes: while it waits, the
+    /// service is asked for `/health`, and a service that stops answering ends the wait.
+    fn send_watched(
+        &self,
+        url: &str,
+        machine: bool,
+        req: reqwest::RequestBuilder,
+        cap: usize,
+    ) -> Result<(u16, Option<Vec<u8>>), EngineError> {
+        if machine && !on_this_network(url) {
+            return Err(EngineError::new("fetch failed"));
+        }
+        let (every, limit) = self.liveness;
+        let client = self.client.clone();
+        let health = format!("{}/health", url.trim_end_matches('/'));
         self.rt.block_on(async move {
-            let mut resp = req.send().await.map_err(transport)?;
-            let status = resp.status().as_u16();
-            if !(200..300).contains(&status) {
-                return Ok((status, None));
-            }
-            if resp.content_length().is_some_and(|n| n as usize > cap) {
-                return Ok((status, None));
-            }
-            let mut body = Vec::new();
-            while let Some(chunk) = resp.chunk().await.map_err(transport)? {
-                body.extend_from_slice(&chunk);
-                if body.len() > cap {
-                    return Ok((status, None));
+            let work = fetch(req, cap);
+            tokio::pin!(work);
+            let mut ticks = tokio::time::interval_at(tokio::time::Instant::now() + every, every);
+            let mut missed = 0u32;
+            loop {
+                tokio::select! {
+                    done = &mut work => return done,
+                    _ = ticks.tick() => {
+                        // The ask races the request: a reply that arrives meanwhile is kept, not thrown away.
+                        let ask = client.get(&health).timeout(LIVENESS_ASK.min(every)).send();
+                        let alive = tokio::select! {
+                            done = &mut work => return done,
+                            asked = ask => asked.is_ok_and(|r| r.status().is_success()),
+                        };
+                        missed = if alive { 0 } else { missed + 1 };
+                        if missed >= limit {
+                            return Err(EngineError {
+                                message: "Document extraction unavailable: the service stopped responding; it will be retried.".into(),
+                                timed_out: true,
+                                ..Default::default()
+                            });
+                        }
+                    }
                 }
             }
-            Ok((status, Some(body)))
         })
     }
 
@@ -129,6 +197,29 @@ impl HttpEngine {
             _ => None,
         }
     }
+}
+
+/// The request, its status and its body up to `cap` bytes (`None` past it or for a non-2xx status).
+async fn fetch(
+    req: reqwest::RequestBuilder,
+    cap: usize,
+) -> Result<(u16, Option<Vec<u8>>), EngineError> {
+    let mut resp = req.send().await.map_err(transport)?;
+    let status = resp.status().as_u16();
+    if !(200..300).contains(&status) {
+        return Ok((status, None));
+    }
+    if resp.content_length().is_some_and(|n| n as usize > cap) {
+        return Ok((status, None));
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = resp.chunk().await.map_err(transport)? {
+        body.extend_from_slice(&chunk);
+        if body.len() > cap {
+            return Ok((status, None));
+        }
+    }
+    Ok((status, Some(body)))
 }
 
 fn transport(e: reqwest::Error) -> EngineError {
@@ -289,7 +380,7 @@ impl Engine for HttpEngine {
             req = req.header("X-Document-Pages", format!("{a}-{b}"));
         }
         let invalid = || EngineError::new("Invalid extraction response; refresh to retry.");
-        let (status, body) = self.send(&url, machine, req, DOCLING_REPLY_CAP)?;
+        let (status, body) = self.send_watched(&url, machine, req, DOCLING_REPLY_CAP)?;
         match status {
             200..=299 => {}
             503 => {
@@ -418,7 +509,7 @@ impl Engine for HttpEngine {
             .header("Content-Type", "application/pdf")
             .timeout(Duration::from_secs(180))
             .body(bytes.to_vec());
-        Some(match self.send(&url, machine, req, cap) {
+        Some(match self.send_watched(&url, machine, req, cap) {
             Err(e) => Err(e),
             Ok((status, _)) if !(200..300).contains(&status) => Err(EngineError {
                 message: format!("storage returned {status}"),
@@ -461,7 +552,7 @@ impl Engine for HttpEngine {
         if dpi == Some(400) {
             req = req.header("X-OCR-DPI", "400");
         }
-        let (status, body) = self.send(&url, machine, req, OCR_REPLY_CAP)?;
+        let (status, body) = self.send_watched(&url, machine, req, OCR_REPLY_CAP)?;
         if !(200..300).contains(&status) {
             return Err(EngineError {
                 message: if status == 503 {

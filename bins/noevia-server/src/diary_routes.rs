@@ -78,7 +78,15 @@ fn error(status: u16, message: &str) -> Response<Body> {
 fn into_response(answer: server_diary::Reply) -> Response<Body> {
     let status = StatusCode::from_u16(answer.status).unwrap_or(StatusCode::BAD_GATEWAY);
     match answer.body {
-        ReplyBody::Json(text) => reply::json_text(status, text, true),
+        ReplyBody::Json(text) => {
+            let mut res = reply::json_text(status, text, true);
+            if let Some(secs) = answer.retry_after {
+                if let Ok(v) = HeaderValue::from_str(&secs.to_string()) {
+                    res.headers_mut().insert(header::RETRY_AFTER, v);
+                }
+            }
+            res
+        }
         ReplyBody::Zip(stream) => {
             let mut res = Response::new(Body::new(stream));
             *res.status_mut() = status;
