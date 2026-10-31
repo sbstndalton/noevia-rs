@@ -1296,7 +1296,7 @@ this is not JSON
     }
 
     // #2272: one stray or damaged file in a user's jobs folder must not stop recovery or new uploads.
-    fn seed_bad_journals(user: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+    fn seed_bad_journals(user: &Path, stray: bool, damaged: bool) -> Vec<(PathBuf, Vec<u8>)> {
         let jobs = user.join("jobs");
         fs::create_dir_all(&jobs).unwrap();
         let mut kept = Vec::new();
@@ -1305,8 +1305,13 @@ this is not JSON
             fs::write(&path, bytes).unwrap();
             kept.push((path, bytes.to_vec()));
         };
-        put("notes.jsonl", b"stray file, not a job\n");
         put("stray.txt", b"stray text\n");
+        if stray {
+            put("notes.jsonl", b"stray file, not a job\n");
+        }
+        if !damaged {
+            return kept;
+        }
         // A source journal whose middle line is not JSON.
         let bad = "66666666-6666-4666-8666-666666666666";
         let bytes = format!(
@@ -1314,15 +1319,32 @@ this is not JSON
         );
         put(&format!("{bad}.jsonl"), bytes.as_bytes());
         // A journal whose first line is not JSON.
-        put("77777777-7777-4777-8777-777777777777.jsonl", b"not json at all\n");
+        put(
+            "77777777-7777-4777-8777-777777777777.jsonl",
+            b"not json at all\n",
+        );
         kept
     }
 
     #[test]
-    fn a_stray_file_and_damaged_journals_do_not_stop_recover_or_new_starts() {
+    fn a_stray_jsonl_file_does_not_stop_recover_or_new_starts() {
+        recover_and_start_around(true, false);
+    }
+
+    #[test]
+    fn damaged_journals_do_not_stop_recover_or_new_starts() {
+        recover_and_start_around(false, true);
+    }
+
+    #[test]
+    fn a_stray_file_and_damaged_journals_together_do_not_stop_recover_or_new_starts() {
+        recover_and_start_around(true, true);
+    }
+
+    fn recover_and_start_around(stray: bool, damaged: bool) {
         let (dir, user) = fixture();
         let c = ctx(dir.path());
-        let kept = seed_bad_journals(&user);
+        let kept = seed_bad_journals(&user, stray, damaged);
         recover(c, USER, START, "100", OWNER1).unwrap();
         let (id, run) = start(c, USER, START, "100", OWNER1, "a", REQ1).unwrap();
         finish(
@@ -1352,7 +1374,7 @@ this is not JSON
     fn a_damaged_journal_is_read_as_its_own_error_and_other_jobs_still_list() {
         let (dir, user) = fixture();
         let c = ctx(dir.path());
-        seed_bad_journals(&user);
+        seed_bad_journals(&user, true, true);
         recover(c, USER, START, "100", OWNER1).unwrap();
         let (id, _) = start(c, USER, START, "100", OWNER1, "a", REQ1).unwrap();
         let listed = all_source(&paths(c, USER).unwrap()).unwrap();
