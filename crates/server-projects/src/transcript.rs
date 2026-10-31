@@ -326,6 +326,17 @@ fn note(dir: &Path, safe: &str, revision: Option<&str>, op: journal::Op, origin:
 /// The transcript now (no lock: every write is a rename).
 pub fn read(data_dir: &Path, user: &str, chat: &str) -> Result<Current, TranscriptError> {
     let (dir, safe) = locate(data_dir, user, chat)?;
+    // A deleted chat has no transcript, whatever a failed removal left on disk (sbstndalton/noevia#2245: after a
+    // delete that answered `leftovers`, the chat is tombstoned and in no list, and nothing retries the file).
+    if tombstoned(&dir, &safe)? {
+        let history = history_of(None);
+        let revision = revision_of(&history).ok_or(StoreError::Corrupt)?;
+        return Ok(Current {
+            history,
+            revision,
+            exists: false,
+        });
+    }
     Ok(current(&history_file(&dir, &safe))?)
 }
 
@@ -830,6 +841,30 @@ mod tests {
             Appended::Deleted
         );
         assert!(!history_file(&dir, "c-gone").exists());
+    }
+
+    #[test]
+    fn a_tombstoned_chat_reads_as_no_transcript_even_when_its_file_was_left_behind() {
+        let (root, dir) = setup();
+        write(
+            root.path(),
+            USER,
+            "c-left",
+            &list(r#"[{"role":"user","content":"hi"}]"#),
+            &Base::Any,
+            None,
+        )
+        .unwrap();
+        assert!(read(root.path(), USER, "c-left").unwrap().exists);
+        // A delete whose file removal failed: tombstoned, in no list, the file still on disk.
+        std::fs::write(dir.join(TOMBSTONES_FILE), r#"["c-left"]"#).unwrap();
+        assert!(history_file(&dir, "c-left").exists());
+        let seen = read(root.path(), USER, "c-left").unwrap();
+        assert!(!seen.exists, "{seen:?}");
+        assert_eq!(seen.history, history_of(None));
+        // Another chat is unaffected.
+        write(root.path(), USER, "c-kept", &list("[1]"), &Base::Any, None).unwrap();
+        assert!(read(root.path(), USER, "c-kept").unwrap().exists);
     }
 
     #[test]
