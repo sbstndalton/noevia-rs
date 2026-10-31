@@ -13,6 +13,10 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 const RETAIN_MS: u64 = 15 * 60 * 1000;
 const MAX_JOBS: usize = 16;
 const MAX_ACTIVE: usize = 2;
+/// The same cap for the jobs that need no extraction (a plain-text upload), counted apart: a job
+/// stuck in a document service must not refuse a text file (#2240). Still bounded, so the bodies
+/// held for admitted jobs stay bounded (4 at most, 2 of them small by their nature).
+const MAX_ACTIVE_PLAIN: usize = 2;
 /// The most request tombstones kept: past it [`abandon`] drops the oldest, so the list can never
 /// refuse a start. The front itself writes none for a refusal it saw (it ends the job with
 /// [`interrupt`]); a tombstone is only for a start reply that was lost.
@@ -642,6 +646,32 @@ pub fn start(
     project: &str,
     request: &str,
 ) -> Result<(String, String), Error> {
+    start_classed(ctx, user, start, born, owner, project, request, false)
+}
+
+/// Whether a job was admitted as one that needs no extraction (`job.created` data `plain`; jobs
+/// written before the field existed are not).
+fn is_plain(rows: &[Value]) -> bool {
+    rows.first()
+        .and_then(|row| row.pointer("/data/plain"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+/// [`start`], with `plain` for a job that needs no extraction: it counts against
+/// [`MAX_ACTIVE_PLAIN`] among the plain jobs only, and the others count against [`MAX_ACTIVE`]
+/// among the rest, so neither kind can use up the other's slots.
+#[allow(clippy::too_many_arguments)]
+pub fn start_classed(
+    ctx: Context<'_>,
+    user: &str,
+    start: &str,
+    born: &str,
+    owner: &str,
+    project: &str,
+    request: &str,
+    plain: bool,
+) -> Result<(String, String), Error> {
     check_start(ctx, start)?;
     if !valid_id(request) {
         return Err(Error::BadRequest);
@@ -707,22 +737,21 @@ pub fn start(
         }
         if all
             .iter()
-            .filter(|(_, rows)| !terminal(status(rows)))
+            .filter(|(_, rows)| !terminal(status(rows)) && is_plain(rows) == plain)
             .count()
-            >= MAX_ACTIVE
+            >= if plain { MAX_ACTIVE_PLAIN } else { MAX_ACTIVE }
         {
             return Err(Error::TooMany);
         }
         prune(p, &all)?;
         let id = uuid();
         let run = uuid();
-        append(
-            p,
-            &id,
-            &[],
-            "job.created",
-            json!({"kind":"source","projectId":project,"parentId":null,"capabilities":["project.sources.write"],"owner":owner,"run":run,"request":request}),
-        )?;
+        let created = if plain {
+            json!({"kind":"source","projectId":project,"parentId":null,"capabilities":["project.sources.write"],"owner":owner,"run":run,"request":request,"plain":true})
+        } else {
+            json!({"kind":"source","projectId":project,"parentId":null,"capabilities":["project.sources.write"],"owner":owner,"run":run,"request":request})
+        };
+        append(p, &id, &[], "job.created", created)?;
         let Some(rows) = source_rows(p, &id)? else {
             return Err(Error::Corrupt);
         };

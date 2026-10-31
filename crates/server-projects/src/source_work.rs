@@ -127,17 +127,19 @@ pub struct Started {
 /// The background start up to the job (routes/projects.cjs): the project (404), then `check` (core's
 /// worker checked, before it accepted, the storage hold of an automatic sync and the body: 413, 400
 /// `invalid JSON`), then the job, persisted created+started, within the store's two-active cap.
+/// `check` says whether the job needs no extraction (a plain-text upload): it then has the cap of
+/// its own kind (#2240) and cannot be refused because documents are stuck in a service.
 pub fn begin_with(
     ctx: Ctx<'_>,
     owner: &Owner,
     raw: &str,
-    check: impl FnOnce() -> Result<(), Reply>,
+    check: impl FnOnce() -> Result<bool, Reply>,
 ) -> Result<Started, Reply> {
     let project = project_of(ctx, raw)?;
-    check()?;
+    let plain = check()?;
     ensure_recovered(ctx, owner).map_err(|e| store_reply(&e))?;
     let request = jobs::new_id();
-    let (id, run) = jobs::start(
+    let (id, run) = jobs::start_classed(
         jctx(ctx, owner),
         ctx.user_id,
         &owner.start,
@@ -145,6 +147,7 @@ pub fn begin_with(
         &owner.owner,
         &project,
         &request,
+        plain,
     )
     .map_err(|e| store_reply(&e))?;
     let started = |poll: String| Started {
@@ -168,7 +171,7 @@ pub fn begin(ctx: Ctx<'_>, owner: &Owner, raw: &str, over: bool) -> Result<Start
         if over {
             Err(Reply::error(413, "Request exceeds size limit"))
         } else {
-            Ok(())
+            Ok(false)
         }
     })
 }
@@ -512,6 +515,27 @@ mod tests {
                 "Processing status expired or the server restarted; refresh or re-upload to retry."
             )
         );
+    }
+
+    /// #2240: jobs that need no extraction have slots of their own, so jobs stuck in a document
+    /// service cannot refuse them, and they cannot crowd the others out either.
+    #[test]
+    fn plain_jobs_are_counted_apart_from_extracting_ones() {
+        let dir = fixture();
+        let (c, o) = (ctx(dir.path()), owner());
+        let plain = |c, o: &Owner| begin_with(c, o, "p%201", || Ok(true));
+        let a = begin(c, &o, "p%201", false).unwrap();
+        let _b = begin(c, &o, "p%201", false).unwrap();
+        assert_eq!(begin(c, &o, "p%201", false).unwrap_err().status, 429);
+        let t1 = plain(c, &o).unwrap();
+        let _t2 = plain(c, &o).unwrap();
+        assert_eq!(plain(c, &o).unwrap_err().status, 429, "the plain cap holds");
+        // A finished job frees a slot of its own kind only.
+        finish(c, &o, &t1, &Outcome::Failed(422, None)).unwrap();
+        assert!(plain(c, &o).is_ok());
+        assert_eq!(begin(c, &o, "p%201", false).unwrap_err().status, 429);
+        finish(c, &o, &a, &Outcome::Failed(422, None)).unwrap();
+        assert!(begin(c, &o, "p%201", false).is_ok());
     }
 
     #[test]

@@ -259,6 +259,23 @@ fn listing_of(kind: Kind, parsed: Option<&js_json::JValue>) -> (&'static str, St
     }
 }
 
+/// An upload of a plain-text file (a name the extractors never read): nothing in it waits for a
+/// document service, so a service that is stuck must not hold its admission slot (#2240).
+fn needs_no_extraction(work: &Work, parsed: Option<&js_json::JValue>) -> bool {
+    if work.kind != Kind::Upload {
+        return false;
+    }
+    // A folder import names the file by its path inside the folder (upload.rs takes that name).
+    let name = match parsed.map(|b| b.get("relativePath")) {
+        None | Some(js_json::JValue::Undefined) => listing_of(work.kind, parsed).1,
+        Some(path) => match path.as_str() {
+            Some(p) => p.rsplit('/').next().unwrap_or_default().to_owned(),
+            None => return false,
+        },
+    };
+    server_projects::extract::is_plain_text(&name)
+}
+
 fn parse_body(body: &[u8]) -> Option<js_json::JValue> {
     js_json::wtf16::parse(&String::from_utf8_lossy(body)).ok()
 }
@@ -403,7 +420,7 @@ fn accept(
     let mut parsed = None;
     let job = work::begin_with(account.ctx(), owner, &work.project, || {
         parsed = check()?;
-        Ok(())
+        Ok(needs_no_extraction(work, parsed.as_ref()))
     })?;
     // Listed before the 202: the client's next request may be a chat turn that waits for this file.
     let op = list_operation(account, work, parsed.as_ref());

@@ -117,7 +117,7 @@ async fn front() -> Front {
     std::fs::create_dir_all(&udir).unwrap();
     std::fs::write(
         udir.join("projects.json"),
-        r#"{"projects":[{"id":"p 1","name":"Synthetic","files":[],"chats":[]},{"id":"p2","name":"Other","files":[],"chats":[]}]}"#,
+        r#"{"projects":[{"id":"p 1","name":"Synthetic","files":[],"chats":[]},{"id":"p2","name":"Other","files":[],"chats":[]},{"id":"p3","name":"Third","files":[],"chats":[]}]}"#,
     )
     .unwrap();
     Front {
@@ -140,8 +140,13 @@ fn headers(f: &Front) -> Vec<(&str, &str)> {
 }
 
 async fn poll_until_done(f: &Front, poll: &str) -> serde_json::Value {
+    poll_until_done_for(f, poll, 200).await
+}
+
+/// Polls every 20 ms, at most `rounds` times.
+async fn poll_until_done_for(f: &Front, poll: &str, rounds: usize) -> serde_json::Value {
     let get = [("cookie", f.jar.as_str())];
-    for _ in 0..200 {
+    for _ in 0..rounds {
         let (status, body) = call(f.addr, "GET", poll, &get, "").await;
         assert_eq!(status, 200, "{body}");
         // JSON as JSON.stringify writes it (a lone surrogate stays escaped).
@@ -665,4 +670,98 @@ async fn a_saved_storage_login_that_cannot_be_read_is_a_503_not_no_storage() {
 fn the_front_names_the_capability_beside_the_source_jobs() {
     assert!(noevia_server::FEATURES.contains(&"rust-project-source-work"));
     assert!(noevia_server::FEATURES.contains(&"rust-source-jobs"));
+}
+
+/// A document service that accepts every connection and never answers (a wedged Docling).
+async fn wedged_service() -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Ok((s, _)) = listener.accept().await {
+            held.push(s);
+        }
+    });
+    url
+}
+
+/// sbstndalton/noevia#2240: two PDFs held by a document service that never answers used up the
+/// account's source slots for the 30 minutes of the job bound, and a plain text file was refused
+/// ("busy") or never ran. Text needs no extraction: it has slots of its own, and the wedge itself
+/// is given up on within a few health asks, not the job bound.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_wedged_document_service_neither_blocks_text_uploads_nor_holds_the_slots_for_long() {
+    let url = wedged_service().await;
+    std::env::set_var("DOCLING_BASE_URL", &url);
+    std::env::set_var("DOCLING_LIVENESS_SECONDS", "1");
+    std::env::set_var("DOCLING_LIVENESS_MISSES", "2");
+    std::env::remove_var("OCR_BASE_URL");
+    let f = front().await;
+    let h = headers(&f);
+    let pdf = |name: &str| {
+        format!(r#"{{"name":"{name}","dataBase64":"JVBERi0xLjQgc3ludGhldGlj","organized":true}}"#)
+    };
+    let start = |project: &'static str, body: String| {
+        let (addr, h) = (f.addr, h.clone());
+        async move {
+            call(
+                addr,
+                "POST",
+                &format!("/api/projects/{project}/upload?background=1"),
+                &h,
+                &body,
+            )
+            .await
+        }
+    };
+    let began = std::time::Instant::now();
+    let (a, a_body) = start("p%201", pdf("a.pdf")).await;
+    let (b, b_body) = start("p2", pdf("b.pdf")).await;
+    assert_eq!((a, b), (202, 202), "{a_body} {b_body}");
+    // The admission limit holds: a third document is refused while two wait on the service.
+    let (c, _) = start("p3", pdf("c.pdf")).await;
+    assert_eq!(c, 429);
+    // ... but a text file is not a document: it is accepted and runs to its end at once.
+    let (t, t_body) = start("p3", UPLOAD.to_owned()).await;
+    assert_eq!(t, 202, "{t_body}");
+    let poll = serde_json::from_str::<serde_json::Value>(&t_body).unwrap()["poll"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let done = poll_until_done(&f, &poll).await;
+    assert_eq!(done["status"], 200, "{done}");
+    assert!(
+        began.elapsed() < Duration::from_secs(5),
+        "{:?}",
+        began.elapsed()
+    );
+    // The plain slots are bounded too (two at a time), and finished jobs free them.
+    let (t2, t2_body) = start("p3", UPLOAD.replace("notes", "more")).await;
+    assert_eq!(t2, 202, "{t2_body}");
+
+    // The wedged PDFs end within a few asks (1 s apart, two misses), not at the 30-minute bound:
+    // their record is the queued one, in plain words, and the slots are free again.
+    for body in [&a_body, &b_body] {
+        let poll = serde_json::from_str::<serde_json::Value>(body).unwrap()["poll"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let done = poll_until_done_for(&f, &poll, 600).await;
+        assert_eq!(done["status"], 200, "{done}");
+        assert_eq!(done["body"]["document"]["extraction"], "queued", "{done}");
+        assert!(!done.to_string().contains("fetch failed"), "{done}");
+    }
+    assert!(
+        began.elapsed() < Duration::from_secs(40),
+        "{:?}",
+        began.elapsed()
+    );
+    let (again, again_body) = start("p3", pdf("d.pdf")).await;
+    assert_eq!(
+        again, 202,
+        "the slots are free once the wedge is given up: {again_body}"
+    );
+    std::env::remove_var("DOCLING_BASE_URL");
+    std::env::remove_var("DOCLING_LIVENESS_SECONDS");
+    std::env::remove_var("DOCLING_LIVENESS_MISSES");
 }
