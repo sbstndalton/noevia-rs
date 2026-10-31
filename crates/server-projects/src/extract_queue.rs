@@ -374,6 +374,17 @@ fn run_one(
                     js_json::wtf16::set(items, k, v.clone());
                 }
             }
+            // The upload's attachment (kept above) says what the document says, not what it said when queued.
+            let state = file
+                .get("document")
+                .get("state")
+                .as_str()
+                .map(str::to_owned);
+            if let (Some(state), Some((_, JValue::Obj(a)))) =
+                (state, items.iter_mut().find(|(k, _)| k == "attachment"))
+            {
+                js_json::wtf16::set(a, "state", JValue::Str(state));
+            }
         } else {
             record = file.clone();
         }

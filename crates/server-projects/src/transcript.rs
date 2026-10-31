@@ -154,8 +154,16 @@ pub(crate) fn lock_user(dir: &Path) -> Result<lock::FileLock, StoreError> {
     })
 }
 
+// How many times this thread read the tombstone list through `tombstoned` (tests only).
+#[cfg(test)]
+thread_local! {
+    pub(crate) static TOMBSTONE_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// Whether `deleted-chats.json` lists `safe`.
 pub fn tombstoned(dir: &Path, safe: &str) -> Result<bool, StoreError> {
+    #[cfg(test)]
+    TOMBSTONE_READS.with(|n| n.set(n.get() + 1));
     Ok(match store::read_json(&dir.join(TOMBSTONES_FILE))? {
         Some(JValue::Arr(ids)) => ids.iter().any(|t| t.as_str() == Some(safe)),
         _ => false,
@@ -337,6 +345,18 @@ pub fn read(data_dir: &Path, user: &str, chat: &str) -> Result<Current, Transcri
             exists: false,
         });
     }
+    Ok(current(&history_file(&dir, &safe))?)
+}
+
+/// [`read`] for a caller that already knows the chat is not tombstoned (chat search holds the tombstone list
+/// it read once and skips those chats), so up to 500 reads do not each parse `deleted-chats.json` again
+/// (noevia#2252). Every other reader uses [`read`].
+pub(crate) fn read_listed(
+    data_dir: &Path,
+    user: &str,
+    chat: &str,
+) -> Result<Current, TranscriptError> {
+    let (dir, safe) = locate(data_dir, user, chat)?;
     Ok(current(&history_file(&dir, &safe))?)
 }
 

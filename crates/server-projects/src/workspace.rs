@@ -302,7 +302,7 @@ pub fn search(ctx: Ctx<'_>, query: &str) -> Reply {
             break;
         }
         scanned += 1;
-        let history = match transcript::read(ctx.data_dir, ctx.user_id, id) {
+        let history = match transcript::read_listed(ctx.data_dir, ctx.user_id, id) {
             Ok(v) => v.history,
             Err(_) => return Reply::internal(),
         };
@@ -368,10 +368,16 @@ mod tests {
         assert!(!text.contains("PRIVATE SOURCE"));
         assert!(!text.contains("cowork-"));
         assert!(text.contains("\"chars\":14"));
+        crate::transcript::TOMBSTONE_READS.with(|n| n.set(0));
         let reply = search(ctx, "evidence");
         assert_eq!(
             reply,
             Reply::json(200, r#"{"chats":["c1"],"truncated":false}"#.into())
+        );
+        // noevia#2252: the list was read once for the whole search, not again for each chat read.
+        assert_eq!(
+            crate::transcript::TOMBSTONE_READS.with(std::cell::Cell::get),
+            0
         );
         std::fs::write(dir.join(retention::FILE), r#"{"days":30}"#)?;
         assert_eq!(get(ctx).status, 200);

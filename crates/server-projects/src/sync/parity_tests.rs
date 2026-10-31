@@ -806,6 +806,49 @@ fn a_queued_synced_document_keeps_its_source_when_the_worker_reads_it_and_a_late
     );
 }
 
+/// noevia#2252 (review of rs#367): the worker kept the record's `attachment` as it was, so a document that
+/// is now `ready` still said `attachment.state: queued`. The attachment's state follows the new document state.
+#[test]
+fn a_queued_record_with_an_attachment_takes_the_new_state_when_the_worker_reads_the_document() {
+    let rig = queued_rig();
+    store::update(&rig.dir(), server_store::RustProjects::owned(), |projects| {
+        let p = store::find_mut(projects, "proj-a").unwrap();
+        let JValue::Arr(mut files) = p.get("files").clone() else {
+            panic!()
+        };
+        if let JValue::Obj(items) = &mut files[0] {
+            wtf16::set(
+                items,
+                "attachment",
+                wtf16::parse(
+                    r#"{"id":"a1","bytes":18,"group":"Documents","state":"queued","readerVersion":"keep"}"#,
+                )
+                .unwrap(),
+            );
+        }
+        store::set(p, "files", JValue::Arr(files));
+        ((), true)
+    })
+    .unwrap();
+    rig.engine
+        .replies
+        .borrow_mut()
+        .push(Ok(wtf16::parse(GOOD).unwrap()));
+    assert_eq!(worker_at(&rig, 1).len(), 1);
+    let read = rig.files();
+    let document = read[0].get("document").get("state").as_str().map(str::to_owned);
+    assert_eq!(document.as_deref(), Some("ready"));
+    let attachment = read[0].get("attachment");
+    assert_eq!(
+        attachment.get("state").as_str(),
+        Some("ready"),
+        "the attachment says what the document says: {attachment:?}"
+    );
+    // The rest of the attachment is the upload's own and stays.
+    assert_eq!(attachment.get("id").as_str(), Some("a1"));
+    assert_eq!(attachment.get("readerVersion").as_str(), Some("keep"));
+}
+
 /// A worker pass at a time far past any backoff (a sync dates its jobs by the wall clock).
 fn worker_at(rig: &Rig, hours: i64) -> Vec<(extract_queue::Job, extract_queue::Outcome)> {
     let ctx = Ctx {

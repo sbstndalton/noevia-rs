@@ -881,8 +881,24 @@ async fn a_malformed_key_file_is_reported_as_the_key_not_the_destination() {
     let r = get(w.f.addr, &format!("{ROOT}/recovery-key"), ADMIN).await;
     assert_eq!(r.status, 409);
     assert!(r.text.contains("64 hex characters"), "{}", r.text);
+    // #2252: the status says the same: not ready, and why, in the key's words.
+    let s = get(w.f.addr, ROOT, ADMIN).await.json();
+    assert_eq!(s["enabled"], true, "{s}");
+    assert_eq!(s["ready"], false, "a malformed key is not ready: {s}");
+    assert_eq!(s["reasonCode"], "keyUnusable", "{s}");
+    assert_eq!(
+        s["reason"],
+        "The backup key file must hold 64 hex characters (openssl rand -hex 32)."
+    );
+    assert_eq!(s["reasonGaps"], serde_json::json!([]));
     // A short ASCII key is the same mistake and gets the same words.
     std::fs::write(&w.key, "abcd").unwrap();
+    let s = get(w.f.addr, ROOT, ADMIN).await.json();
+    assert_eq!(
+        (s["ready"].as_bool(), s["reasonCode"].as_str()),
+        (Some(false), Some("keyUnusable"))
+    );
+    assert!(!s.to_string().contains("abcd"));
     let r = send(w.f.addr, "POST", &format!("{ROOT}/verify"), ADMIN, "").await;
     assert_eq!(r.status, 400);
     assert!(!r.text.contains("abcd"));
@@ -892,6 +908,24 @@ async fn a_malformed_key_file_is_reported_as_the_key_not_the_destination() {
     assert_eq!(r.status, 400);
     assert!(r.text.contains("backup key file"), "{}", r.text);
     assert!(!r.text.contains("destination"), "{}", r.text);
+    let s = get(w.f.addr, ROOT, ADMIN).await.json();
+    assert_eq!(
+        (s["ready"].as_bool(), s["reasonCode"].as_str()),
+        (Some(false), Some("keyUnusable")),
+        "{s}"
+    );
+    assert!(
+        s["reason"].as_str().unwrap().contains("backup key file"),
+        "{s}"
+    );
+    // A good key makes it ready again.
+    std::fs::write(&w.key, "ab".repeat(32)).unwrap();
+    let s = get(w.f.addr, ROOT, ADMIN).await.json();
+    assert_eq!(
+        (s["ready"].as_bool(), s["reasonCode"].clone()),
+        (Some(true), serde_json::Value::Null),
+        "{s}"
+    );
 }
 
 #[tokio::test]
