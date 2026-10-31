@@ -130,16 +130,54 @@ enum Bytes {
     Read(Vec<u8>, Stamp),
 }
 
-/// The head of an over-size journal. Only a regular file is read: a swap for a link since the
-/// check reads nothing.
-fn too_big(path: &Path) -> Bytes {
+/// Where a test may swap the file under a read (see [`read_settled_with`]).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Stage {
+    /// After the check, before the open.
+    BeforeOpen,
+    /// After the bytes were read, before the closing check.
+    AfterRead,
+}
+
+/// Opens without following a link, so a path swapped for a symlink reads nothing.
+fn open_plain(path: &Path) -> std::io::Result<fs::File> {
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
+    options.open(path)
+}
+
+/// Both are the same regular file: not a link, and on unix the same device and inode.
+fn same_regular_file(a: &fs::Metadata, b: &fs::Metadata) -> bool {
+    if !a.file_type().is_file() || !b.file_type().is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        a.dev() == b.dev() && a.ino() == b.ino()
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+/// The head of an over-size journal. Only the regular file that was checked is read: a swap for a
+/// link, or a swap and swap back, since the check reads nothing.
+fn too_big(path: &Path, before: &fs::Metadata, hook: &mut dyn FnMut(Stage)) -> Bytes {
     let mut head = Vec::new();
-    let read = fs::File::open(path).and_then(|f| {
-        let regular = f.metadata()?.file_type().is_file()
-            && fs::symlink_metadata(path)?.file_type().is_file();
-        if regular {
-            f.take(OWNER_HEAD_BYTES).read_to_end(&mut head)?;
+    hook(Stage::BeforeOpen);
+    let read = open_plain(path).and_then(|f| {
+        let opened = f.metadata()?;
+        if !same_regular_file(before, &opened) || !same_regular_file(&opened, &fs::symlink_metadata(path)?) {
+            return Err(std::io::Error::other("the journal changed under the read"));
         }
+        f.take(OWNER_HEAD_BYTES).read_to_end(&mut head)?;
         Ok(())
     });
     match read {
@@ -150,6 +188,10 @@ fn too_big(path: &Path) -> Bytes {
 
 /// One read of a regular file that nothing changed across, or the last read if it kept changing.
 fn read_settled(path: &Path) -> Bytes {
+    read_settled_with(path, &mut |_| {})
+}
+
+fn read_settled_with(path: &Path, hook: &mut dyn FnMut(Stage)) -> Bytes {
     let mut last = None;
     for attempt in 0..READ_ATTEMPTS {
         if attempt > 0 {
@@ -162,18 +204,32 @@ fn read_settled(path: &Path) -> Bytes {
             Err(_) => return Bytes::Refused,
         };
         if before.len() > MAX_JOURNAL_BYTES {
-            return too_big(path);
+            return too_big(path, &before, hook);
         }
         let mut raw = Vec::new();
-        let read = fs::File::open(path).and_then(|f| {
-            f.take(MAX_JOURNAL_BYTES + 1).read_to_end(&mut raw)?;
-            fs::symlink_metadata(path)
+        hook(Stage::BeforeOpen);
+        let read = open_plain(path).and_then(|mut f| {
+            if !same_regular_file(&before, &f.metadata()?) {
+                return Ok(None);
+            }
+            (&mut f).take(MAX_JOURNAL_BYTES + 1).read_to_end(&mut raw)?;
+            hook(Stage::AfterRead);
+            fs::symlink_metadata(path).map(Some)
         });
         let after = match read {
-            Ok(m) => m,
+            Ok(Some(m)) => m,
+            // Not the file that was checked (replaced under the read): read again.
+            Ok(None) => continue,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Bytes::Absent,
             Err(_) => return Bytes::Refused,
         };
+        // Whatever was read must have come from the file that was checked, never a link swapped in.
+        if !after.file_type().is_file() {
+            return Bytes::Refused;
+        }
+        if !same_regular_file(&before, &after) {
+            continue;
+        }
         if raw.len() as u64 > MAX_JOURNAL_BYTES {
             raw.truncate(OWNER_HEAD_BYTES as usize);
             return Bytes::TooBig(raw);
@@ -1104,4 +1160,102 @@ pub fn active_row(job: &Job, project_name: &JValue, approval: &JValue) -> JValue
 /// core diary-extras.cjs `internalProject`: never named in the account-wide active list.
 pub fn internal_project(id: &str) -> bool {
     id == "cowork-diary-extras" || id.starts_with("cowork-chat-context-")
+}
+
+#[cfg(all(test, unix))]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod swap_tests {
+    use super::*;
+    use std::os::unix::fs::symlink;
+
+    const BIG: u64 = MAX_JOURNAL_BYTES + 10;
+
+    fn sparse(path: &Path, head: &str) {
+        let f = fs::File::create(path).unwrap();
+        std::io::Write::write_all(&mut &f, head.as_bytes()).unwrap();
+        f.set_len(BIG).unwrap();
+    }
+
+    fn swap_for_link(path: &Path, target: &Path) {
+        fs::remove_file(path).unwrap();
+        symlink(target, path).unwrap();
+    }
+
+    #[test]
+    fn a_file_swapped_for_a_link_to_a_big_file_after_the_check_reads_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("j.jsonl");
+        let other = dir.path().join("other");
+        sparse(&other, "{\"owner\":\"someone else\"}\n");
+        fs::write(&path, "{\"small\":true}\n").unwrap();
+        let out = read_settled_with(&path, &mut |stage| {
+            if stage == Stage::BeforeOpen {
+                swap_for_link(&path, &other);
+            }
+        });
+        assert!(matches!(out, Bytes::Refused), "was a link, not the checked file");
+    }
+
+    #[test]
+    fn a_file_swapped_for_a_link_after_the_read_is_refused_not_taken_as_too_big() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("j.jsonl");
+        let other = dir.path().join("other");
+        sparse(&other, "{\"owner\":\"someone else\"}\n");
+        fs::write(&path, "{\"small\":true}\n").unwrap();
+        let out = read_settled_with(&path, &mut |stage| {
+            if stage == Stage::AfterRead {
+                swap_for_link(&path, &other);
+            }
+        });
+        assert!(matches!(out, Bytes::Refused));
+    }
+
+    #[test]
+    fn a_big_file_swapped_for_a_link_does_not_give_its_target_head_as_the_owner() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("j.jsonl");
+        let other = dir.path().join("other");
+        sparse(&path, "{\"owner\":\"mine\"}\n");
+        sparse(&other, "{\"owner\":\"someone else\"}\n");
+        let out = read_settled_with(&path, &mut |stage| {
+            if stage == Stage::BeforeOpen {
+                swap_for_link(&path, &other);
+            }
+        });
+        assert!(matches!(out, Bytes::Refused));
+    }
+
+    #[test]
+    fn a_big_file_parked_and_replaced_by_a_link_is_refused_and_reads_again_once_restored() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("j.jsonl");
+        let other = dir.path().join("other");
+        let parked = dir.path().join("parked");
+        sparse(&path, "{\"owner\":\"mine\"}\n");
+        sparse(&other, "{\"owner\":\"someone else\"}\n");
+        // Open sees the link's target; a second regular file is back in place for the closing check.
+        let out = read_settled_with(&path, &mut |stage| {
+            if stage == Stage::BeforeOpen {
+                fs::rename(&path, &parked).unwrap();
+                symlink(&other, &path).unwrap();
+            }
+        });
+        assert!(matches!(out, Bytes::Refused));
+        fs::remove_file(&path).unwrap();
+        fs::rename(&parked, &path).unwrap();
+        assert!(matches!(read_settled(&path), Bytes::TooBig(h) if h.starts_with(b"{\"owner\":\"mine\"}")));
+    }
+
+    #[test]
+    fn an_unswapped_small_and_big_journal_still_read_as_before() {
+        let dir = tempfile::tempdir().unwrap();
+        let small = dir.path().join("s.jsonl");
+        fs::write(&small, "a\nb\n").unwrap();
+        assert!(matches!(read_settled(&small), Bytes::Read(raw, _) if raw == b"a\nb\n"));
+        let big = dir.path().join("b.jsonl");
+        sparse(&big, "head\n");
+        assert!(matches!(read_settled(&big), Bytes::TooBig(h) if h.starts_with(b"head")));
+        assert!(matches!(read_settled(&dir.path().join("none")), Bytes::Absent));
+    }
 }

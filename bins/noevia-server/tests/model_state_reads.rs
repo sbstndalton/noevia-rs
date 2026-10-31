@@ -279,6 +279,7 @@ fn listing() -> Value {
         {"id":"good-long","source":"preset","status":{"value":"unloaded","args":["--model","/models/good.gguf"]}},
         {"id":"gone","source":"preset","status":{"value":"unloaded","failed":true,"args":["--model","/models/gone.gguf"]}},
         {"id":"laya_multilingual_f16","source":"preset","status":{"value":"unloaded"}},
+        {"id":"syn-path-only-laya","source":"preset","status":{"value":"unloaded","args":["--model","/models/laya_multilingual_f16.gguf"]}},
         {"id":"syn-embed","source":"preset","status":{"value":"unloaded","args":["--embedding"]}},
         {"id":"syn-sleeper","source":"cache","can_remove":true,"status":{"value":"sleeping"},"meta":{"size":3400000000.0}},
         {"id":"0123456789abcdef0123456789abcdef","status":{"value":"loaded"}},
@@ -436,6 +437,10 @@ async fn the_installed_list_is_nodes_row_for_row() {
             row(json!({"name":"gone","status":"missing","failed":true,"missingFile":true})),
             row(
                 json!({"name":"laya_multilingual_f16","system":true,"status":"served-elsewhere","servedElsewhere":true})
+            ),
+            // #2267: a Laya row named only by its model path is the system model Node's list shows.
+            row(
+                json!({"name":"syn-path-only-laya","system":true,"status":"served-elsewhere","servedElsewhere":true})
             ),
             row(
                 json!({"name":"syn-embed","loaded":true,"labels":["embeddings"],"status":"loaded","sidecarProtected":true})

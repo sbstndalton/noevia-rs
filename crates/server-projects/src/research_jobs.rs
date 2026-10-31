@@ -1438,7 +1438,10 @@ mod tests {
             fs::read_to_string(jobs.join("notes.jsonl")).unwrap(),
             "stray file, not a job\n"
         );
-        assert_eq!(fs::read_to_string(jobs.join(format!("{bad}.jsonl"))).unwrap(), damaged);
+        assert_eq!(
+            fs::read_to_string(jobs.join(format!("{bad}.jsonl"))).unwrap(),
+            damaged
+        );
     }
 
     #[test]

@@ -342,8 +342,9 @@ async fn a_projects_state_and_task_answer_as_node_did_and_keep_tenant_scope() {
     );
     let (s, v) = f.call("GET", "/api/projects/p1/code").await;
     assert_eq!(s, 200);
-    assert_eq!(v["tasks"][0]["status"], "unreadable");
-    assert_eq!(v["tasks"][0]["id"], TASK);
+    // The whole stub, as core's list answers one: an id and a status, nothing else (#2270).
+    assert_eq!(v["tasks"][0], json!({"id": TASK, "status": "unreadable"}));
+    assert_eq!(v["tasks"].as_array().unwrap().len(), 1, "{v}");
 }
 
 #[tokio::test]
