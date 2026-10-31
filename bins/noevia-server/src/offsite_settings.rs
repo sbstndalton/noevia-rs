@@ -212,8 +212,9 @@ impl Settings {
                 return Err(KeyError::Inside);
             }
         }
-        let text =
-            Zeroizing::new(std::fs::read_to_string(&real).map_err(|_| KeyError::Unreadable)?);
+        // Bytes that are not text (32 raw key bytes, say) are a malformed key, not an unreadable file.
+        let bytes = Zeroizing::new(std::fs::read(&real).map_err(|_| KeyError::Unreadable)?);
+        let text = std::str::from_utf8(&bytes).map_err(|_| KeyError::Format)?;
         let hex = text.trim();
         if hex.len() != 64 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err(KeyError::Format);
@@ -283,7 +284,11 @@ impl KeyError {
     pub fn fail(self) -> Fail {
         match self.public() {
             Some(m) => Fail::new(m, 400),
-            None => Fail::new("The backup destination could not be reached.", 502),
+            // A missing or unreadable file is the key's problem, not the destination's (#2231).
+            None => Fail::new(
+                "The backup key file could not be read. Check OFFSITE_BACKUP_KEY_FILE.",
+                400,
+            ),
         }
     }
 }

@@ -856,6 +856,44 @@ async fn the_recovery_key_is_a_download_and_only_that() {
     );
 }
 
+/// sbstndalton/noevia#2231: a key file that is not 64 hex characters (here 32 raw bytes, not UTF-8)
+/// is the key's fault. It was answered as an unreachable destination (502), which sent the
+/// operator to a healthy folder. The words name the key file, never its contents.
+#[tokio::test]
+async fn a_malformed_key_file_is_reported_as_the_key_not_the_destination() {
+    let w = world(&[]).await;
+    let raw: Vec<u8> = (0u8..32).map(|b| 0x80 | b).collect();
+    std::fs::write(&w.key, &raw).unwrap();
+    for path in [format!("{ROOT}/verify"), format!("{ROOT}/google/connect")] {
+        let r = send(w.f.addr, "POST", &path, ADMIN, "").await;
+        assert_eq!(
+            (r.status, r.json()["error"].as_str().map(str::to_owned)),
+            (
+                400,
+                Some(
+                    "The backup key file must hold 64 hex characters (openssl rand -hex 32)."
+                        .into()
+                )
+            ),
+            "{path}"
+        );
+    }
+    let r = get(w.f.addr, &format!("{ROOT}/recovery-key"), ADMIN).await;
+    assert_eq!(r.status, 409);
+    assert!(r.text.contains("64 hex characters"), "{}", r.text);
+    // A short ASCII key is the same mistake and gets the same words.
+    std::fs::write(&w.key, "abcd").unwrap();
+    let r = send(w.f.addr, "POST", &format!("{ROOT}/verify"), ADMIN, "").await;
+    assert_eq!(r.status, 400);
+    assert!(!r.text.contains("abcd"));
+    // A key file that is gone is named too, not blamed on the destination.
+    std::fs::remove_file(&w.key).unwrap();
+    let r = send(w.f.addr, "POST", &format!("{ROOT}/verify"), ADMIN, "").await;
+    assert_eq!(r.status, 400);
+    assert!(r.text.contains("backup key file"), "{}", r.text);
+    assert!(!r.text.contains("destination"), "{}", r.text);
+}
+
 #[tokio::test]
 async fn an_overlapping_destination_is_refused_before_anything_is_written() {
     let data = tempfile::tempdir().unwrap();
