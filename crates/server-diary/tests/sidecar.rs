@@ -753,18 +753,20 @@ async fn source_lists_real_months_sorted_with_labels_as_core_does() {
     );
 }
 
+/// A sidecar that answered, but not with a month list (a malformed body, a 404, a redirect) is a Diary
+/// with no months to list: the page needs this contract to open a Diary that has not got any yet.
+/// An unreachable or gateway-failing Diary is not that (sbstndalton/noevia#2232, #2252): it is the 503.
 #[tokio::test]
-async fn source_is_an_empty_list_whatever_goes_wrong() {
+async fn source_is_an_empty_list_when_the_sidecar_answered_without_a_month_list() {
     let empty = r#"{"source":"sidecar","months":[]}"#;
     let w = World::new(&[]);
     for out in [
-        || Out::json(503, r#"{"detail":"down"}"#),
+        || Out::json(404, r#"{"detail":"no such route"}"#),
         || Out::json(200, r#"{"months":"x"}"#),
         || Out::json(200, "[]"),
         || Out::json(200, "null"),
         || Out::text(200, "not json"),
         || Out::json(302, "{}"),
-        || Out::Hangup,
     ] {
         let stub = Stub::start(move |_, _| out()).await;
         let d = diary(&stub, TENANT_KEY);
@@ -780,7 +782,28 @@ async fn source_is_an_empty_list_whatever_goes_wrong() {
         .await;
         assert_eq!((got.status(), got.text()), (200, empty));
     }
-    // No sidecar listening at all.
+    // A base that is not a URL fails like fetch did, and is the same empty list.
+    let d = Diary::new(server_diary::DiaryConfig::new(
+        "not a url",
+        BEARER,
+        "",
+        String::new,
+    ))
+    .unwrap();
+    assert_eq!(
+        run(&d, &w, MEMBER, Route::Source, "GET", "/x", b"")
+            .await
+            .text(),
+        empty
+    );
+}
+
+/// sbstndalton/noevia#2252 (#2232 retest): with the Diary down the month list answered 200 with no
+/// months, which reads as an empty Diary. It is the same clear 503 as `today`, and the sidecar's own
+/// storage codes pass through.
+#[tokio::test]
+async fn source_says_unavailable_when_the_diary_cannot_be_reached() {
+    let w = World::new(&[]);
     let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let dead = format!("http://{}", l.local_addr().unwrap());
     drop(l);
@@ -801,20 +824,60 @@ async fn source_is_an_empty_list_whatever_goes_wrong() {
         b"",
     )
     .await;
-    assert_eq!(got.text(), empty);
-    // A base that is not a URL fails like fetch did, and is the same empty list.
-    let d = Diary::new(server_diary::DiaryConfig::new(
-        "not a url",
-        BEARER,
-        "",
-        String::new,
-    ))
-    .unwrap();
+    assert_eq!((got.status(), got.text()), (503, UNAVAILABLE));
+    assert!(!got.text().contains("127.0.0.1"));
+    for status in [502, 503, 504] {
+        let stub = Stub::start(move |_, _| Out::json(status, r#"{"detail":"down"}"#)).await;
+        let d = diary(&stub, TENANT_KEY);
+        let got = run(
+            &d,
+            &w,
+            MEMBER,
+            Route::Source,
+            "GET",
+            "/api/diary/source",
+            b"",
+        )
+        .await;
+        assert_eq!((got.status(), got.text()), (503, UNAVAILABLE), "{status}");
+    }
+    let stub = Stub::start(|_, _| Out::Hangup).await;
+    let d = diary(&stub, TENANT_KEY);
+    let got = run(
+        &d,
+        &w,
+        MEMBER,
+        Route::Source,
+        "GET",
+        "/api/diary/source",
+        b"",
+    )
+    .await;
+    assert_eq!((got.status(), got.text()), (503, UNAVAILABLE), "hangup");
+    let stub = Stub::start(|_, _| {
+        Out::json(
+            502,
+            r#"{"detail":"Storage upstream failed","code":"storageUpstream"}"#,
+        )
+    })
+    .await;
+    let d = diary(&stub, TENANT_KEY);
+    let got = run(
+        &d,
+        &w,
+        MEMBER,
+        Route::Source,
+        "GET",
+        "/api/diary/source",
+        b"",
+    )
+    .await;
     assert_eq!(
-        run(&d, &w, MEMBER, Route::Source, "GET", "/x", b"")
-            .await
-            .text(),
-        empty
+        (got.status(), got.text()),
+        (
+            502,
+            r#"{"error":"Storage upstream failed","code":"storageUpstream"}"#
+        )
     );
 }
 
@@ -844,7 +907,7 @@ async fn source_gives_up_on_a_stalled_sidecar_after_its_read_timeout() {
         b"",
     )
     .await;
-    assert_eq!(got.text(), r#"{"source":"sidecar","months":[]}"#);
+    assert_eq!((got.status(), got.text()), (503, UNAVAILABLE));
     assert!(started.elapsed() < Duration::from_secs(3));
 }
 
