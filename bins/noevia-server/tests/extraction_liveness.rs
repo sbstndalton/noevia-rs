@@ -159,10 +159,12 @@ async fn a_proxys_502_on_health_is_not_a_live_service() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_reply_that_arrives_during_the_last_ask_is_kept() {
     let _env = ENV.lock().await;
-    // /health never answers; the document reply comes at 1.2 s, while the second (final) ask is out.
-    let url = service(None, Some(Duration::from_millis(1200))).await;
+    // /health never answers. Asks go out every 700 ms and each waits up to 700 ms, so the second (final)
+    // ask is out from 1400 ms to 2100 ms; the document reply comes at 1750 ms, 350 ms inside it on each
+    // side (a slow runner can be late by that much without moving the reply out of the window).
+    let url = service(None, Some(Duration::from_millis(1750))).await;
     std::env::set_var("DOCLING_BASE_URL", &url);
-    let (_, outcome, _) = read(Duration::from_millis(500), 2).await;
+    let (_, outcome, _) = read(Duration::from_millis(700), 2).await;
     std::env::remove_var("DOCLING_BASE_URL");
     assert_eq!(outcome, Ok(()), "a reply that came in is not thrown away");
 }
