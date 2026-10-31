@@ -436,6 +436,30 @@ fn source_rows(p: &Paths, id: &str) -> Result<Option<Vec<Value>>, Error> {
     read_rows(p, id)
 }
 
+/// Journals already reported as unreadable by this process, so a damaged one is named once.
+static REPORTED: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
+
+fn report_unreadable(path: &Path, why: &str) {
+    if let Ok(mut seen) = REPORTED.lock() {
+        if seen.iter().any(|p| p == path) {
+            return;
+        }
+        if seen.len() >= 256 {
+            seen.remove(0);
+        }
+        seen.push(path.to_path_buf());
+    }
+    eprintln!(
+        "noevia-server: unreadable job journal, skipping: {}: {why}",
+        path.display()
+    );
+}
+
+/// Every readable source journal. Like core's `jobs.cjs` (`ids()`, `getSafe()`), a name that is not
+/// a job id (a stray `notes.jsonl`) is not a job and is left alone, and a damaged, symlinked or
+/// otherwise unreadable journal is reported for itself and skipped, so one bad file never stops
+/// recovery, listing or a new upload for the rest of the user's jobs. Nothing is deleted or
+/// rewritten: a skipped journal stays on disk for manual review.
 fn all_source(p: &Paths) -> Result<Vec<(String, Vec<Value>)>, Error> {
     if !plain_dir(&p.jobs)? {
         return Ok(Vec::new());
@@ -444,16 +468,22 @@ fn all_source(p: &Paths) -> Result<Vec<(String, Vec<Value>)>, Error> {
     for entry in fs::read_dir(&p.jobs)? {
         let entry = entry?;
         let name = entry.file_name();
-        let Some(name) = name.to_str() else {
-            return Err(Error::Corrupt);
+        let Some(id) = name
+            .to_str()
+            .and_then(|n| n.strip_suffix(".jsonl"))
+            .filter(|id| valid_id(id))
+        else {
+            continue;
         };
-        if let Some(id) = name.strip_suffix(".jsonl") {
-            if !valid_id(id) {
-                return Err(Error::Corrupt);
-            }
-            if let Some(rows) = source_rows(p, id)? {
-                out.push((id.to_string(), rows));
-            }
+        if !entry.file_type()?.is_file() {
+            report_unreadable(&entry.path(), "not a regular file");
+            continue;
+        }
+        match source_rows(p, id) {
+            Ok(Some(rows)) => out.push((id.to_string(), rows)),
+            Ok(None) => {}
+            Err(Error::Corrupt) => report_unreadable(&entry.path(), "damaged journal"),
+            Err(e) => return Err(e),
         }
     }
     Ok(out)
