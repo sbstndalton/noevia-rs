@@ -713,7 +713,6 @@ job that chat or another Node route reads):
 
 | route | why it stays |
 |---|---|
-| `/api/connectors`, `/api/connectors/nextcloud/policy` | the Nextcloud half lists the live MCP servers' tools and which write (round 7 moved the Google Drive writes and the off-site backup, below) |
 | `/api/admin/users/{id}` (DELETE) | the clean-up spans Node's workspace cache, MCP OAuth and directory MCP keys in memory |
 | `/api/auto-roles` | GET reads the served catalogue and machine models; an admin PUT warms the roles in Node's engine (`ensureRolesLoaded`) |
 | `/api/health` | `ragAvailable` and the `retrieval` tri-state are Node's cached RAG status (Node-live); the default provider row is now env-derived in the front (provider_routes.rs `Deployment`), so only that status needs publishing (round 6 below) |
