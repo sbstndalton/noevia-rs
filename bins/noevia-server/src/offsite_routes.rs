@@ -319,8 +319,18 @@ impl Service {
     /// `status()`; `with_owner` keeps `google.owner` (the route strips it for the page).
     pub async fn status(&self, app: &Arc<App>, with_owner: bool) -> JValue {
         let enabled = self.enabled(app).await;
-        let reason = self.reason(enabled);
-        let code = self.reason_code(enabled);
+        // Configured is not usable: a key file that is missing or malformed makes every run fail, so the
+        // status says so rather than `ready` (noevia#2231). Only the status reads it; the routes that
+        // load the key refuse with its own words already.
+        let key = if enabled && self.settings.missing().is_empty() {
+            self.settings.load_key().err()
+        } else {
+            None
+        };
+        let reason = self
+            .reason(enabled)
+            .or_else(|| key.map(|k| k.fail().message));
+        let code = self.reason_code(enabled).or(key.map(|_| "keyUnusable"));
         let st = self.status.read();
         let st_or_null = |k: &str| {
             let v = st.get(k);
