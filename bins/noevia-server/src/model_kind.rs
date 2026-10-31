@@ -64,6 +64,24 @@ pub fn is_system_model(roles: &HashMap<String, String>, id: &str) -> bool {
     laya_token(key)
 }
 
+/// `isSystemModel(id, modelPath)`: an explicit role or the name decides, then the path's segments.
+pub fn is_system_model_at(roles: &HashMap<String, String>, id: &str, path: Option<&str>) -> bool {
+    let key = id.trim();
+    if (!key.is_empty() && roles.contains_key(key)) || laya_token(key) {
+        return is_system_model(roles, id);
+    }
+    path.is_some_and(|p| {
+        p.split(['/', '\\']).filter(|s| !s.is_empty()).any(|seg| {
+            let lower = seg.to_ascii_lowercase();
+            let token = match lower.strip_suffix(".gguf") {
+                Some(_) => seg.get(..seg.len() - 5).unwrap_or(seg),
+                None => seg,
+            };
+            laya_token(token)
+        })
+    })
+}
+
 /// The labels the router's listing gives `model` (`nativeLabels`), `None` when the listing does not
 /// name it or is not a listing.
 pub fn labels_of(listing: &Value, model: &str) -> Option<Vec<String>> {

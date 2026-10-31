@@ -147,7 +147,13 @@ jobs:
           # a lease; Node here is the "none" kind and has none to give, so it fails closed (503, nothing touched).
           evidence = get('/api/models/evidence')
           reload = [r for r in bad if r['method'] == 'POST' and r['path'] == '/api/models/presets/reload']
-          assert stats and len(stats) + len(caps) + len(hardware) + len(providers) + len(evidence) + len(reload) == len(bad), [(r['method'], r['path'], r['diffs']) for r in bad]
+          # GET inference-budget and GET installed (#2262) are native too: Node (the "none" kind) still gives the budget
+          # figure over the facts bridge, and the rows and the list come from the front's own engine, so a real Core
+          # answered that bridge here.
+          budget, installed = get('/api/models/inference-budget'), get('/api/models/installed')
+          assert len(budget) == 1 and all(r['status'] == 200 and r['diffs'] and all(d['at'].startswith('body/models') for d in r['diffs']) for r in budget), budget
+          assert len(installed) == 1 and all(r['status'] == 200 and r['expectedStatus'] == 502 for r in installed), installed
+          assert stats and len(stats) + len(caps) + len(hardware) + len(providers) + len(evidence) + len(reload) + len(budget) + len(installed) == len(bad), [(r['method'], r['path'], r['diffs']) for r in bad]
           assert len(evidence) == 1 and all(r['status'] == 400 and r['expectedStatus'] == 404 and any(d['at'] == 'body/error' and d['actual'] == '"Choose a model"' for d in r['diffs']) for r in evidence), evidence
           assert len(reload) == 1 and all(r['status'] == 503 and r['expectedStatus'] == 404 and r['diffs'] for r in reload), reload
           assert all(r['status'] == 200 and any(d['at'].endswith('up') for d in r['diffs']) for r in stats), stats

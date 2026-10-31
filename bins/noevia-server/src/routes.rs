@@ -1278,6 +1278,7 @@ mod tests {
         }
         assert!(crate::FEATURES.contains(&"rust-model-reads"));
         assert!(crate::FEATURES.contains(&"rust-model-sizing"));
+        assert!(crate::FEATURES.contains(&"rust-model-state-reads"));
         assert!(crate::FEATURES.contains(&"rust-model-maintenance"));
         for p in [
             "/api/model-manager",
@@ -1292,8 +1293,6 @@ mod tests {
             "/api/models/calibration/cancel",
             "/api/models/delete",
             "/api/models/evidence/recheck",
-            "/api/models/inference-budget",
-            "/api/models/installed",
             "/api/models/load",
             "/api/models/machines",
             "/api/models/preset",
@@ -1325,6 +1324,8 @@ mod tests {
                 (crate::model_maint::EVIDENCE, &["GET"][..]),
                 (crate::model_maint::EVIDENCE_IMPORT, &["POST"][..]),
                 (crate::model_routes::HARDWARE, &["GET"][..]),
+                (crate::model_state_routes::BUDGET, &["GET"][..]),
+                (crate::model_state_routes::INSTALLED, &["GET"][..]),
                 (crate::model_sizing::SUGGEST, &["GET"][..]),
                 (crate::model_maint::RELOAD, &["POST"][..]),
             ]

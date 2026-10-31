@@ -40,6 +40,7 @@ pub mod model_kind;
 pub mod model_maint;
 pub mod model_routes;
 pub mod model_sizing;
+pub mod model_state_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod nextcloud_routes;
 pub mod offsite_engine;
@@ -318,6 +319,10 @@ use std::sync::Arc;
 /// state and task (task_routes.rs); Core refuses them (rust-task-reads.cjs) and offers the facts only it
 /// holds on the loopback bridge (rust-task-facts.cjs). The supervisor pairs them.
 ///
+/// `rust-model-state-reads`: this build answers GET /api/models/inference-budget and GET /api/models/installed
+/// (model_state_routes.rs); Core refuses them (rust-model-state-reads.cjs) and offers the facts only it holds on the
+/// loopback bridge (rust-model-facts.cjs). The supervisor pairs them.
+///
 /// `client-address-header`: the front drops any `X-Noevia-Client-Ip` a client sends and stamps its
 /// own value on what it forwards (#1245). The web supervisor confirms it to Node
 /// (NOEVIA_FRONT_CLIENT_IP=1), and Node believes that header only then, so a core release paired
@@ -336,6 +341,7 @@ pub const FEATURES: &[&str] = &[
     "rust-diary",
     "rust-diary-routes",
     "rust-model-reads",
+    "rust-model-state-reads",
     "rust-project-reads",
     "rust-project-lifecycle",
     "rust-project-storage",
