@@ -689,6 +689,8 @@ owner = "rust"
 methods = ["GET"]
 
 [[route]]
+# The web client does call this (`fetchTask` over a `base()` template), but routes_check cannot see a path
+# built that way; client = false only keeps its stale warning quiet (sbstndalton/noevia#2261).
 path = "/api/projects/{projectId}/browser/{task}"
 owner = "rust"
 methods = ["GET"]
@@ -710,6 +712,8 @@ owner = "rust"
 methods = ["GET"]
 
 [[route]]
+# The web client does call this (`fetchTask` over a `base()` template), but routes_check cannot see a path
+# built that way; client = false only keeps its stale warning quiet (sbstndalton/noevia#2261).
 path = "/api/projects/{projectId}/code/{task}"
 owner = "rust"
 methods = ["GET"]
