@@ -174,7 +174,9 @@ fn too_big(path: &Path, before: &fs::Metadata, hook: &mut dyn FnMut(Stage)) -> B
     hook(Stage::BeforeOpen);
     let read = open_plain(path).and_then(|f| {
         let opened = f.metadata()?;
-        if !same_regular_file(before, &opened) || !same_regular_file(&opened, &fs::symlink_metadata(path)?) {
+        if !same_regular_file(before, &opened)
+            || !same_regular_file(&opened, &fs::symlink_metadata(path)?)
+        {
             return Err(std::io::Error::other("the journal changed under the read"));
         }
         f.take(OWNER_HEAD_BYTES).read_to_end(&mut head)?;
@@ -1193,7 +1195,10 @@ mod swap_tests {
                 swap_for_link(&path, &other);
             }
         });
-        assert!(matches!(out, Bytes::Refused), "was a link, not the checked file");
+        assert!(
+            matches!(out, Bytes::Refused),
+            "was a link, not the checked file"
+        );
     }
 
     #[test]
@@ -1244,7 +1249,9 @@ mod swap_tests {
         assert!(matches!(out, Bytes::Refused));
         fs::remove_file(&path).unwrap();
         fs::rename(&parked, &path).unwrap();
-        assert!(matches!(read_settled(&path), Bytes::TooBig(h) if h.starts_with(b"{\"owner\":\"mine\"}")));
+        assert!(
+            matches!(read_settled(&path), Bytes::TooBig(h) if h.starts_with(b"{\"owner\":\"mine\"}"))
+        );
     }
 
     #[test]
@@ -1256,6 +1263,9 @@ mod swap_tests {
         let big = dir.path().join("b.jsonl");
         sparse(&big, "head\n");
         assert!(matches!(read_settled(&big), Bytes::TooBig(h) if h.starts_with(b"head")));
-        assert!(matches!(read_settled(&dir.path().join("none")), Bytes::Absent));
+        assert!(matches!(
+            read_settled(&dir.path().join("none")),
+            Bytes::Absent
+        ));
     }
 }
