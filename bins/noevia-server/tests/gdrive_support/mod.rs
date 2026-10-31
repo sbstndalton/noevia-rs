@@ -45,14 +45,18 @@ pub fn j(s: &str) -> serde_json::Value {
 }
 
 /// The Drive half of `GET /api/connectors`, as this cookie's account sees it.
+///
+/// A failed request or a list without a Drive entry is a failure here, not a `Null` the caller's
+/// assertions could pass on (`view["backup"].is_null()` is true of a missing entry too).
 pub async fn gdrive_view(f: &Front, cookie: &str) -> (u16, serde_json::Value) {
     let r = send(f.addr, "GET", "/api/connectors", cookie, "").await;
+    assert_eq!(r.status, 200, "GET /api/connectors: {}", r.text);
     let list = r.json();
     let drive = list["connectors"]
         .as_array()
         .and_then(|l| l.iter().find(|c| c["id"] == "gdrive"))
         .cloned()
-        .unwrap_or(serde_json::Value::Null);
+        .unwrap_or_else(|| panic!("no Drive entry in the connector list: {}", r.text));
     (r.status, drive)
 }
 

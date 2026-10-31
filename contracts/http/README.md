@@ -714,7 +714,7 @@ job that chat or another Node route reads):
 | route | why it stays |
 |---|---|
 | `/api/connectors`, `/api/connectors/nextcloud/policy` | the Nextcloud half lists the live MCP servers' tools and which write (round 7 moved the Google Drive writes and the off-site backup, below) |
-| `/api/admin/users/{id}` (DELETE) | the clean-up spans Node's workspace cache, MCP OAuth and directory MCP keys in memory (the ChatGPT tokens through the broker's `/v1/chatgpt/forget`) |
+| `/api/admin/users/{id}` (DELETE) | the clean-up spans Node's workspace cache, MCP OAuth and directory MCP keys in memory |
 | `/api/auto-roles` | GET reads the served catalogue and machine models; an admin PUT warms the roles in Node's engine (`ensureRolesLoaded`) |
 | `/api/health` | `ragAvailable` and the `retrieval` tri-state are Node's cached RAG status (Node-live); the default provider row is now env-derived in the front (provider_routes.rs `Deployment`), so only that status needs publishing (round 6 below) |
 
@@ -823,10 +823,10 @@ endpoints other than a loopback QA server are not accepted (`GOOGLE_OAUTH_BASE_U
 
 **Node's chat tools** ask the broker over the internal store (`POST /v1/gdrive/<op>`, loopback, per-start secret):
 `session {user, admin, rejected?}` -> `{accessToken, expiresAt, generation}` or `{error, code, status}` with
-`disconnected`, `reconnect` or `transient`; `reject {user, admin, generation}`; `disconnect`; `forget {user}`
-(account deletion); and three more than the plan named: `view` (the Google Drive half of `GET /api/connectors`, whose
-Nextcloud half is Node's), `policy {user, tools, writes, mode}` (the Nextcloud permissions, written by the front
-because it is `tool_policies`' only writer) and `reseal {}` -> `{current, rotated, empty, failed}` (counts only):
+`disconnected`, `reconnect` or `transient`; `reject {user, admin, generation}`; `disconnect`;
+and one more than the plan named, `reseal {}` -> `{current, rotated, empty, failed}` (counts only;
+`view` and `policy`, which served `GET /api/connectors` and the Nextcloud permission writes, are gone since the front
+answers both routes itself, #2202 round 2; the Drive and ChatGPT `forget` ops are gone as well):
 `secrets:rotate` re-seals the accounts' token files under the current `secrets.key` here, under the same fence as
 every other change to them, loading the keys from disk at that moment; Node's rotation awaits it first and then only
 checks that every file opens under the current key (it writes none, so a rotation can never resurrect a disconnected
@@ -1272,18 +1272,17 @@ Node's wasm); its inputs are the project's selection (Rust's `projects.json`), t
 store, ENABLED_TOOLBOXES / Kiwix / CODE_REPOS (environment) and the discovered MCP catalogue. Three of those
 are still Node-live: the discovered boxes and their tool schemas (live MCP sessions), the per-user tool
 permission store (its reads are Node's; `tool_policies` has had the front as its only writer since settings round 7, #2200), and the
-Drive state, which the front's Drive broker now answers per call (`/v1/gdrive/view`) but which this view does not
-yet read as a file. What this round did for it: the
+Drive state, which the front's Drive broker answers per call (for the front's own `GET /api/connectors`) but which this
+view does not yet read as a file. What this round did for it: the
 readiness input is a file, and core's cache key now carries the project's toolbox selection, the connected
 connectors, the readiness and the last discovery (it omitted all of them, so a project edit or a new Nextcloud
 connection by the front showed up to 30 s late). The move itself needs Node to publish its offered catalogue
 (box ids, tool names, write flags) after each discovery as a signal-checked file and the permission store to get a
 Rust writer; then the view is a pure function of files the front already reads.
 
-`GET /api/connectors` is still Node's: the Drive half is the Drive broker's view (the front, `/v1/gdrive/view`, since
-settings round 7), and the Nextcloud half is the storage connection (Rust) joined with the tool permission
-store, whose reads are Node's (it knows which live MCP tools write; the front is the table's only writer).
-Both halves publish together or not at all.
+`GET /api/connectors` is the front's (sbstndalton/noevia#2202 round 2): the Drive half is the Drive broker's view, and the
+Nextcloud half is the storage connection joined with the tool permission store (the front is the table's only writer) and
+the discovery snapshot Node publishes (which MCP tools exist and which write). Both halves publish together or not at all.
 
 Chat-bound, by design: `POST /api/tool-approvals` (the parked approval promise lives in the live chat loop; the
 three actions - Allow once, Decline, Allow for this chat - and their tenant scope stay in Node) and `GET
@@ -1366,8 +1365,6 @@ Review of round 2 (the limits and the rollbacks):
    something that is not text, a box id that is not text, a manifest entry that is not an object with a text id) are counted
    and skipped. The publisher's three presentation differences (a boolean write flag, a tool named by a number, a 240-character
    description) are put back on the output so everything else is compared exactly.
-10. Scheduled removal: the Drive broker's `/v1/gdrive/view` and `/v1/gdrive/policy` ops are unused by the paired Core and stay
-   only for the Core of a rollback pair; delete them in the first release after that floor has passed.
 
 Still Node's, on purpose: the MCP client itself (a chat's live sessions, `mcp.cjs`, `mcp-wiring.cjs`),
 `POST /api/tool-approvals/{id}` (the parked approval is in the live chat loop) and `GET /api/toolboxes` (prefill
