@@ -14,8 +14,9 @@ const RETAIN_MS: u64 = 15 * 60 * 1000;
 const MAX_JOBS: usize = 16;
 const MAX_ACTIVE: usize = 2;
 /// The same cap for the jobs that need no extraction (a plain-text upload), counted apart: a job
-/// stuck in a document service must not refuse a text file (#2240). Still bounded, so the bodies
-/// held for admitted jobs stay bounded (4 at most, 2 of them small by their nature).
+/// stuck in a document service must not refuse a text file (#2240). Admitted bodies stay bounded: at most
+/// 2 + 2 per account, each up to the request cap; a plain upload is not smaller by nature, only free of the
+/// extraction service.
 const MAX_ACTIVE_PLAIN: usize = 2;
 /// The most request tombstones kept: past it [`abandon`] drops the oldest, so the list can never
 /// refuse a start. The front itself writes none for a refusal it saw (it ends the job with

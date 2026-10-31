@@ -17,7 +17,7 @@ use server_store::rusqlite::Connection;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
@@ -61,7 +61,16 @@ async fn call(
     (status, body.to_string())
 }
 
+/// The wedge test sets process-wide environment (the document service and its liveness window); the others
+/// build their front under this lock, so none starts while it is set up.
+static ENV: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 async fn front() -> Front {
+    drop(ENV.lock().await);
+    front_unlocked().await
+}
+
+async fn front_unlocked() -> Front {
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().to_path_buf();
     let c = Connection::open(server_store::db_path(&data)).unwrap();
@@ -691,12 +700,15 @@ async fn wedged_service() -> String {
 /// is given up on within a few health asks, not the job bound.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_wedged_document_service_neither_blocks_text_uploads_nor_holds_the_slots_for_long() {
+    let _env = ENV.lock().await;
     let url = wedged_service().await;
     std::env::set_var("DOCLING_BASE_URL", &url);
-    std::env::set_var("DOCLING_LIVENESS_SECONDS", "1");
-    std::env::set_var("DOCLING_LIVENESS_MISSES", "2");
+    // Six asks 3 s apart: about 20 s of silence, longer than the 10 s a plain upload waits for a project
+    // lock, so the same-project phase below is decided by that wait and not by the give-up.
+    std::env::set_var("DOCLING_LIVENESS_SECONDS", "3");
+    std::env::set_var("DOCLING_LIVENESS_MISSES", "6");
     std::env::remove_var("OCR_BASE_URL");
-    let f = front().await;
+    let f = front_unlocked().await;
     let h = headers(&f);
     let pdf = |name: &str| {
         format!(r#"{{"name":"{name}","dataBase64":"JVBERi0xLjQgc3ludGhldGlj","organized":true}}"#)
@@ -738,6 +750,29 @@ async fn a_wedged_document_service_neither_blocks_text_uploads_nor_holds_the_slo
     // The plain slots are bounded too (two at a time), and finished jobs free them.
     let (t2, t2_body) = start("p3", UPLOAD.replace("notes", "more")).await;
     assert_eq!(t2, 202, "{t2_body}");
+    let t2_poll = serde_json::from_str::<serde_json::Value>(&t2_body).unwrap()["poll"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(poll_until_done(&f, &t2_poll).await["status"], 200);
+
+    // A text file for the project the wedged PDF is converting in waits only briefly for the project lock,
+    // then answers the retryable "still running" (429) instead of holding a slot for minutes.
+    let same = Instant::now();
+    let (t3, t3_body) = start("p%201", UPLOAD.replace("notes", "same")).await;
+    assert_eq!(t3, 202, "{t3_body}");
+    let t3_poll = serde_json::from_str::<serde_json::Value>(&t3_body).unwrap()["poll"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let refused = poll_until_done_for(&f, &t3_poll, 1500).await;
+    assert_eq!(refused["status"], 429, "{refused}");
+    assert!(refused.to_string().contains("still running"), "{refused}");
+    assert!(
+        same.elapsed() < Duration::from_secs(18),
+        "{:?}",
+        same.elapsed()
+    );
 
     // The wedged PDFs end within a few asks (1 s apart, two misses), not at the 30-minute bound:
     // their record is the queued one, in plain words, and the slots are free again.
@@ -746,13 +781,13 @@ async fn a_wedged_document_service_neither_blocks_text_uploads_nor_holds_the_slo
             .as_str()
             .unwrap()
             .to_owned();
-        let done = poll_until_done_for(&f, &poll, 600).await;
+        let done = poll_until_done_for(&f, &poll, 2500).await;
         assert_eq!(done["status"], 200, "{done}");
         assert_eq!(done["body"]["document"]["extraction"], "queued", "{done}");
         assert!(!done.to_string().contains("fetch failed"), "{done}");
     }
     assert!(
-        began.elapsed() < Duration::from_secs(40),
+        began.elapsed() < Duration::from_secs(90),
         "{:?}",
         began.elapsed()
     );

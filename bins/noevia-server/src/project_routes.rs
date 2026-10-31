@@ -646,6 +646,7 @@ pub async fn serve(
                 project: project.clone(),
                 body: Arc::new(bytes),
                 over,
+                plain: false,
                 retry: parts
                     .headers
                     .get("x-cowork-storage-retry")

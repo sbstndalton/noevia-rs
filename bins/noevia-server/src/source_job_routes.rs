@@ -124,6 +124,9 @@ pub struct Work {
     /// Shared: the body can be 80 MiB and is looked at by more than one step.
     pub body: Arc<Vec<u8>>,
     pub over: bool,
+    /// An upload that needs no extraction (set by the start, #2240): it waits only briefly for a project's
+    /// source lock, so a PDF converting in the same project cannot hold its slot for minutes.
+    pub plain: bool,
     /// `X-Cowork-Storage-Retry: 1`: an explicit press always runs.
     pub retry: bool,
 }
@@ -165,7 +168,16 @@ pub fn hold(
 /// job, already accepted, waits its turn, but at most half its bound: the bound runs from the job's start,
 /// so a wait of the whole bound would leave the operation no time (and a job that waited that long would
 /// be failed 504 while it ran).
-fn lock_wait(foreground: bool, upload: bool) -> Duration {
+/// How long a plain-text upload waits for a project's source lock: a conversion in the project may hold it
+/// for minutes, so the upload answers the retryable 429 after this instead of holding its slot.
+const PLAIN_LOCK_WAIT: Duration = Duration::from_secs(10);
+
+fn lock_wait(foreground: bool, upload: bool, plain: bool) -> Duration {
+    // A plain-text upload to a project whose lock a PDF holds (a conversion runs inside it) answers the
+    // retryable "another upload is still running" (429) after the short wait instead of queueing for minutes.
+    if plain && !foreground {
+        return PLAIN_LOCK_WAIT;
+    }
     if foreground {
         server_projects::project_documents::FOREGROUND_LOCK_WAIT
     } else {
@@ -194,7 +206,7 @@ pub fn execute(
     let limits = server_projects::extract::Limits::from_env();
     let catalogue = lifecycle::Catalogue::read(&account.data_dir);
     let root = lifecycle::project_root_folder();
-    let lock_wait = lock_wait(check_hold, work.kind == Kind::Upload);
+    let lock_wait = lock_wait(check_hold, work.kind == Kind::Upload, work.plain);
     with_storage(app, authn, |storage| match work.kind {
         Kind::Upload => upload::post(
             &upload::Env {
@@ -416,15 +428,17 @@ fn accept(
     owner: &Owner,
     work: &Work,
     check: impl FnOnce() -> Result<Option<js_json::JValue>, server_projects::Reply>,
-) -> Result<(Started, Option<Op>), server_projects::Reply> {
+) -> Result<(Started, Option<Op>, bool), server_projects::Reply> {
     let mut parsed = None;
+    let mut plain = false;
     let job = work::begin_with(account.ctx(), owner, &work.project, || {
         parsed = check()?;
-        Ok(needs_no_extraction(work, parsed.as_ref()))
+        plain = needs_no_extraction(work, parsed.as_ref());
+        Ok(plain)
     })?;
     // Listed before the 202: the client's next request may be a chat turn that waits for this file.
     let op = list_operation(account, work, parsed.as_ref());
-    Ok((job, op))
+    Ok((job, op, plain))
 }
 
 async fn operate(
@@ -470,7 +484,7 @@ async fn operate(
         })
         .await
     };
-    let (job, op) = match begun {
+    let (job, op, plain) = match begun {
         Some(Ok(started)) => started,
         Some(Err(r)) => {
             let _ = reply.send(*r);
@@ -486,6 +500,7 @@ async fn operate(
         }
     };
     let _ = reply.send(respond(work::accepted(&job)));
+    let work = Work { plain, ..work };
     let bound = work::bound(work.kind == Kind::Upload);
     run_job(
         account.clone(),
@@ -704,6 +719,7 @@ mod tests {
             project: "a".into(),
             body: Arc::new(body.as_bytes().to_vec()),
             over: false,
+            plain: false,
             retry: false,
         }
     }
@@ -808,11 +824,16 @@ mod tests {
     #[test]
     fn a_job_waits_for_the_project_lock_half_its_bound_and_a_request_the_short_wait() {
         let short = server_projects::project_documents::FOREGROUND_LOCK_WAIT;
-        assert_eq!(lock_wait(true, false), short);
-        assert_eq!(lock_wait(true, true), short);
-        assert_eq!(lock_wait(false, false), work::bound(false) / 2);
-        assert_eq!(lock_wait(false, true), work::bound(true) / 2);
-        assert!(lock_wait(false, true) < work::bound(true));
+        assert_eq!(lock_wait(true, false, false), short);
+        assert_eq!(lock_wait(true, true, false), short);
+        assert_eq!(lock_wait(false, false, false), work::bound(false) / 2);
+        assert_eq!(lock_wait(false, true, false), work::bound(true) / 2);
+        assert!(lock_wait(false, true, false) < work::bound(true));
+        assert_eq!(
+            lock_wait(false, true, true),
+            PLAIN_LOCK_WAIT,
+            "a plain upload never queues behind a conversion"
+        );
     }
 
     #[test]

@@ -52,13 +52,16 @@ pub struct HttpEngine {
 
 /// A request to the document service has no answer until the whole document is read, and a large
 /// scan can take many minutes with the service healthy (its own limit is an hour), so no total
-/// deadline of minutes can tell slow from stuck. What can: a stuck service also stops answering
-/// `/health` (it is served on its own connection while a conversion runs). Asked every
-/// [`LIVENESS_EVERY`], three misses in a row (about two minutes) end the wait (#2240: a service that
-/// accepted the request and never answered held the account's upload slots for the 30 minutes of
-/// the job bound; Node gave up after 5 minutes).
+/// deadline of minutes can tell slow from stuck. While such a request waits, `/health` is asked every
+/// [`LIVENESS_EVERY`]; [`LIVENESS_MISSES`] asks in a row without a 2xx answer (5 minutes of silence)
+/// end the wait. That catches a dead host, container, network or HTTP front (#2240: a service that
+/// accepted the request and never answered held the account's upload slots for the 30 minutes of the
+/// job bound; Node gave up after 5 minutes). It does NOT catch a worker that hangs while the HTTP front
+/// still answers `/health`: that needs a heartbeat from the worker, and such a request is bounded only by
+/// its own deadline and the job bound. The window is generous on purpose: the service stops its worker
+/// when the connection goes, so giving up on a healthy long document restarts it from zero.
 pub const LIVENESS_EVERY: Duration = Duration::from_secs(30);
-pub const LIVENESS_MISSES: u32 = 3;
+pub const LIVENESS_MISSES: u32 = 10;
 /// One `/health` ask must answer within this.
 const LIVENESS_ASK: Duration = Duration::from_secs(10);
 
@@ -163,9 +166,13 @@ impl HttpEngine {
                 tokio::select! {
                     done = &mut work => return done,
                     _ = ticks.tick() => {
-                        // Any HTTP answer says the service is there; only silence is a miss.
-                        let asked = client.get(&health).timeout(LIVENESS_ASK.min(every)).send().await;
-                        missed = if asked.is_ok() { 0 } else { missed + 1 };
+                        // The ask races the request: a reply that arrives meanwhile is kept, not thrown away.
+                        let ask = client.get(&health).timeout(LIVENESS_ASK.min(every)).send();
+                        let alive = tokio::select! {
+                            done = &mut work => return done,
+                            asked = ask => asked.is_ok_and(|r| r.status().is_success()),
+                        };
+                        missed = if alive { 0 } else { missed + 1 };
                         if missed >= limit {
                             return Err(EngineError {
                                 message: "Document extraction unavailable: the service stopped responding; it will be retried.".into(),
@@ -502,7 +509,7 @@ impl Engine for HttpEngine {
             .header("Content-Type", "application/pdf")
             .timeout(Duration::from_secs(180))
             .body(bytes.to_vec());
-        Some(match self.send(&url, machine, req, cap) {
+        Some(match self.send_watched(&url, machine, req, cap) {
             Err(e) => Err(e),
             Ok((status, _)) if !(200..300).contains(&status) => Err(EngineError {
                 message: format!("storage returned {status}"),
@@ -545,7 +552,7 @@ impl Engine for HttpEngine {
         if dpi == Some(400) {
             req = req.header("X-OCR-DPI", "400");
         }
-        let (status, body) = self.send(&url, machine, req, OCR_REPLY_CAP)?;
+        let (status, body) = self.send_watched(&url, machine, req, OCR_REPLY_CAP)?;
         if !(200..300).contains(&status) {
             return Err(EngineError {
                 message: if status == 503 {
