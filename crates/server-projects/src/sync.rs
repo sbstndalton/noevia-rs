@@ -1024,7 +1024,7 @@ fn read_entry(
         let queued = ingested.retryable;
         let mut file = with_source(ingested.file, folder);
         if queued {
-            extract_queue::mark_queued(&mut file);
+            extract_queue::mark_queued(&mut file, true);
         }
         run.note_document(&file, queued, &entry.path);
         if file.get("document").get("state").as_str() != Some("ready") {
@@ -1613,7 +1613,9 @@ mod tests {
         let files = rig.files();
         let d = files[0].get("document");
         assert_eq!(d.get("extraction").as_str(), Some("queued"));
-        assert_eq!(d.get("state").as_str(), Some("failed"));
+        // #2237: queued is the one state; "failed" and queued at once contradicted the record.
+        assert_eq!(d.get("state").as_str(), Some("queued"));
+        assert_eq!(d.get("error").as_str(), Some(extract_queue::WAITING));
         let job =
             extract_queue::pending(&rig.dir(), "proj-a", "docs/r.pdf").expect("the job is written");
         assert_eq!(job.byte_hash, d.get("byteHash").as_str().unwrap());

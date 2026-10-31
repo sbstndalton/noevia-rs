@@ -297,7 +297,7 @@ pub fn ingest(
         queued = ingested.retryable || (ingested.open && !opts.defer_open);
         file = ingested.file;
         if queued {
-            extract_queue::mark_queued(&mut file);
+            extract_queue::mark_queued(&mut file, ingested.retryable);
         }
         state = file
             .get("document")
