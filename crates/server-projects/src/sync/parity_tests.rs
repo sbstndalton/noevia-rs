@@ -756,3 +756,52 @@ fn a_refresh_keeps_managed_images_documents_and_text_and_batches_past_forty() {
     };
     assert_eq!(assets.len(), 1);
 }
+
+/// noevia#2245: the queue worker replaced a queued record with only `name`, `content` and `document`.
+/// A synced document lost its `source`, so the next sync took it for an upload: it was kept for good (the
+/// folder could no longer retire it) and the folder's own copy of the same name came in beside it.
+#[test]
+fn a_queued_synced_document_keeps_its_source_when_the_worker_reads_it_and_a_later_sync_adds_no_copy() {
+    let rig = Rig::new(PROJECT);
+    rig.storage.put("docs/r.pdf", b"%PDF-1.4 synthetic");
+    rig.sync(); // Docling unreachable: the document is queued, as the sync's own record
+    let queued = rig.files();
+    assert_eq!(queued[0].get("source").as_str(), Some("docs"));
+    assert_eq!(queued[0].get("document").get("state").as_str(), Some("queued"));
+    // The worker, long after the backoff, with Docling back.
+    rig.engine
+        .replies
+        .borrow_mut()
+        .push(Ok(wtf16::parse(GOOD).unwrap()));
+    let later = Ctx {
+        now_ms: wall() + 3_600_000, // a sync dates its jobs by the wall clock
+        ..rig.ctx()
+    };
+    let ran = extract_queue::run_due(later, &rig.engine, &LIMITS);
+    assert_eq!(ran.len(), 1);
+    let read = rig.files();
+    assert_eq!(read.len(), 1);
+    assert_eq!(read[0].get("document").get("state").as_str(), Some("ready"));
+    assert_eq!(
+        read[0].get("source").as_str(),
+        Some("docs"),
+        "the record still names the folder it came from: {:?}",
+        read[0]
+    );
+    // The next sync sees the same file in the same folder: still one record, still the folder's.
+    rig.engine
+        .replies
+        .borrow_mut()
+        .push(Ok(wtf16::parse(GOOD).unwrap()));
+    rig.sync();
+    assert_eq!(rig.names(), vec!["docs/r.pdf".to_string()]);
+    assert_eq!(rig.files()[0].get("source").as_str(), Some("docs"));
+    // And when the file leaves the folder the sync retires the record (an upload would have stayed).
+    rig.storage.files.borrow_mut().remove("docs/r.pdf");
+    rig.sync();
+    assert!(
+        rig.names().is_empty(),
+        "a folder file that is gone is retired, not kept as an upload: {:?}",
+        rig.names()
+    );
+}

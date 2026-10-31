@@ -351,8 +351,21 @@ fn run_one(
         }) else {
             return (false, false);
         };
-        files.remove(i);
-        files.push(file.clone());
+        // noevia#2245: the record as it is now takes the new fields, so what the worker did not read
+        // (a synced document's `source`, an `attachment`) is kept. Only the old text reference goes:
+        // `content` is the new text and `externalize` writes it out again.
+        let mut record = files.remove(i);
+        if let JValue::Obj(items) = &mut record {
+            items.retain(|(k, _)| k != "textRef" && k != "chars" && k != "skillHeader");
+            if let JValue::Obj(fresh) = &file {
+                for (k, v) in fresh {
+                    js_json::wtf16::set(items, k, v.clone());
+                }
+            }
+        } else {
+            record = file.clone();
+        }
+        files.push(record);
         store::set(p, "files", JValue::Arr(files));
         if crate::lifecycle::externalize(dir, p).is_err() {
             return (false, false);
