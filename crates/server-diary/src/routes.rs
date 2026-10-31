@@ -186,12 +186,15 @@ pub enum ReplyBody {
 pub struct Reply {
     pub status: u16,
     pub body: ReplyBody,
+    /// `Retry-After` seconds, for the sidecar's own throttle answer (`storageThrottled`).
+    pub retry_after: Option<u64>,
 }
 
 fn json_reply(status: u16, value: &JValue) -> Reply {
     Reply {
         status,
         body: ReplyBody::Json(wtf16::stringify(value).unwrap_or_else(|| "null".to_owned())),
+        retry_after: None,
     }
 }
 
@@ -205,6 +208,87 @@ fn error_reply(status: u16, message: &str) -> Reply {
 /// What core's `errorResponse` made of an error with no status: a generic 500.
 fn internal() -> Reply {
     error_reply(500, "Internal error")
+}
+
+/// What a person is told when the Diary service cannot be reached (#2232): a status the page can
+/// word, a stable `code` it can translate, and nothing about where the service is or why it failed.
+pub const DIARY_UNAVAILABLE: &str = "Diary is unavailable right now. Try again shortly.";
+
+fn diary_unavailable() -> Reply {
+    json_reply(
+        503,
+        &JValue::obj([
+            ("error", JValue::Str(DIARY_UNAVAILABLE.to_owned())),
+            ("code", JValue::Str("diaryUnavailable".to_owned())),
+        ]),
+    )
+}
+
+/// A call that produced no reply: a service that refuses, drops or stalls is unavailable; anything
+/// else (a bad URL, a redirect, an unreadable storage row) stays core's generic 500.
+fn call_failed(error: CallError) -> Reply {
+    match error {
+        CallError::Transport | CallError::Timeout => diary_unavailable(),
+        _ => internal(),
+    }
+}
+
+/// A gateway-class status from the service in front of the sidecar says the same thing.
+fn upstream_down(status: u16) -> bool {
+    matches!(status, 502..=504)
+}
+
+/// The sidecar's own coded answers about the person's storage server (app.py: `storageThrottled` 503 with
+/// `retryAfter`, `storageUpstream` 502, `storageLoginRejected` 424) are not "the Diary is down": they pass
+/// through with their status and code, and a throttle with its wait, as core's routes/diary.cjs sends them.
+fn coded(r: &JsonReply) -> Option<Reply> {
+    let body = r.body.as_ref()?;
+    let code = body.get("code").as_str()?;
+    if !matches!(
+        code,
+        "storageThrottled" | "storageUpstream" | "storageLoginRejected"
+    ) {
+        return None;
+    }
+    let mut fields = vec![
+        (
+            "error",
+            detail_or(Some(body), "Diary storage request failed"),
+        ),
+        ("code", JValue::Str(code.to_owned())),
+    ];
+    let mut retry_after = None;
+    if code == "storageThrottled" {
+        if let Some(wait) = body
+            .get("retryAfter")
+            .as_num()
+            .filter(|w| w.is_finite() && *w > 0.0)
+        {
+            let secs = wait.ceil().min(86_400.0) as u64;
+            fields.push(("retryAfter", JValue::Num(secs as f64)));
+            retry_after = Some(secs);
+        }
+    }
+    let mut reply = json_reply(r.status, &JValue::obj(fields));
+    reply.retry_after = retry_after;
+    Some(reply)
+}
+
+/// The answer for a sidecar reply that was not ok, on the routes that relay the sidecar's detail.
+fn relay_failure(r: &JsonReply) -> Reply {
+    if let Some(reply) = coded(r) {
+        return reply;
+    }
+    if upstream_down(r.status) {
+        return diary_unavailable();
+    }
+    json_reply(
+        r.status,
+        &JValue::obj([(
+            "error",
+            detail_or(r.body.as_ref(), "Diary storage request failed"),
+        )]),
+    )
 }
 
 fn disabled() -> Reply {
@@ -317,7 +401,7 @@ impl Diary {
         let config = self.sidecar.config().clone();
         tokio::task::spawn_blocking(move || Tenant::load(&identity, &store, &data_dir, &config))
             .await
-            .map_err(|_| CallError::Transport)?
+            .map_err(|_| CallError::Config)?
             .map(Arc::new)
             .map_err(CallError::from)
     }
@@ -439,14 +523,8 @@ impl Diary {
                 };
                 json_reply(r.status, &body)
             }
-            Ok((r, _)) => json_reply(
-                r.status,
-                &JValue::obj([(
-                    "error",
-                    detail_or(r.body.as_ref(), "Diary storage request failed"),
-                )]),
-            ),
-            Err(_) => internal(),
+            Ok((r, _)) => relay_failure(&r),
+            Err(e) => call_failed(e),
         }
     }
 
@@ -584,7 +662,9 @@ impl Diary {
         };
         let reply = match self.read_json(ctx, &path).await {
             Ok(r) if r.ok => r,
-            _ => return internal(),
+            Ok(r) if coded(&r).is_some() || upstream_down(r.status) => return relay_failure(&r),
+            Err(e) => return call_failed(e),
+            Ok(_) => return internal(),
         };
         let body = reply.body.unwrap_or(JValue::Undefined);
         let empty = JValue::Str(String::new());
@@ -637,17 +717,11 @@ impl Diary {
                 .await
         })
         .await
-        .unwrap_or(Err(CallError::Transport));
+        .unwrap_or(Err(CallError::Config));
         match reply {
             Ok(r) if r.ok => json_reply(r.status, &r.body.unwrap_or(JValue::Undefined)),
-            Ok(r) => json_reply(
-                r.status,
-                &JValue::obj([(
-                    "error",
-                    detail_or(r.body.as_ref(), "Diary storage request failed"),
-                )]),
-            ),
-            Err(_) => internal(),
+            Ok(r) => relay_failure(&r),
+            Err(e) => call_failed(e),
         }
     }
 
@@ -703,6 +777,7 @@ impl Diary {
         Reply {
             status: 200,
             body: ReplyBody::Zip(ChannelBody::new(rx)),
+            retry_after: None,
         }
     }
 

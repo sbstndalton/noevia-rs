@@ -165,7 +165,10 @@ async fn only_an_object_reply_carries_the_hold_and_a_failure_is_the_sidecars_det
         (Out::json(200, r#""text""#), (200, r#""text""#)),
         (
             Out::json(502, r#"{"detail":"storage is down"}"#),
-            (502, r#"{"error":"storage is down"}"#),
+            (
+                503,
+                r#"{"error":"Diary is unavailable right now. Try again shortly.","code":"diaryUnavailable"}"#,
+            ),
         ),
         (
             Out::json(500, r#"{"detail":""}"#),
@@ -173,7 +176,10 @@ async fn only_an_object_reply_carries_the_hold_and_a_failure_is_the_sidecars_det
         ),
         (
             Out::text(503, "upstream"),
-            (503, r#"{"error":"Diary storage request failed"}"#),
+            (
+                503,
+                r#"{"error":"Diary is unavailable right now. Try again shortly.","code":"diaryUnavailable"}"#,
+            ),
         ),
     ] {
         let reply = Mutex::new(Some(reply));
@@ -241,9 +247,13 @@ async fn the_status_is_gated_on_the_addon_then_the_method_and_a_dead_sidecar_is_
         b"",
     )
     .await;
+    // A sidecar that drops the call is unavailable, not a bug (#2232).
     assert_eq!(
         (status, text.as_str()),
-        (500, r#"{"error":"Internal error"}"#)
+        (
+            503,
+            r#"{"error":"Diary is unavailable right now. Try again shortly.","code":"diaryUnavailable"}"#
+        )
     );
 }
 
