@@ -277,6 +277,12 @@ fn run_one(
         let _ = done(conn, job);
         Outcome::Dropped
     };
+    // The record exists but its original cannot be read again: the record says "will be read automatically",
+    // which would stay true forever. It is rewritten as failed with the real reason before the job goes.
+    let give_up = |reason: &str| {
+        fail_record(ctx, dir, job, reason);
+        drop_it()
+    };
     let Ok(projects) = store::read(dir) else {
         let _ = again(conn, job, "projects unreadable", ctx.now_ms);
         return Outcome::Waiting;
@@ -287,13 +293,13 @@ fn run_one(
     };
     let Some(original) = document_ingest::version_path(dir, &job.project, &job.byte_hash, ".pdf")
     else {
-        return drop_it();
+        return give_up(ORIGINAL_GONE);
     };
     let Ok(bytes) = std::fs::read(&original) else {
-        return drop_it();
+        return give_up(ORIGINAL_GONE);
     };
     if crate::extract::sha_hex(&bytes) != job.byte_hash {
-        return drop_it();
+        return give_up(ORIGINAL_GONE);
     }
     // The queued record's own failure is not "the last readable text": its predecessor's is.
     let prior = previous.clone();
@@ -329,7 +335,7 @@ fn run_one(
         return Outcome::Waiting;
     }
     if open {
-        mark_queued(&mut file);
+        mark_queued(&mut file, false);
     }
     document_ingest::mark_indexing(&mut file);
     let saved = store::update(dir, ctx.switch, |projects| {
@@ -391,19 +397,55 @@ pub const WAITING: &str =
 /// The stable id of [`WAITING`], so the browser can word it in the interface language.
 pub const WAITING_ID: &str = "extractionWaiting";
 
+/// Why a queued document is given up on when its stored original is missing or changed.
+pub const ORIGINAL_GONE: &str =
+    "The stored original of this document is no longer available, so it cannot be read. Upload it again.";
+
+/// Rewrites the queued record of `job` as `failed` with `reason` (and no queued marker). Best effort: the job
+/// is dropped by the caller either way.
+fn fail_record(ctx: Ctx<'_>, dir: &Path, job: &Job, reason: &str) {
+    let _ = store::update(dir, ctx.switch, |projects| {
+        let Some(p) = store::find_mut(projects, &job.project) else {
+            return (false, false);
+        };
+        let JValue::Arr(mut files) = p.get("files").clone() else {
+            return (false, false);
+        };
+        let Some(file) = files.iter_mut().find(|f| {
+            f.get("name").as_str() == Some(job.file.as_str())
+                && f.get("document").get("byteHash").as_str() == Some(job.byte_hash.as_str())
+        }) else {
+            return (false, false);
+        };
+        if let JValue::Obj(items) = file {
+            if let Some((_, JValue::Obj(d))) = items.iter_mut().find(|(k, _)| k == "document") {
+                d.retain(|(k, _)| k != "extraction" && k != "errorId");
+                js_json::wtf16::set(d, "state", JValue::Str("failed".into()));
+                js_json::wtf16::set(d, "error", JValue::Str(reason.into()));
+            }
+        }
+        store::set(p, "files", JValue::Arr(files));
+        (true, true)
+    });
+}
+
 /// Marks a source record as queued for extraction (`document.extraction: "queued"`).
 ///
 /// A record has one state (#2237): a document that failed to read only because the service was
 /// unavailable is `state: "queued"` with the plain waiting reason, not `failed` and queued at once.
 /// A record that already has text (`ready`, `partial`: a completion pass left open) keeps its state.
 /// The worker finds the record by name and byte hash, never by state, and a successful run replaces it.
-pub fn mark_queued(file: &mut JValue) {
+///
+/// `retryable`: the read failed only because the service was unavailable. Only such a record is rewritten
+/// from `failed`; one that failed for its own reasons (every page unreadable, say) with a completion pass
+/// left open keeps its real state and error and is merely marked queued.
+pub fn mark_queued(file: &mut JValue, retryable: bool) {
     if let JValue::Obj(items) = file {
         if let Some((_, JValue::Obj(d))) = items.iter_mut().find(|(k, _)| k == "document") {
             let failed = d
                 .iter()
                 .any(|(k, v)| k == "state" && v.as_str() == Some("failed"));
-            if failed {
+            if failed && retryable {
                 js_json::wtf16::set(d, "state", JValue::Str(QUEUED.into()));
                 js_json::wtf16::set(d, "error", JValue::Str(WAITING.into()));
                 js_json::wtf16::set(d, "errorId", JValue::Str(WAITING_ID.into()));

@@ -869,9 +869,10 @@ fn legacy_locked(
             ) {
                 Ok(i) => {
                     queued = i.retryable || i.open;
+                    let retryable = i.retryable;
                     let mut f = i.file;
                     if queued {
-                        extract_queue::mark_queued(&mut f);
+                        extract_queue::mark_queued(&mut f, retryable);
                     }
                     f
                 }
@@ -1058,9 +1059,10 @@ fn legacy_locked(
         ) {
             Ok(i) => {
                 queued = i.retryable || i.open;
+                let retryable = i.retryable;
                 let mut f = i.file;
                 if queued {
-                    extract_queue::mark_queued(&mut f);
+                    extract_queue::mark_queued(&mut f, retryable);
                 }
                 if let JValue::Obj(items) = &mut f {
                     wtf16::set(items, "source", s(&folder));

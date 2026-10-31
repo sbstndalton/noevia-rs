@@ -1024,7 +1024,7 @@ fn read_entry(
         let queued = ingested.retryable;
         let mut file = with_source(ingested.file, folder);
         if queued {
-            extract_queue::mark_queued(&mut file);
+            extract_queue::mark_queued(&mut file, true);
         }
         run.note_document(&file, queued, &entry.path);
         if file.get("document").get("state").as_str() != Some("ready") {

@@ -276,7 +276,7 @@ fn post_waiting(
     let mut file = ingested.file;
     let queued = ingested.retryable || ingested.open;
     if queued {
-        extract_queue::mark_queued(&mut file);
+        extract_queue::mark_queued(&mut file, ingested.retryable);
     }
     mark_indexing(&mut file);
     // The job is written before the record that says "queued" (review #2191 r4+5): a record
@@ -482,6 +482,82 @@ mod tests {
         assert_eq!(doc.get("errorId").as_str(), Some("extractionWaiting"));
         assert!(!wtf16::stringify(doc).unwrap().contains("fetch failed"));
         assert_eq!(doc.get("byteHash").as_str(), Some(job.byte_hash.as_str()));
+    }
+
+    /// #2237: a queued record says "will be read automatically". When the stored original is gone by the time the
+    /// worker runs, the job is dropped, so the record must say what is true instead.
+    #[test]
+    fn a_queued_document_whose_original_is_gone_becomes_a_real_failure() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("users").join(USER);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(store::PROJECTS_FILE), PROJECTS).unwrap();
+        let fake = Fake::default();
+        let r = post(ctx(root.path()), "proj-a", &body(), false, &fake, &LIMITS);
+        assert_eq!(r.status, 200, "{r:?}");
+        let job = extract_queue::pending(&dir, "proj-a", "a.pdf").expect("queued");
+        let record = |dir: &std::path::Path| {
+            let projects = store::read(dir).unwrap();
+            let JValue::Arr(files) = store::find(&projects, "proj-a")
+                .unwrap()
+                .get("files")
+                .clone()
+            else {
+                panic!()
+            };
+            files[0].get("document").clone()
+        };
+        assert_eq!(record(&dir).get("state").as_str(), Some("queued"));
+        let original = crate::document_ingest::version_path(&dir, "proj-a", &job.byte_hash, ".pdf")
+            .expect("path");
+        std::fs::remove_file(&original).expect("the original was stored");
+        let ran = extract_queue::run_due(ctx(root.path()), &fake, &LIMITS);
+        assert_eq!(ran.len(), 1, "{ran:?}");
+        assert!(
+            extract_queue::pending(&dir, "proj-a", "a.pdf").is_none(),
+            "the job is gone"
+        );
+        let d = record(&dir);
+        assert_eq!(d.get("state").as_str(), Some("failed"));
+        assert_eq!(d.get("error").as_str(), Some(extract_queue::ORIGINAL_GONE));
+        assert!(
+            d.get("extraction").is_nullish() && d.get("errorId").is_nullish(),
+            "{d:?}"
+        );
+    }
+
+    /// #2237: a record that failed for its own reasons keeps them when a completion pass is left open.
+    #[test]
+    fn only_a_retryable_record_is_rewritten_as_queued() {
+        let doc = |state: &str| {
+            JValue::obj([(
+                "document",
+                JValue::obj([
+                    ("state", JValue::Str(state.into())),
+                    ("error", JValue::Str("every page failed".into())),
+                ]),
+            )])
+        };
+        let mut open_only = doc("failed");
+        extract_queue::mark_queued(&mut open_only, false);
+        let d = open_only.get("document");
+        assert_eq!(
+            (
+                d.get("state").as_str(),
+                d.get("error").as_str(),
+                d.get("extraction").as_str()
+            ),
+            (Some("failed"), Some("every page failed"), Some("queued"))
+        );
+        let mut retryable = doc("failed");
+        extract_queue::mark_queued(&mut retryable, true);
+        assert_eq!(
+            retryable.get("document").get("state").as_str(),
+            Some("queued")
+        );
+        let mut ready = doc("ready");
+        extract_queue::mark_queued(&mut ready, true);
+        assert_eq!(ready.get("document").get("state").as_str(), Some("ready"));
     }
 
     /// Re-review N5: the context's clock is brought to now only when the lock had to be waited for.
