@@ -688,17 +688,6 @@ async fn broker_hands_out_tokens_and_refreshes_once() {
         store(f.store, "connected", STORE_TOKEN, &user).await,
         (200, j(r#"{"exists":false}"#))
     );
-    // Forgetting an account that never signed in changes nothing, so Node's signal stays put.
-    assert_eq!(
-        store(
-            f.store,
-            "forget",
-            STORE_TOKEN,
-            &format!(r#"{{"user":"{B}"}}"#)
-        )
-        .await,
-        (200, j(r#"{"ok":true}"#))
-    );
     assert!(!d.path().join("chatgpt-token-changes.json").exists());
 
     // A row that is not near expiry: handed out as stored, no refresh token in the answer.
@@ -887,23 +876,12 @@ async fn broker_hands_out_tokens_and_refreshes_once() {
     .await;
     assert_eq!((s, got["code"].clone()), (401, j(r#""reconnect""#)));
 
-    // Disconnect and forget delete the row.
+    // Disconnect deletes the row.
     assert_eq!(
         store(f.store, "disconnect", STORE_TOKEN, &user).await,
         (200, j(r#"{"ok":true}"#))
     );
     assert!(token_row(&db, A).is_none());
-    assert_eq!(
-        store(
-            f.store,
-            "forget",
-            STORE_TOKEN,
-            &format!(r#"{{"user":"{B}"}}"#)
-        )
-        .await,
-        (200, j(r#"{"ok":true}"#))
-    );
-    assert!(token_row(&db, B).is_none());
     assert_eq!(store(f.store, "nope", STORE_TOKEN, &user).await.0, 404);
     assert_eq!(store(f.store, "session", STORE_TOKEN, "{}").await.0, 400);
 }

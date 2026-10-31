@@ -517,7 +517,7 @@ pub async fn internal_op(app: Option<Arc<App>>, op: &str, raw: &[u8]) -> Respons
     // Node says whether the account is an administrator; a claim of `true` is checked against the
     // users table, so a mistaken or forged request cannot reach the backup slot (the one Drive that
     // is not the account's own). Anything short of a confirmed administrator is a member.
-    let admin = if body.get("admin").as_bool() == Some(true) && op != "forget" {
+    let admin = if body.get("admin").as_bool() == Some(true) {
         match is_admin(&app, &user).await {
             Ok(admin) => admin,
             Err(e) => return internal_fail(&e),
@@ -563,35 +563,6 @@ pub async fn internal_op(app: Option<Arc<App>>, op: &str, raw: &[u8]) -> Respons
             },
             Err(e) => internal_fail(&e),
         },
-        "forget" => {
-            drive.forget(&user).await;
-            internal(200, &JValue::obj([("ok", JValue::Bool(true))]))
-        }
-        "view" => match view(&app, &user, admin).await {
-            Ok(v) => internal(200, &v),
-            Err(e) => internal_fail(&e),
-        },
-        "policy" => {
-            let tools: Vec<String> = match body.get("tools") {
-                JValue::Arr(a) => a
-                    .iter()
-                    .filter_map(|t| t.as_str().map(str::to_owned))
-                    .collect(),
-                _ => Vec::new(),
-            };
-            let writes: Vec<bool> = match body.get("writes") {
-                JValue::Arr(a) => a.iter().map(|w| w.as_bool() == Some(true)).collect(),
-                _ => Vec::new(),
-            };
-            let (a, mode) = (Arc::clone(&app), body.get("mode").clone());
-            match tokio::task::spawn_blocking(move || set_policy(&a, &user, &tools, &mode, &writes))
-                .await
-            {
-                Ok(Ok(())) => internal(200, &JValue::obj([("ok", JValue::Bool(true))])),
-                Ok(Err(e)) => internal_fail(&e),
-                Err(_) => internal_fail(&Fail::new(POLICY_UNSAVED, 502)),
-            }
-        }
         _ => internal(404, &JValue::obj([("error", s("not found"))])),
     }
 }
