@@ -1395,6 +1395,87 @@ fn sharing_reports_and_saves_the_opt_in() {
     );
 }
 
+// noevia#2142: only validation answers 400. A store failure is a 500 that does not show the
+// database's own message, an oversized body keeps its 413, and the row and its audit event are one
+// transaction (a failed audit leaves no opt-in behind).
+#[test]
+fn sharing_save_failures_are_500_without_the_driver_message_and_all_or_nothing() {
+    let w = world_with(false, lan_cleartext());
+    w.node.execute_batch(DAV_SETTINGS).unwrap();
+    let mut owner = Browser::new("10.0.0.1");
+    setup(&w, &mut owner);
+    let save = r#"{"scope":"lan","acknowledgeCleartext":true}"#;
+
+    // The audit insert fails: no sharing row either.
+    w.node
+        .execute_batch(
+            "CREATE TRIGGER fail_audit BEFORE INSERT ON audit_events WHEN NEW.action='dav.sharing'
+             BEGIN SELECT RAISE(ABORT, 'synthetic driver detail audit'); END;",
+        )
+        .unwrap();
+    let (s, v, r) = call(&w, &mut owner, "PUT", "/api/profile/sharing", save, T0 + 1);
+    assert_eq!(
+        (s, v["error"].as_str()),
+        (500, Some("Internal error")),
+        "{}",
+        r.body
+    );
+    assert!(!r.body.contains("synthetic driver detail"), "{}", r.body);
+    assert_eq!(count(&w, "SELECT count(*) FROM dav_settings"), 0);
+    assert_eq!(
+        count(
+            &w,
+            "SELECT count(*) FROM audit_events WHERE action='dav.sharing'"
+        ),
+        0
+    );
+    w.node.execute_batch("DROP TRIGGER fail_audit").unwrap();
+
+    // The row write itself fails (a constraint, as a busy or read-only database would).
+    w.node
+        .execute_batch(
+            "CREATE TRIGGER fail_row BEFORE INSERT ON dav_settings
+             BEGIN SELECT RAISE(ABORT, 'synthetic driver detail row'); END;",
+        )
+        .unwrap();
+    let (s, v, r) = call(&w, &mut owner, "PUT", "/api/profile/sharing", save, T0 + 2);
+    assert_eq!(
+        (s, v["error"].as_str()),
+        (500, Some("Internal error")),
+        "{}",
+        r.body
+    );
+    assert!(!r.body.contains("synthetic driver detail"), "{}", r.body);
+    assert_eq!(
+        count(
+            &w,
+            "SELECT count(*) FROM audit_events WHERE action='dav.sharing'"
+        ),
+        0
+    );
+    w.node.execute_batch("DROP TRIGGER fail_row").unwrap();
+
+    // The size refusal is 413, not 400.
+    let big = format!(r#"{{"scope":"off","pad":"{}"}}"#, "a".repeat(1024 * 1024));
+    let (s, v, _) = call(&w, &mut owner, "PUT", "/api/profile/sharing", &big, T0 + 3);
+    assert_eq!(
+        (s, v["error"].as_str()),
+        (413, Some("Request exceeds size limit"))
+    );
+
+    // With the failures gone the same save works and writes both rows.
+    let (s, v, _) = call(&w, &mut owner, "PUT", "/api/profile/sharing", save, T0 + 4);
+    assert_eq!((s, v["scope"].as_str()), (200, Some("lan")));
+    assert_eq!(count(&w, "SELECT count(*) FROM dav_settings"), 1);
+    assert_eq!(
+        count(
+            &w,
+            "SELECT count(*) FROM audit_events WHERE action='dav.sharing'"
+        ),
+        1
+    );
+}
+
 #[test]
 fn sharing_without_an_endpoint_or_a_table() {
     let w = world(false);
