@@ -455,6 +455,9 @@ fn research_rows(p: &Paths, id: &str) -> Result<Option<Vec<Value>>, Error> {
     read_rows(p, id)
 }
 
+/// Every readable research journal. As in core's `jobs.cjs`, a name that is not a job id is not a
+/// job and is left alone, and a damaged or non-regular journal is reported for itself and skipped
+/// (never deleted or rewritten) so it cannot stop recovery, listing or a new start (#2272).
 fn all_research(p: &Paths) -> Result<Vec<(String, Vec<Value>)>, Error> {
     if !plain_dir(&p.jobs)? {
         return Ok(Vec::new());
@@ -463,16 +466,24 @@ fn all_research(p: &Paths) -> Result<Vec<(String, Vec<Value>)>, Error> {
     for entry in fs::read_dir(&p.jobs)? {
         let entry = entry?;
         let name = entry.file_name();
-        let Some(name) = name.to_str() else {
-            return Err(Error::Corrupt);
+        let Some(id) = name
+            .to_str()
+            .and_then(|n| n.strip_suffix(".jsonl"))
+            .filter(|id| valid_id(id))
+        else {
+            continue;
         };
-        if let Some(id) = name.strip_suffix(".jsonl") {
-            if !valid_id(id) {
-                return Err(Error::Corrupt);
+        if !entry.file_type()?.is_file() {
+            crate::source_jobs::report_unreadable(&entry.path(), "not a regular file");
+            continue;
+        }
+        match research_rows(p, id) {
+            Ok(Some(rows)) => out.push((id.to_string(), rows)),
+            Ok(None) => {}
+            Err(Error::Corrupt) => {
+                crate::source_jobs::report_unreadable(&entry.path(), "damaged journal");
             }
-            if let Some(rows) = research_rows(p, id)? {
-                out.push((id.to_string(), rows));
-            }
+            Err(e) => return Err(e),
         }
     }
     Ok(out)
@@ -1402,6 +1413,34 @@ mod tests {
         )
         .unwrap()
     }
+    // #2272: a stray .jsonl and a damaged journal in the jobs folder do not stop recover or a new start.
+    #[test]
+    fn a_stray_file_and_a_damaged_journal_do_not_stop_recover_or_start() {
+        let (dir, user) = fixture();
+        let c = ctx(dir.path());
+        let jobs = user.join("jobs");
+        fs::create_dir_all(&jobs).unwrap();
+        let bad = "66666666-6666-4666-8666-666666666666";
+        let damaged = format!(
+            "{{\"job\":\"{bad}\",\"seq\":1,\"type\":\"job.created\",\"at\":1,\"data\":{{\"kind\":\"research\"}}}}\n{{\"job\":\"{bad}\",\"seq\":2,\"type\":\"progr\n{{\"job\":\"{bad}\",\"seq\":3,\"type\":\"job.started\"}}\n"
+        );
+        fs::write(jobs.join("notes.jsonl"), "stray file, not a job\n").unwrap();
+        fs::write(jobs.join(format!("{bad}.jsonl")), &damaged).unwrap();
+        let owner = Owner {
+            user: USER,
+            start: START,
+            born: "100",
+            owner: OWNER1,
+        };
+        recover(c, owner).unwrap();
+        begin(c, "a", REQ1);
+        assert_eq!(
+            fs::read_to_string(jobs.join("notes.jsonl")).unwrap(),
+            "stray file, not a job\n"
+        );
+        assert_eq!(fs::read_to_string(jobs.join(format!("{bad}.jsonl"))).unwrap(), damaged);
+    }
+
     #[test]
     fn atomic_project_admission_idempotent_start_and_abandon_recovery() {
         let (dir, user) = fixture();

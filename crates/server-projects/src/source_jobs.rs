@@ -439,7 +439,7 @@ fn source_rows(p: &Paths, id: &str) -> Result<Option<Vec<Value>>, Error> {
 /// Journals already reported as unreadable by this process, so a damaged one is named once.
 static REPORTED: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
 
-fn report_unreadable(path: &Path, why: &str) {
+pub(crate) fn report_unreadable(path: &Path, why: &str) {
     if let Ok(mut seen) = REPORTED.lock() {
         if seen.iter().any(|p| p == path) {
             return;
