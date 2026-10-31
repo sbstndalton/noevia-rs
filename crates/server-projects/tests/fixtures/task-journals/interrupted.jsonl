@@ -1,0 +1,4 @@
+{"job":"00000000-0000-4000-8000-000000000003","seq":1,"type":"job.created","at":1001,"data":{"kind":"code","projectId":"p1"}}
+{"job":"00000000-0000-4000-8000-000000000003","seq":2,"type":"job.started","at":1002,"data":{}}
+{"job":"00000000-0000-4000-8000-000000000003","seq":3,"type":"approval.requested","at":1003,"data":{"action":"x"}}
+{"job":"00000000-0000-4000-8000-000000000003","seq":4,"type":"job.interrupted","at":1004,"data":{"reason":"server restarted"}}

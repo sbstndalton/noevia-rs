@@ -85,6 +85,7 @@ pub mod storage_integration_routes;
 pub mod storage_metadata_worker;
 #[cfg(feature = "rust-storage-reads")]
 pub mod storage_read_routes;
+pub mod task_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod toolbox_routes;
 pub mod upkeep;
@@ -313,6 +314,10 @@ use std::sync::Arc;
 /// file carries the start that runs it, so a restart's leftovers read as interrupted).
 ///
 /// `legacy-root-claim`: this binary exposes the filesystem-only legacy claim helper before server startup.
+/// `rust-task-reads`: this build answers `/api/code/active` and the GETs of a project's Code and Browser
+/// state and task (task_routes.rs); Core refuses them (rust-task-reads.cjs) and offers the facts only it
+/// holds on the loopback bridge (rust-task-facts.cjs). The supervisor pairs them.
+///
 /// `client-address-header`: the front drops any `X-Noevia-Client-Ip` a client sends and stamps its
 /// own value on what it forwards (#1245). The web supervisor confirms it to Node
 /// (NOEVIA_FRONT_CLIENT_IP=1), and Node believes that header only then, so a core release paired
@@ -325,6 +330,7 @@ pub const FEATURES: &[&str] = &[
     "legacy-root-claim",
     "project-store",
     "rust-research",
+    "rust-task-reads",
     server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER,
     "rust-auth",
     "rust-diary",

@@ -503,7 +503,7 @@ async fn instruction_skills_are_listed_enabled_and_resolved_through_the_routes()
         503
     );
     assert_eq!(get("/api/projects/p1/instruction-skills").await.0, 200);
-    // The browser, code and research routes are chat-bound and still go to Node (502: it is absent here).
+    // A browser task's start still goes to Node (502: it is absent here).
     let (s, _, _) = call(f.addr, "POST", "/api/projects/p1/browser", &h, "{}").await;
     assert_eq!(s, 502);
 }

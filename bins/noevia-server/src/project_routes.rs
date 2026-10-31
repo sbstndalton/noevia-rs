@@ -163,12 +163,18 @@ pub enum Route {
         project: String,
         shape: crate::research_routes::Shape,
     },
+    /// The Code and Browser task reads (sbstndalton/noevia#2257): `/api/code/active`, every method,
+    /// and the GETs of a project's Code and Browser state and task.
+    Tasks(crate::task_routes::Target),
 }
 
 /// Node's matchers, `^\/api\/projects\/([^/]+)\/assets$`, `...\/assets\/([^/]+)$` and
 /// `^\/api\/projects\/([^/]+)\/chats$`, and routes/chat-lists.cjs's `p === '/api/freechats'`,
 /// with the methods its handlers answer; `None` sends the request on to Node.
 pub fn route(method: &str, path: &str) -> Option<Route> {
+    if let Some(target) = crate::task_routes::parse(method, path) {
+        return Some(Route::Tasks(target));
+    }
     if let Some((project, shape)) = crate::research_routes::parse(path) {
         return Some(Route::Research { project, shape });
     }
@@ -505,6 +511,16 @@ pub async fn serve(
     {
         return *response;
     }
+    if let Route::Tasks(target) = &route {
+        return crate::task_routes::serve(
+            app,
+            parts.method.clone(),
+            authn.clone(),
+            data_dir.clone(),
+            target.clone(),
+        )
+        .await;
+    }
     if let Route::Research { project, shape } = &route {
         return crate::research_routes::serve(
             app,
@@ -525,7 +541,7 @@ pub async fn serve(
         .await;
     }
     let limit = match &route {
-        Route::Research { .. } => None,
+        Route::Research { .. } | Route::Tasks(_) => None,
         Route::Upload { .. } => Some(assets::BODY_LIMIT),
         Route::SaveChats { .. } | Route::SaveFreeChats => Some(chats::BODY_LIMIT),
         Route::SaveHistory { .. } => Some(history::BODY_LIMIT),
@@ -940,9 +956,13 @@ pub async fn serve(
                 None,
             ) => Reply::internal(),
             // Answered above (project_config_routes, research_routes).
-            (Route::Config { .. } | Route::SkillInstall { .. } | Route::Research { .. }, _) => {
-                Reply::internal()
-            }
+            (
+                Route::Config { .. }
+                | Route::SkillInstall { .. }
+                | Route::Research { .. }
+                | Route::Tasks(_),
+                _,
+            ) => Reply::internal(),
             // Answered above (source_job_routes).
             (
                 Route::SourceUpload { .. } | Route::SourceSync { .. } | Route::SourceJob { .. },

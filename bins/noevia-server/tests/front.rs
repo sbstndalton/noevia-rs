@@ -221,6 +221,13 @@ fn sample(route: &str) -> String {
     if route == "/api/projects/{id}/{*}/original" {
         return "/api/projects/x1/uploads/original".to_string();
     }
+    // The front answers a task read for a task id only; anything else there is Node's (sbstndalton/noevia#2257).
+    if let Some(prefix) = route.strip_suffix("/{task}") {
+        return format!(
+            "{}/01234567-89ab-cdef-0123-456789abcdef",
+            prefix.replace("{projectId}", "x1")
+        );
+    }
     let mut out = Vec::new();
     for seg in route.replace("{*?}", "").split('/') {
         out.push(if seg.starts_with('{') {
@@ -301,8 +308,9 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     // the connectors list with the Nextcloud permissions: 33; #2191 round 9 moved a project's config, its two
     // instruction-skill paths and the manifests, the skill install and an account's deletion: 28; #2210 moved
     // the preset reload's POST, the evidence read and the model-card import: 25; #2218 moved the research
-    // paths, of which only the list was a listed Node route: 24).
-    assert!(node_routes >= 24, "{node_routes} node routes");
+    // paths, of which only the list was a listed Node route: 24; #2257 moved the active list and a project's
+    // Code and Browser reads: 21).
+    assert!(node_routes >= 21, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("POST", "/api/ready"),
@@ -398,7 +406,7 @@ async fn headers_cookies_and_forwarded_for() {
             front,
             "POST",
             // A route Node answers (POST /api/projects is the front's since #2191 round 2, a project's
-            // config since round 9; the browser route is chat-bound and stays).
+            // config since round 9; a browser task's start stays).
             "/api/projects/p1/browser?x=1",
             &[
                 ("x-forwarded-for", "6.6.6.6"),
