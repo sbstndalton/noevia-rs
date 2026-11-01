@@ -396,7 +396,10 @@ fn plan(data: &JValue, acc: &Account) -> Result<(JValue, Histories), Fail> {
         let dedupe = if project_name.is_empty() {
             hash.clone()
         } else {
-            content_hash(&format!("{title}\u{0}{}", project_name.to_lowercase()), &history)?
+            content_hash(
+                &format!("{title}\u{0}{}", project_name.to_lowercase()),
+                &history,
+            )?
         };
         // The first chat of an id goes by the id; a later one with other content by its hash.
         let mut source = format!("hash:{dedupe}");
@@ -1179,16 +1182,30 @@ mod tests {
         let aside: Vec<_> = std::fs::read_dir(&dir)
             .unwrap()
             .map(|e| e.unwrap())
-            .filter(|e| e.file_name().to_string_lossy().starts_with("imported-chats.json.corrupt-"))
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with("imported-chats.json.corrupt-")
+            })
             .collect();
         assert_eq!(aside.len(), 1);
-        assert_eq!(std::fs::read(aside[0].path()).unwrap(), b"\x00\x01 not json");
+        assert_eq!(
+            std::fs::read(aside[0].path()).unwrap(),
+            b"\x00\x01 not json"
+        );
         assert!(read_ledger(&dir).unwrap().len() == 1);
     }
 
     #[test]
     fn equal_idless_chats_of_two_projects_both_import_and_reimport_is_a_no_op() {
         let root = workspace();
+        std::fs::write(
+            user_dir(root.path()).join("projects.json"),
+            r#"{"projects":[
+            {"id":"proj-a","name":"A","modes":["chat"],"chats":[],"instructionSkills":{}},
+            {"id":"proj-b","name":"B","modes":["chat"],"chats":[],"instructionSkills":{}}]}"#,
+        )
+        .unwrap();
         let body = export(&format!(
             r#"{CHAT},"project":{{"name":"A"}}}},{CHAT},"project":{{"name":"B"}}}}"#
         ));
