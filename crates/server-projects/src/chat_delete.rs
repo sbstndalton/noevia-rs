@@ -506,6 +506,9 @@ pub fn reap_deleted(ctx: Ctx<'_>, limit: usize) -> usize {
     let Ok(ids) = tombstone_list(&dir) else {
         return 0;
     };
+    if ids.is_empty() || limit == 0 {
+        return 0;
+    }
     let Ok(projects) = free_chats::workspace_projects(&dir) else {
         return 0;
     };
