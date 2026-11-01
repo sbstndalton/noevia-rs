@@ -212,10 +212,27 @@ struct Account {
 /// Source key (`id:<export id>` or `hash:<content hash>`) to `(local chat id, content hash)`.
 type Ledger = HashMap<String, (String, String)>;
 
-/// A ledger that is valid JSON of another shape counts as empty; an unreadable one fails the import.
+/// A ledger that is valid JSON of another shape, or is not JSON (renamed aside, never deleted),
+/// counts as empty; one that cannot be read at all fails the import.
 fn read_ledger(dir: &Path) -> Result<Ledger, Fail> {
-    let Some(value) = read_json(&dir.join(LEDGER))? else {
-        return Ok(Ledger::new());
+    let file = dir.join(LEDGER);
+    let value = match std::fs::read(&file) {
+        Ok(bytes) => match wtf16::parse(&String::from_utf8_lossy(&bytes)) {
+            Ok(v) => v,
+            Err(_) => {
+                // Unparsable (e.g. emptied by a power cut): keep the bytes beside it, start empty.
+                // Worst case is one duplicate of a chat the lost ledger knew.
+                let stamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.as_nanos());
+                let mut aside = file.as_os_str().to_owned();
+                aside.push(format!(".corrupt-{stamp}"));
+                std::fs::rename(&file, PathBuf::from(aside))?;
+                return Ok(Ledger::new());
+            }
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Ledger::new()),
+        Err(_) => return Err(Fail::Interrupted),
     };
     let JValue::Obj(chats) = value.get("chats") else {
         return Ok(Ledger::new());
@@ -368,8 +385,21 @@ fn plan(data: &JValue, acc: &Account) -> Result<(JValue, Histories), Fail> {
         let id = raw.get("id").as_str().unwrap_or("");
         let history = clean_history(raw.get("history"));
         let hash = content_hash(&title, &history)?;
+        let project = raw.get("project");
+        let project_name = match project.get("name") {
+            JValue::Str(s) if project.truthy() => wtf16::slice(js::trim(s), 120),
+            _ => String::new(),
+        };
+        // Id-less chats are told apart by project too, so equal chats of two projects both come
+        // in. A free chat keeps its plain hash (earlier ledgers stay valid); the stored content
+        // hash stays project-free, so a re-import of the same file is still "already imported".
+        let dedupe = if project_name.is_empty() {
+            hash.clone()
+        } else {
+            content_hash(&format!("{title}\u{0}{}", project_name.to_lowercase()), &history)?
+        };
         // The first chat of an id goes by the id; a later one with other content by its hash.
-        let mut source = format!("hash:{hash}");
+        let mut source = format!("hash:{dedupe}");
         let mut reason = None;
         if safe_id(id) {
             match first_of_id.get(id) {
@@ -381,7 +411,7 @@ fn plan(data: &JValue, acc: &Account) -> Result<(JValue, Histories), Fail> {
                 Some(_) => {}
             }
         }
-        if reason.is_none() && source.starts_with("hash:") && !seen_hashes.insert(hash.clone()) {
+        if reason.is_none() && source.starts_with("hash:") && !seen_hashes.insert(dedupe.clone()) {
             reason = Some(REPEATED);
         }
         if reason.is_none() {
@@ -424,11 +454,6 @@ fn plan(data: &JValue, acc: &Account) -> Result<(JValue, Histories), Fail> {
             ("updatedAt", updated),
         ]);
         histories.push((chat_id, history, source, hash));
-        let project = raw.get("project");
-        let project_name = match project.get("name") {
-            JValue::Str(s) if project.truthy() => wtf16::slice(js::trim(s), 120),
-            _ => String::new(),
-        };
         if project_name.is_empty() {
             free.push(meta);
             continue;
@@ -482,6 +507,7 @@ fn atomic_json(file: &Path, value: &JValue) -> Result<(), Fail> {
         .mode(0o600)
         .open(&tmp)?;
     f.write_all(text.as_bytes())?;
+    f.sync_all()?;
     drop(f);
     std::fs::rename(&tmp, file)?;
     Ok(())
@@ -1096,5 +1122,105 @@ mod tests {
         assert!(safe_id(&id), "{id}");
         assert!(safe_id("c-a_b-1") && !safe_id("c-") && !safe_id("x-1") && !safe_id("c-a b"));
         assert!(!safe_id(&format!("c-{}", "a".repeat(81))));
+    }
+
+    const USER: &str = "11111111-2222-4333-8444-555555555555";
+
+    fn workspace() -> tempfile::TempDir {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("users").join(USER);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("projects.json"), "[]").unwrap();
+        root
+    }
+
+    fn run(root: &Path, body: &str) -> (u16, String) {
+        let ctx = Ctx {
+            data_dir: root,
+            user_id: USER,
+            switch: server_store::RustProjects::owned(),
+            now_ms: 1_700_000_000_123,
+        };
+        let n = std::cell::Cell::new(0);
+        let create = |_: &str| {
+            n.set(n.get() + 1);
+            Ok(format!("proj-{}", n.get()))
+        };
+        let env = ImportEnv {
+            create: &create,
+            audit: &|_| Ok(()),
+        };
+        let r = post(ctx, body.as_bytes(), false, &env);
+        let text = match r.body {
+            crate::Body::Json(t) => t,
+            _ => String::new(),
+        };
+        (r.status, text)
+    }
+
+    fn user_dir(root: &Path) -> PathBuf {
+        root.join("users").join(USER)
+    }
+
+    fn export(chats: &str) -> String {
+        format!(r#"{{"format":"noevia-conversations-v1","chats":[{chats}]}}"#)
+    }
+
+    const CHAT: &str = r#"{"title":"T","history":[{"role":"user","content":"hi"}]"#;
+
+    #[test]
+    fn a_garbage_ledger_is_kept_aside_and_imports_still_work() {
+        let root = workspace();
+        let dir = user_dir(root.path());
+        std::fs::write(dir.join(LEDGER), b"\x00\x01 not json").unwrap();
+        let (status, text) = run(root.path(), &export(&format!("{CHAT}}}")));
+        assert_eq!(status, 200, "{text}");
+        assert!(text.contains(r#""imported":1"#), "{text}");
+        let aside: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap())
+            .filter(|e| e.file_name().to_string_lossy().starts_with("imported-chats.json.corrupt-"))
+            .collect();
+        assert_eq!(aside.len(), 1);
+        assert_eq!(std::fs::read(aside[0].path()).unwrap(), b"\x00\x01 not json");
+        assert!(read_ledger(&dir).unwrap().len() == 1);
+    }
+
+    #[test]
+    fn equal_idless_chats_of_two_projects_both_import_and_reimport_is_a_no_op() {
+        let root = workspace();
+        let body = export(&format!(
+            r#"{CHAT},"project":{{"name":"A"}}}},{CHAT},"project":{{"name":"B"}}}}"#
+        ));
+        let (status, text) = run(root.path(), &body);
+        assert_eq!(status, 200, "{text}");
+        assert!(text.contains(r#""imported":2"#), "{text}");
+        let (_, again) = run(root.path(), &body);
+        assert!(again.contains(r#""imported":0"#), "{again}");
+        assert!(again.contains("already"), "{again}");
+    }
+
+    #[test]
+    fn a_journal_left_between_the_chat_write_and_the_ledger_write_finishes_on_retry() {
+        let root = workspace();
+        let dir = user_dir(root.path());
+        // The ledger's temp path is blocked, so the import dies after the chat is listed, before the
+        // ledger is written, and its source-carrying journal stays behind.
+        std::fs::create_dir(dir.join(format!("{LEDGER}.tmp"))).unwrap();
+        let body = export(&format!("{CHAT}}}"));
+        let (status, _) = run(root.path(), &body);
+        assert_eq!(status, 503);
+        let journals = std::fs::read_dir(dir.join(ROOT)).unwrap().count();
+        assert_eq!(journals, 1);
+        assert_eq!(persisted(&dir).unwrap().len(), 1);
+        std::fs::remove_dir(dir.join(format!("{LEDGER}.tmp"))).unwrap();
+        let (status, text) = run(root.path(), &body);
+        assert_eq!(status, 200, "{text}");
+        assert!(text.contains(r#""imported":1"#), "{text}");
+        assert_eq!(std::fs::read_dir(dir.join(ROOT)).unwrap().count(), 0);
+        assert_eq!(persisted(&dir).unwrap().len(), 1);
+        assert_eq!(read_ledger(&dir).unwrap().len(), 1);
+        let (_, again) = run(root.path(), &body);
+        assert!(again.contains(r#""imported":0"#), "{again}");
     }
 }
