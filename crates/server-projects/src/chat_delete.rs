@@ -483,23 +483,12 @@ pub fn delete_with(
     })
 }
 
-/// Finish already-confirmed deletions on a later workspace read (#2254). Directory listings
-/// select possible leftovers cheaply; every deletion rechecks the tombstone and all lists while
+/// Finish already-confirmed deletions on a later workspace read (#2254). Capped tombstone-derived paths
+/// select possible leftovers within the read budget; every deletion rechecks the tombstone and all lists while
 /// holding the same transcript lock as writers. No retention choice or undeleted chat is affected.
 pub fn reap_deleted(ctx: Ctx<'_>, limit: usize) -> usize {
     use std::collections::HashSet;
-    fn names(dir: &Path) -> HashSet<std::ffi::OsString> {
-        // A swapped child directory cannot redirect deletion: remove_file opens it NOFOLLOW.
-        if !std::fs::symlink_metadata(dir).is_ok_and(|m| m.is_dir()) {
-            return HashSet::new();
-        }
-        std::fs::read_dir(dir)
-            .into_iter()
-            .flatten()
-            .filter_map(Result::ok)
-            .map(|e| e.file_name())
-            .collect()
-    }
+    let started = std::time::Instant::now();
     let Ok(dir) = store::user_dir(ctx.data_dir, ctx.user_id) else {
         return 0;
     };
@@ -530,13 +519,9 @@ pub fn reap_deleted(ctx: Ctx<'_>, limit: usize) -> usize {
             remember(items);
         }
     }
-    let root = names(&dir);
-    let brains = names(&dir.join(BRAIN_DIR));
-    let partials = names(&dir.join(partial::DIR));
-    let exists = |file: PathBuf, entries: &HashSet<std::ffi::OsString>| {
-        file.file_name().is_some_and(|n| entries.contains(n))
-    };
-    let started = std::time::Instant::now();
+    // Probe only paths derived from capped tombstones, never enumerate account directories.
+    // A symlink is a leftover too: remove_file unlinks its leaf without following it.
+    let exists = |file: PathBuf| std::fs::symlink_metadata(file).is_ok();
     let mut attempted = 0;
     let mut removed = 0;
     for id in ids.iter().rev().take(TOMBSTONE_CAP) {
@@ -548,11 +533,11 @@ pub fn reap_deleted(ctx: Ctx<'_>, limit: usize) -> usize {
             continue;
         }
         let safe = safe_chat_id(id);
-        let possible = (!safe.is_empty() && exists(history_file(&dir, &safe), &root))
+        let possible = (!safe.is_empty() && exists(history_file(&dir, &safe)))
             || forms.iter().any(|raw| {
-                exists(context_window::state_file(&dir, raw), &root)
-                    || exists(brain_file(&dir, raw), &brains)
-                    || exists(partial::file_for(&dir, raw), &partials)
+                exists(context_window::state_file(&dir, raw))
+                    || exists(brain_file(&dir, raw))
+                    || exists(partial::file_for(&dir, raw))
             });
         if !possible {
             continue;
