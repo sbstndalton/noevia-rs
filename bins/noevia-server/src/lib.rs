@@ -401,6 +401,7 @@ pub const FEATURES: &[&str] = &[
     "rust-mcp-directory",
     #[cfg(feature = "rust-storage-reads")]
     "rust-toolboxes-permitted",
+    #[cfg(feature = "rust-storage-reads")]
     "rust-toolbox-picker",
     #[cfg(feature = "rust-storage-reads")]
     "rust-connectors",
