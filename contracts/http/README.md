@@ -1704,3 +1704,16 @@ the capability `rust-model-state-reads`; Core refuses both with 503 `RUST_MODEL_
 (`server/rust-model-state-reads.cjs`). The budget's PUT stays Node's. `POST /internal/models/facts` (trusted-front
 check) gives the front the budget Node enforces, the sidecar names and reports and the shared folder scan; no answer
 from it is a 503. The figure is never read from `settings`: Node's boot copy decides what is enforced.
+
+## sbstndalton/noevia#2282: native tool approval decisions
+
+`rust-tool-approvals` moves POST `/api/tool-approvals/{approvalId}` to `tool_approval_routes.rs`.
+Rust owns authentication, CSRF, bounded JSON parsing, write/routing choice validation and public replies.
+The live chat Promise and chat-scoped write grant stay in Node's existing approval gate. Two trusted
+loopback endpoints expose owner-scoped pending facts and resolve exactly that entry. A random per-entry
+generation prevents expiry or ID replacement between lookup and resolution from answering a new prompt.
+The bridge checks the active account, owner, kind and generation synchronously before invoking the existing
+resolver; invalid choices never consume it. Routing remember remains strictly boolean and cannot grant writes.
+The old public Node handler is deleted and its bypass returns `RUST_TOOL_APPROVALS_OWNED`.
+Release assembly and startup require the capability and refusal together; an old/old pair remains a valid rollback.
+This supersedes the earlier sections calling the public approval endpoint chat-bound; the pending state still is.

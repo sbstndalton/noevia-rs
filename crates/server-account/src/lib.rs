@@ -19,6 +19,7 @@
 
 pub mod argon;
 pub mod rate;
+pub mod tool_approvals;
 pub mod unicode;
 pub mod util;
 

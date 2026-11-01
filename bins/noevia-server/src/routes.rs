@@ -126,6 +126,8 @@ pub enum Native {
     McpDirectory,
     /// GET /api/toolboxes/permitted (sbstndalton/noevia#2202 round 2): toolbox_routes.rs.
     ToolboxesPermitted,
+    /// POST /api/tool-approvals/{approvalId}: public decision policy, pending state in Node.
+    ToolApprovals,
 }
 
 /// The routes [`Native::McpDirectory`] implements (every method; routes.toml).
@@ -474,6 +476,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
         PROVIDERS_LIST | PROVIDER_ONE if auth => return Some(Native::Providers),
         p if auth && MCP_CREDENTIALS.contains(&p) => return Some(Native::McpCredentials),
         p if auth && MCP_DIRECTORY.contains(&p) => return Some(Native::McpDirectory),
+        server_account::tool_approvals::ROUTE if auth => return Some(Native::ToolApprovals),
         TOOLBOXES_PERMITTED if auth => return Some(Native::ToolboxesPermitted),
         "/api/instance"
         | "/.well-known/webauthn"
@@ -1413,6 +1416,19 @@ mod tests {
             assert_eq!(dispatch_under(m, &p, on), None, "{m} {p}");
         }
         assert!(crate::FEATURES.contains(&"rust-task-reads"));
+    }
+
+    #[test]
+    fn tool_approval_post_is_native_and_other_methods_stay_nodes() {
+        assert_eq!(
+            dispatch("POST", "/api/tool-approvals/a"),
+            Some(Native::ToolApprovals)
+        );
+        for method in ["GET", "HEAD", "PUT", "DELETE", "PATCH", "OPTIONS"] {
+            assert_eq!(dispatch(method, "/api/tool-approvals/a"), None);
+        }
+        assert_eq!(dispatch("POST", "/api/tool-approvals/a/extra"), None);
+        assert!(crate::FEATURES.contains(&"rust-tool-approvals"));
     }
 
     /// sbstndalton/noevia#2191 round 9: a project's configuration, its instruction skills and a

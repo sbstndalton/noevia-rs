@@ -962,7 +962,8 @@ methods = ["GET"]
 
 [[route]]
 path = "/api/tool-approvals/{approvalId}"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/toolboxes"
