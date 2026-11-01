@@ -966,10 +966,10 @@ owner = "node"
 
 [[route]]
 path = "/api/toolboxes"
-owner = "node"
+owner = "rust"
 
 # sbstndalton/noevia#2202 round 2 (rust-toolboxes-permitted): computed by the front, every method
-# (non-GET is its 405). GET /api/toolboxes stays Node's (prefill samples and live MCP state).
+# (non-GET is its 405). The sibling picker is also Rust's (#2281).
 [[route]]
 path = "/api/toolboxes/permitted"
 owner = "rust"

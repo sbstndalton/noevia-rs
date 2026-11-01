@@ -88,6 +88,8 @@ pub mod storage_metadata_worker;
 pub mod storage_read_routes;
 pub mod task_routes;
 #[cfg(feature = "rust-storage-reads")]
+pub mod toolbox_picker;
+#[cfg(feature = "rust-storage-reads")]
 pub mod toolbox_routes;
 pub mod upkeep;
 pub mod usage_routes;
@@ -235,6 +237,8 @@ use std::sync::Arc;
 /// (`mcp-discovery.json`) and writes nothing of the table.
 /// `rust-toolboxes-permitted`: `GET /api/toolboxes/permitted` (toolbox_routes.rs), computed here from
 /// the front's own state and that snapshot (core `RUST_TOOLBOXES_PERMITTED_OWNED`).
+/// `rust-toolbox-picker`: every method of `/api/toolboxes`; current account filtering and
+/// response composition in toolbox_picker.rs, selected live facts over trusted loopback.
 /// `rust-connectors`: `GET /api/connectors` and `PUT /api/connectors/nextcloud/policy`
 /// (nextcloud_routes.rs; core `RUST_CONNECTORS_OWNED`).
 ///
@@ -397,6 +401,7 @@ pub const FEATURES: &[&str] = &[
     "rust-mcp-directory",
     #[cfg(feature = "rust-storage-reads")]
     "rust-toolboxes-permitted",
+    "rust-toolbox-picker",
     #[cfg(feature = "rust-storage-reads")]
     "rust-connectors",
     // An account's deletion forgets the MCP sign-ins (rust-storage-reads) and the ChatGPT tokens
@@ -674,6 +679,7 @@ async fn handle(
                     | routes::Native::AutoRoles
                     | routes::Native::McpCredentials
                     | routes::Native::McpDirectory
+                    | routes::Native::ToolboxPicker
                     | routes::Native::ToolboxesPermitted
             )
         ) {
@@ -714,6 +720,7 @@ async fn handle(
             | routes::Native::AutoRoles
             | routes::Native::McpCredentials
             | routes::Native::McpDirectory
+            | routes::Native::ToolboxPicker
             | routes::Native::ToolboxesPermitted,
         )
         | None => false,
@@ -884,6 +891,24 @@ async fn handle(
                 reply::error(
                     StatusCode::SERVICE_UNAVAILABLE,
                     "MCP directory unavailable",
+                    true,
+                )
+            }
+        }
+        Some(routes::Native::ToolboxPicker) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            #[cfg(feature = "rust-storage-reads")]
+            {
+                toolbox_picker::serve(&app, conn, req, p).await
+            }
+            #[cfg(not(feature = "rust-storage-reads"))]
+            {
+                let _ = (p, conn, req);
+                reply::error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Toolboxes unavailable",
                     true,
                 )
             }
