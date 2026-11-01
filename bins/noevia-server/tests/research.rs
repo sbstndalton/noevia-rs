@@ -1186,7 +1186,7 @@ async fn queued_documents_are_reported_as_unavailable_without_inventing_evidence
         md.contains("2 project documents were waiting to be read"),
         "{md}"
     );
-    assert!(md.contains("not covered by this report"));
+    assert!(md.contains("coverage may be incomplete"));
     assert!(!md.contains("private-title-do-not-inject"));
     assert_eq!(
         done["result"]["sources"], 1,

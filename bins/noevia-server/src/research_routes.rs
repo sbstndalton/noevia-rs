@@ -1488,7 +1488,7 @@ fn waiting_document_count(project: &JValue) -> usize {
         .iter()
         .filter(|f| {
             f.get("document").get("state").as_str() == Some("queued")
-                && context_fit::js_trim(&js_string(&f.get("content"))).is_empty()
+                && context_fit::js_trim(f.get("content").as_str().unwrap_or_default()).is_empty()
         })
         .count()
 }
@@ -1504,11 +1504,11 @@ fn note_waiting_documents(result: &mut Value, count: usize) {
         return;
     };
     let (documents, verb, contents) = if count == 1 {
-        ("document", "was", "Its contents are")
+        ("document", "was", "Its text was")
     } else {
-        ("documents", "were", "Their contents are")
+        ("documents", "were", "Their text was")
     };
-    let note = format!("> **Source availability:** {count} project {documents} {verb} waiting to be read when research started. {contents} unavailable and are not covered by this report.\n\n");
+    let note = format!("> **Source availability:** {count} project {documents} {verb} waiting to be read when research started. {contents} unavailable at that point, so this report's coverage may be incomplete.\n\n");
     let annotated = match text.split_once("\n\n") {
         Some((title, rest)) => format!("{title}\n\n{note}{rest}"),
         None => format!("{note}{text}"),
