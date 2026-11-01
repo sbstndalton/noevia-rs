@@ -1313,9 +1313,12 @@ impl Account {
         waiting_documents: usize,
     ) -> Result<JValue, Fail> {
         let (acc, project, body) = (self.clone(), project.to_owned(), body.clone());
-        tokio::spawn(async move { acc.start_job(&project, project_model, &body, waiting_documents).await })
-            .await
-            .map_err(|_| fail(500, "Research request failed"))?
+        tokio::spawn(async move {
+            acc.start_job(&project, project_model, &body, waiting_documents)
+                .await
+        })
+        .await
+        .map_err(|_| fail(500, "Research request failed"))?
     }
 
     async fn start_job(
@@ -1478,18 +1481,33 @@ fn js_string(v: &JValue) -> String {
 /// #2254: queued documents with no prior text are absent from retrieval, not empty evidence.
 /// Count only this account's authorized project snapshot; names and contents are never put in the notice.
 fn waiting_document_count(project: &JValue) -> usize {
-    let JValue::Arr(files) = project.get("files") else { return 0; };
-    files.iter().filter(|f| {
-        f.get("document").get("state").as_str() == Some("queued")
-            && context_fit::js_trim(&js_string(&f.get("content"))).is_empty()
-    }).count()
+    let JValue::Arr(files) = project.get("files") else {
+        return 0;
+    };
+    files
+        .iter()
+        .filter(|f| {
+            f.get("document").get("state").as_str() == Some("queued")
+                && context_fit::js_trim(&js_string(&f.get("content"))).is_empty()
+        })
+        .count()
 }
 
 fn note_waiting_documents(result: &mut Value, count: usize) {
-    if count == 0 { return; }
-    let Some(markdown) = result.get_mut("markdown") else { return; };
-    let Some(text) = markdown.as_str() else { return; };
-    let (documents, verb, contents) = if count == 1 { ("document", "was", "Its contents are") } else { ("documents", "were", "Their contents are") };
+    if count == 0 {
+        return;
+    }
+    let Some(markdown) = result.get_mut("markdown") else {
+        return;
+    };
+    let Some(text) = markdown.as_str() else {
+        return;
+    };
+    let (documents, verb, contents) = if count == 1 {
+        ("document", "was", "Its contents are")
+    } else {
+        ("documents", "were", "Their contents are")
+    };
     let note = format!("> **Source availability:** {count} project {documents} {verb} waiting to be read when research started. {contents} unavailable and are not covered by this report.\n\n");
     let annotated = match text.split_once("\n\n") {
         Some((title, rest)) => format!("{title}\n\n{note}{rest}"),
@@ -1673,7 +1691,12 @@ pub async fn serve(
                 }
                 let parsed = read_json(body).await?;
                 let view = account
-                    .start(&project_id, project_model_of(&project), &parsed, waiting_document_count(&project))
+                    .start(
+                        &project_id,
+                        project_model_of(&project),
+                        &parsed,
+                        waiting_document_count(&project),
+                    )
                     .await?;
                 Ok(answer(202, &view))
             }

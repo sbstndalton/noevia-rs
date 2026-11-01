@@ -1153,9 +1153,15 @@ async fn a_second_account_with_the_same_project_id_cannot_read_list_cancel_or_sa
 /// #2254: a report cannot silently imply it searched the contents of documents still awaiting extraction.
 #[tokio::test]
 async fn queued_documents_are_reported_as_unavailable_without_inventing_evidence() {
-    let f = front(Some("true"), lease_node(), engine_saying("The tower is 50 metres tall [S1].")).await;
+    let f = front(
+        Some("true"),
+        lease_node(),
+        engine_saying("The tower is 50 metres tall [S1]."),
+    )
+    .await;
     let file = f.user_dir().join("projects.json");
-    let mut projects: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    let mut projects: Value =
+        serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
     projects["projects"][0]["files"] = json!([
         {"name":"private-title-do-not-inject.pdf","content":" ","document":{"state":"queued"}},
         {"name":"other.pdf","document":{"state":"queued"}},
@@ -1164,15 +1170,27 @@ async fn queued_documents_are_reported_as_unavailable_without_inventing_evidence
         {"name":"ready.txt","content":"Readable", "document":{"state":"ready"}}
     ]);
     std::fs::write(file, projects.to_string()).unwrap();
-    let (s, v) = f.call("POST", "/api/projects/p1/research", r#"{"question":"How tall is the tower?"}"#).await;
+    let (s, v) = f
+        .call(
+            "POST",
+            "/api/projects/p1/research",
+            r#"{"question":"How tall is the tower?"}"#,
+        )
+        .await;
     assert_eq!(s, 202, "{v}");
     let id = v["id"].as_str().unwrap();
     let done = f.job_until(id, |j| j["status"] != "running").await;
     assert_eq!(done["status"], "completed", "{done}");
     let md = done["result"]["markdown"].as_str().unwrap();
-    assert!(md.contains("2 project documents were waiting to be read"), "{md}");
+    assert!(
+        md.contains("2 project documents were waiting to be read"),
+        "{md}"
+    );
     assert!(md.contains("not covered by this report"));
     assert!(!md.contains("private-title-do-not-inject"));
-    assert_eq!(done["result"]["sources"], 1, "the notice creates no evidence");
+    assert_eq!(
+        done["result"]["sources"], 1,
+        "the notice creates no evidence"
+    );
     assert!(done["artifacts"].as_array().is_some_and(|a| !a.is_empty()));
 }
