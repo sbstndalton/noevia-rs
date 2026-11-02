@@ -87,6 +87,7 @@ pub mod storage_metadata_worker;
 #[cfg(feature = "rust-storage-reads")]
 pub mod storage_read_routes;
 pub mod task_routes;
+pub mod tool_approval_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod toolbox_picker;
 #[cfg(feature = "rust-storage-reads")]
@@ -340,6 +341,7 @@ pub const FEATURES: &[&str] = &[
     "project-store",
     "rust-research",
     "rust-task-reads",
+    "rust-tool-approvals",
     server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER,
     "rust-auth",
     "rust-diary",
@@ -682,6 +684,7 @@ async fn handle(
                     | routes::Native::McpDirectory
                     | routes::Native::ToolboxPicker
                     | routes::Native::ToolboxesPermitted
+                    | routes::Native::ToolApprovals
             )
         ) {
             native = on_whatwg;
@@ -722,7 +725,8 @@ async fn handle(
             | routes::Native::McpCredentials
             | routes::Native::McpDirectory
             | routes::Native::ToolboxPicker
-            | routes::Native::ToolboxesPermitted,
+            | routes::Native::ToolboxesPermitted
+            | routes::Native::ToolApprovals,
         )
         | None => false,
     };
@@ -895,6 +899,12 @@ async fn handle(
                     true,
                 )
             }
+        }
+        Some(routes::Native::ToolApprovals) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            tool_approval_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::ToolboxPicker) => {
             let Some(p) = whatwg else {
