@@ -126,6 +126,12 @@ pub enum Native {
     McpDirectory,
     /// GET /api/toolboxes/permitted (sbstndalton/noevia#2202 round 2): toolbox_routes.rs.
     ToolboxesPermitted,
+    /// POST /api/models/autotune/settings and every other method's refusal (#2287).
+    AutotuneSettings,
+    /// POST /api/tool-approvals/{approvalId}: public decision policy, pending state in Node.
+    ToolApprovals,
+    /// GET /api/toolboxes and every other method's 405 (#2281).
+    ToolboxPicker,
 }
 
 /// The routes [`Native::McpDirectory`] implements (every method; routes.toml).
@@ -475,6 +481,9 @@ pub fn native_for(route: &Route) -> Option<Native> {
         PROVIDERS_LIST | PROVIDER_ONE if auth => return Some(Native::Providers),
         p if auth && MCP_CREDENTIALS.contains(&p) => return Some(Native::McpCredentials),
         p if auth && MCP_DIRECTORY.contains(&p) => return Some(Native::McpDirectory),
+        "/api/models/autotune/settings" if auth => return Some(Native::AutotuneSettings),
+        server_account::tool_approvals::ROUTE if auth => return Some(Native::ToolApprovals),
+        "/api/toolboxes" if auth => return Some(Native::ToolboxPicker),
         TOOLBOXES_PERMITTED if auth => return Some(Native::ToolboxesPermitted),
         "/api/instance"
         | "/.well-known/webauthn"
@@ -731,6 +740,8 @@ mod tests {
                 Some(Native::Diary) if DIARY_ROUTES.contains(&r.path) => {}
                 Some(Native::Providers) if r.path == PROVIDERS_LIST || r.path == PROVIDER_ONE => {}
                 Some(Native::McpDirectory) if MCP_DIRECTORY.contains(&r.path) => {}
+                Some(Native::AutotuneSettings) if r.path == "/api/models/autotune/settings" => {}
+                Some(Native::ToolboxPicker) if r.path == "/api/toolboxes" => {}
                 Some(Native::ToolboxesPermitted) if r.path == TOOLBOXES_PERMITTED => {}
                 Some(_) => assert!(!is_account_path(r.path), "{} is an account path", r.path),
                 other @ None => assert!(
@@ -1295,7 +1306,6 @@ mod tests {
             "/api/models/autotune/cancel",
             "/api/models/autotune/clear",
             "/api/models/autotune/resume",
-            "/api/models/autotune/settings",
             "/api/models/autotune/untuned",
             "/api/models/calibration",
             "/api/models/delete",
@@ -1326,6 +1336,7 @@ mod tests {
         assert_eq!(
             rust,
             vec![
+                (crate::autotune_settings_routes::PATH, &[][..]),
                 (crate::calibration_cancel_routes::PATH, &[][..]),
                 (crate::model_routes::CAPABILITIES, &["GET"][..]),
                 (crate::model_sizing::ESTIMATE, &["GET"][..]),
@@ -1421,6 +1432,19 @@ mod tests {
             assert_eq!(dispatch_under(m, &p, on), None, "{m} {p}");
         }
         assert!(crate::FEATURES.contains(&"rust-task-reads"));
+    }
+
+    #[test]
+    fn tool_approval_post_is_native_and_other_methods_stay_nodes() {
+        assert_eq!(
+            dispatch("POST", "/api/tool-approvals/a"),
+            Some(Native::ToolApprovals)
+        );
+        for method in ["GET", "HEAD", "PUT", "DELETE", "PATCH", "OPTIONS"] {
+            assert_eq!(dispatch(method, "/api/tool-approvals/a"), None);
+        }
+        assert_eq!(dispatch("POST", "/api/tool-approvals/a/extra"), None);
+        assert!(crate::FEATURES.contains(&"rust-tool-approvals"));
     }
 
     /// sbstndalton/noevia#2191 round 9: a project's configuration, its instruction skills and a

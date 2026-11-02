@@ -309,10 +309,13 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     // instruction-skill paths and the manifests, the skill install and an account's deletion: 28; #2210 moved
     // the preset reload's POST, the evidence read and the model-card import: 25; #2218 moved the research
     // paths, of which only the list was a listed Node route: 24; #2257 moved the active list and a project's
-    // Code and Browser reads: 21; #2262 moved GET inference-budget and GET installed: 19).
-    assert!(node_routes >= 18, "{node_routes} node routes");
+    // Code and Browser reads: 21; #2262 model reads: 19; #2281 toolbox: 18;
+    // #2282 approval: 17; #2287 settings: 16; #2292 calibration cancellation: 15.
+    assert!(node_routes >= 15, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
+        ("GET", "/api/tool-approvals/a"),
+        ("POST", "/api/tool-approvals/a/"),
         ("POST", "/api/ready"),
         ("HEAD", "/api/ready"),
         ("POST", "/"),
