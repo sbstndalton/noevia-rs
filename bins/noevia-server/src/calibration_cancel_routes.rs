@@ -199,7 +199,17 @@ mod tests {
         };
         for case in cases {
             if case.get("job").get("status").as_str() == Some("running") {
-                assert_eq!(public_job(case.get("job")).as_ref(), Some(case.get("body")));
+                let out = public_job(case.get("job")).expect("running job");
+                let JValue::Obj(expected) = case.get("body") else {
+                    unreachable!()
+                };
+                let JValue::Obj(actual) = &out else {
+                    unreachable!()
+                };
+                assert_eq!(actual.len(), expected.len());
+                for (key, value) in expected {
+                    assert_eq!(out.get(key), value, "{key}");
+                }
             } else {
                 assert_eq!(case.get("status").as_num(), Some(409.0));
             }

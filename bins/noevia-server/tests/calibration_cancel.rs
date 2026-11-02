@@ -12,9 +12,14 @@ const PATH: &str = "/api/models/calibration/cancel";
 const FACTS: &str = "/internal/calibration-cancel/facts";
 const ABORT: &str = "/internal/calibration-cancel/abort";
 fn job() -> Value {
-    let cases: Value =
-        serde_json::from_str(include_str!("fixtures/calibration-cancel-node.json")).unwrap();
-    cases[1]["body"].clone()
+    // The complete oracle includes a lone-surrogate case: read it losslessly, then select the
+    // ordinary synthetic job before converting that one case to serde_json for the HTTP stub.
+    let cases =
+        js_json::wtf16::parse(include_str!("fixtures/calibration-cancel-node.json")).unwrap();
+    let js_json::JValue::Arr(cases) = cases else {
+        panic!("oracle array")
+    };
+    serde_json::from_str(&js_json::wtf16::stringify(cases[1].get("body")).unwrap()).unwrap()
 }
 fn facts() -> Value {
     json!({"available":true,"token":"a".repeat(64),"generation":"b".repeat(64),"job":job()})
