@@ -1,6 +1,6 @@
 //! #2286: the public 1×1 image recheck. Live admission stays with Node's engine arbiter;
 //! the request, bounded response, identity comparison and evidence write are native.
-use super::{evidence_live::Failure, Maint};
+use super::evidence_live::Failure;
 use crate::{identity, reply, App};
 use axum::{
     body::Body,
