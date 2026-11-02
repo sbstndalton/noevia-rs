@@ -361,6 +361,7 @@ pub const FEATURES: &[&str] = &[
     "rust-offsite-backup",
     "rust-model-sizing",
     "rust-model-maintenance",
+    "rust-model-evidence-recheck",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",

@@ -565,7 +565,8 @@ methods = ["POST"]
 
 [[route]]
 path = "/api/models/evidence/recheck"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/models/hardware"

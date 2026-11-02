@@ -1415,6 +1415,21 @@ mod tests {
         assert!(crate::FEATURES.contains(&"rust-task-reads"));
     }
 
+    #[test]
+    fn evidence_recheck_is_native_only_for_post() {
+        assert_eq!(
+            dispatch("POST", crate::model_maint::evidence_recheck::PATH),
+            Some(Native::Models)
+        );
+        for m in ["GET", "HEAD", "PUT", "DELETE", "OPTIONS"] {
+            assert_eq!(
+                dispatch(m, crate::model_maint::evidence_recheck::PATH),
+                None
+            );
+        }
+        assert!(crate::FEATURES.contains(&"rust-model-evidence-recheck"));
+    }
+
     /// sbstndalton/noevia#2191 round 9: a project's configuration, its instruction skills and a
     /// published skill's install are the front's for their methods only.
     #[test]
