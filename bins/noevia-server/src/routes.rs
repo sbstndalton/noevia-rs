@@ -126,6 +126,8 @@ pub enum Native {
     McpDirectory,
     /// GET /api/toolboxes/permitted (sbstndalton/noevia#2202 round 2): toolbox_routes.rs.
     ToolboxesPermitted,
+    /// POST /api/models/autotune/settings and every other method's refusal (#2287).
+    AutotuneSettings,
     /// POST /api/tool-approvals/{approvalId}: public decision policy, pending state in Node.
     ToolApprovals,
     /// GET /api/toolboxes and every other method's 405 (#2281).
@@ -478,6 +480,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
         PROVIDERS_LIST | PROVIDER_ONE if auth => return Some(Native::Providers),
         p if auth && MCP_CREDENTIALS.contains(&p) => return Some(Native::McpCredentials),
         p if auth && MCP_DIRECTORY.contains(&p) => return Some(Native::McpDirectory),
+        "/api/models/autotune/settings" if auth => return Some(Native::AutotuneSettings),
         server_account::tool_approvals::ROUTE if auth => return Some(Native::ToolApprovals),
         "/api/toolboxes" if auth => return Some(Native::ToolboxPicker),
         TOOLBOXES_PERMITTED if auth => return Some(Native::ToolboxesPermitted),
@@ -736,6 +739,7 @@ mod tests {
                 Some(Native::Diary) if DIARY_ROUTES.contains(&r.path) => {}
                 Some(Native::Providers) if r.path == PROVIDERS_LIST || r.path == PROVIDER_ONE => {}
                 Some(Native::McpDirectory) if MCP_DIRECTORY.contains(&r.path) => {}
+                Some(Native::AutotuneSettings) if r.path == "/api/models/autotune/settings" => {}
                 Some(Native::ToolboxPicker) if r.path == "/api/toolboxes" => {}
                 Some(Native::ToolboxesPermitted) if r.path == TOOLBOXES_PERMITTED => {}
                 Some(_) => assert!(!is_account_path(r.path), "{} is an account path", r.path),
@@ -1294,7 +1298,6 @@ mod tests {
             "/api/models/autotune/cancel",
             "/api/models/autotune/clear",
             "/api/models/autotune/resume",
-            "/api/models/autotune/settings",
             "/api/models/autotune/untuned",
             "/api/models/calibration",
             "/api/models/calibration/cancel",
@@ -1326,6 +1329,7 @@ mod tests {
         assert_eq!(
             rust,
             vec![
+                (crate::autotune_settings_routes::PATH, &[][..]),
                 (crate::model_routes::CAPABILITIES, &["GET"][..]),
                 (crate::model_sizing::ESTIMATE, &["GET"][..]),
                 (crate::model_maint::EVIDENCE, &["GET"][..]),
