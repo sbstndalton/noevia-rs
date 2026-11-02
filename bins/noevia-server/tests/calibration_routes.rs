@@ -17,7 +17,7 @@ fn listing() -> Value {
     json!({"available":true,"backend":true,"row":{"id":"synthetic","meta":{"n_ctx_train":32768}},"system":false,"rowToken":"b".repeat(64)})
 }
 fn prepared() -> Value {
-    json!({"available":true,"row":{"id":"synthetic","meta":{"n_ctx_train":32768}},"system":false,"profile":{"exists":false,"fields":["parallel","cache-type-k","ctx-size"]},"conservative":{"native":65536,"values":{"parallel":"2","cache-type-k":"q8_0","ctx-size":"8192","unknown":"no"}},"ladderReady":true,"preparedToken":"c".repeat(64)})
+    json!({"available":true,"row":{"id":"synthetic","meta":{"n_ctx_train":32768}},"system":false,"profile":{"exists":false,"fields":["parallel","cache-type-k","ctx-size"]},"conservative":{"native":65536,"values":{"parallel":"2","cache-type-k":"q8_0","ctx-size":"8192","unknown":"no"}},"ladderReady":true,"identityReady":true,"identity":{"arch":null,"quant":null,"artifact":"synthetic-artifact","build":null,"profile":"d".repeat(64),"hardware":null},"preparedToken":"c".repeat(64)})
 }
 async fn rig() -> (tempfile::TempDir, Front, Upstream) {
     let d = tempfile::tempdir().unwrap();
@@ -200,4 +200,26 @@ async fn bad_actor_schema_and_lone_surrogate_selector_fail_closed() {
     up.set(|_| reply("200 OK", r#"{"available":true}"#));
     assert_eq!(get(f.addr, PATH, ADMIN).await.0, 503);
     assert_eq!(write(f.addr, "POST", PATH, ADMIN, ASK).await.0, 503);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn unavailable_or_malformed_actual_identity_cannot_launch_a_worker() {
+    let (_d, f, up) = rig().await;
+    for identity in [Value::Null, json!({"artifact":"only-one-field"})] {
+        up.set(move |r| {
+            let mut v = if r.path.ends_with("/facts") {
+                facts()
+            } else if r.path.ends_with("/listing") {
+                listing()
+            } else {
+                prepared()
+            };
+            if r.path.ends_with("/prepare") {
+                v["identity"] = identity.clone();
+            }
+            reply("200 OK", &v.to_string())
+        });
+        assert_eq!(write(f.addr, "POST", PATH, ADMIN, ASK).await.0, 503);
+    }
+    assert_eq!(up.count(&format!("{PREFIX}launch")), 0);
 }

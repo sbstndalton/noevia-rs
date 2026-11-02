@@ -164,6 +164,27 @@ fn public_job(job: &JValue) -> Option<JValue> {
             .collect(),
     ))
 }
+fn identity_ready(value: &JValue) -> bool {
+    let JValue::Obj(fields) = value else {
+        return false;
+    };
+    fields.len() == 6
+        && fields.iter().all(|(k, _)| {
+            ["arch", "quant", "artifact", "build", "profile", "hardware"].contains(&k.as_str())
+        })
+        && ["arch", "quant", "hardware"]
+            .iter()
+            .all(|k| matches!(value.get(k), JValue::Null | JValue::Str(_)))
+        && value
+            .get("artifact")
+            .as_str()
+            .is_some_and(|s| !s.is_empty())
+        && opaque(value, "profile").is_some()
+        && matches!(
+            value.get("build"),
+            JValue::Null | JValue::Str(_) | JValue::Obj(_)
+        )
+}
 fn plan(facts: &JValue, budget: f64) -> Option<JValue> {
     let profile = facts.get("profile");
     let exists = profile.get("exists").as_bool()?;
@@ -379,6 +400,11 @@ pub async fn serve(
     }
     if prepared.get("backend").as_bool() == Some(false) {
         return error(502, "The model server is not responding.");
+    }
+    if prepared.get("identityReady").as_bool() != Some(true)
+        || !identity_ready(prepared.get("identity"))
+    {
+        return unavailable();
     }
     if prepared.get("row").get("id").as_str() != Some(model.as_str())
         || prepared.get("system").as_bool() != Some(false)
