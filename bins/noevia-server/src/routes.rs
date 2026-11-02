@@ -452,7 +452,8 @@ pub fn native_for(route: &Route) -> Option<Native> {
         p if auth && DIARY_ROUTES.contains(&p) => return Some(Native::Diary),
         p if auth
             && (crate::model_routes::ROUTES.contains(&p)
-                || crate::model_maint::ROUTES.contains(&p)) =>
+                || crate::model_maint::ROUTES.contains(&p)
+                || p == crate::calibration_cancel_routes::PATH) =>
         {
             return Some(Native::Models)
         }
@@ -1280,6 +1281,13 @@ mod tests {
         assert!(crate::FEATURES.contains(&"rust-model-sizing"));
         assert!(crate::FEATURES.contains(&"rust-model-state-reads"));
         assert!(crate::FEATURES.contains(&"rust-model-maintenance"));
+        assert!(crate::FEATURES.contains(&"rust-calibration-cancel"));
+        for method in ["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"] {
+            assert_eq!(
+                dispatch_under(method, crate::calibration_cancel_routes::PATH, on),
+                Some(Native::Models)
+            );
+        }
         for p in [
             "/api/model-manager",
             "/api/model-manager/models",
@@ -1290,7 +1298,6 @@ mod tests {
             "/api/models/autotune/settings",
             "/api/models/autotune/untuned",
             "/api/models/calibration",
-            "/api/models/calibration/cancel",
             "/api/models/delete",
             "/api/models/evidence/recheck",
             "/api/models/load",
@@ -1319,6 +1326,7 @@ mod tests {
         assert_eq!(
             rust,
             vec![
+                (crate::calibration_cancel_routes::PATH, &[][..]),
                 (crate::model_routes::CAPABILITIES, &["GET"][..]),
                 (crate::model_sizing::ESTIMATE, &["GET"][..]),
                 (crate::model_maint::EVIDENCE, &["GET"][..]),
