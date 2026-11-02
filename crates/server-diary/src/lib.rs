@@ -36,6 +36,7 @@ pub mod client;
 pub mod config;
 pub mod connector;
 pub mod exchanges;
+pub mod local_exchange;
 pub mod routes;
 pub mod tenant;
 
