@@ -18,7 +18,7 @@ fn job() -> Value {
     let js_json::JValue::Arr(cases) = cases else {
         panic!("oracle array")
     };
-    serde_json::from_str(&js_json::wtf16::stringify(cases[1].get("body")).unwrap()).unwrap()
+    serde_json::from_str(&js_json::wtf16::stringify(cases[2].get("body")).unwrap()).unwrap()
 }
 fn facts() -> Value {
     json!({"available":true,"token":"a".repeat(64),"generation":"b".repeat(64),"job":job()})
