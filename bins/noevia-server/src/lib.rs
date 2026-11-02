@@ -41,6 +41,7 @@ pub mod mcp_routes;
 pub mod mcp_tools;
 pub mod model_kind;
 pub mod model_maint;
+pub mod model_manager_scan;
 pub mod model_routes;
 pub mod model_sizing;
 pub mod model_state_routes;
@@ -375,6 +376,7 @@ pub const FEATURES: &[&str] = &[
     "rust-model-sizing",
     "rust-model-maintenance",
     "rust-calibration-cancel",
+    "rust-model-manager-scan",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",

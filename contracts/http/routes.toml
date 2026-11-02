@@ -501,6 +501,11 @@ path = "/api/model-manager"
 owner = "node"
 
 [[route]]
+path = "/api/model-manager/models"
+owner = "rust"
+methods = ["GET"]
+
+[[route]]
 path = "/api/models/autotune"
 owner = "node"
 
