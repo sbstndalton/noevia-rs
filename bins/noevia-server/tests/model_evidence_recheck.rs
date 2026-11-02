@@ -51,6 +51,9 @@ struct World {
 }
 impl World {
     async fn new(kind: &str) -> Self {
+        Self::with_default(kind, None).await
+    }
+    async fn with_default(kind: &str, default: Option<String>) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let _db = seed_database(dir.path());
         let models = dir.path().join("models");
@@ -86,8 +89,9 @@ impl World {
             &[
                 ("MODEL_MANAGER_KIND".into(), kind.into()),
                 ("MODEL_MANAGER_BASE_URL".into(), base.clone()),
-                ("INFERENCE_BASE_URL".into(), base),
-                ("INFERENCE_API_KEY".into(), "synthetic-key".into()),
+                ("INFERENCE_BASE_URL".into(), default.unwrap_or(base)),
+                ("INFERENCE_API_KEY".into(), "unused-default-key".into()),
+                ("MODEL_MANAGER_API_KEY".into(), "synthetic-key".into()),
                 ("LLAMACPP_PRESET_PATH".into(), ini.display().to_string()),
                 ("LLAMACPP_MODELS_PATH".into(), models.display().to_string()),
                 (
@@ -264,6 +268,16 @@ async fn missing_projector_records_failed_while_other_probe_or_admission_errors_
     assert_eq!(s, 503);
     assert!(b["error"].as_str().unwrap().contains("HTTP 500"));
     assert!(bad.records().is_empty());
+    {
+        let mut state = bad.state.lock().unwrap();
+        state.status = 200;
+        state.body = json!({"error":{"message":"private provider failure"}}).to_string();
+    }
+    let (status, body) = bad.post(BODY, Some(ADMIN)).await;
+    assert_eq!(status, 503);
+    assert!(!body.to_string().contains("private provider failure"));
+    assert!(bad.records().is_empty());
+
     let refused = World::new("llamacpp").await;
     refused.state.lock().unwrap().admission = 409;
     assert_eq!(
@@ -328,4 +342,33 @@ async fn bounded_detached_work_survives_browser_disconnect_and_releases_its_leas
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     assert!(w.dir.path().exists());
+}
+
+#[tokio::test]
+async fn a_distinct_default_provider_response_cannot_qualify_the_manager_engine() {
+    let (a_port, a_seen) = engine(Arc::new(|_| Answer::Reply(200, "{}".into()))).await;
+    let manager =
+        World::with_default("llamacpp", Some(format!("http://127.0.0.1:{a_port}/v1"))).await;
+    manager.state.lock().unwrap().status = 500;
+    assert_eq!(manager.post(BODY, Some(ADMIN)).await.0, 503);
+    assert!(
+        a_seen.lock().unwrap().is_empty(),
+        "default provider A must never be probed for manager B evidence"
+    );
+    assert!(manager.records().is_empty());
+    manager.state.lock().unwrap().status = 200;
+    let (status, body) = manager.post(BODY, Some(ADMIN)).await;
+    assert_eq!(status, 200);
+    assert_eq!(manager.records()[0]["identityHash"], body["identityHash"]);
+    assert!(a_seen.lock().unwrap().is_empty());
+    let seen = manager.router.lock().unwrap();
+    let probes: Vec<_> = seen
+        .iter()
+        .filter(|r| r.target == "/v1/chat/completions")
+        .collect();
+    assert_eq!(probes.len(), 2);
+    for probe in probes {
+        assert_eq!(probe.headers["authorization"], "Bearer synthetic-key");
+        assert_eq!(probe.headers["x-noevia-lease"], "syntheticLease1");
+    }
 }

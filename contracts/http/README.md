@@ -1715,12 +1715,15 @@ one-model queue and maintenance exclusion remain the shared arbiter. No new publ
 endpoint is introduced. The Node POST policy and its obsolete inbox-wait tests are removed; other
 methods retain Node's role check and 405.
 
-The operation holds admission until filing finishes, sends its gate lease header to the configured
-default provider and cancels the HTTP request when that lease is lost. One detached recheck may run
+The operation holds admission until filing finishes, sends its gate lease header and the manager credentials through the exact router object
+used for identity reads and cancels the HTTP request when that lease is lost. One detached recheck may run
 at a time, so a browser disconnect cannot strand an unbounded set of probes. The model identity is
 captured before the probe and compared afterwards; a changed identity returns 503 without filing.
 The record is stamped with the carried measurement identity. Missing-projector rejection records
-failed vision evidence as before; an ordinary HTTP/network error does not qualify the model.
+failed vision evidence as before; an ordinary HTTP/network error or an error envelope under HTTP200 does not qualify the model.
+The old Node probe used the default chat provider, which can differ from the manager: it could
+qualify manager B from engine A's answer. The native probe uses manager B's exact target and key;
+no gate/upstream or provider/manager alias is inferred. A two-engine synthetic regression covers this.
 Lone-surrogate model identifiers are refused before admission because they cannot name a UTF-8
 router model, preventing the internal WTF-16 mapping from targeting a different identifier.
 

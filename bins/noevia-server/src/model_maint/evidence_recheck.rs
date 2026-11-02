@@ -10,9 +10,8 @@ use axum::{
 use engine_admission::{Admission, Ask, Lease};
 use js_json::JValue;
 use model_stream::Cancel;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::{sync::Arc, time::Duration};
-use zeroize::Zeroizing;
 
 pub const PATH: &str = "/api/models/evidence/recheck";
 const PIXEL: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
@@ -26,9 +25,6 @@ const CATEGORY: &str =
 const LIMIT: usize = 64 * 1024;
 
 pub struct Recheck {
-    client: reqwest::Client,
-    url: String,
-    key: Option<Zeroizing<String>>,
     admission: Arc<Admission>,
     slots: Arc<tokio::sync::Semaphore>,
 }
@@ -39,16 +35,7 @@ impl std::fmt::Debug for Recheck {
 }
 impl Recheck {
     pub fn new(get: &impl Fn(&str) -> Option<String>) -> Result<Self, String> {
-        let (models, key) = crate::health_routes::default_provider_probe(get);
-        let root = models.strip_suffix("/models").unwrap_or(&models);
         Ok(Self {
-            client: reqwest::Client::builder()
-                .no_proxy()
-                .redirect(reqwest::redirect::Policy::none())
-                .build()
-                .map_err(|_| "image probe client unavailable")?,
-            url: format!("{root}/chat/completions"),
-            key: key.map(Zeroizing::new),
             slots: Arc::new(tokio::sync::Semaphore::new(1)),
             admission: Arc::new(Admission::new(
                 &get("NOEVIA_LEGACY_UPSTREAM").unwrap_or_default(),
@@ -56,15 +43,14 @@ impl Recheck {
             )?),
         })
     }
-    async fn probe(&self, model: &str, lease: &Lease) -> Result<bool, Failure> {
+    async fn probe(
+        router: &super::router::Router,
+        model: &str,
+        lease: &Lease,
+    ) -> Result<bool, Failure> {
         let request = async {
-            let mut req = self.client.post(&self.url).json(&json!({"model":model,"max_tokens":1,"messages":[{"role":"user","content":[{"type":"text","text":"ok"},{"type":"image_url","image_url":{"url":format!("data:image/png;base64,{PIXEL}")}}]}]}));
-            if let Some(key) = &self.key {
-                req = req.bearer_auth(key.as_str());
-            }
-            for (name, value) in lease.headers() {
-                req = req.header(name.as_str(), value.as_str());
-            }
+            let payload = json!({"model":model,"max_tokens":1,"messages":[{"role":"user","content":[{"type":"text","text":"ok"},{"type":"image_url","image_url":{"url":format!("data:image/png;base64,{PIXEL}")}}]}]});
+            let req = router.image_probe_request(&payload, lease.headers());
             let mut res = req.send().await.map_err(|_| unavailable(UNREACHABLE))?;
             let status = res.status();
             // fetch(... redirect:'error') never follows or accepts a redirect.
@@ -85,6 +71,13 @@ impl Recheck {
                 }
             }
             if status.is_success() {
+                if serde_json::from_slice::<Value>(&bytes)
+                    .ok()
+                    .and_then(|v| v.get("error").map(|e| !e.is_null()))
+                    .unwrap_or(false)
+                {
+                    return Err(unavailable("The inference server returned an error for the image probe. Check model configuration and server availability."));
+                }
                 return Ok(true);
             }
             let body = String::from_utf8_lossy(&bytes).to_ascii_lowercase();
@@ -195,9 +188,12 @@ pub async fn serve(app: &Arc<App>, req: Request<Body>) -> Response<Body> {
                 .compute_identity(&model)
                 .await
                 .map_err(super::failure)?;
-            let supported = maint
-                .recheck
-                .probe(&model, &lease)
+            let router = maint.router.as_ref().ok_or_else(|| {
+                super::failure(unavailable(
+                    "Qualification evidence needs the native engine",
+                ))
+            })?;
+            let supported = Recheck::probe(router, &model, &lease)
                 .await
                 .map_err(super::failure)?;
             if let Err(r) = admin(&app, creds).await {
