@@ -1292,7 +1292,6 @@ mod tests {
             "/api/models/calibration",
             "/api/models/calibration/cancel",
             "/api/models/delete",
-            "/api/models/evidence/recheck",
             "/api/models/load",
             "/api/models/machines",
             "/api/models/preset",
@@ -1307,7 +1306,7 @@ mod tests {
                 assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
             }
         }
-        // Exactly the two model routes are the front's in the contract, GET only.
+        // All native model routes appear in the contract with exactly their owned methods.
         let rust: Vec<_> = ROUTES
             .iter()
             .filter(|r| {
@@ -1323,6 +1322,7 @@ mod tests {
                 (crate::model_sizing::ESTIMATE, &["GET"][..]),
                 (crate::model_maint::EVIDENCE, &["GET"][..]),
                 (crate::model_maint::EVIDENCE_IMPORT, &["POST"][..]),
+                (crate::model_maint::evidence_recheck::PATH, &["POST"][..]),
                 (crate::model_routes::HARDWARE, &["GET"][..]),
                 (crate::model_state_routes::BUDGET, &["GET"][..]),
                 (crate::model_state_routes::INSTALLED, &["GET"][..]),
