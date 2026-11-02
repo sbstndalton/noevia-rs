@@ -1284,8 +1284,8 @@ Nextcloud half is the storage connection joined with the tool permission store (
 the discovery snapshot Node publishes (which MCP tools exist and which write). Both halves publish together or not at all.
 
 Chat-bound, by design: `POST /api/tool-approvals` (the parked approval promise lives in the live chat loop; the
-three actions - Allow once, Decline, Allow for this chat - and their tenant scope stay in Node) and `GET
-/api/toolboxes` (prefill samples come from the chat stream, the MCP block from live discovery state).
+three actions - Allow once, Decline, Allow for this chat - and their tenant scope stay in Node).
+The toolbox picker moved to Rust in #2281; Node supplies only live discovery and prefill facts.
 
 ## sbstndalton/noevia#2202 round 2: the admin MCP directory, the permitted tools and the connectors list
 
@@ -1366,8 +1366,7 @@ Review of round 2 (the limits and the rollbacks):
    description) are put back on the output so everything else is compared exactly.
 
 Still Node's, on purpose: the MCP client itself (a chat's live sessions, `mcp.cjs`, `mcp-wiring.cjs`),
-`POST /api/tool-approvals/{id}` (the parked approval is in the live chat loop) and `GET /api/toolboxes` (prefill
-samples come from the chat stream; the MCP block from live discovery).
+`POST /api/tool-approvals/{id}` (the parked approval is in the live chat loop). The picker moved in #2281, below.
 
 ## sbstndalton/noevia#2191 round 8 (group rust-project-source-work): the front runs the source operations
 
@@ -1704,6 +1703,22 @@ the capability `rust-model-state-reads`; Core refuses both with 503 `RUST_MODEL_
 (`server/rust-model-state-reads.cjs`). The budget's PUT stays Node's. `POST /internal/models/facts` (trusted-front
 check) gives the front the budget Node enforces, the sidecar names and reports and the shared folder scan; no answer
 from it is a 503. The figure is never read from `settings`: Node's boot copy decides what is enforced.
+
+## sbstndalton/noevia#2281: the toolbox picker
+
+`rust-toolbox-picker` owns every method of `/api/toolboxes`, including its non-GET 405s.
+`toolbox_picker.rs` authenticates the account and reads its current Drive connection;
+`server-projects::toolbox_picker` composes summaries, UTF-16 token estimates, prefill observations
+and redacted MCP status. The old Node public handler, summary helper and MCP status helper are removed.
+`POST /internal/toolbox-picker/facts` accepts an empty object from the trusted loopback front only;
+Node awaits discovery and supplies selected raw offered definitions and live observations. It receives
+no account selector. URLs, header configuration and credentials are never copied into server facts;
+authentication kinds are checked against the supported enum. Unavailable or malformed facts fail with 503.
+
+The frozen Node fixture checks exact response and token-cost parity, including UTF-16 title truncation.
+Real-front synthetic HTTP checks cover authentication, CSRF, 405s, current-account Drive isolation and
+facts failure. Core and the front must move together; both assembly and supervisor refuse mixed pairs,
+while old/old remains valid for rollback. This move reduces listed Node-owned routes from 19 to 18.
 
 ## sbstndalton/noevia#2282: native tool approval decisions
 
