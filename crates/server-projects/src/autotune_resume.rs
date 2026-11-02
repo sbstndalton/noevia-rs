@@ -112,8 +112,8 @@ pub fn filter(facts: &JValue, listing: &JValue) -> Result<Option<JValue>, Fault>
     let current = facts.get("job").get("model");
     let removed_current = rows
         .iter()
-        .enumerate()
-        .any(|(i, r)| r.get("system").as_bool() == Some(true) && queue[i].get("model") == current);
+        .zip(queue.iter())
+        .any(|(r, item)| r.get("system").as_bool() == Some(true) && item.get("model") == current);
     let model = if removed_current {
         keep.first().cloned().unwrap_or(JValue::Null)
     } else {
@@ -137,21 +137,14 @@ pub fn selectors(facts: &JValue, listing: &[JValue]) -> Result<JValue, Fault> {
         if item.get("status").as_str() == Some("passed") {
             continue;
         }
+        let row = listing.get(i).ok_or(Fault::State)?;
         let model_configured = item.get("configured").as_bool().ok_or(Fault::State)?;
         let base = item.get("mode").as_str() == Some("long")
             && (!model_configured || item.get("sectionCreated").truthy());
         let (field, configured, listed) = if base {
-            (
-                "base",
-                item.get("baseConfigured"),
-                listing[i].get("baseListed"),
-            )
+            ("base", item.get("baseConfigured"), row.get("baseListed"))
         } else {
-            (
-                "model",
-                item.get("configured"),
-                listing[i].get("modelListed"),
-            )
+            ("model", item.get("configured"), row.get("modelListed"))
         };
         if !item.get(field).truthy()
             || configured.as_bool() != Some(true)
