@@ -97,7 +97,35 @@ fn public_job(job: &JValue) -> Option<JValue> {
     {
         return None;
     }
-    public_tree(job)
+    const KEYS: &[&str] = &[
+        "id",
+        "model",
+        "bulk",
+        "mode",
+        "promptBudgetSeconds",
+        "status",
+        "phase",
+        "startedAt",
+        "log",
+        "models",
+        "queueProgress",
+        "finishedAt",
+        "error",
+        "failedPhase",
+        "failedStep",
+        "restored",
+        "skipped",
+        "waiting",
+        "result",
+    ];
+    let mut fields = Vec::new();
+    for key in KEYS {
+        let value = job.get(key);
+        if !matches!(value, JValue::Undefined) {
+            fields.push(((*key).to_owned(), value.clone()));
+        }
+    }
+    public_tree(&JValue::Obj(fields))
 }
 pub async fn serve(
     app: &Arc<App>,
@@ -210,7 +238,17 @@ mod tests {
         };
         for case in cases {
             if case.get("job").get("status").as_str() == Some("running") {
-                assert_eq!(public_job(case.get("job")).as_ref(), Some(case.get("body")));
+                let out = public_job(case.get("job")).expect("running job");
+                let JValue::Obj(expected) = case.get("body") else {
+                    unreachable!()
+                };
+                let JValue::Obj(actual) = &out else {
+                    unreachable!()
+                };
+                assert_eq!(actual.len(), expected.len());
+                for (key, value) in expected {
+                    assert_eq!(out.get(key), value, "{key}");
+                }
             } else {
                 assert_eq!(case.get("status").as_num(), Some(409.0));
             }
@@ -218,11 +256,12 @@ mod tests {
     }
     #[test]
     fn privacy_is_recursive_and_model_strings_round_trip_without_a_selector() {
-        let job = wtf16::parse(r#"{"id":"j","model":"m\ud800","status":"running","originalText":"secret","models":[{"beforeText":"secret","phases":[{"_private":"secret","steps":[{"lastRevision":"secret","originalRevision":"secret","answer":"visible"}]}]}]}"#).expect("fixture");
+        let job = wtf16::parse(r#"{"id":"j","model":"m\ud800","status":"running","originalText":"secret","unknown":"secret","models":[{"customVisible":"nested-public","beforeText":"secret","phases":[{"_private":"secret","steps":[{"lastRevision":"secret","originalRevision":"secret","answer":"visible"}]}]}]}"#).expect("fixture");
         let out = public_job(&job).expect("job");
         let text = wtf16::stringify(&out).expect("object");
         assert!(text.contains(r#"m\ud800"#));
         assert!(text.contains("visible"));
+        assert!(text.contains("nested-public"));
         assert!(!text.contains("secret"));
         let bad = wtf16::parse(r#"{"id":"j","model":"m","status":"running","models":[{"headers":{"Authorization":"secret"}}]}"#).expect("HTTP config");
         assert!(public_job(&bad).is_none());
