@@ -1721,7 +1721,8 @@ job/history updates are never replaced by a stale front-side copy. URLs, preset 
 fields do not cross the facts boundary. Node no longer contains the public settings policy/handler.
 
 Deliberate corrections: oversized bodies return 413 instead of the old caught exception becoming a
-misleading model-selection error; hostile JavaScript string coercion is a bounded 400; a configured
+misleading model-selection error; hostile JavaScript string coercion is a bounded 400; lone-surrogate model IDs are rejected before
+JSON transport can confuse them with literal private-use Unicode names; a configured
 `__proto__` model gets an own persisted map entry; a failed state write restores its prior in-memory setting.
 The 21 Node vectors were recorded from Core a23cfc163fd3e76a7d89133a47a04a545498b20a without executing a tune.
 Synthetic Node differentials and real-front HTTP tests cover the policy/response, stale job/config/process

@@ -174,3 +174,31 @@ async fn conflicting_snapshots_are_bounded_and_backend_failures_do_not_echo_deta
     assert_eq!(s, 503);
     assert!(!v.to_string().contains("never-expose"));
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn lone_surrogates_cannot_alias_a_configured_literal_private_use_model() {
+    let (_d, f, up) = rig().await;
+    // A hypothetical actor has a literal U+10F800 model. The escaped surrogate is a different
+    // JavaScript ID and must be rejected before serde_json can turn its sentinel into that model.
+    up.set(|r| {
+        let mut answer = json!({"available": true, "settingsAvailable": true});
+        if j(&r.body).get("model").is_some() {
+            answer["facts"] = sample()["facts"].clone();
+        }
+        reply("200 OK", &answer.to_string())
+    });
+    let (status, value) = write(
+        f.addr,
+        "POST",
+        PATH,
+        ADMIN,
+        r#"{"model":"\ud800","allowQ5Kv":true}"#,
+    )
+    .await;
+    assert_eq!(status, 400, "{value}");
+    assert_eq!(value["error"], "Choose a model.");
+    let seen = up.seen();
+    assert_eq!(seen.len(), 1, "only availability facts may be requested");
+    assert_eq!(j(&seen[0].body), json!({}));
+    assert_eq!(up.count(COMMIT), 0);
+}

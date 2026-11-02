@@ -40,7 +40,10 @@ pub fn parse(body: &JValue) -> Result<Change, Fault> {
     } else {
         String::new()
     };
-    if model.is_empty() || wtf16::len(&model) > 200 {
+    if model.is_empty()
+        || wtf16::len(&model) > 200
+        || model.chars().any(|c| wtf16::lone_unit(c).is_some())
+    {
         return Err(Fault::Model);
     }
     let allow_q5 = body.get("allowQ5Kv").as_bool().ok_or(Fault::Boolean)?;
@@ -171,6 +174,10 @@ mod tests {
     fn malformed_client_coercion_and_ambiguous_actor_facts_fail_closed() {
         assert_eq!(
             parse(&wtf16::parse(r#"{"model":{"toString":null},"allowQ5Kv":true}"#).unwrap()),
+            Err(Fault::Model)
+        );
+        assert_eq!(
+            parse(&wtf16::parse(r#"{"model":"\ud800","allowQ5Kv":true}"#).unwrap()),
             Err(Fault::Model)
         );
         let change = Change {
