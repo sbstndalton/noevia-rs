@@ -1,0 +1,70 @@
+[
+  {
+    "job": null,
+    "status": 409,
+    "body": {
+      "error": "No calibration is running."
+    }
+  },
+  {
+    "job": {
+      "id": "synthetic-job",
+      "model": "synthetic",
+      "status": "running",
+      "phase": "Preparing",
+      "steps": [],
+      "base": {
+        "parallel": "1"
+      },
+      "originalText": "synthetic-private-profile",
+      "startedAt": 100,
+      "native": 8192,
+      "promptBudgetSeconds": 120,
+      "memoryFloorGib": 2,
+      "memoryGuard": "active"
+    },
+    "status": 202,
+    "body": {
+      "id": "synthetic-job",
+      "model": "synthetic",
+      "status": "running",
+      "phase": "Preparing",
+      "steps": [],
+      "base": {
+        "parallel": "1"
+      },
+      "startedAt": 100,
+      "native": 8192,
+      "promptBudgetSeconds": 120,
+      "memoryFloorGib": 2,
+      "memoryGuard": "active"
+    }
+  },
+  {
+    "job": {
+      "id": "done",
+      "model": "synthetic",
+      "status": "passed",
+      "steps": []
+    },
+    "status": 409,
+    "body": {
+      "error": "No calibration is running."
+    }
+  },
+  {
+    "job": {
+      "id": "utf16",
+      "model": "m\ud800",
+      "status": "running",
+      "steps": []
+    },
+    "status": 202,
+    "body": {
+      "id": "utf16",
+      "model": "m\ud800",
+      "status": "running",
+      "steps": []
+    }
+  }
+]
