@@ -15,13 +15,13 @@
 //! `impl_refused` answer.
 //!
 //! Read-only: this reads models.ini, the model mounts, the router's `/models` listing and the
-//! saved inference budget (SQLite `settings`, key `inference:memory-budget`); it writes none of
+//! live inference budget from the existing loopback facts bridge (#2266); it writes none of
 //! them and keeps no cache a Node write would have to drop.
 //!
 //! Where it cannot be Node's answer (documented, each unreachable in a working deployment):
 //! - The boot-time memory-limit fault (`LLAMACPP_MEMORY_LIMIT` unparseable) and the "no budget"
 //!   501: core always has an inference budget of at least 2 GiB, which wins over both.
-//! - The settings store cannot be read: 503 (Node holds the budget in memory).
+//! - The budget bridge cannot be read: 503 rather than a guessed limit.
 //! - GGUF metadata holding NaN, Infinity or -0 in a raw field (only float-typed headers): the port
 //!   is asked with `null`/`0` where the JS estimator saw the number.
 //! - A router listing nested 64 deep at the fields read: treated as no listing.
@@ -39,7 +39,6 @@ pub const ESTIMATE: &str = "/api/models/estimate";
 pub const SUGGEST: &str = "/api/models/preset/suggest";
 
 const ADMIN_REQUIRED: &str = "Administrator required for shared model profiles";
-const BUDGET_KEY: &str = "inference:memory-budget";
 const IMPL_SUGGEST_ERROR: &str = "No settings suggested: the Rust sizing port did not confirm this suggestion and the JS one is not the smaller. Size the context manually and load-test it.";
 const IMPL_INPUTS_ERROR: &str = "Estimate unavailable: the memory estimate (Will it fit?) could not be confirmed by the Rust sizing port, and the JS estimate is not the larger one.";
 const NO_MODEL_FILE: &str = "The model file is not visible under noevia's read-only model mounts.";
@@ -75,10 +74,6 @@ pub struct Sizing {
     explicit_gib: f64,
     /// inference-budget.cjs `cacheRamLimits(env).capMib`.
     cache_ram_max_mib: f64,
-    /// `INFERENCE_MEMORY_BUDGET_GIB` as the environment holds it.
-    default_budget: Option<String>,
-    /// Where `/proc/meminfo` is read (tests point it elsewhere).
-    meminfo: PathBuf,
 }
 
 impl Sizing {
@@ -161,125 +156,17 @@ impl Sizing {
             cache_path: set("LLAMACPP_CACHE_PATH").unwrap_or_default(),
             explicit_gib: or_zero(env_number(get("LLAMACPP_AUTOCONFIG_MEMORY_GIB").as_deref())),
             cache_ram_max_mib: cap,
-            default_budget: get("INFERENCE_MEMORY_BUDGET_GIB"),
-            meminfo: PathBuf::from(
-                get("NOEVIA_TEST_MEMINFO_PATH").unwrap_or_else(|| "/proc/meminfo".into()),
-            ),
         }
     }
 
-    /// inference-budget.cjs `get().budgetGib` for the saved setting `setting` (the column as
-    /// SQLite holds it, `None` when there is no row), then llamacpp-manager.cjs `sizingBudgetGib`.
-    pub fn sizing_budget_gib(&self, setting: Option<&SettingValue>) -> f64 {
-        let host = host_ram_gib(std::fs::read_to_string(&self.meminfo).ok().as_deref());
-        let max_gib = match host {
-            Some(h) if h != 0.0 => js_max(2.0, (h - 4.0).floor()),
-            _ => 1024.0,
-        };
-        let saved = setting.and_then(saved_budget);
-        let raw = saved.unwrap_or_else(|| positive(self.default_budget.as_deref(), 16.0));
-        let inference = llamacpp_autoconfig::js_min(max_gib, js_max(2.0, raw));
-        let explicit = self.explicit_gib;
-        if inference > 0.0 {
-            if explicit > 0.0 {
-                llamacpp_autoconfig::js_min(inference, explicit)
-            } else {
-                inference
-            }
+    /// The admission/watchdog budget comes from Node, limited only by the optional sizing cap.
+    fn sizing_budget_gib(&self, inference: f64) -> f64 {
+        if self.explicit_gib > 0.0 {
+            llamacpp_autoconfig::js_min(inference, self.explicit_gib)
         } else {
-            0.0
+            inference
         }
     }
-}
-
-fn js_max(a: f64, b: f64) -> f64 {
-    llamacpp_autoconfig::js_max(a, b)
-}
-
-/// The `settings.value` column as better-sqlite3 hands it to `store.get(KEY)`.
-#[derive(Debug, Clone, PartialEq)]
-pub enum SettingValue {
-    Text(String),
-    /// An INTEGER or REAL value: `JSON.parse` of a number has no `budgetGib`.
-    Number,
-    Null,
-}
-
-/// `Number(JSON.parse(raw || 'null')?.budgetGib)`, kept when above 0.
-fn saved_budget(v: &SettingValue) -> Option<f64> {
-    let SettingValue::Text(text) = v else {
-        return None;
-    };
-    if text.is_empty() {
-        return None;
-    }
-    let units: Vec<u16> = text.encode_utf16().collect();
-    let parsed = prompt_framing::json::parse(&units, 64)?;
-    let n = match parsed {
-        Value::Obj(_) => js_to_number(parsed.get("budgetGib")),
-        _ => f64::NAN,
-    };
-    (n > 0.0).then_some(n)
-}
-
-/// `Number(v)` of a `JSON.parse` value (`undefined` is NaN).
-fn js_to_number(v: Option<&Value>) -> f64 {
-    match v {
-        None | Some(Value::Deep) | Some(Value::Obj(_)) => f64::NAN,
-        Some(Value::Null) => 0.0,
-        Some(Value::Bool(b)) => f64::from(u8::from(*b)),
-        Some(Value::Num(n)) => *n,
-        Some(Value::Str(s)) => server_stats::js::string_to_number(s),
-        Some(Value::Arr(items)) => {
-            let mut text = Vec::new();
-            array_string(items, &mut text);
-            server_stats::js::string_to_number(&text)
-        }
-    }
-}
-
-/// `String(array)`: the elements joined by `,` (null and undefined as empty).
-fn array_string(items: &[Value], out: &mut Vec<u16>) {
-    for (i, item) in items.iter().enumerate() {
-        if i > 0 {
-            out.push(u16::from(b','));
-        }
-        match item {
-            Value::Null => {}
-            Value::Bool(b) => out.extend(if *b { "true" } else { "false" }.encode_utf16()),
-            Value::Num(n) => out.extend(llamacpp_autoconfig::number_string(*n).encode_utf16()),
-            Value::Str(s) => out.extend_from_slice(s),
-            Value::Arr(inner) => array_string(inner, out),
-            Value::Obj(_) | Value::Deep => out.extend("[object Object]".encode_utf16()),
-        }
-    }
-}
-
-/// inference-budget.cjs `hostRamGib`: `MemTotal` in GiB to one decimal, or `None`.
-fn host_ram_gib(meminfo: Option<&str>) -> Option<f64> {
-    let text = meminfo?;
-    for line in text.split('\n') {
-        let Some(rest) = line.strip_prefix("MemTotal:") else {
-            continue;
-        };
-        let digits_at = rest.find(|c: char| !c.is_ascii_whitespace())?;
-        if digits_at == 0 {
-            return None;
-        }
-        let rest = &rest[digits_at..];
-        let end = rest
-            .find(|c: char| !c.is_ascii_digit())
-            .unwrap_or(rest.len());
-        if end == 0 || !rest[end..].trim_start().starts_with("kB") {
-            return None;
-        }
-        let kib: f64 = rest[..end].parse().ok()?;
-        if kib.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater) {
-            return None;
-        }
-        return Some(llamacpp_autoconfig::js_round(kib / 1_048_576.0 * 10.0) / 10.0);
-    }
-    None
 }
 
 // ── models.ini (llamacpp-presets.cjs, read only) ─────────────────────────────────────────────
@@ -953,7 +840,7 @@ impl Sizing {
         route: Route,
         admin: bool,
         model: Option<String>,
-        budget: Arc<dyn Fn() -> Result<Option<SettingValue>, ()> + Send + Sync>,
+        budget: impl std::future::Future<Output = Option<f64>>,
     ) -> (u16, String) {
         if !admin {
             return (403, error_body(ADMIN_REQUIRED));
@@ -989,23 +876,21 @@ impl Sizing {
                 }),
             );
         }
-        // The budget (Node: sizingBudgetGib() for budgetFaultReason), then presets.get(model).
-        let me = Arc::clone(self);
-        let (m, f) = (model.clone(), file.clone());
-        let first = tokio::task::spawn_blocking(move || {
-            let setting = budget()?;
-            let budget_gib = me.sizing_budget_gib(setting.as_ref());
-            Ok::<_, ()>((
-                budget_gib,
-                read_presets(&f).map(|p| (p.revision.clone(), p.current(&m))),
-            ))
-        })
-        .await;
-        let Ok(Ok((budget_gib, profile))) = first else {
+        // Keep this lazy: authorization and configuration refusals precede the bridge call.
+        let Some(inference) = budget.await.filter(|n| n.is_finite() && *n > 0.0) else {
             return (
                 503,
                 error_body("The inference memory budget could not be read."),
             );
+        };
+        let budget_gib = self.sizing_budget_gib(inference);
+        let m = model.clone();
+        let profile = tokio::task::spawn_blocking(move || {
+            read_presets(&file).map(|p| (p.revision.clone(), p.current(&m)))
+        })
+        .await;
+        let Ok(profile) = profile else {
+            return (503, error_body("The model profiles could not be read."));
         };
         if route == Route::Suggest
             && budget_gib.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater)
@@ -1143,32 +1028,6 @@ pub fn model_param(uri: &axum::http::Uri) -> Option<String> {
         .map(|(_, v)| v.into_owned())
 }
 
-/// The saved inference budget setting, through the front's read-only store.
-#[allow(clippy::result_unit_err)]
-pub fn budget_setting(
-    identity: &crate::identity::IdentityLayer,
-) -> Result<Option<SettingValue>, ()> {
-    use server_store::rusqlite::types::ValueRef;
-    let store = identity.store_blocking().map_err(|_| ())?;
-    store
-        .read(|reader| {
-            reader.row(
-                "SELECT value FROM settings WHERE key=?1",
-                [BUDGET_KEY],
-                |row| {
-                    Ok(match row.get_ref(0)? {
-                        ValueRef::Text(t) | ValueRef::Blob(t) => {
-                            SettingValue::Text(String::from_utf8_lossy(t).into_owned())
-                        }
-                        ValueRef::Integer(_) | ValueRef::Real(_) => SettingValue::Number,
-                        ValueRef::Null => SettingValue::Null,
-                    })
-                },
-            )
-        })
-        .map_err(|_| ())
-}
-
 pub fn respond(status: u16, body: String) -> Response<Body> {
     reply::json_text(
         StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
@@ -1215,37 +1074,7 @@ mod tests {
     }
 
     #[test]
-    fn the_saved_budget_is_read_like_number_of_json_parse() {
-        let t = |s: &str| saved_budget(&SettingValue::Text(s.into()));
-        assert_eq!(t(r#"{"budgetGib":6}"#), Some(6.0));
-        assert_eq!(t(r#"{"budgetGib":" 7 "}"#), Some(7.0));
-        assert_eq!(t(r#"{"budgetGib":[3]}"#), Some(3.0));
-        assert_eq!(t(r#"{"budgetGib":[1,2]}"#), None);
-        assert_eq!(t(r#"{"budgetGib":true}"#), Some(1.0));
-        assert_eq!(t(r#"{"budgetGib":0}"#), None);
-        assert_eq!(t(r#"{"budgetGib":"0x10"}"#), Some(16.0));
-        assert_eq!(t("[6]"), None);
-        assert_eq!(t("not json"), None);
-        assert_eq!(t(""), None);
-        assert_eq!(saved_budget(&SettingValue::Number), None);
-    }
-
-    #[test]
-    fn host_ram_is_memtotal_to_one_decimal() {
-        assert_eq!(
-            host_ram_gib(Some("MemFree: 1 kB\nMemTotal:       16303324 kB\n")),
-            Some(15.5)
-        );
-        assert_eq!(host_ram_gib(Some("MemTotal: 0 kB")), None);
-        assert_eq!(host_ram_gib(Some("nothing")), None);
-        assert_eq!(host_ram_gib(None), None);
-    }
-
-    #[test]
-    fn the_budget_is_clamped_to_the_host_and_lowered_only_by_the_explicit_figure() {
-        let dir = tempfile::tempdir().unwrap();
-        let meminfo = dir.path().join("meminfo");
-        std::fs::write(&meminfo, "MemTotal: 16777216 kB\n").unwrap();
+    fn the_live_admission_budget_is_lowered_only_by_the_explicit_sizing_cap() {
         let engine = Arc::new(
             server_stats::Engine::new(
                 server_stats::Kind::LlamaCpp,
@@ -1255,36 +1084,21 @@ mod tests {
             )
             .unwrap(),
         );
-        let make = |pairs: &[(&str, &str)]| {
-            let mut env: std::collections::HashMap<String, String> = pairs
-                .iter()
-                .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
-                .collect();
-            env.insert(
-                "NOEVIA_TEST_MEMINFO_PATH".into(),
-                meminfo.display().to_string(),
-            );
-            Sizing::from_lookup(server_stats::Kind::LlamaCpp, Arc::clone(&engine), &|k| {
-                env.get(k).cloned()
-            })
-        };
-        let saved = |v: &str| SettingValue::Text(format!(r#"{{"budgetGib":{v}}}"#));
-        // 16 GiB host: at most 12.
-        assert_eq!(make(&[]).sizing_budget_gib(None), 12.0);
-        assert_eq!(make(&[]).sizing_budget_gib(Some(&saved("40"))), 12.0);
-        assert_eq!(make(&[]).sizing_budget_gib(Some(&saved("1"))), 2.0);
-        let s = make(&[("INFERENCE_MEMORY_BUDGET_GIB", "5")]);
-        assert_eq!(s.sizing_budget_gib(None), 5.0);
-        assert_eq!(s.sizing_budget_gib(Some(&saved("7"))), 7.0);
-        let s = make(&[("LLAMACPP_AUTOCONFIG_MEMORY_GIB", "3.5")]);
-        assert_eq!(s.sizing_budget_gib(Some(&saved("8"))), 3.5);
-        let s = make(&[("LLAMACPP_AUTOCONFIG_MEMORY_GIB", "-1")]);
-        assert_eq!(s.sizing_budget_gib(Some(&saved("8"))), 8.0);
-        let s = make(&[
-            ("LLAMACPP_AUTOCONFIG_CACHE_RAM_MAX_MIB", "4000"),
-            ("LLAMACPP_CACHE_RAM_HARD_MAX_MIB", "3000.4"),
-        ]);
-        assert_eq!(s.cache_ram_max_mib, 3000.0);
-        assert_eq!(make(&[]).cache_ram_max_mib, 1024.0);
+        for (cap, expected) in [
+            (None, 8.0),
+            (Some("3.5"), 3.5),
+            (Some("12"), 8.0),
+            (Some("-1"), 8.0),
+        ] {
+            let sizing =
+                Sizing::from_lookup(server_stats::Kind::LlamaCpp, Arc::clone(&engine), &|key| {
+                    if key == "LLAMACPP_AUTOCONFIG_MEMORY_GIB" {
+                        cap.map(str::to_owned)
+                    } else {
+                        None
+                    }
+                });
+            assert_eq!(sizing.sizing_budget_gib(8.0), expected);
+        }
     }
 }

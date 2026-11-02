@@ -811,7 +811,8 @@
      "cacheControl": "no-store",
      "body": "{\"error\":\"Administrator required for shared model profiles\"}"
     }
-   ]
+   ],
+   "liveBudgetGib": 6
   },
   {
    "name": "explicit-lower",
@@ -887,7 +888,8 @@
      "cacheControl": "no-store",
      "body": "{\"model\":\"hybrid\",\"revision\":\"57f1163736a21cae91690cff72c753800f9e6a88f42eb5f9bc73950d87afee57\",\"arch\":\"qwen35\",\"error\":\"This model needs about 5.1 GiB before any context, more than the 3.5 GiB budget. Use a smaller quantization.\",\"rows\":[{\"ctx\":4096,\"modelGib\":2.9,\"kvGib\":0.17,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.27,\"fits\":false},{\"ctx\":8192,\"modelGib\":2.9,\"kvGib\":0.24,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.35,\"fits\":false},{\"ctx\":12288,\"modelGib\":2.9,\"kvGib\":0.32,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.43,\"fits\":false},{\"ctx\":16384,\"modelGib\":2.9,\"kvGib\":0.39,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.51,\"fits\":false},{\"ctx\":24576,\"modelGib\":2.9,\"kvGib\":0.54,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.66,\"fits\":false},{\"ctx\":32768,\"modelGib\":2.9,\"kvGib\":0.69,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.82,\"fits\":false},{\"ctx\":40960,\"modelGib\":2.9,\"kvGib\":0.84,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.98,\"fits\":false},{\"ctx\":49152,\"modelGib\":2.9,\"kvGib\":0.99,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.13,\"fits\":false},{\"ctx\":57344,\"modelGib\":2.9,\"kvGib\":1.14,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.29,\"fits\":false},{\"ctx\":65536,\"modelGib\":2.9,\"kvGib\":1.29,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.45,\"fits\":false},{\"ctx\":73728,\"modelGib\":2.9,\"kvGib\":1.44,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.61,\"fits\":false},{\"ctx\":81920,\"modelGib\":2.9,\"kvGib\":1.59,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.76,\"fits\":false},{\"ctx\":90112,\"modelGib\":2.9,\"kvGib\":1.74,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.92,\"fits\":false},{\"ctx\":98304,\"modelGib\":2.9,\"kvGib\":1.89,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.08,\"fits\":false},{\"ctx\":106496,\"modelGib\":2.9,\"kvGib\":2.04,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.23,\"fits\":false},{\"ctx\":114688,\"modelGib\":2.9,\"kvGib\":2.19,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.39,\"fits\":false},{\"ctx\":122880,\"modelGib\":2.9,\"kvGib\":2.33,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.55,\"fits\":false},{\"ctx\":131072,\"modelGib\":2.9,\"kvGib\":2.48,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.7,\"fits\":false},{\"ctx\":139264,\"modelGib\":2.9,\"kvGib\":2.63,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.86,\"fits\":false},{\"ctx\":147456,\"modelGib\":2.9,\"kvGib\":2.78,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.02,\"fits\":false},{\"ctx\":151552,\"modelGib\":2.9,\"kvGib\":2.86,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.1,\"fits\":false},{\"ctx\":155648,\"modelGib\":2.9,\"kvGib\":2.93,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.17,\"fits\":false},{\"ctx\":159744,\"modelGib\":2.9,\"kvGib\":3.01,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.25,\"fits\":false},{\"ctx\":163840,\"modelGib\":2.9,\"kvGib\":3.08,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.33,\"fits\":false},{\"ctx\":172032,\"modelGib\":2.9,\"kvGib\":3.23,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.49,\"fits\":false},{\"ctx\":180224,\"modelGib\":2.9,\"kvGib\":3.38,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.64,\"fits\":false},{\"ctx\":188416,\"modelGib\":2.9,\"kvGib\":3.53,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.8,\"fits\":false},{\"ctx\":196608,\"modelGib\":2.9,\"kvGib\":3.68,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.96,\"fits\":false},{\"ctx\":204800,\"modelGib\":2.9,\"kvGib\":3.83,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.12,\"fits\":false},{\"ctx\":212992,\"modelGib\":2.9,\"kvGib\":3.98,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.27,\"fits\":false},{\"ctx\":221184,\"modelGib\":2.9,\"kvGib\":4.13,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.43,\"fits\":false},{\"ctx\":229376,\"modelGib\":2.9,\"kvGib\":4.28,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.59,\"fits\":false},{\"ctx\":237568,\"modelGib\":2.9,\"kvGib\":4.43,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.74,\"fits\":false},{\"ctx\":245760,\"modelGib\":2.9,\"kvGib\":4.58,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.9,\"fits\":false},{\"ctx\":253952,\"modelGib\":2.9,\"kvGib\":4.73,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":10.06,\"fits\":false},{\"ctx\":262144,\"modelGib\":2.9,\"kvGib\":4.88,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":10.21,\"fits\":false}],\"budgetGib\":3.5}"
     }
-   ]
+   ],
+   "liveBudgetGib": 8
   },
   {
    "name": "explicit-higher",
@@ -963,7 +965,8 @@
      "cacheControl": "no-store",
      "body": "{\"model\":\"hybrid\",\"revision\":\"57f1163736a21cae91690cff72c753800f9e6a88f42eb5f9bc73950d87afee57\",\"arch\":\"qwen35\",\"error\":\"This model needs about 5.1 GiB before any context, more than the 4.5 GiB budget. Use a smaller quantization.\",\"rows\":[{\"ctx\":4096,\"modelGib\":2.9,\"kvGib\":0.17,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.27,\"fits\":false},{\"ctx\":8192,\"modelGib\":2.9,\"kvGib\":0.24,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.35,\"fits\":false},{\"ctx\":12288,\"modelGib\":2.9,\"kvGib\":0.32,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.43,\"fits\":false},{\"ctx\":16384,\"modelGib\":2.9,\"kvGib\":0.39,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.51,\"fits\":false},{\"ctx\":24576,\"modelGib\":2.9,\"kvGib\":0.54,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.66,\"fits\":false},{\"ctx\":32768,\"modelGib\":2.9,\"kvGib\":0.69,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.82,\"fits\":false},{\"ctx\":40960,\"modelGib\":2.9,\"kvGib\":0.84,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.98,\"fits\":false},{\"ctx\":49152,\"modelGib\":2.9,\"kvGib\":0.99,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.13,\"fits\":false},{\"ctx\":57344,\"modelGib\":2.9,\"kvGib\":1.14,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.29,\"fits\":false},{\"ctx\":65536,\"modelGib\":2.9,\"kvGib\":1.29,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.45,\"fits\":false},{\"ctx\":73728,\"modelGib\":2.9,\"kvGib\":1.44,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.61,\"fits\":false},{\"ctx\":81920,\"modelGib\":2.9,\"kvGib\":1.59,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.76,\"fits\":false},{\"ctx\":90112,\"modelGib\":2.9,\"kvGib\":1.74,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.92,\"fits\":false},{\"ctx\":98304,\"modelGib\":2.9,\"kvGib\":1.89,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.08,\"fits\":false},{\"ctx\":106496,\"modelGib\":2.9,\"kvGib\":2.04,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.23,\"fits\":false},{\"ctx\":114688,\"modelGib\":2.9,\"kvGib\":2.19,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.39,\"fits\":false},{\"ctx\":122880,\"modelGib\":2.9,\"kvGib\":2.33,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.55,\"fits\":false},{\"ctx\":131072,\"modelGib\":2.9,\"kvGib\":2.48,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.7,\"fits\":false},{\"ctx\":139264,\"modelGib\":2.9,\"kvGib\":2.63,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.86,\"fits\":false},{\"ctx\":147456,\"modelGib\":2.9,\"kvGib\":2.78,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.02,\"fits\":false},{\"ctx\":151552,\"modelGib\":2.9,\"kvGib\":2.86,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.1,\"fits\":false},{\"ctx\":155648,\"modelGib\":2.9,\"kvGib\":2.93,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.17,\"fits\":false},{\"ctx\":159744,\"modelGib\":2.9,\"kvGib\":3.01,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.25,\"fits\":false},{\"ctx\":163840,\"modelGib\":2.9,\"kvGib\":3.08,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.33,\"fits\":false},{\"ctx\":172032,\"modelGib\":2.9,\"kvGib\":3.23,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.49,\"fits\":false},{\"ctx\":180224,\"modelGib\":2.9,\"kvGib\":3.38,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.64,\"fits\":false},{\"ctx\":188416,\"modelGib\":2.9,\"kvGib\":3.53,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.8,\"fits\":false},{\"ctx\":196608,\"modelGib\":2.9,\"kvGib\":3.68,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.96,\"fits\":false},{\"ctx\":204800,\"modelGib\":2.9,\"kvGib\":3.83,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.12,\"fits\":false},{\"ctx\":212992,\"modelGib\":2.9,\"kvGib\":3.98,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.27,\"fits\":false},{\"ctx\":221184,\"modelGib\":2.9,\"kvGib\":4.13,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.43,\"fits\":false},{\"ctx\":229376,\"modelGib\":2.9,\"kvGib\":4.28,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.59,\"fits\":false},{\"ctx\":237568,\"modelGib\":2.9,\"kvGib\":4.43,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.74,\"fits\":false},{\"ctx\":245760,\"modelGib\":2.9,\"kvGib\":4.58,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.9,\"fits\":false},{\"ctx\":253952,\"modelGib\":2.9,\"kvGib\":4.73,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":10.06,\"fits\":false},{\"ctx\":262144,\"modelGib\":2.9,\"kvGib\":4.88,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":10.21,\"fits\":false}],\"budgetGib\":4.5}"
     }
-   ]
+   ],
+   "liveBudgetGib": 4.5
   },
   {
    "name": "minimum-budget",
@@ -1024,7 +1027,8 @@
      "cacheControl": "no-store",
      "body": "{\"model\":\"hybrid\",\"revision\":\"57f1163736a21cae91690cff72c753800f9e6a88f42eb5f9bc73950d87afee57\",\"arch\":\"qwen35\",\"error\":\"This model needs about 7.02 GiB before any context, more than the 2 GiB budget. Use a smaller quantization.\",\"rows\":[{\"ctx\":4096,\"modelGib\":2.9,\"kvGib\":0.17,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":7.2,\"fits\":false},{\"ctx\":8192,\"modelGib\":2.9,\"kvGib\":0.24,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":7.28,\"fits\":false},{\"ctx\":12288,\"modelGib\":2.9,\"kvGib\":0.32,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":7.36,\"fits\":false},{\"ctx\":16384,\"modelGib\":2.9,\"kvGib\":0.39,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":7.44,\"fits\":false},{\"ctx\":24576,\"modelGib\":2.9,\"kvGib\":0.54,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":7.59,\"fits\":false},{\"ctx\":32768,\"modelGib\":2.9,\"kvGib\":0.69,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":7.75,\"fits\":false},{\"ctx\":40960,\"modelGib\":2.9,\"kvGib\":0.84,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":7.91,\"fits\":false},{\"ctx\":49152,\"modelGib\":2.9,\"kvGib\":0.99,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":8.06,\"fits\":false},{\"ctx\":57344,\"modelGib\":2.9,\"kvGib\":1.14,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":8.22,\"fits\":false},{\"ctx\":65536,\"modelGib\":2.9,\"kvGib\":1.29,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":8.38,\"fits\":false},{\"ctx\":73728,\"modelGib\":2.9,\"kvGib\":1.44,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":8.54,\"fits\":false},{\"ctx\":81920,\"modelGib\":2.9,\"kvGib\":1.59,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":8.69,\"fits\":false},{\"ctx\":90112,\"modelGib\":2.9,\"kvGib\":1.74,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":8.85,\"fits\":false},{\"ctx\":98304,\"modelGib\":2.9,\"kvGib\":1.89,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":9.01,\"fits\":false},{\"ctx\":106496,\"modelGib\":2.9,\"kvGib\":2.04,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":9.16,\"fits\":false},{\"ctx\":114688,\"modelGib\":2.9,\"kvGib\":2.19,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":9.32,\"fits\":false},{\"ctx\":122880,\"modelGib\":2.9,\"kvGib\":2.33,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":9.48,\"fits\":false},{\"ctx\":131072,\"modelGib\":2.9,\"kvGib\":2.48,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":9.63,\"fits\":false},{\"ctx\":139264,\"modelGib\":2.9,\"kvGib\":2.63,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":9.79,\"fits\":false},{\"ctx\":147456,\"modelGib\":2.9,\"kvGib\":2.78,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":9.95,\"fits\":false},{\"ctx\":151552,\"modelGib\":2.9,\"kvGib\":2.86,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":10.03,\"fits\":false},{\"ctx\":155648,\"modelGib\":2.9,\"kvGib\":2.93,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":10.1,\"fits\":false},{\"ctx\":159744,\"modelGib\":2.9,\"kvGib\":3.01,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":10.18,\"fits\":false},{\"ctx\":163840,\"modelGib\":2.9,\"kvGib\":3.08,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":10.26,\"fits\":false},{\"ctx\":172032,\"modelGib\":2.9,\"kvGib\":3.23,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":10.42,\"fits\":false},{\"ctx\":180224,\"modelGib\":2.9,\"kvGib\":3.38,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":10.57,\"fits\":false},{\"ctx\":188416,\"modelGib\":2.9,\"kvGib\":3.53,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":10.73,\"fits\":false},{\"ctx\":196608,\"modelGib\":2.9,\"kvGib\":3.68,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":10.89,\"fits\":false},{\"ctx\":204800,\"modelGib\":2.9,\"kvGib\":3.83,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":11.05,\"fits\":false},{\"ctx\":212992,\"modelGib\":2.9,\"kvGib\":3.98,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":11.2,\"fits\":false},{\"ctx\":221184,\"modelGib\":2.9,\"kvGib\":4.13,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":11.36,\"fits\":false},{\"ctx\":229376,\"modelGib\":2.9,\"kvGib\":4.28,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":11.52,\"fits\":false},{\"ctx\":237568,\"modelGib\":2.9,\"kvGib\":4.43,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":11.67,\"fits\":false},{\"ctx\":245760,\"modelGib\":2.9,\"kvGib\":4.58,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":11.83,\"fits\":false},{\"ctx\":253952,\"modelGib\":2.9,\"kvGib\":4.73,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":11.99,\"fits\":false},{\"ctx\":262144,\"modelGib\":2.9,\"kvGib\":4.88,\"extraGib\":1,\"cacheRamGib\":2.93,\"totalGib\":12.14,\"fits\":false}],\"budgetGib\":2}"
     }
-   ]
+   ],
+   "liveBudgetGib": 2
   },
   {
    "name": "deployment-default",
@@ -1101,7 +1105,8 @@
      "cacheControl": "no-store",
      "body": "{\"model\":\"hybrid\",\"revision\":\"57f1163736a21cae91690cff72c753800f9e6a88f42eb5f9bc73950d87afee57\",\"arch\":\"qwen35\",\"values\":{\"ctx-size\":\"24576\",\"parallel\":\"1\",\"n-gpu-layers\":\"999\",\"flash-attn\":\"on\",\"cache-type-k\":\"q8_0\",\"cache-type-v\":\"q8_0\",\"cache-ram\":\"256\",\"spec-type\":\"draft-mtp\"},\"rows\":[{\"ctx\":4096,\"modelGib\":2.9,\"kvGib\":0.17,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":4.52,\"fits\":true},{\"ctx\":8192,\"modelGib\":2.9,\"kvGib\":0.24,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":4.6,\"fits\":true},{\"ctx\":12288,\"modelGib\":2.9,\"kvGib\":0.32,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":4.68,\"fits\":true},{\"ctx\":16384,\"modelGib\":2.9,\"kvGib\":0.39,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":4.76,\"fits\":true},{\"ctx\":24576,\"modelGib\":2.9,\"kvGib\":0.54,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":4.91,\"fits\":true},{\"ctx\":32768,\"modelGib\":2.9,\"kvGib\":0.69,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":5.07,\"fits\":false},{\"ctx\":40960,\"modelGib\":2.9,\"kvGib\":0.84,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":5.23,\"fits\":false},{\"ctx\":49152,\"modelGib\":2.9,\"kvGib\":0.99,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":5.38,\"fits\":false},{\"ctx\":57344,\"modelGib\":2.9,\"kvGib\":1.14,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":5.54,\"fits\":false},{\"ctx\":65536,\"modelGib\":2.9,\"kvGib\":1.29,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":5.7,\"fits\":false},{\"ctx\":73728,\"modelGib\":2.9,\"kvGib\":1.44,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":5.86,\"fits\":false},{\"ctx\":81920,\"modelGib\":2.9,\"kvGib\":1.59,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":6.01,\"fits\":false},{\"ctx\":90112,\"modelGib\":2.9,\"kvGib\":1.74,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":6.17,\"fits\":false},{\"ctx\":98304,\"modelGib\":2.9,\"kvGib\":1.89,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":6.33,\"fits\":false},{\"ctx\":106496,\"modelGib\":2.9,\"kvGib\":2.04,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":6.48,\"fits\":false},{\"ctx\":114688,\"modelGib\":2.9,\"kvGib\":2.19,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":6.64,\"fits\":false},{\"ctx\":122880,\"modelGib\":2.9,\"kvGib\":2.33,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":6.8,\"fits\":false},{\"ctx\":131072,\"modelGib\":2.9,\"kvGib\":2.48,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":6.95,\"fits\":false},{\"ctx\":139264,\"modelGib\":2.9,\"kvGib\":2.63,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":7.11,\"fits\":false},{\"ctx\":147456,\"modelGib\":2.9,\"kvGib\":2.78,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":7.27,\"fits\":false},{\"ctx\":151552,\"modelGib\":2.9,\"kvGib\":2.86,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":7.35,\"fits\":false},{\"ctx\":155648,\"modelGib\":2.9,\"kvGib\":2.93,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":7.42,\"fits\":false},{\"ctx\":159744,\"modelGib\":2.9,\"kvGib\":3.01,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":7.5,\"fits\":false},{\"ctx\":163840,\"modelGib\":2.9,\"kvGib\":3.08,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":7.58,\"fits\":false},{\"ctx\":172032,\"modelGib\":2.9,\"kvGib\":3.23,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":7.74,\"fits\":false},{\"ctx\":180224,\"modelGib\":2.9,\"kvGib\":3.38,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":7.89,\"fits\":false},{\"ctx\":188416,\"modelGib\":2.9,\"kvGib\":3.53,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":8.05,\"fits\":false},{\"ctx\":196608,\"modelGib\":2.9,\"kvGib\":3.68,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":8.21,\"fits\":false},{\"ctx\":204800,\"modelGib\":2.9,\"kvGib\":3.83,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":8.37,\"fits\":false},{\"ctx\":212992,\"modelGib\":2.9,\"kvGib\":3.98,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":8.52,\"fits\":false},{\"ctx\":221184,\"modelGib\":2.9,\"kvGib\":4.13,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":8.68,\"fits\":false},{\"ctx\":229376,\"modelGib\":2.9,\"kvGib\":4.28,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":8.84,\"fits\":false},{\"ctx\":237568,\"modelGib\":2.9,\"kvGib\":4.43,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":8.99,\"fits\":false},{\"ctx\":245760,\"modelGib\":2.9,\"kvGib\":4.58,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":9.15,\"fits\":false},{\"ctx\":253952,\"modelGib\":2.9,\"kvGib\":4.73,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":9.31,\"fits\":false},{\"ctx\":262144,\"modelGib\":2.9,\"kvGib\":4.88,\"extraGib\":1,\"cacheRamGib\":0.25,\"totalGib\":9.46,\"fits\":false}],\"budgetGib\":5,\"estimateGib\":4.91,\"notes\":[\"The model file includes a multi-token prediction head, so speculative decoding uses it.\",\"Context is limited by memory; the model supports 262,144 tokens.\",\"No vision projector is configured, so image limits are left unchanged.\",\"Estimates cover one conversation slot. Load the model and test a long prompt before relying on the full allocation.\"],\"source\":\"Adapted from Model Loader autoconfig (scratchhax/model-loader, MIT).\"}"
     }
-   ]
+   ],
+   "liveBudgetGib": 5
   },
   {
    "name": "string-setting",
@@ -1129,7 +1134,8 @@
      "cacheControl": "no-store",
      "body": "{\"model\":\"good\",\"revision\":\"57f1163736a21cae91690cff72c753800f9e6a88f42eb5f9bc73950d87afee57\",\"arch\":\"llama\",\"error\":\"This model needs about 6.78 GiB before any context, more than the 7 GiB budget. Use a smaller quantization.\",\"rows\":[{\"ctx\":4096,\"modelGib\":4.5,\"kvGib\":0.27,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.05,\"fits\":false},{\"ctx\":8192,\"modelGib\":4.5,\"kvGib\":0.53,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.33,\"fits\":false},{\"ctx\":12288,\"modelGib\":4.5,\"kvGib\":0.8,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.61,\"fits\":false},{\"ctx\":16384,\"modelGib\":4.5,\"kvGib\":1.06,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.89,\"fits\":false},{\"ctx\":24576,\"modelGib\":4.5,\"kvGib\":1.59,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.45,\"fits\":false},{\"ctx\":32768,\"modelGib\":4.5,\"kvGib\":2.13,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.01,\"fits\":false}],\"budgetGib\":7}"
     }
-   ]
+   ],
+   "liveBudgetGib": 7
   },
   {
    "name": "unreadable-setting",
@@ -1157,7 +1163,8 @@
      "cacheControl": "no-store",
      "body": "{\"model\":\"good\",\"revision\":\"57f1163736a21cae91690cff72c753800f9e6a88f42eb5f9bc73950d87afee57\",\"arch\":\"llama\",\"values\":{\"ctx-size\":\"32768\",\"parallel\":\"1\",\"n-gpu-layers\":\"999\",\"flash-attn\":\"on\",\"cache-type-k\":\"q8_0\",\"cache-type-v\":\"q8_0\",\"cache-ram\":\"1024\"},\"rows\":[{\"ctx\":4096,\"modelGib\":4.5,\"kvGib\":0.27,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.05,\"fits\":true},{\"ctx\":8192,\"modelGib\":4.5,\"kvGib\":0.53,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.33,\"fits\":true},{\"ctx\":12288,\"modelGib\":4.5,\"kvGib\":0.8,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.61,\"fits\":true},{\"ctx\":16384,\"modelGib\":4.5,\"kvGib\":1.06,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.89,\"fits\":true},{\"ctx\":24576,\"modelGib\":4.5,\"kvGib\":1.59,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.45,\"fits\":true},{\"ctx\":32768,\"modelGib\":4.5,\"kvGib\":2.13,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.01,\"fits\":true}],\"budgetGib\":16,\"estimateGib\":9.01,\"notes\":[\"Context is the model's trained maximum (32,768 tokens).\",\"No vision projector is configured, so image limits are left unchanged.\",\"Estimates cover one conversation slot. Load the model and test a long prompt before relying on the full allocation.\"],\"source\":\"Adapted from Model Loader autoconfig (scratchhax/model-loader, MIT).\"}"
     }
-   ]
+   ],
+   "liveBudgetGib": 16
   },
   {
    "name": "array-setting",
@@ -1185,7 +1192,8 @@
      "cacheControl": "no-store",
      "body": "{\"model\":\"good\",\"revision\":\"57f1163736a21cae91690cff72c753800f9e6a88f42eb5f9bc73950d87afee57\",\"arch\":\"llama\",\"error\":\"This model needs about 6.78 GiB before any context, more than the 3 GiB budget. Use a smaller quantization.\",\"rows\":[{\"ctx\":4096,\"modelGib\":4.5,\"kvGib\":0.27,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.05,\"fits\":false},{\"ctx\":8192,\"modelGib\":4.5,\"kvGib\":0.53,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.33,\"fits\":false},{\"ctx\":12288,\"modelGib\":4.5,\"kvGib\":0.8,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.61,\"fits\":false},{\"ctx\":16384,\"modelGib\":4.5,\"kvGib\":1.06,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.89,\"fits\":false},{\"ctx\":24576,\"modelGib\":4.5,\"kvGib\":1.59,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.45,\"fits\":false},{\"ctx\":32768,\"modelGib\":4.5,\"kvGib\":2.13,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.01,\"fits\":false}],\"budgetGib\":3}"
     }
-   ]
+   ],
+   "liveBudgetGib": 3
   },
   {
    "name": "memory-limit",
@@ -1213,7 +1221,8 @@
      "cacheControl": "no-store",
      "body": "{\"model\":\"good\",\"revision\":\"57f1163736a21cae91690cff72c753800f9e6a88f42eb5f9bc73950d87afee57\",\"arch\":\"llama\",\"error\":\"This model needs about 6.78 GiB before any context, more than the 6 GiB budget. Use a smaller quantization.\",\"rows\":[{\"ctx\":4096,\"modelGib\":4.5,\"kvGib\":0.27,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.05,\"fits\":false},{\"ctx\":8192,\"modelGib\":4.5,\"kvGib\":0.53,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.33,\"fits\":false},{\"ctx\":12288,\"modelGib\":4.5,\"kvGib\":0.8,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.61,\"fits\":false},{\"ctx\":16384,\"modelGib\":4.5,\"kvGib\":1.06,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.89,\"fits\":false},{\"ctx\":24576,\"modelGib\":4.5,\"kvGib\":1.59,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.45,\"fits\":false},{\"ctx\":32768,\"modelGib\":4.5,\"kvGib\":2.13,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.01,\"fits\":false}],\"budgetGib\":6}"
     }
-   ]
+   ],
+   "liveBudgetGib": 6
   },
   {
    "name": "duplicate-sections",
@@ -1257,7 +1266,8 @@
      "cacheControl": "no-store",
      "body": "{\"error\":\"Duplicate preset sections require operator repair\"}"
     }
-   ]
+   ],
+   "liveBudgetGib": 6
   },
   {
    "name": "ini-missing",
@@ -1285,7 +1295,8 @@
      "cacheControl": "no-store",
      "body": "{\"error\":\"Internal error\"}"
     }
-   ]
+   ],
+   "liveBudgetGib": 6
   },
   {
    "name": "ini-symlink",
@@ -1313,7 +1324,8 @@
      "cacheControl": "no-store",
      "body": "{\"error\":\"Preset path must be a regular file\"}"
     }
-   ]
+   ],
+   "liveBudgetGib": 6
   },
   {
    "name": "ini-too-large",
@@ -1341,7 +1353,8 @@
      "cacheControl": "no-store",
      "body": "{\"error\":\"Preset file exceeds the editor limit\"}"
     }
-   ]
+   ],
+   "liveBudgetGib": 6
   },
   {
    "name": "ini-bom-invalid-utf8",
@@ -1417,7 +1430,8 @@
      "cacheControl": "no-store",
      "body": "{\"model\":\"�t�\",\"revision\":\"f0f963fa1332a75f27e7ad82a3ae8060ac8e7b3f6457f7758e040ed0f6438c2b\",\"arch\":\"qwen35\",\"values\":{\"ctx-size\":\"40960\",\"parallel\":\"1\",\"n-gpu-layers\":\"999\",\"flash-attn\":\"on\",\"cache-type-k\":\"q8_0\",\"cache-type-v\":\"q8_0\",\"cache-ram\":\"1024\",\"spec-type\":\"draft-mtp\"},\"rows\":[{\"ctx\":4096,\"modelGib\":2.9,\"kvGib\":0.17,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.27,\"fits\":true},{\"ctx\":8192,\"modelGib\":2.9,\"kvGib\":0.24,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.35,\"fits\":true},{\"ctx\":12288,\"modelGib\":2.9,\"kvGib\":0.32,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.43,\"fits\":true},{\"ctx\":16384,\"modelGib\":2.9,\"kvGib\":0.39,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.51,\"fits\":true},{\"ctx\":24576,\"modelGib\":2.9,\"kvGib\":0.54,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.66,\"fits\":true},{\"ctx\":32768,\"modelGib\":2.9,\"kvGib\":0.69,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.82,\"fits\":true},{\"ctx\":40960,\"modelGib\":2.9,\"kvGib\":0.84,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.98,\"fits\":true},{\"ctx\":49152,\"modelGib\":2.9,\"kvGib\":0.99,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.13,\"fits\":false},{\"ctx\":57344,\"modelGib\":2.9,\"kvGib\":1.14,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.29,\"fits\":false},{\"ctx\":65536,\"modelGib\":2.9,\"kvGib\":1.29,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.45,\"fits\":false},{\"ctx\":73728,\"modelGib\":2.9,\"kvGib\":1.44,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.61,\"fits\":false},{\"ctx\":81920,\"modelGib\":2.9,\"kvGib\":1.59,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.76,\"fits\":false},{\"ctx\":90112,\"modelGib\":2.9,\"kvGib\":1.74,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.92,\"fits\":false},{\"ctx\":98304,\"modelGib\":2.9,\"kvGib\":1.89,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.08,\"fits\":false},{\"ctx\":106496,\"modelGib\":2.9,\"kvGib\":2.04,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.23,\"fits\":false},{\"ctx\":114688,\"modelGib\":2.9,\"kvGib\":2.19,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.39,\"fits\":false},{\"ctx\":122880,\"modelGib\":2.9,\"kvGib\":2.33,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.55,\"fits\":false},{\"ctx\":131072,\"modelGib\":2.9,\"kvGib\":2.48,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.7,\"fits\":false},{\"ctx\":139264,\"modelGib\":2.9,\"kvGib\":2.63,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.86,\"fits\":false},{\"ctx\":147456,\"modelGib\":2.9,\"kvGib\":2.78,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.02,\"fits\":false},{\"ctx\":151552,\"modelGib\":2.9,\"kvGib\":2.86,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.1,\"fits\":false},{\"ctx\":155648,\"modelGib\":2.9,\"kvGib\":2.93,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.17,\"fits\":false},{\"ctx\":159744,\"modelGib\":2.9,\"kvGib\":3.01,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.25,\"fits\":false},{\"ctx\":163840,\"modelGib\":2.9,\"kvGib\":3.08,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.33,\"fits\":false},{\"ctx\":172032,\"modelGib\":2.9,\"kvGib\":3.23,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.49,\"fits\":false},{\"ctx\":180224,\"modelGib\":2.9,\"kvGib\":3.38,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.64,\"fits\":false},{\"ctx\":188416,\"modelGib\":2.9,\"kvGib\":3.53,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.8,\"fits\":false},{\"ctx\":196608,\"modelGib\":2.9,\"kvGib\":3.68,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.96,\"fits\":false},{\"ctx\":204800,\"modelGib\":2.9,\"kvGib\":3.83,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.12,\"fits\":false},{\"ctx\":212992,\"modelGib\":2.9,\"kvGib\":3.98,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.27,\"fits\":false},{\"ctx\":221184,\"modelGib\":2.9,\"kvGib\":4.13,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.43,\"fits\":false},{\"ctx\":229376,\"modelGib\":2.9,\"kvGib\":4.28,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.59,\"fits\":false},{\"ctx\":237568,\"modelGib\":2.9,\"kvGib\":4.43,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.74,\"fits\":false},{\"ctx\":245760,\"modelGib\":2.9,\"kvGib\":4.58,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.9,\"fits\":false},{\"ctx\":253952,\"modelGib\":2.9,\"kvGib\":4.73,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":10.06,\"fits\":false},{\"ctx\":262144,\"modelGib\":2.9,\"kvGib\":4.88,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":10.21,\"fits\":false}],\"budgetGib\":6,\"estimateGib\":5.98,\"notes\":[\"The model file includes a multi-token prediction head, so speculative decoding uses it.\",\"Context is limited by memory; the model supports 262,144 tokens.\",\"No vision projector is configured, so image limits are left unchanged.\",\"Estimates cover one conversation slot. Load the model and test a long prompt before relying on the full allocation.\"],\"source\":\"Adapted from Model Loader autoconfig (scratchhax/model-loader, MIT).\"}"
     }
-   ]
+   ],
+   "liveBudgetGib": 6
   },
   {
    "name": "no-models-path",
@@ -1458,7 +1472,8 @@
      "cacheControl": "no-store",
      "body": "{\"error\":\"Suggestions need the model directory mounted read-only; set LLAMACPP_MODELS_PATH.\"}"
     }
-   ]
+   ],
+   "liveBudgetGib": 6
   },
   {
    "name": "no-preset-path",
@@ -1499,7 +1514,8 @@
      "cacheControl": "no-store",
      "body": "{\"error\":\"Native preset suggestions; configure LLAMACPP_PRESET_PATH is not exposed by this llama.cpp adapter\"}"
     }
-   ]
+   ],
+   "liveBudgetGib": 6
   },
   {
    "name": "no-cache-path",
@@ -1541,7 +1557,8 @@
      "cacheControl": "no-store",
      "body": "{\"model\":\"good\",\"revision\":\"57f1163736a21cae91690cff72c753800f9e6a88f42eb5f9bc73950d87afee57\",\"arch\":\"llama\",\"error\":\"This model needs about 6.78 GiB before any context, more than the 6 GiB budget. Use a smaller quantization.\",\"rows\":[{\"ctx\":4096,\"modelGib\":4.5,\"kvGib\":0.27,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.05,\"fits\":false},{\"ctx\":8192,\"modelGib\":4.5,\"kvGib\":0.53,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.33,\"fits\":false},{\"ctx\":12288,\"modelGib\":4.5,\"kvGib\":0.8,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.61,\"fits\":false},{\"ctx\":16384,\"modelGib\":4.5,\"kvGib\":1.06,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.89,\"fits\":false},{\"ctx\":24576,\"modelGib\":4.5,\"kvGib\":1.59,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.45,\"fits\":false},{\"ctx\":32768,\"modelGib\":4.5,\"kvGib\":2.13,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.01,\"fits\":false}],\"budgetGib\":6}"
     }
-   ]
+   ],
+   "liveBudgetGib": 6
   },
   {
    "name": "router-down",
@@ -1617,7 +1634,8 @@
      "cacheControl": "no-store",
      "body": "{\"model\":\"vision\",\"revision\":\"57f1163736a21cae91690cff72c753800f9e6a88f42eb5f9bc73950d87afee57\",\"arch\":\"gemma3\",\"error\":\"This model needs about 11.47 GiB before any context, more than the 6 GiB budget. Use a smaller quantization.\",\"rows\":[{\"ctx\":4096,\"modelGib\":7.2,\"kvGib\":0.1,\"extraGib\":2.77,\"cacheRamGib\":1,\"totalGib\":11.57,\"fits\":false},{\"ctx\":8192,\"modelGib\":7.2,\"kvGib\":0.14,\"extraGib\":2.77,\"cacheRamGib\":1,\"totalGib\":11.61,\"fits\":false},{\"ctx\":12288,\"modelGib\":7.2,\"kvGib\":0.18,\"extraGib\":2.77,\"cacheRamGib\":1,\"totalGib\":11.66,\"fits\":false},{\"ctx\":16384,\"modelGib\":7.2,\"kvGib\":0.22,\"extraGib\":2.77,\"cacheRamGib\":1,\"totalGib\":11.7,\"fits\":false},{\"ctx\":24576,\"modelGib\":7.2,\"kvGib\":0.31,\"extraGib\":2.77,\"cacheRamGib\":1,\"totalGib\":11.79,\"fits\":false},{\"ctx\":32768,\"modelGib\":7.2,\"kvGib\":0.39,\"extraGib\":2.77,\"cacheRamGib\":1,\"totalGib\":11.88,\"fits\":false},{\"ctx\":40960,\"modelGib\":7.2,\"kvGib\":0.47,\"extraGib\":2.77,\"cacheRamGib\":1,\"totalGib\":11.96,\"fits\":false},{\"ctx\":49152,\"modelGib\":7.2,\"kvGib\":0.55,\"extraGib\":2.77,\"cacheRamGib\":1,\"totalGib\":12.05,\"fits\":false},{\"ctx\":57344,\"modelGib\":7.2,\"kvGib\":0.64,\"extraGib\":2.77,\"cacheRamGib\":1,\"totalGib\":12.14,\"fits\":false},{\"ctx\":65536,\"modelGib\":7.2,\"kvGib\":0.72,\"extraGib\":2.77,\"cacheRamGib\":1,\"totalGib\":12.22,\"fits\":false},{\"ctx\":73728,\"modelGib\":7.2,\"kvGib\":0.8,\"extraGib\":2.77,\"cacheRamGib\":1,\"totalGib\":12.31,\"fits\":false},{\"ctx\":81920,\"modelGib\":7.2,\"kvGib\":0.89,\"extraGib\":2.77,\"cacheRamGib\":1,\"totalGib\":12.4,\"fits\":false},{\"ctx\":90112,\"modelGib\":7.2,\"kvGib\":0.97,\"extraGib\":2.77,\"cacheRamGib\":1,\"totalGib\":12.49,\"fits\":false},{\"ctx\":98304,\"modelGib\":7.2,\"kvGib\":1.05,\"extraGib\":2.77,\"cacheRamGib\":1,\"totalGib\":12.57,\"fits\":false},{\"ctx\":106496,\"modelGib\":7.2,\"kvGib\":1.14,\"extraGib\":2.77,\"cacheRamGib\":1,\"totalGib\":12.66,\"fits\":false},{\"ctx\":114688,\"modelGib\":7.2,\"kvGib\":1.22,\"extraGib\":2.77,\"cacheRamGib\":1,\"totalGib\":12.75,\"fits\":false},{\"ctx\":122880,\"modelGib\":7.2,\"kvGib\":1.3,\"extraGib\":2.77,\"cacheRamGib\":1,\"totalGib\":12.83,\"fits\":false},{\"ctx\":131072,\"modelGib\":7.2,\"kvGib\":1.38,\"extraGib\":2.77,\"cacheRamGib\":1,\"totalGib\":12.92,\"fits\":false}],\"budgetGib\":6}"
     }
-   ]
+   ],
+   "liveBudgetGib": 6
   },
   {
    "name": "router-error-body",
@@ -1648,7 +1666,8 @@
      "cacheControl": "no-store",
      "body": "{\"model\":\"good\",\"revision\":\"57f1163736a21cae91690cff72c753800f9e6a88f42eb5f9bc73950d87afee57\",\"arch\":\"qwen35\",\"values\":{\"ctx-size\":\"40960\",\"parallel\":\"1\",\"n-gpu-layers\":\"999\",\"flash-attn\":\"on\",\"cache-type-k\":\"q8_0\",\"cache-type-v\":\"q8_0\",\"cache-ram\":\"1024\",\"spec-type\":\"draft-mtp\"},\"rows\":[{\"ctx\":4096,\"modelGib\":2.9,\"kvGib\":0.17,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.27,\"fits\":true},{\"ctx\":8192,\"modelGib\":2.9,\"kvGib\":0.24,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.35,\"fits\":true},{\"ctx\":12288,\"modelGib\":2.9,\"kvGib\":0.32,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.43,\"fits\":true},{\"ctx\":16384,\"modelGib\":2.9,\"kvGib\":0.39,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.51,\"fits\":true},{\"ctx\":24576,\"modelGib\":2.9,\"kvGib\":0.54,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.66,\"fits\":true},{\"ctx\":32768,\"modelGib\":2.9,\"kvGib\":0.69,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.82,\"fits\":true},{\"ctx\":40960,\"modelGib\":2.9,\"kvGib\":0.84,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":5.98,\"fits\":true},{\"ctx\":49152,\"modelGib\":2.9,\"kvGib\":0.99,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.13,\"fits\":false},{\"ctx\":57344,\"modelGib\":2.9,\"kvGib\":1.14,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.29,\"fits\":false},{\"ctx\":65536,\"modelGib\":2.9,\"kvGib\":1.29,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.45,\"fits\":false},{\"ctx\":73728,\"modelGib\":2.9,\"kvGib\":1.44,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.61,\"fits\":false},{\"ctx\":81920,\"modelGib\":2.9,\"kvGib\":1.59,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.76,\"fits\":false},{\"ctx\":90112,\"modelGib\":2.9,\"kvGib\":1.74,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":6.92,\"fits\":false},{\"ctx\":98304,\"modelGib\":2.9,\"kvGib\":1.89,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.08,\"fits\":false},{\"ctx\":106496,\"modelGib\":2.9,\"kvGib\":2.04,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.23,\"fits\":false},{\"ctx\":114688,\"modelGib\":2.9,\"kvGib\":2.19,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.39,\"fits\":false},{\"ctx\":122880,\"modelGib\":2.9,\"kvGib\":2.33,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.55,\"fits\":false},{\"ctx\":131072,\"modelGib\":2.9,\"kvGib\":2.48,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.7,\"fits\":false},{\"ctx\":139264,\"modelGib\":2.9,\"kvGib\":2.63,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.86,\"fits\":false},{\"ctx\":147456,\"modelGib\":2.9,\"kvGib\":2.78,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.02,\"fits\":false},{\"ctx\":151552,\"modelGib\":2.9,\"kvGib\":2.86,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.1,\"fits\":false},{\"ctx\":155648,\"modelGib\":2.9,\"kvGib\":2.93,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.17,\"fits\":false},{\"ctx\":159744,\"modelGib\":2.9,\"kvGib\":3.01,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.25,\"fits\":false},{\"ctx\":163840,\"modelGib\":2.9,\"kvGib\":3.08,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.33,\"fits\":false},{\"ctx\":172032,\"modelGib\":2.9,\"kvGib\":3.23,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.49,\"fits\":false},{\"ctx\":180224,\"modelGib\":2.9,\"kvGib\":3.38,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.64,\"fits\":false},{\"ctx\":188416,\"modelGib\":2.9,\"kvGib\":3.53,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.8,\"fits\":false},{\"ctx\":196608,\"modelGib\":2.9,\"kvGib\":3.68,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.96,\"fits\":false},{\"ctx\":204800,\"modelGib\":2.9,\"kvGib\":3.83,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.12,\"fits\":false},{\"ctx\":212992,\"modelGib\":2.9,\"kvGib\":3.98,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.27,\"fits\":false},{\"ctx\":221184,\"modelGib\":2.9,\"kvGib\":4.13,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.43,\"fits\":false},{\"ctx\":229376,\"modelGib\":2.9,\"kvGib\":4.28,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.59,\"fits\":false},{\"ctx\":237568,\"modelGib\":2.9,\"kvGib\":4.43,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.74,\"fits\":false},{\"ctx\":245760,\"modelGib\":2.9,\"kvGib\":4.58,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.9,\"fits\":false},{\"ctx\":253952,\"modelGib\":2.9,\"kvGib\":4.73,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":10.06,\"fits\":false},{\"ctx\":262144,\"modelGib\":2.9,\"kvGib\":4.88,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":10.21,\"fits\":false}],\"budgetGib\":6,\"estimateGib\":5.98,\"notes\":[\"The model file includes a multi-token prediction head, so speculative decoding uses it.\",\"Context is limited by memory; the model supports 262,144 tokens.\",\"No vision projector is configured, so image limits are left unchanged.\",\"Estimates cover one conversation slot. Load the model and test a long prompt before relying on the full allocation.\"],\"source\":\"Adapted from Model Loader autoconfig (scratchhax/model-loader, MIT).\"}"
     }
-   ]
+   ],
+   "liveBudgetGib": 6
   },
   {
    "name": "router-null-row",
@@ -1695,7 +1714,8 @@
      "cacheControl": "no-store",
      "body": "{\"error\":\"The model file is not visible under noevia's read-only model mounts.\"}"
     }
-   ]
+   ],
+   "liveBudgetGib": 6
   },
   {
    "name": "router-not-json",
@@ -1726,7 +1746,8 @@
      "cacheControl": "no-store",
      "body": "{\"model\":\"good\",\"revision\":\"57f1163736a21cae91690cff72c753800f9e6a88f42eb5f9bc73950d87afee57\",\"arch\":\"llama\",\"error\":\"This model needs about 6.78 GiB before any context, more than the 6 GiB budget. Use a smaller quantization.\",\"rows\":[{\"ctx\":4096,\"modelGib\":4.5,\"kvGib\":0.27,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.05,\"fits\":false},{\"ctx\":8192,\"modelGib\":4.5,\"kvGib\":0.53,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.33,\"fits\":false},{\"ctx\":12288,\"modelGib\":4.5,\"kvGib\":0.8,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.61,\"fits\":false},{\"ctx\":16384,\"modelGib\":4.5,\"kvGib\":1.06,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.89,\"fits\":false},{\"ctx\":24576,\"modelGib\":4.5,\"kvGib\":1.59,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.45,\"fits\":false},{\"ctx\":32768,\"modelGib\":4.5,\"kvGib\":2.13,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.01,\"fits\":false}],\"budgetGib\":6}"
     }
-   ]
+   ],
+   "liveBudgetGib": 6
   },
   {
    "name": "router-data-object",
@@ -1757,7 +1778,8 @@
      "cacheControl": "no-store",
      "body": "{\"model\":\"good\",\"revision\":\"57f1163736a21cae91690cff72c753800f9e6a88f42eb5f9bc73950d87afee57\",\"arch\":\"llama\",\"error\":\"This model needs about 6.78 GiB before any context, more than the 6 GiB budget. Use a smaller quantization.\",\"rows\":[{\"ctx\":4096,\"modelGib\":4.5,\"kvGib\":0.27,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.05,\"fits\":false},{\"ctx\":8192,\"modelGib\":4.5,\"kvGib\":0.53,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.33,\"fits\":false},{\"ctx\":12288,\"modelGib\":4.5,\"kvGib\":0.8,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.61,\"fits\":false},{\"ctx\":16384,\"modelGib\":4.5,\"kvGib\":1.06,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":7.89,\"fits\":false},{\"ctx\":24576,\"modelGib\":4.5,\"kvGib\":1.59,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":8.45,\"fits\":false},{\"ctx\":32768,\"modelGib\":4.5,\"kvGib\":2.13,\"extraGib\":1,\"cacheRamGib\":1,\"totalGib\":9.01,\"fits\":false}],\"budgetGib\":6}"
     }
-   ]
+   ],
+   "liveBudgetGib": 6
   },
   {
    "name": "router-args-object",
@@ -1804,7 +1826,8 @@
      "cacheControl": "no-store",
      "body": "{\"error\":\"The model file is not visible under noevia's read-only model mounts.\"}"
     }
-   ]
+   ],
+   "liveBudgetGib": 6
   }
  ]
 }
