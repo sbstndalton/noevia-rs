@@ -1,6 +1,11 @@
 //! GET-only auto-tune status composition from bounded in-memory owner data.
 use crate::autotune_settings as domain;
 use js_json::JValue;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fault {
+    InvalidFacts,
+}
 pub fn keys(model: &str) -> Vec<String> {
     let mut out = vec![model.to_owned()];
     if !model.is_empty() {
@@ -39,7 +44,7 @@ fn http_config(key: &str) -> bool {
             | "clientsecret"
     )
 }
-fn tree(value: &JValue) -> Result<JValue, ()> {
+fn tree(value: &JValue) -> Result<JValue, Fault> {
     match value {
         JValue::Obj(fields) => {
             let mut out = Vec::new();
@@ -48,7 +53,7 @@ fn tree(value: &JValue) -> Result<JValue, ()> {
                     continue;
                 }
                 if http_config(k) {
-                    return Err(());
+                    return Err(Fault::InvalidFacts);
                 }
                 out.push((k.clone(), tree(v)?));
             }
@@ -105,9 +110,9 @@ const HISTORY_KEYS: &[&str] = &[
     "version",
     "signature",
 ];
-fn selected(value: &JValue, keys: &[&str]) -> Result<JValue, ()> {
+fn selected(value: &JValue, keys: &[&str]) -> Result<JValue, Fault> {
     if !matches!(value, JValue::Obj(_)) {
-        return Err(());
+        return Err(Fault::InvalidFacts);
     }
     tree(&JValue::Obj(
         keys.iter()
@@ -122,12 +127,12 @@ fn selected(value: &JValue, keys: &[&str]) -> Result<JValue, ()> {
             .collect(),
     ))
 }
-fn history(value: &JValue) -> Result<JValue, ()> {
+fn history(value: &JValue) -> Result<JValue, Fault> {
     if !value.truthy() {
         return Ok(JValue::Arr(vec![]));
     }
     let JValue::Arr(entries) = value else {
-        return Err(());
+        return Err(Fault::InvalidFacts);
     };
     Ok(JValue::Arr(
         entries
@@ -137,24 +142,31 @@ fn history(value: &JValue) -> Result<JValue, ()> {
             .collect::<Result<Vec<_>, _>>()?,
     ))
 }
-pub fn response(model: &str, facts: &JValue) -> Result<JValue, ()> {
+pub fn response(model: &str, facts: &JValue) -> Result<JValue, Fault> {
     let JValue::Arr(entries) = facts.get("entries") else {
-        return Err(());
+        return Err(Fault::InvalidFacts);
     };
     let requested = keys(model);
     if entries.len() != requested.len() {
-        return Err(());
+        return Err(Fault::InvalidFacts);
     }
     for (entry, key) in entries.iter().zip(&requested) {
         if entry.get("key").as_str() != Some(key.as_str()) {
-            return Err(());
+            return Err(Fault::InvalidFacts);
         }
     }
-    let row = entries.first().ok_or(())?;
-    let allow = row.get("allowQ5Kv").as_bool().ok_or(())?;
-    let below = facts.get("allowBelowQ5Kv").as_bool().ok_or(())?;
+    let row = entries.first().ok_or(Fault::InvalidFacts)?;
+    let allow = row.get("allowQ5Kv").as_bool().ok_or(Fault::InvalidFacts)?;
+    let below = facts
+        .get("allowBelowQ5Kv")
+        .as_bool()
+        .ok_or(Fault::InvalidFacts)?;
     let mut out = Vec::new();
-    match facts.get("jobPresent").as_bool().ok_or(())? {
+    match facts
+        .get("jobPresent")
+        .as_bool()
+        .ok_or(Fault::InvalidFacts)?
+    {
         true => {
             let job = facts.get("job");
             out.push((
@@ -168,7 +180,7 @@ pub fn response(model: &str, facts: &JValue) -> Result<JValue, ()> {
         }
         false => {
             if !matches!(facts.get("job"), JValue::Undefined | JValue::Null) {
-                return Err(());
+                return Err(Fault::InvalidFacts);
             }
         }
     }
@@ -190,7 +202,7 @@ pub fn response(model: &str, facts: &JValue) -> Result<JValue, ()> {
         out.push(("longId".into(), JValue::Str(domain::long_id(model))));
         out.push((
             "longHistory".into(),
-            history(entries.get(1).ok_or(())?.get("history"))?,
+            history(entries.get(1).ok_or(Fault::InvalidFacts)?.get("history"))?,
         ));
     }
     Ok(JValue::Obj(out))
