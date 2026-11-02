@@ -75,6 +75,7 @@ impl World {
             if req.method=="DELETE" {return Answer::Reply(204,String::new());}
             if req.target.ends_with("/renew"){return Answer::Reply(st.renew,"{}".into());}
             if req.target=="/internal/inference-admission/lease" {
+                if st.admission == 0 { return Answer::Drop; }
                 return Answer::Reply(st.admission,if st.admission==201 {json!({"lease":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","ttlMs":st.ttl,"headers":{"x-noevia-lease":"syntheticLease1"}}).to_string()} else {json!({"error":"Synthetic budget or maintenance refusal"}).to_string()});
             }
             Answer::Reply(404,"{}".into())
@@ -289,6 +290,21 @@ async fn missing_projector_records_failed_while_other_probe_or_admission_errors_
     );
     assert!(refused.router.lock().unwrap().is_empty());
     assert!(refused.records().is_empty());
+    let offline = World::new("llamacpp").await;
+    offline.state.lock().unwrap().admission = 0;
+    assert_eq!(offline.post(BODY, Some(ADMIN)).await.0, 503);
+    assert!(offline.router.lock().unwrap().is_empty());
+    assert!(offline.records().is_empty());
+    {
+        let mut state = bad.state.lock().unwrap();
+        state.status = 200;
+        state.body = "x".repeat(64 * 1024 + 1);
+    }
+    assert_eq!(bad.post(BODY, Some(ADMIN)).await.0, 503);
+    assert!(
+        bad.records().is_empty(),
+        "an oversized/truncated success cannot qualify"
+    );
 }
 #[tokio::test]
 async fn lease_loss_and_changed_configuration_never_file_the_probes_result() {
