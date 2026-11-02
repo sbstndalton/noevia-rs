@@ -460,7 +460,8 @@ pub fn native_for(route: &Route) -> Option<Native> {
             && (crate::model_routes::ROUTES.contains(&p)
                 || crate::model_maint::ROUTES.contains(&p)
                 || p == crate::autotune_clear_routes::PATH
-                || p == crate::calibration_cancel_routes::PATH) =>
+                || p == crate::calibration_cancel_routes::PATH
+                || p == crate::calibration_routes::PATH) =>
         {
             return Some(Native::Models)
         }
@@ -1301,6 +1302,13 @@ mod tests {
         assert!(crate::FEATURES.contains(&"rust-model-state-reads"));
         assert!(crate::FEATURES.contains(&"rust-model-maintenance"));
         assert!(crate::FEATURES.contains(&"rust-calibration-cancel"));
+        assert!(crate::FEATURES.contains(&"rust-calibration-routes"));
+        for method in ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] {
+            assert_eq!(
+                dispatch_under(method, crate::calibration_routes::PATH, on),
+                Some(Native::Models)
+            );
+        }
         for method in ["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"] {
             assert_eq!(
                 dispatch_under(method, crate::calibration_cancel_routes::PATH, on),
@@ -1314,7 +1322,6 @@ mod tests {
             "/api/models/autotune/cancel",
             "/api/models/autotune/resume",
             "/api/models/autotune/untuned",
-            "/api/models/calibration",
             "/api/models/delete",
             "/api/models/evidence/recheck",
             "/api/models/load",
@@ -1345,6 +1352,7 @@ mod tests {
             vec![
                 (crate::autotune_clear_routes::PATH, &[][..]),
                 (crate::autotune_settings_routes::PATH, &[][..]),
+                (crate::calibration_routes::PATH, &[][..]),
                 (crate::calibration_cancel_routes::PATH, &[][..]),
                 (crate::model_routes::CAPABILITIES, &["GET"][..]),
                 (crate::model_sizing::ESTIMATE, &["GET"][..]),
