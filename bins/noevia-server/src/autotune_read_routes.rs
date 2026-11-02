@@ -5,7 +5,7 @@ use axum::{
     http::{header, HeaderValue, Method, Request, Response, StatusCode},
     response::IntoResponse,
 };
-use js_json::{wtf16, JValue};
+use js_json::wtf16;
 use server_projects::autotune_read as policy;
 use std::{sync::Arc, time::Duration};
 pub const PATH: &str = "/api/models/autotune";
