@@ -109,6 +109,7 @@ pub mod store;
 pub mod store_api;
 pub mod sync;
 pub mod task_journals;
+pub mod toolbox_picker;
 pub mod transcript;
 pub mod upload;
 pub mod uploads_ingest;
