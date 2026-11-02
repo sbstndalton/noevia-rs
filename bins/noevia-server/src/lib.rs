@@ -5,6 +5,9 @@
 pub mod account_routes;
 pub mod admin_user_routes;
 pub mod auto_roles_routes;
+pub mod autotune_clear_routes;
+pub mod autotune_settings_routes;
+pub mod calibration_cancel_routes;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_oauth_routes;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -87,6 +90,9 @@ pub mod storage_metadata_worker;
 #[cfg(feature = "rust-storage-reads")]
 pub mod storage_read_routes;
 pub mod task_routes;
+pub mod tool_approval_routes;
+#[cfg(feature = "rust-storage-reads")]
+pub mod toolbox_picker;
 #[cfg(feature = "rust-storage-reads")]
 pub mod toolbox_routes;
 pub mod upkeep;
@@ -235,6 +241,8 @@ use std::sync::Arc;
 /// (`mcp-discovery.json`) and writes nothing of the table.
 /// `rust-toolboxes-permitted`: `GET /api/toolboxes/permitted` (toolbox_routes.rs), computed here from
 /// the front's own state and that snapshot (core `RUST_TOOLBOXES_PERMITTED_OWNED`).
+/// `rust-toolbox-picker`: every method of `/api/toolboxes`; current account filtering and
+/// response composition in toolbox_picker.rs, selected live facts over trusted loopback.
 /// `rust-connectors`: `GET /api/connectors` and `PUT /api/connectors/nextcloud/policy`
 /// (nextcloud_routes.rs; core `RUST_CONNECTORS_OWNED`).
 ///
@@ -319,6 +327,9 @@ use std::sync::Arc;
 /// state and task (task_routes.rs); Core refuses them (rust-task-reads.cjs) and offers the facts only it
 /// holds on the loopback bridge (rust-task-facts.cjs). The supervisor pairs them.
 ///
+/// `rust-autotune-settings`: this build answers every method of /api/models/autotune/settings;
+/// public policy/response here, conditional live tune-state writer over a trusted loopback bridge.
+///
 /// `rust-model-state-reads`: this build answers GET /api/models/inference-budget and GET /api/models/installed
 /// (model_state_routes.rs); Core refuses them (rust-model-state-reads.cjs) and offers the facts only it holds on the
 /// loopback bridge (rust-model-facts.cjs). The supervisor pairs them.
@@ -336,12 +347,14 @@ pub const FEATURES: &[&str] = &[
     "project-store",
     "rust-research",
     "rust-task-reads",
+    "rust-tool-approvals",
     server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER,
     "rust-auth",
     "rust-diary",
     "rust-diary-routes",
     "rust-model-reads",
     "rust-model-state-reads",
+    "rust-autotune-settings",
     "rust-project-reads",
     "rust-project-lifecycle",
     "rust-project-storage",
@@ -361,6 +374,7 @@ pub const FEATURES: &[&str] = &[
     "rust-offsite-backup",
     "rust-model-sizing",
     "rust-model-maintenance",
+    "rust-calibration-cancel",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",
@@ -397,6 +411,9 @@ pub const FEATURES: &[&str] = &[
     "rust-mcp-directory",
     #[cfg(feature = "rust-storage-reads")]
     "rust-toolboxes-permitted",
+    #[cfg(feature = "rust-storage-reads")]
+    "rust-toolbox-picker",
+    "rust-autotune-clear",
     #[cfg(feature = "rust-storage-reads")]
     "rust-connectors",
     // An account's deletion forgets the MCP sign-ins (rust-storage-reads) and the ChatGPT tokens
@@ -674,7 +691,10 @@ async fn handle(
                     | routes::Native::AutoRoles
                     | routes::Native::McpCredentials
                     | routes::Native::McpDirectory
+                    | routes::Native::AutotuneSettings
+                    | routes::Native::ToolboxPicker
                     | routes::Native::ToolboxesPermitted
+                    | routes::Native::ToolApprovals
             )
         ) {
             native = on_whatwg;
@@ -714,7 +734,10 @@ async fn handle(
             | routes::Native::AutoRoles
             | routes::Native::McpCredentials
             | routes::Native::McpDirectory
-            | routes::Native::ToolboxesPermitted,
+            | routes::Native::AutotuneSettings
+            | routes::Native::ToolboxPicker
+            | routes::Native::ToolboxesPermitted
+            | routes::Native::ToolApprovals,
         )
         | None => false,
     };
@@ -884,6 +907,36 @@ async fn handle(
                 reply::error(
                     StatusCode::SERVICE_UNAVAILABLE,
                     "MCP directory unavailable",
+                    true,
+                )
+            }
+        }
+        Some(routes::Native::AutotuneSettings) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            autotune_settings_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::ToolApprovals) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            tool_approval_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::ToolboxPicker) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            #[cfg(feature = "rust-storage-reads")]
+            {
+                toolbox_picker::serve(&app, conn, req, p).await
+            }
+            #[cfg(not(feature = "rust-storage-reads"))]
+            {
+                let _ = (p, conn, req);
+                reply::error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Toolboxes unavailable",
                     true,
                 )
             }
