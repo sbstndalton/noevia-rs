@@ -510,7 +510,7 @@ owner = "node"
 
 [[route]]
 path = "/api/models/autotune/clear"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/models/autotune/resume"
@@ -530,7 +530,7 @@ owner = "node"
 
 [[route]]
 path = "/api/models/calibration/cancel"
-owner = "node"
+owner = "rust"
 
 # sbstndalton/noevia#2187: configuration-only reads, the front's (bins/noevia-server
 # model_routes.rs); Node refuses the GET (core rust-models.cjs). Other methods stay Node's.

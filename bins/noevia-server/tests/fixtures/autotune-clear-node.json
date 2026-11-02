@@ -1,0 +1,220 @@
+[
+  {
+    "input": {
+      "starting": true,
+      "job": null
+    },
+    "answer": {
+      "ok": false,
+      "status": 409,
+      "body": {
+        "error": "Auto-tune is running. Cancel it before clearing."
+      }
+    }
+  },
+  {
+    "input": {
+      "starting": false,
+      "job": null
+    },
+    "answer": {
+      "ok": false,
+      "status": 409,
+      "body": {
+        "error": "There is no finished auto-tune to clear."
+      }
+    }
+  },
+  {
+    "input": {
+      "starting": false,
+      "job": {
+        "status": "running",
+        "_reloadPending": false
+      }
+    },
+    "answer": {
+      "ok": false,
+      "status": 409,
+      "body": {
+        "error": "Auto-tune is running. Cancel it before clearing."
+      }
+    }
+  },
+  {
+    "input": {
+      "starting": false,
+      "job": {
+        "status": "running",
+        "_reloadPending": true
+      }
+    },
+    "answer": {
+      "ok": false,
+      "status": 409,
+      "body": {
+        "error": "Auto-tune is running. Cancel it before clearing."
+      }
+    }
+  },
+  {
+    "input": {
+      "starting": false,
+      "job": {
+        "status": "unknown",
+        "_reloadPending": false
+      }
+    },
+    "answer": {
+      "ok": false,
+      "status": 409,
+      "body": {
+        "error": "There is no finished auto-tune to clear."
+      }
+    }
+  },
+  {
+    "input": {
+      "starting": false,
+      "job": {
+        "status": "unknown",
+        "_reloadPending": true
+      }
+    },
+    "answer": {
+      "ok": false,
+      "status": 409,
+      "body": {
+        "error": "There is no finished auto-tune to clear."
+      }
+    }
+  },
+  {
+    "input": {
+      "starting": false,
+      "job": {
+        "status": "failed",
+        "_reloadPending": false
+      }
+    },
+    "answer": {
+      "ok": true,
+      "status": 200,
+      "body": {
+        "cleared": true
+      }
+    }
+  },
+  {
+    "input": {
+      "starting": false,
+      "job": {
+        "status": "failed",
+        "_reloadPending": true
+      }
+    },
+    "answer": {
+      "ok": false,
+      "status": 409,
+      "body": {
+        "error": "The model server has not re-read the restored settings yet. Try again shortly."
+      }
+    }
+  },
+  {
+    "input": {
+      "starting": false,
+      "job": {
+        "status": "cancelled",
+        "_reloadPending": false
+      }
+    },
+    "answer": {
+      "ok": true,
+      "status": 200,
+      "body": {
+        "cleared": true
+      }
+    }
+  },
+  {
+    "input": {
+      "starting": false,
+      "job": {
+        "status": "cancelled",
+        "_reloadPending": true
+      }
+    },
+    "answer": {
+      "ok": false,
+      "status": 409,
+      "body": {
+        "error": "The model server has not re-read the restored settings yet. Try again shortly."
+      }
+    }
+  },
+  {
+    "input": {
+      "starting": false,
+      "job": {
+        "status": "interrupted",
+        "_reloadPending": false
+      }
+    },
+    "answer": {
+      "ok": true,
+      "status": 200,
+      "body": {
+        "cleared": true
+      }
+    }
+  },
+  {
+    "input": {
+      "starting": false,
+      "job": {
+        "status": "interrupted",
+        "_reloadPending": true
+      }
+    },
+    "answer": {
+      "ok": false,
+      "status": 409,
+      "body": {
+        "error": "The model server has not re-read the restored settings yet. Try again shortly."
+      }
+    }
+  },
+  {
+    "input": {
+      "starting": false,
+      "job": {
+        "status": "passed",
+        "_reloadPending": false
+      }
+    },
+    "answer": {
+      "ok": true,
+      "status": 200,
+      "body": {
+        "cleared": true
+      }
+    }
+  },
+  {
+    "input": {
+      "starting": false,
+      "job": {
+        "status": "passed",
+        "_reloadPending": true
+      }
+    },
+    "answer": {
+      "ok": false,
+      "status": 409,
+      "body": {
+        "error": "The model server has not re-read the restored settings yet. Try again shortly."
+      }
+    }
+  }
+]
