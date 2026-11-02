@@ -29,7 +29,7 @@
 //! back and the next list save drops it. A delete asked again finishes the job: a chat that is
 //! tombstoned and in no list is a chat the user deleted (ids are random and a tombstoned id never
 //! returns, the proof Node's orphan reaper uses), so its own leftover files are removed
-//! ([`Outcome::swept`]). Nothing else is ever removed: no background sweeper, no other file.
+//! ([`Outcome::swept`]). A bounded workspace cleanup also retries this already-confirmed deletion; no other file is removed.
 //!
 //! Each successful delete or recovery retry journals one entry ([`crate::journal`], op `remove`, the
 //! caller's origin), so Node's change-journal reader updates the chat's vault note. Recovery notices
@@ -481,6 +481,83 @@ pub fn delete_with(
         swept: false,
         leftovers,
     })
+}
+
+/// Finish already-confirmed deletions on a later workspace read (#2254). Capped tombstone-derived paths
+/// select possible leftovers within the read budget; every deletion rechecks the tombstone and all lists while
+/// holding the same transcript lock as writers. No retention choice or undeleted chat is affected.
+pub fn reap_deleted(ctx: Ctx<'_>, limit: usize) -> usize {
+    use std::collections::HashSet;
+    let started = std::time::Instant::now();
+    let Ok(dir) = store::user_dir(ctx.data_dir, ctx.user_id) else {
+        return 0;
+    };
+    let Ok(ids) = tombstone_list(&dir) else {
+        return 0;
+    };
+    if ids.is_empty() || limit == 0 {
+        return 0;
+    }
+    let Ok(projects) = free_chats::workspace_projects(&dir) else {
+        return 0;
+    };
+    let Ok(free) = store::read_json(&dir.join(FREE_CHATS_FILE)) else {
+        return 0;
+    };
+    let free = free_chats::as_list(free);
+    let mut listed = HashSet::new();
+    let mut remember = |items: &[JValue]| {
+        for chat in items {
+            if let Some(id) = chat.get("id").as_str() {
+                listed.extend(ids_of(id));
+            }
+        }
+    };
+    remember(&free);
+    for project in &projects {
+        if let JValue::Arr(items) = project.get("chats") {
+            remember(items);
+        }
+    }
+    // Probe only paths derived from capped tombstones, never enumerate account directories.
+    // A symlink is a leftover too: remove_file unlinks its leaf without following it.
+    let exists = |file: PathBuf| std::fs::symlink_metadata(file).is_ok();
+    let mut attempted = 0;
+    let mut removed = 0;
+    for id in ids.iter().rev().take(TOMBSTONE_CAP) {
+        if attempted >= limit || started.elapsed() >= std::time::Duration::from_secs(1) {
+            break;
+        }
+        let forms = ids_of(id);
+        if id.is_empty() || forms.iter().any(|id| listed.contains(id)) {
+            continue;
+        }
+        let safe = safe_chat_id(id);
+        let possible = (!safe.is_empty() && exists(history_file(&dir, &safe)))
+            || forms.iter().any(|raw| {
+                exists(context_window::state_file(&dir, raw))
+                    || exists(brain_file(&dir, raw))
+                    || exists(partial::file_for(&dir, raw))
+            });
+        if !possible {
+            continue;
+        }
+        attempted += 1;
+        let swept = (|| -> Result<bool, StoreError> {
+            transcript::existing_dir(&dir)?;
+            let _held = transcript::lock_user(&dir)?;
+            if !tombstoned(&dir, id)? || listed_anywhere(&dir, id)? {
+                return Ok(false);
+            }
+            let (_, leftovers) = remove_files(&dir, id, &|_| Ok(()))?;
+            note(&dir, id, Origin::Remove);
+            Ok(leftovers == 0)
+        })();
+        if matches!(swept, Ok(true)) {
+            removed += 1;
+        }
+    }
+    removed
 }
 
 fn note(dir: &Path, raw: &str, origin: Origin) {
@@ -1210,5 +1287,97 @@ mod tests {
             delete_free_route(gone, "qa-c2"),
             Reply::error(410, "account no longer exists")
         );
+    }
+    fn cleanup_ctx(root: &Path) -> Ctx<'_> {
+        Ctx {
+            data_dir: root,
+            user_id: USER,
+            switch: on(),
+            now_ms: 1,
+        }
+    }
+
+    #[test]
+    fn workspace_finishes_a_confirmed_delete_without_touching_another_chat_or_account() {
+        let (root, dir) = setup();
+        seed_free(root.path(), &dir);
+        std::fs::write(dir.join("projects.json"), r#"{"projects":[]}"#).unwrap();
+        std::fs::write(
+            dir.join(FREE_CHATS_FILE),
+            r#"[{"id":"qa-c2","title":"keep"}]"#,
+        )
+        .unwrap();
+        write_tombstones(&dir, &["qa-c1".to_owned()]).unwrap();
+        let other = store::user_dir(root.path(), OTHER).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        let other_file = history_file(&other, "qa-c1");
+        std::fs::write(&other_file, "other account").unwrap();
+        assert_eq!(crate::workspace::get(cleanup_ctx(root.path())).status, 200);
+        assert!(files(&dir, "qa-c1").iter().all(|p| !p.exists()));
+        assert!(files(&dir, "qa-c2").iter().all(|p| p.exists()));
+        assert_eq!(
+            std::fs::read_to_string(other_file).unwrap(),
+            "other account"
+        );
+        let before = journal_ops(root.path());
+        assert!(before
+            .iter()
+            .any(|(id, op, _)| id == "qa-c1" && op == "remove"));
+        assert_eq!(crate::workspace::get(cleanup_ctx(root.path())).status, 200);
+        assert_eq!(
+            journal_ops(root.path()),
+            before,
+            "no repeated recovery entry without leftovers"
+        );
+    }
+
+    #[test]
+    fn cleanup_is_bounded_and_retries_the_remaining_deleted_chats() {
+        let (root, dir) = setup();
+        seed_free(root.path(), &dir);
+        std::fs::write(dir.join(FREE_CHATS_FILE), "[]").unwrap();
+        write_tombstones(&dir, &["qa-c1".to_owned(), "qa-c2".to_owned()]).unwrap();
+        assert_eq!(reap_deleted(cleanup_ctx(root.path()), 1), 1);
+        assert_eq!(
+            files(&dir, "qa-c1").iter().filter(|p| p.exists()).count(),
+            4
+        );
+        assert!(files(&dir, "qa-c2").iter().all(|p| !p.exists()));
+        assert_eq!(reap_deleted(cleanup_ctx(root.path()), 1), 1);
+        assert!(files(&dir, "qa-c1").iter().all(|p| !p.exists()));
+        assert_eq!(reap_deleted(cleanup_ctx(root.path()), 1), 0);
+    }
+
+    #[test]
+    fn a_tombstone_never_authorizes_removing_files_while_a_list_still_holds_the_chat() {
+        let (root, dir) = setup();
+        seed_free(root.path(), &dir);
+        std::fs::write(dir.join(FREE_CHATS_FILE), r#"[{"id":"qa-c2"}]"#).unwrap();
+        std::fs::write(
+            dir.join("projects.json"),
+            r#"{"projects":[{"id":"p","chats":[{"id":"qa-c1"}]}]}"#,
+        )
+        .unwrap();
+        write_tombstones(&dir, &["qa-c1".to_owned(), "qa-c2".to_owned()]).unwrap();
+        assert_eq!(reap_deleted(cleanup_ctx(root.path()), 10), 0);
+        assert!(files(&dir, "qa-c1")
+            .iter()
+            .chain(files(&dir, "qa-c2").iter())
+            .all(|p| p.exists()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cleanup_unlinks_a_deleted_leaf_symlink_without_following_it() {
+        let (root, dir) = setup();
+        std::fs::write(dir.join(FREE_CHATS_FILE), "[]").unwrap();
+        write_tombstones(&dir, &["qa-c1".to_owned()]).unwrap();
+        let outside = root.path().join("outside-history.json");
+        std::fs::write(&outside, "preserve").unwrap();
+        let link = history_file(&dir, "qa-c1");
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        assert_eq!(reap_deleted(cleanup_ctx(root.path()), 1), 1);
+        assert!(!link.exists());
+        assert_eq!(std::fs::read_to_string(outside).unwrap(), "preserve");
     }
 }
