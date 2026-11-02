@@ -885,8 +885,9 @@ impl Sizing {
         };
         let budget_gib = self.sizing_budget_gib(inference);
         let m = model.clone();
+        let f = file.clone();
         let profile = tokio::task::spawn_blocking(move || {
-            read_presets(&file).map(|p| (p.revision.clone(), p.current(&m)))
+            read_presets(&f).map(|p| (p.revision.clone(), p.current(&m)))
         })
         .await;
         let Ok(profile) = profile else {
