@@ -6,6 +6,9 @@ pub mod account_routes;
 pub mod admin_user_routes;
 pub mod auto_roles_routes;
 pub mod autotune_cancel_routes;
+pub mod autotune_clear_routes;
+pub mod autotune_settings_routes;
+pub mod calibration_cancel_routes;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_oauth_routes;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -325,6 +328,9 @@ use std::sync::Arc;
 /// state and task (task_routes.rs); Core refuses them (rust-task-reads.cjs) and offers the facts only it
 /// holds on the loopback bridge (rust-task-facts.cjs). The supervisor pairs them.
 ///
+/// `rust-autotune-settings`: this build answers every method of /api/models/autotune/settings;
+/// public policy/response here, conditional live tune-state writer over a trusted loopback bridge.
+///
 /// `rust-model-state-reads`: this build answers GET /api/models/inference-budget and GET /api/models/installed
 /// (model_state_routes.rs); Core refuses them (rust-model-state-reads.cjs) and offers the facts only it holds on the
 /// loopback bridge (rust-model-facts.cjs). The supervisor pairs them.
@@ -349,6 +355,7 @@ pub const FEATURES: &[&str] = &[
     "rust-diary-routes",
     "rust-model-reads",
     "rust-model-state-reads",
+    "rust-autotune-settings",
     "rust-project-reads",
     "rust-project-lifecycle",
     "rust-project-storage",
@@ -369,6 +376,7 @@ pub const FEATURES: &[&str] = &[
     "rust-model-sizing",
     "rust-model-maintenance",
     "rust-autotune-cancel",
+    "rust-calibration-cancel",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",
@@ -407,6 +415,7 @@ pub const FEATURES: &[&str] = &[
     "rust-toolboxes-permitted",
     #[cfg(feature = "rust-storage-reads")]
     "rust-toolbox-picker",
+    "rust-autotune-clear",
     #[cfg(feature = "rust-storage-reads")]
     "rust-connectors",
     // An account's deletion forgets the MCP sign-ins (rust-storage-reads) and the ChatGPT tokens
@@ -684,6 +693,7 @@ async fn handle(
                     | routes::Native::AutoRoles
                     | routes::Native::McpCredentials
                     | routes::Native::McpDirectory
+                    | routes::Native::AutotuneSettings
                     | routes::Native::ToolboxPicker
                     | routes::Native::ToolboxesPermitted
                     | routes::Native::ToolApprovals
@@ -726,6 +736,7 @@ async fn handle(
             | routes::Native::AutoRoles
             | routes::Native::McpCredentials
             | routes::Native::McpDirectory
+            | routes::Native::AutotuneSettings
             | routes::Native::ToolboxPicker
             | routes::Native::ToolboxesPermitted
             | routes::Native::ToolApprovals,
@@ -901,6 +912,12 @@ async fn handle(
                     true,
                 )
             }
+        }
+        Some(routes::Native::AutotuneSettings) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            autotune_settings_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::ToolApprovals) => {
             let Some(p) = whatwg else {
