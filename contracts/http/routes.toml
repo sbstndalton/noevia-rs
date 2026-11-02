@@ -501,8 +501,10 @@ path = "/api/model-manager"
 owner = "node"
 
 [[route]]
+# GET status only. POST start and every other verb still go to Node through the methods fallback.
 path = "/api/models/autotune"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/models/autotune/cancel"
