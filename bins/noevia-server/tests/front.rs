@@ -310,8 +310,8 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     // the preset reload's POST, the evidence read and the model-card import: 25; #2218 moved the research
     // paths, of which only the list was a listed Node route: 24; #2257 moved the active list and a project's
     // #2262 left 19 Node rows; #2281 toolbox, #2282 approval, #2287 settings,
-    // #2292 calibration cancellation and #2293 clear leave 14 listed Node rows.
-    assert!(node_routes >= 14, "{node_routes} node routes");
+    // #2292 calibration cancellation and #2293 clear leave 14; #2301 resume leaves 13 listed Node rows.
+    assert!(node_routes >= 13, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("GET", "/api/tool-approvals/a"),
