@@ -16,6 +16,14 @@ pub struct Loader {
     token: Option<String>,
     client: reqwest::Client,
 }
+// Config is Debug, but neither the configured URL nor its token may enter diagnostics.
+impl std::fmt::Debug for Loader {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Loader")
+            .field("configured", &self.endpoint.is_some())
+            .finish_non_exhaustive()
+    }
+}
 impl Loader {
     pub fn from_lookup(get: impl Fn(&str) -> Option<String>) -> Result<Self, String> {
         Ok(Self {
@@ -223,5 +231,30 @@ pub async fn serve(
             JValue::Str("Model management request failed.".into())
         };
         answer(status, &JValue::obj([("error", reason)]), false)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+    #[test]
+    fn config_diagnostics_never_print_loader_url_or_credentials() {
+        let loader = Loader::from_lookup(|key| match key {
+            "MODEL_LOADER_URL" => Some(
+                "http://synthetic-user:synthetic-password@synthetic-loader.invalid/private-target"
+                    .into(),
+            ),
+            "MODEL_LOADER_TOKEN" => Some("must-stay-private".into()),
+            _ => None,
+        })
+        .expect("synthetic loader config");
+        let diagnostic = format!("{loader:?}");
+        assert!(diagnostic.contains("configured: true"));
+        assert!(!diagnostic.contains("synthetic-loader"));
+        assert!(!diagnostic.contains("synthetic-user"));
+        assert!(!diagnostic.contains("synthetic-password"));
+        assert!(!diagnostic.contains("private-target"));
+        assert!(!diagnostic.contains("must-stay-private"));
     }
 }
