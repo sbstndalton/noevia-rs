@@ -264,3 +264,23 @@ async fn unexpected_http_credentials_in_public_job_fail_closed() {
     assert_eq!(s, 503);
     assert!(!body.to_string().contains("never-public"));
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn unknown_public_job_status_is_not_serialized_as_a_valid_resume_result() {
+    let (_d, f, up) = rig().await;
+    up.set(|r| {
+        if r.path == COMMIT {
+            let mut job = public_job();
+            job["status"] = json!("never-public");
+            reply(
+                "200 OK",
+                &json!({"applied":true,"publicJob":job}).to_string(),
+            )
+        } else {
+            stage(r)
+        }
+    });
+    let (s, body) = write(f.addr, "POST", PATH, ADMIN, r#"{"confirmPause":true}"#).await;
+    assert_eq!(s, 503);
+    assert!(!body.to_string().contains("never-public"));
+}

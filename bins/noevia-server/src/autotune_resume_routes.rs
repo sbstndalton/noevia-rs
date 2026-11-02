@@ -121,7 +121,10 @@ fn public_job(job: &JValue) -> Option<JValue> {
     if !matches!(job, JValue::Obj(_))
         || job.get("id").as_str().is_none_or(str::is_empty)
         || job.get("model").as_str().is_none_or(str::is_empty)
-        || job.get("status").as_str().is_none()
+        || !matches!(
+            job.get("status").as_str(),
+            Some("running" | "passed" | "failed" | "cancelled" | "interrupted")
+        )
     {
         return None;
     }
