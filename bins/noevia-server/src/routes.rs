@@ -1291,7 +1291,6 @@ mod tests {
             "/api/models/autotune/cancel",
             "/api/models/autotune/clear",
             "/api/models/autotune/resume",
-            "/api/models/autotune/settings",
             "/api/models/autotune/untuned",
             "/api/models/calibration",
             "/api/models/calibration/cancel",
@@ -1323,6 +1322,7 @@ mod tests {
         assert_eq!(
             rust,
             vec![
+                (crate::autotune_settings_routes::PATH, &[][..]),
                 (crate::model_routes::CAPABILITIES, &["GET"][..]),
                 (crate::model_sizing::ESTIMATE, &["GET"][..]),
                 (crate::model_maint::EVIDENCE, &["GET"][..]),
