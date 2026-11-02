@@ -117,6 +117,9 @@ pub async fn serve(
     req: Request<Body>,
     path: String,
 ) -> Response<Body> {
+    if path == crate::autotune_clear_routes::PATH {
+        return crate::autotune_clear_routes::serve(app, conn, req, path).await;
+    }
     if crate::model_maint::ROUTES.contains(&path.as_str()) {
         return crate::model_maint::serve(app, conn, req, path).await;
     }

@@ -454,7 +454,8 @@ pub fn native_for(route: &Route) -> Option<Native> {
         p if auth && DIARY_ROUTES.contains(&p) => return Some(Native::Diary),
         p if auth
             && (crate::model_routes::ROUTES.contains(&p)
-                || crate::model_maint::ROUTES.contains(&p)) =>
+                || crate::model_maint::ROUTES.contains(&p)
+                || p == crate::autotune_clear_routes::PATH) =>
         {
             return Some(Native::Models)
         }
@@ -1280,6 +1281,13 @@ mod tests {
                 assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
             }
         }
+        for method in ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] {
+            assert_eq!(
+                dispatch_under(method, crate::autotune_clear_routes::PATH, on),
+                Some(Native::Models)
+            );
+        }
+        assert!(crate::FEATURES.contains(&"rust-autotune-clear"));
         assert!(crate::FEATURES.contains(&"rust-model-reads"));
         assert!(crate::FEATURES.contains(&"rust-model-sizing"));
         assert!(crate::FEATURES.contains(&"rust-model-state-reads"));
@@ -1289,7 +1297,6 @@ mod tests {
             "/api/model-manager/models",
             "/api/models/autotune",
             "/api/models/autotune/cancel",
-            "/api/models/autotune/clear",
             "/api/models/autotune/resume",
             "/api/models/autotune/settings",
             "/api/models/autotune/untuned",
@@ -1323,6 +1330,7 @@ mod tests {
         assert_eq!(
             rust,
             vec![
+                (crate::autotune_clear_routes::PATH, &[][..]),
                 (crate::model_routes::CAPABILITIES, &["GET"][..]),
                 (crate::model_sizing::ESTIMATE, &["GET"][..]),
                 (crate::model_maint::EVIDENCE, &["GET"][..]),
