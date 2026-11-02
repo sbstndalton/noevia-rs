@@ -5,6 +5,7 @@
 pub mod account_routes;
 pub mod admin_user_routes;
 pub mod auto_roles_routes;
+pub mod autotune_untuned_routes;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_oauth_routes;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -347,6 +348,7 @@ pub const FEATURES: &[&str] = &[
     "rust-diary",
     "rust-diary-routes",
     "rust-model-reads",
+    "rust-autotune-untuned",
     "rust-model-state-reads",
     "rust-project-reads",
     "rust-project-lifecycle",

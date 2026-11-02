@@ -522,7 +522,7 @@ owner = "node"
 
 [[route]]
 path = "/api/models/autotune/untuned"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/models/calibration"

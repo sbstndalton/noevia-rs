@@ -1919,6 +1919,7 @@ dependencies = [
 name = "noevia-server"
 version = "0.1.0"
 dependencies = [
+ "autotune-plan",
  "axum",
  "base64 0.22.1",
  "brotli",

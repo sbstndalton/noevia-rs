@@ -53,6 +53,7 @@ rust-free-chats = []
 rust-project-writes = []
 
 [dependencies]
+autotune-plan = { path = "../../crates/autotune-plan" }
 context-fit = { path = "../../crates/context-fit" }
 engine-admission = { path = "../../crates/engine-admission" }
 model-stream = { path = "../../crates/model-stream" }
