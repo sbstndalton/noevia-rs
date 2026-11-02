@@ -518,7 +518,7 @@ owner = "node"
 
 [[route]]
 path = "/api/models/autotune/settings"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/models/autotune/untuned"

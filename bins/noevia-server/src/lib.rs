@@ -5,6 +5,7 @@
 pub mod account_routes;
 pub mod admin_user_routes;
 pub mod auto_roles_routes;
+pub mod autotune_settings_routes;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_oauth_routes;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -319,6 +320,9 @@ use std::sync::Arc;
 /// state and task (task_routes.rs); Core refuses them (rust-task-reads.cjs) and offers the facts only it
 /// holds on the loopback bridge (rust-task-facts.cjs). The supervisor pairs them.
 ///
+/// `rust-autotune-settings`: this build answers every method of /api/models/autotune/settings;
+/// public policy/response here, conditional live tune-state writer over a trusted loopback bridge.
+///
 /// `rust-model-state-reads`: this build answers GET /api/models/inference-budget and GET /api/models/installed
 /// (model_state_routes.rs); Core refuses them (rust-model-state-reads.cjs) and offers the facts only it holds on the
 /// loopback bridge (rust-model-facts.cjs). The supervisor pairs them.
@@ -342,6 +346,7 @@ pub const FEATURES: &[&str] = &[
     "rust-diary-routes",
     "rust-model-reads",
     "rust-model-state-reads",
+    "rust-autotune-settings",
     "rust-project-reads",
     "rust-project-lifecycle",
     "rust-project-storage",
@@ -674,6 +679,7 @@ async fn handle(
                     | routes::Native::AutoRoles
                     | routes::Native::McpCredentials
                     | routes::Native::McpDirectory
+                    | routes::Native::AutotuneSettings
                     | routes::Native::ToolboxesPermitted
             )
         ) {
@@ -714,6 +720,7 @@ async fn handle(
             | routes::Native::AutoRoles
             | routes::Native::McpCredentials
             | routes::Native::McpDirectory
+            | routes::Native::AutotuneSettings
             | routes::Native::ToolboxesPermitted,
         )
         | None => false,
@@ -887,6 +894,12 @@ async fn handle(
                     true,
                 )
             }
+        }
+        Some(routes::Native::AutotuneSettings) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            autotune_settings_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::ToolboxesPermitted) => {
             let Some(p) = whatwg else {

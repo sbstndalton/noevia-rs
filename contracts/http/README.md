@@ -508,7 +508,7 @@ and `--features` lists `rust-model-reads`. The rest wait for batch M2 (the job r
 | `/api/models/autotune/cancel` | node | write to the running job (M2) |
 | `/api/models/autotune/clear` | node | write to the job state (M2) |
 | `/api/models/autotune/resume` | node | starts the job runner (M2) |
-| `/api/models/autotune/settings` | node | write to the tune history the runner keeps (M2) |
+| `/api/models/autotune/settings` | rust | public policy and response; conditional live-actor state write remains in Core (#2287) |
 | `/api/models/autotune/untuned` | node | reads the runner's tune history and identity state |
 | `/api/models/calibration` | node | GET is the calibration job's in-memory state; POST starts it (M2) |
 | `/api/models/calibration/cancel` | node | write to the running job (M2) |
@@ -1704,3 +1704,26 @@ the capability `rust-model-state-reads`; Core refuses both with 503 `RUST_MODEL_
 (`server/rust-model-state-reads.cjs`). The budget's PUT stays Node's. `POST /internal/models/facts` (trusted-front
 check) gives the front the budget Node enforces, the sidecar names and reports and the shared folder scan; no answer
 from it is a 503. The figure is never read from `settings`: Node's boot copy decides what is enforced.
+
+## sbstndalton/noevia#2287: per-model auto-tune settings
+
+Every method of `/api/models/autotune/settings` belongs to `autotune_settings_routes.rs`
+(capability `rust-autotune-settings`). POST is the existing writer; the other methods retain their
+administrator, availability and method refusals. The account gate and the settings input validation,
+system-model/configured-preset checks, unfinished/resumable-job refusal and response assembly are native.
+
+Core's live tune actor remains the single writer of its combined job/history/settings file.
+`POST /internal/autotune-settings/facts` returns selected live facts and an opaque fingerprint of its
+process/generation, pending job and preset revision. `.../commit` compares that fingerprint synchronously
+with the one-map-entry mutation and state-file save. Rust revalidates fresh facts on a conflict, at most
+three attempts. No cross-process lock is held over an await, no second store is introduced, and later
+job/history updates are never replaced by a stale front-side copy. URLs, preset text and private job
+fields do not cross the facts boundary. Node no longer contains the public settings policy/handler.
+
+Deliberate corrections: oversized bodies return 413 instead of the old caught exception becoming a
+misleading model-selection error; hostile JavaScript string coercion is a bounded 400; a configured
+`__proto__` model gets an own persisted map entry; a failed state write restores its prior in-memory setting.
+The 21 Node vectors were recorded from Core a23cfc163fd3e76a7d89133a47a04a545498b20a without executing a tune.
+Synthetic Node differentials and real-front HTTP tests cover the policy/response, stale job/config/process
+identities, bounded retries and unchanged unrelated state. No real tune, inference or model load is needed
+for this metadata port; those engine behaviors are not proven by its synthetic tests.
