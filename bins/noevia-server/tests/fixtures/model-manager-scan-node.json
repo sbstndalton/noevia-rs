@@ -1,0 +1,381 @@
+{
+  "source": "7a7db591b89e4f2fb054126aa91517a7b920ff89",
+  "rows": [
+    {
+      "spec": {
+        "name": "missing config",
+        "configured": false
+      },
+      "result": {
+        "status": 404,
+        "body": {
+          "error": "Model management service is not configured"
+        }
+      },
+      "headers": [],
+      "refreshes": 0,
+      "fetches": [],
+      "cache": null
+    },
+    {
+      "spec": {
+        "name": "member",
+        "role": "member"
+      },
+      "result": {
+        "status": 403,
+        "body": {
+          "error": "Administrator required for model management"
+        }
+      },
+      "headers": [],
+      "refreshes": 0,
+      "fetches": [],
+      "cache": null
+    },
+    {
+      "spec": {
+        "name": "cold"
+      },
+      "result": {
+        "status": 200,
+        "body": {
+          "models": [
+            "synthetic"
+          ],
+          "unregistered": []
+        }
+      },
+      "headers": [
+        [
+          "Cache-Control",
+          "no-store"
+        ]
+      ],
+      "refreshes": 0,
+      "fetches": [
+        {
+          "url": "http://synthetic-loader/api/v1/models",
+          "method": "GET",
+          "bodyPresent": false
+        }
+      ],
+      "cache": {
+        "at": 10000,
+        "body": {
+          "models": [
+            "synthetic"
+          ],
+          "unregistered": []
+        }
+      }
+    },
+    {
+      "spec": {
+        "name": "young cache",
+        "age": 0
+      },
+      "result": {
+        "status": 200,
+        "body": {
+          "models": [
+            "cached"
+          ]
+        }
+      },
+      "headers": [
+        [
+          "Cache-Control",
+          "no-store"
+        ],
+        [
+          "X-Model-Scan",
+          "cached"
+        ]
+      ],
+      "refreshes": 0,
+      "fetches": [],
+      "cache": {
+        "at": 10000,
+        "body": {
+          "models": [
+            "cached"
+          ]
+        }
+      }
+    },
+    {
+      "spec": {
+        "name": "threshold cache",
+        "age": 5000
+      },
+      "result": {
+        "status": 200,
+        "body": {
+          "models": [
+            "cached"
+          ]
+        }
+      },
+      "headers": [
+        [
+          "Cache-Control",
+          "no-store"
+        ],
+        [
+          "X-Model-Scan",
+          "cached"
+        ]
+      ],
+      "refreshes": 0,
+      "fetches": [],
+      "cache": {
+        "at": 5000,
+        "body": {
+          "models": [
+            "cached"
+          ]
+        }
+      }
+    },
+    {
+      "spec": {
+        "name": "old cache",
+        "age": 5001
+      },
+      "result": {
+        "status": 200,
+        "body": {
+          "models": [
+            "cached"
+          ]
+        }
+      },
+      "headers": [
+        [
+          "Cache-Control",
+          "no-store"
+        ],
+        [
+          "X-Model-Scan",
+          "cached"
+        ]
+      ],
+      "refreshes": 1,
+      "fetches": [],
+      "cache": {
+        "at": 4999,
+        "body": {
+          "models": [
+            "cached"
+          ]
+        }
+      }
+    },
+    {
+      "spec": {
+        "name": "queried cache bypass",
+        "age": 6000,
+        "search": "?filter=a%2Fb&x=1"
+      },
+      "result": {
+        "status": 200,
+        "body": {
+          "models": [
+            "synthetic"
+          ],
+          "unregistered": []
+        }
+      },
+      "headers": [
+        [
+          "Cache-Control",
+          "no-store"
+        ]
+      ],
+      "refreshes": 0,
+      "fetches": [
+        {
+          "url": "http://synthetic-loader/api/v1/models?filter=a%2Fb&x=1",
+          "method": "GET",
+          "bodyPresent": false
+        }
+      ],
+      "cache": {
+        "at": 4000,
+        "body": {
+          "models": [
+            "cached"
+          ]
+        }
+      }
+    },
+    {
+      "spec": {
+        "name": "bare query uses cache",
+        "age": 6000,
+        "search": "?"
+      },
+      "result": {
+        "status": 200,
+        "body": {
+          "models": [
+            "cached"
+          ]
+        }
+      },
+      "headers": [
+        [
+          "Cache-Control",
+          "no-store"
+        ],
+        [
+          "X-Model-Scan",
+          "cached"
+        ]
+      ],
+      "refreshes": 1,
+      "fetches": [],
+      "cache": {
+        "at": 4000,
+        "body": {
+          "models": [
+            "cached"
+          ]
+        }
+      }
+    },
+    {
+      "spec": {
+        "name": "loader refusal",
+        "reply": {
+          "ok": false,
+          "status": 409,
+          "body": {
+            "detail": "loader-refusal",
+            "private": "omitted"
+          }
+        }
+      },
+      "result": {
+        "status": 409,
+        "body": {
+          "error": "loader-refusal"
+        }
+      },
+      "headers": [
+        [
+          "Cache-Control",
+          "no-store"
+        ]
+      ],
+      "refreshes": 0,
+      "fetches": [
+        {
+          "url": "http://synthetic-loader/api/v1/models",
+          "method": "GET",
+          "bodyPresent": false
+        }
+      ],
+      "cache": null
+    },
+    {
+      "spec": {
+        "name": "nonJSON text",
+        "reply": {
+          "ok": true,
+          "status": 200,
+          "body": "not-json"
+        }
+      },
+      "result": {
+        "status": 200,
+        "body": {
+          "error": "not-json"
+        }
+      },
+      "headers": [
+        [
+          "Cache-Control",
+          "no-store"
+        ]
+      ],
+      "refreshes": 0,
+      "fetches": [
+        {
+          "url": "http://synthetic-loader/api/v1/models",
+          "method": "GET",
+          "bodyPresent": false
+        }
+      ],
+      "cache": {
+        "at": 10000,
+        "body": {
+          "error": "not-json"
+        }
+      }
+    },
+    {
+      "spec": {
+        "name": "legacy oversized bad success",
+        "reply": {
+          "ok": false,
+          "status": 200,
+          "error": "response too large"
+        }
+      },
+      "result": {
+        "status": 200,
+        "body": {
+          "error": "Model management request failed."
+        }
+      },
+      "headers": [
+        [
+          "Cache-Control",
+          "no-store"
+        ]
+      ],
+      "refreshes": 0,
+      "fetches": [
+        {
+          "url": "http://synthetic-loader/api/v1/models",
+          "method": "GET",
+          "bodyPresent": false
+        }
+      ],
+      "cache": null
+    },
+    {
+      "spec": {
+        "name": "HEAD remains Node and clears cache",
+        "age": 0,
+        "method": "HEAD"
+      },
+      "result": {
+        "status": 200,
+        "body": {
+          "models": [
+            "synthetic"
+          ],
+          "unregistered": []
+        }
+      },
+      "headers": [
+        [
+          "Cache-Control",
+          "no-store"
+        ]
+      ],
+      "refreshes": 0,
+      "fetches": [
+        {
+          "url": "http://synthetic-loader/api/v1/models",
+          "method": "HEAD",
+          "bodyPresent": false
+        }
+      ],
+      "cache": null
+    }
+  ]
+}
