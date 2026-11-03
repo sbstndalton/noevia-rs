@@ -506,6 +506,11 @@ owner = "rust"
 methods = ["GET"]
 
 [[route]]
+path = "/api/models/assignments"
+owner = "rust"
+methods = ["GET"]
+
+[[route]]
 # GET status only. POST start and every other verb still go to Node through the methods fallback.
 path = "/api/models/autotune"
 owner = "rust"

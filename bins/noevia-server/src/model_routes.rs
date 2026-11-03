@@ -47,6 +47,7 @@ pub const ROUTES: &[&str] = &[
     crate::model_state_routes::BUDGET,
     crate::model_state_routes::INSTALLED,
     crate::autotune_read_routes::PATH,
+    crate::model_assignments::PATH,
 ];
 
 /// What the model reads answer from: the keys core index.cjs read at startup.
@@ -118,6 +119,9 @@ pub async fn serve(
     req: Request<Body>,
     path: String,
 ) -> Response<Body> {
+    if path == crate::model_assignments::PATH {
+        return crate::model_assignments::serve(app, conn, req, path).await;
+    }
     if path == crate::autotune_read_routes::PATH {
         return crate::autotune_read_routes::serve(app, conn, req, path).await;
     }
