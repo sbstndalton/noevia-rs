@@ -264,6 +264,16 @@ async fn other_methods_trailing_slashes_and_the_other_model_routes_go_to_node() 
         )
     );
     assert!(h.contains("cache-control: no-store"));
+    // #2321: status GET is native even with a dead owner bridge; other methods remain Node's.
+    let (s, h, b) = call(addr, "GET", "/api/models/autotune", &csrf).await;
+    assert_eq!(
+        (s, b.as_str()),
+        (
+            503,
+            r#"{"error":"Auto-tune state is unavailable. Try again shortly."}"#
+        )
+    );
+    assert!(h.contains("cache-control: no-store"));
     for (m, p) in [
         ("HEAD", CAPABILITIES),
         ("POST", CAPABILITIES),
@@ -278,7 +288,9 @@ async fn other_methods_trailing_slashes_and_the_other_model_routes_go_to_node() 
         ("GET", "/api/models/estimate/"),
         ("GET", "/api/models/preset?model=m"),
         ("PUT", "/api/models/inference-budget"),
-        ("GET", "/api/models/autotune"),
+        ("POST", "/api/models/autotune"),
+        ("HEAD", "/api/models/autotune"),
+        ("GET", "/api/models/autotune/"),
         ("GET", "/api/models/calibration"),
         ("GET", "/api/models/machines"),
         ("POST", "/api/model-manager/models"),

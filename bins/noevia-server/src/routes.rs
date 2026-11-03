@@ -1304,6 +1304,17 @@ mod tests {
         assert!(crate::FEATURES.contains(&"rust-model-sizing"));
         assert!(crate::FEATURES.contains(&"rust-model-state-reads"));
         assert!(crate::FEATURES.contains(&"rust-model-maintenance"));
+        assert!(crate::FEATURES.contains(&"rust-autotune-read"));
+        assert_eq!(
+            dispatch_under("GET", crate::autotune_read_routes::PATH, on),
+            Some(Native::Models)
+        );
+        for method in ["POST", "HEAD", "PUT", "PATCH", "DELETE", "OPTIONS"] {
+            assert_eq!(
+                dispatch_under(method, crate::autotune_read_routes::PATH, on),
+                None
+            );
+        }
         assert!(crate::FEATURES.contains(&"rust-autotune-cancel"));
         for method in ["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"] {
             assert_eq!(
@@ -1320,7 +1331,6 @@ mod tests {
         }
         for p in [
             "/api/model-manager",
-            "/api/models/autotune",
             "/api/models/autotune/untuned",
             "/api/models/calibration",
             "/api/models/delete",
@@ -1352,6 +1362,7 @@ mod tests {
             rust,
             vec![
                 (crate::model_manager_scan::PATH, &["GET"][..]),
+                (crate::autotune_read_routes::PATH, &["GET"][..]),
                 (crate::autotune_cancel_routes::PATH, &[][..]),
                 (crate::autotune_clear_routes::PATH, &[][..]),
                 (crate::autotune_resume_routes::PATH, &[][..]),

@@ -46,6 +46,7 @@ pub const ROUTES: &[&str] = &[
     crate::model_sizing::SUGGEST,
     crate::model_state_routes::BUDGET,
     crate::model_state_routes::INSTALLED,
+    crate::autotune_read_routes::PATH,
 ];
 
 /// What the model reads answer from: the keys core index.cjs read at startup.
@@ -117,6 +118,9 @@ pub async fn serve(
     req: Request<Body>,
     path: String,
 ) -> Response<Body> {
+    if path == crate::autotune_read_routes::PATH {
+        return crate::autotune_read_routes::serve(app, conn, req, path).await;
+    }
     if path == crate::model_manager_scan::PATH && req.method() == axum::http::Method::GET {
         return crate::model_manager_scan::serve(app, conn, req, path).await;
     }
