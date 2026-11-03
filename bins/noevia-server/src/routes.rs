@@ -456,6 +456,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
         "/api/usage" | "/api/usage/aggregate" if auth => return Some(Native::Usage),
         EXPORT if auth => return Some(Native::Export),
         p if auth && DIARY_ROUTES.contains(&p) => return Some(Native::Diary),
+        p if auth && p == crate::model_manager_scan::PATH => return Some(Native::Models),
         p if auth
             && (crate::model_routes::ROUTES.contains(&p)
                 || crate::model_maint::ROUTES.contains(&p)
@@ -610,7 +611,8 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
     let route = route_for(path)?;
     // This owner is exact-path only; the shared matcher tolerates trailing slashes.
     if (route.path == "/api/chat-framing/preferences"
-        || route.path == server_account::vault_mirror::PATH)
+        || route.path == server_account::vault_mirror::PATH
+        || route.path == crate::model_manager_scan::PATH)
         && path != route.path
     {
         return None;
@@ -1329,7 +1331,6 @@ mod tests {
         }
         for p in [
             "/api/model-manager",
-            "/api/model-manager/models",
             "/api/models/autotune/untuned",
             "/api/models/calibration",
             "/api/models/delete",
@@ -1360,6 +1361,7 @@ mod tests {
         assert_eq!(
             rust,
             vec![
+                (crate::model_manager_scan::PATH, &["GET"][..]),
                 (crate::autotune_read_routes::PATH, &["GET"][..]),
                 (crate::autotune_cancel_routes::PATH, &[][..]),
                 (crate::autotune_clear_routes::PATH, &[][..]),
