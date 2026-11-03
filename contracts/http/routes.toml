@@ -506,7 +506,7 @@ owner = "node"
 
 [[route]]
 path = "/api/models/autotune/cancel"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/models/autotune/clear"

@@ -5,6 +5,7 @@
 pub mod account_routes;
 pub mod admin_user_routes;
 pub mod auto_roles_routes;
+pub mod autotune_cancel_routes;
 pub mod autotune_clear_routes;
 pub mod autotune_resume_routes;
 pub mod autotune_settings_routes;
@@ -375,6 +376,7 @@ pub const FEATURES: &[&str] = &[
     "rust-offsite-backup",
     "rust-model-sizing",
     "rust-model-maintenance",
+    "rust-autotune-cancel",
     "rust-calibration-cancel",
     "rust-web-address-read",
     "rust-web-address-write",
