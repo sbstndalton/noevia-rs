@@ -13,6 +13,8 @@ jobs:
     name: Rust fmt, clippy, test
     runs-on: ubuntu-latest
     env:
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
       NOEVIA_DOCLING_REFERENCE: ${{ github.workspace }}/.ci-docling/docling
       NOEVIA_LAYA_REFERENCE: ${{ github.workspace }}/.ci-laya/laya
     steps:
