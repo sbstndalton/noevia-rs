@@ -459,6 +459,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
         p if auth
             && (crate::model_routes::ROUTES.contains(&p)
                 || crate::model_maint::ROUTES.contains(&p)
+                || p == crate::autotune_resume_routes::PATH
                 || p == crate::autotune_cancel_routes::PATH
                 || p == crate::autotune_clear_routes::PATH
                 || p == crate::calibration_cancel_routes::PATH) =>
@@ -1319,7 +1320,6 @@ mod tests {
             "/api/model-manager",
             "/api/model-manager/models",
             "/api/models/autotune",
-            "/api/models/autotune/resume",
             "/api/models/autotune/untuned",
             "/api/models/calibration",
             "/api/models/delete",
@@ -1352,6 +1352,7 @@ mod tests {
             vec![
                 (crate::autotune_cancel_routes::PATH, &[][..]),
                 (crate::autotune_clear_routes::PATH, &[][..]),
+                (crate::autotune_resume_routes::PATH, &[][..]),
                 (crate::autotune_settings_routes::PATH, &[][..]),
                 (crate::calibration_cancel_routes::PATH, &[][..]),
                 (crate::model_routes::CAPABILITIES, &["GET"][..]),
