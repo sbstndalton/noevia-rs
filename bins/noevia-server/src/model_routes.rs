@@ -121,6 +121,9 @@ pub async fn serve(
     if path == crate::autotune_read_routes::PATH {
         return crate::autotune_read_routes::serve(app, conn, req, path).await;
     }
+    if path == crate::autotune_cancel_routes::PATH {
+        return crate::autotune_cancel_routes::serve(app, conn, req, path).await;
+    }
     if path == crate::autotune_clear_routes::PATH {
         return crate::autotune_clear_routes::serve(app, conn, req, path).await;
     }
