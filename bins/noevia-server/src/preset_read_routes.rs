@@ -67,7 +67,7 @@ pub async fn serve(app: &App, admin: bool, model: Option<String>) -> Response<Bo
                 return unavailable();
             }
             let view = JValue::obj([
-                ("model", JValue::Str(model.into())),
+                ("model", JValue::Str(model)),
                 ("revision", revision.clone()),
                 ("exists", exists.clone()),
                 ("options", options.clone()),
