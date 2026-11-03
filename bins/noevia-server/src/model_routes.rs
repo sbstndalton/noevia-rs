@@ -117,6 +117,9 @@ pub async fn serve(
     req: Request<Body>,
     path: String,
 ) -> Response<Body> {
+    if path == crate::model_manager_scan::PATH && req.method() == axum::http::Method::GET {
+        return crate::model_manager_scan::serve(app, conn, req, path).await;
+    }
     if path == crate::autotune_resume_routes::PATH {
         return crate::autotune_resume_routes::serve(app, conn, req, path).await;
     }
