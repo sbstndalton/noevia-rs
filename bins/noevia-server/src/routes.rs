@@ -612,7 +612,8 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
     // This owner is exact-path only; the shared matcher tolerates trailing slashes.
     if (route.path == "/api/chat-framing/preferences"
         || route.path == server_account::vault_mirror::PATH
-        || route.path == crate::model_manager_scan::PATH)
+        || route.path == crate::model_manager_scan::PATH
+        || route.path == crate::preset_read_routes::PATH)
         && path != route.path
     {
         return None;
