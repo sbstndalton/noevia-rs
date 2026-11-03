@@ -592,6 +592,11 @@ owner = "rust"
 methods = ["GET"]
 
 [[route]]
+path = "/api/models/idle-unload"
+owner = "rust"
+methods = ["GET"]
+
+[[route]]
 path = "/api/models/installed"
 owner = "rust"
 methods = ["GET"]

@@ -1375,6 +1375,7 @@ mod tests {
                 (crate::model_maint::EVIDENCE_IMPORT, &["POST"][..]),
                 (crate::model_routes::HARDWARE, &["GET"][..]),
                 (crate::model_state_routes::BUDGET, &["GET"][..]),
+                (crate::idle_unload_read::PATH, &["GET"][..]),
                 (crate::model_state_routes::INSTALLED, &["GET"][..]),
                 (crate::model_sizing::SUGGEST, &["GET"][..]),
                 (crate::model_maint::RELOAD, &["POST"][..]),

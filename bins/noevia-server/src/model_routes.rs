@@ -47,6 +47,7 @@ pub const ROUTES: &[&str] = &[
     crate::model_state_routes::BUDGET,
     crate::model_state_routes::INSTALLED,
     crate::autotune_read_routes::PATH,
+    crate::idle_unload_read::PATH,
     crate::model_assignments::PATH,
 ];
 
@@ -119,6 +120,9 @@ pub async fn serve(
     req: Request<Body>,
     path: String,
 ) -> Response<Body> {
+    if path == crate::idle_unload_read::PATH {
+        return crate::idle_unload_read::serve(app, conn, req, path).await;
+    }
     if path == crate::model_assignments::PATH {
         return crate::model_assignments::serve(app, conn, req, path).await;
     }

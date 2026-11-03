@@ -12,7 +12,7 @@ const PREFIX: &str = "/internal/model-manager-scan/";
 const CAP: usize = 8 * 1024 * 1024;
 #[derive(Clone)]
 pub struct Loader {
-    endpoint: Option<String>,
+    base: Option<String>,
     token: Option<String>,
     client: reqwest::Client,
 }
@@ -20,16 +20,16 @@ pub struct Loader {
 impl std::fmt::Debug for Loader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Loader")
-            .field("configured", &self.endpoint.is_some())
+            .field("configured", &self.base.is_some())
             .finish_non_exhaustive()
     }
 }
 impl Loader {
     pub fn from_lookup(get: impl Fn(&str) -> Option<String>) -> Result<Self, String> {
         Ok(Self {
-            endpoint: get("MODEL_LOADER_URL")
+            base: get("MODEL_LOADER_URL")
                 .filter(|v| !v.is_empty())
-                .map(|v| format!("{}/api/v1/models", v.trim_end_matches('/'))),
+                .map(|v| v.trim_end_matches('/').to_owned()),
             token: get("MODEL_LOADER_TOKEN").filter(|v| !v.is_empty()),
             client: reqwest::Client::builder()
                 .redirect(reqwest::redirect::Policy::none())
@@ -38,12 +38,33 @@ impl Loader {
                 .map_err(|_| "model scan client unavailable".to_owned())?,
         })
     }
+    pub(crate) fn configured(&self) -> bool {
+        self.base.is_some()
+    }
+
     async fn get(&self, query: &str) -> Option<(StatusCode, bool, JValue)> {
-        let endpoint = self.endpoint.as_ref()?;
+        let (status, body) = self
+            .get_bounded("/api/v1/models", query, Duration::from_secs(600))
+            .await?;
+        Some((status, status.is_success(), body?))
+    }
+
+    pub(crate) async fn idle_unload(&self) -> Option<(StatusCode, Option<JValue>)> {
+        self.get_bounded("/api/v1/idle-unload", "", Duration::from_secs(30))
+            .await
+    }
+
+    async fn get_bounded(
+        &self,
+        path: &str,
+        query: &str,
+        timeout: Duration,
+    ) -> Option<(StatusCode, Option<JValue>)> {
+        let base = self.base.as_ref()?;
         let endpoint = if query.is_empty() {
-            endpoint.clone()
+            format!("{base}{path}")
         } else {
-            format!("{endpoint}?{query}")
+            format!("{base}{path}?{query}")
         };
         let url = reqwest::Url::parse(&endpoint).ok()?;
         // Node fetch refuses userinfo; never silently turn a URL into Basic credentials.
@@ -54,7 +75,7 @@ impl Loader {
             .client
             .get(url)
             .header(header::CONTENT_TYPE, "application/json")
-            .timeout(Duration::from_secs(600));
+            .timeout(timeout);
         if let Some(token) = &self.token {
             let mut value = HeaderValue::from_str(token).ok()?;
             value.set_sensitive(true);
@@ -70,13 +91,13 @@ impl Loader {
         let mut bytes = Vec::new();
         while let Some(chunk) = res.chunk().await.ok()? {
             if chunk.len() > CAP.saturating_sub(bytes.len()) {
-                return None;
+                return Some((status, None));
             }
             bytes.extend_from_slice(&chunk);
         }
         let text = String::from_utf8_lossy(&bytes);
         let value = wtf16::parse(&text).unwrap_or_else(|_| JValue::Str(text.into_owned()));
-        Some((status, status.is_success(), value))
+        Some((status, Some(value)))
     }
 }
 fn error(status: StatusCode, message: &str) -> Response<Body> {
@@ -159,7 +180,7 @@ pub async fn serve(
         );
     }
     let loader = &app.config.model_manager_scan;
-    if loader.endpoint.is_none() {
+    if !loader.configured() {
         return error(
             StatusCode::NOT_FOUND,
             "Model management service is not configured",
