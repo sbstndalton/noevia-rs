@@ -519,7 +519,7 @@ owner = "rust"
 
 [[route]]
 path = "/api/models/autotune/resume"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/models/autotune/settings"

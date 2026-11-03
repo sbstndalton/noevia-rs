@@ -507,7 +507,7 @@ and `--features` lists `rust-model-reads`. The rest wait for batch M2 (the job r
 | `/api/models/autotune` | node | GET is the auto-tune job runner's in-memory job state; POST starts it (M2) |
 | `/api/models/autotune/cancel` | node | write to the running job (M2) |
 | `/api/models/autotune/clear` | node | write to the job state (M2) |
-| `/api/models/autotune/resume` | node | starts the job runner (M2) |
+| `/api/models/autotune/resume` | rust | confirmation, queue/reset policy and response; conditional preparation/launch stay in the live actor (#2301) |
 | `/api/models/autotune/settings` | rust | public policy and response; conditional live-actor state write remains in Core (#2287) |
 | `/api/models/autotune/untuned` | node | reads the runner's tune history and identity state |
 | `/api/models/calibration` | node | GET is the calibration job's in-memory state; POST starts it (M2) |
@@ -1755,3 +1755,12 @@ resolver; invalid choices never consume it. Routing remember remains strictly bo
 The old public Node handler is deleted and its bypass returns `RUST_TOOL_APPROVALS_OWNED`.
 Release assembly and startup require the capability and refusal together; an old/old pair remains a valid rollback.
 This supersedes the earlier sections calling the public approval endpoint chat-bound; the pending state still is.
+
+
+Every method of `/api/models/autotune/resume` belongs to `autotune_resume_routes.rs`
+(`rust-autotune-resume`). The live actor retains bounded listing/identity preparation, its existing
+pending-restoration reload authority and synchronous conditional state/save/launch operations.
+Each stage compares the exact job/run/config snapshot; preparation uses the existing starting flag
+only within its own call and returns its token after releasing it. Rust owns confirmation,
+resumability/restoration checks, protected-queue filtering, identity decisions, phase/step reset
+instructions and public projection. No cross-request reservation or replacement-job retry is used.
