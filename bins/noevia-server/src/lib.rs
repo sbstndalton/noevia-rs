@@ -8,6 +8,7 @@ pub mod auto_roles_routes;
 pub mod autotune_cancel_routes;
 pub mod autotune_clear_routes;
 pub mod autotune_read_routes;
+pub mod autotune_resume_routes;
 pub mod autotune_settings_routes;
 pub mod calibration_cancel_routes;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -418,6 +419,7 @@ pub const FEATURES: &[&str] = &[
     "rust-toolbox-picker",
     "rust-autotune-clear",
     "rust-autotune-read",
+    "rust-autotune-resume",
     #[cfg(feature = "rust-storage-reads")]
     "rust-connectors",
     // An account's deletion forgets the MCP sign-ins (rust-storage-reads) and the ChatGPT tokens
