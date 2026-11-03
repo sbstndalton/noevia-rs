@@ -258,7 +258,10 @@ async fn other_methods_trailing_slashes_and_the_other_model_routes_go_to_node() 
     let (s, h, b) = call(addr, "GET", "/api/model-manager/models", &csrf).await;
     assert_eq!(
         (s, b.as_str()),
-        (404, r#"{"error":"Model management service is not configured"}"#)
+        (
+            404,
+            r#"{"error":"Model management service is not configured"}"#
+        )
     );
     assert!(h.contains("cache-control: no-store"));
     for (m, p) in [
