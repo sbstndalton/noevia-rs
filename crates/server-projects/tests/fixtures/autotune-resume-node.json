@@ -1,0 +1,678 @@
+[
+  {
+    "name": "confirmation",
+    "input": {
+      "confirmPause": false
+    },
+    "job": {
+      "id": "j",
+      "model": "synthetic",
+      "status": "cancelled",
+      "_revision": "r1",
+      "startedAt": 0,
+      "promptBudgetSeconds": 120,
+      "models": [
+        {
+          "model": "synthetic",
+          "status": "interrupted",
+          "phases": [
+            {
+              "id": "context",
+              "status": "interrupted",
+              "restored": true,
+              "steps": []
+            }
+          ]
+        }
+      ]
+    },
+    "rows": [
+      {
+        "id": "synthetic",
+        "modelPath": "",
+        "system": false
+      }
+    ],
+    "status": 400,
+    "body": {
+      "error": "Confirm that chat can pause before resuming auto-tune."
+    },
+    "identityReads": 0,
+    "holds": 0,
+    "engineWrites": 0
+  },
+  {
+    "name": "absent",
+    "input": {
+      "confirmPause": true
+    },
+    "job": null,
+    "rows": [
+      {
+        "id": "synthetic",
+        "modelPath": "",
+        "system": false
+      }
+    ],
+    "status": 409,
+    "body": {
+      "error": "No resumable auto-tune is available."
+    },
+    "identityReads": 0,
+    "holds": 0,
+    "engineWrites": 0
+  },
+  {
+    "name": "running",
+    "input": {
+      "confirmPause": true
+    },
+    "job": {
+      "id": "j",
+      "model": "synthetic",
+      "status": "running",
+      "_revision": "r1",
+      "startedAt": 0,
+      "promptBudgetSeconds": 120,
+      "models": [
+        {
+          "model": "synthetic",
+          "status": "interrupted",
+          "phases": [
+            {
+              "id": "context",
+              "status": "interrupted",
+              "restored": true,
+              "steps": []
+            }
+          ]
+        }
+      ]
+    },
+    "rows": [
+      {
+        "id": "synthetic",
+        "modelPath": "",
+        "system": false
+      }
+    ],
+    "status": 409,
+    "body": {
+      "error": "No resumable auto-tune is available."
+    },
+    "identityReads": 0,
+    "holds": 0,
+    "engineWrites": 0
+  },
+  {
+    "name": "unsafe",
+    "input": {
+      "confirmPause": true
+    },
+    "job": {
+      "id": "j",
+      "model": "synthetic",
+      "status": "cancelled",
+      "_revision": "r1",
+      "startedAt": 0,
+      "promptBudgetSeconds": 120,
+      "models": [
+        {
+          "model": "synthetic",
+          "status": "interrupted",
+          "phases": [
+            {
+              "id": "context",
+              "status": "interrupted",
+              "restored": true,
+              "steps": []
+            }
+          ]
+        }
+      ],
+      "_unsafe": true
+    },
+    "rows": [
+      {
+        "id": "synthetic",
+        "modelPath": "",
+        "system": false
+      }
+    ],
+    "status": 409,
+    "body": {
+      "error": "Settings could not safely be restored; inspect models.ini before starting a new tune."
+    },
+    "identityReads": 0,
+    "holds": 0,
+    "engineWrites": 0
+  },
+  {
+    "name": "restore-failed",
+    "input": {
+      "confirmPause": true
+    },
+    "job": {
+      "id": "j",
+      "model": "synthetic",
+      "status": "cancelled",
+      "_revision": "r1",
+      "startedAt": 0,
+      "promptBudgetSeconds": 120,
+      "models": [
+        {
+          "model": "synthetic",
+          "status": "interrupted",
+          "phases": [
+            {
+              "id": "context",
+              "status": "interrupted",
+              "restored": false,
+              "steps": []
+            }
+          ]
+        }
+      ]
+    },
+    "rows": [
+      {
+        "id": "synthetic",
+        "modelPath": "",
+        "system": false
+      }
+    ],
+    "status": 409,
+    "body": {
+      "error": "Settings could not safely be restored; inspect models.ini before starting a new tune."
+    },
+    "identityReads": 0,
+    "holds": 0,
+    "engineWrites": 0
+  },
+  {
+    "name": "revision",
+    "input": {
+      "confirmPause": true
+    },
+    "job": {
+      "id": "j",
+      "model": "synthetic",
+      "status": "cancelled",
+      "_revision": "old",
+      "startedAt": 0,
+      "promptBudgetSeconds": 120,
+      "models": [
+        {
+          "model": "synthetic",
+          "status": "interrupted",
+          "phases": [
+            {
+              "id": "context",
+              "status": "interrupted",
+              "restored": true,
+              "steps": []
+            }
+          ]
+        }
+      ]
+    },
+    "rows": [
+      {
+        "id": "synthetic",
+        "modelPath": "",
+        "system": false
+      }
+    ],
+    "status": 409,
+    "body": {
+      "error": "Settings changed outside auto-tune. Start a new tune after reviewing them."
+    },
+    "identityReads": 0,
+    "holds": 0,
+    "engineWrites": 0
+  },
+  {
+    "name": "router",
+    "input": {
+      "confirmPause": true
+    },
+    "job": {
+      "id": "j",
+      "model": "synthetic",
+      "status": "cancelled",
+      "_revision": "r1",
+      "startedAt": 0,
+      "promptBudgetSeconds": 120,
+      "models": [
+        {
+          "model": "synthetic",
+          "status": "interrupted",
+          "phases": [
+            {
+              "id": "context",
+              "status": "interrupted",
+              "restored": true,
+              "steps": []
+            }
+          ]
+        }
+      ]
+    },
+    "rows": null,
+    "status": 409,
+    "body": {
+      "error": "The model server is not responding."
+    },
+    "identityReads": 0,
+    "holds": 0,
+    "engineWrites": 0
+  },
+  {
+    "name": "missing-model",
+    "input": {
+      "confirmPause": true
+    },
+    "job": {
+      "id": "j",
+      "model": "synthetic",
+      "status": "cancelled",
+      "_revision": "r1",
+      "startedAt": 0,
+      "promptBudgetSeconds": 120,
+      "models": [
+        {
+          "model": "synthetic",
+          "status": "interrupted",
+          "phases": [
+            {
+              "id": "context",
+              "status": "interrupted",
+              "restored": true,
+              "steps": []
+            }
+          ]
+        }
+      ]
+    },
+    "rows": [],
+    "status": 409,
+    "body": {
+      "error": "A queued model is no longer configured."
+    },
+    "identityReads": 0,
+    "holds": 0,
+    "engineWrites": 0
+  },
+  {
+    "name": "missing-identity",
+    "input": {
+      "confirmPause": true
+    },
+    "job": {
+      "id": "j",
+      "model": "synthetic",
+      "status": "cancelled",
+      "_revision": "r1",
+      "startedAt": 0,
+      "promptBudgetSeconds": 120,
+      "models": [
+        {
+          "model": "synthetic",
+          "status": "interrupted",
+          "phases": [
+            {
+              "id": "context",
+              "status": "interrupted",
+              "restored": true,
+              "steps": []
+            }
+          ]
+        }
+      ]
+    },
+    "rows": [
+      {
+        "id": "synthetic",
+        "modelPath": "",
+        "system": false
+      }
+    ],
+    "status": 409,
+    "body": {
+      "error": "A queued model identity could not be read."
+    },
+    "identityReads": 1,
+    "holds": 0,
+    "engineWrites": 0
+  },
+  {
+    "name": "changed-identity",
+    "input": {
+      "confirmPause": true
+    },
+    "job": {
+      "id": "j",
+      "model": "synthetic",
+      "status": "cancelled",
+      "_revision": "r1",
+      "startedAt": 0,
+      "promptBudgetSeconds": 120,
+      "models": [
+        {
+          "model": "synthetic",
+          "status": "interrupted",
+          "phases": [
+            {
+              "id": "context",
+              "status": "interrupted",
+              "restored": true,
+              "steps": []
+            }
+          ],
+          "_identity": "old"
+        }
+      ]
+    },
+    "rows": [
+      {
+        "id": "synthetic",
+        "modelPath": "",
+        "system": false
+      }
+    ],
+    "status": 409,
+    "body": {
+      "error": "A queued model changed since tuning began."
+    },
+    "identityReads": 1,
+    "holds": 0,
+    "engineWrites": 0
+  },
+  {
+    "name": "all-system",
+    "input": {
+      "confirmPause": true
+    },
+    "job": {
+      "id": "j",
+      "model": "laya_synthetic",
+      "status": "cancelled",
+      "_revision": "r1",
+      "startedAt": 0,
+      "promptBudgetSeconds": 120,
+      "models": [
+        {
+          "model": "laya_synthetic",
+          "status": "interrupted",
+          "phases": [
+            {
+              "id": "context",
+              "status": "interrupted",
+              "restored": true,
+              "steps": []
+            }
+          ]
+        }
+      ]
+    },
+    "rows": [
+      {
+        "id": "laya_synthetic",
+        "modelPath": "",
+        "system": true
+      }
+    ],
+    "status": 200,
+    "body": {
+      "id": "j",
+      "model": "laya_synthetic",
+      "status": "passed",
+      "startedAt": 0,
+      "promptBudgetSeconds": 120,
+      "models": [],
+      "skipped": [
+        {
+          "model": "laya_synthetic",
+          "reason": "System routing model — not tuned"
+        }
+      ],
+      "phase": "Done",
+      "finishedAt": 1000
+    },
+    "identityReads": 0,
+    "holds": 0,
+    "engineWrites": 0
+  },
+  {
+    "name": "system-path-alias",
+    "input": {
+      "confirmPause": true
+    },
+    "job": {
+      "id": "j",
+      "model": "neutral-synthetic",
+      "status": "cancelled",
+      "_revision": "r1",
+      "startedAt": 0,
+      "promptBudgetSeconds": 120,
+      "models": [
+        {
+          "model": "neutral-synthetic",
+          "status": "interrupted",
+          "phases": [
+            {
+              "id": "context",
+              "status": "interrupted",
+              "restored": true,
+              "steps": []
+            }
+          ]
+        }
+      ]
+    },
+    "rows": [
+      {
+        "id": "neutral-synthetic",
+        "modelPath": "/models/laya_synthetic/model.gguf",
+        "system": true
+      }
+    ],
+    "status": 200,
+    "body": {
+      "id": "j",
+      "model": "neutral-synthetic",
+      "status": "passed",
+      "startedAt": 0,
+      "promptBudgetSeconds": 120,
+      "models": [],
+      "skipped": [
+        {
+          "model": "neutral-synthetic",
+          "reason": "System routing model — not tuned"
+        }
+      ],
+      "phase": "Done",
+      "finishedAt": 1000
+    },
+    "identityReads": 0,
+    "holds": 0,
+    "engineWrites": 0
+  },
+  {
+    "name": "explicit-system-role",
+    "input": {
+      "confirmPause": true
+    },
+    "job": {
+      "id": "j",
+      "model": "neutral-role",
+      "status": "cancelled",
+      "_revision": "r1",
+      "startedAt": 0,
+      "promptBudgetSeconds": 120,
+      "models": [
+        {
+          "model": "neutral-role",
+          "status": "interrupted",
+          "phases": [
+            {
+              "id": "context",
+              "status": "interrupted",
+              "restored": true,
+              "steps": []
+            }
+          ]
+        }
+      ]
+    },
+    "rows": [
+      {
+        "id": "neutral-role",
+        "modelPath": "",
+        "system": true
+      }
+    ],
+    "status": 200,
+    "body": {
+      "id": "j",
+      "model": "neutral-role",
+      "status": "passed",
+      "startedAt": 0,
+      "promptBudgetSeconds": 120,
+      "models": [],
+      "skipped": [
+        {
+          "model": "neutral-role",
+          "reason": "System routing model — not tuned"
+        }
+      ],
+      "phase": "Done",
+      "finishedAt": 1000
+    },
+    "identityReads": 0,
+    "holds": 0,
+    "engineWrites": 0
+  },
+  {
+    "name": "resume-running",
+    "input": {
+      "confirmPause": true
+    },
+    "job": {
+      "id": "j",
+      "model": "synthetic",
+      "status": "cancelled",
+      "_revision": "r1",
+      "startedAt": 0,
+      "promptBudgetSeconds": 120,
+      "models": [
+        {
+          "model": "synthetic",
+          "status": "interrupted",
+          "phases": [
+            {
+              "id": "context",
+              "status": "interrupted",
+              "restored": true,
+              "steps": []
+            }
+          ]
+        }
+      ]
+    },
+    "rows": [
+      {
+        "id": "synthetic",
+        "modelPath": "",
+        "system": false
+      }
+    ],
+    "status": 202,
+    "body": {
+      "id": "j",
+      "model": "synthetic",
+      "status": "running",
+      "startedAt": 0,
+      "promptBudgetSeconds": 120,
+      "models": [
+        {
+          "model": "synthetic",
+          "status": "pending",
+          "phases": [
+            {
+              "id": "context",
+              "status": "pending",
+              "steps": []
+            }
+          ]
+        }
+      ],
+      "phase": "Waiting for chat to become idle",
+      "waiting": true
+    },
+    "identityReads": 1,
+    "holds": 1,
+    "engineWrites": 0
+  },
+  {
+    "name": "resume-wtf16",
+    "input": {
+      "confirmPause": true
+    },
+    "job": {
+      "id": "j",
+      "model": "synthetic\ud800",
+      "status": "cancelled",
+      "_revision": "r1",
+      "startedAt": 0,
+      "promptBudgetSeconds": 120,
+      "models": [
+        {
+          "model": "synthetic\ud800",
+          "status": "interrupted",
+          "phases": [
+            {
+              "id": "context",
+              "status": "interrupted",
+              "restored": true,
+              "steps": []
+            }
+          ]
+        }
+      ]
+    },
+    "rows": [
+      {
+        "id": "synthetic\ud800",
+        "modelPath": "",
+        "system": false
+      }
+    ],
+    "status": 202,
+    "body": {
+      "id": "j",
+      "model": "synthetic\ud800",
+      "status": "running",
+      "startedAt": 0,
+      "promptBudgetSeconds": 120,
+      "models": [
+        {
+          "model": "synthetic\ud800",
+          "status": "pending",
+          "phases": [
+            {
+              "id": "context",
+              "status": "pending",
+              "steps": []
+            }
+          ]
+        }
+      ],
+      "phase": "Waiting for chat to become idle",
+      "waiting": true
+    },
+    "identityReads": 1,
+    "holds": 1,
+    "engineWrites": 0
+  }
+]

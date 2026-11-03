@@ -79,6 +79,7 @@ pub struct Config {
     /// GET /api/models/estimate and /api/models/preset/suggest (sbstndalton/noevia#2189): the
     /// preset file, the model mounts, the sizing budget keys and the same engine /api/stats reads.
     pub sizing: std::sync::Arc<crate::model_sizing::Sizing>,
+    pub model_manager_scan: crate::model_manager_scan::Loader,
     /// The model maintenance routes (sbstndalton/noevia#2210, model_maint): the gate client, the
     /// router, the models.ini store and the state files, as Core's index.cjs reads them.
     pub maint: std::sync::Arc<crate::model_maint::Maint>,
@@ -394,6 +395,7 @@ impl Config {
                 .filter(|p| !p.is_empty())
                 .and_then(|p| std::fs::read(p).ok()),
             sizing,
+            model_manager_scan: crate::model_manager_scan::Loader::from_lookup(&get)?,
             maint,
             rust_export,
             project_store,
