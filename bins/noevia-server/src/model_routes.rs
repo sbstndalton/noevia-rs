@@ -47,6 +47,7 @@ pub const ROUTES: &[&str] = &[
     crate::model_state_routes::BUDGET,
     crate::model_state_routes::INSTALLED,
     crate::autotune_read_routes::PATH,
+    crate::preset_read_routes::PATH,
 ];
 
 /// What the model reads answer from: the keys core index.cjs read at startup.
@@ -157,6 +158,9 @@ pub async fn serve(
         Ok(Err(rejection)) => return rejection.into_response(),
         Err(_) => return identity::Rejection::Unavailable.into_response(),
     };
+    if path == crate::preset_read_routes::PATH {
+        return crate::preset_read_routes::serve(app, id.user.role == Role::Admin, model).await;
+    }
     if let Some(route) = crate::model_sizing::Route::of(&path) {
         let layer = Arc::clone(&app.identity);
         let budget = Arc::new(move || crate::model_sizing::budget_setting(&layer));

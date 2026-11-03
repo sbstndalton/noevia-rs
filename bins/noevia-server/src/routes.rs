@@ -1337,7 +1337,7 @@ mod tests {
             "/api/models/evidence/recheck",
             "/api/models/load",
             "/api/models/machines",
-            "/api/models/preset",
+            "/api/models/preset/",
             "/api/models/downloads",
             "/api/models/capabilitiesx",
             "/api/models/hardware/x",
@@ -1349,7 +1349,8 @@ mod tests {
                 assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
             }
         }
-        // Exactly the two model routes are the front's in the contract, GET only.
+        assert!(crate::FEATURES.contains(&"rust-preset-read"));
+        // The native model routes and methods listed in the contract.
         let rust: Vec<_> = ROUTES
             .iter()
             .filter(|r| {
@@ -1375,6 +1376,7 @@ mod tests {
                 (crate::model_routes::HARDWARE, &["GET"][..]),
                 (crate::model_state_routes::BUDGET, &["GET"][..]),
                 (crate::model_state_routes::INSTALLED, &["GET"][..]),
+                (crate::preset_read_routes::PATH, &["GET"][..]),
                 (crate::model_sizing::SUGGEST, &["GET"][..]),
                 (crate::model_maint::RELOAD, &["POST"][..]),
             ]
