@@ -79,19 +79,45 @@ pub fn validate(change: &Change, facts: &JValue) -> Result<(), Fault> {
     }
     Ok(())
 }
+/// Shared published KV/mode domain data for both settings writes and status reads.
+pub fn kv_candidates(allow_q5: bool, below: bool) -> JValue {
+    let mut kv = vec![JValue::from("bf16"), JValue::from("q8_0")];
+    if allow_q5 {
+        kv.extend([JValue::from("q5_1"), JValue::from("q5_0")]);
+        if below {
+            kv.push(JValue::from("q4_0"));
+        }
+    }
+    JValue::Arr(kv)
+}
+pub fn modes() -> JValue {
+    JValue::obj([
+        (
+            "fast",
+            JValue::obj([
+                ("defaultSeconds", JValue::Num(120.0)),
+                ("maxSeconds", JValue::Num(1800.0)),
+            ]),
+        ),
+        (
+            "long",
+            JValue::obj([
+                ("defaultSeconds", JValue::Num(1800.0)),
+                ("maxSeconds", JValue::Num(1800.0)),
+            ]),
+        ),
+    ])
+}
+pub fn long_id(model: &str) -> String {
+    format!("{model}-long")
+}
 pub fn response(change: &Change, facts: &JValue) -> Result<JValue, Fault> {
     let guard = facts.get("guard");
     if guard.get("allowQ5Kv").as_bool() != Some(change.allow_q5) {
         return Err(Fault::State);
     }
     let below = guard.get("allowBelowQ5Kv").as_bool().ok_or(Fault::State)?;
-    let mut kv = vec![JValue::from("bf16"), JValue::from("q8_0")];
-    if change.allow_q5 {
-        kv.extend([JValue::from("q5_1"), JValue::from("q5_0")]);
-        if below {
-            kv.push(JValue::from("q4_0"));
-        }
-    }
+    let kv = kv_candidates(change.allow_q5, below);
     for field in ["history", "longHistory"] {
         if matches!(facts.get(field), JValue::Undefined) {
             return Err(Fault::State);
@@ -100,31 +126,13 @@ pub fn response(change: &Change, facts: &JValue) -> Result<JValue, Fault> {
     Ok(JValue::obj([
         ("job", facts.get("job").clone()),
         ("history", facts.get("history").clone()),
-        ("kvCandidates", JValue::Arr(kv)),
+        ("kvCandidates", kv),
         (
             "settings",
             JValue::obj([("allowQ5Kv", JValue::Bool(change.allow_q5))]),
         ),
-        (
-            "modes",
-            JValue::obj([
-                (
-                    "fast",
-                    JValue::obj([
-                        ("defaultSeconds", JValue::Num(120.0)),
-                        ("maxSeconds", JValue::Num(1800.0)),
-                    ]),
-                ),
-                (
-                    "long",
-                    JValue::obj([
-                        ("defaultSeconds", JValue::Num(1800.0)),
-                        ("maxSeconds", JValue::Num(1800.0)),
-                    ]),
-                ),
-            ]),
-        ),
-        ("longId", JValue::Str(format!("{}-long", change.model))),
+        ("modes", modes()),
+        ("longId", JValue::Str(long_id(&change.model))),
         ("longHistory", facts.get("longHistory").clone()),
     ]))
 }
