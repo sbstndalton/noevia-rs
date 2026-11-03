@@ -120,6 +120,9 @@ pub async fn serve(
     if path == crate::model_manager_scan::PATH && req.method() == axum::http::Method::GET {
         return crate::model_manager_scan::serve(app, conn, req, path).await;
     }
+    if path == crate::autotune_cancel_routes::PATH {
+        return crate::autotune_cancel_routes::serve(app, conn, req, path).await;
+    }
     if path == crate::autotune_clear_routes::PATH {
         return crate::autotune_clear_routes::serve(app, conn, req, path).await;
     }
