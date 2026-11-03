@@ -5,7 +5,10 @@
 pub mod account_routes;
 pub mod admin_user_routes;
 pub mod auto_roles_routes;
+pub mod autotune_cancel_routes;
 pub mod autotune_clear_routes;
+pub mod autotune_read_routes;
+pub mod autotune_resume_routes;
 pub mod autotune_settings_routes;
 pub mod autotune_untuned_routes;
 pub mod calibration_cancel_routes;
@@ -25,6 +28,7 @@ pub mod gdrive;
 pub mod health;
 pub mod health_routes;
 pub mod identity;
+pub mod idle_unload_read;
 pub mod legacy_proxy;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_broker;
@@ -42,6 +46,7 @@ pub mod mcp_routes;
 pub mod mcp_tools;
 pub mod model_kind;
 pub mod model_maint;
+pub mod model_manager_scan;
 pub mod model_routes;
 pub mod model_sizing;
 pub mod model_state_routes;
@@ -376,7 +381,9 @@ pub const FEATURES: &[&str] = &[
     "rust-offsite-backup",
     "rust-model-sizing",
     "rust-model-maintenance",
+    "rust-autotune-cancel",
     "rust-calibration-cancel",
+    "rust-model-manager-scan",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",
@@ -416,6 +423,9 @@ pub const FEATURES: &[&str] = &[
     #[cfg(feature = "rust-storage-reads")]
     "rust-toolbox-picker",
     "rust-autotune-clear",
+    "rust-autotune-read",
+    "rust-idle-unload-read",
+    "rust-autotune-resume",
     #[cfg(feature = "rust-storage-reads")]
     "rust-connectors",
     // An account's deletion forgets the MCP sign-ins (rust-storage-reads) and the ChatGPT tokens

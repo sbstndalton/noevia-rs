@@ -1,0 +1,1012 @@
+[
+  {
+    "name": "no-job",
+    "target": "/api/models/autotune",
+    "model": "",
+    "state": {},
+    "below": false,
+    "expected": {
+      "status": 200,
+      "body": {
+        "history": [],
+        "kvCandidates": [
+          "bf16",
+          "q8_0"
+        ],
+        "settings": {
+          "allowQ5Kv": false
+        },
+        "modes": {
+          "fast": {
+            "defaultSeconds": 120,
+            "maxSeconds": 1800
+          },
+          "long": {
+            "defaultSeconds": 1800,
+            "maxSeconds": 1800
+          }
+        }
+      }
+    },
+    "getCacheClears": 0,
+    "getCacheGenerationDelta": 0,
+    "postCacheClearPositiveControl": 1
+  },
+  {
+    "name": "null-job",
+    "target": "/api/models/autotune?model=m",
+    "model": "m",
+    "state": {
+      "job": null
+    },
+    "below": false,
+    "expected": {
+      "status": 200,
+      "body": {
+        "job": null,
+        "history": [],
+        "kvCandidates": [
+          "bf16",
+          "q8_0"
+        ],
+        "settings": {
+          "allowQ5Kv": false
+        },
+        "modes": {
+          "fast": {
+            "defaultSeconds": 120,
+            "maxSeconds": 1800
+          },
+          "long": {
+            "defaultSeconds": 1800,
+            "maxSeconds": 1800
+          }
+        },
+        "longId": "m-long",
+        "longHistory": []
+      }
+    },
+    "getCacheClears": 0,
+    "getCacheGenerationDelta": 0
+  },
+  {
+    "name": "global-job-no-model",
+    "target": "/api/models/autotune?model=",
+    "model": "",
+    "state": {
+      "job": {
+        "id": "j",
+        "model": "m",
+        "status": "running",
+        "phase": "Context and KV cache",
+        "models": [],
+        "originalText": "synthetic-profile-not-public"
+      },
+      "history": {
+        "m": [
+          {
+            "at": 1,
+            "kv": "q8_0",
+            "context": 8192,
+            "spec": "off",
+            "generation": 20,
+            "loaded": true,
+            "version": 3,
+            "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "at": 0,
+            "kv": "bf16",
+            "context": 4096,
+            "loaded": true,
+            "version": 3,
+            "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ],
+        "m-long": [
+          {
+            "at": 2,
+            "kv": "q8_0",
+            "context": 32768,
+            "version": 3
+          }
+        ]
+      },
+      "settings": {
+        "m": {
+          "allowQ5Kv": true
+        }
+      }
+    },
+    "below": false,
+    "expected": {
+      "status": 200,
+      "body": {
+        "job": {
+          "id": "j",
+          "model": "m",
+          "status": "running",
+          "phase": "Context and KV cache",
+          "models": []
+        },
+        "history": [],
+        "kvCandidates": [
+          "bf16",
+          "q8_0"
+        ],
+        "settings": {
+          "allowQ5Kv": false
+        },
+        "modes": {
+          "fast": {
+            "defaultSeconds": 120,
+            "maxSeconds": 1800
+          },
+          "long": {
+            "defaultSeconds": 1800,
+            "maxSeconds": 1800
+          }
+        }
+      }
+    },
+    "getCacheClears": 0,
+    "getCacheGenerationDelta": 0
+  },
+  {
+    "name": "model-current-history-long",
+    "target": "/api/models/autotune?model=m",
+    "model": "m",
+    "state": {
+      "job": {
+        "id": "j",
+        "model": "m",
+        "status": "running",
+        "phase": "Context and KV cache",
+        "models": [],
+        "originalText": "synthetic-profile-not-public"
+      },
+      "history": {
+        "m": [
+          {
+            "at": 1,
+            "kv": "q8_0",
+            "context": 8192,
+            "spec": "off",
+            "generation": 20,
+            "loaded": true,
+            "version": 3,
+            "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "at": 0,
+            "kv": "bf16",
+            "context": 4096,
+            "loaded": true,
+            "version": 3,
+            "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ],
+        "m-long": [
+          {
+            "at": 2,
+            "kv": "q8_0",
+            "context": 32768,
+            "version": 3
+          }
+        ]
+      },
+      "settings": {
+        "m": {
+          "allowQ5Kv": true
+        }
+      }
+    },
+    "below": false,
+    "expected": {
+      "status": 200,
+      "body": {
+        "job": {
+          "id": "j",
+          "model": "m",
+          "status": "running",
+          "phase": "Context and KV cache",
+          "models": []
+        },
+        "history": [
+          {
+            "at": 1,
+            "kv": "q8_0",
+            "context": 8192,
+            "spec": "off",
+            "generation": 20,
+            "loaded": true,
+            "version": 3,
+            "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "at": 0,
+            "kv": "bf16",
+            "context": 4096,
+            "loaded": true,
+            "version": 3,
+            "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ],
+        "kvCandidates": [
+          "bf16",
+          "q8_0",
+          "q5_1",
+          "q5_0"
+        ],
+        "settings": {
+          "allowQ5Kv": true
+        },
+        "modes": {
+          "fast": {
+            "defaultSeconds": 120,
+            "maxSeconds": 1800
+          },
+          "long": {
+            "defaultSeconds": 1800,
+            "maxSeconds": 1800
+          }
+        },
+        "longId": "m-long",
+        "longHistory": [
+          {
+            "at": 2,
+            "kv": "q8_0",
+            "context": 32768,
+            "version": 3
+          }
+        ]
+      }
+    },
+    "getCacheClears": 0,
+    "getCacheGenerationDelta": 0
+  },
+  {
+    "name": "q5-below-override",
+    "target": "/api/models/autotune?model=m",
+    "model": "m",
+    "state": {
+      "job": {
+        "id": "j",
+        "model": "m",
+        "status": "running",
+        "phase": "Context and KV cache",
+        "models": [],
+        "originalText": "synthetic-profile-not-public"
+      },
+      "history": {
+        "m": [
+          {
+            "at": 1,
+            "kv": "q8_0",
+            "context": 8192,
+            "spec": "off",
+            "generation": 20,
+            "loaded": true,
+            "version": 3,
+            "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "at": 0,
+            "kv": "bf16",
+            "context": 4096,
+            "loaded": true,
+            "version": 3,
+            "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ],
+        "m-long": [
+          {
+            "at": 2,
+            "kv": "q8_0",
+            "context": 32768,
+            "version": 3
+          }
+        ]
+      },
+      "settings": {
+        "m": {
+          "allowQ5Kv": true
+        }
+      }
+    },
+    "below": true,
+    "expected": {
+      "status": 200,
+      "body": {
+        "job": {
+          "id": "j",
+          "model": "m",
+          "status": "running",
+          "phase": "Context and KV cache",
+          "models": []
+        },
+        "history": [
+          {
+            "at": 1,
+            "kv": "q8_0",
+            "context": 8192,
+            "spec": "off",
+            "generation": 20,
+            "loaded": true,
+            "version": 3,
+            "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "at": 0,
+            "kv": "bf16",
+            "context": 4096,
+            "loaded": true,
+            "version": 3,
+            "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ],
+        "kvCandidates": [
+          "bf16",
+          "q8_0",
+          "q5_1",
+          "q5_0",
+          "q4_0"
+        ],
+        "settings": {
+          "allowQ5Kv": true
+        },
+        "modes": {
+          "fast": {
+            "defaultSeconds": 120,
+            "maxSeconds": 1800
+          },
+          "long": {
+            "defaultSeconds": 1800,
+            "maxSeconds": 1800
+          }
+        },
+        "longId": "m-long",
+        "longHistory": [
+          {
+            "at": 2,
+            "kv": "q8_0",
+            "context": 32768,
+            "version": 3
+          }
+        ]
+      }
+    },
+    "getCacheClears": 0,
+    "getCacheGenerationDelta": 0
+  },
+  {
+    "name": "override-alone",
+    "target": "/api/models/autotune?model=m",
+    "model": "m",
+    "state": {
+      "history": {
+        "m": [
+          {
+            "at": 1,
+            "kv": "q8_0",
+            "context": 8192,
+            "spec": "off",
+            "generation": 20,
+            "loaded": true,
+            "version": 3,
+            "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "at": 0,
+            "kv": "bf16",
+            "context": 4096,
+            "loaded": true,
+            "version": 3,
+            "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ]
+      }
+    },
+    "below": true,
+    "expected": {
+      "status": 200,
+      "body": {
+        "history": [
+          {
+            "at": 1,
+            "kv": "q8_0",
+            "context": 8192,
+            "spec": "off",
+            "generation": 20,
+            "loaded": true,
+            "version": 3,
+            "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "at": 0,
+            "kv": "bf16",
+            "context": 4096,
+            "loaded": true,
+            "version": 3,
+            "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ],
+        "kvCandidates": [
+          "bf16",
+          "q8_0"
+        ],
+        "settings": {
+          "allowQ5Kv": false
+        },
+        "modes": {
+          "fast": {
+            "defaultSeconds": 120,
+            "maxSeconds": 1800
+          },
+          "long": {
+            "defaultSeconds": 1800,
+            "maxSeconds": 1800
+          }
+        },
+        "longId": "m-long",
+        "longHistory": []
+      }
+    },
+    "getCacheClears": 0,
+    "getCacheGenerationDelta": 0
+  },
+  {
+    "name": "unknown-model",
+    "target": "/api/models/autotune?model=unknown",
+    "model": "unknown",
+    "state": {
+      "job": {
+        "id": "j",
+        "model": "m",
+        "status": "running",
+        "phase": "Context and KV cache",
+        "models": [],
+        "originalText": "synthetic-profile-not-public"
+      },
+      "history": {
+        "m": [
+          {
+            "at": 1,
+            "kv": "q8_0",
+            "context": 8192,
+            "spec": "off",
+            "generation": 20,
+            "loaded": true,
+            "version": 3,
+            "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "at": 0,
+            "kv": "bf16",
+            "context": 4096,
+            "loaded": true,
+            "version": 3,
+            "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ],
+        "m-long": [
+          {
+            "at": 2,
+            "kv": "q8_0",
+            "context": 32768,
+            "version": 3
+          }
+        ]
+      },
+      "settings": {
+        "m": {
+          "allowQ5Kv": true
+        }
+      }
+    },
+    "below": false,
+    "expected": {
+      "status": 200,
+      "body": {
+        "job": {
+          "id": "j",
+          "model": "m",
+          "status": "running",
+          "phase": "Context and KV cache",
+          "models": []
+        },
+        "history": [],
+        "kvCandidates": [
+          "bf16",
+          "q8_0"
+        ],
+        "settings": {
+          "allowQ5Kv": false
+        },
+        "modes": {
+          "fast": {
+            "defaultSeconds": 120,
+            "maxSeconds": 1800
+          },
+          "long": {
+            "defaultSeconds": 1800,
+            "maxSeconds": 1800
+          }
+        },
+        "longId": "unknown-long",
+        "longHistory": []
+      }
+    },
+    "getCacheClears": 0,
+    "getCacheGenerationDelta": 0
+  },
+  {
+    "name": "empty-key-history-not-public",
+    "target": "/api/models/autotune?model=",
+    "model": "",
+    "state": {
+      "history": {
+        "": [
+          {
+            "at": 1,
+            "kv": "q8_0",
+            "context": 8192,
+            "spec": "off",
+            "generation": 20,
+            "loaded": true,
+            "version": 3,
+            "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "at": 0,
+            "kv": "bf16",
+            "context": 4096,
+            "loaded": true,
+            "version": 3,
+            "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ]
+      },
+      "settings": {
+        "": {
+          "allowQ5Kv": true
+        }
+      }
+    },
+    "below": false,
+    "expected": {
+      "status": 200,
+      "body": {
+        "history": [],
+        "kvCandidates": [
+          "bf16",
+          "q8_0",
+          "q5_1",
+          "q5_0"
+        ],
+        "settings": {
+          "allowQ5Kv": true
+        },
+        "modes": {
+          "fast": {
+            "defaultSeconds": 120,
+            "maxSeconds": 1800
+          },
+          "long": {
+            "defaultSeconds": 1800,
+            "maxSeconds": 1800
+          }
+        }
+      }
+    },
+    "getCacheClears": 0,
+    "getCacheGenerationDelta": 0
+  },
+  {
+    "name": "emoji-key",
+    "target": "/api/models/autotune?model=m%F0%9F%98%80",
+    "model": "m😀",
+    "state": {
+      "history": {
+        "m😀": [
+          {
+            "at": 1,
+            "kv": "q8_0",
+            "context": 8192,
+            "spec": "off",
+            "generation": 20,
+            "loaded": true,
+            "version": 3,
+            "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "at": 0,
+            "kv": "bf16",
+            "context": 4096,
+            "loaded": true,
+            "version": 3,
+            "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ]
+      },
+      "settings": {
+        "m😀": {
+          "allowQ5Kv": true
+        }
+      }
+    },
+    "below": false,
+    "expected": {
+      "status": 200,
+      "body": {
+        "history": [
+          {
+            "at": 1,
+            "kv": "q8_0",
+            "context": 8192,
+            "spec": "off",
+            "generation": 20,
+            "loaded": true,
+            "version": 3,
+            "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "at": 0,
+            "kv": "bf16",
+            "context": 4096,
+            "loaded": true,
+            "version": 3,
+            "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ],
+        "kvCandidates": [
+          "bf16",
+          "q8_0",
+          "q5_1",
+          "q5_0"
+        ],
+        "settings": {
+          "allowQ5Kv": true
+        },
+        "modes": {
+          "fast": {
+            "defaultSeconds": 120,
+            "maxSeconds": 1800
+          },
+          "long": {
+            "defaultSeconds": 1800,
+            "maxSeconds": 1800
+          }
+        },
+        "longId": "m😀-long",
+        "longHistory": []
+      }
+    },
+    "getCacheClears": 0,
+    "getCacheGenerationDelta": 0
+  },
+  {
+    "name": "lone-utf16-data",
+    "target": "/api/models/autotune?model=m",
+    "model": "m",
+    "state": {
+      "job": {
+        "id": "j",
+        "model": "m",
+        "status": "failed",
+        "log": [
+          {
+            "text": "cut\ud800"
+          }
+        ]
+      },
+      "history": {
+        "m": [
+          {
+            "at": 1,
+            "quality": {
+              "checks": [
+                {
+                  "answer": "cut\ud83d"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "below": false,
+    "expected": {
+      "status": 200,
+      "body": {
+        "job": {
+          "id": "j",
+          "model": "m",
+          "status": "failed",
+          "log": [
+            {
+              "text": "cut\ud800"
+            }
+          ]
+        },
+        "history": [
+          {
+            "at": 1,
+            "quality": {
+              "checks": [
+                {
+                  "answer": "cut\ud83d"
+                }
+              ]
+            }
+          }
+        ],
+        "kvCandidates": [
+          "bf16",
+          "q8_0"
+        ],
+        "settings": {
+          "allowQ5Kv": false
+        },
+        "modes": {
+          "fast": {
+            "defaultSeconds": 120,
+            "maxSeconds": 1800
+          },
+          "long": {
+            "defaultSeconds": 1800,
+            "maxSeconds": 1800
+          }
+        },
+        "longId": "m-long",
+        "longHistory": []
+      }
+    },
+    "getCacheClears": 0,
+    "getCacheGenerationDelta": 0
+  },
+  {
+    "name": "own-prototype-key",
+    "target": "/api/models/autotune?model=__proto__",
+    "model": "__proto__",
+    "state": {
+      "history": {
+        "__proto__": [
+          {
+            "at": 3,
+            "context": 8192
+          }
+        ]
+      },
+      "settings": {
+        "__proto__": {
+          "allowQ5Kv": true
+        }
+      }
+    },
+    "below": false,
+    "expected": {
+      "status": 200,
+      "body": {
+        "history": [
+          {
+            "at": 3,
+            "context": 8192
+          }
+        ],
+        "kvCandidates": [
+          "bf16",
+          "q8_0",
+          "q5_1",
+          "q5_0"
+        ],
+        "settings": {
+          "allowQ5Kv": true
+        },
+        "modes": {
+          "fast": {
+            "defaultSeconds": 120,
+            "maxSeconds": 1800
+          },
+          "long": {
+            "defaultSeconds": 1800,
+            "maxSeconds": 1800
+          }
+        },
+        "longId": "__proto__-long",
+        "longHistory": []
+      }
+    },
+    "getCacheClears": 0,
+    "getCacheGenerationDelta": 0
+  },
+  {
+    "name": "duplicate-first-query",
+    "target": "/api/models/autotune?model=m&model=unknown",
+    "model": "m",
+    "state": {
+      "job": {
+        "id": "j",
+        "model": "m",
+        "status": "running",
+        "phase": "Context and KV cache",
+        "models": [],
+        "originalText": "synthetic-profile-not-public"
+      },
+      "history": {
+        "m": [
+          {
+            "at": 1,
+            "kv": "q8_0",
+            "context": 8192,
+            "spec": "off",
+            "generation": 20,
+            "loaded": true,
+            "version": 3,
+            "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "at": 0,
+            "kv": "bf16",
+            "context": 4096,
+            "loaded": true,
+            "version": 3,
+            "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ],
+        "m-long": [
+          {
+            "at": 2,
+            "kv": "q8_0",
+            "context": 32768,
+            "version": 3
+          }
+        ]
+      },
+      "settings": {
+        "m": {
+          "allowQ5Kv": true
+        }
+      }
+    },
+    "below": false,
+    "expected": {
+      "status": 200,
+      "body": {
+        "job": {
+          "id": "j",
+          "model": "m",
+          "status": "running",
+          "phase": "Context and KV cache",
+          "models": []
+        },
+        "history": [
+          {
+            "at": 1,
+            "kv": "q8_0",
+            "context": 8192,
+            "spec": "off",
+            "generation": 20,
+            "loaded": true,
+            "version": 3,
+            "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "at": 0,
+            "kv": "bf16",
+            "context": 4096,
+            "loaded": true,
+            "version": 3,
+            "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ],
+        "kvCandidates": [
+          "bf16",
+          "q8_0",
+          "q5_1",
+          "q5_0"
+        ],
+        "settings": {
+          "allowQ5Kv": true
+        },
+        "modes": {
+          "fast": {
+            "defaultSeconds": 120,
+            "maxSeconds": 1800
+          },
+          "long": {
+            "defaultSeconds": 1800,
+            "maxSeconds": 1800
+          }
+        },
+        "longId": "m-long",
+        "longHistory": [
+          {
+            "at": 2,
+            "kv": "q8_0",
+            "context": 32768,
+            "version": 3
+          }
+        ]
+      }
+    },
+    "getCacheClears": 0,
+    "getCacheGenerationDelta": 0
+  },
+  {
+    "name": "spaces-not-trimmed",
+    "target": "/api/models/autotune?model=%20m%20",
+    "model": " m ",
+    "state": {
+      "history": {
+        " m ": [
+          {
+            "at": 1,
+            "kv": "q8_0",
+            "context": 8192,
+            "spec": "off",
+            "generation": 20,
+            "loaded": true,
+            "version": 3,
+            "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "at": 0,
+            "kv": "bf16",
+            "context": 4096,
+            "loaded": true,
+            "version": 3,
+            "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ]
+      }
+    },
+    "below": false,
+    "expected": {
+      "status": 200,
+      "body": {
+        "history": [
+          {
+            "at": 1,
+            "kv": "q8_0",
+            "context": 8192,
+            "spec": "off",
+            "generation": 20,
+            "loaded": true,
+            "version": 3,
+            "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "at": 0,
+            "kv": "bf16",
+            "context": 4096,
+            "loaded": true,
+            "version": 3,
+            "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ],
+        "kvCandidates": [
+          "bf16",
+          "q8_0"
+        ],
+        "settings": {
+          "allowQ5Kv": false
+        },
+        "modes": {
+          "fast": {
+            "defaultSeconds": 120,
+            "maxSeconds": 1800
+          },
+          "long": {
+            "defaultSeconds": 1800,
+            "maxSeconds": 1800
+          }
+        },
+        "longId": " m -long",
+        "longHistory": []
+      }
+    },
+    "getCacheClears": 0,
+    "getCacheGenerationDelta": 0
+  }
+]

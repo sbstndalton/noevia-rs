@@ -504,10 +504,10 @@ and `--features` lists `rust-model-reads`. The rest wait for batch M2 (the job r
 | `/api/models/capabilities` (GET) | rust | the adapter kind, `LLAMACPP_PRESET_PATH` and `MODEL_LOADER_URL` only |
 | `/api/models/hardware` (GET) | rust | no model manager: 404; llama.cpp cannot discover hardware: `{supported:false}`; other methods keep Node's 405 |
 | `/api/model-manager` | node | proxy whose `GET models` serves Node's in-memory folder scan cache (and writes it); sweep hold, delete cleanup |
-| `/api/models/autotune` | node | GET is the auto-tune job runner's in-memory job state; POST starts it (M2) |
+| `/api/models/autotune` | rust GET only; node otherwise | native GET composes owner metadata; POST start and every other method remain Node (#2306) |
 | `/api/models/autotune/cancel` | node | write to the running job (M2) |
 | `/api/models/autotune/clear` | node | write to the job state (M2) |
-| `/api/models/autotune/resume` | node | starts the job runner (M2) |
+| `/api/models/autotune/resume` | rust | confirmation, queue/reset policy and response; conditional preparation/launch stay in the live actor (#2301) |
 | `/api/models/autotune/settings` | rust | public policy and response; conditional live-actor state write remains in Core (#2287) |
 | `/api/models/autotune/untuned` | node | reads the runner's tune history and identity state |
 | `/api/models/calibration` | node | GET is the calibration job's in-memory state; POST starts it (M2) |
@@ -1755,3 +1755,28 @@ resolver; invalid choices never consume it. Routing remember remains strictly bo
 The old public Node handler is deleted and its bypass returns `RUST_TOOL_APPROVALS_OWNED`.
 Release assembly and startup require the capability and refusal together; an old/old pair remains a valid rollback.
 This supersedes the earlier sections calling the public approval endpoint chat-bound; the pending state still is.
+
+
+GET only of `/api/models/autotune` belongs to `autotune_read_routes.rs`
+(`rust-autotune-read`). The contract's `methods = ["GET"]` deliberately leaves POST start,
+HEAD, PUT, PATCH, DELETE, OPTIONS and every other verb with Node's existing method fallback.
+This is method-level progress, not ownership of the whole path or migration of start.
+
+The owner bridge returns selected raw job/history records and boolean KV preferences for
+explicitly requested map keys; it performs no engine/profile reads or worker launch. Rust
+composes job presence, at most ten history entries, KV/settings, mode limits and optional
+Long id/history, sharing the current settings domain functions. The old Node status formatter
+and public GET branch are removed; internal busy checks and worker fixtures read raw facts.
+
+The old GET route does not invalidate the shared model-scan cache: thirteen actual old-route
+fixtures preserve its generation and seeded value, while a synthetic POST positive control
+increments that same cache. The read bridge therefore adds no invalidation callback. Its
+ownership guard requires exactly GET refusal and GET contract ownership, retains Node POST
+start, and rejects mixed pairs, a retained old GET formatter or a whole-path claim.
+Every method of `/api/models/autotune/resume` belongs to `autotune_resume_routes.rs`
+(`rust-autotune-resume`). The live actor retains bounded listing/identity preparation, its existing
+pending-restoration reload authority and synchronous conditional state/save/launch operations.
+Each stage compares the exact job/run/config snapshot; preparation uses the existing starting flag
+only within its own call and returns its token after releasing it. Rust owns confirmation,
+resumability/restoration checks, protected-queue filtering, identity decisions, phase/step reset
+instructions and public projection. No cross-request reservation or replacement-job retry is used.
