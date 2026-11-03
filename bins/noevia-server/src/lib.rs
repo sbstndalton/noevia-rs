@@ -27,6 +27,7 @@ pub mod gdrive;
 pub mod health;
 pub mod health_routes;
 pub mod identity;
+pub mod idle_unload_read;
 pub mod legacy_proxy;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_broker;
@@ -423,6 +424,7 @@ pub const FEATURES: &[&str] = &[
     "rust-autotune-clear",
     "rust-autotune-read",
     "rust-preset-read",
+    "rust-idle-unload-read",
     "rust-autotune-resume",
     #[cfg(feature = "rust-storage-reads")]
     "rust-connectors",
