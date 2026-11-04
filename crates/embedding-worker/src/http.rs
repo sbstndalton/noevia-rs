@@ -343,6 +343,35 @@ impl Embed for Http {
                 return Err("embedding work suspended".into());
             }
             if let Some(proof) = &self.proof {
+                let http = self.clone();
+                let proof_copy = proof.clone();
+                let runtime = tokio::runtime::Handle::current();
+                control.set_publication_probe(move || {
+                    // SQLite publication is synchronous on the blocking host.
+                    // Drive its bounded proof on a separate joined thread while
+                    // the existing async runtime continues servicing sockets.
+                    std::thread::scope(|scope| {
+                        scope
+                            .spawn(|| {
+                                runtime.block_on(async {
+                                    tokio::time::timeout(
+                                        Duration::from_millis(250),
+                                        http.ownership(
+                                            &proof_copy.core,
+                                            &proof_copy.token,
+                                            &proof_copy.start,
+                                        ),
+                                    )
+                                    .await
+                                    .map_err(|_| {
+                                        "publication ownership proof timed out".to_owned()
+                                    })?
+                                })
+                            })
+                            .join()
+                            .map_err(|_| "publication ownership proof unavailable".to_owned())?
+                    })
+                });
                 let result = tokio::select! {r=self.ownership(&proof.core,&proof.token,&proof.start)=>r,_=control.cancelled()=>Err("embedding work suspended".into())};
                 if result.is_err() && !control.stopped() {
                     control.suspend();

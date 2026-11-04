@@ -233,3 +233,57 @@ transient suspension. Formatted sources and the resolved lockfile were copied
 back from the verified scratch checkout. No owned verification/fixture process
 remained. `git diff --check` passed. Exact-head independent review is required
 before the user-authorized single normal push; CI/release promotion remain root's.
+
+## Re-review follow-up (after 1d7381e)
+
+N-2: a separate runtime task publishes the current snapshot every two seconds,
+independent of refresh, migration passes and synchronous publication-fence waits.
+The no-loader regression keeps a synthetic embedding request active for 30 seconds
+and checks advancing snapshot timestamps throughout the pass.
+
+N1: after acquiring config/project/account/outbox/RAG publication fences, native
+re-proves ownership with a bounded 250ms GET. The proof request and publication
+share a new 250ms budget, so prior lock queue time does not expire the write.
+A joined proof thread drives the existing no-proxy/no-redirect authenticated HTTP
+client; no extension or model request is introduced under locks. A regression
+holds the RAG writer for 350ms and requires successful publication after grant.
+Absent or failed required proof still refuses publication.
+
+N3: cancellation uses Notify, registered before checking stopped/suspended state.
+The regression counts future polls across 60ms of inactivity and checks all waiters
+wake on suspend, plus immediate cancellation after shutdown.
+
+N4: source inspection of Core d9b27cbd and 8d618e82 shows listIndexes excludes dot
+names (`!name.startsWith('.')`) and includes symlink names without a file-type
+filter. Native follows that exact set: dot indexes excluded, symlink indexes filled.
+The new regression checks both enumeration and actual symlink vector publication.
+It also removes the native directory/symlink metadata rejection, preserving tenant
+UUID validation, tombstones, liveness, existing-only SQLite opens and write fences.
+
+G-1: front-core.ref now pins the Core worker's reported final N-1/N-2 head,
+8d618e82c4205291f98da999dadae5784fb67fdb (paired Top 23be806f).
+The supervisor's bounded front-first shutdown and Core process-readiness repair
+are supplied by that separate worker. Native status remains retrieval health only.
+
+Verification command (foreground, serialized MS02 scratch, supplied verifier):
+
+```text
+timeout -k 15 4200 bash ms02-rs-verify.sh <assigned-scratch> \
+  embedding-worker,sqlite-vec-loader,noevia-server,engine-admission,prompt-framing,gguf-memtest \
+  pkg:embedding-worker lib:sqlite-vec-loader lib:engine-admission pkg:prompt-framing \
+  test:noevia-server:embedding_background test:gguf-memtest:hostile
+```
+
+First follow-up verifier: fmt PASS, 111 tests PASS / 0 FAIL (embedding-worker 53,
+loader 1, admission 10, framing 23, server lifecycle 10, hostile 14). Clippy found
+one test-only single-element-loop lint; that loop was replaced with a plain block.
+The affected SQLite tests and all six packages' clippy/fmt are rechecked below.
+No production/model/Diary data or real engine calls were used.
+
+Final follow-up verifier used the same six packages with
+`test:embedding-worker:sqlite` after the test-only lint correction:
+fmt PASS; clippy rc 0; SQLite 15 PASS / 0 FAIL. Other unchanged test evidence above
+is reused (111 total focused tests passed). Formatted source/tests were copied
+back from the verified scratch; git diff --check PASS. The one normal push is
+explicitly authorized by the root after the two design reviews; coherent-pair CI,
+release-kit qualification and full synthetic retrieval acceptance remain root gates.

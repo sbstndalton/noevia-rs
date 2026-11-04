@@ -291,7 +291,21 @@ pub fn start(
                 tokio::select! {_=tokio::time::sleep(Duration::from_secs(2))=>{},_=rx.changed()=>{return;}}
             };
             let host=NativeHost {store,http,valid:Arc::new(AtomicBool::new(true)),off:Arc::new(AtomicBool::new(false)),service_base,core:core.clone(),token:token.clone(),start:start.clone()};
-            let state=std::sync::Mutex::new(serde_json::json!({"protocol":"rust-embedding-worker-v1","start":start,"service":null,"serviceAt":null}));
+            let state=Arc::new(std::sync::Mutex::new(serde_json::json!({"protocol":"rust-embedding-worker-v1","start":start,"service":null,"serviceAt":null})));
+            let heartbeat_state=state.clone();
+            let heartbeat_root=host.store.root.clone();
+            let mut heartbeat_stop=rx.clone();
+            // Separate runtime task: synchronous SQLite fence waits and long
+            // passes on this blocking host must not delay liveness snapshots.
+            let heartbeat=tokio::spawn(async move {
+                let mut ticks=tokio::time::interval(Duration::from_secs(2));
+                ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                loop {
+                    tokio::select! {_=ticks.tick()=>{},_=heartbeat_stop.changed()=>break}
+                    if *heartbeat_stop.borrow() {break;}
+                    update_snapshot(&heartbeat_root,&heartbeat_state,serde_json::json!({}));
+                }
+            });
             let mut service_rx=rx.clone();
             // Refresh runs alongside the migration await, so a slow embeddings
             // batch cannot starve the ten-second model-loader refresh.
@@ -342,6 +356,7 @@ pub fn start(
                 control.stop();
             };
             tokio::join!(refresh,migrate);
+            let _=heartbeat.await;
         });
     });
     Ok(Background {

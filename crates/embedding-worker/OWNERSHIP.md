@@ -11,7 +11,9 @@ construction is **independent of MODEL_LOADER_URL**; only the ten-second service
 refresh needs that setting. Missing prerequisites, damaged configuration, unknown
 seed profiles and a draining owner's lock never exit the front. Invalid saved
 configuration is re-read, and lock contenders retry every two seconds without
-writing the current owner's snapshot. Stop is permanent only for shutdown.
+writing the current owner's snapshot. Stop is permanent only for shutdown. A separate runtime task writes a snapshot
+heartbeat every two seconds, including without a loader and during long passes
+or synchronous SQLite waits. Cancellation waits on notifications, without polling.
 
 A lifetime flock on `embedding-worker.lock` excludes duplicate native owners.
 Authenticated current-start Core proof gates all embedding work. A failed probe
@@ -32,11 +34,14 @@ HTTP uses reqwest/engine-admission with no proxy or redirects, private DNS answe
 pinned to sockets, bounded DNS/request/body sizes, sensitive headers, zeroized
 retained secrets and fixed diagnostic labels. Explicit embedding endpoints receive
 neither loader nor inference secrets. Fresh proof is checked before publication,
-between provider fallback singles and again for each per-row retry. A proof older
-than 250ms after fence acquisition or before commit suspends/rolls back publication;
-networking is never performed while the account/outbox write fences are held.
+between provider fallback singles and again for each per-row retry. After all
+publication locks are granted, a new bounded ownership GET and the write share
+a 250ms window. Queueing for fences does not consume it. Failure or expiry
+suspends and rolls back; only this trusted local proof GET runs under write fences,
+never embedding/model-loader calls.
 
-Index coverage matches Node: every existing non-hidden .db in shared RAG_DIR
+Native index coverage follows Core listIndexes: non-dot .db names, including
+symlinked files, in shared RAG_DIR
 (default data/rag), and each live account's rag directory, including catalogue-free
 or orphan indexes. No projects.json membership/readability requirement remains.
 Tenant liveness and project tombstones fence access; index files are never created.
@@ -53,8 +58,8 @@ with non-locking server-store account and outbox tombstone checks before/after.
 Only publication takes cowork.db's IMMEDIATE account-deletion fence. It then holds
 config/project flocks, an existing outbox IMMEDIATE transaction and the RAG
 transaction, rechecking config version, chunk hash, width, cancellation and proof
-freshness. Slot cleanup does not take the global account write fence. No HTTP
-is performed under these locks. Jobs, generations and attempts are never claimed,
+freshness. Slot cleanup does not take the global account write fence. Jobs,
+generations and attempts are never claimed,
 recovered, advanced or acknowledged by this worker.
 
 ## Required paired Core diff (not applied)

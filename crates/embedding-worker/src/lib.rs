@@ -90,8 +90,11 @@ pub trait Host: Sync {
 }
 /// Kicks coalesce while a pass is running. A single task must own the Worker;
 /// callers can clone this handle to request a pass or permanently stop it.
+type PublicationProbe = Arc<dyn Fn() -> Result<(), String> + Send + Sync>;
 #[derive(Clone, Default)]
 pub struct Control {
+    cancellation: Arc<tokio::sync::Notify>,
+    publication_probe: Arc<std::sync::Mutex<Option<PublicationProbe>>>,
     stopped: Arc<AtomicBool>,
     pending: Arc<AtomicBool>,
     suspended: Arc<AtomicBool>,
@@ -107,6 +110,7 @@ impl Control {
     }
     pub fn stop(&self) {
         self.stopped.store(true, Ordering::Release);
+        self.cancellation.notify_waiters();
     }
     pub fn suspend(&self) {
         let at = std::time::SystemTime::now()
@@ -118,6 +122,7 @@ impl Control {
             .unconfirmed_since
             .compare_exchange(0, at, Ordering::AcqRel, Ordering::Acquire);
         self.suspended.store(true, Ordering::Release);
+        self.cancellation.notify_waiters();
     }
     pub fn confirm_ownership(&self) {
         self.proof_required.store(true, Ordering::Release);
@@ -125,9 +130,39 @@ impl Control {
             *at = Some(std::time::Instant::now());
         }
     }
-    /// Lock acquisition must not turn a fresh network proof into a stale write
-    /// permit. Recheck this monotonic age inside the transaction, without HTTP
-    /// while the account/outbox write fences are held.
+    pub fn set_publication_probe(
+        &self,
+        probe: impl Fn() -> Result<(), String> + Send + Sync + 'static,
+    ) {
+        if let Ok(mut slot) = self.publication_probe.lock() {
+            *slot = Some(Arc::new(probe));
+        }
+    }
+    /// Called after every publication fence is granted. The bounded proof and
+    /// transaction share a new 250ms window; time queued for locks is excluded.
+    pub fn renew_publication_proof(&self) -> Result<(), String> {
+        let probe = self
+            .publication_probe
+            .lock()
+            .map_err(|_| "publication proof unavailable")?
+            .clone();
+        if let Some(probe) = probe {
+            let begun = std::time::Instant::now();
+            if let Err(error) = probe() {
+                self.suspend();
+                return Err(error);
+            }
+            *self
+                .proof_at
+                .lock()
+                .map_err(|_| "publication proof unavailable")? = Some(begun);
+        }
+        if !self.ownership_fresh() {
+            self.suspend();
+            return Err("publication proof expired".into());
+        }
+        Ok(())
+    }
     pub fn ownership_fresh(&self) -> bool {
         !self.proof_required.load(Ordering::Acquire)
             || self.proof_at.lock().is_ok_and(|at| {
@@ -159,10 +194,17 @@ impl Control {
         )
     }
     pub async fn cancelled(&self) {
-        while !self.stopped() && !self.suspended() {
-            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        // Register before checking the state so a concurrent stop/suspend
+        // cannot be lost between the check and the await.
+        let notified = self.cancellation.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
+        if self.stopped() || self.suspended() {
+            return;
         }
+        notified.await;
     }
+
     pub fn stopped(&self) -> bool {
         self.stopped.load(Ordering::Acquire)
     }

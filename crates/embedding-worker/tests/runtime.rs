@@ -421,3 +421,94 @@ async fn regression_p1_lock_contender_recovers_when_draining_owner_releases() {
     .await;
     owner.shutdown().await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn heartbeat_stays_fresh_during_thirty_second_pass_without_loader() {
+    let (dir, store) = seed();
+    let embedding = Arc::new(AtomicBool::new(false));
+    let observed = embedding.clone();
+    let stub = server(move |path, _| {
+        if path == "/v1/embeddings" {
+            observed.store(true, Ordering::Release);
+            std::thread::sleep(std::time::Duration::from_secs(30));
+        }
+        default_reply(path)
+    })
+    .await;
+    let http = Http::new("", None, &stub.base, None).unwrap();
+    let worker = runtime::start(
+        store,
+        http,
+        stub.base.clone(),
+        "synthetic-token".into(),
+        START.into(),
+        Options::default(),
+        None,
+    )
+    .unwrap();
+    let snapshot = || -> serde_json::Value {
+        std::fs::read(dir.path().join("embedding-worker-status.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default()
+    };
+    wait_until(|| snapshot()["configValid"] == true).await;
+    signal(dir.path(), 1);
+    wait_until(|| embedding.load(Ordering::Acquire)).await;
+    let mut previous = snapshot()["at"].as_u64().unwrap();
+    for _ in 0..7 {
+        tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+        let status = snapshot();
+        let at = status["at"].as_u64().unwrap();
+        assert!(at > previous, "heartbeat stalled during embedding");
+        assert!(status["lastPass"].is_null());
+        assert!(status["service"].is_null());
+        previous = at;
+    }
+    worker.shutdown().await;
+}
+
+#[tokio::test]
+async fn cancellation_sleeps_until_notified_and_wakes_all_waiters() {
+    use std::{future::Future, task::Poll};
+    let control = embedding_worker::Control::default();
+    let polls = Arc::new(AtomicUsize::new(0));
+    let mut tasks = vec![];
+    for _ in 0..2 {
+        let control = control.clone();
+        let polls = polls.clone();
+        tasks.push(tokio::spawn(async move {
+            let future = control.cancelled();
+            tokio::pin!(future);
+            std::future::poll_fn(|cx| {
+                polls.fetch_add(1, Ordering::SeqCst);
+                future.as_mut().poll(cx)
+            })
+            .await;
+        }));
+    }
+    tokio::task::yield_now().await;
+    tokio::time::sleep(std::time::Duration::from_millis(60)).await;
+    assert_eq!(
+        polls.load(Ordering::SeqCst),
+        2,
+        "cancellation polled without a notification"
+    );
+    control.suspend();
+    for task in tasks {
+        tokio::time::timeout(std::time::Duration::from_millis(100), task)
+            .await
+            .unwrap()
+            .unwrap();
+    }
+    control.resume();
+    control.stop();
+    assert!(
+        std::future::poll_fn(|cx| {
+            let f = control.cancelled();
+            tokio::pin!(f);
+            Poll::Ready(f.poll(cx).is_ready())
+        })
+        .await
+    );
+}

@@ -224,18 +224,6 @@ impl SqlStore {
             }
             None => self.root.clone(),
         };
-        for path in [self.root.join("users"), dir.clone(), self.index_dir(index)?] {
-            if index.user.is_none() && path == self.root.join("users") {
-                continue;
-            }
-            if std::fs::symlink_metadata(&path)
-                .map_err(|_| fault())?
-                .file_type()
-                .is_symlink()
-            {
-                return Err(fault());
-            }
-        }
         Ok(dir)
     }
     pub fn index_dir(&self, index: &Index) -> Result<PathBuf, String> {
@@ -271,9 +259,6 @@ impl SqlStore {
         for (user, dir) in dirs {
             if let Ok(entries) = std::fs::read_dir(&dir) {
                 for entry in entries.flatten() {
-                    if !entry.file_type().is_ok_and(|t| t.is_file()) {
-                        continue;
-                    }
                     if let Some(project) = entry
                         .file_name()
                         .to_str()
@@ -336,13 +321,6 @@ impl SqlStore {
         self.live(index)?;
         self.dir(index)?;
         let path = self.index_path(index)?;
-        if std::fs::symlink_metadata(&path)
-            .map_err(|_| fault())?
-            .file_type()
-            .is_symlink()
-        {
-            return Err(fault());
-        }
         crate::sqlite_vec_loader::register()?;
         let mut db = Connection::open_with_flags(
             path,
@@ -477,13 +455,6 @@ impl SqlStore {
                 None => None,
             };
             let path = self.index_path(index)?;
-            if std::fs::symlink_metadata(&path)
-                .map_err(|_| fault())?
-                .file_type()
-                .is_symlink()
-            {
-                return Err(fault());
-            }
             let mut db = (self.open_vec)(&path)?;
             let tx = db
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
@@ -592,6 +563,7 @@ impl FillStore for SqlStore {
         control: &Control,
     ) -> Result<usize, String> {
         self.fenced(index, true, |db| {
+            control.renew_publication_proof()?;
             if !control.ownership_fresh() {
                 control.suspend();
                 return Err("ownership proof expired while waiting for publication fence".into());

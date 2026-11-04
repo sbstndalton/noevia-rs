@@ -539,3 +539,77 @@ fn publication_rejects_a_proof_that_expired_while_waiting_for_fences() {
     assert!(control.suspended());
     assert_eq!(store.remaining(&index, &target("next")).unwrap(), 2);
 }
+
+#[test]
+fn publication_renews_proof_after_contended_rag_lock() {
+    let (_tmp, store, index) = setup();
+    let rows = store
+        .missing(&index, &target("next"), 4, &Default::default())
+        .unwrap()
+        .unwrap();
+    let db = Connection::open(store.index_path(&index).unwrap()).unwrap();
+    db.execute_batch("BEGIN IMMEDIATE").unwrap();
+    let granted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let check = granted.clone();
+    let control = Control::default();
+    control.confirm_ownership();
+    control.set_publication_probe(move || {
+        assert!(check.load(std::sync::atomic::Ordering::Acquire));
+        Ok(())
+    });
+    let writer = std::thread::spawn(move || {
+        store.publish(
+            &index,
+            &target("next"),
+            &rows,
+            &[vec![1.0], vec![1.0]],
+            0,
+            &control,
+        )
+    });
+    std::thread::sleep(std::time::Duration::from_millis(350));
+    granted.store(true, std::sync::atomic::Ordering::Release);
+    db.execute_batch("COMMIT").unwrap();
+    assert_eq!(writer.join().unwrap().unwrap(), 2);
+}
+
+#[cfg(unix)]
+#[test]
+fn node_coverage_excludes_dot_names_and_includes_symlinked_indexes() {
+    let (_tmp, store, index) = setup();
+    let dir = store.index_dir(&index).unwrap();
+    std::fs::copy(dir.join("p.db"), dir.join(".hidden.db")).unwrap();
+    std::os::unix::fs::symlink(dir.join("p.db"), dir.join("alias.db")).unwrap();
+    let indexes = store.indexes();
+    assert!(!indexes.contains(&Index {
+        user: index.user.clone(),
+        project: ".hidden".into()
+    }));
+    {
+        let project = "alias";
+        let alias = Index {
+            user: index.user.clone(),
+            project: project.into(),
+        };
+        assert!(indexes.contains(&alias));
+        let rows = store
+            .missing(&alias, &target("next"), 4, &Default::default())
+            .unwrap()
+            .unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(
+            store
+                .publish(
+                    &alias,
+                    &target("next"),
+                    &rows,
+                    &[vec![1.0], vec![1.0]],
+                    0,
+                    &Control::default()
+                )
+                .unwrap(),
+            2
+        );
+        assert_eq!(store.remaining(&alias, &target("next")).unwrap(), 0);
+    }
+}
