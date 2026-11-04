@@ -69,6 +69,8 @@ pub struct Engine {
     pub props_delay_ms: AtomicU64,
     /// `GET /models?reload=1` answers this late (ms).
     pub reload_delay_ms: AtomicU64,
+    /// Other models live besides the two the profile names (`extra-<n>`, loaded).
+    pub extra_live: AtomicU64,
     pub seen: Mutex<Vec<String>>,
 }
 
@@ -149,13 +151,14 @@ pub async fn engine(ini: PathBuf) -> Arc<Engine> {
                     }
                     let v = status.lock().unwrap().clone();
                     let native = e.native.load(Ordering::Acquire);
-                    reply(
-                        200,
-                        json!({"data": [
-                            {"id": MODEL, "status": {"value": v, "args": ["--model", format!("/models/{FILE}")]}, "meta": {"n_ctx_train": native}},
-                            {"id": "laya-mini", "status": {"value": "unloaded", "args": ["--model", "/models/laya-mini.gguf"]}}
-                        ]}),
-                    )
+                    let mut rows = vec![
+                        json!({"id": MODEL, "status": {"value": v, "args": ["--model", format!("/models/{FILE}")]}, "meta": {"n_ctx_train": native}}),
+                        json!({"id": "laya-mini", "status": {"value": "unloaded", "args": ["--model", "/models/laya-mini.gguf"]}}),
+                    ];
+                    rows.extend((0..e.extra_live.load(Ordering::Acquire)).map(
+                        |n| json!({"id": format!("extra-{n}"), "status": {"value": "loaded"}}),
+                    ));
+                    reply(200, json!({ "data": rows }))
                 }
                 ("POST", "/models/unload") => {
                     *status.lock().unwrap() = "unloaded".into();

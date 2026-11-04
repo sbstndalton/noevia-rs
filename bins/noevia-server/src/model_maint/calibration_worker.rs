@@ -10,7 +10,7 @@
 
 use super::calibration::{
     bound_load, grouped, ladder, over_budget_reason, verify_long, Applied, Feed, Kind, LongOutcome,
-    LongPrompt, Progress, State, StateFile, Steps, Stop, NOT_RESTORED,
+    LongPrompt, Progress, Recovery, State, StateFile, Steps, Stop, NOT_RESTORED,
 };
 use super::{Hold, HoldRefusal, Maint};
 use js_json::{wtf16, JValue};
@@ -34,10 +34,13 @@ const PROPS: Duration = Duration::from_secs(8);
 /// The guarded reload after a profile write (reload.rs `RELOAD_LIMIT`) and the raw one after a
 /// restore: both 120 s.
 const RELOAD: Duration = super::calibration::RELOAD_TIMEOUT;
-/// Live models the first unload of a run may have to ask to unload, each request up to the unload
-/// limit; later unloads find at most the model under test.
-const LIVE_MODELS: u32 = 4;
-pub const OVER_LIMIT: &str = "This calibration could take longer than the 8-hour maintenance limit. Choose a shorter prompt time limit.";
+pub const OVER_LIMIT: &str = "This calibration could take longer than the 24-hour maintenance limit. Choose a shorter prompt time limit.";
+/// Added to a recovered job's error while the state file still says it is running: the save of
+/// the interrupted state failed and is being retried (never written to the file).
+pub const UNSAVED: &str =
+    " The interrupted state could not be saved yet; noevia keeps trying to save it.";
+/// The longest wait between those retries (they start at [`Limits::save_retry`] and double).
+const SAVE_RETRY_MAX: Duration = Duration::from_secs(60);
 const ANOTHER_CLIENT: &str = "Another client loaded a model during calibration. Stop Diary background jobs and other clients, then retry.";
 
 /// `limits`: the step timeouts (Node's defaults; tests shorten them).
@@ -54,6 +57,8 @@ pub struct Limits {
     pub memory_settle: Duration,
     /// How often a run checks that its hold still excludes other clients.
     pub exclusion_poll: Duration,
+    /// The first wait before saving a recovered job again after its save failed.
+    pub save_retry: Duration,
 }
 
 impl Default for Limits {
@@ -69,6 +74,7 @@ impl Default for Limits {
             backend_poll: Duration::from_millis(2000),
             memory_settle: Duration::from_millis(1000),
             exclusion_poll: Duration::from_millis(1000),
+            save_retry: Duration::from_millis(1000),
         }
     }
 }
@@ -170,6 +176,12 @@ pub(super) struct Inner {
     /// The boot recovery is running (it holds `launching` too): the job in memory is the file's,
     /// with no run behind it, so nothing may cancel or launch over it yet.
     pub(super) recovering: bool,
+    /// The models live when the run was asked for (at least one): its first unload is allowed one
+    /// unload request for each, and no longer ([`Worker::worst_case`]).
+    pub(super) first_unload: u32,
+    /// The recovered job in memory is not in the state file yet (saving it failed): memory is
+    /// right, the file is behind, and the save is retried until it lands or a launch replaces it.
+    pub(super) unsaved: bool,
 }
 
 /// The native worker: one per process, owning its state file, controller and job.
@@ -272,6 +284,23 @@ pub(super) fn number(v: &JValue) -> f64 {
     }
 }
 
+/// A job's `error` text, or none.
+fn job_error(job: &[(String, JValue)]) -> String {
+    job.iter()
+        .find(|(k, _)| k == "error")
+        .and_then(|(_, v)| v.as_str())
+        .unwrap_or("")
+        .to_owned()
+}
+
+/// The job's error without [`UNSAVED`] (what the file gets).
+fn strip_unsaved(job: &mut Vec<(String, JValue)>) {
+    let error = job_error(job);
+    if let Some(kept) = error.strip_suffix(UNSAVED) {
+        wtf16::set(job, "error", JValue::Str(kept.to_owned()));
+    }
+}
+
 pub(super) fn public(job: &JValue) -> JValue {
     match job {
         JValue::Obj(_) => JValue::Obj(
@@ -331,6 +360,8 @@ impl Worker {
                 next_object: 2,
                 lease_lost: false,
                 recovering: false,
+                first_unload: 1,
+                unsaved: false,
             }),
             salt: random_hex(32),
             memory,
@@ -429,7 +460,7 @@ impl Worker {
 
     /// `recover()`: a job a restart left running becomes interrupted (its profile restored if
     /// models.ini is still what it last wrote). `None` when a launch holds the slot.
-    pub async fn recover(&self) -> Option<Option<bool>> {
+    pub async fn recover(self: &Arc<Self>) -> Option<Option<bool>> {
         if !self.begin_recovery() {
             return None;
         }
@@ -447,25 +478,99 @@ impl Worker {
         })
     }
 
-    /// The state is read again only when there was a job to recover, so a file with nothing to
-    /// recover never replaces what memory holds.
-    async fn recover_held(&self) -> Option<Option<bool>> {
+    /// Memory takes the recovered state only when there was a job to recover, so a file with nothing
+    /// to recover never replaces what memory holds. If the interrupted state could not be saved,
+    /// memory still has it (with [`UNSAVED`] on its error) and the save is retried: the job is not
+    /// running, so launches are allowed, each saving it first ([`Worker::take_hold`]).
+    async fn recover_held(self: &Arc<Self>) -> Option<Option<bool>> {
         let outcome = self.maint.recover_calibration().await;
-        if outcome.is_some() {
-            let file = self.file.clone();
-            if let Ok(state) = tokio::task::spawn_blocking(move || file.load()).await {
-                self.with(|i| {
-                    i.state = state;
-                    i.job_object = i.next_object;
-                    i.next_object += 1;
-                });
+        let restored = outcome.restored();
+        let unsaved = matches!(outcome, Recovery::Unsaved { .. });
+        if let Recovery::Saved { state, .. } | Recovery::Unsaved { state, .. } = outcome {
+            let mut state = state;
+            if unsaved {
+                if let Some(job) = state.job_mut() {
+                    let error = job_error(job);
+                    wtf16::set(job, "error", JValue::Str(format!("{error}{UNSAVED}")));
+                }
             }
+            self.with(|i| {
+                i.state = state;
+                i.job_object = i.next_object;
+                i.next_object += 1;
+                i.unsaved = unsaved;
+            });
         }
         self.with(|i| {
             i.launching = false;
             i.recovering = false;
         });
-        outcome
+        if unsaved {
+            self.spawn_save_retry();
+        }
+        restored
+    }
+
+    /// Whether memory holds a recovered job the state file does not have yet.
+    pub fn unsaved(&self) -> bool {
+        self.with(|i| i.unsaved)
+    }
+
+    /// Writes the recovered job the file is missing (without [`UNSAVED`]), then drops the note from
+    /// memory. The caller holds the launch slot, so no launch's save can land in between.
+    async fn save_recovered(&self) -> std::io::Result<()> {
+        let (object, mut state) = self.with(|i| (i.job_object, i.state.clone()));
+        if let Some(job) = state.job_mut() {
+            strip_unsaved(job);
+        }
+        let file = self.file.clone();
+        tokio::task::spawn_blocking(move || file.save(&state))
+            .await
+            .map_err(|_| std::io::Error::other("save task"))??;
+        self.with(|i| {
+            if i.job_object == object {
+                if let Some(job) = i.state.job_mut() {
+                    strip_unsaved(job);
+                }
+                i.unsaved = false;
+            }
+        });
+        Ok(())
+    }
+
+    /// The retries of a failed recovery save: waits from [`Limits::save_retry`], doubling up to
+    /// [`SAVE_RETRY_MAX`], until the save lands or a launch's own save has replaced the job. A round
+    /// whose launch slot is taken waits for the next (that launch saves first itself).
+    fn spawn_save_retry(self: &Arc<Self>) {
+        let worker = Arc::clone(self);
+        tokio::spawn(async move {
+            let mut wait = worker.limits.save_retry;
+            loop {
+                tokio::time::sleep(wait).await;
+                let took = worker.with(|i| {
+                    if !i.unsaved {
+                        return None;
+                    }
+                    let free = !i.launching;
+                    if free {
+                        i.launching = true;
+                    }
+                    Some(free)
+                });
+                match took {
+                    None => return,
+                    Some(false) => {}
+                    Some(true) => {
+                        let saved = worker.save_recovered().await;
+                        worker.with(|i| i.launching = false);
+                        if saved.is_ok() {
+                            return;
+                        }
+                    }
+                }
+                wait = (wait * 2).min(SAVE_RETRY_MAX);
+            }
+        });
     }
 
     /// Whether the boot recovery is still running.
@@ -568,8 +673,24 @@ impl Worker {
             .await;
     }
 
-    /// `unloadAll()`: every live model asked to unload, then polled until none is live.
-    async fn unload_all(&self, hold: &Hold) -> Result<(), Thrown> {
+    /// `unloadAll()`: every live model asked to unload, then polled until none is live. It gets
+    /// [`Worker::unload_allowance`] for `models` and no more: a listing that turns up more live
+    /// models than were counted ends as Node's own time-out does.
+    async fn unload_all(&self, hold: &Hold, models: u32) -> Result<(), Thrown> {
+        let late = || Thrown::Other("Models did not unload in time.".into());
+        tokio::time::timeout(self.unload_allowance(models), self.unload_all_inner(hold))
+            .await
+            .unwrap_or_else(|_| Err(late()))
+    }
+
+    /// The longest [`Worker::unload_all`] may take with `models` live: the listing, one unload
+    /// request for each, then polling to the unload limit.
+    fn unload_allowance(&self, models: u32) -> Duration {
+        let l = &self.limits;
+        super::router::DEFAULT_TIMEOUT + l.unload * models.max(1) + self.polled(l.unload)
+    }
+
+    async fn unload_all_inner(&self, hold: &Hold) -> Result<(), Thrown> {
         let models = self.listing(hold, None).await?;
         for m in &models {
             if matches!(status_of(m), Some("loaded" | "loading" | "sleeping")) {
@@ -920,7 +1041,7 @@ impl Worker {
     ) -> Result<(&'static str, Option<String>, Option<&'static str>), Thrown> {
         let model = self.job_get("model").as_str().unwrap_or("").to_owned();
         let check = |w: &Self| !guarded || w.sample(index, abort);
-        self.unload_all(hold).await?;
+        self.unload_all(hold, 1).await?;
         let options = self.base_options(("ctx-size", plain(ctx)));
         match self
             .maint
@@ -1189,7 +1310,10 @@ impl Worker {
         Ok(16.0)
     }
 
-    /// `streamLong(...)`: the streamed long prompt, read with [`LongPrompt`].
+    /// `streamLong(...)`: the streamed long prompt, read with [`LongPrompt`]. Node stops a stream
+    /// once it has run 1.5 times the budget, but only when the next event arrives; here the stream
+    /// also has that long by the wall clock, so an engine that goes quiet ends the test the same way
+    /// (over budget: a failed long test) and the run stays within [`Worker::step_cost`].
     async fn stream_long(
         &self,
         hold: &Hold,
@@ -1199,10 +1323,35 @@ impl Worker {
         index: usize,
         budget_ms: f64,
     ) -> Result<Long, Thrown> {
+        let started = now_ms();
+        let allowance = Duration::from_secs_f64((budget_ms * 1.5 / 1000.0).max(0.0));
+        let read = self.stream_long_inner(hold, model, content, abort, index, budget_ms, started);
+        match tokio::time::timeout(allowance, read).await {
+            Ok(read) => read,
+            Err(_) => {
+                self.show_progress(index, &Progress::default());
+                Ok(Long::Done(LongOutcome::OverBudget {
+                    predicted: false,
+                    eta_ms: now_ms() - started,
+                }))
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn stream_long_inner(
+        &self,
+        hold: &Hold,
+        model: &str,
+        content: &str,
+        abort: &Abort,
+        index: usize,
+        budget_ms: f64,
+        started: f64,
+    ) -> Result<Long, Thrown> {
         let Some(router) = self.maint.router.as_ref() else {
             return Ok(Long::Failed("The long prompt could not be sent.".into()));
         };
-        let started = now_ms();
         let body = json!({
             "model": model, "stream": true, "return_progress": true, "temperature": 0,
             "cache_prompt": false, "max_tokens": 64,
@@ -1296,20 +1445,49 @@ impl Worker {
     }
 
     /// `maintenance.hold(...)` for a run of `model`.
+    /// A recovered job the state file does not have yet is saved first: a launch that cannot save
+    /// it is refused before any hold (its own first save would fail the same way).
     pub(super) async fn take_hold(&self, model: &str, plan: &Plan) -> Result<Hold, Refusal> {
         if self.maint.router.is_none() || self.maint.ini.is_none() {
             return Err(Refusal::Unavailable);
         }
+        if self.unsaved() && self.save_recovered().await.is_err() {
+            return Err(Refusal::Unavailable);
+        }
         let reason = format!("Chat is paused while noevia calibrates {model}. It will be available again when calibration finishes or is cancelled.");
+        let live = self.live_models().await;
+        // The caller holds the launch slot: no other run reads this until its own launch.
+        self.with(|i| i.first_unload = live);
         match self
             .maint
-            .acquire_for_run(&reason, self.worst_case(plan))
+            .acquire_for_run(&reason, self.worst_case(plan, live))
             .await
         {
             Ok(h) => Ok(h),
             Err(HoldRefusal::OverLimit) => Err(Refusal::Limit),
             Err(e) => Err(Refusal::Hold(hold_facts(&e))),
         }
+    }
+
+    /// The models live now (loaded, loading or sleeping), at least one: what the run's first unload
+    /// is allowed to ask to unload. An unreadable listing counts one; the run's own listing then
+    /// fails the same way, or finds what it may unload in that time.
+    async fn live_models(&self) -> u32 {
+        let Some(router) = self.maint.router.as_ref() else {
+            return 1;
+        };
+        let Ok(reply) = router
+            .get("/models", None, super::router::DEFAULT_TIMEOUT)
+            .await
+        else {
+            return 1;
+        };
+        let live = super::router::rows(&reply.body).map_or(0, |rows| {
+            rows.iter()
+                .filter(|m| matches!(status_of(m), Some("loaded" | "loading" | "sleeping")))
+                .count()
+        });
+        u32::try_from(live).unwrap_or(u32::MAX).max(1)
     }
 
     /// A poll loop to `limit`: it can overrun by one sleep and one listing.
@@ -1322,16 +1500,14 @@ impl Worker {
     /// to the unload limit), the profile write's reload, the load request and its polling to the load
     /// limit, then the smoke request (a load check) or the tokenize request and the long prompt (a
     /// long test, stopped at 1.5 times `budget_s`), the wait for the backend after a failed step, and
-    /// the end-of-step unload (its request, then polling).
-    ///
-    /// A long prompt that sends nothing at all is bounded only by `limits.long`: Node checks the 1.5x
-    /// stop as data arrives, and so does this port. That is a stalled engine, not a slow run; if it
-    /// outlasts the lease, the run ends interrupted and the profile goes back.
+    /// the end-of-step unload (its request, then polling). Each is enforced: every request has its
+    /// timeout, every poll its limit, and the long prompt its 1.5x wall-clock stop
+    /// ([`Worker::stream_long`]).
     fn step_cost(&self, kind: Kind, budget_s: f64) -> Duration {
         let l = &self.limits;
         let listing = super::router::DEFAULT_TIMEOUT;
         let settle = l.memory_settle * 30;
-        let unload_all = listing + l.unload + self.polled(l.unload);
+        let unload_all = self.unload_allowance(1);
         let load = LOAD_REQUEST + self.polled(l.load);
         let body = match kind {
             Kind::Load => l.smoke,
@@ -1344,22 +1520,21 @@ impl Worker {
 
     /// The longest `plan` can run, the hard cap its lease asks for: every load check (doublings to
     /// the top of its ladder, then three bisections) and at most seven long-prompt tests, each at
-    /// [`Worker::step_cost`]; the first unload (up to [`LIVE_MODELS`] requests) and the one after the
-    /// search; the calibrated profile's write, load and `/props` read; a restore's reload; and a
-    /// 15-minute margin.
-    pub fn worst_case(&self, plan: &Plan) -> Duration {
+    /// [`Worker::step_cost`]; the first unload (one request for each of the `live` models counted at
+    /// launch) and the one after the search; the calibrated profile's write, load and `/props` read;
+    /// a restore's reload; and a 15-minute margin.
+    pub fn worst_case(&self, plan: &Plan, live: u32) -> Duration {
         let grid = ladder(plan.native);
         let (Some(start), Some(&top)) = (super::calibration::start_of(&grid), grid.last()) else {
             return RUN_MARGIN;
         };
         let (loads, longs) = Self::step_counts(&grid, start, top);
         let l = &self.limits;
-        let listing = super::router::DEFAULT_TIMEOUT;
         let budget = plan.prompt_budget_seconds;
         let steps =
             self.step_cost(Kind::Load, budget) * loads + self.step_cost(Kind::Long, budget) * longs;
-        let first_unload = listing + l.unload * LIVE_MODELS + self.polled(l.unload);
-        let last_unload = listing + l.unload + self.polled(l.unload);
+        let first_unload = self.unload_allowance(live);
+        let last_unload = self.unload_allowance(1);
         let finish = RELOAD + LOAD_REQUEST + self.polled(l.load) + PROPS;
         steps + first_unload + last_unload + finish + RELOAD + RUN_MARGIN
     }
@@ -1443,6 +1618,8 @@ impl Worker {
             hold.release().await;
             return Err(Refusal::Unavailable);
         }
+        // The file now has this job: nothing recovered is left to save.
+        self.with(|i| i.unsaved = false);
         let worker = Arc::clone(self);
         tokio::spawn(async move { worker.run(hold).await });
         Ok(self.job())
@@ -1646,7 +1823,8 @@ impl Worker {
 
     /// The search and the final write; the history entry on a pass.
     async fn run_inner(self: &Arc<Self>, hold: &Hold) -> Result<Option<JValue>, Thrown> {
-        self.unload_all(hold).await?;
+        let live = self.with(|i| i.first_unload);
+        self.unload_all(hold, live).await?;
         let ini = self
             .maint
             .ini
@@ -1672,7 +1850,7 @@ impl Worker {
             .await
             .map_err(from_stop)?;
         self.result_set("verifiedCtx", chosen);
-        self.unload_all(hold).await?;
+        self.unload_all(hold, 1).await?;
         let model = self.job_get("model").as_str().unwrap_or("").to_owned();
         if self.lease_lost() {
             return Err(Thrown::Cancelled);
@@ -1895,18 +2073,55 @@ mod tests {
         ini: std::path::PathBuf,
         stall: bool,
     ) -> (u16, Arc<Mutex<Vec<String>>>) {
-        synthetic_engine_with(ini, stall, None).await
+        synthetic_engine_with(
+            ini,
+            Synth {
+                stall,
+                ..Synth::default()
+            },
+        )
+        .await
     }
 
-    /// `props`: the first `GET /props` sets it and answers late (a lease that ends after the pass).
+    /// What the synthetic engine does besides passing loads to 16K and long prompts to 8K.
+    #[derive(Default, Clone)]
+    struct Synth {
+        /// The long prompt answers only after 60 s (until the client goes away).
+        stall: bool,
+        /// The first `GET /props` sets it and answers late (a lease that ends after the pass).
+        props: Option<Arc<AtomicBool>>,
+        /// The long prompt answers 200 at once, then sends nothing, ever.
+        silent: bool,
+        /// Other models live besides the one under test (`extra-<n>`, each until it is unloaded).
+        live: Option<Arc<std::sync::atomic::AtomicUsize>>,
+    }
+
+    /// A body that never sends anything and never ends.
+    struct Silent;
+    impl http_body::Body for Silent {
+        type Data = bytes::Bytes;
+        type Error = std::convert::Infallible;
+        fn poll_frame(
+            self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Option<Result<http_body::Frame<bytes::Bytes>, Self::Error>>> {
+            std::task::Poll::Pending
+        }
+    }
+
     async fn synthetic_engine_with(
         ini: std::path::PathBuf,
-        stall: bool,
-        props: Option<Arc<AtomicBool>>,
+        synth: Synth,
     ) -> (u16, Arc<Mutex<Vec<String>>>) {
         use axum::body::Body;
         use axum::http::{Request, Response};
         use http_body_util::BodyExt;
+        let Synth {
+            stall,
+            props,
+            silent,
+            live,
+        } = synth;
         let status = Arc::new(Mutex::new("unloaded".to_owned()));
         let seen = Arc::new(Mutex::new(Vec::new()));
         let log = Arc::clone(&seen);
@@ -1920,11 +2135,12 @@ mod tests {
                 .unwrap_or(0.0)
         };
         let app = axum::Router::new().fallback(move |req: Request<Body>| {
-            let (status, log, ctx_of, props) = (
+            let (status, log, ctx_of, props, live) = (
                 Arc::clone(&status),
                 Arc::clone(&log),
                 ctx_of.clone(),
                 props.clone(),
+                live.clone(),
             );
             async move {
                 let (parts, body) = req.into_parts();
@@ -1943,10 +2159,19 @@ mod tests {
                         let v = status.lock().unwrap().clone();
                         let failed = v == "failed";
                         let value = if failed { "unloaded" } else { v.as_str() };
-                        json(200, json!({"data": [{"id": "synthetic", "status": {"value": value, "failed": failed}}]}))
+                        let mut rows = vec![json!({"id": "synthetic", "status": {"value": value, "failed": failed}})];
+                        let extra = live.as_ref().map_or(0, |l| l.load(Ordering::Acquire));
+                        rows.extend((0..extra).map(|n| json!({"id": format!("extra-{n}"), "status": {"value": "loaded"}})));
+                        json(200, json!({"data": rows}))
                     }
                     ("POST", "/models/unload") => {
-                        *status.lock().unwrap() = "unloaded".into();
+                        match (body["model"].as_str(), &live) {
+                            (Some(m), Some(l)) if m.starts_with("extra-") => {
+                                let n = l.load(Ordering::Acquire);
+                                l.store(n.saturating_sub(1), Ordering::Release);
+                            }
+                            _ => *status.lock().unwrap() = "unloaded".into(),
+                        }
                         json(200, json!({"success": true}))
                     }
                     ("POST", "/models/load") => {
@@ -1972,6 +2197,9 @@ mod tests {
                             .collect();
                         if stall {
                             tokio::time::sleep(Duration::from_secs(60)).await;
+                        }
+                        if silent {
+                            return Response::builder().status(200).header("content-type", "text/event-stream").body(Body::new(Silent)).unwrap();
                         }
                         let events = if ctx_of() <= 8192.0 {
                             format!("data: {}\n\ndata: [DONE]\n\n", json!({"choices": [{"delta": {"content": marker}}]}))
@@ -2403,23 +2631,38 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn without_a_gate_hold_the_lease_asks_for_the_run_worst_case_and_refuses_over_8_hours() {
+    async fn without_a_gate_hold_the_lease_asks_for_the_run_worst_case_and_refuses_over_24_hours() {
         let d = tempfile::tempdir().unwrap();
         let ini = d.path().join("models.ini");
         std::fs::write(&ini, INI).unwrap();
-        let (port, _) = synthetic_engine(ini.clone(), false).await;
+        let live = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let (port, _) = synthetic_engine_with(
+            ini.clone(),
+            Synth {
+                live: Some(Arc::clone(&live)),
+                ..Synth::default()
+            },
+        )
+        .await;
         let (lease, seen) = lease_stub(None, Arc::new(AtomicBool::new(false))).await;
         let w = worker_with(d.path(), port, Some(lease));
-        // Over the 8-hour lease limit: refused before any lease is asked for.
+        // Node's limits; at most 1800 s a test, a 128K model fits the 24-hour lease.
+        let w = with_limits(&w, Limits::default());
         let huge = plan(131_072.0, 1800.0);
-        assert!(w.worst_case(&huge) > super::super::node_lease::MAX_LEASE);
+        assert!(w.worst_case(&huge, 1) < super::super::node_lease::MAX_LEASE);
+        // With 1000 other models live, the first unload alone could take over 16 hours: refused
+        // before any lease is asked for.
+        live.store(1000, Ordering::Release);
+        assert!(w.worst_case(&huge, 1000) > super::super::node_lease::MAX_LEASE);
         assert_eq!(w.launch("synthetic", huge).await, Err(Refusal::Limit));
         assert!(seen.lock().unwrap().is_empty());
         assert_eq!(w.job(), JValue::Null);
+        live.store(0, Ordering::Release);
+        let w = worker_with(d.path(), port, Some(lease));
         // Inside it: one lease asking for exactly the worst case, and the run passes.
         let p = plan(32_768.0, 120.0);
-        let worst = u64::try_from(w.worst_case(&p).as_millis()).unwrap();
-        assert!(worst > 3_600_000 && worst < 8 * 3_600_000, "{worst}");
+        let worst = u64::try_from(w.worst_case(&p, 1).as_millis()).unwrap();
+        assert!(worst > 3_600_000 && worst < 24 * 3_600_000, "{worst}");
         w.launch("synthetic", p).await.unwrap();
         let job = settled(&w).await;
         assert_eq!(job.get("status").as_str(), Some("passed"), "{job:?}");
@@ -2443,7 +2686,7 @@ mod tests {
         let (lease, seen) = lease_stub(Some(3_600_000), Arc::new(AtomicBool::new(false))).await;
         let w = worker_with(d.path(), port, Some(lease));
         let p = plan(32_768.0, 1800.0);
-        assert!(w.worst_case(&p) > Duration::from_secs(3600));
+        assert!(w.worst_case(&p, 1) > Duration::from_secs(3600));
         let Err(Refusal::Hold(facts)) = w.launch("synthetic", p).await else {
             panic!("refused")
         };
@@ -2505,7 +2748,7 @@ mod tests {
         let start = super::super::calibration::start_of(&grid).unwrap();
         let (loads, longs) = Worker::step_counts(&grid, start, *grid.last().unwrap());
         let steps = loads + longs;
-        let at = w.worst_case(&p);
+        let at = w.worst_case(&p, 4);
         let second = Duration::from_secs(1);
         type Bump = fn(&mut Limits);
         let cases: [(&str, Bump, u32); 10] = [
@@ -2513,11 +2756,11 @@ mod tests {
             ("load", |l| l.load += Duration::from_secs(1), steps + 1),
             ("smoke", |l| l.smoke += Duration::from_secs(1), loads),
             // Per step: the unload-all request and poll, and the end-of-step request and poll; the
-            // first unload asks up to LIVE_MODELS models and polls; the last asks one and polls.
+            // first unload asks each of the 4 live models and polls; the last asks one and polls.
             (
                 "unload",
                 |l| l.unload += Duration::from_secs(1),
-                4 * steps + (LIVE_MODELS + 1) + 2,
+                4 * steps + (4 + 1) + 2,
             ),
             // Each poll loop may overrun by one sleep: three per step, three in the run.
             ("poll", |l| l.poll += Duration::from_secs(1), 3 * steps + 3),
@@ -2532,7 +2775,8 @@ mod tests {
                 |l| l.memory_settle += Duration::from_secs(1),
                 30 * steps,
             ),
-            // A stalled stream's bound, the memory sampler and the exclusion watch add no time.
+            // The stream's own deadline (1.5x the budget) ends it before `long`; the memory sampler
+            // and the exclusion watch add no time.
             ("long", |l| l.long += Duration::from_secs(1), 0),
             (
                 "memory_poll",
@@ -2548,12 +2792,16 @@ mod tests {
         for (name, bump, uses) in cases {
             let mut limits = base;
             bump(&mut limits);
-            let bumped = with_limits(&w, limits).worst_case(&p);
+            let bumped = with_limits(&w, limits).worst_case(&p, 4);
             assert_eq!(bumped - at, second * uses, "{name}");
         }
         // Each long test stops its prompt at 1.5 times the budget.
-        let longer = w.worst_case(&plan(131_072.0, 122.0));
+        let longer = w.worst_case(&plan(131_072.0, 122.0), 4);
         assert_eq!(longer - at, Duration::from_secs(3) * longs);
+        // Each live model counted at launch is one more unload request in the first unload.
+        let more = w.worst_case(&p, 6);
+        assert_eq!(more - at, base.unload * 2);
+        assert_eq!(w.worst_case(&p, 0), w.worst_case(&p, 1));
         // The fixed request timeouts and the margin, with every limit at zero.
         let zero = Limits {
             load: Duration::ZERO,
@@ -2566,6 +2814,7 @@ mod tests {
             backend_poll: Duration::ZERO,
             memory_settle: Duration::ZERO,
             exclusion_poll: Duration::ZERO,
+            save_retry: Duration::ZERO,
         };
         let listing = super::super::router::DEFAULT_TIMEOUT;
         let step_fixed = listing * 3 + RELOAD + LOAD_REQUEST + listing * 2;
@@ -2580,9 +2829,93 @@ mod tests {
             + PROPS
             + RELOAD
             + RUN_MARGIN;
-        assert_eq!(with_limits(&w, zero).worst_case(&p), expected);
-        // Node's defaults: a 128K model at a 2-minute budget still fits the 8-hour lease.
+        assert_eq!(with_limits(&w, zero).worst_case(&p, 4), expected);
+        // Node's defaults: a 128K model at a 2-minute budget fits the 24-hour lease.
         assert!(at < super::super::node_lease::MAX_LEASE, "{at:?}");
+    }
+
+    /// P3-1: a long prompt the engine accepts and then never answers ends at its 1.5x deadline as
+    /// a failed long test (Node's over-budget stop), not at `limits.long`; the run then fails as
+    /// one in which no size passed.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_silent_long_prompt_ends_at_its_deadline_as_a_failed_long_test() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (port, _) = synthetic_engine_with(
+            ini.clone(),
+            Synth {
+                silent: true,
+                ..Synth::default()
+            },
+        )
+        .await;
+        let w = worker(d.path(), port);
+        let began = std::time::Instant::now();
+        w.launch("synthetic", plan(16_384.0, 1.0)).await.unwrap();
+        let job = settled(&w).await;
+        assert!(
+            began.elapsed() < Duration::from_secs(25),
+            "{:?}",
+            began.elapsed()
+        );
+        assert_eq!(job.get("status").as_str(), Some("failed"), "{job:?}");
+        assert!(job
+            .get("error")
+            .as_str()
+            .is_some_and(|e| e.starts_with("No size passed the long-prompt test within 1 s")));
+        let JValue::Arr(steps) = job.get("steps") else {
+            panic!("{job:?}")
+        };
+        let longs: Vec<&JValue> = steps
+            .iter()
+            .filter(|s| s.get("kind").as_str() == Some("long"))
+            .collect();
+        assert!(!longs.is_empty(), "{job:?}");
+        for step in longs {
+            assert_eq!(step.get("status").as_str(), Some("failed"), "{step:?}");
+            assert_eq!(step.get("cause").as_str(), Some("time"), "{step:?}");
+            let reason = step.get("reason").as_str().unwrap_or("");
+            assert!(
+                reason.starts_with("Filling this context took ")
+                    && reason.ends_with(" s, over the 1 s limit."),
+                "{reason}"
+            );
+            assert!(matches!(step.get("etaSeconds"), JValue::Undefined));
+        }
+        // The profile went back, and nothing still runs.
+        assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI);
+    }
+
+    /// P3-1: the lease counts one unload request for every model live at launch, more than four
+    /// included, and the run's first unload unloads them all.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_lease_counts_every_model_live_at_launch() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let live = Arc::new(std::sync::atomic::AtomicUsize::new(6));
+        let (port, _) = synthetic_engine_with(
+            ini.clone(),
+            Synth {
+                live: Some(Arc::clone(&live)),
+                ..Synth::default()
+            },
+        )
+        .await;
+        let (lease, seen) = lease_stub(None, Arc::new(AtomicBool::new(false))).await;
+        let w = worker_with(d.path(), port, Some(lease));
+        let p = plan(16_384.0, 120.0);
+        let six = u64::try_from(w.worst_case(&p, 6).as_millis()).unwrap();
+        assert!(w.worst_case(&p, 6) > w.worst_case(&p, 4));
+        w.launch("synthetic", p).await.unwrap();
+        let job = settled(&w).await;
+        assert_eq!(job.get("status").as_str(), Some("passed"), "{job:?}");
+        assert_eq!(
+            seen.lock().unwrap()[0],
+            format!("POST /internal/model-maintenance/lease {{\"maxMs\":{six}}}")
+        );
+        assert_eq!(live.load(Ordering::Acquire), 0);
     }
 
     async fn evidence_count(w: &Worker) -> usize {
@@ -2621,7 +2954,14 @@ mod tests {
         std::fs::write(&ini, INI).unwrap();
         std::fs::write(d.path().join("synthetic.gguf"), b"GGUF synthetic").unwrap();
         let ended = Arc::new(AtomicBool::new(false));
-        let (port, _) = synthetic_engine_with(ini.clone(), false, Some(Arc::clone(&ended))).await;
+        let (port, _) = synthetic_engine_with(
+            ini.clone(),
+            Synth {
+                props: Some(Arc::clone(&ended)),
+                ..Synth::default()
+            },
+        )
+        .await;
         let (lease, _) = lease_stub(None, Arc::clone(&ended)).await;
         let w = worker_with(d.path(), port, Some(lease));
         w.launch("synthetic", plan(16_384.0, 120.0)).await.unwrap();

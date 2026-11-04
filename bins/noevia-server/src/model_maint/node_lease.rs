@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 const PATH: &str = "/internal/model-maintenance/lease";
 const CALL_TIMEOUT: Duration = Duration::from_secs(5);
 /// model-maintenance-lease.cjs `MAX_MS`: the longest hard cap a lease may ask for.
-pub const MAX_LEASE: Duration = Duration::from_secs(8 * 3600);
+pub const MAX_LEASE: Duration = Duration::from_secs(24 * 3600);
 
 /// A lease Node granted.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,7 +98,7 @@ impl NodeLeases {
         self.acquire_capped(None).await
     }
 
-    /// A lease asking for hard cap `max` (`{maxMs}`; Node clamps it to [60 min, 8 h]); `None` asks
+    /// A lease asking for hard cap `max` (`{maxMs}`; Node clamps it to [60 min, 24 h]); `None` asks
     /// for nothing and sends no body, as before.
     pub async fn acquire_capped(&self, max: Option<Duration>) -> Result<LeaseGrant, LeaseFault> {
         let asked = Instant::now();

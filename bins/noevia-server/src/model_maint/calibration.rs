@@ -245,53 +245,87 @@ impl Maint {
 
     /// `recover()`: a run still marked running when the worker stopped. The preset goes back only
     /// if the file is still exactly what the job last wrote, so an operator's later edit survives.
-    /// `Some(restored)` when there was a running job (restored is `None` when nothing was written).
-    pub async fn recover_calibration(&self) -> Option<Option<bool>> {
-        let ini = self.ini.clone()?;
+    /// A failed save of the interrupted state is [`Recovery::Unsaved`], never "nothing to recover":
+    /// the profile may already be back, and the caller must keep the interrupted job.
+    pub async fn recover_calibration(&self) -> Recovery {
+        let Some(ini) = self.ini.clone() else {
+            return Recovery::Nothing;
+        };
         let file = self.calibration_state();
         let loader = file.clone();
-        let mut state = tokio::task::spawn_blocking(move || loader.load())
-            .await
-            .ok()?;
+        let Ok(mut state) = tokio::task::spawn_blocking(move || loader.load()).await else {
+            return Recovery::Nothing;
+        };
         if state.job().get("status").as_str() != Some("running") {
-            return None;
+            return Recovery::Nothing;
         }
-        let candidate = interrupt(state.job_mut()?, now_ms());
-        let mut restored = None;
-        if let Some(candidate) = candidate {
-            let Some((base_revision, text)) = candidate else {
-                restored = Some(false);
-                settle_interrupted(state.job_mut()?, restored);
-                tokio::task::spawn_blocking(move || file.save(&state))
-                    .await
-                    .ok()?
-                    .ok()?;
-                return Some(restored);
-            };
-            let c = Candidate {
-                base_revision,
-                text,
-                before: String::new(),
-            };
-            restored = Some(match ini.commit_reconciled(&c, true).await {
-                Ok(()) => {
-                    // The raw reload Node sends. Like Node's recover(), the preset-reload guard's
-                    // baseline is neither recorded nor forgotten here (reload.rs records or forgets
-                    // its own reloads; this path matches the calibrator it replaces).
-                    if let Some(router) = self.router.as_ref() {
-                        let _ = router.get("/models?reload=1", None, RELOAD_TIMEOUT).await;
+        let Some(job) = state.job_mut() else {
+            return Recovery::Nothing;
+        };
+        let restored = match interrupt(job, now_ms()) {
+            None => None,
+            Some(None) => Some(false),
+            Some(Some((base_revision, text))) => {
+                let c = Candidate {
+                    base_revision,
+                    text,
+                    before: String::new(),
+                };
+                Some(match ini.commit_reconciled(&c, true).await {
+                    Ok(()) => {
+                        // The raw reload Node sends. Like Node's recover(), the preset-reload guard's
+                        // baseline is neither recorded nor forgotten here (reload.rs records or
+                        // forgets its own reloads; this path matches the calibrator it replaces).
+                        if let Some(router) = self.router.as_ref() {
+                            let _ = router.get("/models?reload=1", None, RELOAD_TIMEOUT).await;
+                        }
+                        true
                     }
-                    true
-                }
-                Err(_) => false,
-            });
+                    Err(_) => false,
+                })
+            }
+        };
+        if let Some(job) = state.job_mut() {
+            settle_interrupted(job, restored);
         }
-        settle_interrupted(state.job_mut()?, restored);
-        tokio::task::spawn_blocking(move || file.save(&state))
-            .await
-            .ok()?
-            .ok()?;
-        Some(restored)
+        let saving = state.clone();
+        let saved = tokio::task::spawn_blocking(move || file.save(&saving)).await;
+        if matches!(saved, Ok(Ok(()))) {
+            Recovery::Saved { restored, state }
+        } else {
+            Recovery::Unsaved { restored, state }
+        }
+    }
+}
+
+/// What [`Maint::recover_calibration`] did.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Recovery {
+    /// No job was running (or there is no models.ini): nothing changed.
+    Nothing,
+    /// The job is interrupted in `state`, and the file says so. `restored`: the profile restore's
+    /// outcome (`None` when there was none to try).
+    Saved {
+        restored: Option<bool>,
+        state: State,
+    },
+    /// As `Saved`, except that writing the file failed: `state` is right, the file still says
+    /// running.
+    Unsaved {
+        restored: Option<bool>,
+        state: State,
+    },
+}
+
+impl Recovery {
+    /// `Some(restored)` when there was a running job to recover.
+    pub fn restored(&self) -> Option<Option<bool>> {
+        match self {
+            Recovery::Nothing => None,
+            Recovery::Saved { restored, .. } | Recovery::Unsaved { restored, .. } => {
+                Some(*restored)
+            }
+        }
     }
 }
 

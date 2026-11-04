@@ -13,7 +13,7 @@ use std::time::Duration;
 use support::*;
 const PATH: &str = "/api/models/calibration";
 const ASK: &str = r#"{"model":"synth","confirmPause":true,"promptBudgetSeconds":60}"#;
-const OVER_LIMIT: &str = "This calibration could take longer than the 8-hour maintenance limit. Choose a shorter prompt time limit.";
+const OVER_LIMIT: &str = "This calibration could take longer than the 24-hour maintenance limit. Choose a shorter prompt time limit.";
 
 /// The front over a native llama.cpp manager; Node answers 404 to anything it is asked.
 async fn rig_with(gate: bool) -> (tempfile::TempDir, Front, Upstream, Arc<cal::Engine>) {
@@ -219,6 +219,9 @@ async fn a_refused_gate_hold_is_the_public_hold_failure_and_nothing_runs() {
 async fn without_the_gate_a_run_longer_than_any_lease_is_refused_before_one_is_asked_for() {
     let (d, f, up, e) = rig_with(false).await;
     e.native.store(131072, Ordering::Release);
+    // A 128K model at the longest budget fits the 24-hour lease on its own; with 1000 other models
+    // live, unloading them first could take over 16 hours more.
+    e.extra_live.store(1000, Ordering::Release);
     let ask = r#"{"model":"synth","confirmPause":true,"promptBudgetSeconds":1800}"#;
     let (s, v) = write(f.addr, "POST", PATH, ADMIN, ask).await;
     assert_eq!((s, v), (400, json!({"error": OVER_LIMIT})));
@@ -226,6 +229,44 @@ async fn without_the_gate_a_run_longer_than_any_lease_is_refused_before_one_is_a
     assert_eq!(get(f.addr, PATH, ADMIN).await.1, json!({"job": null}));
     assert_eq!(cal::ini(d.path()), format!("{}{}", cal::INI, cal::LAYA_INI));
     core_untouched(&up);
+}
+
+/// The availability regression of the 8-hour cap: a 1M-context model at the default 2-minute budget
+/// (about 8.3 hours at worst) is not refused; Node is asked for a lease that long (here it has none
+/// to give, so the hold is refused as any refused lease is).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn without_the_gate_a_1m_context_run_at_the_default_budget_asks_for_its_lease() {
+    let (d, f, up, e) = rig_with(false).await;
+    e.native.store(1_048_576, Ordering::Release);
+    let ask = r#"{"model":"synth","confirmPause":true,"promptBudgetSeconds":120}"#;
+    let (s, v) = write(f.addr, "POST", PATH, ADMIN, ask).await;
+    assert_ne!(v, json!({"error": OVER_LIMIT}));
+    // Node answers no lease (404 here): the hold is refused as busy.
+    assert_eq!(
+        (s, v),
+        (
+            409,
+            json!({"error": "Requests are in progress. Wait for them to finish, then start calibration."})
+        )
+    );
+    let asked: Vec<u64> = up
+        .seen()
+        .iter()
+        .filter(|r| r.method == "POST" && r.path == "/internal/model-maintenance/lease")
+        .map(|r| {
+            serde_json::from_str::<Value>(&r.body).unwrap()["maxMs"]
+                .as_u64()
+                .unwrap()
+        })
+        .collect();
+    assert_eq!(asked.len(), 1, "{asked:?}");
+    assert!(
+        asked[0] > 8 * 3_600_000 && asked[0] <= 24 * 3_600_000,
+        "{asked:?}"
+    );
+    assert_eq!(e.count("POST /models/load"), 0);
+    assert_eq!(get(f.addr, PATH, ADMIN).await.1, json!({"job": null}));
+    assert_eq!(cal::ini(d.path()), format!("{}{}", cal::INI, cal::LAYA_INI));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -350,5 +391,123 @@ async fn boot_recovery_through_config_interrupts_the_job_and_restores_its_profil
         original["job"]["originalText"].as_str().unwrap()
     );
     assert_eq!(e.count("GET /models?reload=1"), 1);
+    core_untouched(&up);
+}
+
+/// Puts a directory's mode back when the test ends, however it ends.
+#[cfg(unix)]
+struct Mode(std::path::PathBuf);
+#[cfg(unix)]
+impl Drop for Mode {
+    fn drop(&mut self) {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
+    }
+}
+
+/// P2-2: a boot recovery whose save of the interrupted state fails. The profile is restored and
+/// memory keeps the interrupted job (noted as unsaved), not a running phantom: nothing to cancel, and
+/// a launch saves it first and is refused, before any hold, while that fails. The save is retried;
+/// once storage is repaired it lands without the note, and a launch runs.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn boot_recovery_whose_save_fails_keeps_the_interrupted_job_and_saves_it_once_it_can() {
+    use noevia_server::model_maint::calibration::STOPPED;
+    use noevia_server::model_maint::calibration_worker::{Plan, Refusal, UNSAVED};
+    use sha2::{Digest, Sha256};
+    use std::os::unix::fs::PermissionsExt;
+    let d = tempfile::tempdir().unwrap();
+    seed(d.path());
+    let up = upstream().await;
+    let (e, mut env) = cal::native(d.path(), true).await;
+    // models.ini lives outside the data directory: only the state file's directory breaks.
+    let presets = d.path().join("presets");
+    std::fs::create_dir_all(&presets).unwrap();
+    let ini = presets.join("models.ini");
+    let original = format!("{}{}", cal::INI, cal::LAYA_INI);
+    let written = original.replace("ctx-size = 4096", "ctx-size = 8192");
+    std::fs::write(&ini, &written).unwrap();
+    for (k, v) in &mut env {
+        if *k == "LLAMACPP_PRESET_PATH" {
+            *v = ini.display().to_string();
+        }
+    }
+    let rev = |t: &str| -> String {
+        Sha256::digest(t.as_bytes())
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    };
+    let running = json!({"job": {"id": "boot-job", "model": "synth", "promptBudgetSeconds": 60,
+        "native": 32768, "base": {}, "status": "running", "phase": "Long-prompt test at 8,192 tokens",
+        "startedAt": 1, "steps": [], "memoryFloorGib": 2, "memoryGuard": "active",
+        "originalText": original, "originalRevision": rev(&original), "lastRevision": rev(&written)},
+        "history": {}})
+    .to_string();
+    let state = cal::state_file(d.path(), &e);
+    std::fs::write(&state, &running).unwrap();
+    env.push(("NOEVIA_LEGACY_UPSTREAM", up.base()));
+    let f = front_env(d.path(), true, &env).await;
+    let worker = f.app.config.calibration.clone().unwrap();
+    // Storage fails: the data directory takes no new file (the save's temp file).
+    let mode = Mode(d.path().to_path_buf());
+    std::fs::set_permissions(d.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
+    if std::fs::write(d.path().join("probe"), "").is_ok() {
+        drop(mode);
+        let _ = std::fs::remove_file(d.path().join("probe"));
+        eprintln!("skipped: this user ignores directory modes, so no save failure can be injected");
+        return;
+    }
+    let recovery = f.app.config.spawn_calibration_recovery().unwrap();
+    let outcome = tokio::time::timeout(Duration::from_secs(30), recovery)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(outcome, Some(Some(true)));
+    assert_eq!(std::fs::read_to_string(&ini).unwrap(), original);
+    assert!(worker.unsaved());
+    let job = worker.job();
+    assert_eq!(job.get("status").as_str(), Some("interrupted"), "{job:?}");
+    let noted = format!("{STOPPED}{UNSAVED}");
+    assert_eq!(job.get("error").as_str(), Some(noted.as_str()));
+    assert_eq!(std::fs::read_to_string(&state).unwrap(), running);
+    // Not running: nothing to cancel. A launch saves first, and is refused while it cannot.
+    assert!(worker.cancel().is_none());
+    let plan = Plan {
+        prompt_budget_seconds: 60.0,
+        native: 32768.0,
+        base: Vec::new(),
+    };
+    assert_eq!(
+        worker.launch("synth", plan).await,
+        Err(Refusal::Unavailable)
+    );
+    assert_eq!(e.count("POST /gate/"), 0);
+    assert!(worker.unsaved());
+    assert_eq!(std::fs::read_to_string(&state).unwrap(), running);
+    // Repaired: the retry lands, without the note.
+    drop(mode);
+    for _ in 0..300 {
+        if !worker.unsaved() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(!worker.unsaved(), "the save was not retried");
+    let file: Value = serde_json::from_str(&std::fs::read_to_string(&state).unwrap()).unwrap();
+    assert_eq!(file["job"]["status"], "interrupted", "{file}");
+    assert_eq!(file["job"]["error"], STOPPED);
+    assert_eq!(file["job"]["restored"], true);
+    assert!(file["job"].get("originalText").is_none());
+    let (_, v) = get(f.addr, PATH, ADMIN).await;
+    assert_eq!(v["job"]["status"], "interrupted");
+    assert_eq!(v["job"]["error"], STOPPED);
+    // And a launch runs.
+    let (s, v) = write(f.addr, "POST", PATH, ADMIN, ASK).await;
+    assert_eq!(s, 202, "{v}");
+    let (s, _) = write(f.addr, "POST", "/api/models/calibration/cancel", ADMIN, "").await;
+    assert_eq!(s, 202);
+    let job = settled(&f).await;
+    assert_eq!(job["status"], "cancelled", "{job}");
     core_untouched(&up);
 }
