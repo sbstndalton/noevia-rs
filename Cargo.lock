@@ -934,13 +934,14 @@ dependencies = [
  "model-stream",
  "proc-macro2",
  "prompt-framing",
+ "quote",
  "reqwest",
  "rusqlite",
  "serde_json",
  "server-projects",
  "server-store",
  "sha2",
- "sqlite-vec",
+ "sqlite-vec-loader",
  "ssrf-policy",
  "syn 2.0.119",
  "tempfile",
@@ -3349,6 +3350,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0ba424237a9a5db2f6071f193319e2b6a32f7f3961debb2fbbfe67067abce3f"
 dependencies = [
  "cc",
+]
+
+[[package]]
+name = "sqlite-vec-loader"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "sqlite-vec",
 ]
 
 [[package]]

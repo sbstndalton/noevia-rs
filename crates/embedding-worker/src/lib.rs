@@ -15,8 +15,7 @@ pub mod http;
 pub mod runtime;
 pub mod service;
 pub mod sqlite;
-#[allow(unsafe_code)]
-pub mod sqlite_vec_loader;
+pub use sqlite_vec_loader;
 pub type Task<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Already validated/normalized by the embedding configuration owner. Endpoint is
@@ -97,7 +96,8 @@ pub struct Control {
     pending: Arc<AtomicBool>,
     suspended: Arc<AtomicBool>,
     unconfirmed_since: Arc<AtomicU64>,
-    admission_wait: Arc<AtomicU64>,
+    busy_ms: Arc<AtomicU64>,
+    busy_samples:Arc<AtomicU64>,
 }
 impl Control {
     pub fn kick(&self) {
@@ -116,8 +116,9 @@ impl Control {
     }
     pub fn suspended(&self)->bool {self.suspended.load(Ordering::Acquire)}
     pub fn unconfirmed_since(&self)->Option<u64> {let at=self.unconfirmed_since.load(Ordering::Acquire);(at!=0).then_some(at)}
-    pub fn record_admission_wait(&self,ms:u64) {self.admission_wait.fetch_add(ms,Ordering::AcqRel);}
-    pub fn admission_wait_ms(&self)->u64 {self.admission_wait.load(Ordering::Acquire)}
+    /// Record only time spent embedding after admission is granted.
+    pub fn record_embedding_busy(&self,ms:u64) {self.busy_ms.fetch_add(ms,Ordering::AcqRel);self.busy_samples.fetch_add(1,Ordering::AcqRel);}
+    pub fn embedding_busy(&self)->(u64,u64) {(self.busy_samples.load(Ordering::Acquire),self.busy_ms.load(Ordering::Acquire))}
     pub async fn cancelled(&self) {while !self.stopped()&&!self.suspended() {tokio::time::sleep(std::time::Duration::from_millis(5)).await;}}
     pub fn stopped(&self) -> bool {
         self.stopped.load(Ordering::Acquire)

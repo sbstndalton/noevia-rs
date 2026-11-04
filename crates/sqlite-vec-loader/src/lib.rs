@@ -1,5 +1,11 @@
-//! The sole reviewed Rust FFI exception. Statically linked sqlite-vec only;
-//! no path-based extension loading, reset, unregister or runtime selection.
+//! Audited static sqlite-vec 0.1.9 registration. This is process-wide: after
+//! registration, every subsequently opened SQLite connection (including cowork.db)
+//! initializes vec0. The sticky registration error refuses vector opens; SQLite
+//! also refuses any connection if the registered initializer itself fails.
+//! No runtime extension path, unregister or reset operation is exposed.
+pub use boundary::register;
+#[allow(unsafe_code)]
+mod boundary {
 use rusqlite::ffi;
 use std::sync::OnceLock;
 static REGISTERED: OnceLock<Result<(), String>> = OnceLock::new();
@@ -41,4 +47,6 @@ mod tests {
     fn registration_failure_is_sticky_error_value() {
         assert!(super::checked(rusqlite::ffi::SQLITE_ERROR).is_err());
     }
+}
+
 }

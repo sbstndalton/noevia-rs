@@ -12,18 +12,50 @@ fn unsafe_tokens(stream: TokenStream) -> usize {
         })
         .sum()
 }
-// Review-visible path and unsafe-block budgets. No hashes: harmless edits pass.
-const ALLOWLIST: &[(&str, usize)] = &[
-    ("crates/mem-return/src/lib.rs", 1),
-    ("crates/gguf-memtest/tests/hostile.rs", 2),
-    ("crates/embedding-worker/src/sqlite_vec_loader.rs", 2),
+// Explicit review-visible budgets: blocks, unsafe contracts, unsafe tokens,
+// lint escapes, ABI attributes. No hashes; harmless edits remain allowed.
+const ALLOWLIST:&[(&str,[usize;5])]=&[
+    ("crates/mem-return/src/lib.rs",[1,0,1,1,0]),
+    ("crates/gguf-memtest/tests/hostile.rs",[2,3,5,1,0]),
+    ("crates/sqlite-vec-loader/src/lib.rs",[2,0,4,1,0]),
+    ("bins/dav-parse-wasm/src/lib.rs",[0,0,0,49,50]),
+    ("bins/sandbox-bridge-wasm/src/lib.rs",[0,0,0,10,10]),
 ];
 #[derive(Default)]
 struct Guard {
     blocks: usize,
     contracts: usize,
+    escapes:usize,
+    abi:usize,
+    hidden:usize,
+    location:Option<(std::path::PathBuf,std::path::PathBuf)>,
+}
+impl Guard {
+    fn reference_ok(&self,literal:&syn::LitStr)->bool {
+        if !literal.value().ends_with(".rs") {return false;}
+        self.location.as_ref().is_some_and(|(root,file)|file.parent().and_then(|dir|dir.join(literal.value()).canonicalize().ok()).is_some_and(|path|path.starts_with(root)))
+    }
 }
 impl<'ast> Visit<'ast> for Guard {
+    fn visit_macro(&mut self,node:&'ast syn::Macro) {
+        if node.path.is_ident("include") {
+            let generated=self.location.as_ref().is_some_and(|(root,file)|*file==root.join("bins/noevia-server/src/routes.rs"))&&node.tokens.to_string().replace(' ',"")=="concat!(env!(\"OUT_DIR\"),\"/routes_gen.rs\")";
+            if !generated&&!syn::parse2::<syn::LitStr>(node.tokens.clone()).ok().is_some_and(|s|self.reference_ok(&s)) {self.hidden+=1;}
+        }
+        syn::visit::visit_macro(self,node);
+    }
+    fn visit_attribute(&mut self,node:&'ast syn::Attribute) {
+        if node.path().is_ident("path") {
+            let valid=match &node.meta {syn::Meta::NameValue(value)=>match &value.value {syn::Expr::Lit(expr)=>match &expr.lit {syn::Lit::Str(path)=>self.reference_ok(path),_=>false},_=>false},_=>false};
+            if !valid {self.hidden+=1;}
+        }
+        use quote::ToTokens;
+        fn names(stream:TokenStream,out:&mut Vec<String>) {for token in stream {match token {TokenTree::Ident(id)=>out.push(id.to_string()),TokenTree::Group(g)=>names(g.stream(),out),_=>{}}}}
+        let mut ids=vec![];names(node.meta.to_token_stream(),&mut ids);
+        if ids.iter().any(|s|s=="unsafe_code")&&ids.iter().any(|s|matches!(s.as_str(),"allow"|"warn"|"expect")) {self.escapes+=1;}
+        self.abi+=ids.iter().filter(|s|matches!(s.as_str(),"no_mangle"|"export_name"|"link_section")).count();
+        syn::visit::visit_attribute(self,node);
+    }
     fn visit_expr_unsafe(&mut self, node: &'ast syn::ExprUnsafe) {
         self.blocks += 1;
         syn::visit::visit_expr_unsafe(self, node);
@@ -61,13 +93,12 @@ fn scan(path: &Path, root: &Path) {
             let source = std::fs::read_to_string(&path).unwrap();
             let tokens = unsafe_tokens(source.parse::<TokenStream>().unwrap());
             let file = syn::parse_file(&source).unwrap();
-            let mut guard = Guard::default();
+            let mut guard = Guard {location:Some((root.canonicalize().unwrap(),path.canonicalize().unwrap())),..Guard::default()};
             guard.visit_file(&file);
+            assert_eq!(guard.hidden,0,"unscanned Rust include/path: {relative}");
             if let Some((_, cap)) = ALLOWLIST.iter().find(|(p, _)| *p == relative) {
-                assert!(
-                    guard.blocks <= *cap,
-                    "unsafe block budget exceeded: {relative}"
-                );
+                let counts=[guard.blocks,guard.contracts,tokens,guard.escapes,guard.abi];
+                assert!(counts.iter().zip(cap).all(|(count,cap)|count<=cap),"unsafe budget exceeded: {relative}: {counts:?} > {cap:?}");
                 let lines: Vec<_> = source.lines().collect();
                 let mut documented = 0;
                 for (i, line) in lines.iter().enumerate() {
@@ -102,8 +133,8 @@ fn scan(path: &Path, root: &Path) {
                 );
             } else {
                 assert_eq!(
-                    (guard.blocks, guard.contracts, tokens),
-                    (0, 0, 0),
+                    (guard.blocks, guard.contracts, tokens,guard.escapes,guard.abi),
+                    (0, 0, 0,0,0),
                     "unsafe Rust outside allowlist: {relative}"
                 );
             }
@@ -117,7 +148,7 @@ fn unsafe_is_confined_to_documented_budgeted_paths() {
         scan(&root.join(dir), &root);
     }
     let cargo = std::fs::read_to_string(root.join("Cargo.toml")).unwrap();
-    assert!(cargo.contains("unsafe_code = \"deny\""));
+    assert!(cargo.contains("unsafe_code = \"forbid\""));
 }
 #[test]
 fn vectors_are_available_on_every_connection_after_one_registration() {
@@ -131,4 +162,25 @@ fn vectors_are_available_on_every_connection_after_one_registration() {
         assert_eq!(v, "v0.1.9");
         db.execute_batch("CREATE VIRTUAL TABLE test_vec USING vec0(chunk_id INTEGER PRIMARY KEY,embedding float[2])").unwrap();
     }
+}
+
+fn policy_accepts(path:&str,source:&str)->bool {
+    let mut guard=Guard::default();guard.visit_file(&syn::parse_file(source).unwrap());
+    let counts=[guard.blocks,guard.contracts,unsafe_tokens(source.parse().unwrap()),guard.escapes,guard.abi];
+    if guard.hidden>0 {return false;}
+    let budget=ALLOWLIST.iter().find(|(p,_)|*p==path).map(|(_,b)|*b).unwrap_or([0;5]);counts.iter().zip(budget).all(|(count,cap)|*count<=cap)
+}
+#[test]
+fn regression_p3_allowlisted_file_cannot_add_unsafe_contracts() {
+    assert!(!policy_accepts("crates/mem-return/src/lib.rs","struct X; unsafe impl Send for X {}"));
+}
+#[test]
+fn regression_p3_lint_escape_and_abi_attributes_are_not_unrestricted() {
+    for source in ["#[allow(unsafe_code)] fn escape() {}","#[no_mangle] pub fn exported() {}","#[export_name=\"other\"] fn renamed() {}","#[link_section=\".init\"] static V:u8=0;"] {assert!(!policy_accepts("crates/not-allowlisted/src/lib.rs",source));}
+}
+
+#[test]
+fn regression_p3_non_rust_includes_and_path_attributes_are_rejected() {
+    assert!(!policy_accepts("crates/mem-return/src/lib.rs", "include!(\"hidden.fixture\");"));
+    assert!(!policy_accepts("crates/mem-return/src/lib.rs", "#[path=\"hidden.fixture\"] mod hidden;"));
 }
