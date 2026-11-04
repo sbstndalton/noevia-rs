@@ -268,6 +268,13 @@ use std::sync::Arc;
 /// the same lock file, so the web supervisor and the release assembly pair this capability with that
 /// Core in both directions.
 ///
+/// `rust-calibration-worker`: this build runs the calibration job itself (sbstndalton/noevia#2303,
+/// src/model_maint/calibration_worker.rs): its launch under the maintenance hold, the run, its
+/// cancellation and evidence, `native-calibration-<hash>.json` and the boot recovery of a job a
+/// restart interrupted. Core then builds no public calibrator and does not recover the job at boot
+/// (core rust-calibration-routes.cjs `CALIBRATION_WORKER_OWNER`), so the web supervisor and the
+/// release assembly pair them in both directions.
+///
 /// `rust-project-storage`: this build writes to a user's connected storage for a project's
 /// lifecycle (sbstndalton/noevia#2191 round 3): a create stores its text files in the project's
 /// folder (#687) and the front runs the `sweep` jobs of its index outbox itself. Core then claims
@@ -384,6 +391,7 @@ pub const FEATURES: &[&str] = &[
     "rust-autotune-cancel",
     "rust-calibration-cancel",
     "rust-calibration-routes",
+    "rust-calibration-worker",
     "rust-model-manager-scan",
     "rust-web-address-read",
     "rust-web-address-write",
