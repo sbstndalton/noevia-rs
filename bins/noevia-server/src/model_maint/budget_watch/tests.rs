@@ -64,7 +64,7 @@ impl Io for Fake {
     async fn baseline_allowed(&self) -> bool {
         *self.held.lock().unwrap() == Some(false)
     }
-    async fn unload(&self, model: &Value) -> Option<bool> {
+    async fn unload(&self, model: &Value, _budget_gib: f64) -> Option<bool> {
         self.unloaded.lock().unwrap().push(model.clone());
         self.answers
             .lock()
@@ -74,11 +74,12 @@ impl Io for Fake {
             .map(|(_, a)| *a)
             .unwrap_or(Some(true))
     }
-    async fn quarantine(&self, model: &Value, budget_gib: f64) {
+    async fn quarantine(&self, model: &Value, budget_gib: f64) -> bool {
         self.quarantined
             .lock()
             .unwrap()
             .push((model.clone(), budget_gib));
+        true
     }
     fn log(&self, line: &str) {
         self.log.lock().unwrap().push(line.to_owned());

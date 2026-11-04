@@ -1,5 +1,5 @@
 //! The #697 runtime safety net, moved from Core's `inference-budget-watch.cjs` (`createInferenceBudgetWatch`,
-//! wired in `index.cjs`) with its behaviour unchanged. `rust-budget-watch` in `FEATURES`; Core's
+//! wired in `index.cjs`) with its behaviour unchanged. `rust-budget-watch-v2` in `FEATURES`; Core's
 //! `rust-budget-watch.cjs` `BUDGET_WATCH_OWNER` says that Core no longer starts its own, and the release
 //! assembly and the web supervisor refuse a pair where only one side moved (never two watches, never none).
 //!
@@ -22,11 +22,16 @@
 //!   done, as in Node (`r?.ok !== false`).
 //! - Each model it unloaded goes to Core's quarantine with the budget (`modelManager.quarantine`, over the
 //!   loopback bridge `/internal/budget-watch`): the load guard that refuses it until its preset revision or the
-//!   budget changes is Core's, so the quarantine stays there.
+//!   budget changes is Core's. A shared fsynced admission fence is installed before unloading, retained
+//!   until an explicit revision/budget invalidation, and consulted by both Core and native maintenance
+//!   loads. Quarantine IPC must answer ok:true; failures are retried with 250 ms–30 s capped backoff.
+//!   The tick keeps its strikes and does not start cooldown or publish completion until acknowledged.
 //!
 //! The budget is the one Core enforces (`/internal/models/facts` `{want:'budget'}`, as the model state reads use).
 //! Node read it in process; here the last answer stands while Node does not answer, so a Node restart does not
 //! blind the watchdog (before the first answer there is no budget, the tick is `no-budget`).
+
+pub(super) mod journal;
 
 use super::{gate::Gate, router::Router, Maint};
 use crate::project_store::TOKEN_HEADER;
@@ -467,9 +472,12 @@ pub trait Io: Send + Sync {
     /// `baselineAllowed() !== false`, false when it cannot be told.
     fn baseline_allowed(&self) -> impl Future<Output = bool> + Send;
     /// The emergency unload: `Some(ok)` when the request settled, `None` when it did not.
-    fn unload(&self, model: &Value) -> impl Future<Output = Option<bool>> + Send;
-    /// `onUnloaded(model, budget)`, best effort.
-    fn quarantine(&self, model: &Value, budget_gib: f64) -> impl Future<Output = ()> + Send;
+    fn unload(&self, model: &Value, budget_gib: f64) -> impl Future<Output = Option<bool>> + Send;
+    /// Require acknowledgement of the exact revision/budget obligation before completing a tick.
+    fn quarantine(&self, model: &Value, budget_gib: f64) -> impl Future<Output = bool> + Send;
+    fn retry_pending(&self, _budget: f64) -> impl Future<Output = bool> + Send {
+        async { true }
+    }
     fn log(&self, line: &str);
     /// Milliseconds since the epoch (`Date.now()` for the cooldown).
     fn now_ms(&self) -> f64;
@@ -480,6 +488,7 @@ struct State {
     strikes: u32,
     cooldown_until: f64,
     baseline_gib: Option<f64>,
+    pending: Option<(Vec<Value>, Vec<Value>, Sample)>,
 }
 
 /// `createInferenceBudgetWatch`: the strikes, the idle baseline and the cooldown live here, in memory, as in Node
@@ -524,6 +533,13 @@ impl<I: Io> Watch<I> {
             return self.status();
         };
         let budget = self.io.budget().await.unwrap_or(f64::NAN);
+        let reconciled = self.io.retry_pending(budget).await;
+        if !reconciled {
+            return self.status();
+        }
+        if let Some((unloaded, failed, sample)) = st.pending.take() {
+            return self.complete(&mut st, unloaded, failed, sample).await;
+        }
         if budget.is_nan() || budget <= 0.0 {
             return self.remember(Status::NoBudget);
         }
@@ -581,21 +597,42 @@ impl<I: Io> Watch<I> {
         }
         let mut unloaded: Vec<Value> = Vec::new();
         for model in &loaded {
-            if self.io.unload(model).await != Some(false) {
+            if self.io.unload(model, budget).await != Some(false) {
                 unloaded.push(model.clone());
             }
         }
+        let failed = loaded
+            .iter()
+            .filter(|m| !unloaded.contains(m))
+            .cloned()
+            .collect();
+        self.complete(&mut st, unloaded, failed, sample).await
+    }
+
+    async fn complete(
+        &self,
+        st: &mut State,
+        unloaded: Vec<Value>,
+        failed: Vec<Value>,
+        sample: Sample,
+    ) -> Option<Status> {
+        let mut acknowledged = true;
+        for model in &unloaded {
+            acknowledged &= self.io.quarantine(model, sample.budget_gib).await;
+        }
+        if !acknowledged {
+            st.pending = Some((unloaded, failed, sample.clone()));
+            return self.remember(Status::Over {
+                strikes: st.strikes,
+                sample,
+            });
+        }
         st.strikes = 0;
         st.cooldown_until = self.io.now_ms() + self.settings.cooldown_ms;
-        // Remembered with its preset revision and the budget, so the same overload is refused on the next load.
-        for model in &unloaded {
-            self.io.quarantine(model, budget).await;
-        }
-        let failed: Vec<&Value> = loaded.iter().filter(|m| !unloaded.contains(m)).collect();
         let mut pairs: Vec<(&str, JValue)> = vec![(
             "event",
             JValue::Str(
-                if loaded.is_empty() {
+                if unloaded.is_empty() && failed.is_empty() {
                     "over-budget-nothing-loaded"
                 } else {
                     "unload"
@@ -610,7 +647,7 @@ impl<I: Io> Watch<I> {
         ));
         pairs.push((
             "failed",
-            JValue::Arr(failed.into_iter().map(to_jvalue).collect()),
+            JValue::Arr(failed.iter().map(to_jvalue).collect()),
         ));
         let line = js_json::stringify(&JValue::obj(pairs)).unwrap_or_default();
         self.io.log(&format!("{LOG_PREFIX}{line}"));
@@ -739,14 +776,14 @@ impl NodeBridge {
     }
 
     /// `modelManager.quarantine(model, budgetGib)`. True when Core recorded it.
-    pub async fn quarantine(&self, model: &str, budget_gib: f64) -> bool {
+    pub async fn quarantine(&self, entry: &journal::Entry) -> Option<bool> {
         self.call(
             BRIDGE_PATH,
-            &serde_json::json!({ "want": "quarantine", "model": model, "budgetGib": budget_gib }),
+            &serde_json::json!({ "want": "quarantine", "model": entry.model, "budgetGib": entry.budget_gib, "revision": entry.revision }),
         )
         .await
-        .and_then(|o| o.get("ok").and_then(Value::as_bool))
-        .unwrap_or(false)
+        .filter(|o| o.get("ok").and_then(Value::as_bool) == Some(true))
+        .map(|o| o.get("invalidated").and_then(Value::as_bool) == Some(true))
     }
 }
 
@@ -768,6 +805,8 @@ pub struct NativeIo {
     loader: Option<Loader>,
     node: NodeBridge,
     budget: Mutex<Option<f64>>,
+    journal_dir: Option<PathBuf>,
+    retries: Mutex<std::collections::HashMap<String, (tokio::time::Instant, u32)>>,
     log: Arc<dyn Fn(&str) + Send + Sync>,
     clock: Arc<dyn Fn() -> f64 + Send + Sync>,
 }
@@ -815,12 +854,17 @@ impl NativeIo {
         )?;
         Ok(Some(NativeIo {
             gate: maint.gate.clone(),
-            maint,
+            maint: Arc::clone(&maint),
             router,
             files: gpu_memory_files(get, drm_root),
             loader,
             node,
             budget: Mutex::new(None),
+            journal_dir: maint
+                .data_dir
+                .as_ref()
+                .map(|d| d.join(format!("budget-watch-{}", maint.suffix))),
+            retries: Mutex::new(std::collections::HashMap::new()),
             // console.warn.
             log: Arc::new(|line: &str| eprintln!("{line}")),
             clock: Arc::new(|| {
@@ -846,6 +890,59 @@ impl NativeIo {
     pub fn with_clock(mut self, clock: Arc<dyn Fn() -> f64 + Send + Sync>) -> NativeIo {
         self.clock = clock;
         self
+    }
+}
+
+impl NativeIo {
+    fn revision(&self) -> Option<Option<String>> {
+        match &self.maint.ini {
+            Some(ini) => Some(Some(ini.snapshot().ok()?.revision)),
+            None => Some(None),
+        }
+    }
+
+    async fn acknowledge(&self, mut entry: journal::Entry) -> bool {
+        let Some(dir) = &self.journal_dir else {
+            return false;
+        };
+        let was_recorded = entry.recorded;
+        let now = tokio::time::Instant::now();
+        if self
+            .retries
+            .lock()
+            .ok()
+            .and_then(|r| r.get(&entry.model).copied())
+            .is_some_and(|(at, _)| now < at)
+        {
+            return entry.recorded;
+        }
+        if let Some(invalidated) = self.node.quarantine(&entry).await {
+            let saved = if invalidated {
+                journal::remove(dir, &entry.model)
+            } else {
+                entry.recorded = true;
+                journal::save(dir, &entry)
+            };
+            if saved.is_ok() {
+                if let Ok(mut r) = self.retries.lock() {
+                    r.remove(&entry.model);
+                }
+                return true;
+            }
+        }
+        if let Ok(mut retries) = self.retries.lock() {
+            let attempt = retries.get(&entry.model).map_or(0, |(_, n)| *n);
+            let delay =
+                Duration::from_millis((250u64.saturating_mul(1u64 << attempt.min(7))).min(30_000));
+            retries.insert(
+                entry.model.clone(),
+                (
+                    tokio::time::Instant::now() + delay,
+                    attempt.saturating_add(1),
+                ),
+            );
+        }
+        was_recorded
     }
 }
 
@@ -899,9 +996,32 @@ impl Io for NativeIo {
         self.node.held().await == Some(false)
     }
 
-    async fn unload(&self, model: &Value) -> Option<bool> {
+    async fn unload(&self, model: &Value, budget_gib: f64) -> Option<bool> {
+        let Some(model_name) = model.as_str() else {
+            return Some(false);
+        };
+        let Some(dir) = &self.journal_dir else {
+            return Some(false);
+        };
+        let Some(revision) = self.revision() else {
+            return Some(false);
+        };
+        let entry = journal::Entry {
+            model: model_name.to_owned(),
+            revision,
+            budget_gib,
+            at: self.now_ms(),
+            recorded: false,
+        };
+        // Synchronous atomic replace + file/directory fsync precedes any await that may send the unload.
+        // An accepted-but-unanswered unload or a cancelled tick therefore leaves a durable admission fence.
+        if journal::save(dir, &entry).is_err() {
+            return Some(false);
+        }
         let admin = self.gate.as_ref().and_then(|g| g.admin_header());
         let reply = match admin {
+            // Deliberate Node emergencyUnload parity: this can preempt another maintenance owner.
+            // Coordinated preemption: https://github.com/sbstndalton/noevia/issues/2356.
             // `forcedUnload(model, 60000)`: the admin header and `force` for the gate.
             Some(header) => {
                 self.router
@@ -928,14 +1048,45 @@ impl Io for NativeIo {
                     .await
             }
         };
-        reply.ok().map(|r| r.ok)
+        let result = reply.ok().map(|r| r.ok);
+        if result == Some(false) {
+            let _ = journal::remove(dir, model_name);
+        }
+        result
     }
 
-    async fn quarantine(&self, model: &Value, budget_gib: f64) {
-        // Router ids are strings; Core's bridge takes nothing else.
-        if let Some(m) = model.as_str() {
-            let _ = self.node.quarantine(m, budget_gib).await;
+    async fn quarantine(&self, model: &Value, _budget_gib: f64) -> bool {
+        let Some(dir) = &self.journal_dir else {
+            return false;
+        };
+        let Some(model) = model.as_str() else {
+            return false;
+        };
+        match journal::read(dir, model) {
+            Ok(entry) if entry.recorded => true,
+            Ok(entry) => self.acknowledge(entry).await,
+            Err(e) => e.kind() == std::io::ErrorKind::NotFound,
         }
+    }
+
+    async fn retry_pending(&self, budget: f64) -> bool {
+        let Some(dir) = &self.journal_dir else {
+            return false;
+        };
+        let Ok(entries) = journal::entries(dir) else {
+            return false;
+        };
+        let revision = self.revision();
+        let mut done = true;
+        for entry in entries {
+            if !entry.recorded
+                || (budget.is_finite() && entry.budget_gib != budget)
+                || revision.as_ref().is_some_and(|r| r != &entry.revision)
+            {
+                done &= self.acknowledge(entry).await;
+            }
+        }
+        done
     }
 
     fn log(&self, line: &str) {

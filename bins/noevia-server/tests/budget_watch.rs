@@ -38,6 +38,7 @@ enum Answer {
     Text(u16, String),
     /// Close the connection without an answer (a request that does not settle).
     Drop,
+    Delay(u64),
 }
 
 type Handler = Arc<dyn Fn(&Req) -> Answer + Send + Sync>;
@@ -90,6 +91,9 @@ async fn serve(handler: Handler) -> u16 {
                     body: String::from_utf8_lossy(&body).into_owned(),
                 };
                 match handler(&req) {
+                    Answer::Delay(ms) => {
+                        tokio::time::sleep(Duration::from_millis(ms)).await;
+                    }
                     Answer::Drop => drop(sock),
                     Answer::Text(status, text) => {
                         let out = format!(
@@ -133,6 +137,10 @@ struct World {
     clock: Mutex<f64>,
     node_down: Mutex<bool>,
     leases: Mutex<Vec<String>>,
+    quarantine_reply: Mutex<Option<Answer>>,
+    quarantine_attempts: Mutex<usize>,
+    unload_delay: Mutex<bool>,
+    accepted: tokio::sync::Notify,
 }
 
 impl World {
@@ -177,6 +185,10 @@ async fn deployment() -> Deployment {
                     "admin": req.headers.get("x-noevia-gate-admin"),
                     "authorization": req.headers.get("authorization"),
                 }));
+                w.accepted.notify_one();
+                if *w.unload_delay.lock().unwrap() {
+                    return Answer::Delay(65_000);
+                }
                 let model = body.get("model").and_then(Value::as_str).unwrap_or("");
                 match step.get("unload").and_then(|u| u.get(model)) {
                     Some(spec) => answer(Some(spec)),
@@ -233,6 +245,10 @@ async fn deployment() -> Deployment {
             }
             ("/internal/budget-watch", Some("held")) => Answer::Text(200, json!({ "held": step["held"] }).to_string()),
             ("/internal/budget-watch", Some("quarantine")) => {
+                *w.quarantine_attempts.lock().unwrap() += 1;
+                if let Some(answer) = w.quarantine_reply.lock().unwrap().clone() { return answer; }
+                let invalidated = step["budget"].as_f64() != body["budgetGib"].as_f64();
+                if invalidated { return Answer::Text(200, r#"{"ok":true,"invalidated":true}"#.into()); }
                 w.quarantined.lock().unwrap().push(json!([body["model"], body["budgetGib"]]));
                 Answer::Text(200, r#"{"ok":true}"#.into())
             }
@@ -412,14 +428,16 @@ fn over() -> Value {
 }
 
 #[tokio::test]
-async fn another_jobs_maintenance_hold_neither_blocks_the_unload_nor_lets_a_baseline_be_taken() {
+async fn deliberate_node_emergency_preemption_parity_does_not_wait_for_another_maintenance_owner() {
     let d = deployment().await;
     std::fs::write(d.gtt(), "0").unwrap();
     std::fs::write(d.vram(), "0").unwrap();
     let env = d.env(false, true, &serde_json::Map::new());
     let maint = d.maint(&env);
     let watch = d.watch(&env, Arc::clone(&maint));
-    // A job of this front (a calibration, say) takes the maintenance lease from Core.
+    // Deliberate inherited Node emergencyUnload parity, not a claim of coordinated preemption.
+    // Coordinated preemption: https://github.com/sbstndalton/noevia/issues/2356.
+    // A job of this front takes the maintenance lease from Core.
     let hold = maint
         .acquire("synthetic calibration", Duration::from_secs(600), false)
         .await
@@ -460,39 +478,128 @@ async fn another_jobs_maintenance_hold_neither_blocks_the_unload_nor_lets_a_base
     assert_eq!(as_node(&r)["baselineGib"].as_f64(), Some(1.0));
 }
 
+async fn assert_native_load_refused(maint: &Maint) {
+    let result = maint
+        .router
+        .as_ref()
+        .unwrap()
+        .request(
+            reqwest::Method::POST,
+            "/models/load",
+            Some(&json!({"model":"chat"})),
+            None,
+            Duration::from_secs(1),
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.status, 409);
+    assert_eq!(result.body.unwrap()["code"], "inference_budget_unloaded");
+}
+
 #[tokio::test]
-async fn when_core_does_not_answer_the_last_budget_stands_and_no_baseline_is_taken() {
+async fn quarantine_503_timeout_and_false_remain_fenced_until_acknowledged_then_reload_is_refused()
+{
+    for fault in [
+        Answer::Text(503, "{}".into()),
+        Answer::Delay(6000),
+        Answer::Text(200, r#"{"ok":false}"#.into()),
+    ] {
+        let d = deployment().await;
+        std::fs::write(d.gtt(), (20u64 << 30).to_string()).unwrap();
+        std::fs::write(d.vram(), "0").unwrap();
+        let env = d.env(false, false, &serde_json::Map::new());
+        let maint = d.maint(&env);
+        let watch = d.watch(&env, Arc::clone(&maint));
+        *d.world.step.lock().unwrap() = over();
+        assert_eq!(watch.tick().await.unwrap().state(), "over");
+        *d.world.quarantine_reply.lock().unwrap() = Some(fault);
+        let failed = watch.tick().await.unwrap();
+        assert_eq!(failed.state(), "over");
+        assert_eq!(as_node(&Some(failed))["strikes"], 2);
+        assert!(
+            d.world.logs.lock().unwrap().is_empty(),
+            "no completed-unload log before acknowledgement"
+        );
+        assert_native_load_refused(&maint).await;
+        assert!(d.world.quarantined.lock().unwrap().is_empty());
+        let attempts = *d.world.quarantine_attempts.lock().unwrap();
+        watch.tick().await;
+        assert_eq!(
+            *d.world.quarantine_attempts.lock().unwrap(),
+            attempts,
+            "backoff also applies after a timeout"
+        );
+        *d.world.quarantine_reply.lock().unwrap() = None;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert_eq!(watch.tick().await.unwrap().state(), "unloaded");
+        assert_eq!(d.world.quarantined.lock().unwrap().len(), 1);
+        assert_eq!(
+            d.world.unloads.lock().unwrap().len(),
+            1,
+            "retry only the quarantine, not the unload"
+        );
+        assert_native_load_refused(&maint).await;
+        // Recorded fences survive process restart and clear only on confirmed invalidation.
+        let restarted = d.watch(&env, Arc::clone(&maint));
+        assert_native_load_refused(&maint).await;
+        let mut changed = over();
+        changed["budget"] = json!(24);
+        *d.world.step.lock().unwrap() = changed;
+        assert_eq!(restarted.tick().await.unwrap().state(), "ok");
+        let reply = maint
+            .router
+            .as_ref()
+            .unwrap()
+            .request(
+                reqwest::Method::POST,
+                "/models/load",
+                Some(&json!({"model":"chat"})),
+                None,
+                Duration::from_secs(1),
+            )
+            .await
+            .unwrap();
+        assert_ne!(
+            reply.status, 409,
+            "new budget invalidates the old obligation"
+        );
+    }
+}
+
+#[tokio::test]
+async fn cancellation_after_the_gate_accepted_unload_preserves_durable_quarantine_across_restart() {
     let d = deployment().await;
     std::fs::write(d.gtt(), (20u64 << 30).to_string()).unwrap();
     std::fs::write(d.vram(), "0").unwrap();
     let env = d.env(false, false, &serde_json::Map::new());
     let maint = d.maint(&env);
-    let watch = d.watch(&env, maint);
+    let mut native = d.watch(&env, Arc::clone(&maint));
+    native.settings.every = Duration::from_millis(10);
+    let watch = Arc::new(native);
     *d.world.step.lock().unwrap() = over();
-    *d.world.node_down.lock().unwrap() = true;
-    assert_eq!(
-        watch.tick().await,
-        Some(Status::NoBudget),
-        "no budget has been read yet"
-    );
-    *d.world.node_down.lock().unwrap() = false;
     assert_eq!(watch.tick().await.unwrap().state(), "over");
-    // Core restarts: the 12 GiB it last answered still holds and the overload is still ended.
-    *d.world.node_down.lock().unwrap() = true;
-    assert_eq!(watch.tick().await.unwrap().state(), "unloaded");
-    let (_, unloads, quarantined, logs) = d.world.take();
-    assert_eq!(unloads.len(), 1);
-    assert!(quarantined.is_empty(), "Core was not there to record it");
-    assert_eq!(logs.len(), 1);
-    // And while Core cannot say whether the gate is held, an idle reading is no baseline.
+    *d.world.unload_delay.lock().unwrap() = true;
+    let (stop, rx) = tokio::sync::watch::channel(false);
+    let task = tokio::spawn(Arc::clone(&watch).run(rx));
+    tokio::time::timeout(Duration::from_secs(2), d.world.accepted.notified())
+        .await
+        .unwrap();
+    assert_native_load_refused(&maint).await;
+    stop.send(true).unwrap();
+    tokio::time::timeout(Duration::from_millis(200), task)
+        .await
+        .unwrap()
+        .unwrap();
+    drop(watch);
+    assert_native_load_refused(&maint).await;
+    // Recreated worker reads the fsynced obligation; it does not need the lost HTTP answer.
+    let restarted = d.watch(&env, Arc::clone(&maint));
     let mut idle = over();
     idle["listing"]["body"]["data"] = json!([]);
     *d.world.step.lock().unwrap() = idle;
-    std::fs::write(d.gtt(), (1u64 << 30).to_string()).unwrap();
-    assert_eq!(
-        as_node(&watch.tick().await)["baselineGib"].as_f64(),
-        Some(0.0)
-    );
+    restarted.tick().await;
+    assert_eq!(d.world.quarantined.lock().unwrap().len(), 1);
+    assert_native_load_refused(&maint).await;
 }
 
 #[tokio::test]
@@ -530,7 +637,7 @@ async fn the_production_timer_reads_on_its_interval_and_stops_at_shutdown() {
 
 #[tokio::test]
 async fn only_a_llamacpp_front_with_the_watch_on_starts_it() {
-    assert!(noevia_server::FEATURES.contains(&"rust-budget-watch"));
+    assert!(noevia_server::FEATURES.contains(&"rust-budget-watch-v2"));
     let d = deployment().await;
     let (_stop, rx) = tokio::sync::watch::channel(false);
     let on = d.env(false, false, &serde_json::Map::new());

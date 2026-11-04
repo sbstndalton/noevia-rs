@@ -156,7 +156,13 @@ impl Maint {
         );
         let llama = kind == server_stats::Kind::LlamaCpp;
         let router = if llama {
-            Some(router::Router::new(engine.base(), key.as_deref())?)
+            Some(
+                router::Router::new(engine.base(), key.as_deref())?.with_budget_fence(
+                    data_dir
+                        .as_ref()
+                        .map(|d| d.join(format!("budget-watch-{suffix}"))),
+                ),
+            )
         } else {
             None
         };

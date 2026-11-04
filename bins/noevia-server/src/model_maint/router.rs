@@ -32,6 +32,7 @@ pub struct Router {
     client: reqwest::Client,
     base: String,
     authorization: Option<HeaderValue>,
+    budget_fence: Option<std::path::PathBuf>,
 }
 
 impl std::fmt::Debug for Router {
@@ -58,7 +59,13 @@ impl Router {
             client,
             base: base.to_owned(),
             authorization,
+            budget_fence: None,
         })
+    }
+
+    pub fn with_budget_fence(mut self, dir: Option<std::path::PathBuf>) -> Self {
+        self.budget_fence = dir;
+        self
     }
 
     pub fn base(&self) -> &str {
@@ -89,6 +96,26 @@ impl Router {
         extra: &[(HeaderName, HeaderValue)],
         timeout: Duration,
     ) -> Result<Reply, Fault> {
+        // All native maintenance loaders (including calibration) use this shared router.
+        // A pending or recorded watchdog obligation fences admission even while Core is unavailable.
+        if method == reqwest::Method::POST && path.split('?').next() == Some("/models/load") {
+            if let (Some(dir), Some(model)) = (
+                &self.budget_fence,
+                body.and_then(|b| b.get("model")).and_then(Value::as_str),
+            ) {
+                if std::fs::metadata(super::budget_watch::journal::file(dir, model))
+                    .map_or_else(|e| e.kind() != std::io::ErrorKind::NotFound, |_| true)
+                {
+                    return Ok(Reply {
+                        ok: false,
+                        status: 409,
+                        body: Some(
+                            serde_json::json!({ "error": "This model stays unloaded until its settings or inference budget change.", "code": "inference_budget_unloaded" }),
+                        ),
+                    });
+                }
+            }
+        }
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         if let Some(a) = &self.authorization {
