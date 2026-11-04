@@ -11,6 +11,7 @@ pub mod autotune_read_routes;
 pub mod autotune_resume_routes;
 pub mod autotune_settings_routes;
 pub mod calibration_cancel_routes;
+pub mod calibration_routes;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_oauth_routes;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -381,6 +382,7 @@ pub const FEATURES: &[&str] = &[
     "rust-model-maintenance",
     "rust-autotune-cancel",
     "rust-calibration-cancel",
+    "rust-calibration-routes",
     "rust-model-manager-scan",
     "rust-web-address-read",
     "rust-web-address-write",
