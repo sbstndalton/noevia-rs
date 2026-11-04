@@ -216,6 +216,9 @@ struct Pending {
 }
 
 struct Grant {
+    /// This grant's own number: a check that read the store in between accepts only the very grant
+    /// it started from (review aadda5e P1-1: a revoke, or a revoke and a new grant, meanwhile).
+    serial: u64,
     until: Instant,
     scope: String,
     binding: Binding,
@@ -225,6 +228,7 @@ struct Grant {
 struct State {
     pending: HashMap<String, Pending>,
     grants: HashMap<(String, String), Grant>,
+    serials: u64,
 }
 
 pub struct Registry {
@@ -232,6 +236,9 @@ pub struct Registry {
     timeout: Duration,
     ttl: Duration,
     live: Option<Live>,
+    /// Tests only: runs between a grant check's live-context read and its recheck.
+    #[cfg(test)]
+    after_context_read: Mutex<Option<Box<dyn FnOnce(&Registry) + Send>>>,
 }
 
 /// What [`Registry::open`] takes (approvals.cjs `awaitApproval` / `awaitRouteChoice`).
@@ -272,6 +279,8 @@ impl Registry {
             timeout,
             ttl,
             live,
+            #[cfg(test)]
+            after_context_read: Mutex::new(None),
         }
     }
 
@@ -372,9 +381,12 @@ impl Registry {
             Self::sweep(&mut s, now);
             if s.grants.len() < MAX_GRANTS || s.grants.contains_key(&key) {
                 let until = now + self.ttl;
+                s.serials += 1;
+                let serial = s.serials;
                 s.grants.insert(
                     key,
                     Grant {
+                        serial,
                         until,
                         scope,
                         binding,
@@ -492,25 +504,39 @@ impl Registry {
                     s.grants.remove(&key);
                     return false;
                 }
-                Some(g) => (g.scope.clone(), g.binding.clone(), g.until),
+                Some(g) => (g.scope.clone(), g.binding.clone(), g.serial),
             }
         };
-        let (gscope, gbinding, until) = grant;
+        let (gscope, gbinding, serial) = grant;
         if gscope != scope || b.user != user || b.canonical != canonical || gbinding != b {
             return false;
         }
+        // The store read takes the chat's file lock, so it runs outside the registry's lock.
         let now_live = live.context(user, chat);
-        if now_live.as_ref() == Some(&gbinding.context) {
+        #[cfg(test)]
+        if let Some(hook) = self
+            .after_context_read
+            .lock()
+            .ok()
+            .and_then(|mut h| h.take())
+        {
+            hook(self);
+        }
+        let Ok(mut s) = self.state.lock() else {
+            return false;
+        };
+        // The grant read before must still be the one held now, unexpired: a revoke (or a revoke
+        // and a new grant) during the read answers false.
+        let same = s
+            .grants
+            .get(&key)
+            .is_some_and(|g| g.serial == serial && Instant::now() < g.until);
+        if same && now_live.as_ref() == Some(&gbinding.context) {
             return true;
         }
-        // Moved, deleted or restarted: the grant is gone (unless a new one replaced it meanwhile).
-        if let Ok(mut s) = self.state.lock() {
-            if s.grants
-                .get(&key)
-                .is_some_and(|g| g.until == until && g.binding == gbinding)
-            {
-                s.grants.remove(&key);
-            }
+        // Moved, deleted or restarted: that grant is gone (a newer one is left alone).
+        if same {
+            s.grants.remove(&key);
         }
         false
     }
@@ -964,6 +990,62 @@ mod tests {
         assert_eq!(restarted.kind(OWNER, "w"), Ok(None));
         assert!(!restarted.granted(OWNER, "c1", "space:free", Some(&b)));
         assert!(Binding::parse(&b, "fedcba9876543210fedcba9876543210").is_none());
+    }
+
+    /// Review aadda5e P1-1: a revoke while the check reads the live context (outside the lock) wins,
+    /// and so does a revoke followed by a fresh grant for the same binding.
+    #[tokio::test]
+    async fn a_revoke_during_the_context_read_wins() {
+        let (_d, live) = store();
+        let r = Registry::new(Some(live));
+        let b = binding(OWNER, "c1", "space:free", json!({"kind":"free"}), "0");
+        let grant = |r: &Registry, id: &str| {
+            r.open(write_q(
+                id,
+                OWNER,
+                Some("c1"),
+                Some("space:free"),
+                Some(b.clone()),
+            ))
+            .unwrap();
+            let lc = r.grant_context(OWNER, id);
+            r.decide(OWNER, id, "approve_all", false, lc.as_ref())
+                .unwrap();
+        };
+        grant(&r, "w1");
+        assert!(r.granted(OWNER, "c1", "space:free", Some(&b)));
+        *r.after_context_read.lock().unwrap() = Some(Box::new(|r: &Registry| {
+            assert!(r.revoke(OWNER, "c1"));
+        }));
+        assert!(
+            !r.granted(OWNER, "c1", "space:free", Some(&b)),
+            "revoked mid-read"
+        );
+        assert!(!r.granted(OWNER, "c1", "space:free", Some(&b)));
+        grant(&r, "w2");
+        let b2 = b.clone();
+        *r.after_context_read.lock().unwrap() = Some(Box::new(move |r: &Registry| {
+            assert!(r.revoke(OWNER, "c1"));
+            r.open(write_q(
+                "w3",
+                OWNER,
+                Some("c1"),
+                Some("space:free"),
+                Some(b2),
+            ))
+            .unwrap();
+            let lc = r.grant_context(OWNER, "w3");
+            r.decide(OWNER, "w3", "approve_all", false, lc.as_ref())
+                .unwrap();
+        }));
+        assert!(
+            !r.granted(OWNER, "c1", "space:free", Some(&b)),
+            "the check started from the revoked grant, not the new one"
+        );
+        assert!(
+            r.granted(OWNER, "c1", "space:free", Some(&b)),
+            "the new grant stands"
+        );
     }
 
     #[test]
