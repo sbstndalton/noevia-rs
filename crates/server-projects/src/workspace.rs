@@ -342,6 +342,67 @@ pub fn search(ctx: Ctx<'_>, query: &str) -> Reply {
 mod tests {
     use super::*;
     #[test]
+    fn hourly_sweep_tombstones_and_reaps_only_proven_orphans(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let root = tempfile::tempdir()?;
+        let user = "11111111-2222-4333-8444-555555555555";
+        let dir = root.path().join("users").join(user);
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(
+            dir.join("projects.json"),
+            r#"{"projects":[{"id":"cowork-chat-context-gone","files":[]},{"id":"cowork-chat-context-new","files":[]},{"id":"cowork-chat-context-listed","files":[]}]}"#,
+        )?;
+        std::fs::write(dir.join("deleted-chats.json"), r#"["gone","listed"]"#)?;
+        std::fs::write(
+            dir.join("free-chats.json"),
+            r#"[{"id":"old","updatedAt":1},{"id":"pinned","updatedAt":1,"pinned":true},{"id":"listed","pinned":true}]"#,
+        )?;
+        std::fs::write(dir.join("history-old.json"), r#"{"history":[]}"#)?;
+        let now = 90 * 86400000;
+        std::fs::write(
+            dir.join(retention::FILE),
+            format!(r#"{{"days":30,"lastSweep":{}}}"#, now - 3599999),
+        )?;
+        let ctx = Ctx {
+            data_dir: root.path(),
+            user_id: user,
+            switch: server_store::RustProjects::owned(),
+            now_ms: now,
+        };
+        assert_eq!(get(ctx).status, 200);
+        assert!(
+            dir.join("history-old.json").exists(),
+            "not due before one hour"
+        );
+        let projects = std::fs::read_to_string(dir.join("projects.json"))?;
+        assert!(!projects.contains("cowork-chat-context-gone"));
+        assert!(
+            projects.contains("cowork-chat-context-new"),
+            "absence alone is not deletion proof"
+        );
+        assert!(
+            projects.contains("cowork-chat-context-listed"),
+            "listed chats protect contexts"
+        );
+        let ctx = Ctx {
+            now_ms: now + 1,
+            ..ctx
+        };
+        assert_eq!(get(ctx).status, 200);
+        assert!(!dir.join("history-old.json").exists());
+        assert!(std::fs::read_to_string(dir.join("deleted-chats.json"))?.contains("old"));
+        assert!(std::fs::read_to_string(dir.join("free-chats.json"))?.contains("pinned"));
+        let saved = std::fs::read(dir.join(retention::FILE))?;
+        assert_eq!(get(ctx).status, 200);
+        assert_eq!(
+            std::fs::read(dir.join(retention::FILE))?,
+            saved,
+            "same-hour load is idempotent"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn metadata_hides_text_internal_projects_and_search_obeys_roles_and_tombstones(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let root = tempfile::tempdir()?;
