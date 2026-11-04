@@ -344,8 +344,8 @@ pub(crate) const PROJECT_DOCUMENT_PAGES: &str = "/api/projects/{id}/documents/pa
 pub(crate) const PROJECT_ORIGINAL: &str = "/api/projects/{id}/{*}/original";
 
 /// Settings → Data → Delete old chats, its preview (GET only; routes.toml): a read of the chat
-/// lists, answered by crates/server-projects `retention` (sbstndalton/noevia#1071). `PUT`, which
-/// deletes chats, is Node's.
+/// lists, answered by crates/server-projects `retention`. PUT persists the setting and awaits
+/// bounded tombstoned deletion under the same retention lock as the hourly sweep.
 const ACCOUNT_RETENTION: &str = "/api/account/retention";
 
 /// A chat's last context meter (GET only; routes.toml): a read, always answered here
@@ -997,7 +997,6 @@ mod tests {
         for (m, p) in [
             ("HEAD", "/api/admin/web-address"),
             ("POST", "/api/profile/sharing"),
-            ("PUT", "/api/account/retention"),
             ("HEAD", "/api/auth/session"),
             ("GET", "/api/auth/login/password"),
             ("GET", "/api/profile/features"),
@@ -1171,13 +1170,18 @@ mod tests {
     }
 
     #[test]
-    fn the_retention_preview_is_rusts_for_get_only() {
+    fn the_retention_setting_is_rusts_for_get_and_put() {
         let off = Switches::default();
-        assert_eq!(
-            dispatch_under("GET", "/api/account/retention", off),
-            Some(Native::Projects)
-        );
-        for m in ["PUT", "POST", "DELETE"] {
+        // GET previews and PUT persists the setting natively (the settings-writers move); Node keeps
+        // every other method.
+        for m in ["GET", "PUT"] {
+            assert_eq!(
+                dispatch_under(m, "/api/account/retention", off),
+                Some(Native::Projects),
+                "{m}"
+            );
+        }
+        for m in ["POST", "DELETE"] {
             assert_eq!(
                 dispatch_under(m, "/api/account/retention", off),
                 None,

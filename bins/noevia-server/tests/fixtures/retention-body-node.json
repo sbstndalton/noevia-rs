@@ -1,0 +1,34 @@
+[
+  {
+    "malformed": false,
+    "kind": "oversize",
+    "status": 400,
+    "body": {
+      "error": "invalid JSON"
+    }
+  },
+  {
+    "malformed": false,
+    "kind": "stream",
+    "status": 400,
+    "body": {
+      "error": "invalid JSON"
+    }
+  },
+  {
+    "malformed": true,
+    "kind": "oversize",
+    "status": 500,
+    "body": {
+      "error": "Internal error"
+    }
+  },
+  {
+    "malformed": true,
+    "kind": "stream",
+    "status": 500,
+    "body": {
+      "error": "Internal error"
+    }
+  }
+]
