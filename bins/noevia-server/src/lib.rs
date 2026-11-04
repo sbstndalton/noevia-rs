@@ -271,6 +271,13 @@ use std::sync::Arc;
 /// the same lock file, so the web supervisor and the release assembly pair this capability with that
 /// Core in both directions.
 ///
+/// `rust-preset-baseline`: this build is the preset reload baseline's one in-memory authority
+/// (port contract 2026-11-04 RS-1, model_maint/reload.rs `Guard`) and answers `POST
+/// /v1/preset-baseline/{session,begin,settle,invalidate,verdict,router-text}` on the project-store
+/// listener. A Core that opens a protocol-1 `session` writes the baseline only through it; until one
+/// does (an older Core), that Core writes the state file itself under the same lock, which this
+/// build re-reads on every use (shared mode), so no pairing is required in either direction.
+///
 /// `rust-project-storage`: this build writes to a user's connected storage for a project's
 /// lifecycle (sbstndalton/noevia#2191 round 3): a create stores its text files in the project's
 /// folder (#687) and the front runs the `sweep` jobs of its index outbox itself. Core then claims
@@ -385,6 +392,7 @@ pub const FEATURES: &[&str] = &[
     "rust-offsite-backup",
     "rust-model-sizing",
     "rust-model-maintenance",
+    "rust-preset-baseline",
     "rust-autotune-cancel",
     "rust-calibration-cancel",
     "rust-calibration-routes",
