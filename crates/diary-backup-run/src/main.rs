@@ -160,6 +160,23 @@ fn run() -> R<()> {
     }
     let mut input = std::io::stdin().lock();
     let v = read(&mut input)?;
+    // pass_fds preserves the broker's *same open file description*, hence its flock.
+    // This inherited raw descriptor is deliberately never closed/wrapped by Rust:
+    // the kernel retains it until process exit, including all final DB writes and
+    // error paths, even if the broker is killed. No unsafe fd ownership conversion.
+    let lock_fd = v
+        .get("lockFd")
+        .and_then(Value::as_i64)
+        .filter(|fd| *fd >= 3)
+        .ok_or("lock fd")?;
+    let inherited = std::fs::read_link(format!("/proc/self/fd/{lock_fd}"))?;
+    let expected = std::path::Path::new(string(&v, "db")?)
+        .parent()
+        .ok_or("db parent")?
+        .join("managed-backup.lock");
+    if inherited.canonicalize()? != expected.canonicalize()? {
+        return Err("lock identity".into());
+    }
     let result = backup(&mut input, &v)?;
     emit(json!({"type":"done","outcome":result}))
 }
