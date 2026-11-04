@@ -272,10 +272,14 @@ struct State {
     no_writer: bool,
 }
 
+/// How a job's write reaches the disk ([`write_locked_within`]; tests put a failing one in).
+type WriteFn = fn(&Path, &[u8], Duration) -> std::io::Result<()>;
+
 struct Shared {
     file: Option<PathBuf>,
     epoch: String,
     timing: Timing,
+    write: WriteFn,
     state: Mutex<State>,
     wake: Condvar,
 }
@@ -353,6 +357,50 @@ impl Shared {
     fn next_deadline(st: &State) -> Option<Instant> {
         st.open.values().map(|t| t.deadline).min()
     }
+
+    /// How long a waiter waits for its write: every write queued up to and including its own, plus
+    /// the one (or a heal try) in progress, at the lock wait each, and a margin. Past that it counts
+    /// as not saved, so a stuck writer can never hold a caller (or the maintenance hold) forever.
+    fn reply_within(&self, st: &State) -> Duration {
+        let writes = u32::try_from(st.queue.len())
+            .unwrap_or(u32::MAX)
+            .saturating_add(1);
+        self.timing
+            .lock_wait
+            .saturating_mul(writes)
+            .saturating_add(Duration::from_secs(1))
+    }
+}
+
+/// Runs when the writer ends, normally or by unwinding: nothing can be written any more, so the
+/// baseline is unknown for the rest of this start and every queued waiter hears "not saved".
+struct WriterExit(Arc<Shared>);
+
+impl Drop for WriterExit {
+    fn drop(&mut self) {
+        let mut st = self.0.lock();
+        st.no_writer = true;
+        if std::thread::panicking() {
+            st.failed = Some(Failure {
+                gen: st.gen,
+                origin: ORIGIN_RUST.into(),
+                node: false,
+                node_session: None,
+            });
+        }
+        for job in st.queue.drain(..) {
+            if let Some(done) = job.done {
+                let _ = done.send(false);
+            }
+        }
+        drop(st);
+        if std::thread::panicking() {
+            let _ = writeln!(
+                std::io::stderr(),
+                "[models] the preset reload baseline writer stopped; the baseline is unknown until a restart"
+            );
+        }
+    }
 }
 
 /// Ends the writer once the last [`Guard`] handle is gone (after the queued writes).
@@ -367,6 +415,7 @@ impl Drop for Owner {
 
 /// The one writer: performs the queued writes in gen order, and heals after a failure.
 fn writer(shared: Arc<Shared>) {
+    let _exit = WriterExit(Arc::clone(&shared));
     let Some(file) = shared.file.clone() else {
         return;
     };
@@ -385,7 +434,10 @@ fn writer(shared: Arc<Shared>) {
                 st = shared.wait_until(st, until);
             }
         };
-        let result = write_locked_within(&file, job.body.as_bytes(), shared.timing.lock_wait);
+        // What the file held before this write: heal leaves alone a file another writer has
+        // replaced since (a legacy Node recording in shared mode).
+        let seen = std::fs::read(&file).ok();
+        let result = (shared.write)(&file, job.body.as_bytes(), shared.timing.lock_wait);
         {
             let mut st = shared.lock();
             match &result {
@@ -412,15 +464,17 @@ fn writer(shared: Arc<Shared>) {
             let _ = done.send(result.is_ok());
         }
         if result.is_err() {
-            heal(&shared, &file, job.gen);
+            heal(&shared, &file, job.gen, seen.as_deref());
         }
     }
 }
 
 /// After the write of `gen` failed: write the tombstone every `heal_every`, at most `heal_tries`
 /// times, while nothing newer was asked for, so the disk itself says unknown and a restart cannot
-/// trust the old baseline. It never lifts the failure (only a later write does).
-fn heal(shared: &Shared, file: &Path, gen: u64) {
+/// trust the old baseline. It never lifts the failure (only a later write does). It stops, writing
+/// nothing, once the file no longer holds what it held before the failed write (`seen`): another
+/// writer (a legacy Node, shared mode) replaced it under the lock since, and its baseline stands.
+fn heal(shared: &Shared, file: &Path, gen: u64, seen: Option<&[u8]>) {
     for _ in 0..shared.timing.heal_tries {
         let until = Instant::now() + shared.timing.heal_every;
         {
@@ -440,7 +494,9 @@ fn heal(shared: &Shared, file: &Path, gen: u64) {
                 st = shared.wait_until(st, Some(until));
             }
         }
-        if write_locked_within(file, TOMBSTONE.as_bytes(), shared.timing.lock_wait).is_ok() {
+        if write_locked_unless_changed(file, TOMBSTONE.as_bytes(), shared.timing.lock_wait, seen)
+            .is_ok()
+        {
             return;
         }
     }
@@ -504,10 +560,15 @@ impl Guard {
 
     /// `epoch`: this start's NOEVIA_START_ID.
     pub fn with(file: Option<PathBuf>, epoch: &str, timing: Timing) -> Guard {
+        Guard::build(file, epoch, timing, write_locked_within)
+    }
+
+    fn build(file: Option<PathBuf>, epoch: &str, timing: Timing, write: WriteFn) -> Guard {
         let shared = Arc::new(Shared {
             file,
             epoch: epoch.to_owned(),
             timing,
+            write,
             state: Mutex::new(State::default()),
             wake: Condvar::new(),
         });
@@ -545,7 +606,12 @@ impl Guard {
         &self.shared.epoch
     }
 
-    /// A protocol-1 Node session arrived (bridge mode); otherwise shared mode.
+    /// A protocol-1 Node session arrived during this start (bridge mode); otherwise shared mode.
+    ///
+    /// `false` is not proof that Node is a legacy one: after a restart of this process alone, a
+    /// bridge-mode Node has not re-opened its session yet. Node must compare the `epoch` that
+    /// `begin` (or a 409) answers with the one `session` gave and send `session` again when it
+    /// changed (CORE-1), and a reader choosing native over Node's facts (RS-2) must allow for it.
     pub fn bridged(&self) -> bool {
         self.shared.lock().bridged
     }
@@ -567,14 +633,15 @@ impl Guard {
     /// Queue a write and wait until it was tried.
     fn mutate(&self, body: String, who: Who, node_session: Option<String>) -> Saved {
         let (tx, rx) = sync_channel(1);
-        let gen = {
+        let (gen, within) = {
             let mut st = self.shared.lock();
             self.shared.sweep(&mut st);
-            self.shared.push(&mut st, body, who, node_session, Some(tx))
+            let gen = self.shared.push(&mut st, body, who, node_session, Some(tx));
+            (gen, self.shared.reply_within(&st))
         };
         Saved {
             gen,
-            saved: rx.recv().unwrap_or(false),
+            saved: rx.recv_timeout(within).unwrap_or(false),
         }
     }
 
@@ -662,7 +729,7 @@ impl Guard {
 
     fn settle_as(&self, ticket: &str, outcome: Settle, stale: Who) -> Result<Saved, Saved> {
         let (tx, rx) = sync_channel(1);
-        let (gen, known) = {
+        let (gen, known, within) = {
             let mut st = self.shared.lock();
             self.shared.sweep(&mut st);
             match st.open.remove(ticket) {
@@ -671,7 +738,7 @@ impl Guard {
                     let gen = self
                         .shared
                         .push(&mut st, TOMBSTONE.into(), stale, session, Some(tx));
-                    (gen, false)
+                    (gen, false, self.shared.reply_within(&st))
                 }
                 Some(t) => {
                     let body = match outcome {
@@ -687,13 +754,13 @@ impl Guard {
                     let gen = self
                         .shared
                         .push(&mut st, body, t.who, t.node_session, Some(tx));
-                    (gen, true)
+                    (gen, true, self.shared.reply_within(&st))
                 }
             }
         };
         let saved = Saved {
             gen,
-            saved: rx.recv().unwrap_or(false),
+            saved: rx.recv_timeout(within).unwrap_or(false),
         };
         if known {
             Ok(saved)
@@ -1086,8 +1153,28 @@ fn write_locked(file: &Path, bytes: &[u8]) -> std::io::Result<()> {
 
 /// [`write_locked`], waiting at most `wait` for another writer's live lock.
 fn write_locked_within(file: &Path, bytes: &[u8], wait: Duration) -> std::io::Result<()> {
-    use std::os::unix::fs::OpenOptionsExt;
     let _lock = take_lock(file, wait)?;
+    replace(file, bytes)
+}
+
+/// [`write_locked_within`] only while the file still holds `seen` (`None`: no file), checked under
+/// the lock; `Ok(false)` when another writer changed it, and nothing is written.
+fn write_locked_unless_changed(
+    file: &Path,
+    bytes: &[u8],
+    wait: Duration,
+    seen: Option<&[u8]>,
+) -> std::io::Result<bool> {
+    let _lock = take_lock(file, wait)?;
+    if std::fs::read(file).ok().as_deref() != seen {
+        return Ok(false);
+    }
+    replace(file, bytes).map(|()| true)
+}
+
+/// The atomic replace itself (0600, fsync, rename); the caller holds the lock.
+fn replace(file: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::os::unix::fs::OpenOptionsExt;
     let temp = PathBuf::from(format!("{}.{}.tmp", file.display(), std::process::id()));
     let result = (|| {
         let mut f = std::fs::OpenOptions::new()
@@ -1439,6 +1526,140 @@ mod tests {
         assert!(g.shared.lock().failed.is_some());
         assert!(g.record(Some(BASE), &rows, Some(BASE)));
         assert!(g.known());
+    }
+
+    fn dying_write(_: &Path, _: &[u8], _: Duration) -> std::io::Result<()> {
+        std::thread::sleep(Duration::from_millis(300));
+        panic!("synthetic writer fault")
+    }
+
+    fn slow_write(file: &Path, bytes: &[u8], wait: Duration) -> std::io::Result<()> {
+        std::thread::sleep(Duration::from_secs(3));
+        write_locked_within(file, bytes, wait)
+    }
+
+    #[test]
+    fn a_writer_that_dies_answers_not_saved_and_leaves_the_baseline_unknown() {
+        // Review P3-1: no waiter may hang on a dead writer (it would wedge the maintenance hold).
+        let d = tempfile::tempdir().unwrap();
+        let file = d.path().join("native-preset-reload-x.json");
+        let rows = vec![row("A", "loaded", "p")];
+        std::fs::write(
+            &file,
+            serde_json::to_string(&json!({"text": BASE, "view": engine_view(&rows).unwrap()}))
+                .unwrap(),
+        )
+        .unwrap();
+        let g = Guard::build(
+            Some(file.clone()),
+            "",
+            timing(0, Duration::from_secs(30)),
+            dying_write,
+        );
+        assert!(g.known());
+        let started = Instant::now();
+        // One write the writer dies on, one queued behind it: both hear "not saved".
+        let first = {
+            let g = g.clone();
+            std::thread::spawn(move || g.forget())
+        };
+        wait_for("the first write to be asked", || gen_of(&g) == 1);
+        let second = {
+            let (g, rows) = (g.clone(), rows.clone());
+            std::thread::spawn(move || g.record(Some(BASE), &rows, Some(BASE)))
+        };
+        assert!(!first.join().unwrap());
+        assert!(!second.join().unwrap());
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(g.shared.lock().no_writer);
+        assert!(!g.known(), "unknown for the rest of this start");
+        // Later writes answer at once.
+        let started = Instant::now();
+        assert!(!g.forget());
+        let t = g.begin("rust");
+        assert!(!g.settle(&t.ticket, Settle::Forget).unwrap().saved);
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert!(!g.known());
+    }
+
+    #[test]
+    fn a_write_that_outlasts_its_wait_counts_as_not_saved() {
+        let d = tempfile::tempdir().unwrap();
+        let file = d.path().join("native-preset-reload-x.json");
+        let g = Guard::build(
+            Some(file.clone()),
+            "",
+            timing(0, Duration::from_secs(30)),
+            slow_write,
+        );
+        let started = Instant::now();
+        assert!(!g.forget(), "the waiter gives up");
+        assert!(started.elapsed() < Duration::from_millis(2900));
+        assert!(!g.known(), "still unknown while the write is in flight");
+        wait_for("the slow write to land", || {
+            std::fs::read_to_string(&file).is_ok_and(|t| t == "{}")
+        });
+    }
+
+    #[test]
+    fn heal_leaves_alone_a_baseline_another_writer_recorded_since() {
+        // Review P3-2: shared mode, a legacy Node records after this process's write failed.
+        let d = tempfile::tempdir().unwrap();
+        let (g, file) = fast(d.path(), 200);
+        let rows = vec![row("A", "loaded", "p")];
+        assert!(g.record(Some(BASE), &rows, Some(BASE)));
+        std::fs::write(lock_path(&file), "node").unwrap();
+        assert!(!g.forget());
+        // Node, holding the lock, replaces the file with its own new baseline, then lets go.
+        let node =
+            serde_json::to_string(&json!({"text": "[*]\n", "view": engine_view(&rows).unwrap()}))
+                .unwrap();
+        std::fs::write(&file, &node).unwrap();
+        std::fs::remove_file(lock_path(&file)).unwrap();
+        std::thread::sleep(Duration::from_millis(500));
+        assert_eq!(disk(&file), node, "heal did not overwrite Node's baseline");
+        assert!(guard(d.path()).known(), "a fresh start trusts it");
+        assert!(!g.known(), "this start's own failure still stands");
+    }
+
+    /// Written by Node (Core b91b3f03 `JSON.stringify({text, view: engineView(rows)})`) over these
+    /// rows, with lone surrogates in the text and, escaped, in the view.
+    const NODE_FILE: &str =
+        r#"{"text":"[*]\nx = \ud800\n","view":"[[\"\\ud83d\",\"p\\udc00\"],[\"～\",\"y\"]]"}"#;
+    const NODE_ROWS: &str = r#"[{"id":"\ud83d","status":{"value":"loaded","preset":"p\udc00"}},{"id":"～","status":{"value":"unloaded","preset":"y"}}]"#;
+
+    #[test]
+    fn a_file_node_wrote_with_lone_surrogates_round_trips_byte_for_byte() {
+        // Review P3-4.
+        assert_eq!(wtf16::stringify(&js(NODE_FILE)).unwrap(), NODE_FILE);
+        let rows = match js(NODE_ROWS) {
+            JValue::Arr(rows) => rows,
+            _ => Vec::new(),
+        };
+        let file_view = js(NODE_FILE).get("view").as_str().unwrap().to_owned();
+        assert_eq!(
+            engine_view_js(&rows).unwrap(),
+            file_view,
+            "the same view as Node's"
+        );
+        let d = tempfile::tempdir().unwrap();
+        let (g, file) = fast(d.path(), 0);
+        std::fs::write(&file, NODE_FILE).unwrap();
+        let (_, a) = g.bridge("router-text", &js(&format!(r#"{{"rows":{NODE_ROWS}}}"#)));
+        assert_eq!(
+            wtf16::stringify(&a).unwrap(),
+            r#"{"text":"[*]\nx = \ud800\n"}"#
+        );
+        // Recording the same through the bridge writes Node's bytes.
+        assert!(g.forget());
+        let (_, begun) = g.bridge("begin", &js(r#"{"origin":"node"}"#));
+        let ticket = begun.get("ticket").as_str().unwrap();
+        let text = r#""[*]\nx = \ud800\n""#;
+        let settle = format!(
+            r#"{{"ticket":"{ticket}","outcome":"record","before":{text},"rows":{NODE_ROWS},"after":{text}}}"#
+        );
+        assert_eq!(g.bridge("settle", &js(&settle)).0, 200);
+        assert_eq!(disk(&file), NODE_FILE);
     }
 
     #[test]

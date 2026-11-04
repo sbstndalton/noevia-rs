@@ -15,7 +15,9 @@ use axum::{
 use http_body_util::BodyExt;
 use maint_support::*;
 use noevia_server::model_maint::reload::{Guard, Timing};
-use noevia_server::project_store::{self, preset_baseline_routes, Store, TOKEN_HEADER};
+use noevia_server::project_store::{
+    self, preset_baseline_routes, Store, PRESET_BASELINE_LIMIT, TOKEN_HEADER,
+};
 use noevia_server::{
     config::Config,
     serve::{serve, Limits},
@@ -108,6 +110,26 @@ async fn every_route_needs_the_store_secret_and_touches_nothing_without_it() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(answer, json!({"epoch": START, "protocol": 1}));
     assert!(guard.bridged());
+    // The body limit: one byte over is 413 and changes nothing; at the limit it is read.
+    let head = r#"{"origin":"node","rows":[],"pad":""#;
+    let fill = |n: usize| format!("{head}{}\"}}", "x".repeat(n - head.len() - 2));
+    let over = fill(PRESET_BASELINE_LIMIT + 1);
+    assert_eq!(over.len(), PRESET_BASELINE_LIMIT + 1);
+    for op in ["invalidate", "begin"] {
+        let (status, _) = call(
+            &app,
+            &format!("/v1/preset-baseline/{op}"),
+            Some(TOKEN),
+            &over,
+        )
+        .await;
+        assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE, "{op}");
+    }
+    assert!(!file.exists(), "nothing was written");
+    let at = fill(PRESET_BASELINE_LIMIT);
+    assert_eq!(at.len(), PRESET_BASELINE_LIMIT);
+    let (status, answer) = call(&app, "/v1/preset-baseline/router-text", Some(TOKEN), &at).await;
+    assert_eq!((status, answer), (StatusCode::OK, json!({"text": null})));
     // Without the front's model maintenance there is nothing to answer.
     let none = preset_baseline_routes(store(d.path()), None);
     let (status, _) = call(&none, "/v1/preset-baseline/verdict", Some(TOKEN), "{}").await;
@@ -147,10 +169,19 @@ async fn the_store_listener_serves_the_fronts_authority_and_the_public_front_doe
     let file = d
         .path()
         .join(format!("native-preset-reload-{}.json", suffix(base)));
+    // Node's stand-in behind the public front: answers 404, as Node does for these paths, and
+    // records what reached it.
+    let (node_port, node_seen) = engine(Arc::new(|_req: &Req| {
+        Answer::Reply(404, r#"{"error":"Not found"}"#.into())
+    }))
+    .await;
     let public = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = public.local_addr().unwrap();
     let env: HashMap<String, String> = HashMap::from([
-        ("NOEVIA_LEGACY_UPSTREAM".into(), "http://127.0.0.1:9".into()),
+        (
+            "NOEVIA_LEGACY_UPSTREAM".into(),
+            format!("http://127.0.0.1:{node_port}"),
+        ),
         ("UI_DATA_DIR".into(), d.path().display().to_string()),
         ("TRUST_PROXY".into(), "true".into()),
         ("NOEVIA_FEATURE_NATIVE_CLIENT_AUTH".into(), "1".into()),
@@ -176,17 +207,41 @@ async fn the_store_listener_serves_the_fronts_authority_and_the_public_front_doe
         std::future::pending(),
     ));
 
-    // Through the public front, even with the secret, nothing native answers (it is proxied to
-    // Node, which has no such route; here the dead upstream) and the authority is untouched.
-    for op in ["session", "begin", "invalidate"] {
-        let (status, _) = post(
+    // Through the public front, even with the secret, nothing native answers: every op is proxied
+    // to Node (its 404) and the authority is untouched.
+    let ops = [
+        "session",
+        "begin",
+        "settle",
+        "invalidate",
+        "verdict",
+        "router-text",
+    ];
+    for op in ops {
+        let (status, body) = post(
             addr,
             &format!("/v1/preset-baseline/{op}"),
             TOKEN,
-            r#"{"origin":"node","nodeBoot":"b","protocol":1}"#,
+            r#"{"origin":"node","nodeBoot":"b","protocol":1,"ticket":"t","outcome":"forget","current":null,"rows":[],"loaded":[]}"#,
         )
         .await;
-        assert_ne!(status, 200, "{op} on the public front");
+        assert_eq!(
+            (status, body.as_str()),
+            (404, r#"{"error":"Not found"}"#),
+            "{op}"
+        );
+    }
+    let reached: Vec<String> = node_seen
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|r| format!("{} {}", r.method, r.target))
+        .collect();
+    for op in ops {
+        assert!(
+            reached.contains(&format!("POST /v1/preset-baseline/{op}")),
+            "{op} went to Node: {reached:?}"
+        );
     }
     assert!(!file.exists());
     assert!(!app.config.maint.guard.bridged());
@@ -216,6 +271,7 @@ async fn the_store_listener_serves_the_fronts_authority_and_the_public_front_doe
     assert_eq!(status, 200);
     let begun: Value = serde_json::from_str(&body).unwrap();
     assert_eq!(begun["epoch"], START);
+    assert_eq!(begun["gen"], 1, "nothing before this reached the authority");
     let ticket = begun["ticket"].as_str().unwrap();
     let rows = json!([{"id": "A", "status": {"value": "loaded", "preset": "p"}}]);
     // A read while the reload is in flight is unknown.
