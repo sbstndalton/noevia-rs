@@ -611,6 +611,11 @@ path = "/api/models/machines"
 owner = "node"
 
 [[route]]
+path = "/api/models/preset"
+owner = "rust"
+methods = ["GET"]
+
+[[route]]
 path = "/api/models/preset/suggest"
 owner = "rust"
 methods = ["GET"]
