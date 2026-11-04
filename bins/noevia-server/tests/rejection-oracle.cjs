@@ -9,8 +9,9 @@ const http = require('node:http');
 const [core, portFile] = process.argv.slice(2);
 const load = file => require(path.join(core, 'server', file));
 const json = (res, status, body) => {
-  res.writeHead(status, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify(body));
+  const bytes = Buffer.from(JSON.stringify(body));
+  res.writeHead(status, { 'Content-Type': 'application/json', 'Content-Length': bytes.length });
+  res.end(bytes);
 };
 const forbidden = () => { throw new Error('negative method reached a substantive operation'); };
 const mounts = [
@@ -32,7 +33,10 @@ const server = http.createServer(async (req, res) => {
     if (load('rust-auth.cjs').refuseOwned(req, res, p, json)) return;
     const cookie = req.headers.cookie || '';
     const role = cookie.includes('admin-token') ? 'admin' : cookie.includes('member-token') ? 'member' : null;
-    if (!role) return load('http.cjs').unauthorized(res);
+    if (!role) {
+      res.setHeader('Content-Length', Buffer.byteLength('{"error":"unauthorized"}'));
+      return load('http.cjs').unauthorized(res);
+    }
     const authn = { user: { id: 'synthetic', role } };
     // Feature-off uses a separate mount, without changing any deployment feature flag.
     if (p.startsWith('/api/providers/chatgpt') && req.headers['x-test-feature-off'] === '1') {
