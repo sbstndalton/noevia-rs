@@ -23,6 +23,8 @@ pub struct Llm {
 pub struct Config {
     pub port: u16,
     pub control_token: String,
+    /// Secret Python sends on every forwarded request (`x-noevia-diary-forward`).
+    pub forward_secret: String,
     #[serde(default)]
     pub auth_token: String,
     #[serde(default)]

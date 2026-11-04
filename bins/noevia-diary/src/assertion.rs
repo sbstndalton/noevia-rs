@@ -1,9 +1,8 @@
-//! Tenant assertion checks for requests this process serves. The signature, clock window and
-//! bounds are the `tenant-assertion` crate's (the same code as the leaf Python spawns); the shape,
-//! the restart guard and the nonce cache are a port of tenant_assertion.py. This process keeps its
-//! OWN cache: an assertion is verified by whichever process serves the route, never both
-//! (port contract D4). When routes move here from Python, Python raises this side's floor to the
-//! switch second (`raise_floor`), so a request Python already accepted cannot be replayed here.
+//! Tenant assertion checks, ported from tenant_assertion.py (shape, restart guard, bounded nonce
+//! cache) on top of the `tenant-assertion` crate. NOT wired in while Python runs: Python's verifier
+//! and nonce cache are the only ones (a single owner, so a nonce is consumed exactly once), and
+//! this process trusts Python's forward secret instead. Kept for D8, when Python is retired and this
+//! process becomes the only verifier.
 
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Mutex;
