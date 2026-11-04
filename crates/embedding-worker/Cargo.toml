@@ -1,0 +1,15 @@
+[package]
+name = "embedding-worker"
+version = "0.1.0"
+description = "Unwired native embedding service refresh and migration orchestration"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+[lints]
+workspace = true
+[dependencies]
+serde_json = "1"
+prompt-framing = { path = "../prompt-framing" }
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "time"] }

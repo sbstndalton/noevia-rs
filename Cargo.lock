@@ -927,6 +927,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "embedding-worker"
+version = "0.1.0"
+dependencies = [
+ "prompt-framing",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "engine-admission"
 version = "0.1.0"
 dependencies = [
@@ -2268,6 +2277,7 @@ dependencies = [
  "idna",
  "mcp-frame",
  "proptest",
+ "serde_json",
  "url",
 ]
 
