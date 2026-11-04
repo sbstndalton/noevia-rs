@@ -613,7 +613,8 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
     // This owner is exact-path only; the shared matcher tolerates trailing slashes.
     if (route.path == "/api/chat-framing/preferences"
         || route.path == server_account::vault_mirror::PATH
-        || route.path == crate::model_manager_scan::PATH)
+        || route.path == crate::model_manager_scan::PATH
+        || route.path == crate::model_downloads_read::PATH)
         && path != route.path
     {
         return None;
@@ -1345,7 +1346,7 @@ mod tests {
             "/api/models/load",
             "/api/models/machines",
             "/api/models/preset",
-            "/api/models/downloads",
+            "/api/models/downloads/",
             "/api/models/capabilitiesx",
             "/api/models/hardware/x",
             "/api/models/estimate/x",
@@ -1356,7 +1357,8 @@ mod tests {
                 assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
             }
         }
-        // Exactly the two model routes are the front's in the contract, GET only.
+        assert!(crate::FEATURES.contains(&"rust-model-downloads-read"));
+        // Native model routes and methods listed in the contract.
         let rust: Vec<_> = ROUTES
             .iter()
             .filter(|r| {
@@ -1377,6 +1379,7 @@ mod tests {
                 (crate::calibration_routes::PATH, &[][..]),
                 (crate::calibration_cancel_routes::PATH, &[][..]),
                 (crate::model_routes::CAPABILITIES, &["GET"][..]),
+                (crate::model_downloads_read::PATH, &["GET"][..]),
                 (crate::model_sizing::ESTIMATE, &["GET"][..]),
                 (crate::model_maint::EVIDENCE, &["GET"][..]),
                 (crate::model_maint::EVIDENCE_IMPORT, &["POST"][..]),

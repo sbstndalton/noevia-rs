@@ -48,6 +48,7 @@ pub const ROUTES: &[&str] = &[
     crate::model_state_routes::INSTALLED,
     crate::autotune_read_routes::PATH,
     crate::idle_unload_read::PATH,
+    crate::model_downloads_read::PATH,
 ];
 
 /// What the model reads answer from: the keys core index.cjs read at startup.
@@ -164,6 +165,9 @@ pub async fn serve(
         Ok(Err(rejection)) => return rejection.into_response(),
         Err(_) => return identity::Rejection::Unavailable.into_response(),
     };
+    if path == crate::model_downloads_read::PATH {
+        return crate::model_downloads_read::serve(app).await;
+    }
     if let Some(route) = crate::model_sizing::Route::of(&path) {
         let budget = crate::model_state_routes::sizing_budget(app);
         let (status, body) = app
