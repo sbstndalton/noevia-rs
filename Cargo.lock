@@ -669,6 +669,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "diary-backup-run"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "diary-backup-format",
+ "rusqlite",
+ "serde_json",
+]
+
+[[package]]
 name = "diary-corpus-parse"
 version = "0.1.0"
 dependencies = [
