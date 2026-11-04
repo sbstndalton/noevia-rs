@@ -186,9 +186,9 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
     if path == "/api/workspace" {
         return (method == "GET").then_some(Route::Workspace);
     }
-    // routes/account.cjs `path === '/api/account/retention'`, its GET only.
+    // routes/account.cjs `path === '/api/account/retention'`, its GET and PUT.
     if path == "/api/account/retention" {
-        return (method == "GET").then_some(Route::Retention);
+        return matches!(method, "GET" | "PUT").then_some(Route::Retention);
     }
     // routes/chat-lists.cjs `/^\/api\/freechats\/([^/]+)$/` for DELETE.
     if let Some(chat) = path.strip_prefix("/api/freechats/") {
@@ -546,6 +546,7 @@ pub async fn serve(
         Route::SaveChats { .. } | Route::SaveFreeChats => Some(chats::BODY_LIMIT),
         Route::SaveHistory { .. } => Some(history::BODY_LIMIT),
         Route::MoveChat { .. } => Some(chat_move::BODY_LIMIT),
+        Route::Retention if parts.method == "PUT" => Some(chats::BODY_LIMIT),
         Route::CreateProject => Some(lifecycle::BODY_LIMIT),
         Route::ImportConversations => Some(server_projects::import::MAX_BYTES),
         Route::DeleteFile { .. } => Some(server_projects::files::BODY_LIMIT),
@@ -595,7 +596,7 @@ pub async fn serve(
         Some(limit) => match crate::account_routes::read_body(body, limit).await {
             Ok(b) => Some(b),
             // routes/chat-lists.cjs answers a history save it could not read so.
-            Err(()) if matches!(route, Route::MoveChat { .. }) => {
+            Err(()) if matches!(route, Route::MoveChat { .. } | Route::Retention) => {
                 return reply::error(StatusCode::BAD_REQUEST, "invalid JSON", true);
             }
             // routes/import.cjs: a body it could not read is the "not an export" 400.
@@ -754,6 +755,7 @@ pub async fn serve(
     let writes = matches!(
         route,
         Route::Upload { .. }
+            | Route::Retention
             | Route::Workspace
             | Route::SourceText { .. }
             | Route::DocumentOriginal { .. }
@@ -820,6 +822,8 @@ pub async fn serve(
             (Route::SaveHistory { chat }, Some(b)) => {
                 history::post(ctx, &chat, &b.bytes, b.over, &start_id)
             }
+            (Route::Retention, Some(b)) if b.over => Reply::error(400, "invalid JSON"),
+            (Route::Retention, Some(b)) => retention::put(ctx, &b.bytes),
             (Route::Retention, _) => retention::get(ctx),
             (Route::Workspace, _) => workspace::get(ctx),
             (Route::MoveChat { chat }, Some(b)) => {
@@ -1343,13 +1347,12 @@ mod tests {
     }
 
     #[test]
-    fn retention_matcher_is_get_only() {
+    fn retention_matcher_owns_get_and_put() {
         assert_eq!(
             route("GET", "/api/account/retention"),
             Some(Route::Retention)
         );
         for (m, p) in [
-            ("PUT", "/api/account/retention"),
             ("POST", "/api/account/retention"),
             ("DELETE", "/api/account/retention"),
             ("GET", "/api/account/retention/"),

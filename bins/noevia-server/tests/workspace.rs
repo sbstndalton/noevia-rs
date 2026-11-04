@@ -587,3 +587,58 @@ async fn only_the_get_is_the_fronts() {
         502
     );
 }
+
+#[tokio::test]
+async fn retention_put_auth_csrf_confirmation_and_tenant_isolation() {
+    let root = tempfile::tempdir().unwrap();
+    seed(root.path());
+    for user_id in [A, B] {
+        put(
+            root.path(),
+            user_id,
+            "free-chats.json",
+            r#"[{"id":"old","updatedAt":1}]"#,
+        );
+        put(
+            root.path(),
+            user_id,
+            "history-old.json",
+            r#"{"history":[]}"#,
+        );
+    }
+    let addr = front(root.path()).await;
+    async fn send(
+        addr: std::net::SocketAddr,
+        cookie: &str,
+        csrf: bool,
+        body: &str,
+    ) -> (u16, serde_json::Value) {
+        let mut socket = TcpStream::connect(addr).await.unwrap();
+        let token = if csrf { "X-CSRF-Token: csrf\r\n" } else { "" };
+        let request = format!("PUT /api/account/retention HTTP/1.1\r\nHost: {addr}\r\nOrigin: http://{addr}\r\nCookie: {cookie}\r\n{token}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+        socket.write_all(request.as_bytes()).await.unwrap();
+        let mut bytes = Vec::new();
+        tokio::time::timeout(Duration::from_secs(40), socket.read_to_end(&mut bytes))
+            .await
+            .unwrap()
+            .unwrap();
+        let text = String::from_utf8(bytes).unwrap();
+        let (head, body) = text.split_once("\r\n\r\n").unwrap();
+        (
+            head.split_whitespace().nth(1).unwrap().parse().unwrap(),
+            serde_json::from_str(body).unwrap(),
+        )
+    }
+    assert_eq!(send(addr, "", false, "{").await.0, 401);
+    assert_eq!(send(addr, COOKIE_A, false, "{").await.0, 403);
+    assert_eq!(send(addr, COOKIE_A, true, "{").await.0, 400);
+    assert_eq!(send(addr, COOKIE_A, true, r#"{"days":30}"#).await.0, 409);
+    assert!(!user(root.path(), A).join("chat-retention.json").exists());
+    assert_eq!(
+        send(addr, COOKIE_A, true, r#"{"days":30,"confirmDeletes":1}"#).await,
+        (200, serde_json::json!({"days":30,"deleted":1}))
+    );
+    assert!(!user(root.path(), A).join("history-old.json").exists());
+    assert!(user(root.path(), B).join("history-old.json").exists());
+    assert!(!user(root.path(), B).join("chat-retention.json").exists());
+}

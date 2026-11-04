@@ -1,0 +1,186 @@
+[
+  {
+    "name": "invalid",
+    "raw": "{",
+    "results": [],
+    "ticks": [],
+    "status": 400,
+    "body": {
+      "error": "invalid JSON"
+    },
+    "calls": [],
+    "file": "{\"days\":90,\"lastSweep\":123}"
+  },
+  {
+    "name": "invalid-days",
+    "raw": "{\"days\":7}",
+    "results": [],
+    "ticks": [],
+    "status": 400,
+    "body": {
+      "error": "Choose off, or 30, 90 or 365 days."
+    },
+    "calls": [],
+    "file": "{\"days\":90,\"lastSweep\":123}"
+  },
+  {
+    "name": "confirmation",
+    "raw": "{\"days\":30}",
+    "results": [],
+    "ticks": [],
+    "status": 409,
+    "body": {
+      "error": "3 chats would be deleted now. Confirm to continue.",
+      "preview": {
+        "30": 3,
+        "90": 3,
+        "365": 3
+      }
+    },
+    "calls": [],
+    "file": "{\"days\":90,\"lastSweep\":123}"
+  },
+  {
+    "name": "success",
+    "raw": "{\"days\":30,\"confirmDeletes\":3}",
+    "results": [
+      true,
+      true,
+      true
+    ],
+    "ticks": [],
+    "status": 200,
+    "body": {
+      "days": 30,
+      "deleted": 3
+    },
+    "calls": [
+      "a",
+      "b",
+      "c"
+    ],
+    "file": "{\"days\":30,\"lastSweep\":1700000000000}"
+  },
+  {
+    "name": "skipped",
+    "raw": "{\"days\":30,\"confirmDeletes\":3}",
+    "results": [
+      true,
+      false,
+      true
+    ],
+    "ticks": [],
+    "status": 200,
+    "body": {
+      "days": 30,
+      "deleted": 2
+    },
+    "calls": [
+      "a",
+      "b",
+      "c"
+    ],
+    "file": "{\"days\":30,\"lastSweep\":123}"
+  },
+  {
+    "name": "partial-busy",
+    "raw": "{\"days\":30,\"confirmDeletes\":3}",
+    "results": [
+      true,
+      503,
+      true
+    ],
+    "ticks": [],
+    "status": 503,
+    "body": {
+      "error": "Some chats could not be deleted. Try again shortly.",
+      "days": 30,
+      "deleted": 1
+    },
+    "calls": [
+      "a",
+      "b"
+    ],
+    "file": "{\"days\":30,\"lastSweep\":123}"
+  },
+  {
+    "name": "partial-error",
+    "raw": "{\"days\":30,\"confirmDeletes\":3}",
+    "results": [
+      500,
+      true,
+      true
+    ],
+    "ticks": [],
+    "status": 500,
+    "body": {
+      "error": "Some chats could not be deleted. Try again shortly.",
+      "days": 30,
+      "deleted": 2
+    },
+    "calls": [
+      "a",
+      "b",
+      "c"
+    ],
+    "file": "{\"days\":30,\"lastSweep\":123}"
+  },
+  {
+    "name": "first-error-wins",
+    "raw": "{\"days\":30,\"confirmDeletes\":3}",
+    "results": [
+      500,
+      429,
+      true
+    ],
+    "ticks": [],
+    "status": 500,
+    "body": {
+      "error": "Some chats could not be deleted. Try again shortly.",
+      "days": 30,
+      "deleted": 0
+    },
+    "calls": [
+      "a",
+      "b"
+    ],
+    "file": "{\"days\":30,\"lastSweep\":123}"
+  },
+  {
+    "name": "deadline",
+    "raw": "{\"days\":30,\"confirmDeletes\":3}",
+    "results": [
+      true,
+      true,
+      true
+    ],
+    "ticks": [
+      0,
+      0,
+      30001
+    ],
+    "status": 503,
+    "body": {
+      "error": "Some chats could not be deleted. Try again shortly.",
+      "days": 30,
+      "deleted": 1
+    },
+    "calls": [
+      "a"
+    ],
+    "file": "{\"days\":30,\"lastSweep\":123}"
+  },
+  {
+    "name": "off",
+    "raw": "{\"days\":0}",
+    "results": [],
+    "ticks": [],
+    "status": 200,
+    "body": {
+      "days": 0,
+      "deleted": 0
+    },
+    "calls": [],
+    "file": "{\"days\":0,\"lastSweep\":123}"
+  }
+]
