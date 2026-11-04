@@ -1978,6 +1978,420 @@
    }
   },
   {
+   "id": "export-date-extended-year",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"title\":\"T\",\"updatedAt\":253402300800000}]",
+    "history-d.json": "{\"history\":[{\"role\":\"user\",\"content\":\"x\"}]}"
+   },
+   "path": "/api/chats/d/export",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "text/markdown; charset=utf-8",
+     "content-disposition": "attachment; filename=\"noevia-chat-t-d.md\"",
+     "cache-control": "no-store",
+     "content-length": "59"
+    },
+    "body": "IyBUCgpfTGFzdCB1cGRhdGVkICswMTAwMDAtMDEtMDFUMDA6MDA6MDAuMDAwWl8KCiMjIFlvdQoKeAo="
+   }
+  },
+  {
+   "id": "export-date-negative-extended-year",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"title\":\"T\",\"updatedAt\":-62198755200001}]",
+    "history-d.json": "{\"history\":[{\"role\":\"user\",\"content\":\"x\"}]}"
+   },
+   "path": "/api/chats/d/export",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "text/markdown; charset=utf-8",
+     "content-disposition": "attachment; filename=\"noevia-chat-t-d.md\"",
+     "cache-control": "no-store",
+     "content-length": "59"
+    },
+    "body": "IyBUCgpfTGFzdCB1cGRhdGVkIC0wMDAwMDItMTItMzFUMjM6NTk6NTkuOTk5Wl8KCiMjIFlvdQoKeAo="
+   }
+  },
+  {
+   "id": "export-date-max",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"title\":\"T\",\"updatedAt\":8640000000000000}]",
+    "history-d.json": "{\"history\":[{\"role\":\"user\",\"content\":\"x\"}]}"
+   },
+   "path": "/api/chats/d/export",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "text/markdown; charset=utf-8",
+     "content-disposition": "attachment; filename=\"noevia-chat-t-d.md\"",
+     "cache-control": "no-store",
+     "content-length": "59"
+    },
+    "body": "IyBUCgpfTGFzdCB1cGRhdGVkICsyNzU3NjAtMDktMTNUMDA6MDA6MDAuMDAwWl8KCiMjIFlvdQoKeAo="
+   }
+  },
+  {
+   "id": "export-date-past-max",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"title\":\"T\",\"updatedAt\":8640000000000001}]",
+    "history-d.json": "{\"history\":[{\"role\":\"user\",\"content\":\"x\"}]}"
+   },
+   "path": "/api/chats/d/export",
+   "node": {
+    "status": 500,
+    "headers": {
+     "content-type": "application/json",
+     "content-disposition": null,
+     "cache-control": "no-store",
+     "content-length": null
+    },
+    "body": "eyJlcnJvciI6IkludGVybmFsIGVycm9yIn0="
+   }
+  },
+  {
+   "id": "export-date-fraction",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"title\":\"T\",\"updatedAt\":1.9}]",
+    "history-d.json": "{\"history\":[{\"role\":\"user\",\"content\":\"x\"}]}"
+   },
+   "path": "/api/chats/d/export",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "text/markdown; charset=utf-8",
+     "content-disposition": "attachment; filename=\"noevia-chat-t-d.md\"",
+     "cache-control": "no-store",
+     "content-length": "56"
+    },
+    "body": "IyBUCgpfTGFzdCB1cGRhdGVkIDE5NzAtMDEtMDFUMDA6MDA6MDAuMDAxWl8KCiMjIFlvdQoKeAo="
+   }
+  },
+  {
+   "id": "export-date-true",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"title\":\"T\",\"updatedAt\":true}]",
+    "history-d.json": "{\"history\":[{\"role\":\"user\",\"content\":\"x\"}]}"
+   },
+   "path": "/api/chats/d/export",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "text/markdown; charset=utf-8",
+     "content-disposition": "attachment; filename=\"noevia-chat-t-d.md\"",
+     "cache-control": "no-store",
+     "content-length": "56"
+    },
+    "body": "IyBUCgpfTGFzdCB1cGRhdGVkIDE5NzAtMDEtMDFUMDA6MDA6MDAuMDAxWl8KCiMjIFlvdQoKeAo="
+   }
+  },
+  {
+   "id": "export-date-date-only",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"title\":\"T\",\"updatedAt\":\"2026-01-01\"}]",
+    "history-d.json": "{\"history\":[{\"role\":\"user\",\"content\":\"x\"}]}"
+   },
+   "path": "/api/chats/d/export",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "text/markdown; charset=utf-8",
+     "content-disposition": "attachment; filename=\"noevia-chat-t-d.md\"",
+     "cache-control": "no-store",
+     "content-length": "56"
+    },
+    "body": "IyBUCgpfTGFzdCB1cGRhdGVkIDIwMjYtMDEtMDFUMDA6MDA6MDAuMDAwWl8KCiMjIFlvdQoKeAo="
+   }
+  },
+  {
+   "id": "export-date-year-only",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"title\":\"T\",\"updatedAt\":\"2026\"}]",
+    "history-d.json": "{\"history\":[{\"role\":\"user\",\"content\":\"x\"}]}"
+   },
+   "path": "/api/chats/d/export",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "text/markdown; charset=utf-8",
+     "content-disposition": "attachment; filename=\"noevia-chat-t-d.md\"",
+     "cache-control": "no-store",
+     "content-length": "56"
+    },
+    "body": "IyBUCgpfTGFzdCB1cGRhdGVkIDIwMjYtMDEtMDFUMDA6MDA6MDAuMDAwWl8KCiMjIFlvdQoKeAo="
+   }
+  },
+  {
+   "id": "export-date-plus-year",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"title\":\"T\",\"updatedAt\":\"+010000-01-01\"}]",
+    "history-d.json": "{\"history\":[{\"role\":\"user\",\"content\":\"x\"}]}"
+   },
+   "path": "/api/chats/d/export",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "text/markdown; charset=utf-8",
+     "content-disposition": "attachment; filename=\"noevia-chat-t-d.md\"",
+     "cache-control": "no-store",
+     "content-length": "59"
+    },
+    "body": "IyBUCgpfTGFzdCB1cGRhdGVkICswMTAwMDAtMDEtMDFUMDA6MDA6MDAuMDAwWl8KCiMjIFlvdQoKeAo="
+   }
+  },
+  {
+   "id": "export-date-minus-zero-year",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"title\":\"T\",\"updatedAt\":\"-000000-01-01\"}]",
+    "history-d.json": "{\"history\":[{\"role\":\"user\",\"content\":\"x\"}]}"
+   },
+   "path": "/api/chats/d/export",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "text/markdown; charset=utf-8",
+     "content-disposition": "attachment; filename=\"noevia-chat-t-d.md\"",
+     "cache-control": "no-store",
+     "content-length": "56"
+    },
+    "body": "IyBUCgpfTGFzdCB1cGRhdGVkIDIwMDEtMDEtMDFUMDA6MDA6MDAuMDAwWl8KCiMjIFlvdQoKeAo="
+   }
+  },
+  {
+   "id": "export-date-offset",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"title\":\"T\",\"updatedAt\":\"2026-01-01T10:00:00.1234+01:30\"}]",
+    "history-d.json": "{\"history\":[{\"role\":\"user\",\"content\":\"x\"}]}"
+   },
+   "path": "/api/chats/d/export",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "text/markdown; charset=utf-8",
+     "content-disposition": "attachment; filename=\"noevia-chat-t-d.md\"",
+     "cache-control": "no-store",
+     "content-length": "56"
+    },
+    "body": "IyBUCgpfTGFzdCB1cGRhdGVkIDIwMjYtMDEtMDFUMDg6MzA6MDAuMTIzWl8KCiMjIFlvdQoKeAo="
+   }
+  },
+  {
+   "id": "export-date-hour-24",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"title\":\"T\",\"updatedAt\":\"2026-01-01T24:00Z\"}]",
+    "history-d.json": "{\"history\":[{\"role\":\"user\",\"content\":\"x\"}]}"
+   },
+   "path": "/api/chats/d/export",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "text/markdown; charset=utf-8",
+     "content-disposition": "attachment; filename=\"noevia-chat-t-d.md\"",
+     "cache-control": "no-store",
+     "content-length": "56"
+    },
+    "body": "IyBUCgpfTGFzdCB1cGRhdGVkIDIwMjYtMDEtMDJUMDA6MDA6MDAuMDAwWl8KCiMjIFlvdQoKeAo="
+   }
+  },
+  {
+   "id": "export-date-local-iso",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"title\":\"T\",\"updatedAt\":\"2026-01-01T10:00\"}]",
+    "history-d.json": "{\"history\":[{\"role\":\"user\",\"content\":\"x\"}]}"
+   },
+   "path": "/api/chats/d/export",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "text/markdown; charset=utf-8",
+     "content-disposition": "attachment; filename=\"noevia-chat-t-d.md\"",
+     "cache-control": "no-store",
+     "content-length": "56"
+    },
+    "body": "IyBUCgpfTGFzdCB1cGRhdGVkIDIwMjYtMDEtMDFUMTA6MDA6MDAuMDAwWl8KCiMjIFlvdQoKeAo="
+   }
+  },
+  {
+   "id": "export-date-rfc",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"title\":\"T\",\"updatedAt\":\"Thu, 01 Jan 2026 10:00:00 GMT\"}]",
+    "history-d.json": "{\"history\":[{\"role\":\"user\",\"content\":\"x\"}]}"
+   },
+   "path": "/api/chats/d/export",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "text/markdown; charset=utf-8",
+     "content-disposition": "attachment; filename=\"noevia-chat-t-d.md\"",
+     "cache-control": "no-store",
+     "content-length": "56"
+    },
+    "body": "IyBUCgpfTGFzdCB1cGRhdGVkIDIwMjYtMDEtMDFUMTA6MDA6MDAuMDAwWl8KCiMjIFlvdQoKeAo="
+   }
+  },
+  {
+   "id": "export-date-legacy-pm",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"title\":\"T\",\"updatedAt\":\"Jan 1 2026 10:00 PM EST\"}]",
+    "history-d.json": "{\"history\":[{\"role\":\"user\",\"content\":\"x\"}]}"
+   },
+   "path": "/api/chats/d/export",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "text/markdown; charset=utf-8",
+     "content-disposition": "attachment; filename=\"noevia-chat-t-d.md\"",
+     "cache-control": "no-store",
+     "content-length": "56"
+    },
+    "body": "IyBUCgpfTGFzdCB1cGRhdGVkIDIwMjYtMDEtMDJUMDM6MDA6MDAuMDAwWl8KCiMjIFlvdQoKeAo="
+   }
+  },
+  {
+   "id": "export-date-local-month-day",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"title\":\"T\",\"updatedAt\":\"Jan 5\"}]",
+    "history-d.json": "{\"history\":[{\"role\":\"user\",\"content\":\"x\"}]}"
+   },
+   "path": "/api/chats/d/export",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "text/markdown; charset=utf-8",
+     "content-disposition": "attachment; filename=\"noevia-chat-t-d.md\"",
+     "cache-control": "no-store",
+     "content-length": "56"
+    },
+    "body": "IyBUCgpfTGFzdCB1cGRhdGVkIDIwMDEtMDEtMDVUMDA6MDA6MDAuMDAwWl8KCiMjIFlvdQoKeAo="
+   }
+  },
+  {
+   "id": "export-date-local-slashes",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"title\":\"T\",\"updatedAt\":\"1/2/2026\"}]",
+    "history-d.json": "{\"history\":[{\"role\":\"user\",\"content\":\"x\"}]}"
+   },
+   "path": "/api/chats/d/export",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "text/markdown; charset=utf-8",
+     "content-disposition": "attachment; filename=\"noevia-chat-t-d.md\"",
+     "cache-control": "no-store",
+     "content-length": "56"
+    },
+    "body": "IyBUCgpfTGFzdCB1cGRhdGVkIDIwMjYtMDEtMDJUMDA6MDA6MDAuMDAwWl8KCiMjIFlvdQoKeAo="
+   }
+  },
+  {
+   "id": "export-date-overflow-day",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"title\":\"T\",\"updatedAt\":\"2026-02-31\"}]",
+    "history-d.json": "{\"history\":[{\"role\":\"user\",\"content\":\"x\"}]}"
+   },
+   "path": "/api/chats/d/export",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "text/markdown; charset=utf-8",
+     "content-disposition": "attachment; filename=\"noevia-chat-t-d.md\"",
+     "cache-control": "no-store",
+     "content-length": "56"
+    },
+    "body": "IyBUCgpfTGFzdCB1cGRhdGVkIDIwMjYtMDMtMDNUMDA6MDA6MDAuMDAwWl8KCiMjIFlvdQoKeAo="
+   }
+  },
+  {
+   "id": "export-date-words",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"title\":\"T\",\"updatedAt\":\"soon\"}]",
+    "history-d.json": "{\"history\":[{\"role\":\"user\",\"content\":\"x\"}]}"
+   },
+   "path": "/api/chats/d/export",
+   "node": {
+    "status": 500,
+    "headers": {
+     "content-type": "application/json",
+     "content-disposition": null,
+     "cache-control": "no-store",
+     "content-length": null
+    },
+    "body": "eyJlcnJvciI6IkludGVybmFsIGVycm9yIn0="
+   }
+  },
+  {
+   "id": "export-date-array",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"title\":\"T\",\"updatedAt\":[2026,1,1]}]",
+    "history-d.json": "{\"history\":[{\"role\":\"user\",\"content\":\"x\"}]}"
+   },
+   "path": "/api/chats/d/export",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "text/markdown; charset=utf-8",
+     "content-disposition": "attachment; filename=\"noevia-chat-t-d.md\"",
+     "cache-control": "no-store",
+     "content-length": "56"
+    },
+    "body": "IyBUCgpfTGFzdCB1cGRhdGVkIDIwMjYtMDEtMDFUMDA6MDA6MDAuMDAwWl8KCiMjIFlvdQoKeAo="
+   }
+  },
+  {
+   "id": "export-date-object",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"title\":\"T\",\"updatedAt\":{\"a\":1}}]",
+    "history-d.json": "{\"history\":[{\"role\":\"user\",\"content\":\"x\"}]}"
+   },
+   "path": "/api/chats/d/export",
+   "node": {
+    "status": 500,
+    "headers": {
+     "content-type": "application/json",
+     "content-disposition": null,
+     "cache-control": "no-store",
+     "content-length": null
+    },
+    "body": "eyJlcnJvciI6IkludGVybmFsIGVycm9yIn0="
+   }
+  },
+  {
+   "id": "export-date-own-toString",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"title\":\"T\",\"updatedAt\":{\"toString\":1}}]",
+    "history-d.json": "{\"history\":[{\"role\":\"user\",\"content\":\"x\"}]}"
+   },
+   "path": "/api/chats/d/export",
+   "node": {
+    "status": 500,
+    "headers": {
+     "content-type": "application/json",
+     "content-disposition": null,
+     "cache-control": "no-store",
+     "content-length": null
+    },
+    "body": "eyJlcnJvciI6IkludGVybmFsIGVycm9yIn0="
+   }
+  },
+  {
+   "id": "export-deep-ignored-metadata",
+   "files": {
+    "free-chats.json": "[{\"id\":\"m\",\"title\":\"T\",\"meta\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":null}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}]",
+    "history-m.json": "{\"history\":[{\"role\":\"user\",\"content\":\"needle\",\"meta\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":{\"x\":null}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}]}"
+   },
+   "path": "/api/chats/m/export",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "text/markdown; charset=utf-8",
+     "content-disposition": "attachment; filename=\"noevia-chat-t-m.md\"",
+     "cache-control": "no-store",
+     "content-length": "20"
+    },
+    "body": "IyBUCgojIyBZb3UKCm5lZWRsZQo="
+   }
+  },
+  {
    "id": "export-title-own-toString",
    "files": {
     "free-chats.json": "[{\"id\":\"t\",\"title\":{\"toString\":1}}]"

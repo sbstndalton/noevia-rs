@@ -40,7 +40,17 @@ jobs:
           set -euo pipefail
           node bins/noevia-server/tests/chat-lists-oracle.cjs "$PWD/core" "$RUNNER_TEMP/node-chat-lists.json"
           cmp "$RUNNER_TEMP/node-chat-lists.json" bins/noevia-server/tests/fixtures/node-chat-lists.v1.json
+      - name: Node's Date answers reproduce the committed corpus, and the port gives each one
+        env:
+          TZ: UTC
+        run: |
+          set -euo pipefail
+          node crates/server-export/tests/js-date-oracle.cjs "$RUNNER_TEMP/node-dates.json"
+          cmp "$RUNNER_TEMP/node-dates.json" crates/server-export/tests/fixtures/node-dates.v1.json
+          cargo test --locked -p server-export --test js_date
       - name: Node-differential search and download through the front, tenant isolation, methods
+        env:
+          TZ: UTC
         run: NOEVIA_CHAT_LISTS_FIXTURE="$RUNNER_TEMP/node-chat-lists.json" cargo test --locked -p noevia-server --test chat_lists_read
       - name: The lookup, the search and the file name
         run: |
@@ -48,6 +58,8 @@ jobs:
           cargo test --locked -p server-projects --lib chat_download
           cargo test --locked -p server-projects --lib workspace
           cargo test --locked -p server-export --lib single
+          TZ=UTC cargo test --locked -p server-export --lib js_date
+          cargo test --locked -p server-export --lib markdown
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:

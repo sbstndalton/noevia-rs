@@ -184,10 +184,17 @@ async fn every_oracle_case_is_nodes_answer_through_the_front() {
     lay_out(&other, &fx["other"]);
     let mine = f.data.join("users").join(&f.user);
     let cases = fx["cases"].as_array().unwrap();
-    assert!(cases.len() >= 70, "{}", cases.len());
+    assert!(cases.len() >= 95, "{}", cases.len());
+    // The oracle reads zone-less Date strings in UTC; the front reads them in its own zone, as Node
+    // does in the same container. Those few cases need this process to run in UTC too (CI does).
+    let utc = server_export::js_date::parse("2026-01-01T00:00") == Some(1_767_225_600_000.0);
     let mut failures = Vec::new();
     for c in cases {
         let id = c["id"].as_str().unwrap();
+        if id.contains("-local-") && !utc {
+            eprintln!("skipped {id}: this process does not run in UTC");
+            continue;
+        }
         lay_out(&mine, &c["files"]);
         let (status, head, body) =
             call(f.addr, "GET", c["path"].as_str().unwrap(), Some(&f.jar)).await;

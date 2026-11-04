@@ -2,7 +2,7 @@
 //! body and file name. The chat is crates/server-projects `chat_download::find`'s; the HTTP answer is
 //! bins/noevia-server project_routes.rs.
 //!
-//! - The body is chat-export.cjs `chatMarkdown(chat, history)` ([`crate::markdown::render`]) as
+//! - The body is chat-export.cjs `chatMarkdown(chat, history)` ([`crate::markdown::render_as_node`]) as
 //!   `Buffer.from(text, 'utf8')` (a lone surrogate is EF BF BD).
 //! - The name is `noevia-chat-<slug>-<id>.md`, where the slug is
 //!   `String(chat.title || 'untitled-chat')` NFKD-normalised, every character outside `\x20-\x7e`
@@ -62,7 +62,7 @@ pub fn slug(title: &JValue) -> Result<String, Error> {
 
 /// `chatMarkdown(chat, history)` and the file name for the chat whose reduced id is `id`.
 pub fn download(chat: &JValue, id: &str, history: &JValue) -> Result<Download, Error> {
-    let text = markdown::render(chat, history).map_err(Error::Markdown)?;
+    let text = markdown::render_as_node(chat, history).map_err(Error::Markdown)?;
     let name = format!("noevia-chat-{}-{id}.md", slug(chat.get("title"))?);
     Ok(Download {
         name,

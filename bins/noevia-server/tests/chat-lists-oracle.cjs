@@ -11,6 +11,8 @@
 //
 // The output is deterministic; CI regenerates it and compares with the committed
 // tests/fixtures/node-chat-lists.v1.json, which tests/chat_lists_read.rs replays through the front.
+// Local-time Date strings read in the process zone; the front's tests run in UTC as CI does.
+process.env.TZ = 'UTC';
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -195,6 +197,23 @@ add('export-project-numeric-id-walked', { 'projects.json': '{"projects":[{"id":5
 add('export-project-chats-a-string', { 'projects.json': '{"projects":[{"id":"p","chats":"f1"}]}' }, exp('f1'));
 add('export-project-chats-falsy-then-hit', { 'projects.json': '{"projects":[{"id":"p","chats":0},{"id":"q","chats":[{"id":"f1","title":"Q"}]}]}' }, exp('f1'));
 add('export-tombstoned-skips-bad-projects', { 'projects.json': '{"projects":[{"id":"p","chats":"x"}]}', 'deleted-chats.json': '["f1"]' }, exp('f1'));
+// Review of S2: dates are `new Date(x).toISOString()` over the whole range, and only the fields
+// chatMarkdown reads are bounded (an ignored field may nest deeper than the workspace export admits).
+const dated = (updatedAt) => ({ 'free-chats.json': JSON.stringify([{ id: 'd', title: 'T', updatedAt }]), 'history-d.json': hist(said('x')) });
+for (const [name, v] of [
+  ['extended-year', 253402300800000], ['negative-extended-year', -62198755200001], ['max', 8.64e15], ['past-max', 8.64e15 + 1],
+  ['fraction', 1.9], ['true', true], ['date-only', '2026-01-01'], ['year-only', '2026'], ['plus-year', '+010000-01-01'],
+  ['minus-zero-year', '-000000-01-01'], ['offset', '2026-01-01T10:00:00.1234+01:30'], ['hour-24', '2026-01-01T24:00Z'],
+  ['local-iso', '2026-01-01T10:00'], ['rfc', 'Thu, 01 Jan 2026 10:00:00 GMT'], ['legacy-pm', 'Jan 1 2026 10:00 PM EST'],
+  ['local-month-day', 'Jan 5'], ['local-slashes', '1/2/2026'], ['overflow-day', '2026-02-31'], ['words', 'soon'], ['array', [2026, 1, 1]],
+  ['object', { a: 1 }], ['own-toString', { toString: 1 }],
+]) add(`export-date-${name}`, dated(v), exp('d'));
+let deep = null;
+for (let i = 0; i < 40; i++) deep = { x: deep };
+add('export-deep-ignored-metadata', {
+  'free-chats.json': JSON.stringify([{ id: 'm', title: 'T', meta: deep }]),
+  'history-m.json': hist([{ role: 'user', content: 'needle', meta: deep }]),
+}, exp('m'));
 add('export-title-own-toString', { 'free-chats.json': '[{"id":"t","title":{"toString":1}}]' }, exp('t'));
 
 function header(headers, name) {

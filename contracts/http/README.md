@@ -426,6 +426,11 @@ Deliberate difference: the search also skips a chat whose reduced id is tombston
 only and could read a transcript a failed delete left behind, #2245). A list, tombstone file or transcript the
 lossless reader refuses is a 500 here.
 
+The download's body is crates/server-export `markdown::render_as_node`: an ignored chat or message field of
+any depth does not refuse it, and `updatedAt` is `new Date(x).toISOString()` for every value Node takes
+(extended years, date-only and legacy strings; see the crate README). The workspace export keeps its own
+stricter admission.
+
 ## M6: ChatGPT connection status (`NOEVIA_RUST_CHATGPT_STATUS`, sbstndalton/noevia#1373)
 
 `GET /api/providers/chatgpt` is Rust's under `NOEVIA_RUST_CHATGPT_STATUS=1` in a build with the
