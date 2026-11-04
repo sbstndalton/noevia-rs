@@ -6,7 +6,7 @@ use std::{
     future::Future,
     pin::Pin,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
 };
@@ -95,6 +95,9 @@ pub trait Host: Sync {
 pub struct Control {
     stopped: Arc<AtomicBool>,
     pending: Arc<AtomicBool>,
+    suspended: Arc<AtomicBool>,
+    unconfirmed_since: Arc<AtomicU64>,
+    admission_wait: Arc<AtomicU64>,
 }
 impl Control {
     pub fn kick(&self) {
@@ -103,6 +106,19 @@ impl Control {
     pub fn stop(&self) {
         self.stopped.store(true, Ordering::Release);
     }
+    pub fn suspend(&self) {
+        let at=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d|d.as_millis() as u64).unwrap_or(1).max(1);
+        let _=self.unconfirmed_since.compare_exchange(0,at,Ordering::AcqRel,Ordering::Acquire);
+        self.suspended.store(true,Ordering::Release);
+    }
+    pub fn resume(&self) {
+        if self.suspended.swap(false,Ordering::AcqRel) {self.unconfirmed_since.store(0,Ordering::Release);self.kick();}
+    }
+    pub fn suspended(&self)->bool {self.suspended.load(Ordering::Acquire)}
+    pub fn unconfirmed_since(&self)->Option<u64> {let at=self.unconfirmed_since.load(Ordering::Acquire);(at!=0).then_some(at)}
+    pub fn record_admission_wait(&self,ms:u64) {self.admission_wait.fetch_add(ms,Ordering::AcqRel);}
+    pub fn admission_wait_ms(&self)->u64 {self.admission_wait.load(Ordering::Acquire)}
+    pub async fn cancelled(&self) {while !self.stopped()&&!self.suspended() {tokio::time::sleep(std::time::Duration::from_millis(5)).await;}}
     pub fn stopped(&self) -> bool {
         self.stopped.load(Ordering::Acquire)
     }
@@ -236,7 +252,7 @@ impl Worker {
         let mut out = Pass::default();
         let mut refused = BTreeSet::new();
         loop {
-            if self.control.stopped() || host.config().version != version {
+            if self.control.stopped() || self.control.suspended() || host.config().version != version {
                 out.aborted = true;
                 return Ok(out);
             }
@@ -314,6 +330,7 @@ impl Worker {
     /// is started at construction. Owner drives this method from its event loop.
     /// Dropping the future leaves no spawned work; kick again to resume.
     pub async fn tick(&mut self, host: &impl Host) {
+        if self.control.suspended() {return;}
         if self.control.stopped() {
             self.retry_at_ms = None;
             return;

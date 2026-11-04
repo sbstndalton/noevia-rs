@@ -193,7 +193,7 @@ impl Host for NativeHost {
                 .await
                 .is_err()
             {
-                control.stop();
+                control.suspend();
                 return Err("embedding ownership lost".into());
             }
             // This host runs on a blocking worker thread; no SQLite lock is held
@@ -264,6 +264,7 @@ pub fn start(
         .map_err(|_| "embedding owner lock unavailable")?;
     file.try_lock()
         .map_err(|_| "embedding worker already owned")?;
+    let http=http.with_ownership(&core,&token,&start);
     let token = zeroize::Zeroizing::new(token);
     let (stop, mut rx) = watch::channel(false);
     let handle = tokio::runtime::Handle::current();
@@ -301,6 +302,7 @@ pub fn start(
                     let paired=tokio::select! {r=host.http.ownership(&core,&token,&start)=>r.is_ok(),_=rx.changed()=>false};
                     if *rx.borrow() {break;}
                     if paired {
+                        control.resume();
                         let valid=host.store.config().is_ok(); let was_valid=host.valid.swap(valid,Ordering::AcqRel); let recovered=valid && !was_valid; if recovered {control.kick();}
                         let stamp=index_stamp(&host.store);let config=host.store.config();
                         if begun.elapsed()>=Duration::from_secs(30) && !initial {initial=true;if config.as_ref().is_ok_and(|c|c.next.is_some()) {control.kick();}}
@@ -313,7 +315,10 @@ pub fn start(
                         let held=worker.held.as_ref().map(|(target,reason)|serde_json::json!({"model":target.model,"profile":target.profile,"baseUrl":target.base_url,"code":match reason {crate::Held::EndpointUnverified=>"endpointUnverified",crate::Held::ModelNotServed=>"modelNotServed"}}));
                         let next_served=host.store.config().ok().and_then(|c|c.next).and_then(|t|if worker.verified(&t) {Some(true)} else if worker.held.as_ref().is_some_and(|(held,_)|held==&t) {Some(false)} else {None});
                         let pass=worker.last_pass.as_ref().map(|p|serde_json::json!({"at":p.at_ms,"embedded":p.embedded,"failed":p.failed,"refused":p.refused,"error":p.error,"aborted":p.aborted}));
-                        update_snapshot(&host.store.root,&state,serde_json::json!({"lastPass":pass,"nextHeld":held,"nextServed":next_served,"configValid":host.valid.load(Ordering::Acquire),"configInvalid":!host.valid.load(Ordering::Acquire)}));
+                        update_snapshot(&host.store.root,&state,serde_json::json!({"lastPass":pass,"nextHeld":held,"nextServed":next_served,"configValid":host.valid.load(Ordering::Acquire),"configInvalid":!host.valid.load(Ordering::Acquire),"ownershipUnconfirmedSince":control.unconfirmed_since()}));
+                    } else {
+                        control.suspend();
+                        update_snapshot(&host.store.root,&state,serde_json::json!({"ownershipUnconfirmedSince":control.unconfirmed_since(),"ownershipStatus":"unconfirmed"}));
                     }
                     tokio::select! {_=tokio::time::sleep(Duration::from_secs(2))=>{},_=rx.changed()=>{}}
                 }

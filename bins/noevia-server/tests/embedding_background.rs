@@ -49,7 +49,8 @@ async fn old_core_cannot_start_native_work_and_shutdown_releases_the_owner_lock(
         .seen()
         .iter()
         .all(|r| r.path == "/internal/embedding-worker-owner"));
-    assert!(!dir.path().join("embedding-worker-status.json").exists());
+    let status:serde_json::Value=serde_json::from_slice(&std::fs::read(dir.path().join("embedding-worker-status.json")).unwrap()).unwrap();
+    assert!(status.get("ownershipUnconfirmedSince").and_then(serde_json::Value::as_u64).is_some());
     let again = noevia_server::embedding_background::start(&front.app, lookup)
         .unwrap()
         .unwrap();

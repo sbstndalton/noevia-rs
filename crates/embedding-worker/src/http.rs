@@ -18,8 +18,11 @@ use std::{
 };
 use zeroize::Zeroizing;
 #[derive(Clone)]
+struct Proof {core:String,token:Zeroizing<String>,start:String}
+#[derive(Clone)]
 pub struct Http {
     admission: Option<Arc<Admission>>,
+    proof:Option<Arc<Proof>>,
     client: Client,
     loader: Url,
     loader_token: Option<Zeroizing<String>>,
@@ -87,6 +90,7 @@ impl Http {
     ) -> Result<Self, String> {
         Ok(Self {
             admission: None,
+            proof:None,
             client: Client::builder()
                 .no_proxy()
                 .redirect(reqwest::redirect::Policy::none())
@@ -97,6 +101,9 @@ impl Http {
             inference: url(inference)?,
             inference_token: inference_token.map(Zeroizing::new),
         })
+    }
+    pub fn with_ownership(mut self,core:&str,token:&str,start:&str)->Self {
+        self.proof=Some(Arc::new(Proof {core:core.into(),token:Zeroizing::new(token.into()),start:start.into()}));self
     }
     pub fn with_admission(mut self, core: &str, token: &str) -> Result<Self, String> {
         self.admission = Some(Arc::new(
@@ -304,6 +311,14 @@ impl Loader for Http {
     }
 }
 impl Embed for Http {
+    fn authorize<'a>(&'a self,control:&'a Control)->Task<'a,Result<(),String>> {Box::pin(async move {
+        if control.stopped()||control.suspended() {return Err("embedding work suspended".into());}
+        if let Some(proof)=&self.proof {
+            let result=tokio::select! {r=self.ownership(&proof.core,&proof.token,&proof.start)=>r,_=control.cancelled()=>Err("embedding work suspended".into())};
+            if result.is_err()&&!control.stopped() {control.suspend();}result
+        } else {Ok(())}
+    })}
+
     fn embed<'a>(
         &'a self,
         target: &'a Target,
@@ -343,9 +358,7 @@ impl Embed for Http {
                 }
                 let mut out = vec![];
                 for text in input {
-                    if control.stopped() {
-                        return Err("stopped".into());
-                    }
+                    self.authorize(control).await?;
                     let mut v = self.once(target, std::slice::from_ref(text)).await?;
                     if v.len() != 1 || v.iter().any(Vec::is_empty) {
                         return Err("embeddings returned no vector".into());

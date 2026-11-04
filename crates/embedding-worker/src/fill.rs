@@ -35,6 +35,7 @@ pub trait Store: Sync {
     fn current(&self, version: u64, control: &Control) -> bool;
 }
 pub trait Embed: Sync {
+    fn authorize<'a>(&'a self,control:&'a Control)->Task<'a,Result<(),String>> {Box::pin(async move {if control.stopped()||control.suspended() {Err("embedding work suspended".into())} else {Ok(())}})}
     /// Already framed UTF-16 input. HTTP adapter must preserve JS JSON surrogate
     /// semantics, send only to the target endpoint, and never forward inference
     /// credentials to an explicit base URL. It owns ordered/empty-batch fallback
@@ -68,6 +69,7 @@ impl<S: Store, E: Embed> Filler<S, E> {
             .iter()
             .map(|row| embedding_input::frame(profile, Kind::Document, &row.text, None))
             .collect();
+        self.embedder.authorize(control).await?;
         let vectors = self.embedder.embed(target, &input, control).await?;
         if control.stopped() || !self.store.current(version, control) {
             return Ok(0);
@@ -79,6 +81,7 @@ impl<S: Store, E: Embed> Filler<S, E> {
         {
             return Err("invalidVectors".into());
         }
+        self.embedder.authorize(control).await?;
         self.store
             .publish(index, target, rows, &vectors, version, control)
     }
@@ -103,7 +106,7 @@ impl<S: Store, E: Embed> Filler<S, E> {
             {
                 Ok(n) => embedded = n,
                 Err(error) => {
-                    if control.stopped() {
+                    if control.stopped() || control.suspended() {
                         return Err(error);
                     }
                     for row in &rows {

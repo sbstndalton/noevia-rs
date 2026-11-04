@@ -377,7 +377,7 @@ impl FillStore for SqlStore {
         })
     }
     fn current(&self, version: u64, control: &Control) -> bool {
-        !control.stopped() && self.config().is_ok_and(|c| c.version == version)
+        !control.stopped() && !control.suspended() && self.config().is_ok_and(|c| c.version == version)
     }
     fn publish(
         &self,

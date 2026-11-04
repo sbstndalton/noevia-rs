@@ -26,4 +26,4 @@ prompt-framing = { path = "../prompt-framing" }
 proc-macro2 = "1"
 syn = { version = "2", features = ["full", "visit"] }
 tempfile = "3"
-tokio = { version = "1", features = ["macros", "rt", "time", "io-util"] }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "io-util"] }
