@@ -314,10 +314,12 @@ async fn missing_other_user_and_disabled_account_never_return_success() {
     c.execute("UPDATE users SET disabled_at=1 WHERE id=?1", [&f.user])
         .unwrap();
     assert_eq!(f.decide("mine", r#"{"decision":"approve"}"#).await.0, 401);
-    c.execute("UPDATE users SET disabled_at=NULL WHERE id=?1", [&f.user])
-        .unwrap();
-    assert_eq!(f.decide("mine", r#"{"decision":"deny"}"#).await.0, 200);
-    assert_eq!(f.wait("mine").await, (200, json!({"outcome":"deny"})));
+    // The question is still open (disabling ended the session, so ask the store directly).
+    assert_eq!(
+        f.op("approvals/cancel", json!({"user":f.user,"id":"mine"}))
+            .await,
+        (200, json!({"cancelled":true}))
+    );
 }
 
 #[tokio::test]
