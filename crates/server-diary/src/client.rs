@@ -28,6 +28,10 @@ pub enum CallError {
     Config,
     Tenant(TenantError),
     Transport,
+    /// No connection at all: refused, or the name did not resolve (core's `ECONNREFUSED`,
+    /// `ENOTFOUND`, `EAI_AGAIN`). Every route treats it as [`CallError::Transport`]; the local
+    /// exchange's stream says "nothing was saved" for it alone.
+    Refused,
     Timeout,
     Redirect,
     /// A reply this port cannot hold as JS would (see `js_json::wtf16::Refusal::Unsupported`).
@@ -93,7 +97,10 @@ impl Sidecar {
         secret: bool,
         deadline: Instant,
     ) -> Result<reqwest::Response, CallError> {
-        let headers = tenant.headers(&self.config, method.as_str(), url, secret, content)?;
+        let mut headers = tenant.headers(&self.config, method.as_str(), url, secret, content)?;
+        if tenant.storage_retry {
+            headers.push(("X-Cowork-Storage-Retry", "1".into()));
+        }
         let mut request = self.http.request(method.clone(), url.clone());
         for (name, value) in headers {
             request = request.header(name, value);
@@ -155,6 +162,63 @@ impl Sidecar {
         )
         .await
         .is_ok_and(|r| r.ok)
+    }
+
+    /// Backup always carries the signed tenant storage credential, including the first attempt.
+    pub async fn storage_backup(&self, tenant: &Tenant) -> Result<JsonReply, CallError> {
+        let url = self.url("/api/storage-backup")?;
+        let deadline = Instant::now() + Duration::from_secs(300);
+        let mut response = self
+            .send_once(
+                tenant,
+                &reqwest::Method::POST,
+                &url,
+                Content::Json(None),
+                None,
+                true,
+                deadline,
+            )
+            .await?;
+        let status = response.status().as_u16();
+        let ok = response.status().is_success();
+        let body = match read_capped(&mut response, JSON_REPLY_CAP, deadline).await? {
+            Capped::Overflow => None,
+            Capped::Bytes(bytes) => Some(parse_or_text(&bytes)?),
+        };
+        Ok(JsonReply {
+            status,
+            ok: ok && body.is_some(),
+            body,
+        })
+    }
+
+    /// [`Sidecar::fetch_json`] without the parse: `(ok, status, body)`, the body `None` past the cap.
+    /// For a reply the caller reads as `JSON.parse` would, without a parsed tree's limits.
+    pub(crate) async fn fetch_raw(
+        &self,
+        tenant: &Tenant,
+        method: reqwest::Method,
+        path_and_query: &str,
+        body: Option<Bytes>,
+        timeout: Duration,
+    ) -> Result<(bool, u16, Option<Vec<u8>>), CallError> {
+        let url = self.url(path_and_query)?;
+        let (mut response, deadline) = self
+            .send(
+                tenant,
+                method,
+                &url,
+                Content::Json(body.as_deref()),
+                body.as_ref(),
+                || Instant::now() + timeout,
+            )
+            .await?;
+        let status = response.status().as_u16();
+        let ok = response.status().is_success();
+        match read_capped(&mut response, JSON_REPLY_CAP, deadline).await? {
+            Capped::Overflow => Ok((false, status, None)),
+            Capped::Bytes(bytes) => Ok((ok, status, Some(bytes))),
+        }
     }
 
     /// `fetchJson` with the tenant headers and the 428 retry (`diaryFetchJson`).
@@ -234,7 +298,27 @@ pub(crate) fn map_error(error: reqwest::Error) -> CallError {
         CallError::Timeout
     } else if error.is_builder() {
         CallError::Config
+    } else if error.is_connect() && never_connected(&error) {
+        CallError::Refused
     } else {
         CallError::Transport
     }
+}
+
+/// A connect error whose cause is a refused connection or a failed name lookup (hyper-util's
+/// `dns error`). A connect timeout is not one (core's `ETIMEDOUT`/undici's connect timeout were not).
+fn never_connected(error: &(dyn std::error::Error + 'static)) -> bool {
+    let mut cause: Option<&(dyn std::error::Error + 'static)> = Some(error);
+    while let Some(e) = cause {
+        if let Some(io) = e.downcast_ref::<std::io::Error>() {
+            if io.kind() == std::io::ErrorKind::ConnectionRefused {
+                return true;
+            }
+        }
+        if e.to_string() == "dns error" {
+            return true;
+        }
+        cause = e.source();
+    }
+    false
 }

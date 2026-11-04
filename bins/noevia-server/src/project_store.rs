@@ -69,6 +69,24 @@
 //!   `failures` lists `{ table, ref, error }`. A key no available key opens is a failure, never an
 //!   error, and its row is left as it was.
 //!
+//! The preset reload baseline's authority (port contract 2026-11-04 §4, capability
+//! `rust-preset-baseline`; model_maint/reload.rs [`crate::model_maint::reload::Guard::bridge`]).
+//! Bodies are read losslessly (js_json::wtf16); `origin` is a short lowercase name other than
+//! `rust`, `expired` and `stale`; a bad body is 400 `{ error, code }`:
+//!
+//! `POST /v1/preset-baseline/session { nodeBoot, protocol: 1 }` -> 200 `{ epoch, protocol: 1 }`
+//! `POST /v1/preset-baseline/begin { origin }`  -> 200 `{ ticket, gen, epoch, deadlineMs }`
+//! `POST /v1/preset-baseline/settle { ticket, outcome: "record"|"forget", before?, rows?, after? }`
+//!                                                  -> 200 `{ gen, saved }`
+//!                                                   | 409 `{ error, code: "stale_ticket", gen, saved }`
+//!                                                     (unknown or expired: forgotten instead)
+//! `POST /v1/preset-baseline/invalidate { origin }` -> 200 `{ gen, saved }`
+//! `POST /v1/preset-baseline/verdict { current, rows, loaded }` -> 200 `{ safe, reason, changed? }`
+//! `POST /v1/preset-baseline/router-text { rows }`  -> 200 `{ text }` (null: unknown)
+//!
+//! settle and invalidate answer once their write was tried. Without the front's model maintenance
+//! (no App) they are 503.
+//!
 //! Errors use Node's shapes: 503 `{ error, code: "PROJECTS_BUSY" }` (the lock was held past its
 //! wait), 410 `account no longer exists`, 400 a bad request, 413 a body over the limit, 500 else.
 //! The body limit is [`BODY_LIMIT`]; a request's file work runs on the blocking pool.
@@ -622,6 +640,11 @@ pub fn router_with_app(
             async move { legacy_webdav(store, app, headers, raw).await }
         }),
     );
+    // Port contract 2026-11-04 RS-1: the preset reload baseline's authority.
+    router = router.merge(preset_baseline_routes(
+        store.clone(),
+        app.as_ref().map(|a| a.config.maint.guard.clone()),
+    ));
     // sbstndalton/noevia#2190 round 6: the provider keys' re-seal (provider_reseal.rs).
     let reseal_store = store.clone();
     router = router.route(
@@ -676,6 +699,65 @@ pub fn router_with_app(
         );
     }
     router
+}
+
+/// The bodies of the preset baseline bridge: two preset texts and the router's rows.
+pub const PRESET_BASELINE_LIMIT: usize =
+    2 * preset_reload::MAX_INPUT_BYTES + 16 * 1024 * 1024 + 64 * 1024;
+
+/// `POST /v1/preset-baseline/{op}` (see the header), answered by `guard` (`None`: 503).
+pub fn preset_baseline_routes(
+    store: Store,
+    guard: Option<crate::model_maint::reload::Guard>,
+) -> Router {
+    let mut router = Router::new();
+    for op in crate::model_maint::reload::BRIDGE_OPS {
+        let (store, guard) = (store.clone(), guard.clone());
+        router = router.route(
+            &format!("/v1/preset-baseline/{op}"),
+            post(move |headers: HeaderMap, raw: Bytes| {
+                let (store, guard) = (store.clone(), guard.clone());
+                async move { preset_baseline(store, guard, headers, raw, op).await }
+            }),
+        );
+    }
+    router.layer(DefaultBodyLimit::max(PRESET_BASELINE_LIMIT))
+}
+
+async fn preset_baseline(
+    store: Store,
+    guard: Option<crate::model_maint::reload::Guard>,
+    headers: HeaderMap,
+    raw: Bytes,
+    op: &'static str,
+) -> Response<Body> {
+    if !authorised(&store, &headers) {
+        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+    }
+    let Some(guard) = guard else {
+        return error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "preset reload baseline unavailable",
+        );
+    };
+    // The bodies can be large and settle waits for its write: the blocking pool.
+    let done = tokio::task::spawn_blocking(move || {
+        let Ok(text) = std::str::from_utf8(&raw) else {
+            return error(StatusCode::BAD_REQUEST, "invalid JSON");
+        };
+        match wtf16::parse(text) {
+            Ok(body @ JValue::Obj(_)) => {
+                let (status, answer) = guard.bridge(op, &body);
+                reply_js(
+                    StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                    answer,
+                )
+            }
+            _ => error(StatusCode::BAD_REQUEST, "invalid JSON"),
+        }
+    })
+    .await;
+    done.unwrap_or_else(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error"))
 }
 
 async fn gdrive_op(

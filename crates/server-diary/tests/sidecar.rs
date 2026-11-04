@@ -86,6 +86,7 @@ async fn run_as(
         .await;
     match reply.body {
         ReplyBody::Json(t) => Got::Json(reply.status, t),
+        ReplyBody::Events(_) => panic!("an event stream"),
         ReplyBody::Zip(mut b) => {
             let mut bytes = Vec::new();
             let mut clean = true;
@@ -2090,4 +2091,26 @@ fn default_limits_are_the_numbers_in_core() {
     assert_eq!(l.import_max_upload, 32 * 1024 * 1024);
     assert_eq!(l.import_max_reply, 24 * 1024 * 1024);
     assert_eq!(l.import_deadline, Duration::from_millis(120000));
+}
+
+#[tokio::test]
+async fn backup_always_carries_the_credential_and_signed_tenant_on_the_first_call() {
+    let stub = Stub::start(|_, _| Out::json(200, r#"{"backup":"done"}"#)).await;
+    let world = World::new(&[(ADMIN, webdav(SECRET))]);
+    let d = diary(&stub, TENANT_KEY);
+    let tenant = server_diary::Tenant::load_user(
+        ADMIN,
+        server_auth::Role::Admin,
+        &world.store,
+        world.dir.path(),
+        d.sidecar().config(),
+    )
+    .unwrap();
+    assert!(d.sidecar().storage_backup(&tenant).await.unwrap().ok);
+    let seen = stub.seen.lock().unwrap();
+    assert_eq!(seen.len(), 1);
+    assert_eq!(seen[0].target, "/api/storage-backup");
+    assert_eq!(seen[0].method, "POST");
+    assert_eq!(seen[0].storage().get("secret").as_str(), Some(SECRET));
+    verify(&seen[0], TENANT_KEY, ADMIN, &sha(b""));
 }

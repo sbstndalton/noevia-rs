@@ -187,6 +187,13 @@ async fn call(app: &Arc<App>, method: &str, path: &str, signed_in: bool, body: &
 
 /// A sidecar that answers every request with one fixed status and JSON body.
 async fn fixed_sidecar(status: u16, body: &'static str) -> String {
+    fixed_sidecar_delay(status, body, std::time::Duration::ZERO).await
+}
+async fn fixed_sidecar_delay(
+    status: u16,
+    body: &'static str,
+    delay: std::time::Duration,
+) -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     tokio::spawn(async move {
@@ -198,6 +205,7 @@ async fn fixed_sidecar(status: u16, body: &'static str) -> String {
                 let service = service_fn(
                     move |req: hyper::Request<hyper::body::Incoming>| async move {
                         let _ = req.into_body().collect().await;
+                        tokio::time::sleep(delay).await;
                         Ok::<_, Infallible>(
                             hyper::Response::builder()
                                 .status(status)
@@ -270,6 +278,8 @@ fn the_front_lists_the_capabilities_and_owns_exactly_these_routes() {
         }
     }
     for (path, methods) in [
+        ("/api/diary/entries/edit", ["POST"].as_slice()),
+        ("/api/diary/external-sources/import", ["POST"].as_slice()),
         ("/api/diary/context", ["GET", "POST"].as_slice()),
         ("/api/diary/exchanges", ["GET", "POST"].as_slice()),
         ("/api/profile/diary-connectors", ["GET", "POST"].as_slice()),
@@ -286,10 +296,23 @@ fn the_front_lists_the_capabilities_and_owns_exactly_these_routes() {
             );
         }
     }
-    // Node keeps the local exchange, and the paths the web client never names.
-    for path in ["/api/diary/local-exchange", "/api/diary/history"] {
-        assert_eq!(routes::dispatch("GET", path), None, "{path}");
-        assert_eq!(routes::dispatch("POST", path), None, "{path}");
+    // Joined: the local exchange and the five remaining proxies are the front's, every method; no Diary
+    // route the web client or a direct caller names stays Node's.
+    for path in [
+        "/api/diary/local-exchange",
+        "/api/diary/history",
+        "/api/diary/files",
+        "/api/diary/file",
+        "/api/diary/workspace-trash",
+        "/api/diary/external-sources",
+    ] {
+        for method in ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"] {
+            assert_eq!(
+                routes::dispatch(method, path),
+                Some(routes::Native::Diary),
+                "{method} {path}"
+            );
+        }
     }
 }
 
@@ -1013,4 +1036,300 @@ async fn a_working_connector_is_never_locked_out_by_unknown_credentials_and_has_
         }
     }
     assert!(over.is_some_and(|n| n >= 115), "{over:?}: 120 a minute");
+}
+
+#[tokio::test]
+async fn moved_proxy_headers_survive_the_front_response_adapter() {
+    for (upstream, expected, delay) in [(200, 200, 0), (503, 503, 0), (200, 503, 300)] {
+        let dir = tempfile::tempdir().unwrap();
+        seed(dir.path(), true);
+        let base = fixed_sidecar_delay(
+            upstream,
+            r#"{"detail":"synthetic failure"}"#,
+            std::time::Duration::from_millis(delay),
+        )
+        .await;
+        let mut app = app(dir.path(), &base);
+        let config = server_diary::DiaryConfig::new(base, BEARER, KEY, String::new);
+        Arc::get_mut(&mut app).unwrap().diary = Some(Arc::new(
+            server_diary::Diary::with_limits(
+                config,
+                server_diary::Limits {
+                    proxy_timeout: std::time::Duration::from_millis(100),
+                    ..server_diary::Limits::default()
+                },
+            )
+            .unwrap(),
+        ));
+        let res = call(&app, "GET", "/api/diary/workspace-trash", true, b"").await;
+        assert_eq!(res.status.as_u16(), expected);
+        assert_eq!(res.headers.get("cache-control").unwrap(), "no-store");
+        assert!(res.headers.get("retry-after").is_none());
+    }
+    let dir = tempfile::tempdir().unwrap();
+    seed(dir.path(), true);
+    let base = fixed_sidecar(503, r#"{"code":"storageThrottled","retryAfter":2.1}"#).await;
+    let app = app(dir.path(), &base);
+    let res = call(&app, "GET", "/api/diary/files", true, b"").await;
+    assert_eq!(res.status.as_u16(), 503);
+    assert_eq!(res.headers.get("retry-after").unwrap(), "3");
+    assert_eq!(res.headers.get("cache-control").unwrap(), "no-store");
+}
+
+// ── the explicit storage Retry on the moved files/file proxies ─────────────────
+// What core server/routes/diary.test.cjs asserted before the proxy port (#1168, #1589, #1607):
+// `req.headers['x-cowork-storage-retry'] === '1'` on the browser's request is the only explicit Retry
+// (Node joins a repeated header as "1, 1", so two headers are not one); it is forwarded as "1" on the
+// files listing and the file read/write only; and only an explicit Retry whose call worked AND whose
+// storage-status then says `legacy` (the reply really came from the storage server) clears the hold.
+// These drive the front's own request handling (diary_routes::serve reads the browser headers) against
+// a loopback sidecar and the hold file both processes share.
+
+/// A sidecar whose proxied calls answer `main` and whose `/api/storage-status` answers `status`
+/// (`None`: the connection is dropped, so the proof call fails).
+async fn retry_sidecar(
+    main: (u16, &'static str),
+    status: Option<(u16, &'static str)>,
+) -> (String, Arc<Mutex<Vec<Seen>>>) {
+    let seen = Arc::new(Mutex::new(Vec::<Seen>::new()));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let log = Arc::clone(&seen);
+    tokio::spawn(async move {
+        loop {
+            let Ok((stream, _)) = listener.accept().await else {
+                return;
+            };
+            let log = Arc::clone(&log);
+            tokio::spawn(async move {
+                let service = service_fn(move |req: hyper::Request<hyper::body::Incoming>| {
+                    let log = Arc::clone(&log);
+                    async move {
+                        let (parts, body) = req.into_parts();
+                        let body = body.collect().await.unwrap().to_bytes().to_vec();
+                        let target = parts.uri.path_and_query().unwrap().as_str().to_owned();
+                        log.lock().unwrap().push(Seen {
+                            method: parts.method.to_string(),
+                            target: target.clone(),
+                            headers: parts
+                                .headers
+                                .iter()
+                                .map(|(k, v)| {
+                                    (k.as_str().to_owned(), v.to_str().unwrap().to_owned())
+                                })
+                                .collect(),
+                            body,
+                        });
+                        let (code, out) = if target.starts_with("/api/storage-status") {
+                            match status {
+                                Some(s) => s,
+                                None => return Err(std::io::Error::other("synthetic drop")),
+                            }
+                        } else {
+                            main
+                        };
+                        Ok::<_, std::io::Error>(
+                            hyper::Response::builder()
+                                .status(code)
+                                .header("content-type", "application/json")
+                                .body(Full::new(bytes::Bytes::from_static(out.as_bytes())))
+                                .unwrap(),
+                        )
+                    }
+                });
+                let _ = hyper::server::conn::http1::Builder::new()
+                    .serve_connection(TokioIo::new(stream), service)
+                    .await;
+            });
+        }
+    });
+    (base, seen)
+}
+
+/// [`call`] signed in, with extra browser headers (a name may repeat).
+async fn call_with(
+    app: &Arc<App>,
+    method: &str,
+    path: &str,
+    extra: &[(&str, &str)],
+    body: &[u8],
+) -> Answer {
+    let mut req = Request::builder()
+        .method(method)
+        .uri(path)
+        .header(
+            "cookie",
+            format!("cowork_session={SESSION}; cowork_csrf={CSRF}"),
+        )
+        .header("x-csrf-token", CSRF)
+        .header("origin", ORIGIN);
+    for (name, value) in extra {
+        req = req.header(*name, *value);
+    }
+    let req = req.body(Body::from(body.to_vec())).unwrap();
+    let route_path = path.split('?').next().unwrap().to_owned();
+    let res = diary_routes::serve(app, conn(), req, route_path).await;
+    let status = res.status();
+    let headers = res.headers().clone();
+    let body = res.into_body().collect().await.unwrap().to_bytes().to_vec();
+    Answer {
+        status,
+        headers,
+        body,
+    }
+}
+
+/// A Diary account with a refused-login hold recorded as Node records it, and the given sidecar.
+async fn held_account(
+    main: (u16, &'static str),
+    status: Option<(u16, &'static str)>,
+) -> (tempfile::TempDir, Arc<App>, Arc<Mutex<Vec<Seen>>>) {
+    let dir = tempfile::tempdir().unwrap();
+    seed(dir.path(), true);
+    std::fs::create_dir_all(dir.path().join("users").join(USER)).unwrap();
+    let fingerprint = server_projects::storage_latch::fingerprint("local", "", "", "", "");
+    server_projects::storage_latch::note(
+        dir.path(),
+        USER,
+        &fingerprint,
+        server_projects::source_storage::Failure {
+            kind: "login",
+            retry_after: None,
+        },
+        server_projects::wall_ms(),
+    )
+    .unwrap();
+    let (base, seen) = retry_sidecar(main, status).await;
+    let app = app(dir.path(), &base);
+    (dir, app, seen)
+}
+
+fn held(dir: &tempfile::TempDir) -> bool {
+    server_projects::storage_latch::dump(dir.path(), USER)
+        .unwrap()
+        .is_some()
+}
+
+const LISTING: (u16, &str) = (200, r#"{"files":[]}"#);
+const LEGACY: Option<(u16, &str)> = Some((200, r#"{"mode":"legacy"}"#));
+const MANAGED: Option<(u16, &str)> = Some((200, r#"{"mode":"managed"}"#));
+const FILE_BODY: &[u8] = br#"{"path":"a.md"}"#;
+const RETRY: &[(&str, &str)] = &[("x-cowork-storage-retry", "1")];
+
+#[tokio::test]
+async fn only_the_browsers_exact_retry_header_is_forwarded_on_a_files_or_file_call() {
+    // An explicit Retry is forwarded as "1" on the listing and on a file read or write; the proof call
+    // that follows is automatic and carries no Retry.
+    for (method, path, body) in [
+        ("GET", "/api/diary/files?path=Notes", b"".as_slice()),
+        ("POST", "/api/diary/file", FILE_BODY),
+        ("PUT", "/api/diary/file", FILE_BODY),
+    ] {
+        let (_dir, app, seen) = held_account(LISTING, LEGACY).await;
+        let a = call_with(&app, method, path, RETRY, body).await;
+        assert_eq!(a.status, 200, "{method} {path}");
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), 2, "{method} {path}");
+        assert_eq!(seen[0].method, method);
+        assert_eq!(
+            seen[0]
+                .headers
+                .get("x-cowork-storage-retry")
+                .map(String::as_str),
+            Some("1"),
+            "{method} {path}"
+        );
+        assert_eq!(seen[1].target, "/api/storage-status");
+        assert!(!seen[1].headers.contains_key("x-cowork-storage-retry"));
+    }
+    // Anything but exactly one "1" is an automatic call: not forwarded, no proof asked, hold kept.
+    let values: [&[(&str, &str)]; 6] = [
+        &[],
+        &[("x-cowork-storage-retry", "0")],
+        &[("x-cowork-storage-retry", "true")],
+        &[("x-cowork-storage-retry", "1,1")],
+        &[("x-cowork-storage-retry", "")],
+        &[
+            ("x-cowork-storage-retry", "1"),
+            ("x-cowork-storage-retry", "1"),
+        ],
+    ];
+    for extra in values {
+        for (method, path, body) in [
+            ("GET", "/api/diary/files?path=Notes", b"".as_slice()),
+            ("POST", "/api/diary/file", FILE_BODY),
+        ] {
+            let (dir, app, seen) = held_account(LISTING, LEGACY).await;
+            let a = call_with(&app, method, path, extra, body).await;
+            assert_eq!(a.status, 200, "{method} {path} {extra:?}");
+            let seen = seen.lock().unwrap();
+            assert_eq!(seen.len(), 1, "{method} {path} {extra:?}: no proof call");
+            assert!(
+                !seen[0].headers.contains_key("x-cowork-storage-retry"),
+                "{method} {path} {extra:?}"
+            );
+            assert!(
+                held(&dir),
+                "{method} {path} {extra:?}: an automatic call proves nothing"
+            );
+        }
+    }
+    // The other moved proxies never forward it.
+    let (dir, app, seen) = held_account(LISTING, LEGACY).await;
+    let a = call_with(&app, "GET", "/api/diary/workspace-trash", RETRY, b"").await;
+    assert_eq!(a.status, 200);
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 1);
+    assert!(!seen[0].headers.contains_key("x-cowork-storage-retry"));
+    assert!(held(&dir));
+}
+
+#[tokio::test]
+async fn an_explicit_retry_clears_the_hold_only_with_legacy_proof() {
+    // Proof from the storage server (legacy) ends the hold, for the listing and a file read.
+    for (method, path, body) in [
+        ("GET", "/api/diary/files?path=Notes", b"".as_slice()),
+        ("POST", "/api/diary/file", FILE_BODY),
+    ] {
+        let (dir, app, _seen) = held_account(LISTING, LEGACY).await;
+        assert!(held(&dir));
+        assert_eq!(call_with(&app, method, path, RETRY, body).await.status, 200);
+        assert!(!held(&dir), "{method} {path}: the storage server answered");
+    }
+    // A managed account answers from the sidecar's own database: the reply is still returned, but it
+    // says nothing about the saved login, so the hold stays (#1607). Likewise when the proof call
+    // fails, answers an error, is not JSON or names no mode.
+    for status in [
+        MANAGED,
+        None,
+        Some((500, r#"{"mode":"legacy"}"#)),
+        Some((200, "not json")),
+        Some((200, r#"{}"#)),
+        Some((200, r#"{"mode":"LEGACY"}"#)),
+    ] {
+        for (method, path, body) in [
+            ("GET", "/api/diary/files?path=Notes", b"".as_slice()),
+            ("POST", "/api/diary/file", FILE_BODY),
+        ] {
+            let (dir, app, seen) = held_account(LISTING, status).await;
+            let a = call_with(&app, method, path, RETRY, body).await;
+            assert_eq!(a.status, 200, "{method} {path} {status:?}");
+            assert_eq!(a.body, br#"{"files":[]}"#, "{method} {path} {status:?}");
+            assert_eq!(seen.lock().unwrap().len(), 2, "{method} {path} {status:?}");
+            assert!(
+                held(&dir),
+                "{method} {path} {status:?}: no proof, the hold stays"
+            );
+        }
+    }
+    // A Retry whose own call failed asks for no proof and keeps the hold.
+    let (dir, app, seen) = held_account(
+        (424, r#"{"detail":"refused","code":"storageLoginRejected"}"#),
+        LEGACY,
+    )
+    .await;
+    let a = call_with(&app, "GET", "/api/diary/files", RETRY, b"").await;
+    assert_eq!(a.status, 424);
+    assert_eq!(seen.lock().unwrap().len(), 1);
+    assert!(held(&dir));
 }
