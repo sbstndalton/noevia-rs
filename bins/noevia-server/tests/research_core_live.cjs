@@ -64,6 +64,8 @@ async function main() {
     NOEVIA_PROJECT_STORE_PORT: String(store.port), NOEVIA_PROJECT_STORE_TOKEN: store.token,
     NOEVIA_START_ID: startId || crypto.randomBytes(16).toString('hex'),
     ...(process.env.DAV_PARSE_WASM ? { DAV_PARSE_WASM: process.env.DAV_PARSE_WASM } : {}),
+    // The real front build the test runs, which the paired Core's embedding owner verifies at boot.
+    ...(process.env.NOEVIA_SERVER_BIN ? { NOEVIA_SERVER_BIN: process.env.NOEVIA_SERVER_BIN } : {}),
   };
   const child = spawn(process.execPath, [server], { env, cwd: path.dirname(server), stdio: ['ignore', 'pipe', 'pipe'] });
   const log = [];
