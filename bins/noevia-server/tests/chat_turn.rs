@@ -1,8 +1,11 @@
 //! `POST /api/chat` through the front (chat port S5, `rust-chat-turn`): the session gate, then the request
-//! unread to Core's loopback `/internal/chat/turn`, and Core's answer back byte for byte and frame by frame.
-//! Core is a loopback stand-in here that checks what the front sent and answers as Core's pipeline would (the
-//! SSE stream with its keep-alive comments, the gate's 503, a crash mid-stream). No model runs; synthetic
-//! data only. The real Core behind the same relay is core's rust-chat-turn.test.cjs and the corpus replay.
+//! unread to Core's loopback `/internal/chat/turn`, and Core's answer back: JSON byte for byte, and since chat
+//! port S7 (`rust-chat-wire`) the turn's events, which Core sends as NDJSON, as the event stream the front
+//! writes itself (headers, frames, the 5 s keep-alive, the end). Core is a loopback stand-in here that checks
+//! what the front sent and answers as Core's pipeline would (NDJSON events, the gate's 503, a crash
+//! mid-stream). tests/fixtures/node-chat-wire.v1.json is core's own rust-chat-wire.cjs writing the same turns
+//! both ways (tests/chat-wire-oracle.cjs). No model runs; synthetic data only. The real Core behind the same
+//! relay is core's rust-chat-turn.test.cjs and the corpus replay.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -40,16 +43,22 @@ type UpBody = http_body_util::combinators::BoxBody<Bytes, std::io::Error>;
 enum Turn {
     /// JSON: what Core saw (path, headers, body length).
     Echo,
-    /// SSE whose frames the test sends.
+    /// NDJSON whose bytes the test sends.
     Stream,
-    /// SSE with Core's 5 s `: keep-alive` heartbeat and nothing else.
-    Heartbeat,
+    /// NDJSON: one line, then nothing (Core no longer writes keep-alive comments for the front).
+    Silent,
+    /// NDJSON headers at once, the first line 1.5 s later (the routing question's early stream).
+    LateFirstLine,
     /// The gate's 503.
     Busy,
-    /// Headers and one frame, then Core goes away.
+    /// Headers and one line, then Core goes away inside the next.
     DieAfterHeaders,
     /// Core goes away before its headers.
     DieBeforeHeaders,
+    /// A Core that writes its own event stream (not this front's pair).
+    OwnEventStream,
+    /// NDJSON: [`Core::script`]'s chunks, then the end (or a break when `broken`).
+    Script,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -73,19 +82,49 @@ struct Core {
     gate: Mutex<Gate>,
     seen: Mutex<Seen>,
     stream: Mutex<Option<http_body_util::channel::Sender<Bytes, std::io::Error>>>,
-    /// Fires when a write to the client's stream failed: the front closed Core's socket.
+    /// Fires when Core's answer body is dropped: the front closed Core's socket.
     closed: Mutex<Option<oneshot::Sender<Instant>>>,
+    /// [`Turn::Script`]: the NDJSON chunks, and whether Core breaks after them.
+    script: Mutex<(Vec<Bytes>, bool)>,
 }
 
-fn sse(status: u16, body: UpBody) -> Response<UpBody> {
+/// Core's answer body; fires [`Core::closed`] when hyper drops it (the connection closed).
+struct Watched {
+    inner: UpBody,
+    core: Arc<Core>,
+}
+
+impl hyper::body::Body for Watched {
+    type Data = Bytes;
+    type Error = std::io::Error;
+    fn poll_frame(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<hyper::body::Frame<Bytes>, std::io::Error>>> {
+        std::pin::Pin::new(&mut self.inner).poll_frame(cx)
+    }
+}
+
+impl Drop for Watched {
+    fn drop(&mut self) {
+        if let Some(s) = self.core.closed.lock().unwrap().take() {
+            let _ = s.send(Instant::now());
+        }
+    }
+}
+
+fn ndjson(core: &Arc<Core>, body: UpBody) -> Response<UpBody> {
+    let body = Watched {
+        inner: body,
+        core: Arc::clone(core),
+    };
     Response::builder()
-        .status(status)
-        .header("content-type", "text/event-stream")
-        .header("cache-control", "no-cache, no-transform")
-        .header("x-accel-buffering", "no")
-        .header("connection", "keep-alive")
+        .status(200)
+        .header("content-type", "application/x-ndjson")
+        .header("cache-control", "no-store")
         .header("x-noevia-api", "1")
-        .body(body)
+        .header("set-cookie", "a=1; Path=/")
+        .body(body.boxed())
         .unwrap()
 }
 
@@ -142,6 +181,7 @@ async fn core_service(
         return Ok(json(200, format!(r#"{{"proxied":"{method} {path}"}}"#)));
     }
     let mode = *core.turn.lock().unwrap();
+    let channel = || http_body_util::channel::Channel::<Bytes, std::io::Error>::new(1);
     Ok(match mode {
         Turn::Echo => {
             let echo =
@@ -158,49 +198,82 @@ async fn core_service(
             r.headers_mut().insert("retry-after", "3".parse().unwrap());
             r
         }
-        Turn::Stream | Turn::DieAfterHeaders => {
-            let (mut tx, body) = http_body_util::channel::Channel::<Bytes, std::io::Error>::new(1);
-            if mode == Turn::DieAfterHeaders {
-                tokio::spawn(async move {
-                    let _ = tx
-                        .send_data(Bytes::from_static(b"data: {\"type\":\"meta\"}\n\n"))
-                        .await;
-                    tokio::time::sleep(Duration::from_millis(50)).await;
-                    let _ = tx
-                        .send_data(Bytes::from_static(b"data: {\"type\":\"del"))
-                        .await;
-                    tokio::time::sleep(Duration::from_millis(50)).await;
-                    tx.abort(std::io::Error::other("Core went away"));
-                });
-            } else {
-                *core.stream.lock().unwrap() = Some(tx);
-            }
-            sse(200, body.boxed())
+        Turn::Stream => {
+            let (tx, body) = channel();
+            *core.stream.lock().unwrap() = Some(tx);
+            ndjson(&core, body.boxed())
         }
-        Turn::Heartbeat => {
-            let (mut tx, body) = http_body_util::channel::Channel::<Bytes, std::io::Error>::new(1);
-            let core = Arc::clone(&core);
+        Turn::Silent | Turn::LateFirstLine => {
+            let (mut tx, body) = channel();
+            let late = mode == Turn::LateFirstLine;
             tokio::spawn(async move {
-                // chat.cjs: setInterval(() => res.write(': keep-alive\n\n'), 5000) from the headers on.
-                let mut beat = tokio::time::interval_at(
-                    tokio::time::Instant::now() + Duration::from_secs(5),
-                    Duration::from_secs(5),
-                );
-                loop {
-                    beat.tick().await;
-                    if tx
-                        .send_data(Bytes::from_static(b": keep-alive\n\n"))
-                        .await
-                        .is_err()
-                    {
-                        if let Some(s) = core.closed.lock().unwrap().take() {
-                            let _ = s.send(Instant::now());
-                        }
+                if late {
+                    tokio::time::sleep(Duration::from_millis(1500)).await;
+                }
+                let first: &[u8] = if late {
+                    b"{\"type\":\"route_pending\",\"id\":\"r1\",\"flag\":\"health\"}\n"
+                } else {
+                    b"{\"type\":\"meta\",\"model\":\"m\"}\n"
+                };
+                let _ = tx.send_data(Bytes::from_static(first)).await;
+                // Held open (and silent) until the front lets go.
+                std::future::pending::<()>().await;
+                drop(tx);
+            });
+            ndjson(&core, body.boxed())
+        }
+        Turn::DieAfterHeaders => {
+            let (mut tx, body) = channel();
+            tokio::spawn(async move {
+                let _ = tx
+                    .send_data(Bytes::from_static(b"{\"type\":\"meta\"}\n"))
+                    .await;
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let _ = tx.send_data(Bytes::from_static(b"{\"type\":\"del")).await;
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                tx.abort(std::io::Error::other("Core went away"));
+            });
+            ndjson(&core, body.boxed())
+        }
+        Turn::Script => {
+            let (chunks, broken) = core.script.lock().unwrap().clone();
+            let (mut tx, body) = channel();
+            tokio::spawn(async move {
+                for c in chunks {
+                    if tx.send_data(c).await.is_err() {
                         return;
                     }
                 }
+                if broken {
+                    // Inside its next line.
+                    let _ = tx
+                        .send_data(Bytes::from_static(b"{\"type\":\"delta\",\"te"))
+                        .await;
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                    tx.abort(std::io::Error::other("Core went away"));
+                }
             });
-            sse(200, body.boxed())
+            ndjson(&core, body.boxed())
+        }
+        Turn::OwnEventStream => {
+            let (mut tx, body) = channel();
+            tokio::spawn(async move {
+                let _ = tx
+                    .send_data(Bytes::from_static(b"data: {\"type\":\"meta\"}\n\n"))
+                    .await;
+                std::future::pending::<()>().await;
+                drop(tx);
+            });
+            let body = Watched {
+                inner: body.boxed(),
+                core: Arc::clone(&core),
+            };
+            Response::builder()
+                .status(200)
+                .header("content-type", "text/event-stream")
+                .header("cache-control", "no-cache, no-transform")
+                .body(body.boxed())
+                .unwrap()
         }
         Turn::DieBeforeHeaders => return Err(std::io::Error::other("Core went away")),
     })
@@ -215,6 +288,7 @@ async fn core() -> Arc<Core> {
         seen: Mutex::default(),
         stream: Mutex::new(None),
         closed: Mutex::new(None),
+        script: Mutex::new((Vec::new(), false)),
     });
     let c = Arc::clone(&core);
     tokio::spawn(async move {
@@ -364,6 +438,7 @@ async fn a_turn_reaches_cores_relay_with_the_secret_the_user_and_the_clients_own
         ("x-noevia-relay-client-ip", "6.6.6.6"),
         ("x-noevia-client-ip", "6.6.6.6"),
         ("x-forwarded-for", "6.6.6.6"),
+        ("x-noevia-chat-wire", "sse"),
         ("user-agent", "synthetic-agent"),
     ];
     let (res, _c) = call(
@@ -383,6 +458,8 @@ async fn a_turn_reaches_cores_relay_with_the_secret_the_user_and_the_clients_own
     let h = &echo["headers"];
     assert_eq!(h["x-noevia-store-token"], serde_json::json!([STORE_TOKEN]));
     assert_eq!(h["x-noevia-chat-user"], serde_json::json!([f.user]));
+    // Chat port S7: the front asks for its wire, whatever the client sent under that name.
+    assert_eq!(h["x-noevia-chat-wire"], serde_json::json!(["ndjson/1"]));
     // The client's address, as the proxy would send it, under the relay's names only (no TRUST_PROXY).
     assert_eq!(
         h["x-noevia-relay-client-ip"],
@@ -424,22 +501,61 @@ async fn a_turn_reaches_cores_relay_with_the_secret_the_user_and_the_clients_own
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_event_stream_flushes_frame_by_frame_and_the_client_leaving_closes_cores_socket() {
-    let f = front().await;
+async fn each_line_is_flushed_as_its_frame_and_the_client_leaving_closes_cores_socket_within_1_s() {
+    let f = Arc::new(front().await);
     *f.core.turn.lock().unwrap() = Turn::Stream;
-    let (res, c) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await;
+    let (closed_tx, closed_rx) = oneshot::channel();
+    *f.core.closed.lock().unwrap() = Some(closed_tx);
+    // The headers wait for the first event: the call is answered once Core sends its first line.
+    let pending = tokio::spawn({
+        let f = Arc::clone(&f);
+        async move { call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await }
+    });
+    let mut tx = loop {
+        if let Some(tx) = f.core.stream.lock().unwrap().take() {
+            break tx;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    };
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(
+        !pending.is_finished(),
+        "the headers went out before the first event"
+    );
+    tx.send_data(Bytes::from_static(b"{\"type\":\"meta\",\"model\":\"m\"}\n"))
+        .await
+        .unwrap();
+    let (res, c) = tokio::time::timeout(Duration::from_secs(5), pending)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(res.status(), 200);
     assert_eq!(res.headers()["content-type"], "text/event-stream");
     assert_eq!(res.headers()["cache-control"], "no-cache, no-transform");
     assert_eq!(res.headers()["x-accel-buffering"], "no");
+    assert_eq!(res.headers()["connection"], "keep-alive");
+    // Core's own headers ride along; its type and caching do not.
+    assert_eq!(res.headers()["x-noevia-api"], "1");
+    assert_eq!(res.headers()["set-cookie"], "a=1; Path=/");
+    assert_eq!(res.headers().get_all("cache-control").iter().count(), 1);
     let mut body = res.into_body();
-    let mut tx = f.core.stream.lock().unwrap().take().unwrap();
-    for frame in [
-        "data: {\"type\":\"meta\",\"model\":\"m\"}\n\n",
-        ": keep-alive\n\n",
-        "data: {\"type\":\"delta\",\"text\":\"Hi\"}\n\n",
+    let first = tokio::time::timeout(Duration::from_secs(2), body.frame())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        first.into_data().unwrap(),
+        Bytes::from_static(b"data: {\"type\":\"meta\",\"model\":\"m\"}\n\n")
+    );
+    for (line, frame) in [
+        (
+            "{\"type\":\"delta\",\"text\":\"Hi\"}\n",
+            "data: {\"type\":\"delta\",\"text\":\"Hi\"}\n\n",
+        ),
+        ("{\"type\":\"done\"}\n", "data: {\"type\":\"done\"}\n\n"),
     ] {
-        tx.send_data(Bytes::from(frame)).await.unwrap();
+        tx.send_data(Bytes::from(line)).await.unwrap();
         let got = tokio::time::timeout(Duration::from_secs(2), body.frame())
             .await
             .expect("the frame was buffered, not flushed")
@@ -447,37 +563,102 @@ async fn the_event_stream_flushes_frame_by_frame_and_the_client_leaving_closes_c
             .unwrap();
         assert_eq!(got.into_data().unwrap(), Bytes::from(frame));
     }
-    // The browser goes away mid-stream: Core's next write fails within a second.
+    // The browser goes away mid-stream: Core's socket closes (its body is dropped) within a second.
     let left = Instant::now();
     drop(body);
     drop(c);
-    let closed = tokio::time::timeout(Duration::from_secs(1), async {
-        loop {
-            if tx
-                .send_data(Bytes::from_static(
-                    b"data: {\"type\":\"delta\",\"text\":\"more\"}\n\n",
-                ))
-                .await
-                .is_err()
-            {
-                return Instant::now();
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .expect("Core's socket stayed open after the client left");
+    let closed = tokio::time::timeout(Duration::from_secs(1), closed_rx)
+        .await
+        .expect("Core's socket stayed open after the client left")
+        .unwrap();
     assert!(closed - left < Duration::from_secs(1));
+    assert!(tx
+        .send_data(Bytes::from_static(b"{\"type\":\"delta\"}\n"))
+        .await
+        .is_err());
 }
 
+/// The headers on the wire, as a client reads them (chat.cjs's four, and no NDJSON type), sent with
+/// the first event: for the routing question's early stream (`route_pending`) the head waits for it.
 #[tokio::test(flavor = "multi_thread")]
-async fn keep_alive_comments_reach_the_client_at_most_5_5_s_apart() {
+async fn the_headers_are_chat_cjs_s_and_go_out_with_the_first_event() {
     let f = front().await;
-    *f.core.turn.lock().unwrap() = Turn::Heartbeat;
+    *f.core.turn.lock().unwrap() = Turn::LateFirstLine;
+    let mut s = TcpStream::connect(f.addr).await.unwrap();
+    let req = format!(
+        "POST /api/chat HTTP/1.1\r\nhost: front.test\r\norigin: {ORIGIN}\r\ncookie: {}\r\nx-csrf-token: {}\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n",
+        f.jar,
+        f.csrf,
+        TURN.len()
+    );
+    s.write_all(req.as_bytes()).await.unwrap();
+    s.write_all(TURN).await.unwrap();
+    let sent = Instant::now();
+    let mut got = Vec::new();
+    let mut buf = [0u8; 4096];
+    let head_at = loop {
+        let n = tokio::time::timeout(Duration::from_secs(5), s.read(&mut buf))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(n > 0);
+        got.extend_from_slice(&buf[..n]);
+        if got.windows(4).any(|w| w == b"\r\n\r\n") {
+            break sent.elapsed();
+        }
+    };
+    assert!(
+        head_at >= Duration::from_millis(1400),
+        "the headers went out before the first event ({head_at:?})"
+    );
+    while !String::from_utf8_lossy(&got).contains("route_pending") {
+        let n = tokio::time::timeout(Duration::from_secs(2), s.read(&mut buf))
+            .await
+            .unwrap()
+            .unwrap();
+        got.extend_from_slice(&buf[..n]);
+    }
+    let text = String::from_utf8_lossy(&got).to_string();
+    let (head, body) = text.split_once("\r\n\r\n").unwrap();
+    let lines: Vec<String> = head.lines().map(str::to_ascii_lowercase).collect();
+    assert_eq!(lines[0], "http/1.1 200 ok");
+    for want in [
+        "content-type: text/event-stream",
+        "cache-control: no-cache, no-transform",
+        "x-accel-buffering: no",
+        "connection: keep-alive",
+        "x-noevia-api: 1",
+        "transfer-encoding: chunked",
+    ] {
+        assert_eq!(
+            lines.iter().filter(|l| l.as_str() == want).count(),
+            1,
+            "{want} in {head}"
+        );
+    }
+    assert!(!head.to_ascii_lowercase().contains("ndjson"), "{head}");
+    assert!(!head.to_ascii_lowercase().contains("no-store"), "{head}");
+    assert!(
+        body.contains("data: {\"type\":\"route_pending\",\"id\":\"r1\",\"flag\":\"health\"}\n\n"),
+        "{body}"
+    );
+}
+
+/// The front's own heartbeat: Core sends no comments, and the client still gets `: keep-alive` every
+/// 5 s (at most 5.5 s apart) from the headers on; the client leaving during it closes Core's socket.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_fronts_keep_alive_reaches_the_client_every_5_s_from_the_headers() {
+    let f = front().await;
+    *f.core.turn.lock().unwrap() = Turn::Silent;
     let (res, c) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await;
     let mut last = Instant::now();
     assert_eq!(res.status(), 200);
     let mut body = res.into_body();
+    let first = body.frame().await.unwrap().unwrap().into_data().unwrap();
+    assert_eq!(
+        first,
+        Bytes::from_static(b"data: {\"type\":\"meta\",\"model\":\"m\"}\n\n")
+    );
     for _ in 0..2 {
         let frame = tokio::time::timeout(Duration::from_millis(5500), body.frame())
             .await
@@ -488,22 +669,23 @@ async fn keep_alive_comments_reach_the_client_at_most_5_5_s_apart() {
             frame.into_data().unwrap(),
             Bytes::from_static(b": keep-alive\n\n")
         );
+        let gap = last.elapsed();
         assert!(
-            last.elapsed() <= Duration::from_millis(5500),
-            "{:?}",
-            last.elapsed()
+            gap <= Duration::from_millis(5500) && gap >= Duration::from_millis(4500),
+            "{gap:?}"
         );
         last = Instant::now();
     }
-    // And a client that leaves during the heartbeat closes Core's socket: its next beat fails.
     let (tx, rx) = oneshot::channel();
     *f.core.closed.lock().unwrap() = Some(tx);
+    let left = Instant::now();
     drop(body);
     drop(c);
-    tokio::time::timeout(Duration::from_secs(6), rx)
+    let at = tokio::time::timeout(Duration::from_secs(1), rx)
         .await
-        .unwrap()
+        .expect("Core's socket stayed open after the client left")
         .unwrap();
+    assert!(at - left < Duration::from_secs(1));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -528,7 +710,7 @@ async fn core_failing_after_its_headers_ends_with_the_error_frame_and_before_the
         .unwrap();
     assert_eq!(
         got,
-        // The frame Core left unfinished is dropped: the client reads whole frames only.
+        // The line Core left unfinished is dropped: the client reads whole frames only.
         format!("data: {{\"type\":\"meta\"}}\n\n{FAILED}")
     );
     *f.core.turn.lock().unwrap() = Turn::DieBeforeHeaders;
@@ -540,6 +722,26 @@ async fn core_failing_after_its_headers_ends_with_the_error_frame_and_before_the
         text(res).await,
         r#"{"error":"The server is not answering. Please retry."}"#
     );
+}
+
+/// Rollback safety at run time: a Core that writes its own event stream is not this front's pair (the
+/// supervisor and assemble-release refuse the mix); its answer is dropped, which stops its turn.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_core_writing_its_own_event_stream_is_refused_and_its_turn_stopped() {
+    let f = front().await;
+    *f.core.turn.lock().unwrap() = Turn::OwnEventStream;
+    let (tx, rx) = oneshot::channel();
+    *f.core.closed.lock().unwrap() = Some(tx);
+    let (res, _c) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await;
+    assert_eq!(res.status(), 502);
+    assert_eq!(
+        text(res).await,
+        r#"{"error":"The server is not answering. Please retry."}"#
+    );
+    tokio::time::timeout(Duration::from_secs(1), rx)
+        .await
+        .expect("the mismatched Core's turn kept running")
+        .unwrap();
 }
 
 /// noevia-web's src/api.ts at contracts/http/web.ref (`NOEVIA_WEB_API_TS`; CI checks it out). Without it the
@@ -559,16 +761,12 @@ fn web_api_ts() -> Option<String> {
     }
 }
 
-/// Review P2 (chat port S5): Core breaking inside a frame must reach the web client as the failure event,
-/// read by the client's own stream reader (tests/web-stream-chat.cjs runs noevia-web's streamChat).
-#[tokio::test(flavor = "multi_thread")]
-async fn a_break_inside_a_frame_reaches_the_web_client_as_the_failure_event() {
-    let Some(api) = web_api_ts() else { return };
-    let f = front().await;
-    *f.core.turn.lock().unwrap() = Turn::DieAfterHeaders;
+/// One turn read by the web client's own streamChat (tests/web-stream-chat.cjs): every event it yielded,
+/// as JSON text, and what it threw.
+async fn web_client(f: &Front, api: &str) -> (Vec<String>, serde_json::Value) {
     let harness = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/web-stream-chat.cjs");
     let base = format!("http://{}", f.addr);
-    let (jar, csrf) = (f.jar.clone(), f.csrf.clone());
+    let (jar, csrf, api) = (f.jar.clone(), f.csrf.clone(), api.to_owned());
     let out = tokio::task::spawn_blocking(move || {
         std::process::Command::new(std::env::var("NOEVIA_NODE").unwrap_or_else(|_| "node".into()))
             .args(["--no-warnings", harness, &api, &base, ORIGIN, &jar, &csrf])
@@ -583,22 +781,239 @@ async fn a_break_inside_a_frame_reaches_the_web_client_as_the_failure_event() {
         String::from_utf8_lossy(&out.stderr)
     );
     let got: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let events = got["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e.as_str().unwrap().to_owned())
+        .collect();
+    (events, got["error"].clone())
+}
+
+/// Review P2 (chat port S5): Core breaking inside a line must reach the web client as the failure event,
+/// read by the client's own stream reader.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_break_inside_a_line_reaches_the_web_client_as_the_failure_event() {
+    let Some(api) = web_api_ts() else { return };
+    let f = front().await;
+    *f.core.turn.lock().unwrap() = Turn::DieAfterHeaders;
+    let (events, error) = web_client(&f, &api).await;
+    assert_eq!(error, serde_json::Value::Null, "the client failed");
     assert_eq!(
-        got["error"],
-        serde_json::Value::Null,
-        "the client failed: {got}"
-    );
-    assert_eq!(
-        got["events"],
-        serde_json::json!([
-            {"type": "meta"},
-            {"type": "error", "text": "The request could not be completed. Please retry."}
-        ])
+        events,
+        [
+            r#"{"type":"meta"}"#,
+            r#"{"type":"error","text":"The request could not be completed. Please retry."}"#
+        ]
     );
     assert_eq!(
         f.core.seen.lock().unwrap().hits,
         ["POST /internal/chat/turn"]
     );
+}
+
+// --- Core's own wire (tests/fixtures/node-chat-wire.v1.json, recorded by tests/chat-wire-oracle.cjs from core's
+// rust-chat-wire.cjs at front-core.ref; CI regenerates it). ------------------------------------------------------
+
+fn wire_fixture() -> serde_json::Value {
+    let path = std::env::var("NOEVIA_CHAT_WIRE_FIXTURE").unwrap_or_else(|_| {
+        concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/node-chat-wire.v1.json"
+        )
+        .to_owned()
+    });
+    serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+}
+
+/// The front's chunking of Core's NDJSON: whole, one byte at a time, and odd sizes that split lines.
+fn chunked(ndjson: &str, size: usize) -> Vec<Bytes> {
+    let b = ndjson.as_bytes();
+    if size == 0 {
+        return vec![Bytes::copy_from_slice(b)];
+    }
+    b.chunks(size).map(Bytes::copy_from_slice).collect()
+}
+
+/// The `type` of each event frame in `stream` (every event JSON.stringify writes starts with it).
+fn event_types(stream: &str) -> Vec<String> {
+    stream
+        .split("\n\n")
+        .filter_map(|f| f.lines().find_map(|l| l.strip_prefix("data: ")))
+        .map(|d| {
+            let rest = d
+                .strip_prefix("{\"type\":\"")
+                .unwrap_or_else(|| panic!("{d}"));
+            rest[..rest.find('"').unwrap()].to_owned()
+        })
+        .collect()
+}
+
+/// Contract §1.3's order, as the client receives it.
+fn assert_section_1_3_order(name: &str, types: &[String]) {
+    let pos = |t: &str| types.iter().position(|x| x == t);
+    let start = if types.first().map(String::as_str) == Some("route_pending") {
+        // The early stream: the question (and a remembered answer) come before meta.
+        let meta = pos("meta").unwrap_or_else(|| panic!("{name}: no meta after route_pending"));
+        assert!(
+            types[1..meta].iter().all(|t| t == "route_remembered"),
+            "{name}: {types:?}"
+        );
+        meta
+    } else {
+        0
+    };
+    // The routing question is answered before meta is sent; a Diary turn's companion stream has no meta.
+    let diary = types.first().map(String::as_str) == Some("status");
+    if !diary {
+        assert_eq!(types[start], "meta", "{name}: meta first, {types:?}");
+    }
+    // One completion: done or error. After done only the title; after error nothing.
+    let end = types
+        .iter()
+        .position(|t| t == "done" || t == "error")
+        .unwrap_or_else(|| panic!("{name}: no done or error, {types:?}"));
+    let after = &types[end + 1..];
+    if types[end] == "done" {
+        assert!(
+            after.iter().all(|t| t == "title"),
+            "{name}: after done {after:?}"
+        );
+    } else {
+        assert!(after.is_empty(), "{name}: after error {after:?}");
+    }
+    let body = &types[start..end];
+    let first = |t: &str| body.iter().position(|x| x == t);
+    // meta, then sources, then telemetry waiting; context before generating; complete just before done.
+    // The first sources (item 2) precede telemetry waiting; a re-sent one (item 10) comes after the rounds.
+    let output = ["delta", "reasoning", "tool", "preamble"]
+        .iter()
+        .filter_map(|t| first(t))
+        .min();
+    if let (Some(s), Some(w)) = (first("sources"), first("telemetry")) {
+        if output.is_none_or(|o| s < o) {
+            assert!(s < w, "{name}: sources before the first telemetry");
+        }
+    }
+    // The context meter comes before any output of the model.
+    if let Some(c) = first("context") {
+        for t in ["delta", "reasoning", "tool", "preamble"] {
+            assert!(first(t).is_none_or(|x| c < x), "{name}: context before {t}");
+        }
+    }
+    for (i, t) in body.iter().enumerate() {
+        match t.as_str() {
+            "tool_pending" => assert!(
+                body[..i].contains(&"tool".to_owned()),
+                "{name}: tool before tool_pending"
+            ),
+            "tool_result" => assert!(
+                body[..i].contains(&"tool".to_owned()),
+                "{name}: tool before tool_result"
+            ),
+            "paused" => assert!(
+                body[i + 1..].iter().all(|x| x == "telemetry"),
+                "{name}: paused ends the rounds"
+            ),
+            _ => {}
+        }
+    }
+    if types[end] == "done" && !diary && body.len() > 4 {
+        assert_eq!(
+            body.last().map(String::as_str),
+            Some("telemetry"),
+            "{name}: telemetry complete before done"
+        );
+    }
+}
+
+/// Byte for byte: for each turn core's rust-chat-wire.cjs writes, the front's event stream from Core's NDJSON
+/// is the event stream Core itself writes (and after a break, Core's stream then the failure frame), however
+/// Core's lines are split across reads; and every case keeps §1.3's order.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_fronts_stream_is_cores_own_byte_for_byte_for_every_recorded_turn() {
+    let fixture = wire_fixture();
+    assert_eq!(fixture["wireHeader"], "x-noevia-chat-wire");
+    assert_eq!(fixture["wire"], "ndjson/1");
+    assert_eq!(fixture["ndjsonType"], "application/x-ndjson");
+    assert_eq!(fixture["keepAlive"], ": keep-alive\n\n");
+    assert_eq!(fixture["heartbeatMs"], 5000);
+    let f = front().await;
+    *f.core.turn.lock().unwrap() = Turn::Script;
+    let cases = fixture["cases"].as_array().unwrap();
+    assert!(cases.len() >= 10);
+    for case in cases {
+        let name = case["name"].as_str().unwrap();
+        assert_eq!(case["sseStatus"], 200);
+        assert_eq!(
+            case["sseHeaders"],
+            serde_json::json!({"Content-Type":"text/event-stream","Cache-Control":"no-cache, no-transform","X-Accel-Buffering":"no","Connection":"keep-alive"}),
+            "{name}"
+        );
+        assert_eq!(
+            case["ndjsonHeaders"]["Content-Type"],
+            "application/x-ndjson"
+        );
+        let broken = case["end"] == "break";
+        let mut want = case["sse"].as_str().unwrap().to_owned();
+        if broken {
+            want.push_str(case["failed"].as_str().unwrap());
+        }
+        assert_eq!(case["failed"], FAILED);
+        for size in [0, 1, 7, 64] {
+            *f.core.script.lock().unwrap() =
+                (chunked(case["ndjson"].as_str().unwrap(), size), broken);
+            let (res, _c) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await;
+            assert_eq!(res.status(), 200, "{name}");
+            for (k, v) in case["sseHeaders"].as_object().unwrap() {
+                assert_eq!(res.headers()[k.as_str()], v.as_str().unwrap(), "{name} {k}");
+            }
+            let got = tokio::time::timeout(Duration::from_secs(10), text(res))
+                .await
+                .unwrap();
+            assert_eq!(got, want, "{name}, chunks of {size}");
+        }
+        assert_section_1_3_order(name, &event_types(&want));
+        let types: Vec<String> = case["types"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t.as_str().unwrap().to_owned())
+            .collect();
+        if !types.contains(&"raw".to_owned()) {
+            let mut sent = types.clone();
+            if broken || case["end"] == "failed" {
+                sent.push("error".into());
+            }
+            assert_eq!(event_types(&want), sent, "{name}");
+        }
+    }
+}
+
+/// The web client's real streamChat parses every recorded turn through the front, and yields exactly the
+/// events a reader of Core's own stream gets.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_web_client_reads_every_recorded_turn_through_the_front() {
+    let Some(api) = web_api_ts() else { return };
+    let fixture = wire_fixture();
+    let f = front().await;
+    *f.core.turn.lock().unwrap() = Turn::Script;
+    for case in fixture["cases"].as_array().unwrap() {
+        let name = case["name"].as_str().unwrap();
+        *f.core.script.lock().unwrap() = (
+            chunked(case["ndjson"].as_str().unwrap(), 5),
+            case["end"] == "break",
+        );
+        let (events, error) = web_client(&f, &api).await;
+        assert_eq!(error, serde_json::Value::Null, "{name}: the client failed");
+        let want: Vec<String> = case["client"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e.as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(events, want, "{name}");
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -7,7 +7,8 @@
 //
 //   node web-stream-chat.cjs <src/api.ts> <front base URL> <origin> <cookie jar> <csrf>
 //
-// Prints one JSON line: {"events":[...every event streamChat yielded...],"error":<message thrown, or null>}.
+// Prints one JSON line: {"events":[...every event streamChat yielded, each as JSON.stringify writes it...],
+// "error":<message thrown, or null>}. (As JSON text, an event with a lone surrogate stays readable to any JSON parser.)
 // Synthetic data only; no model.
 const fs = require('node:fs');
 const { stripTypeScriptTypes } = require('node:module');
@@ -47,5 +48,5 @@ const api = new Function('__import', 'window', 'document', 'localStorage', 'sess
   } catch (e) {
     error = String(e && e.message || e);
   }
-  process.stdout.write(`${JSON.stringify({ events, error })}\n`);
+  process.stdout.write(`${JSON.stringify({ events: events.map((e) => JSON.stringify(e)), error })}\n`);
 })();
