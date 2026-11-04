@@ -50,6 +50,11 @@ pub enum Ask<'a> {
         machine: &'a str,
         model: &'a str,
     },
+    /// The Diary local exchange of this account: what core's own exchange took (the maintenance
+    /// gate, waited for briefly as chat waits; then the model throttle chat shares, `429` when over;
+    /// and the long-document backfill's pause), held until the lease ends. No model is named: the
+    /// companion picks its own, and the gate is what a tune or a preset apply waits for.
+    DiaryExchange { user: &'a str },
 }
 
 /// Why no lease was given. `message` is the words to show; `code` is core's.
@@ -133,6 +138,7 @@ impl Admission {
                 machine,
                 model,
             } => json!({ "role": role, "machine": machine, "model": model }),
+            Ask::DiaryExchange { user } => json!({ "diaryExchange": { "user": user } }),
         };
         let Some(req) = self.request(reqwest::Method::POST, PATH) else {
             return Err(Refused::unavailable());
@@ -327,6 +333,8 @@ mod tests {
     struct Node {
         seen: Mutex<Vec<String>>,
         renew_status: Mutex<u16>,
+        /// The body of each lease request.
+        asks: Mutex<Vec<String>>,
     }
 
     /// A synthetic Node: `POST` answers `grant`; renewals answer `renew_status`; records each request.
@@ -336,6 +344,7 @@ mod tests {
         let state = Arc::new(Node {
             seen: Mutex::default(),
             renew_status: Mutex::new(200),
+            asks: Mutex::default(),
         });
         let st = Arc::clone(&state);
         tokio::spawn(async move {
@@ -353,6 +362,9 @@ mod tests {
                         .contains("x-noevia-store-token: secret");
                     let line = format!("{first} {}", if token { "T" } else { "-" });
                     st.seen.lock().unwrap().push(line);
+                    if let Some((_, body)) = text.split_once("\r\n\r\n") {
+                        st.asks.lock().unwrap().push(body.to_owned());
+                    }
                     let (status, body) = if first.starts_with("POST") && first.contains("/renew") {
                         (*st.renew_status.lock().unwrap(), "{}".to_owned())
                     } else if first.starts_with("POST") {
@@ -402,6 +414,39 @@ mod tests {
                 && l.ends_with('T')),
             "{seen:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn a_diary_exchange_asks_for_its_account_and_a_throttle_refusal_keeps_its_429() {
+        let (base, state) = node((
+            429,
+            r#"{"error":"Please wait before sending another message"}"#.into(),
+        ))
+        .await;
+        let refused = admission(&base)
+            .enter(
+                Ask::DiaryExchange {
+                    user: "u-synthetic",
+                },
+                &Cancel::new(),
+            )
+            .await
+            .err()
+            .unwrap();
+        assert_eq!(
+            (refused.status, refused.message.as_str(), refused.code),
+            (429, "Please wait before sending another message", None)
+        );
+        assert_eq!(
+            state.asks.lock().unwrap().first().map(String::as_str),
+            Some(r#"{"diaryExchange":{"user":"u-synthetic"}}"#)
+        );
+        let (base, _s) = node((201, GRANT.into())).await;
+        let lease = admission(&base)
+            .enter(Ask::DiaryExchange { user: "u1" }, &Cancel::new())
+            .await
+            .unwrap();
+        lease.release().await;
     }
 
     #[tokio::test]

@@ -185,6 +185,11 @@ impl Research {
         })
     }
 
+    /// The front's one client of Node's inference admission (also the Diary local exchange's).
+    pub fn admission(&self) -> Arc<Admission> {
+        Arc::clone(&self.admission)
+    }
+
     fn state(&self) -> std::sync::MutexGuard<'_, State> {
         match self.state.lock() {
             Ok(g) => g,
@@ -247,6 +252,17 @@ impl Research {
                 .timeout(timeout)
                 .body(body.to_string()),
         )
+    }
+
+    /// The bridge call itself, its reply unread, for a module that must read a reply core never capped
+    /// (model_downloads_read.rs). `None`: no secret or no answer.
+    pub(crate) async fn node_open(
+        &self,
+        path: &str,
+        body: &Value,
+        timeout: Duration,
+    ) -> Option<reqwest::Response> {
+        self.bridge_post(path, body, timeout)?.send().await.ok()
     }
 
     /// One call on the same loopback bridge for another route's module, with the reply's bytes as they came
