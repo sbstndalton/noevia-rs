@@ -1,4 +1,6 @@
-//! #2282 native approval HTTP boundary, with synthetic pending-state bridge. No model or chat runs.
+//! #2282 and port contract 2026-11-04 S9: the public approval decision answered from the front's
+//! own approval registry, and the store ops Node's turn asks through. A real front and a real
+//! store listener, synthetic data only; no Node, no chat, no model.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -13,7 +15,8 @@ use server_store::rusqlite::Connection;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
@@ -22,124 +25,19 @@ const CODE: &str = "synthetic-approval-code";
 const ORIGIN: &str = "http://127.0.0.1:18021";
 const STORE_TOKEN: &str = "synthetic-store-token-0123456789abcdef";
 const START: &str = "0123456789abcdef0123456789abcdef";
-type Answer = Arc<Mutex<(u16, String)>>;
-
-struct Node {
-    addr: SocketAddr,
-    answer: Answer,
-    seen: Arc<Mutex<Vec<String>>>,
-    resolve: Arc<Mutex<Option<Value>>>,
-    revoke: Arc<Mutex<Option<PathBuf>>>,
-}
-
-async fn node() -> Node {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let answer: Answer = Arc::new(Mutex::new((
-        200,
-        json!({"found":true,"kind":"write","generation":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"})
-            .to_string(),
-    )));
-    let seen = Arc::new(Mutex::new(Vec::new()));
-    let resolve = Arc::new(Mutex::new(None::<Value>));
-    let revoke = Arc::new(Mutex::new(None::<PathBuf>));
-    let (a, s, r, d) = (
-        Arc::clone(&answer),
-        Arc::clone(&seen),
-        Arc::clone(&resolve),
-        Arc::clone(&revoke),
-    );
-    tokio::spawn(async move {
-        while let Ok((mut c, _)) = listener.accept().await {
-            let (a, s, r, d) = (
-                Arc::clone(&a),
-                Arc::clone(&s),
-                Arc::clone(&r),
-                Arc::clone(&d),
-            );
-            tokio::spawn(async move {
-                let mut buf = Vec::new();
-                let mut chunk = [0u8; 8192];
-                loop {
-                    let n = c.read(&mut chunk).await.unwrap_or(0);
-                    if n == 0 {
-                        return;
-                    }
-                    buf.extend_from_slice(&chunk[..n]);
-                    let text = String::from_utf8_lossy(&buf).into_owned();
-                    if let Some((h, b)) = text.split_once("\r\n\r\n") {
-                        let want = h
-                            .lines()
-                            .find_map(|l| {
-                                l.to_ascii_lowercase()
-                                    .strip_prefix("content-length: ")
-                                    .map(|v| v.parse::<usize>().unwrap())
-                            })
-                            .unwrap_or(0);
-                        if b.len() >= want {
-                            break;
-                        }
-                    }
-                }
-                s.lock()
-                    .unwrap()
-                    .push(String::from_utf8_lossy(&buf).to_ascii_lowercase());
-                if String::from_utf8_lossy(&buf).starts_with("POST /internal/tool-approvals/facts ")
-                {
-                    if let Some(path) = d.lock().unwrap().take() {
-                        Connection::open(path)
-                            .unwrap()
-                            .execute("UPDATE users SET disabled_at=1", [])
-                            .unwrap();
-                    }
-                }
-                let (status, text) = a.lock().unwrap().clone();
-                let text = if String::from_utf8_lossy(&buf)
-                    .starts_with("POST /internal/tool-approvals/resolve ")
-                    && status == 200
-                    && text.contains("generation")
-                {
-                    "{\"found\":true,\"accepted\":true}".to_owned()
-                } else {
-                    text
-                };
-                let text = if String::from_utf8_lossy(&buf)
-                    .starts_with("POST /internal/tool-approvals/resolve ")
-                {
-                    r.lock()
-                        .unwrap()
-                        .as_ref()
-                        .map(Value::to_string)
-                        .unwrap_or(text)
-                } else {
-                    text
-                };
-                let out = format!("HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{text}", text.len());
-                let _ = c.write_all(out.as_bytes()).await;
-            });
-        }
-    });
-    Node {
-        addr,
-        answer,
-        seen,
-        resolve,
-        revoke,
-    }
-}
+const STRANGER: &str = "99999999-2222-4333-8444-555555555555";
 
 struct Front {
     _dir: tempfile::TempDir,
     data: PathBuf,
     addr: SocketAddr,
+    store: SocketAddr,
     jar: String,
     csrf: String,
     user: String,
-    node: Node,
 }
 
-async fn front(with_node: bool) -> Front {
-    let node = node().await;
+async fn front() -> Front {
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().to_path_buf();
     let c = Connection::open(server_store::db_path(&data)).unwrap();
@@ -150,12 +48,8 @@ async fn front(with_node: bool) -> Front {
     )
     .unwrap();
     let mut env: HashMap<&str, String> = HashMap::new();
-    let upstream = if with_node {
-        format!("http://{}", node.addr)
-    } else {
-        "http://127.0.0.1:9".to_owned()
-    };
-    env.insert("NOEVIA_LEGACY_UPSTREAM", upstream);
+    // Nothing listens upstream: the decision route needs no Node any more.
+    env.insert("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".to_owned());
     env.insert("UI_PORT", "1".into());
     env.insert("UI_DATA_DIR", data.display().to_string());
     env.insert("NOEVIA_WEB_DIST", data.join("dist").display().to_string());
@@ -167,6 +61,20 @@ async fn front(with_node: bool) -> Front {
     let mut app = noevia_server::App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
     Arc::get_mut(&mut app).unwrap().storage_child =
         Some(env!("CARGO_BIN_EXE_noevia-server").into());
+    let store_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let store = store_listener.local_addr().unwrap();
+    tokio::spawn(noevia_server::project_store::serve_with_context(
+        store_listener,
+        noevia_server::project_store::Store {
+            data_dir: data.clone(),
+            token: STORE_TOKEN.into(),
+            switch: server_store::RustProjects::owned(),
+            start_id: START.into(),
+        },
+        None,
+        Some(Arc::clone(&app)),
+        std::future::pending(),
+    ));
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(serve(
@@ -197,20 +105,55 @@ async fn front(with_node: bool) -> Front {
     let user: String = c
         .query_row("SELECT id FROM users", [], |r| r.get(0))
         .unwrap();
+    // Two synthetic free chats and an empty project, for the grant's live context.
+    let lists = data.join("users").join(&user);
+    std::fs::create_dir_all(&lists).unwrap();
+    std::fs::write(
+        lists.join("projects.json"),
+        r#"{"projects":[{"id":"qa-p","name":"QA","chats":[]}]}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        lists.join("free-chats.json"),
+        r#"[{"id":"qa-one","title":"QA one"},{"id":"qa-two","title":"QA two"}]"#,
+    )
+    .unwrap();
     Front {
         _dir: dir,
         data,
         addr,
+        store,
         jar,
         csrf,
         user,
-        node,
     }
+}
+
+async fn http(addr: SocketAddr, head: &str, body: &str) -> (u16, Value) {
+    let mut c = TcpStream::connect(addr).await.unwrap();
+    let req = format!(
+        "{head}connection: close\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+        body.len()
+    );
+    c.write_all(req.as_bytes()).await.unwrap();
+    let mut out = Vec::new();
+    tokio::time::timeout(Duration::from_secs(15), c.read_to_end(&mut out))
+        .await
+        .unwrap()
+        .unwrap();
+    let text = String::from_utf8(out).unwrap();
+    let status = text.split(' ').nth(1).unwrap().parse().unwrap();
+    let body = text.split_once("\r\n\r\n").unwrap().1;
+    // A chunked reply (axum) carries one chunk here; take the JSON object out of it.
+    let json = body
+        .find('{')
+        .and_then(|i| body.rfind('}').map(|j| &body[i..=j]))
+        .unwrap_or("null");
+    (status, serde_json::from_str(json).unwrap_or(Value::Null))
 }
 
 impl Front {
     async fn call(&self, path: &str, body: &str, auth: bool, csrf: bool) -> (u16, Value) {
-        let mut c = TcpStream::connect(self.addr).await.unwrap();
         let credentials = if auth {
             format!("cookie: {}\r\n", self.jar)
         } else {
@@ -221,220 +164,298 @@ impl Front {
         } else {
             String::new()
         };
-        let req = format!("POST {path} HTTP/1.1\r\nhost: front.test\r\nconnection: close\r\norigin: {ORIGIN}\r\n{credentials}{token}content-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",body.len());
-        c.write_all(req.as_bytes()).await.unwrap();
-        let mut out = Vec::new();
-        tokio::time::timeout(std::time::Duration::from_secs(15), c.read_to_end(&mut out))
+        let head = format!(
+            "POST {path} HTTP/1.1\r\nhost: front.test\r\norigin: {ORIGIN}\r\n{credentials}{token}"
+        );
+        http(self.addr, &head, body).await
+    }
+    async fn decide(&self, id: &str, body: &str) -> (u16, Value) {
+        self.call(&format!("/api/tool-approvals/{id}"), body, true, true)
             .await
-            .unwrap()
-            .unwrap();
-        let text = String::from_utf8(out).unwrap();
-        let status = text.split(' ').nth(1).unwrap().parse().unwrap();
-        let body = text.split_once("\r\n\r\n").unwrap().1;
-        (status, serde_json::from_str(body).unwrap_or(Value::Null))
+    }
+    async fn op(&self, op: &str, body: Value) -> (u16, Value) {
+        let head = format!(
+            "POST /v1/{op} HTTP/1.1\r\nhost: 127.0.0.1\r\nx-noevia-store-token: {STORE_TOKEN}\r\n"
+        );
+        http(self.store, &head, &body.to_string()).await
+    }
+    async fn open(&self, id: &str, kind: &str, extra: Value) -> (u16, Value) {
+        let mut body = json!({"user":self.user,"id":id,"kind":kind});
+        for (k, v) in extra.as_object().unwrap() {
+            body[k] = v.clone();
+        }
+        self.op("approvals/open", body).await
+    }
+    async fn wait(&self, id: &str) -> (u16, Value) {
+        self.op("approvals/wait", json!({"user":self.user,"id":id}))
+            .await
+    }
+    async fn binding(&self, chat: &str, scope: &str) -> Value {
+        let (status, context) = self
+            .op("chat/grant-context", json!({"user":self.user,"chat":chat}))
+            .await;
+        assert_eq!(status, 200, "{context}");
+        json!({"user":self.user,"canonicalChatId":chat,"scope":scope,"context":context})
+    }
+    async fn granted(&self, chat: &str, scope: &str, binding: &Value) -> bool {
+        let (status, body) = self
+            .op(
+                "approvals/granted",
+                json!({"user":self.user,"chat":chat,"scope":scope,"binding":binding}),
+            )
+            .await;
+        assert_eq!(status, 200);
+        body["granted"] == json!(true)
     }
 }
+
 #[tokio::test]
 async fn identity_and_body_policy_precede_pending_state_and_route_decisions_preserve_remember() {
-    let f = front(true).await;
+    let f = front().await;
+    assert_eq!(f.open("ap-a", "write", json!({})).await.0, 200);
     let post = r#"{"decision":"approve"}"#;
     assert_eq!(
-        f.call("/api/tool-approvals/a", post, false, false).await.0,
+        f.call("/api/tool-approvals/ap-a", post, false, false)
+            .await
+            .0,
         401
     );
     assert_eq!(
-        f.call("/api/tool-approvals/a", post, true, false).await.0,
+        f.call("/api/tool-approvals/ap-a", post, true, false)
+            .await
+            .0,
         403
     );
     for body in ["null", "[]", "1", "true", "{}{"] {
-        assert_eq!(
-            f.call("/api/tool-approvals/a", body, true, true).await.0,
-            400
-        );
+        assert_eq!(f.decide("ap-a", body).await.0, 400, "{body}");
     }
+    assert_eq!(f.decide("%ZZ", post).await.0, 400);
     assert_eq!(
-        f.call("/api/tool-approvals/%ZZ", post, true, true).await.0,
-        400
-    );
-    assert!(f.node.seen.lock().unwrap().is_empty());
-    assert_eq!(
-        f.call("/api/tool-approvals/a", post, true, true).await,
-        (200, json!({"ok":true}))
-    );
-    let seen = f.node.seen.lock().unwrap().clone();
-    assert_eq!(seen.len(), 2);
-    assert!(seen[0].starts_with("post /internal/tool-approvals/facts "));
-    assert!(seen[1].starts_with("post /internal/tool-approvals/resolve "));
-    assert!(seen[1].contains(&format!("\"user\":\"{}\"", f.user)));
-    assert!(seen[1].contains(&format!("x-noevia-store-token: {STORE_TOKEN}")));
-    assert!(!seen[1].contains("x-noevia-client-ip:"));
-    *f.node.answer.lock().unwrap() = (
-        200,
-        json!({"found":true,"kind":"route","generation":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"})
-            .to_string(),
-    );
-    assert_eq!(
-        f.call("/api/tool-approvals/a", post, true, true).await,
-        (400, json!({"error":"decision must be 'cloud' or 'local'"}))
-    );
-    assert_eq!(
-        f.node.seen.lock().unwrap().len(),
-        3,
-        "invalid choices never consume"
-    );
-    assert_eq!(
-        f.call(
-            "/api/tool-approvals/a",
-            r#"{"decision":"local","remember":true}"#,
-            true,
-            true
-        )
-        .await
-        .0,
-        200
-    );
-    assert!(f
-        .node
-        .seen
-        .lock()
-        .unwrap()
-        .last()
-        .unwrap()
-        .contains("\"remember\":true"));
-}
-#[tokio::test]
-async fn missing_other_user_stale_or_dead_state_never_returns_success() {
-    let f = front(true).await;
-    *f.node.answer.lock().unwrap() = (200, json!({"found":false}).to_string());
-    assert_eq!(
-        f.call(
-            "/api/tool-approvals/foreign",
-            r#"{"decision":"bogus"}"#,
-            true,
-            true
-        )
-        .await,
-        (404, json!({"error":"no such pending approval"}))
-    );
-    assert_eq!(f.node.seen.lock().unwrap().len(), 1);
-    assert_eq!(
-        f.call(
-            "/api/tool-approvals/foreign",
-            r#"{"decision":{"toString":null}}"#,
-            true,
-            true
-        )
-        .await
-        .0,
-        404,
-        "owner check precedes coercion"
-    );
-    *f.node.answer.lock().unwrap() = (503, "{}".into());
-    assert_eq!(
-        f.call(
-            "/api/tool-approvals/a",
-            r#"{"decision":"approve"}"#,
-            true,
-            true
-        )
-        .await
-        .0,
-        503
-    );
-    *f.node.answer.lock().unwrap() = (
-        200,
-        json!({"found":true,"kind":"write","generation":""}).to_string(),
-    );
-    assert_eq!(
-        f.call(
-            "/api/tool-approvals/a",
-            r#"{"decision":"approve"}"#,
-            true,
-            true
-        )
-        .await
-        .0,
-        503
-    );
-    *f.node.answer.lock().unwrap() = (
-        200,
-        json!({"found":true,"kind":"write","generation":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"})
-            .to_string(),
-    );
-    *f.node.resolve.lock().unwrap() = Some(json!({"found":false}));
-    assert_eq!(
-        f.call(
-            "/api/tool-approvals/a",
-            r#"{"decision":"approve"}"#,
-            true,
-            true
-        )
-        .await
-        .0,
-        404,
-        "expired or replaced between facts and resolution"
-    );
-    *f.node.resolve.lock().unwrap() = Some(json!({"found":true,"accepted":false}));
-    assert_eq!(
-        f.call(
-            "/api/tool-approvals/a",
-            r#"{"decision":"approve_all"}"#,
-            true,
-            true
-        )
-        .await,
+        f.decide("ap-a", r#"{"decision":"cloud"}"#).await,
         (
             400,
             json!({"error":"decision must be 'approve', 'deny' or 'approve_all'"})
         ),
-        "existing scope refusal cannot become success"
+        "a routing choice on a write card"
     );
-    let c = Connection::open(server_store::db_path(&f.data)).unwrap();
-    c.execute("UPDATE users SET disabled_at=1 WHERE id=?1", [&f.user])
-        .unwrap();
-    let before = f.node.seen.lock().unwrap().len();
+    // None of that consumed the question.
+    assert_eq!(f.decide("ap-a", post).await, (200, json!({"ok":true})));
+    assert_eq!(f.wait("ap-a").await, (200, json!({"outcome":"approve"})));
+    assert_eq!(f.decide("ap-a", post).await.0, 404, "single use");
+    // A routing question (#778): its own choices, remember strictly boolean.
     assert_eq!(
-        f.call(
-            "/api/tool-approvals/a",
-            r#"{"decision":"approve"}"#,
-            true,
-            true
-        )
-        .await
-        .0,
-        401
+        f.open("route-1", "route", json!({"chat":"qa-one"})).await.0,
+        200
     );
-    assert_eq!(f.node.seen.lock().unwrap().len(), before);
-    let dead = front(false).await;
     assert_eq!(
-        dead.call(
-            "/api/tool-approvals/a",
-            r#"{"decision":"deny"}"#,
-            true,
-            true
-        )
-        .await
-        .0,
-        503
+        f.decide("route-1", post).await,
+        (400, json!({"error":"decision must be 'cloud' or 'local'"}))
+    );
+    assert_eq!(
+        f.decide("route-1", r#"{"decision":"local","remember":true}"#)
+            .await,
+        (200, json!({"ok":true}))
+    );
+    assert_eq!(
+        f.wait("route-1").await,
+        (200, json!({"outcome":"local","remember":true}))
+    );
+    assert_eq!(f.open("route-2", "route", json!({})).await.0, 200);
+    assert_eq!(
+        f.decide("route-2", r#"{"decision":["cloud"],"remember":1}"#)
+            .await
+            .0,
+        200
+    );
+    assert_eq!(
+        f.wait("route-2").await,
+        (200, json!({"outcome":"cloud","remember":false}))
     );
 }
 
 #[tokio::test]
-async fn an_account_disabled_during_facts_is_rejected_before_resolution() {
-    let f = front(true).await;
-    *f.node.revoke.lock().unwrap() = Some(server_store::db_path(&f.data));
+async fn missing_other_user_and_disabled_account_never_return_success() {
+    let f = front().await;
     assert_eq!(
-        f.call(
-            "/api/tool-approvals/a",
-            r#"{"decision":"approve"}"#,
-            true,
-            true
-        )
-        .await
-        .0,
-        401
+        f.decide("nobody", r#"{"decision":"bogus"}"#).await,
+        (404, json!({"error":"no such pending approval"}))
     );
-    let seen = f.node.seen.lock().unwrap();
-    assert_eq!(seen.len(), 1);
-    assert!(seen[0].starts_with("post /internal/tool-approvals/facts "));
+    // Another account's question: invisible, even to the coercion (owner check comes first).
+    let open = json!({"user":STRANGER,"id":"theirs","kind":"write"});
+    assert_eq!(f.op("approvals/open", open).await.0, 200);
+    assert_eq!(f.decide("theirs", r#"{"decision":"approve"}"#).await.0, 404);
+    assert_eq!(
+        f.decide("theirs", r#"{"decision":{"toString":null}}"#)
+            .await
+            .0,
+        404
+    );
+    assert_eq!(
+        f.op("approvals/cancel", json!({"user":f.user,"id":"theirs"}))
+            .await,
+        (200, json!({"cancelled":false}))
+    );
+    assert_eq!(
+        f.op("approvals/wait", json!({"user":f.user,"id":"theirs"}))
+            .await
+            .0,
+        404
+    );
+    // The owner's own: JavaScript coercion errors survive, after the lookup.
+    assert_eq!(f.open("mine", "write", json!({})).await.0, 200);
+    assert_eq!(
+        f.decide("mine", r#"{"decision":{"toString":null}}"#)
+            .await
+            .0,
+        500
+    );
+    // A disabled account answers nothing and consumes nothing.
+    let c = Connection::open(server_store::db_path(&f.data)).unwrap();
+    c.execute("UPDATE users SET disabled_at=1 WHERE id=?1", [&f.user])
+        .unwrap();
+    assert_eq!(f.decide("mine", r#"{"decision":"approve"}"#).await.0, 401);
+    c.execute("UPDATE users SET disabled_at=NULL WHERE id=?1", [&f.user])
+        .unwrap();
+    assert_eq!(f.decide("mine", r#"{"decision":"deny"}"#).await.0, 200);
+    assert_eq!(f.wait("mine").await, (200, json!({"outcome":"deny"})));
+}
+
+#[tokio::test]
+async fn a_held_account_lock_is_a_generic_503_and_consumes_nothing() {
+    let f = front().await;
+    assert_eq!(f.open("busy", "write", json!({})).await.0, 200);
+    let c = Connection::open(server_store::db_path(&f.data)).unwrap();
+    c.execute_batch("BEGIN IMMEDIATE").unwrap();
+    let (status, body) = f.decide("busy", r#"{"decision":"approve"}"#).await;
+    c.execute_batch("ROLLBACK").unwrap();
+    assert_eq!(status, 503, "{body}");
+    assert!(!body.to_string().contains("SQLITE"));
+    assert_eq!(f.decide("busy", r#"{"decision":"approve"}"#).await.0, 200);
+}
+
+/// #679: the person left while the card was open. Node drops its wait; the question is withdrawn,
+/// so a later answer finds nothing, is never recorded as declined and grants nothing.
+#[tokio::test]
+async fn a_dropped_wait_stops_the_question_and_a_late_answer_finds_nothing() {
+    let f = front().await;
+    let b = f.binding("qa-one", "space:free").await;
+    let extra = json!({"chat":"qa-one","scope":"space:free","binding":b});
+    assert_eq!(f.open("ap-left", "write", extra).await.0, 200);
+    let mut wait = TcpStream::connect(f.store).await.unwrap();
+    let body = json!({"user":f.user,"id":"ap-left"}).to_string();
+    wait.write_all(format!("POST /v1/approvals/wait HTTP/1.1\r\nhost: 127.0.0.1\r\nx-noevia-store-token: {STORE_TOKEN}\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    drop(wait);
+    let mut gone = false;
+    for _ in 0..20 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        // `kind` is read without consuming: a 404 on a choice the card never takes.
+        if f.decide("ap-left", r#"{"decision":"cloud"}"#).await.0 == 404 {
+            gone = true;
+            break;
+        }
+    }
+    assert!(gone, "withdrawn within 1 s of the dropped wait");
+    assert_eq!(
+        f.decide("ap-left", r#"{"decision":"approve_all"}"#).await.0,
+        404
+    );
+    assert!(!f.granted("qa-one", "space:free", &b).await);
+}
+
+#[tokio::test]
+async fn approve_all_grants_its_chat_scope_and_binding_and_a_move_or_delete_revokes_it() {
+    let f = front().await;
+    let b = f.binding("qa-one", "space:free").await;
+    assert!(!f.granted("qa-one", "space:free", &b).await);
+    let extra = json!({"chat":"qa-one","scope":"space:free","binding":b});
+    assert_eq!(f.open("ap-all", "write", extra.clone()).await.0, 200);
+    assert_eq!(
+        f.decide("ap-all", r#"{"decision":"approve_all"}"#).await.0,
+        200
+    );
+    assert_eq!(f.wait("ap-all").await, (200, json!({"outcome":"approve"})));
+    assert!(f.granted("qa-one", "space:free", &b).await);
+    assert!(!f.granted("qa-one", "project:qa-p", &b).await, "#917 scope");
+    assert!(!f.granted("qa-one", "space:free", &Value::Null).await);
+    let two = f.binding("qa-two", "space:free").await;
+    assert!(
+        !f.granted("qa-two", "space:free", &two).await,
+        "one chat only"
+    );
+    // The store's move (Node's turn or the public route): the generation moves, the grant goes.
+    let (status, _) = f
+        .op(
+            "chat/move",
+            json!({"user":f.user,"chat":"qa-one","projectId":"qa-p"}),
+        )
+        .await;
+    assert_eq!(status, 200);
+    assert!(!f.granted("qa-one", "space:free", &b).await);
+    let moved = f.binding("qa-one", "project:qa-p").await;
+    assert!(!f.granted("qa-one", "project:qa-p", &moved).await);
+    // revokeChatGrant.
+    let extra = json!({"chat":"qa-two","scope":"space:free","binding":two});
+    assert_eq!(f.open("ap-two", "write", extra.clone()).await.0, 200);
+    assert_eq!(
+        f.decide("ap-two", r#"{"decision":"approve_all"}"#).await.0,
+        200
+    );
+    assert!(f.granted("qa-two", "space:free", &two).await);
+    assert_eq!(
+        f.op("approvals/revoke", json!({"user":f.user,"chat":"qa-two"}))
+            .await,
+        (200, json!({"revoked":true}))
+    );
+    assert!(!f.granted("qa-two", "space:free", &two).await);
+    // The public delete drops it too.
+    assert_eq!(f.open("ap-three", "write", extra).await.0, 200);
+    assert_eq!(
+        f.decide("ap-three", r#"{"decision":"approve_all"}"#)
+            .await
+            .0,
+        200
+    );
+    assert!(f.granted("qa-two", "space:free", &two).await);
+    let head = format!(
+        "DELETE /api/freechats/qa-two HTTP/1.1\r\nhost: front.test\r\norigin: {ORIGIN}\r\ncookie: {}\r\nx-csrf-token: {}\r\n",
+        f.jar, f.csrf
+    );
+    let (status, body) = http(f.addr, &head, "").await;
+    assert_eq!(status, 200, "{body}");
+    assert!(!f.granted("qa-two", "space:free", &two).await);
+}
+
+#[tokio::test]
+async fn store_ops_need_the_secret_and_well_formed_questions() {
+    let f = front().await;
+    let head = "POST /v1/approvals/open HTTP/1.1\r\nhost: 127.0.0.1\r\n";
+    let body = json!({"user":f.user,"id":"x","kind":"write"}).to_string();
+    assert_eq!(http(f.store, head, &body).await.0, 401);
+    let bad = format!("{head}x-noevia-store-token: not-the-secret-0123456789abcdef\r\n");
+    assert_eq!(http(f.store, &bad, &body).await.0, 401);
+    assert_eq!(f.open("x", "other", json!({})).await.0, 400);
+    assert_eq!(f.open("", "write", json!({})).await.0, 400);
+    assert_eq!(f.open("x", "write", json!({"chat":1})).await.0, 400);
+    assert_eq!(
+        f.op("approvals/open", json!({"id":"x","kind":"write"}))
+            .await
+            .0,
+        400
+    );
+    assert_eq!(f.open("x", "write", json!({})).await.0, 200);
+    assert_eq!(
+        f.open("x", "route", json!({})).await,
+        (
+            409,
+            json!({"error":"approval already open","code":"APPROVAL_EXISTS"})
+        )
+    );
+    assert_eq!(f.wait("never-opened").await.0, 404);
+    assert_eq!(
+        f.op("approvals/cancel", json!({"user":f.user,"id":"x"}))
+            .await,
+        (200, json!({"cancelled":true}))
+    );
+    assert_eq!(f.decide("x", r#"{"decision":"approve"}"#).await.0, 404);
 }

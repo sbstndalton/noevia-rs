@@ -128,7 +128,8 @@ pub enum Native {
     ToolboxesPermitted,
     /// POST /api/models/autotune/settings and every other method's refusal (#2287).
     AutotuneSettings,
-    /// POST /api/tool-approvals/{approvalId}: public decision policy, pending state in Node.
+    /// POST /api/tool-approvals/{approvalId}: public decision policy, answered from the front's
+    /// approval registry (approval_registry.rs, port contract S9).
     ToolApprovals,
     /// GET /api/toolboxes and every other method's 405 (#2281).
     ToolboxPicker,
@@ -1525,6 +1526,7 @@ mod tests {
         }
         assert_eq!(dispatch("POST", "/api/tool-approvals/a/extra"), None);
         assert!(crate::FEATURES.contains(&"rust-tool-approvals"));
+        assert!(crate::FEATURES.contains(&"rust-approval-registry"));
     }
 
     /// sbstndalton/noevia#2191 round 9: a project's configuration, its instruction skills and a

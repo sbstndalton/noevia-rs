@@ -778,6 +778,14 @@ pub async fn serve(
     )
     .then(|| (Arc::clone(app), authn.clone(), data_dir.clone()));
     let user = authn.user.id;
+    // Port contract S9: a chat's move or delete revokes its "Allow for this chat" grant at once
+    // (the registry also refuses any grant whose live context changed).
+    let revoke_grant = match &route {
+        Route::MoveChat { chat }
+        | Route::DeleteFreeChat { chat }
+        | Route::DeleteChat { chat, .. } => Some((Arc::clone(app), user.clone(), chat.clone())),
+        _ => None,
+    };
     // The context GET writes too (getProject's self-heal), so it is re-gated as well; so do the
     // source reads, whose getProject may save the same way.
     let writes = matches!(
@@ -1002,6 +1010,9 @@ pub async fn serve(
         })
     })
     .await;
+    if let Some((app, user, chat)) = revoke_grant {
+        app.approvals.revoke(&user, &chat);
+    }
     if let (Some((app, authn, data_dir)), Ok(Ok(r))) = (sweep_inputs, &done) {
         if r.status == 200 {
             // Detached, as core's deleteProject never awaited its sweep; the job is durable in the

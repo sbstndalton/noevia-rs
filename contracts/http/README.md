@@ -1833,6 +1833,25 @@ The bridge checks the active account, owner, kind and generation synchronously b
 resolver; invalid choices never consume it. Routing remember remains strictly boolean and cannot grant writes.
 The old public Node handler is deleted and its bypass returns `RUST_TOOL_APPROVALS_OWNED`.
 Release assembly and startup require the capability and refusal together; an old/old pair remains a valid rollback.
+
+## Port contract 2026-11-04 S9: the approval registry
+
+`rust-approval-registry` moves the pending approvals themselves into the front (`approval_registry.rs`):
+the write questions, the routing questions (#778) and the chat-wide "Allow for this chat" grants. The
+#2282 facts/resolve bridge, Node's `rust-tool-approval-bridge.cjs` and the spawned resolve task are gone:
+the public decision route consumes the answer in this process, inside cowork.db's IMMEDIATE writer lock
+after a live check of the account. Node's turn uses the private store: `POST /v1/approvals/open` before it
+shows the card, then `POST /v1/approvals/wait`, a long-poll that ends with `approve`, `deny`, `timeout`
+or the routing choice. When Node drops the wait (the person left), the question is withdrawn, so a late
+answer is a 404 and nothing is recorded as declined (#679). `granted` and `revoke` replace
+`chatWideApproved` and `revokeChatGrant`. The rules are Node's: 5 minutes to answer, a 1 hour grant bound
+to its scope and to the permission binding. The registry also compares a grant with the chat's live grant
+context on every check, so a move (new generation), a delete (tombstone) or a restart (new start id)
+revokes it; the public move and delete routes drop it at once.
+
+Nothing survives a restart, as before: the registry is in-memory and the supervisor restarts the front
+and Node together under a new start id. Core's marker is `server/rust-approval-registry.cjs`, required
+from `index.cjs`. Assembly and startup refuse mixed pairs, and old/old remains a valid rollback.
 This supersedes the earlier sections calling the public approval endpoint chat-bound; the pending state still is.
 
 

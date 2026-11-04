@@ -1,0 +1,1016 @@
+//! The chat approval registry (port contract 2026-11-04 S9, capability `rust-approval-registry`):
+//! the pending write approvals, the routing questions ("Send to cloud / Keep local", #778) and the
+//! per-chat "Allow for this chat" grants. They lived in Node's memory (core approvals.cjs, behind
+//! the #2282 facts/resolve bridge); they now live here, in the front, beside the public decision
+//! route (tool_approval_routes.rs) that answers them. Node's turn asks through the private store
+//! (project_store.rs `/v1/approvals/*`).
+//!
+//! The rules are Node's:
+//! - A question waits 5 minutes ([`TIMEOUT`]). Silence is a timeout, never an approval.
+//! - A question belongs to one user; nobody else can see or answer it.
+//! - A write question takes `approve`, `deny` or `approve_all`. A routing question takes `cloud`
+//!   or `local` and a strictly boolean `remember`. Any other choice is refused and the question
+//!   stays open.
+//! - `approve_all` grants the chat for 1 hour ([`GRANT_TTL`]), only in the scope it was given in
+//!   and only for the permission binding (canonical chat id, tagged holder, generation, container
+//!   start) the question carried. Without a chat, a scope or a valid binding it approves this one
+//!   call only.
+//! - A grant is honoured only while the chat's live grant context, read from the store, is still
+//!   exactly the one it was given for. A move bumps the generation, a delete tombstones the chat and
+//!   a restart changes the start id, so each of them revokes the grant at the authority. Moves and
+//!   deletes through the public routes also drop it at once ([`Registry::revoke`]).
+//! - Node waits with a long-poll ([`Registry::wait`]). When Node drops that request (the person
+//!   left, #679) the question is gone: an answer arriving later finds nothing, and nothing is
+//!   recorded as declined.
+//!
+//! What survives a restart: nothing, as before. Everything here is in this process's memory, and
+//! the web supervisor runs the front and Node as one unit under one start id (both stop when
+//! either does), so a restart re-asks rather than honouring a decision made for a turn that no
+//! longer exists. A grant made before a restart could not be honoured after it anyway: its binding
+//! names the old start id.
+use serde_json::{json, Value};
+use server_projects::chat_move::{self, GrantContext, Holder};
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Mutex;
+use tokio::sync::oneshot;
+use tokio::time::{Duration, Instant};
+
+/// approvals.cjs `timeoutMs`.
+pub const TIMEOUT: Duration = Duration::from_secs(5 * 60);
+/// approvals.cjs `ttlMs`.
+pub const GRANT_TTL: Duration = Duration::from_secs(60 * 60);
+/// Open questions held at once, across every user. Node had no bound; a turn asks one at a time.
+pub const MAX_PENDING: usize = 4096;
+/// Grants held at once (expired ones are swept first).
+pub const MAX_GRANTS: usize = 4096;
+/// The longest question id accepted (Node's are `ap-<uuid>` or a bare uuid).
+pub const MAX_ID: usize = 128;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    Write,
+    Route,
+}
+impl Kind {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "write" => Some(Self::Write),
+            "route" => Some(Self::Route),
+            _ => None,
+        }
+    }
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Write => "write",
+            Self::Route => "route",
+        }
+    }
+}
+
+/// How a question ended, as Node's turn reads it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Outcome {
+    Approve,
+    Deny,
+    Timeout,
+    Cloud { remember: bool },
+    Local { remember: bool },
+}
+impl Outcome {
+    pub fn json(&self) -> Value {
+        match self {
+            Self::Approve => json!({"outcome":"approve"}),
+            Self::Deny => json!({"outcome":"deny"}),
+            Self::Timeout => json!({"outcome":"timeout"}),
+            Self::Cloud { remember } => json!({"outcome":"cloud","remember":remember}),
+            Self::Local { remember } => json!({"outcome":"local","remember":remember}),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OpenError {
+    Invalid,
+    Duplicate,
+    Capacity,
+    Unavailable,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DecideError {
+    /// No such open question for this user (never asked, answered, expired, stopped).
+    Missing,
+    /// Not a choice this kind of question takes; it stays open.
+    Choice,
+    Unavailable,
+}
+
+/// chat-grant-context.cjs `safeId`.
+pub fn safe_id(raw: &str) -> String {
+    raw.chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+        .collect()
+}
+
+/// chat-grant-context.cjs `binding(user, raw, scope, context)`, as Node sends it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Binding {
+    pub user: String,
+    pub canonical: String,
+    pub scope: String,
+    pub context: GrantContext,
+}
+
+fn holder(v: &Value) -> Option<Holder> {
+    let o = v.as_object()?;
+    match (o.len(), o.get("kind").and_then(Value::as_str)) {
+        (1, Some("free")) => Some(Holder::Free),
+        (1, Some("absent")) => Some(Holder::Absent),
+        (2, Some("project")) => match o.get("id").and_then(Value::as_str) {
+            Some(id) if !id.is_empty() => Some(Holder::Project(id.to_owned())),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// chat-grant-context.cjs `decimal`: a canonical decimal no larger than u64.
+fn decimal(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 20
+        && s.bytes().all(|b| b.is_ascii_digit())
+        && (s == "0" || !s.starts_with('0'))
+        && s.parse::<u64>().is_ok()
+}
+
+fn start_hex(s: &str) -> bool {
+    s.len() == 32
+        && s.bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+impl Binding {
+    /// chat-grant-context.cjs `validate` + `binding`: the shape Node built, for `start`. A
+    /// tombstoned context is never a binding.
+    pub fn parse(v: &Value, start: &str) -> Option<Self> {
+        let o = v.as_object()?;
+        let user = o.get("user")?.as_str().filter(|s| !s.is_empty())?;
+        let scope = o.get("scope")?.as_str().filter(|s| !s.is_empty())?;
+        let canonical = o.get("canonicalChatId")?.as_str()?;
+        let c = o.get("context")?.as_object()?;
+        let context = GrantContext {
+            canonical: c.get("canonicalChatId")?.as_str()?.to_owned(),
+            holder: holder(c.get("holder")?)?,
+            generation: c
+                .get("generation")?
+                .as_str()
+                .filter(|g| decimal(g))?
+                .to_owned(),
+            start: c
+                .get("start")?
+                .as_str()
+                .filter(|s| start_hex(s))?
+                .to_owned(),
+            tombstoned: c.get("tombstoned")?.as_bool()?,
+        };
+        if canonical.is_empty()
+            || safe_id(canonical) != canonical
+            || context.canonical != canonical
+            || context.start != start
+            || context.tombstoned
+        {
+            return None;
+        }
+        Some(Binding {
+            user: user.to_owned(),
+            canonical: canonical.to_owned(),
+            scope: scope.to_owned(),
+            context,
+        })
+    }
+}
+
+/// Where the live grant context is read: the store's data dir and this start's id.
+#[derive(Debug, Clone)]
+pub struct Live {
+    pub data_dir: PathBuf,
+    pub start: String,
+}
+impl Live {
+    /// chat_move::grant_context, the authority Node's binding came from (blocking: file locks).
+    fn context(&self, user: &str, chat: &str) -> Option<GrantContext> {
+        chat_move::grant_context(&self.data_dir, user, chat, &self.start).ok()
+    }
+}
+
+struct Pending {
+    user: String,
+    kind: Kind,
+    chat: Option<String>,
+    scope: Option<String>,
+    binding: Option<Binding>,
+    expires: Instant,
+    sender: Option<oneshot::Sender<Outcome>>,
+    /// Taken by the one wait; `Some` until Node attaches.
+    receiver: Option<oneshot::Receiver<Outcome>>,
+}
+
+struct Grant {
+    until: Instant,
+    scope: String,
+    binding: Binding,
+}
+
+#[derive(Default)]
+struct State {
+    pending: HashMap<String, Pending>,
+    grants: HashMap<(String, String), Grant>,
+}
+
+pub struct Registry {
+    state: Mutex<State>,
+    timeout: Duration,
+    ttl: Duration,
+    live: Option<Live>,
+}
+
+/// What [`Registry::open`] takes (approvals.cjs `awaitApproval` / `awaitRouteChoice`).
+#[derive(Debug, Clone)]
+pub struct Question {
+    pub id: String,
+    pub user: String,
+    pub kind: Kind,
+    pub chat: Option<String>,
+    pub scope: Option<String>,
+    pub binding: Option<Value>,
+}
+
+/// Removes the question when Node's wait ends without an answer (its request was dropped).
+struct Waiting<'a> {
+    registry: &'a Registry,
+    id: String,
+    armed: bool,
+}
+impl Drop for Waiting<'_> {
+    fn drop(&mut self) {
+        if self.armed {
+            if let Ok(mut s) = self.registry.state.lock() {
+                s.pending.remove(&self.id);
+            }
+        }
+    }
+}
+
+impl Registry {
+    pub fn new(live: Option<Live>) -> Self {
+        Self::with_times(live, TIMEOUT, GRANT_TTL)
+    }
+
+    pub fn with_times(live: Option<Live>, timeout: Duration, ttl: Duration) -> Self {
+        Registry {
+            state: Mutex::new(State::default()),
+            timeout,
+            ttl,
+            live,
+        }
+    }
+
+    fn sweep(s: &mut State, now: Instant) {
+        s.pending.retain(|_, p| p.expires > now);
+        s.grants.retain(|_, g| g.until > now);
+    }
+
+    /// Opens a question, before Node shows its card: an answer that comes before Node's wait
+    /// attaches is kept for that wait.
+    pub fn open(&self, q: Question) -> Result<(), OpenError> {
+        if q.user.is_empty() || q.id.is_empty() || q.id.len() > MAX_ID {
+            return Err(OpenError::Invalid);
+        }
+        // A binding Node could not build is no binding: approve_all then approves once.
+        let binding = match (&self.live, &q.binding) {
+            (Some(live), Some(v)) => Binding::parse(v, &live.start),
+            _ => None,
+        };
+        let now = Instant::now();
+        let mut s = self.state.lock().map_err(|_| OpenError::Unavailable)?;
+        Self::sweep(&mut s, now);
+        if s.pending.contains_key(&q.id) {
+            return Err(OpenError::Duplicate);
+        }
+        if s.pending.len() >= MAX_PENDING {
+            return Err(OpenError::Capacity);
+        }
+        let (sender, receiver) = oneshot::channel();
+        s.pending.insert(
+            q.id,
+            Pending {
+                user: q.user,
+                kind: q.kind,
+                chat: q.chat,
+                scope: q.scope.filter(|x| !x.is_empty()),
+                binding,
+                expires: now + self.timeout,
+                sender: Some(sender),
+                receiver: Some(receiver),
+            },
+        );
+        Ok(())
+    }
+
+    /// The question's kind, for its owner only (the public route's lookup before coercion).
+    pub fn kind(&self, user: &str, id: &str) -> Result<Option<Kind>, DecideError> {
+        let s = self.state.lock().map_err(|_| DecideError::Unavailable)?;
+        let now = Instant::now();
+        Ok(s.pending
+            .get(id)
+            .filter(|p| p.user == user && p.expires > now && p.sender.is_some())
+            .map(|p| p.kind))
+    }
+
+    /// The live context an `approve_all` on this question would be granted for, read outside
+    /// the registry's lock (blocking). `None`: no grant can be made.
+    pub fn grant_context(&self, user: &str, id: &str) -> Option<GrantContext> {
+        let live = self.live.as_ref()?;
+        let chat = {
+            let s = self.state.lock().ok()?;
+            let p = s.pending.get(id).filter(|p| p.user == user)?;
+            p.binding.as_ref()?;
+            p.chat.clone()?
+        };
+        live.context(user, &chat)
+    }
+
+    /// Answers the question. `live` is [`Registry::grant_context`]'s answer, read before.
+    pub fn decide(
+        &self,
+        user: &str,
+        id: &str,
+        decision: &str,
+        remember: bool,
+        live: Option<&GrantContext>,
+    ) -> Result<(), DecideError> {
+        let now = Instant::now();
+        let mut s = self.state.lock().map_err(|_| DecideError::Unavailable)?;
+        let p = s
+            .pending
+            .get(id)
+            .filter(|p| p.user == user && p.expires > now && p.sender.is_some())
+            .ok_or(DecideError::Missing)?;
+        let outcome = match (p.kind, decision) {
+            (Kind::Write, "approve" | "approve_all") => Outcome::Approve,
+            (Kind::Write, "deny") => Outcome::Deny,
+            (Kind::Route, "cloud") => Outcome::Cloud { remember },
+            (Kind::Route, "local") => Outcome::Local { remember },
+            _ => return Err(DecideError::Choice),
+        };
+        let grant = if decision == "approve_all" {
+            Self::grant_for(p, user, live)
+        } else {
+            None
+        };
+        if let Some((key, scope, binding)) = grant {
+            Self::sweep(&mut s, now);
+            if s.grants.len() < MAX_GRANTS || s.grants.contains_key(&key) {
+                let until = now + self.ttl;
+                s.grants.insert(
+                    key,
+                    Grant {
+                        until,
+                        scope,
+                        binding,
+                    },
+                );
+            }
+        }
+        let attached = match s.pending.get_mut(id) {
+            Some(p) => {
+                if let Some(tx) = p.sender.take() {
+                    let _ = tx.send(outcome);
+                }
+                p.receiver.is_none()
+            }
+            None => return Err(DecideError::Missing),
+        };
+        if attached {
+            s.pending.remove(id);
+        }
+        Ok(())
+    }
+
+    /// approvals.cjs's `approve_all` condition: a chat, a scope, a binding for this user, scope
+    /// and chat, a holder that is not absent, and (here) the live context still that binding's.
+    fn grant_for(
+        p: &Pending,
+        user: &str,
+        live: Option<&GrantContext>,
+    ) -> Option<((String, String), String, Binding)> {
+        let chat = safe_id(p.chat.as_deref()?);
+        let scope = p.scope.clone()?;
+        let b = p.binding.clone()?;
+        let live = live?;
+        if chat.is_empty()
+            || b.user != user
+            || b.scope != scope
+            || b.canonical != chat
+            || b.context.holder == Holder::Absent
+            || *live != b.context
+        {
+            return None;
+        }
+        Some(((user.to_owned(), chat), scope, b))
+    }
+
+    /// Node's wait: the question's outcome, a timeout at its expiry, or (when Node drops this
+    /// future, its request gone) the question removed. `Err` when there is no such question for
+    /// this user, or it is already being waited for.
+    pub async fn wait(&self, user: &str, id: &str) -> Result<Outcome, DecideError> {
+        let (receiver, expires) = {
+            let mut s = self.state.lock().map_err(|_| DecideError::Unavailable)?;
+            let p = s
+                .pending
+                .get_mut(id)
+                .filter(|p| p.user == user)
+                .ok_or(DecideError::Missing)?;
+            let rx = p.receiver.take().ok_or(DecideError::Missing)?;
+            (rx, p.expires)
+        };
+        let mut guard = Waiting {
+            registry: self,
+            id: id.to_owned(),
+            armed: true,
+        };
+        let outcome = tokio::select! {
+            got = receiver => got.unwrap_or(Outcome::Timeout),
+            () = tokio::time::sleep_until(expires) => Outcome::Timeout,
+        };
+        // Answered or timed out: the entry goes either way (decide removed an attached one).
+        drop(
+            guard
+                .registry
+                .state
+                .lock()
+                .map(|mut s| s.pending.remove(id)),
+        );
+        guard.armed = false;
+        Ok(outcome)
+    }
+
+    /// Withdraws a question Node opened but will not wait for (its turn stopped first).
+    pub fn cancel(&self, user: &str, id: &str) -> bool {
+        let Ok(mut s) = self.state.lock() else {
+            return false;
+        };
+        if s.pending.get(id).is_some_and(|p| p.user == user) {
+            s.pending.remove(id);
+            return true;
+        }
+        false
+    }
+
+    /// approvals.cjs `chatWideApproved(user, chat, scope, binding)`, then the live context
+    /// (blocking): a grant whose chat moved, was deleted or outlived its start is revoked here.
+    pub fn granted(&self, user: &str, chat: &str, scope: &str, binding: Option<&Value>) -> bool {
+        let canonical = safe_id(chat);
+        let Some(live) = self.live.as_ref() else {
+            return false;
+        };
+        if user.is_empty() || canonical.is_empty() || scope.is_empty() {
+            return false;
+        }
+        let Some(b) = binding.and_then(|v| Binding::parse(v, &live.start)) else {
+            return false;
+        };
+        let key = (user.to_owned(), canonical.clone());
+        let grant = {
+            let Ok(mut s) = self.state.lock() else {
+                return false;
+            };
+            let now = Instant::now();
+            match s.grants.get(&key) {
+                None => return false,
+                Some(g) if now >= g.until => {
+                    s.grants.remove(&key);
+                    return false;
+                }
+                Some(g) => (g.scope.clone(), g.binding.clone(), g.until),
+            }
+        };
+        let (gscope, gbinding, until) = grant;
+        if gscope != scope || b.user != user || b.canonical != canonical || gbinding != b {
+            return false;
+        }
+        let now_live = live.context(user, chat);
+        if now_live.as_ref() == Some(&gbinding.context) {
+            return true;
+        }
+        // Moved, deleted or restarted: the grant is gone (unless a new one replaced it meanwhile).
+        if let Ok(mut s) = self.state.lock() {
+            if s.grants
+                .get(&key)
+                .is_some_and(|g| g.until == until && g.binding == gbinding)
+            {
+                s.grants.remove(&key);
+            }
+        }
+        false
+    }
+
+    /// approvals.cjs `revokeChatGrant(user, chat)`; also run by the public move and delete.
+    pub fn revoke(&self, user: &str, chat: &str) -> bool {
+        let canonical = safe_id(chat);
+        if user.is_empty() || canonical.is_empty() {
+            return false;
+        }
+        self.state
+            .lock()
+            .map(|mut s| s.grants.remove(&(user.to_owned(), canonical)).is_some())
+            .unwrap_or(false)
+    }
+
+    /// Open questions (tests and diagnostics).
+    pub fn pending_len(&self) -> usize {
+        self.state.lock().map(|s| s.pending.len()).unwrap_or(0)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    const START: &str = "0123456789abcdef0123456789abcdef";
+    const OWNER: &str = "11111111-2222-4333-8444-555555555555";
+    const OTHER: &str = "11111111-2222-4333-8444-666666666666";
+
+    fn binding(user: &str, chat: &str, scope: &str, holder: Value, generation: &str) -> Value {
+        json!({"user":user,"canonicalChatId":chat,"scope":scope,"context":{
+            "canonicalChatId":chat,"holder":holder,"generation":generation,"start":START,"tombstoned":false}})
+    }
+    fn ctx(chat: &str, holder: Holder, generation: &str) -> GrantContext {
+        GrantContext {
+            canonical: chat.into(),
+            holder,
+            generation: generation.into(),
+            start: START.into(),
+            tombstoned: false,
+        }
+    }
+    /// A registry whose live context is a temp store: a free chat `c1` (and `c2`) for `owner`.
+    fn store() -> (tempfile::TempDir, Live) {
+        let dir = tempfile::tempdir().unwrap();
+        for user in [OWNER, OTHER] {
+            let u = server_projects::store::user_dir(dir.path(), user).unwrap();
+            std::fs::create_dir_all(&u).unwrap();
+            std::fs::write(
+                u.join(server_projects::chats::FREE_CHATS_FILE),
+                r#"[{"id":"c1","title":"Synthetic"},{"id":"c2","title":"Synthetic two"}]"#,
+            )
+            .unwrap();
+            std::fs::write(
+                u.join(server_projects::store::PROJECTS_FILE),
+                r#"{"projects":[{"id":"qa-p","chats":[]}]}"#,
+            )
+            .unwrap();
+        }
+        let live = Live {
+            data_dir: dir.path().to_path_buf(),
+            start: START.into(),
+        };
+        (dir, live)
+    }
+    fn write_q(
+        id: &str,
+        user: &str,
+        chat: Option<&str>,
+        scope: Option<&str>,
+        b: Option<Value>,
+    ) -> Question {
+        Question {
+            id: id.into(),
+            user: user.into(),
+            kind: Kind::Write,
+            chat: chat.map(Into::into),
+            scope: scope.map(Into::into),
+            binding: b,
+        }
+    }
+    fn route_q(id: &str, user: &str) -> Question {
+        Question {
+            id: id.into(),
+            user: user.into(),
+            kind: Kind::Route,
+            chat: Some("c1".into()),
+            scope: None,
+            binding: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn owner_kind_and_choice_are_checked_before_an_answer_is_consumed() {
+        let r = Registry::new(None);
+        r.open(route_q("a", OWNER)).unwrap();
+        assert_eq!(r.kind(OTHER, "a"), Ok(None), "another user cannot see it");
+        assert_eq!(r.kind(OWNER, "a"), Ok(Some(Kind::Route)));
+        assert_eq!(
+            r.decide(OTHER, "a", "cloud", false, None),
+            Err(DecideError::Missing)
+        );
+        assert_eq!(
+            r.decide(OWNER, "a", "approve_all", false, None),
+            Err(DecideError::Choice)
+        );
+        assert_eq!(
+            r.pending_len(),
+            1,
+            "a refused choice leaves the question open"
+        );
+        r.decide(OWNER, "a", "cloud", false, None).unwrap();
+        assert_eq!(
+            r.wait(OWNER, "a").await,
+            Ok(Outcome::Cloud { remember: false })
+        );
+        assert_eq!(
+            r.decide(OWNER, "a", "local", false, None),
+            Err(DecideError::Missing)
+        );
+        assert_eq!(r.pending_len(), 0);
+        r.open(write_q("w", OWNER, Some("c1"), Some("space:free"), None))
+            .unwrap();
+        assert_eq!(
+            r.decide(OWNER, "w", "cloud", false, None),
+            Err(DecideError::Choice)
+        );
+        assert_eq!(r.open(route_q("w", OWNER)), Err(OpenError::Duplicate));
+    }
+
+    #[tokio::test]
+    async fn an_answer_before_the_wait_attaches_is_kept_and_remember_is_strict() {
+        let r = Registry::new(None);
+        r.open(route_q("a", OWNER)).unwrap();
+        r.decide(OWNER, "a", "local", true, None).unwrap();
+        assert_eq!(
+            r.decide(OWNER, "a", "local", true, None),
+            Err(DecideError::Missing)
+        );
+        assert_eq!(
+            r.wait(OWNER, "a").await,
+            Ok(Outcome::Local { remember: true })
+        );
+        assert_eq!(r.wait(OWNER, "a").await, Err(DecideError::Missing));
+    }
+
+    #[tokio::test]
+    async fn a_waiting_turn_receives_the_answer() {
+        let r = Arc::new(Registry::new(None));
+        r.open(write_q("w", OWNER, None, None, None)).unwrap();
+        let waiter = {
+            let r = Arc::clone(&r);
+            tokio::spawn(async move { r.wait(OWNER, "w").await })
+        };
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert_eq!(
+            r.wait(OWNER, "w").await,
+            Err(DecideError::Missing),
+            "one waiter"
+        );
+        r.decide(OWNER, "w", "deny", false, None).unwrap();
+        assert_eq!(waiter.await.unwrap(), Ok(Outcome::Deny));
+        assert_eq!(r.pending_len(), 0);
+    }
+
+    #[tokio::test]
+    async fn silence_times_out_and_a_late_answer_finds_nothing() {
+        let r = Registry::with_times(None, Duration::from_millis(30), GRANT_TTL);
+        r.open(route_q("x", OWNER)).unwrap();
+        assert_eq!(r.wait(OWNER, "x").await, Ok(Outcome::Timeout));
+        assert_eq!(
+            r.decide(OWNER, "x", "cloud", false, None),
+            Err(DecideError::Missing)
+        );
+        r.open(route_q("y", OWNER)).unwrap();
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        assert_eq!(r.kind(OWNER, "y"), Ok(None), "expired before anyone waited");
+        assert_eq!(
+            r.decide(OWNER, "y", "cloud", false, None),
+            Err(DecideError::Missing)
+        );
+    }
+
+    /// #679: the turn stopped while the card was open (Node dropped its wait). The question is
+    /// gone; a later answer is a 404, never a recorded decline, and makes no grant.
+    #[tokio::test]
+    async fn a_dropped_wait_stops_the_question_rather_than_declining_it() {
+        let (_d, live) = store();
+        let r = Arc::new(Registry::new(Some(live)));
+        let b = binding(OWNER, "c1", "space:free", json!({"kind":"free"}), "0");
+        r.open(write_q(
+            "w",
+            OWNER,
+            Some("c1"),
+            Some("space:free"),
+            Some(b.clone()),
+        ))
+        .unwrap();
+        let waiter = {
+            let r = Arc::clone(&r);
+            tokio::spawn(async move { r.wait(OWNER, "w").await })
+        };
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        waiter.abort();
+        let _ = waiter.await;
+        assert_eq!(r.pending_len(), 0);
+        let live = r.grant_context(OWNER, "w");
+        assert_eq!(
+            r.decide(OWNER, "w", "approve_all", false, live.as_ref()),
+            Err(DecideError::Missing)
+        );
+        assert!(!r.granted(OWNER, "c1", "space:free", Some(&b)));
+        // Withdrawn before any wait.
+        r.open(write_q("v", OWNER, None, None, None)).unwrap();
+        assert!(!r.cancel(OTHER, "v"));
+        assert!(r.cancel(OWNER, "v"));
+        assert_eq!(
+            r.decide(OWNER, "v", "approve", false, None),
+            Err(DecideError::Missing)
+        );
+    }
+
+    #[tokio::test]
+    async fn approve_all_grants_only_its_scope_binding_and_live_context() {
+        let (dir, live) = store();
+        let r = Registry::new(Some(live));
+        let b = binding(OWNER, "c1", "space:free", json!({"kind":"free"}), "0");
+        r.open(write_q(
+            "w",
+            OWNER,
+            Some("c1"),
+            Some("space:free"),
+            Some(b.clone()),
+        ))
+        .unwrap();
+        let live = r.grant_context(OWNER, "w");
+        assert_eq!(live, Some(ctx("c1", Holder::Free, "0")));
+        r.decide(OWNER, "w", "approve_all", false, live.as_ref())
+            .unwrap();
+        assert_eq!(r.wait(OWNER, "w").await, Ok(Outcome::Approve));
+        assert!(r.granted(OWNER, "c1", "space:free", Some(&b)));
+        assert!(
+            !r.granted(OWNER, "c1", "project:p1", Some(&b)),
+            "#917 scope"
+        );
+        assert!(
+            !r.granted(OWNER, "c1", "space:free", None),
+            "binding required"
+        );
+        assert!(!r.granted(
+            OTHER,
+            "c1",
+            "space:free",
+            Some(&binding(
+                OTHER,
+                "c1",
+                "space:free",
+                json!({"kind":"free"}),
+                "0"
+            ))
+        ));
+        assert!(!r.granted(
+            OWNER,
+            "c2",
+            "space:free",
+            Some(&binding(
+                OWNER,
+                "c2",
+                "space:free",
+                json!({"kind":"free"}),
+                "0"
+            ))
+        ));
+        let stale = binding(OWNER, "c1", "space:free", json!({"kind":"free"}), "1");
+        assert!(
+            !r.granted(OWNER, "c1", "space:free", Some(&stale)),
+            "another generation"
+        );
+        // The chat is moved (its generation bumps): the authority revokes the grant.
+        chat_move::move_chat(
+            dir.path(),
+            OWNER,
+            "c1",
+            Holder::Project("qa-p".into()),
+            None,
+            START,
+        )
+        .unwrap();
+        assert!(!r.granted(OWNER, "c1", "space:free", Some(&b)));
+        // ... and moving it back does not bring the grant back (#814: a move away and back).
+        chat_move::move_chat(dir.path(), OWNER, "c1", Holder::Free, None, START).unwrap();
+        assert!(!r.granted(OWNER, "c1", "space:free", Some(&b)));
+        // A deleted chat: grant again on c2, then tombstone it.
+        let b2 = binding(OWNER, "c2", "space:free", json!({"kind":"free"}), "0");
+        r.open(write_q(
+            "w2",
+            OWNER,
+            Some("c2"),
+            Some("space:free"),
+            Some(b2.clone()),
+        ))
+        .unwrap();
+        let lc = r.grant_context(OWNER, "w2");
+        r.decide(OWNER, "w2", "approve_all", false, lc.as_ref())
+            .unwrap();
+        assert!(r.granted(OWNER, "c2", "space:free", Some(&b2)));
+        let u = server_projects::store::user_dir(dir.path(), OWNER).unwrap();
+        std::fs::write(u.join(server_projects::chats::TOMBSTONES_FILE), r#"["c2"]"#).unwrap();
+        assert!(!r.granted(OWNER, "c2", "space:free", Some(&b2)));
+        std::fs::write(u.join(server_projects::chats::TOMBSTONES_FILE), "[]").unwrap();
+        assert!(
+            !r.granted(OWNER, "c2", "space:free", Some(&b2)),
+            "revoked, not suspended"
+        );
+        // revokeChatGrant.
+        r.open(write_q(
+            "w3",
+            OWNER,
+            Some("c2"),
+            Some("space:free"),
+            Some(b2.clone()),
+        ))
+        .unwrap();
+        let lc = r.grant_context(OWNER, "w3");
+        r.decide(OWNER, "w3", "approve_all", false, lc.as_ref())
+            .unwrap();
+        assert!(r.granted(OWNER, "c2", "space:free", Some(&b2)));
+        assert!(r.revoke(OWNER, "c2"));
+        assert!(!r.granted(OWNER, "c2", "space:free", Some(&b2)));
+    }
+
+    #[tokio::test]
+    async fn approve_all_without_chat_scope_or_binding_approves_once() {
+        let (_d, live) = store();
+        let r = Registry::new(Some(live));
+        let b = binding(OWNER, "c1", "space:free", json!({"kind":"free"}), "0");
+        for (id, q) in [
+            (
+                "a",
+                write_q("a", OWNER, None, Some("space:free"), Some(b.clone())),
+            ),
+            ("b", write_q("b", OWNER, Some("c1"), None, Some(b.clone()))),
+            (
+                "c",
+                write_q("c", OWNER, Some("c1"), Some("space:free"), None),
+            ),
+            (
+                "d",
+                write_q("d", OWNER, Some("c1"), Some("project:p"), Some(b.clone())),
+            ),
+            (
+                "e",
+                write_q(
+                    "e",
+                    OWNER,
+                    Some("c1"),
+                    Some("space:free"),
+                    Some(binding(
+                        OWNER,
+                        "c1",
+                        "space:free",
+                        json!({"kind":"absent"}),
+                        "0",
+                    )),
+                ),
+            ),
+            (
+                "f",
+                write_q(
+                    "f",
+                    OWNER,
+                    Some("c1"),
+                    Some("space:free"),
+                    Some(binding(
+                        OTHER,
+                        "c1",
+                        "space:free",
+                        json!({"kind":"free"}),
+                        "0",
+                    )),
+                ),
+            ),
+        ] {
+            r.open(q).unwrap();
+            let live = r.grant_context(OWNER, id);
+            r.decide(OWNER, id, "approve_all", false, live.as_ref())
+                .unwrap();
+            assert_eq!(r.wait(OWNER, id).await, Ok(Outcome::Approve));
+            assert!(!r.granted(OWNER, "c1", "space:free", Some(&b)), "{id}");
+        }
+        // A binding whose context is no longer live at the answer makes no grant either.
+        r.open(write_q(
+            "g",
+            OWNER,
+            Some("c1"),
+            Some("space:free"),
+            Some(b.clone()),
+        ))
+        .unwrap();
+        let other = ctx("c1", Holder::Free, "7");
+        r.decide(OWNER, "g", "approve_all", false, Some(&other))
+            .unwrap();
+        assert!(!r.granted(OWNER, "c1", "space:free", Some(&b)));
+    }
+
+    #[tokio::test]
+    async fn grants_expire_and_a_restart_honours_nothing() {
+        let (_d, live) = store();
+        let r = Registry::with_times(Some(live.clone()), TIMEOUT, Duration::from_millis(30));
+        let b = binding(OWNER, "c1", "space:free", json!({"kind":"free"}), "0");
+        r.open(write_q(
+            "w",
+            OWNER,
+            Some("c1"),
+            Some("space:free"),
+            Some(b.clone()),
+        ))
+        .unwrap();
+        let lc = r.grant_context(OWNER, "w");
+        r.decide(OWNER, "w", "approve_all", false, lc.as_ref())
+            .unwrap();
+        assert!(r.granted(OWNER, "c1", "space:free", Some(&b)));
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        assert!(
+            !r.granted(OWNER, "c1", "space:free", Some(&b)),
+            "1 h grant, here 30 ms"
+        );
+        // Risk 8: a restart is a new registry under a new start id. Nothing pending or granted
+        // survives, and a binding naming the old start is not even a binding.
+        let r = Registry::new(Some(live.clone()));
+        r.open(write_q(
+            "w",
+            OWNER,
+            Some("c1"),
+            Some("space:free"),
+            Some(b.clone()),
+        ))
+        .unwrap();
+        let lc = r.grant_context(OWNER, "w");
+        r.decide(OWNER, "w", "approve_all", false, lc.as_ref())
+            .unwrap();
+        assert!(r.granted(OWNER, "c1", "space:free", Some(&b)));
+        let restarted = Registry::new(Some(Live {
+            data_dir: live.data_dir.clone(),
+            start: "fedcba9876543210fedcba9876543210".into(),
+        }));
+        assert_eq!(restarted.pending_len(), 0);
+        assert_eq!(restarted.kind(OWNER, "w"), Ok(None));
+        assert!(!restarted.granted(OWNER, "c1", "space:free", Some(&b)));
+        assert!(Binding::parse(&b, "fedcba9876543210fedcba9876543210").is_none());
+    }
+
+    #[test]
+    fn binding_shape_is_node_s() {
+        let ok = binding(
+            OWNER,
+            "c1",
+            "project:p",
+            json!({"kind":"project","id":"p"}),
+            "18446744073709551615",
+        );
+        assert!(Binding::parse(&ok, START).is_some());
+        for bad in [
+            binding(OWNER, "c1", "s", json!({"kind":"project"}), "0"),
+            binding(OWNER, "c1", "s", json!({"kind":"free","id":"x"}), "0"),
+            binding(OWNER, "c1", "s", json!({"kind":"free"}), "01"),
+            binding(
+                OWNER,
+                "c1",
+                "s",
+                json!({"kind":"free"}),
+                "18446744073709551616",
+            ),
+            binding(OWNER, "c!1", "s", json!({"kind":"free"}), "0"),
+            binding("", "c1", "s", json!({"kind":"free"}), "0"),
+            binding(OWNER, "c1", "", json!({"kind":"free"}), "0"),
+            json!({"user":OWNER,"canonicalChatId":"c1","scope":"s","context":{"canonicalChatId":"c1",
+                "holder":{"kind":"free"},"generation":"0","start":START,"tombstoned":true}}),
+            json!({"user":OWNER,"canonicalChatId":"c1","scope":"s","context":{"canonicalChatId":"c2",
+                "holder":{"kind":"free"},"generation":"0","start":START,"tombstoned":false}}),
+        ] {
+            assert!(Binding::parse(&bad, START).is_none(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn ids_and_capacity_are_bounded() {
+        let r = Registry::new(None);
+        assert_eq!(r.open(route_q("", OWNER)), Err(OpenError::Invalid));
+        assert_eq!(
+            r.open(route_q(&"x".repeat(MAX_ID + 1), OWNER)),
+            Err(OpenError::Invalid)
+        );
+        assert_eq!(r.open(route_q("a", "")), Err(OpenError::Invalid));
+        for i in 0..MAX_PENDING {
+            r.open(route_q(&format!("q{i}"), OWNER)).unwrap();
+        }
+        assert_eq!(r.open(route_q("one-more", OWNER)), Err(OpenError::Capacity));
+    }
+}
