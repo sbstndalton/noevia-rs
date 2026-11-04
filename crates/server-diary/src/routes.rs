@@ -643,52 +643,10 @@ impl Diary {
             None
         };
         let raw = if matches!(route, Route::ExternalImport | Route::Edit) {
-            let parsed = match wtf16::parse(raw.as_deref().unwrap_or("")) {
-                Ok(v) => v,
-                Err(wtf16::Refusal::Invalid) => return error_reply(400, "invalid JSON"),
-                Err(_) => return internal(),
-            };
-            let forward = if route == Route::ExternalImport {
-                if parsed.get("sourcePath").as_str().is_none()
-                    || parsed.get("relPath").as_str().is_none()
-                {
-                    return error_reply(400, "sourcePath and relPath required");
-                }
-                JValue::obj([
-                    ("source_path", parsed.get("sourcePath").clone()),
-                    ("rel_path", parsed.get("relPath").clone()),
-                ])
-            } else {
-                if parsed.get("xid").as_str().is_none()
-                    || parsed.get("me").as_str().is_none()
-                    || (!matches!(parsed.get("assistant"), JValue::Undefined)
-                        && parsed.get("assistant").as_str().is_none())
-                {
-                    return error_reply(400, "xid and me required");
-                }
-                if !matches!(parsed.get("base_hash"), JValue::Undefined | JValue::Null)
-                    && parsed.get("base_hash").as_str().is_none()
-                {
-                    return error_reply(400, "base_hash must be a string");
-                }
-                let mut fields = vec![
-                    ("xid", parsed.get("xid").clone()),
-                    ("me", parsed.get("me").clone()),
-                    (
-                        "assistant",
-                        truthy_or(parsed.get("assistant"), &JValue::Str(String::new())).clone(),
-                    ),
-                    (
-                        "month",
-                        truthy_or(parsed.get("month"), &JValue::Null).clone(),
-                    ),
-                ];
-                if parsed.get("base_hash").as_str().is_some() {
-                    fields.push(("base_hash", parsed.get("base_hash").clone()));
-                }
-                JValue::obj(fields)
-            };
-            wtf16::stringify(&forward)
+            match crate::proxy_raw::request(route, raw.as_deref().unwrap_or("")) {
+                Ok(forward) => Some(forward),
+                Err(error) => return error_reply(400, error),
+            }
         } else {
             raw
         };
@@ -714,7 +672,7 @@ impl Diary {
         };
         let reply = self
             .sidecar
-            .fetch_json(
+            .fetch_raw(
                 &tenant,
                 upstream_method,
                 &path,
@@ -722,7 +680,7 @@ impl Diary {
                 timeout,
             )
             .await;
-        let r = match reply {
+        let (ok, status, bytes) = match reply {
             Ok(r) => r,
             Err(e) => return call_failed(e),
         };
@@ -730,10 +688,10 @@ impl Diary {
         if let Some(t) = Arc::get_mut(&mut tenant) {
             t.storage_retry = false;
         }
-        if r.ok && retry && matches!(route, Route::Files | Route::File) {
+        if ok && retry && matches!(route, Route::Files | Route::File) {
             if let Ok(st) = self
                 .sidecar
-                .fetch_json(
+                .fetch_raw(
                     &tenant,
                     Method::GET,
                     "/api/storage-status",
@@ -742,19 +700,20 @@ impl Diary {
                 )
                 .await
             {
-                if st.ok
-                    && st
-                        .body
-                        .as_ref()
-                        .is_some_and(|b| b.get("mode").as_str() == Some("legacy"))
-                {
+                let (ok, _, bytes) = st;
+                if ok && crate::proxy_raw::Doc::body(bytes.as_deref()).is("mode", "\"legacy\"") {
                     if let Some(latch) = &ctx.latch {
                         latch.clear(&ctx.identity.user.id);
                     }
                 }
             }
         }
-        proxy_reply(route, r)
+        crate::proxy_raw::response(
+            route,
+            ok,
+            status,
+            crate::proxy_raw::Doc::body(bytes.as_deref()),
+        )
     }
 
     async fn history(&self, ctx: &Ctx, month: Option<&str>) -> Reply {
@@ -762,26 +721,17 @@ impl Diary {
             || "/api/day".into(),
             |m| format!("/api/day?month={}", encode_uri_component(m)),
         );
-        match self.read_json(ctx, &path).await {
-            Ok(r) if r.ok => {
-                let b = r.body.unwrap_or(JValue::Undefined);
-                let log = match b.get("log") {
-                    JValue::Undefined | JValue::Null => b.get("today_log"),
-                    v => v,
-                };
-                json_reply(
-                    200,
-                    &JValue::obj([
-                        (
-                            "todayLog",
-                            truthy_or(log, &JValue::Str(String::new())).clone(),
-                        ),
-                        (
-                            "standing",
-                            truthy_or(b.get("standing"), &JValue::Str(String::new())).clone(),
-                        ),
-                    ]),
-                )
+        let tenant = match self.tenant(ctx).await {
+            Ok(t) => t,
+            Err(e) => return call_failed(e),
+        };
+        match self
+            .sidecar
+            .fetch_raw(&tenant, Method::GET, &path, None, self.limits.read_timeout)
+            .await
+        {
+            Ok((true, _, bytes)) => {
+                crate::proxy_raw::history(crate::proxy_raw::Doc::body(bytes.as_deref()))
             }
             Ok(_) => internal(),
             Err(e) => call_failed(e),
@@ -1216,87 +1166,6 @@ async fn pump(
     if let Err(e) = outcome {
         let _ = tx.send(Err(e)).await;
     }
-}
-
-fn proxy_reply(route: Route, r: JsonReply) -> Reply {
-    let b = r.body.unwrap_or(JValue::Undefined);
-    if r.ok {
-        return json_reply(
-            if matches!(
-                route,
-                Route::ExternalSources | Route::ExternalImport | Route::Edit
-            ) {
-                200
-            } else {
-                r.status
-            },
-            &b,
-        );
-    }
-    if route == Route::Edit && r.status == 409 && b.get("conflict") == &JValue::Bool(true) {
-        return json_reply(409, &b);
-    }
-    if route == Route::WorkspaceTrash {
-        return json_reply(
-            r.status,
-            &JValue::obj([(
-                "error",
-                truthy_or(
-                    b.get("detail"),
-                    &JValue::Str("Diary recovery request failed. Retry or refresh Trash.".into()),
-                )
-                .clone(),
-            )]),
-        );
-    }
-    if matches!(
-        route,
-        Route::ExternalSources | Route::ExternalImport | Route::Edit
-    ) {
-        let fallback = JValue::Str(format!("diary sidecar {}", r.status));
-        let detail = if route == Route::ExternalSources {
-            &fallback
-        } else if route == Route::Edit {
-            truthy_or(b.get("detail"), truthy_or(b.get("error"), &fallback))
-        } else {
-            truthy_or(b.get("detail"), &fallback)
-        };
-        return error_reply(
-            if r.status >= 500 { 502 } else { r.status },
-            &match js_json::to_js_string(detail) {
-                Ok(s) => s,
-                Err(_) => return internal(),
-            },
-        );
-    }
-    let error = truthy_or(
-        b.get("detail"),
-        truthy_or(
-            b.get("error"),
-            &JValue::Str("Diary storage request failed".into()),
-        ),
-    )
-    .clone();
-    let mut fields = vec![("error", error)];
-    let code = b.get("code").as_str().unwrap_or("");
-    let mut wait = None;
-    if matches!(code, "storageThrottled" | "storageLoginRejected") {
-        fields.push(("code", JValue::Str(code.into())));
-    }
-    if code == "storageThrottled" {
-        let n = match js_number(b.get("retryAfter")) {
-            Ok(n) => n,
-            Err(_) => return internal(),
-        };
-        if n.is_finite() && n > 0.0 {
-            let n = n.ceil().min(86400.0) as u64;
-            fields.push(("retryAfter", JValue::Num(n as f64)));
-            wait = Some(n);
-        }
-    }
-    let mut reply = json_reply(r.status, &JValue::obj(fields));
-    reply.retry_after = wait;
-    reply
 }
 
 /// Number(value) for JSON data, used by Core for Retry-After.

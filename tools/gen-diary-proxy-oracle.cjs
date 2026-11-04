@@ -23,6 +23,24 @@ for (const route of ['files','file','workspace-trash','history','external-source
  if(['entries/edit','external-sources/import'].includes(route)) for (const raw of ['', '{','null','[]','{}',JSON.stringify({...valid,assistant:null}),JSON.stringify({...valid,base_hash:4}),JSON.stringify({...valid,base_hash:null,month:0}),JSON.stringify({...valid,sourcePath:1})]) cases.push({...base,raw});
 }
 cases.push({route:'entries/edit',method:'POST',raw:JSON.stringify(valid),status:409,reply:{conflict:true,current_hash:'new',current_text:'other',extra:[1]},enabled:true,admin:true});
+// Values JSON.parse accepts but a recursive or reserved-codepoint representation cannot hold.
+const rawCases=[];
+const privateText=String.fromCodePoint(0x10F800,0x10FFFF)+' synthetic '+String.fromCharCode(0xD800);
+const deep='['.repeat(150)+'0'+']'.repeat(150);
+const baseRaw={method:'POST',status:200,reply:{ok:true},enabled:true,admin:true};
+for(const route of ['entries/edit','external-sources/import']) {
+ for(const ignored of [deep,'1e400']) rawCases.push({...baseRaw,route,raw:JSON.stringify(valid).slice(0,-1)+',"ignored":'+ignored+'}'});
+ rawCases.push({...baseRaw,route,raw:JSON.stringify({...valid,me:privateText,assistant:privateText,sourcePath:privateText,relPath:privateText,base_hash:privateText})});
+}
+for(const route of ['files','file','workspace-trash','external-sources','external-sources/import','entries/edit']) {
+ const method=['files','workspace-trash','external-sources'].includes(route)?'GET':'POST';
+ rawCases.push({...baseRaw,route,method,raw:JSON.stringify(valid),replyRaw:'{"text":'+JSON.stringify(privateText)+',"ignored":'+deep+',"large":1e400}'});
+ rawCases.push({...baseRaw,route,method,raw:JSON.stringify(valid),status:503,replyRaw:JSON.stringify({detail:privateText})});
+}
+// String(detail) must use parsed values before stringify turns nested Infinity into null.
+rawCases.push({...baseRaw,route:'entries/edit',raw:JSON.stringify(valid),status:503,replyRaw:'{"detail":[1e400,'+JSON.stringify(privateText)+']}'});
+rawCases.push({...baseRaw,route:'history',method:'GET',raw:'',replyRaw:'{"log":'+JSON.stringify(privateText)+',"standing":'+JSON.stringify(privateText)+',"ignored":'+deep+'}'});
+rawCases.push({...baseRaw,route:'entries/edit',raw:JSON.stringify(valid),status:409,replyRaw:'{"conflict":true,"current_hash":"changed","current_text":'+JSON.stringify(privateText)+',"metadata":'+deep+',"large":1e400}'});
 async function workerOracle() {
  const source=fromDir?require('node:fs').readFileSync(path.join(core,'server/diary-backup-worker.cjs'),'utf8'):cp.execFileSync('git',['-C',core,'show',`${ref}:server/diary-backup-worker.cjs`],{encoding:'utf8'});
  const scripts=[];
@@ -39,9 +57,9 @@ async function workerOracle() {
  return out;
 }
 (async()=>{
- for(const c of cases){
+ for(const c of [...cases,...rawCases]){
   const calls=[]; let out, headers={};
-  const fetchJson=async(url,init={},timeout)=>{calls.push({path:new URL(url).pathname+new URL(url).search,method:init.method||'GET',body:init.body??null,timeout}); if(c.fault){if(c.fault==='network')throw new TypeError('synthetic',{cause:{code:'ECONNREFUSED'}});if(c.fault==='timeout')throw Object.assign(new Error('synthetic'),{name:'TimeoutError'});throw new Error('synthetic');}return {status:c.status,ok:c.status>=200&&c.status<300,body:c.reply};};
+  const fetchJson=async(url,init={},timeout)=>{calls.push({path:new URL(url).pathname+new URL(url).search,method:init.method||'GET',body:init.body??null,timeout}); if(c.fault){if(c.fault==='network')throw new TypeError('synthetic',{cause:{code:'ECONNREFUSED'}});if(c.fault==='timeout')throw Object.assign(new Error('synthetic'),{name:'TimeoutError'});throw new Error('synthetic');}return {status:c.status,ok:c.status>=200&&c.status<300,body:c.replyRaw === undefined ? c.reply : JSON.parse(c.replyRaw)};};
   const diary=createDiary({fs:{existsSync:()=>false},path,fetchJson,DIARY_BASE:'http://synthetic',DIARY_TOKEN:'',DIARY_TENANT_KEY:'synthetic-key',DIARY_SOURCE:'sidecar',requestScope:{getStore:()=>null},authService:{},endpointApproved:()=>true});diary.log=()=>{};
   const route=createDiaryRoutes({json:(res,status,body,h)=>{out={status,body,headers:{...headers,...h}};},readBody,DIARY_BASE:'http://synthetic',authService:{diaryEnabled:()=>c.enabled},diary});
   const raw=c.size?'x'.repeat(c.size):c.raw;
@@ -51,5 +69,6 @@ async function workerOracle() {
   for(const call of calls)if(call.body && call.body.length>4096)call.body={length:call.body.length};
   c.target=target;c.expected=out;c.calls=calls;
  }
- process.stdout.write(JSON.stringify({core:ref,cases,worker:await workerOracle()})+'\n');
+ const result=process.argv.includes('--raw-fixture')?{core:ref,cases:rawCases.map(c=>({route:c.route,method:c.method,raw:c.raw,replyRaw:c.replyRaw===undefined?JSON.stringify(c.reply):c.replyRaw,status:c.status,expectedStatus:c.expected.status,expectedBody:JSON.stringify(c.expected.body),calls:c.calls}))}:{core:ref,cases,worker:await workerOracle()};
+ process.stdout.write(JSON.stringify(result)+'\n');
 })().catch(e=>{console.error(e);process.exitCode=1;});

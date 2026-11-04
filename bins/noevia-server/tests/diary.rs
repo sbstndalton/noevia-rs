@@ -187,6 +187,13 @@ async fn call(app: &Arc<App>, method: &str, path: &str, signed_in: bool, body: &
 
 /// A sidecar that answers every request with one fixed status and JSON body.
 async fn fixed_sidecar(status: u16, body: &'static str) -> String {
+    fixed_sidecar_delay(status, body, std::time::Duration::ZERO).await
+}
+async fn fixed_sidecar_delay(
+    status: u16,
+    body: &'static str,
+    delay: std::time::Duration,
+) -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     tokio::spawn(async move {
@@ -198,6 +205,7 @@ async fn fixed_sidecar(status: u16, body: &'static str) -> String {
                 let service = service_fn(
                     move |req: hyper::Request<hyper::body::Incoming>| async move {
                         let _ = req.into_body().collect().await;
+                        tokio::time::sleep(delay).await;
                         Ok::<_, Infallible>(
                             hyper::Response::builder()
                                 .status(status)
@@ -1014,4 +1022,42 @@ async fn a_working_connector_is_never_locked_out_by_unknown_credentials_and_has_
         }
     }
     assert!(over.is_some_and(|n| n >= 115), "{over:?}: 120 a minute");
+}
+
+#[tokio::test]
+async fn moved_proxy_headers_survive_the_front_response_adapter() {
+    for (upstream, expected, delay) in [(200, 200, 0), (503, 503, 0), (200, 503, 300)] {
+        let dir = tempfile::tempdir().unwrap();
+        seed(dir.path(), true);
+        let base = fixed_sidecar_delay(
+            upstream,
+            r#"{"detail":"synthetic failure"}"#,
+            std::time::Duration::from_millis(delay),
+        )
+        .await;
+        let mut app = app(dir.path(), &base);
+        let config = server_diary::DiaryConfig::new(base, BEARER, KEY, String::new);
+        Arc::get_mut(&mut app).unwrap().diary = Some(Arc::new(
+            server_diary::Diary::with_limits(
+                config,
+                server_diary::Limits {
+                    proxy_timeout: std::time::Duration::from_millis(100),
+                    ..server_diary::Limits::default()
+                },
+            )
+            .unwrap(),
+        ));
+        let res = call(&app, "GET", "/api/diary/workspace-trash", true, b"").await;
+        assert_eq!(res.status.as_u16(), expected);
+        assert_eq!(res.headers.get("cache-control").unwrap(), "no-store");
+        assert!(res.headers.get("retry-after").is_none());
+    }
+    let dir = tempfile::tempdir().unwrap();
+    seed(dir.path(), true);
+    let base = fixed_sidecar(503, r#"{"code":"storageThrottled","retryAfter":2.1}"#).await;
+    let app = app(dir.path(), &base);
+    let res = call(&app, "GET", "/api/diary/files", true, b"").await;
+    assert_eq!(res.status.as_u16(), 503);
+    assert_eq!(res.headers.get("retry-after").unwrap(), "3");
+    assert_eq!(res.headers.get("cache-control").unwrap(), "no-store");
 }

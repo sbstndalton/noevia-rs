@@ -78,6 +78,13 @@ async fn actual_core_proxy_oracle() {
             "case {index}: {}",
             text(&c)
         );
+        let expected_wait = c
+            .get("expected")
+            .get("headers")
+            .get("Retry-After")
+            .as_str()
+            .map(|s| s.parse::<u64>().unwrap());
+        assert_eq!(reply.retry_after, expected_wait, "Retry-After case {index}");
         let ReplyBody::Json(body) = reply.body else {
             panic!()
         };
@@ -286,4 +293,48 @@ async fn redirect_and_configuration_failures_remain_internal_errors() {
     assert_eq!(Limits::default().external_timeout, Duration::from_secs(30));
     assert_eq!(Limits::default().proxy_timeout, Duration::from_secs(60));
     assert_eq!(Limits::default().read_timeout, Duration::from_secs(15));
+}
+
+#[tokio::test]
+async fn valid_js_json_and_conflict_text_match_the_actual_core_handlers() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/diary-proxy-node-raw.json")).unwrap();
+    for c in fixture["cases"].as_array().unwrap() {
+        let status = c["status"].as_u64().unwrap() as u16;
+        let reply_raw = c["replyRaw"].as_str().unwrap().to_owned();
+        let stub = Stub::start(move |_, _| Out::json(status, &reply_raw)).await;
+        let w = World::new(&[]);
+        let route =
+            Route::from_path(&format!("/api/diary/{}", c["route"].as_str().unwrap())).unwrap();
+        let r = diary(&stub, TENANT_KEY)
+            .serve_proxy(
+                route,
+                w.ctx(ADMIN, true),
+                Request {
+                    method: c["method"].as_str().unwrap().into(),
+                    target: "/api/diary/test?month=2026-09&path=a%20b%2F%C3%A9&after=mark%2Fone"
+                        .into(),
+                    content_length: None,
+                },
+                Full::new(Bytes::from(c["raw"].as_str().unwrap().to_owned())),
+                false,
+            )
+            .await;
+        assert_eq!(
+            r.status,
+            c["expectedStatus"].as_u64().unwrap() as u16,
+            "{c}"
+        );
+        let ReplyBody::Json(body) = r.body else {
+            panic!()
+        };
+        assert_eq!(body, c["expectedBody"].as_str().unwrap(), "{c}");
+        let seen = stub.seen.lock().unwrap();
+        assert_eq!(seen.len(), c["calls"].as_array().unwrap().len());
+        for (got, expected) in seen.iter().zip(c["calls"].as_array().unwrap()) {
+            if let Some(body) = expected["body"].as_str() {
+                assert_eq!(String::from_utf8_lossy(&got.body), body);
+            }
+        }
+    }
 }
