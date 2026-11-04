@@ -4,10 +4,6 @@ use tokio::io::AsyncBufReadExt;
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> ExitCode {
-    let started_at = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs_f64())
-        .unwrap_or(0.0);
     let mut line = String::new();
     let mut stdin = tokio::io::BufReader::new(tokio::io::stdin());
     if stdin.read_line(&mut line).await.is_err() {
@@ -22,7 +18,7 @@ async fn main() -> ExitCode {
         }
     };
     let port = cfg.port;
-    let app = Arc::new(noevia_diary::server::App::new(cfg, started_at));
+    let app = Arc::new(noevia_diary::server::App::new(cfg));
     let listener = match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
         Ok(l) => l,
         Err(e) => {

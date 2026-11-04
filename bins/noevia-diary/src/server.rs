@@ -1,29 +1,36 @@
-//! Request handling. Python (agent/rust_forward.py) forwards a request here with its raw path,
-//! query, headers and body; this side either serves it exactly as app.py would, or DECLINES it
-//! (421 + `x-noevia-diary-decline: 1`) before looking at any credential, in which case Python
-//! serves it itself. A decline never consumes a nonce, so an assertion is verified by exactly one
-//! process.
+//! Request handling. Python (agent/rust_forward.py) verifies the tenant assertion with its own
+//! verifier and nonce cache (the only ones while both processes exist), then forwards the request
+//! here with its raw path, query and headers plus three loopback-only headers: the per-process
+//! forward secret (sent to this process on stdin), whether the tenant was asserted, and whether
+//! Python has already recovered the tenant's state. Anything without the matching secret is refused
+//! with Python's own 401 bytes. This side serves the request exactly as app.py would, or DECLINES it
+//! (421 + `x-noevia-diary-decline: 1`) and Python serves it without verifying it again, so every
+//! nonce is consumed exactly once. (assertion::Verifier is kept for D8, when this process becomes
+//! the only verifier; it is not wired in.)
 
-use crate::assertion::{Signed, Verifier};
 use crate::config::Config;
 use crate::corpus::{self, BaseCorpus, Layout};
 use crate::health::{self, Models};
 use crate::managed::{self, Managed, Settings};
 use crate::py;
 use crate::workspace::{self, Reply};
-use axum::body::{Body, Bytes};
+use axum::body::Body;
 use axum::http::{HeaderMap, Method, Request, Response, StatusCode};
-use http_body_util::BodyExt;
 use serde::Serialize;
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::sync::Arc;
 use subtle::ConstantTimeEq;
 
 pub const DECLINE_HEADER: &str = "x-noevia-diary-decline";
 pub const CONTROL_HEADER: &str = "x-noevia-diary-control";
-const MAX_SIGNED_BODY: usize = 64 * 1024 * 1024;
+/// Set by Python on every forwarded request: the per-process forward secret.
+pub const FORWARD_HEADER: &str = "x-noevia-diary-forward";
+/// "1" when Python's middleware verified the tenant assertion of this request.
+pub const ASSERTED_HEADER: &str = "x-noevia-diary-asserted";
+/// "1" when Python holds a recovered managed state for this tenant (journal replayed, dirty
+/// documents reindexed once), so a read here skips nothing Python would have done.
+pub const RECOVERED_HEADER: &str = "x-noevia-diary-recovered";
 const MAX_STORAGE_HEADER_LEN: usize = 4096;
 
 pub struct App {
@@ -31,7 +38,9 @@ pub struct App {
     pub control_token: String,
     pub data_root: PathBuf,
     pub legacy_user_id: String,
-    pub verifier: Option<Verifier>,
+    pub forward_secret: String,
+    /// DIARY_TENANT_KEY (for the secretRef check only; assertions are Python's).
+    pub tenant_key: String,
     pub corpus: BaseCorpus,
     pub models: Option<Models>,
     pub http: reqwest::Client,
@@ -39,7 +48,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(cfg: Config, started_at: f64) -> Self {
+    pub fn new(cfg: Config) -> Self {
         let models = health::supported(&[&cfg.llm.main, &cfg.llm.aux]).then(|| Models {
             main: health::Client::new(cfg.llm.main.clone()),
             aux: health::Client::new(cfg.llm.aux.clone()),
@@ -52,7 +61,8 @@ impl App {
             control_token: cfg.control_token,
             data_root: PathBuf::from(cfg.data_root),
             legacy_user_id: cfg.legacy_user_id,
-            verifier: (!key.is_empty()).then(|| Verifier::new(key, started_at)),
+            forward_secret: cfg.forward_secret,
+            tenant_key: key,
             corpus: cfg.corpus,
             models,
             http: reqwest::Client::builder().build().unwrap_or_default(),
@@ -138,21 +148,13 @@ fn is_uuid(s: &str) -> bool {
         })
 }
 
-fn sha256_hex(data: &[u8]) -> String {
-    Sha256::digest(data)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
-}
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Route {
     Health,
     Months,
     Day,
-    /// D4b: GET /api/files, POST /api/file, GET /api/storage-status, GET /api/workspace-export.
+    /// D4b: GET /api/files, GET /api/storage-status, GET /api/workspace-export.
     Files,
-    FileRead,
     StorageStatus,
     WorkspaceExport,
 }
@@ -161,7 +163,7 @@ impl Route {
     fn d4b(self) -> bool {
         matches!(
             self,
-            Route::Files | Route::FileRead | Route::StorageStatus | Route::WorkspaceExport
+            Route::Files | Route::StorageStatus | Route::WorkspaceExport
         )
     }
 }
@@ -172,7 +174,6 @@ pub fn route(method: &Method, path: &str) -> Option<Route> {
         ("GET", "/api/months") => Some(Route::Months),
         ("GET", "/api/day") => Some(Route::Day),
         ("GET", "/api/files") => Some(Route::Files),
-        ("POST", "/api/file") => Some(Route::FileRead),
         ("GET", "/api/storage-status") => Some(Route::StorageStatus),
         ("GET", "/api/workspace-export") => Some(Route::WorkspaceExport),
         _ => None,
@@ -237,12 +238,6 @@ fn export_settings(app: &App, tenant: &Settings) -> Option<String> {
     workspace::export_settings_text(&app.export.settings, tenant)
 }
 
-enum Plan {
-    Decline,
-    /// Serve; `Some` when the request resolves to a ready managed tenant.
-    Serve(Option<Tenant>),
-}
-
 /// api_health's `has_tenant`: Some(effective user id) when Python would add tenant detail (journal,
 /// retrieval stats) unless `_tenant_state` refuses the tenant.
 fn health_tenant(app: &App, headers: &HeaderMap) -> Option<String> {
@@ -258,18 +253,25 @@ fn health_tenant(app: &App, headers: &HeaderMap) -> Option<String> {
     has_tenant.then_some(uid)
 }
 
-fn plan(app: &App, r: Route, headers: &HeaderMap) -> Plan {
+enum Plan {
+    Decline,
+    /// Serve; `Some` when the request resolves to a ready managed tenant.
+    Serve(Option<Tenant>),
+}
+
+fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
     let header_uid = header(headers, "x-cowork-user-id");
     match r {
         Route::Health => {
             if app.models.is_none() {
                 return Plan::Decline;
             }
-            // With a tenant, only the refusals `_tenant_state` makes before touching storage, whose
-            // reply carries no tenant detail, are served here: an unasserted legacy fallback (401)
-            // and an oversized storage header (413). The handler re-checks them.
+            // Tenant detail (journal, retrieval stats) stays with Python. Served here with a
+            // tenant: only the refusals `_tenant_state` makes before touching storage, whose reply
+            // carries no detail (an unasserted legacy fallback, an oversized storage header). The
+            // handler re-checks them.
             if health_tenant(app, headers).is_none()
-                || (header_uid.is_empty() && app.verifier.is_some())
+                || (header_uid.is_empty() && !app.tenant_key.is_empty())
                 || header(headers, "x-cowork-storage").len() > MAX_STORAGE_HEADER_LEN
             {
                 Plan::Serve(None)
@@ -280,7 +282,6 @@ fn plan(app: &App, r: Route, headers: &HeaderMap) -> Plan {
         Route::Months
         | Route::Day
         | Route::Files
-        | Route::FileRead
         | Route::StorageStatus
         | Route::WorkspaceExport => {
             if r == Route::WorkspaceExport && export_settings(app, &Settings::new()).is_none() {
@@ -300,15 +301,14 @@ fn plan(app: &App, r: Route, headers: &HeaderMap) -> Plan {
             let Ok(descriptor) = strict_descriptor(&storage) else {
                 return Plan::Decline;
             };
+            if !recovered {
+                // Python recovers a tenant's state on its first request (journal replay, dirty
+                // reindex, outbox): let it serve until it has.
+                return Plan::Decline;
+            }
             let uid = header_uid.to_ascii_lowercase();
             let root = app.data_root.join("users").join(&uid);
             match managed::ready(&root, &uid) {
-                // D4b: a tenant Python still owes recovery (dirty documents, index outbox) is its.
-                Ok(Some(_))
-                    if r.d4b() && !matches!(workspace::recovery_pending(&root), Ok(false)) =>
-                {
-                    Plan::Decline
-                }
                 Ok(Some((_, ref settings)))
                     if r == Route::WorkspaceExport && export_settings(app, settings).is_none() =>
                 {
@@ -353,15 +353,17 @@ fn check_auth(app: &App, headers: &HeaderMap) -> Result<bool, ()> {
     ))
 }
 
-fn now_secs() -> f64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs_f64())
-        .unwrap_or(0.0)
+/// Python's 401 for an unverifiable request (TenantAssertionMiddleware).
+fn unverified() -> Response<Body> {
+    detail(401, "invalid tenant assertion")
+}
+
+fn flag(headers: &HeaderMap, name: &str) -> bool {
+    headers.get(name).map(|v| v.as_bytes()) == Some(b"1")
 }
 
 pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
-    let (parts, body) = req.into_parts();
+    let (parts, _body) = req.into_parts();
     let raw_path = parts.uri.path().to_string();
     let query: Vec<u8> = parts
         .uri
@@ -372,70 +374,33 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
     let headers = parts.headers;
 
     if path.starts_with("/internal/") {
-        return control(&app, &parts.method, &path, &headers, body).await;
+        return control(&app, &parts.method, &path, &headers);
     }
+    // Only Python's forwarder knows the secret; everything else is refused before any work.
+    let supplied = headers
+        .get(FORWARD_HEADER)
+        .map(|v| v.as_bytes())
+        .unwrap_or_default();
+    if app.forward_secret.is_empty() || !bool::from(supplied.ct_eq(app.forward_secret.as_bytes())) {
+        return unverified();
+    }
+    let asserted = flag(&headers, ASSERTED_HEADER);
+    let recovered = flag(&headers, RECOVERED_HEADER);
     let Some(r) = route(&parts.method, &path) else {
         return decline();
     };
-    let tenant = match plan(&app, r, &headers) {
+    let tenant = match plan(&app, r, &headers, recovered) {
         Plan::Decline => return decline(),
         Plan::Serve(t) => t,
     };
-    // Read once: the assertion hashes it and POST /api/file parses it. None: over the signed-body
-    // bound (Python's forwarder never sends such a body here).
-    let body = read_body(body).await;
-
-    // TenantAssertionMiddleware.
     let header_uid = header(&headers, "x-cowork-user-id");
-    let mut asserted = false;
-    if !header_uid.is_empty() {
-        if let Some(verifier) = app.verifier.as_ref() {
-            let ctype = header(&headers, "content-type");
-            let media = ctype.split(';').next().unwrap_or("").trim().to_lowercase();
-            let body_hash = if media.is_empty() || media == "application/json" {
-                let Some(bytes) = body.as_ref() else {
-                    return detail(413, "request body too large");
-                };
-                sha256_hex(bytes)
-            } else {
-                "stream".to_string()
-            };
-            let assertion = header(&headers, "x-cowork-tenant-assertion");
-            let storage = header(&headers, "x-cowork-storage");
-            let legacy = header(&headers, "x-cowork-legacy-owner");
-            let blocked = header(&headers, "x-cowork-storage-blocked");
-            let signed = Signed {
-                user_id: &header_uid,
-                assertion: &assertion,
-                method: parts.method.as_str(),
-                path: &raw_path,
-                query: &query,
-                body_hash: &body_hash,
-                storage: &storage,
-                legacy_owner: &legacy,
-                blocked: &blocked,
-            };
-            if let Err(reason) = verifier.verify(&signed, now_secs()) {
-                eprintln!("noevia-diary: tenant assertion rejected: {reason}");
-                return detail(401, "invalid tenant assertion");
-            }
-            asserted = true;
-        }
+    // With a key set, Python forwards a request naming a tenant only after verifying it.
+    if !header_uid.is_empty() && !app.tenant_key.is_empty() && !asserted {
+        return unverified();
     }
 
-    // ---- seam: everything below reads the tenant only from `header_uid` and `asserted`.
-
-    // FastAPI validates `body: dict` (422) before the handler checks the token.
-    let file_body = if r == Route::FileRead {
-        let ctype = headers.get("content-type").map(|v| v.as_bytes());
-        match body.as_deref().and_then(|b| workspace::file_body(ctype, b)) {
-            Some(map) => Some(map),
-            None => return decline(),
-        }
-    } else {
-        None
-    };
-
+    // ---- seam: the routes below read the tenant only from `header_uid` and `asserted` (the
+    // trusted forward headers above).
     match check_auth(&app, &headers) {
         Err(()) => return internal_error(),
         // app.py raises HTTPException(401) on the D4b routes: {"detail": ...}.
@@ -450,10 +415,8 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
                 return internal_error();
             };
             if let Some(uid) = health_tenant(&app, &headers) {
-                // Tenant detail needs Python's per-process state (recovery and reindex on a state's
-                // first request, sqlite-vec, the live embedding target): serve only the refusals
-                // `_tenant_state` makes before touching storage (401 unasserted, 413), whose reply
-                // carries no detail.
+                // Tenant detail needs Python's per-process state (sqlite-vec, the live embedding
+                // target, recovery): only the refusals that leave it out are answered here.
                 match resolve_tenant(&app, &uid, asserted, &headers, None) {
                     Err(resp) if resp.status().is_client_error() => {}
                     _ => return decline(),
@@ -462,15 +425,14 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
             let h = health::health(&app.http, models, !app.auth_token.is_empty()).await;
             json_response(200, &h)
         }
-        Route::Files | Route::FileRead | Route::StorageStatus | Route::WorkspaceExport => {
+        Route::Files | Route::StorageStatus | Route::WorkspaceExport => {
             let tenant = match resolve_tenant(&app, &header_uid, asserted, &headers, tenant) {
                 Ok(t) => t,
                 Err(resp) => return *resp,
             };
             let app2 = app.clone();
-            let task = tokio::task::spawn_blocking(move || {
-                serve_workspace(&app2, r, &query, file_body.as_ref(), &tenant)
-            });
+            let task =
+                tokio::task::spawn_blocking(move || serve_workspace(&app2, r, &query, &tenant));
             match task.await {
                 Ok(Reply::Json(status, body)) => Response::builder()
                     .status(status)
@@ -511,23 +473,15 @@ fn zip_response(zip: Vec<u8>) -> Response<Body> {
         .unwrap_or_default()
 }
 
-fn serve_workspace(
-    app: &App,
-    r: Route,
-    query: &[u8],
-    file_body: Option<&serde_json::Map<String, Value>>,
-    t: &Tenant,
-) -> Reply {
+/// The D4b routes. A decline here (a stored value this side does not reproduce) is safe: the
+/// request was verified once, by Python, which then serves it without verifying it again.
+fn serve_workspace(app: &App, r: Route, query: &[u8], t: &Tenant) -> Reply {
     match r {
         Route::Files => {
             // FastAPI `path: str = ""`: the last value given.
             let path = py::query_get(query, "path").unwrap_or_default();
             workspace::files(&t.store, &path)
         }
-        Route::FileRead => match file_body {
-            Some(body) => workspace::file_read(&t.store, body),
-            None => Reply::Decline,
-        },
         // _request_storage: the descriptor when it decodes to an object, else {}.
         Route::StorageStatus => workspace::storage_status(&t.store, t.descriptor.as_ref()),
         Route::WorkspaceExport => match export_settings(app, &t.settings) {
@@ -536,11 +490,6 @@ fn serve_workspace(
         },
         _ => Reply::Decline,
     }
-}
-
-async fn read_body(body: Body) -> Option<Bytes> {
-    let limited = http_body_util::Limited::new(body, MAX_SIGNED_BODY);
-    limited.collect().await.ok().map(|c| c.to_bytes())
 }
 
 /// `_tenant_state` for a request planned as Serve: the same checks in the same order. A request
@@ -555,7 +504,7 @@ fn resolve_tenant(
     if !is_uuid(header_uid) {
         return Err(Box::new(detail(400, "missing or invalid X-Cowork-User-ID")));
     }
-    if app.verifier.is_some() && !asserted {
+    if !app.tenant_key.is_empty() && !asserted {
         return Err(Box::new(detail(401, "tenant assertion required")));
     }
     if header(headers, "x-cowork-storage").len() > MAX_STORAGE_HEADER_LEN {
@@ -591,11 +540,14 @@ fn resolve_tenant(
                 Value::Array(a) => !a.is_empty(),
                 Value::Object(o) => !o.is_empty(),
             };
-            if let (true, Some(v)) = (secret_truthy, app.verifier.as_ref()) {
+            if secret_truthy && !app.tenant_key.is_empty() {
                 let matches = match &secret {
-                    Value::String(s) => {
-                        v.secret_ref_matches(&header_uid.to_ascii_lowercase(), s, reference)
-                    }
+                    Value::String(s) => tenant_assertion::secret_ref_matches(
+                        &app.tenant_key,
+                        &header_uid.to_ascii_lowercase(),
+                        s,
+                        reference,
+                    ),
                     _ => false,
                 };
                 if !matches {
@@ -684,13 +636,7 @@ fn serve_corpus(_app: &App, r: Route, query: &[u8], t: &Tenant) -> Response<Body
     }
 }
 
-async fn control(
-    app: &App,
-    method: &Method,
-    path: &str,
-    headers: &HeaderMap,
-    body: Body,
-) -> Response<Body> {
+fn control(app: &App, method: &Method, path: &str, headers: &HeaderMap) -> Response<Body> {
     let supplied = headers
         .get(CONTROL_HEADER)
         .map(|v| v.as_bytes().to_vec())
@@ -705,27 +651,6 @@ async fn control(
     }
     match (method.as_str(), path) {
         ("GET", "/internal/ready") => Response::new(Body::from("ok")),
-        ("POST", "/internal/floor") => {
-            let Some(bytes) = read_body(body).await else {
-                return Response::builder()
-                    .status(413)
-                    .body(Body::empty())
-                    .unwrap_or_default();
-            };
-            let Some(second) = std::str::from_utf8(&bytes)
-                .ok()
-                .and_then(|s| s.trim().parse::<i64>().ok())
-            else {
-                return Response::builder()
-                    .status(400)
-                    .body(Body::empty())
-                    .unwrap_or_default();
-            };
-            if let Some(v) = app.verifier.as_ref() {
-                v.raise_floor(second);
-            }
-            Response::new(Body::from("ok"))
-        }
         _ => Response::builder()
             .status(404)
             .body(Body::empty())

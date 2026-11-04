@@ -1,5 +1,5 @@
-//! D4b read routes over a ready managed tenant, byte-identical to app.py: GET /api/files,
-//! POST /api/file (workspace_files.py file_list / file_read), GET /api/storage-status
+//! D4b read routes over a ready managed tenant, byte-identical to app.py: GET /api/files
+//! (workspace_files.py file_list; POST /api/file's file_read is ported but not wired), GET /api/storage-status
 //! (managed_storage.py status) and GET /api/workspace-export (workspace_export.py archive with
 //! WORKSPACE_EXPORT_IMPL=rust, i.e. the diary-workspace-export library).
 //!
@@ -9,11 +9,10 @@
 
 use crate::managed::{self, Managed};
 use rusqlite::types::ValueRef;
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::OptionalExtension;
 use serde::Serialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::path::Path;
 
 /// workspace_files.MAX_FILE / MAX_FILES.
 pub const MAX_FILE: usize = 512 * 1024;
@@ -57,43 +56,6 @@ fn sha256_hex(data: &[u8]) -> String {
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()
-}
-
-fn table_exists(conn: &Connection, name: &str) -> rusqlite::Result<bool> {
-    Ok(conn
-        .query_row(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
-            [name],
-            |_| Ok(()),
-        )
-        .optional()?
-        .is_some())
-}
-
-/// Does Python still owe this tenant recovery work (dirty documents to reindex, or a workspace
-/// index outbox to drain)? Its reply after that work can differ, so such tenants are declined.
-/// Err (unreadable) is treated as pending by the caller.
-pub fn recovery_pending(tenant_root: &Path) -> Result<bool, managed::Error> {
-    let db = managed::open_ro(&tenant_root.join("managed-diary.db"))?;
-    if table_exists(&db, "workspace_index_outbox")? {
-        let n: i64 = db.query_row("SELECT COUNT(*) FROM workspace_index_outbox", [], |r| {
-            r.get(0)
-        })?;
-        if n != 0 {
-            return Ok(true);
-        }
-    }
-    let index = tenant_root.join("managed-index.db");
-    if index.is_file() {
-        let idx = managed::open_ro(&index)?;
-        if table_exists(&idx, "dirty_documents")? {
-            let n: i64 = idx.query_row("SELECT COUNT(*) FROM dirty_documents", [], |r| r.get(0))?;
-            if n != 0 {
-                return Ok(true);
-            }
-        }
-    }
-    Ok(false)
 }
 
 // ------------------------------------------------------------------ Python value formatting
@@ -274,6 +236,10 @@ pub fn files(store: &Managed, path: &str) -> Reply {
     json_reply(200, &Files { files: out })
 }
 
+/// POST /api/file is NOT wired yet: the forwarder never forwards a request with a body (part 1),
+/// so Python serves it. `file_body` and `file_read` are its byte-identical port, kept for when
+/// bodies are forwarded (see the D4b handoff).
+///
 /// FastAPI's `body: dict` for POST /api/file: Some(object) when the body is JSON that Python
 /// parses the same way (UTF-8 JSON object, JSON media type or none). None: decline (Python's
 /// 422 and its lenient decoders stay with it).

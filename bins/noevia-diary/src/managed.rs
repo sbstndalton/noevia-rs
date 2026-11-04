@@ -70,8 +70,8 @@ fn table_exists(conn: &Connection, name: &str) -> Result<bool, Error> {
 /// The tenant settings stored at activation (`meta.settings`), as raw JSON values.
 pub type Settings = serde_json::Map<String, Value>;
 
-/// Is this tenant an active, consistent managed Diary whose reply Python would not change by
-/// recovering first (no pending journal entries)? Some(settings) when it is; None
+/// Is this tenant an active, consistent managed Diary with no recovery outstanding (no pending
+/// journal entries, dirty documents or index outbox)? Some(settings) when it is; None
 /// means "let Python serve it" (Python then builds, recovers or refuses exactly as today).
 /// Nothing here writes, and nothing depends on the request's credentials.
 pub fn ready(tenant_root: &Path, uid: &str) -> Result<Option<(Managed, Settings)>, Error> {
@@ -100,6 +100,9 @@ pub fn ready(tenant_root: &Path, uid: &str) -> Result<Option<(Managed, Settings)
     {
         return Ok(None);
     }
+    if count(&conn, "SELECT COUNT(*) FROM workspace_index_outbox")? != 0 {
+        return Ok(None);
+    }
     let settings = match meta(&conn, "settings")? {
         None => Settings::new(),
         Some(text) => match serde_json::from_str::<Value>(&text) {
@@ -108,15 +111,19 @@ pub fn ready(tenant_root: &Path, uid: &str) -> Result<Option<(Managed, Settings)
         },
     };
     drop(conn);
-    // Python applies pending journal entries to the corpus on a state's first request, which
-    // changes what a read returns: leave those tenants to it. Dirty documents and the index outbox
-    // only feed the index (never these replies); Python reindexes them on its next request for
-    // the tenant (every write and chat drains them).
+    // Python replays pending journal entries, drains the index outbox and reindexes dirty
+    // documents when it recovers a tenant's state; whenever any of that is outstanding, Python
+    // serves (and recovers) instead.
     let index = tenant_root.join("managed-index.db");
     if index.is_file() {
         let idx = open_ro(&index)?;
         if table_exists(&idx, "journal")?
             && count(&idx, "SELECT COUNT(*) FROM journal WHERE applied = 0")? != 0
+        {
+            return Ok(None);
+        }
+        if table_exists(&idx, "dirty_documents")?
+            && count(&idx, "SELECT COUNT(*) FROM dirty_documents")? != 0
         {
             return Ok(None);
         }
