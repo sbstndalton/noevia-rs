@@ -324,9 +324,20 @@ Try again shortly.` while the body is still arriving and, once the sidecar was a
 and the answer is core's 503 `diaryUnavailable` for an aborted call. A Node that cannot be asked at all
 refuses the exchange 503 `The model is busy. Try again shortly.` (fail closed). (3) The sidecar client
 never follows a redirect (Core's stream `fetch` did): a redirect is the interrupted event, so tenant
-headers never go to another address. Request bodies, events and replies are read as `JSON.parse` reads
-them (no nesting limit; `1e400` is `Infinity`, written back as `null`), so nothing `JSON.parse` accepts
-becomes a 500 or escapes the event policy.
+headers never go to another address. (4) The request body, each event object and the non-streamed reply
+(its `detail` or `error` on a failure) are read as `JSON.parse` reads them and written back as
+`JSON.stringify` writes them, in time linear in their length (the request off the async workers): no
+nesting limit, `1e400` is `Infinity` (written `null`), and strings as JavaScript holds them, so a lone
+surrogate escape stays one and a character in U+10F800..U+10FFFF stays itself. Core's
+`JSON.stringify` threw past V8's stack depth (some thousands of levels): such a request was a 500, such
+a non-streamed reply a 500, and an event core rewrote (a dropped `reason`) the interrupted event. The
+front forwards and writes these out. (5) Two readings still go through a parsed tree that holds 128
+levels and no character in U+10F800..U+10FFFF (that range stands for lone surrogates there): a
+`retryAfter` nested deeper in a sidecar refusal or error body is read as `{}` and ignored; and an older
+companion's whole JSON reply nested deeper or holding such a character ends the stream with the
+interrupted event. Both come only from the sidecar. (6) A body that has not fully arrived 120 s after
+admission is 408 `Request timed out`, as on the other Diary routes; Core had only its 20-minute server
+timeout.
 
 **Behaviour changes (Node bugs fixed on the way).**
 1. Creating a connector with a bad name, for an account without the add-on, or past ten threw a bare

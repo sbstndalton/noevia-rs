@@ -63,15 +63,16 @@ impl EventView for JValue {
     }
 }
 
-/// A top-level object read losslessly ([`crate::js_raw`]): `(key, value as JSON.stringify writes it)`.
+/// A top-level object read losslessly ([`crate::js_raw`]): `(key, value)`, both as
+/// `JSON.stringify` writes them.
 pub(crate) struct RawEvent<'a>(pub(crate) &'a [(String, String)]);
 
 impl EventView for RawEvent<'_> {
     fn has(&self, key: &str) -> bool {
-        self.0.iter().any(|(k, _)| k == key)
+        self.0.iter().any(|(k, _)| crate::js_raw::is_key(k, key))
     }
     fn string(&self, key: &str) -> Option<String> {
-        let (_, value) = self.0.iter().find(|(k, _)| k == key)?;
+        let (_, value) = self.0.iter().find(|(k, _)| crate::js_raw::is_key(k, key))?;
         crate::js_raw::string_of(value)
     }
 }
@@ -251,25 +252,59 @@ pub fn http_stream_failure(
     Some(event)
 }
 /// Non-streamed failures intentionally retain only Core's two storage codes and bounded wait.
-pub fn json_failure(body: &JValue) -> (JValue, Option<u64>) {
-    let error = [body.get("detail"), body.get("error")]
+///
+/// `body` is the sidecar's reply text (`None`: no body). Core read it with `fetchJson` (`JSON.parse`,
+/// or the text itself when that throws) and answered
+/// `{ error: body?.detail || body?.error || 'Diary storage request failed', code?, retryAfter? }`;
+/// here the reply is read losslessly ([`crate::js_raw`]), so `error` is written back exactly as
+/// `JSON.stringify` wrote it. Returns the answer's JSON text and the wait for `Retry-After`.
+pub fn json_failure(body: Option<&str>) -> (String, Option<u64>) {
+    use crate::js_raw;
+    let entries = match body.and_then(js_raw::read) {
+        Some(js_raw::Top::Object(entries)) => entries,
+        _ => Vec::new(),
+    };
+    let field = |name: &str| {
+        entries
+            .iter()
+            .find(|(k, _)| js_raw::is_key(k, name))
+            .map(|(_, v)| v.as_str())
+    };
+    // JSON's falsy values: `null`, `false`, `0` (also `-0`, written `0`) and `""`.
+    let truthy = |v: &&str| !matches!(*v, "null" | "false" | "0" | "\"\"");
+    let error = [field("detail"), field("error")]
         .into_iter()
-        .find(|v| v.truthy())
-        .cloned()
-        .unwrap_or_else(|| JValue::from("Diary storage request failed"));
-    let mut fields = vec![("error".to_owned(), error)];
-    let code = body.get("code").as_str();
+        .flatten()
+        .find(truthy)
+        .map_or_else(
+            || js_raw::quote("Diary storage request failed"),
+            str::to_owned,
+        );
+    let mut out = format!("{{\"error\":{error}");
+    let code = field("code").and_then(js_raw::string_of);
     let mut wait = None;
-    if matches!(code, Some("storageThrottled" | "storageLoginRejected")) {
-        fields.push(("code".into(), body.get("code").clone()));
-        if code == Some("storageThrottled") {
-            wait = retry_after(body.get("retryAfter"));
+    if let Some(code @ ("storageThrottled" | "storageLoginRejected")) = code.as_deref() {
+        out.push_str(&format!(",\"code\":\"{code}\""));
+        if code == "storageThrottled" {
+            wait = field("retryAfter").and_then(|v| retry_after(&shallow(v)));
             if let Some(n) = wait {
-                fields.push(("retryAfter".into(), JValue::Num(n as f64)));
+                out.push_str(&format!(",\"retryAfter\":{n}"));
             }
         }
     }
-    (JValue::Obj(fields), wait)
+    out.push('}');
+    (out, wait)
+}
+
+/// A value [`crate::js_raw`] wrote, as a [`JValue`] for reading (never for writing back): a string
+/// as the string it holds (a lone surrogate as U+FFFD), anything else parsed, and a value the parsed
+/// tree cannot hold (nested past 128 levels) as an empty object, which none of its readers looks
+/// into.
+fn shallow(written: &str) -> JValue {
+    match crate::js_raw::string_of(written) {
+        Some(s) => JValue::Str(s),
+        None => wtf16::parse(written).unwrap_or(JValue::Obj(Vec::new())),
+    }
 }
 fn spread(fields: &mut Vec<(String, JValue)>, value: &JValue) {
     use js_json::wtf16;
@@ -512,27 +547,26 @@ pub(crate) fn relayed(policy: &mut StreamPolicy, frame: String) -> String {
         Decision::Verbatim => frame,
         Decision::Replace(event) => frame_of(&event),
         Decision::WithoutReason => {
-            match crate::js_raw::join(entries.iter().filter(|(k, _)| k != "reason")) {
-                Some(json) => format!("data: {json}\n\n"),
-                None => frame,
-            }
+            let json = crate::js_raw::join(
+                entries
+                    .iter()
+                    .filter(|(k, _)| !crate::js_raw::is_key(k, "reason")),
+            );
+            format!("data: {json}\n\n")
         }
     }
 }
 
-/// A JSON reply as core's code read it, through `JSON.parse` (no nesting limit, `1e400` is
-/// `Infinity`): `None` when `JSON.parse` would throw. A value nested past what [`JValue`] holds
-/// (128 levels) is kept as an empty object, which none of these readers looks into.
+/// A refusal's body as core's code read it, through `JSON.parse` (no nesting limit, `1e400` is
+/// `Infinity`), for reading its `code` and `retryAfter`: `None` when `JSON.parse` would throw. Each
+/// property is read as [`shallow`] reads it.
 pub(crate) fn parsed_reply(text: &str) -> Option<JValue> {
     match crate::js_raw::read(text)? {
-        crate::js_raw::Top::Other(out) => wtf16::parse(&out).ok(),
+        crate::js_raw::Top::Other(out) => Some(shallow(&out)),
         crate::js_raw::Top::Object(entries) => Some(JValue::Obj(
             entries
                 .into_iter()
-                .map(|(k, v)| {
-                    let value = wtf16::parse(&v).unwrap_or(JValue::Obj(Vec::new()));
-                    (k, value)
-                })
+                .filter_map(|(k, v)| Some((crate::js_raw::string_of(&k)?, shallow(&v))))
                 .collect(),
         )),
     }
@@ -792,9 +826,10 @@ mod tests {
     #[test]
     fn nonstream_error_codes_details_and_number_coercion_match_real_node() {
         for case in array(fixtures().get("failures")) {
-            let (body, wait) = json_failure(case.get("body"));
+            let text = wtf16::stringify(case.get("body"));
+            let (body, wait) = json_failure(text.as_deref());
             assert_eq!(
-                wtf16::stringify(&body),
+                Some(body),
                 wtf16::stringify(case.get("expected").get("body"))
             );
             let expected_wait = case

@@ -733,3 +733,187 @@ async fn an_unstreamed_reply_with_huge_numbers_is_relayed_as_node_writes_it() {
         (200, r#"{"1":2,"reply":"ok","n":null}"#.to_owned())
     );
 }
+
+// ── re-review of 0ec81d1: each test below failed against it ────────────────────
+
+/// U+10FFFF and U+10F800, which the parsed tree keeps for lone surrogates.
+const TOP: char = '\u{10FFFF}';
+const LOW: char = '\u{10F800}';
+
+/// Finding 1, stream: an event with a character from U+10F800..U+10FFFF (literal or as an escaped
+/// pair, in a key or a value) still gets its reason removed, rewords, and advances the stage.
+#[tokio::test]
+async fn rereview_1_events_with_top_plane_characters_get_nodes_policy() {
+    let frames = [
+        // Stage start: the reason that is not a token is removed.
+        format!("data: {{\"type\":\"error\",\"code\":\"other\",\"reason\":\"x y\",\"text\":\"{TOP}\"}}\n\n"),
+        // `saved` given, an escaped pair as a key: the reason removed, the pair written as its character.
+        "data: {\"type\":\"error\",\"saved\":false,\"reason\":\"bad!\",\"\\udbff\\udfff\":\"\\ud800\"}\n\n".to_owned(),
+        // A status carrying one still advances the stage...
+        format!("data: {{\"type\":\"status\",\"text\":\"Generating companion response\u{2026}\",\"x\":\"{LOW}\"}}\n\n"),
+        // ...so this error is reworded as a model failure.
+        "data: {\"type\":\"error\",\"text\":\"t\"}\n\n".to_owned(),
+    ];
+    let body: Vec<u8> = frames.concat().into_bytes();
+    let stub = Stub::start(move |_, _| Out::Stream {
+        status: 200,
+        headers: vec![("content-type", "text/event-stream".into())],
+        chunks: vec![body.clone()],
+        forever: false,
+    })
+    .await;
+    let d = diary(&stub, TENANT_KEY);
+    let w = World::new(&[]);
+    let r = d
+        .local_exchange(
+            w.ctx(MEMBER, true),
+            post(),
+            Full::new(Bytes::from_static(br#"{"stream":true}"#)),
+            Probe::new().admit(),
+        )
+        .await;
+    assert_eq!(
+        text_of(r.body).await,
+        format!(
+            "{CONNECT_FRAME}data: {{\"type\":\"error\",\"code\":\"other\",\"text\":\"{TOP}\"}}\n\n\
+             data: {{\"type\":\"error\",\"saved\":false,\"{TOP}\":\"\\ud800\"}}\n\n\
+             data: {{\"type\":\"status\",\"text\":\"Generating companion response…\",\"x\":\"{LOW}\"}}\n\n\
+             data: {{\"type\":\"error\",\"code\":\"modelFailed\",\"saved\":false,\"text\":\"Couldn't reach the local model — nothing was saved. You can resend.\"}}\n\n"
+        )
+    );
+}
+
+/// Finding 1, request: such characters in a key or a value are forwarded, not a 400.
+#[tokio::test]
+async fn rereview_1_a_request_with_top_plane_characters_is_forwarded() {
+    let stub = Stub::start(|_, _| Out::json(200, r#"{"reply":"ok"}"#)).await;
+    let d = diary(&stub, TENANT_KEY);
+    let w = World::new(&[]);
+    let body = format!("{{\"message\":\"{LOW}\", \"k\\udbff\\udfff\":1}}");
+    let r = d
+        .local_exchange(
+            w.ctx(MEMBER, true),
+            post(),
+            Full::new(Bytes::from(body)),
+            Probe::new().admit(),
+        )
+        .await;
+    assert_eq!(r.status, 200);
+    assert_eq!(
+        String::from_utf8(stub.requests()[0].body.clone()).unwrap(),
+        format!("{{\"message\":\"{LOW}\",\"k{TOP}\":1}}")
+    );
+}
+
+/// Finding 1, replies: a reply with such a character is relayed as the object it is, and a
+/// failure keeps its detail.
+#[tokio::test]
+async fn rereview_1_replies_with_top_plane_characters_are_read() {
+    let stub = Stub::start(|seen, _| {
+        if seen.body.windows(4).any(|w| w == b"fail") {
+            Out::json(
+                503,
+                &format!(
+                    "{{\"detail\":\"busy {TOP}\",\"code\":\"storageThrottled\",\"retryAfter\":3}}"
+                ),
+            )
+        } else {
+            Out::json(200, &format!("{{\"reply\":\"{TOP}\"}}"))
+        }
+    })
+    .await;
+    let d = diary(&stub, TENANT_KEY);
+    let w = World::new(&[]);
+    let r = d
+        .local_exchange(
+            w.ctx(MEMBER, true),
+            post(),
+            Full::new(Bytes::from_static(b"{}")),
+            Probe::new().admit(),
+        )
+        .await;
+    assert_eq!(
+        (r.status, text_of(r.body).await),
+        (200, format!("{{\"reply\":\"{TOP}\"}}"))
+    );
+    let r = d
+        .local_exchange(
+            w.ctx(MEMBER, true),
+            post(),
+            Full::new(Bytes::from_static(br#"{"m":"fail"}"#)),
+            Probe::new().admit(),
+        )
+        .await;
+    assert_eq!(r.retry_after, Some(3));
+    assert_eq!(
+        (r.status, text_of(r.body).await),
+        (
+            503,
+            format!("{{\"error\":\"busy {TOP}\",\"code\":\"storageThrottled\",\"retryAfter\":3}}")
+        )
+    );
+}
+
+/// Forwards `body` on its own thread and runtime; `None` if that took longer than `bound`. (A
+/// rewrite that never yields would hold a test runtime's only thread, so the clock is outside it.)
+fn forwarded_within(body: String, bound: Duration) -> Option<(u16, usize, Duration)> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async move {
+            let stub = Stub::start(|_, _| Out::json(200, "{}")).await;
+            let d = diary(&stub, TENANT_KEY);
+            let w = World::new(&[]);
+            let started = std::time::Instant::now();
+            let r = d
+                .local_exchange(
+                    w.ctx(MEMBER, true),
+                    post(),
+                    Full::new(Bytes::from(body)),
+                    Probe::new().admit(),
+                )
+                .await;
+            let took = started.elapsed();
+            let sent = stub.requests().first().map_or(0, |s| s.body.len());
+            let _ = tx.send((r.status, sent, took));
+        });
+    });
+    rx.recv_timeout(bound).ok()
+}
+
+/// Finding 2: the rewrite is linear in nesting depth, for arrays, plain objects and objects that
+/// must be reordered. Quadratic copying at a million levels is ~10^12 bytes: hours, not seconds.
+#[test]
+fn rereview_2_a_million_levels_are_rewritten_in_linear_time() {
+    let depth = 1_000_000;
+    let reorder = 300_000;
+    for (name, body) in [
+        (
+            "arrays",
+            format!("{{\"x\":{}0{}}}", "[".repeat(depth), "]".repeat(depth)),
+        ),
+        (
+            "objects",
+            format!("{}0{}", "{\"a\":".repeat(depth), "}".repeat(depth)),
+        ),
+        (
+            "reordered objects",
+            format!(
+                "{}0{}",
+                "{\"b\":0,\"1\":".repeat(reorder),
+                "}".repeat(reorder)
+            ),
+        ),
+    ] {
+        let size = body.len();
+        let (status, sent, took) = forwarded_within(body, Duration::from_secs(60))
+            .unwrap_or_else(|| panic!("{name}: not forwarded within 60 s (quadratic)"));
+        assert_eq!(status, 200, "{name}");
+        assert!(sent > 0 && sent <= size, "{name}");
+        eprintln!("{name}: {size} bytes forwarded in {took:?}");
+    }
+}

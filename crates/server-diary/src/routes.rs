@@ -505,19 +505,26 @@ impl Diary {
         };
         // `raw ? JSON.parse(raw) : {}` over the UTF-8 decoded text, then `JSON.stringify(parsed)`
         // and `parsed?.stream === true`, read losslessly: any text JSON.parse takes is forwarded.
-        let text = String::from_utf8_lossy(&raw);
+        let text = String::from_utf8_lossy(&raw).into_owned();
         let (forward, stream) = if text.is_empty() {
             ("{}".to_owned(), false)
         } else {
-            match js_raw::read(&text) {
-                None => return error_reply(400, "invalid JSON"),
-                Some(js_raw::Top::Other(out)) => (out, false),
-                Some(js_raw::Top::Object(entries)) => {
-                    let stream = entries.iter().any(|(k, v)| k == "stream" && v == "true");
-                    let Some(out) = js_raw::join(&entries) else {
-                        return internal();
-                    };
-                    (out, stream)
+            // Linear in the body, but the body is up to 16 MiB: rewritten off the async workers,
+            // and a hold lost meanwhile is still the admission's own refusal.
+            let rewrite = tokio::task::spawn_blocking(move || js_raw::read(&text));
+            let read = tokio::select! {
+                read = rewrite => read,
+                () = &mut lost => return error_reply(503, local_exchange::LEASE_LOST),
+            };
+            match read {
+                Err(_) => return internal(),
+                Ok(None) => return error_reply(400, "invalid JSON"),
+                Ok(Some(js_raw::Top::Other(out))) => (out, false),
+                Ok(Some(js_raw::Top::Object(entries))) => {
+                    let stream = entries
+                        .iter()
+                        .any(|(k, v)| js_raw::is_key(k, "stream") && v == "true");
+                    (js_raw::join(&entries), stream)
                 }
             }
         };
@@ -558,38 +565,30 @@ impl Diary {
             () = &mut lost => return diary_unavailable(),
         };
         drop(keep);
-        // `fetchJson`'s body: `JSON.parse(text)`, or the text itself when that throws.
-        let text = |bytes: &[u8]| String::from_utf8_lossy(bytes).into_owned();
-        match reply {
-            Ok((true, status, Some(bytes))) => {
-                let text = text(&bytes);
-                let json = match js_raw::canonical(&text) {
-                    Some(json) => Some(json),
-                    None => wtf16::stringify(&JValue::Str(text)),
-                };
-                match json {
-                    Some(json) => Reply {
-                        status,
-                        body: ReplyBody::Json(json),
-                        retry_after: None,
-                    },
-                    None => internal(),
-                }
+        let (ok, status, bytes) = match reply {
+            Ok(reply) => reply,
+            Err(e) => return call_failed(e),
+        };
+        // `fetchJson`'s body: `JSON.parse(text)`, or the text itself when that throws; written back
+        // as `JSON.stringify` writes it. Linear in the reply, and off the async workers.
+        let written = tokio::task::spawn_blocking(move || {
+            let text = bytes.map(|bytes| String::from_utf8_lossy(&bytes).into_owned());
+            match (ok, text) {
+                (true, Some(text)) => (
+                    js_raw::canonical(&text).unwrap_or_else(|| js_raw::quote(&text)),
+                    None,
+                ),
+                (_, text) => local_exchange::json_failure(text.as_deref()),
             }
-            Ok((_, status, bytes)) => {
-                let body = match bytes {
-                    None => JValue::Undefined,
-                    Some(bytes) => {
-                        let text = text(&bytes);
-                        local_exchange::parsed_reply(&text).unwrap_or(JValue::Str(text))
-                    }
-                };
-                let (body, wait) = local_exchange::json_failure(&body);
-                let mut reply = json_reply(status, &body);
-                reply.retry_after = wait;
-                reply
-            }
-            Err(e) => call_failed(e),
+        })
+        .await;
+        match written {
+            Ok((json, retry_after)) => Reply {
+                status,
+                body: ReplyBody::Json(json),
+                retry_after,
+            },
+            Err(_) => internal(),
         }
     }
 
