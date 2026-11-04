@@ -112,7 +112,10 @@ mod tests {
         assert_eq!(DEFAULT_PROFILE, Profile::NomicV1);
         for kind in [Kind::Query, Kind::Document, Kind::Similarity] {
             let text = units("  spaced\n|\r\n ");
-            assert_eq!(frame(DEFAULT_PROFILE, kind, &text, Some(&units("title"))), text);
+            assert_eq!(
+                frame(DEFAULT_PROFILE, kind, &text, Some(&units("title"))),
+                text
+            );
         }
         let profile = Profile::try_from("embeddinggemma-2").ok();
         assert_eq!(profile, Some(Profile::EmbeddingGemma2));
@@ -138,7 +141,10 @@ mod tests {
             frame(profile, Kind::Similarity, &units("x"), None),
             units("task: sentence similarity | query: x")
         );
-        assert_eq!(Profile::try_from("constructor"), Err(Refusal::UnknownProfile));
+        assert_eq!(
+            Profile::try_from("constructor"),
+            Err(Refusal::UnknownProfile)
+        );
         assert_eq!(Kind::try_from("passage"), Err(Refusal::UnknownKind));
         assert_eq!(Kind::try_from("document"), Ok(Kind::default()));
     }
