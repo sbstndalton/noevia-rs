@@ -135,21 +135,28 @@ pub struct Plan {
     pub base: Vec<(String, JValue)>,
 }
 
-struct Inner {
-    state: State,
-    cancel_requested: bool,
-    inflight: Option<Arc<Abort>>,
-    launching: bool,
+pub(super) struct Inner {
+    pub(super) state: State,
+    pub(super) cancel_requested: bool,
+    pub(super) inflight: Option<Arc<Abort>>,
+    pub(super) launching: bool,
+    /// Node's `objectId(state.job)`: changes whenever the job object is replaced (launch, reload).
+    pub(super) job_object: u64,
+    /// Node's `objectId(inflight)`: 0 when no step controller is live.
+    pub(super) controller: u64,
+    pub(super) next_object: u64,
 }
 
 /// The native worker: one per process, owning its state file, controller and job.
 pub struct Worker {
-    maint: Arc<Maint>,
+    pub(super) maint: Arc<Maint>,
     file: StateFile,
     inner: Mutex<Inner>,
     memory: Arc<dyn Fn() -> Option<f64> + Send + Sync>,
     floor_gib: f64,
     limits: Limits,
+    /// The per-process salt of the facts tokens (Node's `launchSalt` / `cancelSalt`).
+    pub(super) salt: String,
 }
 
 /// The job keys the bridge and the public routes may show (`cancellationFacts`).
@@ -173,7 +180,7 @@ pub const PUBLIC_KEYS: &[&str] = &[
     "finishedAt",
 ];
 
-fn now_ms() -> f64 {
+pub(super) fn now_ms() -> f64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0.0, |d| d.as_millis() as f64)
@@ -183,7 +190,7 @@ fn js_round(x: f64) -> f64 {
     (x + 0.5).floor()
 }
 
-fn random_hex(bytes: usize) -> String {
+pub(super) fn random_hex(bytes: usize) -> String {
     use rand_core::RngCore;
     let mut b = vec![0u8; bytes];
     rand_core::OsRng.fill_bytes(&mut b);
@@ -222,12 +229,12 @@ fn status_of(m: &Value) -> Option<&str> {
         .and_then(Value::as_str)
 }
 
-fn id_of(m: &Value) -> Option<&str> {
+pub(super) fn id_of(m: &Value) -> Option<&str> {
     m.get("id").and_then(Value::as_str)
 }
 
 /// `Number(v)` of a JValue (strings as ECMAScript reads them).
-fn number(v: &JValue) -> f64 {
+pub(super) fn number(v: &JValue) -> f64 {
     match v {
         JValue::Num(n) => *n,
         JValue::Null => 0.0,
@@ -240,7 +247,7 @@ fn number(v: &JValue) -> f64 {
     }
 }
 
-fn public(job: &JValue) -> JValue {
+pub(super) fn public(job: &JValue) -> JValue {
     match job {
         JValue::Obj(_) => JValue::Obj(
             PUBLIC_KEYS
@@ -286,14 +293,18 @@ impl Worker {
                 cancel_requested: false,
                 inflight: None,
                 launching: false,
+                job_object: 1,
+                controller: 0,
+                next_object: 2,
             }),
+            salt: random_hex(32),
             memory,
             floor_gib,
             limits,
         })
     }
 
-    fn with<T>(&self, f: impl FnOnce(&mut Inner) -> T) -> T {
+    pub(super) fn with<T>(&self, f: impl FnOnce(&mut Inner) -> T) -> T {
         let mut guard = match self.inner.lock() {
             Ok(g) => g,
             Err(p) => p.into_inner(),
@@ -374,7 +385,11 @@ impl Worker {
         let outcome = self.maint.recover_calibration().await;
         let file = self.file.clone();
         if let Ok(state) = tokio::task::spawn_blocking(move || file.load()).await {
-            self.with(|i| i.state = state);
+            self.with(|i| {
+                i.state = state;
+                i.job_object = i.next_object;
+                i.next_object += 1;
+            });
         }
         outcome
     }
@@ -696,7 +711,11 @@ impl Worker {
             waited += 1;
         }
         let abort = Arc::new(Abort::default());
-        self.with(|i| i.inflight = Some(Arc::clone(&abort)));
+        self.with(|i| {
+            i.inflight = Some(Arc::clone(&abort));
+            i.controller = i.next_object;
+            i.next_object += 1;
+        });
         let watcher = if (self.memory)().is_none() {
             self.with_step(index, |r| {
                 wtf16::set(r, "memoryGuard", JValue::Str("unavailable".into()))
@@ -765,7 +784,10 @@ impl Worker {
         if let Some(w) = watcher {
             w.abort();
         }
-        self.with(|i| i.inflight = None);
+        self.with(|i| {
+            i.inflight = None;
+            i.controller = 0;
+        });
         let model = self.job_get("model").as_str().unwrap_or("").to_owned();
         self.unload(hold, &model).await;
         outcome
@@ -1186,20 +1208,33 @@ impl Worker {
         if busy {
             return Err(Refusal::Running);
         }
-        let launched = self.launch_held(model, plan).await;
+        let launched = match self.take_hold(model).await {
+            Ok(hold) => self.start(hold, model, plan).await,
+            Err(r) => Err(r),
+        };
         self.with(|i| i.launching = false);
         launched
     }
 
-    async fn launch_held(self: &Arc<Self>, model: &str, plan: Plan) -> Result<JValue, Refusal> {
+    /// `maintenance.hold(...)` for a run of `model`.
+    pub(super) async fn take_hold(&self, model: &str) -> Result<Hold, Refusal> {
         if self.maint.router.is_none() || self.maint.ini.is_none() {
             return Err(Refusal::Unavailable);
         }
         let reason = format!("Chat is paused while noevia calibrates {model}. It will be available again when calibration finishes or is cancelled.");
-        let hold = match self.maint.acquire(&reason, UNBOUNDED, false).await {
-            Ok(h) => h,
-            Err(e) => return Err(Refusal::Hold(hold_facts(&e))),
-        };
+        self.maint
+            .acquire(&reason, UNBOUNDED, false)
+            .await
+            .map_err(|e| Refusal::Hold(hold_facts(&e)))
+    }
+
+    /// The job created and saved under `hold`, and its run spawned; the public job.
+    pub(super) async fn start(
+        self: &Arc<Self>,
+        hold: Hold,
+        model: &str,
+        plan: Plan,
+    ) -> Result<JValue, Refusal> {
         let guard = if (self.memory)().is_none() {
             "unavailable"
         } else {
@@ -1221,16 +1256,20 @@ impl Worker {
             ("memoryFloorGib", JValue::Num(self.floor_gib)),
             ("memoryGuard", JValue::Str(guard.into())),
         ]);
-        let (previous, previous_cancel) = self.with(|i| {
-            let p = (i.state.job().clone(), i.cancel_requested);
+        let previous = self.with(|i| {
+            let p = (i.state.job().clone(), i.cancel_requested, i.job_object);
             i.cancel_requested = false;
             i.state.set_job(job);
+            i.job_object = i.next_object;
+            i.next_object += 1;
             p
         });
+        let (previous, previous_cancel, previous_object) = (previous.0, previous.1, previous.2);
         if self.save().await.is_err() {
             self.with(|i| {
                 i.state.set_job(previous);
                 i.cancel_requested = previous_cancel;
+                i.job_object = previous_object;
             });
             hold.release().await;
             return Err(Refusal::Unavailable);
@@ -1950,5 +1989,73 @@ mod tests {
             hold_facts(&HoldError::NodeUnavailable).get("status"),
             &JValue::Null
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn launch_and_abort_apply_only_to_the_snapshot_their_token_names() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (port, _) = synthetic_engine(ini.clone(), true).await;
+        let w = worker(d.path(), port);
+        let plan = json!({"promptBudgetSeconds": 120, "native": 16384, "base": {}});
+        let plan = wtf16::parse(&plan.to_string()).unwrap();
+        let bad = wtf16::parse(r#"{"promptBudgetSeconds":14,"native":16384,"base":{}}"#).unwrap();
+        let token = w.state_facts().get("token").as_str().unwrap().to_owned();
+        assert!(w
+            .compare_and_launch(
+                "synthetic",
+                &token,
+                &"0".repeat(64),
+                &"0".repeat(64),
+                &bad,
+                16.0
+            )
+            .await
+            .is_err());
+        let stale = w
+            .compare_and_launch("synthetic", &"1".repeat(64), "", "", &plan, 16.0)
+            .await
+            .unwrap();
+        assert_eq!(stale.get("reason").as_str(), Some("stale"));
+        let idle = w.cancellation_facts();
+        assert_eq!(
+            w.compare_and_abort(idle.get("token").as_str().unwrap())
+                .get("applied"),
+            &JValue::Bool(false)
+        );
+        w.launch(
+            "synthetic",
+            Plan {
+                prompt_budget_seconds: 120.0,
+                native: 16384.0,
+                base: Vec::new(),
+            },
+        )
+        .await
+        .unwrap();
+        let first = w.cancellation_facts();
+        assert_eq!(
+            w.compare_and_abort(&"2".repeat(64)).get("applied"),
+            &JValue::Bool(false)
+        );
+        // A launch token taken before the job is stale now.
+        let late = w
+            .compare_and_launch("synthetic", &token, "", "", &plan, 16.0)
+            .await
+            .unwrap();
+        assert_eq!(late.get("reason").as_str(), Some("stale"));
+        let mut facts = w.cancellation_facts();
+        for _ in 0..200 {
+            let applied = w.compare_and_abort(facts.get("token").as_str().unwrap());
+            if applied.get("applied") == &JValue::Bool(true) {
+                assert_eq!(applied.get("generation"), first.get("generation"));
+                assert_eq!(applied.get("job").get("status").as_str(), Some("running"));
+                break;
+            }
+            facts = w.cancellation_facts();
+        }
+        assert_eq!(settled(&w).await.get("status").as_str(), Some("cancelled"));
+        assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI);
     }
 }

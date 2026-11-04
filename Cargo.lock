@@ -1944,6 +1944,7 @@ dependencies = [
  "prompt-framing",
  "provider-egress",
  "rand_core 0.6.4",
+ "regex",
  "reqwest",
  "research-core",
  "rustls",

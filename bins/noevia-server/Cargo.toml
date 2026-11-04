@@ -80,6 +80,8 @@ server-stats = { path = "../../crates/server-stats" }
 llamacpp-autoconfig = { path = "../../crates/llamacpp-autoconfig" }
 # The preset value, model-name and micro-batch policy calibration's profile writes apply (model_maint/ini.rs `prepare`).
 llamacpp-presets = { path = "../../crates/llamacpp-presets" }
+# tuneIdentity's quantisation pattern over the model file name (model_maint/calibration_facts.rs).
+regex = "1"
 long-profile = { path = "../../crates/long-profile" }
 preset-reload = { path = "../../crates/preset-reload" }
 gguf = { path = "../../crates/gguf" }

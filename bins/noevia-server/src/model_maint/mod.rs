@@ -19,6 +19,7 @@
 //! task, has a deadline, and is given back from `Drop` if the task dies).
 
 pub mod calibration;
+pub mod calibration_facts;
 pub mod calibration_worker;
 pub mod evidence;
 pub mod evidence_live;
