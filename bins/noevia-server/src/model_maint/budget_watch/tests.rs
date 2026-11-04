@@ -1,6 +1,11 @@
 //! Core `inference-budget.test.cjs`'s watchdog cases, ported over a synthetic [`Io`] (no engine, no sysfs), plus
 //! the timer: serial sampling, a restart and the stop at shutdown.
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
 use super::*;
 use serde_json::json;
 use std::sync::atomic::{AtomicUsize, Ordering};
