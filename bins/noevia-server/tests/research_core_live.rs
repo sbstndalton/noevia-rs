@@ -71,7 +71,10 @@ impl LiveCore {
     fn start(core: &std::path::Path, data: &std::path::Path) -> LiveCore {
         let script =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/research_core_live.cjs");
+        // The paired Core's embedding owner asks this front's own build for its features at boot
+        // (core rust-embedding-background.cjs createOwner), as the web image's /usr/local/bin one is.
         let mut child = Command::new("node")
+            .env("NOEVIA_SERVER_BIN", env!("CARGO_BIN_EXE_noevia-server"))
             .arg(script)
             .arg(core)
             .arg(data)
