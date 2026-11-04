@@ -134,6 +134,8 @@ pub enum Native {
     ToolboxPicker,
     /// Every method of exactly /api/chat-framing/suggest (chat port S4): chat_framing_suggest.rs.
     ChatFramingSuggest,
+    /// POST exactly /api/chat (chat port S5): chat_turn.rs, the relay to Core's turn.
+    ChatTurn,
 }
 
 /// The routes [`Native::McpDirectory`] implements (every method; routes.toml).
@@ -492,6 +494,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
         server_account::tool_approvals::ROUTE if auth => return Some(Native::ToolApprovals),
         "/api/toolboxes" if auth => return Some(Native::ToolboxPicker),
         crate::chat_framing_suggest::PATH if auth => return Some(Native::ChatFramingSuggest),
+        crate::chat_turn::PATH if auth => return Some(Native::ChatTurn),
         TOOLBOXES_PERMITTED if auth => return Some(Native::ToolboxesPermitted),
         "/api/instance"
         | "/.well-known/webauthn"
@@ -616,6 +619,7 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
     // This owner is exact-path only; the shared matcher tolerates trailing slashes.
     if (route.path == "/api/chat-framing/preferences"
         || route.path == crate::chat_framing_suggest::PATH
+        || route.path == crate::chat_turn::PATH
         || route.path == server_account::vault_mirror::PATH
         || route.path == crate::model_manager_scan::PATH
         || route.path == crate::model_downloads_read::PATH
@@ -723,6 +727,21 @@ mod tests {
         }
         assert!(crate::FEATURES.contains(&"rust-chat-framing-suggest"));
         assert!(crate::FEATURES.contains(&"chat-activity"));
+    }
+
+    /// Chat port S5: the turn is the front's relay for POST to exactly /api/chat only; Node answered every
+    /// other method there (no gate for GET, its own 404s) and still does, as it does siblings and spellings.
+    #[test]
+    fn the_chat_turn_is_native_for_a_post_to_exactly_its_path() {
+        assert!(!is_account_path("/api/chat"));
+        assert_eq!(dispatch("POST", "/api/chat"), Some(Native::ChatTurn));
+        for method in ["GET", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH"] {
+            assert_eq!(dispatch(method, "/api/chat"), None, "{method}");
+        }
+        for path in ["/api/chat/", "/api/chat/x", "/api/chatx", "/api/chats"] {
+            assert_ne!(dispatch("POST", path), Some(Native::ChatTurn), "{path}");
+        }
+        assert!(crate::FEATURES.contains(&"rust-chat-turn"));
     }
 
     #[test]

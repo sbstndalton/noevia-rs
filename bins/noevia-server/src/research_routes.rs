@@ -227,6 +227,12 @@ impl Research {
         tasks.len()
     }
 
+    /// The per-start secret of the front's loopback calls to Node (`NOEVIA_PROJECT_STORE_TOKEN`), for a
+    /// module that makes its own call (chat_turn.rs).
+    pub(crate) fn front_token(&self) -> Option<&str> {
+        self.settings.token.as_deref()
+    }
+
     fn bridge_post(
         &self,
         path: &str,
