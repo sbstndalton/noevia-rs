@@ -614,7 +614,8 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
     if (route.path == "/api/chat-framing/preferences"
         || route.path == server_account::vault_mirror::PATH
         || route.path == crate::model_manager_scan::PATH
-        || route.path == crate::model_downloads_read::PATH)
+        || route.path == crate::model_downloads_read::PATH
+        || route.path == crate::preset_read_routes::PATH)
         && path != route.path
     {
         return None;
@@ -1345,7 +1346,7 @@ mod tests {
             "/api/models/evidence/recheck",
             "/api/models/load",
             "/api/models/machines",
-            "/api/models/preset",
+            "/api/models/preset/",
             "/api/models/downloads/",
             "/api/models/capabilitiesx",
             "/api/models/hardware/x",
@@ -1358,6 +1359,7 @@ mod tests {
             }
         }
         assert!(crate::FEATURES.contains(&"rust-model-downloads-read"));
+        assert!(crate::FEATURES.contains(&"rust-preset-read"));
         // Native model routes and methods listed in the contract.
         let rust: Vec<_> = ROUTES
             .iter()
@@ -1387,6 +1389,7 @@ mod tests {
                 (crate::model_state_routes::BUDGET, &["GET"][..]),
                 (crate::idle_unload_read::PATH, &["GET"][..]),
                 (crate::model_state_routes::INSTALLED, &["GET"][..]),
+                (crate::preset_read_routes::PATH, &["GET"][..]),
                 (crate::model_sizing::SUGGEST, &["GET"][..]),
                 (crate::model_maint::RELOAD, &["POST"][..]),
             ]

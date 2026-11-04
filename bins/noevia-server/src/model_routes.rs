@@ -47,6 +47,7 @@ pub const ROUTES: &[&str] = &[
     crate::model_state_routes::BUDGET,
     crate::model_state_routes::INSTALLED,
     crate::autotune_read_routes::PATH,
+    crate::preset_read_routes::PATH,
     crate::idle_unload_read::PATH,
     crate::model_downloads_read::PATH,
 ];
@@ -167,6 +168,9 @@ pub async fn serve(
     };
     if path == crate::model_downloads_read::PATH {
         return crate::model_downloads_read::serve(app).await;
+    }
+    if path == crate::preset_read_routes::PATH {
+        return crate::preset_read_routes::serve(app, id.user.role == Role::Admin, model).await;
     }
     if let Some(route) = crate::model_sizing::Route::of(&path) {
         let budget = crate::model_state_routes::sizing_budget(app);
