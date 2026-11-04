@@ -238,6 +238,49 @@ pub fn slice_string(written: &str, n: usize) -> Option<String> {
     Some(out)
 }
 
+/// The UTF-16 length (`s.length`) of the string a written string literal (from [`read`]) holds; a
+/// lone surrogate is one unit. `None` when it is not a string.
+pub fn utf16_len(written: &str) -> Option<usize> {
+    if !written.starts_with('"') {
+        return None;
+    }
+    let mut units = 0usize;
+    pieces(written, |p| {
+        units += match p {
+            Piece::Lone(_) => 1,
+            Piece::Char(c) => c.len_utf16(),
+        }
+    })?;
+    Some(units)
+}
+
+/// For a written array (from [`read`]: `JSON.stringify`'s text, no whitespace), the `length` of
+/// each of its items when every one is a string; `None` when it is not an array, or when any item
+/// is not a string (chat port S6: core chat-mode.cjs `requestShapeError`'s id lists).
+pub fn string_lengths(written: &str) -> Option<Vec<usize>> {
+    let b = written.as_bytes();
+    if b.first() != Some(&b'[') || b.last() != Some(&b']') {
+        return None;
+    }
+    let mut out = Vec::new();
+    if b.len() == 2 {
+        return Some(out);
+    }
+    let mut i = 1usize;
+    loop {
+        if b.get(i) != Some(&b'"') {
+            return None;
+        }
+        let end = string_end(b, i)?;
+        out.push(utf16_len(written.get(i..end)?)?);
+        match b.get(end) {
+            Some(b',') => i = end + 1,
+            Some(b']') if end + 1 == b.len() => return Some(out),
+            _ => return None,
+        }
+    }
+}
+
 /// Whether a written key is `name` (a name that needs no escape).
 pub fn is_key(written: &str, name: &str) -> bool {
     written.strip_prefix('"').and_then(|k| k.strip_suffix('"')) == Some(name)
@@ -737,7 +780,7 @@ pub fn tree(text: &str) -> Option<JValue> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -753,6 +796,34 @@ mod tests {
         assert_eq!(cut("\"\u{10F800}z\"", 1), r#""\udbfe""#);
         assert_eq!(cut(r#""q\"\n""#, 2), r#""q\"""#);
         assert_eq!(slice_string("12", 1), None);
+    }
+
+    #[test]
+    fn string_lengths_are_utf16_lengths_of_an_all_string_array() {
+        let lens = |text: &str| match read(&format!("{{\"v\":{text}}}")) {
+            Some(Top::Object(f)) => string_lengths(&f[0].value),
+            _ => panic!("{text}"),
+        };
+        assert_eq!(lens("[]"), Some(vec![]));
+        assert_eq!(lens(r#"[ "a" , "bc" ]"#), Some(vec![1, 2]));
+        assert_eq!(
+            lens(r#"["\ud83d\ude00","\udc00","é","",",]"]"#),
+            Some(vec![2, 1, 1, 0, 2])
+        );
+        assert_eq!(lens("[\"\u{1F600}\u{10FFFF}\"]"), Some(vec![4]));
+        for refused in [
+            "[1]",
+            r#"["a",null]"#,
+            r#"[["a"]]"#,
+            r#""a""#,
+            "{}",
+            "null",
+            r#"["a",{"b":"c"}]"#,
+        ] {
+            assert_eq!(lens(refused), None, "{refused}");
+        }
+        assert_eq!(utf16_len(r#""a\"b""#), Some(3));
+        assert_eq!(utf16_len("1"), None);
     }
 
     #[test]

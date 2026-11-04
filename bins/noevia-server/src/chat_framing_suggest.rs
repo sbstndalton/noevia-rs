@@ -107,7 +107,7 @@ pub async fn serve(app: &Arc<App>, req: Request<Body>, path: String) -> Response
     }
     let user = authn.user.id.clone();
     let limited = app
-        .framing_suggest_rate
+        .llm_rate
         .lock()
         .map(|mut r| {
             r.limited(

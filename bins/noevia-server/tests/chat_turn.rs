@@ -580,13 +580,26 @@ async fn a_refused_request_meets_cores_gate_first_as_node_answered_it() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_body_reaches_core_up_to_one_byte_past_its_cap_whatever_the_declared_length() {
+async fn a_body_at_the_cap_reaches_core_whole_and_one_byte_more_is_the_fronts_413() {
+    // Chat port S6: the front reads the body (chat_edge.rs); Core gets it whole or not at all.
     let f = front().await;
     let cap = noevia_server::chat_turn::STORED_HISTORY_BYTES as usize;
-    for len in [cap, cap + 1, cap + 4096] {
-        let (res, _c) = call(&f, "POST", "/api/chat", &[], vec![b'a'; len], true).await;
-        assert_eq!(res.status(), 200, "{len}");
-        let echo: serde_json::Value = serde_json::from_str(&text(res).await).unwrap();
-        assert_eq!(echo["bodyLen"], len.min(cap + 1), "{len}");
+    let body = |len: usize| format!("{{\"message\":\"{}\"}}", "a".repeat(len - 14)).into_bytes();
+    let (res, _c) = call(&f, "POST", "/api/chat", &[], body(cap), true).await;
+    assert_eq!(res.status(), 200);
+    let echo: serde_json::Value = serde_json::from_str(&text(res).await).unwrap();
+    assert_eq!(echo["bodyLen"], cap);
+    for len in [cap + 1, cap + 4096] {
+        f.core.seen.lock().unwrap().hits.clear();
+        let (res, _c) = call(&f, "POST", "/api/chat", &[], body(len), true).await;
+        assert_eq!(res.status(), 413, "{len}");
+        assert_eq!(
+            text(res).await,
+            r#"{"error":"This chat is too large to continue; start a new chat."}"#
+        );
+        assert_eq!(
+            f.core.seen.lock().unwrap().hits,
+            ["POST /internal/chat/gate"]
+        );
     }
 }

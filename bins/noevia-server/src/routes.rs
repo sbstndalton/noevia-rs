@@ -744,6 +744,21 @@ mod tests {
         assert!(crate::FEATURES.contains(&"rust-chat-turn"));
     }
 
+    /// Chat port S6: the edge rides on the turn's route, and the Diary local exchange stays Node's (the
+    /// front only counts its call on the shared budget, chat_edge.rs `forward_node`).
+    #[test]
+    fn the_chat_edge_keeps_the_route_table_and_the_local_exchange_stays_nodes() {
+        assert!(crate::FEATURES.contains(&"rust-chat-edge"));
+        for method in ["GET", "POST", "PUT", "DELETE"] {
+            assert_eq!(
+                dispatch(method, "/api/diary/local-exchange"),
+                None,
+                "{method}"
+            );
+        }
+        assert_eq!(dispatch("POST", "/api/chat"), Some(Native::ChatTurn));
+    }
+
     #[test]
     fn every_rust_route_has_a_native_handler() {
         for r in ROUTES.iter().filter(|r| r.owner == Owner::Rust) {

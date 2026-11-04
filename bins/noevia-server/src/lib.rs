@@ -13,6 +13,7 @@ pub mod autotune_settings_routes;
 pub mod calibration_cancel_routes;
 pub mod calibration_routes;
 pub mod chat_activity;
+pub mod chat_edge;
 pub mod chat_framing_suggest;
 pub mod chat_turn;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -356,6 +357,12 @@ use std::sync::Arc;
 /// `/internal/chat/turn`, whose unchanged pipeline answers byte for byte; Core refuses any other
 /// POST /api/chat (rust-chat-turn.cjs). The supervisor and assemble-release pair them.
 ///
+/// `rust-chat-edge`: this build answers what routes/chat.cjs answered before a turn reached its loop
+/// (chat_edge.rs, chat port S6): the `llm:<user>` budget, which the Diary local exchange shares, the
+/// body cap, JSON, the request shape, the Cowork refusals and the Diary add-on gate, each after Core's
+/// inference gate. A Cowork start that passes goes to Core's `/internal/chat/cowork`. Core removes its
+/// own limiter (rust-chat-edge.cjs). The supervisor and assemble-release pair them.
+///
 /// `chat-activity`: this build records each authenticated request's account in
 /// `UI_DATA_DIR/chat-activity.json` (chat_activity.rs, chat port S3), which core's change journal
 /// reader merges as request starts (chat-activity.cjs). Either side alone keeps today's behaviour.
@@ -461,6 +468,7 @@ pub const FEATURES: &[&str] = &[
     "rust-workspace",
     "rust-chat-framing-suggest",
     "rust-chat-turn",
+    "rust-chat-edge",
     "chat-activity",
     #[cfg(feature = "rust-reasoning-settings")]
     "rust-reasoning-settings",
@@ -549,9 +557,10 @@ pub struct App {
     /// `connectorRate` of the Diary connector endpoint (core routes/diary.cjs): fixed windows, one
     /// per bucket key, in this process's memory like core's.
     diary_connector_rate: std::sync::Mutex<server_account::rate::RateLimiter>,
-    /// core index.cjs's `llmRateLimiter` for the `chat-frame:<user>` buckets only (chat port S4):
-    /// no other key shared them.
-    pub(crate) framing_suggest_rate: std::sync::Mutex<server_account::rate::RateLimiter>,
+    /// core index.cjs's `llmRateLimiter`, one map as in Node: the `chat-frame:<user>` buckets (chat
+    /// port S4) and the `llm:<user>` budget that the chat turn and the Diary local exchange share
+    /// (chat port S6, chat_edge.rs).
+    pub(crate) llm_rate: std::sync::Mutex<server_account::rate::RateLimiter>,
     /// Who made an authenticated request, for Node's chat change journal reader (chat port S3).
     pub activity: Arc<chat_activity::Activity>,
     pub reasoning_settings: Arc<tokio::sync::Semaphore>,
@@ -651,7 +660,7 @@ impl App {
             diary_connector_rate: std::sync::Mutex::new(server_account::rate::RateLimiter::new(
                 identity::now_ms(),
             )),
-            framing_suggest_rate: std::sync::Mutex::new(server_account::rate::RateLimiter::new(
+            llm_rate: std::sync::Mutex::new(server_account::rate::RateLimiter::new(
                 identity::now_ms(),
             )),
             activity: chat_activity::Activity::new(config.data_dir.clone()),
@@ -1179,7 +1188,8 @@ async fn handle(
                     reply::error(StatusCode::INTERNAL_SERVER_ERROR, "read error", false)
                 })
         }
-        _ => app.proxy.forward(conn.peer, req).await,
+        // Chat port S6: the Diary local exchange counts its call on the shared budget first.
+        _ => chat_edge::forward_node(&app, conn, req, whatwg.as_deref()).await,
     }
 }
 
