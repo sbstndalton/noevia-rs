@@ -231,6 +231,10 @@ struct State {
     serials: u64,
 }
 
+/// Tests only: what a grant check runs between its live-context read and its recheck.
+#[cfg(test)]
+type ContextReadHook = Box<dyn FnOnce(&Registry) + Send>;
+
 pub struct Registry {
     state: Mutex<State>,
     timeout: Duration,
@@ -238,7 +242,7 @@ pub struct Registry {
     live: Option<Live>,
     /// Tests only: runs between a grant check's live-context read and its recheck.
     #[cfg(test)]
-    after_context_read: Mutex<Option<Box<dyn FnOnce(&Registry) + Send>>>,
+    after_context_read: Mutex<Option<ContextReadHook>>,
 }
 
 /// What [`Registry::open`] takes (approvals.cjs `awaitApproval` / `awaitRouteChoice`).
