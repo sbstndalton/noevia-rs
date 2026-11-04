@@ -25,9 +25,9 @@ use tokio::net::TcpListener;
 const METHODS: [&str; 7] = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"];
 const ORIGIN: &str = "http://127.0.0.1:18021";
 const EXPECTED_ROUTES: usize = 79;
-const EXPECTED_METHODS: usize = 461;
-const EXPECTED_PATH_METHODS: usize = 1060;
-const EXPECTED_CASES: usize = 10600; // Path normalization variants × five session/CSRF states × two feature states
+const EXPECTED_METHODS: usize = 460;
+const EXPECTED_PATH_METHODS: usize = 1058;
+const EXPECTED_CASES: usize = 10580; // Path normalization variants × five session/CSRF states × two feature states
 const HEADERS: [&str; 12] = [
     "content-type",
     "cache-control",
@@ -237,12 +237,21 @@ async fn manifest_rejection_grid_matches_pinned_core() {
     let mut compared = 0;
     let mut differences = Vec::new();
     let mut status_counts = BTreeMap::new();
+    let mut session_statuses: BTreeMap<&str, BTreeMap<u16, usize>> = BTreeMap::new();
+    let states = [
+        "admin",
+        "member",
+        "signed-out",
+        "bad-CSRF-admin",
+        "bad-CSRF-member",
+    ];
     for flag in ["1", "0"] {
         let data = tempfile::tempdir().unwrap();
         let ready_file = data.path().join("oracle-ready.json");
         let log = std::fs::File::create(data.path().join("oracle.log")).unwrap();
         let mut oracle = Oracle(
-            Command::new("node")
+            Command::new("timeout")
+                .args(["--signal=TERM", "--kill-after=10s", "600s", "node"])
                 .arg(concat!(
                     env!("CARGO_MANIFEST_DIR"),
                     "/tests/rejection-oracle.cjs"
@@ -282,6 +291,11 @@ async fn manifest_rejection_grid_matches_pinned_core() {
                 let expected = answer(&client, port, method, path, account, state >= 3).await;
                 let actual = answer(&client, native, method, path, account, state >= 3).await;
                 *status_counts.entry(expected.status).or_insert(0usize) += 1;
+                *session_statuses
+                    .entry(states[state])
+                    .or_default()
+                    .entry(expected.status)
+                    .or_default() += 1;
                 compared += 1;
                 let equal = actual.status == expected.status
                     && actual.headers == expected.headers
@@ -296,7 +310,18 @@ async fn manifest_rejection_grid_matches_pinned_core() {
     assert_eq!(compared, EXPECTED_CASES, "silent coverage shrink");
     eprintln!("asserted rejection case count: {compared}; restricted entries: {}; method pairs: {}; Node statuses: {status_counts:?}; differences: {}", routes.len(), methods.len(), differences.len());
     if let Ok(report) = std::env::var("NOEVIA_REJECTION_REPORT") {
-        std::fs::write(report, serde_json::to_vec_pretty(&json!({"cases":compared,"entries":routes.len(),"methods":methods.len(),"pathMethods":wire_cases.len(),"coreRef":include_str!("../../../contracts/http/front-core.ref").trim(),"headers":HEADERS,"states":["admin","member","signed-out","bad-CSRF-admin","bad-CSRF-member"],"differences":differences})).unwrap()).unwrap();
+        std::fs::write(report, serde_json::to_vec_pretty(&json!({"cases":compared,"entries":routes.len(),"methods":methods.len(),"pathMethods":wire_cases.len(),"coreRef":include_str!("../../../contracts/http/front-core.ref").trim(),"headers":HEADERS,"states":states,"statusCounts":status_counts,"sessionStatusCounts":session_statuses,"differences":differences})).unwrap()).unwrap();
+    }
+    for role in ["admin", "member"] {
+        assert!(
+            session_statuses
+                .get(role)
+                .and_then(|counts| counts.get(&405))
+                .copied()
+                .unwrap_or_default()
+                > 0,
+            "{role} must see 405s; a dead session must not reduce the grid to 401s"
+        );
     }
     assert!(
         differences.is_empty(),

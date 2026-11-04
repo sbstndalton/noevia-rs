@@ -8,9 +8,9 @@ const http = require('node:http');
 const crypto = require('node:crypto');
 const { spawn, execFileSync } = require('node:child_process');
 const [core, dataDir, readyFile, flag, expectedRef] = process.argv.slice(2);
-const actualRef = execFileSync('git', ['-C', core, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+const actualRef = execFileSync('timeout', ['15s', 'git', '-C', core, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 if (actualRef !== expectedRef) throw new Error(`Core oracle ref mismatch: ${actualRef} != ${expectedRef}`);
-if (execFileSync('git', ['-C', core, 'status', '--porcelain', '--untracked-files=no'], { encoding: 'utf8' }).trim()) throw new Error('Core oracle tracked files are dirty');
+if (execFileSync('timeout', ['15s', 'git', '-C', core, 'status', '--porcelain', '--untracked-files=no'], { encoding: 'utf8' }).trim()) throw new Error('Core oracle tracked files are dirty');
 const { startMocks, serverEnv, SERVER, GUARD } = require(path.join(core, 'tools/contract-corpus/mocks.cjs'));
 const storeFixtures = require(path.join(core, 'tests/server/project-store-server.cjs'));
 let child, mocks, store, stopping = false;
@@ -59,7 +59,7 @@ const ready = port => new Promise(resolve => {
   // a synthetic authority executable. Use the pinned fixture when it exists.
   if (storeFixtures.syntheticFrontBin) env.NOEVIA_SERVER_BIN = storeFixtures.syntheticFrontBin(dataDir);
   env.NOEVIA_CORPUS_ALLOWED_PORTS += `,${store.port}`;
-  child = spawn(process.execPath, ['--require', GUARD, SERVER], { env, cwd: path.dirname(SERVER), stdio: ['ignore', 'ignore', 'pipe'] });
+  child = spawn('timeout', ['--signal=TERM', '--kill-after=5s', '600s', process.execPath, '--require', GUARD, SERVER], { env, cwd: path.dirname(SERVER), stdio: ['ignore', 'ignore', 'pipe'] });
   let log = '';
   child.stderr.on('data', bytes => { log = (log + bytes.toString().split('\n').filter(l => !/SETUP CODE|Setup code file/.test(l)).join('\n')).slice(-4000); });
   const deadline = Date.now() + 90000;

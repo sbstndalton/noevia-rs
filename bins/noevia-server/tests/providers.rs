@@ -1840,49 +1840,66 @@ async fn the_front_advertises_the_reseal_beside_the_registry() {
     assert!(features.contains(&"rust-providers-reseal"));
 }
 
-// A storage failure after token removal must not be reported as a successful disconnect, nor
-// restore tokens. A directory is a deterministic failure fixture even when tests run as root.
 #[tokio::test]
-async fn disconnect_failure_after_tokens_preserves_order_and_returns_502() {
-    for fail_row in [true, false] {
-        let d = tempfile::tempdir().unwrap();
-        let db = seed(d.path());
-        let f = front(d.path(), "1").await;
-        let rows = private_path(&f, A);
+async fn disconnect_order_and_partial_failures_match_real_core_handler() {
+    let cases: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/provider-delete-order-node.json")).unwrap();
+    for case in cases.as_array().unwrap() {
+        let root = tempfile::tempdir().unwrap();
+        let db = seed(root.path());
+        let f = front(root.path(), "1").await;
         write_rows(
-            &rows,
-            &serde_json::json!([{"id":"chatgpt-oauth","kind":"chatgpt-oauth","label":"Synthetic","baseUrl":"https://example.com","apiKey":"","shared":false}]),
+            &private_path(&f, A),
+            &serde_json::json!([
+                {"id":"chatgpt-oauth","shared":false}
+            ]),
         );
-        store_tokens(&db, A, "connected");
-        store_tokens(&db, B, "connected");
         let projects = f.dir.join("users").join(A).join("projects.json");
-        let before =
-            r#"{"projects":[{"id":"synthetic","provider":"chatgpt-oauth","model":"synthetic"}]}"#;
-        std::fs::write(&projects, before).unwrap();
-        if fail_row {
-            std::fs::remove_file(&rows).unwrap();
-            std::fs::create_dir(&rows).unwrap();
-        } else {
-            std::fs::remove_file(&projects).unwrap();
-            std::fs::create_dir(&projects).unwrap();
+        std::fs::write(
+            &projects,
+            r#"{"projects":[{"id":"p","provider":"chatgpt-oauth","model":"synthetic"}]}"#,
+        )
+        .unwrap();
+        store_tokens(&db, A, "connected");
+        let failure = case["failure"].as_str().unwrap();
+        // A directory in place of the lock file refuses the precise writer immediately,
+        // preserving its input bytes. Synthetic I/O failures only; no engine or upstream.
+        let lock = match failure {
+            "row" => Some(private_path(&f, A).with_extension("json.lock")),
+            "fallback" => Some(projects.with_extension("json.lock")),
+            _ => None,
+        };
+        if let Some(lock) = &lock {
+            std::fs::create_dir(lock).unwrap();
         }
+        let (status, body) = call(f.addr, "DELETE", "/api/providers/chatgpt", ADMIN, "").await;
         assert_eq!(
-            call(f.addr, "DELETE", "/api/providers/chatgpt", ADMIN, "").await,
-            (502, j(r#"{"error":"ChatGPT sign-in failed."}"#))
+            u64::from(status),
+            case["status"].as_u64().unwrap(),
+            "{failure}"
         );
-        assert_eq!(token_row(&db, A), None);
-        assert_eq!(token_row(&db, B).as_deref(), Some("connected"));
-        if fail_row {
-            assert_eq!(std::fs::read_to_string(&projects).unwrap(), before);
-        } else {
-            assert!(
-                read_rows(&rows).is_empty(),
-                "row removal precedes fallback failure"
-            );
-        }
+        assert_eq!(body, case["body"], "{failure}");
+        assert_eq!(
+            token_row(&db, A).is_some(),
+            case["tokens"].as_bool().unwrap(),
+            "{failure}"
+        );
+        assert_eq!(
+            !read_rows(&private_path(&f, A)).is_empty(),
+            case["row"].as_bool().unwrap(),
+            "{failure}"
+        );
+        let saved = j(&std::fs::read_to_string(&projects).unwrap());
+        assert_eq!(
+            saved["projects"][0].get("provider").is_some(),
+            case["fallback"].as_bool().unwrap(),
+            "{failure}"
+        );
     }
 }
 
+// Main's oracle covers successful token removal followed by row/fallback failure.
+// This case adds a failure of token removal itself, before either file may change.
 #[tokio::test]
 async fn disconnect_stops_before_row_and_fallbacks_when_token_delete_fails() {
     let d = tempfile::tempdir().unwrap();
