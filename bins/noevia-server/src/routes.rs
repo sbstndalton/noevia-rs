@@ -1343,7 +1343,6 @@ mod tests {
             "/api/model-manager",
             "/api/models/autotune/untuned",
             "/api/models/delete",
-            "/api/models/evidence/recheck",
             "/api/models/load",
             "/api/models/machines",
             "/api/models/preset/",
@@ -1360,7 +1359,7 @@ mod tests {
         }
         assert!(crate::FEATURES.contains(&"rust-model-downloads-read"));
         assert!(crate::FEATURES.contains(&"rust-preset-read"));
-        // Native model routes and methods listed in the contract.
+        // All native model routes appear in the contract with exactly their owned methods.
         let rust: Vec<_> = ROUTES
             .iter()
             .filter(|r| {
@@ -1386,6 +1385,7 @@ mod tests {
                 (crate::model_sizing::ESTIMATE, &["GET"][..]),
                 (crate::model_maint::EVIDENCE, &["GET"][..]),
                 (crate::model_maint::EVIDENCE_IMPORT, &["POST"][..]),
+                (crate::model_maint::evidence_recheck::PATH, &["POST"][..]),
                 (crate::model_routes::HARDWARE, &["GET"][..]),
                 (crate::model_state_routes::BUDGET, &["GET"][..]),
                 (crate::idle_unload_read::PATH, &["GET"][..]),
@@ -1478,6 +1478,21 @@ mod tests {
             assert_eq!(dispatch_under(m, &p, on), None, "{m} {p}");
         }
         assert!(crate::FEATURES.contains(&"rust-task-reads"));
+    }
+
+    #[test]
+    fn evidence_recheck_is_native_only_for_post() {
+        assert_eq!(
+            dispatch("POST", crate::model_maint::evidence_recheck::PATH),
+            Some(Native::Models)
+        );
+        for m in ["GET", "HEAD", "PUT", "DELETE", "OPTIONS"] {
+            assert_eq!(
+                dispatch(m, crate::model_maint::evidence_recheck::PATH),
+                None
+            );
+        }
+        assert!(crate::FEATURES.contains(&"rust-model-evidence-recheck"));
     }
 
     #[test]

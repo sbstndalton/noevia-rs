@@ -7,6 +7,7 @@
 //!   exclusive with Node's chat and tune.
 //! - [`router`]: the router's HTTP API as the maintenance work uses it.
 //! - [`ini`]: the models.ini store (read, parse, commit through the model-loader or the web writer).
+//! - [`evidence_recheck`]: one image-input request under normal inference admission, with carried identity.
 //! - [`reload`]: `POST /api/models/presets/reload` and the reload-guard state file
 //!   (`native-preset-reload-<hash>.json`).
 //!
@@ -20,6 +21,7 @@
 
 pub mod evidence;
 pub mod evidence_live;
+pub mod evidence_recheck;
 pub mod gate;
 pub mod ini;
 pub mod node_lease;
@@ -46,14 +48,14 @@ pub const EVIDENCE: &str = "/api/models/evidence";
 pub const EVIDENCE_IMPORT: &str = "/api/models/evidence/import";
 
 /// The maintenance routes this front answers.
-pub const ROUTES: &[&str] = &[RELOAD, EVIDENCE, EVIDENCE_IMPORT];
+pub const ROUTES: &[&str] = &[RELOAD, EVIDENCE, EVIDENCE_IMPORT, evidence_recheck::PATH];
 
 const MISSING_TOKEN_WARNING: &str = "[inference-gate] INFERENCE_GATE_ADMIN_TOKEN is not set: the memory watchdog cannot unload a model that is answering a request, and \"unload anyway\" on the Models page is unavailable. Set it to the admin token of the gate.";
 
 /// The methods the front answers on each (routes.toml); every other method stays Node's.
 pub fn owned(method: &Method, path: &str) -> bool {
     match path {
-        RELOAD | EVIDENCE_IMPORT => method == Method::POST,
+        RELOAD | EVIDENCE_IMPORT | evidence_recheck::PATH => method == Method::POST,
         EVIDENCE => method == Method::GET,
         _ => false,
     }
@@ -100,6 +102,7 @@ pub struct Maint {
     /// `UI_DATA_DIR` and the 16-digit suffix of the state files.
     pub data_dir: Option<PathBuf>,
     pub suffix: String,
+    pub(crate) recheck: evidence_recheck::Recheck,
 }
 
 impl std::fmt::Debug for Maint {
@@ -231,6 +234,7 @@ impl Maint {
             local: Arc::new(AtomicBool::new(false)),
             data_dir,
             suffix,
+            recheck: evidence_recheck::Recheck::new(get)?,
         })
     }
 
@@ -356,6 +360,9 @@ pub async fn serve(
 ) -> Response<Body> {
     if !owned(req.method(), &path) {
         return app.proxy.forward(conn.peer, req).await;
+    }
+    if path == evidence_recheck::PATH {
+        return evidence_recheck::serve(app, req).await;
     }
     let (parts, body) = req.into_parts();
     let creds = identity::creds_of(&parts);
