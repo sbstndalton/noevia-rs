@@ -285,6 +285,14 @@ impl Steps for Engine<'_> {
     }
 }
 
+impl std::fmt::Debug for Worker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Worker")
+            .field("floor_gib", &self.floor_gib)
+            .finish_non_exhaustive()
+    }
+}
+
 impl Worker {
     /// `createCalibrator(...)` + `load()`: the worker of `maint`, with the job and history its state
     /// file holds.
@@ -1362,6 +1370,11 @@ impl Worker {
                 }
             }
         };
+        // A step can see the loss first (its reload refused under the ended lease) and fail before
+        // the watch notices: however the run ended, a hold that no longer excludes is a lost one.
+        if !hold.excluded() {
+            self.with(|i| i.lease_lost = true);
+        }
         let outcome = match outcome {
             Ok(_) if self.lease_lost() => Err(Thrown::Cancelled),
             o => o,

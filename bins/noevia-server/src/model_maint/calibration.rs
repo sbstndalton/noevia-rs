@@ -1,8 +1,9 @@
 //! The native calibration worker (core `llamacpp-calibration.cjs` `createCalibrator`, #2303 follow-up).
 //!
-//! The public start/status/cancel policy already lives in the front (`calibration_routes.rs`,
-//! `calibration_cancel_routes.rs`); until this worker is wired in, the job itself still runs in Node
-//! behind the private `/internal/calibration-routes/` and `/internal/calibration-cancel/` bridges.
+//! The public start/status/cancel policy lives in the front (`calibration_routes.rs`,
+//! `calibration_cancel_routes.rs`), and the job runs here, in [`super::calibration_worker`] (its
+//! launch and cancellation facts are [`super::calibration_facts`]); Core's public calibrator and its
+//! boot `recover()` are off.
 //! This module is the worker's runtime, ported piece by piece with the same state file, so an old
 //! Core and this front read each other's jobs (rollback both ways):
 //!
@@ -17,10 +18,8 @@
 //! - [`LongPrompt`]: `streamLong()`'s reading of the engine's streamed prompt progress, its early
 //!   stop when the prompt is predicted (or measured) over the time limit, and the measured result.
 //!
-//! Not yet here (next batch): the engine-facing step (unload, profile write through the preset
-//! `prepare` port, load/poll, smoke request, memory floor), the launch under a maintenance hold, the
-//! cancellation controller and the evidence record. Node's auto-tune keeps its own in-process
-//! calibrator (`contextFactory`, `probe`) and is not affected by this module.
+//! Node's auto-tune keeps its own in-process calibrator (`contextFactory`, `probe`) and is not
+//! affected by this module.
 
 use super::ini::Candidate;
 use super::Maint;

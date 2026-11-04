@@ -1,225 +1,228 @@
-//! #2303: actual authenticated native dispatch with synthetic fact/launch owners only.
-#![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+//! #2303: the public calibration routes over the native worker, through the real front. The job runs
+//! in the front: Core is asked nothing about calibration (its bridges are gone), and a synthetic
+//! router and gate stand in for the engine. Node's refusal fixture still decides the validation order.
+#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
+mod calibration_support;
 #[path = "mcp_support/mod.rs"]
 mod support;
+use calibration_support as cal;
 use serde_json::{json, Value};
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::time::Duration;
 use support::*;
 const PATH: &str = "/api/models/calibration";
-const PREFIX: &str = "/internal/calibration-routes/";
-const ASK: &str = r#"{"model":"synthetic","confirmPause":true,"promptBudgetSeconds":60}"#;
-fn job() -> Value {
-    json!({"id":"j","model":"synthetic","status":"running","steps":[],"originalText":"private","unknown":"private"})
-}
-fn facts() -> Value {
-    json!({"available":true,"token":"a".repeat(64),"starting":false,"job":null,"history":{"synthetic":[{"verifiedCtx":8192}]}})
-}
-fn listing() -> Value {
-    json!({"available":true,"backend":true,"row":{"id":"synthetic","meta":{"n_ctx_train":32768}},"system":false,"rowToken":"b".repeat(64)})
-}
-fn prepared() -> Value {
-    json!({"available":true,"row":{"id":"synthetic","meta":{"n_ctx_train":32768}},"system":false,"profile":{"exists":false,"fields":["parallel","cache-type-k","ctx-size"]},"conservative":{"native":65536,"values":{"parallel":"2","cache-type-k":"q8_0","ctx-size":"8192","unknown":"no"}},"ladderReady":true,"identityReady":true,"identity":{"arch":null,"quant":null,"artifact":"synthetic-artifact","build":null,"profile":"d".repeat(64),"hardware":null},"preparedToken":"c".repeat(64)})
-}
-async fn rig() -> (tempfile::TempDir, Front, Upstream) {
+const ASK: &str = r#"{"model":"synth","confirmPause":true,"promptBudgetSeconds":60}"#;
+const OVER_LIMIT: &str = "This calibration could take longer than the 8-hour maintenance limit. Choose a shorter prompt time limit.";
+
+/// The front over a native llama.cpp manager; Node answers 404 to anything it is asked.
+async fn rig_with(gate: bool) -> (tempfile::TempDir, Front, Upstream, Arc<cal::Engine>) {
     let d = tempfile::tempdir().unwrap();
     seed(d.path());
     let up = upstream().await;
-    up.set(|r| {
-        let v = match r.path.strip_prefix(PREFIX) {
-            Some("facts") => facts(),
-            Some("listing") => listing(),
-            Some("prepare") => prepared(),
-            Some("launch") => json!({"available":true,"applied":true,"job":job()}),
-            _ => return reply("500 WrongPath", "{}"),
-        };
-        reply("200 OK", &v.to_string())
-    });
-    let f = front_env(
-        d.path(),
-        true,
-        &[
-            ("NOEVIA_LEGACY_UPSTREAM", up.base()),
-            ("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()),
-        ],
-    )
-    .await;
-    (d, f, up)
+    up.set(|_| reply("404 Not Found", r#"{"error":"Not found"}"#));
+    let (e, mut env) = cal::native(d.path(), gate).await;
+    env.push(("NOEVIA_LEGACY_UPSTREAM", up.base()));
+    env.push(("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()));
+    let f = front_env(d.path(), true, &env).await;
+    (d, f, up, e)
 }
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn native_plan_and_private_response_are_not_node_public_handler_forwarding() {
-    let (_d, f, up) = rig().await;
-    let (s, v) = write(f.addr, "POST", PATH, ADMIN, ASK).await;
-    assert_eq!(s, 202, "{v}");
-    assert!(v.get("originalText").is_none());
-    assert!(v.get("unknown").is_none());
-    let seen = up.seen();
-    let launch = seen
-        .iter()
-        .find(|r| r.path == format!("{PREFIX}launch"))
-        .unwrap();
-    assert_eq!(
-        j(&launch.body),
-        json!({"model":"synthetic","token":"a".repeat(64),"rowToken":"b".repeat(64),"preparedToken":"c".repeat(64),"plan":{"promptBudgetSeconds":60,"native":32768,"base":{"parallel":"2","cache-type-k":"q8_0"}}})
-    );
-    for r in seen {
-        assert!(r.path.starts_with(PREFIX));
-        assert_eq!(
-            r.header("x-noevia-store-token").as_deref(),
-            Some(STORE_TOKEN)
-        );
-        assert_eq!(r.header("cookie"), None);
-        assert_eq!(r.header("x-forwarded-for"), None);
-        assert_eq!(r.header("x-noevia-client-ip"), None);
+async fn rig() -> (tempfile::TempDir, Front, Upstream, Arc<cal::Engine>) {
+    rig_with(true).await
+}
+/// No calibration operation ever reaches Core.
+fn core_untouched(up: &Upstream) {
+    for r in up.seen() {
+        assert!(!r.path.contains("calibration"), "{}", r.path);
+        assert!(!r.path.contains("model-maintenance"), "{}", r.path);
     }
 }
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn get_selects_history_and_sanitizes_job_but_has_no_launch_or_metadata_reads() {
-    let (_d, f, up) = rig().await;
-    up.set(|_| {
-        let mut v = facts();
-        v["job"] = job();
-        reply("200 OK", &v.to_string())
-    });
-    let (s, v) = get(f.addr, &format!("{PATH}?model=synthetic"), ADMIN).await;
-    assert_eq!(s, 200);
-    assert_eq!(v["history"], json!([{"verifiedCtx":8192}]));
-    assert!(v["job"].get("originalText").is_none());
-    let (_, v) = get(f.addr, PATH, ADMIN).await;
-    assert!(v.get("history").is_none());
-    assert_eq!(up.seen().len(), 2);
+async fn settled(f: &Front) -> Value {
+    for _ in 0..300 {
+        let (_, v) = get(f.addr, PATH, ADMIN).await;
+        if v["job"]["status"] != "running" {
+            return v["job"].clone();
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    panic!("the job never settled")
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_launch_runs_in_the_front_under_the_gate_and_its_state_is_private() {
+    let (d, f, up, e) = rig().await;
+    let (s, v) = write(f.addr, "POST", PATH, ADMIN, ASK).await;
+    assert_eq!(s, 202, "{v}");
+    assert_eq!(v["model"], "synth");
+    assert_eq!(v["status"], "running");
+    assert_eq!(v["promptBudgetSeconds"], 60);
+    assert_eq!(v["native"], 32768);
+    // The profile exists, so the plan carries no conservative base values.
+    assert_eq!(v["base"], json!({}));
+    assert!(v.get("originalText").is_none());
+    assert_eq!(e.count("POST /gate/v1/maintenance"), 1);
+    // A second launch while one runs is refused before another hold is asked for.
+    let (s, v) = write(f.addr, "POST", PATH, ADMIN, ASK).await;
+    assert_eq!(
+        (s, v),
+        (409, json!({"error":"A calibration is already running."}))
+    );
+    assert_eq!(e.count("POST /gate/v1/maintenance"), 1);
+    // The state route shows the job (never its original profile text) and the model's history.
+    let (s, v) = get(f.addr, &format!("{PATH}?model=synth"), ADMIN).await;
+    assert_eq!(s, 200);
+    assert_eq!(v["job"]["status"], "running");
+    assert_eq!(v["history"], json!([]));
+    assert!(v["job"].get("originalText").is_none());
+    let file: Value =
+        serde_json::from_str(&std::fs::read_to_string(cal::state_file(d.path(), &e)).unwrap())
+            .unwrap();
+    assert!(file["job"]["originalText"].is_string());
+    // Cancelled through the native cancel route; the profile goes back.
+    let (s, _) = write(f.addr, "POST", "/api/models/calibration/cancel", ADMIN, "").await;
+    assert_eq!(s, 202);
+    let job = settled(&f).await;
+    assert_eq!(job["status"], "cancelled", "{job}");
+    // Restored if the run had written the profile; either way models.ini is the original.
+    assert_ne!(job["restored"], false);
+    assert_eq!(cal::ini(d.path()), format!("{}{}", cal::INI, cal::LAYA_INI));
+    core_untouched(&up);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_selects_the_history_the_state_file_holds() {
+    let d = tempfile::tempdir().unwrap();
+    seed(d.path());
+    let up = upstream().await;
+    let (e, mut env) = cal::native(d.path(), true).await;
+    std::fs::write(
+        cal::state_file(d.path(), &e),
+        json!({"job": null, "history": {"synth": [{"verifiedCtx": 8192}]}, "unknown": 1})
+            .to_string(),
+    )
+    .unwrap();
+    env.push(("NOEVIA_LEGACY_UPSTREAM", up.base()));
+    let f = front_env(d.path(), true, &env).await;
+    let (s, v) = get(f.addr, &format!("{PATH}?model=synth"), ADMIN).await;
+    assert_eq!(
+        (s, v),
+        (
+            200,
+            json!({"job": null, "history": [{"verifiedCtx": 8192}]})
+        )
+    );
+    let (_, v) = get(f.addr, &format!("{PATH}?model=other"), ADMIN).await;
+    assert_eq!(v, json!({"job": null, "history": []}));
+    let (_, v) = get(f.addr, PATH, ADMIN).await;
+    assert_eq!(v, json!({"job": null}));
+    assert!(e.seen().is_empty());
+    core_untouched(&up);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn auth_role_account_and_csrf_precede_every_fact_operation() {
-    let (_d, f, up) = rig().await;
+    let (_d, f, up, e) = rig().await;
     assert_eq!(get(f.addr, PATH, "").await.0, 401);
     assert_eq!(get(f.addr, PATH, MEMBER).await.0, 403);
     assert_eq!(write(f.addr, "POST", PATH, MEMBER, ASK).await.0, 403);
     assert_eq!(raw(f.addr, "POST", PATH, ADMIN, "", b"").await.0, 403);
     assert!(up.seen().is_empty());
-}
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn availability_method_confirmation_and_budget_order_skip_all_metadata_and_launches() {
-    let (_d, f, up) = rig().await;
-    for method in ["HEAD", "PUT", "DELETE", "OPTIONS"] {
-        assert_eq!(write(f.addr, method, PATH, ADMIN, "{bad").await.0, 405);
-    }
-    for (ask, message) in [
-        (r#"{}"#, "Confirm that chat can pause"),
-        (
-            r#"{"confirmPause":true,"promptBudgetSeconds":14}"#,
-            "Choose a prompt time limit",
-        ),
-    ] {
-        let (s, v) = write(f.addr, "POST", PATH, ADMIN, ask).await;
-        assert_eq!(s, 400);
-        assert!(v["error"].as_str().unwrap().starts_with(message));
-    }
-    assert_eq!(up.count(&format!("{PREFIX}listing")), 0);
-    assert_eq!(up.count(&format!("{PREFIX}launch")), 0);
-    up.set(|_| reply("200 OK", r#"{"available":false}"#));
-    assert_eq!(write(f.addr, "POST", PATH, ADMIN, "{bad").await.0, 404);
-}
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn busy_missing_system_and_backend_failures_do_not_prepare_or_launch() {
-    let (_d, f, up) = rig().await;
-    up.set(|_| {
-        let mut v = facts();
-        v["starting"] = json!(true);
-        reply("200 OK", &v.to_string())
-    });
-    assert_eq!(write(f.addr, "POST", PATH, ADMIN, ASK).await.0, 409);
-    for (change, status) in [
-        (json!({"backend":false}), 502),
-        (json!({"row":null}), 404),
-        (json!({"system":true}), 400),
-    ] {
-        up.set(move |r| {
-            let mut v = if r.path.ends_with("/facts") {
-                facts()
-            } else {
-                listing()
-            };
-            if !r.path.ends_with("/facts") {
-                for (k, x) in change.as_object().unwrap() {
-                    v[k] = x.clone();
-                }
-            }
-            reply("200 OK", &v.to_string())
-        });
-        assert_eq!(write(f.addr, "POST", PATH, ADMIN, ASK).await.0, status);
-    }
-    assert_eq!(up.count(&format!("{PREFIX}prepare")), 0);
-    assert_eq!(up.count(&format!("{PREFIX}launch")), 0);
-}
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn stale_launch_is_not_retried_and_gate_credentials_are_server_unavailable() {
-    let (_d, f, up) = rig().await;
-    for (result, status) in [
-        (json!({"applied":false,"reason":"stale"}), 409),
-        (
-            json!({"applied":false,"reason":"hold","hold":{"status":403}}),
-            503,
-        ),
-        (
-            json!({"applied":false,"reason":"hold","hold":{"status":409}}),
-            409,
-        ),
-    ] {
-        up.set(move |r| {
-            let v = if r.path.ends_with("/facts") {
-                facts()
-            } else if r.path.ends_with("/listing") {
-                listing()
-            } else if r.path.ends_with("/prepare") {
-                prepared()
-            } else {
-                result.clone()
-            };
-            reply("200 OK", &v.to_string())
-        });
-        let before = up.count(&format!("{PREFIX}launch"));
-        assert_eq!(write(f.addr, "POST", PATH, ADMIN, ASK).await.0, status);
-        assert_eq!(up.count(&format!("{PREFIX}launch")) - before, 1);
-    }
-}
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn bad_actor_schema_and_lone_surrogate_selector_fail_closed() {
-    let (_d, f, up) = rig().await;
-    assert_eq!(
-        write(
-            f.addr,
-            "POST",
-            PATH,
-            ADMIN,
-            r#"{"model":"m\ud800","confirmPause":true}"#
-        )
-        .await
-        .0,
-        400
-    );
-    assert_eq!(up.count(&format!("{PREFIX}listing")), 0);
-    up.set(|_| reply("200 OK", r#"{"available":true}"#));
-    assert_eq!(get(f.addr, PATH, ADMIN).await.0, 503);
-    assert_eq!(write(f.addr, "POST", PATH, ADMIN, ASK).await.0, 503);
+    assert!(e.seen().is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn unavailable_or_malformed_actual_identity_cannot_launch_a_worker() {
-    let (_d, f, up) = rig().await;
-    for identity in [Value::Null, json!({"artifact":"only-one-field"})] {
-        up.set(move |r| {
-            let mut v = if r.path.ends_with("/facts") {
-                facts()
-            } else if r.path.ends_with("/listing") {
-                listing()
-            } else {
-                prepared()
-            };
-            if r.path.ends_with("/prepare") {
-                v["identity"] = identity.clone();
-            }
-            reply("200 OK", &v.to_string())
-        });
-        assert_eq!(write(f.addr, "POST", PATH, ADMIN, ASK).await.0, 503);
+async fn method_confirmation_and_budget_order_skip_all_metadata_and_launches() {
+    let (_d, f, up, e) = rig().await;
+    for method in ["HEAD", "PUT", "DELETE", "OPTIONS"] {
+        assert_eq!(write(f.addr, method, PATH, ADMIN, "{bad").await.0, 405);
     }
-    assert_eq!(up.count(&format!("{PREFIX}launch")), 0);
+    // Node's own refusals, in its order (tests/fixtures/calibration-start-node.json).
+    let fixture: Value =
+        serde_json::from_str(include_str!("fixtures/calibration-start-node.json")).unwrap();
+    for case in fixture["cases"].as_array().unwrap() {
+        if case["listingReads"] != 0 || case["result"]["status"] != 400 {
+            continue;
+        }
+        let (s, v) = write(f.addr, "POST", PATH, ADMIN, &case["input"].to_string()).await;
+        assert_eq!(s, 400, "{case}");
+        assert_eq!(v["error"], case["result"]["body"]["error"], "{case}");
+    }
+    assert!(e.seen().is_empty());
+    core_untouched(&up);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn without_a_native_llamacpp_manager_calibration_is_unavailable() {
+    let d = tempfile::tempdir().unwrap();
+    seed(d.path());
+    let up = upstream().await;
+    let f = front_env(d.path(), true, &[("NOEVIA_LEGACY_UPSTREAM", up.base())]).await;
+    let missing = json!({"error":"Native calibration is unavailable"});
+    assert_eq!(get(f.addr, PATH, ADMIN).await, (404, missing.clone()));
+    assert_eq!(
+        write(f.addr, "POST", PATH, ADMIN, "{bad").await,
+        (404, missing.clone())
+    );
+    let cancel = "/api/models/calibration/cancel";
+    assert_eq!(
+        write(f.addr, "POST", cancel, ADMIN, "").await,
+        (404, missing)
+    );
+    core_untouched(&up);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn missing_system_and_backend_failures_do_not_launch() {
+    let (d, f, up, e) = rig().await;
+    for (model, status, message) in [
+        ("gone", 404, "Choose an installed model."),
+        ("laya-mini", 400, "System routing model — not tuned"),
+    ] {
+        let ask = json!({"model": model, "confirmPause": true}).to_string();
+        let (s, v) = write(f.addr, "POST", PATH, ADMIN, &ask).await;
+        assert_eq!((s, v), (status, json!({"error": message})), "{model}");
+    }
+    e.down.store(true, Ordering::Release);
+    let (s, v) = write(f.addr, "POST", PATH, ADMIN, ASK).await;
+    assert_eq!(
+        (s, v),
+        (502, json!({"error":"The model server is not responding."}))
+    );
+    assert_eq!(e.count("POST /gate/"), 0);
+    assert_eq!(e.count("POST /models/load"), 0);
+    assert_eq!(get(f.addr, PATH, ADMIN).await.1, json!({"job": null}));
+    assert_eq!(cal::ini(d.path()), format!("{}{}", cal::INI, cal::LAYA_INI));
+    core_untouched(&up);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_refused_gate_hold_is_the_public_hold_failure_and_nothing_runs() {
+    let (d, f, up, e) = rig().await;
+    for (gate, status) in [(403, 503), (409, 409)] {
+        *e.refuse.lock().unwrap() = Some((gate, "busy".into(), "synthetic refusal".into()));
+        let (s, v) = write(f.addr, "POST", PATH, ADMIN, ASK).await;
+        assert_eq!(s, status, "{v}");
+        assert!(v["error"].as_str().unwrap().starts_with(if status == 409 {
+            "Requests are in progress."
+        } else {
+            "Calibration could not pause chat: "
+        }));
+    }
+    assert_eq!(e.count("POST /models/load"), 0);
+    assert_eq!(get(f.addr, PATH, ADMIN).await.1, json!({"job": null}));
+    assert_eq!(cal::ini(d.path()), format!("{}{}", cal::INI, cal::LAYA_INI));
+    core_untouched(&up);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn without_the_gate_a_run_longer_than_any_lease_is_refused_before_one_is_asked_for() {
+    let (d, f, up, e) = rig_with(false).await;
+    e.native.store(131072, Ordering::Release);
+    let ask = r#"{"model":"synth","confirmPause":true,"promptBudgetSeconds":1800}"#;
+    let (s, v) = write(f.addr, "POST", PATH, ADMIN, ask).await;
+    assert_eq!((s, v), (400, json!({"error": OVER_LIMIT})));
+    assert_eq!(e.count("POST /models/load"), 0);
+    assert_eq!(get(f.addr, PATH, ADMIN).await.1, json!({"job": null}));
+    assert_eq!(cal::ini(d.path()), format!("{}{}", cal::INI, cal::LAYA_INI));
+    core_untouched(&up);
 }
