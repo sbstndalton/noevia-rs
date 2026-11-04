@@ -9,6 +9,9 @@ jobs:
     name: Required native engine statistics contracts (#1650)
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    env:
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Read actual merged core pin

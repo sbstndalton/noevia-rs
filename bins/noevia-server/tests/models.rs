@@ -254,6 +254,36 @@ async fn other_methods_trailing_slashes_and_the_other_model_routes_go_to_node() 
         "{}X-CSRF-Token: csrf\r\nOrigin: http://{addr}\r\n",
         cookie(ADMIN)
     );
+    // #2318: the exact folder-listing GET is native; with no loader it refuses locally.
+    let (s, h, b) = call(addr, "GET", "/api/model-manager/models", &csrf).await;
+    assert_eq!(
+        (s, b.as_str()),
+        (
+            404,
+            r#"{"error":"Model management service is not configured"}"#
+        )
+    );
+    assert!(h.contains("cache-control: no-store"));
+    // #2321: status GET is native even with a dead owner bridge; other methods remain Node's.
+    let (s, h, b) = call(addr, "GET", "/api/models/autotune", &csrf).await;
+    assert_eq!(
+        (s, b.as_str()),
+        (
+            503,
+            r#"{"error":"Auto-tune state is unavailable. Try again shortly."}"#
+        )
+    );
+    assert!(h.contains("cache-control: no-store"));
+    // #2322: calibration owns the exact path; a dead facts bridge refuses natively.
+    let (s, h, b) = call(addr, "GET", "/api/models/calibration", &csrf).await;
+    assert_eq!(
+        (s, b.as_str()),
+        (
+            503,
+            r#"{"error":"Calibration state is unavailable. Try again shortly."}"#
+        )
+    );
+    assert!(h.contains("cache-control: no-store"));
     for (m, p) in [
         ("HEAD", CAPABILITIES),
         ("POST", CAPABILITIES),
@@ -268,10 +298,15 @@ async fn other_methods_trailing_slashes_and_the_other_model_routes_go_to_node() 
         ("GET", "/api/models/estimate/"),
         ("GET", "/api/models/preset?model=m"),
         ("PUT", "/api/models/inference-budget"),
-        ("GET", "/api/models/autotune"),
-        ("GET", "/api/models/calibration"),
+        ("POST", "/api/models/autotune"),
+        ("HEAD", "/api/models/autotune"),
+        ("GET", "/api/models/autotune/"),
+        ("GET", "/api/models/calibration/"),
         ("GET", "/api/models/machines"),
-        ("GET", "/api/model-manager/models"),
+        ("POST", "/api/model-manager/models"),
+        ("HEAD", "/api/model-manager/models"),
+        ("GET", "/api/model-manager/models/"),
+        ("GET", "/api/model-manager"),
     ] {
         let (s, _, b) = call(addr, m, p, &csrf).await;
         assert_eq!(s, 502, "{m} {p}: {b}");

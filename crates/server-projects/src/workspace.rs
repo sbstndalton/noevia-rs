@@ -208,6 +208,7 @@ pub fn get(ctx: Ctx<'_>) -> Reply {
             r.status
         );
     }
+    crate::chat_delete::reap_deleted(ctx, 10);
     reap_orphan_contexts(ctx, 10);
     let (free, projects) = match lists(ctx) {
         Ok(v) => v,

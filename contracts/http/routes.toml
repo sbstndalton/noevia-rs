@@ -501,24 +501,31 @@ path = "/api/model-manager"
 owner = "node"
 
 [[route]]
+path = "/api/model-manager/models"
+owner = "rust"
+methods = ["GET"]
+
+[[route]]
+# GET status only. POST start and every other verb still go to Node through the methods fallback.
 path = "/api/models/autotune"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/models/autotune/cancel"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/models/autotune/clear"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/models/autotune/resume"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/models/autotune/settings"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/models/autotune/untuned"
@@ -526,11 +533,11 @@ owner = "node"
 
 [[route]]
 path = "/api/models/calibration"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/models/calibration/cancel"
-owner = "node"
+owner = "rust"
 
 # sbstndalton/noevia#2187: configuration-only reads, the front's (bins/noevia-server
 # model_routes.rs); Node refuses the GET (core rust-models.cjs). Other methods stay Node's.
@@ -576,6 +583,11 @@ methods = ["GET"]
 # (core rust-model-state-reads.cjs) and keeps the budget's PUT, on the loopback facts bridge for what only it holds.
 [[route]]
 path = "/api/models/inference-budget"
+owner = "rust"
+methods = ["GET"]
+
+[[route]]
+path = "/api/models/idle-unload"
 owner = "rust"
 methods = ["GET"]
 
@@ -962,14 +974,15 @@ methods = ["GET"]
 
 [[route]]
 path = "/api/tool-approvals/{approvalId}"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/toolboxes"
-owner = "node"
+owner = "rust"
 
 # sbstndalton/noevia#2202 round 2 (rust-toolboxes-permitted): computed by the front, every method
-# (non-GET is its 405). GET /api/toolboxes stays Node's (prefill samples and live MCP state).
+# (non-GET is its 405). The sibling picker is also Rust's (#2281).
 [[route]]
 path = "/api/toolboxes/permitted"
 owner = "rust"

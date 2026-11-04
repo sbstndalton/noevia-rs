@@ -504,11 +504,11 @@ and `--features` lists `rust-model-reads`. The rest wait for batch M2 (the job r
 | `/api/models/capabilities` (GET) | rust | the adapter kind, `LLAMACPP_PRESET_PATH` and `MODEL_LOADER_URL` only |
 | `/api/models/hardware` (GET) | rust | no model manager: 404; llama.cpp cannot discover hardware: `{supported:false}`; other methods keep Node's 405 |
 | `/api/model-manager` | node | proxy whose `GET models` serves Node's in-memory folder scan cache (and writes it); sweep hold, delete cleanup |
-| `/api/models/autotune` | node | GET is the auto-tune job runner's in-memory job state; POST starts it (M2) |
+| `/api/models/autotune` | rust GET only; node otherwise | native GET composes owner metadata; POST start and every other method remain Node (#2306) |
 | `/api/models/autotune/cancel` | node | write to the running job (M2) |
 | `/api/models/autotune/clear` | node | write to the job state (M2) |
-| `/api/models/autotune/resume` | node | starts the job runner (M2) |
-| `/api/models/autotune/settings` | node | write to the tune history the runner keeps (M2) |
+| `/api/models/autotune/resume` | rust | confirmation, queue/reset policy and response; conditional preparation/launch stay in the live actor (#2301) |
+| `/api/models/autotune/settings` | rust | public policy and response; conditional live-actor state write remains in Core (#2287) |
 | `/api/models/autotune/untuned` | node | reads the runner's tune history and identity state |
 | `/api/models/calibration` | node | GET is the calibration job's in-memory state; POST starts it (M2) |
 | `/api/models/calibration/cancel` | node | write to the running job (M2) |
@@ -1284,8 +1284,8 @@ Nextcloud half is the storage connection joined with the tool permission store (
 the discovery snapshot Node publishes (which MCP tools exist and which write). Both halves publish together or not at all.
 
 Chat-bound, by design: `POST /api/tool-approvals` (the parked approval promise lives in the live chat loop; the
-three actions - Allow once, Decline, Allow for this chat - and their tenant scope stay in Node) and `GET
-/api/toolboxes` (prefill samples come from the chat stream, the MCP block from live discovery state).
+three actions - Allow once, Decline, Allow for this chat - and their tenant scope stay in Node).
+The toolbox picker moved to Rust in #2281; Node supplies only live discovery and prefill facts.
 
 ## sbstndalton/noevia#2202 round 2: the admin MCP directory, the permitted tools and the connectors list
 
@@ -1366,8 +1366,7 @@ Review of round 2 (the limits and the rollbacks):
    description) are put back on the output so everything else is compared exactly.
 
 Still Node's, on purpose: the MCP client itself (a chat's live sessions, `mcp.cjs`, `mcp-wiring.cjs`),
-`POST /api/tool-approvals/{id}` (the parked approval is in the live chat loop) and `GET /api/toolboxes` (prefill
-samples come from the chat stream; the MCP block from live discovery).
+`POST /api/tool-approvals/{id}` (the parked approval is in the live chat loop). The picker moved in #2281, below.
 
 ## sbstndalton/noevia#2191 round 8 (group rust-project-source-work): the front runs the source operations
 
@@ -1704,3 +1703,80 @@ the capability `rust-model-state-reads`; Core refuses both with 503 `RUST_MODEL_
 (`server/rust-model-state-reads.cjs`). The budget's PUT stays Node's. `POST /internal/models/facts` (trusted-front
 check) gives the front the budget Node enforces, the sidecar names and reports and the shared folder scan; no answer
 from it is a 503. The figure is never read from `settings`: Node's boot copy decides what is enforced.
+
+## sbstndalton/noevia#2287: per-model auto-tune settings
+
+Every method of `/api/models/autotune/settings` belongs to `autotune_settings_routes.rs`
+(capability `rust-autotune-settings`). POST is the existing writer; the other methods retain their
+administrator, availability and method refusals. The account gate and the settings input validation,
+system-model/configured-preset checks, unfinished/resumable-job refusal and response assembly are native.
+
+Core's live tune actor remains the single writer of its combined job/history/settings file.
+`POST /internal/autotune-settings/facts` returns selected live facts and an opaque fingerprint of its
+process/generation, pending job and preset revision. `.../commit` compares that fingerprint synchronously
+with the one-map-entry mutation and state-file save. Rust revalidates fresh facts on a conflict, at most
+three attempts. No cross-process lock is held over an await, no second store is introduced, and later
+job/history updates are never replaced by a stale front-side copy. URLs, preset text and private job
+fields do not cross the facts boundary. Node no longer contains the public settings policy/handler.
+
+Deliberate corrections: oversized bodies return 413 instead of the old caught exception becoming a
+misleading model-selection error; hostile JavaScript string coercion is a bounded 400; lone-surrogate model IDs are rejected before
+JSON transport can confuse them with literal private-use Unicode names; a configured
+`__proto__` model gets an own persisted map entry; a failed state write restores its prior in-memory setting.
+The 21 Node vectors were recorded from Core a23cfc163fd3e76a7d89133a47a04a545498b20a without executing a tune.
+Synthetic Node differentials and real-front HTTP tests cover the policy/response, stale job/config/process
+identities, bounded retries and unchanged unrelated state. No real tune, inference or model load is needed
+for this metadata port; those engine behaviors are not proven by its synthetic tests.
+## sbstndalton/noevia#2281: the toolbox picker
+
+`rust-toolbox-picker` owns every method of `/api/toolboxes`, including its non-GET 405s.
+`toolbox_picker.rs` authenticates the account and reads its current Drive connection;
+`server-projects::toolbox_picker` composes summaries, UTF-16 token estimates, prefill observations
+and redacted MCP status. The old Node public handler, summary helper and MCP status helper are removed.
+`POST /internal/toolbox-picker/facts` accepts an empty object from the trusted loopback front only;
+Node awaits discovery and supplies selected raw offered definitions and live observations. It receives
+no account selector. URLs, header configuration and credentials are never copied into server facts;
+authentication kinds are checked against the supported enum. Unavailable or malformed facts fail with 503.
+
+The frozen Node fixture checks exact response and token-cost parity, including UTF-16 title truncation.
+Real-front synthetic HTTP checks cover authentication, CSRF, 405s, current-account Drive isolation and
+facts failure. Core and the front must move together; both assembly and supervisor refuse mixed pairs,
+while old/old remains valid for rollback. This move reduces listed Node-owned routes from 19 to 18.
+
+## sbstndalton/noevia#2282: native tool approval decisions
+
+`rust-tool-approvals` moves POST `/api/tool-approvals/{approvalId}` to `tool_approval_routes.rs`.
+Rust owns authentication, CSRF, bounded JSON parsing, write/routing choice validation and public replies.
+The live chat Promise and chat-scoped write grant stay in Node's existing approval gate. Two trusted
+loopback endpoints expose owner-scoped pending facts and resolve exactly that entry. A random per-entry
+generation prevents expiry or ID replacement between lookup and resolution from answering a new prompt.
+The bridge checks the active account, owner, kind and generation synchronously before invoking the existing
+resolver; invalid choices never consume it. Routing remember remains strictly boolean and cannot grant writes.
+The old public Node handler is deleted and its bypass returns `RUST_TOOL_APPROVALS_OWNED`.
+Release assembly and startup require the capability and refusal together; an old/old pair remains a valid rollback.
+This supersedes the earlier sections calling the public approval endpoint chat-bound; the pending state still is.
+
+
+GET only of `/api/models/autotune` belongs to `autotune_read_routes.rs`
+(`rust-autotune-read`). The contract's `methods = ["GET"]` deliberately leaves POST start,
+HEAD, PUT, PATCH, DELETE, OPTIONS and every other verb with Node's existing method fallback.
+This is method-level progress, not ownership of the whole path or migration of start.
+
+The owner bridge returns selected raw job/history records and boolean KV preferences for
+explicitly requested map keys; it performs no engine/profile reads or worker launch. Rust
+composes job presence, at most ten history entries, KV/settings, mode limits and optional
+Long id/history, sharing the current settings domain functions. The old Node status formatter
+and public GET branch are removed; internal busy checks and worker fixtures read raw facts.
+
+The old GET route does not invalidate the shared model-scan cache: thirteen actual old-route
+fixtures preserve its generation and seeded value, while a synthetic POST positive control
+increments that same cache. The read bridge therefore adds no invalidation callback. Its
+ownership guard requires exactly GET refusal and GET contract ownership, retains Node POST
+start, and rejects mixed pairs, a retained old GET formatter or a whole-path claim.
+Every method of `/api/models/autotune/resume` belongs to `autotune_resume_routes.rs`
+(`rust-autotune-resume`). The live actor retains bounded listing/identity preparation, its existing
+pending-restoration reload authority and synchronous conditional state/save/launch operations.
+Each stage compares the exact job/run/config snapshot; preparation uses the existing starting flag
+only within its own call and returns its token after releasing it. Rust owns confirmation,
+resumability/restoration checks, protected-queue filtering, identity decisions, phase/step reset
+instructions and public projection. No cross-request reservation or replacement-job retry is used.

@@ -1,0 +1,136 @@
+[
+  {
+    "job": null,
+    "status": 409,
+    "body": {
+      "error": "No auto-tune is running."
+    }
+  },
+  {
+    "job": {
+      "id": "done",
+      "model": "synthetic",
+      "status": "passed",
+      "models": []
+    },
+    "status": 409,
+    "body": {
+      "error": "No auto-tune is running."
+    }
+  },
+  {
+    "job": {
+      "id": "job",
+      "model": "synthetic",
+      "bulk": true,
+      "mode": "fast",
+      "status": "running",
+      "phase": "Measuring",
+      "startedAt": 100,
+      "promptBudgetSeconds": 120,
+      "originalText": "synthetic-private-profile",
+      "_revision": "synthetic-private-hash",
+      "log": [
+        {
+          "at": 100,
+          "text": "Synthetic progress"
+        }
+      ],
+      "models": [
+        {
+          "model": "synthetic",
+          "status": "running",
+          "_snapshot": "synthetic-private-profile",
+          "phases": [
+            {
+              "id": "kv",
+              "label": "KV",
+              "status": "running",
+              "beforeText": "synthetic-private-profile",
+              "steps": [
+                {
+                  "id": "bf16",
+                  "label": "bf16",
+                  "status": "running",
+                  "lastRevision": "synthetic-private-hash",
+                  "originalRevision": "synthetic-private-hash",
+                  "options": {
+                    "cache-type-k": "bf16"
+                  },
+                  "_http": {
+                    "headers": {
+                      "Authorization": "synthetic-private-key"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "queueProgress": {
+        "done": 0,
+        "total": 1
+      }
+    },
+    "status": 202,
+    "body": {
+      "id": "job",
+      "model": "synthetic",
+      "bulk": true,
+      "mode": "fast",
+      "status": "running",
+      "phase": "Measuring",
+      "startedAt": 100,
+      "promptBudgetSeconds": 120,
+      "log": [
+        {
+          "at": 100,
+          "text": "Synthetic progress"
+        }
+      ],
+      "models": [
+        {
+          "model": "synthetic",
+          "status": "running",
+          "phases": [
+            {
+              "id": "kv",
+              "label": "KV",
+              "status": "running",
+              "steps": [
+                {
+                  "id": "bf16",
+                  "label": "bf16",
+                  "status": "running",
+                  "options": {
+                    "cache-type-k": "bf16"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "queueProgress": {
+        "done": 0,
+        "total": 1
+      }
+    }
+  },
+  {
+    "job": {
+      "id": "utf16",
+      "model": "m\ud800",
+      "status": "running",
+      "models": []
+    },
+    "status": 202,
+    "body": {
+      "id": "utf16",
+      "model": "m\ud800",
+      "status": "running",
+      "models": []
+    }
+  }
+]

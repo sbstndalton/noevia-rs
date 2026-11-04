@@ -46,6 +46,8 @@ pub const ROUTES: &[&str] = &[
     crate::model_sizing::SUGGEST,
     crate::model_state_routes::BUDGET,
     crate::model_state_routes::INSTALLED,
+    crate::autotune_read_routes::PATH,
+    crate::idle_unload_read::PATH,
 ];
 
 /// What the model reads answer from: the keys core index.cjs read at startup.
@@ -117,6 +119,30 @@ pub async fn serve(
     req: Request<Body>,
     path: String,
 ) -> Response<Body> {
+    if path == crate::idle_unload_read::PATH {
+        return crate::idle_unload_read::serve(app, conn, req, path).await;
+    }
+    if path == crate::autotune_read_routes::PATH {
+        return crate::autotune_read_routes::serve(app, conn, req, path).await;
+    }
+    if path == crate::model_manager_scan::PATH && req.method() == axum::http::Method::GET {
+        return crate::model_manager_scan::serve(app, conn, req, path).await;
+    }
+    if path == crate::autotune_resume_routes::PATH {
+        return crate::autotune_resume_routes::serve(app, conn, req, path).await;
+    }
+    if path == crate::autotune_cancel_routes::PATH {
+        return crate::autotune_cancel_routes::serve(app, conn, req, path).await;
+    }
+    if path == crate::autotune_clear_routes::PATH {
+        return crate::autotune_clear_routes::serve(app, conn, req, path).await;
+    }
+    if path == crate::calibration_routes::PATH {
+        return crate::calibration_routes::serve(app, conn, req, path).await;
+    }
+    if path == crate::calibration_cancel_routes::PATH {
+        return crate::calibration_cancel_routes::serve(app, conn, req, path).await;
+    }
     if crate::model_maint::ROUTES.contains(&path.as_str()) {
         return crate::model_maint::serve(app, conn, req, path).await;
     }
@@ -139,8 +165,7 @@ pub async fn serve(
         Err(_) => return identity::Rejection::Unavailable.into_response(),
     };
     if let Some(route) = crate::model_sizing::Route::of(&path) {
-        let layer = Arc::clone(&app.identity);
-        let budget = Arc::new(move || crate::model_sizing::budget_setting(&layer));
+        let budget = crate::model_state_routes::sizing_budget(app);
         let (status, body) = app
             .config
             .sizing

@@ -1158,6 +1158,7 @@ impl Account {
         questions: Vec<String>,
         cancel: Cancel,
         cancel_attempted: Arc<std::sync::atomic::AtomicBool>,
+        waiting_documents: usize,
     ) {
         let tools = JobTools {
             account: self.clone(),
@@ -1173,7 +1174,8 @@ impl Account {
         let mut result: Option<Value> = None;
         let mut error: Option<String> = None;
         match runner::run(&question, &questions, &tools, &cancel, &options).await {
-            Ok(done) => {
+            Ok(mut done) => {
+                note_waiting_documents(&mut done, waiting_documents);
                 if !cancel.is_cancelled() {
                     runner::Tools::progress(&tools, "Saving the report").await;
                     if tools.failure().is_none() {
@@ -1308,11 +1310,15 @@ impl Account {
         project: &str,
         project_model: Option<String>,
         body: &JValue,
+        waiting_documents: usize,
     ) -> Result<JValue, Fail> {
         let (acc, project, body) = (self.clone(), project.to_owned(), body.clone());
-        tokio::spawn(async move { acc.start_job(&project, project_model, &body).await })
-            .await
-            .map_err(|_| fail(500, "Research request failed"))?
+        tokio::spawn(async move {
+            acc.start_job(&project, project_model, &body, waiting_documents)
+                .await
+        })
+        .await
+        .map_err(|_| fail(500, "Research request failed"))?
     }
 
     async fn start_job(
@@ -1320,6 +1326,7 @@ impl Account {
         project: &str,
         project_model: Option<String>,
         body: &JValue,
+        waiting_documents: usize,
     ) -> Result<JValue, Fail> {
         let question = js_string(body.get("question"));
         let question = context_fit::js_trim(&question).to_owned();
@@ -1395,6 +1402,7 @@ impl Account {
             questions,
             cancel,
             cancel_attempted,
+            waiting_documents,
         ));
         // A job that finished already has left `live`; there is then nothing to point at.
         if let Some(live) = self.research().state().live.get_mut(&id) {
@@ -1468,6 +1476,44 @@ fn js_string(v: &JValue) -> String {
         return String::new();
     }
     js_json::to_js_string(v).unwrap_or_default()
+}
+
+/// #2254: queued documents with no prior text are absent from retrieval, not empty evidence.
+/// Count only this account's authorized project snapshot; names and contents are never put in the notice.
+fn waiting_document_count(project: &JValue) -> usize {
+    let JValue::Arr(files) = project.get("files") else {
+        return 0;
+    };
+    files
+        .iter()
+        .filter(|f| {
+            f.get("document").get("state").as_str() == Some("queued")
+                && context_fit::js_trim(f.get("content").as_str().unwrap_or_default()).is_empty()
+        })
+        .count()
+}
+
+fn note_waiting_documents(result: &mut Value, count: usize) {
+    if count == 0 {
+        return;
+    }
+    let Some(markdown) = result.get_mut("markdown") else {
+        return;
+    };
+    let Some(text) = markdown.as_str() else {
+        return;
+    };
+    let (documents, verb, contents) = if count == 1 {
+        ("document", "was", "Its text was")
+    } else {
+        ("documents", "were", "Their text was")
+    };
+    let note = format!("> **Source availability:** {count} project {documents} {verb} waiting to be read when research started. {contents} unavailable at that point, so this report's coverage may be incomplete.\n\n");
+    let annotated = match text.split_once("\n\n") {
+        Some((title, rest)) => format!("{title}\n\n{note}{rest}"),
+        None => format!("{note}{text}"),
+    };
+    *markdown = Value::String(annotated);
 }
 
 fn project_model_of(project: &JValue) -> Option<String> {
@@ -1645,7 +1691,12 @@ pub async fn serve(
                 }
                 let parsed = read_json(body).await?;
                 let view = account
-                    .start(&project_id, project_model_of(&project), &parsed)
+                    .start(
+                        &project_id,
+                        project_model_of(&project),
+                        &parsed,
+                        waiting_document_count(&project),
+                    )
                     .await?;
                 Ok(answer(202, &view))
             }

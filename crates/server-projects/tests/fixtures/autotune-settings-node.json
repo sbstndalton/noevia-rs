@@ -1,0 +1,1355 @@
+[
+  {
+    "body": {
+      "model": "synthetic",
+      "allowQ5Kv": false
+    },
+    "facts": {
+      "token": "f8ef40f06439f2231201fe722192d91e4e87d7f97012c2d223a343d480d6a015",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": null,
+        "allowQ5Kv": false,
+        "allowBelowQ5Kv": false
+      },
+      "history": [
+        {
+          "id": "past",
+          "status": "passed"
+        }
+      ],
+      "longHistory": [
+        {
+          "id": "long-past",
+          "status": "passed"
+        }
+      ]
+    },
+    "finalFacts": {
+      "token": "6023f338a918548dfeac7c5de6af2b7bddce74826b643c4939b1b4d18472f3a9",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": null,
+        "allowQ5Kv": false,
+        "allowBelowQ5Kv": false
+      },
+      "history": [
+        {
+          "id": "past",
+          "status": "passed"
+        }
+      ],
+      "longHistory": [
+        {
+          "id": "long-past",
+          "status": "passed"
+        }
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "status": 200,
+      "body": {
+        "history": [
+          {
+            "id": "past",
+            "status": "passed"
+          }
+        ],
+        "kvCandidates": [
+          "bf16",
+          "q8_0"
+        ],
+        "settings": {
+          "allowQ5Kv": false
+        },
+        "modes": {
+          "fast": {
+            "defaultSeconds": 120,
+            "maxSeconds": 1800
+          },
+          "long": {
+            "defaultSeconds": 1800,
+            "maxSeconds": 1800
+          }
+        },
+        "longId": "synthetic-long",
+        "longHistory": [
+          {
+            "id": "long-past",
+            "status": "passed"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "body": {
+      "model": "synthetic",
+      "allowQ5Kv": true
+    },
+    "facts": {
+      "token": "4b6d32f80096f91666d552c9bc3398258496664153c9e6c4bdf36355f290977e",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": null,
+        "allowQ5Kv": false,
+        "allowBelowQ5Kv": false
+      },
+      "history": [
+        {
+          "id": "past",
+          "status": "passed"
+        }
+      ],
+      "longHistory": [
+        {
+          "id": "long-past",
+          "status": "passed"
+        }
+      ]
+    },
+    "finalFacts": {
+      "token": "836f0720fd2db75e58ab97de7382877e40ecdbc068cd3d99253022a043b5652c",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": null,
+        "allowQ5Kv": true,
+        "allowBelowQ5Kv": false
+      },
+      "history": [
+        {
+          "id": "past",
+          "status": "passed"
+        }
+      ],
+      "longHistory": [
+        {
+          "id": "long-past",
+          "status": "passed"
+        }
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "status": 200,
+      "body": {
+        "history": [
+          {
+            "id": "past",
+            "status": "passed"
+          }
+        ],
+        "kvCandidates": [
+          "bf16",
+          "q8_0",
+          "q5_1",
+          "q5_0"
+        ],
+        "settings": {
+          "allowQ5Kv": true
+        },
+        "modes": {
+          "fast": {
+            "defaultSeconds": 120,
+            "maxSeconds": 1800
+          },
+          "long": {
+            "defaultSeconds": 1800,
+            "maxSeconds": 1800
+          }
+        },
+        "longId": "synthetic-long",
+        "longHistory": [
+          {
+            "id": "long-past",
+            "status": "passed"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "body": {
+      "model": "synthetic",
+      "allowQ5Kv": true
+    },
+    "facts": {
+      "token": "b244367c2600c5ef05b756cf579c6f719e47b45e17b95b9e988699e7fb1c906b",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": {
+          "id": "synthetic-job",
+          "status": "running",
+          "models": [
+            {
+              "model": "synthetic-long",
+              "base": "synthetic",
+              "status": "pending"
+            }
+          ]
+        },
+        "allowQ5Kv": false,
+        "allowBelowQ5Kv": false
+      },
+      "job": {
+        "id": "synthetic-job",
+        "status": "running",
+        "models": [
+          {
+            "model": "synthetic-long",
+            "base": "synthetic",
+            "status": "pending"
+          }
+        ],
+        "nested": {
+          "ok": 1
+        }
+      },
+      "history": [
+        {
+          "id": "past",
+          "status": "passed"
+        }
+      ],
+      "longHistory": [
+        {
+          "id": "long-past",
+          "status": "passed"
+        }
+      ]
+    },
+    "finalFacts": null,
+    "expected": {
+      "ok": false,
+      "status": 409,
+      "body": {
+        "error": "This model is in an unfinished tune. Let it finish, or start a new tune, before changing this setting."
+      }
+    }
+  },
+  {
+    "body": {
+      "model": "synthetic",
+      "allowQ5Kv": true
+    },
+    "facts": {
+      "token": "312bd24797ff4671d9437c07b2ee0385082f120394e95a2a9fbe335898c6839b",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": {
+          "id": "synthetic-job",
+          "status": "cancelled",
+          "models": [
+            {
+              "model": "synthetic-long",
+              "base": "synthetic",
+              "status": "pending"
+            }
+          ]
+        },
+        "allowQ5Kv": false,
+        "allowBelowQ5Kv": false
+      },
+      "job": {
+        "id": "synthetic-job",
+        "status": "cancelled",
+        "models": [
+          {
+            "model": "synthetic-long",
+            "base": "synthetic",
+            "status": "pending"
+          }
+        ],
+        "nested": {
+          "ok": 1
+        }
+      },
+      "history": [
+        {
+          "id": "past",
+          "status": "passed"
+        }
+      ],
+      "longHistory": [
+        {
+          "id": "long-past",
+          "status": "passed"
+        }
+      ]
+    },
+    "finalFacts": null,
+    "expected": {
+      "ok": false,
+      "status": 409,
+      "body": {
+        "error": "This model is in an unfinished tune. Let it finish, or start a new tune, before changing this setting."
+      }
+    }
+  },
+  {
+    "body": {
+      "model": "synthetic",
+      "allowQ5Kv": true
+    },
+    "facts": {
+      "token": "dc2a8280d4564c3699d94015aa3bf1b6759f8e639b1fff77ebb9f1c52dce3172",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": {
+          "id": "synthetic-job",
+          "status": "interrupted",
+          "models": [
+            {
+              "model": "synthetic-long",
+              "base": "synthetic",
+              "status": "pending"
+            }
+          ]
+        },
+        "allowQ5Kv": false,
+        "allowBelowQ5Kv": false
+      },
+      "job": {
+        "id": "synthetic-job",
+        "status": "interrupted",
+        "models": [
+          {
+            "model": "synthetic-long",
+            "base": "synthetic",
+            "status": "pending"
+          }
+        ],
+        "nested": {
+          "ok": 1
+        }
+      },
+      "history": [
+        {
+          "id": "past",
+          "status": "passed"
+        }
+      ],
+      "longHistory": [
+        {
+          "id": "long-past",
+          "status": "passed"
+        }
+      ]
+    },
+    "finalFacts": null,
+    "expected": {
+      "ok": false,
+      "status": 409,
+      "body": {
+        "error": "This model is in an unfinished tune. Let it finish, or start a new tune, before changing this setting."
+      }
+    }
+  },
+  {
+    "body": {
+      "model": "synthetic",
+      "allowQ5Kv": true
+    },
+    "facts": {
+      "token": "a885f5d386adb310252fee7e21bd88e2eb5578aa4557c14df9026344bc88fc48",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": {
+          "id": "synthetic-job",
+          "status": "failed",
+          "models": [
+            {
+              "model": "synthetic-long",
+              "base": "synthetic",
+              "status": "pending"
+            }
+          ]
+        },
+        "allowQ5Kv": false,
+        "allowBelowQ5Kv": false
+      },
+      "job": {
+        "id": "synthetic-job",
+        "status": "failed",
+        "models": [
+          {
+            "model": "synthetic-long",
+            "base": "synthetic",
+            "status": "pending"
+          }
+        ],
+        "nested": {
+          "ok": 1
+        }
+      },
+      "history": [
+        {
+          "id": "past",
+          "status": "passed"
+        }
+      ],
+      "longHistory": [
+        {
+          "id": "long-past",
+          "status": "passed"
+        }
+      ]
+    },
+    "finalFacts": null,
+    "expected": {
+      "ok": false,
+      "status": 409,
+      "body": {
+        "error": "This model is in an unfinished tune. Let it finish, or start a new tune, before changing this setting."
+      }
+    }
+  },
+  {
+    "body": {
+      "model": "synthetic",
+      "allowQ5Kv": true
+    },
+    "facts": {
+      "token": "edd8fa08e7b074b14cac8249d508a082f5af7872106228cd5e4980fb2b7ff420",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": {
+          "id": "synthetic-job",
+          "status": "passed",
+          "models": [
+            {
+              "model": "synthetic-long",
+              "base": "synthetic",
+              "status": "pending"
+            }
+          ]
+        },
+        "allowQ5Kv": false,
+        "allowBelowQ5Kv": false
+      },
+      "job": {
+        "id": "synthetic-job",
+        "status": "passed",
+        "models": [
+          {
+            "model": "synthetic-long",
+            "base": "synthetic",
+            "status": "pending"
+          }
+        ],
+        "nested": {
+          "ok": 1
+        }
+      },
+      "history": [
+        {
+          "id": "past",
+          "status": "passed"
+        }
+      ],
+      "longHistory": [
+        {
+          "id": "long-past",
+          "status": "passed"
+        }
+      ]
+    },
+    "finalFacts": {
+      "token": "8399d56a1da381d2ecc1f704c046e333997b7cfa1ec55dd774207901890dd828",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": {
+          "id": "synthetic-job",
+          "status": "passed",
+          "models": [
+            {
+              "model": "synthetic-long",
+              "base": "synthetic",
+              "status": "pending"
+            }
+          ]
+        },
+        "allowQ5Kv": true,
+        "allowBelowQ5Kv": false
+      },
+      "job": {
+        "id": "synthetic-job",
+        "status": "passed",
+        "models": [
+          {
+            "model": "synthetic-long",
+            "base": "synthetic",
+            "status": "pending"
+          }
+        ],
+        "nested": {
+          "ok": 1
+        }
+      },
+      "history": [
+        {
+          "id": "past",
+          "status": "passed"
+        }
+      ],
+      "longHistory": [
+        {
+          "id": "long-past",
+          "status": "passed"
+        }
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "status": 200,
+      "body": {
+        "job": {
+          "id": "synthetic-job",
+          "status": "passed",
+          "models": [
+            {
+              "model": "synthetic-long",
+              "base": "synthetic",
+              "status": "pending"
+            }
+          ],
+          "nested": {
+            "ok": 1
+          }
+        },
+        "history": [
+          {
+            "id": "past",
+            "status": "passed"
+          }
+        ],
+        "kvCandidates": [
+          "bf16",
+          "q8_0",
+          "q5_1",
+          "q5_0"
+        ],
+        "settings": {
+          "allowQ5Kv": true
+        },
+        "modes": {
+          "fast": {
+            "defaultSeconds": 120,
+            "maxSeconds": 1800
+          },
+          "long": {
+            "defaultSeconds": 1800,
+            "maxSeconds": 1800
+          }
+        },
+        "longId": "synthetic-long",
+        "longHistory": [
+          {
+            "id": "long-past",
+            "status": "passed"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "body": {
+      "model": "synthetic",
+      "allowQ5Kv": true
+    },
+    "facts": {
+      "token": "5b56b168e2f0b83965a5f4e01f6d0c86b27f65ef8adbc0f7454a5ba9d2d097ee",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": {
+          "status": "running",
+          "models": [
+            {
+              "model": "synthetic",
+              "status": "passed"
+            }
+          ]
+        },
+        "allowQ5Kv": false,
+        "allowBelowQ5Kv": false
+      },
+      "job": {
+        "status": "running",
+        "models": [
+          {
+            "model": "synthetic",
+            "status": "passed"
+          }
+        ]
+      },
+      "history": [
+        {
+          "id": "past",
+          "status": "passed"
+        }
+      ],
+      "longHistory": [
+        {
+          "id": "long-past",
+          "status": "passed"
+        }
+      ]
+    },
+    "finalFacts": {
+      "token": "42fee8aba4727f37aab80c8563b0cf76beb1ca040e9d3c8b7a2a81a56615a801",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": {
+          "status": "running",
+          "models": [
+            {
+              "model": "synthetic",
+              "status": "passed"
+            }
+          ]
+        },
+        "allowQ5Kv": true,
+        "allowBelowQ5Kv": false
+      },
+      "job": {
+        "status": "running",
+        "models": [
+          {
+            "model": "synthetic",
+            "status": "passed"
+          }
+        ]
+      },
+      "history": [
+        {
+          "id": "past",
+          "status": "passed"
+        }
+      ],
+      "longHistory": [
+        {
+          "id": "long-past",
+          "status": "passed"
+        }
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "status": 200,
+      "body": {
+        "job": {
+          "status": "running",
+          "models": [
+            {
+              "model": "synthetic",
+              "status": "passed"
+            }
+          ]
+        },
+        "history": [
+          {
+            "id": "past",
+            "status": "passed"
+          }
+        ],
+        "kvCandidates": [
+          "bf16",
+          "q8_0",
+          "q5_1",
+          "q5_0"
+        ],
+        "settings": {
+          "allowQ5Kv": true
+        },
+        "modes": {
+          "fast": {
+            "defaultSeconds": 120,
+            "maxSeconds": 1800
+          },
+          "long": {
+            "defaultSeconds": 1800,
+            "maxSeconds": 1800
+          }
+        },
+        "longId": "synthetic-long",
+        "longHistory": [
+          {
+            "id": "long-past",
+            "status": "passed"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "body": {
+      "model": "synthetic",
+      "allowQ5Kv": true
+    },
+    "facts": {
+      "token": "49fc3ddbf14bc416f33b5e43f62ea84244a757cbf29744a2f3ce65173ef48d2c",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": {
+          "status": "running",
+          "models": [
+            {
+              "model": "other",
+              "status": "pending"
+            }
+          ]
+        },
+        "allowQ5Kv": false,
+        "allowBelowQ5Kv": false
+      },
+      "job": {
+        "status": "running",
+        "models": [
+          {
+            "model": "other",
+            "status": "pending"
+          }
+        ]
+      },
+      "history": [
+        {
+          "id": "past",
+          "status": "passed"
+        }
+      ],
+      "longHistory": [
+        {
+          "id": "long-past",
+          "status": "passed"
+        }
+      ]
+    },
+    "finalFacts": {
+      "token": "95b7d7e2425d547a592c80ad2b0794da66d89ba02fbbb520512d50f2d1d63112",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": {
+          "status": "running",
+          "models": [
+            {
+              "model": "other",
+              "status": "pending"
+            }
+          ]
+        },
+        "allowQ5Kv": true,
+        "allowBelowQ5Kv": false
+      },
+      "job": {
+        "status": "running",
+        "models": [
+          {
+            "model": "other",
+            "status": "pending"
+          }
+        ]
+      },
+      "history": [
+        {
+          "id": "past",
+          "status": "passed"
+        }
+      ],
+      "longHistory": [
+        {
+          "id": "long-past",
+          "status": "passed"
+        }
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "status": 200,
+      "body": {
+        "job": {
+          "status": "running",
+          "models": [
+            {
+              "model": "other",
+              "status": "pending"
+            }
+          ]
+        },
+        "history": [
+          {
+            "id": "past",
+            "status": "passed"
+          }
+        ],
+        "kvCandidates": [
+          "bf16",
+          "q8_0",
+          "q5_1",
+          "q5_0"
+        ],
+        "settings": {
+          "allowQ5Kv": true
+        },
+        "modes": {
+          "fast": {
+            "defaultSeconds": 120,
+            "maxSeconds": 1800
+          },
+          "long": {
+            "defaultSeconds": 1800,
+            "maxSeconds": 1800
+          }
+        },
+        "longId": "synthetic-long",
+        "longHistory": [
+          {
+            "id": "long-past",
+            "status": "passed"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "body": {
+      "model": "synthetic",
+      "allowQ5Kv": true
+    },
+    "facts": {
+      "token": "abab2020b7cfb18c80fe6c566c2a7374b19882b1461e9e2c46e86a30239e90f6",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": null,
+        "allowQ5Kv": false,
+        "allowBelowQ5Kv": true
+      },
+      "history": [
+        {
+          "id": "past",
+          "status": "passed"
+        }
+      ],
+      "longHistory": [
+        {
+          "id": "long-past",
+          "status": "passed"
+        }
+      ]
+    },
+    "finalFacts": {
+      "token": "b40e9b5243571c3ea0d6505cd553a0863329268f67623c6e6f7176c3ae892d14",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": null,
+        "allowQ5Kv": true,
+        "allowBelowQ5Kv": true
+      },
+      "history": [
+        {
+          "id": "past",
+          "status": "passed"
+        }
+      ],
+      "longHistory": [
+        {
+          "id": "long-past",
+          "status": "passed"
+        }
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "status": 200,
+      "body": {
+        "history": [
+          {
+            "id": "past",
+            "status": "passed"
+          }
+        ],
+        "kvCandidates": [
+          "bf16",
+          "q8_0",
+          "q5_1",
+          "q5_0",
+          "q4_0"
+        ],
+        "settings": {
+          "allowQ5Kv": true
+        },
+        "modes": {
+          "fast": {
+            "defaultSeconds": 120,
+            "maxSeconds": 1800
+          },
+          "long": {
+            "defaultSeconds": 1800,
+            "maxSeconds": 1800
+          }
+        },
+        "longId": "synthetic-long",
+        "longHistory": [
+          {
+            "id": "long-past",
+            "status": "passed"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "body": {
+      "model": "",
+      "allowQ5Kv": true
+    },
+    "facts": null,
+    "finalFacts": null,
+    "expected": {
+      "ok": false,
+      "status": 400,
+      "body": {
+        "error": "Choose a model."
+      }
+    }
+  },
+  {
+    "body": {
+      "model": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "allowQ5Kv": true
+    },
+    "facts": null,
+    "finalFacts": null,
+    "expected": {
+      "ok": false,
+      "status": 400,
+      "body": {
+        "error": "Choose a model."
+      }
+    }
+  },
+  {
+    "body": {
+      "model": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+      "allowQ5Kv": true
+    },
+    "facts": null,
+    "finalFacts": null,
+    "expected": {
+      "ok": false,
+      "status": 400,
+      "body": {
+        "error": "Choose a model."
+      }
+    }
+  },
+  {
+    "body": {
+      "model": "synthetic",
+      "allowQ5Kv": "true"
+    },
+    "facts": {
+      "token": "8abfbeab5be733d905546d347d16ed8484691701bc96d5e24faf90a08caeeb28",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": null,
+        "allowQ5Kv": false,
+        "allowBelowQ5Kv": false
+      },
+      "history": [
+        {
+          "id": "past",
+          "status": "passed"
+        }
+      ],
+      "longHistory": [
+        {
+          "id": "long-past",
+          "status": "passed"
+        }
+      ]
+    },
+    "finalFacts": null,
+    "expected": {
+      "ok": false,
+      "status": 400,
+      "body": {
+        "error": "allowQ5Kv must be true or false."
+      }
+    }
+  },
+  {
+    "body": {
+      "model": "synthetic"
+    },
+    "facts": {
+      "token": "d8deb366ba8ede01ebcade99fe74b80787d05d492601ab4f6189e737ebe25a1e",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": null,
+        "allowQ5Kv": false,
+        "allowBelowQ5Kv": false
+      },
+      "history": [
+        {
+          "id": "past",
+          "status": "passed"
+        }
+      ],
+      "longHistory": [
+        {
+          "id": "long-past",
+          "status": "passed"
+        }
+      ]
+    },
+    "finalFacts": null,
+    "expected": {
+      "ok": false,
+      "status": 400,
+      "body": {
+        "error": "allowQ5Kv must be true or false."
+      }
+    }
+  },
+  {
+    "body": {
+      "model": "laya_multilingual_f16",
+      "allowQ5Kv": true
+    },
+    "facts": {
+      "token": "a3d9a5a4f710ee749690e6a7851d7b159c01b272a4c2d928d5fcf9d996052981",
+      "guard": {
+        "configured": false,
+        "system": true,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": null,
+        "allowQ5Kv": false,
+        "allowBelowQ5Kv": false
+      },
+      "history": [],
+      "longHistory": []
+    },
+    "finalFacts": null,
+    "expected": {
+      "ok": false,
+      "status": 400,
+      "body": {
+        "error": "System routing model — not tuned"
+      }
+    }
+  },
+  {
+    "body": {
+      "model": "missing",
+      "allowQ5Kv": true
+    },
+    "facts": {
+      "token": "3e114a2ab213895173b5666d188ace7dd475da85d38b5da273e31ee14ec6b81e",
+      "guard": {
+        "configured": false,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": null,
+        "allowQ5Kv": false,
+        "allowBelowQ5Kv": false
+      },
+      "history": [],
+      "longHistory": []
+    },
+    "finalFacts": null,
+    "expected": {
+      "ok": false,
+      "status": 404,
+      "body": {
+        "error": "Choose a configured chat model."
+      }
+    }
+  },
+  {
+    "body": {
+      "model": [
+        "synthetic"
+      ],
+      "allowQ5Kv": true
+    },
+    "facts": {
+      "token": "961838279cf0ba3e97b1f4738cb638e19788022aedc0549856ec03f3df005b8f",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": null,
+        "allowQ5Kv": false,
+        "allowBelowQ5Kv": false
+      },
+      "history": [
+        {
+          "id": "past",
+          "status": "passed"
+        }
+      ],
+      "longHistory": [
+        {
+          "id": "long-past",
+          "status": "passed"
+        }
+      ]
+    },
+    "finalFacts": {
+      "token": "351f3423c76d64992f2659ea43553b746e2a593b6d33827af804f95d704a9488",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": null,
+        "allowQ5Kv": true,
+        "allowBelowQ5Kv": false
+      },
+      "history": [
+        {
+          "id": "past",
+          "status": "passed"
+        }
+      ],
+      "longHistory": [
+        {
+          "id": "long-past",
+          "status": "passed"
+        }
+      ]
+    },
+    "expected": {
+      "ok": true,
+      "status": 200,
+      "body": {
+        "history": [
+          {
+            "id": "past",
+            "status": "passed"
+          }
+        ],
+        "kvCandidates": [
+          "bf16",
+          "q8_0",
+          "q5_1",
+          "q5_0"
+        ],
+        "settings": {
+          "allowQ5Kv": true
+        },
+        "modes": {
+          "fast": {
+            "defaultSeconds": 120,
+            "maxSeconds": 1800
+          },
+          "long": {
+            "defaultSeconds": 1800,
+            "maxSeconds": 1800
+          }
+        },
+        "longId": "synthetic-long",
+        "longHistory": [
+          {
+            "id": "long-past",
+            "status": "passed"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "body": {
+      "model": 7,
+      "allowQ5Kv": true
+    },
+    "facts": {
+      "token": "12d579b246bbedf9d57fbc397e31b29ab0fe34adbc34770fb29a72c899618d14",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": null,
+        "allowQ5Kv": false,
+        "allowBelowQ5Kv": false
+      },
+      "history": [],
+      "longHistory": []
+    },
+    "finalFacts": {
+      "token": "62eceb7111a2bb9c190fb6a44e04851e3642b9d34613425a22f93cdb5db42038",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": null,
+        "allowQ5Kv": true,
+        "allowBelowQ5Kv": false
+      },
+      "history": [],
+      "longHistory": []
+    },
+    "expected": {
+      "ok": true,
+      "status": 200,
+      "body": {
+        "history": [],
+        "kvCandidates": [
+          "bf16",
+          "q8_0",
+          "q5_1",
+          "q5_0"
+        ],
+        "settings": {
+          "allowQ5Kv": true
+        },
+        "modes": {
+          "fast": {
+            "defaultSeconds": 120,
+            "maxSeconds": 1800
+          },
+          "long": {
+            "defaultSeconds": 1800,
+            "maxSeconds": 1800
+          }
+        },
+        "longId": "7-long",
+        "longHistory": []
+      }
+    }
+  },
+  {
+    "body": {
+      "model": "__proto__",
+      "allowQ5Kv": true
+    },
+    "facts": {
+      "token": "5d4833f7cecc567c03498b144edfd6bb996d2873aaec867b8e695f215612a858",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": null,
+        "allowQ5Kv": false,
+        "allowBelowQ5Kv": false
+      },
+      "history": {},
+      "longHistory": []
+    },
+    "finalFacts": {
+      "token": "5ab464d44911246691898402962f07ffe1cff8008abcb41731046880535673b3",
+      "guard": {
+        "configured": true,
+        "system": false,
+        "revision": "synthetic-revision",
+        "starting": false,
+        "job": null,
+        "allowQ5Kv": true,
+        "allowBelowQ5Kv": false
+      },
+      "history": {},
+      "longHistory": []
+    },
+    "expected": {
+      "ok": true,
+      "status": 200,
+      "body": {
+        "history": {},
+        "kvCandidates": [
+          "bf16",
+          "q8_0",
+          "q5_1",
+          "q5_0"
+        ],
+        "settings": {
+          "allowQ5Kv": true
+        },
+        "modes": {
+          "fast": {
+            "defaultSeconds": 120,
+            "maxSeconds": 1800
+          },
+          "long": {
+            "defaultSeconds": 1800,
+            "maxSeconds": 1800
+          }
+        },
+        "longId": "__proto__-long",
+        "longHistory": []
+      }
+    }
+  },
+  {
+    "body": null,
+    "facts": null,
+    "finalFacts": null,
+    "expected": {
+      "ok": false,
+      "status": 400,
+      "body": {
+        "error": "Choose a model."
+      }
+    }
+  }
+]

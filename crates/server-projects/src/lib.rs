@@ -60,6 +60,7 @@
 //! the gate returned and nothing from the request picks another user's files.
 
 pub mod assets;
+pub mod autotune_settings;
 pub mod chat_delete;
 pub mod chat_move;
 pub mod chats;
@@ -108,6 +109,7 @@ pub mod store;
 pub mod store_api;
 pub mod sync;
 pub mod task_journals;
+pub mod toolbox_picker;
 pub mod transcript;
 pub mod upload;
 pub mod uploads_ingest;
@@ -179,3 +181,6 @@ pub struct Ctx<'a> {
     /// `Date.now()`.
     pub now_ms: i64,
 }
+
+pub mod autotune_read;
+pub mod autotune_resume;

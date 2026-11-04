@@ -1,0 +1,978 @@
+[
+  {
+    "facts": {
+      "boxes": [
+        {
+          "id": "core",
+          "label": "Core",
+          "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+          "source": "builtin",
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "get_current_time",
+                "description": "Get the current date and time on the server, optionally in a specific IANA timezone (e.g. Europe/Berlin). Use whenever freshness, \"today\", or a timezone matters.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "timezone": {
+                      "type": "string",
+                      "description": "Optional IANA timezone name"
+                    }
+                  },
+                  "required": []
+                }
+              }
+            },
+            {
+              "type": "function",
+              "function": {
+                "name": "read_project_file",
+                "description": "Read an attached source or enabled instruction skill by its name as listed. Skills support offset pagination. For PDFs use startPage/endPage (up to 5 pages) and offset to read beyond summaries; results include page and version references.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "File name as listed (e.g. Folder/Text/notes.md), or just notes.md if unique"
+                    },
+                    "startPage": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "endPage": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "gdrive",
+          "label": "Drive",
+          "description": "Account connector",
+          "source": "builtin",
+          "tools": []
+        },
+        {
+          "id": "curated",
+          "label": "Snow ☃",
+          "description": "Curated box",
+          "source": "mcp",
+          "inApp": true,
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "read_😀",
+                "description": "Text \ud800 and 😀",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "third",
+          "label": "Third",
+          "source": "mcp",
+          "tools": []
+        }
+      ],
+      "connectorBoxes": [
+        "gdrive"
+      ],
+      "prefill": {
+        "targetMs": 14000,
+        "models": {
+          "model-😀": {
+            "buckets": 3,
+            "tokensPerSecond": 320.5,
+            "range": [
+              1,
+              2
+            ]
+          }
+        }
+      },
+      "mcp": {
+        "enabled": true,
+        "error": null,
+        "tools": [
+          {
+            "name": "one",
+            "serverId": "a"
+          },
+          {
+            "name": "other-owner",
+            "serverId": "b"
+          }
+        ],
+        "states": [
+          {
+            "id": "a",
+            "error": null,
+            "toolCount": 2,
+            "discoveredAt": 123
+          },
+          {
+            "id": "b",
+            "error": "Unavailable",
+            "toolCount": 0,
+            "discoveredAt": 0
+          }
+        ],
+        "servers": [
+          {
+            "id": "a",
+            "auth": "none",
+            "directory": true,
+            "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx😀"
+          },
+          {
+            "id": "b",
+            "auth": "oauth"
+          },
+          {
+            "id": "fresh",
+            "auth": "personal"
+          }
+        ],
+        "manifest": [
+          {
+            "server": "a",
+            "tools": [
+              "one",
+              "missing",
+              "other-owner"
+            ]
+          },
+          {
+            "server": "a",
+            "tools": [
+              "missing"
+            ]
+          }
+        ]
+      }
+    },
+    "connected": [],
+    "expected": {
+      "toolboxes": [
+        {
+          "id": "core",
+          "label": "Core",
+          "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+          "source": "builtin",
+          "inApp": true,
+          "toolCount": 2,
+          "estTokens": 276
+        },
+        {
+          "id": "curated",
+          "label": "Snow ☃",
+          "description": "Curated box",
+          "source": "mcp",
+          "inApp": true,
+          "toolCount": 1,
+          "estTokens": 43
+        },
+        {
+          "id": "third",
+          "label": "Third",
+          "source": "mcp",
+          "inApp": false,
+          "toolCount": 0,
+          "estTokens": 0
+        }
+      ],
+      "prefill": {
+        "targetMs": 14000,
+        "models": {
+          "model-😀": {
+            "buckets": 3,
+            "tokensPerSecond": 320.5,
+            "range": [
+              1,
+              2
+            ]
+          }
+        }
+      },
+      "mcp": {
+        "configured": true,
+        "error": null,
+        "discovered": 2,
+        "servers": [
+          {
+            "id": "a",
+            "auth": "none",
+            "error": null,
+            "discovered": 2,
+            "checkedAt": 123,
+            "missingCurated": 2,
+            "directory": true,
+            "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\ud83d"
+          },
+          {
+            "id": "b",
+            "auth": "oauth",
+            "error": "Unavailable",
+            "discovered": 0,
+            "checkedAt": null,
+            "missingCurated": 0,
+            "directory": false
+          },
+          {
+            "id": "fresh",
+            "auth": "personal",
+            "error": null,
+            "discovered": 0,
+            "checkedAt": null,
+            "missingCurated": 0,
+            "directory": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "facts": {
+      "boxes": [
+        {
+          "id": "core",
+          "label": "Core",
+          "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+          "source": "builtin",
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "get_current_time",
+                "description": "Get the current date and time on the server, optionally in a specific IANA timezone (e.g. Europe/Berlin). Use whenever freshness, \"today\", or a timezone matters.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "timezone": {
+                      "type": "string",
+                      "description": "Optional IANA timezone name"
+                    }
+                  },
+                  "required": []
+                }
+              }
+            },
+            {
+              "type": "function",
+              "function": {
+                "name": "read_project_file",
+                "description": "Read an attached source or enabled instruction skill by its name as listed. Skills support offset pagination. For PDFs use startPage/endPage (up to 5 pages) and offset to read beyond summaries; results include page and version references.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "File name as listed (e.g. Folder/Text/notes.md), or just notes.md if unique"
+                    },
+                    "startPage": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "endPage": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "gdrive",
+          "label": "Drive",
+          "description": "Account connector",
+          "source": "builtin",
+          "tools": []
+        },
+        {
+          "id": "curated",
+          "label": "Snow ☃",
+          "description": "Curated box",
+          "source": "mcp",
+          "inApp": true,
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "read_😀",
+                "description": "Text \ud800 and 😀",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "third",
+          "label": "Third",
+          "source": "mcp",
+          "tools": []
+        }
+      ],
+      "connectorBoxes": [
+        "gdrive"
+      ],
+      "prefill": {
+        "targetMs": 14000,
+        "models": {
+          "model-😀": {
+            "buckets": 3,
+            "tokensPerSecond": 320.5,
+            "range": [
+              1,
+              2
+            ]
+          }
+        }
+      },
+      "mcp": {
+        "enabled": false,
+        "error": null,
+        "tools": [
+          {
+            "name": "one",
+            "serverId": "a"
+          },
+          {
+            "name": "other-owner",
+            "serverId": "b"
+          }
+        ],
+        "states": [
+          {
+            "id": "a",
+            "error": null,
+            "toolCount": 2,
+            "discoveredAt": 123
+          },
+          {
+            "id": "b",
+            "error": "Unavailable",
+            "toolCount": 0,
+            "discoveredAt": 0
+          }
+        ],
+        "servers": [
+          {
+            "id": "a",
+            "auth": "none",
+            "directory": true,
+            "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx😀"
+          },
+          {
+            "id": "b",
+            "auth": "oauth"
+          },
+          {
+            "id": "fresh",
+            "auth": "personal"
+          }
+        ],
+        "manifest": [
+          {
+            "server": "a",
+            "tools": [
+              "one",
+              "missing",
+              "other-owner"
+            ]
+          },
+          {
+            "server": "a",
+            "tools": [
+              "missing"
+            ]
+          }
+        ]
+      }
+    },
+    "connected": [],
+    "expected": {
+      "toolboxes": [
+        {
+          "id": "core",
+          "label": "Core",
+          "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+          "source": "builtin",
+          "inApp": true,
+          "toolCount": 2,
+          "estTokens": 276
+        },
+        {
+          "id": "curated",
+          "label": "Snow ☃",
+          "description": "Curated box",
+          "source": "mcp",
+          "inApp": true,
+          "toolCount": 1,
+          "estTokens": 43
+        },
+        {
+          "id": "third",
+          "label": "Third",
+          "source": "mcp",
+          "inApp": false,
+          "toolCount": 0,
+          "estTokens": 0
+        }
+      ],
+      "prefill": {
+        "targetMs": 14000,
+        "models": {
+          "model-😀": {
+            "buckets": 3,
+            "tokensPerSecond": 320.5,
+            "range": [
+              1,
+              2
+            ]
+          }
+        }
+      },
+      "mcp": {
+        "configured": false
+      }
+    }
+  },
+  {
+    "facts": {
+      "boxes": [
+        {
+          "id": "core",
+          "label": "Core",
+          "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+          "source": "builtin",
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "get_current_time",
+                "description": "Get the current date and time on the server, optionally in a specific IANA timezone (e.g. Europe/Berlin). Use whenever freshness, \"today\", or a timezone matters.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "timezone": {
+                      "type": "string",
+                      "description": "Optional IANA timezone name"
+                    }
+                  },
+                  "required": []
+                }
+              }
+            },
+            {
+              "type": "function",
+              "function": {
+                "name": "read_project_file",
+                "description": "Read an attached source or enabled instruction skill by its name as listed. Skills support offset pagination. For PDFs use startPage/endPage (up to 5 pages) and offset to read beyond summaries; results include page and version references.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "File name as listed (e.g. Folder/Text/notes.md), or just notes.md if unique"
+                    },
+                    "startPage": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "endPage": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "gdrive",
+          "label": "Drive",
+          "description": "Account connector",
+          "source": "builtin",
+          "tools": []
+        },
+        {
+          "id": "curated",
+          "label": "Snow ☃",
+          "description": "Curated box",
+          "source": "mcp",
+          "inApp": true,
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "read_😀",
+                "description": "Text \ud800 and 😀",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "third",
+          "label": "Third",
+          "source": "mcp",
+          "tools": []
+        }
+      ],
+      "connectorBoxes": [
+        "gdrive"
+      ],
+      "prefill": {
+        "targetMs": 14000,
+        "models": {
+          "model-😀": {
+            "buckets": 3,
+            "tokensPerSecond": 320.5,
+            "range": [
+              1,
+              2
+            ]
+          }
+        }
+      },
+      "mcp": {
+        "enabled": true,
+        "error": null,
+        "tools": [
+          {
+            "name": "one",
+            "serverId": "a"
+          },
+          {
+            "name": "other-owner",
+            "serverId": "b"
+          }
+        ],
+        "states": [
+          {
+            "id": "a",
+            "error": null,
+            "toolCount": 2,
+            "discoveredAt": 123
+          },
+          {
+            "id": "b",
+            "error": "Unavailable",
+            "toolCount": 0,
+            "discoveredAt": 0
+          }
+        ],
+        "servers": [
+          {
+            "id": "a",
+            "auth": "none",
+            "directory": true,
+            "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx😀"
+          },
+          {
+            "id": "b",
+            "auth": "oauth"
+          },
+          {
+            "id": "fresh",
+            "auth": "personal"
+          }
+        ],
+        "manifest": [
+          {
+            "server": "a",
+            "tools": [
+              "one",
+              "missing",
+              "other-owner"
+            ]
+          },
+          {
+            "server": "a",
+            "tools": [
+              "missing"
+            ]
+          }
+        ]
+      }
+    },
+    "connected": [
+      "gdrive"
+    ],
+    "expected": {
+      "toolboxes": [
+        {
+          "id": "core",
+          "label": "Core",
+          "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+          "source": "builtin",
+          "inApp": true,
+          "toolCount": 2,
+          "estTokens": 276
+        },
+        {
+          "id": "gdrive",
+          "label": "Drive",
+          "description": "Account connector",
+          "source": "builtin",
+          "inApp": true,
+          "toolCount": 0,
+          "estTokens": 0,
+          "connector": true
+        },
+        {
+          "id": "curated",
+          "label": "Snow ☃",
+          "description": "Curated box",
+          "source": "mcp",
+          "inApp": true,
+          "toolCount": 1,
+          "estTokens": 43
+        },
+        {
+          "id": "third",
+          "label": "Third",
+          "source": "mcp",
+          "inApp": false,
+          "toolCount": 0,
+          "estTokens": 0
+        }
+      ],
+      "prefill": {
+        "targetMs": 14000,
+        "models": {
+          "model-😀": {
+            "buckets": 3,
+            "tokensPerSecond": 320.5,
+            "range": [
+              1,
+              2
+            ]
+          }
+        }
+      },
+      "mcp": {
+        "configured": true,
+        "error": null,
+        "discovered": 2,
+        "servers": [
+          {
+            "id": "a",
+            "auth": "none",
+            "error": null,
+            "discovered": 2,
+            "checkedAt": 123,
+            "missingCurated": 2,
+            "directory": true,
+            "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\ud83d"
+          },
+          {
+            "id": "b",
+            "auth": "oauth",
+            "error": "Unavailable",
+            "discovered": 0,
+            "checkedAt": null,
+            "missingCurated": 0,
+            "directory": false
+          },
+          {
+            "id": "fresh",
+            "auth": "personal",
+            "error": null,
+            "discovered": 0,
+            "checkedAt": null,
+            "missingCurated": 0,
+            "directory": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "facts": {
+      "boxes": [
+        {
+          "id": "core",
+          "label": "Core",
+          "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+          "source": "builtin",
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "get_current_time",
+                "description": "Get the current date and time on the server, optionally in a specific IANA timezone (e.g. Europe/Berlin). Use whenever freshness, \"today\", or a timezone matters.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "timezone": {
+                      "type": "string",
+                      "description": "Optional IANA timezone name"
+                    }
+                  },
+                  "required": []
+                }
+              }
+            },
+            {
+              "type": "function",
+              "function": {
+                "name": "read_project_file",
+                "description": "Read an attached source or enabled instruction skill by its name as listed. Skills support offset pagination. For PDFs use startPage/endPage (up to 5 pages) and offset to read beyond summaries; results include page and version references.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "File name as listed (e.g. Folder/Text/notes.md), or just notes.md if unique"
+                    },
+                    "startPage": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "endPage": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "gdrive",
+          "label": "Drive",
+          "description": "Account connector",
+          "source": "builtin",
+          "tools": []
+        },
+        {
+          "id": "curated",
+          "label": "Snow ☃",
+          "description": "Curated box",
+          "source": "mcp",
+          "inApp": true,
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "read_😀",
+                "description": "Text \ud800 and 😀",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "third",
+          "label": "Third",
+          "source": "mcp",
+          "tools": []
+        }
+      ],
+      "connectorBoxes": [
+        "gdrive"
+      ],
+      "prefill": {
+        "targetMs": 14000,
+        "models": {
+          "model-😀": {
+            "buckets": 3,
+            "tokensPerSecond": 320.5,
+            "range": [
+              1,
+              2
+            ]
+          }
+        }
+      },
+      "mcp": {
+        "enabled": false,
+        "error": null,
+        "tools": [
+          {
+            "name": "one",
+            "serverId": "a"
+          },
+          {
+            "name": "other-owner",
+            "serverId": "b"
+          }
+        ],
+        "states": [
+          {
+            "id": "a",
+            "error": null,
+            "toolCount": 2,
+            "discoveredAt": 123
+          },
+          {
+            "id": "b",
+            "error": "Unavailable",
+            "toolCount": 0,
+            "discoveredAt": 0
+          }
+        ],
+        "servers": [
+          {
+            "id": "a",
+            "auth": "none",
+            "directory": true,
+            "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx😀"
+          },
+          {
+            "id": "b",
+            "auth": "oauth"
+          },
+          {
+            "id": "fresh",
+            "auth": "personal"
+          }
+        ],
+        "manifest": [
+          {
+            "server": "a",
+            "tools": [
+              "one",
+              "missing",
+              "other-owner"
+            ]
+          },
+          {
+            "server": "a",
+            "tools": [
+              "missing"
+            ]
+          }
+        ]
+      }
+    },
+    "connected": [
+      "gdrive"
+    ],
+    "expected": {
+      "toolboxes": [
+        {
+          "id": "core",
+          "label": "Core",
+          "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+          "source": "builtin",
+          "inApp": true,
+          "toolCount": 2,
+          "estTokens": 276
+        },
+        {
+          "id": "gdrive",
+          "label": "Drive",
+          "description": "Account connector",
+          "source": "builtin",
+          "inApp": true,
+          "toolCount": 0,
+          "estTokens": 0,
+          "connector": true
+        },
+        {
+          "id": "curated",
+          "label": "Snow ☃",
+          "description": "Curated box",
+          "source": "mcp",
+          "inApp": true,
+          "toolCount": 1,
+          "estTokens": 43
+        },
+        {
+          "id": "third",
+          "label": "Third",
+          "source": "mcp",
+          "inApp": false,
+          "toolCount": 0,
+          "estTokens": 0
+        }
+      ],
+      "prefill": {
+        "targetMs": 14000,
+        "models": {
+          "model-😀": {
+            "buckets": 3,
+            "tokensPerSecond": 320.5,
+            "range": [
+              1,
+              2
+            ]
+          }
+        }
+      },
+      "mcp": {
+        "configured": false
+      }
+    }
+  }
+]
