@@ -10,6 +10,7 @@ pub mod autotune_clear_routes;
 pub mod autotune_read_routes;
 pub mod autotune_resume_routes;
 pub mod autotune_settings_routes;
+pub mod autotune_untuned_routes;
 pub mod calibration_cancel_routes;
 pub mod calibration_routes;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -362,6 +363,7 @@ pub const FEATURES: &[&str] = &[
     "rust-diary",
     "rust-diary-routes",
     "rust-model-reads",
+    "rust-autotune-untuned",
     "rust-model-state-reads",
     "rust-autotune-settings",
     "rust-project-reads",
