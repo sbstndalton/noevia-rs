@@ -94,6 +94,7 @@ async fn core_service(
     req: Request<Incoming>,
 ) -> Result<Response<UpBody>, std::io::Error> {
     let path = req.uri().path().to_string();
+    let hold = req.uri().query() == Some("hold=1");
     let method = req.method().to_string();
     let headers =
         req.headers()
@@ -127,6 +128,22 @@ async fn core_service(
     };
     if path == "/internal/chat/gate" {
         return Ok(match *core.gate.lock().unwrap() {
+            // Chat port S6: the front takes the gate for its call and holds it while this stays open.
+            Gate::Open if hold => {
+                let (mut tx, body) =
+                    http_body_util::channel::Channel::<Bytes, std::io::Error>::new(1);
+                tokio::spawn(async move {
+                    let _ = tx.send_data(Bytes::from_static(b"held\n")).await;
+                    while tx.send_data(Bytes::new()).await.is_ok() {
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                    }
+                });
+                Response::builder()
+                    .status(200)
+                    .header("x-noevia-gate-lease", "lease-1")
+                    .body(body.boxed())
+                    .unwrap()
+            }
             Gate::Open => Response::builder()
                 .status(204)
                 .body(Full::new(Bytes::new()).map_err(|e| match e {}).boxed())
@@ -400,9 +417,10 @@ async fn a_turn_reaches_cores_relay_with_the_secret_the_user_and_the_clients_own
     assert_eq!(h["user-agent"], serde_json::json!(["synthetic-agent"]));
     assert_eq!(h["host"], serde_json::json!(["front.test"]));
     assert_eq!(echo["bodyLen"], TURN.len());
+    assert_eq!(h["x-noevia-gate-lease"], serde_json::json!(["lease-1"]));
     assert_eq!(
         f.core.seen.lock().unwrap().hits,
-        ["POST /internal/chat/turn"]
+        ["POST /internal/chat/gate", "POST /internal/chat/turn"]
     );
     // A WHATWG spelling of the same path is the same route; other methods and paths stay Node's.
     let (res, _c) = call(&f, "POST", "/api/x/../chat", &[], TURN.to_vec(), true).await;
