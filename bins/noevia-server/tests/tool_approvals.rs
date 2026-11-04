@@ -461,3 +461,113 @@ async fn store_ops_need_the_secret_and_well_formed_questions() {
     );
     assert_eq!(f.decide("x", r#"{"decision":"approve"}"#).await.0, 404);
 }
+
+impl Front {
+    /// A chat-wide grant on `chat`, then a grant check's ticket for it.
+    async fn ticket(&self, id: &str, chat: &str) -> (Value, String) {
+        let b = self.binding(chat, "space:free").await;
+        let extra = json!({"chat":chat,"scope":"space:free","binding":b});
+        assert_eq!(self.open(id, "write", extra).await.0, 200);
+        assert_eq!(
+            self.decide(id, r#"{"decision":"approve_all"}"#).await.0,
+            200
+        );
+        let (status, body) = self
+            .op(
+                "approvals/granted",
+                json!({"user":self.user,"chat":chat,"scope":"space:free","binding":b}),
+            )
+            .await;
+        assert_eq!(status, 200);
+        assert_eq!(body["granted"], json!(true), "{body}");
+        (b, body["ticket"].as_str().expect("a ticket").to_owned())
+    }
+    async fn redeem(&self, chat: &str, binding: &Value, ticket: &str) -> bool {
+        let (status, body) = self
+            .op(
+                "approvals/redeem",
+                json!({"user":self.user,"chat":chat,"scope":"space:free","binding":binding,"ticket":ticket}),
+            )
+            .await;
+        assert_eq!(status, 200, "{body}");
+        body["redeemed"] == json!(true)
+    }
+    async fn public(&self, method: &str, path: &str, body: &str) -> u16 {
+        let head = format!(
+            "{method} {path} HTTP/1.1\r\nhost: front.test\r\norigin: {ORIGIN}\r\ncookie: {}\r\nx-csrf-token: {}\r\n",
+            self.jar, self.csrf
+        );
+        http(self.addr, &head, body).await.0
+    }
+}
+
+/// Re-review 1ed3a14: a granted:true answer already produced authorises nothing; the write's redeem,
+/// ordered at the front against every revocation, does. A public move after the answer refuses it.
+#[tokio::test]
+async fn a_front_move_after_the_grant_answer_refuses_its_redeem() {
+    let f = front().await;
+    let (b, t) = f.ticket("ap-1", "qa-one").await;
+    assert_eq!(
+        f.public("POST", "/api/chats/qa-one/move", r#"{"projectId":"qa-p"}"#)
+            .await,
+        200
+    );
+    assert!(!f.redeem("qa-one", &b, &t).await);
+    // Control: with nothing in between, a ticket redeems once.
+    let (b, t) = f.ticket("ap-2", "qa-two").await;
+    assert!(f.redeem("qa-two", &b, &t).await);
+    assert!(!f.redeem("qa-two", &b, &t).await, "a replay is refused");
+}
+
+#[tokio::test]
+async fn a_front_delete_after_the_grant_answer_refuses_its_redeem() {
+    let f = front().await;
+    let (b, t) = f.ticket("ap-1", "qa-two").await;
+    assert_eq!(f.public("DELETE", "/api/freechats/qa-two", "").await, 200);
+    assert!(!f.redeem("qa-two", &b, &t).await);
+}
+
+/// A move that fails (a 400, nothing changed, the live context the same) still revokes, and is
+/// ordered against the redeem like any other revocation.
+#[tokio::test]
+async fn a_failed_move_revokes_and_refuses_the_redeem() {
+    let f = front().await;
+    let (b, t) = f.ticket("ap-1", "qa-one").await;
+    assert_eq!(f.public("POST", "/api/chats/qa-one/move", "{}").await, 400);
+    assert_eq!(
+        f.binding("qa-one", "space:free").await,
+        b,
+        "nothing changed"
+    );
+    assert!(!f.redeem("qa-one", &b, &t).await);
+    // Node's own store move, failing too, the same.
+    let (b, t) = f.ticket("ap-2", "qa-two").await;
+    let (status, _) = f
+        .op("chat/move", json!({"user":f.user,"chat":"qa-two"}))
+        .await;
+    assert_eq!(status, 400);
+    assert!(!f.redeem("qa-two", &b, &t).await);
+    // And Node's store delete.
+    let (b, t) = f.ticket("ap-3", "qa-one").await;
+    let (status, _) = f
+        .op(
+            "chat/delete",
+            json!({"user":f.user,"chat":"qa-one","kind":"free"}),
+        )
+        .await;
+    assert_eq!(status, 200);
+    assert!(!f.redeem("qa-one", &b, &t).await);
+}
+
+#[tokio::test]
+async fn redeem_needs_a_ticket() {
+    let f = front().await;
+    let (b, _) = f.ticket("ap-1", "qa-one").await;
+    let (status, _) = f
+        .op(
+            "approvals/redeem",
+            json!({"user":f.user,"chat":"qa-one","scope":"space:free","binding":b}),
+        )
+        .await;
+    assert_eq!(status, 400);
+}

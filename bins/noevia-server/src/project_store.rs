@@ -101,7 +101,12 @@
 //!   A long-poll: when Node drops the request (its turn stopped) the question is withdrawn, so a
 //!   later answer finds nothing (#679: stopped, not declined). 404 `{ error }` no such question.
 //! `POST /v1/approvals/cancel { user, id }`        -> 200 `{ cancelled }` (opened, never waited)
-//! `POST /v1/approvals/granted { user, chat, scope, binding }` -> 200 `{ granted }`
+//! `POST /v1/approvals/granted { user, chat, scope, binding }` -> 200 `{ granted, ticket? }`
+//! `POST /v1/approvals/redeem { user, chat, scope, binding, ticket }` -> 200 `{ redeemed }`
+//!   A grant answer authorises nothing by itself: Node redeems its single-use ticket just before
+//!   it dispatches the write, and the redeem succeeds only if no revocation of that chat (Node's,
+//!   a move, a delete, a failed move, anything) ordered before it under the registry's lock.
+//!   Node's store move and delete revoke the chat's grant before and after the change.
 //! `POST /v1/approvals/revoke { user, chat }`      -> 200 `{ revoked }`
 //!
 //! Errors use Node's shapes: 503 `{ error, code: "PROJECTS_BUSY" }` (the lock was held past its
@@ -663,7 +668,7 @@ pub fn router_with_app(
         app.as_ref().map(|a| a.config.maint.guard.clone()),
     ));
     // Port contract 2026-11-04 S9: the chat approval registry (approval_registry.rs).
-    for op in ["open", "wait", "cancel", "granted", "revoke"] {
+    for op in ["open", "wait", "cancel", "granted", "redeem", "revoke"] {
         let (store, app) = (store.clone(), app.clone());
         router = router.route(
             &format!("/v1/approvals/{op}"),
@@ -726,6 +731,18 @@ pub fn router_with_app(
             }),
         );
     }
+    // Port contract S9 (re-review 1ed3a14): Node's store move and delete revoke the chat's grant
+    // and advance its revocation epoch before the change and again after it, whatever the outcome,
+    // so every grant redeem orders strictly before or after them.
+    if let Some(app) = app {
+        let store = store.clone();
+        router = router.layer(axum::middleware::from_fn(
+            move |request: axum::http::Request<Body>, next: axum::middleware::Next| {
+                let (app, store) = (Arc::clone(&app), store.clone());
+                async move { revoking_chat_change(app, store, request, next).await }
+            },
+        ));
+    }
     router
 }
 
@@ -786,6 +803,41 @@ async fn preset_baseline(
     })
     .await;
     done.unwrap_or_else(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error"))
+}
+
+/// `/v1/chat/move` and `/v1/chat/delete` with the chat's grant revoked before and after.
+async fn revoking_chat_change(
+    app: Arc<crate::App>,
+    store: Store,
+    request: axum::http::Request<Body>,
+    next: axum::middleware::Next,
+) -> Response<Body> {
+    let path = request.uri().path();
+    if (path != "/v1/chat/move" && path != "/v1/chat/delete")
+        || !authorised(&store, request.headers())
+    {
+        return next.run(request).await;
+    }
+    let (parts, body) = request.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(body, BODY_LIMIT).await else {
+        return error(StatusCode::PAYLOAD_TOO_LARGE, "Request exceeds size limit");
+    };
+    let target = serde_json::from_slice::<Value>(&bytes).ok().and_then(|v| {
+        Some((
+            v.get("user")?.as_str()?.to_owned(),
+            v.get("chat")?.as_str()?.to_owned(),
+        ))
+    });
+    if let Some((user, chat)) = &target {
+        app.approvals.revoke(user, chat);
+    }
+    let response = next
+        .run(axum::http::Request::from_parts(parts, Body::from(bytes)))
+        .await;
+    if let Some((user, chat)) = &target {
+        app.approvals.revoke(user, chat);
+    }
+    response
 }
 
 /// `POST /v1/approvals/{op}` (see the header).
@@ -881,7 +933,7 @@ async fn approvals_op(
             StatusCode::OK,
             &json!({"cancelled": app.approvals.cancel(&user, &id)}),
         ),
-        "granted" | "revoke" => {
+        "granted" | "revoke" | "redeem" => {
             let (Ok(Some(chat)), Ok(scope)) = (text("chat"), text("scope")) else {
                 return error(StatusCode::BAD_REQUEST, "chat required");
             };
@@ -892,18 +944,29 @@ async fn approvals_op(
                 );
             }
             let binding = body.get("binding").filter(|b| !b.is_null()).cloned();
+            let ticket = text("ticket").ok().flatten();
+            if op == "redeem" && ticket.as_deref().is_none_or(str::is_empty) {
+                return error(StatusCode::BAD_REQUEST, "ticket required");
+            }
+            let scope = scope.unwrap_or_default();
             // The live grant context is a store read under the chat's lock: the blocking pool.
-            let granted = tokio::task::spawn_blocking(move || {
-                app.approvals.granted(
-                    &user,
-                    &chat,
-                    scope.as_deref().unwrap_or_default(),
-                    binding.as_ref(),
-                )
+            let answer = tokio::task::spawn_blocking(move || {
+                let approvals = &app.approvals;
+                match ticket {
+                    Some(t) if op == "redeem" => {
+                        json!({"redeemed": approvals.redeem(&user, &chat, &scope, binding.as_ref(), &t)})
+                    }
+                    _ => match approvals.grant_ticket(&user, &chat, &scope, binding.as_ref()) {
+                        Some(t) => json!({"granted": true, "ticket": t}),
+                        None => json!({"granted": false}),
+                    },
+                }
             })
-            .await
-            .unwrap_or(false);
-            reply(StatusCode::OK, &json!({ "granted": granted }))
+            .await;
+            match answer {
+                Ok(body) => reply(StatusCode::OK, &body),
+                Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error"),
+            }
         }
         _ => error(StatusCode::NOT_FOUND, "not found"),
     }

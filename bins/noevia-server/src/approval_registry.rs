@@ -44,6 +44,10 @@ pub const GRANT_TTL: Duration = Duration::from_secs(60 * 60);
 pub const MAX_PENDING: usize = 4096;
 /// Grants held at once (expired ones are swept first).
 pub const MAX_GRANTS: usize = 4096;
+/// How long a grant check's ticket may wait for its redeem (the write's dispatch).
+pub const TICKET_TTL: Duration = Duration::from_secs(5 * 60);
+/// Tickets held at once (expired ones are swept first); a full table issues none (no grant).
+pub const MAX_TICKETS: usize = 4096;
 /// The longest question id accepted (Node's are `ap-<uuid>` or a bare uuid).
 pub const MAX_ID: usize = 128;
 
@@ -103,6 +107,14 @@ pub enum DecideError {
     /// Not a choice this kind of question takes; it stays open.
     Choice,
     Unavailable,
+}
+
+/// A ticket's id: 128 random bits, hex.
+fn ticket_id() -> String {
+    use rand_core::RngCore;
+    let mut bytes = [0u8; 16];
+    rand_core::OsRng.fill_bytes(&mut bytes);
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// chat-grant-context.cjs `safeId`.
@@ -224,11 +236,44 @@ struct Grant {
     binding: Binding,
 }
 
+/// A grant check's answer, redeemed once just before the write it allows is dispatched.
+struct Ticket {
+    key: (String, String),
+    scope: String,
+    binding: Binding,
+    serial: u64,
+    /// The revocation sequence when it was issued: any later revocation of its chat refuses it.
+    issued: u64,
+    until: Instant,
+}
+
 #[derive(Default)]
 struct State {
     pending: HashMap<String, Pending>,
     grants: HashMap<(String, String), Grant>,
     serials: u64,
+    tickets: HashMap<String, Ticket>,
+    /// The monotonic revocation sequence; every revocation of every chat advances it.
+    revocations: u64,
+    /// Each chat's revocation epoch: the sequence of its latest revocation, and when (kept for
+    /// TICKET_TTL, after which every ticket issued before it has expired anyway; monotonic clock).
+    revoked: HashMap<(String, String), (u64, Instant)>,
+}
+
+impl State {
+    /// Advances `key`'s revocation epoch and drops its grant.
+    fn revoke(&mut self, key: (String, String)) -> bool {
+        let now = Instant::now();
+        self.revocations += 1;
+        self.revoked
+            .retain(|_, (_, at)| now.saturating_duration_since(*at) < TICKET_TTL);
+        let removed = self.grants.remove(&key).is_some();
+        self.revoked.insert(key, (self.revocations, now));
+        removed
+    }
+    fn revoked_since(&self, key: &(String, String), issued: u64) -> bool {
+        self.revoked.get(key).is_some_and(|(seq, _)| *seq > issued)
+    }
 }
 
 /// Tests only: what a grant check runs between its live-context read and its recheck.
@@ -291,6 +336,7 @@ impl Registry {
     fn sweep(s: &mut State, now: Instant) {
         s.pending.retain(|_, p| p.expires > now);
         s.grants.retain(|_, g| g.until > now);
+        s.tickets.retain(|_, t| t.until > now);
     }
 
     /// Opens a question, before Node shows its card: an answer that comes before Node's wait
@@ -485,37 +531,111 @@ impl Registry {
 
     /// approvals.cjs `chatWideApproved(user, chat, scope, binding)`, then the live context
     /// (blocking): a grant whose chat moved, was deleted or outlived its start is revoked here.
+    /// approvals.cjs `chatWideApproved`, as a boolean (tests and diagnostics; issues a ticket).
     pub fn granted(&self, user: &str, chat: &str, scope: &str, binding: Option<&Value>) -> bool {
-        let canonical = safe_id(chat);
-        let Some(live) = self.live.as_ref() else {
+        self.grant_ticket(user, chat, scope, binding).is_some()
+    }
+
+    /// approvals.cjs `chatWideApproved(user, chat, scope, binding)`, then the live context
+    /// (blocking): a grant whose chat moved, was deleted or outlived its start is revoked here. A
+    /// grant answers with a single-use ticket, which Node redeems ([`Registry::redeem`]) just before
+    /// it dispatches the write: the answer itself never authorises anything.
+    pub fn grant_ticket(
+        &self,
+        user: &str,
+        chat: &str,
+        scope: &str,
+        binding: Option<&Value>,
+    ) -> Option<String> {
+        self.checked(user, chat, scope, binding, |s, key, serial, b| {
+            let now = Instant::now();
+            s.tickets.retain(|_, t| t.until > now);
+            if s.tickets.len() >= MAX_TICKETS {
+                return None;
+            }
+            let id = ticket_id();
+            let issued = s.revocations;
+            s.tickets.insert(
+                id.clone(),
+                Ticket {
+                    key: key.clone(),
+                    scope: scope.to_owned(),
+                    binding: b.clone(),
+                    serial,
+                    issued,
+                    until: now + TICKET_TTL,
+                },
+            );
+            Some(id)
+        })
+    }
+
+    /// Redeems a grant check's ticket, once: true only if the same grant is still held and
+    /// unexpired, its chat has not been revoked since the ticket was issued (by Node, a move, a
+    /// delete, a failed move or anything else), and the live context still matches. The final test
+    /// runs under the registry's lock, which every revocation also takes: that lock is the one
+    /// point where a write's use of a grant and every revocation of it are ordered.
+    pub fn redeem(
+        &self,
+        user: &str,
+        chat: &str,
+        scope: &str,
+        binding: Option<&Value>,
+        ticket: &str,
+    ) -> bool {
+        let key = (user.to_owned(), safe_id(chat));
+        // Single use: taken out first, whatever the answer.
+        let Some(t) = self
+            .state
+            .lock()
+            .ok()
+            .and_then(|mut s| s.tickets.remove(ticket))
+        else {
             return false;
         };
-        if user.is_empty() || canonical.is_empty() || scope.is_empty() {
+        if t.key != key || t.scope != scope || Instant::now() >= t.until {
             return false;
         }
-        let Some(b) = binding.and_then(|v| Binding::parse(v, &live.start)) else {
-            return false;
-        };
+        self.checked(user, chat, scope, binding, |s, _key, serial, b| {
+            (serial == t.serial && *b == t.binding && !s.revoked_since(&t.key, t.issued))
+                .then_some(())
+        })
+        .is_some()
+    }
+
+    /// The grant check: the grant read, the live context read outside the lock (the store's file
+    /// lock), then under the lock again the very same grant still held and unexpired and the live
+    /// context its binding's, and `then` in that same critical section.
+    fn checked<T>(
+        &self,
+        user: &str,
+        chat: &str,
+        scope: &str,
+        binding: Option<&Value>,
+        then: impl FnOnce(&mut State, &(String, String), u64, &Binding) -> Option<T>,
+    ) -> Option<T> {
+        let canonical = safe_id(chat);
+        let live = self.live.as_ref()?;
+        if user.is_empty() || canonical.is_empty() || scope.is_empty() {
+            return None;
+        }
+        let b = binding.and_then(|v| Binding::parse(v, &live.start))?;
         let key = (user.to_owned(), canonical.clone());
-        let grant = {
-            let Ok(mut s) = self.state.lock() else {
-                return false;
-            };
+        let (gscope, gbinding, serial) = {
+            let mut s = self.state.lock().ok()?;
             let now = Instant::now();
             match s.grants.get(&key) {
-                None => return false,
+                None => return None,
                 Some(g) if now >= g.until => {
                     s.grants.remove(&key);
-                    return false;
+                    return None;
                 }
                 Some(g) => (g.scope.clone(), g.binding.clone(), g.serial),
             }
         };
-        let (gscope, gbinding, serial) = grant;
         if gscope != scope || b.user != user || b.canonical != canonical || gbinding != b {
-            return false;
+            return None;
         }
-        // The store read takes the chat's file lock, so it runs outside the registry's lock.
         let now_live = live.context(user, chat);
         #[cfg(test)]
         if let Some(hook) = self
@@ -526,26 +646,25 @@ impl Registry {
         {
             hook(self);
         }
-        let Ok(mut s) = self.state.lock() else {
-            return false;
-        };
+        let mut s = self.state.lock().ok()?;
         // The grant read before must still be the one held now, unexpired: a revoke (or a revoke
-        // and a new grant) during the read answers false.
+        // and a new grant) during the read answers no.
         let same = s
             .grants
             .get(&key)
             .is_some_and(|g| g.serial == serial && Instant::now() < g.until);
         if same && now_live.as_ref() == Some(&gbinding.context) {
-            return true;
+            return then(&mut s, &key, serial, &gbinding);
         }
-        // Moved, deleted or restarted: that grant is gone (a newer one is left alone).
+        // Moved, deleted or restarted: that grant is revoked (a newer one is left alone).
         if same {
-            s.grants.remove(&key);
+            s.revoke(key);
         }
-        false
+        None
     }
 
-    /// approvals.cjs `revokeChatGrant(user, chat)`; also run by the public move and delete.
+    /// approvals.cjs `revokeChatGrant(user, chat)`; also run by the public move and delete, and
+    /// around Node's store move and delete. Advances the chat's revocation epoch either way.
     pub fn revoke(&self, user: &str, chat: &str) -> bool {
         let canonical = safe_id(chat);
         if user.is_empty() || canonical.is_empty() {
@@ -553,8 +672,28 @@ impl Registry {
         }
         self.state
             .lock()
-            .map(|mut s| s.grants.remove(&(user.to_owned(), canonical)).is_some())
+            .map(|mut s| s.revoke((user.to_owned(), canonical)))
             .unwrap_or(false)
+    }
+
+    /// Revokes every grant of `user` whose chat a project holds (that project's delete).
+    pub fn revoke_project(&self, user: &str, project: &str) -> usize {
+        let Ok(mut s) = self.state.lock() else {
+            return 0;
+        };
+        let keys: Vec<_> = s
+            .grants
+            .iter()
+            .filter(|(k, g)| {
+                k.0 == user
+                    && matches!(&g.binding.context.holder, Holder::Project(id) if id == project)
+            })
+            .map(|(k, _)| k.clone())
+            .collect();
+        for key in &keys {
+            s.revoke(key.clone());
+        }
+        keys.len()
     }
 
     /// Open questions (tests and diagnostics).
@@ -1050,6 +1189,94 @@ mod tests {
             r.granted(OWNER, "c1", "space:free", Some(&b)),
             "the new grant stands"
         );
+    }
+
+    fn granted_with_ticket(r: &Registry, id: &str, b: &Value) -> String {
+        r.open(write_q(
+            id,
+            OWNER,
+            Some("c1"),
+            Some("space:free"),
+            Some(b.clone()),
+        ))
+        .unwrap();
+        let lc = r.grant_context(OWNER, id);
+        r.decide(OWNER, id, "approve_all", false, lc.as_ref())
+            .unwrap();
+        r.grant_ticket(OWNER, "c1", "space:free", Some(b)).unwrap()
+    }
+
+    /// Re-review 1ed3a14: a revocation and a redeem are ordered at the registry's lock, in either
+    /// order. Revoked first (here during the redeem's context read): refused. Redeemed first: the
+    /// write was allowed before the revocation, as Node's synchronous check-then-dispatch was.
+    #[tokio::test]
+    async fn a_revoke_racing_a_redeem_orders_at_the_lock_both_ways() {
+        let (_d, live) = store();
+        let r = Registry::new(Some(live));
+        let b = binding(OWNER, "c1", "space:free", json!({"kind":"free"}), "0");
+        let t = granted_with_ticket(&r, "w1", &b);
+        *r.after_context_read.lock().unwrap() = Some(Box::new(|r: &Registry| {
+            r.revoke(OWNER, "c1");
+        }));
+        assert!(
+            !r.redeem(OWNER, "c1", "space:free", Some(&b), &t),
+            "revoke first"
+        );
+        let t = granted_with_ticket(&r, "w2", &b);
+        assert!(
+            r.redeem(OWNER, "c1", "space:free", Some(&b), &t),
+            "redeem first"
+        );
+        assert!(r.revoke(OWNER, "c1"));
+        assert!(!r.granted(OWNER, "c1", "space:free", Some(&b)));
+        // A revocation advances the epoch even with a new grant after it: an older ticket stays
+        // refused although the new grant has the same binding.
+        let old = granted_with_ticket(&r, "w3", &b);
+        r.revoke(OWNER, "c1");
+        let fresh = granted_with_ticket(&r, "w4", &b);
+        assert!(!r.redeem(OWNER, "c1", "space:free", Some(&b), &old));
+        assert!(r.redeem(OWNER, "c1", "space:free", Some(&b), &fresh));
+        // A revocation with no grant held at all still refuses a ticket issued before it.
+        let t = granted_with_ticket(&r, "w5", &b);
+        {
+            let mut s = r.state.lock().unwrap();
+            s.grants.clear();
+        }
+        r.revoke(OWNER, "c1");
+        granted_with_ticket(&r, "w6", &b);
+        assert!(!r.redeem(OWNER, "c1", "space:free", Some(&b), &t));
+    }
+
+    #[tokio::test]
+    async fn a_ticket_is_single_use_and_bound_to_its_chat_scope_and_binding() {
+        let (_d, live) = store();
+        let r = Registry::new(Some(live));
+        let b = binding(OWNER, "c1", "space:free", json!({"kind":"free"}), "0");
+        let t = granted_with_ticket(&r, "w1", &b);
+        assert!(r.redeem(OWNER, "c1", "space:free", Some(&b), &t));
+        assert!(
+            !r.redeem(OWNER, "c1", "space:free", Some(&b), &t),
+            "replay refused"
+        );
+        for (user, chat, scope) in [
+            (OTHER, "c1", "space:free"),
+            (OWNER, "c2", "space:free"),
+            (OWNER, "c1", "project:qa-p"),
+        ] {
+            let t = r.grant_ticket(OWNER, "c1", "space:free", Some(&b)).unwrap();
+            assert!(
+                !r.redeem(user, chat, scope, Some(&b), &t),
+                "{user} {chat} {scope}"
+            );
+            assert!(
+                !r.redeem(OWNER, "c1", "space:free", Some(&b), &t),
+                "consumed by the refusal too"
+            );
+        }
+        assert!(!r.redeem(OWNER, "c1", "space:free", Some(&b), "no-such-ticket"));
+        let t = r.grant_ticket(OWNER, "c1", "space:free", Some(&b)).unwrap();
+        let stale = binding(OWNER, "c1", "space:free", json!({"kind":"free"}), "3");
+        assert!(!r.redeem(OWNER, "c1", "space:free", Some(&stale), &t));
     }
 
     #[test]

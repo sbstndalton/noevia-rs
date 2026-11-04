@@ -780,10 +780,19 @@ pub async fn serve(
     let user = authn.user.id;
     // Port contract S9: a chat's move or delete revokes its "Allow for this chat" grant at once
     // (the registry also refuses any grant whose live context changed).
+    // Re-review 1ed3a14: before the change as well as after, whatever its outcome, so every grant
+    // redeem orders strictly before or after it at the registry's lock.
     let revoke_grant = match &route {
         Route::MoveChat { chat }
         | Route::DeleteFreeChat { chat }
-        | Route::DeleteChat { chat, .. } => Some((Arc::clone(app), user.clone(), chat.clone())),
+        | Route::DeleteChat { chat, .. } => {
+            app.approvals.revoke(&user, chat);
+            Some((Arc::clone(app), user.clone(), Some(chat.clone()), None))
+        }
+        Route::DeleteProject { project } => {
+            app.approvals.revoke_project(&user, project);
+            Some((Arc::clone(app), user.clone(), None, Some(project.clone())))
+        }
         _ => None,
     };
     // The context GET writes too (getProject's self-heal), so it is re-gated as well; so do the
@@ -1010,8 +1019,14 @@ pub async fn serve(
         })
     })
     .await;
-    if let Some((app, user, chat)) = revoke_grant {
-        app.approvals.revoke(&user, &chat);
+    match revoke_grant {
+        Some((app, user, Some(chat), _)) => {
+            app.approvals.revoke(&user, &chat);
+        }
+        Some((app, user, None, Some(project))) => {
+            app.approvals.revoke_project(&user, &project);
+        }
+        _ => {}
     }
     if let (Some((app, authn, data_dir)), Ok(Ok(r))) = (sweep_inputs, &done) {
         if r.status == 200 {
