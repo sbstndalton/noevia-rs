@@ -10,6 +10,8 @@ pub mod managed;
 pub mod py;
 pub mod server;
 pub mod workspace;
+pub mod write;
+pub mod writes;
 
 use std::sync::Arc;
 
