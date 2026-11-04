@@ -207,7 +207,7 @@ fn array_index(written: &str) -> Option<u32> {
 
 // ── first pass: which objects are reordered ─────────────────────────────────────────────────────
 
-fn string_end(b: &[u8], start: usize) -> Option<usize> {
+pub(crate) fn string_end(b: &[u8], start: usize) -> Option<usize> {
     let mut j = start + 1;
     loop {
         match *b.get(j)? {
@@ -218,7 +218,7 @@ fn string_end(b: &[u8], start: usize) -> Option<usize> {
     }
 }
 
-fn scalar_end(b: &[u8], start: usize) -> usize {
+pub(crate) fn scalar_end(b: &[u8], start: usize) -> usize {
     let mut j = start;
     while let Some(c) = b.get(j) {
         if matches!(c, b',' | b'}' | b']' | b' ' | b'\t' | b'\n' | b'\r') {

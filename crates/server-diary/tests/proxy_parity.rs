@@ -338,3 +338,54 @@ async fn valid_js_json_and_conflict_text_match_the_actual_core_handlers() {
         }
     }
 }
+
+#[tokio::test]
+async fn actual_core_deep_detail_coercion_at_join_boundary_and_reply_cap() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/diary-proxy-node-depth.json")).unwrap();
+    assert_eq!(
+        fixture["replyCap"].as_u64().unwrap() as usize,
+        server_diary::client::JSON_REPLY_CAP
+    );
+    let mut failures = Vec::new();
+    for c in fixture["cases"].as_array().unwrap() {
+        let depth = c["depth"].as_u64().unwrap() as usize;
+        let raw_reply = format!("{{\"detail\":{}1{}}}", "[".repeat(depth), "]".repeat(depth));
+        assert_eq!(raw_reply.len(), c["replyBytes"].as_u64().unwrap() as usize);
+        let upstream = c["status"].as_u64().unwrap() as u16;
+        let stub = Stub::start(move |_, _| Out::json(upstream, &raw_reply)).await;
+        let w = World::new(&[]);
+        let name = c["route"].as_str().unwrap();
+        let route = Route::from_path(&format!("/api/diary/{name}")).unwrap();
+        let r = diary(&stub, TENANT_KEY)
+            .serve_proxy(
+                route,
+                w.ctx(ADMIN, true),
+                Request {
+                    method: "POST".into(),
+                    target: format!("/api/diary/{name}"),
+                    content_length: None,
+                },
+                Full::new(Bytes::from(c["raw"].as_str().unwrap().to_owned())),
+                false,
+            )
+            .await;
+        let ReplyBody::Json(body) = r.body else {
+            panic!()
+        };
+        let pass = r.status == c["expectedStatus"].as_u64().unwrap() as u16
+            && body == c["expectedBody"].as_str().unwrap();
+        eprintln!(
+            "test result: Core differential depth {depth} {name}: expected {} {}, actual {} {}; {}",
+            c["expectedStatus"],
+            c["expectedBody"],
+            r.status,
+            body,
+            if pass { "PASS" } else { "FAIL" }
+        );
+        if !pass {
+            failures.push((name.to_owned(), depth, r.status, body));
+        }
+    }
+    assert!(failures.is_empty(), "Core differentials: {failures:?}");
+}

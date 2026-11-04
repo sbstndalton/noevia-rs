@@ -119,55 +119,96 @@ pub(crate) fn request(route: Route, text: &str) -> Result<String, &'static str> 
     Ok(out)
 }
 
-/// String(value), kept as a JSON string literal so a lone surrogate is never replaced.
-fn string_value(value: Value<'_>) -> Option<String> {
-    enum Work<'a> {
-        Value(Value<'a>, usize),
-        Comma,
+/// Core's Node 22.23.3 / V8 12.4 Linux x64 ArrayJoin boundary in the actual resumed
+/// edit/import response path: 3142 arrays succeed; the 3143rd throws RangeError. This is
+/// only String(array)'s compatibility guard, never a JSON parse/relay depth limit.
+/// The real-Core fixture records the runtime and both sides of this boundary.
+const CORE_ARRAY_JOIN_DEPTH: usize = 3142;
+
+/// End of an object, skipping its strings. Its contents are not coerced by String(object).
+fn object_end(bytes: &[u8], start: usize) -> Option<usize> {
+    let mut cursor = start;
+    let mut objects = 0usize;
+    while let Some(byte) = bytes.get(cursor) {
+        match byte {
+            b'"' => {
+                cursor = crate::js_raw::string_end(bytes, cursor)?;
+                continue;
+            }
+            b'{' => objects = objects.checked_add(1)?,
+            b'}' => {
+                objects = objects.checked_sub(1)?;
+                if objects == 0 {
+                    return cursor.checked_add(1);
+                }
+            }
+            _ => {}
+        }
+        cursor = cursor.checked_add(1)?;
     }
-    let mut work = vec![Work::Value(value, 0)];
+    None
+}
+
+/// String(value), kept as a JSON string literal so a lone surrogate is never replaced.
+/// Array joins are scanned once: brackets disappear, array commas remain, and object contents
+/// are skipped. No recursive Rust frames or repeated scans of successively nested arrays.
+fn string_value(value: Value<'_>) -> Option<String> {
+    let source = value.source;
+    let bytes = source.as_bytes();
+    let mut cursor = 0usize;
+    let mut arrays = 0usize;
     let mut out = String::from("\"");
-    while let Some(item) = work.pop() {
-        let Work::Value(v, depth) = item else {
-            out.push(',');
-            continue;
-        };
-        if depth > 1000 {
-            return None;
-        }
-        let source = v.source.trim_matches([' ', '\t', '\r', '\n']);
-        if source.starts_with('"') {
-            let written = js_raw::canonical(source)?;
-            out.push_str(written.strip_prefix('"')?.strip_suffix('"')?);
-        } else if let Some(n) = v.number.or_else(|| source.parse::<f64>().ok()) {
-            let quoted = js_raw::quote(&js_json::number_to_string(n));
-            out.push_str(quoted.strip_prefix('"')?.strip_suffix('"')?);
-        } else if source.starts_with('[') {
-            let values: Vec<&serde_json::value::RawValue> = serde_json::from_str(source).ok()?;
-            for (i, item) in values.into_iter().enumerate().rev() {
-                if item.get() != "null" {
-                    work.push(Work::Value(
-                        Value {
-                            written: item.get(),
-                            number: None,
-                            source: item.get(),
-                        },
-                        depth + 1,
-                    ));
+    while let Some(byte) = bytes.get(cursor) {
+        match byte {
+            b' ' | b'\t' | b'\r' | b'\n' => cursor = cursor.checked_add(1)?,
+            b'[' => {
+                if arrays == CORE_ARRAY_JOIN_DEPTH {
+                    return None;
                 }
-                if i != 0 {
-                    work.push(Work::Comma);
+                arrays = arrays.checked_add(1)?;
+                cursor = cursor.checked_add(1)?;
+            }
+            b']' => {
+                arrays = arrays.checked_sub(1)?;
+                cursor = cursor.checked_add(1)?;
+            }
+            b',' => {
+                out.push(',');
+                cursor = cursor.checked_add(1)?;
+            }
+            b'"' => {
+                let end = crate::js_raw::string_end(bytes, cursor)?;
+                let written = crate::js_raw::canonical(source.get(cursor..end)?)?;
+                out.push_str(written.strip_prefix('"')?.strip_suffix('"')?);
+                cursor = end;
+            }
+            b'{' => {
+                let end = object_end(bytes, cursor)?;
+                let object = Doc::parse(source.get(cursor..end)?)?;
+                if object.get("toString").is_some() {
+                    return None;
                 }
+                out.push_str("[object Object]");
+                cursor = end;
             }
-        } else if source.starts_with('{') {
-            let d = Doc::parse(source)?;
-            if d.get("toString").is_some() {
-                return None;
+            _ => {
+                let end = crate::js_raw::scalar_end(bytes, cursor);
+                let literal = source.get(cursor..end)?;
+                if literal == "null" && arrays != 0 {
+                    // ArrayJoin renders null as the empty string.
+                } else if let Ok(number) = literal.parse::<f64>() {
+                    out.push_str(&js_json::number_to_string(number));
+                } else if matches!(literal, "null" | "true" | "false") {
+                    out.push_str(literal);
+                } else {
+                    return None;
+                }
+                cursor = end;
             }
-            out.push_str("[object Object]");
-        } else {
-            out.push_str(v.written);
         }
+    }
+    if arrays != 0 {
+        return None;
     }
     out.push('"');
     Some(out)

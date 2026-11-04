@@ -7,7 +7,7 @@ const core = path.resolve(process.argv[2]), fromDir=process.argv[3]==='--source-
 function load(file) { const m = new Module(path.join(core, file)); m.filename=path.join(core,file); m.paths=Module._nodeModulePaths(path.dirname(m.filename)); m._compile(fromDir?require('node:fs').readFileSync(path.join(core,file),'utf8'):cp.execFileSync('git',['-C',core,'show',`${ref}:${file}`],{encoding:'utf8'}),m.filename); return m.exports; }
 const {createDiaryRoutes}=load('server/routes/diary.cjs');
 const {createDiary}=load('server/diary.cjs');
-const {readBody}=load('server/http.cjs');
+const {readBody,DEFAULT_MAX_RESPONSE_BYTES}=load('server/http.cjs');
 const cases=[];
 const valid = {xid:'synthetic-x',me:'synthetic text',assistant:'reply',base_hash:'abc',month:'2026-09',sourcePath:'/synthetic',relPath:'a.md'};
 for (const route of ['files','file','workspace-trash','history','external-sources','external-sources/import','entries/edit']) {
@@ -41,6 +41,13 @@ for(const route of ['files','file','workspace-trash','external-sources','externa
 rawCases.push({...baseRaw,route:'entries/edit',raw:JSON.stringify(valid),status:503,replyRaw:'{"detail":[1e400,'+JSON.stringify(privateText)+']}'});
 rawCases.push({...baseRaw,route:'history',method:'GET',raw:'',replyRaw:'{"log":'+JSON.stringify(privateText)+',"standing":'+JSON.stringify(privateText)+',"ignored":'+deep+'}'});
 rawCases.push({...baseRaw,route:'entries/edit',raw:JSON.stringify(valid),status:409,replyRaw:'{"conflict":true,"current_hash":"changed","current_text":'+JSON.stringify(privateText)+',"metadata":'+deep+',"large":1e400}'});
+if(process.argv.includes('--depth-fixture')) {
+ rawCases.length=0;
+ const replyCap=DEFAULT_MAX_RESPONSE_BYTES;
+ const leaf=process.env.DIARY_ORACLE_LEAF||'1';
+ const largest=Math.floor((replyCap-Buffer.byteLength('{"detail":'+leaf+'}'))/2);
+ for(const route of ['entries/edit','external-sources/import']) for(const depth of process.env.DIARY_ORACLE_DEPTHS?JSON.parse(process.env.DIARY_ORACLE_DEPTHS):[1002,3142,3143,10000,largest]) rawCases.push({...baseRaw,route,raw:JSON.stringify(valid),status:400,depth,replyRaw:'{"detail":'+'['.repeat(depth)+leaf+']'.repeat(depth)+'}'});
+}
 async function workerOracle() {
  const source=fromDir?require('node:fs').readFileSync(path.join(core,'server/diary-backup-worker.cjs'),'utf8'):cp.execFileSync('git',['-C',core,'show',`${ref}:server/diary-backup-worker.cjs`],{encoding:'utf8'});
  const scripts=[];
@@ -57,7 +64,7 @@ async function workerOracle() {
  return out;
 }
 (async()=>{
- for(const c of [...cases,...rawCases]){
+ for(const c of process.argv.includes('--depth-fixture')?rawCases:[...cases,...rawCases]){
   const calls=[]; let out, headers={};
   const fetchJson=async(url,init={},timeout)=>{calls.push({path:new URL(url).pathname+new URL(url).search,method:init.method||'GET',body:init.body??null,timeout}); if(c.fault){if(c.fault==='network')throw new TypeError('synthetic',{cause:{code:'ECONNREFUSED'}});if(c.fault==='timeout')throw Object.assign(new Error('synthetic'),{name:'TimeoutError'});throw new Error('synthetic');}return {status:c.status,ok:c.status>=200&&c.status<300,body:c.replyRaw === undefined ? c.reply : JSON.parse(c.replyRaw)};};
   const diary=createDiary({fs:{existsSync:()=>false},path,fetchJson,DIARY_BASE:'http://synthetic',DIARY_TOKEN:'',DIARY_TENANT_KEY:'synthetic-key',DIARY_SOURCE:'sidecar',requestScope:{getStore:()=>null},authService:{},endpointApproved:()=>true});diary.log=()=>{};
@@ -65,10 +72,11 @@ async function workerOracle() {
   const raw=c.size?'x'.repeat(c.size):c.raw;
   const req={method:c.method,headers:{},async *[Symbol.asyncIterator](){yield Buffer.from(raw);}};
   const target='/api/diary/'+c.route+'?path=a%20b%2F%C3%A9&after=mark%2Fone&month=2026-09';
-  try{const handled=await route.diary(req,{setHeader:(k,v)=>headers[k]=v},{path:'/api/diary/'+c.route,url:new URL(target,'http://synthetic'),authn:{user:{id:'synthetic',role:c.admin?'admin':'member'}}});if(!handled)out={status:404,body:{error:'not found'},headers:{}};}catch(e){out={status:e.status||500,body:{error:e.status?e.message:'Internal error'},headers:{}};}
+  try{const handled=await route.diary(req,{setHeader:(k,v)=>headers[k]=v},{path:'/api/diary/'+c.route,url:new URL(target,'http://synthetic'),authn:{user:{id:'synthetic',role:c.admin?'admin':'member'}}});if(!handled)out={status:404,body:{error:'not found'},headers:{}};}catch(e){c.thrown={name:e.name,message:e.message};out={status:e.status||500,body:{error:e.status?e.message:'Internal error'},headers:{}};}
   for(const call of calls)if(call.body && call.body.length>4096)call.body={length:call.body.length};
   c.target=target;c.expected=out;c.calls=calls;
  }
- const result=process.argv.includes('--raw-fixture')?{core:ref,cases:rawCases.map(c=>({route:c.route,method:c.method,raw:c.raw,replyRaw:c.replyRaw===undefined?JSON.stringify(c.reply):c.replyRaw,status:c.status,expectedStatus:c.expected.status,expectedBody:JSON.stringify(c.expected.body),calls:c.calls}))}:{core:ref,cases,worker:await workerOracle()};
+ const result=(process.argv.includes('--raw-fixture')||process.argv.includes('--depth-fixture'))?{core:ref,node:process.version,v8:process.versions.v8,arch:process.arch,platform:process.platform,replyCap:DEFAULT_MAX_RESPONSE_BYTES,cases:rawCases.map(c=>({route:c.route,depth:c.depth,thrown:c.thrown,method:c.method,raw:c.raw,replyRaw:c.replyRaw===undefined?JSON.stringify(c.reply):c.replyRaw,status:c.status,expectedStatus:c.expected.status,expectedBody:JSON.stringify(c.expected.body),calls:c.calls}))}:{core:ref,cases,worker:await workerOracle()};
+ if(process.argv.includes('--depth-fixture')) for(const c of result.cases){ c.replyBytes=Buffer.byteLength(c.replyRaw); delete c.replyRaw; }
  process.stdout.write(JSON.stringify(result)+'\n');
 })().catch(e=>{console.error(e);process.exitCode=1;});
