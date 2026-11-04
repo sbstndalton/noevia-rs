@@ -596,7 +596,11 @@ pub async fn serve(
         Some(limit) => match crate::account_routes::read_body(body, limit).await {
             Ok(b) => Some(b),
             // routes/chat-lists.cjs answers a history save it could not read so.
-            Err(()) if matches!(route, Route::MoveChat { .. } | Route::Retention) => {
+            Err(()) if matches!(route, Route::Retention) => Some(server_account::Body {
+                bytes: Vec::new(),
+                over: true,
+            }),
+            Err(()) if matches!(route, Route::MoveChat { .. }) => {
                 return reply::error(StatusCode::BAD_REQUEST, "invalid JSON", true);
             }
             // routes/import.cjs: a body it could not read is the "not an export" 400.
@@ -822,8 +826,7 @@ pub async fn serve(
             (Route::SaveHistory { chat }, Some(b)) => {
                 history::post(ctx, &chat, &b.bytes, b.over, &start_id)
             }
-            (Route::Retention, Some(b)) if b.over => Reply::error(400, "invalid JSON"),
-            (Route::Retention, Some(b)) => retention::put(ctx, &b.bytes),
+            (Route::Retention, Some(b)) => retention::put_collected(ctx, &b.bytes, b.over),
             (Route::Retention, _) => retention::get(ctx),
             (Route::Workspace, _) => workspace::get(ctx),
             (Route::MoveChat { chat }, Some(b)) => {

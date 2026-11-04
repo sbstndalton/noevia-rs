@@ -2367,7 +2367,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2768,6 +2768,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
+name = "ryu-js"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04d056b875a9d2e6cb9a61d127afee9ac5999b9f87bcb32079d1318e505be714"
+
+[[package]]
 name = "s3-list-parse"
 version = "0.1.0"
 dependencies = [
@@ -3092,6 +3098,7 @@ dependencies = [
  "review-verdict",
  "rusqlite",
  "rustix",
+ "ryu-js",
  "serde_json",
  "server-store",
  "sha2",

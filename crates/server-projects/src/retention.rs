@@ -209,12 +209,9 @@ fn save_setting(dir: &Path, days: u32, last_sweep: f64) -> Result<(), store::Sto
             OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
             Mode::from_raw_mode(0o600),
         )?);
-        let text = wtf16::stringify(&JValue::obj([
-            ("days", JValue::Num(f64::from(days))),
-            ("lastSweep", JValue::Num(last_sweep)),
-        ]))
-        .unwrap_or_default();
-        write!(file, "{text}")?;
+        // V8's shortest round-trip digits, including exponent sign and tie behavior.
+        let last_sweep = ryu_js::Buffer::new().format(last_sweep).to_owned();
+        write!(file, "{{\"days\":{days},\"lastSweep\":{last_sweep}}}")?;
         file.sync_all()?;
         renameat(&parent, temp.as_str(), &parent, FILE)?;
         parent.sync_all()
@@ -270,10 +267,15 @@ fn remove_due(ctx: Ctx<'_>, due: &[Due]) -> Result<usize, Reply> {
 }
 /// PUT contract: recompute before confirmation, persist the choice, then use native tombstoned deletion.
 pub fn put(ctx: Ctx<'_>, body: &[u8]) -> Reply {
+    put_collected(ctx, body, false)
+}
+/// Body failure is applied after the preview, matching Core's route evaluation order.
+pub fn put_collected(ctx: Ctx<'_>, body: &[u8], failed: bool) -> Reply {
     let start = std::time::Instant::now();
     put_with(
         ctx,
         body,
+        failed,
         || start.elapsed().as_millis(),
         |chat| {
             let id = chat.id.as_str().ok_or(500u16)?;
@@ -290,14 +292,21 @@ pub fn put(ctx: Ctx<'_>, body: &[u8]) -> Reply {
                 crate::journal::Origin::Remove,
                 ctx.switch,
             )
-            .map(|r| r.deleted)
             .map_err(|_| 503)
+            .and_then(|r| {
+                if r.leftovers == 0 {
+                    Ok(r.deleted)
+                } else {
+                    Err(503)
+                }
+            })
         },
     )
 }
 fn put_with(
     ctx: Ctx<'_>,
     body: &[u8],
+    failed: bool,
     mut clock: impl FnMut() -> u128,
     mut remove: impl FnMut(&Due) -> Result<bool, u16>,
 ) -> Reply {
@@ -322,13 +331,15 @@ fn put_with(
         };
         preview.push((period.to_string(), JValue::Num(n as f64)));
     }
-    let input = match wtf16::parse(&String::from_utf8_lossy(body)) {
-        Ok(v) => v,
-        Err(_) => return Reply::error(400, "invalid JSON"),
+    if failed {
+        return Reply::error(400, "invalid JSON");
+    }
+    let input = match crate::retention_input::parse(body) {
+        Some(v) => v,
+        None => return Reply::error(400, "invalid JSON"),
     };
     let Some(days) = input
-        .get("days")
-        .as_num()
+        .days
         .and_then(|n| [0, 30, 90, 365].into_iter().find(|d| f64::from(*d) == n))
     else {
         return Reply::error(400, "Choose off, or 30, 90 or 365 days.");
@@ -338,8 +349,7 @@ fn put_with(
         Err(_) => return Reply::internal(),
     };
     let confirmed = input
-        .get("confirmDeletes")
-        .as_num()
+        .confirmed
         .filter(|n| n.is_finite() && n.fract() == 0.0)
         .unwrap_or(0.0);
     if days != 0 && due.len() as f64 > confirmed {
@@ -506,7 +516,7 @@ mod tests {
                 .unwrap();
         for case in cases.as_array().unwrap() {
             let (root, dir) = setup();
-            write(&dir, FILE, r#"{"days":90,"lastSweep":123}"#);
+            write(&dir, FILE, case["initial"].as_str().unwrap());
             write(
                 &dir,
                 FREE_CHATS_FILE,
@@ -523,6 +533,7 @@ mod tests {
             let reply = put_with(
                 ctx,
                 case["raw"].as_str().unwrap().as_bytes(),
+                false,
                 || {
                     let value = case["ticks"]
                         .get(tick)
