@@ -101,7 +101,11 @@ async fn a_fenced_model_and_a_core_refused_model_both_load_nothing() {
         .unwrap();
     assert_eq!(fenced.status, 409);
     assert_eq!(fenced.body.unwrap()["code"], "inference_budget_unloaded");
-    assert_eq!(e.count("POST /models/load"), 0, "a fenced load reached the engine");
+    assert_eq!(
+        e.count("POST /models/load"),
+        0,
+        "a fenced load reached the engine"
+    );
 
     // Core's load decision, asked by the calibration worker through the real front, before any load.
     let f = front_env(d.path(), true, &env).await;
