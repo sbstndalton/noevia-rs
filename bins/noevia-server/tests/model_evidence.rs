@@ -465,7 +465,7 @@ async fn the_front_is_the_only_writer_and_a_bad_inbox_entry_is_dropped_without_h
 }
 
 #[tokio::test]
-async fn signed_out_other_methods_and_the_recheck_are_not_the_fronts() {
+async fn signed_out_requests_are_refused_and_only_the_owned_methods_are_native() {
     let d = tempfile::tempdir().unwrap();
     let _db = seed_database(d.path());
     let (addr, stop) = start(
@@ -483,11 +483,24 @@ async fn signed_out_other_methods_and_the_recheck_are_not_the_fronts() {
     assert_eq!(s, 401);
     let (s, ..) = call(addr, "POST", "/api/models/evidence/import", None, b"{}").await;
     assert_eq!(s, 401);
-    // Node's: the other methods of both paths, and the recheck (an image probe that may load the model).
+    let (s, ..) = call(addr, "POST", "/api/models/evidence/recheck", None, b"{}").await;
+    assert_eq!(s, 401);
+    let (s, ..) = call(
+        addr,
+        "POST",
+        "/api/models/evidence/recheck",
+        Some(ADMIN),
+        b"{}",
+    )
+    .await;
+    assert_eq!(
+        s, 400,
+        "native recheck validates its body before reaching the dead engine"
+    );
+    // Node keeps the methods not owned by the evidence routes.
     for (m, p) in [
         ("POST", "/api/models/evidence"),
         ("GET", "/api/models/evidence/import"),
-        ("POST", "/api/models/evidence/recheck"),
         ("GET", "/api/models/evidence/recheck"),
     ] {
         let (s, ..) = call(addr, m, p, Some(ADMIN), b"{}").await;
