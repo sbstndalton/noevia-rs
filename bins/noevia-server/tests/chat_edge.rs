@@ -42,7 +42,8 @@ const ADMISSION: &str = "/internal/inference-admission/lease";
 const HOLD: &str = "POST /internal/inference-admission/lease chat";
 const DIARY_HOLD: &str = "POST /internal/inference-admission/lease diary";
 /// Core's gate refusal on the admission route (inference-admission-lease.cjs): the front words it.
-const GATE_REFUSAL: &str = r#"{"error":"Inference is paused for maintenance.","code":"inferenceMaintenance"}"#;
+const GATE_REFUSAL: &str =
+    r#"{"error":"Inference is paused for maintenance.","code":"inferenceMaintenance"}"#;
 
 type UpBody = http_body_util::combinators::BoxBody<Bytes, std::io::Error>;
 
@@ -158,11 +159,18 @@ async fn core_service(
         return Ok(reply(if method == "DELETE" { 204 } else { 200 }, "{}", &[]));
     }
     if path == ADMISSION {
-        assert_eq!(headers.get("x-noevia-store-token").map(String::as_str), Some(STORE_TOKEN));
+        assert_eq!(
+            headers.get("x-noevia-store-token").map(String::as_str),
+            Some(STORE_TOKEN)
+        );
         let ask: Value = serde_json::from_slice(&body).unwrap();
         let route = ask["gate"].as_str().unwrap().to_owned();
         assert_eq!(ask, serde_json::json!({ "gate": route }));
-        core.seen.lock().unwrap().hits.push(format!("{method} {path} {route}"));
+        core.seen
+            .lock()
+            .unwrap()
+            .hits
+            .push(format!("{method} {path} {route}"));
     } else {
         let mut seen = core.seen.lock().unwrap();
         seen.hits.push(format!("{method} {target}"));

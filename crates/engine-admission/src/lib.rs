@@ -677,10 +677,21 @@ mod tests {
             assert!(lease.headers().is_empty());
             lease.release().await;
             let seen = seen.lock().unwrap().clone();
-            let ask = seen.iter().rev().find(|t| t.starts_with("POST /internal/inference-admission/lease ")).unwrap();
-            assert!(ask.to_ascii_lowercase().contains("x-noevia-store-token: secret"), "{ask}");
+            let ask = seen
+                .iter()
+                .rev()
+                .find(|t| t.starts_with("POST /internal/inference-admission/lease "))
+                .unwrap();
+            assert!(
+                ask.to_ascii_lowercase()
+                    .contains("x-noevia-store-token: secret"),
+                "{ask}"
+            );
             assert!(ask.ends_with(&format!(r#"{{"gate":"{name}"}}"#)), "{ask}");
-            assert!(seen.iter().any(|t| t.starts_with("DELETE /internal/inference-admission/lease/0123456789abcdef")));
+            assert!(seen
+                .iter()
+                .any(|t| t
+                    .starts_with("DELETE /internal/inference-admission/lease/0123456789abcdef")));
         }
     }
 
@@ -704,14 +715,23 @@ mod tests {
             (500, "x".to_owned()),
         ] {
             let (base, _s) = node(grant).await;
-            assert_eq!(admission(&base).enter_gate(Gate::Chat).await.err(), Some(GateRefusal::NoAnswer));
+            assert_eq!(
+                admission(&base).enter_gate(Gate::Chat).await.err(),
+                Some(GateRefusal::NoAnswer)
+            );
         }
         assert_eq!(
-            admission("http://127.0.0.1:9").enter_gate(Gate::Chat).await.err(),
+            admission("http://127.0.0.1:9")
+                .enter_gate(Gate::Chat)
+                .await
+                .err(),
             Some(GateRefusal::NoAnswer)
         );
         let no_token = Arc::new(Admission::new("http://127.0.0.1:9", None).unwrap());
-        assert_eq!(no_token.enter_gate(Gate::Diary).await.err(), Some(GateRefusal::NoAnswer));
+        assert_eq!(
+            no_token.enter_gate(Gate::Diary).await.err(),
+            Some(GateRefusal::NoAnswer)
+        );
     }
 
     #[tokio::test]
@@ -754,14 +774,25 @@ mod tests {
                 tokio::spawn(async move {
                     let mut buf = vec![0u8; 4096];
                     let n = s.read(&mut buf).await.unwrap_or(0);
-                    let first = String::from_utf8_lossy(&buf[..n]).lines().next().unwrap_or("").to_owned();
+                    let first = String::from_utf8_lossy(&buf[..n])
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .to_owned();
                     if first.starts_with("DELETE") {
                         log.lock().unwrap().push(first);
-                        let _ = s.write_all(b"HTTP/1.1 204 X\r\ncontent-length: 0\r\nconnection: close\r\n\r\n").await;
+                        let _ = s
+                            .write_all(
+                                b"HTTP/1.1 204 X\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
+                            )
+                            .await;
                         return;
                     }
                     let body = r#"{"lease":"0123456789abcdef0123456789abcdef","ttlMs":30000}"#;
-                    let head = format!("HTTP/1.1 201 X\r\ncontent-length: {}\r\nconnection: close\r\n\r\n", body.len());
+                    let head = format!(
+                        "HTTP/1.1 201 X\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                        body.len()
+                    );
                     let _ = s.write_all(head.as_bytes()).await;
                     let _ = s.flush().await;
                     if let Some(tx) = headers_tx.lock().unwrap().take() {

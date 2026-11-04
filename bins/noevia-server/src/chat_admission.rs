@@ -43,13 +43,17 @@ pub const LOG_LINE: &str = "[chat] 503 route=/api/chat reason=maintenance";
 const UNAVAILABLE: &str = "The server is not answering. Please retry.";
 
 /// Takes the gate for one `gate` call: the lease, or the answer to give instead.
-pub async fn admit(app: &Arc<App>, gate: Gate) -> Result<Lease, Response<Body>> {
+pub async fn admit(app: &Arc<App>, gate: Gate) -> Result<Lease, Box<Response<Body>>> {
     match app.config.research.admission().enter_gate(gate).await {
         Ok(lease) => Ok(lease),
-        Err(GateRefusal::Refused(refused)) => Err(refusal(gate, &refused, &mut |l| {
+        Err(GateRefusal::Refused(refused)) => Err(Box::new(refusal(gate, &refused, &mut |l| {
             eprintln!("{l}");
-        })),
-        Err(GateRefusal::NoAnswer) => Err(reply::error(StatusCode::BAD_GATEWAY, UNAVAILABLE, true)),
+        }))),
+        Err(GateRefusal::NoAnswer) => Err(Box::new(reply::error(
+            StatusCode::BAD_GATEWAY,
+            UNAVAILABLE,
+            true,
+        ))),
     }
 }
 
@@ -73,7 +77,11 @@ pub fn refusal(gate: Gate, refused: &Refused, log: &mut dyn FnMut(&str)) -> Resp
     let chat = gate == Gate::Chat && status == StatusCode::SERVICE_UNAVAILABLE;
     let body = if chat {
         log(LOG_LINE);
-        let code = refused.code.as_deref().filter(|c| !c.is_empty()).unwrap_or(MAINTENANCE);
+        let code = refused
+            .code
+            .as_deref()
+            .filter(|c| !c.is_empty())
+            .unwrap_or(MAINTENANCE);
         format!(
             r#"{{"error":{},"code":{},"retryable":true,"retryAfter":3}}"#,
             quote(&refused.message),
@@ -140,7 +148,7 @@ impl http_body::Body for Held {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use http_body_util::BodyExt;
@@ -164,7 +172,11 @@ mod tests {
         assert_eq!(h["x-noevia-api"], "1");
         assert_eq!(h["content-type"], "application/json");
         assert_eq!(h["cache-control"], "no-store");
-        assert_eq!(h.len(), 4, "only what index.cjs had set before the gate: {h:?}");
+        assert_eq!(
+            h.len(),
+            4,
+            "only what index.cjs had set before the gate: {h:?}"
+        );
         assert_eq!(
             text(res).await,
             r#"{"error":"Chat is paused while noevia calibrates m.","code":"inferenceMaintenance","retryable":true,"retryAfter":3}"#

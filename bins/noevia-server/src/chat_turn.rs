@@ -90,7 +90,7 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
     // Node's inference gate first: a call is counted only once the gate let it in.
     let lease = match chat_admission::admit(app, chat_admission::Gate::Chat).await {
         Ok(lease) => lease,
-        Err(answer) => return answer,
+        Err(answer) => return *answer,
     };
     let Some(lease_id) = chat_admission::header_value(&lease) else {
         return unavailable();
@@ -188,7 +188,7 @@ pub(crate) async fn refused(
             lease.release().await;
             answer
         }
-        Err(gate_answer) if gate_answer.status() == StatusCode::SERVICE_UNAVAILABLE => gate_answer,
+        Err(gate_answer) if gate_answer.status() == StatusCode::SERVICE_UNAVAILABLE => *gate_answer,
         Err(_) => answer,
     }
 }

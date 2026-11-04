@@ -204,7 +204,10 @@ async fn core_service(
             if method == "DELETE" && path == format!("{ADMISSION}/{LEASE}") {
                 seen.live -= 1;
             }
-            return Ok(json(if method == "DELETE" { 204 } else { 200 }, "{}".into()));
+            return Ok(json(
+                if method == "DELETE" { 204 } else { 200 },
+                "{}".into(),
+            ));
         }
         {
             let mut seen = core.seen.lock().unwrap();
@@ -494,7 +497,10 @@ async fn a_turn_reaches_cores_relay_with_the_secret_the_user_and_the_clients_own
         ("x-noevia-client-ip", "6.6.6.6"),
         ("x-forwarded-for", "6.6.6.6"),
         ("x-noevia-chat-wire", "sse"),
-        ("x-noevia-admission-lease", "0123456789abcdef0123456789abcdef"),
+        (
+            "x-noevia-admission-lease",
+            "0123456789abcdef0123456789abcdef",
+        ),
         ("user-agent", "synthetic-agent"),
     ];
     let (res, _c) = call(
@@ -537,7 +543,13 @@ async fn a_turn_reaches_cores_relay_with_the_secret_the_user_and_the_clients_own
     assert_eq!(h["x-noevia-admission-lease"], serde_json::json!([LEASE]));
     {
         let seen = f.core.seen.lock().unwrap();
-        assert_eq!(seen.hits, [format!("POST {ADMISSION}"), "POST /internal/chat/turn".into()]);
+        assert_eq!(
+            seen.hits,
+            [
+                format!("POST {ADMISSION}"),
+                "POST /internal/chat/turn".into()
+            ]
+        );
         assert_eq!(seen.asks, [(r#"{"gate":"chat"}"#.to_owned(), true)]);
     }
     // A WHATWG spelling of the same path is the same route; other methods and paths stay Node's.
@@ -868,7 +880,10 @@ async fn a_break_inside_a_line_reaches_the_web_client_as_the_failure_event() {
     // Chat port S6: Core's gate is taken for the call first, and the turn carries its hold.
     assert_eq!(
         f.core.seen.lock().unwrap().hits,
-        [format!("POST {ADMISSION}"), "POST /internal/chat/turn".into()]
+        [
+            format!("POST {ADMISSION}"),
+            "POST /internal/chat/turn".into()
+        ]
     );
 }
 
@@ -1100,7 +1115,10 @@ async fn a_refused_request_meets_cores_gate_first_as_node_answered_it() {
             // The gate taken and given straight back, before the refusal: Node's order.
             let seen = f.core.seen.lock().unwrap();
             assert_eq!(seen.hits, [format!("POST {ADMISSION}")]);
-            assert_eq!(seen.asks.last().unwrap(), &(r#"{"gate":"chat"}"#.to_owned(), true));
+            assert_eq!(
+                seen.asks.last().unwrap(),
+                &(r#"{"gate":"chat"}"#.to_owned(), true)
+            );
             assert_eq!(seen.live, 0, "given back before the answer");
         }
         *f.core.gate.lock().unwrap() = Gate::Held;
@@ -1161,7 +1179,11 @@ async fn a_held_gate_is_answered_by_the_front_as_index_cjs_answered_it_and_no_tu
     assert_eq!(res.headers()["cache-control"], "no-store");
     assert_eq!(text(res).await, BUSY);
     let seen = f.core.seen.lock().unwrap();
-    assert_eq!(seen.hits, [format!("POST {ADMISSION}")], "no turn, nothing else");
+    assert_eq!(
+        seen.hits,
+        [format!("POST {ADMISSION}")],
+        "no turn, nothing else"
+    );
     assert_eq!(seen.live, 0);
 }
 
@@ -1202,7 +1224,11 @@ async fn the_lease_is_the_turns_one_count_until_its_answer_ends_then_it_is_given
     let (res, _c) = pending.await.unwrap();
     let mut body = res.into_body();
     body.frame().await.unwrap().unwrap();
-    for line in ["{\"type\":\"delta\",\"text\":\"Hi\"}\n", "{\"type\":\"done\"}\n", "{\"type\":\"title\",\"chatId\":\"c\",\"title\":\"T\"}\n"] {
+    for line in [
+        "{\"type\":\"delta\",\"text\":\"Hi\"}\n",
+        "{\"type\":\"done\"}\n",
+        "{\"type\":\"title\",\"chatId\":\"c\",\"title\":\"T\"}\n",
+    ] {
         tx.send_data(Bytes::from(line)).await.unwrap();
         body.frame().await.unwrap().unwrap();
         let seen = f.core.seen.lock().unwrap();
@@ -1252,7 +1278,10 @@ async fn the_client_leaving_during_the_wait_ends_nodes_wait_and_holds_nothing() 
     );
     s.write_all(req.as_bytes()).await.unwrap();
     s.write_all(TURN).await.unwrap();
-    until(&f, "the front asked for the gate", |seen| seen.asks.len() == 1).await;
+    until(&f, "the front asked for the gate", |seen| {
+        seen.asks.len() == 1
+    })
+    .await;
     drop(s);
     let left = Instant::now();
     let at = tokio::time::timeout(Duration::from_secs(1), closed_rx)
@@ -1278,7 +1307,10 @@ async fn a_core_that_does_not_know_the_gate_ask_is_the_proxys_502_and_no_turn_ru
         text(res).await,
         r#"{"error":"The server is not answering. Please retry."}"#
     );
-    assert_eq!(f.core.seen.lock().unwrap().hits, [format!("POST {ADMISSION}")]);
+    assert_eq!(
+        f.core.seen.lock().unwrap().hits,
+        [format!("POST {ADMISSION}")]
+    );
     // A refusal of the front's own stands when the gate gives no answer of its own.
     let (res, _c) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), false).await;
     assert_eq!(res.status(), 401);

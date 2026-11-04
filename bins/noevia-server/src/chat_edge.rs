@@ -402,7 +402,7 @@ async fn local_exchange_turn(
     }
     let held = match chat_admission::admit(app, chat_admission::Gate::Diary).await {
         Ok(lease) => lease,
-        Err(answer) => return Err(Box::new(answer)),
+        Err(answer) => return Err(answer),
     };
     match charge(app, &authn.user.id) {
         Some(true) => Err(Box::new(reply::error(
