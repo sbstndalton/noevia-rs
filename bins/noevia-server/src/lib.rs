@@ -44,6 +44,7 @@ pub mod mcp_egress;
 pub mod mcp_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_tools;
+pub mod model_downloads_read;
 pub mod model_kind;
 pub mod model_maint;
 pub mod model_manager_scan;
@@ -427,6 +428,7 @@ pub const FEATURES: &[&str] = &[
     "rust-autotune-read",
     "rust-preset-read",
     "rust-idle-unload-read",
+    "rust-model-downloads-read",
     "rust-autotune-resume",
     #[cfg(feature = "rust-storage-reads")]
     "rust-connectors",
