@@ -25,7 +25,7 @@ use axum::{
     http::{header, HeaderValue, Request, Response, StatusCode},
     response::IntoResponse,
 };
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use http_body::{Body as HttpBody, Frame};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -131,13 +131,26 @@ fn is_event_stream(res: &Response<Body>) -> bool {
         })
 }
 
-/// Core's event stream as it comes; when it breaks before its end, [`FAILED_FRAME`] (on a frame
-/// boundary of its own) and then the end, instead of a reset the client would read as "the model
-/// connection ended".
+/// The most of one unfinished frame [`StreamTail`] holds back: 8 MiB. Core writes each frame whole, so a
+/// frame normally arrives in one piece and nothing waits; a frame split across reads is sent once its
+/// end is in. A frame longer than this still streams: its held start goes on, then its bytes as they
+/// come, until its end.
+pub const HOLDBACK: usize = 8 * 1024 * 1024;
+
+/// Core's event stream, sent a whole frame at a time (a frame ends with a blank line, `\n\n`). When it
+/// breaks before its end, the unfinished frame Core left is dropped and [`FAILED_FRAME`] ends the stream,
+/// so the client reads that error instead of failing on half a frame (the web client parses every
+/// complete frame's `data:` line as JSON) or reading a reset as "the model connection ended". Only a
+/// frame longer than [`HOLDBACK`] that breaks mid-way, whose start is already out, ends without it:
+/// the client never parses an unfinished frame and reports the connection ended.
 struct StreamTail {
     inner: Body,
-    /// The last two bytes sent, to know whether the stream stands between frames.
-    last: [u8; 2],
+    /// The bytes after the last frame end sent: an unfinished frame, held back.
+    held: BytesMut,
+    /// An unfinished frame longer than [`HOLDBACK`] is streaming; its start is out.
+    overflow: bool,
+    /// The last byte sent was `\n` (an end can straddle two reads while overflowing).
+    sent_nl: bool,
     done: bool,
 }
 
@@ -145,19 +158,55 @@ impl StreamTail {
     fn new(inner: Body) -> Self {
         StreamTail {
             inner,
-            last: *b"\n\n",
+            held: BytesMut::new(),
+            overflow: false,
+            sent_nl: false,
             done: false,
         }
     }
-}
 
-/// What to send when the stream breaks after `last`: the failure frame, after a blank line when the
-/// stream stopped inside a frame.
-fn failed_tail(last: [u8; 2]) -> Bytes {
-    if last == *b"\n\n" {
-        Bytes::from_static(FAILED_FRAME.as_bytes())
-    } else {
-        Bytes::from(format!("\n\n{FAILED_FRAME}"))
+    /// What of one read of Core's stream goes out now (possibly nothing).
+    fn take(&mut self, mut data: Bytes) -> Bytes {
+        // The usual case: whole frames and nothing held. Sent as they came, at once.
+        if !self.overflow && self.held.is_empty() && data.ends_with(b"\n\n") {
+            self.sent_nl = true;
+            return data;
+        }
+        let mut out = BytesMut::new();
+        if self.overflow {
+            let end = if self.sent_nl && data.first() == Some(&b'\n') {
+                Some(1)
+            } else {
+                data.windows(2).position(|w| w == b"\n\n").map(|i| i + 2)
+            };
+            let Some(end) = end else {
+                if let Some(&last) = data.last() {
+                    self.sent_nl = last == b'\n';
+                }
+                return data;
+            };
+            out.extend_from_slice(&data.split_to(end));
+            self.overflow = false;
+        }
+        // Only the new bytes (and the one before them) can hold the last frame end.
+        let from = self.held.len().saturating_sub(1);
+        self.held.extend_from_slice(&data);
+        let end = self
+            .held
+            .get(from..)
+            .and_then(|tail| tail.windows(2).rposition(|w| w == b"\n\n"))
+            .map(|i| from + i + 2);
+        if let Some(end) = end {
+            out.extend_from_slice(&self.held.split_to(end));
+        }
+        if self.held.len() > HOLDBACK {
+            out.extend_from_slice(&self.held.split());
+            self.overflow = true;
+        }
+        if let Some(&last) = out.last() {
+            self.sent_nl = last == b'\n';
+        }
+        out.freeze()
     }
 }
 
@@ -169,30 +218,41 @@ impl HttpBody for StreamTail {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Frame<Bytes>, axum::Error>>> {
-        if self.done {
-            return Poll::Ready(None);
-        }
-        match Pin::new(&mut self.inner).poll_frame(cx) {
-            Poll::Ready(Some(Ok(frame))) => {
-                if let Some(data) = frame.data_ref() {
-                    let [_, prev] = self.last;
-                    match data.as_ref() {
-                        [] => {}
-                        [only] => self.last = [prev, *only],
-                        [.., a, b] => self.last = [*a, *b],
+        loop {
+            if self.done {
+                return Poll::Ready(None);
+            }
+            match Pin::new(&mut self.inner).poll_frame(cx) {
+                Poll::Ready(Some(Ok(frame))) => match frame.into_data() {
+                    Ok(data) => {
+                        let out = self.take(data);
+                        if !out.is_empty() {
+                            return Poll::Ready(Some(Ok(Frame::data(out))));
+                        }
                     }
+                    Err(other) => return Poll::Ready(Some(Ok(other))),
+                },
+                Poll::Ready(Some(Err(_))) => {
+                    self.done = true;
+                    if self.overflow {
+                        return Poll::Ready(None);
+                    }
+                    self.held.clear();
+                    return Poll::Ready(Some(Ok(Frame::data(Bytes::from_static(
+                        FAILED_FRAME.as_bytes(),
+                    )))));
                 }
-                Poll::Ready(Some(Ok(frame)))
+                Poll::Ready(None) => {
+                    self.done = true;
+                    // Core ended without a final blank line: what it wrote goes out as it wrote it.
+                    if !self.held.is_empty() {
+                        let rest = self.held.split().freeze();
+                        return Poll::Ready(Some(Ok(Frame::data(rest))));
+                    }
+                    return Poll::Ready(None);
+                }
+                Poll::Pending => return Poll::Pending,
             }
-            Poll::Ready(Some(Err(_))) => {
-                self.done = true;
-                Poll::Ready(Some(Ok(Frame::data(failed_tail(self.last)))))
-            }
-            Poll::Ready(None) => {
-                self.done = true;
-                Poll::Ready(None)
-            }
-            Poll::Pending => Poll::Pending,
         }
     }
 
@@ -202,13 +262,16 @@ impl HttpBody for StreamTail {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use http_body_util::BodyExt;
+    use std::time::Duration;
+
+    type Chan = http_body_util::channel::Channel<Bytes, std::io::Error>;
 
     #[test]
-    fn the_failure_frame_is_index_cjs_s_and_starts_on_a_frame_boundary() {
+    fn the_failure_frame_is_index_cjs_s() {
         // JSON.stringify's key order: type, then text.
         let inner = FAILED_FRAME
             .strip_prefix("data: ")
@@ -219,49 +282,107 @@ mod tests {
             serde_json::from_str::<serde_json::Value>(inner).unwrap(),
             serde_json::json!({"type":"error","text":"The request could not be completed. Please retry."})
         );
-        assert_eq!(
-            failed_tail(*b"\n\n"),
-            Bytes::from_static(FAILED_FRAME.as_bytes())
-        );
-        assert_eq!(
-            failed_tail(*b"}\n"),
-            Bytes::from(format!("\n\n{FAILED_FRAME}"))
-        );
         assert_eq!(RELAY_LIMIT, 32 * 1024 * 1024 + 1);
     }
 
-    #[tokio::test]
-    async fn a_stream_that_breaks_ends_with_the_failure_frame_and_a_whole_one_passes_unchanged() {
-        type Chan = http_body_util::channel::Channel<Bytes, std::io::Error>;
-        let (mut tx, body) = Chan::new(4);
-        tx.send_data(Bytes::from_static(b"data: {\"type\":\"meta\"}\n"))
-            .await
-            .unwrap();
-        tx.send_data(Bytes::from_static(b"\n: keep-alive\n\ndata: {\"ty"))
-            .await
-            .unwrap();
-        tx.abort(std::io::Error::other("Node went away"));
-        let out = Body::new(StreamTail::new(Body::new(body)))
+    /// Each read Core's stream gives, and what goes out for it.
+    fn feed(reads: &[&[u8]]) -> (StreamTail, Vec<Vec<u8>>) {
+        let mut tail = StreamTail::new(Body::empty());
+        let out = reads
+            .iter()
+            .map(|r| tail.take(Bytes::copy_from_slice(r)).to_vec())
+            .collect();
+        (tail, out)
+    }
+
+    #[test]
+    fn whole_frames_go_at_once_and_an_unfinished_one_waits_for_its_end() {
+        let (_, out) = feed(&[
+            b"data: {\"type\":\"meta\"}\n\n",
+            b": keep-alive\n\n",
+            b"data: {\"type\":\"delta\"}\n\ndata: {\"ty",
+            b"pe\":\"done\"}\n",
+            b"\n",
+        ]);
+        let want: [&[u8]; 5] = [
+            b"data: {\"type\":\"meta\"}\n\n",
+            b": keep-alive\n\n",
+            b"data: {\"type\":\"delta\"}\n\n",
+            b"",
+            b"data: {\"type\":\"done\"}\n\n",
+        ];
+        assert_eq!(out, want.map(<[u8]>::to_vec));
+    }
+
+    #[test]
+    fn a_frame_longer_than_the_holdback_still_streams() {
+        let big = vec![b'x'; HOLDBACK];
+        let (tail, out) = feed(&[b"data: \"", &big, b"more", b"\"\n", b"\ndata: 1\n\n"]);
+        assert!(out[0].is_empty());
+        // Past the bound the held start goes out, then the rest as it comes.
+        assert_eq!(out[1].len(), 7 + HOLDBACK);
+        assert_eq!(out[2], b"more");
+        assert_eq!(out[3], b"\"\n");
+        // Its end straddles two reads; the next frame is whole and goes at once.
+        assert_eq!(out[4], b"\ndata: 1\n\n");
+        assert!(!tail.overflow && tail.held.is_empty());
+    }
+
+    async fn through(reads: Vec<&'static [u8]>, broken: bool) -> Bytes {
+        let (mut tx, body) = Chan::new(8);
+        tokio::spawn(async move {
+            for r in reads {
+                tx.send_data(Bytes::from_static(r)).await.unwrap();
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+            if broken {
+                tx.abort(std::io::Error::other("Core went away"));
+            }
+        });
+        Body::new(StreamTail::new(Body::new(body)))
             .collect()
             .await
             .unwrap()
-            .to_bytes();
+            .to_bytes()
+    }
+
+    #[tokio::test]
+    async fn a_break_inside_a_frame_drops_it_and_ends_with_the_failure_frame() {
+        let out = through(
+            vec![
+                b"data: {\"type\":\"meta\"}\n",
+                b"\n: keep-alive\n\ndata: {\"ty",
+            ],
+            true,
+        )
+        .await;
         assert_eq!(
             out,
             Bytes::from(format!(
-                "data: {{\"type\":\"meta\"}}\n\n: keep-alive\n\ndata: {{\"ty\n\n{FAILED_FRAME}"
+                "data: {{\"type\":\"meta\"}}\n\n: keep-alive\n\n{FAILED_FRAME}"
             ))
         );
-        let (mut tx, body) = Chan::new(4);
-        tx.send_data(Bytes::from_static(b"data: {\"type\":\"done\"}\n\n"))
-            .await
-            .unwrap();
-        drop(tx);
-        let out = Body::new(StreamTail::new(Body::new(body)))
-            .collect()
-            .await
-            .unwrap()
-            .to_bytes();
+        // Between frames: the failure frame follows at once.
+        let out = through(vec![b"data: {\"type\":\"meta\"}\n\n"], true).await;
+        assert_eq!(
+            out,
+            Bytes::from(format!("data: {{\"type\":\"meta\"}}\n\n{FAILED_FRAME}"))
+        );
+        // A whole stream passes unchanged, and so does an end Core wrote without a blank line.
+        let out = through(vec![b"data: {\"type\":\"done\"}\n\n"], false).await;
         assert_eq!(out, Bytes::from_static(b"data: {\"type\":\"done\"}\n\n"));
+        let out = through(vec![b"data: {\"type\":\"done\"}\n\ndata: x"], false).await;
+        assert_eq!(
+            out,
+            Bytes::from_static(b"data: {\"type\":\"done\"}\n\ndata: x")
+        );
+    }
+
+    #[tokio::test]
+    async fn an_oversized_frame_that_breaks_ends_without_a_frame_the_client_would_parse() {
+        let big: &'static [u8] = Box::leak(vec![b'x'; HOLDBACK + 1].into_boxed_slice());
+        let out = through(vec![b"data: 1\n\n", b"data: \"", big], true).await;
+        assert_eq!(out.len(), 9 + 7 + HOLDBACK + 1);
+        assert!(!out.ends_with(FAILED_FRAME.as_bytes()));
     }
 }

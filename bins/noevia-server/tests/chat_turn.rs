@@ -528,7 +528,8 @@ async fn core_failing_after_its_headers_ends_with_the_error_frame_and_before_the
         .unwrap();
     assert_eq!(
         got,
-        format!("data: {{\"type\":\"meta\"}}\n\ndata: {{\"type\":\"del\n\n{FAILED}")
+        // The frame Core left unfinished is dropped: the client reads whole frames only.
+        format!("data: {{\"type\":\"meta\"}}\n\n{FAILED}")
     );
     *f.core.turn.lock().unwrap() = Turn::DieBeforeHeaders;
     let (res, _c) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await;
@@ -538,6 +539,65 @@ async fn core_failing_after_its_headers_ends_with_the_error_frame_and_before_the
     assert_eq!(
         text(res).await,
         r#"{"error":"The server is not answering. Please retry."}"#
+    );
+}
+
+/// noevia-web's src/api.ts at contracts/http/web.ref (`NOEVIA_WEB_API_TS`; CI checks it out). Without it the
+/// test says so and passes; with `NOEVIA_WEB_API_TS_REQUIRED` a missing file fails.
+fn web_api_ts() -> Option<String> {
+    let required = std::env::var("NOEVIA_WEB_API_TS_REQUIRED").is_ok();
+    match std::env::var("NOEVIA_WEB_API_TS") {
+        Ok(p) if !p.is_empty() && std::path::Path::new(&p).is_file() => Some(p),
+        _ => {
+            assert!(
+                !required,
+                "NOEVIA_WEB_API_TS_REQUIRED is set but NOEVIA_WEB_API_TS is not a file"
+            );
+            eprintln!("SKIPPED: NOEVIA_WEB_API_TS (noevia-web src/api.ts at contracts/http/web.ref) is not set");
+            None
+        }
+    }
+}
+
+/// Review P2 (chat port S5): Core breaking inside a frame must reach the web client as the failure event,
+/// read by the client's own stream reader (tests/web-stream-chat.cjs runs noevia-web's streamChat).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_break_inside_a_frame_reaches_the_web_client_as_the_failure_event() {
+    let Some(api) = web_api_ts() else { return };
+    let f = front().await;
+    *f.core.turn.lock().unwrap() = Turn::DieAfterHeaders;
+    let harness = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/web-stream-chat.cjs");
+    let base = format!("http://{}", f.addr);
+    let (jar, csrf) = (f.jar.clone(), f.csrf.clone());
+    let out = tokio::task::spawn_blocking(move || {
+        std::process::Command::new(std::env::var("NOEVIA_NODE").unwrap_or_else(|_| "node".into()))
+            .args(["--no-warnings", harness, &api, &base, ORIGIN, &jar, &csrf])
+            .output()
+            .unwrap()
+    })
+    .await
+    .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let got: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        got["error"],
+        serde_json::Value::Null,
+        "the client failed: {got}"
+    );
+    assert_eq!(
+        got["events"],
+        serde_json::json!([
+            {"type": "meta"},
+            {"type": "error", "text": "The request could not be completed. Please retry."}
+        ])
+    );
+    assert_eq!(
+        f.core.seen.lock().unwrap().hits,
+        ["POST /internal/chat/turn"]
     );
 }
 
