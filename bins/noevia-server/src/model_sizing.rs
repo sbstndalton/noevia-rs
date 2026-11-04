@@ -74,6 +74,8 @@ pub struct Sizing {
     explicit_gib: f64,
     /// inference-budget.cjs `cacheRamLimits(env).capMib`.
     cache_ram_max_mib: f64,
+    /// inference-budget.cjs `cacheRamLimits(env).hardMaxMib`.
+    cache_ram_hard_max_mib: f64,
 }
 
 impl Sizing {
@@ -85,6 +87,11 @@ impl Sizing {
 
     pub(crate) fn kind(&self) -> server_stats::Kind {
         self.kind
+    }
+
+    /// inference-budget.cjs `cacheRamLimits()`: `(capMib, hardMaxMib)`, as `prepare` reads them.
+    pub(crate) fn cache_ram_limits(&self) -> (f64, f64) {
+        (self.cache_ram_max_mib, self.cache_ram_hard_max_mib)
     }
 
     /// The router's `/models` listing (bounded by the engine's listing timeout).
@@ -156,6 +163,7 @@ impl Sizing {
             cache_path: set("LLAMACPP_CACHE_PATH").unwrap_or_default(),
             explicit_gib: or_zero(env_number(get("LLAMACPP_AUTOCONFIG_MEMORY_GIB").as_deref())),
             cache_ram_max_mib: cap,
+            cache_ram_hard_max_mib: hard_max,
         }
     }
 
@@ -196,7 +204,7 @@ const FIELDS: &[(&str, &[&str])] = &[
     ("repeat-penalty", &[]),
 ];
 
-fn canonical(key: &str) -> Option<&'static str> {
+pub(crate) fn canonical(key: &str) -> Option<&'static str> {
     FIELDS
         .iter()
         .find(|(k, aliases)| *k == key || aliases.contains(&key))
@@ -288,6 +296,9 @@ struct Section {
     options: Vec<(&'static str, String)>,
 }
 
+/// A section's canonical options, in insertion order.
+pub(crate) type Options = [(&'static str, String)];
+
 pub struct Presets {
     pub revision: String,
     /// The file's text as read (UTF-8, lossy), which `revision` hashes.
@@ -367,6 +378,22 @@ fn hex(text: &str) -> String {
 impl Presets {
     fn section(&self, name: &str) -> Option<&Section> {
         self.sections.iter().find(|s| s.name == name)
+    }
+
+    /// The file's lines (`text.split('\n')`), as `prepare` edits them.
+    pub(crate) fn lines(&self) -> &[String] {
+        &self.lines
+    }
+
+    /// A section's header line and end (exclusive), and its canonical options.
+    pub(crate) fn span(&self, name: &str) -> Option<(usize, usize, &Options)> {
+        self.section(name)
+            .map(|s| (s.start, s.end, s.options.as_slice()))
+    }
+
+    /// `get(model).fields`: every editable field name, in `fields` order.
+    pub fn field_names() -> Vec<&'static str> {
+        FIELDS.iter().map(|(k, _)| *k).collect()
     }
 
     /// `{...profile.defaults, ...profile.options}` of `get(model)`.

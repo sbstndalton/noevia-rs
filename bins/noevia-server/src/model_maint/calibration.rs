@@ -93,7 +93,10 @@ impl State {
         ])
     }
     pub fn get(&self, key: &str) -> &JValue {
-        self.0.iter().find(|(k, _)| k == key).map_or(&UNSET, |(_, v)| v)
+        self.0
+            .iter()
+            .find(|(k, _)| k == key)
+            .map_or(&UNSET, |(_, v)| v)
     }
     pub fn job(&self) -> &JValue {
         self.get("job")
@@ -115,7 +118,8 @@ impl State {
         if !matches!(self.get("history"), JValue::Obj(_)) {
             wtf16::set(&mut self.0, "history", JValue::Obj(Vec::new()));
         }
-        let Some((_, JValue::Obj(history))) = self.0.iter_mut().find(|(k, _)| k == "history") else {
+        let Some((_, JValue::Obj(history))) = self.0.iter_mut().find(|(k, _)| k == "history")
+        else {
             return;
         };
         let mut list = vec![entry];
@@ -207,7 +211,9 @@ pub fn interrupt(job: &mut Vec<(String, JValue)>, at: f64) -> Option<Option<(Str
     let last = get("lastRevision").filter(|v| v.truthy());
     match (original, last) {
         // Node passes the values as they are; both are strings in every file it writes.
-        (Some(JValue::Str(text)), Some(JValue::Str(rev))) => Some(Some((rev.clone(), text.clone()))),
+        (Some(JValue::Str(text)), Some(JValue::Str(rev))) => {
+            Some(Some((rev.clone(), text.clone())))
+        }
         (Some(_), Some(_)) => Some(None),
         _ => None,
     }
@@ -234,10 +240,7 @@ impl Maint {
     /// The calibration state file of this engine.
     pub fn calibration_state(&self) -> StateFile {
         StateFile {
-            path: self
-                .data_dir
-                .as_ref()
-                .map(|d| state_path(d, &self.suffix)),
+            path: self.data_dir.as_ref().map(|d| state_path(d, &self.suffix)),
         }
     }
 
@@ -248,7 +251,9 @@ impl Maint {
         let ini = self.ini.clone()?;
         let file = self.calibration_state();
         let loader = file.clone();
-        let mut state = tokio::task::spawn_blocking(move || loader.load()).await.ok()?;
+        let mut state = tokio::task::spawn_blocking(move || loader.load())
+            .await
+            .ok()?;
         if state.job().get("status").as_str() != Some("running") {
             return None;
         }
@@ -258,7 +263,10 @@ impl Maint {
             let Some((base_revision, text)) = candidate else {
                 restored = Some(false);
                 settle_interrupted(state.job_mut()?, restored);
-                tokio::task::spawn_blocking(move || file.save(&state)).await.ok()?.ok()?;
+                tokio::task::spawn_blocking(move || file.save(&state))
+                    .await
+                    .ok()?
+                    .ok()?;
                 return Some(restored);
             };
             let c = Candidate {
@@ -284,6 +292,122 @@ impl Maint {
             .ok()?
             .ok()?;
         Some(restored)
+    }
+}
+
+// ── Profile writes (llamacpp-manager.cjs `applyUnlocked`) ─────────────────────
+
+/// How a profile write ended, as calibration reads `applyUnlocked`'s answer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Applied {
+    /// Written and the router re-read it.
+    Ok,
+    /// `{ ok: false, body: { error } }`: the job records the error (or its own default) and stops.
+    Refused(Option<String>),
+    /// The write threw: inside a step the size failed; at the end the run failed with this text.
+    Threw(String),
+}
+
+const UNLOAD_FIRST: &str = "Unload all router models and finish downloads before applying a profile. Other clients must remain stopped.";
+const RELOAD_UNCERTAIN: &str = "Reload outcome is uncertain and the file changed again. Stop inference and inspect native presets before retrying.";
+const RELOAD_STUCK: &str = "Reload failed or timed out, and the previous preset file could not be restored: models.ini still holds the new settings. Check router and Model Loader health before retrying.";
+const RELOAD_UNCONFIRMED: &str = "Reload failed or timed out, and restoring the previous preset file could not be confirmed. Stop inference and inspect native presets before retrying.";
+const RELOAD_RESTORED: &str = "Reload failed or timed out. Previous preset file restored; check router health before retrying.";
+
+impl Maint {
+    /// `applyUnlocked({ model, baseRevision, options }, { backup })`, under the caller's hold: the
+    /// router lists the model and nothing is loaded, the profile is prepared and committed, then the
+    /// router re-reads models.ini; a failed re-read puts this write's own previous text back.
+    pub async fn apply_unlocked(
+        &self,
+        holding: &super::Hold,
+        model: &str,
+        base_revision: &str,
+        options: &[(String, Option<String>)],
+        backup: bool,
+    ) -> Applied {
+        let (Some(router), Some(ini)) = (self.router.as_ref(), self.ini.clone()) else {
+            return Applied::Threw("Native preset editing; configure LLAMACPP_PRESET_PATH".into());
+        };
+        let token = holding.token();
+        let listing = match router.models(token.as_deref()).await {
+            Ok(r) => r,
+            Err(_) => return Applied::Threw("fetch failed".into()),
+        };
+        if !listing.ok {
+            return Applied::Refused(
+                listing
+                    .body
+                    .as_ref()
+                    .and_then(|b| b.get("error"))
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+            );
+        }
+        let Some(rows) = super::router::rows(&listing.body) else {
+            return Applied::Threw("Invalid router model listing".into());
+        };
+        if !rows
+            .iter()
+            .any(|m| m.get("id").and_then(Value::as_str) == Some(model))
+        {
+            return Applied::Refused(Some("Choose an installed model".into()));
+        }
+        let status = |m: &Value| {
+            m.get("status")
+                .and_then(|s| s.get("value"))
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        };
+        if rows
+            .iter()
+            .any(|m| status(m).as_deref() != Some("unloaded"))
+        {
+            return Applied::Refused(Some(UNLOAD_FIRST.into()));
+        }
+        let limits = self.sizing.cache_ram_limits();
+        let (file, m, base, opts) = (
+            ini.file().to_path_buf(),
+            model.to_owned(),
+            base_revision.to_owned(),
+            options.to_vec(),
+        );
+        let candidate = match tokio::task::spawn_blocking(move || {
+            super::ini::prepare(&file, &m, &base, &opts, limits)
+        })
+        .await
+        {
+            Ok(Ok(c)) => c,
+            Ok(Err(t)) => return Applied::Threw(t.message),
+            Err(_) => return Applied::Threw("Internal error".into()),
+        };
+        if let Err(e) = ini.commit(&candidate, backup).await {
+            // A settled Model Loader outcome carries its own message; nothing was reloaded.
+            if e.status >= 500 {
+                return Applied::Refused(Some(e.message));
+            }
+            return Applied::Threw(e.message);
+        }
+        if let Ok(Ok(reply)) = self.router_reload(router, holding, None).await {
+            if reply.ok {
+                return Applied::Ok;
+            }
+        }
+        // Restore only our own version; never overwrite an operator's later edit.
+        let restore = super::ini::Candidate {
+            base_revision: super::ini::sha(&candidate.text),
+            text: candidate.before.clone(),
+            before: candidate.text.clone(),
+        };
+        match ini.commit(&restore, true).await {
+            Err(e) if e.status == 409 => Applied::Refused(Some(RELOAD_UNCERTAIN.into())),
+            Err(e) if e.retryable => Applied::Refused(Some(RELOAD_STUCK.into())),
+            Err(_) => Applied::Refused(Some(RELOAD_UNCONFIRMED.into())),
+            Ok(()) => {
+                let _ = self.router_reload(router, holding, None).await;
+                Applied::Refused(Some(RELOAD_RESTORED.into()))
+            }
+        }
     }
 }
 
@@ -336,7 +460,9 @@ pub trait Steps {
 /// between the last pass and the first failure. The largest size that loaded.
 pub async fn bound_load(grid: &[f64], steps: &mut impl Steps) -> Result<f64, Stop> {
     let (Some(start), Some(&top)) = (start_of(grid), grid.last()) else {
-        return Err(Stop::Fatal("Calibration is unavailable: the context ladder is empty.".into()));
+        return Err(Stop::Fatal(
+            "Calibration is unavailable: the context ladder is empty.".into(),
+        ));
     };
     let (mut last_pass, mut first_fail, mut ctx) = (0.0, 0.0, start);
     loop {
@@ -345,7 +471,11 @@ pub async fn bound_load(grid: &[f64], steps: &mut impl Steps) -> Result<f64, Sto
             if ctx >= top {
                 break;
             }
-            ctx = grid.iter().copied().find(|&c| c >= ctx * 2.0).unwrap_or(top);
+            ctx = grid
+                .iter()
+                .copied()
+                .find(|&c| c >= ctx * 2.0)
+                .unwrap_or(top);
         } else {
             first_fail = ctx;
             break;
@@ -512,7 +642,7 @@ fn text_of(v: Option<&Value>) -> String {
             })
             .collect::<Vec<_>>()
             .join(","),
-        Some(_) => String::new(),
+        Some(_) | None => String::new(),
     }
 }
 
@@ -545,7 +675,12 @@ impl LongPrompt {
     }
 
     /// One chunk of the body. `now` is read per event, as Node reads its clock.
-    pub fn feed(&mut self, chunk: &[u8], now: &mut impl FnMut() -> f64, record: &mut Progress) -> Feed {
+    pub fn feed(
+        &mut self,
+        chunk: &[u8],
+        now: &mut impl FnMut() -> f64,
+        record: &mut Progress,
+    ) -> Feed {
         self.buffer.extend_from_slice(chunk);
         let mut save = false;
         while let Some(cut) = self.buffer.windows(2).position(|w| w == b"\n\n") {
@@ -592,12 +727,16 @@ impl LongPrompt {
                         // The first one-token event would predict a runaway time: wait for a batch.
                         if done >= 512.0 && time_ms >= 500.0 {
                             let eta_ms = elapsed + remaining * (time_ms / done);
-                            record.eta_seconds = Some(js_round((eta_ms - elapsed).max(0.0) / 1000.0));
+                            record.eta_seconds =
+                                Some(js_round((eta_ms - elapsed).max(0.0) / 1000.0));
                             if (elapsed > 5000.0 && eta_ms > self.budget_ms * 1.15)
                                 || eta_ms > self.budget_ms * 2.0
                             {
                                 record.eta_seconds = None;
-                                return Feed::Stop(LongOutcome::OverBudget { predicted: true, eta_ms });
+                                return Feed::Stop(LongOutcome::OverBudget {
+                                    predicted: true,
+                                    eta_ms,
+                                });
                             }
                         }
                         let t = now();
@@ -619,7 +758,8 @@ impl LongPrompt {
                     .get("choices")
                     .and_then(|c| c.get(0))
                     .and_then(|c| c.get("delta"));
-                self.text.push_str(&text_of(delta.and_then(|d| d.get("content"))));
+                self.text
+                    .push_str(&text_of(delta.and_then(|d| d.get("content"))));
                 self.text
                     .push_str(&text_of(delta.and_then(|d| d.get("reasoning_content"))));
                 if let Some(timings) = value.get("timings").filter(|t| truthy(Some(*t))) {
@@ -671,7 +811,12 @@ pub fn over_budget_reason(predicted: bool, eta_ms: f64, budget_seconds: f64) -> 
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::panic, clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
 
@@ -691,9 +836,17 @@ mod tests {
         }
     }
 
-    fn run(native: f64, load_max: f64, long_max: f64) -> (Result<(f64, f64), Stop>, Vec<(f64, Kind)>) {
-        let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
-        let mut s = Synthetic { load_max, long_max, seen: Vec::new() };
+    type Run = (Result<(f64, f64), Stop>, Vec<(f64, Kind)>);
+
+    fn run(native: f64, load_max: f64, long_max: f64) -> Run {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let mut s = Synthetic {
+            load_max,
+            long_max,
+            seen: Vec::new(),
+        };
         let grid = ladder(native);
         let r = rt.block_on(async {
             let load = bound_load(&grid, &mut s).await?;
@@ -722,14 +875,26 @@ mod tests {
         let (load, chosen) = r.unwrap();
         assert_eq!(load, 24576.0);
         assert_eq!(chosen, 16384.0);
-        assert_eq!(&seen[..3], &[(8192.0, Kind::Load), (16384.0, Kind::Load), (32768.0, Kind::Load)]);
+        assert_eq!(
+            &seen[..3],
+            &[
+                (8192.0, Kind::Load),
+                (16384.0, Kind::Load),
+                (32768.0, Kind::Load)
+            ]
+        );
         assert!(seen.iter().filter(|(_, k)| *k == Kind::Long).count() <= 7);
     }
 
     #[test]
     fn fatal_messages_are_node_text() {
         let (r, _) = run(65536.0, 0.0, 0.0);
-        assert_eq!(r, Err(Stop::Fatal("The model did not load even at 8,192 tokens.".into())));
+        assert_eq!(
+            r,
+            Err(Stop::Fatal(
+                "The model did not load even at 8,192 tokens.".into()
+            ))
+        );
         let (r, _) = run(65536.0, 65536.0, 0.0);
         assert_eq!(
             r,
@@ -752,7 +917,9 @@ mod tests {
 
 "#;
         match lp.feed(event, &mut now, &mut rec) {
-            Feed::Stop(LongOutcome::OverBudget { predicted: true, .. }) => {}
+            Feed::Stop(LongOutcome::OverBudget {
+                predicted: true, ..
+            }) => {}
             other => panic!("{other:?}"),
         }
         assert_eq!(rec.progress, Some(1.0));
@@ -760,7 +927,10 @@ mod tests {
         let mut now = || 1.0;
         let error = b"data: {\"error\":{\"code\":500,\"message\":\"secret engine words\"}}\n\n";
         match lp.feed(error, &mut now, &mut rec) {
-            Feed::Stop(LongOutcome::EngineError { status: Some(s), detail }) => {
+            Feed::Stop(LongOutcome::EngineError {
+                status: Some(s),
+                detail,
+            }) => {
                 assert_eq!(s, 500.0);
                 assert_eq!(detail, "secret engine words");
             }
@@ -774,7 +944,10 @@ mod tests {
         let mut rec = Progress::default();
         let mut now = || 100.0;
         let body = b"data: {\"choices\":[{\"delta\":{\"content\":\"CAL-1\"}}]}\n\ndata: {\"timings\":{\"prompt_n\":900,\"prompt_per_second\":450.4,\"prompt_ms\":2049}}\n\ndata: [DONE]\n\n";
-        assert_eq!(lp.feed(body, &mut now, &mut rec), Feed::Continue { save: false });
+        assert_eq!(
+            lp.feed(body, &mut now, &mut rec),
+            Feed::Continue { save: false }
+        );
         assert_eq!(
             lp.finish(20_000.0, &mut rec),
             LongOutcome::Passed {
@@ -822,7 +995,13 @@ mod tests {
         assert_eq!(grouped(8192.0), "8,192");
         assert_eq!(grouped(131072.0), "131,072");
         assert_eq!(grouped(512.0), "512");
-        assert_eq!(over_budget_reason(true, 12_345.0, 120.0), "Filling this context would take about 13 s, over the 120 s limit.");
-        assert_eq!(over_budget_reason(false, 2_000_000.0, 1800.0), "Filling this context took 2000 s, over the 1800 s limit.");
+        assert_eq!(
+            over_budget_reason(true, 12_345.0, 120.0),
+            "Filling this context would take about 13 s, over the 120 s limit."
+        );
+        assert_eq!(
+            over_budget_reason(false, 2_000_000.0, 1800.0),
+            "Filling this context took 2000 s, over the 1800 s limit."
+        );
     }
 }

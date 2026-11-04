@@ -1934,6 +1934,7 @@ dependencies = [
  "hyper-util",
  "js-json",
  "llamacpp-autoconfig",
+ "llamacpp-presets",
  "long-profile",
  "mcp-frame",
  "model-stream",

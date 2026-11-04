@@ -366,7 +366,7 @@ impl Maint {
 
     /// `routerReload(120000, { expectText })`: `Ok(Ok(reply))` or `Ok(Err(refused))`; `Err` when the
     /// request threw (the baseline is forgotten first).
-    async fn router_reload(
+    pub(super) async fn router_reload(
         &self,
         router: &Router,
         holding: &Hold,
