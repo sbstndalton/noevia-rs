@@ -1,5 +1,6 @@
 //! Native orchestration of Core's embedding-service refresh and background migration.
-//! Deliberately unwired. Adapters must enforce the storage fences documented by [`Host`].
+//! Server lifecycle is gated by paired ownership proof. Adapters enforce the
+//! storage fences documented by [`Host`].
 use std::{
     collections::{BTreeMap, BTreeSet},
     future::Future,
@@ -10,7 +11,12 @@ use std::{
     },
 };
 pub mod fill;
+pub mod http;
+pub mod runtime;
 pub mod service;
+pub mod sqlite;
+#[allow(unsafe_code)]
+pub mod sqlite_vec_loader;
 pub type Task<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Already validated/normalized by the embedding configuration owner. Endpoint is

@@ -1,11 +1,11 @@
 # Embedding background worker candidate
 
-This is an **unwired** native orchestration port. Constructing it starts no task,
-network request, model, timer or database. Core remains the runtime owner. A single
-owner drives `Worker::tick` after `Control::kick` or a due retry, and drives
-`Service::tick` after native readiness when model-loader is configured. It must
-cancel/await those operations before shutdown. Dropping a future starts no detached
-work; retry it with another kick. This crate is not evidence of Core retirement.
+The initial unwired packet is now extended with concrete bounded HTTP and Node-format
+SQLite adapters and conditional noevia-server startup/shutdown wiring. Native work
+requires MODEL_LOADER_URL and an authenticated current-start proof that the paired
+Core has stopped its background workers. Core is unchanged: its old build returns
+no proof and remains the runtime owner. See [OWNERSHIP.md](OWNERSHIP.md) for the
+exact paired diff, guard matrix, loader review and rollback risks.
 
 ## Core behavior contract
 
@@ -30,41 +30,14 @@ All references below are to Core **b91b3f0324bfd8daea0e7c7b5f3a40ad4cde91fc**.
 | Configuration API | `server/embedding-migration.cjs:181-294`: status includes coverage, verified/held next and pass state. setNext first proves served model and removes orphan slots. Switch rechecks served, requires coverage ready unless force; same-identity endpoint switches use four synthetic parity samples and cosine >=.995 unless force. Commit only checked next. Keep previous for rollback, remove displaced orphan. clear/rollback/finish clean only orphan slots. These APIs/config persistence are **not ported here**. |
 | Outbox interaction | `server/index.cjs:578-614,1320`, `server/rust-index-outbox.cjs:10-25,95-152`: separate per-tenant generation-fenced index/unindex executor, tick every 2s and at request start. Claims pending->running increment attempts; acknowledge/delete only matching generation. Recover interrupted running jobs on process restart; failed jobs retry up to 5 then remain failed. Index rereads current project/file; unindex skips re-uploaded file or deleted project. Sweeps belong to Rust front. RAG index completion triggers migration kick; migration neither claims nor acknowledges outbox jobs. Tombstones prevent index recreation (rag:470-486,612-615). |
 
-## Implemented and remaining
+## Implementation and remaining acceptance
 
-Implemented here: exclusive-owner tick scheduling; coalesced kick/stop handle;
-version fences; exact-target served gates and expiry; drift invalidation; sequential
-active/next per-index batches; refusal exclusion; pacing; retry deadlines and last
-pass; sticky service status and protected names; served listing parser; typed
-model matching; reusable document-framing, batch fallback and vector validation.
-`prompt-framing::embedding_input` supplies the existing UTF-16 framing kernel.
-The migration's successful served-check branch additionally discards an answer if
-next changed while awaiting it; Node can retain an obsolete cache entry there.
-Nonfinite vectors are rejected before publication as a deliberate fail-closed
-adapter boundary. Error strings here truncate Unicode scalar values, whereas Node
-slices UTF-16 units; adapters should supply bounded sanitized diagnostic strings.
+The pure worker, HTTP adapter, SQLite adapter, pinned sqlite-vec loader and server
+lifecycle are implemented. Concrete synthetic tests cover real vec0 temp databases,
+Node-schema cowork.db, credential isolation, UTF-16 input, maintenance admission,
+outbox/tombstone publication races, startup ownership and shutdown.
 
-Before wiring/retirement, provide and qualify:
-
-1. Compatible project SQLite/sqlite-vec Store + Host adapters (not the native Diary
-   index schema), actual chunk/slot hashes, width checks and existing-only opens;
-   concurrent delete/account-removal/outbox-generation/config-version publication
-   fences, with disk-backed restart and locked-file tests.
-2. Configuration validation, saved-state/atomic persistence and migration status,
-   coverage, setNext/switch/rollback/clear/finish APIs, including parity/served and
-   orphan-slot cleanup rules. This worker does not change config or switch models.
-3. Bounded HTTP Loader/Embed/served adapters with credential isolation, allowed
-   local addresses/DNS guard, redirect denial, inference admission, UTF-16 JSON,
-   output caps and provider response ordering/fallback. No concrete HTTP adapter
-   is installed by this crate; tests use synthetic implementations only.
-4. After-readiness event-loop owner, 10s refresh, saved-next 30s kick, onIndexed,
-   retry deadline wake and cancellation/await on shutdown. Owner must serialize
-   refresh calls (e.g. one shared mutex/future) rather than replay queued callers;
-   service's mutable API prevents simultaneous requests but does not itself share
-   Node's in-flight Promise result. Preserve Node until this owner is qualified.
-5. Keep outbox executor under exactly one runtime; this migration worker must not
-   acknowledge outbox work. Verify tenant tombstones/reuploads/generation races
-   in the assembled runtime, plus synthetic full retrieval/grounding acceptance.
-6. Independent exact-head review and authoritative CI, paired Core retirement and
-   ownership/route guards, release qualification/rollback. No flags/models or
-   production acceptance runs were authorized by this source packet.
+[OWNERSHIP.md](OWNERSHIP.md) replaces the initial adapter/wiring checklist with the
+current boundary and exact Core/supervisor diff. That paired diff, independent
+review, authoritative CI and assembled synthetic qualification remain. The current
+Core still owns runtime execution; this packet alone does not retire it.

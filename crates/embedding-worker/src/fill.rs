@@ -1,6 +1,6 @@
 //! Hash-bound missing-chunk fill, with Core's batch-to-single refusal isolation.
-//! Concrete SQLite/HTTP adapters are deliberately absent until their compatible
-//! schema, tenant and network policies can be qualified together.
+//! Concrete adapters live in sqlite/http; these interfaces also support synthetic
+//! fixtures without real model or production access.
 use crate::{Batch, Control, Index, Target, Task};
 use prompt_framing::embedding_input::{self, Kind, Profile};
 use std::collections::BTreeSet;

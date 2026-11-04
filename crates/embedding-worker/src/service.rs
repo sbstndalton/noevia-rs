@@ -19,6 +19,9 @@ pub struct Service {
     next_refresh_ms: Option<u64>,
 }
 impl Service {
+    pub fn observed_at_ms(&self) -> Option<u64> {
+        self.last.as_ref().map(|(at, _)| *at)
+    }
     pub fn managed(&self) -> bool {
         self.last.is_some()
     }
