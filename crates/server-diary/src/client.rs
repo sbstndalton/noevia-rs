@@ -28,6 +28,10 @@ pub enum CallError {
     Config,
     Tenant(TenantError),
     Transport,
+    /// No connection at all: refused, or the name did not resolve (core's `ECONNREFUSED`,
+    /// `ENOTFOUND`, `EAI_AGAIN`). Every route treats it as [`CallError::Transport`]; the local
+    /// exchange's stream says "nothing was saved" for it alone.
+    Refused,
     Timeout,
     Redirect,
     /// A reply this port cannot hold as JS would (see `js_json::wtf16::Refusal::Unsupported`).
@@ -234,7 +238,27 @@ pub(crate) fn map_error(error: reqwest::Error) -> CallError {
         CallError::Timeout
     } else if error.is_builder() {
         CallError::Config
+    } else if error.is_connect() && never_connected(&error) {
+        CallError::Refused
     } else {
         CallError::Transport
     }
+}
+
+/// A connect error whose cause is a refused connection or a failed name lookup (hyper-util's
+/// `dns error`). A connect timeout is not one (core's `ETIMEDOUT`/undici's connect timeout were not).
+fn never_connected(error: &(dyn std::error::Error + 'static)) -> bool {
+    let mut cause: Option<&(dyn std::error::Error + 'static)> = Some(error);
+    while let Some(e) = cause {
+        if let Some(io) = e.downcast_ref::<std::io::Error>() {
+            if io.kind() == std::io::ErrorKind::ConnectionRefused {
+                return true;
+            }
+        }
+        if e.to_string() == "dns error" {
+            return true;
+        }
+        cause = e.source();
+    }
+    false
 }

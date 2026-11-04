@@ -144,6 +144,12 @@ use std::sync::Arc;
 /// running-exchange set Node publishes (`diary-conversations/active.json`). Node refuses them (core
 /// rust-diary-routes.cjs `RUST_DIARY_ROUTES_OWNED`), so the web supervisor pairs them.
 ///
+/// `rust-diary-local-exchange`: this build answers `/api/diary/local-exchange` (every method; a POST
+/// relays the companion exchange, streamed or not). The model throttle chat shares and the inference
+/// maintenance gate it holds stay Node's: the front takes them with an inference-admission lease
+/// (`{ diaryExchange: { user } }`) that only a Core with that ask grants. Node refuses the route (core
+/// rust-diary-local-exchange.cjs `RUST_DIARY_LOCAL_EXCHANGE_OWNED`), so the web supervisor pairs them.
+///
 /// `rust-model-reads`: this build answers `GET /api/models/capabilities` and `GET
 /// /api/models/hardware` (sbstndalton/noevia#2187), permanently and with no switch. Node refuses
 /// those two GETs (core rust-models.cjs `RUST_MODELS_OWNED`), so the web supervisor must refuse a
@@ -359,6 +365,7 @@ pub const FEATURES: &[&str] = &[
     "rust-auth",
     "rust-diary",
     "rust-diary-routes",
+    "rust-diary-local-exchange",
     "rust-model-reads",
     "rust-model-state-reads",
     "rust-autotune-settings",

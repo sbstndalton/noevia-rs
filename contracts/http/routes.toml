@@ -332,9 +332,8 @@ owner = "rust"
 methods = ["PUT"]
 
 [[route]]
-# sbstndalton/noevia#2206: the rest of the Diary routes the web client names, except POST
-# /api/diary/local-exchange (the shared model throttle and the inference gate are Node's, see
-# contracts/http/README.md). Every method unless `methods` is listed.
+# sbstndalton/noevia#2206: the rest of the Diary routes the web client names (the local exchange
+# moved later, below). Every method unless `methods` is listed.
 path = "/api/diary"
 owner = "rust"
 
@@ -353,8 +352,11 @@ owner = "rust"
 methods = ["GET", "POST"]
 
 [[route]]
+# The Diary local exchange (capability rust-diary-local-exchange): every method; a POST relays the
+# companion exchange. The model throttle chat shares and the inference gate it holds stay Node's and
+# are taken by the front's inference-admission lease (contracts/http/README.md).
 path = "/api/diary/local-exchange"
-owner = "node"
+owner = "rust"
 
 [[route]]
 # sbstndalton/noevia#2185: the five proxy-only Diary routes (crates/server-diary): source, today,

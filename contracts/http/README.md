@@ -220,7 +220,7 @@ on the signed-in person's request, signed for that person, and writes nothing it
 | `/api/diary/workspace-import` (POST) | rust | `workspace-import.cjs`: 32 MiB body, 120 s, 24 MiB reply (#920), 428 resend of the buffered body |
 | `/api/diary/context` | rust (#2206) | moved: see "sbstndalton/noevia#2206" below |
 | `/api/diary/exchanges` | rust (#2206) | moved: see below |
-| `/api/diary/local-exchange` | node | `routes/diary.cjs` takes the model throttle shared with chat (`llmRateLimited`) and, via `index.cjs handleRequest`, the inference maintenance gate; both are Node memory. Re-evaluated in #2206 and kept: see below |
+| `/api/diary/local-exchange` | rust | moved after #2206: crates/server-diary `local_exchange`; the throttle and gate it holds stay Node's, taken by lease: see "Moved: the Diary local exchange" below |
 | `/api/diary/storage-status` | rust (#2206) | moved: see below |
 | `/api/diary-connector` | rust (#2206) | moved: see below |
 | `/api/profile/diary-connectors[/{id}]` | rust (#2206) | moved: see below |
@@ -297,20 +297,33 @@ container restarts (a set written by another start names nothing). It is never t
 record cannot be missing from the set while it runs. Fixing it would mean failing the finished exchange
 or retrying in a timer, and a stale name only costs a delayed dismissal.
 
-**Kept on Node: `POST /api/diary/local-exchange`.** Re-evaluated with both techniques. It takes the 60 per
-minute model throttle that chat shares (`llmRateLimited`, one bucket per account for both routes) and, from
-`index.cjs handleRequest`, the inference maintenance gate for the whole life of its response
-(`modelManager.enterInferenceWithin`, llamacpp-manager `maintenance`), so that a preset apply, a
-calibration or a tune waits for it. A re-reader carries state, not a lease: the front could read a
-published "gate held" flag, but could not make a maintenance wait for its exchange, so a preset apply
-could unload the model under it. Moving the whole authority means moving the gate and the throttle, i.e.
-the model manager and chat, which take them per turn; the model-manager routes and chat are other
-batches. What is movable (body cap 16 MiB, the SSE relay of `diary-stream.cjs`, the add-on gate) is the
-smaller part and moves with the gate: moving it alone would put two processes on one throttle. The seam
-to cut when the gate moves is a lease the front takes before the first byte to the sidecar and drops
-when its response ends. The paths the web client never names (`history`, `files`, `file`,
-`workspace-trash`, `external-sources`, `entries/edit`) are not in the route table and stay Node's with
-the local exchange.
+**Moved: the Diary local exchange (`/api/diary/local-exchange`, capability `rust-diary-local-exchange`).**
+#2206 kept it on Node because it holds two pieces of Node memory for the whole life of its response: the
+60 per minute model throttle chat shares (`llmRateLimited`, one bucket per account for both routes) and
+the inference maintenance gate (`modelManager.enterInferenceWithin`, waited for up to 3 s as chat waits),
+so that a preset apply, a calibration or a tune waits for it. The seam named then is the one cut: the
+front takes an inference-admission lease (core `inference-admission-lease.cjs`, ask
+`{ diaryExchange: { user } }`, crates/engine-admission `Ask::DiaryExchange`) after the add-on gate and
+the method and before the body, and drops it when its response ends. Node's lease enters the same gate
+the same way, then counts the same throttle bucket (429 `Please wait before sending another message`,
+the gate given back), then pauses the long-document backfill (`rag.foreground`), exactly what its own
+handler took; one throttle and one gate remain, both Node's. The rest moved: the add-on gate (404), the
+method (405), the 16 MiB JSON body (413, 400 `invalid JSON`, empty is `{}`), the non-streamed reply
+(600 s; Core's two storage codes and the bounded `Retry-After` only), and the relay of the companion's
+event stream with its failure wording (`diary-stream.cjs`: the stage tracking, `nothing was saved`,
+the relayable `reason` token, the older companion's JSON reply, 5 s keep-alive comments, the 15-minute
+deadline, cancellation when the browser goes away). Node refuses the route for every method before
+authentication and before its gate (core `rust-diary-local-exchange.cjs`).
+
+Differences, all deliberate: (1) Core took the gate before authentication for any non-GET request to
+the path; the front holds nothing for a request that is not signed in, lacks the add-on or is not a
+POST, so a maintenance-held gate no longer turns those 401/404/405 answers into 503. (2) A lease Node
+stops confirming (Node restarted, or unreachable for a whole TTL) ends the stream with the interrupted
+event, as a Node restart ended Core's proxy; a Node that cannot be asked at all refuses the exchange
+503 `The model is busy. Try again shortly.` (fail closed). (3) The sidecar client never follows a
+redirect (Core's stream `fetch` did): a redirect is the interrupted event, so tenant headers never go
+to another address. (4) A request or event JSON the port cannot hold as JavaScript does (nesting past
+128 levels, a number outside `f64`) is a 500 for the request and a verbatim frame for an event.
 
 **Behaviour changes (Node bugs fixed on the way).**
 1. Creating a connector with a bad name, for an account without the add-on, or past ten threw a bare
