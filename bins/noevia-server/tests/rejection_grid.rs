@@ -234,6 +234,7 @@ async fn manifest_rejection_grid_matches_pinned_core() {
         .timeout(Duration::from_secs(20))
         .build()
         .unwrap();
+    let mut protected_405s: BTreeMap<&str, usize> = BTreeMap::new();
     let mut compared = 0;
     let mut differences = Vec::new();
     let mut status_counts = BTreeMap::new();
@@ -296,6 +297,10 @@ async fn manifest_rejection_grid_matches_pinned_core() {
                     .or_default()
                     .entry(expected.status)
                     .or_default() += 1;
+                // Count a protected exact path: public endpoints can return 405 even signed out.
+                if path == "/api/account/retention" && state < 2 && expected.status == 405 {
+                    *protected_405s.entry(states[state]).or_default() += 1;
+                }
                 compared += 1;
                 let equal = actual.status == expected.status
                     && actual.headers == expected.headers
@@ -310,9 +315,13 @@ async fn manifest_rejection_grid_matches_pinned_core() {
     assert_eq!(compared, EXPECTED_CASES, "silent coverage shrink");
     eprintln!("asserted rejection case count: {compared}; restricted entries: {}; method pairs: {}; Node statuses: {status_counts:?}; differences: {}", routes.len(), methods.len(), differences.len());
     if let Ok(report) = std::env::var("NOEVIA_REJECTION_REPORT") {
-        std::fs::write(report, serde_json::to_vec_pretty(&json!({"cases":compared,"entries":routes.len(),"methods":methods.len(),"pathMethods":wire_cases.len(),"coreRef":include_str!("../../../contracts/http/front-core.ref").trim(),"headers":HEADERS,"states":states,"statusCounts":status_counts,"sessionStatusCounts":session_statuses,"differences":differences})).unwrap()).unwrap();
+        std::fs::write(report, serde_json::to_vec_pretty(&json!({"cases":compared,"entries":routes.len(),"methods":methods.len(),"pathMethods":wire_cases.len(),"coreRef":include_str!("../../../contracts/http/front-core.ref").trim(),"headers":HEADERS,"states":states,"statusCounts":status_counts,"sessionStatusCounts":session_statuses,"protected405Counts":protected_405s,"differences":differences})).unwrap()).unwrap();
     }
     for role in ["admin", "member"] {
+        assert!(
+            protected_405s.get(role).copied().unwrap_or_default() > 0,
+            "{role} must reach protected method rejection with a live session"
+        );
         assert!(
             session_statuses
                 .get(role)
