@@ -1373,6 +1373,7 @@ mod tests {
             rust,
             vec![
                 (crate::model_manager_scan::PATH, &["GET"][..]),
+                (crate::model_assignments::PATH, &["GET"][..]),
                 (crate::autotune_read_routes::PATH, &["GET"][..]),
                 (crate::autotune_cancel_routes::PATH, &[][..]),
                 (crate::autotune_clear_routes::PATH, &[][..]),
