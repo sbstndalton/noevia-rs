@@ -389,3 +389,70 @@ async fn actual_core_deep_detail_coercion_at_join_boundary_and_reply_cap() {
     }
     assert!(failures.is_empty(), "Core differentials: {failures:?}");
 }
+
+// Exercise each shared-client projection, including routes whose historic contract is 502.
+#[tokio::test]
+async fn tls_protocol_failure_uses_each_routes_internal_response() {
+    use server_diary::{Diary, DiaryConfig};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let task = tokio::spawn(async move {
+        loop {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut hello = [0; 4096];
+            let _ = socket.read(&mut hello).await;
+            let _ = socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                .await;
+        }
+    });
+    let d = Diary::new(DiaryConfig::new(
+        format!("https://{address}"),
+        BEARER,
+        TENANT_KEY,
+        String::new,
+    ))
+    .unwrap();
+    let world = World::new(&[]);
+    for path in Route::PATHS {
+        let route = Route::from_path(path).unwrap();
+        let (method, raw) = match route {
+            Route::File => ("PUT", "{}"),
+            Route::ExternalImport => ("POST", r#"{"sourcePath":"/a","relPath":"b"}"#),
+            Route::Edit => ("POST", r#"{"xid":"x","me":"m"}"#),
+            Route::WorkspaceImport | Route::StorageImport => ("POST", "{}"),
+            _ => ("GET", ""),
+        };
+        let reply = d
+            .serve(
+                route,
+                world.ctx(ADMIN, true),
+                Request {
+                    method: method.into(),
+                    target: path.into(),
+                    content_length: None,
+                },
+                Full::new(Bytes::from_static(raw.as_bytes())),
+            )
+            .await;
+        let expected = match route {
+            Route::WorkspaceExport => (502, "Workspace export could not finish. Retry when storage is available."),
+            Route::WorkspaceImport => (502, "Import response unavailable. Retry with the same file and folder to safely check whether it completed."),
+            _ => (500, "Internal error"),
+        };
+        assert_eq!(reply.status, expected.0, "{path}");
+        let ReplyBody::Json(body) = reply.body else {
+            panic!("expected JSON")
+        };
+        assert_eq!(body, format!(r#"{{"error":"{}"}}"#, expected.1), "{path}");
+        assert!(
+            !body.contains(&address.to_string())
+                && !body.contains(BEARER)
+                && !body.contains(SECRET),
+            "{path}"
+        );
+    }
+    task.abort();
+    let _ = task.await;
+}
