@@ -542,7 +542,10 @@ impl Worker {
     /// `compareAndAbort(token)`: the exact job/controller snapshot the token was issued for is
     /// cancelled; `{ applied: false }` otherwise.
     pub fn compare_and_abort(&self, token: &str) -> JValue {
-        if token != self.cancel_token() || self.with(|i| i.state.job().is_nullish()) {
+        // During the boot recovery the job is the file's, with no run to stop: not applied (the route
+        // retries, then answers unavailable), never a false success.
+        if token != self.cancel_token() || self.with(|i| i.recovering || i.state.job().is_nullish())
+        {
             return obj(vec![("applied", JValue::Bool(false))]);
         }
         let generation = self.cancel_generation();

@@ -34,7 +34,7 @@ pub const HISTORY_PER_MODEL: usize = 10;
 pub const STOPPED: &str = "noevia stopped during calibration.";
 pub const NOT_RESTORED: &str = " The original profile was not restored because models.ini changed since the run started; check this model's context size.";
 /// `request('/models?reload=1', {}, 120000)`.
-const RELOAD_TIMEOUT: Duration = Duration::from_secs(120);
+pub(super) const RELOAD_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The state file name Core uses (`index.cjs` `calibrationStatePath`).
 pub fn state_path(data_dir: &Path, suffix: &str) -> PathBuf {
