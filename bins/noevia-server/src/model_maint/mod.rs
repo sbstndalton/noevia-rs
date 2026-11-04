@@ -219,7 +219,11 @@ impl Maint {
             router,
             gate,
             ini,
-            guard: reload::Guard::new(state("native-preset-reload")),
+            guard: reload::Guard::with(
+                state("native-preset-reload"),
+                &get("NOEVIA_START_ID").unwrap_or_default(),
+                reload::Timing::default(),
+            ),
             sizing,
             evidence,
             inbox_dir,
