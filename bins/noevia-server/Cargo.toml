@@ -126,4 +126,4 @@ tenant-assertion = { path = "../../crates/tenant-assertion" }
 tempfile = "3"
 http-body-util = { version = "0.1", features = ["channel"] }
 hyper = { version = "1", features = ["http1", "client", "server"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync", "test-util"] }

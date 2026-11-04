@@ -285,6 +285,14 @@ impl Gate {
         }
     }
 
+    /// The admin header (`inference-gate-client.cjs` `adminHeaders()`), when a token is set: what a
+    /// forced unload that may end a request in progress carries.
+    pub fn admin_header(&self) -> Option<(HeaderName, HeaderValue)> {
+        let mut value = HeaderValue::from_str(self.token.as_deref()?).ok()?;
+        value.set_sensitive(true);
+        Some((HeaderName::from_static(ADMIN_HEADER), value))
+    }
+
     /// Whether any client holds the gate's maintenance hold now (`GET /gate/v1/status`).
     pub async fn held(&self) -> Option<bool> {
         match self

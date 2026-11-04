@@ -74,6 +74,21 @@ impl Router {
         hold: Option<&str>,
         timeout: Duration,
     ) -> Result<Reply, Fault> {
+        self.request_with(method, path, body, hold, &[], timeout)
+            .await
+    }
+
+    /// [`Router::request`] with headers of the caller's own on top (the gate's admin header on the
+    /// memory watchdog's forced unload, the model-loader token on its backend read).
+    pub async fn request_with(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&Value>,
+        hold: Option<&str>,
+        extra: &[(HeaderName, HeaderValue)],
+        timeout: Duration,
+    ) -> Result<Reply, Fault> {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         if let Some(a) = &self.authorization {
@@ -81,6 +96,9 @@ impl Router {
         }
         if let Some(h) = hold.and_then(|h| HeaderValue::from_str(h).ok()) {
             headers.insert(HeaderName::from_static("x-noevia-maintenance"), h);
+        }
+        for (name, value) in extra {
+            headers.insert(name.clone(), value.clone());
         }
         let mut req = self
             .client

@@ -25,6 +25,8 @@ pub mod ini;
 pub mod node_lease;
 pub mod reload;
 pub mod router;
+// #697 the memory watchdog (Core inference-budget-watch.cjs; `rust-budget-watch`).
+pub mod budget_watch;
 
 use crate::{identity, reply, App};
 use axum::body::Body;
