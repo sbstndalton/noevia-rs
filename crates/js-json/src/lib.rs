@@ -14,6 +14,7 @@
 
 use serde::de::{DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
 
+pub mod raw;
 pub mod wtf16;
 use std::fmt::{self, Write as _};
 
@@ -237,9 +238,15 @@ pub fn parse(text: &str) -> Result<JValue, ParseError> {
     Ok(v)
 }
 
-/// `Number.prototype.toString()`.
+/// `Number.prototype.toString()` (ECMAScript Number::toString), with V8's digits: the shortest
+/// that read back as `x`, and of two such equally near `x` the even one (ryu-js). Every caller
+/// reproduces a JavaScript `String(n)`, template literal or `JSON.stringify`.
 pub fn number_to_string(x: f64) -> String {
-    sandbox_bridge::js::number_to_string(x)
+    if x == 0.0 {
+        // -0 too: `String(-0)` is "0".
+        return "0".to_owned();
+    }
+    ryu_js::Buffer::new().format(x).to_owned()
 }
 
 /// JSON.stringify's string quoting.

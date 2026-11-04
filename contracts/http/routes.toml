@@ -265,9 +265,12 @@ owner = "node"
 path = "/api/chat-framing/preferences"
 owner = "rust"
 
+# Chat port S4: every method of exactly this path is the front's (bins/noevia-server
+# chat_framing_suggest.rs); core refuses the POST (rust-chat-framing-suggest.cjs) and keeps only the
+# user's lists and the decision behind its loopback /internal/chat-framing/suggest.
 [[route]]
 path = "/api/chat-framing/suggest"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/chat-vault-mirror/preferences"
