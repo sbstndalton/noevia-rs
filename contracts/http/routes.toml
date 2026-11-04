@@ -293,6 +293,20 @@ path = "/api/chats/{chatId}/move"
 owner = "rust"
 methods = ["POST"]
 
+# #1450 transcript search and #1471 single-chat Markdown download: the front's, GET only
+# (bins/noevia-server project_routes.rs, crates/server-projects workspace.rs `search` and
+# chat_download.rs, crates/server-export single.rs); Node refuses both GETs (core
+# rust-chat-search.cjs, rust-chat-export.cjs). Other methods stay Node's (its 404).
+[[route]]
+path = "/api/chats/search"
+owner = "rust"
+methods = ["GET"]
+
+[[route]]
+path = "/api/chats/{chatId}/export"
+owner = "rust"
+methods = ["GET"]
+
 [[route]]
 path = "/api/code/active"
 owner = "rust"
@@ -382,6 +396,11 @@ owner = "rust"
 [[route]]
 path = "/api/diary/workspace-import"
 owner = "rust"
+
+# The embedding role's settings (noevia-core routes/embedding.cjs), listed for the web client at web.ref.
+[[route]]
+path = "/api/embedding"
+owner = "node"
 
 [[route]]
 # M4 (#1315): GET only (crates/server-export, read from the user's files on disk); every other
@@ -505,6 +524,15 @@ path = "/api/model-manager/models"
 owner = "rust"
 methods = ["GET"]
 
+# The model role assignments, the missing-file prune and the reranker role (noevia-core
+# routes/models.cjs), listed for the web client at web.ref; Node answers them (`/api/models/{*}`
+# below already sent them there).
+
+[[route]]
+path = "/api/models/assignments"
+owner = "rust"
+methods = ["GET"]
+
 [[route]]
 # GET status only. POST start and every other verb still go to Node through the methods fallback.
 path = "/api/models/autotune"
@@ -529,7 +557,7 @@ owner = "rust"
 
 [[route]]
 path = "/api/models/autotune/untuned"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/models/calibration"
@@ -550,6 +578,11 @@ methods = ["GET"]
 path = "/api/models/delete"
 owner = "node"
 
+[[route]]
+path = "/api/models/downloads"
+owner = "rust"
+methods = ["GET"]
+
 # sbstndalton/noevia#2189: the read-only sizing reads, the front's (bins/noevia-server
 # model_sizing.rs); Node refuses the GET (core rust-model-sizing.cjs). Other methods stay Node's.
 [[route]]
@@ -558,8 +591,9 @@ owner = "rust"
 methods = ["GET"]
 
 # sbstndalton/noevia#2210: the evidence read and the model-card import, the front's (bins/noevia-server
-# model_maint/evidence_live.rs). The recheck stays Node's: its image probe may load the model after
-# Node's admission check (the inference budget, the memory-watchdog quarantine, the probe cache).
+# model_maint/evidence_live.rs). #2286 also moves the recheck POST to the front:
+# model_maint/evidence_recheck.rs owns the probe and evidence write, using Node's authenticated
+# inference admission lease for the shared budget and memory-watchdog quarantine.
 [[route]]
 path = "/api/models/evidence"
 owner = "rust"
@@ -572,7 +606,8 @@ methods = ["POST"]
 
 [[route]]
 path = "/api/models/evidence/recheck"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/models/hardware"
@@ -614,6 +649,14 @@ methods = ["GET"]
 path = "/api/models/preset/suggest"
 owner = "rust"
 methods = ["GET"]
+
+[[route]]
+path = "/api/models/prune-missing"
+owner = "node"
+
+[[route]]
+path = "/api/models/reranker"
+owner = "node"
 
 # sbstndalton/noevia#2210: the preset reload, the front's (bins/noevia-server model_maint/reload.rs);
 # Node's core server/rust-model-maintenance.cjs refuses its POST. Other methods stay Node's (403/405).

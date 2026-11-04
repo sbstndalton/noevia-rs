@@ -262,6 +262,8 @@ const PROJECT_ROUTES: &[&str] = &[
     PROJECT_BROWSER_TASK,
     server_projects::import::ROUTE,
     WORKSPACE,
+    CHAT_SEARCH,
+    CHAT_EXPORT,
 ];
 
 /// Deep research (every method; routes.toml), the front's under `rust-research` (sbstndalton/noevia#2218);
@@ -284,6 +286,12 @@ pub(crate) const PROJECT_BROWSER_TASK: &str = "/api/projects/{projectId}/browser
 /// (sbstndalton/noevia#2191 close-out); Node refuses the GET (core rust-workspace.cjs
 /// `RUST_WORKSPACE_OWNED`). It runs the delete-old-chats sweep and the orphan-context cleanup too.
 pub(crate) const WORKSPACE: &str = "/api/workspace";
+
+/// The transcript search (#1450) and one chat's Markdown download (#1471), GET only (routes.toml), the
+/// front's under `rust-chat-search` and `rust-chat-export`; Node refuses both GETs (core
+/// rust-chat-search.cjs, rust-chat-export.cjs). Other methods and spellings stay Node's (its 404).
+pub(crate) const CHAT_SEARCH: &str = "/api/chats/search";
+pub(crate) const CHAT_EXPORT: &str = "/api/chats/{chatId}/export";
 
 /// A project upload, folder sync and folder-import plan (POST only; routes.toml), the front's under
 /// `rust-project-source-work` (sbstndalton/noevia#2191 round 8), and a source job's status (GET only),
@@ -462,6 +470,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
                 || crate::model_maint::ROUTES.contains(&p)
                 || p == crate::autotune_resume_routes::PATH
                 || p == crate::autotune_cancel_routes::PATH
+                || p == crate::autotune_untuned_routes::PATH
                 || p == crate::autotune_clear_routes::PATH
                 || p == crate::calibration_cancel_routes::PATH
                 || p == crate::calibration_routes::PATH) =>
@@ -614,6 +623,7 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
     if (route.path == "/api/chat-framing/preferences"
         || route.path == server_account::vault_mirror::PATH
         || route.path == crate::model_manager_scan::PATH
+        || route.path == crate::model_downloads_read::PATH
         || route.path == crate::preset_read_routes::PATH)
         && path != route.path
     {
@@ -1302,6 +1312,13 @@ mod tests {
             );
         }
         assert!(crate::FEATURES.contains(&"rust-autotune-clear"));
+        for method in ["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"] {
+            assert_eq!(
+                dispatch_under(method, crate::autotune_untuned_routes::PATH, on),
+                Some(Native::Models)
+            );
+        }
+        assert!(crate::FEATURES.contains(&"rust-autotune-untuned"));
         assert!(crate::FEATURES.contains(&"rust-model-reads"));
         assert!(crate::FEATURES.contains(&"rust-model-sizing"));
         assert!(crate::FEATURES.contains(&"rust-model-state-reads"));
@@ -1340,13 +1357,11 @@ mod tests {
         }
         for p in [
             "/api/model-manager",
-            "/api/models/autotune/untuned",
             "/api/models/delete",
-            "/api/models/evidence/recheck",
             "/api/models/load",
             "/api/models/machines",
             "/api/models/preset/",
-            "/api/models/downloads",
+            "/api/models/downloads/",
             "/api/models/capabilitiesx",
             "/api/models/hardware/x",
             "/api/models/estimate/x",
@@ -1357,8 +1372,9 @@ mod tests {
                 assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
             }
         }
+        assert!(crate::FEATURES.contains(&"rust-model-downloads-read"));
         assert!(crate::FEATURES.contains(&"rust-preset-read"));
-        // The native model routes and methods listed in the contract.
+        // All native model routes appear in the contract with exactly their owned methods.
         let rust: Vec<_> = ROUTES
             .iter()
             .filter(|r| {
@@ -1371,17 +1387,21 @@ mod tests {
             rust,
             vec![
                 (crate::model_manager_scan::PATH, &["GET"][..]),
+                (crate::model_assignments::PATH, &["GET"][..]),
                 (crate::autotune_read_routes::PATH, &["GET"][..]),
                 (crate::autotune_cancel_routes::PATH, &[][..]),
                 (crate::autotune_clear_routes::PATH, &[][..]),
                 (crate::autotune_resume_routes::PATH, &[][..]),
                 (crate::autotune_settings_routes::PATH, &[][..]),
+                (crate::autotune_untuned_routes::PATH, &[][..]),
                 (crate::calibration_routes::PATH, &[][..]),
                 (crate::calibration_cancel_routes::PATH, &[][..]),
                 (crate::model_routes::CAPABILITIES, &["GET"][..]),
+                (crate::model_downloads_read::PATH, &["GET"][..]),
                 (crate::model_sizing::ESTIMATE, &["GET"][..]),
                 (crate::model_maint::EVIDENCE, &["GET"][..]),
                 (crate::model_maint::EVIDENCE_IMPORT, &["POST"][..]),
+                (crate::model_maint::evidence_recheck::PATH, &["POST"][..]),
                 (crate::model_routes::HARDWARE, &["GET"][..]),
                 (crate::model_state_routes::BUDGET, &["GET"][..]),
                 (crate::idle_unload_read::PATH, &["GET"][..]),
@@ -1474,6 +1494,21 @@ mod tests {
             assert_eq!(dispatch_under(m, &p, on), None, "{m} {p}");
         }
         assert!(crate::FEATURES.contains(&"rust-task-reads"));
+    }
+
+    #[test]
+    fn evidence_recheck_is_native_only_for_post() {
+        assert_eq!(
+            dispatch("POST", crate::model_maint::evidence_recheck::PATH),
+            Some(Native::Models)
+        );
+        for m in ["GET", "HEAD", "PUT", "DELETE", "OPTIONS"] {
+            assert_eq!(
+                dispatch(m, crate::model_maint::evidence_recheck::PATH),
+                None
+            );
+        }
+        assert!(crate::FEATURES.contains(&"rust-model-evidence-recheck"));
     }
 
     #[test]

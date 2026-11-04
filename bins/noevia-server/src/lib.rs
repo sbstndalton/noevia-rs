@@ -10,6 +10,7 @@ pub mod autotune_clear_routes;
 pub mod autotune_read_routes;
 pub mod autotune_resume_routes;
 pub mod autotune_settings_routes;
+pub mod autotune_untuned_routes;
 pub mod calibration_cancel_routes;
 pub mod calibration_routes;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -44,6 +45,8 @@ pub mod mcp_egress;
 pub mod mcp_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_tools;
+pub mod model_assignments;
+pub mod model_downloads_read;
 pub mod model_kind;
 pub mod model_maint;
 pub mod model_manager_scan;
@@ -367,6 +370,7 @@ pub const FEATURES: &[&str] = &[
     "rust-diary",
     "rust-diary-routes",
     "rust-model-reads",
+    "rust-autotune-untuned",
     "rust-model-state-reads",
     "rust-autotune-settings",
     "rust-project-reads",
@@ -393,6 +397,7 @@ pub const FEATURES: &[&str] = &[
     "rust-calibration-cancel",
     "rust-calibration-routes",
     "rust-model-manager-scan",
+    "rust-model-evidence-recheck",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",
@@ -435,6 +440,8 @@ pub const FEATURES: &[&str] = &[
     "rust-autotune-read",
     "rust-preset-read",
     "rust-idle-unload-read",
+    "rust-model-assignments",
+    "rust-model-downloads-read",
     "rust-autotune-resume",
     #[cfg(feature = "rust-storage-reads")]
     "rust-connectors",
@@ -447,6 +454,10 @@ pub const FEATURES: &[&str] = &[
     "rust-health",
     "rust-auto-roles",
     "rust-workspace",
+    // GET /api/chats/search (#1450) and GET /api/chats/{chatId}/export (#1471): core rust-chat-search.cjs
+    // `RUST_CHAT_SEARCH_OWNED` and rust-chat-export.cjs `RUST_CHAT_EXPORT_OWNED` refuse them.
+    "rust-chat-search",
+    "rust-chat-export",
     #[cfg(feature = "rust-reasoning-settings")]
     "rust-reasoning-settings",
     #[cfg(feature = "rust-routing-mode")]
