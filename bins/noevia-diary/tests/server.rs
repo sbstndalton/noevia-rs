@@ -259,7 +259,7 @@ async fn declines_before_verifying_anything_it_cannot_serve() {
     // Now served, with the same assertion: it was never recorded by the declines.
     assert_eq!(get(addr, "/api/months", &h).await.0, 200);
     // Unported routes and an enabled INDEX.md are declined.
-    assert_eq!(get(addr, "/api/files", &[]).await.0, 421);
+    assert_eq!(get(addr, "/api/workspace-trash", &[]).await.0, 421);
     let db =
         rusqlite::Connection::open(dir.path().join("users").join(UID).join("managed-diary.db"))
             .unwrap();
@@ -314,4 +314,63 @@ async fn health_process_part_and_control_floor() {
         .unwrap();
     assert_eq!(resp.status().as_u16(), 200);
     assert_eq!(get(addr, "/api/months", &h).await.0, 401);
+}
+
+#[tokio::test]
+async fn d4b_files_and_status_are_native_and_pending_recovery_is_declined() {
+    let dir = tempfile::tempdir().unwrap();
+    let addr = start(dir.path()).await;
+    managed_tenant(
+        dir.path(),
+        &[("memory.md", "# m"), ("Notes/a.md", "a")],
+        "{}",
+    );
+    let h = signed_headers("/api/files", b"", "000000000000000000000000000000f1");
+    let (s, _, body) = get(addr, "/api/files", &h).await;
+    assert_eq!(
+        (s, body.as_str()),
+        (
+            200,
+            r#"{"files":[{"path":"memory.md","name":"memory.md","isDir":false,"modified":1.0},{"path":"Notes","name":"Notes","isDir":true,"modified":1.0}]}"#
+        )
+    );
+    let h = signed_headers(
+        "/api/storage-status",
+        b"",
+        "000000000000000000000000000000f2",
+    );
+    let (s, _, body) = get(addr, "/api/storage-status", &h).await;
+    assert_eq!(
+        (s, body.as_str()),
+        (
+            200,
+            r#"{"mode":"managed","backup":"not_configured","lastBackedUp":null,"retryAt":null,"error":null}"#
+        )
+    );
+    // The Python exporter (the default) stamps the clock into the ZIP: declined.
+    let h = signed_headers(
+        "/api/workspace-export",
+        b"",
+        "000000000000000000000000000000f3",
+    );
+    assert_eq!(get(addr, "/api/workspace-export", &h).await.0, 421);
+    // Recovery Python still owes (a dirty document, an index outbox entry): declined.
+    let t = dir.path().join("users").join(UID);
+    let idx = rusqlite::Connection::open(t.join("managed-index.db")).unwrap();
+    idx.execute("INSERT INTO dirty_documents VALUES ('memory.md')", [])
+        .unwrap();
+    let h = signed_headers("/api/files", b"", "000000000000000000000000000000f4");
+    assert_eq!(get(addr, "/api/files", &h).await.0, 421);
+    idx.execute("DELETE FROM dirty_documents", []).unwrap();
+    let db = rusqlite::Connection::open(t.join("managed-diary.db")).unwrap();
+    db.execute(
+        "INSERT INTO workspace_index_outbox VALUES ('memory.md')",
+        [],
+    )
+    .unwrap();
+    assert_eq!(get(addr, "/api/files", &h).await.0, 421);
+    db.execute("DELETE FROM workspace_index_outbox", [])
+        .unwrap();
+    // The same assertion was never consumed by the declines.
+    assert_eq!(get(addr, "/api/files", &h).await.0, 200);
 }

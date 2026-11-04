@@ -9,6 +9,7 @@ pub mod health;
 pub mod managed;
 pub mod py;
 pub mod server;
+pub mod workspace;
 
 use std::sync::Arc;
 

@@ -37,7 +37,7 @@ pub fn safe_key(path: &str) -> bool {
             .any(|p| p.is_empty() || p == "." || p == ".."))
 }
 
-fn open_ro(path: &Path) -> Result<Connection, Error> {
+pub(crate) fn open_ro(path: &Path) -> Result<Connection, Error> {
     let conn = Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -125,6 +125,10 @@ pub fn ready(tenant_root: &Path, uid: &str) -> Result<Option<(Managed, Settings)
 }
 
 impl Managed {
+    pub(crate) fn db_path(&self) -> &Path {
+        &self.db_path
+    }
+
     fn conn(&self) -> Result<Connection, Error> {
         open_ro(&self.db_path)
     }

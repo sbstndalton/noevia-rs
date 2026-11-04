@@ -24,6 +24,7 @@ reqwest = { version = "0.12", default-features = false }
 regex = "1"
 tenant-assertion = { path = "../../crates/tenant-assertion" }
 diary-corpus-parse = { path = "../../crates/diary-corpus-parse" }
+diary-workspace-export = { path = "../../crates/diary-workspace-export" }
 
 [dev-dependencies]
 tempfile = "3"
