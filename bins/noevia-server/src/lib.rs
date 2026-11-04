@@ -13,6 +13,7 @@ pub mod autotune_settings_routes;
 pub mod calibration_cancel_routes;
 pub mod calibration_routes;
 pub mod chat_activity;
+pub mod chat_admission;
 pub mod chat_edge;
 pub mod chat_framing_suggest;
 pub mod chat_turn;
@@ -370,6 +371,13 @@ use std::sync::Arc;
 /// its own event stream is refused (502). Core writes the relayed turn's events as NDJSON
 /// (rust-chat-wire.cjs). The supervisor and assemble-release pair them.
 ///
+/// `rust-chat-admission`: this build takes Core's inference gate for a chat turn, a Cowork start and
+/// the Diary local exchange itself, with an admission lease (chat_admission.rs, chat port S8;
+/// crates/engine-admission): at most 3 s of waiting, ended when the client leaves, Node's 503 and its
+/// `[chat] 503` line answered here. The call carries the lease and Core does not enter the gate for it
+/// again (rust-chat-admission.cjs); the S6 gate hold and probe are gone. The supervisor and
+/// assemble-release pair them.
+///
 /// `chat-activity`: this build records each authenticated request's account in
 /// `UI_DATA_DIR/chat-activity.json` (chat_activity.rs, chat port S3), which core's change journal
 /// reader merges as request starts (chat-activity.cjs). Either side alone keeps today's behaviour.
@@ -477,6 +485,7 @@ pub const FEATURES: &[&str] = &[
     "rust-chat-turn",
     "rust-chat-edge",
     "rust-chat-wire",
+    "rust-chat-admission",
     "chat-activity",
     #[cfg(feature = "rust-reasoning-settings")]
     "rust-reasoning-settings",

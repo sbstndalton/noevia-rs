@@ -61,11 +61,23 @@ enum Turn {
     Script,
 }
 
+/// Core's inference gate behind its admission lease route (chat port S8, core
+/// inference-admission-lease.cjs `{gate}`).
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Gate {
+    /// 201 with [`LEASE`].
     Open,
+    /// The gate's refusal after its wait: 503 `{error, code}`.
     Held,
+    /// Node still waiting: no answer until the asker goes away ([`Core::ask_closed`] fires then).
+    Waiting,
+    /// A Core before chat port S8: the ask is not one it knows.
+    OldCore,
 }
+
+/// The lease the stand-in grants.
+const LEASE: &str = "fedcba9876543210fedcba9876543210";
+const ADMISSION: &str = "/internal/inference-admission/lease";
 
 #[derive(Default)]
 struct Seen {
@@ -74,6 +86,12 @@ struct Seen {
     /// Headers of the last call.
     headers: HashMap<String, Vec<String>>,
     body_len: usize,
+    /// Chat port S8: each admission ask's body and whether it carried the per-start secret.
+    asks: Vec<(String, bool)>,
+    /// Leases granted and not yet given back.
+    live: i64,
+    /// "METHOD path" of each renewal or release, in order.
+    releases: Vec<String>,
 }
 
 struct Core {
@@ -86,6 +104,19 @@ struct Core {
     closed: Mutex<Option<oneshot::Sender<Instant>>>,
     /// [`Turn::Script`]: the NDJSON chunks, and whether Core breaks after them.
     script: Mutex<(Vec<Bytes>, bool)>,
+    /// [`Gate::Waiting`]: fires when the asker went away while Node waited.
+    ask_closed: Mutex<Option<oneshot::Sender<Instant>>>,
+}
+
+/// Fires its sender when dropped (hyper drops a pending service future when its connection closes).
+struct OnDrop(Option<oneshot::Sender<Instant>>);
+
+impl Drop for OnDrop {
+    fn drop(&mut self) {
+        if let Some(s) = self.0.take() {
+            let _ = s.send(Instant::now());
+        }
+    }
 }
 
 /// Core's answer body; fires [`Core::closed`] when hyper drops it (the connection closed).
@@ -133,7 +164,6 @@ async fn core_service(
     req: Request<Incoming>,
 ) -> Result<Response<UpBody>, std::io::Error> {
     let path = req.uri().path().to_string();
-    let hold = req.uri().query() == Some("hold=1");
     let method = req.method().to_string();
     let headers =
         req.headers()
@@ -150,7 +180,8 @@ async fn core_service(
         .await
         .map(|c| c.to_bytes())
         .unwrap_or_default();
-    {
+    let admission = path == ADMISSION || path.starts_with(&format!("{ADMISSION}/"));
+    if !admission {
         let mut seen = core.seen.lock().unwrap();
         seen.hits.push(format!("{method} {path}"));
         seen.headers = headers.clone();
@@ -165,32 +196,38 @@ async fn core_service(
             .body(Full::new(Bytes::from(text)).map_err(|e| match e {}).boxed())
             .unwrap()
     };
-    if path == "/internal/chat/gate" {
-        return Ok(match *core.gate.lock().unwrap() {
-            // Chat port S6: the front takes the gate for its call and holds it while this stays open.
-            Gate::Open if hold => {
-                let (mut tx, body) =
-                    http_body_util::channel::Channel::<Bytes, std::io::Error>::new(1);
-                tokio::spawn(async move {
-                    let _ = tx.send_data(Bytes::from_static(b"held\n")).await;
-                    while tx.send_data(Bytes::new()).await.is_ok() {
-                        tokio::time::sleep(Duration::from_millis(10)).await;
-                    }
-                });
-                Response::builder()
-                    .status(200)
-                    .header("x-noevia-gate-lease", "lease-1")
-                    .body(body.boxed())
-                    .unwrap()
+    if admission {
+        let token = headers.get("x-noevia-store-token") == Some(&vec![STORE_TOKEN.to_owned()]);
+        if path != ADMISSION {
+            let mut seen = core.seen.lock().unwrap();
+            seen.releases.push(format!("{method} {path}"));
+            if method == "DELETE" && path == format!("{ADMISSION}/{LEASE}") {
+                seen.live -= 1;
             }
-            Gate::Open => Response::builder()
-                .status(204)
-                .body(Full::new(Bytes::new()).map_err(|e| match e {}).boxed())
-                .unwrap(),
-            Gate::Held => {
-                let mut r = json(503, BUSY.to_owned());
-                r.headers_mut().insert("retry-after", "3".parse().unwrap());
-                r
+            return Ok(json(if method == "DELETE" { 204 } else { 200 }, "{}".into()));
+        }
+        {
+            let mut seen = core.seen.lock().unwrap();
+            seen.hits.push(format!("{method} {path}"));
+            seen.asks
+                .push((String::from_utf8_lossy(&body).into_owned(), token));
+        }
+        let gate = *core.gate.lock().unwrap();
+        return Ok(match gate {
+            Gate::Open => {
+                core.seen.lock().unwrap().live += 1;
+                json(201, format!(r#"{{"lease":"{LEASE}","ttlMs":30000}}"#))
+            }
+            Gate::Held => json(
+                503,
+                r#"{"error":"Inference is paused for maintenance.","code":"inferenceMaintenance"}"#
+                    .into(),
+            ),
+            Gate::OldCore => json(400, r#"{"error":"A model is required."}"#.into()),
+            Gate::Waiting => {
+                let _closed = OnDrop(core.ask_closed.lock().unwrap().take());
+                std::future::pending::<()>().await;
+                unreachable!()
             }
         });
     }
@@ -306,6 +343,7 @@ async fn core() -> Arc<Core> {
         stream: Mutex::new(None),
         closed: Mutex::new(None),
         script: Mutex::new((Vec::new(), false)),
+        ask_closed: Mutex::new(None),
     });
     let c = Arc::clone(&core);
     tokio::spawn(async move {
@@ -456,6 +494,7 @@ async fn a_turn_reaches_cores_relay_with_the_secret_the_user_and_the_clients_own
         ("x-noevia-client-ip", "6.6.6.6"),
         ("x-forwarded-for", "6.6.6.6"),
         ("x-noevia-chat-wire", "sse"),
+        ("x-noevia-admission-lease", "0123456789abcdef0123456789abcdef"),
         ("user-agent", "synthetic-agent"),
     ];
     let (res, _c) = call(
@@ -494,11 +533,13 @@ async fn a_turn_reaches_cores_relay_with_the_secret_the_user_and_the_clients_own
     assert_eq!(h["user-agent"], serde_json::json!(["synthetic-agent"]));
     assert_eq!(h["host"], serde_json::json!(["front.test"]));
     assert_eq!(echo["bodyLen"], TURN.len());
-    assert_eq!(h["x-noevia-gate-lease"], serde_json::json!(["lease-1"]));
-    assert_eq!(
-        f.core.seen.lock().unwrap().hits,
-        ["POST /internal/chat/gate", "POST /internal/chat/turn"]
-    );
+    // Chat port S8: the turn carries the front's admission lease, whatever the client sent.
+    assert_eq!(h["x-noevia-admission-lease"], serde_json::json!([LEASE]));
+    {
+        let seen = f.core.seen.lock().unwrap();
+        assert_eq!(seen.hits, [format!("POST {ADMISSION}"), "POST /internal/chat/turn".into()]);
+        assert_eq!(seen.asks, [(r#"{"gate":"chat"}"#.to_owned(), true)]);
+    }
     // A WHATWG spelling of the same path is the same route; other methods and paths stay Node's.
     let (res, _c) = call(&f, "POST", "/api/x/../chat", &[], TURN.to_vec(), true).await;
     assert_eq!(res.status(), 200);
@@ -827,7 +868,7 @@ async fn a_break_inside_a_line_reaches_the_web_client_as_the_failure_event() {
     // Chat port S6: Core's gate is taken for the call first, and the turn carries its hold.
     assert_eq!(
         f.core.seen.lock().unwrap().hits,
-        ["POST /internal/chat/gate", "POST /internal/chat/turn"]
+        [format!("POST {ADMISSION}"), "POST /internal/chat/turn".into()]
     );
 }
 
@@ -1056,14 +1097,11 @@ async fn a_refused_request_meets_cores_gate_first_as_node_answered_it() {
         assert_eq!(res.status(), status);
         assert_eq!(text(res).await, body);
         {
+            // The gate taken and given straight back, before the refusal: Node's order.
             let seen = f.core.seen.lock().unwrap();
-            assert_eq!(seen.hits, ["POST /internal/chat/gate"]);
-            assert_eq!(seen.headers["x-noevia-store-token"], [STORE_TOKEN]);
-            assert!(
-                !seen.headers.contains_key("x-noevia-chat-user")
-                    && !seen.headers.contains_key("cookie")
-            );
-            assert_eq!(seen.body_len, 0);
+            assert_eq!(seen.hits, [format!("POST {ADMISSION}")]);
+            assert_eq!(seen.asks.last().unwrap(), &(r#"{"gate":"chat"}"#.to_owned(), true));
+            assert_eq!(seen.live, 0, "given back before the answer");
         }
         *f.core.gate.lock().unwrap() = Gate::Held;
         let (res, _c) = call(&f, "POST", "/api/chat", &extra, TURN.to_vec(), signed_in).await;
@@ -1093,7 +1131,155 @@ async fn a_body_at_the_cap_reaches_core_whole_and_one_byte_more_is_the_fronts_41
         );
         assert_eq!(
             f.core.seen.lock().unwrap().hits,
-            ["POST /internal/chat/gate"]
+            [format!("POST {ADMISSION}")]
         );
     }
+}
+
+// Chat port S8 (chat_admission.rs, `rust-chat-admission`): the front takes Core's inference gate with an
+// admission lease; the lease is the turn's one gate count, held until the answer has ended.
+
+/// Waits (at most 2 s) until `ok` holds for what Core saw.
+async fn until(f: &Front, what: &str, ok: impl Fn(&Seen) -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !ok(&f.core.seen.lock().unwrap()) {
+        assert!(Instant::now() < deadline, "{what}");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_held_gate_is_answered_by_the_front_as_index_cjs_answered_it_and_no_turn_runs() {
+    // chat-admission-1896: the gate's refusal after its bounded wait, retryable, with its words and code.
+    let f = front().await;
+    *f.core.gate.lock().unwrap() = Gate::Held;
+    let (res, _c) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await;
+    assert_eq!(res.status(), 503);
+    assert_eq!(res.headers()["retry-after"], "3");
+    assert_eq!(res.headers()["x-noevia-api"], "1");
+    assert_eq!(res.headers()["content-type"], "application/json");
+    assert_eq!(res.headers()["cache-control"], "no-store");
+    assert_eq!(text(res).await, BUSY);
+    let seen = f.core.seen.lock().unwrap();
+    assert_eq!(seen.hits, [format!("POST {ADMISSION}")], "no turn, nothing else");
+    assert_eq!(seen.live, 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_refused_call_is_never_counted_on_the_budget() {
+    // Node's order: the gate first, then the `llm:` budget. With a limit of 60, sixty refusals and then a
+    // turn: the turn is let in (none of the refusals was counted).
+    let f = front().await;
+    *f.core.gate.lock().unwrap() = Gate::Held;
+    for _ in 0..60 {
+        let (res, _c) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await;
+        assert_eq!(res.status(), 503);
+    }
+    *f.core.gate.lock().unwrap() = Gate::Open;
+    let (res, _c) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await;
+    assert_eq!(res.status(), 200);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_lease_is_the_turns_one_count_until_its_answer_ends_then_it_is_given_back() {
+    // chat-gate-lease-2115 as the front holds it: one lease for the whole turn, never a second ask, and
+    // given back once the turn has ended.
+    let f = Arc::new(front().await);
+    *f.core.turn.lock().unwrap() = Turn::Stream;
+    let pending = tokio::spawn({
+        let f = Arc::clone(&f);
+        async move { call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await }
+    });
+    let mut tx = loop {
+        if let Some(tx) = f.core.stream.lock().unwrap().take() {
+            break tx;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    };
+    tx.send_data(Bytes::from_static(b"{\"type\":\"meta\",\"model\":\"m\"}\n"))
+        .await
+        .unwrap();
+    let (res, _c) = pending.await.unwrap();
+    let mut body = res.into_body();
+    body.frame().await.unwrap().unwrap();
+    for line in ["{\"type\":\"delta\",\"text\":\"Hi\"}\n", "{\"type\":\"done\"}\n", "{\"type\":\"title\",\"chatId\":\"c\",\"title\":\"T\"}\n"] {
+        tx.send_data(Bytes::from(line)).await.unwrap();
+        body.frame().await.unwrap().unwrap();
+        let seen = f.core.seen.lock().unwrap();
+        assert_eq!(seen.live, 1, "held while the turn runs, the title included");
+        assert!(seen.releases.iter().all(|r| !r.starts_with("DELETE")));
+        assert_eq!(seen.asks.len(), 1, "one lease for the whole turn");
+    }
+    drop(tx);
+    while body.frame().await.is_some() {}
+    until(&f, "given back once the answer ended", |s| s.live == 0).await;
+    assert_eq!(
+        f.core.seen.lock().unwrap().releases,
+        [format!("DELETE {ADMISSION}/{LEASE}")]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_client_leaving_mid_turn_gives_the_lease_back_within_1_s() {
+    // chat-gate-lease-2115's Stop: however the turn ends, its lease is given back.
+    let f = front().await;
+    *f.core.turn.lock().unwrap() = Turn::Silent;
+    let (res, c) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await;
+    let mut body = res.into_body();
+    body.frame().await.unwrap().unwrap();
+    assert_eq!(f.core.seen.lock().unwrap().live, 1);
+    drop(body);
+    drop(c);
+    let left = Instant::now();
+    until(&f, "the lease outlived the client", |s| s.live == 0).await;
+    assert!(left.elapsed() < Duration::from_secs(1));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_client_leaving_during_the_wait_ends_nodes_wait_and_holds_nothing() {
+    // chat-admission-1896: the wait ends when the client goes away. Core sees its ask closed, no turn and no
+    // budget charge follow, and nothing is held.
+    let f = front().await;
+    *f.core.gate.lock().unwrap() = Gate::Waiting;
+    let (closed_tx, closed_rx) = oneshot::channel();
+    *f.core.ask_closed.lock().unwrap() = Some(closed_tx);
+    let mut s = TcpStream::connect(f.addr).await.unwrap();
+    let req = format!(
+        "POST /api/chat HTTP/1.1\r\nhost: front.test\r\norigin: {ORIGIN}\r\ncookie: {}\r\nx-csrf-token: {}\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n",
+        f.jar,
+        f.csrf,
+        TURN.len()
+    );
+    s.write_all(req.as_bytes()).await.unwrap();
+    s.write_all(TURN).await.unwrap();
+    until(&f, "the front asked for the gate", |seen| seen.asks.len() == 1).await;
+    drop(s);
+    let left = Instant::now();
+    let at = tokio::time::timeout(Duration::from_secs(1), closed_rx)
+        .await
+        .expect("Node kept waiting after the client left")
+        .unwrap();
+    assert!(at - left < Duration::from_secs(1));
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let seen = f.core.seen.lock().unwrap();
+    assert_eq!(seen.hits, [format!("POST {ADMISSION}")], "no turn");
+    assert_eq!(seen.live, 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_core_that_does_not_know_the_gate_ask_is_the_proxys_502_and_no_turn_runs() {
+    // A Core that is not this front's pair (an S7 Core answers `{gate}` with 400 `A model is required.`)
+    // never lets a turn through, signed in or not.
+    let f = front().await;
+    *f.core.gate.lock().unwrap() = Gate::OldCore;
+    let (res, _c) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await;
+    assert_eq!(res.status(), 502);
+    assert_eq!(
+        text(res).await,
+        r#"{"error":"The server is not answering. Please retry."}"#
+    );
+    assert_eq!(f.core.seen.lock().unwrap().hits, [format!("POST {ADMISSION}")]);
+    // A refusal of the front's own stands when the gate gives no answer of its own.
+    let (res, _c) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), false).await;
+    assert_eq!(res.status(), 401);
 }

@@ -1,5 +1,5 @@
 //! `POST /api/chat` (chat port S5, capability `rust-chat-turn`; its edge since S6, `rust-chat-edge`; its
-//! event stream since S7, `rust-chat-wire`):
+//! event stream since S7, `rust-chat-wire`; its admission since S8, `rust-chat-admission`):
 //! the front owns the route, answers everything routes/chat.cjs answered before the loop
 //! (chat_edge.rs), and relays a turn that passes to Core's loopback `POST /internal/chat/turn` (core
 //! rust-chat-turn.cjs), which runs the rest of the unchanged pipeline. Core refuses a POST /api/chat
@@ -8,17 +8,17 @@
 //! In order:
 //! 1. Node's request gate, as identity.rs answers it: 401 signed out, 403 `invalid CSRF token`, 403
 //!    `browser_session_required`.
-//!    Node's inference gate answered before these, so a refusal is first offered to Core's
-//!    `POST /internal/chat/gate`: when the gate is held its 503 (`Retry-After: 3` and the retryable
-//!    body) is the answer, as Node gave it; otherwise the refusal.
-//! 2. Node's inference gate, taken and held for this call (chat_edge.rs `hold`): its 503, or the
-//!    gate held while the rest is decided.
+//!    Node's inference gate answered before these, so the front first takes the gate
+//!    (chat_admission.rs) and gives it straight back: when the gate refuses, its 503 (`Retry-After: 3`
+//!    and the retryable body) is the answer, as Node gave it; otherwise the refusal.
+//! 2. Node's inference gate, taken for this call with an admission lease (chat_admission.rs): its 503,
+//!    or the lease held while the rest is decided and until the answer has ended.
 //! 3. The edge (chat_edge.rs), the gate held: the shared `llm:` budget (429), counted only now, the
 //!    body cap (413), JSON and the object (400), the request shape (400), Cowork (403/409) and the
 //!    Diary add-on (404).
 //! 4. The request, its body as read, to `/internal/chat/turn` (a Cowork start to
-//!    `/internal/chat/cowork`) with the per-start secret, the signed-in user and the gate's lease,
-//!    which Core's turn adopts instead of entering the gate again (legacy_proxy.rs `relay`): the
+//!    `/internal/chat/cowork`) with the per-start secret, the signed-in user and the admission lease,
+//!    which covers Core's turn so that it does not enter the gate again (legacy_proxy.rs `relay`): the
 //!    client's headers and credentials ride along, Core authenticates them again and must find the
 //!    same user.
 //! 5. Core's answer: JSON and the 503 with `Retry-After` byte for byte; a turn's events, which Core
@@ -32,18 +32,17 @@
 //! the client gets the frame index.cjs writes for a handler that throws mid-stream, and the end:
 //! `data: {"type":"error","text":"The request could not be completed. Please retry."}`, never half
 //! a frame.
-use crate::{chat_edge, chat_wire, identity, reply, serve::Conn, App};
+use crate::{chat_admission, chat_edge, chat_wire, identity, reply, serve::Conn, App};
 use axum::{
     body::Body,
-    http::{header, HeaderMap, HeaderValue, Request, Response, StatusCode},
+    http::{header, HeaderValue, Request, Response, StatusCode},
     response::IntoResponse,
 };
 use std::sync::Arc;
 
 pub const PATH: &str = "/api/chat";
-/// Core rust-chat-turn.cjs `TURN_PATH` and `GATE_PATH`.
+/// Core rust-chat-turn.cjs `TURN_PATH`.
 pub const TURN_PATH: &str = "/internal/chat/turn";
-pub const GATE_PATH: &str = "/internal/chat/gate";
 /// Core rust-chat-turn.cjs `USER_HEADER`: the user the front authenticated.
 pub const USER_HEADER: &str = "x-noevia-chat-user";
 /// core index.cjs `STORED_HISTORY_BYTES`: routes/chat.cjs refuses a longer body with its 413.
@@ -79,7 +78,7 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
     let authn = match gated {
         Ok(Ok(id)) => id,
         Ok(Err(rejection @ identity::Rejection::Refused(_))) => {
-            return refused(app, conn, &parts.headers, rejection.into_response()).await;
+            return refused(app, chat_admission::Gate::Chat, rejection.into_response()).await;
         }
         Ok(Err(rejection)) => return rejection.into_response(),
         Err(_) => return identity::Rejection::Unavailable.into_response(),
@@ -89,9 +88,12 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
         return unavailable();
     };
     // Node's inference gate first: a call is counted only once the gate let it in.
-    let held = match chat_edge::hold(app, conn, &parts.headers, chat_edge::CHAT_HOLD_PATH).await {
-        chat_edge::Gate::Held(h) => h,
-        chat_edge::Gate::Answer(answer) => return answer,
+    let lease = match chat_admission::admit(app, chat_admission::Gate::Chat).await {
+        Ok(lease) => lease,
+        Err(answer) => return answer,
+    };
+    let Some(lease_id) = chat_admission::header_value(&lease) else {
+        return unavailable();
     };
     // The edge (chat_edge.rs), in routes/chat.cjs's order, the gate held: the budget before the body.
     let Some(limited) = chat_edge::charge(app, &authn.user.id) else {
@@ -137,6 +139,8 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
     parts.headers.remove(header::TRANSFER_ENCODING);
     // The wire is the front's to ask for: a turn gets NDJSON (chat_wire.rs), anything else nothing.
     parts.headers.remove(chat_wire::WIRE_HEADER);
+    // Only this front names a lease.
+    parts.headers.remove(chat_admission::LEASE_HEADER);
     if target == TURN_PATH {
         parts.headers.insert(
             chat_wire::WIRE_HEADER,
@@ -150,57 +154,41 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
     let extra = [
         (crate::project_store::TOKEN_HEADER, token),
         (USER_HEADER, user),
-        (chat_edge::LEASE_HEADER, held.lease.clone()),
+        (chat_admission::LEASE_HEADER, lease_id),
     ];
     let res = app
         .proxy
         .relay(conn.peer, req, target, &extra, RELAY_LIMIT)
         .await;
-    // Core's turn adopted the hold when it read the request; the probe can close now.
-    drop(held);
     let Some(res) = res else {
         return unavailable();
     };
     // Chat port S7 (chat_wire.rs): the turn's events come as NDJSON and the front writes the event
     // stream. A Core that writes its own event stream is not this front's pair: its answer is dropped
     // (which stops that turn) and the client gets the 502 of a Core that did not answer.
+    // The lease is the call's one gate count until its answer has ended (chat_admission.rs).
     if chat_wire::is_ndjson(res.headers()) {
-        chat_wire::stream(res).await
+        chat_admission::hold_until_end(chat_wire::stream(res).await, lease)
     } else if chat_wire::is_event_stream(res.headers()) {
         unavailable()
     } else {
-        res
+        chat_admission::hold_until_end(res, lease)
     }
 }
 
-/// A refusal of the session gate's, after Core's inference gate: the gate's 503 when it is held,
-/// else `answer`.
-async fn refused(
+/// A refusal of the session gate's, after Core's inference gate (taken for `gate` and given straight
+/// back): the gate's 503 when it refuses, else `answer` (also when Node does not answer).
+pub(crate) async fn refused(
     app: &Arc<App>,
-    conn: Conn,
-    headers: &HeaderMap,
+    gate: chat_admission::Gate,
     answer: Response<Body>,
 ) -> Response<Body> {
-    gate_probe(app, conn, headers, GATE_PATH)
-        .await
-        .unwrap_or(answer)
-}
-
-/// Core's inference gate for a request the front refuses, at `target` (the chat gate, or the Diary
-/// local exchange's): its 503 when the gate is held, else `None` (a 204, or no answer: the front's
-/// refusal stands).
-pub(crate) async fn gate_probe(
-    app: &Arc<App>,
-    conn: Conn,
-    headers: &HeaderMap,
-    target: &str,
-) -> Option<Response<Body>> {
-    let token = app.config.research.front_token().and_then(sensitive)?;
-    let mut probe = Request::post(GATE_PATH).body(Body::empty()).ok()?;
-    if let Some(host) = headers.get(header::HOST) {
-        probe.headers_mut().insert(header::HOST, host.clone());
+    match chat_admission::admit(app, gate).await {
+        Ok(lease) => {
+            lease.release().await;
+            answer
+        }
+        Err(gate_answer) if gate_answer.status() == StatusCode::SERVICE_UNAVAILABLE => gate_answer,
+        Err(_) => answer,
     }
-    let extra = [(crate::project_store::TOKEN_HEADER, token)];
-    let res = app.proxy.relay(conn.peer, probe, target, &extra, 0).await?;
-    (res.status() == StatusCode::SERVICE_UNAVAILABLE).then_some(res)
 }

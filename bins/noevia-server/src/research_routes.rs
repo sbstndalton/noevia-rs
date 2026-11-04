@@ -233,6 +233,12 @@ impl Research {
         self.settings.token.as_deref()
     }
 
+    /// The client of Node's admission leases (crates/engine-admission), for the chat admission
+    /// (chat_admission.rs), which takes the same leases as research's model steps.
+    pub(crate) fn admission(&self) -> &Arc<Admission> {
+        &self.admission
+    }
+
     fn bridge_post(
         &self,
         path: &str,
