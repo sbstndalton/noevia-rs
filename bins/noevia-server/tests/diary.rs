@@ -270,6 +270,8 @@ fn the_front_lists_the_capabilities_and_owns_exactly_these_routes() {
         }
     }
     for (path, methods) in [
+        ("/api/diary/entries/edit", ["POST"].as_slice()),
+        ("/api/diary/external-sources/import", ["POST"].as_slice()),
         ("/api/diary/context", ["GET", "POST"].as_slice()),
         ("/api/diary/exchanges", ["GET", "POST"].as_slice()),
         ("/api/profile/diary-connectors", ["GET", "POST"].as_slice()),
@@ -287,10 +289,9 @@ fn the_front_lists_the_capabilities_and_owns_exactly_these_routes() {
         }
     }
     // Node keeps the local exchange, and the paths the web client never names.
-    for path in ["/api/diary/local-exchange", "/api/diary/history"] {
-        assert_eq!(routes::dispatch("GET", path), None, "{path}");
-        assert_eq!(routes::dispatch("POST", path), None, "{path}");
-    }
+    let path = "/api/diary/local-exchange";
+    assert_eq!(routes::dispatch("GET", path), None, "{path}");
+    assert_eq!(routes::dispatch("POST", path), None, "{path}");
 }
 
 #[test]

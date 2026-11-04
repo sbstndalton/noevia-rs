@@ -1,0 +1,289 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
+mod support;
+use bytes::Bytes;
+use http_body_util::Full;
+use js_json::{wtf16, JValue};
+use server_diary::{Limits, ReplyBody, Request, Route};
+use std::{
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
+use support::*;
+fn text(v: &JValue) -> String {
+    wtf16::stringify(v).unwrap()
+}
+
+#[tokio::test]
+async fn actual_core_proxy_oracle() {
+    let doc = wtf16::parse(include_str!("fixtures/diary-proxy-node.json")).unwrap();
+    let JValue::Arr(cases) = doc.get("cases") else {
+        panic!()
+    };
+    for (index, c) in cases.iter().enumerate() {
+        let c = c.clone();
+        let upstream = c.clone();
+        let stub = Stub::start(move |_, _| {
+            if upstream.get("fault").as_str().is_some() {
+                return Out::Hangup;
+            }
+            Out::json(
+                upstream.get("status").as_num().unwrap() as u16,
+                &text(upstream.get("reply")),
+            )
+        })
+        .await;
+        let world = World::new(&[]);
+        let d = diary(&stub, TENANT_KEY);
+        let route =
+            Route::from_path(&format!("/api/diary/{}", c.get("route").as_str().unwrap())).unwrap();
+        // A generic injected fault is checked separately; a socket hangup models only network faults.
+        if c.get("fault").as_str() == Some("internal") {
+            continue;
+        }
+        let raw = c
+            .get("size")
+            .as_num()
+            .map(|n| "x".repeat(n as usize))
+            .unwrap_or_else(|| c.get("raw").as_str().unwrap().to_owned());
+        let id = if c.get("admin") == &JValue::Bool(true) {
+            ADMIN
+        } else {
+            MEMBER
+        };
+        let ctx = world.ctx(id, c.get("enabled") == &JValue::Bool(true));
+        let reply = d
+            .serve_proxy(
+                route,
+                ctx,
+                Request {
+                    method: c.get("method").as_str().unwrap().into(),
+                    target: c.get("target").as_str().unwrap().into(),
+                    content_length: None,
+                },
+                Full::new(Bytes::from(raw)),
+                false,
+            )
+            .await;
+        assert_eq!(
+            reply.status,
+            c.get("expected").get("status").as_num().unwrap() as u16,
+            "case {index}: {}",
+            text(&c)
+        );
+        let ReplyBody::Json(body) = reply.body else {
+            panic!()
+        };
+        assert_eq!(
+            wtf16::parse(&body).unwrap(),
+            c.get("expected").get("body").clone(),
+            "case {index}"
+        );
+        let seen = stub.seen.lock().unwrap();
+        if c.get("fault").as_str().is_none() {
+            let JValue::Arr(calls) = c.get("calls") else {
+                panic!()
+            };
+            assert_eq!(seen.len(), calls.len(), "calls {index}");
+            for (got, want) in seen.iter().zip(calls) {
+                assert_eq!(
+                    got.target,
+                    want.get("path").as_str().unwrap(),
+                    "path {index}"
+                );
+                assert_eq!(
+                    got.method,
+                    want.get("method").as_str().unwrap(),
+                    "method {index}"
+                );
+                if let Some(body) = want.get("body").as_str() {
+                    assert_eq!(String::from_utf8_lossy(&got.body), body, "body {index}");
+                }
+            }
+        }
+    }
+}
+
+struct Clear(AtomicUsize);
+impl server_diary::StorageLatch for Clear {
+    fn held(&self, _: &str, _: &server_diary::StorageIdentity<'_>) -> Option<server_diary::Held> {
+        None
+    }
+    fn clear(&self, _: &str) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
+#[tokio::test]
+async fn explicit_retry_clears_only_after_legacy_proof_and_timeouts_are_bounded() {
+    for (retry, mode, expected) in [
+        (false, "legacy", 0),
+        (true, "managed", 0),
+        (true, "legacy", 1),
+    ] {
+        let stub = Stub::start(move |seen, _| {
+            if seen.path() == "/api/storage-status" {
+                Out::json(200, &format!("{{\"mode\":\"{mode}\"}}"))
+            } else {
+                Out::json(200, "{}")
+            }
+        })
+        .await;
+        let world = World::new(&[]);
+        let latch = Arc::new(Clear(AtomicUsize::new(0)));
+        let ctx = world.ctx_with_latch(ADMIN, latch.clone());
+        diary(&stub, TENANT_KEY)
+            .serve_proxy(
+                Route::Files,
+                ctx,
+                Request {
+                    method: "GET".into(),
+                    target: "/api/diary/files".into(),
+                    content_length: None,
+                },
+                Full::new(Bytes::new()),
+                retry,
+            )
+            .await;
+        assert_eq!(latch.0.load(Ordering::SeqCst), expected);
+        assert_eq!(
+            stub.seen.lock().unwrap()[0].header("x-cowork-storage-retry"),
+            retry.then_some("1")
+        );
+        for call in stub.seen.lock().unwrap().iter().skip(1) {
+            assert_eq!(call.header("x-cowork-storage-retry"), None);
+        }
+    }
+    for route in [Route::Files, Route::ExternalSources, Route::Edit] {
+        let stub = Stub::start(|_, _| Out::json(200, "{}").slow(Duration::from_millis(200))).await;
+        let d = diary_with(
+            &stub,
+            TENANT_KEY,
+            Limits {
+                proxy_timeout: Duration::from_millis(10),
+                external_timeout: Duration::from_millis(10),
+                ..Limits::default()
+            },
+        );
+        let world = World::new(&[]);
+        let raw = if route == Route::Edit {
+            r#"{"xid":"x","me":"m"}"#
+        } else {
+            ""
+        };
+        let reply = d
+            .serve_proxy(
+                route,
+                world.ctx(ADMIN, true),
+                Request {
+                    method: if route == Route::Edit { "POST" } else { "GET" }.into(),
+                    target: "/api/diary/files".into(),
+                    content_length: None,
+                },
+                Full::new(Bytes::from(raw)),
+                false,
+            )
+            .await;
+        assert_eq!(reply.status, 503);
+    }
+}
+
+#[tokio::test]
+async fn actual_core_worker_schedule_oracle() {
+    use server_diary::backup::Schedule;
+    use std::sync::Mutex;
+    let doc = wtf16::parse(include_str!("fixtures/diary-proxy-node.json")).unwrap();
+    let JValue::Arr(scripts) = doc.get("worker") else {
+        panic!()
+    };
+    for script in scripts {
+        let mut schedule = Schedule::default();
+        let JValue::Arr(steps) = script else { panic!() };
+        for step in steps {
+            let JValue::Arr(users) = step.get("users") else {
+                panic!()
+            };
+            let users = users
+                .iter()
+                .map(|v| v.as_str().unwrap().to_owned())
+                .collect();
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            let reply = step.get("reply").clone();
+            let step = step.clone();
+            schedule
+                .tick(
+                    users,
+                    step.get("now").as_num().unwrap() as u64,
+                    30_000,
+                    |id| {
+                        let calls = calls.clone();
+                        let step = step.clone();
+                        let reply = reply.clone();
+                        async move {
+                            if step.get("suspended") == &JValue::Bool(true) {
+                                return None;
+                            }
+                            calls.lock().unwrap().push(JValue::Str(id));
+                            Some(if step.get("fail") == &JValue::Bool(true) {
+                                None
+                            } else {
+                                Some(reply)
+                            })
+                        }
+                    },
+                )
+                .await;
+            assert_eq!(
+                JValue::Arr(calls.lock().unwrap().clone()),
+                step.get("calls").clone()
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn redirect_and_configuration_failures_remain_internal_errors() {
+    use server_diary::{Diary, DiaryConfig};
+    let stub = Stub::start(|_, _| Out::json(302, "{}")).await;
+    let world = World::new(&[]);
+    let bad = Diary::new(DiaryConfig::new(
+        "invalid-base",
+        BEARER,
+        TENANT_KEY,
+        String::new,
+    ))
+    .unwrap();
+    for route in [
+        Route::Files,
+        Route::WorkspaceTrash,
+        Route::History,
+        Route::ExternalSources,
+        Route::Edit,
+    ] {
+        for d in [diary(&stub, TENANT_KEY), bad.clone()] {
+            let reply = d
+                .serve_proxy(
+                    route,
+                    world.ctx(ADMIN, true),
+                    Request {
+                        method: if route == Route::Edit { "POST" } else { "GET" }.into(),
+                        target: "/api/diary/files".into(),
+                        content_length: None,
+                    },
+                    Full::new(Bytes::from_static(br#"{"xid":"x","me":"m"}"#)),
+                    false,
+                )
+                .await;
+            assert_eq!(reply.status, 500);
+        }
+    }
+    assert_eq!(Limits::default().external_timeout, Duration::from_secs(30));
+    assert_eq!(Limits::default().proxy_timeout, Duration::from_secs(60));
+    assert_eq!(Limits::default().read_timeout, Duration::from_secs(15));
+}

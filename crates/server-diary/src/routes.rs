@@ -47,6 +47,8 @@ pub const HEALTH_TIMEOUT: Duration = Duration::from_secs(5);
 pub struct Limits {
     /// `fetchJson(..., 15000)` for the month list and the day.
     pub read_timeout: Duration,
+    pub proxy_timeout: Duration,
+    pub external_timeout: Duration,
     /// `diaryFetchJson(..., 300000)` for storage-import.
     pub storage_import_timeout: Duration,
     /// `readBody(req, 4096)` for storage-import.
@@ -70,6 +72,8 @@ impl Default for Limits {
     fn default() -> Self {
         Self {
             read_timeout: Duration::from_secs(15),
+            proxy_timeout: Duration::from_secs(60),
+            external_timeout: Duration::from_secs(30),
             storage_import_timeout: Duration::from_secs(300),
             storage_import_body: 4096,
             small_body_deadline: Duration::from_secs(120),
@@ -100,6 +104,13 @@ pub const IMPORT_UNAVAILABLE: &str =
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Route {
+    Files,
+    File,
+    WorkspaceTrash,
+    History,
+    ExternalSources,
+    ExternalImport,
+    Edit,
     Source,
     Today,
     StorageImport,
@@ -112,7 +123,14 @@ pub enum Route {
 }
 
 impl Route {
-    pub const PATHS: [&'static str; 7] = [
+    pub const PATHS: [&'static str; 14] = [
+        "/api/diary/files",
+        "/api/diary/file",
+        "/api/diary/workspace-trash",
+        "/api/diary/history",
+        "/api/diary/external-sources",
+        "/api/diary/external-sources/import",
+        "/api/diary/entries/edit",
         "/api/diary/source",
         "/api/diary/today",
         "/api/diary/storage-import",
@@ -125,6 +143,13 @@ impl Route {
     /// The exact pathname only: core compares `p === '/api/diary/...'`.
     pub fn from_path(path: &str) -> Option<Self> {
         match path {
+            "/api/diary/files" => Some(Route::Files),
+            "/api/diary/file" => Some(Route::File),
+            "/api/diary/workspace-trash" => Some(Route::WorkspaceTrash),
+            "/api/diary/history" => Some(Route::History),
+            "/api/diary/external-sources" => Some(Route::ExternalSources),
+            "/api/diary/external-sources/import" => Some(Route::ExternalImport),
+            "/api/diary/entries/edit" => Some(Route::Edit),
             "/api/diary/source" => Some(Route::Source),
             "/api/diary/today" => Some(Route::Today),
             "/api/diary/storage-import" => Some(Route::StorageImport),
@@ -141,6 +166,7 @@ impl Route {
 /// `storage-latch.cjs` `status`). The latch is a durable file both processes use (noevia-server
 /// reads it with crates/server-projects `storage_latch`), so this crate only asks.
 pub trait StorageLatch: Send + Sync {
+    fn clear(&self, _user_id: &str) {}
     /// The hold for this account's saved connection, or none. Blocking (SQLite). A latch that
     /// cannot be read is no hold: the status is then as the sidecar gave it, as core's was.
     fn held(&self, user_id: &str, storage: &StorageIdentity<'_>) -> Option<Held>;
@@ -475,6 +501,18 @@ impl Diary {
     where
         B: Body<Data = Bytes> + Unpin + Send,
     {
+        if matches!(
+            route,
+            Route::Files
+                | Route::File
+                | Route::WorkspaceTrash
+                | Route::History
+                | Route::ExternalSources
+                | Route::ExternalImport
+                | Route::Edit
+        ) {
+            return self.serve_proxy(route, ctx, request, body, false).await;
+        }
         let method = request.method.as_str();
         // core mounts the exchanges on GET and POST only; any other method matches nothing and falls
         // through to the unknown-path answer, before the add-on is looked at.
@@ -486,6 +524,13 @@ impl Diary {
         }
         let query = query_of(&request.target);
         match route {
+            Route::Files
+            | Route::File
+            | Route::WorkspaceTrash
+            | Route::History
+            | Route::ExternalSources
+            | Route::ExternalImport
+            | Route::Edit => internal(),
             Route::Source => self.source(&ctx).await,
             Route::Today => self.today(&ctx, query.month.as_deref()).await,
             Route::StorageImport => {
@@ -519,6 +564,230 @@ impl Diary {
 
     /// `GET /api/diary/storage-status`: the sidecar's view of the person's storage, and, while a
     /// refused or throttled login holds this account's automatic storage calls (the backup among
+    /// Remaining proxy surface, with the explicit retry header supplied by the front.
+    pub async fn serve_proxy<B>(
+        &self,
+        route: Route,
+        ctx: Ctx,
+        request: Request,
+        body: B,
+        retry: bool,
+    ) -> Reply
+    where
+        B: Body<Data = Bytes> + Unpin + Send,
+    {
+        let method = request.method.as_str();
+        if matches!(route, Route::ExternalImport | Route::Edit) && method != "POST" {
+            return error_reply(404, "not found");
+        }
+        if matches!(route, Route::ExternalSources | Route::ExternalImport)
+            && ctx.identity.user.role != server_auth::Role::Admin
+        {
+            return error_reply(403, "Administrator required for server import folders");
+        }
+        if !ctx.identity.user.diary_enabled {
+            return disabled();
+        }
+        let allowed = match route {
+            Route::Files => method == "GET",
+            Route::File => matches!(method, "POST" | "PUT"),
+            Route::WorkspaceTrash => matches!(method, "GET" | "POST"),
+            _ => true,
+        };
+        if !allowed {
+            return not_allowed();
+        }
+        if route == Route::History {
+            return self
+                .history(&ctx, query_of(&request.target).month.as_deref())
+                .await;
+        }
+        let param = |name: &str| {
+            Url::parse(&format!("http://h{}", request.target))
+                .ok()
+                .and_then(|u| {
+                    u.query_pairs()
+                        .find(|(k, _)| k == name)
+                        .map(|(_, v)| v.into_owned())
+                })
+                .unwrap_or_default()
+        };
+        let path = match route {
+            Route::Files => format!("/api/files?path={}", encode_uri_component(&param("path"))),
+            Route::File => "/api/file".into(),
+            Route::WorkspaceTrash if method == "GET" => format!(
+                "/api/workspace-trash?after={}",
+                encode_uri_component(&param("after"))
+            ),
+            Route::WorkspaceTrash => "/api/workspace-trash".into(),
+            Route::ExternalSources => "/api/external-sources".into(),
+            Route::ExternalImport => "/api/external-sources/import".into(),
+            Route::Edit => "/api/entries/edit".into(),
+            _ => return internal(),
+        };
+        let reads_body = route != Route::Files
+            && route != Route::ExternalSources
+            && !(route == Route::WorkspaceTrash && method == "GET");
+        let raw = if reads_body {
+            let cap = if route == Route::WorkspaceTrash {
+                4096
+            } else {
+                1024 * 1024
+            };
+            match read_body(body, cap, Instant::now() + self.limits.small_body_deadline).await {
+                Ok(b) => Some(String::from_utf8_lossy(&b).into_owned()),
+                Err(BodyFault::TooLarge) => return error_reply(413, "Request exceeds size limit"),
+                Err(_) => return internal(),
+            }
+        } else {
+            None
+        };
+        let raw = if matches!(route, Route::ExternalImport | Route::Edit) {
+            let parsed = match wtf16::parse(raw.as_deref().unwrap_or("")) {
+                Ok(v) => v,
+                Err(wtf16::Refusal::Invalid) => return error_reply(400, "invalid JSON"),
+                Err(_) => return internal(),
+            };
+            let forward = if route == Route::ExternalImport {
+                if parsed.get("sourcePath").as_str().is_none()
+                    || parsed.get("relPath").as_str().is_none()
+                {
+                    return error_reply(400, "sourcePath and relPath required");
+                }
+                JValue::obj([
+                    ("source_path", parsed.get("sourcePath").clone()),
+                    ("rel_path", parsed.get("relPath").clone()),
+                ])
+            } else {
+                if parsed.get("xid").as_str().is_none()
+                    || parsed.get("me").as_str().is_none()
+                    || (!matches!(parsed.get("assistant"), JValue::Undefined)
+                        && parsed.get("assistant").as_str().is_none())
+                {
+                    return error_reply(400, "xid and me required");
+                }
+                if !matches!(parsed.get("base_hash"), JValue::Undefined | JValue::Null)
+                    && parsed.get("base_hash").as_str().is_none()
+                {
+                    return error_reply(400, "base_hash must be a string");
+                }
+                let mut fields = vec![
+                    ("xid", parsed.get("xid").clone()),
+                    ("me", parsed.get("me").clone()),
+                    (
+                        "assistant",
+                        truthy_or(parsed.get("assistant"), &JValue::Str(String::new())).clone(),
+                    ),
+                    (
+                        "month",
+                        truthy_or(parsed.get("month"), &JValue::Null).clone(),
+                    ),
+                ];
+                if parsed.get("base_hash").as_str().is_some() {
+                    fields.push(("base_hash", parsed.get("base_hash").clone()));
+                }
+                JValue::obj(fields)
+            };
+            wtf16::stringify(&forward)
+        } else {
+            raw
+        };
+        let mut tenant = match self.tenant(&ctx).await {
+            Ok(t) => t,
+            Err(e) => return call_failed(e),
+        };
+        if let Some(t) = Arc::get_mut(&mut tenant) {
+            t.storage_retry = retry && matches!(route, Route::Files | Route::File);
+        }
+        let timeout = if route == Route::ExternalSources {
+            self.limits.external_timeout
+        } else {
+            self.limits.proxy_timeout
+        };
+        let upstream_method = if route == Route::ExternalSources {
+            Method::GET
+        } else {
+            match Method::from_bytes(method.as_bytes()) {
+                Ok(m) => m,
+                Err(_) => return internal(),
+            }
+        };
+        let reply = self
+            .sidecar
+            .fetch_json(
+                &tenant,
+                upstream_method,
+                &path,
+                raw.map(Bytes::from),
+                timeout,
+            )
+            .await;
+        let r = match reply {
+            Ok(r) => r,
+            Err(e) => return call_failed(e),
+        };
+        // The proof call is automatic; the explicit retry belongs only to the original request.
+        if let Some(t) = Arc::get_mut(&mut tenant) {
+            t.storage_retry = false;
+        }
+        if r.ok && retry && matches!(route, Route::Files | Route::File) {
+            if let Ok(st) = self
+                .sidecar
+                .fetch_json(
+                    &tenant,
+                    Method::GET,
+                    "/api/storage-status",
+                    None,
+                    self.limits.proxy_timeout,
+                )
+                .await
+            {
+                if st.ok
+                    && st
+                        .body
+                        .as_ref()
+                        .is_some_and(|b| b.get("mode").as_str() == Some("legacy"))
+                {
+                    if let Some(latch) = &ctx.latch {
+                        latch.clear(&ctx.identity.user.id);
+                    }
+                }
+            }
+        }
+        proxy_reply(route, r)
+    }
+
+    async fn history(&self, ctx: &Ctx, month: Option<&str>) -> Reply {
+        let path = month.filter(|m| !m.is_empty()).map_or_else(
+            || "/api/day".into(),
+            |m| format!("/api/day?month={}", encode_uri_component(m)),
+        );
+        match self.read_json(ctx, &path).await {
+            Ok(r) if r.ok => {
+                let b = r.body.unwrap_or(JValue::Undefined);
+                let log = match b.get("log") {
+                    JValue::Undefined | JValue::Null => b.get("today_log"),
+                    v => v,
+                };
+                json_reply(
+                    200,
+                    &JValue::obj([
+                        (
+                            "todayLog",
+                            truthy_or(log, &JValue::Str(String::new())).clone(),
+                        ),
+                        (
+                            "standing",
+                            truthy_or(b.get("standing"), &JValue::Str(String::new())).clone(),
+                        ),
+                    ]),
+                )
+            }
+            Ok(_) => internal(),
+            Err(e) => call_failed(e),
+        }
+    }
+
     /// them), the hold and when the next attempt is due (#1589), instead of looking healthy.
     async fn storage_status(&self, ctx: &Ctx) -> Reply {
         let reply = async {
@@ -949,6 +1218,108 @@ async fn pump(
     }
 }
 
+fn proxy_reply(route: Route, r: JsonReply) -> Reply {
+    let b = r.body.unwrap_or(JValue::Undefined);
+    if r.ok {
+        return json_reply(
+            if matches!(
+                route,
+                Route::ExternalSources | Route::ExternalImport | Route::Edit
+            ) {
+                200
+            } else {
+                r.status
+            },
+            &b,
+        );
+    }
+    if route == Route::Edit && r.status == 409 && b.get("conflict") == &JValue::Bool(true) {
+        return json_reply(409, &b);
+    }
+    if route == Route::WorkspaceTrash {
+        return json_reply(
+            r.status,
+            &JValue::obj([(
+                "error",
+                truthy_or(
+                    b.get("detail"),
+                    &JValue::Str("Diary recovery request failed. Retry or refresh Trash.".into()),
+                )
+                .clone(),
+            )]),
+        );
+    }
+    if matches!(
+        route,
+        Route::ExternalSources | Route::ExternalImport | Route::Edit
+    ) {
+        let fallback = JValue::Str(format!("diary sidecar {}", r.status));
+        let detail = if route == Route::ExternalSources {
+            &fallback
+        } else if route == Route::Edit {
+            truthy_or(b.get("detail"), truthy_or(b.get("error"), &fallback))
+        } else {
+            truthy_or(b.get("detail"), &fallback)
+        };
+        return error_reply(
+            if r.status >= 500 { 502 } else { r.status },
+            &match js_json::to_js_string(detail) {
+                Ok(s) => s,
+                Err(_) => return internal(),
+            },
+        );
+    }
+    let error = truthy_or(
+        b.get("detail"),
+        truthy_or(
+            b.get("error"),
+            &JValue::Str("Diary storage request failed".into()),
+        ),
+    )
+    .clone();
+    let mut fields = vec![("error", error)];
+    let code = b.get("code").as_str().unwrap_or("");
+    let mut wait = None;
+    if matches!(code, "storageThrottled" | "storageLoginRejected") {
+        fields.push(("code", JValue::Str(code.into())));
+    }
+    if code == "storageThrottled" {
+        let n = match js_number(b.get("retryAfter")) {
+            Ok(n) => n,
+            Err(_) => return internal(),
+        };
+        if n.is_finite() && n > 0.0 {
+            let n = n.ceil().min(86400.0) as u64;
+            fields.push(("retryAfter", JValue::Num(n as f64)));
+            wait = Some(n);
+        }
+    }
+    let mut reply = json_reply(r.status, &JValue::obj(fields));
+    reply.retry_after = wait;
+    reply
+}
+
+/// Number(value) for JSON data, used by Core for Retry-After.
+pub fn js_number(v: &JValue) -> Result<f64, js_json::CoerceError> {
+    let text = js_json::to_js_string(v)?;
+    Ok(match v {
+        JValue::Num(n) => *n,
+        JValue::Null => 0.0,
+        JValue::Bool(b) => if *b {1.0} else {0.0},
+        _ => Some(text).and_then(|s| {
+            let s = s.trim_matches(|c: char| matches!(c, '\u{0009}'..='\u{000d}' | '\u{0020}' | '\u{00a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}'));
+            if s.is_empty() { return Some(0.0); }
+            for (lower, upper, radix) in [("0x","0X",16),("0o","0O",8),("0b","0B",2)] {
+                if let Some(digits) = s.strip_prefix(lower).or_else(||s.strip_prefix(upper)) {
+                    if digits.is_empty() { return None; }
+                    return digits.chars().try_fold(0.0, |n,c| c.to_digit(radix).filter(|_| c.is_ascii()).map(|d| n * f64::from(radix) + f64::from(d)));
+                }
+            }
+            s.parse().ok()
+        }).unwrap_or(f64::NAN),
+    })
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -981,7 +1352,7 @@ mod tests {
             assert!(Route::from_path(p).is_some());
             assert!(Route::from_path(&format!("{p}/")).is_none());
         }
-        assert!(Route::from_path("/api/diary/history").is_none());
+        assert_eq!(Route::from_path("/api/diary/history"), Some(Route::History));
         assert!(Route::from_path("/api/diary/local-exchange").is_none());
         assert!(Route::from_path("/api/diary/storage-statusx").is_none());
     }

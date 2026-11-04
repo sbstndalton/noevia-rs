@@ -60,7 +60,7 @@ const ASK: &str = r#"
   const routes = require(dir + '/server/rust-diary-routes.cjs');
   const proxy = require(dir + '/server/rust-diary.cjs');
   const asked = JSON.parse(process.argv[2]);
-  const refused = asked.map(([m, p]) => routes.owned(m, p) || proxy.owned(p));
+  const refused = asked.map(([m, p]) => routes.owned(m, p) || proxy.owned(p, m));
   const named = [...Object.keys(routes.FIXED), ...proxy.OWNED_PATHS];
   process.stdout.write(JSON.stringify({ refused, named }));
 "#;

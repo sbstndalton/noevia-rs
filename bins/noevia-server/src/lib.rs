@@ -20,6 +20,7 @@ pub mod code_net;
 pub mod config;
 pub mod connector_routes;
 pub mod decision_settings_routes;
+pub mod diary_backup;
 pub mod diary_routes;
 pub mod export_routes;
 pub mod extraction;
@@ -347,6 +348,7 @@ use std::sync::Arc;
 /// (NOEVIA_FRONT_CLIENT_IP=1), and Node believes that header only then, so a core release paired
 /// with a front that predates the strip cannot be handed a client-chosen address (#1578).
 pub const FEATURES: &[&str] = &[
+    "rust-diary-backup-worker",
     "client-address-header",
     "code-net-guard",
     "header-read-timeout",

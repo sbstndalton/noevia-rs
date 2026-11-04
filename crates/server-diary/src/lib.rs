@@ -44,3 +44,5 @@ pub use client::{CallError, JsonReply, Sidecar};
 pub use config::DiaryConfig;
 pub use routes::{Ctx, Diary, Held, Limits, Reply, ReplyBody, Request, Route, StorageLatch};
 pub use tenant::{StorageIdentity, Tenant, TenantError};
+
+pub mod backup;

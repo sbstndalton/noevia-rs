@@ -220,6 +220,8 @@ async fn server_main() -> ExitCode {
     println!("noevia-server: Rust owns the project routes, projects.json and free-chats.json");
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
     let mut stop_wait = stop_rx.clone();
+    let backup_stop = stop_tx.clone();
+    let diary_backup = noevia_server::diary_backup::spawn(&app, stop_rx.clone());
     // sbstndalton/noevia#1264: Node's projects.json / free-chats.json writes, loopback only.
     let switch = app.config.rust_projects;
     if let (Some(cfg), Some(data_dir)) = (
@@ -274,6 +276,8 @@ async fn server_main() -> ExitCode {
     };
     #[cfg(feature = "rust-storage-reads")]
     let _ = storage_metadata.shutdown().await;
+    let _ = backup_stop.send(true);
+    let _ = diary_backup.await;
     exit
 }
 

@@ -93,7 +93,10 @@ impl Sidecar {
         secret: bool,
         deadline: Instant,
     ) -> Result<reqwest::Response, CallError> {
-        let headers = tenant.headers(&self.config, method.as_str(), url, secret, content)?;
+        let mut headers = tenant.headers(&self.config, method.as_str(), url, secret, content)?;
+        if tenant.storage_retry {
+            headers.push(("X-Cowork-Storage-Retry", "1".into()));
+        }
         let mut request = self.http.request(method.clone(), url.clone());
         for (name, value) in headers {
             request = request.header(name, value);
@@ -155,6 +158,34 @@ impl Sidecar {
         )
         .await
         .is_ok_and(|r| r.ok)
+    }
+
+    /// Backup always carries the signed tenant storage credential, including the first attempt.
+    pub async fn storage_backup(&self, tenant: &Tenant) -> Result<JsonReply, CallError> {
+        let url = self.url("/api/storage-backup")?;
+        let deadline = Instant::now() + Duration::from_secs(300);
+        let mut response = self
+            .send_once(
+                tenant,
+                &reqwest::Method::POST,
+                &url,
+                Content::Json(None),
+                None,
+                true,
+                deadline,
+            )
+            .await?;
+        let status = response.status().as_u16();
+        let ok = response.status().is_success();
+        let body = match read_capped(&mut response, JSON_REPLY_CAP, deadline).await? {
+            Capped::Overflow => None,
+            Capped::Bytes(bytes) => Some(parse_or_text(&bytes)?),
+        };
+        Ok(JsonReply {
+            status,
+            ok: ok && body.is_some(),
+            body,
+        })
     }
 
     /// `fetchJson` with the tenant headers and the 428 retry (`diaryFetchJson`).
