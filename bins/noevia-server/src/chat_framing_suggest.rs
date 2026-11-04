@@ -35,7 +35,13 @@ pub const PATH: &str = "/api/chat-framing/suggest";
 /// Core rust-chat-framing-suggest.cjs `BRIDGE_PATH`.
 pub const BRIDGE_PATH: &str = "/internal/chat-framing/suggest";
 /// http.cjs `readBody`'s default limit.
-const BODY_LIMIT: usize = 1024 * 1024;
+pub const BODY_LIMIT: usize = 1024 * 1024;
+/// Core rust-chat-framing-suggest.cjs `BRIDGE_BODY_LIMIT`: the bridge takes what this sends for any public
+/// body of at most [`BODY_LIMIT`] bytes. The chat id goes on whole, and a byte the UTF-8 reading replaces
+/// grows to three, so up to 3 x [`BODY_LIMIT`]; the user (Core `USER_CAP` 1,024 units), the message cut to
+/// [`MESSAGE_CAP`] and the JSON framing fit in the 64 KiB over that. The fixture records Core's value and
+/// tests/framing_suggest.rs checks the two agree.
+pub const BRIDGE_BODY_LIMIT: usize = 3 * BODY_LIMIT + 64 * 1024;
 /// `FRAMING_RATE_LIMIT` and `LLM_RATE_WINDOW_MS`.
 const RATE_LIMIT: u64 = 10;
 const RATE_WINDOW_MS: i64 = 60_000;
@@ -212,6 +218,26 @@ mod tests {
             bridge_body("u1", b"{\"message\":\"a\xffb\"}").unwrap(),
             "{\"user\":\"u1\",\"message\":\"a\u{fffd}b\",\"chatId\":null}"
         );
+    }
+
+    #[test]
+    fn what_a_public_body_at_the_limit_sends_fits_the_bridge() {
+        // A 1 MiB body whose chat id is invalid UTF-8 throughout, a 1,024-unit user and an all-escape message.
+        let user = "\u{1}".repeat(1024);
+        let fill = BODY_LIMIT - r#"{"message":"m","chatId":""}"#.len();
+        let mut body = br#"{"message":"m","chatId":""#.to_vec();
+        body.extend(std::iter::repeat_n(0xff, fill));
+        body.extend_from_slice(br#""}"#);
+        assert_eq!(body.len(), BODY_LIMIT);
+        let sent = bridge_body(&user, &body).unwrap();
+        assert!(
+            sent.len() > 3 * fill && sent.len() <= BRIDGE_BODY_LIMIT,
+            "{}",
+            sent.len()
+        );
+        let escaped = format!("{{\"message\":\"{}\"}}", "\\u0001".repeat(MESSAGE_CAP + 10));
+        let sent = bridge_body(&user, escaped.as_bytes()).unwrap();
+        assert!(sent.len() < 64 * 1024, "{}", sent.len());
     }
 
     #[test]
