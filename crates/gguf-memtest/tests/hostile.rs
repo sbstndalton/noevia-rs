@@ -31,7 +31,10 @@ struct Counting;
 static CURRENT: AtomicUsize = AtomicUsize::new(0);
 static PEAK: AtomicUsize = AtomicUsize::new(0);
 
+// SAFETY: delegates allocation/deallocation to System with the original layouts;
+// atomic accounting does not access or alter the returned storage.
 unsafe impl GlobalAlloc for Counting {
+    // SAFETY: callers provide a valid layout under the GlobalAlloc contract.
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         // SAFETY: forwards to the system allocator unchanged.
         let p = unsafe { System.alloc(layout) };
@@ -41,6 +44,7 @@ unsafe impl GlobalAlloc for Counting {
         }
         p
     }
+    // SAFETY: callers provide the allocation pointer and its original layout.
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         // SAFETY: forwards to the system allocator unchanged.
         unsafe { System.dealloc(ptr, layout) };

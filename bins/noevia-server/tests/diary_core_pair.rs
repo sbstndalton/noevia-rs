@@ -1,5 +1,6 @@
 //! The Diary routes Core refuses and the Diary routes routes.toml gives the front are one list
-//! (sbstndalton/noevia#2206 review L3). Core's `rust-diary-routes.cjs` and `rust-diary.cjs` refuse a
+//! (sbstndalton/noevia#2206 review L3). Core's `rust-diary-routes.cjs`, `rust-diary.cjs` and
+//! `rust-diary-local-exchange.cjs` refuse a
 //! direct request for the front's routes before authentication; a method listed on one side only is a
 //! route that two processes answer, or that nobody does. The guard's `assemble-release.sh` checks
 //! only that Core's files exist; this test asks Core's own `owned()` functions about every method on
@@ -22,7 +23,7 @@ use std::process::Command;
 
 const METHODS: [&str; 7] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
-/// The Diary half of routes.toml: the proxy-only five of #2185, the rest of #2206, local-exchange.
+/// The Diary half of routes.toml: the proxy-only five of #2185, the rest of #2206, the local exchange.
 fn diary_path(path: &str) -> bool {
     path == "/api/diary"
         || path == "/api/diary-connector"
@@ -59,9 +60,10 @@ const ASK: &str = r#"
   const dir = process.argv[1];
   const routes = require(dir + '/server/rust-diary-routes.cjs');
   const proxy = require(dir + '/server/rust-diary.cjs');
+  const exchange = require(dir + '/server/rust-diary-local-exchange.cjs');
   const asked = JSON.parse(process.argv[2]);
-  const refused = asked.map(([m, p]) => routes.owned(m, p) || proxy.owned(p, m));
-  const named = [...Object.keys(routes.FIXED), ...proxy.OWNED_PATHS];
+  const refused = asked.map(([m, p]) => routes.owned(m, p) || proxy.owned(p, m) || exchange.owned(p));
+  const named = [...Object.keys(routes.FIXED), ...proxy.OWNED_PATHS, exchange.PATH];
   process.stdout.write(JSON.stringify({ refused, named }));
 "#;
 
@@ -132,13 +134,17 @@ fn core_refuses_exactly_the_diary_methods_routes_toml_gives_the_front() {
             "Core refuses {p}, which routes.toml does not give the front"
         );
     }
-    // The route that stays Node's is neither refused nor named.
+    // The local exchange is the front's for every method, and Core refuses every one.
+    let exchange: Vec<_> = asked
+        .iter()
+        .zip(refused)
+        .filter(|((_, p, _), _)| p == "/api/diary/local-exchange")
+        .collect();
+    assert_eq!(exchange.len(), METHODS.len());
     assert!(
-        !asked
+        exchange
             .iter()
-            .zip(refused)
-            .any(|((_, p, _), r)| p == "/api/diary/local-exchange"
-                && matches!(r, js_json::JValue::Bool(true))),
-        "local-exchange stays Node's"
+            .all(|((_, _, ours), r)| *ours && matches!(r, js_json::JValue::Bool(true))),
+        "local-exchange is the front's and Core refuses it"
     );
 }

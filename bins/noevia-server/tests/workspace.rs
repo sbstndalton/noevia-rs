@@ -587,3 +587,193 @@ async fn only_the_get_is_the_fronts() {
         502
     );
 }
+
+#[tokio::test]
+async fn retention_put_auth_csrf_confirmation_and_tenant_isolation() {
+    let root = tempfile::tempdir().unwrap();
+    seed(root.path());
+    for user_id in [A, B] {
+        put(
+            root.path(),
+            user_id,
+            "free-chats.json",
+            r#"[{"id":"old","updatedAt":1}]"#,
+        );
+        put(
+            root.path(),
+            user_id,
+            "history-old.json",
+            r#"{"history":[]}"#,
+        );
+    }
+    let addr = front(root.path()).await;
+    assert_eq!(retention_send(addr, "", false, "{").await.0, 401);
+    assert_eq!(retention_send(addr, COOKIE_A, false, "{").await.0, 403);
+    assert_eq!(retention_send(addr, COOKIE_A, true, "{").await.0, 400);
+    assert_eq!(
+        retention_send(addr, COOKIE_A, true, r#"{"days":30}"#)
+            .await
+            .0,
+        409
+    );
+    assert!(!user(root.path(), A).join("chat-retention.json").exists());
+    assert_eq!(
+        retention_send(addr, COOKIE_A, true, r#"{"days":30,"confirmDeletes":1}"#).await,
+        (200, serde_json::json!({"days":30,"deleted":1}))
+    );
+    assert!(!user(root.path(), A).join("history-old.json").exists());
+    assert!(user(root.path(), B).join("history-old.json").exists());
+    assert!(!user(root.path(), B).join("chat-retention.json").exists());
+}
+
+async fn retention_send(
+    addr: std::net::SocketAddr,
+    cookie: &str,
+    csrf: bool,
+    body: &str,
+) -> (u16, serde_json::Value) {
+    let mut socket = TcpStream::connect(addr).await.unwrap();
+    let token = if csrf { "X-CSRF-Token: csrf\r\n" } else { "" };
+    let request = format!("PUT /api/account/retention HTTP/1.1\r\nHost: {addr}\r\nOrigin: http://{addr}\r\nCookie: {cookie}\r\n{token}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+    socket.write_all(request.as_bytes()).await.unwrap();
+    let mut bytes = Vec::new();
+    tokio::time::timeout(Duration::from_secs(40), socket.read_to_end(&mut bytes))
+        .await
+        .unwrap()
+        .unwrap();
+    let text = String::from_utf8(bytes).unwrap();
+    let (head, body) = text.split_once("\r\n\r\n").unwrap();
+    (
+        head.split_whitespace().nth(1).unwrap().parse().unwrap(),
+        serde_json::from_str(body).unwrap(),
+    )
+}
+
+#[tokio::test]
+async fn retention_leftovers_stop_without_counting_or_marking_swept() {
+    let root = tempfile::tempdir().unwrap();
+    seed(root.path());
+    put(
+        root.path(),
+        A,
+        "free-chats.json",
+        r#"[{"id":"first","updatedAt":1},{"id":"bad","updatedAt":1},{"id":"last","updatedAt":1}]"#,
+    );
+    put(
+        root.path(),
+        A,
+        "chat-retention.json",
+        r#"{"days":0,"lastSweep":123}"#,
+    );
+    for id in ["first", "last"] {
+        put(
+            root.path(),
+            A,
+            &format!("history-{id}.json"),
+            r#"{"history":[]}"#,
+        );
+    }
+    std::fs::create_dir(user(root.path(), A).join("history-bad.json")).unwrap();
+    let addr = front(root.path()).await;
+    assert_eq!(
+        retention_send(addr, COOKIE_A, true, r#"{"days":30,"confirmDeletes":3}"#).await,
+        (
+            503,
+            serde_json::json!({"error":"Some chats could not be deleted. Try again shortly.","days":30,"deleted":1})
+        )
+    );
+    assert!(user(root.path(), A).join("history-last.json").exists());
+    assert_eq!(
+        std::fs::read_to_string(user(root.path(), A).join("chat-retention.json")).unwrap(),
+        r#"{"days":30,"lastSweep":123}"#
+    );
+}
+#[tokio::test]
+async fn retention_preview_precedes_oversized_body_failure() {
+    let root = tempfile::tempdir().unwrap();
+    seed(root.path());
+    put(
+        root.path(),
+        A,
+        "projects.json",
+        r#"{"projects":[{"id":"p","chats":{}}]}"#,
+    );
+    let addr = front(root.path()).await;
+    let body = " ".repeat(1024 * 1024 + 10);
+    let cases: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/retention-body-node.json")).unwrap();
+    let expected = cases
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["malformed"] == true && c["kind"] == "oversize")
+        .unwrap();
+    let (status, answer) = retention_send(addr, COOKIE_A, true, &body).await;
+    assert_eq!(u64::from(status), expected["status"].as_u64().unwrap());
+    assert_eq!(answer, expected["body"]);
+    assert_eq!(retention_send(addr, COOKIE_A, false, &body).await.0, 403);
+    assert_eq!(retention_send(addr, "", false, &body).await.0, 401);
+}
+
+#[tokio::test]
+async fn retention_preview_precedes_http_body_stream_error() {
+    use axum::{body::Body, http::Request};
+    use http_body_util::channel::Channel;
+    use std::sync::Arc;
+    for malformed in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        seed(root.path());
+        if malformed {
+            put(
+                root.path(),
+                A,
+                "projects.json",
+                r#"{"projects":[{"id":"p","chats":{}}]}"#,
+            );
+        }
+        let config = Config::from_lookup(|key| match key {
+            "NOEVIA_LEGACY_UPSTREAM" => Some("http://127.0.0.1:9".into()),
+            "UI_DATA_DIR" => Some(root.path().display().to_string()),
+            "PUBLIC_ORIGIN" => Some("http://front.example.test".into()),
+            _ => None,
+        })
+        .unwrap();
+        let app = Arc::new(App::new(config));
+        let (sender, body) = Channel::<axum::body::Bytes, std::io::Error>::new(1);
+        sender.abort(std::io::Error::other("synthetic stream failure"));
+        let request = Request::put("/api/account/retention")
+            .header("cookie", COOKIE_A)
+            .header("x-csrf-token", "csrf")
+            .header("origin", "http://front.example.test")
+            .body(Body::new(body))
+            .unwrap();
+        let response = noevia_server::project_routes::serve(
+            &app,
+            noevia_server::serve::Conn {
+                peer: "127.0.0.1:12345".parse().unwrap(),
+                local: None,
+            },
+            request,
+            "/api/account/retention".into(),
+        )
+        .await;
+        let cases: serde_json::Value =
+            serde_json::from_str(include_str!("fixtures/retention-body-node.json")).unwrap();
+        let expected = cases
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["malformed"] == malformed && c["kind"] == "stream")
+            .unwrap();
+        assert_eq!(
+            u64::from(response.status().as_u16()),
+            expected["status"].as_u64().unwrap()
+        );
+        use http_body_util::BodyExt;
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&body).unwrap(),
+            expected["body"]
+        );
+    }
+}

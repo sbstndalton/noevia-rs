@@ -1,4 +1,6 @@
-//! #2292: public cancellation policy; the live Node worker retains its controller and restoration.
+//! #2292: public cancellation policy over the native worker (model_maint::calibration_facts), which
+//! owns the controller and the restore. Its facts have the shape Core's internal bridge
+//! (rust-calibration-cancel-bridge.cjs) answered before the worker moved.
 use crate::{identity, reply, App};
 use axum::{
     body::Body,
@@ -6,10 +8,8 @@ use axum::{
     response::IntoResponse,
 };
 use js_json::{wtf16, JValue};
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 pub const PATH: &str = "/api/models/calibration/cancel";
-const FACTS: &str = "/internal/calibration-cancel/facts";
-const ABORT: &str = "/internal/calibration-cancel/abort";
 const MAX_FACTS: usize = 8 * 1024 * 1024;
 fn error(status: u16, message: &str) -> Response<Body> {
     reply::error(
@@ -21,19 +21,31 @@ fn error(status: u16, message: &str) -> Response<Body> {
 fn unavailable() -> Response<Body> {
     error(503, "Calibration state is unavailable. Try again shortly.")
 }
-async fn call(app: &App, path: &str, body: &serde_json::Value) -> Option<(u16, JValue)> {
-    let (status, bytes) = app
-        .config
-        .research
-        .node_call(path, body, Duration::from_secs(5))
-        .await?;
-    if bytes.len() > MAX_FACTS {
-        return None;
-    }
-    Some((
-        status,
-        wtf16::parse(std::str::from_utf8(&bytes).ok()?).ok()?,
-    ))
+/// The bridge's answer to `facts` (`token: None`) or `abort`: `{ available: false }` without a
+/// worker; 409 for an abort that did not apply. `None` where it answered 503.
+fn call(app: &App, token: Option<&str>) -> Option<(u16, JValue)> {
+    let Some(worker) = app.config.calibration.as_ref() else {
+        return Some((200, JValue::obj([("available", JValue::Bool(false))])));
+    };
+    let (status, answer) = match token {
+        None => {
+            let mut answer = vec![("available".into(), JValue::Bool(true))];
+            if let JValue::Obj(fields) = worker.cancellation_facts() {
+                answer.extend(fields);
+            }
+            (200, JValue::Obj(answer))
+        }
+        Some(token) => {
+            let answer = worker.compare_and_abort(token);
+            let status = if answer.get("applied").as_bool() == Some(false) {
+                409
+            } else {
+                200
+            };
+            (status, answer)
+        }
+    };
+    (wtf16::stringify(&answer)?.len() <= MAX_FACTS).then_some((status, answer))
 }
 fn opaque<'a>(facts: &'a JValue, key: &str) -> Option<&'a str> {
     facts.get(key).as_str().filter(|t| {
@@ -120,7 +132,7 @@ pub async fn serve(
     // A query or JSON 'model' never selects another person's or a replacement calibration job.
     let mut generation: Option<String> = None;
     for _ in 0..3 {
-        let Some((200, facts)) = call(app, FACTS, &serde_json::json!({})).await else {
+        let Some((200, facts)) = call(app, None) else {
             return unavailable();
         };
         match facts.get("available").as_bool() {
@@ -157,9 +169,7 @@ pub async fn serve(
         let Some(token) = opaque(&facts, "token") else {
             return unavailable();
         };
-        let Some((status, committed)) =
-            call(app, ABORT, &serde_json::json!({"token": token})).await
-        else {
+        let Some((status, committed)) = call(app, Some(token)) else {
             return unavailable();
         };
         if status == 409 && committed.get("applied").as_bool() == Some(false) {

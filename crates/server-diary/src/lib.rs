@@ -22,6 +22,10 @@
 //!   (`/api/diary-connector`, `/api/profile/diary-connectors`); and `GET /api/diary/storage-status`
 //!   with the storage-login latch (a [`StorageLatch`] the front implements over its shared file).
 //!
+//! * [`local_exchange`]: `POST /api/diary/local-exchange` ([`Diary::local_exchange`]), the relay of the
+//!   companion's event stream and the non-streamed reply, behind the caller's admission (the front
+//!   takes Node's model throttle and inference gate with its admission lease).
+//!
 //! The sidecar stays the single writer of the Diary: nothing here writes it except by passing on
 //! the request the signed-in person made. What stays Node's, and why, is in
 //! `contracts/http/README.md` ("sbstndalton/noevia#2185", "sbstndalton/noevia#2206").
@@ -36,12 +40,15 @@ pub mod client;
 pub mod config;
 pub mod connector;
 pub mod exchanges;
+mod js_raw;
+pub mod local_exchange;
 pub mod routes;
 pub mod tenant;
 
 pub use body::{ChannelBody, StreamError};
 pub use client::{CallError, JsonReply, Sidecar};
 pub use config::DiaryConfig;
+pub use local_exchange::{ExchangeHold, ExchangeLimits, ExchangeRefusal};
 pub use routes::{Ctx, Diary, Held, Limits, Reply, ReplyBody, Request, Route, StorageLatch};
 pub use tenant::{StorageIdentity, Tenant, TenantError};
 

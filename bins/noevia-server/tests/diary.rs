@@ -296,10 +296,24 @@ fn the_front_lists_the_capabilities_and_owns_exactly_these_routes() {
             );
         }
     }
-    // Node keeps the local exchange, and the paths the web client never names.
-    let path = "/api/diary/local-exchange";
-    assert_eq!(routes::dispatch("GET", path), None, "{path}");
-    assert_eq!(routes::dispatch("POST", path), None, "{path}");
+    // Joined: the local exchange and the five remaining proxies are the front's, every method; no Diary
+    // route the web client or a direct caller names stays Node's.
+    for path in [
+        "/api/diary/local-exchange",
+        "/api/diary/history",
+        "/api/diary/files",
+        "/api/diary/file",
+        "/api/diary/workspace-trash",
+        "/api/diary/external-sources",
+    ] {
+        for method in ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"] {
+            assert_eq!(
+                routes::dispatch(method, path),
+                Some(routes::Native::Diary),
+                "{method} {path}"
+            );
+        }
+    }
 }
 
 #[test]

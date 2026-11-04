@@ -1,0 +1,648 @@
+{
+  "streams": [
+    {
+      "events": [
+        {
+          "type": "status",
+          "text": "Opening diary context…"
+        },
+        {
+          "type": "error",
+          "reason": "chat_timeout"
+        }
+      ],
+      "expected": [
+        {
+          "type": "status",
+          "text": "Connecting to diary companion…"
+        },
+        {
+          "type": "status",
+          "text": "Opening diary context…"
+        },
+        {
+          "type": "error",
+          "code": "contextFailed",
+          "saved": false,
+          "text": "Couldn't read your diary — nothing was saved. You can resend."
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "type": "status",
+          "text": "Generating companion response…"
+        },
+        {
+          "type": "error",
+          "reason": "chat_timeout"
+        }
+      ],
+      "expected": [
+        {
+          "type": "status",
+          "text": "Connecting to diary companion…"
+        },
+        {
+          "type": "status",
+          "text": "Generating companion response…"
+        },
+        {
+          "type": "error",
+          "code": "modelFailed",
+          "saved": false,
+          "text": "Couldn't reach the local model — nothing was saved. You can resend.",
+          "reason": "chat_timeout"
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "type": "status",
+          "text": "Generating companion response…"
+        },
+        {
+          "type": "error",
+          "code": "other",
+          "reason": "chat_timeout"
+        }
+      ],
+      "expected": [
+        {
+          "type": "status",
+          "text": "Connecting to diary companion…"
+        },
+        {
+          "type": "status",
+          "text": "Generating companion response…"
+        },
+        {
+          "type": "error",
+          "code": "modelFailed",
+          "saved": false,
+          "text": "Couldn't reach the local model — nothing was saved. You can resend."
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "type": "status",
+          "text": "Generating companion response…"
+        },
+        {
+          "type": "error",
+          "code": "modelFailed",
+          "reason": "length_cap"
+        }
+      ],
+      "expected": [
+        {
+          "type": "status",
+          "text": "Connecting to diary companion…"
+        },
+        {
+          "type": "status",
+          "text": "Generating companion response…"
+        },
+        {
+          "type": "error",
+          "code": "modelFailed",
+          "saved": false,
+          "text": "Couldn't reach the local model — nothing was saved. You can resend.",
+          "reason": "length_cap"
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "type": "status",
+          "text": "Generating companion response…"
+        },
+        {
+          "type": "error",
+          "code": "modelFailed",
+          "reason": "bad\nreason"
+        }
+      ],
+      "expected": [
+        {
+          "type": "status",
+          "text": "Connecting to diary companion…"
+        },
+        {
+          "type": "status",
+          "text": "Generating companion response…"
+        },
+        {
+          "type": "error",
+          "code": "modelFailed",
+          "saved": false,
+          "text": "Couldn't reach the local model — nothing was saved. You can resend."
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "type": "status",
+          "text": "Checking whether to save this exchange…"
+        },
+        {
+          "type": "error",
+          "code": "modelFailed",
+          "reason": "chat_timeout"
+        }
+      ],
+      "expected": [
+        {
+          "type": "status",
+          "text": "Connecting to diary companion…"
+        },
+        {
+          "type": "status",
+          "text": "Checking whether to save this exchange…"
+        },
+        {
+          "type": "error",
+          "code": "modelFailed",
+          "reason": "chat_timeout"
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "type": "error",
+          "code": "contextFailed",
+          "reason": "chat_timeout"
+        }
+      ],
+      "expected": [
+        {
+          "type": "status",
+          "text": "Connecting to diary companion…"
+        },
+        {
+          "type": "error",
+          "code": "contextFailed"
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "type": "status",
+          "text": "Generating companion response…"
+        },
+        {
+          "type": "error",
+          "saved": null,
+          "code": "modelFailed",
+          "reason": "chat_timeout"
+        }
+      ],
+      "expected": [
+        {
+          "type": "status",
+          "text": "Connecting to diary companion…"
+        },
+        {
+          "type": "status",
+          "text": "Generating companion response…"
+        },
+        {
+          "type": "error",
+          "saved": null,
+          "code": "modelFailed",
+          "reason": "chat_timeout"
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "type": "status",
+          "text": "Opening diary context…"
+        },
+        {
+          "type": "status",
+          "text": "A future save step"
+        },
+        {
+          "type": "status",
+          "text": "Generating companion response…"
+        },
+        {
+          "type": "error"
+        }
+      ],
+      "expected": [
+        {
+          "type": "status",
+          "text": "Connecting to diary companion…"
+        },
+        {
+          "type": "status",
+          "text": "Opening diary context…"
+        },
+        {
+          "type": "status",
+          "text": "A future save step"
+        },
+        {
+          "type": "status",
+          "text": "Generating companion response…"
+        },
+        {
+          "type": "error"
+        }
+      ]
+    },
+    {
+      "events": [
+        {
+          "type": "answer",
+          "text": "synthetic 😀"
+        },
+        {
+          "type": "done"
+        }
+      ],
+      "expected": [
+        {
+          "type": "status",
+          "text": "Connecting to diary companion…"
+        },
+        {
+          "type": "answer",
+          "text": "synthetic 😀"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    },
+    {
+      "json": {
+        "choices": [
+          {
+            "message": {
+              "reasoning_content": "synthetic thought",
+              "content": "synthetic answer"
+            }
+          }
+        ],
+        "diary": {
+          "decision": "saved",
+          "files": {
+            "note.md": "synthetic"
+          }
+        }
+      },
+      "expected": [
+        {
+          "type": "status",
+          "text": "Connecting to diary companion…"
+        },
+        {
+          "type": "reasoning",
+          "text": "synthetic thought"
+        },
+        {
+          "type": "answer",
+          "text": "synthetic answer"
+        },
+        {
+          "type": "diary",
+          "decision": "saved",
+          "files": {
+            "note.md": "synthetic"
+          }
+        },
+        {
+          "type": "done"
+        }
+      ]
+    },
+    {
+      "json": {
+        "reply": "synthetic",
+        "reasoning": "synthetic reasoning",
+        "files": {},
+        "type": "custom"
+      },
+      "expected": [
+        {
+          "type": "status",
+          "text": "Connecting to diary companion…"
+        },
+        {
+          "type": "reasoning",
+          "text": "synthetic reasoning"
+        },
+        {
+          "type": "answer",
+          "text": "synthetic"
+        },
+        {
+          "type": "custom",
+          "reply": "synthetic",
+          "reasoning": "synthetic reasoning",
+          "files": {}
+        },
+        {
+          "type": "done"
+        }
+      ]
+    },
+    {
+      "json": {
+        "choices": [
+          {
+            "message": {
+              "reasoning_content": "synthetic reasoning",
+              "content": ""
+            }
+          }
+        ]
+      },
+      "expected": [
+        {
+          "type": "status",
+          "text": "Connecting to diary companion…"
+        },
+        {
+          "type": "reasoning",
+          "text": "synthetic reasoning"
+        },
+        {
+          "type": "error",
+          "text": "The diary connection was interrupted. The entry may still be saving; check the saved diary before sending again."
+        }
+      ]
+    },
+    {
+      "json": {
+        "choices": [
+          {
+            "message": {
+              "content": "synthetic"
+            }
+          }
+        ],
+        "diary": "😀"
+      },
+      "expected": [
+        {
+          "type": "status",
+          "text": "Connecting to diary companion…"
+        },
+        {
+          "type": "answer",
+          "text": "synthetic"
+        },
+        {
+          "0": "\ud83d",
+          "1": "\ude00",
+          "type": "diary"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    },
+    {
+      "json": {
+        "choices": [
+          {
+            "message": {
+              "content": "synthetic"
+            }
+          }
+        ],
+        "diary": [
+          1,
+          2
+        ]
+      },
+      "expected": [
+        {
+          "type": "status",
+          "text": "Connecting to diary companion…"
+        },
+        {
+          "type": "answer",
+          "text": "synthetic"
+        },
+        {
+          "0": 1,
+          "1": 2,
+          "type": "diary"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    },
+    {
+      "json": {
+        "reply": 1
+      },
+      "expected": [
+        {
+          "type": "status",
+          "text": "Connecting to diary companion…"
+        },
+        {
+          "type": "error",
+          "text": "The diary connection was interrupted. The entry may still be saving; check the saved diary before sending again."
+        }
+      ]
+    },
+    {
+      "http": 424,
+      "detail": {
+        "detail": "synthetic login rejection"
+      },
+      "expected": [
+        {
+          "type": "status",
+          "text": "Connecting to diary companion…"
+        },
+        {
+          "type": "error",
+          "code": "storageLoginRejected",
+          "saved": false,
+          "text": "Diary storage refused the saved login — nothing was saved. Reconnect storage, then resend."
+        }
+      ]
+    },
+    {
+      "http": 503,
+      "detail": {
+        "code": "storageThrottled",
+        "retryAfter": "2.2"
+      },
+      "expected": [
+        {
+          "type": "status",
+          "text": "Connecting to diary companion…"
+        },
+        {
+          "type": "error",
+          "code": "storageThrottled",
+          "saved": false,
+          "text": "Diary storage is limiting sign-ins right now — nothing was saved. Wait a moment, then resend.",
+          "retryAfter": 3
+        }
+      ]
+    },
+    {
+      "http": 503,
+      "detail": {
+        "code": "storageThrottled"
+      },
+      "retryHeader": "4",
+      "expected": [
+        {
+          "type": "status",
+          "text": "Connecting to diary companion…"
+        },
+        {
+          "type": "error",
+          "code": "storageThrottled",
+          "saved": false,
+          "text": "Diary storage is limiting sign-ins right now — nothing was saved. Wait a moment, then resend.",
+          "retryAfter": 4
+        }
+      ]
+    },
+    {
+      "http": 502,
+      "detail": {
+        "code": "storageUpstream"
+      },
+      "expected": [
+        {
+          "type": "status",
+          "text": "Connecting to diary companion…"
+        },
+        {
+          "type": "error",
+          "code": "diaryUnavailable",
+          "saved": false,
+          "text": "Couldn't reach the Diary companion — nothing was saved. You can resend."
+        }
+      ]
+    },
+    {
+      "http": 502,
+      "detail": {},
+      "expected": [
+        {
+          "type": "status",
+          "text": "Connecting to diary companion…"
+        },
+        {
+          "type": "error",
+          "text": "The diary connection was interrupted. The entry may still be saving; check the saved diary before sending again."
+        }
+      ]
+    },
+    {
+      "http": 504,
+      "detail": {},
+      "expected": [
+        {
+          "type": "status",
+          "text": "Connecting to diary companion…"
+        },
+        {
+          "type": "error",
+          "text": "The diary connection was interrupted. The entry may still be saving; check the saved diary before sending again."
+        }
+      ]
+    }
+  ],
+  "failures": [
+    {
+      "body": {
+        "detail": "synthetic",
+        "code": "storageThrottled",
+        "retryAfter": "0x20"
+      },
+      "expected": {
+        "status": 503,
+        "body": {
+          "error": "synthetic",
+          "code": "storageThrottled",
+          "retryAfter": 32
+        },
+        "headers": {
+          "Retry-After": "32"
+        }
+      }
+    },
+    {
+      "body": {
+        "error": "synthetic",
+        "code": "storageThrottled",
+        "retryAfter": 999999
+      },
+      "expected": {
+        "status": 503,
+        "body": {
+          "error": "synthetic",
+          "code": "storageThrottled",
+          "retryAfter": 86400
+        },
+        "headers": {
+          "Retry-After": "86400"
+        }
+      }
+    },
+    {
+      "body": {
+        "code": "modelFailed",
+        "reason": "chat_timeout",
+        "saved": false
+      },
+      "expected": {
+        "status": 503,
+        "body": {
+          "error": "Diary storage request failed"
+        }
+      }
+    },
+    {
+      "body": {
+        "detail": {
+          "synthetic": true
+        },
+        "code": "storageLoginRejected"
+      },
+      "expected": {
+        "status": 503,
+        "body": {
+          "error": {
+            "synthetic": true
+          },
+          "code": "storageLoginRejected"
+        }
+      }
+    },
+    {
+      "body": null,
+      "expected": {
+        "status": 503,
+        "body": {
+          "error": "Diary storage request failed"
+        }
+      }
+    }
+  ]
+}

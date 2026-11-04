@@ -106,8 +106,10 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 name = "autotune-plan"
 version = "0.1.0"
 dependencies = [
+ "js-json",
  "proptest",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -923,6 +925,30 @@ dependencies = [
  "rand_core 0.6.4",
  "sec1",
  "subtle",
+ "zeroize",
+]
+
+[[package]]
+name = "embedding-worker"
+version = "0.1.0"
+dependencies = [
+ "engine-admission",
+ "model-stream",
+ "proc-macro2",
+ "prompt-framing",
+ "quote",
+ "reqwest",
+ "rusqlite",
+ "rustix",
+ "serde_json",
+ "server-projects",
+ "server-store",
+ "sha2",
+ "sqlite-vec-loader",
+ "ssrf-policy",
+ "syn 2.0.119",
+ "tempfile",
+ "tokio",
  "zeroize",
 ]
 
@@ -1917,6 +1943,7 @@ dependencies = [
 name = "noevia-server"
 version = "0.1.0"
 dependencies = [
+ "autotune-plan",
  "axum",
  "base64 0.22.1",
  "brotli",
@@ -1924,6 +1951,7 @@ dependencies = [
  "code-net-guard",
  "context-fit",
  "dav-parse",
+ "embedding-worker",
  "engine-admission",
  "flate2",
  "gguf",
@@ -1934,6 +1962,7 @@ dependencies = [
  "hyper-util",
  "js-json",
  "llamacpp-autoconfig",
+ "llamacpp-presets",
  "long-profile",
  "mcp-frame",
  "model-stream",
@@ -1943,6 +1972,7 @@ dependencies = [
  "prompt-framing",
  "provider-egress",
  "rand_core 0.6.4",
+ "regex",
  "reqwest",
  "research-core",
  "rustls",
@@ -2268,6 +2298,7 @@ dependencies = [
  "idna",
  "mcp-frame",
  "proptest",
+ "serde_json",
  "url",
 ]
 
@@ -2367,7 +2398,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3099,6 +3130,7 @@ dependencies = [
  "review-verdict",
  "rusqlite",
  "rustix",
+ "ryu-js",
  "serde_json",
  "server-store",
  "sha2",
@@ -3323,6 +3355,23 @@ checksum = "d91ed6c858b01f942cd56b37a94b3e0a1798290327d1236e4d9cf4eaca44d29d"
 dependencies = [
  "base64ct",
  "der",
+]
+
+[[package]]
+name = "sqlite-vec"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0ba424237a9a5db2f6071f193319e2b6a32f7f3961debb2fbbfe67067abce3f"
+dependencies = [
+ "cc",
+]
+
+[[package]]
+name = "sqlite-vec-loader"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "sqlite-vec",
 ]
 
 [[package]]

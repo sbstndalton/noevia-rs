@@ -86,6 +86,7 @@ async fn run_as(
         .await;
     match reply.body {
         ReplyBody::Json(t) => Got::Json(reply.status, t),
+        ReplyBody::Events(_) => panic!("an event stream"),
         ReplyBody::Zip(mut b) => {
             let mut bytes = Vec::new();
             let mut clean = true;
