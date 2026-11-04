@@ -319,11 +319,14 @@ Differences, all deliberate: (1) Core took the gate before authentication for an
 the path; the front holds nothing for a request that is not signed in, lacks the add-on or is not a
 POST, so a maintenance-held gate no longer turns those 401/404/405 answers into 503. (2) A lease Node
 stops confirming (Node restarted, or unreachable for a whole TTL) ends the stream with the interrupted
-event, as a Node restart ended Core's proxy; a Node that cannot be asked at all refuses the exchange
-503 `The model is busy. Try again shortly.` (fail closed). (3) The sidecar client never follows a
-redirect (Core's stream `fetch` did): a redirect is the interrupted event, so tenant headers never go
-to another address. (4) A request or event JSON the port cannot hold as JavaScript does (nesting past
-128 levels, a number outside `f64`) is a 500 for the request and a verbatim frame for an event.
+event, as a Node restart ended Core's proxy; for an unstreamed exchange it is 503 `The model is busy.
+Try again shortly.` while the body is still arriving and, once the sidecar was asked, the call is stopped
+and the answer is core's 503 `diaryUnavailable` for an aborted call. A Node that cannot be asked at all
+refuses the exchange 503 `The model is busy. Try again shortly.` (fail closed). (3) The sidecar client
+never follows a redirect (Core's stream `fetch` did): a redirect is the interrupted event, so tenant
+headers never go to another address. Request bodies, events and replies are read as `JSON.parse` reads
+them (no nesting limit; `1e400` is `Infinity`, written back as `null`), so nothing `JSON.parse` accepts
+becomes a 500 or escapes the event policy.
 
 **Behaviour changes (Node bugs fixed on the way).**
 1. Creating a connector with a bad name, for an account without the add-on, or past ten threw a bare
