@@ -519,12 +519,12 @@ impl Diary {
             match read {
                 Err(_) => return internal(),
                 Ok(None) => return error_reply(400, "invalid JSON"),
-                Ok(Some(js_raw::Top::Other(out))) => (out, false),
-                Ok(Some(js_raw::Top::Object(entries))) => {
-                    let stream = entries
+                Ok(Some(js_raw::Top::Other(out, _))) => (out, false),
+                Ok(Some(js_raw::Top::Object(fields))) => {
+                    let stream = fields
                         .iter()
-                        .any(|(k, v)| js_raw::is_key(k, "stream") && v == "true");
-                    (js_raw::join(&entries), stream)
+                        .any(|f| js_raw::is_key(&f.key, "stream") && f.value == "true");
+                    (js_raw::join(&fields), stream)
                 }
             }
         };

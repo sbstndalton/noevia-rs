@@ -1,14 +1,16 @@
 //! `JSON.stringify(JSON.parse(text))` without the limits of a parsed tree, in time and memory linear
-//! in the text: no nesting limit, every number JavaScript reads (`1e400` is `Infinity`, written back
-//! as `null`), and every string as JavaScript holds it, UTF-16: a lone surrogate escape stays a lone
-//! surrogate, and every character, U+10F800..U+10FFFF included, stays itself.
+//! in the text (keys are hashed, at expected constant cost each): no nesting limit, every number
+//! JavaScript reads, written with V8's digits (`1e400` is `Infinity`, written back as `null`), and
+//! every string as JavaScript holds it, UTF-16: a lone surrogate escape stays a lone surrogate, and
+//! every character, U+10F800..U+10FFFF included, stays itself.
 //!
 //! * [`valid`] is `JSON.parse`'s acceptance: serde_json validates a raw value iteratively, with no
 //!   depth limit, and accepts any `\u` escape (lone surrogates included), as `JSON.parse` does.
 //! * A first pass finds the objects that are not written back in the order their keys came: those
 //!   with an array-index key after another key or out of ascending order (JavaScript lists index
 //!   keys first, ascending), and those with a duplicate key (the last value, in the first one's
-//!   place). Only their entries are kept, as byte ranges of the text.
+//!   place). Only their entries are kept, as byte ranges of the text, and put in order without
+//!   comparing keys: index keys are distinct `u32`s, radix-sorted.
 //! * A second pass writes one output buffer front to back: whitespace dropped, strings decoded and
 //!   re-quoted here as `JSON.stringify` quotes them, numbers written as JavaScript writes them, and a
 //!   reordered object's entries written from their ranges in JavaScript's order. Arrays and every
@@ -16,6 +18,7 @@
 //!
 //! Keys are handed out as `JSON.stringify` writes them (quotes included): that text names one
 //! JavaScript string and no other, lone surrogates included.
+use js_json::{wtf16, JValue};
 use serde_json::value::RawValue;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
@@ -27,11 +30,30 @@ pub(crate) fn valid(text: &str) -> bool {
 
 /// A parsed and re-written text.
 pub(crate) enum Top {
-    /// A top-level object: `(key, value)`, both as `JSON.stringify` writes them, in JavaScript's
-    /// property order.
-    Object(Vec<(String, String)>),
-    /// Anything else, as `JSON.stringify` writes it.
-    Other(String),
+    /// A top-level object's properties, in JavaScript's property order.
+    Object(Vec<Field>),
+    /// Anything else, as `JSON.stringify` writes it, and the number it is when it is one.
+    Other(String, Option<f64>),
+}
+
+/// One property of a top-level object.
+pub(crate) struct Field {
+    /// The key, as `JSON.stringify` writes it.
+    pub(crate) key: String,
+    /// The value, as `JSON.stringify` writes it.
+    pub(crate) value: String,
+    /// The number the value is, when it is one, as JavaScript holds it: `1e400` is `Infinity`,
+    /// which is written `null` but is truthy, not nullish, and no finite number.
+    pub(crate) number: Option<f64>,
+}
+
+/// The number a scalar literal is (`None`: not a number).
+fn number_of(literal: &str) -> Option<f64> {
+    if matches!(literal.as_bytes().first(), Some(b'-' | b'0'..=b'9')) {
+        literal.parse::<f64>().ok()
+    } else {
+        None
+    }
 }
 
 // ── strings ─────────────────────────────────────────────────────────────────────────────────────
@@ -294,11 +316,47 @@ fn ordered(source: &str, entries: Vec<Entry>) -> Vec<Entry> {
             }
         }
     }
-    out.sort_by_key(|e| match array_index(e.key.text(source)) {
-        Some(n) => (0u8, n),
-        None => (1u8, 0),
-    });
-    out
+    js_order(out, |e| array_index(e.key.text(source)))
+}
+
+/// JavaScript's property order for distinct keys: those naming an array index first, ascending,
+/// then the rest as they came. Linear: the indices are radix-sorted.
+fn js_order<T>(items: Vec<T>, index: impl Fn(&T) -> Option<u32>) -> Vec<T> {
+    let mut indexed: Vec<(u32, T)> = Vec::new();
+    let mut named: Vec<T> = Vec::with_capacity(items.len());
+    for item in items {
+        match index(&item) {
+            Some(n) => indexed.push((n, item)),
+            None => named.push(item),
+        }
+    }
+    radix_sort(&mut indexed);
+    indexed
+        .into_iter()
+        .map(|(_, item)| item)
+        .chain(named)
+        .collect()
+}
+
+/// Sorts by the `u32`, a byte at a time from the least significant (stable). A few items are sorted
+/// by comparison, a bounded cost per object.
+fn radix_sort<T>(items: &mut Vec<(u32, T)>) {
+    if items.len() <= 64 {
+        items.sort_by_key(|(n, _)| *n);
+        return;
+    }
+    for shift in [0u32, 8, 16, 24] {
+        let mut buckets: Vec<Vec<(u32, T)>> = (0..256).map(|_| Vec::new()).collect();
+        for item in items.drain(..) {
+            let byte = ((item.0 >> shift) & 0xff) as usize;
+            if let Some(bucket) = buckets.get_mut(byte) {
+                bucket.push(item);
+            }
+        }
+        for bucket in buckets {
+            items.extend(bucket);
+        }
+    }
 }
 
 /// The first pass over a [`valid`] text.
@@ -477,25 +535,30 @@ pub(crate) fn read(text: &str) -> Option<Top> {
         for entry in entries {
             let mut value = String::new();
             write(text, &plan, entry.value.0, entry.value.1, &mut value)?;
-            out.push((entry.key.text(text).to_owned(), value));
+            out.push(Field {
+                key: entry.key.text(text).to_owned(),
+                value,
+                number: number_of(text.get(entry.value.0..entry.value.1)?),
+            });
         }
         return Some(Top::Object(out));
     }
     let mut out = String::with_capacity(text.len());
     write(text, &plan, 0, text.len(), &mut out)?;
-    Some(Top::Other(out))
+    let number = number_of(text.trim_matches([' ', '\t', '\n', '\r']));
+    Some(Top::Other(out, number))
 }
 
-/// `{k:v,...}` of entries [`read`] gave.
-pub(crate) fn join<'a>(entries: impl IntoIterator<Item = &'a (String, String)>) -> String {
+/// `{k:v,...}` of properties [`read`] gave.
+pub(crate) fn join<'a>(fields: impl IntoIterator<Item = &'a Field>) -> String {
     let mut out = String::from("{");
-    for (i, (k, v)) in entries.into_iter().enumerate() {
+    for (i, field) in fields.into_iter().enumerate() {
         if i != 0 {
             out.push(',');
         }
-        out.push_str(k);
+        out.push_str(&field.key);
         out.push(':');
-        out.push_str(v);
+        out.push_str(&field.value);
     }
     out.push('}');
     out
@@ -504,16 +567,134 @@ pub(crate) fn join<'a>(entries: impl IntoIterator<Item = &'a (String, String)>) 
 /// `JSON.stringify(JSON.parse(text))`; `None` when `JSON.parse` throws.
 pub(crate) fn canonical(text: &str) -> Option<String> {
     match read(text)? {
-        Top::Object(entries) => Some(join(&entries)),
-        Top::Other(out) => Some(out),
+        Top::Object(fields) => Some(join(&fields)),
+        Top::Other(out, _) => Some(out),
+    }
+}
+
+/// How deep [`tree`] goes: [`JValue`] is dropped recursively.
+pub(crate) const TREE_DEPTH: usize = 128;
+
+/// The string a literal holds, as [`wtf16`] holds it (a lone surrogate as its mapped character);
+/// `None` for a character of U+10F800..U+10FFFF, which that mapping cannot tell from one.
+fn tree_string(literal: &str) -> Option<String> {
+    let mut out = String::with_capacity(literal.len());
+    let mut held = true;
+    pieces(literal, |p| match p {
+        Piece::Char(c) if wtf16::lone_unit(c).is_none() => out.push(c),
+        Piece::Lone(unit) => match wtf16::lone_char(unit) {
+            Some(c) => out.push(c),
+            None => held = false,
+        },
+        Piece::Char(_) => held = false,
+    })?;
+    held.then_some(out)
+}
+
+enum Node {
+    Arr(Vec<JValue>),
+    Obj {
+        items: Vec<(String, JValue)>,
+        at: HashMap<String, usize>,
+        key: Option<String>,
+    },
+}
+
+/// Puts a finished value in its parent, or makes it the result.
+fn place(stack: &mut [Node], done: &mut Option<JValue>, value: JValue) -> Option<()> {
+    match stack.last_mut() {
+        None => *done = Some(value),
+        Some(Node::Arr(items)) => items.push(value),
+        Some(Node::Obj { items, at, key }) => {
+            let key = key.take()?;
+            match at.get(&key).and_then(|&i| items.get_mut(i)) {
+                Some(slot) => slot.1 = value,
+                None => {
+                    at.insert(key.clone(), items.len());
+                    items.push((key, value));
+                }
+            }
+        }
+    }
+    Some(())
+}
+
+/// `JSON.parse(text)` as a [`JValue`]: keys in JavaScript's order, a duplicate key's last value in
+/// its first place, numbers as JavaScript reads them (`1e400` is `Infinity`). `None` when
+/// `JSON.parse` throws, and where the tree cannot hold the value: nested past [`TREE_DEPTH`]
+/// levels, or a string holding a character of U+10F800..U+10FFFF (see [`tree_string`]).
+pub(crate) fn tree(text: &str) -> Option<JValue> {
+    if !valid(text) {
+        return None;
+    }
+    let b = text.as_bytes();
+    let mut stack: Vec<Node> = Vec::new();
+    let mut done: Option<JValue> = None;
+    let mut i = 0usize;
+    while let Some(&c) = b.get(i) {
+        match c {
+            b' ' | b'\t' | b'\n' | b'\r' | b',' | b':' => i += 1,
+            b'[' | b'{' => {
+                if stack.len() >= TREE_DEPTH {
+                    return None;
+                }
+                stack.push(if c == b'[' {
+                    Node::Arr(Vec::new())
+                } else {
+                    Node::Obj {
+                        items: Vec::new(),
+                        at: HashMap::new(),
+                        key: None,
+                    }
+                });
+                i += 1;
+            }
+            b']' | b'}' => {
+                let value = match stack.pop()? {
+                    Node::Arr(items) => JValue::Arr(items),
+                    Node::Obj { items, .. } => {
+                        JValue::Obj(js_order(items, |(k, _)| wtf16::array_index(k)))
+                    }
+                };
+                place(&mut stack, &mut done, value)?;
+                i += 1;
+            }
+            b'"' => {
+                let end = string_end(b, i)?;
+                let s = tree_string(text.get(i..end)?)?;
+                i = end;
+                if let Some(Node::Obj { key, .. }) = stack.last_mut() {
+                    if key.is_none() {
+                        *key = Some(s);
+                        continue;
+                    }
+                }
+                place(&mut stack, &mut done, JValue::Str(s))?;
+            }
+            _ => {
+                let end = scalar_end(b, i);
+                let value = match text.get(i..end)? {
+                    "true" => JValue::Bool(true),
+                    "false" => JValue::Bool(false),
+                    "null" => JValue::Null,
+                    number => JValue::Num(number.parse::<f64>().ok()?),
+                };
+                i = end;
+                place(&mut stack, &mut done, value)?;
+            }
+        }
+    }
+    if stack.is_empty() {
+        done
+    } else {
+        None
     }
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use js_json::wtf16;
 
     #[test]
     fn what_node_writes_back() {
@@ -606,6 +787,76 @@ mod tests {
         );
         assert!(is_key("\"reason\"", "reason"));
         assert!(!is_key("\"reasons\"", "reason"));
+    }
+
+    #[test]
+    fn wide_objects_of_shuffled_index_keys_are_ordered_as_javascript_orders_them() {
+        // A million distinct index keys in a shuffled order, every 10th repeated later with a new
+        // value, and names in between: index keys ascending (a repeat's value in the first place),
+        // then the names as they came.
+        let n: u32 = 1_000_000;
+        let mut keys: Vec<u32> = (0..n)
+            .map(|i| (u64::from(i) * 2_654_435_761 % 4_294_967_295) as u32)
+            .collect();
+        let mut x: u64 = 88172645463325252;
+        for i in (1..keys.len()).rev() {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            keys.swap(i, (x % (i as u64 + 1)) as usize);
+        }
+        let mut text = String::from("{");
+        let mut values = std::collections::BTreeMap::new();
+        for (i, k) in keys.iter().enumerate() {
+            if i % 1000 == 0 {
+                text.push_str(&format!("\"name{i}\":{i},"));
+            }
+            text.push_str(&format!("\"{k}\":{i},"));
+            values.insert(*k, i);
+        }
+        for (i, k) in keys.iter().enumerate().step_by(10) {
+            text.push_str(&format!("\"{k}\":-{},", i + 1));
+            values.insert(*k, usize::MAX - (i + 1));
+        }
+        text.push_str("\"last\":0}");
+        let mut expected = String::from("{");
+        for (k, v) in &values {
+            let v = if *v > usize::MAX / 2 {
+                format!("-{}", usize::MAX - v)
+            } else {
+                v.to_string()
+            };
+            expected.push_str(&format!("\"{k}\":{v},"));
+        }
+        for i in (0..keys.len()).step_by(1000) {
+            expected.push_str(&format!("\"name{i}\":{i},"));
+        }
+        expected.push_str("\"last\":0}");
+        let started = std::time::Instant::now();
+        assert!(canonical(&text).unwrap() == expected, "order");
+        eprintln!(
+            "{} bytes, {} keys: {:?}",
+            text.len(),
+            keys.len(),
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn the_tree_keeps_infinity_order_and_lone_surrogates() {
+        let tree = tree(r#"{"b":1e400,"1":[-1e400,"\ud800"],"0":null,"b":2}"#).unwrap();
+        assert_eq!(
+            wtf16::stringify(&tree).unwrap(),
+            r#"{"0":null,"1":[null,"\ud800"],"b":2}"#
+        );
+        let tree = super::tree(r#"{"n":1e400}"#).unwrap();
+        assert_eq!(tree.get("n").as_num(), Some(f64::INFINITY));
+        assert!(super::tree(&format!("\"{}\"", '\u{10FFFF}')).is_none());
+        let deep = format!("{}{}", "[".repeat(TREE_DEPTH), "]".repeat(TREE_DEPTH));
+        assert!(super::tree(&deep).is_some());
+        let deeper = format!("[{deep}]");
+        assert!(super::tree(&deeper).is_none());
+        assert!(super::tree("[1,]").is_none());
     }
 
     #[test]
