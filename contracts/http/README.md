@@ -1723,6 +1723,38 @@ the capability `rust-model-state-reads`; Core refuses both with 503 `RUST_MODEL_
 check) gives the front the budget Node enforces, the sidecar names and reports and the shared folder scan; no answer
 from it is a 503. The figure is never read from `settings`: Node's boot copy decides what is enforced.
 
+## sbstndalton/noevia#2286: native model evidence recheck
+
+`rust-model-evidence-recheck` owns POST `/api/models/evidence/recheck` in
+`model_maint/evidence_recheck.rs`. Authentication/CSRF, administrator and JSON/model/category
+validation, the exact 1×1 PNG / `max_tokens: 1` probe, bounded response handling and evidence filing
+run in Rust. Node retains the existing engine-admission lease: its live memory budget, quarantine,
+one-model queue and maintenance exclusion remain the shared arbiter. No new public proxy or facts
+endpoint is introduced. The Node POST policy and its obsolete inbox-wait tests are removed; other
+methods retain Node's role check and 405.
+
+The operation holds admission until filing finishes, sends its gate lease header and the manager credentials through the exact router object
+used for identity reads and cancels the HTTP request when that lease is lost. One detached recheck may run
+at a time, so a browser disconnect cannot strand an unbounded set of probes. The model identity is
+captured before the probe and compared afterwards; a changed identity returns 503 without filing.
+The record is stamped with the carried measurement identity. Missing-projector rejection records
+failed vision evidence as before; an ordinary HTTP/network error or an error envelope under HTTP200 does not qualify the model.
+The old Node probe used the default chat provider, which can differ from the manager: it could
+qualify manager B from engine A's answer. The native probe uses manager B's exact target and key;
+no gate/upstream or provider/manager alias is inferred. A two-engine synthetic regression covers this.
+Lone-surrogate model identifiers are refused before admission because they cannot name a UTF-8
+router model, preventing the internal WTF-16 mapping from targeting a different identifier.
+
+Synthetic proof covers both Node maintenance-lease fallback and foreign gate holds becoming visible
+to `tuningActive`, `inferenceBusy` and folder sync, plus the native HTTP request/recording and failure
+paths. It does not qualify a real model. The remaining gated proof is one administrator POST with
+`{"model":"<explicitly approved already-loaded vision model>","category":"vision"}` against an
+isolated candidate using its configured engine. That would perform real inference and could load
+or wake a model, so it requires the handoff's section 11 approval and has not been invoked. Verify
+that the returned vision category and stored identity match the approved configuration and retain
+`1×1 image accepted; not an accuracy test`; keep any required promotion/selector hold until that
+qualification is approved and completed.
+
 ## sbstndalton/noevia#2287: per-model auto-tune settings
 
 Every method of `/api/models/autotune/settings` belongs to `autotune_settings_routes.rs`

@@ -30,6 +30,9 @@
 //! Input is untrusted JSON (see [`parse`]); anything malformed or over a cap is refused with a
 //! fixed error code and never echoed. Nothing here panics.
 
+/// Shared non-inference bulk discovery/signatures (#2295).
+pub mod scan;
+
 use serde_json::{json, Map, Value};
 
 /// Requests longer than this are refused ([`PlanError::TooLarge`]).
