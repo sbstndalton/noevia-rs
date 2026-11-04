@@ -52,7 +52,7 @@ fn core_untouched(up: &Upstream) {
 async fn settled(f: &Front) -> Value {
     for _ in 0..300 {
         let (_, v) = get(f.addr, START, ADMIN).await;
-        if v["job"]["status"] != "running" {
+        if v["job"]["status"] != "running" && v["job"].get("finishedAt").is_some() {
             return v["job"].clone();
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -131,5 +131,32 @@ async fn the_cancel_response_is_not_stored_and_names_the_feature() {
     assert!(!body.contains("originalText"));
     assert_eq!(settled(&f).await["status"], "cancelled");
     assert!(noevia_server::FEATURES.contains(&"rust-calibration-cancel"));
+    core_untouched(&up);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancellation_facts_over_the_bridge_cap_are_unavailable() {
+    let d = tempfile::tempdir().unwrap();
+    seed(d.path());
+    let up = upstream().await;
+    let (e, mut env) = cal::native(d.path(), true).await;
+    // A running job (as a restart leaves it, before recovery) whose public facts pass 8 MiB.
+    let big = "x".repeat(8 * 1024 * 1024 + 1);
+    std::fs::write(
+        cal::state_file(d.path(), &e),
+        json!({"job": {"id": "j", "model": "synth", "status": "running", "phase": big, "steps": []}, "history": {}})
+            .to_string(),
+    )
+    .unwrap();
+    env.push(("NOEVIA_LEGACY_UPSTREAM", up.base()));
+    let f = front_env(d.path(), true, &env).await;
+    let (s, v) = write(f.addr, "POST", PATH, ADMIN, "").await;
+    assert_eq!(
+        (s, v),
+        (
+            503,
+            json!({"error":"Calibration state is unavailable. Try again shortly."})
+        )
+    );
     core_untouched(&up);
 }

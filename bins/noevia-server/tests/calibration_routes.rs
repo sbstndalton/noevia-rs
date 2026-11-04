@@ -40,7 +40,8 @@ fn core_untouched(up: &Upstream) {
 async fn settled(f: &Front) -> Value {
     for _ in 0..300 {
         let (_, v) = get(f.addr, PATH, ADMIN).await;
-        if v["job"]["status"] != "running" {
+        // A run sets its status before its last reads; it is over once it has finishedAt.
+        if v["job"]["status"] != "running" && v["job"].get("finishedAt").is_some() {
             return v["job"].clone();
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -224,5 +225,130 @@ async fn without_the_gate_a_run_longer_than_any_lease_is_refused_before_one_is_a
     assert_eq!(e.count("POST /models/load"), 0);
     assert_eq!(get(f.addr, PATH, ADMIN).await.1, json!({"job": null}));
     assert_eq!(cal::ini(d.path()), format!("{}{}", cal::INI, cal::LAYA_INI));
+    core_untouched(&up);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_launch_that_outlives_the_bridge_deadline_is_unavailable_but_still_starts() {
+    let (_d, f, up, e) = rig().await;
+    // Each identity read takes 7.5 s: preparation (one read) stays inside the 14 s bound Core's
+    // bridge had, the launch (it prepares again before and after the hold) does not. The client hears
+    // 503; the launch, which is never cut in half, goes on and starts the job.
+    e.props_delay_ms.store(7_500, Ordering::Release);
+    let started = std::time::Instant::now();
+    let (s, v) = write(f.addr, "POST", PATH, ADMIN, ASK).await;
+    assert_eq!(
+        (s, v),
+        (
+            503,
+            json!({"error":"Calibration state is unavailable. Try again shortly."})
+        )
+    );
+    let waited = started.elapsed();
+    // Preparation's 7.5 s, then the launch's own 14 s bound.
+    assert!(
+        waited >= Duration::from_secs(21) && waited < Duration::from_secs(23),
+        "{waited:?}"
+    );
+    let mut job = Value::Null;
+    for _ in 0..200 {
+        job = get(f.addr, PATH, ADMIN).await.1["job"].clone();
+        if job["status"] == "running" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(job["status"], "running", "{job}");
+    assert_eq!(e.count("POST /gate/v1/maintenance"), 1);
+    let (s, _) = write(f.addr, "POST", "/api/models/calibration/cancel", ADMIN, "").await;
+    assert_eq!(s, 202);
+    assert_eq!(settled(&f).await["status"], "cancelled");
+    core_untouched(&up);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn facts_over_the_bridge_cap_are_unavailable() {
+    let d = tempfile::tempdir().unwrap();
+    seed(d.path());
+    let up = upstream().await;
+    let (e, mut env) = cal::native(d.path(), true).await;
+    // A history past Core's 8 MiB answer cap.
+    let big = "x".repeat(8 * 1024 * 1024 + 1);
+    std::fs::write(
+        cal::state_file(d.path(), &e),
+        json!({"job": null, "history": {"synth": [{"note": big}]}}).to_string(),
+    )
+    .unwrap();
+    env.push(("NOEVIA_LEGACY_UPSTREAM", up.base()));
+    let f = front_env(d.path(), true, &env).await;
+    let unavailable = json!({"error":"Calibration state is unavailable. Try again shortly."});
+    assert_eq!(get(f.addr, PATH, ADMIN).await, (503, unavailable.clone()));
+    assert_eq!(
+        write(f.addr, "POST", PATH, ADMIN, ASK).await,
+        (503, unavailable)
+    );
+    assert_eq!(e.count("POST /gate/"), 0);
+    core_untouched(&up);
+}
+
+/// Boot recovery through the front's own Config (main.rs calls this before it serves): a job a
+/// restart left running is interrupted and its profile restored (the oracle's first case), and
+/// nothing launches or cancels while the recovery runs.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn boot_recovery_through_config_interrupts_the_job_and_restores_its_profile() {
+    let d = tempfile::tempdir().unwrap();
+    seed(d.path());
+    let up = upstream().await;
+    let (e, mut env) = cal::native(d.path(), true).await;
+    let fixture: Value =
+        serde_json::from_str(include_str!("fixtures/calibration-recover-node.json")).unwrap();
+    let case = &fixture["cases"][0];
+    assert_eq!(
+        case["name"],
+        "models.ini still what the job last wrote: restored"
+    );
+    std::fs::write(d.path().join("models.ini"), case["ini"].as_str().unwrap()).unwrap();
+    std::fs::write(
+        cal::state_file(d.path(), &e),
+        case["state"].as_str().unwrap(),
+    )
+    .unwrap();
+    env.push(("NOEVIA_LEGACY_UPSTREAM", up.base()));
+    let f = front_env(d.path(), true, &env).await;
+    e.reload_delay_ms.store(1500, Ordering::Release);
+    let recovery = f.app.config.spawn_calibration_recovery().unwrap();
+    assert!(
+        f.app.config.spawn_calibration_recovery().is_none(),
+        "one recovery at a time"
+    );
+    // While it runs: the job is the file's, with no run behind it.
+    let (s, v) = write(f.addr, "POST", "/api/models/calibration/cancel", ADMIN, "").await;
+    assert_eq!(
+        (s, v),
+        (
+            503,
+            json!({"error":"Calibration state is unavailable. Try again shortly."})
+        )
+    );
+    let (s, v) = write(f.addr, "POST", PATH, ADMIN, ASK).await;
+    assert_eq!(
+        (s, v),
+        (409, json!({"error":"A calibration is already running."}))
+    );
+    assert_eq!(e.count("POST /gate/"), 0);
+    let outcome = tokio::time::timeout(Duration::from_secs(30), recovery)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(outcome, Some(Some(true)));
+    let job = get(f.addr, PATH, ADMIN).await.1["job"].clone();
+    assert_eq!(job["status"], "interrupted", "{job}");
+    assert_eq!(job["restored"], true);
+    let original: Value = serde_json::from_str(case["state"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        cal::ini(d.path()),
+        original["job"]["originalText"].as_str().unwrap()
+    );
+    assert_eq!(e.count("GET /models?reload=1"), 1);
     core_untouched(&up);
 }

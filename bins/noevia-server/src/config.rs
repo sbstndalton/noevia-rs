@@ -225,6 +225,17 @@ impl std::fmt::Debug for ProjectStoreConfig {
 }
 
 impl Config {
+    /// The boot recovery of a calibration a restart interrupted (#2303; Core's boot `recover()` is
+    /// off): it takes the worker's launch slot before this returns, so call it before the routes
+    /// serve. `None` without a worker, or when the slot is already taken.
+    pub fn spawn_calibration_recovery(
+        &self,
+    ) -> Option<tokio::task::JoinHandle<Option<Option<bool>>>> {
+        self.calibration.as_ref()?.spawn_recover()
+    }
+}
+
+impl Config {
     /// The deployment switches that are on.
     pub fn switches(&self) -> crate::routes::Switches {
         crate::routes::Switches::default()

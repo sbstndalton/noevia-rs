@@ -65,6 +65,10 @@ pub struct Engine {
     pub native: AtomicU64,
     /// The gate refuses the maintenance hold: (status, code, message).
     pub refuse: Mutex<Option<(u16, String, String)>>,
+    /// `GET /props` answers this late (ms).
+    pub props_delay_ms: AtomicU64,
+    /// `GET /models?reload=1` answers this late (ms).
+    pub reload_delay_ms: AtomicU64,
     pub seen: Mutex<Vec<String>>,
 }
 
@@ -134,6 +138,12 @@ pub async fn engine(ini: PathBuf) -> Arc<Engine> {
                 ("DELETE", _) => Response::builder().status(204).body(Body::empty()).unwrap(),
                 (_, p) if p.starts_with("/gate/") => reply(200, json!({})),
                 ("GET", "/models") => {
+                    if parts.uri.query() == Some("reload=1") {
+                        let delay = e.reload_delay_ms.load(Ordering::Acquire);
+                        if delay > 0 {
+                            tokio::time::sleep(Duration::from_millis(delay)).await;
+                        }
+                    }
                     if e.down.load(Ordering::Acquire) {
                         return reply(502, json!({}));
                     }
@@ -160,7 +170,13 @@ pub async fn engine(ini: PathBuf) -> Arc<Engine> {
                     .into();
                     reply(200, json!({"success": true}))
                 }
-                ("GET", "/props") => reply(200, json!({"build_info": "b1234"})),
+                ("GET", "/props") => {
+                    let delay = e.props_delay_ms.load(Ordering::Acquire);
+                    if delay > 0 {
+                        tokio::time::sleep(Duration::from_millis(delay)).await;
+                    }
+                    reply(200, json!({"build_info": "b1234"}))
+                }
                 ("POST", "/tokenize") => reply(200, json!({"tokens": vec![1; 650]})),
                 ("POST", "/v1/chat/completions") if body["stream"] == Value::Bool(true) => {
                     tokio::time::sleep(Duration::from_secs(60)).await;
