@@ -134,73 +134,129 @@ fn is_event_stream(res: &Response<Body>) -> bool {
 
 /// The most of one unfinished frame a [`StreamTail`] holds back: 8 MiB.
 pub const HOLDBACK: usize = 8 * 1024 * 1024;
-/// The most every [`StreamTail`] in this process holds back together: 32 MiB ([`BUDGET`]).
+/// The most every [`StreamTail`] in this process holds back together, held frames still queued on their
+/// way out included: 32 MiB ([`BUDGET`]), charged by allocated capacity.
 pub const HOLDBACK_BUDGET: usize = 32 * 1024 * 1024;
 
 /// The process-wide holdback budget: one permit per byte held.
 static BUDGET: std::sync::LazyLock<Arc<Semaphore>> =
     std::sync::LazyLock::new(|| Arc::new(Semaphore::new(HOLDBACK_BUDGET)));
 
-/// The bytes of one unfinished frame held back, each reserved on a byte budget before it is copied in;
-/// the reservation goes back when the bytes leave (sent or dropped) and when this is dropped.
-struct Held {
+/// Permits of the holdback budget, one per byte; given back when dropped.
+struct Reservation {
     budget: Arc<Semaphore>,
-    chunks: Vec<Bytes>,
-    len: usize,
+    bytes: usize,
 }
 
-impl Held {
-    fn new(budget: Arc<Semaphore>) -> Self {
-        Held {
-            budget,
-            chunks: Vec::new(),
-            len: 0,
-        }
-    }
-
-    fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
-    fn ends_with_newline(&self) -> bool {
-        self.chunks.last().and_then(|c| c.last()) == Some(&b'\n')
-    }
-
-    /// Holds a copy of `tail` when it fits the frame's [`HOLDBACK`] and the shared budget has room;
-    /// never waits.
-    fn try_hold(&mut self, tail: &[u8]) -> bool {
-        if self.len.saturating_add(tail.len()) > HOLDBACK {
-            return false;
-        }
-        let Ok(n) = u32::try_from(tail.len()) else {
+impl Reservation {
+    /// Covers `bytes` in all, reserving the difference now; `false` (nothing taken) when the budget
+    /// lacks it. Never waits.
+    fn cover(&mut self, bytes: usize) -> bool {
+        let Some(more) = bytes.checked_sub(self.bytes).filter(|m| *m > 0) else {
+            return true;
+        };
+        let Ok(n) = u32::try_from(more) else {
             return false;
         };
         match self.budget.try_acquire_many(n) {
             Ok(permit) => permit.forget(),
             Err(_) => return false,
         }
-        self.chunks.push(Bytes::copy_from_slice(tail));
-        self.len += tail.len();
+        self.bytes = bytes;
         true
     }
 
-    /// Everything held, in order; its reservation goes back.
-    fn take(&mut self) -> Vec<Bytes> {
-        self.release();
-        std::mem::take(&mut self.chunks)
-    }
-
-    fn release(&mut self) {
-        if self.len > 0 {
-            self.budget.add_permits(self.len);
-            self.len = 0;
+    fn none(&self) -> Reservation {
+        Reservation {
+            budget: Arc::clone(&self.budget),
+            bytes: 0,
         }
     }
 }
 
-impl Drop for Held {
+impl Drop for Reservation {
     fn drop(&mut self) {
-        self.release();
+        if self.bytes > 0 {
+            self.budget.add_permits(self.bytes);
+        }
+    }
+}
+
+/// A held frame on its way out: its buffer and the reservation that covers the buffer's capacity, dropped
+/// together when the response body is done with the bytes (written, or the client left).
+struct Reserved {
+    buf: Vec<u8>,
+    _reservation: Reservation,
+}
+
+impl AsRef<[u8]> for Reserved {
+    fn as_ref(&self) -> &[u8] {
+        &self.buf
+    }
+}
+
+/// The start of one unfinished frame, held back in one buffer whose allocated capacity is reserved on
+/// the byte budget before it is allocated.
+struct Held {
+    buf: Vec<u8>,
+    reservation: Reservation,
+}
+
+impl Held {
+    fn new(budget: Arc<Semaphore>) -> Self {
+        Held {
+            buf: Vec::new(),
+            reservation: Reservation { budget, bytes: 0 },
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.buf.is_empty()
+    }
+
+    fn ends_with_newline(&self) -> bool {
+        self.buf.last() == Some(&b'\n')
+    }
+
+    /// Appends `tail` when the frame stays within [`HOLDBACK`] and the budget covers the buffer's
+    /// capacity; never waits. The buffer grows by doubling (so tiny reads cost few allocations), or
+    /// to exactly what is needed when the budget has no room for the doubling.
+    fn try_hold(&mut self, tail: &[u8]) -> bool {
+        let need = self.buf.len().saturating_add(tail.len());
+        if need > HOLDBACK {
+            return false;
+        }
+        if need > self.buf.capacity() {
+            let doubled = need
+                .max(self.buf.capacity().saturating_mul(2))
+                .min(HOLDBACK);
+            let Some(capacity) = [doubled, need]
+                .into_iter()
+                .find(|c| self.reservation.cover(*c))
+            else {
+                return false;
+            };
+            self.buf.reserve_exact(capacity - self.buf.len());
+            // Vec may round up; what it reports is what is charged.
+            if !self.reservation.cover(self.buf.capacity()) {
+                return false;
+            }
+        }
+        self.buf.extend_from_slice(tail);
+        true
+    }
+
+    /// What is held, as bytes that keep their reservation until they are dropped.
+    fn take(&mut self) -> Option<Bytes> {
+        let empty = self.reservation.none();
+        let reservation = std::mem::replace(&mut self.reservation, empty);
+        let buf = std::mem::take(&mut self.buf);
+        (!buf.is_empty()).then(|| {
+            Bytes::from_owner(Reserved {
+                buf,
+                _reservation: reservation,
+            })
+        })
     }
 }
 
@@ -288,8 +344,8 @@ impl StreamTail {
                 (self.held.ends_with_newline() && data.first() == Some(&b'\n')).then_some(1)
             });
         if let Some(end) = end {
-            for chunk in self.held.take() {
-                self.send(chunk);
+            if let Some(held) = self.held.take() {
+                self.send(held);
             }
             let whole = data.split_to(end);
             self.send(whole);
@@ -299,8 +355,8 @@ impl StreamTail {
             return;
         }
         // Over the frame's cap, or the shared budget is spent: this frame streams as it comes.
-        for chunk in self.held.take() {
-            self.send(chunk);
+        if let Some(held) = self.held.take() {
+            self.send(held);
         }
         if let Some(&last) = data.last() {
             self.sent_nl = last == b'\n';
@@ -340,8 +396,8 @@ impl HttpBody for StreamTail {
                 Poll::Ready(None) => {
                     self.done = true;
                     // Core ended without a final blank line: what it wrote goes out as it wrote it.
-                    for chunk in self.held.take() {
-                        self.send(chunk);
+                    if let Some(held) = self.held.take() {
+                        self.send(held);
                     }
                 }
                 Poll::Pending => return Poll::Pending,
@@ -547,6 +603,153 @@ mod tests {
         .unwrap()
         .to_bytes();
         assert_eq!(out, Bytes::from_static(FAILED_FRAME.as_bytes()));
+        assert_eq!(budget.available_permits(), TOTAL);
+    }
+
+    /// Re-review P2-1 (b74a57a): a held frame that is complete but still queued (the client reads
+    /// slowly) keeps its reservation until the response body drops it, so what many stalled streams
+    /// retain together stays within the budget.
+    #[test]
+    fn stalled_consumers_keep_queued_held_frames_within_the_budget() {
+        const TOTAL: usize = 512 * 1024;
+        let budget = Arc::new(Semaphore::new(TOTAL));
+        let mut streams: Vec<StreamTail> = (0..64)
+            .map(|_| StreamTail::with_budget(Body::empty(), Arc::clone(&budget)))
+            .collect();
+        let piece = vec![b'q'; 2048];
+        for tail in &mut streams {
+            tail.take(Bytes::from_static(b"data: 1\n\n"));
+            tail.take(Bytes::from_static(b"data: \""));
+            for _ in 0..8 {
+                tail.take(Bytes::copy_from_slice(&piece));
+                assert!(in_use(&budget, TOTAL) <= TOTAL);
+            }
+        }
+        let before = in_use(&budget, TOTAL);
+        assert!(before > 0 && before <= TOTAL);
+        // Every frame completes; nobody reads (the consumer is stalled): nothing is given back yet,
+        // and the next frames cannot take more than the budget either.
+        for tail in &mut streams {
+            tail.take(Bytes::from_static(b"\"\n\ndata: \"more"));
+            assert!(in_use(&budget, TOTAL) <= TOTAL);
+        }
+        assert!(
+            in_use(&budget, TOTAL) >= before,
+            "queued held frames keep their reservation"
+        );
+        assert!(streams.iter().all(|t| !t.pending.is_empty()));
+        // One client reads its queue: exactly its frames' reservation goes back.
+        let held_before = streams[0].held.reservation.bytes;
+        let used = in_use(&budget, TOTAL);
+        let out: Vec<u8> = streams[0]
+            .pending
+            .drain(..)
+            .flat_map(|b| b.to_vec())
+            .collect();
+        let whole = format!("data: 1\n\ndata: \"{}\"\n\n", "q".repeat(8 * 2048));
+        assert_eq!(out, whole.as_bytes());
+        assert!(in_use(&budget, TOTAL) < used);
+        assert_eq!(streams[0].held.reservation.bytes, held_before);
+        // Every stream dropped with its queue and its held start: all of it comes back.
+        drop(streams);
+        assert_eq!(in_use(&budget, TOTAL), 0);
+    }
+
+    /// Re-review P2-2 (b74a57a): a held frame is one buffer, and its allocated capacity (not its length)
+    /// is what is reserved; tiny reads cost few allocations.
+    #[test]
+    fn the_held_buffer_is_one_allocation_charged_by_its_capacity() {
+        const TOTAL: usize = 1024 * 1024;
+        let budget = Arc::new(Semaphore::new(TOTAL));
+        let mut tail = StreamTail::with_budget(Body::empty(), Arc::clone(&budget));
+        tail.take(Bytes::from_static(b"data: \""));
+        let mut capacities = std::collections::BTreeSet::new();
+        for _ in 0..20_000 {
+            tail.take(Bytes::from_static(b"r"));
+            let held = &tail.held;
+            assert!(held.reservation.bytes >= held.buf.capacity());
+            assert_eq!(in_use(&budget, TOTAL), held.reservation.bytes);
+            capacities.insert(held.buf.capacity());
+        }
+        assert!(tail.pending.is_empty(), "all of it is held");
+        assert!(capacities.len() <= 16, "{} allocations", capacities.len());
+        assert_eq!(tail.held.buf.len(), 20_007);
+        // Near the budget the buffer grows by exactly what is needed, still charged by capacity.
+        let tight = Arc::new(Semaphore::new(10_000));
+        let mut tail = StreamTail::with_budget(Body::empty(), Arc::clone(&tight));
+        tail.take(Bytes::copy_from_slice(&[b'a'; 6000]));
+        tail.take(Bytes::copy_from_slice(&[b'b'; 3000]));
+        assert_eq!(tail.held.buf.capacity(), 9000);
+        assert_eq!(tight.available_permits(), 1000);
+        tail.take(Bytes::copy_from_slice(&[b'c'; 2000]));
+        assert!(tail.overflow && tail.held.is_empty());
+        // Streamed out, the old buffer still holds its reservation while queued; then it is all back.
+        assert_eq!(tight.available_permits(), 1000);
+        tail.pending.clear();
+        assert_eq!(tight.available_permits(), 10_000);
+    }
+
+    #[tokio::test]
+    async fn nothing_leaks_after_drops_breaks_and_ends() {
+        const TOTAL: usize = 256 * 1024;
+        let budget = Arc::new(Semaphore::new(TOTAL));
+        // Held mid-frame, completed but queued, overflowed and queued, then all dropped.
+        let mut a = StreamTail::with_budget(Body::empty(), Arc::clone(&budget));
+        a.take(Bytes::from_static(b"data: {\"t"));
+        let mut b = StreamTail::with_budget(Body::empty(), Arc::clone(&budget));
+        b.take(Bytes::from_static(b"data: {\"t"));
+        b.take(Bytes::from_static(b"\"}\n\ndata: {"));
+        let mut c = StreamTail::with_budget(Body::empty(), Arc::clone(&budget));
+        c.take(Bytes::from_static(b"data: \""));
+        c.take(Bytes::from(vec![b'o'; HOLDBACK]));
+        assert!(c.overflow);
+        assert!(budget.available_permits() < TOTAL);
+        drop((a, b, c));
+        assert_eq!(budget.available_permits(), TOTAL);
+        // Through a response body: Core breaks, Core ends without a blank line, the client leaves.
+        for (reads, broken) in [
+            (vec![&b"data: 1\n\ndata: {\"ty"[..]], true),
+            (vec![&b"data: 1\n\ndata: x"[..]], false),
+        ] {
+            let (mut tx, body) = Chan::new(4);
+            for r in reads {
+                tx.send_data(Bytes::copy_from_slice(r)).await.unwrap();
+            }
+            if broken {
+                tx.abort(std::io::Error::other("Core went away"));
+            } else {
+                drop(tx);
+            }
+            let _ = Body::new(StreamTail::with_budget(
+                Body::new(body),
+                Arc::clone(&budget),
+            ))
+            .collect()
+            .await
+            .unwrap();
+            assert_eq!(budget.available_permits(), TOTAL);
+        }
+        let (mut tx, body) = Chan::new(4);
+        let mut stream = Body::new(StreamTail::with_budget(
+            Body::new(body),
+            Arc::clone(&budget),
+        ));
+        tx.send_data(Bytes::from_static(b"data: {\"a"))
+            .await
+            .unwrap();
+        tx.send_data(Bytes::from_static(b"\"}\n\ndata: {\"b"))
+            .await
+            .unwrap();
+        let first = stream.frame().await.unwrap().unwrap().into_data().unwrap();
+        assert_eq!(first, Bytes::from_static(b"data: {\"a"));
+        // The client keeps that held copy a while (as a socket write would), then leaves.
+        assert!(budget.available_permits() < TOTAL);
+        drop(stream);
+        assert!(
+            budget.available_permits() < TOTAL,
+            "the copy still out keeps its reservation"
+        );
+        drop(first);
         assert_eq!(budget.available_permits(), TOTAL);
     }
 
