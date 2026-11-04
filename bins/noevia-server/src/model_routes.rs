@@ -138,6 +138,9 @@ pub async fn serve(
     if path == crate::autotune_clear_routes::PATH {
         return crate::autotune_clear_routes::serve(app, conn, req, path).await;
     }
+    if path == crate::calibration_routes::PATH {
+        return crate::calibration_routes::serve(app, conn, req, path).await;
+    }
     if path == crate::calibration_cancel_routes::PATH {
         return crate::calibration_cancel_routes::serve(app, conn, req, path).await;
     }
@@ -166,8 +169,7 @@ pub async fn serve(
         return crate::preset_read_routes::serve(app, id.user.role == Role::Admin, model).await;
     }
     if let Some(route) = crate::model_sizing::Route::of(&path) {
-        let layer = Arc::clone(&app.identity);
-        let budget = Arc::new(move || crate::model_sizing::budget_setting(&layer));
+        let budget = crate::model_state_routes::sizing_budget(app);
         let (status, body) = app
             .config
             .sizing

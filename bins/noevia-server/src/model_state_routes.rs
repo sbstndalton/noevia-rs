@@ -77,6 +77,16 @@ async fn node_facts(
         .filter(JValue::is_object)
 }
 
+/// Shared with the sizing reads: never re-read a row that admission may not enforce.
+pub(crate) async fn sizing_budget(app: &crate::App) -> Option<f64> {
+    node_facts(app, &json!({ "want": "budget" }), BUDGET_DEADLINE)
+        .await?
+        .get("budget")
+        .get("budgetGib")
+        .as_num()
+        .filter(|n| n.is_finite() && *n > 0.0)
+}
+
 /// One read, after the session gate.
 pub async fn serve(app: &Arc<crate::App>, path: &str, admin: bool) -> Response<Body> {
     if path == BUDGET {

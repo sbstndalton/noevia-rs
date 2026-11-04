@@ -287,7 +287,8 @@ async function main() {
       web.close(); engine?.server.close();
       if (engine && engine.seen.some((x) => x !== 'GET /models')) throw Error('the reads asked the router for more than its listing: ' + engine.seen.join(', '));
       const { requests, ...rest } = s;
-      out.scenarios.push({ ...rest, listing: s.listing === undefined ? undefined : s.listing, results });
+      const liveBudgetGib = createInferenceBudget({ store: { get: () => s.budgetSetting }, env, readMeminfo: () => 'MemTotal: 67108864 kB\n' }).budgetGib();
+      out.scenarios.push({ ...rest, liveBudgetGib, listing: s.listing === undefined ? undefined : s.listing, results });
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   }
   process.stdout.write(JSON.stringify(out, null, 1) + '\n');
