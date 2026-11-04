@@ -165,8 +165,7 @@ pub async fn serve(
         Err(_) => return identity::Rejection::Unavailable.into_response(),
     };
     if let Some(route) = crate::model_sizing::Route::of(&path) {
-        let layer = Arc::clone(&app.identity);
-        let budget = Arc::new(move || crate::model_sizing::budget_setting(&layer));
+        let budget = crate::model_state_routes::sizing_budget(app);
         let (status, body) = app
             .config
             .sizing
