@@ -1170,13 +1170,18 @@ mod tests {
     }
 
     #[test]
-    fn the_retention_preview_is_rusts_for_get_only() {
+    fn the_retention_setting_is_rusts_for_get_and_put() {
         let off = Switches::default();
-        assert_eq!(
-            dispatch_under("GET", "/api/account/retention", off),
-            Some(Native::Projects)
-        );
-        for m in ["PUT", "POST", "DELETE"] {
+        // GET previews and PUT persists the setting natively (the settings-writers move); Node keeps
+        // every other method.
+        for m in ["GET", "PUT"] {
+            assert_eq!(
+                dispatch_under(m, "/api/account/retention", off),
+                Some(Native::Projects),
+                "{m}"
+            );
+        }
+        for m in ["POST", "DELETE"] {
             assert_eq!(
                 dispatch_under(m, "/api/account/retention", off),
                 None,
