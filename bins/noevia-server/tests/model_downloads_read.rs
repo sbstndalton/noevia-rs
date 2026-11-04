@@ -30,11 +30,11 @@ async fn exact_get_accepts_members_and_applies_js_field_rules() {
     up.set(|_| {
         reply(
             "200 OK",
-            r#"{"kind":"listing","jobs":[
+            r#"{"kind":"listing","rows":[
               {"fields":{"id":0,"job_id":"one","model_name":false,"model":"","checkpoint":"\ud800","percent":0,"progress":0.9,"status":"","state":"running","private":"hidden"}},
               {"fields":{"id":"ignored","model_name":{},"progress":0.7,"state":true},"infinite":["id","percent"]},
               {"fields":{"percent":"50","progress":0.3}}
-            ],"downloads":[{"fields":{"id":"ignored listing"}}]}"#,
+            ]}"#,
         )
     });
     assert_eq!(get(front.addr, PATH, "").await.0, 401);
@@ -63,21 +63,7 @@ async fn owner_shapes_and_failures_preserve_status() {
     let (_d, front, up) = rig().await;
     for (facts, status, expected) in [
         (json!({"kind":"disabled"}), 200, json!([])),
-        (
-            json!({"kind":"listing","direct":[{"fields":{"id":"direct","percent":40}}]}),
-            200,
-            json!([{"id":"direct","model":"","progress":0.4,"status":""}]),
-        ),
-        (
-            json!({"kind":"listing","jobs":false,"downloads":[{"fields":{"id":"fallback"}}]}),
-            200,
-            json!([{"id":"fallback","model":"","progress":null,"status":""}]),
-        ),
-        (
-            json!({"kind":"listing","jobs":[],"downloads":true}),
-            200,
-            json!([]),
-        ),
+        (json!({"kind":"listing","rows":[]}), 200, json!([])),
         (
             json!({"kind":"failed"}),
             502,
@@ -89,14 +75,24 @@ async fn owner_shapes_and_failures_preserve_status() {
             json!({"error":"Internal error"}),
         ),
         (
-            json!({"kind":"listing","jobs":true}),
+            json!({"kind":"listing","rows":true}),
             500,
             json!({"error":"Internal error"}),
         ),
         (
-            json!({"kind":"listing","jobs":[null]}),
+            json!({"kind":"listing"}),
             500,
             json!({"error":"Internal error"}),
+        ),
+        (
+            json!({"kind":"listing","rows":[null]}),
+            500,
+            json!({"error":"Internal error"}),
+        ),
+        (
+            json!({"kind":"unknown"}),
+            502,
+            json!({"error":"Download status unavailable"}),
         ),
     ] {
         up.set(move |_| reply("200 OK", &facts.to_string()));
@@ -120,4 +116,90 @@ async fn head_other_verbs_and_trailing_path_stay_with_node() {
         assert!(headers.contains("x-node-method: yes"));
     }
     assert!(up.seen().iter().all(|req| req.path != FACTS));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_answer_past_the_bridge_cap_is_staged_whole_and_sent_exactly() {
+    let (_d, front, up) = rig().await;
+    // Core never capped this answer; the old 16 MiB bridge cap must not refuse it.
+    let id = "i".repeat(17 * 1024 * 1024);
+    let unchosen = "j".repeat(17 * 1024 * 1024);
+    let facts = format!(
+        r#"{{"kind":"listing","rows":[{{"fields":{{"id":"{id}","job_id":"{unchosen}","state":"done"}}}}]}}"#
+    );
+    up.set(move |_| reply("200 OK", &facts));
+    let (status, headers, body) = raw_text(front.addr, "GET", PATH, MEMBER, "", b"").await;
+    assert_eq!(status, 200);
+    let expected = format!(r#"[{{"id":"{id}","model":"","progress":null,"status":"done"}}]"#);
+    assert!(headers.contains(&format!("content-length: {}", expected.len())));
+    assert!(headers.contains("cache-control: no-store"));
+    assert!(body == expected, "the staged answer differs");
+    assert_eq!(up.count(FACTS), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_fault_while_staging_is_the_generic_500_with_nothing_of_the_listing() {
+    let (_d, front, up) = rig().await;
+    // The owner answers 200 and then breaks off mid-body.
+    up.set(|_| {
+        (
+            std::time::Duration::ZERO,
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 100000\r\nConnection: close\r\n\r\n{\"kind\":\"listing\",\"rows\":[{\"fields\":{\"id\":\"partial\"}}".to_owned(),
+        )
+    });
+    let (status, headers, body) = raw_text(front.addr, "GET", PATH, MEMBER, "", b"").await;
+    assert_eq!(status, 500);
+    assert_eq!(j(&body), json!({"error":"Internal error"}));
+    assert!(!body.contains("partial"));
+    assert!(headers.contains("cache-control: no-store"));
+    // A non-200 owner answer, or none at all, stays the unavailable 502.
+    up.set(|_| reply("404 Not Found", r#"{"error":"Not found"}"#));
+    let (status, _, body) = raw_text(front.addr, "GET", PATH, MEMBER, "", b"").await;
+    assert_eq!(status, 502);
+    assert_eq!(j(&body), json!({"error":"Download status unavailable"}));
+    assert_eq!(up.count(FACTS), 2, "one owner call per request, no retry");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_client_that_leaves_mid_call_costs_one_owner_call_and_the_next_read_is_whole() {
+    use tokio::io::AsyncWriteExt;
+    let (_d, front, up) = rig().await;
+    up.set(|_| {
+        let mut slow = reply("200 OK", r#"{"kind":"listing","rows":[]}"#);
+        slow.0 = std::time::Duration::from_secs(3);
+        slow
+    });
+    let mut s = tokio::net::TcpStream::connect(front.addr).await.unwrap();
+    s.write_all(
+        format!(
+            "GET {PATH} HTTP/1.1\r\nHost: {}\r\nCookie: {MEMBER}\r\nContent-Length: 0\r\n\r\n",
+            front.addr
+        )
+        .as_bytes(),
+    )
+    .await
+    .unwrap();
+    let end = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while up.count(FACTS) == 0 && std::time::Instant::now() < end {
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    assert_eq!(up.count(FACTS), 1);
+    drop(s);
+    up.set(|_| {
+        reply(
+            "200 OK",
+            r#"{"kind":"listing","rows":[{"fields":{"id":"after"}}]}"#,
+        )
+    });
+    let (status, _, body) = raw_text(front.addr, "GET", PATH, MEMBER, "", b"").await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        j(&body),
+        json!([{"id":"after","model":"","progress":null,"status":""}])
+    );
+    assert_eq!(
+        up.count(FACTS),
+        2,
+        "no extra poll for the request that left"
+    );
 }
