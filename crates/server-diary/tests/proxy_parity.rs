@@ -397,9 +397,12 @@ async fn tls_protocol_failure_uses_each_routes_internal_response() {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let accepted = calls.clone();
     let task = tokio::spawn(async move {
         loop {
             let (mut socket, _) = listener.accept().await.unwrap();
+            accepted.fetch_add(1, Ordering::SeqCst);
             let mut hello = [0; 4096];
             let _ = socket.read(&mut hello).await;
             let _ = socket
@@ -417,6 +420,10 @@ async fn tls_protocol_failure_uses_each_routes_internal_response() {
     let world = World::new(&[]);
     for path in Route::PATHS {
         let route = Route::from_path(path).unwrap();
+        if route == Route::Exchanges {
+            continue;
+        } // Local recovery records, no Sidecar call.
+        let before = calls.load(Ordering::SeqCst);
         let (method, raw) = match route {
             Route::File => ("PUT", "{}"),
             Route::ExternalImport => ("POST", r#"{"sourcePath":"/a","relPath":"b"}"#),
@@ -441,6 +448,11 @@ async fn tls_protocol_failure_uses_each_routes_internal_response() {
             Route::WorkspaceImport => (502, "Import response unavailable. Retry with the same file and folder to safely check whether it completed."),
             _ => (500, "Internal error"),
         };
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            before + 1,
+            "{path} must reach TLS"
+        );
         assert_eq!(reply.status, expected.0, "{path}");
         let ReplyBody::Json(body) = reply.body else {
             panic!("expected JSON")
@@ -451,6 +463,43 @@ async fn tls_protocol_failure_uses_each_routes_internal_response() {
                 && !body.contains(BEARER)
                 && !body.contains(SECRET),
             "{path}"
+        );
+    }
+    // Local recovery records stay independent of the configured (broken) TLS upstream.
+    let before = calls.load(Ordering::SeqCst);
+    for (target, status, expected) in [
+        (
+            "/api/diary/exchanges?day=2026-10-01",
+            200,
+            r#"{"exchanges":[]}"#,
+        ),
+        (
+            "/api/diary/exchanges",
+            400,
+            r#"{"error":"Valid diary day required."}"#,
+        ),
+    ] {
+        let reply = d
+            .serve(
+                Route::Exchanges,
+                world.ctx(ADMIN, true),
+                Request {
+                    method: "GET".into(),
+                    target: target.into(),
+                    content_length: None,
+                },
+                Full::new(Bytes::new()),
+            )
+            .await;
+        assert_eq!(reply.status, status, "{target}");
+        let ReplyBody::Json(body) = reply.body else {
+            panic!("expected JSON")
+        };
+        assert_eq!(body, expected, "{target}");
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            before,
+            "local route must not call upstream"
         );
     }
     task.abort();
