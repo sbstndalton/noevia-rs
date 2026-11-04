@@ -14,10 +14,16 @@
 //!   a frame;
 //! - the end when Core's body ends.
 //!
-//! A frame goes out only whole. The start of a line split across reads is held until its end comes,
-//! within [`HOLDBACK`] for the line and the process-wide [`HOLDBACK_BUDGET`] for every stream together
-//! (reserved before it is copied, never waited for), so memory stays bounded however many turns stream
-//! at once. An event line that does not fit streams as it comes (`data: `, its bytes, then its end).
+//! A frame goes out only whole. A whole line in one read goes out without a copy. The start of a line
+//! split across reads is held in one growable buffer until its end comes, within [`HOLDBACK`] for the
+//! line and the process-wide [`HOLDBACK_BUDGET`] for every stream together. The budget is charged by
+//! the buffer's allocated capacity, reserved before every growth (doubling when the budget has room,
+//! else exactly what is needed), never waited for. The held bytes leave as one `Bytes` that owns the
+//! buffer and its reservation, so the permits come back only when the response body drops them (they
+//! were written, or the client left): a slow client never keeps copies the budget no longer counts. A
+//! relayed frame's decoded copy is reserved the same way. So memory stays bounded however many turns
+//! stream at once. An event line that does not fit streams as it comes (`data: `, its bytes, then its
+//! end).
 //!
 //! When Core's stream breaks, or sends what is not a line of this wire, the unfinished line is dropped,
 //! Core's socket is closed, and [`FAILED_FRAME`] (index.cjs's error for a handler that throws once the
@@ -28,9 +34,10 @@ use axum::{
     body::Body,
     http::{header, HeaderMap, HeaderValue, Response},
 };
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
 use http_body::{Body as HttpBody, Frame};
 use std::collections::VecDeque;
+use std::io::Read;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -51,7 +58,8 @@ pub const FAILED_FRAME: &str =
     "data: {\"type\":\"error\",\"text\":\"The request could not be completed. Please retry.\"}\n\n";
 /// The most of one unfinished line a stream holds back: 8 MiB.
 pub const HOLDBACK: usize = 8 * 1024 * 1024;
-/// The most every stream in this process holds back together: 32 MiB.
+/// The most every stream in this process holds back together, held bytes still queued on their way out
+/// included: 32 MiB, charged by allocated capacity.
 pub const HOLDBACK_BUDGET: usize = 32 * 1024 * 1024;
 
 /// The process-wide holdback budget: one permit per byte held.
@@ -106,67 +114,195 @@ pub async fn stream(res: Response<Body>) -> Response<Body> {
     Response::from_parts(parts, Body::new(wire))
 }
 
-/// The bytes of one unfinished line held back, each reserved on a byte budget before it is copied in;
-/// the reservation goes back when the bytes leave (sent or dropped) and when this is dropped.
-struct Held {
+/// Permits of the holdback budget, one per byte; given back when dropped.
+struct Reservation {
     budget: Arc<Semaphore>,
-    chunks: Vec<Bytes>,
-    len: usize,
+    bytes: usize,
 }
 
-impl Held {
-    fn new(budget: Arc<Semaphore>) -> Self {
-        Held {
-            budget,
-            chunks: Vec::new(),
-            len: 0,
-        }
-    }
-
-    fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
-    fn first_byte(&self) -> Option<u8> {
-        self.chunks.first().and_then(|c| c.first()).copied()
-    }
-
-    /// Holds a copy of `tail` when it fits the line's [`HOLDBACK`] and the shared budget has room;
-    /// never waits.
-    fn try_hold(&mut self, tail: &[u8]) -> bool {
-        if self.len.saturating_add(tail.len()) > HOLDBACK {
-            return false;
-        }
-        let Ok(n) = u32::try_from(tail.len()) else {
+impl Reservation {
+    /// Covers `bytes` in all, reserving the difference now; `false` (nothing taken) when the budget
+    /// lacks it. Never waits.
+    fn cover(&mut self, bytes: usize) -> bool {
+        let Some(more) = bytes.checked_sub(self.bytes).filter(|m| *m > 0) else {
+            return true;
+        };
+        let Ok(n) = u32::try_from(more) else {
             return false;
         };
         match self.budget.try_acquire_many(n) {
             Ok(permit) => permit.forget(),
             Err(_) => return false,
         }
-        self.chunks.push(Bytes::copy_from_slice(tail));
-        self.len += tail.len();
+        self.bytes = bytes;
         true
     }
 
-    /// Everything held, in order; its reservation goes back.
-    fn take(&mut self) -> Vec<Bytes> {
-        self.release();
-        std::mem::take(&mut self.chunks)
+    /// Gives back all but `bytes`; never grows.
+    fn shrink(&mut self, bytes: usize) {
+        if bytes < self.bytes {
+            self.budget.add_permits(self.bytes - bytes);
+            self.bytes = bytes;
+        }
     }
 
-    fn release(&mut self) {
-        if self.len > 0 {
-            self.budget.add_permits(self.len);
-            self.len = 0;
+    fn none(&self) -> Reservation {
+        Reservation {
+            budget: Arc::clone(&self.budget),
+            bytes: 0,
         }
     }
 }
 
-impl Drop for Held {
+impl Drop for Reservation {
     fn drop(&mut self) {
-        self.release();
+        if self.bytes > 0 {
+            self.budget.add_permits(self.bytes);
+        }
     }
+}
+
+/// Bytes on their way out with the reservation that covers their buffer's capacity, dropped together
+/// when the response body is done with them (written, or the client left).
+struct Reserved {
+    buf: Vec<u8>,
+    _reservation: Reservation,
+}
+
+impl AsRef<[u8]> for Reserved {
+    fn as_ref(&self) -> &[u8] {
+        &self.buf
+    }
+}
+
+fn reserved(buf: Vec<u8>, reservation: Reservation) -> Bytes {
+    Bytes::from_owner(Reserved {
+        buf,
+        _reservation: reservation,
+    })
+}
+
+/// The start of one unfinished line, held in one buffer whose allocated capacity is reserved on the byte
+/// budget before it is allocated. An event line is held as its frame's start (`data: ` and the line).
+struct Held {
+    buf: Vec<u8>,
+    reservation: Reservation,
+    /// The line's first byte: `{` an event, `"` a relayed frame.
+    kind: Option<u8>,
+}
+
+impl Held {
+    fn new(budget: Arc<Semaphore>) -> Self {
+        Held {
+            buf: Vec::new(),
+            reservation: Reservation { budget, bytes: 0 },
+            kind: None,
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.buf.is_empty()
+    }
+
+    /// Appends `tail` (the start of a line when nothing is held) while the line stays within
+    /// [`HOLDBACK`] and the budget covers the buffer's capacity; never waits. The buffer grows by
+    /// doubling (so tiny reads cost few allocations), or to exactly what is needed when the budget has
+    /// no room for the doubling.
+    fn try_hold(&mut self, tail: &[u8]) -> bool {
+        let prefix: &[u8] = if self.buf.is_empty() && tail.first() == Some(&b'{') {
+            b"data: "
+        } else {
+            b""
+        };
+        if !self.grow(prefix.len() + tail.len()) {
+            return false;
+        }
+        if self.buf.is_empty() {
+            self.kind = tail.first().copied();
+        }
+        self.buf.extend_from_slice(prefix);
+        self.buf.extend_from_slice(tail);
+        true
+    }
+
+    /// Ends the held event with `part` and the frame's blank line, in the same buffer, when the budget
+    /// covers it (exactly, no doubling): the frame then leaves as one piece.
+    fn try_finish(&mut self, part: &[u8]) -> bool {
+        let need = self.buf.len() + part.len() + 2;
+        if need > self.buf.capacity() {
+            if !self.reservation.cover(need) {
+                return false;
+            }
+            self.buf.reserve_exact(need - self.buf.len());
+            if !self.reservation.cover(self.buf.capacity()) {
+                return false;
+            }
+        }
+        self.buf.extend_from_slice(part);
+        self.buf.extend_from_slice(b"\n\n");
+        true
+    }
+
+    /// Room for `add` more bytes within [`HOLDBACK`], its capacity reserved first.
+    fn grow(&mut self, add: usize) -> bool {
+        let need = self.buf.len() + add;
+        if need > HOLDBACK {
+            return false;
+        }
+        if need > self.buf.capacity() {
+            let doubled = need
+                .max(self.buf.capacity().saturating_mul(2))
+                .min(HOLDBACK);
+            let Some(capacity) = [doubled, need]
+                .into_iter()
+                .find(|c| self.reservation.cover(*c))
+            else {
+                return false;
+            };
+            self.buf.reserve_exact(capacity - self.buf.len());
+            // Vec may round up; what it reports is what is charged.
+            if !self.reservation.cover(self.buf.capacity()) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// What is held and its reservation; nothing is held after.
+    fn take_parts(&mut self) -> (Vec<u8>, Reservation) {
+        let empty = self.reservation.none();
+        self.kind = None;
+        (
+            std::mem::take(&mut self.buf),
+            std::mem::replace(&mut self.reservation, empty),
+        )
+    }
+
+    /// What is held, as bytes that keep their reservation until they are dropped.
+    fn take(&mut self) -> Option<Bytes> {
+        let (buf, reservation) = self.take_parts();
+        (!buf.is_empty()).then(|| reserved(buf, reservation))
+    }
+}
+
+/// A relayed frame: the JSON string `line` (read from `bytes`), decoded into a buffer that
+/// `reservation` covers; `None` when it is not a whole frame or the budget cannot cover its copy.
+fn relayed_frame(bytes: impl Read, len: usize, mut reservation: Reservation) -> Option<Bytes> {
+    // The decoded frame is at most as long as its line: covered before it is allocated.
+    if !reservation.cover(len) {
+        return None;
+    }
+    let raw: String = serde_json::from_reader(bytes).ok()?;
+    // A whole frame: it ends with its only blank line.
+    if !raw.find("\n\n").is_some_and(|i| i + 2 == raw.len()) {
+        return None;
+    }
+    let mut buf = raw.into_bytes();
+    buf.shrink_to_fit();
+    reservation.shrink(buf.capacity().max(buf.len()));
+    reservation
+        .cover(buf.capacity())
+        .then(|| reserved(buf, reservation))
 }
 
 /// Core's NDJSON turned into the event stream the client reads (module docs).
@@ -224,26 +360,83 @@ impl EventWire {
         self.inner = Body::empty();
     }
 
-    /// One whole line; false when it is not a line of this wire.
+    /// One whole line that came in one read; false when it is not a line of this wire. An event goes
+    /// out without a copy.
     fn line(&mut self, line: Bytes) -> bool {
+        if line.contains(&b'\r') {
+            return false;
+        }
         match line.first() {
             None => true,
-            Some(b'{') if !line.contains(&b'\r') => {
-                let mut out = BytesMut::with_capacity(line.len() + 8);
-                out.extend_from_slice(b"data: ");
-                out.extend_from_slice(&line);
-                out.extend_from_slice(b"\n\n");
-                self.send(out.freeze());
+            Some(b'{') => {
+                // One reserved copy of the frame; when the budget cannot cover it, the line itself
+                // between its frame's two static ends (no copy at all).
+                let len = line.len() + 8;
+                let mut reservation = self.held.reservation.none();
+                if reservation.cover(len) {
+                    let mut buf = Vec::with_capacity(len);
+                    buf.extend_from_slice(b"data: ");
+                    buf.extend_from_slice(&line);
+                    buf.extend_from_slice(b"\n\n");
+                    if reservation.cover(buf.capacity()) {
+                        self.send(reserved(buf, reservation));
+                        return true;
+                    }
+                }
+                self.send(Bytes::from_static(b"data: "));
+                self.send(line);
+                self.send(Bytes::from_static(b"\n\n"));
                 true
             }
-            Some(b'"') => match serde_json::from_slice::<String>(&line) {
-                // A whole frame: it ends with its only blank line.
-                Ok(raw) if raw.find("\n\n").is_some_and(|i| i + 2 == raw.len()) => {
-                    self.send(Bytes::from(raw));
-                    true
+            Some(b'"') => {
+                let reservation = self.held.reservation.none();
+                match relayed_frame(line.as_ref(), line.len(), reservation) {
+                    Some(frame) => {
+                        self.send(frame);
+                        true
+                    }
+                    None => false,
                 }
-                _ => false,
-            },
+            }
+            _ => false,
+        }
+    }
+
+    /// The end of the held line; false when it is not a line of this wire.
+    fn held_line(&mut self, part: Bytes) -> bool {
+        if part.contains(&b'\r') {
+            return false;
+        }
+        match self.held.kind {
+            Some(b'{') => {
+                if self.held.try_finish(&part) {
+                    if let Some(frame) = self.held.take() {
+                        self.send(frame);
+                    }
+                    return true;
+                }
+                if let Some(start) = self.held.take() {
+                    self.send(start);
+                }
+                self.send(part);
+                self.send(Bytes::from_static(b"\n\n"));
+                true
+            }
+            Some(b'"') => {
+                let (buf, reservation) = self.held.take_parts();
+                let len = buf.len() + part.len();
+                // The held buffer stays reserved until the decoded copy has its own reservation.
+                let copy = reservation.none();
+                let decoded = relayed_frame(buf.as_slice().chain(part.as_ref()), len, copy);
+                drop((buf, reservation));
+                match decoded {
+                    Some(frame) => {
+                        self.send(frame);
+                        true
+                    }
+                    None => false,
+                }
+            }
             _ => false,
         }
     }
@@ -272,35 +465,35 @@ impl EventWire {
         while let Some(end) = data.iter().position(|&b| b == b'\n') {
             let part = data.split_to(end);
             data = data.slice(1..);
-            let line = if self.held.is_empty() {
-                part
+            let ok = if self.held.is_empty() {
+                self.line(part)
             } else {
-                let held = self.held.take();
-                let mut whole = BytesMut::with_capacity(
-                    held.iter().map(Bytes::len).sum::<usize>() + part.len(),
-                );
-                for chunk in held {
-                    whole.extend_from_slice(&chunk);
-                }
-                whole.extend_from_slice(&part);
-                whole.freeze()
+                self.held_line(part)
             };
-            if !self.line(line) {
+            if !ok {
                 return self.fail();
             }
         }
-        if data.is_empty() || self.held.try_hold(&data) {
+        if data.is_empty() {
             return;
         }
-        // Over the line's cap, or the shared budget is spent: an event streams as it comes. A relayed
-        // frame cannot be written before its whole string is read, so it fails instead.
-        let first = self.held.first_byte().or_else(|| data.first().copied());
-        if first != Some(b'{') || data.contains(&b'\r') {
+        // What is not the start of a line of this wire fails at once.
+        let kind = self.held.kind.or_else(|| data.first().copied());
+        if !matches!(kind, Some(b'{' | b'"')) || data.contains(&b'\r') {
             return self.fail();
         }
-        self.send(Bytes::from_static(b"data: "));
-        for chunk in self.held.take() {
-            self.send(chunk);
+        if self.held.try_hold(&data) {
+            return;
+        }
+        // Over the line's cap, or the shared budget is spent: an event streams as it comes (its held
+        // start keeps its reservation until it is written). A relayed frame cannot be written before its
+        // whole string is read, so it fails instead.
+        if kind != Some(b'{') {
+            return self.fail();
+        }
+        match self.held.take() {
+            Some(start) => self.send(start),
+            None => self.send(Bytes::from_static(b"data: ")),
         }
         self.send(data);
         self.overflow = true;
@@ -427,7 +620,10 @@ mod tests {
             b"data: {\"type\":\"meta\"}\n\ndata: {\"type\":\"delta\",\"text\":\"\\u2028\"}\n\n"
         );
         assert_eq!(read(&mut w, b"{\"type\":\"de"), b"");
-        assert_eq!(in_use(&budget, HOLDBACK_BUDGET), 11);
+        // Held as its frame's start, charged by the buffer's capacity.
+        assert_eq!(w.held.buf, b"data: {\"type\":\"de");
+        assert!(w.held.reservation.bytes >= w.held.buf.capacity());
+        assert_eq!(in_use(&budget, HOLDBACK_BUDGET), w.held.reservation.bytes);
         assert_eq!(read(&mut w, b"lta\"}"), b"");
         assert_eq!(
             read(&mut w, b"\n{\"type\":\"done\"}\n"),
@@ -516,8 +712,15 @@ mod tests {
             assert!(in_use(&budget, TOTAL) <= TOTAL);
         }
         let holding = streams.iter().filter(|(w, _)| !w.held.is_empty()).count();
-        assert_eq!(holding, TOTAL / PART, "as many hold as the budget allows");
-        assert_eq!(in_use(&budget, TOTAL), holding * PART);
+        // Each holds its frame's start (`data: ` and the line), charged by capacity.
+        assert_eq!(
+            holding,
+            TOTAL / (PART + 6),
+            "as many hold as the budget allows"
+        );
+        let charged: usize = streams.iter().map(|(w, _)| w.held.reservation.bytes).sum();
+        assert_eq!(in_use(&budget, TOTAL), charged);
+        assert!(charged >= holding * (PART + 6));
         for (w, out) in &streams {
             assert_eq!(w.overflow, w.held.is_empty());
             if w.overflow {
@@ -546,11 +749,13 @@ mod tests {
                 tx.abort(std::io::Error::other("Core went away"));
             }
         });
-        Body::new(EventWire::with(Body::new(body), budget, HEARTBEAT))
+        // A plain copy: the reserved frames themselves are dropped here.
+        let out = Body::new(EventWire::with(Body::new(body), budget, HEARTBEAT))
             .collect()
             .await
             .unwrap()
-            .to_bytes()
+            .to_bytes();
+        Bytes::from(out.to_vec())
     }
 
     #[tokio::test]
@@ -606,8 +811,175 @@ mod tests {
         assert_eq!(first, Bytes::from_static(b"data: {\"n\":1}\n\n"));
         let pending = tokio::time::timeout(Duration::from_millis(100), stream.frame()).await;
         assert!(pending.is_err(), "the split line is held");
-        assert_eq!(budget.available_permits(), TOTAL - 4102);
+        // The held start (`data: ` and 4,102 bytes) and the frame the client still has.
+        assert_eq!(budget.available_permits(), TOTAL - 4108 - first.len());
         drop(stream);
+        assert_eq!(budget.available_permits(), TOTAL - first.len());
+        drop(first);
+        assert_eq!(budget.available_permits(), TOTAL);
+    }
+
+    /// Re-review P2-1 (S5 b74a57a), on this wire: a held line that is complete but still queued (the
+    /// client reads slowly) keeps its reservation until the response body drops it, so what many stalled
+    /// streams retain together stays within the budget.
+    #[test]
+    fn stalled_consumers_keep_queued_held_lines_within_the_budget() {
+        const TOTAL: usize = 512 * 1024;
+        let budget = Arc::new(Semaphore::new(TOTAL));
+        let mut streams: Vec<EventWire> = (0..64).map(|_| wire(&budget)).collect();
+        let piece = vec![b'q'; 2048];
+        for w in &mut streams {
+            w.take(Bytes::from_static(b"{\"n\":1}\n"));
+            w.take(Bytes::from_static(b"{\"t\":\""));
+            for _ in 0..8 {
+                w.take(Bytes::copy_from_slice(&piece));
+                assert!(in_use(&budget, TOTAL) <= TOTAL);
+            }
+        }
+        let before = in_use(&budget, TOTAL);
+        assert!(before > 0 && before <= TOTAL);
+        // Every line completes; nobody reads (the consumer is stalled): nothing is given back yet, and
+        // the next lines cannot take more than the budget either.
+        for w in &mut streams {
+            w.take(Bytes::from_static(b"\"}\n{\"t\":\"more"));
+            assert!(in_use(&budget, TOTAL) <= TOTAL);
+        }
+        assert!(
+            in_use(&budget, TOTAL) >= before,
+            "queued held lines keep their reservation"
+        );
+        assert!(streams.iter().all(|w| !w.pending.is_empty()));
+        // One client reads its queue: exactly its frames' reservation goes back.
+        let held_before = streams[0].held.reservation.bytes;
+        let used = in_use(&budget, TOTAL);
+        let out: Vec<u8> = streams[0]
+            .pending
+            .drain(..)
+            .flat_map(|b| b.to_vec())
+            .collect();
+        let whole = format!(
+            "data: {{\"n\":1}}\n\ndata: {{\"t\":\"{}\"}}\n\n",
+            "q".repeat(8 * 2048)
+        );
+        // With the budget spent, its next line may already stream (its start is queued too).
+        assert!(out.starts_with(whole.as_bytes()));
+        let rest = &out[whole.len()..];
+        assert!(
+            rest.is_empty() || rest == b"data: {\"t\":\"more",
+            "{rest:?}"
+        );
+        assert!(in_use(&budget, TOTAL) < used);
+        assert_eq!(streams[0].held.reservation.bytes, held_before);
+        // Every stream dropped with its queue and its held start: all of it comes back.
+        drop(streams);
+        assert_eq!(in_use(&budget, TOTAL), 0);
+    }
+
+    /// Re-review P2-2 (S5 b74a57a), on this wire: a held line is one buffer, and its allocated capacity
+    /// (not its length) is what is reserved; tiny reads cost few allocations.
+    #[test]
+    fn the_held_buffer_is_one_allocation_charged_by_its_capacity() {
+        const TOTAL: usize = 1024 * 1024;
+        let budget = Arc::new(Semaphore::new(TOTAL));
+        let mut w = wire(&budget);
+        w.take(Bytes::from_static(b"{\"t\":\""));
+        let mut capacities = std::collections::BTreeSet::new();
+        for _ in 0..20_000 {
+            w.take(Bytes::from_static(b"r"));
+            let held = &w.held;
+            assert!(held.reservation.bytes >= held.buf.capacity());
+            assert_eq!(in_use(&budget, TOTAL), held.reservation.bytes);
+            capacities.insert(held.buf.capacity());
+        }
+        assert!(w.pending.is_empty(), "all of it is held");
+        assert!(capacities.len() <= 16, "{} allocations", capacities.len());
+        assert_eq!(w.held.buf.len(), 6 + 6 + 20_000);
+        // Near the budget the buffer grows by exactly what is needed, still charged by capacity.
+        let tight = Arc::new(Semaphore::new(10_000));
+        let mut w = wire(&tight);
+        w.take(Bytes::from([&b"{"[..], &[b'a'; 5999]].concat()));
+        w.take(Bytes::copy_from_slice(&[b'b'; 3000]));
+        assert_eq!(w.held.buf.capacity(), 9006);
+        assert_eq!(tight.available_permits(), 994);
+        w.take(Bytes::copy_from_slice(&[b'c'; 2000]));
+        assert!(w.overflow && w.held.is_empty());
+        // Streamed out, the old buffer still holds its reservation while queued; then it is all back.
+        assert_eq!(tight.available_permits(), 994);
+        w.pending.clear();
+        assert_eq!(tight.available_permits(), 10_000);
+        // A whole line the budget cannot cover still goes out, without a copy.
+        let none = Arc::new(Semaphore::new(0));
+        let mut w = wire(&none);
+        assert_eq!(read(&mut w, b"{\"n\":1}\n"), b"data: {\"n\":1}\n\n");
+    }
+
+    #[tokio::test]
+    async fn nothing_leaks_after_drops_breaks_and_ends() {
+        const TOTAL: usize = 256 * 1024;
+        let budget = Arc::new(Semaphore::new(TOTAL));
+        // Held mid-line, completed but queued, overflowed and queued, then all dropped.
+        let mut a = wire(&budget);
+        a.take(Bytes::from_static(b"{\"t"));
+        let mut b = wire(&budget);
+        b.take(Bytes::from_static(b"{\"t"));
+        b.take(Bytes::from_static(b"\"}\n{"));
+        let mut c = wire(&budget);
+        c.take(Bytes::from_static(b"{\"t\":\""));
+        c.take(Bytes::from(vec![b'o'; HOLDBACK]));
+        assert!(c.overflow);
+        let mut d = wire(&budget);
+        d.take(Bytes::from_static(b"\"data: x"));
+        d.take(Bytes::from_static(b"\\n\\n\"\n\"da"));
+        assert_eq!(d.pending.len(), 1, "the relayed frame is queued");
+        assert!(budget.available_permits() < TOTAL);
+        drop((a, b, c, d));
+        assert_eq!(budget.available_permits(), TOTAL);
+        // Through a response body: Core breaks, and Core ends inside a line.
+        for broken in [true, false] {
+            let (mut tx, body) = Chan::new(4);
+            tx.send_data(Bytes::from_static(b"{\"n\":1}\n{\"ty"))
+                .await
+                .unwrap();
+            if broken {
+                tx.abort(std::io::Error::other("Core went away"));
+            } else {
+                drop(tx);
+            }
+            let out = Body::new(EventWire::with(
+                Body::new(body),
+                Arc::clone(&budget),
+                HEARTBEAT,
+            ))
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes();
+            assert_eq!(
+                out,
+                Bytes::from(format!("data: {{\"n\":1}}\n\n{FAILED_FRAME}"))
+            );
+            assert_eq!(budget.available_permits(), TOTAL);
+        }
+        // The client keeps a held line's frame a while (as a socket write would), then leaves.
+        let (mut tx, body) = Chan::new(4);
+        let mut stream = Body::new(EventWire::with(
+            Body::new(body),
+            Arc::clone(&budget),
+            HEARTBEAT,
+        ));
+        tx.send_data(Bytes::from_static(b"{\"a")).await.unwrap();
+        tx.send_data(Bytes::from_static(b"\"}\n{\"b"))
+            .await
+            .unwrap();
+        let first = stream.frame().await.unwrap().unwrap().into_data().unwrap();
+        assert_eq!(first, Bytes::from_static(b"data: {\"a\"}\n\n"));
+        assert!(budget.available_permits() < TOTAL);
+        drop(stream);
+        assert!(
+            budget.available_permits() < TOTAL,
+            "the copy still out keeps its reservation"
+        );
+        drop(first);
         assert_eq!(budget.available_permits(), TOTAL);
     }
 
