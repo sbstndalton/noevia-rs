@@ -54,7 +54,4 @@ pub use tenant::{StorageIdentity, Tenant, TenantError};
 
 pub mod backup;
 
-// Shared verbatim with the local-exchange port; its tree adapter is used there.
-#[allow(dead_code)]
-mod js_raw;
 mod proxy_raw;
