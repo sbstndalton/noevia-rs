@@ -1218,7 +1218,10 @@ async fn only_the_browsers_exact_retry_header_is_forwarded_on_a_files_or_file_ca
         assert_eq!(seen.len(), 2, "{method} {path}");
         assert_eq!(seen[0].method, method);
         assert_eq!(
-            seen[0].headers.get("x-cowork-storage-retry").map(String::as_str),
+            seen[0]
+                .headers
+                .get("x-cowork-storage-retry")
+                .map(String::as_str),
             Some("1"),
             "{method} {path}"
         );
@@ -1232,7 +1235,10 @@ async fn only_the_browsers_exact_retry_header_is_forwarded_on_a_files_or_file_ca
         &[("x-cowork-storage-retry", "true")],
         &[("x-cowork-storage-retry", "1,1")],
         &[("x-cowork-storage-retry", "")],
-        &[("x-cowork-storage-retry", "1"), ("x-cowork-storage-retry", "1")],
+        &[
+            ("x-cowork-storage-retry", "1"),
+            ("x-cowork-storage-retry", "1"),
+        ],
     ];
     for extra in values {
         for (method, path, body) in [
@@ -1248,7 +1254,10 @@ async fn only_the_browsers_exact_retry_header_is_forwarded_on_a_files_or_file_ca
                 !seen[0].headers.contains_key("x-cowork-storage-retry"),
                 "{method} {path} {extra:?}"
             );
-            assert!(held(&dir), "{method} {path} {extra:?}: an automatic call proves nothing");
+            assert!(
+                held(&dir),
+                "{method} {path} {extra:?}: an automatic call proves nothing"
+            );
         }
     }
     // The other moved proxies never forward it.
@@ -1293,7 +1302,10 @@ async fn an_explicit_retry_clears_the_hold_only_with_legacy_proof() {
             assert_eq!(a.status, 200, "{method} {path} {status:?}");
             assert_eq!(a.body, br#"{"files":[]}"#, "{method} {path} {status:?}");
             assert_eq!(seen.lock().unwrap().len(), 2, "{method} {path} {status:?}");
-            assert!(held(&dir), "{method} {path} {status:?}: no proof, the hold stays");
+            assert!(
+                held(&dir),
+                "{method} {path} {status:?}: no proof, the hold stays"
+            );
         }
     }
     // A Retry whose own call failed asks for no proof and keeps the hold.
