@@ -65,8 +65,10 @@ pub enum Route {
     SaveHistory {
         chat: String,
     },
-    /// GET /api/account/retention (sbstndalton/noevia#1071, no switch; `PUT` is Node's)
+    /// GET and PUT /api/account/retention (sbstndalton/noevia#1071, no switch)
     Retention,
+    /// PUT /api/routing-default (sbstndalton/noevia#2384, no switch); its GET is routing_default_routes'
+    RoutingDefault,
     /// GET /api/workspace (sbstndalton/noevia#2191 close-out, `rust-workspace`): the projects and
     /// free chats, after the delete-old-chats sweep and the orphan-context cleanup.
     Workspace,
@@ -193,6 +195,10 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
     // routes/chat-lists.cjs `p === '/api/workspace'` (any method there; the list is a GET).
     if path == "/api/workspace" {
         return (method == "GET").then_some(Route::Workspace);
+    }
+    // routes/models.cjs `path === '/api/routing-default'`, its PUT (the GET is routing_default_routes').
+    if path == "/api/routing-default" {
+        return (method == "PUT").then_some(Route::RoutingDefault);
     }
     // routes/account.cjs `path === '/api/account/retention'`, its GET and PUT.
     if path == "/api/account/retention" {
@@ -564,6 +570,7 @@ pub async fn serve(
         Route::SaveHistory { .. } => Some(history::BODY_LIMIT),
         Route::MoveChat { .. } => Some(chat_move::BODY_LIMIT),
         Route::Retention if parts.method == "PUT" => Some(chats::BODY_LIMIT),
+        Route::RoutingDefault => Some(server_projects::routing_default::BODY_LIMIT),
         Route::CreateProject => Some(lifecycle::BODY_LIMIT),
         Route::ImportConversations => Some(server_projects::import::MAX_BYTES),
         Route::DeleteFile { .. } => Some(server_projects::files::BODY_LIMIT),
@@ -625,10 +632,12 @@ pub async fn serve(
         Some(limit) => match crate::account_routes::read_body(body, limit).await {
             Ok(b) => Some(b),
             // routes/chat-lists.cjs answers a history save it could not read so.
-            Err(()) if matches!(route, Route::Retention) => Some(server_account::Body {
-                bytes: Vec::new(),
-                over: true,
-            }),
+            Err(()) if matches!(route, Route::Retention | Route::RoutingDefault) => {
+                Some(server_account::Body {
+                    bytes: Vec::new(),
+                    over: true,
+                })
+            }
             Err(()) if matches!(route, Route::MoveChat { .. }) => {
                 return reply::error(StatusCode::BAD_REQUEST, "invalid JSON", true);
             }
@@ -789,6 +798,7 @@ pub async fn serve(
         route,
         Route::Upload { .. }
             | Route::Retention
+            | Route::RoutingDefault
             | Route::Workspace
             | Route::SourceText { .. }
             | Route::DocumentOriginal { .. }
@@ -856,6 +866,9 @@ pub async fn serve(
                 history::post(ctx, &chat, &b.bytes, b.over, &start_id)
             }
             (Route::Retention, Some(b)) => retention::put_collected(ctx, &b.bytes, b.over),
+            (Route::RoutingDefault, Some(b)) => {
+                server_projects::routing_default::put(ctx, &b.bytes, b.over)
+            }
             (Route::Retention, _) => retention::get(ctx),
             (Route::Workspace, _) => workspace::get(ctx),
             (Route::ChatSearch, _) => workspace::search(ctx, &search),
@@ -990,6 +1003,7 @@ pub async fn serve(
                 | Route::SaveFreeChats
                 | Route::SaveHistory { .. }
                 | Route::MoveChat { .. }
+                | Route::RoutingDefault
                 | Route::SkillSelect { .. },
                 None,
             ) => Reply::internal(),

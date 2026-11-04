@@ -92,9 +92,11 @@ pub mod partial;
 pub mod project_documents;
 pub mod project_storage;
 pub mod provider_rows;
+pub mod reasoning_facts;
 pub mod research_jobs;
 pub mod research_report;
 pub mod retention;
+pub mod routing_default;
 pub mod skill_routes;
 pub mod skills;
 pub mod source_jobs;
@@ -187,3 +189,4 @@ pub mod autotune_read;
 pub mod autotune_resume;
 
 mod retention_input;
+mod routing_default_input;

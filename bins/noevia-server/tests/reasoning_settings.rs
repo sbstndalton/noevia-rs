@@ -244,7 +244,8 @@ async fn native_put_identity_csrf_admin_audit_caps_and_retired_selector() {
         "x".repeat(server_reasoning_settings::BODY_LIMIT)
     );
     assert_eq!(call(addr, "PUT", p, admin, &trusted, &over).await.0, 400);
-    for method in ["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"] {
+    // The GET joined the PUT (sbstndalton/noevia#2384, tests/routing_reasoning.rs); every other method stays Node's.
+    for method in ["HEAD", "POST", "PATCH", "DELETE", "OPTIONS"] {
         assert_eq!(call(addr, method, p, admin, &trusted, "").await.0, 502);
     }
     db.execute("UPDATE sessions SET expires_at=0 WHERE user_id=?1", [B])

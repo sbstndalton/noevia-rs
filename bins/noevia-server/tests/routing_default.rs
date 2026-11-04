@@ -159,8 +159,9 @@ async fn native_get_answers_the_signed_in_tenant_and_nothing_else() {
     .unwrap();
     assert_eq!(call(addr, "GET", path, member).await.0, 503);
 
-    // Every other method stays Node's: proxied to the dead upstream.
-    for method in ["PUT", "POST", "DELETE", "PATCH"] {
+    // The PUT is native too (sbstndalton/noevia#2384, tests/routing_reasoning.rs); every other method stays Node's:
+    // proxied to the dead upstream.
+    for method in ["POST", "DELETE", "PATCH"] {
         assert_eq!(call(addr, method, path, admin).await.0, 502, "{method}");
     }
     let _ = stop.send(());

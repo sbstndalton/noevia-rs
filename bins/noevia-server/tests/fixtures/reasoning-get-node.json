@@ -1,0 +1,3476 @@
+{
+ "node": "v22.23.3",
+ "projects": [
+  {
+   "id": "plain",
+   "name": "plain",
+   "files": [],
+   "modes": [
+    "chat"
+   ],
+   "chats": []
+  },
+  {
+   "id": "hi",
+   "name": "hi",
+   "files": [],
+   "modes": [
+    "chat"
+   ],
+   "chats": [],
+   "reasoningEffort": "high"
+  },
+  {
+   "id": "lo",
+   "name": "lo",
+   "files": [],
+   "modes": [
+    "chat"
+   ],
+   "chats": [],
+   "reasoningEffort": "low",
+   "provider": "real",
+   "model": "any"
+  },
+  {
+   "id": "def",
+   "name": "def",
+   "files": [],
+   "modes": [
+    "chat"
+   ],
+   "chats": [],
+   "reasoningEffort": "default",
+   "provider": "real",
+   "model": "any"
+  },
+  {
+   "id": "bad",
+   "name": "bad",
+   "files": [],
+   "modes": [
+    "chat"
+   ],
+   "chats": [],
+   "reasoningEffort": "max",
+   "provider": "real",
+   "model": "any"
+  },
+  {
+   "id": "upper",
+   "name": "upper",
+   "files": [],
+   "modes": [
+    "chat"
+   ],
+   "chats": [],
+   "reasoningEffort": "HIGH"
+  },
+  {
+   "id": "null-effort",
+   "name": "null-effort",
+   "files": [],
+   "modes": [
+    "chat"
+   ],
+   "chats": [],
+   "reasoningEffort": null,
+   "provider": "scoped",
+   "model": "m-ok"
+  },
+  {
+   "id": "scoped-ok",
+   "name": "scoped-ok",
+   "files": [],
+   "modes": [
+    "chat"
+   ],
+   "chats": [],
+   "provider": "scoped",
+   "model": "m-ok"
+  },
+  {
+   "id": "scoped-other",
+   "name": "scoped-other",
+   "files": [],
+   "modes": [
+    "chat"
+   ],
+   "chats": [],
+   "provider": "scoped",
+   "model": "other"
+  },
+  {
+   "id": "ghost-provider",
+   "name": "ghost-provider",
+   "files": [],
+   "modes": [
+    "chat"
+   ],
+   "chats": [],
+   "provider": "ghost",
+   "model": "m-ok"
+  },
+  {
+   "id": "legacy-provider",
+   "name": "legacy-provider",
+   "files": [],
+   "modes": [
+    "chat"
+   ],
+   "chats": [],
+   "provider": "lemonade",
+   "model": "m"
+  },
+  {
+   "id": "empty-provider",
+   "name": "empty-provider",
+   "files": [],
+   "modes": [
+    "chat"
+   ],
+   "chats": [],
+   "provider": "",
+   "model": ""
+  },
+  {
+   "id": "number-provider",
+   "name": "number-provider",
+   "files": [],
+   "modes": [
+    "chat"
+   ],
+   "chats": [],
+   "provider": 5,
+   "model": 7
+  },
+  {
+   "id": "object-provider",
+   "name": "object-provider",
+   "files": [],
+   "modes": [
+    "chat"
+   ],
+   "chats": [],
+   "provider": {
+    "id": "real"
+   },
+   "model": [
+    "m"
+   ]
+  },
+  {
+   "id": "null-provider",
+   "name": "null-provider",
+   "files": [],
+   "modes": [
+    "chat"
+   ],
+   "chats": [],
+   "provider": null,
+   "model": null
+  },
+  {
+   "id": "qwen-local",
+   "name": "qwen-local",
+   "files": [],
+   "modes": [
+    "chat"
+   ],
+   "chats": [],
+   "provider": "default",
+   "model": "qwen3-8b"
+  },
+  {
+   "id": "dup",
+   "name": "dup",
+   "files": [],
+   "modes": [
+    "chat"
+   ],
+   "chats": [],
+   "reasoningEffort": "low"
+  },
+  {
+   "id": "dup",
+   "name": "dup",
+   "files": [],
+   "modes": [
+    "chat"
+   ],
+   "chats": [],
+   "reasoningEffort": "high"
+  },
+  {
+   "id": "café ☕",
+   "name": "café ☕",
+   "files": [],
+   "modes": [
+    "chat"
+   ],
+   "chats": []
+  },
+  {
+   "id": "a b",
+   "name": "a b",
+   "files": [],
+   "modes": [
+    "chat"
+   ],
+   "chats": []
+  },
+  {
+   "id": "a+b",
+   "name": "a+b",
+   "files": [],
+   "modes": [
+    "chat"
+   ],
+   "chats": []
+  },
+  {
+   "id": "50%",
+   "name": "50%",
+   "files": [],
+   "modes": [
+    "chat"
+   ],
+   "chats": []
+  }
+ ],
+ "cases": [
+  {
+   "name": "missing/none/member",
+   "settings": null,
+   "search": "",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/none/admin",
+   "settings": null,
+   "search": "",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/plain/member",
+   "settings": null,
+   "search": "?projectId=plain",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/plain/admin",
+   "settings": null,
+   "search": "?projectId=plain",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/hi/member",
+   "settings": null,
+   "search": "?projectId=hi",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "missing/hi/admin",
+   "settings": null,
+   "search": "?projectId=hi",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "high",
+     "mode": "hint",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "missing/lo/member",
+   "settings": null,
+   "search": "?projectId=lo",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "low",
+     "mode": "real",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "missing/def/member",
+   "settings": null,
+   "search": "?projectId=def",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/bad/member",
+   "settings": null,
+   "search": "?projectId=bad",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/upper/member",
+   "settings": null,
+   "search": "?projectId=upper",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/null-effort/member",
+   "settings": null,
+   "search": "?projectId=null-effort",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "scoped",
+     "model": "m-ok",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/scoped-ok/member",
+   "settings": null,
+   "search": "?projectId=scoped-ok",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "scoped",
+     "model": "m-ok",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/scoped-other/member",
+   "settings": null,
+   "search": "?projectId=scoped-other",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "scoped",
+     "model": "other",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/ghost-provider/member",
+   "settings": null,
+   "search": "?projectId=ghost-provider",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "m-ok",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/legacy-provider/member",
+   "settings": null,
+   "search": "?projectId=legacy-provider",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "m",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/empty-provider/member",
+   "settings": null,
+   "search": "?projectId=empty-provider",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/number-provider/member",
+   "settings": null,
+   "search": "?projectId=number-provider",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": 7,
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/object-provider/member",
+   "settings": null,
+   "search": "?projectId=object-provider",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": [
+      "m"
+     ],
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/null-provider/member",
+   "settings": null,
+   "search": "?projectId=null-provider",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/qwen-local/member",
+   "settings": null,
+   "search": "?projectId=qwen-local",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "qwen3-8b",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/dup/member",
+   "settings": null,
+   "search": "?projectId=dup",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "missing/unknown/member",
+   "settings": null,
+   "search": "?projectId=ghost",
+   "role": "member",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "missing/unknown/admin",
+   "settings": null,
+   "search": "?projectId=ghost",
+   "role": "admin",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "missing/empty-id/member",
+   "settings": null,
+   "search": "?projectId=",
+   "role": "member",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "missing/bare/member",
+   "settings": null,
+   "search": "?projectId",
+   "role": "member",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "missing/encoded/member",
+   "settings": null,
+   "search": "?projectId=caf%C3%A9%20%E2%98%95",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/plus-is-space/member",
+   "settings": null,
+   "search": "?projectId=a+b",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/literal-plus/member",
+   "settings": null,
+   "search": "?projectId=a%2Bb",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/percent/member",
+   "settings": null,
+   "search": "?projectId=50%25",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/first-wins/member",
+   "settings": null,
+   "search": "?projectId=hi&projectId=lo",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "missing/first-unknown/member",
+   "settings": null,
+   "search": "?projectId=ghost&projectId=hi",
+   "role": "member",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "missing/other-param/member",
+   "settings": null,
+   "search": "?other=1",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/case-sensitive/member",
+   "settings": null,
+   "search": "?projectid=hi",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "missing/trailing-amp/member",
+   "settings": null,
+   "search": "?projectId=hi&",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "missing/bad-percent/member",
+   "settings": null,
+   "search": "?projectId=%ZZ",
+   "role": "member",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "default/none/member",
+   "settings": {
+    "kind": "default",
+    "value": "default"
+   },
+   "search": "",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "default/none/admin",
+   "settings": {
+    "kind": "default",
+    "value": "default"
+   },
+   "search": "",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "default/plain/member",
+   "settings": {
+    "kind": "default",
+    "value": "default"
+   },
+   "search": "?projectId=plain",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "default/plain/admin",
+   "settings": {
+    "kind": "default",
+    "value": "default"
+   },
+   "search": "?projectId=plain",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "default/hi/member",
+   "settings": {
+    "kind": "default",
+    "value": "default"
+   },
+   "search": "?projectId=hi",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "default/hi/admin",
+   "settings": {
+    "kind": "default",
+    "value": "default"
+   },
+   "search": "?projectId=hi",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "high",
+     "mode": "hint",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "default/def/member",
+   "settings": {
+    "kind": "default",
+    "value": "default"
+   },
+   "search": "?projectId=def",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "default/bad/member",
+   "settings": {
+    "kind": "default",
+    "value": "default"
+   },
+   "search": "?projectId=bad",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "default/scoped-ok/member",
+   "settings": {
+    "kind": "default",
+    "value": "default"
+   },
+   "search": "?projectId=scoped-ok",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "scoped",
+     "model": "m-ok",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "default/dup/member",
+   "settings": {
+    "kind": "default",
+    "value": "default"
+   },
+   "search": "?projectId=dup",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "default/unknown/member",
+   "settings": {
+    "kind": "default",
+    "value": "default"
+   },
+   "search": "?projectId=ghost",
+   "role": "member",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "default/unknown/admin",
+   "settings": {
+    "kind": "default",
+    "value": "default"
+   },
+   "search": "?projectId=ghost",
+   "role": "admin",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "low/none/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/none/admin",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/plain/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=plain",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/plain/admin",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=plain",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/hi/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=hi",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "low/hi/admin",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=hi",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "high",
+     "mode": "hint",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "low/lo/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=lo",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "real",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/def/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=def",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "low/bad/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=bad",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "real",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/upper/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=upper",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/null-effort/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=null-effort",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "real",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "scoped",
+     "model": "m-ok",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/scoped-ok/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=scoped-ok",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "real",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "scoped",
+     "model": "m-ok",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/scoped-other/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=scoped-other",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "scoped",
+     "model": "other",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/ghost-provider/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=ghost-provider",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "m-ok",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/legacy-provider/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=legacy-provider",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "m",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/empty-provider/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=empty-provider",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/number-provider/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=number-provider",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": 7,
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/object-provider/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=object-provider",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": [
+      "m"
+     ],
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/null-provider/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=null-provider",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/qwen-local/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=qwen-local",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "qwen3-8b",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/dup/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=dup",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/unknown/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=ghost",
+   "role": "member",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "low/unknown/admin",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=ghost",
+   "role": "admin",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "low/empty-id/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=",
+   "role": "member",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "low/bare/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId",
+   "role": "member",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "low/encoded/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=caf%C3%A9%20%E2%98%95",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/plus-is-space/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=a+b",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/literal-plus/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=a%2Bb",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/percent/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=50%25",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/first-wins/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=hi&projectId=lo",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "low/first-unknown/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=ghost&projectId=hi",
+   "role": "member",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "low/other-param/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?other=1",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/case-sensitive/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectid=hi",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "low/trailing-amp/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=hi&",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "low/bad-percent/member",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=%ZZ",
+   "role": "member",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "high/none/member",
+   "settings": {
+    "kind": "high",
+    "value": "high"
+   },
+   "search": "",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "high",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "high/none/admin",
+   "settings": {
+    "kind": "high",
+    "value": "high"
+   },
+   "search": "",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "high",
+     "effort": "high",
+     "mode": "hint",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "high/plain/member",
+   "settings": {
+    "kind": "high",
+    "value": "high"
+   },
+   "search": "?projectId=plain",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "high",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "high/plain/admin",
+   "settings": {
+    "kind": "high",
+    "value": "high"
+   },
+   "search": "?projectId=plain",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "high",
+     "effort": "high",
+     "mode": "hint",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "high/hi/member",
+   "settings": {
+    "kind": "high",
+    "value": "high"
+   },
+   "search": "?projectId=hi",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "high",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "high/hi/admin",
+   "settings": {
+    "kind": "high",
+    "value": "high"
+   },
+   "search": "?projectId=hi",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "high",
+     "effort": "high",
+     "mode": "hint",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "high/def/member",
+   "settings": {
+    "kind": "high",
+    "value": "high"
+   },
+   "search": "?projectId=def",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "high",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "high/bad/member",
+   "settings": {
+    "kind": "high",
+    "value": "high"
+   },
+   "search": "?projectId=bad",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "high",
+     "effort": "high",
+     "mode": "real",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "high/scoped-ok/member",
+   "settings": {
+    "kind": "high",
+    "value": "high"
+   },
+   "search": "?projectId=scoped-ok",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "high",
+     "effort": "high",
+     "mode": "real",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "scoped",
+     "model": "m-ok",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "high/dup/member",
+   "settings": {
+    "kind": "high",
+    "value": "high"
+   },
+   "search": "?projectId=dup",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "high",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "high/unknown/member",
+   "settings": {
+    "kind": "high",
+    "value": "high"
+   },
+   "search": "?projectId=ghost",
+   "role": "member",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "high/unknown/admin",
+   "settings": {
+    "kind": "high",
+    "value": "high"
+   },
+   "search": "?projectId=ghost",
+   "role": "admin",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "empty/none/member",
+   "settings": {
+    "kind": "empty",
+    "value": ""
+   },
+   "search": "",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "empty/none/admin",
+   "settings": {
+    "kind": "empty",
+    "value": ""
+   },
+   "search": "",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "empty/plain/member",
+   "settings": {
+    "kind": "empty",
+    "value": ""
+   },
+   "search": "?projectId=plain",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "empty/plain/admin",
+   "settings": {
+    "kind": "empty",
+    "value": ""
+   },
+   "search": "?projectId=plain",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "empty/hi/member",
+   "settings": {
+    "kind": "empty",
+    "value": ""
+   },
+   "search": "?projectId=hi",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "empty/hi/admin",
+   "settings": {
+    "kind": "empty",
+    "value": ""
+   },
+   "search": "?projectId=hi",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "high",
+     "mode": "hint",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "empty/def/member",
+   "settings": {
+    "kind": "empty",
+    "value": ""
+   },
+   "search": "?projectId=def",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "empty/bad/member",
+   "settings": {
+    "kind": "empty",
+    "value": ""
+   },
+   "search": "?projectId=bad",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "empty/scoped-ok/member",
+   "settings": {
+    "kind": "empty",
+    "value": ""
+   },
+   "search": "?projectId=scoped-ok",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "scoped",
+     "model": "m-ok",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "empty/dup/member",
+   "settings": {
+    "kind": "empty",
+    "value": ""
+   },
+   "search": "?projectId=dup",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "empty/unknown/member",
+   "settings": {
+    "kind": "empty",
+    "value": ""
+   },
+   "search": "?projectId=ghost",
+   "role": "member",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "empty/unknown/admin",
+   "settings": {
+    "kind": "empty",
+    "value": ""
+   },
+   "search": "?projectId=ghost",
+   "role": "admin",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "null/none/member",
+   "settings": {
+    "kind": "null",
+    "value": null
+   },
+   "search": "",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "null/none/admin",
+   "settings": {
+    "kind": "null",
+    "value": null
+   },
+   "search": "",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "null/plain/member",
+   "settings": {
+    "kind": "null",
+    "value": null
+   },
+   "search": "?projectId=plain",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "null/plain/admin",
+   "settings": {
+    "kind": "null",
+    "value": null
+   },
+   "search": "?projectId=plain",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "null/hi/member",
+   "settings": {
+    "kind": "null",
+    "value": null
+   },
+   "search": "?projectId=hi",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "null/hi/admin",
+   "settings": {
+    "kind": "null",
+    "value": null
+   },
+   "search": "?projectId=hi",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "high",
+     "mode": "hint",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "null/def/member",
+   "settings": {
+    "kind": "null",
+    "value": null
+   },
+   "search": "?projectId=def",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "null/bad/member",
+   "settings": {
+    "kind": "null",
+    "value": null
+   },
+   "search": "?projectId=bad",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "null/scoped-ok/member",
+   "settings": {
+    "kind": "null",
+    "value": null
+   },
+   "search": "?projectId=scoped-ok",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "scoped",
+     "model": "m-ok",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "null/dup/member",
+   "settings": {
+    "kind": "null",
+    "value": null
+   },
+   "search": "?projectId=dup",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "null/unknown/member",
+   "settings": {
+    "kind": "null",
+    "value": null
+   },
+   "search": "?projectId=ghost",
+   "role": "member",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "null/unknown/admin",
+   "settings": {
+    "kind": "null",
+    "value": null
+   },
+   "search": "?projectId=ghost",
+   "role": "admin",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "unknown/none/member",
+   "settings": {
+    "kind": "unknown",
+    "value": "max"
+   },
+   "search": "",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "max",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "unknown/none/admin",
+   "settings": {
+    "kind": "unknown",
+    "value": "max"
+   },
+   "search": "",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "max",
+     "effort": "default",
+     "mode": "off",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "unknown/plain/member",
+   "settings": {
+    "kind": "unknown",
+    "value": "max"
+   },
+   "search": "?projectId=plain",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "max",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "unknown/plain/admin",
+   "settings": {
+    "kind": "unknown",
+    "value": "max"
+   },
+   "search": "?projectId=plain",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "max",
+     "effort": "default",
+     "mode": "off",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "unknown/hi/member",
+   "settings": {
+    "kind": "unknown",
+    "value": "max"
+   },
+   "search": "?projectId=hi",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "max",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "unknown/hi/admin",
+   "settings": {
+    "kind": "unknown",
+    "value": "max"
+   },
+   "search": "?projectId=hi",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "max",
+     "effort": "high",
+     "mode": "hint",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "unknown/def/member",
+   "settings": {
+    "kind": "unknown",
+    "value": "max"
+   },
+   "search": "?projectId=def",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "max",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "unknown/bad/member",
+   "settings": {
+    "kind": "unknown",
+    "value": "max"
+   },
+   "search": "?projectId=bad",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "max",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "unknown/scoped-ok/member",
+   "settings": {
+    "kind": "unknown",
+    "value": "max"
+   },
+   "search": "?projectId=scoped-ok",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "max",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "scoped",
+     "model": "m-ok",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "unknown/dup/member",
+   "settings": {
+    "kind": "unknown",
+    "value": "max"
+   },
+   "search": "?projectId=dup",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "max",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "unknown/unknown/member",
+   "settings": {
+    "kind": "unknown",
+    "value": "max"
+   },
+   "search": "?projectId=ghost",
+   "role": "member",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "unknown/unknown/admin",
+   "settings": {
+    "kind": "unknown",
+    "value": "max"
+   },
+   "search": "?projectId=ghost",
+   "role": "admin",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "upper/none/member",
+   "settings": {
+    "kind": "upper",
+    "value": "LOW"
+   },
+   "search": "",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "LOW",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "upper/none/admin",
+   "settings": {
+    "kind": "upper",
+    "value": "LOW"
+   },
+   "search": "",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "LOW",
+     "effort": "default",
+     "mode": "off",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "upper/plain/member",
+   "settings": {
+    "kind": "upper",
+    "value": "LOW"
+   },
+   "search": "?projectId=plain",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "LOW",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "upper/plain/admin",
+   "settings": {
+    "kind": "upper",
+    "value": "LOW"
+   },
+   "search": "?projectId=plain",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "LOW",
+     "effort": "default",
+     "mode": "off",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "upper/hi/member",
+   "settings": {
+    "kind": "upper",
+    "value": "LOW"
+   },
+   "search": "?projectId=hi",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "LOW",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "upper/hi/admin",
+   "settings": {
+    "kind": "upper",
+    "value": "LOW"
+   },
+   "search": "?projectId=hi",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "LOW",
+     "effort": "high",
+     "mode": "hint",
+     "admin": true
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "upper/def/member",
+   "settings": {
+    "kind": "upper",
+    "value": "LOW"
+   },
+   "search": "?projectId=def",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "LOW",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "upper/bad/member",
+   "settings": {
+    "kind": "upper",
+    "value": "LOW"
+   },
+   "search": "?projectId=bad",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "LOW",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "upper/scoped-ok/member",
+   "settings": {
+    "kind": "upper",
+    "value": "LOW"
+   },
+   "search": "?projectId=scoped-ok",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "LOW",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "scoped",
+     "model": "m-ok",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "upper/dup/member",
+   "settings": {
+    "kind": "upper",
+    "value": "LOW"
+   },
+   "search": "?projectId=dup",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "LOW",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "upper/unknown/member",
+   "settings": {
+    "kind": "upper",
+    "value": "LOW"
+   },
+   "search": "?projectId=ghost",
+   "role": "member",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  },
+  {
+   "name": "upper/unknown/admin",
+   "settings": {
+    "kind": "upper",
+    "value": "LOW"
+   },
+   "search": "?projectId=ghost",
+   "role": "admin",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "asked": []
+  }
+ ]
+}

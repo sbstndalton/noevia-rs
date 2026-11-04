@@ -68,7 +68,7 @@ pub enum Native {
     /// GET /api/integrations/storage/files[/path], POST /api/integrations/storage/file (M4, #1368,
     /// NOEVIA_RUST_STORAGE_BROWSE): the outbound list and text read.
     StorageBrowse,
-    /// GET /api/routing-default (M6, NOEVIA_RUST_ROUTING_DEFAULT): crates/server-routing-default.
+    /// GET and PUT /api/routing-default (M6, #2384): crates/server-routing-default reads; the PUT is project_routes'.
     RoutingDefault,
     /// GET /api/stats (M6, NOEVIA_RUST_STATS): crates/server-stats.
     Stats,
@@ -203,7 +203,7 @@ pub(crate) const DIARY_ROUTES: &[&str] = &[
     "/api/diary/local-exchange",
 ];
 
-/// The route [`Native::RoutingDefault`] implements (GET only; routes.toml).
+/// The route [`Native::RoutingDefault`] implements (GET and PUT; routes.toml).
 const ROUTING_DEFAULT: &str = "/api/routing-default";
 
 /// An account's deletion (DELETE only; routes.toml), the front's under `rust-admin-users`
@@ -1032,15 +1032,36 @@ mod tests {
         }
     }
     #[test]
-    fn reasoning_owns_only_put_always() {
+    fn reasoning_owns_get_and_put_always() {
         let on = Switches::default();
-        for m in ["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"] {
-            assert_eq!(dispatch_under(m, "/api/reasoning-settings", on), None);
+        for m in ["HEAD", "POST", "PATCH", "DELETE", "OPTIONS"] {
+            assert_eq!(
+                dispatch_under(m, "/api/reasoning-settings", on),
+                None,
+                "{m}"
+            );
         }
-        assert_eq!(
-            dispatch_under("PUT", "/api/reasoning-settings", on),
-            Some(Native::ReasoningSettings)
-        );
+        for m in ["GET", "PUT"] {
+            assert_eq!(
+                dispatch_under(m, "/api/reasoning-settings", on),
+                Some(Native::ReasoningSettings),
+                "{m}"
+            );
+        }
+    }
+    #[test]
+    fn routing_default_owns_get_and_put_always() {
+        let on = Switches::default();
+        for m in ["HEAD", "POST", "PATCH", "DELETE", "OPTIONS"] {
+            assert_eq!(dispatch_under(m, "/api/routing-default", on), None, "{m}");
+        }
+        for m in ["GET", "PUT"] {
+            assert_eq!(
+                dispatch_under(m, "/api/routing-default", on),
+                Some(Native::RoutingDefault),
+                "{m}"
+            );
+        }
     }
 
     // #1071: only these two context methods are permanently native.
@@ -1826,10 +1847,12 @@ mod tests {
             ("GET", "/api/usage", Native::Usage),
             ("GET", "/api/usage/aggregate", Native::Usage),
             ("GET", "/api/sampling-settings", Native::SamplingSettings),
+            ("GET", "/api/reasoning-settings", Native::ReasoningSettings),
             ("PUT", "/api/reasoning-settings", Native::ReasoningSettings),
             ("GET", "/api/routing-mode", Native::RoutingMode),
             ("GET", "/api/routing-mode/allowed", Native::RoutingMode),
             ("GET", "/api/routing-default", Native::RoutingDefault),
+            ("PUT", "/api/routing-default", Native::RoutingDefault),
             ("GET", "/api/stats", Native::Stats),
             ("GET", "/api/providers/chatgpt", Native::ChatgptStatus),
             ("GET", "/api/integrations/storage", Native::StorageMetadata),

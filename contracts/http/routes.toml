@@ -982,16 +982,17 @@ owner = "rust"
 methods = ["GET"]
 
 [[route]]
-# GET/provider capability and every non-PUT method remain explicitly Node-owned.
+# sbstndalton/noevia#2384: the read (the project, the stored default and the effort are native; Node answers only
+# how the provider will be asked) and the administrator's write. Every other method stays Node's.
 path = "/api/reasoning-settings"
 owner = "rust"
-methods = ["PUT"]
+methods = ["GET", "PUT"]
 
 [[route]]
-# M6 (#1305): GET only; PUT and every other method stay Node-owned (preferences and projects writes).
+# M6 (#1305) read; the write (#2384) saves preferences.json and the account's projects. Every other method stays Node's.
 path = "/api/routing-default"
 owner = "rust"
-methods = ["GET"]
+methods = ["GET", "PUT"]
 
 [[route]]
 path = "/api/routing-mode"

@@ -1,8 +1,11 @@
 //! Native `GET /api/routing-default` (M6, sbstndalton/noevia#1305): the signed-in user's default
 //! routing, read from their own preferences.json (crates/server-routing-default). Identity
-//! precedes everything; only GET is owned (routes.toml), so every other method, and every request
-//! without NOEVIA_RUST_AUTH=1, goes to Node (NOEVIA_RUST_ROUTING_DEFAULT is retired, #1071). A failed or unsafe read answers 503,
-//! never a guessed routing and never a fallback to Node.
+//! precedes everything. GET and PUT are owned (routes.toml); every other method goes to Node
+//! (NOEVIA_RUST_ROUTING_DEFAULT is retired, #1071). A failed or unsafe read answers 503,
+//! never a guessed routing and never a fallback to Node. The PUT (sbstndalton/noevia#2384) is the project
+//! routes' (`project_routes`, crates/server-projects `routing_default`): it writes the preferences and
+//! the account's projects under the project store's lock, with the same identity, CSRF and account gates
+//! as every other write there.
 use crate::{identity, reply, App};
 use axum::{
     body::Body,
@@ -40,6 +43,9 @@ pub async fn serve(
     req: Request<Body>,
     path: String,
 ) -> Response<Body> {
+    if path == ROUTE && req.method() == Method::PUT {
+        return crate::project_routes::serve(app, conn, req, path).await;
+    }
     if path != ROUTE || req.method() != Method::GET {
         return app.proxy.forward(conn.peer, req).await;
     }
