@@ -65,6 +65,13 @@ impl GateFault {
             GateFault::Unavailable => 502,
         }
     }
+    /// The gate's refusal code (`engine_unavailable` when it gave no usable answer).
+    pub fn code(&self) -> String {
+        match self {
+            GateFault::Refused { code, .. } => code.clone(),
+            GateFault::Unavailable => "engine_unavailable".into(),
+        }
+    }
     pub fn message(&self) -> String {
         match self {
             GateFault::Refused { message, .. } => message.clone(),
@@ -461,6 +468,21 @@ impl Hold {
                 .lock()
                 .is_ok_and(|at| covered(*at + ttl))
             && self.shared.lease_end.is_none_or(covered)
+    }
+
+    /// Whether the hold still excludes everyone else: not lost, and for Node's lease, Node's last
+    /// confirmation still covers now (an unconfirmed lease may already have ended at Node).
+    pub fn excluded(&self) -> bool {
+        if self.shared.lost.load(Ordering::Acquire) || self.shared.released.load(Ordering::Acquire)
+        {
+            return false;
+        }
+        let Some(ttl) = self.shared.lease_ttl else {
+            return true;
+        };
+        let now = Instant::now();
+        self.shared.confirmed.lock().is_ok_and(|at| now < *at + ttl)
+            && self.shared.lease_end.is_none_or(|end| now < end)
     }
 
     /// Makes the deadline at least `needed` from now: the work has found out how long it may take.

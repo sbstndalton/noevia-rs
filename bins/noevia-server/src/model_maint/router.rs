@@ -83,6 +83,27 @@ impl Router {
         &self.base
     }
 
+    /// #2286: build the image probe on this exact identity/admission target, with its credentials.
+    /// The default chat provider may be a different engine and is never substituted here.
+    pub(super) fn image_probe_request(
+        &self,
+        body: &Value,
+        lease_headers: &[(String, String)],
+    ) -> reqwest::RequestBuilder {
+        let mut request = self
+            .client
+            .post(format!("{}/v1/chat/completions", self.base))
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string());
+        if let Some(authorization) = &self.authorization {
+            request = request.header(AUTHORIZATION, authorization.clone());
+        }
+        for (name, value) in lease_headers {
+            request = request.header(name.as_str(), value.as_str());
+        }
+        request
+    }
+
     /// One request. `hold` is the maintenance hold token this process holds (its requests carry it).
     pub async fn request(
         &self,
@@ -196,6 +217,33 @@ impl Router {
     ) -> Result<Reply, Fault> {
         self.request(reqwest::Method::GET, path, None, hold, timeout)
             .await
+    }
+
+    /// A streamed request (`fetch` with the body left to the caller): the response once its head
+    /// arrived, or `Err` when it did not start. `timeout` bounds the whole exchange.
+    pub async fn stream(
+        &self,
+        path: &str,
+        body: &Value,
+        hold: Option<&str>,
+        timeout: Duration,
+    ) -> Result<reqwest::Response, Fault> {
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        if let Some(a) = &self.authorization {
+            headers.insert(AUTHORIZATION, a.clone());
+        }
+        if let Some(h) = hold.and_then(|h| HeaderValue::from_str(h).ok()) {
+            headers.insert(HeaderName::from_static("x-noevia-maintenance"), h);
+        }
+        self.client
+            .post(format!("{}{path}", self.base))
+            .headers(headers)
+            .timeout(timeout)
+            .body(body.to_string())
+            .send()
+            .await
+            .map_err(|_| Fault)
     }
 
     /// `rawModels()`: the router's listing.

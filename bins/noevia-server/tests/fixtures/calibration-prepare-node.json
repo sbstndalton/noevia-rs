@@ -1,0 +1,595 @@
+{
+ "source": "noevia-core b91b3f0 createModelManager().calibration listingFacts/preparationFacts (conservativeFor, tuneIdentity); inference budget 16 GiB; cacheRamMaxMib 1024; the GGUF header bytes are the HEADER below with mtime 1700000000; hardware names this host's MemTotal",
+ "header": {
+  "general.architecture": [
+   8,
+   "llama"
+  ],
+  "llama.context_length": [
+   4,
+   32768
+  ],
+  "llama.embedding_length": [
+   4,
+   4096
+  ],
+  "llama.block_count": [
+   4,
+   32
+  ],
+  "llama.attention.head_count": [
+   4,
+   32
+  ],
+  "llama.attention.head_count_kv": [
+   4,
+   8
+  ],
+  "tokenizer.chat_template": [
+   8,
+   "{{ messages }}"
+  ]
+ },
+ "cases": [
+  {
+   "name": "section exists, quant in the file name",
+   "model": "synth",
+   "files": [
+    "Synth-8B-Q4_K_M.gguf"
+   ],
+   "mtime": 1700000000,
+   "ini": "[*]\nn-gpu-layers = 99\n\n[synth]\nmodel = /models/Synth-8B-Q4_K_M.gguf\nctx-size = 4096\n",
+   "rows": [
+    {
+     "id": "synth",
+     "status": {
+      "value": "unloaded",
+      "args": [
+       "--model",
+       "/models/Synth-8B-Q4_K_M.gguf"
+      ]
+     },
+     "meta": {
+      "n_ctx_train": 32768
+     }
+    }
+   ],
+   "props": {
+    "build_info": "b1234"
+   },
+   "listing": {
+    "backend": true,
+    "row": {
+     "id": "synth",
+     "status": {
+      "value": "unloaded",
+      "args": [
+       "--model",
+       "/models/Synth-8B-Q4_K_M.gguf"
+      ]
+     },
+     "meta": {
+      "n_ctx_train": 32768
+     }
+    },
+    "system": false
+   },
+   "prepared": {
+    "row": {
+     "id": "synth",
+     "status": {
+      "value": "unloaded",
+      "args": [
+       "--model",
+       "/models/Synth-8B-Q4_K_M.gguf"
+      ]
+     },
+     "meta": {
+      "n_ctx_train": 32768
+     }
+    },
+    "system": false,
+    "profile": {
+     "model": "synth",
+     "revision": "10d29fda0f7b062296226529511d170064213290757f06a15f148c45ea270af6",
+     "exists": true,
+     "options": {
+      "ctx-size": "4096"
+     },
+     "defaults": {
+      "n-gpu-layers": "99"
+     },
+     "fields": [
+      "ctx-size",
+      "parallel",
+      "n-gpu-layers",
+      "cache-type-k",
+      "cache-type-v",
+      "flash-attn",
+      "batch-size",
+      "ubatch-size",
+      "cache-ram",
+      "image-max-tokens",
+      "spec-type",
+      "spec-draft-n-max",
+      "spec-draft-p-min",
+      "temp",
+      "top-p",
+      "top-k",
+      "min-p",
+      "repeat-penalty"
+     ]
+    },
+    "conservative": {
+     "native": 32768,
+     "values": {
+      "ctx-size": "32768",
+      "parallel": "1",
+      "n-gpu-layers": "999",
+      "flash-attn": "on",
+      "cache-type-k": "q8_0",
+      "cache-type-v": "q8_0",
+      "cache-ram": "1024"
+     }
+    },
+    "identity": {
+     "arch": "llama",
+     "quant": "Q4_K_M",
+     "artifact": "320:1700000000000:e5fc1c653bb8870c92ca43e3ab1cd691",
+     "build": "b1234",
+     "profile": "d7ba130a0185b49798da9f6f5b2f0e07bed5155333de3b78177998579b50c875",
+     "hardware": "61GiB \"b1234\""
+    },
+    "identityReady": true,
+    "revision": "10d29fda0f7b062296226529511d170064213290757f06a15f148c45ea270af6",
+    "ladderReady": true
+   }
+  },
+  {
+   "name": "no section: the file comes from the router args",
+   "model": "bare",
+   "files": [
+    "bare-UD-IQ2_XXS.gguf"
+   ],
+   "mtime": 1700000000,
+   "ini": "[*]\nn-gpu-layers = 99\n",
+   "rows": [
+    {
+     "id": "bare",
+     "status": {
+      "value": "unloaded",
+      "args": [
+       "--model",
+       "/models/bare-UD-IQ2_XXS.gguf"
+      ]
+     }
+    }
+   ],
+   "props": {
+    "build_info": {
+     "commit": "abc",
+     "number": 42
+    }
+   },
+   "listing": {
+    "backend": true,
+    "row": {
+     "id": "bare",
+     "status": {
+      "value": "unloaded",
+      "args": [
+       "--model",
+       "/models/bare-UD-IQ2_XXS.gguf"
+      ]
+     }
+    },
+    "system": false
+   },
+   "prepared": {
+    "row": {
+     "id": "bare",
+     "status": {
+      "value": "unloaded",
+      "args": [
+       "--model",
+       "/models/bare-UD-IQ2_XXS.gguf"
+      ]
+     }
+    },
+    "system": false,
+    "profile": {
+     "model": "bare",
+     "revision": "7ab7bc62c69c1c83b8ff503d02916cc464ea930eb5b964f75019e6d8d902a216",
+     "exists": false,
+     "options": {},
+     "defaults": {
+      "n-gpu-layers": "99"
+     },
+     "fields": [
+      "ctx-size",
+      "parallel",
+      "n-gpu-layers",
+      "cache-type-k",
+      "cache-type-v",
+      "flash-attn",
+      "batch-size",
+      "ubatch-size",
+      "cache-ram",
+      "image-max-tokens",
+      "spec-type",
+      "spec-draft-n-max",
+      "spec-draft-p-min",
+      "temp",
+      "top-p",
+      "top-k",
+      "min-p",
+      "repeat-penalty"
+     ]
+    },
+    "conservative": {
+     "native": 32768,
+     "values": {
+      "ctx-size": "32768",
+      "parallel": "1",
+      "n-gpu-layers": "999",
+      "flash-attn": "on",
+      "cache-type-k": "q8_0",
+      "cache-type-v": "q8_0",
+      "cache-ram": "1024"
+     }
+    },
+    "identity": {
+     "arch": "llama",
+     "quant": "UD-IQ2_XXS",
+     "artifact": "320:1700000000000:e5fc1c653bb8870c92ca43e3ab1cd691",
+     "build": {
+      "commit": "abc",
+      "number": 42
+     },
+     "profile": "03c9668d0d8128bc97665380fe92eb9bfb3a10b24e45335158e24e9aec710fdc",
+     "hardware": "61GiB {\"commit\":\"abc\",\"number\":42}"
+    },
+    "identityReady": true,
+    "revision": "7ab7bc62c69c1c83b8ff503d02916cc464ea930eb5b964f75019e6d8d902a216",
+    "ladderReady": true
+   }
+  },
+  {
+   "name": "a Laya model is a system model",
+   "model": "laya-mini",
+   "files": [
+    "laya-mini.gguf"
+   ],
+   "mtime": 1700000000,
+   "ini": "[laya-mini]\nmodel = /models/laya-mini.gguf\n",
+   "rows": [
+    {
+     "id": "laya-mini",
+     "status": {
+      "value": "unloaded",
+      "args": [
+       "--model",
+       "/models/laya-mini.gguf"
+      ]
+     }
+    }
+   ],
+   "props": {},
+   "listing": {
+    "backend": true,
+    "row": {
+     "id": "laya-mini",
+     "status": {
+      "value": "unloaded",
+      "args": [
+       "--model",
+       "/models/laya-mini.gguf"
+      ]
+     }
+    },
+    "system": true
+   },
+   "prepared": {
+    "row": {
+     "id": "laya-mini",
+     "status": {
+      "value": "unloaded",
+      "args": [
+       "--model",
+       "/models/laya-mini.gguf"
+      ]
+     }
+    },
+    "system": true,
+    "profile": {
+     "model": "laya-mini",
+     "revision": "f0fab5c23ec2314a36e3a722db2b09fad625085e0942f06b794839f6071a9f0a",
+     "exists": true,
+     "options": {},
+     "defaults": {},
+     "fields": [
+      "ctx-size",
+      "parallel",
+      "n-gpu-layers",
+      "cache-type-k",
+      "cache-type-v",
+      "flash-attn",
+      "batch-size",
+      "ubatch-size",
+      "cache-ram",
+      "image-max-tokens",
+      "spec-type",
+      "spec-draft-n-max",
+      "spec-draft-p-min",
+      "temp",
+      "top-p",
+      "top-k",
+      "min-p",
+      "repeat-penalty"
+     ]
+    },
+    "conservative": {
+     "native": 32768,
+     "values": {
+      "ctx-size": "32768",
+      "parallel": "1",
+      "n-gpu-layers": "999",
+      "flash-attn": "on",
+      "cache-type-k": "q8_0",
+      "cache-type-v": "q8_0",
+      "cache-ram": "1024"
+     }
+    },
+    "identity": {
+     "arch": "llama",
+     "quant": null,
+     "artifact": "320:1700000000000:e5fc1c653bb8870c92ca43e3ab1cd691",
+     "build": null,
+     "profile": "94a9ca7d590e13405e8bf58ed31cb4989cb91816dd28325bbfe553317f1c1228",
+     "hardware": "61GiB null"
+    },
+    "identityReady": true,
+    "revision": "f0fab5c23ec2314a36e3a722db2b09fad625085e0942f06b794839f6071a9f0a",
+    "ladderReady": true
+   }
+  },
+  {
+   "name": "model file outside the mounts: no conservative values, identity not ready",
+   "model": "far",
+   "files": [],
+   "mtime": 1700000000,
+   "ini": "[far]\nmodel = /elsewhere/far.gguf\n",
+   "rows": [
+    {
+     "id": "far",
+     "status": {
+      "value": "unloaded",
+      "args": [
+       "--model",
+       "/elsewhere/far.gguf"
+      ]
+     }
+    }
+   ],
+   "props": {
+    "build_info": "b1"
+   },
+   "listing": {
+    "backend": true,
+    "row": {
+     "id": "far",
+     "status": {
+      "value": "unloaded",
+      "args": [
+       "--model",
+       "/elsewhere/far.gguf"
+      ]
+     }
+    },
+    "system": false
+   },
+   "prepared": {
+    "identityReady": false
+   }
+  },
+  {
+   "name": "model not in the listing",
+   "model": "gone",
+   "files": [
+    "gone.F16.gguf"
+   ],
+   "mtime": 1700000000,
+   "ini": "[gone]\nmodel = /models/gone.F16.gguf\n",
+   "rows": [
+    {
+     "id": "other",
+     "status": {
+      "value": "unloaded",
+      "args": [
+       "--model",
+       "/models/gone.F16.gguf"
+      ]
+     }
+    }
+   ],
+   "props": {
+    "build_info": "b1"
+   },
+   "listing": {
+    "backend": true,
+    "row": null,
+    "system": false
+   },
+   "prepared": {
+    "row": null,
+    "system": false,
+    "profile": {
+     "model": "gone",
+     "revision": "60fb04018bb18e0eb7fb7245630512a00c019bbdca1e9f3befc80ad0d7985bc6",
+     "exists": true,
+     "options": {},
+     "defaults": {},
+     "fields": [
+      "ctx-size",
+      "parallel",
+      "n-gpu-layers",
+      "cache-type-k",
+      "cache-type-v",
+      "flash-attn",
+      "batch-size",
+      "ubatch-size",
+      "cache-ram",
+      "image-max-tokens",
+      "spec-type",
+      "spec-draft-n-max",
+      "spec-draft-p-min",
+      "temp",
+      "top-p",
+      "top-k",
+      "min-p",
+      "repeat-penalty"
+     ]
+    },
+    "conservative": {
+     "native": 32768,
+     "values": {
+      "ctx-size": "32768",
+      "parallel": "1",
+      "n-gpu-layers": "999",
+      "flash-attn": "on",
+      "cache-type-k": "q8_0",
+      "cache-type-v": "q8_0",
+      "cache-ram": "1024"
+     }
+    },
+    "identity": {
+     "arch": "llama",
+     "quant": "F16",
+     "artifact": "320:1700000000000:e5fc1c653bb8870c92ca43e3ab1cd691",
+     "build": "b1",
+     "profile": "5f9b70ce5383e58eae9b38dfcf480c056d819fa51349566568ea65687cbb4d9b",
+     "hardware": "61GiB \"b1\""
+    },
+    "identityReady": true,
+    "revision": "60fb04018bb18e0eb7fb7245630512a00c019bbdca1e9f3befc80ad0d7985bc6",
+    "ladderReady": true
+   }
+  },
+  {
+   "name": "props failing: build null",
+   "model": "synth",
+   "files": [
+    "Synth-8B-Q4_K_M.gguf"
+   ],
+   "mtime": 1700000000,
+   "ini": "[synth]\nmodel = /models/Synth-8B-Q4_K_M.gguf\nparallel = 2\n",
+   "rows": [
+    {
+     "id": "synth",
+     "status": {
+      "value": "unloaded",
+      "args": [
+       "--model",
+       "/models/Synth-8B-Q4_K_M.gguf"
+      ]
+     }
+    }
+   ],
+   "props": null,
+   "listing": {
+    "backend": true,
+    "row": {
+     "id": "synth",
+     "status": {
+      "value": "unloaded",
+      "args": [
+       "--model",
+       "/models/Synth-8B-Q4_K_M.gguf"
+      ]
+     }
+    },
+    "system": false
+   },
+   "prepared": {
+    "row": {
+     "id": "synth",
+     "status": {
+      "value": "unloaded",
+      "args": [
+       "--model",
+       "/models/Synth-8B-Q4_K_M.gguf"
+      ]
+     }
+    },
+    "system": false,
+    "profile": {
+     "model": "synth",
+     "revision": "e51009df8c9fdbeb17102aad2501181b9cc712d13869dd8a4998168d3fefd362",
+     "exists": true,
+     "options": {
+      "parallel": "2"
+     },
+     "defaults": {},
+     "fields": [
+      "ctx-size",
+      "parallel",
+      "n-gpu-layers",
+      "cache-type-k",
+      "cache-type-v",
+      "flash-attn",
+      "batch-size",
+      "ubatch-size",
+      "cache-ram",
+      "image-max-tokens",
+      "spec-type",
+      "spec-draft-n-max",
+      "spec-draft-p-min",
+      "temp",
+      "top-p",
+      "top-k",
+      "min-p",
+      "repeat-penalty"
+     ]
+    },
+    "conservative": {
+     "native": 32768,
+     "values": {
+      "ctx-size": "32768",
+      "parallel": "1",
+      "n-gpu-layers": "999",
+      "flash-attn": "on",
+      "cache-type-k": "q8_0",
+      "cache-type-v": "q8_0",
+      "cache-ram": "1024"
+     }
+    },
+    "identity": {
+     "arch": "llama",
+     "quant": "Q4_K_M",
+     "artifact": "320:1700000000000:e5fc1c653bb8870c92ca43e3ab1cd691",
+     "build": null,
+     "profile": "a8d05e5bb18316ff3d05d8d80ba2812c78198493a43c3496012f7d04d5c110a2",
+     "hardware": "61GiB null"
+    },
+    "identityReady": true,
+    "revision": "e51009df8c9fdbeb17102aad2501181b9cc712d13869dd8a4998168d3fefd362",
+    "ladderReady": true
+   }
+  },
+  {
+   "name": "router down",
+   "model": "synth",
+   "files": [
+    "Synth-8B-Q4_K_M.gguf"
+   ],
+   "mtime": 1700000000,
+   "ini": "[synth]\nmodel = /models/Synth-8B-Q4_K_M.gguf\n",
+   "rows": null,
+   "props": null,
+   "listing": {
+    "backend": false
+   },
+   "prepared": null
+  }
+ ]
+}

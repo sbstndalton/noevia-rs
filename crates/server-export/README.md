@@ -80,6 +80,16 @@ extended years, noncanonical strings/timezones and calendar rollover forms yield
 truthy non-array toolCalls, failed plain-object coercion); Node-specific exception message
 wording is captured in fixtures but is not exposed by the typed native error API.
 
+The single-chat download (`single::download`, core routes/chat-lists.cjs) uses
+`markdown::render_as_node` instead: the same text, but with Node's own admission. Only the fields
+`chatMarkdown` reads are walked (an ignored field may have any shape or depth; a used field's arrays
+are joined to 1000 levels, the output stays within `MAX_RENDER_BYTES`), and `updatedAt` is
+`new Date(x).toISOString()` over the whole Date range (`js_date`: TimeClip for numbers, V8's
+`Date.parse` port for strings, ES5 ISO and the legacy forms, zone-less times in the process's own
+zone, `±YYYYYY` years). `Date` is Node's RangeError, `Type` its TypeError. `tests/js_date.rs` replays
+`tests/fixtures/node-dates.v1.json` (js-date-oracle.cjs, CI's Node, UTC; `ORACLE_TZ` and
+`NOEVIA_DATES_FIXTURE` run it in another zone). The workspace export keeps `render`'s admission.
+
 Before formatting, the whole tree—including ignored reasoning/roles—is admitted within
 32 child levels, 1,000,000 total values across chat/history, and 16 MiB combined UTF-8 string
 and property-key bytes (raised from 20,000 / 1 MiB for the route, #1315, #1824). These are stricter than the unbounded Node formatter. Siblings

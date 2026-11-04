@@ -17,6 +17,7 @@
 //! compares text it normalised itself, so a difference changes which approval cards appear for
 //! such text, never whether framing holds.
 
+pub mod embedding_input;
 pub mod framing;
 pub mod js;
 pub mod json;

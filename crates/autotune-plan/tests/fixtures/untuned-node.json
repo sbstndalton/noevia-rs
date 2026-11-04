@@ -1,0 +1,945 @@
+[
+  {
+    "name": "signature-0",
+    "input": {
+      "version": 1,
+      "op": "signature",
+      "row": {
+        "identity": {
+          "arch": "synthetic",
+          "quant": "Q8_0",
+          "artifact": "stat:synthetic",
+          "build": {
+            "commit": "synthetic",
+            "number": 12
+          },
+          "profile": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "hardware": "synthetic"
+        },
+        "profile": {
+          "exists": true,
+          "defaults": {
+            "repeat-penalty": "0",
+            "min-p": "1",
+            "top-k": "2",
+            "top-p": "3",
+            "temp": "4",
+            "spec-draft-p-min": "5",
+            "spec-draft-n-max": "6",
+            "spec-type": "7",
+            "image-max-tokens": "8",
+            "cache-ram": "9",
+            "ubatch-size": "10",
+            "batch-size": "11",
+            "flash-attn": "12",
+            "cache-type-v": "13",
+            "cache-type-k": "14",
+            "n-gpu-layers": "15",
+            "parallel": "16",
+            "ctx-size": "17"
+          },
+          "options": {
+            "ctx-size": "4096",
+            "cache-type-k": "q8_0"
+          }
+        },
+        "allowQ5Kv": false
+      }
+    },
+    "expected": {
+      "signature": "60ff6ab9c84e14406c4be734d246905a3efc9fd3141f29d2322a2d9a2ddf419d"
+    },
+    "expectedWire": "{\"version\":3,\"identity\":{\"arch\":\"synthetic\",\"quant\":\"Q8_0\",\"artifact\":\"stat:synthetic\",\"build\":{\"commit\":\"synthetic\",\"number\":12},\"profile\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"hardware\":\"synthetic\"},\"options\":{\"batch-size\":\"11\",\"cache-ram\":\"9\",\"cache-type-k\":\"q8_0\",\"cache-type-v\":\"13\",\"ctx-size\":\"4096\",\"flash-attn\":\"12\",\"image-max-tokens\":\"8\",\"min-p\":\"1\",\"n-gpu-layers\":\"15\",\"parallel\":\"16\",\"repeat-penalty\":\"0\",\"spec-draft-n-max\":\"6\",\"spec-draft-p-min\":\"5\",\"spec-type\":\"7\",\"temp\":\"4\",\"top-k\":\"2\",\"top-p\":\"3\",\"ubatch-size\":\"10\"}}"
+  },
+  {
+    "name": "signature-1",
+    "input": {
+      "version": 1,
+      "op": "signature",
+      "row": {
+        "identity": {
+          "hardware": "synthetic",
+          "profile": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "build": {
+            "commit": "synthetic",
+            "number": 12
+          },
+          "artifact": "stat:synthetic",
+          "quant": "Q8_0",
+          "arch": "synthetic"
+        },
+        "profile": {
+          "exists": true,
+          "defaults": {
+            "repeat-penalty": "0",
+            "min-p": "1",
+            "top-k": "2",
+            "top-p": "3",
+            "temp": "4",
+            "spec-draft-p-min": "5",
+            "spec-draft-n-max": "6",
+            "spec-type": "7",
+            "image-max-tokens": "8",
+            "cache-ram": "9",
+            "ubatch-size": "10",
+            "batch-size": "11",
+            "flash-attn": "12",
+            "cache-type-v": "13",
+            "cache-type-k": "14",
+            "n-gpu-layers": "15",
+            "parallel": "16",
+            "ctx-size": "17"
+          },
+          "options": {
+            "ctx-size": "4096",
+            "cache-type-k": "q8_0"
+          }
+        },
+        "allowQ5Kv": true
+      }
+    },
+    "expected": {
+      "signature": "35a9b99309ac56bb3734195bca99a09ecb9d80309e05887076d7815de637325e"
+    },
+    "expectedWire": "{\"version\":3,\"identity\":{\"hardware\":\"synthetic\",\"profile\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"build\":{\"commit\":\"synthetic\",\"number\":12},\"artifact\":\"stat:synthetic\",\"quant\":\"Q8_0\",\"arch\":\"synthetic\"},\"options\":{\"batch-size\":\"11\",\"cache-ram\":\"9\",\"cache-type-k\":\"q8_0\",\"cache-type-v\":\"13\",\"ctx-size\":\"4096\",\"flash-attn\":\"12\",\"image-max-tokens\":\"8\",\"min-p\":\"1\",\"n-gpu-layers\":\"15\",\"parallel\":\"16\",\"repeat-penalty\":\"0\",\"spec-draft-n-max\":\"6\",\"spec-draft-p-min\":\"5\",\"spec-type\":\"7\",\"temp\":\"4\",\"top-k\":\"2\",\"top-p\":\"3\",\"ubatch-size\":\"10\"},\"kv\":\"q5\"}"
+  },
+  {
+    "name": "signature-2",
+    "input": {
+      "version": 1,
+      "op": "signature",
+      "row": {
+        "identity": {
+          "arch": "synthetic",
+          "quant": "Q8_0",
+          "artifact": "stat:synthetic",
+          "build": {
+            "commit": "synthetic",
+            "number": 12
+          },
+          "profile": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "hardware": "literal󰀀 and lone\ud800 plus pair😀"
+        },
+        "profile": {
+          "exists": true,
+          "defaults": {
+            "repeat-penalty": "0",
+            "min-p": "1",
+            "top-k": "2",
+            "top-p": "3",
+            "temp": "4",
+            "spec-draft-p-min": "5",
+            "spec-draft-n-max": "6",
+            "spec-type": "7",
+            "image-max-tokens": "8",
+            "cache-ram": "9",
+            "ubatch-size": "10",
+            "batch-size": "11",
+            "flash-attn": "12",
+            "cache-type-v": "13",
+            "cache-type-k": "14",
+            "n-gpu-layers": "15",
+            "parallel": "16",
+            "ctx-size": "17"
+          },
+          "options": {
+            "ctx-size": "4096",
+            "cache-type-k": "q8_0"
+          }
+        },
+        "allowQ5Kv": false
+      }
+    },
+    "expected": {
+      "signature": "31d1f6c2f64f415e9d47d0dc07d98c495483c227da51469f11b68d66662e2d41"
+    },
+    "expectedWire": "{\"version\":3,\"identity\":{\"arch\":\"synthetic\",\"quant\":\"Q8_0\",\"artifact\":\"stat:synthetic\",\"build\":{\"commit\":\"synthetic\",\"number\":12},\"profile\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"hardware\":\"literal󰀀 and lone\\ud800 plus pair😀\"},\"options\":{\"batch-size\":\"11\",\"cache-ram\":\"9\",\"cache-type-k\":\"q8_0\",\"cache-type-v\":\"13\",\"ctx-size\":\"4096\",\"flash-attn\":\"12\",\"image-max-tokens\":\"8\",\"min-p\":\"1\",\"n-gpu-layers\":\"15\",\"parallel\":\"16\",\"repeat-penalty\":\"0\",\"spec-draft-n-max\":\"6\",\"spec-draft-p-min\":\"5\",\"spec-type\":\"7\",\"temp\":\"4\",\"top-k\":\"2\",\"top-p\":\"3\",\"ubatch-size\":\"10\"}}"
+  },
+  {
+    "name": "signature-3",
+    "input": {
+      "version": 1,
+      "op": "signature",
+      "row": {
+        "identity": {
+          "arch": "synthetic",
+          "quant": "Q8_0",
+          "artifact": "stat:synthetic",
+          "build": {
+            "two": 1e-7,
+            "one": 1e+21,
+            "minus": 0,
+            "nested": {
+              "z": "\udfff",
+              "a": "é"
+            }
+          },
+          "profile": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "hardware": "synthetic"
+        },
+        "profile": {
+          "exists": true,
+          "defaults": {
+            "repeat-penalty": "0",
+            "min-p": "1",
+            "top-k": "2",
+            "top-p": "3",
+            "temp": "4",
+            "spec-draft-p-min": "5",
+            "spec-draft-n-max": "6",
+            "spec-type": "7",
+            "image-max-tokens": "8",
+            "cache-ram": "9",
+            "ubatch-size": "10",
+            "batch-size": "11",
+            "flash-attn": "12",
+            "cache-type-v": "13",
+            "cache-type-k": "14",
+            "n-gpu-layers": "15",
+            "parallel": "16",
+            "ctx-size": "17"
+          },
+          "options": {
+            "ctx-size": "4096",
+            "cache-type-k": "q8_0"
+          }
+        },
+        "allowQ5Kv": true
+      }
+    },
+    "expected": {
+      "signature": "1ca12ad15ae9896f8179f542daf98e1f3b9674aeafec4b10c0ac0ffbf994c55d"
+    },
+    "expectedWire": "{\"version\":3,\"identity\":{\"arch\":\"synthetic\",\"quant\":\"Q8_0\",\"artifact\":\"stat:synthetic\",\"build\":{\"two\":1e-7,\"one\":1e+21,\"minus\":0,\"nested\":{\"z\":\"\\udfff\",\"a\":\"é\"}},\"profile\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"hardware\":\"synthetic\"},\"options\":{\"batch-size\":\"11\",\"cache-ram\":\"9\",\"cache-type-k\":\"q8_0\",\"cache-type-v\":\"13\",\"ctx-size\":\"4096\",\"flash-attn\":\"12\",\"image-max-tokens\":\"8\",\"min-p\":\"1\",\"n-gpu-layers\":\"15\",\"parallel\":\"16\",\"repeat-penalty\":\"0\",\"spec-draft-n-max\":\"6\",\"spec-draft-p-min\":\"5\",\"spec-type\":\"7\",\"temp\":\"4\",\"top-k\":\"2\",\"top-p\":\"3\",\"ubatch-size\":\"10\"},\"kv\":\"q5\"}"
+  },
+  {
+    "name": "signature-4",
+    "input": {
+      "version": 1,
+      "op": "signature",
+      "row": {
+        "identity": {
+          "arch": "synthetic",
+          "quant": "Q8_0",
+          "artifact": "stat:synthetic",
+          "build": {
+            "commit": "synthetic",
+            "number": 12
+          },
+          "profile": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "hardware": "synthetic"
+        },
+        "profile": {
+          "exists": true,
+          "defaults": {},
+          "options": {}
+        },
+        "allowQ5Kv": false
+      }
+    },
+    "expected": {
+      "signature": "fb654e45233d206dbcfbf09201c242cbfa9a353401d0b2998c3039c5b77c0cc3"
+    },
+    "expectedWire": "{\"version\":3,\"identity\":{\"arch\":\"synthetic\",\"quant\":\"Q8_0\",\"artifact\":\"stat:synthetic\",\"build\":{\"commit\":\"synthetic\",\"number\":12},\"profile\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"hardware\":\"synthetic\"},\"options\":{}}"
+  },
+  {
+    "name": "signature-5",
+    "input": {
+      "version": 1,
+      "op": "signature",
+      "row": {
+        "identity": {
+          "arch": "synthetic",
+          "quant": "Q8_0",
+          "artifact": "\ud800",
+          "build": {
+            "commit": "synthetic",
+            "number": 12
+          },
+          "profile": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "hardware": "synthetic"
+        },
+        "profile": {
+          "exists": true,
+          "defaults": {
+            "repeat-penalty": "0",
+            "min-p": "1",
+            "top-k": "2",
+            "top-p": "3",
+            "temp": "4",
+            "spec-draft-p-min": "5",
+            "spec-draft-n-max": "6",
+            "spec-type": "7",
+            "image-max-tokens": "8",
+            "cache-ram": "9",
+            "ubatch-size": "10",
+            "batch-size": "11",
+            "flash-attn": "12",
+            "cache-type-v": "13",
+            "cache-type-k": "14",
+            "n-gpu-layers": "15",
+            "parallel": "16",
+            "ctx-size": "17"
+          },
+          "options": {
+            "ctx-size": "4096",
+            "cache-type-k": "q8_0"
+          }
+        },
+        "allowQ5Kv": true
+      }
+    },
+    "expected": {
+      "signature": "8c3d90d338ae6a2dca4eac5c95e28188883edd2f37d67750b26ac54c7dca242b"
+    },
+    "expectedWire": "{\"version\":3,\"identity\":{\"arch\":\"synthetic\",\"quant\":\"Q8_0\",\"artifact\":\"\\ud800\",\"build\":{\"commit\":\"synthetic\",\"number\":12},\"profile\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"hardware\":\"synthetic\"},\"options\":{\"batch-size\":\"11\",\"cache-ram\":\"9\",\"cache-type-k\":\"q8_0\",\"cache-type-v\":\"13\",\"ctx-size\":\"4096\",\"flash-attn\":\"12\",\"image-max-tokens\":\"8\",\"min-p\":\"1\",\"n-gpu-layers\":\"15\",\"parallel\":\"16\",\"repeat-penalty\":\"0\",\"spec-draft-n-max\":\"6\",\"spec-draft-p-min\":\"5\",\"spec-type\":\"7\",\"temp\":\"4\",\"top-k\":\"2\",\"top-p\":\"3\",\"ubatch-size\":\"10\"},\"kv\":\"q5\"}"
+  },
+  {
+    "name": "ordered-scan",
+    "input": {
+      "version": 1,
+      "op": "scan",
+      "rows": [
+        {
+          "id": "long",
+          "long": true,
+          "system": true,
+          "missing": true,
+          "args": [],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": false,
+          "latest": null,
+          "identity": null,
+          "configured": true
+        },
+        {
+          "id": "system",
+          "long": false,
+          "system": true,
+          "missing": true,
+          "args": [],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": false,
+          "latest": null,
+          "identity": null,
+          "configured": true
+        },
+        {
+          "id": "missing",
+          "long": false,
+          "system": false,
+          "missing": true,
+          "args": [],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": false,
+          "latest": null,
+          "identity": null,
+          "configured": true
+        },
+        {
+          "id": "unconfigured",
+          "long": false,
+          "system": false,
+          "missing": false,
+          "args": [],
+          "profile": {
+            "exists": false,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": false,
+          "latest": null,
+          "identity": null,
+          "configured": false
+        },
+        {
+          "id": "embedding",
+          "long": false,
+          "system": false,
+          "missing": false,
+          "args": [
+            "--embedding"
+          ],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": false,
+          "latest": null,
+          "identity": null,
+          "configured": true
+        },
+        {
+          "id": "reranking",
+          "long": false,
+          "system": false,
+          "missing": false,
+          "args": [
+            "--reranking"
+          ],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": false,
+          "latest": null,
+          "identity": null,
+          "configured": true
+        },
+        {
+          "id": "option-embed",
+          "long": false,
+          "system": false,
+          "missing": false,
+          "args": [],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {
+              "embedding": "on"
+            }
+          },
+          "allowQ5Kv": false,
+          "latest": null,
+          "identity": null,
+          "configured": true
+        },
+        {
+          "id": "new",
+          "long": false,
+          "system": false,
+          "missing": false,
+          "args": [],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": false,
+          "latest": null,
+          "identity": {
+            "arch": "synthetic",
+            "quant": "Q8_0",
+            "artifact": "stat:synthetic",
+            "build": {
+              "commit": "synthetic",
+              "number": 12
+            },
+            "profile": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "hardware": "synthetic"
+          },
+          "configured": true
+        },
+        {
+          "id": "old-version",
+          "long": false,
+          "system": false,
+          "missing": false,
+          "args": [],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": false,
+          "latest": {
+            "version": 2,
+            "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "identity": {
+            "arch": "synthetic",
+            "quant": "Q8_0",
+            "artifact": "stat:synthetic",
+            "build": {
+              "commit": "synthetic",
+              "number": 12
+            },
+            "profile": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "hardware": "synthetic"
+          },
+          "configured": true
+        },
+        {
+          "id": "current",
+          "long": false,
+          "system": false,
+          "missing": false,
+          "args": [],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": false,
+          "latest": {
+            "version": 3,
+            "signature": "fb654e45233d206dbcfbf09201c242cbfa9a353401d0b2998c3039c5b77c0cc3"
+          },
+          "identity": {
+            "arch": "synthetic",
+            "quant": "Q8_0",
+            "artifact": "stat:synthetic",
+            "build": {
+              "commit": "synthetic",
+              "number": 12
+            },
+            "profile": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "hardware": "synthetic"
+          },
+          "configured": true
+        },
+        {
+          "id": "q5-current",
+          "long": false,
+          "system": false,
+          "missing": false,
+          "args": [],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": true,
+          "latest": {
+            "version": 3,
+            "signature": "f542229e735cedc843387c9f4a96ff92fd9c706d7b1615fc1d11d41f0ec4cb49"
+          },
+          "identity": {
+            "arch": "synthetic",
+            "quant": "Q8_0",
+            "artifact": "stat:synthetic",
+            "build": {
+              "commit": "synthetic",
+              "number": 12
+            },
+            "profile": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "hardware": "synthetic"
+          },
+          "configured": true
+        },
+        {
+          "id": "lone\ud800",
+          "long": false,
+          "system": false,
+          "missing": false,
+          "args": [],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": false,
+          "latest": null,
+          "identity": {
+            "arch": "synthetic",
+            "quant": "Q8_0",
+            "artifact": "stat:synthetic",
+            "build": {
+              "commit": "synthetic",
+              "number": 12
+            },
+            "profile": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "hardware": "synthetic"
+          },
+          "configured": true
+        },
+        {
+          "id": "literal󰀀",
+          "long": false,
+          "system": false,
+          "missing": false,
+          "args": [],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": false,
+          "latest": null,
+          "identity": {
+            "arch": "synthetic",
+            "quant": "Q8_0",
+            "artifact": "stat:synthetic",
+            "build": {
+              "commit": "synthetic",
+              "number": 12
+            },
+            "profile": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "hardware": "synthetic"
+          },
+          "configured": true
+        }
+      ]
+    },
+    "expected": {
+      "models": [
+        "new",
+        "old-version",
+        "lone\ud800",
+        "literal󰀀"
+      ],
+      "skipped": [
+        {
+          "model": "long",
+          "reason": "Long-context profile — tuned with Long mode from its model"
+        },
+        {
+          "model": "system",
+          "reason": "System routing model — not tuned"
+        },
+        {
+          "model": "missing",
+          "reason": "Model file missing from the models folder"
+        },
+        {
+          "model": "unconfigured",
+          "reason": "Not a configured chat model"
+        },
+        {
+          "model": "embedding",
+          "reason": "Not a configured chat model"
+        },
+        {
+          "model": "reranking",
+          "reason": "Not a configured chat model"
+        },
+        {
+          "model": "option-embed",
+          "reason": "Not a configured chat model"
+        },
+        {
+          "model": "current",
+          "reason": "Current tune already applied"
+        },
+        {
+          "model": "q5-current",
+          "reason": "Current tune already applied"
+        }
+      ]
+    },
+    "identityReads": [
+      "new",
+      "old-version",
+      "current",
+      "q5-current",
+      "lone\ud800",
+      "literal󰀀"
+    ]
+  },
+  {
+    "name": "eligible-only",
+    "input": {
+      "version": 1,
+      "op": "classify",
+      "rows": [
+        {
+          "id": "long",
+          "long": true,
+          "system": true,
+          "missing": true,
+          "args": [],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": false,
+          "latest": null,
+          "identity": null,
+          "configured": true
+        },
+        {
+          "id": "system",
+          "long": false,
+          "system": true,
+          "missing": true,
+          "args": [],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": false,
+          "latest": null,
+          "identity": null,
+          "configured": true
+        },
+        {
+          "id": "missing",
+          "long": false,
+          "system": false,
+          "missing": true,
+          "args": [],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": false,
+          "latest": null,
+          "identity": null,
+          "configured": true
+        },
+        {
+          "id": "unconfigured",
+          "long": false,
+          "system": false,
+          "missing": false,
+          "args": [],
+          "profile": {
+            "exists": false,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": false,
+          "latest": null,
+          "identity": null,
+          "configured": false
+        },
+        {
+          "id": "embedding",
+          "long": false,
+          "system": false,
+          "missing": false,
+          "args": [
+            "--embedding"
+          ],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": false,
+          "latest": null,
+          "identity": null,
+          "configured": true
+        },
+        {
+          "id": "reranking",
+          "long": false,
+          "system": false,
+          "missing": false,
+          "args": [
+            "--reranking"
+          ],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": false,
+          "latest": null,
+          "identity": null,
+          "configured": true
+        },
+        {
+          "id": "option-embed",
+          "long": false,
+          "system": false,
+          "missing": false,
+          "args": [],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {
+              "embedding": "on"
+            }
+          },
+          "allowQ5Kv": false,
+          "latest": null,
+          "identity": null,
+          "configured": true
+        },
+        {
+          "id": "new",
+          "long": false,
+          "system": false,
+          "missing": false,
+          "args": [],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": false,
+          "latest": null,
+          "identity": {
+            "arch": "synthetic",
+            "quant": "Q8_0",
+            "artifact": "stat:synthetic",
+            "build": {
+              "commit": "synthetic",
+              "number": 12
+            },
+            "profile": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "hardware": "synthetic"
+          },
+          "configured": true
+        },
+        {
+          "id": "old-version",
+          "long": false,
+          "system": false,
+          "missing": false,
+          "args": [],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": false,
+          "latest": {
+            "version": 2,
+            "signature": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "identity": {
+            "arch": "synthetic",
+            "quant": "Q8_0",
+            "artifact": "stat:synthetic",
+            "build": {
+              "commit": "synthetic",
+              "number": 12
+            },
+            "profile": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "hardware": "synthetic"
+          },
+          "configured": true
+        },
+        {
+          "id": "current",
+          "long": false,
+          "system": false,
+          "missing": false,
+          "args": [],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": false,
+          "latest": {
+            "version": 3,
+            "signature": "fb654e45233d206dbcfbf09201c242cbfa9a353401d0b2998c3039c5b77c0cc3"
+          },
+          "identity": {
+            "arch": "synthetic",
+            "quant": "Q8_0",
+            "artifact": "stat:synthetic",
+            "build": {
+              "commit": "synthetic",
+              "number": 12
+            },
+            "profile": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "hardware": "synthetic"
+          },
+          "configured": true
+        },
+        {
+          "id": "q5-current",
+          "long": false,
+          "system": false,
+          "missing": false,
+          "args": [],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": true,
+          "latest": {
+            "version": 3,
+            "signature": "f542229e735cedc843387c9f4a96ff92fd9c706d7b1615fc1d11d41f0ec4cb49"
+          },
+          "identity": {
+            "arch": "synthetic",
+            "quant": "Q8_0",
+            "artifact": "stat:synthetic",
+            "build": {
+              "commit": "synthetic",
+              "number": 12
+            },
+            "profile": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "hardware": "synthetic"
+          },
+          "configured": true
+        },
+        {
+          "id": "lone\ud800",
+          "long": false,
+          "system": false,
+          "missing": false,
+          "args": [],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": false,
+          "latest": null,
+          "identity": {
+            "arch": "synthetic",
+            "quant": "Q8_0",
+            "artifact": "stat:synthetic",
+            "build": {
+              "commit": "synthetic",
+              "number": 12
+            },
+            "profile": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "hardware": "synthetic"
+          },
+          "configured": true
+        },
+        {
+          "id": "literal󰀀",
+          "long": false,
+          "system": false,
+          "missing": false,
+          "args": [],
+          "profile": {
+            "exists": true,
+            "defaults": {},
+            "options": {}
+          },
+          "allowQ5Kv": false,
+          "latest": null,
+          "identity": {
+            "arch": "synthetic",
+            "quant": "Q8_0",
+            "artifact": "stat:synthetic",
+            "build": {
+              "commit": "synthetic",
+              "number": 12
+            },
+            "profile": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "hardware": "synthetic"
+          },
+          "configured": true
+        }
+      ]
+    },
+    "expected": {
+      "eligible": [
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ]
+    }
+  }
+]

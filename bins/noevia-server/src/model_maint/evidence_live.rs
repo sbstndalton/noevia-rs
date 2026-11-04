@@ -4,9 +4,7 @@
 //! model's current configuration, the Hugging Face model-card import, and the inbox through which
 //! Node's producers hand their records to the one writer.
 //!
-//! Kept on Node, with the reason: `POST /api/models/evidence/recheck` runs an image probe that may
-//! load the model, after the in-process admission check (the inference budget, the memory-watchdog
-//! quarantine, the probe cache). It writes its result through the inbox like every other Node producer.
+//! The image recheck is native too (`evidence_recheck`); Node keeps only live engine admission.
 
 use super::evidence as ev;
 use super::Maint;
@@ -259,7 +257,7 @@ impl Maint {
     }
 
     /// Files `record` under `live`, stamped `at`.
-    async fn file_record(
+    pub(super) async fn file_record(
         &self,
         model: &str,
         record: &JValue,

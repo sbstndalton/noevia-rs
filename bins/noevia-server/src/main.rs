@@ -208,6 +208,10 @@ async fn server_main() -> ExitCode {
     // sbstndalton/noevia#2210: the front is the evidence store's only writer; Node's producers leave
     // their records in the inbox, which is drained here.
     app.config.maint.spawn_inbox();
+    // #2303: a calibration interrupted by a restart restores the preset it was testing (Core's boot
+    // `modelManager.calibration?.recover()`, which is off now that the worker is native).
+    // The recovery takes the launch slot before the routes serve, so no launch races it.
+    let _ = app.config.spawn_calibration_recovery();
     {
         let maint = std::sync::Arc::clone(&app.config.maint);
         tokio::spawn(async move {
@@ -263,6 +267,14 @@ async fn server_main() -> ExitCode {
     }
     #[cfg(feature = "rust-storage-reads")]
     let storage_metadata = std::sync::Arc::clone(&app.storage_metadata);
+    let embedding_background =
+        match noevia_server::embedding_background::start(&app, |key| std::env::var(key).ok()) {
+            Ok(worker) => worker,
+            Err(error) => {
+                eprintln!("noevia-server: optional embedding background idle: {error}");
+                None
+            }
+        };
     let server = serve::serve(listener, app, serve::Limits::default(), async move {
         let mut rx = stop_rx;
         let _ = rx.wait_for(|s| *s).await;
@@ -289,6 +301,9 @@ async fn server_main() -> ExitCode {
             watch.abort();
             let _ = watch.await;
         }
+    }
+    if let Some(worker) = embedding_background {
+        worker.shutdown().await;
     }
     #[cfg(feature = "rust-storage-reads")]
     let _ = storage_metadata.shutdown().await;
