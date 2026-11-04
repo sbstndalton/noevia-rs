@@ -260,7 +260,7 @@ fn diary_unavailable() -> Reply {
 
 /// A call that produced no reply: a service that refuses, drops or stalls is unavailable; anything
 /// else (a bad URL, a redirect, an unreadable storage row) stays core's generic 500.
-fn call_failed(error: CallError) -> Reply {
+pub(crate) fn call_failed(error: CallError) -> Reply {
     match error {
         CallError::Transport | CallError::Refused | CallError::Timeout => diary_unavailable(),
         _ => internal(),
@@ -1024,7 +1024,8 @@ impl Diary {
                 | CallError::Refused
                 | CallError::Timeout
                 | CallError::Tenant(_)
-                | CallError::Unsupported),
+                | CallError::Unsupported
+                | CallError::Tls),
             ) => return call_failed(e),
             _ => return source_reply(Vec::new()),
         };

@@ -28,6 +28,8 @@ pub enum CallError {
     Config,
     Tenant(TenantError),
     Transport,
+    /// A permanent certificate, TLS handshake or protocol configuration failure.
+    Tls,
     /// No connection at all: refused, or the name did not resolve (core's `ECONNREFUSED`,
     /// `ENOTFOUND`, `EAI_AGAIN`). Every route treats it as [`CallError::Transport`]; the local
     /// exchange's stream says "nothing was saved" for it alone.
@@ -298,11 +300,35 @@ pub(crate) fn map_error(error: reqwest::Error) -> CallError {
         CallError::Timeout
     } else if error.is_builder() {
         CallError::Config
+    } else if tls_failure(&error) {
+        CallError::Tls
     } else if error.is_connect() && never_connected(&error) {
         CallError::Refused
     } else {
         CallError::Transport
     }
+}
+
+/// reqwest is built with rustls only. Preserve typed certificate/handshake/protocol errors,
+/// including rustls errors carried inside an I/O error, without inspecting or retaining text.
+/// A TLS socket that merely drops or times out has no rustls error and stays unavailable.
+fn tls_failure(error: &(dyn std::error::Error + 'static)) -> bool {
+    let mut cause = Some(error);
+    while let Some(error) = cause {
+        if error.is::<rustls::Error>() {
+            return true;
+        }
+        if let Some(inner) = error
+            .downcast_ref::<std::io::Error>()
+            .and_then(|e| e.get_ref())
+        {
+            if tls_failure(inner) {
+                return true;
+            }
+        }
+        cause = error.source();
+    }
+    false
 }
 
 /// A connect error whose cause is a refused connection or a failed name lookup (hyper-util's
@@ -321,4 +347,149 @@ fn never_connected(error: &(dyn std::error::Error + 'static)) -> bool {
         cause = e.source();
     }
     false
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    async fn check_failure(base: String, http: reqwest::Client, expected: CallError) {
+        let sidecar = Sidecar {
+            config: DiaryConfig::new(base, "synthetic-bearer", "", String::new),
+            http,
+        };
+        let error = sidecar
+            .fetch_json(
+                &Tenant::bare("synthetic-user"),
+                reqwest::Method::GET,
+                "/api/files",
+                None,
+                if expected == CallError::Tls {
+                    Duration::from_secs(2)
+                } else {
+                    Duration::from_millis(200)
+                },
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error, expected);
+        let reply = crate::routes::call_failed(error);
+        let crate::ReplyBody::Json(body) = reply.body else {
+            panic!("expected JSON")
+        };
+        if expected == CallError::Tls {
+            assert_eq!(reply.status, 500);
+            assert_eq!(body, r#"{"error":"Internal error"}"#);
+        } else {
+            assert_eq!(reply.status, 503);
+            assert_eq!(
+                body,
+                r#"{"error":"Diary is unavailable right now. Try again shortly.","code":"diaryUnavailable"}"#
+            );
+        }
+    }
+
+    fn http() -> reqwest::Client {
+        reqwest::Client::builder().no_proxy().build().unwrap()
+    }
+
+    #[tokio::test]
+    async fn tls_hostname_failure_is_internal() {
+        let cert = rcgen::generate_simple_self_signed(vec!["other.invalid".into()]).unwrap();
+        let key = rustls::pki_types::PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der());
+        let config = rustls::ServerConfig::builder()
+            .with_no_client_auth()
+            .with_single_cert(vec![cert.cert.der().clone()], key.into())
+            .unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let task = tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let _ = tokio_rustls::TlsAcceptor::from(Arc::new(config))
+                .accept(socket)
+                .await;
+        });
+        // Trust this certificate so the failure is specifically the hostname, not unknown issuer.
+        let http = reqwest::Client::builder()
+            .no_proxy()
+            .add_root_certificate(reqwest::Certificate::from_der(cert.cert.der()).unwrap())
+            .build()
+            .unwrap();
+        check_failure(format!("https://{address}"), http, CallError::Tls).await;
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn tls_wrong_protocol_is_internal() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let task = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut hello = [0; 4096];
+            let _ = socket.read(&mut hello).await;
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                .await
+                .unwrap();
+        });
+        check_failure(format!("https://{address}"), http(), CallError::Tls).await;
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn resolver_failure_remains_unavailable() {
+        // Empty static resolution exercises reqwest's resolver failure without external DNS.
+        let http = reqwest::Client::builder()
+            .no_proxy()
+            .resolve_to_addrs("synthetic.invalid", &[])
+            .build()
+            .unwrap();
+        check_failure(
+            "http://synthetic.invalid".into(),
+            http,
+            CallError::Transport,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn refused_timeout_and_dropped_remain_unavailable() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        drop(listener);
+        check_failure(format!("http://{address}"), http(), CallError::Refused).await;
+        for (scheme, hang) in [
+            ("http", false),
+            ("http", true),
+            ("https", false),
+            ("https", true),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let task = tokio::spawn(async move {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = [0; 4096];
+                let _ = socket.read(&mut request).await;
+                if hang {
+                    std::future::pending::<()>().await;
+                }
+            });
+            check_failure(
+                format!("{scheme}://{address}"),
+                http(),
+                if hang {
+                    CallError::Timeout
+                } else {
+                    CallError::Transport
+                },
+            )
+            .await;
+            task.abort();
+            let _ = task.await;
+        }
+    }
 }
