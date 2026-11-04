@@ -14,57 +14,96 @@ use std::time::Duration;
 use axum::{body::Body, http::StatusCode, response::Response};
 use bytes::Bytes;
 use http_body::{Frame, SizeHint};
-use js_json::{wtf16, JValue};
+use js_json::JValue;
+use serde::Deserialize;
+use serde_json::value::RawValue;
+use std::collections::BTreeMap;
 
 use crate::{reply, App};
 
 pub const PATH: &str = "/api/models/downloads";
 const FACTS: &str = "/internal/model-downloads-read/facts";
 
-fn row_field(row: &JValue, key: &str) -> JValue {
-    if matches!(row.get("infinite"), JValue::Arr(keys) if keys.iter().any(|v| v.as_str() == Some(key)))
-    {
-        // The sign does not affect truthiness or the final JSON representation.
-        JValue::Num(f64::INFINITY)
-    } else {
-        row.get("fields").get(key).clone()
+// Keep arbitrary selected values as validated raw JSON. Parsing a selected value
+// into JValue would impose its reserved-Unicode and recursion limits on legacy
+// output; RawValue validates iteratively and borrows the owner's canonical bytes.
+#[derive(Deserialize)]
+struct Facts<'a> {
+    kind: String,
+    #[serde(borrow)]
+    rows: Option<&'a RawValue>,
+}
+
+#[derive(Deserialize)]
+struct Row<'a> {
+    #[serde(borrow)]
+    fields: BTreeMap<String, &'a RawValue>,
+    #[serde(default)]
+    infinite: Vec<String>,
+}
+
+impl Row<'_> {
+    fn infinite(&self, key: &str) -> bool {
+        self.infinite.iter().any(|name| name == key)
+    }
+
+    fn number(&self, key: &str) -> Option<f64> {
+        if self.infinite(key) {
+            return Some(f64::INFINITY);
+        }
+        self.fields.get(key)?.get().parse().ok()
+    }
+
+    fn first_truthy(&self, keys: &[&str]) -> &str {
+        for key in keys {
+            if self.infinite(key) {
+                return "null";
+            }
+            if let Some(raw) = self.fields.get(*key) {
+                let text = raw.get();
+                let truthy = match text.as_bytes().first() {
+                    Some(b'{' | b'[' | b't') => true,
+                    Some(b'"') => text != "\"\"",
+                    Some(b'n' | b'f') => false,
+                    _ => text.parse::<f64>().is_ok_and(|n| n != 0.0 && !n.is_nan()),
+                };
+                if truthy {
+                    return text;
+                }
+            }
+        }
+        "\"\""
     }
 }
 
-fn first_truthy(row: &JValue, keys: &[&str]) -> JValue {
-    keys.iter()
-        .map(|key| row_field(row, key))
-        .find(JValue::truthy)
-        .unwrap_or_else(|| JValue::Str(String::new()))
-}
-
-/// The rows core's adapter chose (it applies the old `jobs || downloads || []` choice and sends only
-/// that array). `None`: core's map would have thrown.
-fn view(facts: &JValue) -> Option<JValue> {
-    let JValue::Arr(rows) = facts.get("rows") else {
-        return None;
-    };
-    rows.iter()
-        .map(|row| {
-            if !row.get("fields").is_object() {
-                return None;
-            }
-            let progress = row_field(row, "percent")
-                .as_num()
-                .map(|n| n / 100.0)
-                .or_else(|| row_field(row, "progress").as_num());
-            Some(JValue::obj([
-                ("id", first_truthy(row, &["id", "job_id"])),
-                (
-                    "model",
-                    first_truthy(row, &["model_name", "model", "checkpoint"]),
-                ),
-                ("progress", progress.map_or(JValue::Null, JValue::Num)),
-                ("status", first_truthy(row, &["status", "state"])),
-            ]))
-        })
-        .collect::<Option<Vec<_>>>()
-        .map(JValue::Arr)
+/// The owner chose the listing; all public selection/normalization stays here.
+/// Values are borrowed raw slices, so nested values need no recursive allocation
+/// or destruction and lone surrogates and every valid Unicode scalar survive.
+fn view(raw: &RawValue) -> Option<String> {
+    let rows: Vec<Option<Row<'_>>> = serde_json::from_str(raw.get()).ok()?;
+    let mut body = String::from("[");
+    for (index, row) in rows.iter().enumerate() {
+        let row = row.as_ref()?;
+        if index != 0 {
+            body.push(',');
+        }
+        let progress = row
+            .number("percent")
+            .map(|n| n / 100.0)
+            .or_else(|| row.number("progress"));
+        let progress = js_json::stringify(&progress.map_or(JValue::Null, JValue::Num))?;
+        body.push_str("{\"id\":");
+        body.push_str(row.first_truthy(&["id", "job_id"]));
+        body.push_str(",\"model\":");
+        body.push_str(row.first_truthy(&["model_name", "model", "checkpoint"]));
+        body.push_str(",\"progress\":");
+        body.push_str(&progress);
+        body.push_str(",\"status\":");
+        body.push_str(row.first_truthy(&["status", "state"]));
+        body.push('}');
+    }
+    body.push(']');
+    Some(body)
 }
 
 /// The most one frame of the answer carries.
@@ -108,18 +147,23 @@ fn internal() -> Response<Body> {
     reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true)
 }
 
-/// The facts reply read whole. `Err`: the answer to send instead.
-async fn facts(app: &App) -> Result<Vec<u8>, Response<Body>> {
+enum FactsFailure {
+    Unavailable,
+    Internal,
+}
+
+/// The facts reply read whole. `Err`: the failure to send instead.
+async fn facts(app: &App) -> Result<Vec<u8>, FactsFailure> {
     let Some(mut res) = app
         .config
         .research
         .node_open(FACTS, &serde_json::json!({}), Duration::from_secs(10))
         .await
     else {
-        return Err(unavailable());
+        return Err(FactsFailure::Unavailable);
     };
     if res.status().as_u16() != 200 {
-        return Err(unavailable());
+        return Err(FactsFailure::Unavailable);
     }
     let mut bytes = Vec::new();
     loop {
@@ -127,7 +171,7 @@ async fn facts(app: &App) -> Result<Vec<u8>, Response<Body>> {
             Ok(Some(chunk)) => bytes.extend_from_slice(&chunk),
             Ok(None) => return Ok(bytes),
             // The owner answered and then failed: a late fault, nothing of it is used.
-            Err(_) => return Err(internal()),
+            Err(_) => return Err(FactsFailure::Internal),
         }
     }
 }
@@ -135,26 +179,23 @@ async fn facts(app: &App) -> Result<Vec<u8>, Response<Body>> {
 pub async fn serve(app: &App) -> Response<Body> {
     let bytes = match facts(app).await {
         Ok(bytes) => bytes,
-        Err(answer) => return answer,
+        Err(FactsFailure::Unavailable) => return unavailable(),
+        Err(FactsFailure::Internal) => return internal(),
     };
-    let Some(facts) = std::str::from_utf8(&bytes)
-        .ok()
-        .and_then(|text| wtf16::parse(text).ok())
-    else {
+    let Ok(facts) = serde_json::from_slice::<Facts<'_>>(&bytes) else {
         return unavailable();
     };
-    drop(bytes);
-    let result = match facts.get("kind").as_str() {
-        Some("disabled") => Some(JValue::Arr(Vec::new())),
-        Some("listing") => view(&facts),
-        Some("fault") => None,
+    let result = match facts.kind.as_str() {
+        "disabled" => Some(String::from("[]")),
+        "listing" => facts.rows.and_then(view),
+        "fault" => None,
         _ => return unavailable(),
     };
-    drop(facts);
-    let Some(body) = result.as_ref().and_then(wtf16::stringify) else {
+    let Some(body) = result else {
         return internal();
     };
-    drop(result);
+    drop(facts);
+    drop(bytes);
     // The same headers as reply::json_text; only the body is the staged one.
     let mut res = reply::json_text(StatusCode::OK, String::new(), true);
     *res.body_mut() = Body::new(Staged::new(body));

@@ -47,9 +47,8 @@ async fn exact_get_accepts_members_and_applies_js_field_rules() {
         r#"[{"id":"one","model":"\ud800","progress":0,"status":"running"},{"id":null,"model":{},"progress":null,"status":true},{"id":"","model":"","progress":0.3,"status":""}]"#
     );
     let seen = up.seen();
-    let [request] = seen.as_slice() else {
-        panic!("expected exactly one owner call");
-    };
+    assert_eq!(seen.len(), 1, "expected exactly one owner call");
+    let request = seen.first().unwrap();
     assert_eq!(request.path, FACTS);
     assert_eq!(
         request.header("x-noevia-store-token").as_deref(),
@@ -100,6 +99,23 @@ async fn owner_shapes_and_failures_preserve_status() {
         assert_eq!(actual, status);
         assert_eq!(j(&body), expected);
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn selected_values_preserve_reserved_unicode_and_deep_json() {
+    let (_d, front, up) = rig().await;
+    let unicode = "\u{10f800}\u{10ffff}";
+    let nested = format!("{}0{}", "[".repeat(200), "]".repeat(200));
+    let facts = format!(
+        r#"{{"kind":"listing","rows":[{{"fields":{{"id":"{unicode}","model":{nested},"state":"done"}}}}]}}"#
+    );
+    up.set(move |_| reply("200 OK", &facts));
+    let (status, _, body) = raw_text(front.addr, "GET", PATH, MEMBER, "", b"").await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        body,
+        format!(r#"[{{"id":"{unicode}","model":{nested},"progress":null,"status":"done"}}]"#)
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -158,6 +174,73 @@ async fn a_fault_while_staging_is_the_generic_500_with_nothing_of_the_listing() 
     assert_eq!(status, 502);
     assert_eq!(j(&body), json!({"error":"Download status unavailable"}));
     assert_eq!(up.count(FACTS), 2, "one owner call per request, no retry");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn disconnect_closes_the_owner_before_its_delayed_response_or_body_finishes() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    for during_body in [false, true] {
+        let d = tempfile::tempdir().unwrap();
+        seed(d.path());
+        let owner = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = owner.local_addr().unwrap();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            let (mut socket, _) = owner.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut byte = [0u8; 1];
+            while !request.ends_with(b"\r\n\r\n") {
+                assert_eq!(socket.read(&mut byte).await.unwrap(), 1);
+                request.extend_from_slice(&byte);
+            }
+            let head = String::from_utf8(request).unwrap();
+            let length: usize = head
+                .lines()
+                .find_map(|line| {
+                    line.to_ascii_lowercase()
+                        .strip_prefix("content-length:")
+                        .map(|s| s.trim().parse().unwrap())
+                })
+                .unwrap_or(0);
+            let mut body = vec![0u8; length];
+            socket.read_exact(&mut body).await.unwrap();
+            assert!(head.starts_with(&format!("POST {FACTS} ")));
+            if during_body {
+                socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100000\r\nContent-Type: application/json\r\n\r\n{\"kind\":\"listing\",\"rows\":[").await.unwrap();
+            }
+            started_tx.send(()).unwrap();
+            // No delayed answer is released. EOF/reset must arrive because the
+            // disconnected public request drops its pending owner connection.
+            let ended =
+                tokio::time::timeout(std::time::Duration::from_secs(2), socket.read(&mut byte))
+                    .await;
+            assert!(
+                matches!(&ended, Ok(Ok(0)))
+                    || matches!(&ended, Ok(Err(error)) if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::ConnectionAborted | std::io::ErrorKind::BrokenPipe
+                    )),
+                "owner remained alive after client disconnect: {ended:?}"
+            );
+        });
+        let front = front_env(
+            d.path(),
+            true,
+            &[
+                ("NOEVIA_LEGACY_UPSTREAM", format!("http://{addr}")),
+                ("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()),
+            ],
+        )
+        .await;
+        let mut client = tokio::net::TcpStream::connect(front.addr).await.unwrap();
+        client.write_all(format!("GET {PATH} HTTP/1.1\r\nHost: {}\r\nCookie: {MEMBER}\r\nContent-Length: 0\r\n\r\n", front.addr).as_bytes()).await.unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(5), started_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        drop(client);
+        task.await.unwrap();
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
