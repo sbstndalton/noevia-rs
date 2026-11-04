@@ -94,11 +94,6 @@ jobs:
           echo "$DAV_PARSE_WASM_SHA256  server/wasm/dav-parse.wasm" | sha256sum -c -
       # Front replays run behind the Core generation paired with this front (front-core.ref).
       - uses: ./.github/actions/paired-core
-      - name: Residual method differential against paired Core
-        env:
-          NOEVIA_CORE_CHECKOUT: ${{ github.workspace }}/front-core
-          NOEVIA_REJECTION_ORACLE_REQUIRED: "1"
-        run: cargo test --locked -p noevia-server --test providers residual_method_grid -- --nocapture
       - name: "List/read differential: native routes vs core routes/storage.cjs on synthetic DAV + S3"
         # Real gate, row projection, endpoint policy, engine and owned outbound child (release
         # build: the child's pre-READY limits cap its address space) against the actual Node route

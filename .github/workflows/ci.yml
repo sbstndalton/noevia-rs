@@ -271,6 +271,16 @@ jobs:
       - run: cargo build --locked -p replay -p noevia-server
       - name: Front tests (SSE flush, client abort, forwarding, body cap, route ownership, code-net guard, timeouts)
         run: cargo test --locked -p noevia-server
+      - name: Complete residual method contracts against the real pinned Core
+        env:
+          NOEVIA_CORE_CHECKOUT: ${{ github.workspace }}/front-core
+          NOEVIA_REJECTION_ORACLE_REQUIRED: "1"
+          NOEVIA_REJECTION_REPORT: ${{ runner.temp }}/rejection-grid.json
+        run: |
+          set -euo pipefail
+          cargo test --locked -p noevia-server --test rejection_grid -- --nocapture 2>&1 | tee "$RUNNER_TEMP/rejection-grid.log"
+          grep -Eq 'test result: ok\. 1 passed; 0 failed' "$RUNNER_TEMP/rejection-grid.log"
+          grep -Fq 'asserted rejection case count: 10600;' "$RUNNER_TEMP/rejection-grid.log"
       - name: "Core refuses exactly the Diary methods routes.toml gives the front (#2206)"
         # tests/diary_core_pair.rs asks the paired Core's own rust-diary-routes.cjs and rust-diary.cjs
         # about every method on every Diary route in routes.toml. A missing Core or node is a failure here.
@@ -301,6 +311,8 @@ jobs:
         with:
           name: replay-front
           path: |
+            ${{ runner.temp }}/rejection-grid.json
+            ${{ runner.temp }}/rejection-grid.log
             ${{ runner.temp }}/replay-front-report.json
             ${{ runner.temp }}/node-state.json
           if-no-files-found: ignore

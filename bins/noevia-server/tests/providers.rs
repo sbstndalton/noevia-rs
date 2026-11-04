@@ -127,15 +127,11 @@ fn seed(dir: &std::path::Path) -> Connection {
 }
 
 async fn front(dir: &std::path::Path, flag: &str) -> Front {
-    front_upstream(dir, flag, "http://127.0.0.1:9").await
-}
-
-async fn front_upstream(dir: &std::path::Path, flag: &str, upstream: &str) -> Front {
     env_once();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let env = HashMap::from([
-        ("NOEVIA_LEGACY_UPSTREAM", upstream.to_string()),
+        ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".to_string()),
         ("UI_DATA_DIR", dir.display().to_string()),
         ("PUBLIC_ORIGIN", format!("http://{addr}")),
         ("NOEVIA_FEATURE_CHATGPT_OAUTH", flag.to_string()),
@@ -1887,127 +1883,8 @@ async fn disconnect_failure_after_tokens_preserves_order_and_returns_502() {
     }
 }
 
-/// Live differential grid: the same request goes directly to the remaining Core mounts and
-/// through the front. Rejections still delegated to Core must stay delegated; this is not a
-/// native-ownership/removal claim. Set NOEVIA_CORE_CHECKOUT to the paired Core checkout.
 #[tokio::test]
-async fn residual_method_grid_matches_core_without_expanding_ownership() {
-    let Ok(core) = std::env::var("NOEVIA_CORE_CHECKOUT") else {
-        assert_ne!(
-            std::env::var("NOEVIA_REJECTION_ORACLE_REQUIRED").as_deref(),
-            Ok("1"),
-            "required Core rejection oracle checkout missing"
-        );
-        eprintln!("live rejection oracle not run: set NOEVIA_CORE_CHECKOUT");
-        return;
-    };
-    let d = tempfile::tempdir().unwrap();
-    let _db = seed(d.path());
-    let port_file = d.path().join("oracle-port");
-    let child = std::process::Command::new("node")
-        .arg(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tests/rejection-oracle.cjs"
-        ))
-        .arg(core)
-        .arg(&port_file)
-        .spawn()
-        .unwrap();
-    struct Child(std::process::Child);
-    impl Drop for Child {
-        fn drop(&mut self) {
-            let _ = self.0.kill();
-            let _ = self.0.wait();
-        }
-    }
-    let mut child = Child(child);
-    for _ in 0..100 {
-        if port_file.exists() {
-            break;
-        }
-        assert!(child.0.try_wait().unwrap().is_none(), "oracle exited");
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-    let port = std::fs::read_to_string(port_file).expect("bounded oracle startup");
-    let up = format!("127.0.0.1:{port}").parse().unwrap();
-    let f = front_upstream(d.path(), "1", &format!("http://{up}")).await;
-    // Each verb is unsupported on these exact paths. Malformed ids and trailing slashes
-    // deliberately exercise fallthrough rather than widening a positive handler match.
-    let paths = [
-        "/api/auth/session",
-        "/api/auth/sessions",
-        "/api/auth/passkeys",
-        "/api/profile",
-        "/api/profile/features",
-        "/api/profile/sharing",
-        "/api/account/retention",
-        "/api/profile/app-passwords",
-        "/api/admin/users",
-        "/api/admin/users/not-an-id/disabled",
-        "/api/admin/users/",
-        "/api/integrations/storage",
-        "/api/integrations/storage/test",
-        "/api/integrations/storage/nextcloud/start",
-        "/api/integrations/storage/",
-        "/api/connectors",
-        "/api/connectors/gdrive/policy",
-        "/api/connectors/gdrive/disconnect",
-        "/api/mcp-keys/servers",
-        "/api/mcp-keys/not-an-id/extra",
-        "/api/mcp-oauth/servers",
-        "/api/models/installed",
-        "/api/models/inference-budget",
-        "/api/models/preset",
-        "/api/models/idle-unload",
-        "/api/models/prune-missing",
-        "/api/models/pull",
-        "/api/providers",
-        "/api/providers/not-an-id/extra",
-        "/api/providers/",
-        "/api/providers/chatgpt",
-        "/api/providers/chatgpt/device",
-        "/api/routing-default",
-        "/api/reasoning-settings",
-        "/api/sampling-settings/",
-    ];
-    let mut counts = std::collections::BTreeMap::new();
-    for path in paths {
-        for method in ["PATCH", "OPTIONS", "HEAD"] {
-            if path == "/api/profile" && method == "PATCH" {
-                continue;
-            }
-            for cookie in [ADMIN, MEMBER, ""] {
-                let expected = call(up, method, path, cookie, "").await;
-                assert!(
-                    [401, 403, 404, 405].contains(&expected.0),
-                    "oracle {method} {path}: {expected:?}"
-                );
-                if method != "HEAD" {
-                    assert!(expected.1.is_object(), "oracle JSON body must be decoded");
-                }
-                let actual = call(f.addr, method, path, cookie, "").await;
-                assert_eq!(actual, expected, "{method} {path} {cookie}");
-                *counts.entry(actual.0).or_insert(0) += 1;
-            }
-        }
-    }
-    let off = front_upstream(d.path(), "0", &format!("http://{up}")).await;
-    for path in ["/api/providers/chatgpt", "/api/providers/chatgpt/device"] {
-        for method in ["PATCH", "OPTIONS", "HEAD"] {
-            for (cookie, status) in [(ADMIN, 404), ("", 401)] {
-                let cookie = format!("{cookie}\r\nX-Test-Feature-Off: 1");
-                let expected = call(up, method, path, &cookie, "").await;
-                assert_eq!(expected.0, status);
-                assert_eq!(call(off.addr, method, path, &cookie, "").await, expected);
-                *counts.entry(status).or_insert(0) += 1;
-            }
-        }
-    }
-    eprintln!("residual grid: {counts:?}");
-}
-
-#[tokio::test]
-async fn disconnect_waits_for_token_deletion_and_stops_on_broker_failure() {
+async fn disconnect_stops_before_row_and_fallbacks_when_token_delete_fails() {
     let d = tempfile::tempdir().unwrap();
     let db = seed(d.path());
     let f = front(d.path(), "1").await;
