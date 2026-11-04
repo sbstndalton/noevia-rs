@@ -37,12 +37,21 @@ async fn rig() -> (tempfile::TempDir, Front, Upstream, Arc<cal::Engine>) {
     let d = tempfile::tempdir().unwrap();
     seed(d.path());
     let up = upstream().await;
-    up.set(|_| reply("404 Not Found", r#"{"error":"Not found"}"#));
+    up.set(node);
     let (e, mut env) = cal::native(d.path(), true).await;
     env.push(("NOEVIA_LEGACY_UPSTREAM", up.base()));
     env.push(("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()));
     let f = front_env(d.path(), true, &env).await;
     (d, f, up, e)
+}
+/// Node: its load decision (core model-load-refusal.cjs) lets every load go; anything else is the
+/// 404 of an unknown path.
+fn node(r: &Seen) -> (Duration, String) {
+    if r.method == "POST" && r.path == "/internal/model-maintenance/load-refusal" {
+        reply("200 OK", r#"{"refusal":null}"#)
+    } else {
+        reply("404 Not Found", r#"{"error":"Not found"}"#)
+    }
 }
 fn core_untouched(up: &Upstream) {
     for r in up.seen() {

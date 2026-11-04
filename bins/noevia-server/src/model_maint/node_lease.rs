@@ -14,6 +14,10 @@ use serde_json::Value;
 use std::time::{Duration, Instant};
 
 const PATH: &str = "/internal/model-maintenance/lease";
+/// Core model-load-refusal.cjs: the load decision a calibration load asks for first (#2303).
+const LOAD_REFUSAL: &str = "/internal/model-maintenance/load-refusal";
+/// How long Node may take to decide a load (it may read the model file's header to estimate it).
+pub const LOAD_CHECK: Duration = Duration::from_secs(30);
 const CALL_TIMEOUT: Duration = Duration::from_secs(5);
 /// model-maintenance-lease.cjs `MAX_MS`: the longest hard cap a lease may ask for.
 pub const MAX_LEASE: Duration = Duration::from_secs(24 * 3600);
@@ -28,6 +32,17 @@ pub struct LeaseGrant {
     pub hard: Duration,
     /// Just before asking: Node's clocks started no earlier, so times counted from here are never long.
     pub asked: Instant,
+}
+
+/// Node's decision on a load (llamacpp-manager.cjs `overBudget`, through model-load-refusal.cjs).
+#[derive(Debug, Clone, PartialEq)]
+pub enum LoadDecision {
+    /// Nothing refuses it.
+    Proceed,
+    /// Refused: the body Node's own request closure answers its 409 with (`{error, code, ...}`).
+    Refused(Value),
+    /// No decision (Node unreachable, or any other answer): the caller must not load.
+    Unavailable,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -158,6 +173,36 @@ impl NodeLeases {
             200 => Some(true),
             404 => Some(false),
             _ => None,
+        }
+    }
+
+    /// Whether Node lets `model` load now, over its current models.ini and budget.
+    pub async fn load_refusal(&self, model: &str) -> LoadDecision {
+        let Some(req) = self.request(reqwest::Method::POST, LOAD_REFUSAL) else {
+            return LoadDecision::Unavailable;
+        };
+        let sent = req
+            .timeout(LOAD_CHECK)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(serde_json::json!({ "model": model }).to_string())
+            .send()
+            .await;
+        let Ok(res) = sent else {
+            return LoadDecision::Unavailable;
+        };
+        if res.status().as_u16() != 200 {
+            return LoadDecision::Unavailable;
+        }
+        let Ok(bytes) = res.bytes().await else {
+            return LoadDecision::Unavailable;
+        };
+        match serde_json::from_slice::<Value>(&bytes)
+            .ok()
+            .and_then(|v| v.get("refusal").cloned())
+        {
+            Some(Value::Null) => LoadDecision::Proceed,
+            Some(r @ Value::Object(_)) => LoadDecision::Refused(r),
+            _ => LoadDecision::Unavailable,
         }
     }
 

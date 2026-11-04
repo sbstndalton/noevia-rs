@@ -41,6 +41,10 @@ pub const UNSAVED: &str =
     " The interrupted state could not be saved yet; noevia keeps trying to save it.";
 /// The longest wait between those retries (they start at [`Limits::save_retry`] and double).
 const SAVE_RETRY_MAX: Duration = Duration::from_secs(60);
+/// The reply a load gets when Node cannot decide it (never sent to the engine, never shown).
+const LOAD_UNCHECKED: &str = "The load could not be checked against the inference memory budget.";
+/// Node's load decision, asked before every load.
+const LOAD_CHECK: Duration = super::node_lease::LOAD_CHECK;
 const ANOTHER_CLIENT: &str = "Another client loaded a model during calibration. Stop Diary background jobs and other clients, then retry.";
 
 /// `limits`: the step timeouts (Node's defaults; tests shorten them).
@@ -628,6 +632,15 @@ impl Worker {
             .router
             .as_ref()
             .ok_or_else(|| Thrown::Other("fetch failed".into()))?;
+        // llamacpp-manager.cjs `request`: every load passes the load decision first (the budget,
+        // the watchdog's quarantine, the size knobs), answered as Node's own 409 when refused.
+        if method == reqwest::Method::POST && path == "/models/load" {
+            if let Some(model) = body.and_then(|b| b.get("model")).and_then(Value::as_str) {
+                if let Some(refused) = Self::race(abort, self.load_refusal(model)).await? {
+                    return Ok(refused);
+                }
+            }
+        }
         let token = hold.token();
         Self::race(
             abort,
@@ -635,6 +648,28 @@ impl Worker {
         )
         .await?
         .map_err(|_| Thrown::Other("fetch failed".into()))
+    }
+
+    /// Node's decision on loading `model` now (core model-load-refusal.cjs, over the models.ini the
+    /// run just wrote and the current budget): `None` lets the load go; otherwise the reply the load
+    /// gets instead, never sent to the engine. Refused, it is Node's 409 with Node's own body; with
+    /// no decision (Node unreachable, any other answer) it is refused all the same, as a 503, so the
+    /// step fails as a refused load does and nothing loads unchecked.
+    async fn load_refusal(&self, model: &str) -> Option<super::router::Reply> {
+        use super::node_lease::LoadDecision;
+        match self.maint.node.load_refusal(model).await {
+            LoadDecision::Proceed => None,
+            LoadDecision::Refused(body) => Some(super::router::Reply {
+                ok: false,
+                status: 409,
+                body: Some(body),
+            }),
+            LoadDecision::Unavailable => Some(super::router::Reply {
+                ok: false,
+                status: 503,
+                body: Some(json!({ "error": LOAD_UNCHECKED })),
+            }),
+        }
     }
 
     /// `listing(signal)`: the router's rows, or the backend error.
@@ -1497,8 +1532,8 @@ impl Worker {
 
     /// The longest one step can take, from the limits and request timeouts it uses: the memory
     /// floor wait (30 settles), unloading everything (the listing, one unload request, then polling
-    /// to the unload limit), the profile write's reload, the load request and its polling to the load
-    /// limit, then the smoke request (a load check) or the tokenize request and the long prompt (a
+    /// to the unload limit), the profile write's reload, Node's load decision, the load request and
+    /// its polling to the load limit, then the smoke request (a load check) or the tokenize request and the long prompt (a
     /// long test, stopped at 1.5 times `budget_s`), the wait for the backend after a failed step, and
     /// the end-of-step unload (its request, then polling). Each is enforced: every request has its
     /// timeout, every poll its limit, and the long prompt its 1.5x wall-clock stop
@@ -1508,7 +1543,7 @@ impl Worker {
         let listing = super::router::DEFAULT_TIMEOUT;
         let settle = l.memory_settle * 30;
         let unload_all = self.unload_allowance(1);
-        let load = LOAD_REQUEST + self.polled(l.load);
+        let load = LOAD_CHECK + LOAD_REQUEST + self.polled(l.load);
         let body = match kind {
             Kind::Load => l.smoke,
             Kind::Long => TOKENIZE + Duration::from_secs_f64(budget_s.max(0.0) * 1.5),
@@ -1521,8 +1556,8 @@ impl Worker {
     /// The longest `plan` can run, the hard cap its lease asks for: every load check (doublings to
     /// the top of its ladder, then three bisections) and at most seven long-prompt tests, each at
     /// [`Worker::step_cost`]; the first unload (one request for each of the `live` models counted at
-    /// launch) and the one after the search; the calibrated profile's write, load and `/props` read;
-    /// a restore's reload; and a 15-minute margin.
+    /// launch) and the one after the search; the calibrated profile's write, load decision, load and
+    /// `/props` read; a restore's reload; and a 15-minute margin.
     pub fn worst_case(&self, plan: &Plan, live: u32) -> Duration {
         let grid = ladder(plan.native);
         let (Some(start), Some(&top)) = (super::calibration::start_of(&grid), grid.last()) else {
@@ -1535,7 +1570,7 @@ impl Worker {
             self.step_cost(Kind::Load, budget) * loads + self.step_cost(Kind::Long, budget) * longs;
         let first_unload = self.unload_allowance(live);
         let last_unload = self.unload_allowance(1);
-        let finish = RELOAD + LOAD_REQUEST + self.polled(l.load) + PROPS;
+        let finish = RELOAD + LOAD_CHECK + LOAD_REQUEST + self.polled(l.load) + PROPS;
         steps + first_unload + last_unload + finish + RELOAD + RUN_MARGIN
     }
 
@@ -2094,6 +2129,22 @@ mod tests {
         silent: bool,
         /// Other models live besides the one under test (`extra-<n>`, each until it is unloaded).
         live: Option<Arc<std::sync::atomic::AtomicUsize>>,
+        /// Node's load decision (this engine also stands in for Node's loopback listener): given the
+        /// 1-based number of the ask and its body, the status and body it answers. None: no refusal.
+        node: Option<NodeAnswer>,
+    }
+
+    type NodeAnswer = Arc<dyn Fn(usize, &Value) -> (u16, Value) + Send + Sync>;
+
+    /// Node's load decision refusing as `overBudget()` does, with `code` (synthetic bodies in
+    /// Node's shape: core llamacpp-manager.cjs).
+    fn node_refusal(code: &str) -> Value {
+        let error = match code {
+            "inference_budget_unloaded" => "synthetic was unloaded by the memory safety net because measured inference memory ran more than the allowed margin over the 2 GiB budget. It stays unloaded until its settings or the budget change: lower its context or prompt cache, or raise the budget, in Settings → Models & routing.",
+            "invalid_size" => "synthetic was not loaded: ctx-size must be a whole number (0 for the native context)",
+            _ => "synthetic needs about 9.5 GiB to load (weights 4.5, context 4.0 at 8,192 tokens, prompt cache 0.5, runtime 0.5), above the 2 GiB inference memory budget. Lower its context or prompt cache, use a smaller quantization, or raise the budget in Settings → Models & routing.",
+        };
+        json!({"error": error, "code": code, "budgetGib": 2})
     }
 
     /// A body that never sends anything and never ends.
@@ -2121,7 +2172,9 @@ mod tests {
             props,
             silent,
             live,
+            node,
         } = synth;
+        let asks = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let status = Arc::new(Mutex::new("unloaded".to_owned()));
         let seen = Arc::new(Mutex::new(Vec::new()));
         let log = Arc::clone(&seen);
@@ -2135,12 +2188,14 @@ mod tests {
                 .unwrap_or(0.0)
         };
         let app = axum::Router::new().fallback(move |req: Request<Body>| {
-            let (status, log, ctx_of, props, live) = (
+            let (status, log, ctx_of, props, live, node, asks) = (
                 Arc::clone(&status),
                 Arc::clone(&log),
                 ctx_of.clone(),
                 props.clone(),
                 live.clone(),
+                node.clone(),
+                Arc::clone(&asks),
             );
             async move {
                 let (parts, body) = req.into_parts();
@@ -2152,6 +2207,11 @@ mod tests {
                     Response::builder().status(code).header("content-type", "application/json").body(Body::from(v.to_string())).unwrap()
                 };
                 match (parts.method.as_str(), path.as_str()) {
+                    ("POST", "/internal/model-maintenance/load-refusal") => {
+                        let n = asks.fetch_add(1, Ordering::AcqRel) + 1;
+                        let (code, answer) = node.as_ref().map_or((200, json!({"refusal": null})), |f| f(n, &body));
+                        json(code, answer)
+                    }
                     ("POST", "/gate/v1/maintenance") => json(201, json!({"hold": "0123456789abcdef0123456789abcdef", "idle_ttl_ms": 60000})),
                     ("GET", "/gate/v1/status") => json(200, json!({"maintenance": {"held": false}})),
                     (_, p) if p.starts_with("/gate/") => json(200, json!({})),
@@ -2223,8 +2283,14 @@ mod tests {
         worker_with(dir, port, None)
     }
 
-    /// `lease`: no gate admin token, and Node's lease route at this port instead.
+    /// `lease`: no gate admin token, and Node's lease route at this port instead (it answers the
+    /// load decision too). With the gate, Node's load decision is the synthetic engine's.
     fn worker_with(dir: &std::path::Path, port: u16, lease: Option<u16>) -> Arc<Worker> {
+        worker_node(dir, port, lease, lease.unwrap_or(port))
+    }
+
+    /// As [`worker_with`], with Node (its load decision) at `node`.
+    fn worker_node(dir: &std::path::Path, port: u16, lease: Option<u16>, node: u16) -> Arc<Worker> {
         let mut env = vec![
             ("MODEL_MANAGER_KIND".to_owned(), "llamacpp".to_owned()),
             (
@@ -2239,22 +2305,20 @@ mod tests {
             ("LLAMACPP_MODELS_PATH".to_owned(), dir.display().to_string()),
             ("UI_DATA_DIR".to_owned(), dir.display().to_string()),
         ];
-        match lease {
-            None => env.push((
+        if lease.is_none() {
+            env.push((
                 "INFERENCE_GATE_ADMIN_TOKEN".to_owned(),
                 "synthetic-admin".to_owned(),
-            )),
-            Some(p) => {
-                env.push((
-                    "NOEVIA_LEGACY_UPSTREAM".to_owned(),
-                    format!("http://127.0.0.1:{p}"),
-                ));
-                env.push((
-                    "NOEVIA_PROJECT_STORE_TOKEN".to_owned(),
-                    "synthetic-store-token".to_owned(),
-                ));
-            }
+            ));
         }
+        env.push((
+            "NOEVIA_LEGACY_UPSTREAM".to_owned(),
+            format!("http://127.0.0.1:{node}"),
+        ));
+        env.push((
+            "NOEVIA_PROJECT_STORE_TOKEN".to_owned(),
+            "synthetic-store-token".to_owned(),
+        ));
         let get = |k: &str| env.iter().find(|(e, _)| e == k).map(|(_, v)| v.clone());
         let engine = Arc::new(server_stats::Engine::from_lookup(&get).unwrap());
         let sizing = Arc::new(crate::model_sizing::Sizing::from_lookup(
@@ -2607,6 +2671,7 @@ mod tests {
                         }
                     }
                     ("DELETE", _) => (204, json!({})),
+                    ("POST", "/internal/model-maintenance/load-refusal") => (200, json!({"refusal": null})),
                     _ => (404, json!({"error": "Not found"})),
                 };
                 Response::builder()
@@ -2817,13 +2882,14 @@ mod tests {
             save_retry: Duration::ZERO,
         };
         let listing = super::super::router::DEFAULT_TIMEOUT;
-        let step_fixed = listing * 3 + RELOAD + LOAD_REQUEST + listing * 2;
+        let step_fixed = listing * 3 + RELOAD + LOAD_CHECK + LOAD_REQUEST + listing * 2;
         let expected = step_fixed * steps
             + TOKENIZE * longs
             + Duration::from_secs(180) * longs
             + listing * 2
             + listing * 2
             + RELOAD
+            + LOAD_CHECK
             + LOAD_REQUEST
             + listing
             + PROPS
@@ -2916,6 +2982,174 @@ mod tests {
             format!("POST /internal/model-maintenance/lease {{\"maxMs\":{six}}}")
         );
         assert_eq!(live.load(Ordering::Acquire), 0);
+    }
+
+    fn engine_loads(seen: &Mutex<Vec<String>>) -> usize {
+        seen.lock()
+            .unwrap()
+            .iter()
+            .filter(|l| *l == "POST /models/load")
+            .count()
+    }
+
+    fn load_asks(seen: &Mutex<Vec<String>>) -> usize {
+        seen.lock()
+            .unwrap()
+            .iter()
+            .filter(|l| *l == "POST /internal/model-maintenance/load-refusal")
+            .count()
+    }
+
+    /// Every step of `job` failed as a refused load does in Node (`stepOnce`).
+    fn every_step_refused(job: &JValue) {
+        let JValue::Arr(steps) = job.get("steps") else {
+            panic!("{job:?}")
+        };
+        assert!(!steps.is_empty(), "{job:?}");
+        for step in steps {
+            assert_eq!(step.get("status").as_str(), Some("failed"), "{step:?}");
+            assert_eq!(
+                step.get("reason").as_str(),
+                Some("The engine refused to load the model at this size."),
+                "{step:?}"
+            );
+            assert_eq!(step.get("cause").as_str(), Some("load"), "{step:?}");
+        }
+    }
+
+    /// P2: what Node's load decision refuses (over the budget, quarantined by the watchdog, a size
+    /// knob that is not a whole number) never reaches the engine: each step fails as Node's refused
+    /// load does, the run fails, and the original profile goes back.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn loads_nodes_decision_refuses_never_reach_the_engine() {
+        for code in [
+            "inference_budget",
+            "inference_budget_unloaded",
+            "invalid_size",
+        ] {
+            let d = tempfile::tempdir().unwrap();
+            let ini = d.path().join("models.ini");
+            std::fs::write(&ini, INI).unwrap();
+            let bodies = Arc::new(Mutex::new(Vec::new()));
+            let asked = Arc::clone(&bodies);
+            let refusal = node_refusal(code);
+            let (port, seen) = synthetic_engine_with(
+                ini.clone(),
+                Synth {
+                    node: Some(Arc::new(move |_, body| {
+                        asked.lock().unwrap().push(body.clone());
+                        (200, json!({ "refusal": refusal.clone() }))
+                    })),
+                    ..Synth::default()
+                },
+            )
+            .await;
+            let w = worker(d.path(), port);
+            w.launch("synthetic", plan(32_768.0, 120.0)).await.unwrap();
+            let job = settled(&w).await;
+            assert_eq!(
+                job.get("status").as_str(),
+                Some("failed"),
+                "{code}: {job:?}"
+            );
+            every_step_refused(&job);
+            assert_eq!(engine_loads(&seen), 0, "{code}");
+            assert!(load_asks(&seen) >= 1, "{code}");
+            assert!(bodies
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|b| *b == json!({"model": "synthetic"})));
+            assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI, "{code}");
+        }
+    }
+
+    /// P2: the final load of the calibrated profile asks too; refused, the run fails as Node's does
+    /// when that load fails ("The calibrated profile did not load."), and the engine never gets it.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_refused_final_load_fails_the_run_without_reaching_the_engine() {
+        // The control run: every load is asked for, each just before it is sent.
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (port, seen) = synthetic_engine(ini.clone(), false).await;
+        let w = worker(d.path(), port);
+        w.launch("synthetic", plan(32_768.0, 120.0)).await.unwrap();
+        assert_eq!(settled(&w).await.get("status").as_str(), Some("passed"));
+        let loads = engine_loads(&seen);
+        assert!(loads > 1);
+        assert_eq!(load_asks(&seen), loads);
+        // The same run with its last load (the calibrated profile's) refused.
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (port, seen) = synthetic_engine_with(
+            ini.clone(),
+            Synth {
+                node: Some(Arc::new(move |n, _| {
+                    let refusal = if n == loads {
+                        node_refusal("inference_budget")
+                    } else {
+                        Value::Null
+                    };
+                    (200, json!({ "refusal": refusal }))
+                })),
+                ..Synth::default()
+            },
+        )
+        .await;
+        let w = worker(d.path(), port);
+        w.launch("synthetic", plan(32_768.0, 120.0)).await.unwrap();
+        let job = settled(&w).await;
+        assert_eq!(job.get("status").as_str(), Some("failed"), "{job:?}");
+        assert_eq!(
+            job.get("error").as_str(),
+            Some("The calibrated profile did not load.")
+        );
+        assert_eq!(job.get("phase").as_str(), Some("Failed"));
+        assert_eq!(engine_loads(&seen), loads - 1);
+        assert_eq!(load_asks(&seen), loads);
+        assert!(matches!(w.history("synthetic"), JValue::Arr(ref h) if h.is_empty()));
+        assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI);
+    }
+
+    /// P2: with no decision from Node (an error answer, or Node not listening), every load is
+    /// refused, never sent unchecked.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn without_nodes_decision_nothing_loads() {
+        let gone = {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            l.local_addr().unwrap().port()
+        };
+        for outage in ["503", "a string", "no refusal key", "unreachable"] {
+            let d = tempfile::tempdir().unwrap();
+            let ini = d.path().join("models.ini");
+            std::fs::write(&ini, INI).unwrap();
+            let (port, seen) = synthetic_engine_with(
+                ini.clone(),
+                Synth {
+                    node: Some(Arc::new(move |_, _| match outage {
+                        "503" => (503, json!({"error": "synthetic"})),
+                        "a string" => (200, json!("refusal")),
+                        _ => (200, json!({})),
+                    })),
+                    ..Synth::default()
+                },
+            )
+            .await;
+            let node = if outage == "unreachable" { gone } else { port };
+            let w = worker_node(d.path(), port, None, node);
+            w.launch("synthetic", plan(32_768.0, 120.0)).await.unwrap();
+            let job = settled(&w).await;
+            assert_eq!(
+                job.get("status").as_str(),
+                Some("failed"),
+                "{outage}: {job:?}"
+            );
+            every_step_refused(&job);
+            assert_eq!(engine_loads(&seen), 0, "{outage}");
+            assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI, "{outage}");
+        }
     }
 
     async fn evidence_count(w: &Worker) -> usize {
@@ -3037,6 +3271,9 @@ mod tests {
             .any(|l| l.starts_with("POST /gate/")));
         assert!(w.recover_held().await.is_some());
         assert!(!w.recovering() && !w.starting());
+        // Recovery restores and reloads the preset as Node's recover() does; it loads nothing.
+        assert_eq!(engine_loads(&seen), 0);
+        assert_eq!(load_asks(&seen), 0);
         assert_eq!(w.job().get("status").as_str(), Some("interrupted"));
     }
 }

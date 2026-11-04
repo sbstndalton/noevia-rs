@@ -20,7 +20,7 @@ async fn rig_with(gate: bool) -> (tempfile::TempDir, Front, Upstream, Arc<cal::E
     let d = tempfile::tempdir().unwrap();
     seed(d.path());
     let up = upstream().await;
-    up.set(|_| reply("404 Not Found", r#"{"error":"Not found"}"#));
+    up.set(node);
     let (e, mut env) = cal::native(d.path(), gate).await;
     env.push(("NOEVIA_LEGACY_UPSTREAM", up.base()));
     env.push(("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()));
@@ -30,9 +30,31 @@ async fn rig_with(gate: bool) -> (tempfile::TempDir, Front, Upstream, Arc<cal::E
 async fn rig() -> (tempfile::TempDir, Front, Upstream, Arc<cal::Engine>) {
     rig_with(true).await
 }
-/// No calibration operation ever reaches Core.
+/// Node's load decision (core model-load-refusal.cjs), asked before every load.
+const LOAD_DECISION: &str = "/internal/model-maintenance/load-refusal";
+/// Node: its load decision lets every load go; anything else is the 404 of an unknown path.
+fn node(r: &Seen) -> (Duration, String) {
+    if r.method == "POST" && r.path == LOAD_DECISION {
+        reply("200 OK", r#"{"refusal":null}"#)
+    } else {
+        reply("404 Not Found", r#"{"error":"Not found"}"#)
+    }
+}
+/// No calibration operation reaches Core: it is asked only for its load decision, by the front.
 fn core_untouched(up: &Upstream) {
     for r in up.seen() {
+        if r.path == LOAD_DECISION {
+            assert_eq!(r.method, "POST");
+            assert_eq!(
+                r.header("x-noevia-store-token").as_deref(),
+                Some(STORE_TOKEN)
+            );
+            assert_eq!(
+                serde_json::from_str::<Value>(&r.body).unwrap(),
+                json!({"model": "synth"})
+            );
+            continue;
+        }
         assert!(!r.path.contains("calibration"), "{}", r.path);
         assert!(!r.path.contains("model-maintenance"), "{}", r.path);
     }
@@ -391,6 +413,9 @@ async fn boot_recovery_through_config_interrupts_the_job_and_restores_its_profil
         original["job"]["originalText"].as_str().unwrap()
     );
     assert_eq!(e.count("GET /models?reload=1"), 1);
+    // Recovery loads nothing, so it asks Node for no load decision.
+    assert_eq!(e.count("POST /models/load"), 0);
+    assert!(!up.seen().iter().any(|r| r.path == LOAD_DECISION));
     core_untouched(&up);
 }
 
@@ -446,7 +471,9 @@ async fn boot_recovery_whose_save_fails_keeps_the_interrupted_job_and_saves_it_o
     .to_string();
     let state = cal::state_file(d.path(), &e);
     std::fs::write(&state, &running).unwrap();
+    up.set(node);
     env.push(("NOEVIA_LEGACY_UPSTREAM", up.base()));
+    env.push(("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()));
     let f = front_env(d.path(), true, &env).await;
     let worker = f.app.config.calibration.clone().unwrap();
     // Storage fails: the data directory takes no new file (the save's temp file).
@@ -510,4 +537,47 @@ async fn boot_recovery_whose_save_fails_keeps_the_interrupted_job_and_saves_it_o
     let job = settled(&f).await;
     assert_eq!(job["status"], "cancelled", "{job}");
     core_untouched(&up);
+}
+
+/// P2: a load Node's decision refuses (here the watchdog's quarantine), or one it cannot decide
+/// (Node answers 503), never reaches the engine through the real front: every step fails as Node's
+/// refused load does and the original profile goes back.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_load_nodes_decision_refuses_never_reaches_the_engine() {
+    let quarantined = json!({"refusal": {"error": "synth was unloaded by the memory safety net because measured inference memory ran more than the allowed margin over the 16 GiB budget. It stays unloaded until its settings or the budget change: lower its context or prompt cache, or raise the budget, in Settings → Models & routing.", "code": "inference_budget_unloaded", "budgetGib": 16, "unloadedAt": "2026-11-04T00:00:00.000Z"}})
+    .to_string();
+    for (status, answer) in [
+        ("200 OK", quarantined),
+        (
+            "503 Service Unavailable",
+            r#"{"error":"synthetic"}"#.to_owned(),
+        ),
+    ] {
+        let (d, f, up, e) = rig().await;
+        up.set(move |r| {
+            if r.path == LOAD_DECISION {
+                reply(status, &answer)
+            } else {
+                reply("404 Not Found", r#"{"error":"Not found"}"#)
+            }
+        });
+        let (s, v) = write(f.addr, "POST", PATH, ADMIN, ASK).await;
+        assert_eq!(s, 202, "{v}");
+        let job = settled(&f).await;
+        assert_eq!(job["status"], "failed", "{status}: {job}");
+        let steps = job["steps"].as_array().unwrap();
+        assert!(!steps.is_empty(), "{job}");
+        for step in steps {
+            assert_eq!(step["status"], "failed", "{step}");
+            assert_eq!(
+                step["reason"],
+                "The engine refused to load the model at this size."
+            );
+            assert_eq!(step["cause"], "load");
+        }
+        assert_eq!(e.count("POST /models/load"), 0, "{status}");
+        assert!(up.seen().iter().any(|r| r.path == LOAD_DECISION));
+        assert_eq!(cal::ini(d.path()), format!("{}{}", cal::INI, cal::LAYA_INI));
+        core_untouched(&up);
+    }
 }
