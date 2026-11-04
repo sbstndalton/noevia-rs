@@ -1982,6 +1982,9 @@ async fn residual_method_grid_matches_core_without_expanding_ownership() {
                     [401, 403, 404, 405].contains(&expected.0),
                     "oracle {method} {path}: {expected:?}"
                 );
+                if method != "HEAD" {
+                    assert!(expected.1.is_object(), "oracle JSON body must be decoded");
+                }
                 let actual = call(f.addr, method, path, cookie, "").await;
                 assert_eq!(actual, expected, "{method} {path} {cookie}");
                 *counts.entry(actual.0).or_insert(0) += 1;
