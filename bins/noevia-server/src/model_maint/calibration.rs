@@ -276,11 +276,12 @@ impl Maint {
             };
             restored = Some(match ini.commit_reconciled(&c, true).await {
                 Ok(()) => {
-                    // The raw reload Node sends; its baseline is not ours to record, so forget it.
+                    // The raw reload Node sends. Like Node's recover(), the preset-reload guard's
+                    // baseline is neither recorded nor forgotten here (reload.rs records or forgets
+                    // its own reloads; this path matches the calibrator it replaces).
                     if let Some(router) = self.router.as_ref() {
                         let _ = router.get("/models?reload=1", None, RELOAD_TIMEOUT).await;
                     }
-                    self.guard_op(|g| g.forget()).await;
                     true
                 }
                 Err(_) => false,

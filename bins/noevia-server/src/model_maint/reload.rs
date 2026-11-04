@@ -429,7 +429,9 @@ impl Maint {
         let hold = match self.acquire("", Duration::from_secs(300), unload).await {
             Ok(h) => h,
             Err(HoldError::Busy) => return message(409, IN_PROGRESS),
-            Err(HoldError::Gate { status, message: m }) => return message(status, &m),
+            Err(HoldError::Gate {
+                status, message: m, ..
+            }) => return message(status, &m),
             Err(HoldError::NeedsGate) => return message(503, NEEDS_TOKEN),
             Err(HoldError::NodeUnavailable) => return message(503, NO_ARBITER),
         };

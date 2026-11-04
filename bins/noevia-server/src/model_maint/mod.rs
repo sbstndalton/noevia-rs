@@ -66,8 +66,12 @@ pub fn owned(method: &Method, path: &str) -> bool {
 pub enum HoldError {
     /// Work is running (or another job holds the engine): 409.
     Busy,
-    /// The inference gate refused for another reason (its HTTP status and text).
-    Gate { status: u16, message: String },
+    /// The inference gate refused for another reason (its HTTP status, refusal code and text).
+    Gate {
+        status: u16,
+        code: String,
+        message: String,
+    },
     /// A gate fronts the engine, this process has no admin token for its hold, and the caller
     /// cannot run without it.
     NeedsGate,
@@ -113,6 +117,14 @@ impl std::fmt::Debug for Maint {
             .field("ini", &self.ini)
             .finish_non_exhaustive()
     }
+}
+
+/// `now + max`, or the furthest representable deadline (a hold with no limit of its own).
+fn deadline_after(max: Duration) -> Instant {
+    let now = Instant::now();
+    now.checked_add(max)
+        .or_else(|| now.checked_add(Duration::from_secs(u64::from(u32::MAX))))
+        .unwrap_or(now)
 }
 
 fn first(get: &impl Fn(&str) -> Option<String>, keys: &[&str]) -> Option<String> {
@@ -278,7 +290,7 @@ impl Maint {
                 Arc::clone(gate),
                 grant,
                 reason,
-                Instant::now() + max,
+                deadline_after(max),
             )),
             Ok(None) => {
                 if need_gate && !gate.has_admin() && gate.held().await.is_some() {
@@ -290,7 +302,7 @@ impl Maint {
                         Arc::clone(&self.node),
                         grant,
                         reason,
-                        Instant::now() + max,
+                        deadline_after(max),
                     )),
                     Err(node_lease::LeaseFault::Busy) => Err(HoldError::Busy),
                     Err(node_lease::LeaseFault::Unavailable) => Err(HoldError::NodeUnavailable),
@@ -299,6 +311,7 @@ impl Maint {
             Err(f) if f.busy() => Err(HoldError::Busy),
             Err(f) => Err(HoldError::Gate {
                 status: f.status(),
+                code: f.code(),
                 message: f.message(),
             }),
         }

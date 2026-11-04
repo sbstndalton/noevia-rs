@@ -21,8 +21,8 @@ use std::time::Duration;
 use tokio::sync::Notify;
 
 const PAD: &str = "This is synthetic padding for a context allocation validation.\n";
-/// The longest a run may hold the engine before its hold ends by itself.
-const RUN_LIMIT: Duration = Duration::from_secs(24 * 3600);
+/// Node's calibration hold has no limit of its own: it lasts until the run releases it.
+const UNBOUNDED: Duration = Duration::MAX;
 const ANOTHER_CLIENT: &str = "Another client loaded a model during calibration. Stop Diary background jobs and other clients, then retry.";
 
 /// `limits`: the step timeouts (Node's defaults; tests shorten them).
@@ -1196,7 +1196,7 @@ impl Worker {
             return Err(Refusal::Unavailable);
         }
         let reason = format!("Chat is paused while noevia calibrates {model}. It will be available again when calibration finishes or is cancelled.");
-        let hold = match self.maint.acquire(&reason, RUN_LIMIT, true).await {
+        let hold = match self.maint.acquire(&reason, UNBOUNDED, false).await {
             Ok(h) => h,
             Err(e) => return Err(Refusal::Hold(hold_facts(&e))),
         };
@@ -1365,8 +1365,7 @@ impl Worker {
                 None,
             )
             .await;
-        // The raw reload Node sends; its baseline is not ours to record.
-        self.maint.guard_op(|g| g.forget()).await;
+        // The raw reload Node sends (no reload-guard record or forget, as in Node's run()).
         true
     }
 
@@ -1532,22 +1531,35 @@ fn truthy(v: &Value) -> bool {
 
 /// The hold refusal as the launch bridge reported it (`{ status, publicMessage, code }`).
 fn hold_facts(e: &HoldError) -> JValue {
-    let (status, message) = match e {
-        HoldError::Busy => (JValue::Num(409.0), JValue::Null),
-        HoldError::Gate { status, message } => (
+    // Node: a busy refusal is `busy()` (409, no message, no code); any other gate refusal is the
+    // GateError itself. Anything else had no integer status there (null).
+    let (status, message, code) = match e {
+        HoldError::Busy => (JValue::Num(409.0), JValue::Null, JValue::Null),
+        HoldError::Gate {
+            status,
+            code,
+            message,
+        } => (
             JValue::Num(f64::from(*status)),
             JValue::Str(wtf16::slice(message, 512)),
+            if (1..=80).contains(&code.len())
+                && code
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b':' | b'-'))
+            {
+                JValue::Str(code.clone())
+            } else {
+                JValue::Null
+            },
         ),
-        HoldError::NeedsGate => (
-            JValue::Num(503.0),
-            JValue::Str("the inference gate needs its admin token for calibration.".into()),
-        ),
-        HoldError::NodeUnavailable => (JValue::Num(503.0), JValue::Null),
+        HoldError::NeedsGate | HoldError::NodeUnavailable => {
+            (JValue::Null, JValue::Null, JValue::Null)
+        }
     };
     JValue::obj([
         ("status", status),
         ("publicMessage", message),
-        ("code", JValue::Null),
+        ("code", code),
     ])
 }
 
@@ -1816,5 +1828,127 @@ mod tests {
         assert_eq!(job.get("restored"), &JValue::Bool(true));
         assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI);
         assert!(w.cancel().is_none());
+    }
+
+    /// A running native job's state file, as the worker leaves it mid-step (its long prompt hangs).
+    async fn native_running_state(d: &std::path::Path) -> (String, String) {
+        let ini = d.join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (port, _) = synthetic_engine(ini.clone(), true).await;
+        let w = worker(d, port);
+        let plan = Plan {
+            prompt_budget_seconds: 120.0,
+            native: 16384.0,
+            base: Vec::new(),
+        };
+        w.launch("synthetic", plan).await.unwrap();
+        for _ in 0..600 {
+            if w.job()
+                .get("phase")
+                .as_str()
+                .is_some_and(|p| p.starts_with("Long-prompt"))
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let file = d.join(format!("native-calibration-{}.json", w.maint.suffix));
+        let state = std::fs::read_to_string(&file).unwrap();
+        let profile = std::fs::read_to_string(&ini).unwrap();
+        w.cancel().unwrap();
+        settled(&w).await;
+        (state, profile)
+    }
+
+    fn keys(v: &JValue) -> Vec<String> {
+        match v {
+            JValue::Obj(f) => f.iter().map(|(k, _)| k.clone()).collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Rollback safety (tests/fixtures/calibration-recover-node.json): old Core's boot `recover()` on a
+    /// state file this worker wrote mid-run. The fixture's input is native output (its shape is checked
+    /// against a fresh run here), and native recovery gives Node's answers on every case.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn old_core_recovers_a_native_running_job_as_native_recovery_does() {
+        let d = tempfile::tempdir().unwrap();
+        let (state, profile) = native_running_state(d.path()).await;
+        if let Ok(out) = std::env::var("NOEVIA_DUMP_NATIVE_CALIBRATION_STATE") {
+            std::fs::write(
+                &out,
+                json!({"state": state, "profile": profile}).to_string(),
+            )
+            .unwrap();
+        }
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/calibration-recover-node.json"
+        ))
+        .unwrap();
+        // The fixture's native input has this run's shape: the same keys in the same order.
+        let fresh = wtf16::parse(&state).unwrap();
+        let recorded = wtf16::parse(fixture["native"]["state"].as_str().unwrap()).unwrap();
+        assert_eq!(keys(&fresh), keys(&recorded));
+        assert_eq!(keys(fresh.get("job")), keys(recorded.get("job")));
+        assert_eq!(fresh.get("job").get("status").as_str(), Some("running"));
+        assert!(fresh.get("job").get("originalText").as_str().is_some());
+        assert!(fresh.get("job").get("lastRevision").as_str().is_some());
+        let cases = fixture["cases"].as_array().unwrap();
+        assert!(cases.len() >= 3);
+        for case in cases {
+            let name = case["name"].as_str().unwrap();
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::write(dir.path().join("models.ini"), case["ini"].as_str().unwrap()).unwrap();
+            let w = worker(dir.path(), 9);
+            let file = dir
+                .path()
+                .join(format!("native-calibration-{}.json", w.maint.suffix));
+            std::fs::write(&file, case["state"].as_str().unwrap()).unwrap();
+            w.recover().await;
+            let mut got = wtf16::parse(&std::fs::read_to_string(&file).unwrap()).unwrap();
+            let mut want = wtf16::parse(case["after"]["state"].as_str().unwrap()).unwrap();
+            for v in [&mut got, &mut want] {
+                if let JValue::Obj(f) = v {
+                    if let Some((_, JValue::Obj(job))) = f.iter_mut().find(|(k, _)| k == "job") {
+                        job.retain(|(k, _)| k != "finishedAt");
+                    }
+                }
+            }
+            assert_eq!(got, want, "{name}");
+            assert_eq!(
+                std::fs::read_to_string(dir.path().join("models.ini")).unwrap(),
+                case["after"]["ini"].as_str().unwrap(),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn hold_refusals_have_the_shape_node_launch_reported() {
+        let busy = hold_facts(&HoldError::Busy);
+        assert_eq!(
+            wtf16::stringify(&busy).unwrap(),
+            r#"{"status":409,"publicMessage":null,"code":null}"#
+        );
+        let gate = hold_facts(&HoldError::Gate {
+            status: 503,
+            code: "engine_unavailable".into(),
+            message: "The local model engine is not answering. Try again shortly.".into(),
+        });
+        assert_eq!(
+            wtf16::stringify(&gate).unwrap(),
+            r#"{"status":503,"publicMessage":"The local model engine is not answering. Try again shortly.","code":"engine_unavailable"}"#
+        );
+        let odd = hold_facts(&HoldError::Gate {
+            status: 500,
+            code: "bad code!".into(),
+            message: "x".into(),
+        });
+        assert_eq!(odd.get("code"), &JValue::Null);
+        assert_eq!(
+            hold_facts(&HoldError::NodeUnavailable).get("status"),
+            &JValue::Null
+        );
     }
 }

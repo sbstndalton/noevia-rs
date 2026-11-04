@@ -65,6 +65,13 @@ impl GateFault {
             GateFault::Unavailable => 502,
         }
     }
+    /// The gate's refusal code (`engine_unavailable` when it gave no usable answer).
+    pub fn code(&self) -> String {
+        match self {
+            GateFault::Refused { code, .. } => code.clone(),
+            GateFault::Unavailable => "engine_unavailable".into(),
+        }
+    }
     pub fn message(&self) -> String {
         match self {
             GateFault::Refused { message, .. } => message.clone(),
