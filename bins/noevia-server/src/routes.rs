@@ -76,8 +76,8 @@ pub enum Native {
     Export,
     /// GET /api/providers/chatgpt (M6, NOEVIA_RUST_CHATGPT_STATUS): crates/server-chatgpt-status.
     ChatgptStatus,
-    /// The Diary routes that are only a proxy and a policy (sbstndalton/noevia#2185):
-    /// crates/server-diary. The others stay Node's (contracts/http/README.md).
+    /// The Diary routes the web client names (sbstndalton/noevia#2185, #2206, and the local
+    /// exchange): crates/server-diary. The others stay Node's (contracts/http/README.md).
     Diary,
     /// GET /api/models/capabilities and GET /api/models/hardware (sbstndalton/noevia#2187), and GET
     /// /api/models/estimate and GET /api/models/preset/suggest (#2189): model_routes.rs and
@@ -181,8 +181,8 @@ const CHATGPT_OAUTH: &[&str] = &[
 
 /// The routes [`Native::Diary`] implements (diary_routes.rs). `/api/diary/history`, which core's
 /// handler shares with `today`, is not a route the web client names and stays Node's, as do `files`,
-/// `file`, `workspace-trash`, `external-sources` and `entries/edit`, and
-/// `POST /api/diary/local-exchange` (contracts/http/README.md says why). Paths marked `methods` in
+/// `file`, `workspace-trash`, `external-sources` and `entries/edit`. `/api/diary/local-exchange` is
+/// the front's; the throttle and gate it holds are Node's, by lease (contracts/http/README.md). Paths marked `methods` in
 /// routes.toml answer only those; the rest answer every method and give their own 405 after the
 /// add-on gate, as core does.
 pub(crate) const DIARY_ROUTES: &[&str] = &[
@@ -199,6 +199,8 @@ pub(crate) const DIARY_ROUTES: &[&str] = &[
     "/api/diary/storage-status",
     "/api/profile/diary-connectors",
     "/api/profile/diary-connectors/{*}",
+    // The local exchange (capability rust-diary-local-exchange):
+    "/api/diary/local-exchange",
 ];
 
 /// The route [`Native::RoutingDefault`] implements (GET only; routes.toml).
@@ -1248,6 +1250,7 @@ mod tests {
             "/api/diary",
             "/api/diary-connector",
             "/api/diary/storage-status",
+            "/api/diary/local-exchange",
         ] {
             assert!(DIARY_ROUTES.contains(&p), "{p}");
             for m in EVERY {
@@ -1271,10 +1274,10 @@ mod tests {
         }
         assert!(crate::FEATURES.contains(&"rust-diary"));
         assert!(crate::FEATURES.contains(&"rust-diary-routes"));
-        // Node keeps the local exchange (the model throttle chat shares and the inference gate, both
-        // Node memory), and what the web client never names is not in the route table at all.
+        assert!(crate::FEATURES.contains(&"rust-diary-local-exchange"));
+        // What the web client never names is not in the route table at all.
         for p in [
-            "/api/diary/local-exchange",
+            "/api/diary/local-exchangex",
             "/api/diary/history",
             "/api/diary/files",
             "/api/diary/file",

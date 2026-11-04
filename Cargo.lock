@@ -1587,7 +1587,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 name = "js-json"
 version = "0.1.0"
 dependencies = [
- "sandbox-bridge",
+ "ryu-js",
  "serde",
  "serde_json",
 ]
@@ -2771,6 +2771,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
+name = "ryu-js"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04d056b875a9d2e6cb9a61d127afee9ac5999b9f87bcb32079d1318e505be714"
+
+[[package]]
 name = "s3-list-parse"
 version = "0.1.0"
 dependencies = [
@@ -3044,6 +3050,7 @@ dependencies = [
  "rand_core 0.6.4",
  "reqwest",
  "secret-envelope",
+ "serde_json",
  "server-auth",
  "server-storage-reads",
  "server-store",
