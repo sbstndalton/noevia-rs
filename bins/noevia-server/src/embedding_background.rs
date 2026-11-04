@@ -8,7 +8,7 @@ use embedding_worker::{
     Options,
 };
 use std::sync::Arc;
-pub fn start(
+fn try_start(
     app: &Arc<App>,
     get: impl Fn(&str) -> Option<String>,
 ) -> Result<Option<Background>, String> {
@@ -22,11 +22,9 @@ pub fn start(
         .ok_or("embedding data directory unavailable")?;
     let store = SqlStore {
         root,
-        seed: runtime::seed(&get)?,
+        seed: runtime::seed(&get).unwrap_or_else(|_| runtime::invalid_seed()),
         open_vec: open_vec_required,
     };
-    // Validate saved config before allocating an owner, fail closed on corruption.
-    store.config()?;
     embedding_worker::sqlite_vec_loader::register()?;
     let inference = get("INFERENCE_BASE_URL")
         .filter(|s| !s.is_empty())
@@ -78,4 +76,14 @@ pub fn start(
         get("EMBEDDING_SERVICE_URL"),
     )
     .map(Some)
+}
+
+/// Optional retrieval can fail without taking sign-in/chat/the front down.
+/// Invalid saved state is re-read by the owner; unavailable prerequisites leave
+/// only this subsystem idle, never fail process startup.
+pub fn start(app:&Arc<App>,get:impl Fn(&str)->Option<String>)->Result<Option<Background>,String> {
+    match try_start(app,get) {
+        Ok(worker)=>Ok(worker),
+        Err(_)=>{eprintln!("noevia-server: embedding background idle (prerequisite unavailable or another owner)");Ok(None)}
+    }
 }

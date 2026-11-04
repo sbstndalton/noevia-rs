@@ -260,8 +260,8 @@ async fn server_main() -> ExitCode {
         match noevia_server::embedding_background::start(&app, |key| std::env::var(key).ok()) {
             Ok(worker) => worker,
             Err(error) => {
-                eprintln!("noevia-server: {error}");
-                return ExitCode::FAILURE;
+                eprintln!("noevia-server: optional embedding background idle: {error}");
+                None
             }
         };
     let server = serve::serve(listener, app, serve::Limits::default(), async move {

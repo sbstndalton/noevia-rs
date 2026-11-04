@@ -68,7 +68,12 @@ fn parse_target(value: &Value) -> Result<Target, String> {
 }
 pub fn load_config(root: &Path, seed: &Config) -> Result<Config, String> {
     match std::fs::read(root.join("embedding-config.json")) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(seed.clone()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            for target in std::iter::once(&seed.active).chain(seed.next.iter()).chain(seed.previous.iter()) {
+                parse_target(&serde_json::json!({"model":target.model,"profile":target.profile,"baseUrl":target.base_url}))?;
+            }
+            Ok(seed.clone())
+        },
         Err(_) => Err("embedding config unavailable".into()),
         Ok(bytes) => {
             if bytes.len() > 1024 * 1024 {
@@ -99,6 +104,9 @@ pub fn load_config(root: &Path, seed: &Config) -> Result<Config, String> {
             })
         }
     }
+}
+pub fn invalid_seed()->Config {
+    Config {version:0,active:Target {model:"default".into(),profile:"invalid-environment".into(),base_url:None},next:None,previous:None}
 }
 pub fn seed(get: impl Fn(&str) -> Option<String>) -> Result<Config, String> {
     let pick = |keys: &[&str]| {
@@ -160,7 +168,7 @@ impl Host for NativeHost {
     }
     fn served<'a>(&'a self, target: &'a Target) -> Task<'a, Result<Vec<String>, String>> {
         Box::pin(async move {
-            if self.off(target) {
+            if !self.valid.load(Ordering::Acquire) || self.off(target) {
                 return Err("embedding off".into());
             }
             self.http.served(target).await
@@ -293,7 +301,7 @@ pub fn start(
                     let paired=tokio::select! {r=host.http.ownership(&core,&token,&start)=>r.is_ok(),_=rx.changed()=>false};
                     if *rx.borrow() {break;}
                     if paired {
-                        host.valid.store(host.store.config().is_ok(),Ordering::Release);
+                        let valid=host.store.config().is_ok(); let recovered=valid && !host.valid.swap(valid,Ordering::AcqRel); if recovered {control.kick();}
                         let stamp=index_stamp(&host.store);let config=host.store.config();
                         if begun.elapsed()>=Duration::from_secs(30) && !initial {initial=true;if config.as_ref().is_ok_and(|c|c.next.is_some()) {control.kick();}}
                         if seen.as_ref().is_some_and(|s|s!=&stamp)&&config.as_ref().is_ok_and(|c|c.next.is_some()) {control.kick();}
@@ -305,7 +313,7 @@ pub fn start(
                         let held=worker.held.as_ref().map(|(target,reason)|serde_json::json!({"model":target.model,"profile":target.profile,"baseUrl":target.base_url,"code":match reason {crate::Held::EndpointUnverified=>"endpointUnverified",crate::Held::ModelNotServed=>"modelNotServed"}}));
                         let next_served=host.store.config().ok().and_then(|c|c.next).and_then(|t|if worker.verified(&t) {Some(true)} else if worker.held.as_ref().is_some_and(|(held,_)|held==&t) {Some(false)} else {None});
                         let pass=worker.last_pass.as_ref().map(|p|serde_json::json!({"at":p.at_ms,"embedded":p.embedded,"failed":p.failed,"refused":p.refused,"error":p.error,"aborted":p.aborted}));
-                        update_snapshot(&host.store.root,&state,serde_json::json!({"lastPass":pass,"nextHeld":held,"nextServed":next_served,"configValid":host.valid.load(Ordering::Acquire)}));
+                        update_snapshot(&host.store.root,&state,serde_json::json!({"lastPass":pass,"nextHeld":held,"nextServed":next_served,"configValid":host.valid.load(Ordering::Acquire),"configInvalid":!host.valid.load(Ordering::Acquire)}));
                     }
                     tokio::select! {_=tokio::time::sleep(Duration::from_secs(2))=>{},_=rx.changed()=>{}}
                 }
