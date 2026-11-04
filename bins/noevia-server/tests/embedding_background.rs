@@ -41,7 +41,10 @@ async fn old_core_cannot_start_native_work_and_shutdown_releases_the_owner_lock(
         .unwrap()
         .unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(80)).await;
-    assert!(noevia_server::embedding_background::start(&front.app, lookup).unwrap().is_none());
+    let contender = noevia_server::embedding_background::start(&front.app, lookup)
+        .unwrap()
+        .unwrap();
+    contender.shutdown().await;
     tokio::time::timeout(std::time::Duration::from_secs(8), worker.shutdown())
         .await
         .unwrap();
@@ -49,8 +52,14 @@ async fn old_core_cannot_start_native_work_and_shutdown_releases_the_owner_lock(
         .seen()
         .iter()
         .all(|r| r.path == "/internal/embedding-worker-owner"));
-    let status:serde_json::Value=serde_json::from_slice(&std::fs::read(dir.path().join("embedding-worker-status.json")).unwrap()).unwrap();
-    assert!(status.get("ownershipUnconfirmedSince").and_then(serde_json::Value::as_u64).is_some());
+    let status: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(dir.path().join("embedding-worker-status.json")).unwrap(),
+    )
+    .unwrap();
+    assert!(status
+        .get("ownershipUnconfirmedSince")
+        .and_then(serde_json::Value::as_u64)
+        .is_some());
     let again = noevia_server::embedding_background::start(&front.app, lookup)
         .unwrap()
         .unwrap();
@@ -115,37 +124,213 @@ async fn paired_owner_refreshes_at_ten_seconds_and_kicks_saved_next_at_thirty() 
         .unwrap();
 }
 
-async fn nonfatal_config_case(profile:Option<&str>,damaged:bool) {
-    let dir=tempfile::tempdir().unwrap();seed(dir.path());let up=upstream().await;
-    let front=front_env(dir.path(),true,&[("NOEVIA_LEGACY_UPSTREAM",up.base()),("NOEVIA_PROJECT_STORE_PORT","19021".into()),("NOEVIA_PROJECT_STORE_TOKEN",STORE_TOKEN.into()),("NOEVIA_START_ID","11111111111111111111111111111111".into())]).await;
-    if damaged {std::fs::write(dir.path().join("embedding-config.json"),"broken").unwrap();}
-    let result=noevia_server::embedding_background::start(&front.app,|key|match key {"MODEL_LOADER_URL"=>Some(up.base()),"EMBEDDING_PROFILE"=>profile.map(str::to_owned),_=>None});
-    assert!(result.is_ok(),"optional embedding configuration must never fail front startup");
-    let response=raw_text(front.addr,"GET","/api/auth/session",MEMBER,"",b"").await;assert!(response.0<500);
-    if let Some(worker)=result.unwrap() {worker.shutdown().await;}
+async fn nonfatal_config_case(profile: Option<&str>, damaged: bool) {
+    let dir = tempfile::tempdir().unwrap();
+    seed(dir.path());
+    let up = upstream().await;
+    let front = front_env(
+        dir.path(),
+        true,
+        &[
+            ("NOEVIA_LEGACY_UPSTREAM", up.base()),
+            ("NOEVIA_PROJECT_STORE_PORT", "19021".into()),
+            ("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()),
+            ("NOEVIA_START_ID", "11111111111111111111111111111111".into()),
+        ],
+    )
+    .await;
+    if damaged {
+        std::fs::write(dir.path().join("embedding-config.json"), "broken").unwrap();
+    }
+    let result = noevia_server::embedding_background::start(&front.app, |key| match key {
+        "MODEL_LOADER_URL" => Some(up.base()),
+        "EMBEDDING_PROFILE" => profile.map(str::to_owned),
+        _ => None,
+    });
+    assert!(
+        result.is_ok(),
+        "optional embedding configuration must never fail front startup"
+    );
+    let response = raw_text(front.addr, "GET", "/api/auth/session", MEMBER, "", b"").await;
+    assert!(response.0 < 500);
+    if let Some(worker) = result.unwrap() {
+        worker.shutdown().await;
+    }
 }
-#[tokio::test(flavor="multi_thread",worker_threads=2)]
-async fn regression_p1_damaged_embedding_config_is_nonfatal() {nonfatal_config_case(None,true).await;}
-#[tokio::test(flavor="multi_thread",worker_threads=2)]
-async fn regression_p1_unknown_environment_profile_is_nonfatal() {nonfatal_config_case(Some("unknown"),false).await;}
-#[tokio::test(flavor="multi_thread",worker_threads=2)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn regression_p1_damaged_embedding_config_is_nonfatal() {
+    nonfatal_config_case(None, true).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn regression_p1_unknown_environment_profile_is_nonfatal() {
+    nonfatal_config_case(Some("unknown"), false).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn regression_p1_competing_owner_is_nonfatal() {
-    let dir=tempfile::tempdir().unwrap();seed(dir.path());let up=upstream().await;
-    let front=front_env(dir.path(),true,&[("NOEVIA_LEGACY_UPSTREAM",up.base()),("NOEVIA_PROJECT_STORE_PORT","19021".into()),("NOEVIA_PROJECT_STORE_TOKEN",STORE_TOKEN.into()),("NOEVIA_START_ID","11111111111111111111111111111111".into())]).await;
-    let lookup=|key:&str|if key=="MODEL_LOADER_URL" {Some(up.base())}else {None};
-    let first=noevia_server::embedding_background::start(&front.app,lookup).unwrap().unwrap();
-    let second=noevia_server::embedding_background::start(&front.app,lookup);assert!(second.is_ok());
-    assert!(raw_text(front.addr,"GET","/api/auth/session",MEMBER,"",b"").await.0<500);first.shutdown().await;
+    let dir = tempfile::tempdir().unwrap();
+    seed(dir.path());
+    let up = upstream().await;
+    let front = front_env(
+        dir.path(),
+        true,
+        &[
+            ("NOEVIA_LEGACY_UPSTREAM", up.base()),
+            ("NOEVIA_PROJECT_STORE_PORT", "19021".into()),
+            ("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()),
+            ("NOEVIA_START_ID", "11111111111111111111111111111111".into()),
+        ],
+    )
+    .await;
+    let lookup = |key: &str| {
+        if key == "MODEL_LOADER_URL" {
+            Some(up.base())
+        } else {
+            None
+        }
+    };
+    let first = noevia_server::embedding_background::start(&front.app, lookup)
+        .unwrap()
+        .unwrap();
+    let second = noevia_server::embedding_background::start(&front.app, lookup);
+    assert!(second.is_ok());
+    assert!(
+        raw_text(front.addr, "GET", "/api/auth/session", MEMBER, "", b"")
+            .await
+            .0
+            < 500
+    );
+    first.shutdown().await;
 }
-#[tokio::test(flavor="multi_thread",worker_threads=2)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn regression_p1_saved_config_repair_is_observed_without_restarting_front() {
-    let dir=tempfile::tempdir().unwrap();seed(dir.path());let up=upstream().await;
+    let dir = tempfile::tempdir().unwrap();
+    seed(dir.path());
+    let up = upstream().await;
     up.set(|r|match r.path.as_str() {"/internal/embedding-worker-owner"=>reply("200 OK",r#"{"protocol":"rust-embedding-worker-v1","start":"11111111111111111111111111111111","nodeWorkersStopped":true}"#),"/api/v1/embedding-service"=>reply("200 OK",r#"{"managed":true,"enabled":true}"#),_=>reply("200 OK",r#"{"data":[]}"#)});
-    let front=front_env(dir.path(),true,&[("NOEVIA_LEGACY_UPSTREAM",up.base()),("NOEVIA_PROJECT_STORE_PORT","19021".into()),("NOEVIA_PROJECT_STORE_TOKEN",STORE_TOKEN.into()),("NOEVIA_START_ID","11111111111111111111111111111111".into())]).await;
-    std::fs::write(dir.path().join("embedding-config.json"),"bad").unwrap();
-    let worker=noevia_server::embedding_background::start(&front.app,|k|if k=="MODEL_LOADER_URL"{Some(up.base())}else{None}).unwrap().unwrap();
-    async fn config_state(path:&std::path::Path,valid:bool) {tokio::time::timeout(std::time::Duration::from_secs(8),async {loop {if std::fs::read(path).ok().and_then(|b|serde_json::from_slice::<serde_json::Value>(&b).ok()).is_some_and(|v|v.get("configValid").and_then(serde_json::Value::as_bool)==Some(valid)) {break;}tokio::time::sleep(std::time::Duration::from_millis(20)).await;}}).await.unwrap();}
-    let status=dir.path().join("embedding-worker-status.json");config_state(&status,false).await;
-    std::fs::write(dir.path().join("embedding-config.json"),r#"{"version":1,"active":{"model":"fixed","profile":"nomic-v1","baseUrl":null},"next":null,"previous":null}"#).unwrap();config_state(&status,true).await;
-    assert!(raw_text(front.addr,"GET","/api/auth/session",MEMBER,"",b"").await.0<500);worker.shutdown().await;
+    let front = front_env(
+        dir.path(),
+        true,
+        &[
+            ("NOEVIA_LEGACY_UPSTREAM", up.base()),
+            ("NOEVIA_PROJECT_STORE_PORT", "19021".into()),
+            ("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()),
+            ("NOEVIA_START_ID", "11111111111111111111111111111111".into()),
+        ],
+    )
+    .await;
+    std::fs::write(dir.path().join("embedding-config.json"), "bad").unwrap();
+    let worker = noevia_server::embedding_background::start(&front.app, |k| {
+        if k == "MODEL_LOADER_URL" {
+            Some(up.base())
+        } else {
+            None
+        }
+    })
+    .unwrap()
+    .unwrap();
+    async fn config_state(path: &std::path::Path, valid: bool) {
+        tokio::time::timeout(std::time::Duration::from_secs(8), async {
+            loop {
+                if std::fs::read(path)
+                    .ok()
+                    .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+                    .is_some_and(|v| {
+                        v.get("configValid").and_then(serde_json::Value::as_bool) == Some(valid)
+                    })
+                {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+    let status = dir.path().join("embedding-worker-status.json");
+    config_state(&status, false).await;
+    std::fs::write(dir.path().join("embedding-config.json"),r#"{"version":1,"active":{"model":"fixed","profile":"nomic-v1","baseUrl":null},"next":null,"previous":null}"#).unwrap();
+    config_state(&status, true).await;
+    assert!(
+        raw_text(front.addr, "GET", "/api/auth/session", MEMBER, "", b"")
+            .await
+            .0
+            < 500
+    );
+    worker.shutdown().await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn regression_p3_migration_owner_exists_without_model_loader_url() {
+    let dir = tempfile::tempdir().unwrap();
+    seed(dir.path());
+    let up = upstream().await;
+    up.set(|_| reply("404 Not Found", "{}"));
+    let front = front_env(
+        dir.path(),
+        true,
+        &[
+            ("NOEVIA_LEGACY_UPSTREAM", up.base()),
+            ("NOEVIA_PROJECT_STORE_PORT", "19021".into()),
+            ("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()),
+            ("NOEVIA_START_ID", "11111111111111111111111111111111".into()),
+        ],
+    )
+    .await;
+    let owner = noevia_server::embedding_background::start(&front.app, |k| {
+        if k == "INFERENCE_BASE_URL" {
+            Some(up.base())
+        } else {
+            None
+        }
+    })
+    .unwrap();
+    assert!(
+        owner.is_some(),
+        "Node migration is independent of the model-loader refresh gate"
+    );
+    owner.unwrap().shutdown().await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn regression_p1_missing_pairing_ids_leave_only_embeddings_idle() {
+    let dir = tempfile::tempdir().unwrap();
+    seed(dir.path());
+    let front = front_env(dir.path(), true, &[]).await;
+    assert!(noevia_server::embedding_background::start(&front.app, |k| {
+        if k == "MODEL_LOADER_URL" {
+            Some("http://127.0.0.1:9".into())
+        } else {
+            None
+        }
+    })
+    .unwrap()
+    .is_none());
+    assert_eq!(
+        raw_text(front.addr, "GET", "/api/auth/session", MEMBER, "", b"")
+            .await
+            .0,
+        200
+    );
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn regression_p1_missing_embedding_data_root_is_nonfatal() {
+    let dir = tempfile::tempdir().unwrap();
+    seed(dir.path());
+    let front = front_env(dir.path(), true, &[]).await;
+    let mut config = front.app.config.clone();
+    config.data_dir = None;
+    let app = noevia_server::App::new(config);
+    assert!(
+        noevia_server::embedding_background::start(&app, |k| if k == "MODEL_LOADER_URL" {
+            Some("http://127.0.0.1:9".into())
+        } else {
+            None
+        })
+        .unwrap()
+        .is_none()
+    );
+    assert_eq!(
+        raw_text(front.addr, "GET", "/api/auth/session", MEMBER, "", b"")
+            .await
+            .0,
+        200
+    );
 }

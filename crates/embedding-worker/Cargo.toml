@@ -23,6 +23,7 @@ ssrf-policy = { path = "../ssrf-policy" }
 sha2 = "0.10"
 prompt-framing = { path = "../prompt-framing" }
 [dev-dependencies]
+rustix = { version = "1", features = ["fs", "process"] }
 quote = "1"
 proc-macro2 = "1"
 syn = { version = "2", features = ["full", "visit"] }

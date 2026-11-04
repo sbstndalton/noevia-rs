@@ -69,11 +69,16 @@ fn parse_target(value: &Value) -> Result<Target, String> {
 pub fn load_config(root: &Path, seed: &Config) -> Result<Config, String> {
     match std::fs::read(root.join("embedding-config.json")) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            for target in std::iter::once(&seed.active).chain(seed.next.iter()).chain(seed.previous.iter()) {
-                parse_target(&serde_json::json!({"model":target.model,"profile":target.profile,"baseUrl":target.base_url}))?;
+            for target in std::iter::once(&seed.active)
+                .chain(seed.next.iter())
+                .chain(seed.previous.iter())
+            {
+                parse_target(
+                    &serde_json::json!({"model":target.model,"profile":target.profile,"baseUrl":target.base_url}),
+                )?;
             }
             Ok(seed.clone())
-        },
+        }
         Err(_) => Err("embedding config unavailable".into()),
         Ok(bytes) => {
             if bytes.len() > 1024 * 1024 {
@@ -105,8 +110,17 @@ pub fn load_config(root: &Path, seed: &Config) -> Result<Config, String> {
         }
     }
 }
-pub fn invalid_seed()->Config {
-    Config {version:0,active:Target {model:"default".into(),profile:"invalid-environment".into(),base_url:None},next:None,previous:None}
+pub fn invalid_seed() -> Config {
+    Config {
+        version: 0,
+        active: Target {
+            model: "default".into(),
+            profile: "invalid-environment".into(),
+            base_url: None,
+        },
+        next: None,
+        previous: None,
+    }
 }
 pub fn seed(get: impl Fn(&str) -> Option<String>) -> Result<Config, String> {
     let pick = |keys: &[&str]| {
@@ -255,16 +269,7 @@ pub fn start(
     options: Options,
     service_base: Option<String>,
 ) -> Result<Background, String> {
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(store.root.join("embedding-worker.lock"))
-        .map_err(|_| "embedding owner lock unavailable")?;
-    file.try_lock()
-        .map_err(|_| "embedding worker already owned")?;
-    let http=http.with_ownership(&core,&token,&start);
+    let http = http.with_ownership(&core, &token, &start);
     let token = zeroize::Zeroizing::new(token);
     let (stop, mut rx) = watch::channel(false);
     let handle = tokio::runtime::Handle::current();
@@ -273,13 +278,25 @@ pub fn start(
     let background_control = control.clone();
     let task = tokio::task::spawn_blocking(move || {
         handle.block_on(async move {
-            let _owner=file;
+            // Another draining front may still own the lock. Stay alive and
+            // retry only this optional subsystem; never write its snapshot until
+            // the lifetime owner lock has actually been acquired.
+            let mut lock_reported=false;
+            let _owner=loop {
+                if *rx.borrow() {return;}
+                if let Ok(file)=std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(store.root.join("embedding-worker.lock")) {
+                    if file.try_lock().is_ok() {break file;}
+                }
+                if !lock_reported {eprintln!("noevia-server: optional embedding owner idle while lifetime lock is unavailable");lock_reported=true;}
+                tokio::select! {_=tokio::time::sleep(Duration::from_secs(2))=>{},_=rx.changed()=>{return;}}
+            };
             let host=NativeHost {store,http,valid:Arc::new(AtomicBool::new(true)),off:Arc::new(AtomicBool::new(false)),service_base,core:core.clone(),token:token.clone(),start:start.clone()};
-            let state=std::sync::Mutex::new(serde_json::json!({"protocol":"rust-embedding-worker-v1","start":start}));
+            let state=std::sync::Mutex::new(serde_json::json!({"protocol":"rust-embedding-worker-v1","start":start,"service":null,"serviceAt":null}));
             let mut service_rx=rx.clone();
             // Refresh runs alongside the migration await, so a slow embeddings
             // batch cannot starve the ten-second model-loader refresh.
             let refresh=async {
+                if !host.http.loader_configured() {let _=service_rx.wait_for(|stop|*stop).await;return;}
                 let mut service=crate::service::Service::default();
                 let mut ticks=tokio::time::interval(Duration::from_secs(10));
                 ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -315,10 +332,10 @@ pub fn start(
                         let held=worker.held.as_ref().map(|(target,reason)|serde_json::json!({"model":target.model,"profile":target.profile,"baseUrl":target.base_url,"code":match reason {crate::Held::EndpointUnverified=>"endpointUnverified",crate::Held::ModelNotServed=>"modelNotServed"}}));
                         let next_served=host.store.config().ok().and_then(|c|c.next).and_then(|t|if worker.verified(&t) {Some(true)} else if worker.held.as_ref().is_some_and(|(held,_)|held==&t) {Some(false)} else {None});
                         let pass=worker.last_pass.as_ref().map(|p|serde_json::json!({"at":p.at_ms,"embedded":p.embedded,"failed":p.failed,"refused":p.refused,"error":p.error,"aborted":p.aborted}));
-                        update_snapshot(&host.store.root,&state,serde_json::json!({"lastPass":pass,"nextHeld":held,"nextServed":next_served,"configValid":host.valid.load(Ordering::Acquire),"configInvalid":!host.valid.load(Ordering::Acquire),"ownershipUnconfirmedSince":control.unconfirmed_since()}));
+                        update_snapshot(&host.store.root,&state,serde_json::json!({"lastPass":pass,"nextHeld":held,"nextServed":next_served,"configValid":host.valid.load(Ordering::Acquire),"configInvalid":!host.valid.load(Ordering::Acquire),"ownershipUnconfirmedSince":control.unconfirmed_since(),"ownershipStatus":control.unconfirmed_since().map(|at|format!("ownership unconfirmed since {at}")).unwrap_or_else(||"confirmed".into())}));
                     } else {
                         control.suspend();
-                        update_snapshot(&host.store.root,&state,serde_json::json!({"ownershipUnconfirmedSince":control.unconfirmed_since(),"ownershipStatus":"unconfirmed"}));
+                        update_snapshot(&host.store.root,&state,serde_json::json!({"ownershipUnconfirmedSince":control.unconfirmed_since(),"ownershipStatus":format!("ownership unconfirmed since {}",control.unconfirmed_since().unwrap_or(0))}));
                     }
                     tokio::select! {_=tokio::time::sleep(Duration::from_secs(2))=>{},_=rx.changed()=>{}}
                 }

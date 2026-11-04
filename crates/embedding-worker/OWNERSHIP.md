@@ -1,50 +1,69 @@
 # Native embedding ownership switch
 
-Rust packet: concrete adapter and lifecycle candidate; **not a deployed ownership
-switch**. No embeddings Core worktree existed at intake, so Core remains unchanged
-at b91b3f0324bfd8daea0e7c7b5f3a40ad4cde91fc. No worktree was created.
+Rust packet: concrete adapter/lifecycle candidate. A separate Core/Top packet
+implements the counterpart; this branch edits neither Core nor deployment code.
+Core file references below identify b91b3f03, the behavior being ported.
 
-## Native side
+## Native side after independent-review remediation
 
-`noevia-server --features` advertises `rust-embedding-background-v1`. Only a nonempty
-MODEL_LOADER_URL constructs its background owner, at the end of startup. A lifetime
-OS flock on `embedding-worker.lock` excludes a second native owner of the same
-data directory. Before any service refresh or migration, the owner obtains the
-Core proof described below. Old Core returns 404, so native stays idle and Node's
-existing timers remain responsible. The owner refreshes every 10s, kicks saved next
-after 30s, notices RAG DB/WAL changes every 2s, and accepts a start-bound explicit
-kick request. It stops on shutdown, cancels its in-flight pass, then joins its task.
-No target storage or credential is copied across tenants.
+`noevia-server --features` advertises `rust-embedding-background-v1`. Migration
+construction is **independent of MODEL_LOADER_URL**; only the ten-second service
+refresh needs that setting. Missing prerequisites, damaged configuration, unknown
+seed profiles and a draining owner's lock never exit the front. Invalid saved
+configuration is re-read, and lock contenders retry every two seconds without
+writing the current owner's snapshot. Stop is permanent only for shutdown.
 
-Native HTTP reuses reqwest and engine-admission. No proxy, no redirects, checked
-private DNS answers pinned to the socket, bounded DNS/request/body sizes, sensitive
-headers, zeroized retained secrets and fixed diagnostic labels. Explicit embedding
-endpoints receive neither loader nor inference secrets. Model-loader GET is 6s,
-served-model GET 10s/1MiB, embedding POST 60s/16MiB. A new maintenance-only embedding
-ask is carried by the existing renewable inference lease client; Core must implement
-the paired branch below. Empty/incomplete embedding batches fall back to singles;
-UTF-16 request framing retains lone surrogates.
+A lifetime flock on `embedding-worker.lock` excludes duplicate native owners.
+Authenticated current-start Core proof gates all embedding work. A failed probe
+suspends a pass; the next paired probe resumes and kicks it. Snapshots expose
+`ownershipUnconfirmedSince` (epoch milliseconds or null), `ownershipStatus`,
+`configValid` and `configInvalid`. Unpaired ownership is reported even while the
+front continues serving sign-in/chat. Old Core returns no proof and keeps its
+existing Node workers. No uncoordinated Node fallback is started by Rust.
 
-Native index format is Core's actual vec0 layout: `chunks`, `vec_meta`, legacy
-`vec_items`, `vec_<16 hex sha256(profile NUL model)>`, and `vecmap_<same id>`.
-Floats are little-endian f32 blobs. Legacy active nomic slots are adopted once;
-small/direct and image chunks are excluded. Missing selection and publication are
-existing-only, with only Node's four historical additive chunk columns
-(version/direct/kind/meta), and no replacement index schema.
-Cowork account/schema access uses server-store. Publication holds config flock,
-a short cowork IMMEDIATE transaction, projects.json flock, existing outbox
-IMMEDIATE transaction, then RAG IMMEDIATE transaction. It rechecks live user,
-project, tombstone, config version and chunk hash/slot width. No HTTP is performed
-under these locks. Missing legacy outboxes stay absent: the project lock fences
-removal before tombstone creation. Jobs, attempts and generations are never
-claimed, recovered, advanced or acknowledged by this worker.
+The owner refreshes every ten seconds when model-loader is configured, kicks
+saved/seeded next after thirty seconds, observes RAG DB/WAL changes every two
+seconds, and accepts the unchanged start-bound explicit request signal. Shutdown
+cancels admission, HTTP and pacing waits and joins the owner. The duty clock sums
+embedding work after lease grants; admission queue waits never inflate its pause.
+`Ask::Embedding` is paired-only: old Core would misinterpret it as text-engine work.
+
+HTTP uses reqwest/engine-admission with no proxy or redirects, private DNS answers
+pinned to sockets, bounded DNS/request/body sizes, sensitive headers, zeroized
+retained secrets and fixed diagnostic labels. Explicit embedding endpoints receive
+neither loader nor inference secrets. Fresh proof is checked before publication,
+between provider fallback singles and again for each per-row retry. A proof older
+than 250ms after fence acquisition or before commit suspends/rolls back publication;
+networking is never performed while the account/outbox write fences are held.
+
+Index coverage matches Node: every existing non-hidden .db in shared RAG_DIR
+(default data/rag), and each live account's rag directory, including catalogue-free
+or orphan indexes. No projects.json membership/readability requirement remains.
+Tenant liveness and project tombstones fence access; index files are never created.
+
+The stored format remains Node's `chunks`, `vec_meta`, legacy `vec_items`,
+`vec_<sha256(profile NUL model)[:16]>` and `vecmap_<same id>`, with little-endian
+f32 blobs. Existing orphan slot tables are reused with IF NOT EXISTS. Integer-valued
+JSON indexes such as 1.0 sort as Node does. Older chunk columns are projected as
+NULL during reads; only publication applies Node's four additive columns and
+legacy metadata adoption.
+
+Selection and remaining/coverage run through read-only/deferred RAG connections,
+with non-locking server-store account and outbox tombstone checks before/after.
+Only publication takes cowork.db's IMMEDIATE account-deletion fence. It then holds
+config/project flocks, an existing outbox IMMEDIATE transaction and the RAG
+transaction, rechecking config version, chunk hash, width, cancellation and proof
+freshness. Slot cleanup does not take the global account write fence. No HTTP
+is performed under these locks. Jobs, generations and attempts are never claimed,
+recovered, advanced or acknowledged by this worker.
 
 ## Required paired Core diff (not applied)
 
 1. Add an unconditional compiled ownership marker, analogous to the existing
    `RUST_*_OWNED` modules, for `rust-embedding-background-v1`. The release supervisor
    must require this exact capability before starting this Core. Do not introduce
-   an operator feature flag or infer ownership from a stale state file.
+   an operator feature flag or infer ownership from a stale state file. Migration
+   ownership must remain native even with MODEL_LOADER_URL absent.
 2. `server/index.cjs:250`: remove Core's immediate embeddingService.refresh and
    its 10000ms interval when paired ownership is active. Retain embeddingService
    construction/install: embeddingOff, deletion guards, model route service
@@ -103,7 +122,7 @@ claimed, recovered, advanced or acknowledged by this worker.
    An old Core has no such route and cannot authorize native work. The complete
    protocol also requires steps 6-8; do not emit this proof from a partially ported
    Core. Native status snapshots contain protocol, start, at, service, lastPass,
-   nextHeld, nextServed, serviceAt and configValid, but are never used as ownership authority.
+   nextHeld, nextServed, serviceAt, configValid/configInvalid and ownership state, but are never used as ownership authority.
 
 ## Rollback and pairing matrix
 
@@ -123,8 +142,8 @@ flock excludes duplicate native owners, not old Node workers that know no lock.
 A paired supervisor must enforce the source-image tuple and quiescence across
 restart/rollback; the handshake alone cannot enforce process orchestration.
 
-Loss of Core/proof causes native to suspend new work; on a new paired Core it does
-not start a Node fallback. This intentionally chooses no-run over uncoordinated
+Loss of Core/proof suspends native work and records the unconfirmed-since time;
+paired proof resumes it. It never starts a Node fallback. This intentionally chooses no-run over uncoordinated
 double-run during an outage. Readiness/health must expose unconfirmed ownership or
 stale native status, so this cannot be mistaken for a healthy release. This packet
 does not change existing public readiness; adding the paired health gate is part
@@ -132,7 +151,8 @@ of the Core/supervisor release diff and qualification.
 
 ## Reviewed dependency boundary
 
-The only new unsafe module is `src/sqlite_vec_loader.rs`: one statically linked
+The only new unsafe boundary is the one-file crate
+`crates/sqlite-vec-loader/src/lib.rs` (re-exported at the old Rust API path): one statically linked
 sqlite3_vec_init -> sqlite3_auto_extension registration under OnceLock, with an
 explicit SAFETY comment for each block. No runtime library path is accepted.
 The Rust dependency is exactly `sqlite-vec =0.1.9`; each opened vector connection
@@ -151,18 +171,36 @@ CI, real process startup/cutover/rollback qualification and full synthetic retri
 acceptance remain. No live models, flags, production sign-in or deployment were
 performed. Existing Node remains runtime owner until a coherent paired release.
 
-The CI guard uses this explicit source-path allowlist and unsafe-block caps:
+The CI guard now budgets blocks, contracts, raw unsafe tokens, lint escapes and
+ABI attributes. Workspace `unsafe_code = "forbid"` is restored; the loader follows
+the existing mem-return isolated-crate pattern, with an allow on its one inline
+FFI module only. Explicit existing/new path budgets are:
 
-| Path | Max blocks | Change in this packet |
-|---|---:|---|
-| `crates/mem-return/src/lib.rs` | 1 | Untouched existing malloc_trim implementation |
-| `crates/gguf-memtest/tests/hostile.rs` | 2 | Existing allocator unchanged; added contract SAFETY comments |
-| `crates/embedding-worker/src/sqlite_vec_loader.rs` | 2 | New reviewed loader |
+| Path | Blocks | Contracts | Lint escapes | ABI attributes |
+|---|---:|---:|---:|---:|
+| `crates/mem-return/src/lib.rs` | 1 | 0 | 1 | 0 |
+| `crates/gguf-memtest/tests/hostile.rs` | 2 | 3 | 1 | 0 |
+| `crates/sqlite-vec-loader/src/lib.rs` | 2 | 0 | 1 | 0 |
+| `bins/dav-parse-wasm/src/lib.rs` | 0 | 0 | 49 | 50 |
+| `bins/sandbox-bridge-wasm/src/lib.rs` | 0 | 0 | 10 | 10 |
 
-Every allowed block requires an adjacent contiguous comment containing SAFETY.
-The guard parses all Rust sources under bins/crates/tools, visits unsafe blocks
-and contracts, and also token-scans macro bodies; string/comment mentions do not
-count as unsafe code. Any unsafe token outside the allowlist fails. Raising a
-block cap or adding a path is an explicit reviewable guard edit. Workspace unsafe
-lint changes from forbid to deny solely to permit the module-scoped loader allow;
-no library-wide allow was added.
+Existing allocator/malloc_trim/export code is unchanged. Every allowed unsafe
+block requires an adjacent SAFETY comment. Other files cannot add unsafe contracts,
+lint escapes or ABI attributes. Literal Rust includes/path references must resolve
+inside the scanned tree; non-Rust/unknown includes are rejected. The sole generated
+routes include is explicitly recognized, and remains protected by workspace forbid.
+
+The fixture qualification uses Core's unmodified vector-slots.cjs and actual
+rag.cjs embedRowsInto function with synthetic embeddings. It proves Node KNN over
+Rust-written slots, Python sqlite3 vec0 ABI compatibility, concurrent Node row/vector
+replacement versus native publication, and a real owned-process SIGKILL after
+embedding and before publication, followed by recovery. It does not claim the full
+Diary application or whole indexProjectFile/outbox/browser workflow was retired.
+
+The release kit/supervisor **must** enforce and test front stop/join before a Core
+rollback, coherent source tuples and a new start ID. Fresh-proof checks only narrow
+an overlap window; they cannot make an uncoordinated legacy-Core restart safe.
+This requirement was forwarded to the separately owned Core/Top packet. Root must
+verify its release-kit evidence before promotion. External config repair also
+requires Core's cached damaged/fallback configuration to refresh or stay explicitly
+refused; native repair recovery must not silently diverge from chat's active target.

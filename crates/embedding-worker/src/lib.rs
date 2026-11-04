@@ -97,7 +97,9 @@ pub struct Control {
     suspended: Arc<AtomicBool>,
     unconfirmed_since: Arc<AtomicU64>,
     busy_ms: Arc<AtomicU64>,
-    busy_samples:Arc<AtomicU64>,
+    busy_samples: Arc<AtomicU64>,
+    proof_required: Arc<AtomicBool>,
+    proof_at: Arc<std::sync::Mutex<Option<std::time::Instant>>>,
 }
 impl Control {
     pub fn kick(&self) {
@@ -107,19 +109,60 @@ impl Control {
         self.stopped.store(true, Ordering::Release);
     }
     pub fn suspend(&self) {
-        let at=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d|d.as_millis() as u64).unwrap_or(1).max(1);
-        let _=self.unconfirmed_since.compare_exchange(0,at,Ordering::AcqRel,Ordering::Acquire);
-        self.suspended.store(true,Ordering::Release);
+        let at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(1)
+            .max(1);
+        let _ = self
+            .unconfirmed_since
+            .compare_exchange(0, at, Ordering::AcqRel, Ordering::Acquire);
+        self.suspended.store(true, Ordering::Release);
+    }
+    pub fn confirm_ownership(&self) {
+        self.proof_required.store(true, Ordering::Release);
+        if let Ok(mut at) = self.proof_at.lock() {
+            *at = Some(std::time::Instant::now());
+        }
+    }
+    /// Lock acquisition must not turn a fresh network proof into a stale write
+    /// permit. Recheck this monotonic age inside the transaction, without HTTP
+    /// while the account/outbox write fences are held.
+    pub fn ownership_fresh(&self) -> bool {
+        !self.proof_required.load(Ordering::Acquire)
+            || self.proof_at.lock().is_ok_and(|at| {
+                at.is_some_and(|at| at.elapsed() <= std::time::Duration::from_millis(250))
+            })
     }
     pub fn resume(&self) {
-        if self.suspended.swap(false,Ordering::AcqRel) {self.unconfirmed_since.store(0,Ordering::Release);self.kick();}
+        if self.suspended.swap(false, Ordering::AcqRel) {
+            self.unconfirmed_since.store(0, Ordering::Release);
+            self.kick();
+        }
     }
-    pub fn suspended(&self)->bool {self.suspended.load(Ordering::Acquire)}
-    pub fn unconfirmed_since(&self)->Option<u64> {let at=self.unconfirmed_since.load(Ordering::Acquire);(at!=0).then_some(at)}
+    pub fn suspended(&self) -> bool {
+        self.suspended.load(Ordering::Acquire)
+    }
+    pub fn unconfirmed_since(&self) -> Option<u64> {
+        let at = self.unconfirmed_since.load(Ordering::Acquire);
+        (at != 0).then_some(at)
+    }
     /// Record only time spent embedding after admission is granted.
-    pub fn record_embedding_busy(&self,ms:u64) {self.busy_ms.fetch_add(ms,Ordering::AcqRel);self.busy_samples.fetch_add(1,Ordering::AcqRel);}
-    pub fn embedding_busy(&self)->(u64,u64) {(self.busy_samples.load(Ordering::Acquire),self.busy_ms.load(Ordering::Acquire))}
-    pub async fn cancelled(&self) {while !self.stopped()&&!self.suspended() {tokio::time::sleep(std::time::Duration::from_millis(5)).await;}}
+    pub fn record_embedding_busy(&self, ms: u64) {
+        self.busy_ms.fetch_add(ms, Ordering::AcqRel);
+        self.busy_samples.fetch_add(1, Ordering::AcqRel);
+    }
+    pub fn embedding_busy(&self) -> (u64, u64) {
+        (
+            self.busy_samples.load(Ordering::Acquire),
+            self.busy_ms.load(Ordering::Acquire),
+        )
+    }
+    pub async fn cancelled(&self) {
+        while !self.stopped() && !self.suspended() {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    }
     pub fn stopped(&self) -> bool {
         self.stopped.load(Ordering::Acquire)
     }
@@ -253,7 +296,10 @@ impl Worker {
         let mut out = Pass::default();
         let mut refused = BTreeSet::new();
         loop {
-            if self.control.stopped() || self.control.suspended() || host.config().version != version {
+            if self.control.stopped()
+                || self.control.suspended()
+                || host.config().version != version
+            {
                 out.aborted = true;
                 return Ok(out);
             }
@@ -263,6 +309,7 @@ impl Worker {
                 return Ok(out);
             }
             let started = host.now_ms();
+            let busy_before = self.control.embedding_busy();
             let Some(r) = host
                 .fill(
                     index,
@@ -290,7 +337,12 @@ impl Worker {
                 out.failed = 1;
                 return Ok(out);
             }
-            let busy = host.now_ms().saturating_sub(started);
+            let busy_after = self.control.embedding_busy();
+            let busy = if busy_after.0 != busy_before.0 {
+                busy_after.1.saturating_sub(busy_before.1)
+            } else {
+                host.now_ms().saturating_sub(started)
+            };
             let pause =
                 ((busy as f64) * (1.0 - self.options.duty) / self.options.duty).round() as u64;
             host.sleep(self.options.min_pause_ms.max(pause), &self.control)
@@ -331,7 +383,9 @@ impl Worker {
     /// is started at construction. Owner drives this method from its event loop.
     /// Dropping the future leaves no spawned work; kick again to resume.
     pub async fn tick(&mut self, host: &impl Host) {
-        if self.control.suspended() {return;}
+        if self.control.suspended() {
+            return;
+        }
         if self.control.stopped() {
             self.retry_at_ms = None;
             return;

@@ -35,7 +35,15 @@ pub trait Store: Sync {
     fn current(&self, version: u64, control: &Control) -> bool;
 }
 pub trait Embed: Sync {
-    fn authorize<'a>(&'a self,control:&'a Control)->Task<'a,Result<(),String>> {Box::pin(async move {if control.stopped()||control.suspended() {Err("embedding work suspended".into())} else {Ok(())}})}
+    fn authorize<'a>(&'a self, control: &'a Control) -> Task<'a, Result<(), String>> {
+        Box::pin(async move {
+            if control.stopped() || control.suspended() {
+                Err("embedding work suspended".into())
+            } else {
+                Ok(())
+            }
+        })
+    }
     /// Already framed UTF-16 input. HTTP adapter must preserve JS JSON surrogate
     /// semantics, send only to the target endpoint, and never forward inference
     /// credentials to an explicit base URL. It owns ordered/empty-batch fallback

@@ -74,7 +74,7 @@ async fn loader_token_is_scoped_and_embedding_preserves_surrogates_and_index_ord
         ),
         (
             200,
-            r#"{"data":[{"index":1,"embedding":[0,1]},{"index":0,"embedding":[1,0]}]}"#.into(),
+            r#"{"data":[{"index":1.0,"embedding":[0,1]},{"index":0.0,"embedding":[1,0]}]}"#.into(),
         ),
     ])
     .await;

@@ -1,10 +1,10 @@
 # Embedding background worker candidate
 
 The initial unwired packet is now extended with concrete bounded HTTP and Node-format
-SQLite adapters and conditional noevia-server startup/shutdown wiring. Native work
-requires MODEL_LOADER_URL and an authenticated current-start proof that the paired
-Core has stopped its background workers. Core is unchanged: its old build returns
-no proof and remains the runtime owner. See [OWNERSHIP.md](OWNERSHIP.md) for the
+SQLite adapters and conditional noevia-server startup/shutdown wiring. Only service
+refresh requires MODEL_LOADER_URL; migration requires authenticated current-start
+proof that paired Core has stopped its workers. This branch does not edit Core.
+An unmodified Core returns no proof and retains Node ownership. See [OWNERSHIP.md](OWNERSHIP.md) for the
 exact paired diff, guard matrix, loader review and rollback risks.
 
 ## Core behavior contract

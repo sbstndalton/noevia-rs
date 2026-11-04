@@ -18,13 +18,17 @@ use std::{
 };
 use zeroize::Zeroizing;
 #[derive(Clone)]
-struct Proof {core:String,token:Zeroizing<String>,start:String}
+struct Proof {
+    core: String,
+    token: Zeroizing<String>,
+    start: String,
+}
 #[derive(Clone)]
 pub struct Http {
     admission: Option<Arc<Admission>>,
-    proof:Option<Arc<Proof>>,
+    proof: Option<Arc<Proof>>,
     client: Client,
-    loader: Url,
+    loader: Option<Url>,
     loader_token: Option<Zeroizing<String>>,
     inference: Url,
     inference_token: Option<Zeroizing<String>>,
@@ -90,20 +94,32 @@ impl Http {
     ) -> Result<Self, String> {
         Ok(Self {
             admission: None,
-            proof:None,
+            proof: None,
             client: Client::builder()
                 .no_proxy()
                 .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .map_err(|_| err())?,
-            loader: url(loader)?,
+            loader: if loader.is_empty() {
+                None
+            } else {
+                Some(url(loader)?)
+            },
             loader_token: loader_token.map(Zeroizing::new),
             inference: url(inference)?,
             inference_token: inference_token.map(Zeroizing::new),
         })
     }
-    pub fn with_ownership(mut self,core:&str,token:&str,start:&str)->Self {
-        self.proof=Some(Arc::new(Proof {core:core.into(),token:Zeroizing::new(token.into()),start:start.into()}));self
+    pub fn loader_configured(&self) -> bool {
+        self.loader.is_some()
+    }
+    pub fn with_ownership(mut self, core: &str, token: &str, start: &str) -> Self {
+        self.proof = Some(Arc::new(Proof {
+            core: core.into(),
+            token: Zeroizing::new(token.into()),
+            start: start.into(),
+        }));
+        self
     }
     pub fn with_admission(mut self, core: &str, token: &str) -> Result<Self, String> {
         self.admission = Some(Arc::new(
@@ -256,11 +272,17 @@ impl Http {
             return Ok(vec![]);
         }
         let mut rows: Vec<_> = rows.iter().collect();
-        if rows
-            .iter()
-            .all(|r| r.get("index").and_then(Value::as_i64).is_some())
-        {
-            rows.sort_by_key(|r| r.get("index").and_then(Value::as_i64));
+        if rows.iter().all(|r| {
+            r.get("index")
+                .and_then(Value::as_f64)
+                .is_some_and(|n| n.is_finite() && n.fract() == 0.0)
+        }) {
+            rows.sort_by(|a, b| {
+                a.get("index")
+                    .and_then(Value::as_f64)
+                    .unwrap_or(0.0)
+                    .total_cmp(&b.get("index").and_then(Value::as_f64).unwrap_or(0.0))
+            });
         }
         rows.into_iter()
             .map(|row| {
@@ -293,7 +315,11 @@ impl Loader for Http {
             // Keep the configured loader path; unlike embedding endpoints, do not strip /v1.
             let endpoint = url(&format!(
                 "{}/api/v1/embedding-service",
-                self.loader.as_str().trim_end_matches('/')
+                self.loader
+                    .as_ref()
+                    .ok_or_else(err)?
+                    .as_str()
+                    .trim_end_matches('/')
             ))?;
             self.request(
                 endpoint,
@@ -311,13 +337,24 @@ impl Loader for Http {
     }
 }
 impl Embed for Http {
-    fn authorize<'a>(&'a self,control:&'a Control)->Task<'a,Result<(),String>> {Box::pin(async move {
-        if control.stopped()||control.suspended() {return Err("embedding work suspended".into());}
-        if let Some(proof)=&self.proof {
-            let result=tokio::select! {r=self.ownership(&proof.core,&proof.token,&proof.start)=>r,_=control.cancelled()=>Err("embedding work suspended".into())};
-            if result.is_err()&&!control.stopped() {control.suspend();}result
-        } else {Ok(())}
-    })}
+    fn authorize<'a>(&'a self, control: &'a Control) -> Task<'a, Result<(), String>> {
+        Box::pin(async move {
+            if control.stopped() || control.suspended() {
+                return Err("embedding work suspended".into());
+            }
+            if let Some(proof) = &self.proof {
+                let result = tokio::select! {r=self.ownership(&proof.core,&proof.token,&proof.start)=>r,_=control.cancelled()=>Err("embedding work suspended".into())};
+                if result.is_err() && !control.stopped() {
+                    control.suspend();
+                } else if result.is_ok() {
+                    control.confirm_ownership();
+                }
+                result
+            } else {
+                Ok(())
+            }
+        })
+    }
 
     fn embed<'a>(
         &'a self,
@@ -334,20 +371,16 @@ impl Embed for Http {
             }
             let cancel = model_stream::Cancel::new();
             let lease = if let Some(admission) = &self.admission {
-                Some(
-                    admission
-                        .enter(
-                            Ask::Embedding {
-                                model: &target.model,
-                            },
-                            &cancel,
-                        )
-                        .await
-                        .map_err(|_| "embedding admission refused".to_owned())?,
-                )
+                let grant = tokio::select! {
+                    grant=admission.enter(Ask::Embedding {model:&target.model},&cancel)=>grant.map_err(|_|"embedding admission refused".to_owned())?,
+                    _=control.cancelled()=>{cancel.cancel();return Err("embedding work cancelled".into());}
+                };
+                Some(grant)
             } else {
                 None
             };
+            // The duty-cycle clock starts at the grant, not at queue entry.
+            let busy_started = std::time::Instant::now();
             let operation = async {
                 let vectors = self.once(target, input).await?;
                 if vectors.len() == input.len() && vectors.iter().all(|v| !v.is_empty()) {
@@ -368,11 +401,14 @@ impl Embed for Http {
                 Ok(out)
             };
             if let Some(lease) = lease {
-                let result = tokio::select! {r=operation=>r,_=lease.lost().cancelled()=>Err("embedding admission lost".into())};
+                let result = tokio::select! {r=operation=>r,_=lease.lost().cancelled()=>Err("embedding admission lost".into()),_=control.cancelled()=>{cancel.cancel();Err("embedding work cancelled".into())}};
+                control.record_embedding_busy(busy_started.elapsed().as_millis() as u64);
                 lease.release().await;
                 result
             } else {
-                operation.await
+                let result = tokio::select! {r=operation=>r,_=control.cancelled()=>Err("embedding work cancelled".into())};
+                control.record_embedding_busy(busy_started.elapsed().as_millis() as u64);
+                result
             }
         })
     }

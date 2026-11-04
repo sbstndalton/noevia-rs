@@ -56,7 +56,7 @@ fn setup() -> (tempfile::TempDir, SqlStore, Index) {
         previous: None,
     };
     let store = SqlStore {
-        rag_dir:None,
+        rag_dir: None,
         root: root.into(),
         seed,
         open_vec: open_vec_required,
@@ -373,7 +373,9 @@ fn legacy_tenant_without_outbox_is_fenced_by_project_lock_and_never_creates_an_o
     );
     assert!(!dir.join("index-outbox.db").exists());
     std::fs::write(dir.join("projects.json"), "{\"projects\":[]}").unwrap();
-    assert!(store.missing(&index, &target("next"), 4, &Default::default()).is_ok());
+    assert!(store
+        .missing(&index, &target("next"), 4, &Default::default())
+        .is_ok());
 }
 #[test]
 fn historical_node_chunk_columns_are_added_without_changing_existing_rows() {
@@ -385,34 +387,155 @@ fn historical_node_chunk_columns_are_added_without_changing_existing_rows() {
         .unwrap()
         .unwrap();
     assert_eq!(rows.len(), 2);
-    store.publish(&index,&target("next"),&rows,&[vec![1.0],vec![1.0]],0,&Control::default()).unwrap();
+    store
+        .publish(
+            &index,
+            &target("next"),
+            &rows,
+            &[vec![1.0], vec![1.0]],
+            0,
+            &Control::default(),
+        )
+        .unwrap();
     let n:i64=db.query_row("SELECT COUNT(*) FROM chunks WHERE version IS NULL AND direct IS NULL AND kind IS NULL AND meta IS NULL",[],|r|r.get(0)).unwrap();
     assert_eq!(n, 2);
 }
 #[test]
 fn regression_p2_orphan_index_without_project_catalogue_is_in_coverage() {
-    let (_tmp,store,index)=setup();let dir=store.root.join("users").join(USER);std::fs::remove_file(dir.join("projects.json")).unwrap();
-    assert!(store.indexes().contains(&index));let rows=store.missing(&index,&target("next"),4,&Default::default()).unwrap().unwrap();assert_eq!(rows.len(),2);
-    assert_eq!(store.publish(&index,&target("next"),&rows,&[vec![1.0],vec![1.0]],0,&Control::default()).unwrap(),2);
+    let (_tmp, store, index) = setup();
+    let dir = store.root.join("users").join(USER);
+    std::fs::remove_file(dir.join("projects.json")).unwrap();
+    assert!(store.indexes().contains(&index));
+    let rows = store
+        .missing(&index, &target("next"), 4, &Default::default())
+        .unwrap()
+        .unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(
+        store
+            .publish(
+                &index,
+                &target("next"),
+                &rows,
+                &[vec![1.0], vec![1.0]],
+                0,
+                &Control::default()
+            )
+            .unwrap(),
+        2
+    );
 }
 #[test]
 fn regression_p2_read_batches_do_not_wait_for_account_write_lock() {
-    let (_tmp,store,index)=setup();let mut auth=Connection::open(store.root.join("cowork.db")).unwrap();let tx=auth.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).unwrap();
-    let (send,recv)=std::sync::mpsc::channel();let worker=std::thread::spawn(move || {let rows=store.missing(&index,&target("next"),4,&Default::default());let count=store.remaining(&index,&target("next"));let _=send.send((rows,count));});
-    let answer=recv.recv_timeout(std::time::Duration::from_millis(300));tx.rollback().unwrap();worker.join().unwrap();
-    let (rows,count)=answer.expect("read-only RAG queries must not wait behind cowork.db writer");assert_eq!(rows.unwrap().unwrap().len(),2);assert_eq!(count.unwrap(),2);
+    let (_tmp, store, index) = setup();
+    let mut auth = Connection::open(store.root.join("cowork.db")).unwrap();
+    let tx = auth
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .unwrap();
+    let (send, recv) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        let rows = store.missing(&index, &target("next"), 4, &Default::default());
+        let count = store.remaining(&index, &target("next"));
+        let _ = send.send((rows, count));
+    });
+    let answer = recv.recv_timeout(std::time::Duration::from_millis(300));
+    tx.rollback().unwrap();
+    worker.join().unwrap();
+    let (rows, count) =
+        answer.expect("read-only RAG queries must not wait behind cowork.db writer");
+    assert_eq!(rows.unwrap().unwrap().len(), 2);
+    assert_eq!(count.unwrap(), 2);
 }
 #[test]
 fn regression_p3_orphan_slot_tables_are_reused() {
-    let (_tmp,store,index)=setup();let db=open_vec_required(&store.root.join("users").join(USER).join("rag/p.db")).unwrap();let id=slot_id(&target("next"));
+    let (_tmp, store, index) = setup();
+    let db = open_vec_required(&store.root.join("users").join(USER).join("rag/p.db")).unwrap();
+    let id = slot_id(&target("next"));
     // Existing active slot ensures that next uses its model-specific table.
-    let rows=store.missing(&index,&target("active"),4,&Default::default()).unwrap().unwrap();store.publish(&index,&target("active"),&rows,&[vec![1.0],vec![1.0]],0,&Control::default()).unwrap();
+    let rows = store
+        .missing(&index, &target("active"), 4, &Default::default())
+        .unwrap()
+        .unwrap();
+    store
+        .publish(
+            &index,
+            &target("active"),
+            &rows,
+            &[vec![1.0], vec![1.0]],
+            0,
+            &Control::default(),
+        )
+        .unwrap();
     db.execute_batch(&format!("CREATE VIRTUAL TABLE vec_{id} USING vec0(chunk_id INTEGER PRIMARY KEY,embedding float[1]);CREATE TABLE vecmap_{id}(chunk_id INTEGER PRIMARY KEY,content_hash TEXT NOT NULL)")).unwrap();
-    assert_eq!(store.publish(&index,&target("next"),&rows,&[vec![1.0],vec![1.0]],0,&Control::default()).unwrap(),2);
+    assert_eq!(
+        store
+            .publish(
+                &index,
+                &target("next"),
+                &rows,
+                &[vec![1.0], vec![1.0]],
+                0,
+                &Control::default()
+            )
+            .unwrap(),
+        2
+    );
 }
 #[test]
 fn shared_rag_dir_covers_catalogue_free_indexes_outside_data_root() {
-    let (_tmp,mut store,index)=setup();let shared=tempfile::tempdir().unwrap();std::fs::copy(store.index_path(&index).unwrap(),shared.path().join("legacy.db")).unwrap();store.rag_dir=Some(shared.path().into());
-    let index=Index {user:None,project:"legacy".into()};assert!(store.indexes().contains(&index));let rows=store.missing(&index,&target("next"),4,&Default::default()).unwrap().unwrap();assert_eq!(rows.len(),2);
-    assert_eq!(store.publish(&index,&target("next"),&rows,&[vec![1.0],vec![1.0]],0,&Control::default()).unwrap(),2);assert_eq!(store.remaining(&index,&target("next")).unwrap(),0);
+    let (_tmp, mut store, index) = setup();
+    let shared = tempfile::tempdir().unwrap();
+    std::fs::copy(
+        store.index_path(&index).unwrap(),
+        shared.path().join("legacy.db"),
+    )
+    .unwrap();
+    store.rag_dir = Some(shared.path().into());
+    let index = Index {
+        user: None,
+        project: "legacy".into(),
+    };
+    assert!(store.indexes().contains(&index));
+    let rows = store
+        .missing(&index, &target("next"), 4, &Default::default())
+        .unwrap()
+        .unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(
+        store
+            .publish(
+                &index,
+                &target("next"),
+                &rows,
+                &[vec![1.0], vec![1.0]],
+                0,
+                &Control::default()
+            )
+            .unwrap(),
+        2
+    );
+    assert_eq!(store.remaining(&index, &target("next")).unwrap(), 0);
+}
+#[test]
+fn publication_rejects_a_proof_that_expired_while_waiting_for_fences() {
+    let (_tmp, store, index) = setup();
+    let rows = store
+        .missing(&index, &target("next"), 4, &Default::default())
+        .unwrap()
+        .unwrap();
+    let control = Control::default();
+    control.confirm_ownership();
+    std::thread::sleep(std::time::Duration::from_millis(270));
+    assert!(store
+        .publish(
+            &index,
+            &target("next"),
+            &rows,
+            &[vec![1.0], vec![1.0]],
+            0,
+            &control
+        )
+        .is_err());
+    assert!(control.suspended());
+    assert_eq!(store.remaining(&index, &target("next")).unwrap(), 2);
 }

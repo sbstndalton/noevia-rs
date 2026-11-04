@@ -937,6 +937,7 @@ dependencies = [
  "quote",
  "reqwest",
  "rusqlite",
+ "rustix",
  "serde_json",
  "server-projects",
  "server-store",

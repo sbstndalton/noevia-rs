@@ -120,11 +120,25 @@ fn missing_sql(slot: Option<&Slot>) -> String {
         Some(s)=>match &s.map {Some(map)=>format!("SELECT c.id FROM chunks c LEFT JOIN {map} m ON m.chunk_id=c.id AND m.content_hash=c.content_hash WHERE m.chunk_id IS NULL AND {EMBEDDABLE}"),None=>format!("SELECT c.id FROM chunks c WHERE c.id NOT IN (SELECT chunk_id FROM {}) AND {EMBEDDABLE}",s.table)}
     }
 }
-fn read_missing_sql(db:&Connection,slot:Option<&Slot>)->Result<String,String> {
-    let mut cols=BTreeSet::new();let mut statement=db.prepare("PRAGMA table_info(chunks)").map_err(|_|fault())?;for c in statement.query_map([],|r|r.get::<_,String>(1)).map_err(|_|fault())? {cols.insert(c.map_err(|_|fault())?);}
-    let mut sql=missing_sql(slot);
-    if !cols.contains("kind") {sql=sql.replace("c2.kind","NULL").replace("c.kind","NULL");}
-    if !cols.contains("direct") {sql=sql.replace("c.direct","NULL");}Ok(sql)
+fn read_missing_sql(db: &Connection, slot: Option<&Slot>) -> Result<String, String> {
+    let mut cols = BTreeSet::new();
+    let mut statement = db
+        .prepare("PRAGMA table_info(chunks)")
+        .map_err(|_| fault())?;
+    for c in statement
+        .query_map([], |r| r.get::<_, String>(1))
+        .map_err(|_| fault())?
+    {
+        cols.insert(c.map_err(|_| fault())?);
+    }
+    let mut sql = missing_sql(slot);
+    if !cols.contains("kind") {
+        sql = sql.replace("c2.kind", "NULL").replace("c.kind", "NULL");
+    }
+    if !cols.contains("direct") {
+        sql = sql.replace("c.direct", "NULL");
+    }
+    Ok(sql)
 }
 fn exists(conn: &Connection, name: &str) -> Result<bool, String> {
     conn.query_row(
@@ -224,14 +238,30 @@ impl SqlStore {
         }
         Ok(dir)
     }
-    pub fn index_dir(&self,index:&Index)->Result<PathBuf,String> {
-        match &index.user {Some(user)=>Ok(server_projects::store::user_dir(&self.root,user).map_err(|_|fault())?.join("rag")),None=>Ok(self.rag_dir.clone().unwrap_or_else(||self.root.join("rag")))}
+    pub fn index_dir(&self, index: &Index) -> Result<PathBuf, String> {
+        match &index.user {
+            Some(user) => Ok(server_projects::store::user_dir(&self.root, user)
+                .map_err(|_| fault())?
+                .join("rag")),
+            None => Ok(self
+                .rag_dir
+                .clone()
+                .unwrap_or_else(|| self.root.join("rag"))),
+        }
     }
-    pub fn index_path(&self,index:&Index)->Result<PathBuf,String> {
-        if !safe_id(&index.project) {return Err(fault());}Ok(self.index_dir(index)?.join(format!("{}.db",index.project)))
+    pub fn index_path(&self, index: &Index) -> Result<PathBuf, String> {
+        if !safe_id(&index.project) {
+            return Err(fault());
+        }
+        Ok(self.index_dir(index)?.join(format!("{}.db", index.project)))
     }
     pub fn indexes(&self) -> Vec<Index> {
-        let mut dirs = vec![(None, self.rag_dir.clone().unwrap_or_else(||self.root.join("rag")))];
+        let mut dirs = vec![(
+            None,
+            self.rag_dir
+                .clone()
+                .unwrap_or_else(|| self.root.join("rag")),
+        )];
         for user in self.users().unwrap_or_default() {
             if let Ok(dir) = server_projects::store::user_dir(&self.root, &user) {
                 dirs.push((Some(user), dir.join("rag")));
@@ -264,57 +294,225 @@ impl SqlStore {
         out
     }
 
-    fn live(&self,index:&Index)->Result<(),String> {
-        if let Some(user)=&index.user {
-            let live=server_store::Store::open(&self.root).map_err(|_|fault())?.read(|r|r.row("SELECT id FROM users WHERE id=?",[user],|r|r.get::<_,String>(0))).map_err(|_|fault())?;
-            if live.is_none() {return Err(fault());}
-            let outbox=self.dir(index)?.join("index-outbox.db");
-            if outbox.exists() {let db=Connection::open_with_flags(outbox,OpenFlags::SQLITE_OPEN_READ_ONLY|OpenFlags::SQLITE_OPEN_NO_MUTEX).map_err(|_|fault())?;let dead:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM tombstones WHERE project=?)",[&index.project],|r|r.get(0)).map_err(|_|fault())?;if dead {return Err(fault());}}
-        }Ok(())
+    fn live(&self, index: &Index) -> Result<(), String> {
+        if let Some(user) = &index.user {
+            let live = server_store::Store::open(&self.root)
+                .map_err(|_| fault())?
+                .read(|r| {
+                    r.row("SELECT id FROM users WHERE id=?", [user], |r| {
+                        r.get::<_, String>(0)
+                    })
+                })
+                .map_err(|_| fault())?;
+            if live.is_none() {
+                return Err(fault());
+            }
+            let outbox = self.dir(index)?.join("index-outbox.db");
+            if outbox.exists() {
+                let db = Connection::open_with_flags(
+                    outbox,
+                    OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+                )
+                .map_err(|_| fault())?;
+                let dead: bool = db
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM tombstones WHERE project=?)",
+                        [&index.project],
+                        |r| r.get(0),
+                    )
+                    .map_err(|_| fault())?;
+                if dead {
+                    return Err(fault());
+                }
+            }
+        }
+        Ok(())
     }
-    fn read_index<T>(&self,index:&Index,run:impl FnOnce(&Connection)->Result<T,String>)->Result<T,String> {
-        self.live(index)?;self.dir(index)?;let path=self.index_path(index)?;
-        if std::fs::symlink_metadata(&path).map_err(|_|fault())?.file_type().is_symlink() {return Err(fault());}
+    fn read_index<T>(
+        &self,
+        index: &Index,
+        run: impl FnOnce(&Connection) -> Result<T, String>,
+    ) -> Result<T, String> {
+        self.live(index)?;
+        self.dir(index)?;
+        let path = self.index_path(index)?;
+        if std::fs::symlink_metadata(&path)
+            .map_err(|_| fault())?
+            .file_type()
+            .is_symlink()
+        {
+            return Err(fault());
+        }
         crate::sqlite_vec_loader::register()?;
-        let mut db=Connection::open_with_flags(path,OpenFlags::SQLITE_OPEN_READ_ONLY|OpenFlags::SQLITE_OPEN_NO_MUTEX).map_err(|_|fault())?;
-        db.busy_timeout(Duration::from_secs(5)).map_err(|_|fault())?;
-        let tx=db.transaction_with_behavior(rusqlite::TransactionBehavior::Deferred).map_err(|_|fault())?;
-        let result=run(&tx)?;tx.commit().map_err(|_|fault())?;self.live(index)?;Ok(result)
+        let mut db = Connection::open_with_flags(
+            path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .map_err(|_| fault())?;
+        db.busy_timeout(Duration::from_secs(5))
+            .map_err(|_| fault())?;
+        let tx = db
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Deferred)
+            .map_err(|_| fault())?;
+        let result = run(&tx)?;
+        tx.commit().map_err(|_| fault())?;
+        self.live(index)?;
+        Ok(result)
     }
-    fn read_slot(&self,db:&Connection,target:&Target)->Result<Option<Slot>,String> {
-        let slot=find(db,target)?;if slot.is_some() {return Ok(slot);}
-        let active=self.config()?.active;
-        if target.same_identity(&active)&&active.profile=="nomic-v1"&&exists(db,"vec_items")?&&!legacy_claimed(db)? {
-            let dim:Option<String>=db.query_row("SELECT value FROM vec_meta WHERE key='dim'",[],|r|r.get(0)).optional().map_err(|_|fault())?;
-            return Ok(dim.and_then(|s|s.parse().ok()).filter(|n|(1..=65536).contains(n)).map(|dim|Slot {table:"vec_items".into(),map:None,dim}));
-        }Ok(None)
+    fn read_slot(&self, db: &Connection, target: &Target) -> Result<Option<Slot>, String> {
+        let slot = find(db, target)?;
+        if slot.is_some() {
+            return Ok(slot);
+        }
+        let active = self.config()?.active;
+        if target.same_identity(&active)
+            && active.profile == "nomic-v1"
+            && exists(db, "vec_items")?
+            && !legacy_claimed(db)?
+        {
+            let dim: Option<String> = db
+                .query_row("SELECT value FROM vec_meta WHERE key='dim'", [], |r| {
+                    r.get(0)
+                })
+                .optional()
+                .map_err(|_| fault())?;
+            return Ok(dim
+                .and_then(|s| s.parse().ok())
+                .filter(|n| (1..=65536).contains(n))
+                .map(|dim| Slot {
+                    table: "vec_items".into(),
+                    map: None,
+                    dim,
+                }));
+        }
+        Ok(None)
     }
-    fn prepare(&self,db:&Connection)->Result<(),String> {
-        let mut columns=BTreeSet::new();{let mut statement=db.prepare("PRAGMA table_info(chunks)").map_err(|_|fault())?;for c in statement.query_map([],|r|r.get::<_,String>(1)).map_err(|_|fault())? {columns.insert(c.map_err(|_|fault())?);}}
-        if !["id","file","body","content_hash"].iter().all(|c|columns.contains(*c)) {return Err(fault());}
-        for (column,kind) in [("version","TEXT"),("direct","INTEGER"),("kind","TEXT"),("meta","TEXT")] {if !columns.contains(column) {db.execute_batch(&format!("ALTER TABLE chunks ADD COLUMN {column} {kind}")).map_err(|_|fault())?;}}
-        let active=self.config()?.active;
-        if active.profile=="nomic-v1"&&exists(db,"vec_items")?&&!legacy_claimed(db)?&&find(db,&active)?.is_none() {
-            let dim:Option<String>=db.query_row("SELECT value FROM vec_meta WHERE key='dim'",[],|r|r.get(0)).optional().map_err(|_|fault())?;
-            if let Some(dim)=dim.and_then(|s|s.parse::<usize>().ok()).filter(|n|(1..=65536).contains(n)) {db.execute("INSERT OR REPLACE INTO vec_meta(key,value) VALUES(?,?)",params![format!("slot:{}",slot_id(&active)),json!({"model":active.model,"profile":active.profile,"dim":dim,"table":"vec_items","map":null}).to_string()]).map_err(|_|fault())?;}
-        }Ok(())
+    fn prepare(&self, db: &Connection) -> Result<(), String> {
+        let mut columns = BTreeSet::new();
+        {
+            let mut statement = db
+                .prepare("PRAGMA table_info(chunks)")
+                .map_err(|_| fault())?;
+            for c in statement
+                .query_map([], |r| r.get::<_, String>(1))
+                .map_err(|_| fault())?
+            {
+                columns.insert(c.map_err(|_| fault())?);
+            }
+        }
+        if !["id", "file", "body", "content_hash"]
+            .iter()
+            .all(|c| columns.contains(*c))
+        {
+            return Err(fault());
+        }
+        for (column, kind) in [
+            ("version", "TEXT"),
+            ("direct", "INTEGER"),
+            ("kind", "TEXT"),
+            ("meta", "TEXT"),
+        ] {
+            if !columns.contains(column) {
+                db.execute_batch(&format!("ALTER TABLE chunks ADD COLUMN {column} {kind}"))
+                    .map_err(|_| fault())?;
+            }
+        }
+        let active = self.config()?.active;
+        if active.profile == "nomic-v1"
+            && exists(db, "vec_items")?
+            && !legacy_claimed(db)?
+            && find(db, &active)?.is_none()
+        {
+            let dim: Option<String> = db
+                .query_row("SELECT value FROM vec_meta WHERE key='dim'", [], |r| {
+                    r.get(0)
+                })
+                .optional()
+                .map_err(|_| fault())?;
+            if let Some(dim) = dim
+                .and_then(|s| s.parse::<usize>().ok())
+                .filter(|n| (1..=65536).contains(n))
+            {
+                db.execute("INSERT OR REPLACE INTO vec_meta(key,value) VALUES(?,?)",params![format!("slot:{}",slot_id(&active)),json!({"model":active.model,"profile":active.profile,"dim":dim,"table":"vec_items","map":null}).to_string()]).map_err(|_|fault())?;
+            }
+        }
+        Ok(())
     }
     /// Only publication takes cowork.db's IMMEDIATE account-deletion fence.
     /// Selection/coverage use deferred, read-only connections and recheck liveness.
-    fn fenced<T>(&self,index:&Index,publish:bool,run:impl FnOnce(&Connection)->Result<T,String>)->Result<T,String> {
-        let _config=server_projects::lock::acquire(&self.root.join("embedding-config.json")).map_err(|_|fault())?;
-        let operation=|| {
-            let dir=self.dir(index)?;let _projects=server_projects::lock::acquire(&dir.join("projects.json")).map_err(|_|fault())?;
-            let mut outbox=if index.user.is_some()&&dir.join("index-outbox.db").exists() {Some(open_existing(&dir.join("index-outbox.db"))?)} else {None};
-            let _outbox_tx=match outbox.as_mut() {Some(db)=>{let tx=db.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(|_|fault())?;let dead:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM tombstones WHERE project=?)",[&index.project],|r|r.get(0)).map_err(|_|fault())?;if dead {return Err(fault());}Some(tx)},None=>None};
-            let path=self.index_path(index)?;if std::fs::symlink_metadata(&path).map_err(|_|fault())?.file_type().is_symlink() {return Err(fault());}
-            let mut db=(self.open_vec)(&path)?;let tx=db.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(|_|fault())?;
-            self.prepare(&tx)?;let result=run(&tx)?;tx.commit().map_err(|_|fault())?;Ok(result)
+    fn fenced<T>(
+        &self,
+        index: &Index,
+        publish: bool,
+        run: impl FnOnce(&Connection) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let _config = server_projects::lock::acquire(&self.root.join("embedding-config.json"))
+            .map_err(|_| fault())?;
+        let operation = || {
+            let dir = self.dir(index)?;
+            let _projects =
+                server_projects::lock::acquire(&dir.join("projects.json")).map_err(|_| fault())?;
+            let mut outbox = if index.user.is_some() && dir.join("index-outbox.db").exists() {
+                Some(open_existing(&dir.join("index-outbox.db"))?)
+            } else {
+                None
+            };
+            let _outbox_tx = match outbox.as_mut() {
+                Some(db) => {
+                    let tx = db
+                        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+                        .map_err(|_| fault())?;
+                    let dead: bool = tx
+                        .query_row(
+                            "SELECT EXISTS(SELECT 1 FROM tombstones WHERE project=?)",
+                            [&index.project],
+                            |r| r.get(0),
+                        )
+                        .map_err(|_| fault())?;
+                    if dead {
+                        return Err(fault());
+                    }
+                    Some(tx)
+                }
+                None => None,
+            };
+            let path = self.index_path(index)?;
+            if std::fs::symlink_metadata(&path)
+                .map_err(|_| fault())?
+                .file_type()
+                .is_symlink()
+            {
+                return Err(fault());
+            }
+            let mut db = (self.open_vec)(&path)?;
+            let tx = db
+                .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+                .map_err(|_| fault())?;
+            self.prepare(&tx)?;
+            let result = run(&tx)?;
+            tx.commit().map_err(|_| fault())?;
+            Ok(result)
         };
-        if publish&&index.user.is_some() {
-            let writer=server_store::Writer::open(&self.root,server_store::RustAuth::owned()).map_err(|_|fault())?;
-            writer.write(|auth| {let live=auth.reader().row("SELECT id FROM users WHERE id=?",[index.user.as_deref().unwrap_or_default()],|r|r.get::<_,String>(0))?;if live.is_none() {return Ok(Err(fault()));}Ok(operation())}).map_err(|_|fault())?
-        } else {self.live(index)?;operation()}
+        if publish && index.user.is_some() {
+            let writer = server_store::Writer::open(&self.root, server_store::RustAuth::owned())
+                .map_err(|_| fault())?;
+            writer
+                .write(|auth| {
+                    let live = auth.reader().row(
+                        "SELECT id FROM users WHERE id=?",
+                        [index.user.as_deref().unwrap_or_default()],
+                        |r| r.get::<_, String>(0),
+                    )?;
+                    if live.is_none() {
+                        return Ok(Err(fault()));
+                    }
+                    Ok(operation())
+                })
+                .map_err(|_| fault())?
+        } else {
+            self.live(index)?;
+            operation()
+        }
     }
     pub fn drop_slot(&self, index: &Index, target: &Target) -> Result<(), String> {
         self.fenced(index, false, |db| {
@@ -368,7 +566,10 @@ impl FillStore for SqlStore {
         self.read_index(index, |db| {
             let slot = self.read_slot(db, target)?;
             db.query_row(
-                &format!("SELECT COUNT(*) FROM ({})", read_missing_sql(db,slot.as_ref())?),
+                &format!(
+                    "SELECT COUNT(*) FROM ({})",
+                    read_missing_sql(db, slot.as_ref())?
+                ),
                 [],
                 |r| r.get::<_, i64>(0),
             )
@@ -377,7 +578,9 @@ impl FillStore for SqlStore {
         })
     }
     fn current(&self, version: u64, control: &Control) -> bool {
-        !control.stopped() && !control.suspended() && self.config().is_ok_and(|c| c.version == version)
+        !control.stopped()
+            && !control.suspended()
+            && self.config().is_ok_and(|c| c.version == version)
     }
     fn publish(
         &self,
@@ -389,6 +592,10 @@ impl FillStore for SqlStore {
         control: &Control,
     ) -> Result<usize, String> {
         self.fenced(index, true, |db| {
+            if !control.ownership_fresh() {
+                control.suspend();
+                return Err("ownership proof expired while waiting for publication fence".into());
+            }
             if !self.current(version, control) {
                 return Ok(0);
             }
@@ -434,6 +641,10 @@ impl FillStore for SqlStore {
             }
             if !self.current(version, control) {
                 return Err("embedding configuration changed".into());
+            }
+            if !control.ownership_fresh() {
+                control.suspend();
+                return Err("ownership proof expired during publication".into());
             }
             Ok(written)
         })

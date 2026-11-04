@@ -145,3 +145,91 @@ TOTAL: 81 tests passed; zero failures
 `git diff --check` passed after copying the formatted checked sources and lockfile
 back from the assigned scratch checkout. No full Cargo workspace suite was run.
 No owned verification processes remained after terminal completion.
+
+
+## Independent-review remediation (reviewed base e4e1789b)
+
+P1/P2/P3 regressions were added before the behavior corrections. The reviewed
+product source was also exported with `git archive e4e1789b` into the assigned
+verification scratch directory, overlaid with the new fixtures/test-only Cargo
+features, and tested there. The working branch was never reset/rebased/stashed.
+The fixed source was restored from its owned worktree before green qualification.
+
+| Finding | Red evidence | Corrected behavior / green fixture |
+|---|---|---|
+| P1-1 | Three initial startup regressions fail; exact reviewed source later has 2 passing / 8 failing server lifecycle tests | Damaged saved config, unknown env profile, absent pairing IDs/data root and lock contention stay nonfatal; authenticated session HTTP stays available; saved repair and draining-lock takeover recover |
+| P2-1 | Reviewed runtime proof-loss fixture times out | 404 -> 200 suspends/resumes and completes next-slot publication; unconfirmed-since is set then cleared; stop remains shutdown-only |
+| P2-2 | Catalogue-free existing index selection fails | All live, non-tombstoned existing indexes covered; no catalogue requirement; shared RAG_DIR outside data root qualified |
+| P2-3 | Read fixture misses 300ms deadline behind an account IMMEDIATE transaction | Selection/remaining use deferred read-only RAG and nonlocking liveness checks; only publication takes account write fence |
+| P3-1 | Two negative guard fixtures fail under old policy | Contract/token/escape/ABI budgets, explicit existing export paths, include/path validation and isolated loader; workspace forbid restored |
+| P3-2 | Both reviewed admission fixtures fail (queue-inflated pause, stop not cancelling entry) | Busy measured after grants; 200ms queue produces minimum-duty pause; stop cancels pending entry promptly |
+| P3-3 | Reviewed publication/fallback fixtures and kill-boundary assertion fail | Fresh proof immediately before publication and between fallback singles; stale proof after fence wait rolls back/suspends; actual SIGKILL leaves no vectors and restart completes migration |
+| P3-4 | Orphan slot publish, integer-valued floating index ordering, no-loader owner fixtures fail | IF NOT EXISTS; JS integer ordering including 1.0; migration independent of loader; paired-only admission variant; process-wide auto_extension documented |
+| P3-5 | Missing qualification supplemented | Actual Node joinSql KNN and embedRowsInto with concurrent chunk/vector replacement; Python vec0 reader; owned native process kill/recovery; full runtime::start migration through synthetic HTTP and real temp vec0 |
+
+Exact reviewed-source red run, all through the supplied verifier/devrun:
+
+```text
+fmt ok; clippy rc 0
+embedding-worker admission: 0 passed; 2 failed (expected red)
+embedding-worker HTTP: 4 passed; 1 failed (1.0 index ordering)
+embedding-worker runtime: 1 passed; 5 failed (expected red)
+noevia-server embedding_background: 2 passed; 8 failed (expected red)
+```
+
+Earlier focused red runs also recorded SQLite 8 passed / 3 failed (coverage,
+account lock, orphan tables) and unsafe guard 2 passed / 2 failed. An initial
+fixture build lacked tokio rt-multi-thread; that test-only feature was added before
+behavioral red evidence was credited. Runtime shutdown panics in failing baseline
+fixtures are not counted as separate defects or green evidence.
+
+Green checks use this command, foreground on the assigned Linux scratch checkout:
+
+```text
+timeout -k 15 4200 bash ms02-rs-verify.sh <assigned-scratch> \
+  embedding-worker,sqlite-vec-loader,noevia-server,engine-admission,prompt-framing,gguf-memtest \
+  pkg:embedding-worker lib:sqlite-vec-loader lib:engine-admission pkg:prompt-framing \
+  test:noevia-server:embedding_background test:gguf-memtest:hostile
+```
+
+The supplied script runs package-scoped fmt/clippy --all-targets -D warnings and
+the listed focused tests under its serialized target lock and two Cargo jobs.
+No workspace suite, model, production sign-in, feature flag or deployment ran.
+Node/Python only read/write synthetic vectors in temporary SQLite fixtures.
+The test extension is built from the exact Cargo-resolved sqlite-vec 0.1.9 C source;
+production remains statically registered and accepts no extension-library path.
+
+Commit stages: d8609a7 optional startup; 8715bc3 coverage/read fences and config
+repair correction; f4ed9a5 reversible proof suspension and publication/fallback
+checks; ae0c6b3 isolated loader/guard restoration; final follow-up covers admission,
+loader-independent migration, lock-drain recovery and cross-runtime proofs.
+
+No Core/Top/release-kit edits were made by this worker. Required counterpart
+front-stop-before-Core-rollback enforcement and Core config-repair consistency
+were sent directly to its assigned worker. Exact-head independent review, CI and
+coherent-pair release qualification remain separate gates before promotion.
+
+
+Final remediation verification completed successfully (same foreground verifier
+command above). Terminal results:
+
+```text
+fmt ok
+clippy rc 0
+embedding-worker: 49 passed; 0 failed
+  admission 2; fill 3; HTTP 5; Node interop 2; runtime/process 7;
+  SQLite 13; unsafe guard 5; worker/service 12
+sqlite-vec-loader: 1 passed; 0 failed
+engine-admission: 10 passed; 0 failed
+prompt-framing: 23 passed; 0 failed (198 Core oracle cases)
+noevia-server lifecycle: 10 passed; 0 failed (30.27s)
+GGUF hostile: 14 passed; 0 failed
+TOTAL 107 passed; 0 failed; doc tests 0 failures
+```
+
+The final run includes draining-lock acquisition/recovery, missing startup IDs/data
+root, proof-age rejection after fence waits, and confirmed-status recovery after
+transient suspension. Formatted sources and the resolved lockfile were copied
+back from the verified scratch checkout. No owned verification/fixture process
+remained. `git diff --check` passed. Exact-head independent review is required
+before the user-authorized single normal push; CI/release promotion remain root's.

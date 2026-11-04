@@ -38,7 +38,8 @@ pub const ENTER_TIMEOUT: Duration = Duration::from_secs(150);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ask<'a> {
     /// Embeddings need the maintenance guard, never a text-model load or router queue.
-    /// Requires the paired Core embedding-background-v1 protocol.
+    /// PAIRED ONLY: callers MUST verify the boot-bound embedding-background-v1
+    /// ownership capability. Older Core treats this request as a text-engine load.
     Embedding { model: &'a str },
     /// This machine's engine, for this model.
     Engine { model: &'a str },
