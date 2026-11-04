@@ -12,6 +12,7 @@ pub mod autotune_resume_routes;
 pub mod autotune_settings_routes;
 pub mod autotune_untuned_routes;
 pub mod calibration_cancel_routes;
+pub mod calibration_routes;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_oauth_routes;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -58,6 +59,7 @@ pub mod offsite_routes;
 pub mod offsite_settings;
 pub mod offsite_store;
 pub mod plugin_directory_routes;
+pub mod preset_read_routes;
 pub mod project_config_routes;
 pub mod project_routes;
 #[cfg(feature = "rust-storage-browse")]
@@ -383,6 +385,7 @@ pub const FEATURES: &[&str] = &[
     "rust-model-maintenance",
     "rust-autotune-cancel",
     "rust-calibration-cancel",
+    "rust-calibration-routes",
     "rust-model-manager-scan",
     "rust-web-address-read",
     "rust-web-address-write",
@@ -424,6 +427,7 @@ pub const FEATURES: &[&str] = &[
     "rust-toolbox-picker",
     "rust-autotune-clear",
     "rust-autotune-read",
+    "rust-preset-read",
     "rust-idle-unload-read",
     "rust-autotune-resume",
     #[cfg(feature = "rust-storage-reads")]

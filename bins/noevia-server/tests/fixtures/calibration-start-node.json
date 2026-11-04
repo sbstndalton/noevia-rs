@@ -1,0 +1,138 @@
+{
+  "source": "7a7db591b89e4f2fb054126aa91517a7b920ff89",
+  "cases": [
+    {
+      "name": "confirmation",
+      "input": {},
+      "running": false,
+      "models": [],
+      "result": {
+        "ok": false,
+        "status": 400,
+        "body": {
+          "error": "Confirm that chat can pause and that Diary background jobs and other clients are stopped."
+        }
+      },
+      "listingReads": 0
+    },
+    {
+      "name": "null budget",
+      "input": {
+        "confirmPause": true,
+        "promptBudgetSeconds": null
+      },
+      "running": false,
+      "models": [],
+      "result": {
+        "ok": false,
+        "status": 400,
+        "body": {
+          "error": "Choose a prompt time limit between 15 and 1800 seconds."
+        }
+      },
+      "listingReads": 0
+    },
+    {
+      "name": "too short",
+      "input": {
+        "confirmPause": true,
+        "promptBudgetSeconds": 14
+      },
+      "running": false,
+      "models": [],
+      "result": {
+        "ok": false,
+        "status": 400,
+        "body": {
+          "error": "Choose a prompt time limit between 15 and 1800 seconds."
+        }
+      },
+      "listingReads": 0
+    },
+    {
+      "name": "busy",
+      "input": {
+        "confirmPause": true,
+        "model": "synthetic"
+      },
+      "running": true,
+      "models": [],
+      "result": {
+        "ok": false,
+        "status": 409,
+        "body": {
+          "error": "A calibration is already running."
+        }
+      },
+      "listingReads": 0
+    },
+    {
+      "name": "missing",
+      "input": {
+        "confirmPause": true,
+        "model": "absent"
+      },
+      "running": false,
+      "models": [],
+      "result": {
+        "ok": false,
+        "status": 404,
+        "body": {
+          "error": "Choose an installed model."
+        }
+      },
+      "listingReads": 1
+    },
+    {
+      "name": "system id",
+      "input": {
+        "confirmPause": true,
+        "model": "laya_multilingual_f16"
+      },
+      "running": false,
+      "models": [
+        {
+          "id": "laya_multilingual_f16",
+          "status": {
+            "args": []
+          }
+        }
+      ],
+      "result": {
+        "ok": false,
+        "status": 400,
+        "body": {
+          "error": "System routing model — not tuned"
+        }
+      },
+      "listingReads": 1
+    },
+    {
+      "name": "system path",
+      "input": {
+        "confirmPause": true,
+        "model": "alias"
+      },
+      "running": false,
+      "models": [
+        {
+          "id": "alias",
+          "status": {
+            "args": [
+              "--model",
+              "/models/laya_multilingual_f16.gguf"
+            ]
+          }
+        }
+      ],
+      "result": {
+        "ok": false,
+        "status": 400,
+        "body": {
+          "error": "System routing model — not tuned"
+        }
+      },
+      "listingReads": 1
+    }
+  ]
+}

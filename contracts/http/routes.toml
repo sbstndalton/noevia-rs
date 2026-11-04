@@ -533,7 +533,7 @@ owner = "rust"
 
 [[route]]
 path = "/api/models/calibration"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/models/calibration/cancel"
@@ -604,6 +604,11 @@ owner = "node"
 [[route]]
 path = "/api/models/machines"
 owner = "node"
+
+[[route]]
+path = "/api/models/preset"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/models/preset/suggest"

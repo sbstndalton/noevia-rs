@@ -47,6 +47,7 @@ pub const ROUTES: &[&str] = &[
     crate::model_state_routes::BUDGET,
     crate::model_state_routes::INSTALLED,
     crate::autotune_read_routes::PATH,
+    crate::preset_read_routes::PATH,
     crate::idle_unload_read::PATH,
 ];
 
@@ -137,6 +138,9 @@ pub async fn serve(
     if path == crate::autotune_clear_routes::PATH {
         return crate::autotune_clear_routes::serve(app, conn, req, path).await;
     }
+    if path == crate::calibration_routes::PATH {
+        return crate::calibration_routes::serve(app, conn, req, path).await;
+    }
     if path == crate::calibration_cancel_routes::PATH {
         return crate::calibration_cancel_routes::serve(app, conn, req, path).await;
     }
@@ -164,9 +168,11 @@ pub async fn serve(
         Ok(Err(rejection)) => return rejection.into_response(),
         Err(_) => return identity::Rejection::Unavailable.into_response(),
     };
+    if path == crate::preset_read_routes::PATH {
+        return crate::preset_read_routes::serve(app, id.user.role == Role::Admin, model).await;
+    }
     if let Some(route) = crate::model_sizing::Route::of(&path) {
-        let layer = Arc::clone(&app.identity);
-        let budget = Arc::new(move || crate::model_sizing::budget_setting(&layer));
+        let budget = crate::model_state_routes::sizing_budget(app);
         let (status, body) = app
             .config
             .sizing

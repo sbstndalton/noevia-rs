@@ -3,7 +3,7 @@
 //! compared byte for byte with the one noevia-core itself gave for the same synthetic fixtures
 //! (tests/fixtures/model-sizing/cases.json, recorded by record-node.cjs at the last Core with both
 //! handlers): sparse GGUF headers, a models.ini, a fake llama.cpp router listing and the saved
-//! inference budget. The legacy upstream is dead, so a proxied request answers 502: a 200/4xx/5xx
+//! inference budget. A narrow synthetic Node returns only the live budget; other proxied requests answer 502: a 200/4xx/5xx
 //! with Node's body can only come from the native handler. The fake router proves the reads ask it
 //! for nothing but its listing. Synthetic data only.
 #![allow(
@@ -117,6 +117,7 @@ fn seed_database(dir: &Path, budget: Option<&str>) -> Connection {
 async fn start(
     dir: &Path,
     extra: &[(String, String)],
+    live_budget: Option<f64>,
 ) -> (std::net::SocketAddr, oneshot::Sender<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -137,6 +138,21 @@ async fn start(
     ]);
     for (k, v) in extra {
         env.insert(k.clone(), v.clone());
+    }
+    if let Some(budget) = live_budget {
+        let (port, _) = router(
+            200,
+            serde_json::json!({"budget":{"budgetGib":budget}}).to_string(),
+        )
+        .await;
+        env.insert(
+            "NOEVIA_LEGACY_UPSTREAM".into(),
+            format!("http://127.0.0.1:{port}"),
+        );
+        env.insert(
+            "NOEVIA_PROJECT_STORE_TOKEN".into(),
+            "synthetic-sizing-budget-token".into(),
+        );
     }
     let app = App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
     let (stop, rx) = oneshot::channel();
@@ -177,10 +193,15 @@ async fn router(status: u16, text: String) -> (u16, Arc<Mutex<Vec<String>>>) {
                 let head = String::from_utf8_lossy(&buf).to_string();
                 let line = head.lines().next().unwrap_or("").to_string();
                 log.lock().unwrap().push(line.clone());
-                let (code, body) = if line.starts_with("GET /models ") {
+                let (code, body) = if line.starts_with("GET /models ")
+                    || (line.starts_with("POST /internal/models/facts ")
+                        && head
+                            .to_ascii_lowercase()
+                            .contains("x-noevia-store-token: synthetic-sizing-budget-token"))
+                {
                     (status, text)
                 } else {
-                    (404, "{}".to_string())
+                    (502, "{}".to_string())
                 };
                 let reply = format!(
                     "HTTP/1.1 {code} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -279,7 +300,12 @@ async fn every_recorded_node_answer_is_the_fronts_byte_for_byte() {
             "MODEL_MANAGER_BASE_URL".into(),
             format!("http://127.0.0.1:{engine_port}/v1"),
         ));
-        let (addr, stop) = start(d.path(), &env).await;
+        let (addr, stop) = start(
+            d.path(),
+            &env,
+            Some(scenario["liveBudgetGib"].as_f64().unwrap()),
+        )
+        .await;
         for r in scenario["results"].as_array().unwrap() {
             let route = r["route"].as_str().unwrap();
             let query = r["query"].as_str().unwrap();
@@ -364,7 +390,7 @@ async fn nothing_is_written_and_signed_out_device_and_disabled_kinds_answer_like
         ),
     ]
     .map(|(k, v)| (k.to_string(), v));
-    let (addr, stop) = start(d.path(), &env).await;
+    let (addr, stop) = start(d.path(), &env, Some(6.0)).await;
     for p in [
         "/api/models/estimate?model=good",
         "/api/models/preset/suggest?model=good",
@@ -414,7 +440,7 @@ async fn nothing_is_written_and_signed_out_device_and_disabled_kinds_answer_like
     // No model manager (the `none` kind): routes/models.cjs's 404s; the admin check comes first.
     let d = tempfile::tempdir().unwrap();
     let _db = seed_database(d.path(), None);
-    let (addr, stop) = start(d.path(), &[]).await;
+    let (addr, stop) = start(d.path(), &[], None).await;
     for (p, body) in [
         (
             "/api/models/estimate?model=good",
@@ -445,7 +471,6 @@ async fn nothing_is_written_and_signed_out_device_and_disabled_kinds_answer_like
         ("HEAD", "/api/models/estimate?model=m"),
         ("GET", "/api/models/estimate/?model=m"),
         ("GET", "/api/models/preset/suggest/?model=m"),
-        ("GET", "/api/models/preset?model=m"),
         // #2210: GET evidence is the front's; the other methods of its path are Node's.
         ("POST", "/api/models/evidence?model=m"),
         ("PUT", "/api/models/inference-budget"),
@@ -454,4 +479,60 @@ async fn nothing_is_written_and_signed_out_device_and_disabled_kinds_answer_like
         assert_eq!(s, 502, "{m} {p}: {b}");
     }
     let _ = stop.send(());
+}
+
+#[tokio::test]
+async fn sizing_uses_the_enforced_live_budget_and_refuses_an_unavailable_bridge() {
+    let cases: Value = serde_json::from_str(CASES).unwrap();
+    let d = tempfile::tempdir().unwrap();
+    let root = d.path().join("root");
+    std::fs::create_dir_all(&root).unwrap();
+    lay(&root, &cases, &cases["scenarios"][0]);
+    let db = seed_database(d.path(), Some(r#"{"budgetGib":24}"#));
+    let env = [
+        ("MODEL_MANAGER_KIND".into(), "llamacpp".into()),
+        (
+            "MODEL_MANAGER_BASE_URL".into(),
+            "http://127.0.0.1:9/v1".into(),
+        ),
+        (
+            "LLAMACPP_PRESET_PATH".into(),
+            root.join("models.ini").display().to_string(),
+        ),
+        (
+            "LLAMACPP_MODELS_PATH".into(),
+            root.join("models").display().to_string(),
+        ),
+    ];
+    for live in [Some(8.0), Some(12.0), None, Some(0.0), Some(-1.0)] {
+        let (addr, stop) = start(d.path(), &env, live).await;
+        for p in [
+            "/api/models/estimate?model=good",
+            "/api/models/preset/suggest?model=good",
+        ] {
+            let (status, _, text) = call(addr, "GET", p, &cookie(ADMIN)).await;
+            if let Some(expected) = live.filter(|n| *n > 0.0) {
+                assert_eq!(status, 200, "{p}: {text}");
+                let body: Value = serde_json::from_str(&text).unwrap();
+                assert_eq!(
+                    body["budgetGib"].as_f64(),
+                    Some(expected),
+                    "{p}: must ignore saved row24"
+                );
+            } else {
+                assert_eq!(status, 503, "{p}: fail closed, never use the row");
+            }
+            let (status, _, _) = call(addr, "GET", p, &cookie(MEMBER)).await;
+            assert_eq!(status, 403, "role refusal precedes unavailable budget");
+        }
+        let _ = stop.send(());
+    }
+    let row: String = db
+        .query_row(
+            "SELECT value FROM settings WHERE key='inference:memory-budget'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(row, r#"{"budgetGib":24}"#);
 }

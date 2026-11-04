@@ -464,7 +464,8 @@ pub fn native_for(route: &Route) -> Option<Native> {
                 || p == crate::autotune_cancel_routes::PATH
                 || p == crate::autotune_untuned_routes::PATH
                 || p == crate::autotune_clear_routes::PATH
-                || p == crate::calibration_cancel_routes::PATH) =>
+                || p == crate::calibration_cancel_routes::PATH
+                || p == crate::calibration_routes::PATH) =>
         {
             return Some(Native::Models)
         }
@@ -613,7 +614,8 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
     // This owner is exact-path only; the shared matcher tolerates trailing slashes.
     if (route.path == "/api/chat-framing/preferences"
         || route.path == server_account::vault_mirror::PATH
-        || route.path == crate::model_manager_scan::PATH)
+        || route.path == crate::model_manager_scan::PATH
+        || route.path == crate::preset_read_routes::PATH)
         && path != route.path
     {
         return None;
@@ -1331,6 +1333,13 @@ mod tests {
             );
         }
         assert!(crate::FEATURES.contains(&"rust-calibration-cancel"));
+        assert!(crate::FEATURES.contains(&"rust-calibration-routes"));
+        for method in ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] {
+            assert_eq!(
+                dispatch_under(method, crate::calibration_routes::PATH, on),
+                Some(Native::Models)
+            );
+        }
         for method in ["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"] {
             assert_eq!(
                 dispatch_under(method, crate::calibration_cancel_routes::PATH, on),
@@ -1339,12 +1348,11 @@ mod tests {
         }
         for p in [
             "/api/model-manager",
-            "/api/models/calibration",
             "/api/models/delete",
             "/api/models/evidence/recheck",
             "/api/models/load",
             "/api/models/machines",
-            "/api/models/preset",
+            "/api/models/preset/",
             "/api/models/downloads",
             "/api/models/capabilitiesx",
             "/api/models/hardware/x",
@@ -1356,7 +1364,8 @@ mod tests {
                 assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
             }
         }
-        // Exactly the two model routes are the front's in the contract, GET only.
+        assert!(crate::FEATURES.contains(&"rust-preset-read"));
+        // The native model routes and methods listed in the contract.
         let rust: Vec<_> = ROUTES
             .iter()
             .filter(|r| {
@@ -1375,6 +1384,7 @@ mod tests {
                 (crate::autotune_resume_routes::PATH, &[][..]),
                 (crate::autotune_settings_routes::PATH, &[][..]),
                 (crate::autotune_untuned_routes::PATH, &[][..]),
+                (crate::calibration_routes::PATH, &[][..]),
                 (crate::calibration_cancel_routes::PATH, &[][..]),
                 (crate::model_routes::CAPABILITIES, &["GET"][..]),
                 (crate::model_sizing::ESTIMATE, &["GET"][..]),
@@ -1384,6 +1394,7 @@ mod tests {
                 (crate::model_state_routes::BUDGET, &["GET"][..]),
                 (crate::idle_unload_read::PATH, &["GET"][..]),
                 (crate::model_state_routes::INSTALLED, &["GET"][..]),
+                (crate::preset_read_routes::PATH, &["GET"][..]),
                 (crate::model_sizing::SUGGEST, &["GET"][..]),
                 (crate::model_maint::RELOAD, &["POST"][..]),
             ]
