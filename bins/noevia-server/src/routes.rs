@@ -613,7 +613,8 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
     // This owner is exact-path only; the shared matcher tolerates trailing slashes.
     if (route.path == "/api/chat-framing/preferences"
         || route.path == server_account::vault_mirror::PATH
-        || route.path == crate::model_manager_scan::PATH)
+        || route.path == crate::model_manager_scan::PATH
+        || route.path == crate::preset_read_routes::PATH)
         && path != route.path
     {
         return None;
@@ -1343,7 +1344,7 @@ mod tests {
             "/api/models/delete",
             "/api/models/load",
             "/api/models/machines",
-            "/api/models/preset",
+            "/api/models/preset/",
             "/api/models/downloads",
             "/api/models/capabilitiesx",
             "/api/models/hardware/x",
@@ -1355,6 +1356,7 @@ mod tests {
                 assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
             }
         }
+        assert!(crate::FEATURES.contains(&"rust-preset-read"));
         // All native model routes appear in the contract with exactly their owned methods.
         let rust: Vec<_> = ROUTES
             .iter()
@@ -1384,6 +1386,7 @@ mod tests {
                 (crate::model_state_routes::BUDGET, &["GET"][..]),
                 (crate::idle_unload_read::PATH, &["GET"][..]),
                 (crate::model_state_routes::INSTALLED, &["GET"][..]),
+                (crate::preset_read_routes::PATH, &["GET"][..]),
                 (crate::model_sizing::SUGGEST, &["GET"][..]),
                 (crate::model_maint::RELOAD, &["POST"][..]),
             ]

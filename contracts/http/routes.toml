@@ -558,8 +558,9 @@ owner = "rust"
 methods = ["GET"]
 
 # sbstndalton/noevia#2210: the evidence read and the model-card import, the front's (bins/noevia-server
-# model_maint/evidence_live.rs). The recheck stays Node's: its image probe may load the model after
-# Node's admission check (the inference budget, the memory-watchdog quarantine, the probe cache).
+# model_maint/evidence_live.rs). #2286 also moves the recheck POST to the front:
+# model_maint/evidence_recheck.rs owns the probe and evidence write, using Node's authenticated
+# inference admission lease for the shared budget and memory-watchdog quarantine.
 [[route]]
 path = "/api/models/evidence"
 owner = "rust"
@@ -605,6 +606,11 @@ owner = "node"
 [[route]]
 path = "/api/models/machines"
 owner = "node"
+
+[[route]]
+path = "/api/models/preset"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/models/preset/suggest"
