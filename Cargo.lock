@@ -3041,6 +3041,7 @@ dependencies = [
  "rand_core 0.6.4",
  "reqwest",
  "secret-envelope",
+ "serde_json",
  "server-auth",
  "server-storage-reads",
  "server-store",

@@ -40,6 +40,7 @@ pub mod client;
 pub mod config;
 pub mod connector;
 pub mod exchanges;
+mod js_raw;
 pub mod local_exchange;
 pub mod routes;
 pub mod tenant;

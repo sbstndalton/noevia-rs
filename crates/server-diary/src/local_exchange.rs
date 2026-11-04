@@ -40,11 +40,54 @@ pub struct StreamPolicy {
     stage: Stage,
     pub completed: bool,
 }
-fn reason(v: &JValue) -> bool {
-    v.as_str().is_some_and(|s| {
+/// `/^[a-z0-9_]{1,40}$/i` on a string.
+fn reason(v: Option<&str>) -> bool {
+    v.is_some_and(|s| {
         !s.is_empty() && s.len() <= 40 && s.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
     })
 }
+
+/// What the policy reads of an event: whether a property is there (JSON has no `undefined`), and
+/// a property's value when it is a string.
+pub trait EventView {
+    fn has(&self, key: &str) -> bool;
+    fn string(&self, key: &str) -> Option<String>;
+}
+
+impl EventView for JValue {
+    fn has(&self, key: &str) -> bool {
+        !matches!(self.get(key), JValue::Undefined)
+    }
+    fn string(&self, key: &str) -> Option<String> {
+        self.get(key).as_str().map(str::to_owned)
+    }
+}
+
+/// A top-level object read losslessly ([`crate::js_raw`]): `(key, value as JSON.stringify writes it)`.
+pub(crate) struct RawEvent<'a>(pub(crate) &'a [(String, String)]);
+
+impl EventView for RawEvent<'_> {
+    fn has(&self, key: &str) -> bool {
+        self.0.iter().any(|(k, _)| k == key)
+    }
+    fn string(&self, key: &str) -> Option<String> {
+        let (_, value) = self.0.iter().find(|(k, _)| k == key)?;
+        crate::js_raw::string_of(value)
+    }
+}
+
+/// What core did with one event.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Decision {
+    /// Sent the frame as it came.
+    Verbatim,
+    /// Sent this event instead (a reworded failure).
+    Replace(JValue),
+    /// Sent the event without its `reason` (`withoutDisallowedReason`), everything else as
+    /// `JSON.stringify` writes it.
+    WithoutReason,
+}
+
 pub fn not_saved(code: &str) -> JValue {
     let text = match code {
         "storageLoginRejected" => "Diary storage refused the saved login — nothing was saved. Reconnect storage, then resend.",
@@ -67,13 +110,12 @@ pub fn interrupted() -> JValue {
     ])
 }
 impl StreamPolicy {
-    /// One parsed event (an object or array of a `data: ` line). `None`: core sent the frame as it
-    /// came; `Some`: core replaced it with `data: ${JSON.stringify(event)}` (a reworded error, or an
-    /// error whose `reason` it may not relay).
-    pub fn event(&mut self, input: &JValue) -> Option<JValue> {
-        if input.get("type").as_str() == Some("status") {
-            if let Some(text) = input.get("text").as_str() {
-                if !EARLY.contains(&text) {
+    /// One event: core's `track`, `refine` and `withoutDisallowedReason`.
+    pub fn decide(&mut self, input: &dyn EventView) -> Decision {
+        let kind = input.string("type");
+        if kind.as_deref() == Some("status") {
+            if let Some(text) = input.string("text") {
+                if !EARLY.contains(&text.as_str()) {
                     self.stage = Stage::Save;
                 } else if self.stage != Stage::Save {
                     if text == MODEL {
@@ -84,49 +126,55 @@ impl StreamPolicy {
                 }
             }
         }
-        if input.get("type").as_str() == Some("done") {
+        if kind.as_deref() == Some("done") {
             self.completed = true;
         }
-        if input.get("type").as_str() != Some("error") {
-            return None;
+        if kind.as_deref() != Some("error") {
+            return Decision::Verbatim;
         }
-        let refined = matches!(input.get("saved"), JValue::Undefined)
-            && self.stage != Stage::Start
-            && self.stage != Stage::Save;
-        let mut event = if matches!(input.get("saved"), JValue::Undefined)
-            && self.stage != Stage::Start
-            && self.stage != Stage::Save
-        {
+        if !input.has("saved") && self.stage != Stage::Start && self.stage != Stage::Save {
             let model = self.stage == Stage::Model;
             let mut event = not_saved(if model {
                 "modelFailed"
             } else {
                 "contextFailed"
             });
+            // A companion event naming another code never lends its reason.
+            let code = input.string("code");
+            let given = input.string("reason");
             if model
-                && (matches!(input.get("code"), JValue::Undefined)
-                    || input.get("code").as_str() == Some("modelFailed"))
-                && reason(input.get("reason"))
+                && (!input.has("code") || code.as_deref() == Some("modelFailed"))
+                && reason(given.as_deref())
             {
-                if let JValue::Obj(fields) = &mut event {
-                    fields.push(("reason".into(), input.get("reason").clone()));
+                if let (JValue::Obj(fields), Some(given)) = (&mut event, given) {
+                    fields.push(("reason".into(), JValue::Str(given)));
                 }
             }
-            event
+            return Decision::Replace(event);
+        }
+        let allowed = input.string("code").as_deref() == Some("modelFailed")
+            && reason(input.string("reason").as_deref());
+        if input.has("reason") && !allowed {
+            Decision::WithoutReason
         } else {
-            input.clone()
-        };
-        let allowed =
-            event.get("code").as_str() == Some("modelFailed") && reason(event.get("reason"));
-        let mut dropped = false;
-        if !allowed {
-            if let JValue::Obj(fields) = &mut event {
-                let before = fields.len();
-                fields.retain(|(k, _)| k != "reason");
-                dropped = fields.len() != before;
+            Decision::Verbatim
+        }
+    }
+
+    /// [`StreamPolicy::decide`] for a parsed event. `None`: core sent the frame as it came; `Some`:
+    /// core sent `data: ${JSON.stringify(event)}` with this event.
+    pub fn event(&mut self, input: &JValue) -> Option<JValue> {
+        match self.decide(input) {
+            Decision::Verbatim => None,
+            Decision::Replace(event) => Some(event),
+            Decision::WithoutReason => {
+                let mut event = input.clone();
+                if let JValue::Obj(fields) = &mut event {
+                    fields.retain(|(k, _)| k != "reason");
+                }
+                Some(event)
             }
         }
-        (refined || dropped).then_some(event)
     }
 }
 
@@ -330,6 +378,9 @@ pub struct ExchangeRefusal {
     pub message: String,
 }
 
+/// A hold lost before the sidecar was asked: the words of an admission Node could not confirm
+/// (crates/engine-admission's fail-closed refusal).
+pub const LEASE_LOST: &str = "The model is busy. Try again shortly.";
 /// The throttle's words (core `routes/diary.cjs`).
 pub const THROTTLED: &str = "Please wait before sending another message";
 /// The first event of every stream.
@@ -432,12 +483,59 @@ fn js_space(c: char) -> bool {
     )
 }
 
-/// The event a frame carries, as core read it: the first line that starts with `data: `, parsed;
-/// only an object or an array (`typeof event === 'object'`) is an event.
-pub(crate) fn frame_event(frame: &str) -> Option<JValue> {
+/// The event a frame carries, as core read it: the first line that starts with `data: `, through
+/// `JSON.parse`. Only an object can be anything but sent as it came (an array or a scalar has no
+/// `type`), so only an object is read, losslessly and with no nesting limit ([`crate::js_raw`]).
+pub(crate) fn frame_event(frame: &str) -> Option<Vec<(String, String)>> {
     let line = frame.split('\n').find(|l| l.starts_with("data: "))?;
-    let event = wtf16::parse(line.strip_prefix("data: ")?).ok()?;
-    matches!(event, JValue::Obj(_) | JValue::Arr(_)).then_some(event)
+    let json = line.strip_prefix("data: ")?;
+    if json
+        .trim_start_matches([' ', '\t', '\r'])
+        .as_bytes()
+        .first()
+        != Some(&b'{')
+    {
+        return None;
+    }
+    match crate::js_raw::read(json)? {
+        crate::js_raw::Top::Object(entries) => Some(entries),
+        crate::js_raw::Top::Other(_) => None,
+    }
+}
+
+/// The frame core sent for one data frame.
+pub(crate) fn relayed(policy: &mut StreamPolicy, frame: String) -> String {
+    let Some(entries) = frame_event(&frame) else {
+        return frame;
+    };
+    match policy.decide(&RawEvent(&entries)) {
+        Decision::Verbatim => frame,
+        Decision::Replace(event) => frame_of(&event),
+        Decision::WithoutReason => {
+            match crate::js_raw::join(entries.iter().filter(|(k, _)| k != "reason")) {
+                Some(json) => format!("data: {json}\n\n"),
+                None => frame,
+            }
+        }
+    }
+}
+
+/// A JSON reply as core's code read it, through `JSON.parse` (no nesting limit, `1e400` is
+/// `Infinity`): `None` when `JSON.parse` would throw. A value nested past what [`JValue`] holds
+/// (128 levels) is kept as an empty object, which none of these readers looks into.
+pub(crate) fn parsed_reply(text: &str) -> Option<JValue> {
+    match crate::js_raw::read(text)? {
+        crate::js_raw::Top::Other(out) => wtf16::parse(&out).ok(),
+        crate::js_raw::Top::Object(entries) => Some(JValue::Obj(
+            entries
+                .into_iter()
+                .map(|(k, v)| {
+                    let value = wtf16::parse(&v).unwrap_or(JValue::Obj(Vec::new()));
+                    (k, value)
+                })
+                .collect(),
+        )),
+    }
 }
 
 /// `data: ${JSON.stringify(event)}\n\n`.
@@ -465,12 +563,21 @@ impl Failure {
     }
 }
 
+/// An older companion's whole reply: `JSON.parse` then the reply's own fields. Its values are spread
+/// into the `diary` event, so they are read as Node wrote them back (`1e400` is `null`); one nested
+/// past 128 levels is the interrupted stream.
+fn legacy_reply(text: &str) -> Option<JValue> {
+    wtf16::parse(&crate::js_raw::canonical(text)?).ok()
+}
+
 /// The browser's side of the stream: `false` once it has gone away.
 struct Out {
     tx: mpsc::Sender<Result<Bytes, StreamError>>,
 }
 
 impl Out {
+    /// Only ever awaited inside the relay's select, where the deadline, the browser leaving and a
+    /// lost hold all win over a browser that stopped reading.
     async fn raw(&self, text: String) -> bool {
         self.tx.send(Ok(Bytes::from(text))).await.is_ok()
     }
@@ -482,7 +589,10 @@ impl Out {
 /// The stream task: the first status, the companion's events through the policy, a keep-alive
 /// comment every `heartbeat`, and the one failure event; then the response ends and `hold` is
 /// given back. A browser that goes away stops it (the sidecar connection is dropped), as core's
-/// `res.on('close')` aborted its fetch; so does a lost hold and the deadline.
+/// `res.on('close')` aborted its fetch; so does a lost hold and the deadline. No send waits outside
+/// that select: a keep-alive is skipped while the browser is not reading (core's would queue), and
+/// once the exchange has stopped and the hold is given back, the failure event gets at most one
+/// `heartbeat` to find room.
 pub(crate) async fn relay(
     diary: crate::Diary,
     ctx: crate::Ctx,
@@ -491,40 +601,44 @@ pub(crate) async fn relay(
     tx: mpsc::Sender<Result<Bytes, StreamError>>,
     limits: ExchangeLimits,
 ) {
-    let ExchangeHold { keep, lost } = hold;
+    let ExchangeHold { keep, mut lost } = hold;
     let out = Out { tx };
     let deadline = Instant::now() + limits.stream_deadline;
-    if out
-        .event(&JValue::obj([
-            ("type", JValue::from("status")),
-            ("text", JValue::from(CONNECTING)),
-        ]))
-        .await
-    {
+    let beat = limits.heartbeat.max(Duration::from_millis(1));
+    let first = frame_of(&JValue::obj([
+        ("type", JValue::from("status")),
+        ("text", JValue::from(CONNECTING)),
+    ]));
+    // The channel is empty here: the first status never waits.
+    let failure = if out.tx.try_send(Ok(Bytes::from(first))).is_ok() {
         let work = exchange(&diary, &ctx, body, &out, deadline);
         tokio::pin!(work);
-        let mut lost = lost;
-        let beat = limits.heartbeat.max(Duration::from_millis(1));
         let mut ticks = tokio::time::interval_at(Instant::now() + beat, beat);
-        let outcome = loop {
+        loop {
             tokio::select! {
-                done = &mut work => break Some(done),
+                done = &mut work => break done.err(),
                 () = out.tx.closed() => break None,
-                () = &mut lost => break Some(Err(Failure::Interrupted)),
-                () = tokio::time::sleep_until(deadline) => break Some(Err(Failure::Interrupted)),
+                () = &mut lost => break Some(Failure::Interrupted),
+                () = tokio::time::sleep_until(deadline) => break Some(Failure::Interrupted),
                 _ = ticks.tick() => {
-                    if !out.raw(": keep-alive\n\n".to_owned()).await {
+                    let beat = Ok(Bytes::from_static(b": keep-alive\n\n"));
+                    if let Err(mpsc::error::TrySendError::Closed(_)) = out.tx.try_send(beat) {
                         break None;
                     }
                 }
             }
-        };
-        if let Some(Err(failure)) = outcome {
-            out.event(&failure.event()).await;
+        }
+        // `work` (and with it the companion connection) ends with this block.
+    } else {
+        None
+    };
+    drop(keep);
+    if let Some(failure) = failure {
+        let last = Ok(Bytes::from(frame_of(&failure.event())));
+        if let Err(mpsc::error::TrySendError::Full(last)) = out.tx.try_send(last) {
+            let _ = tokio::time::timeout(beat, out.tx.send(last)).await;
         }
     }
-    drop(out);
-    drop(keep);
 }
 
 /// What core did between the first status and its catch.
@@ -567,9 +681,9 @@ async fn exchange(
             .map(str::to_owned);
         // `await readCappedJson(upstream, 64 KiB) || {}`, `{}` when it throws.
         let detail = match read_capped(&mut upstream, REFUSAL_CAP, deadline).await {
-            Ok(Capped::Bytes(bytes)) => wtf16::parse(&String::from_utf8_lossy(&bytes))
-                .ok()
-                .filter(JValue::truthy),
+            Ok(Capped::Bytes(bytes)) => {
+                parsed_reply(&String::from_utf8_lossy(&bytes)).filter(JValue::truthy)
+            }
             _ => None,
         }
         .unwrap_or(JValue::Obj(Vec::new()));
@@ -589,7 +703,7 @@ async fn exchange(
         // Compatibility with a previous sidecar during a rolling upgrade.
         let full = match read_capped(&mut upstream, LEGACY_CAP, deadline).await {
             Ok(Capped::Bytes(bytes)) => {
-                wtf16::parse(&String::from_utf8_lossy(&bytes)).map_err(|_| Failure::Interrupted)?
+                legacy_reply(&String::from_utf8_lossy(&bytes)).ok_or(Failure::Interrupted)?
             }
             _ => return Err(Failure::Interrupted),
         };
@@ -617,11 +731,7 @@ async fn exchange(
         while let Some(at) = buffer.find("\n\n") {
             let rest = buffer.split_off(at + 2);
             let frame = std::mem::replace(&mut buffer, rest);
-            let sent = match frame_event(&frame).and_then(|e| policy.event(&e)) {
-                Some(replaced) => frame_of(&replaced),
-                None => frame,
-            };
-            out.raw(sent).await;
+            out.raw(relayed(&mut policy, frame)).await;
         }
     }
     if buffer.chars().any(|c| !js_space(c)) {

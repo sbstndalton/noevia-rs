@@ -23,6 +23,7 @@ use crate::body::{ChannelBody, StreamError};
 use crate::client::{parse_or_text, read_capped, CallError, Capped, JsonReply, Sidecar};
 use crate::config::DiaryConfig;
 use crate::exchanges;
+use crate::js_raw;
 use crate::local_exchange::{self, ExchangeHold, ExchangeRefusal};
 use crate::tenant::{workspace_dir, Content, StorageIdentity, Tenant};
 use bytes::Bytes;
@@ -484,40 +485,50 @@ impl Diary {
         if request.method != "POST" {
             return not_allowed();
         }
-        let hold = match admit.await {
+        let ExchangeHold { keep, mut lost } = match admit.await {
             Ok(hold) => hold,
             Err(refused) => return error_reply(refused.status, &refused.message),
         };
         let limits = self.limits.exchange;
         let deadline = Instant::now() + limits.body_deadline;
-        let raw = match read_body(body, limits.body, deadline).await {
+        // A hold lost before anything reached the sidecar is the admission's own refusal.
+        let read = read_body(body, limits.body, deadline);
+        let raw = tokio::select! {
+            read = read => read,
+            () = &mut lost => return error_reply(503, local_exchange::LEASE_LOST),
+        };
+        let raw = match raw {
             Ok(bytes) => bytes,
             Err(BodyFault::TooLarge) => return error_reply(413, "Request exceeds size limit"),
             Err(BodyFault::Timeout) => return error_reply(408, "Request timed out"),
             Err(BodyFault::Broken) => return internal(),
         };
-        // `raw ? JSON.parse(raw) : {}` over the UTF-8 decoded text, then `JSON.stringify(parsed)`.
+        // `raw ? JSON.parse(raw) : {}` over the UTF-8 decoded text, then `JSON.stringify(parsed)`
+        // and `parsed?.stream === true`, read losslessly: any text JSON.parse takes is forwarded.
         let text = String::from_utf8_lossy(&raw);
-        let parsed = if text.is_empty() {
-            JValue::Obj(Vec::new())
+        let (forward, stream) = if text.is_empty() {
+            ("{}".to_owned(), false)
         } else {
-            match wtf16::parse(&text) {
-                Ok(v) => v,
-                Err(wtf16::Refusal::Invalid) => return error_reply(400, "invalid JSON"),
-                Err(wtf16::Refusal::Unsupported) => return internal(),
+            match js_raw::read(&text) {
+                None => return error_reply(400, "invalid JSON"),
+                Some(js_raw::Top::Other(out)) => (out, false),
+                Some(js_raw::Top::Object(entries)) => {
+                    let stream = entries.iter().any(|(k, v)| k == "stream" && v == "true");
+                    let Some(out) = js_raw::join(&entries) else {
+                        return internal();
+                    };
+                    (out, stream)
+                }
             }
         };
-        let Some(forward) = wtf16::stringify(&parsed) else {
-            return internal();
-        };
         let forward = Bytes::from(forward);
-        if matches!(parsed.get("stream"), JValue::Bool(true)) {
+        if stream {
             let (tx, rx) = mpsc::channel(16);
             tokio::spawn(local_exchange::relay(
                 self.clone(),
                 ctx,
                 forward,
-                hold,
+                ExchangeHold { keep, lost },
                 tx,
                 limits,
             ));
@@ -527,14 +538,13 @@ impl Diary {
                 retry_after: None,
             };
         }
-        // Core did not tie the sidecar call to the browser's connection, so it runs on its own task;
-        // the admission is held until the reply (or until the browser goes away, as core's `leave`
-        // on the response's close).
-        let this = self.clone();
-        let reply = tokio::spawn(async move {
-            let tenant = this.tenant(&ctx).await?;
-            this.sidecar
-                .fetch_json(
+        // The call is this request's: a browser that goes away (this future dropped) or a hold that
+        // is lost stops it, and the hold is given back with the answer. A call stopped by a lost hold
+        // is core's answer for a sidecar call that was aborted: 503 diaryUnavailable.
+        let call = async {
+            let tenant = self.tenant(&ctx).await?;
+            self.sidecar
+                .fetch_raw(
                     &tenant,
                     Method::POST,
                     local_exchange::SIDECAR_PATH,
@@ -542,16 +552,40 @@ impl Diary {
                     limits.reply_timeout,
                 )
                 .await
-        })
-        .await
-        .unwrap_or(Err(CallError::Config));
-        drop(hold);
+        };
+        let reply = tokio::select! {
+            reply = call => reply,
+            () = &mut lost => return diary_unavailable(),
+        };
+        drop(keep);
+        // `fetchJson`'s body: `JSON.parse(text)`, or the text itself when that throws.
+        let text = |bytes: &[u8]| String::from_utf8_lossy(bytes).into_owned();
         match reply {
-            Ok(r) if r.ok => json_reply(r.status, &r.body.unwrap_or(JValue::Undefined)),
-            Ok(r) => {
-                let (body, wait) =
-                    local_exchange::json_failure(r.body.as_ref().unwrap_or(&JValue::Undefined));
-                let mut reply = json_reply(r.status, &body);
+            Ok((true, status, Some(bytes))) => {
+                let text = text(&bytes);
+                let json = match js_raw::canonical(&text) {
+                    Some(json) => Some(json),
+                    None => wtf16::stringify(&JValue::Str(text)),
+                };
+                match json {
+                    Some(json) => Reply {
+                        status,
+                        body: ReplyBody::Json(json),
+                        retry_after: None,
+                    },
+                    None => internal(),
+                }
+            }
+            Ok((_, status, bytes)) => {
+                let body = match bytes {
+                    None => JValue::Undefined,
+                    Some(bytes) => {
+                        let text = text(&bytes);
+                        local_exchange::parsed_reply(&text).unwrap_or(JValue::Str(text))
+                    }
+                };
+                let (body, wait) = local_exchange::json_failure(&body);
+                let mut reply = json_reply(status, &body);
                 reply.retry_after = wait;
                 reply
             }

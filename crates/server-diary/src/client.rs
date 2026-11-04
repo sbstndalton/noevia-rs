@@ -161,6 +161,35 @@ impl Sidecar {
         .is_ok_and(|r| r.ok)
     }
 
+    /// [`Sidecar::fetch_json`] without the parse: `(ok, status, body)`, the body `None` past the cap.
+    /// For a reply the caller reads as `JSON.parse` would, without a parsed tree's limits.
+    pub(crate) async fn fetch_raw(
+        &self,
+        tenant: &Tenant,
+        method: reqwest::Method,
+        path_and_query: &str,
+        body: Option<Bytes>,
+        timeout: Duration,
+    ) -> Result<(bool, u16, Option<Vec<u8>>), CallError> {
+        let url = self.url(path_and_query)?;
+        let (mut response, deadline) = self
+            .send(
+                tenant,
+                method,
+                &url,
+                Content::Json(body.as_deref()),
+                body.as_ref(),
+                || Instant::now() + timeout,
+            )
+            .await?;
+        let status = response.status().as_u16();
+        let ok = response.status().is_success();
+        match read_capped(&mut response, JSON_REPLY_CAP, deadline).await? {
+            Capped::Overflow => Ok((false, status, None)),
+            Capped::Bytes(bytes) => Ok((ok, status, Some(bytes))),
+        }
+    }
+
     /// `fetchJson` with the tenant headers and the 428 retry (`diaryFetchJson`).
     pub async fn fetch_json(
         &self,

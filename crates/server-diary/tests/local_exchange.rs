@@ -488,3 +488,248 @@ async fn an_older_companion_answers_one_json_reply() {
         format!("{CONNECT_FRAME}data: {{\"type\":\"reasoning\",\"text\":\"why\"}}\n\ndata: {{\"type\":\"answer\",\"text\":\"Synthetic answer\"}}\n\ndata: {{\"type\":\"diary\",\"reply\":\"Synthetic answer\",\"reasoning\":\"why\",\"day\":\"2026-11-04\"}}\n\ndata: {{\"type\":\"done\"}}\n\n")
     );
 }
+
+// ── review of b5792c5: each test below failed against it ───────────────────────
+
+/// A sidecar that sends the head and `chunk` of its reply, then nothing until it is let go.
+fn stall(ctype: &str, chunk: &[u8], dropped: &Arc<AtomicBool>) -> Out {
+    Out::Stall {
+        status: 200,
+        headers: vec![("content-type", ctype.to_owned())],
+        chunk: chunk.to_vec(),
+        dropped: Arc::clone(dropped),
+    }
+}
+
+fn lose_after(probe: &Probe, wait: Duration) {
+    let lose = Arc::clone(&probe.lose);
+    tokio::spawn(async move {
+        tokio::time::sleep(wait).await;
+        lose.notify_one();
+    });
+}
+
+const BUSY: &str = r#"{"error":"The model is busy. Try again shortly."}"#;
+const UNAVAILABLE: &str =
+    r#"{"error":"Diary is unavailable right now. Try again shortly.","code":"diaryUnavailable"}"#;
+
+/// P1: a lease lost while the body is still arriving ends the request; nothing reaches the sidecar.
+#[tokio::test]
+async fn review_p1_a_lease_lost_while_the_body_arrives_ends_it() {
+    let stub = Stub::start(|_, _| Out::json(200, "{}")).await;
+    let d = diary(&stub, TENANT_KEY);
+    let w = World::new(&[]);
+    let probe = Probe::new();
+    let (_still_sending, body) = http_body_util::channel::Channel::<Bytes, std::io::Error>::new(1);
+    lose_after(&probe, Duration::from_millis(100));
+    let answer = tokio::time::timeout(
+        Duration::from_secs(3),
+        d.local_exchange(w.ctx(MEMBER, true), post(), body, probe.admit()),
+    )
+    .await
+    .expect("answered as soon as the lease was lost");
+    assert_eq!(
+        (answer.status, text_of(answer.body).await),
+        (503, BUSY.to_owned())
+    );
+    assert!(probe.released());
+    assert!(stub.requests().is_empty());
+}
+
+/// P1: a lease lost during the unstreamed call stops the call (core's answer for an aborted call).
+#[tokio::test]
+async fn review_p1_a_lease_lost_during_the_unstreamed_call_stops_it() {
+    let dropped = Arc::new(AtomicBool::new(false));
+    let d2 = Arc::clone(&dropped);
+    let stub = Stub::start(move |_, _| stall("application/json", b"{\"reply\":", &d2)).await;
+    let d = diary(&stub, TENANT_KEY);
+    let w = World::new(&[]);
+    let probe = Probe::new();
+    lose_after(&probe, Duration::from_millis(200));
+    let answer = tokio::time::timeout(
+        Duration::from_secs(3),
+        d.local_exchange(
+            w.ctx(MEMBER, true),
+            post(),
+            Full::new(Bytes::from_static(br#"{"message":"hi"}"#)),
+            probe.admit(),
+        ),
+    )
+    .await
+    .expect("answered as soon as the lease was lost");
+    assert_eq!(
+        (answer.status, text_of(answer.body).await),
+        (503, UNAVAILABLE.to_owned())
+    );
+    assert!(probe.released());
+    assert!(
+        settle(|| dropped.load(Ordering::SeqCst)).await,
+        "the call was stopped"
+    );
+}
+
+/// P1: a request that goes away during the unstreamed call takes the call with it.
+#[tokio::test]
+async fn review_p1_a_dropped_request_stops_the_unstreamed_call() {
+    let dropped = Arc::new(AtomicBool::new(false));
+    let d2 = Arc::clone(&dropped);
+    let stub = Stub::start(move |_, _| stall("application/json", b"{\"reply\":", &d2)).await;
+    let d = diary(&stub, TENANT_KEY);
+    let w = World::new(&[]);
+    let probe = Probe::new();
+    let gone = tokio::time::timeout(
+        Duration::from_millis(300),
+        d.local_exchange(
+            w.ctx(MEMBER, true),
+            post(),
+            Full::new(Bytes::from_static(br#"{"message":"hi"}"#)),
+            probe.admit(),
+        ),
+    )
+    .await;
+    assert!(gone.is_err(), "still waiting for the companion");
+    assert!(probe.released());
+    assert!(
+        settle(|| dropped.load(Ordering::SeqCst)).await,
+        "the call was stopped"
+    );
+}
+
+/// P2: a browser that stops reading cannot hold the companion or the lease past the deadline.
+#[tokio::test]
+async fn review_p2_a_browser_that_stops_reading_cannot_outlive_the_deadline() {
+    let dropped = Arc::new(AtomicBool::new(false));
+    let d2 = Arc::clone(&dropped);
+    let stub = Stub::start(move |_, _| {
+        stall(
+            "text/event-stream",
+            b"data: {\"type\":\"status\",\"text\":\"Opening diary context\xE2\x80\xA6\"}\n\n",
+            &d2,
+        )
+    })
+    .await;
+    let d = diary_with(
+        &stub,
+        TENANT_KEY,
+        Limits {
+            exchange: ExchangeLimits {
+                heartbeat: Duration::from_millis(5),
+                stream_deadline: Duration::from_millis(400),
+                ..ExchangeLimits::default()
+            },
+            ..Limits::default()
+        },
+    );
+    let w = World::new(&[]);
+    let probe = Probe::new();
+    let r = d
+        .local_exchange(
+            w.ctx(MEMBER, true),
+            post(),
+            Full::new(Bytes::from_static(br#"{"stream":true}"#)),
+            probe.admit(),
+        )
+        .await;
+    // Held, never read.
+    let _unread = r.body;
+    assert!(
+        settle(|| probe.released()).await,
+        "the lease was given back at the deadline"
+    );
+    assert!(
+        settle(|| dropped.load(Ordering::SeqCst)).await,
+        "and the companion connection closed"
+    );
+}
+
+fn nest(depth: usize) -> String {
+    format!("{}0{}", "[".repeat(depth), "]".repeat(depth))
+}
+
+/// P3: events the parsed tree could not hold are still read as Node reads them.
+#[tokio::test]
+async fn review_p3_events_with_huge_numbers_or_deep_nesting_get_nodes_rewrite() {
+    let deep = nest(200);
+    let frames = [
+        // Stage start: not reworded, but the reason that is not a token is removed.
+        "data: {\"type\":\"error\",\"reason\":\"not a token!\",\"extra\":1e400}\n\n".to_owned(),
+        "data: {\"type\":\"status\",\"text\":\"Generating companion response\u{2026}\"}\n\n".to_owned(),
+        // While generating: reworded, the token reason kept.
+        "data: {\"type\":\"error\",\"text\":\"t\",\"reason\":\"chat_timeout\",\"n\":1e400}\n\n".to_owned(),
+        // `saved` given: not reworded; no modelFailed code, so the reason goes; the rest as Node writes it.
+        format!("data: {{\"type\":\"error\",\"saved\":false, \"reason\":\"chat_timeout\",\"deep\":{deep},\"n\":1.50}}\n\n"),
+    ];
+    let body: Vec<u8> = frames.concat().into_bytes();
+    let stub = Stub::start(move |_, _| Out::Stream {
+        status: 200,
+        headers: vec![("content-type", "text/event-stream".into())],
+        chunks: vec![body.clone()],
+        forever: false,
+    })
+    .await;
+    let d = diary(&stub, TENANT_KEY);
+    let w = World::new(&[]);
+    let r = d
+        .local_exchange(
+            w.ctx(MEMBER, true),
+            post(),
+            Full::new(Bytes::from_static(br#"{"stream":true}"#)),
+            Probe::new().admit(),
+        )
+        .await;
+    assert_eq!(
+        text_of(r.body).await,
+        format!(
+            "{CONNECT_FRAME}data: {{\"type\":\"error\",\"extra\":null}}\n\n\
+             data: {{\"type\":\"status\",\"text\":\"Generating companion response…\"}}\n\n\
+             data: {{\"type\":\"error\",\"code\":\"modelFailed\",\"saved\":false,\"text\":\"Couldn't reach the local model — nothing was saved. You can resend.\",\"reason\":\"chat_timeout\"}}\n\n\
+             data: {{\"type\":\"error\",\"saved\":false,\"deep\":{deep},\"n\":1.5}}\n\n"
+        )
+    );
+}
+
+/// P3: a request body JSON.parse accepts is forwarded as JSON.stringify writes it, never a 500.
+#[tokio::test]
+async fn review_p3_a_request_with_huge_numbers_or_deep_nesting_is_forwarded() {
+    let stub = Stub::start(|_, _| Out::json(200, r#"{"reply":"ok"}"#)).await;
+    let d = diary(&stub, TENANT_KEY);
+    let w = World::new(&[]);
+    let deep = nest(200);
+    let body = format!("{{\"message\":\"hi\", \"big\":1e400,\"deep\":{deep}}}");
+    let r = d
+        .local_exchange(
+            w.ctx(MEMBER, true),
+            post(),
+            Full::new(Bytes::from(body)),
+            Probe::new().admit(),
+        )
+        .await;
+    assert_eq!(
+        (r.status, text_of(r.body).await),
+        (200, r#"{"reply":"ok"}"#.to_owned())
+    );
+    assert_eq!(
+        String::from_utf8(stub.requests()[0].body.clone()).unwrap(),
+        format!("{{\"message\":\"hi\",\"big\":null,\"deep\":{deep}}}")
+    );
+}
+
+/// The non-streamed reply is relayed as `JSON.stringify(JSON.parse(text))` too, never a 500.
+#[tokio::test]
+async fn an_unstreamed_reply_with_huge_numbers_is_relayed_as_node_writes_it() {
+    let stub = Stub::start(|_, _| Out::json(200, r#"{"reply":"ok", "n":1e400,"1":2}"#)).await;
+    let d = diary(&stub, TENANT_KEY);
+    let w = World::new(&[]);
+    let r = d
+        .local_exchange(
+            w.ctx(MEMBER, true),
+            post(),
+            Full::new(Bytes::from_static(b"{}")),
+            Probe::new().admit(),
+        )
+        .await;
+    assert_eq!(
+        (r.status, text_of(r.body).await),
+        (200, r#"{"1":2,"reply":"ok","n":null}"#.to_owned())
+    );
+}
