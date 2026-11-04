@@ -25,11 +25,21 @@
 //! stream at once. An event line that does not fit streams as it comes (`data: `, its bytes, then its
 //! end).
 //!
-//! When Core's stream breaks, or sends what is not a line of this wire, the unfinished line is dropped,
-//! Core's socket is closed, and [`FAILED_FRAME`] (index.cjs's error for a handler that throws once the
-//! headers are out) ends the stream: the client reads that error, never half a frame. Only an event
+//! Every whole event line is checked before any of it goes out: it must be one JSON object in UTF-8
+//! (what the web client's `JSON.parse` reads), checked in place, on the read's own bytes or on the held
+//! buffer and the line's end, never on a copy. A relayed frame's string is decoded (and so checked) the
+//! same way. The turn is complete once a `done` or `error` event has gone out, as an object line or as
+//! the first `data: ` line of a relayed frame (the web client's completion rule, api.ts); what follows
+//! (`title` after `done`, contract §1.3) still goes out.
+//!
+//! When Core's stream breaks, sends what is not a line of this wire (a malformed event included), or ends
+//! before the turn is complete (an empty body too), the unfinished line is dropped, Core's socket is
+//! closed, and [`FAILED_FRAME`] (index.cjs's error for a handler that throws once the headers are out)
+//! ends the stream: the client reads that error, never half a frame or a silent end. Only an event
 //! already streaming past the hold ends without it (its start is out; the client never parses an
-//! unfinished frame and reports that the connection ended).
+//! unfinished frame and reports that the connection ended). Such an event cannot be checked before it
+//! goes out; whether it completes the turn is read from its start, which Core's `JSON.stringify` writes
+//! as `{"type":"<type>"`.
 use axum::{
     body::Body,
     http::{header, HeaderMap, HeaderValue, Response},
@@ -305,6 +315,175 @@ fn relayed_frame(bytes: impl Read, len: usize, mut reservation: Reservation) -> 
         .then(|| reserved(buf, reservation))
 }
 
+/// Whether the pieces (one line, in order) are UTF-8, checked in place across their boundaries.
+fn utf8(pieces: &[&[u8]]) -> bool {
+    // A character split between pieces: its bytes so far (at most four).
+    let mut carry: Vec<u8> = Vec::new();
+    for piece in pieces {
+        let mut p = *piece;
+        if let Some(&lead) = carry.first() {
+            let width: usize = match lead {
+                0xC2..=0xDF => 2,
+                0xE0..=0xEF => 3,
+                _ => 4,
+            };
+            let (head, rest) = p.split_at(width.saturating_sub(carry.len()).min(p.len()));
+            carry.extend_from_slice(head);
+            p = rest;
+            if carry.len() < width {
+                continue;
+            }
+            if std::str::from_utf8(&carry).is_err() {
+                return false;
+            }
+            carry.clear();
+        }
+        if let Err(e) = std::str::from_utf8(p) {
+            // Only an unfinished last character may continue in the next piece.
+            if e.error_len().is_some() {
+                return false;
+            }
+            carry.extend_from_slice(p.get(e.valid_up_to()..).unwrap_or_default());
+        }
+    }
+    carry.is_empty()
+}
+
+/// Reads one event object's keys and its `type`, skipping every other value without keeping it; the
+/// last `type` counts, as with `JSON.parse`. Its value: whether the event completes the turn.
+struct EventHead;
+
+/// A key: whether it is `type` (read as raw bytes, so a key is never decoded into a copy).
+struct IsType;
+
+/// The `type` value: whether it is `done` or `error`.
+struct Completes;
+
+impl<'de> serde::de::Visitor<'de> for EventHead {
+    type Value = bool;
+    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("an event object")
+    }
+    fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<bool, A::Error> {
+        let mut completes = false;
+        while let Some(is_type) = map.next_key_seed(IsType)? {
+            if is_type {
+                completes = map.next_value_seed(Completes)?;
+            } else {
+                map.next_value::<serde::de::IgnoredAny>()?;
+            }
+        }
+        Ok(completes)
+    }
+}
+
+impl<'de> serde::de::DeserializeSeed<'de> for IsType {
+    type Value = bool;
+    fn deserialize<D: serde::Deserializer<'de>>(self, d: D) -> Result<bool, D::Error> {
+        d.deserialize_bytes(self)
+    }
+}
+
+impl<'de> serde::de::Visitor<'de> for IsType {
+    type Value = bool;
+    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("a key")
+    }
+    fn visit_bytes<E>(self, v: &[u8]) -> Result<bool, E> {
+        Ok(v == b"type")
+    }
+    fn visit_str<E>(self, v: &str) -> Result<bool, E> {
+        Ok(v == "type")
+    }
+}
+
+impl<'de> serde::de::DeserializeSeed<'de> for Completes {
+    type Value = bool;
+    fn deserialize<D: serde::Deserializer<'de>>(self, d: D) -> Result<bool, D::Error> {
+        d.deserialize_any(self)
+    }
+}
+
+impl<'de> serde::de::Visitor<'de> for Completes {
+    type Value = bool;
+    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("a value")
+    }
+    fn visit_str<E>(self, v: &str) -> Result<bool, E> {
+        Ok(v == "done" || v == "error")
+    }
+    fn visit_bool<E>(self, _: bool) -> Result<bool, E> {
+        Ok(false)
+    }
+    fn visit_i64<E>(self, _: i64) -> Result<bool, E> {
+        Ok(false)
+    }
+    fn visit_u64<E>(self, _: u64) -> Result<bool, E> {
+        Ok(false)
+    }
+    fn visit_f64<E>(self, _: f64) -> Result<bool, E> {
+        Ok(false)
+    }
+    fn visit_unit<E>(self) -> Result<bool, E> {
+        Ok(false)
+    }
+    fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<bool, A::Error> {
+        while seq.next_element::<serde::de::IgnoredAny>()?.is_some() {}
+        Ok(false)
+    }
+    fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<bool, A::Error> {
+        while map
+            .next_entry::<serde::de::IgnoredAny, serde::de::IgnoredAny>()?
+            .is_some()
+        {}
+        Ok(false)
+    }
+}
+
+/// One whole event line (its pieces in order, nothing copied): `None` when it is not one JSON object
+/// in UTF-8, else whether the event completes the turn.
+fn event_line(pieces: &[&[u8]]) -> Option<bool> {
+    use serde::Deserializer as _;
+    if !utf8(pieces) {
+        return None;
+    }
+    fn whole<'de, R: serde_json::de::Read<'de>>(
+        mut de: serde_json::Deserializer<R>,
+    ) -> Option<bool> {
+        let completes = (&mut de).deserialize_map(EventHead).ok()?;
+        de.end().ok()?;
+        Some(completes)
+    }
+    match pieces {
+        [one] => whole(serde_json::Deserializer::from_slice(one)),
+        [a, b] => whole(serde_json::Deserializer::from_reader(a.chain(*b))),
+        _ => None,
+    }
+}
+
+/// Whether a relayed frame completes the turn: its first `data: ` line is a `done` or `error` event
+/// (api.ts reads that line alone).
+fn frame_completes(frame: &[u8]) -> bool {
+    frame
+        .split(|&b| b == b'\n')
+        .find_map(|l| l.strip_prefix(b"data: "))
+        .map(|d| d.trim_ascii())
+        .is_some_and(|d| d.first() == Some(&b'{') && event_line(&[d]) == Some(true))
+}
+
+/// The start of an event that streams through, as Core's `JSON.stringify` writes it: whether it is a
+/// `done` or `error` event. Enough of it is kept to tell: [`HEAD`] bytes.
+const HEAD: usize = 16;
+
+fn head_completes(head: &[u8]) -> bool {
+    [&b"{\"type\":\"done\""[..], b"{\"type\":\"error\""]
+        .iter()
+        .any(|t| {
+            head.strip_prefix(*t)
+                .is_some_and(|r| matches!(r.first(), Some(b',' | b'}')))
+        })
+}
+
 /// Core's NDJSON turned into the event stream the client reads (module docs).
 pub struct EventWire {
     inner: Body,
@@ -318,6 +497,10 @@ pub struct EventWire {
     beat: Option<tokio::time::Interval>,
     /// A beat came while an event was streaming: it goes out after that event's end.
     beat_due: bool,
+    /// A `done` or `error` event has gone out: the turn is complete (module docs).
+    complete: bool,
+    /// The start of the event streaming through, up to [`HEAD`] bytes.
+    head: Vec<u8>,
     done: bool,
 }
 
@@ -335,6 +518,8 @@ impl EventWire {
             period,
             beat: None,
             beat_due: false,
+            complete: false,
+            head: Vec::new(),
             done: false,
         }
     }
@@ -369,6 +554,10 @@ impl EventWire {
         match line.first() {
             None => true,
             Some(b'{') => {
+                let Some(completes) = event_line(&[&line]) else {
+                    return false;
+                };
+                self.complete |= completes;
                 // One reserved copy of the frame; when the budget cannot cover it, the line itself
                 // between its frame's two static ends (no copy at all).
                 let len = line.len() + 8;
@@ -392,6 +581,7 @@ impl EventWire {
                 let reservation = self.held.reservation.none();
                 match relayed_frame(line.as_ref(), line.len(), reservation) {
                     Some(frame) => {
+                        self.complete |= frame_completes(&frame);
                         self.send(frame);
                         true
                     }
@@ -410,11 +600,30 @@ impl EventWire {
         match self.held.kind {
             Some(b'{') => {
                 if self.held.try_finish(&part) {
-                    if let Some(frame) = self.held.take() {
-                        self.send(frame);
-                    }
+                    // One buffer: `data: `, the line, the blank line.
+                    let Some(frame) = self.held.take() else {
+                        return false;
+                    };
+                    let Some(completes) = frame
+                        .get(6..frame.len().saturating_sub(2))
+                        .and_then(|l| event_line(&[l]))
+                    else {
+                        return false;
+                    };
+                    self.complete |= completes;
+                    self.send(frame);
                     return true;
                 }
+                // The held start and the line's end, checked where they are.
+                let Some(completes) = self
+                    .held
+                    .buf
+                    .get(6..)
+                    .and_then(|start| event_line(&[start, &part]))
+                else {
+                    return false;
+                };
+                self.complete |= completes;
                 if let Some(start) = self.held.take() {
                     self.send(start);
                 }
@@ -431,6 +640,7 @@ impl EventWire {
                 drop((buf, reservation));
                 match decoded {
                     Some(frame) => {
+                        self.complete |= frame_completes(&frame);
                         self.send(frame);
                         true
                     }
@@ -441,6 +651,12 @@ impl EventWire {
         }
     }
 
+    /// Keeps the start of the event streaming through, up to [`HEAD`] bytes.
+    fn sniff(&mut self, bytes: &[u8]) {
+        let room = HEAD.saturating_sub(self.head.len());
+        self.head.extend(bytes.iter().take(room));
+    }
+
     /// One read of Core's NDJSON: what of it goes out now, in [`Self::pending`].
     fn take(&mut self, mut data: Bytes) {
         if self.overflow {
@@ -448,6 +664,7 @@ impl EventWire {
                 if data.contains(&b'\r') {
                     return self.fail();
                 }
+                self.sniff(&data);
                 return self.send(data);
             };
             let head = data.split_to(end);
@@ -455,9 +672,11 @@ impl EventWire {
             if head.contains(&b'\r') {
                 return self.fail();
             }
+            self.sniff(&head);
             self.send(head);
             self.send(Bytes::from_static(b"\n\n"));
             self.overflow = false;
+            self.complete |= head_completes(&self.head);
             if std::mem::take(&mut self.beat_due) {
                 self.send(Bytes::from_static(KEEP_ALIVE));
             }
@@ -491,10 +710,15 @@ impl EventWire {
         if kind != Some(b'{') {
             return self.fail();
         }
+        self.head.clear();
         match self.held.take() {
-            Some(start) => self.send(start),
+            Some(start) => {
+                self.sniff(start.get(6..).unwrap_or_default());
+                self.send(start);
+            }
             None => self.send(Bytes::from_static(b"data: ")),
         }
+        self.sniff(&data);
         self.send(data);
         self.overflow = true;
     }
@@ -536,10 +760,11 @@ impl EventWire {
                 }
                 Poll::Ready(Some(Err(_))) => self.fail(),
                 Poll::Ready(None) => {
-                    // An unfinished line at Core's end is not an event: it never reaches the client.
+                    // An unfinished line at Core's end is not an event: it never reaches the client;
+                    // nor does an end before the turn is complete.
                     if self.overflow {
                         self.end();
-                    } else if self.held.is_empty() {
+                    } else if self.held.is_empty() && self.complete {
                         self.done = true;
                     } else {
                         self.fail();
@@ -772,9 +997,14 @@ mod tests {
         assert_eq!(out, Bytes::from(format!("{framed}{FAILED_FRAME}")));
         let out = through(vec![meta.clone()], true, Arc::clone(&budget)).await;
         assert_eq!(out, Bytes::from(format!("{framed}{FAILED_FRAME}")));
-        // Core's end after a whole line is the end; an unfinished line at its end never goes out.
-        let out = through(vec![meta.clone()], false, Arc::clone(&budget)).await;
-        assert_eq!(out, Bytes::from(framed));
+        // Core's end after the turn is complete is the end; an unfinished line at its end never goes
+        // out, nor does an end before the turn is complete (both below and in the premature-end test).
+        let done = b"{\"type\":\"done\"}\n".to_vec();
+        let out = through(vec![meta.clone(), done], false, Arc::clone(&budget)).await;
+        assert_eq!(
+            out,
+            Bytes::from(format!("{framed}data: {{\"type\":\"done\"}}\n\n"))
+        );
         let out = through(
             vec![meta.clone(), b"{\"x\"".to_vec()],
             false,
@@ -922,7 +1152,7 @@ mod tests {
         a.take(Bytes::from_static(b"{\"t"));
         let mut b = wire(&budget);
         b.take(Bytes::from_static(b"{\"t"));
-        b.take(Bytes::from_static(b"\"}\n{"));
+        b.take(Bytes::from_static(b"\":1}\n{"));
         let mut c = wire(&budget);
         c.take(Bytes::from_static(b"{\"t\":\""));
         c.take(Bytes::from(vec![b'o'; HOLDBACK]));
@@ -968,11 +1198,11 @@ mod tests {
             HEARTBEAT,
         ));
         tx.send_data(Bytes::from_static(b"{\"a")).await.unwrap();
-        tx.send_data(Bytes::from_static(b"\"}\n{\"b"))
+        tx.send_data(Bytes::from_static(b"\":1}\n{\"b"))
             .await
             .unwrap();
         let first = stream.frame().await.unwrap().unwrap().into_data().unwrap();
-        assert_eq!(first, Bytes::from_static(b"data: {\"a\"}\n\n"));
+        assert_eq!(first, Bytes::from_static(b"data: {\"a\":1}\n\n"));
         assert!(budget.available_permits() < TOTAL);
         drop(stream);
         assert!(
@@ -993,8 +1223,12 @@ mod tests {
             tasks.push(tokio::spawn(async move {
                 let line = format!("{{\"n\":{n},\"t\":\"{}\"}}\n", "y".repeat(8 * 1024));
                 let (a, b) = line.as_bytes().split_at(line.len() / 2);
-                let out = through(vec![a.to_vec(), b.to_vec()], false, budget).await;
-                assert_eq!(out, Bytes::from(format!("data: {}\n", line)));
+                let done = b"{\"type\":\"done\"}\n".to_vec();
+                let out = through(vec![a.to_vec(), b.to_vec(), done], false, budget).await;
+                assert_eq!(
+                    out,
+                    Bytes::from(format!("data: {}\ndata: {{\"type\":\"done\"}}\n\n", line))
+                );
             }));
         }
         for t in tasks {
@@ -1042,7 +1276,181 @@ mod tests {
         let beat = stream.frame().await.unwrap().unwrap().into_data().unwrap();
         assert_eq!(beat, Bytes::from_static(KEEP_ALIVE));
         within(3);
+        tx.send_data(Bytes::from_static(b"{\"type\":\"done\"}\n"))
+            .await
+            .unwrap();
         drop(tx);
+        let done = stream.frame().await.unwrap().unwrap().into_data().unwrap();
+        assert_eq!(done, Bytes::from_static(b"data: {\"type\":\"done\"}\n\n"));
         assert!(stream.frame().await.is_none());
+    }
+
+    /// S7 review P2-1 (b47c7d13): a clean end before the turn is complete (no `done` or `error`, as an
+    /// event or as a relayed frame's event) ends with the failure frame; `title` after `done` still goes
+    /// out and the end after it is clean.
+    #[tokio::test]
+    async fn an_end_before_the_turn_is_complete_ends_with_the_failure_frame() {
+        let budget = Arc::new(Semaphore::new(HOLDBACK_BUDGET));
+        let ends = |reads: Vec<&[u8]>| {
+            let budget = Arc::clone(&budget);
+            let reads: Vec<Vec<u8>> = reads.into_iter().map(<[u8]>::to_vec).collect();
+            async move { through(reads, false, budget).await }
+        };
+        // An empty body.
+        assert_eq!(ends(vec![]).await, Bytes::from(FAILED_FRAME));
+        // meta and a delta, then Core ends.
+        assert_eq!(
+            ends(vec![b"{\"type\":\"meta\"}\n{\"type\":\"delta\",\"text\":\"Ste\"}\n"]).await,
+            Bytes::from(format!(
+                "data: {{\"type\":\"meta\"}}\n\ndata: {{\"type\":\"delta\",\"text\":\"Ste\"}}\n\n{FAILED_FRAME}"
+            ))
+        );
+        // A Diary turn: the companion's frames, none of them a done or error event.
+        let diary: &[u8] = b"{\"type\":\"status\",\"text\":\"Connecting to diary companion\"}\n\"data: {\\\"type\\\":\\\"answer\\\",\\\"text\\\":\\\"Dear diary\\\"}\\n\\n\"\n\"event: ping\\ndata: [DONE]\\n\\n\"\n";
+        let framed = "data: {\"type\":\"status\",\"text\":\"Connecting to diary companion\"}\n\ndata: {\"type\":\"answer\",\"text\":\"Dear diary\"}\n\nevent: ping\ndata: [DONE]\n\n";
+        assert_eq!(
+            ends(vec![diary]).await,
+            Bytes::from(format!("{framed}{FAILED_FRAME}"))
+        );
+        // A relayed frame whose event is done completes it (split across reads too); so does an error.
+        let saved: &[u8] =
+            b"\"id: 3\\ndata: {\\\"type\\\":\\\"done\\\",\\\"saved\\\":true}\\n\\n\"\n";
+        let (a, b) = saved.split_at(9);
+        assert_eq!(
+            ends(vec![diary, a, b]).await,
+            Bytes::from(format!(
+                "{framed}id: 3\ndata: {{\"type\":\"done\",\"saved\":true}}\n\n"
+            ))
+        );
+        assert_eq!(
+            ends(vec![
+                b"\"data: {\\\"type\\\":\\\"error\\\",\\\"text\\\":\\\"x\\\"}\\n\\n\"\n"
+            ])
+            .await,
+            Bytes::from("data: {\"type\":\"error\",\"text\":\"x\"}\n\n")
+        );
+        // Contract §1.3: done, then the title, then a clean end.
+        assert_eq!(
+            ends(vec![
+                b"{\"type\":\"meta\"}\n{\"type\":\"done\",\"model\":\"m\"}\n{\"type\":\"title\",",
+                b"\"chatId\":\"c1\",\"title\":\"Tea poem\"}\n"
+            ])
+            .await,
+            Bytes::from(
+                "data: {\"type\":\"meta\"}\n\ndata: {\"type\":\"done\",\"model\":\"m\"}\n\ndata: {\"type\":\"title\",\"chatId\":\"c1\",\"title\":\"Tea poem\"}\n\n"
+            )
+        );
+        // An error event completes it; a `type` naming done elsewhere does not.
+        assert_eq!(
+            ends(vec![b"{\"type\":\"error\",\"text\":\"x\"}\n"]).await,
+            Bytes::from("data: {\"type\":\"error\",\"text\":\"x\"}\n\n")
+        );
+        assert_eq!(
+            ends(vec![b"{\"type\":\"delta\",\"text\":\"done\",\"x\":{\"type\":\"done\"}}\n"]).await,
+            Bytes::from(format!(
+                "data: {{\"type\":\"delta\",\"text\":\"done\",\"x\":{{\"type\":\"done\"}}}}\n\n{FAILED_FRAME}"
+            ))
+        );
+        // An event that streamed through (past the hold) is read from its start: a long done completes
+        // the turn, a long delta does not.
+        for (kind, complete) in [("done", true), ("delta", false)] {
+            let start = format!("{{\"type\":\"{kind}\",\"t\":\"");
+            let mut big = start.clone().into_bytes();
+            big.resize(HOLDBACK + 16, b'x');
+            let out = ends(vec![&big, b"\"}\n"]).await;
+            assert_eq!(out.ends_with(FAILED_FRAME.as_bytes()), !complete, "{kind}");
+            assert!(out.starts_with(format!("data: {start}").as_bytes()));
+        }
+        assert_eq!(budget.available_permits(), HOLDBACK_BUDGET);
+    }
+
+    /// S7 review P2-2 (b47c7d13): a whole event line goes out only when it is one JSON object in UTF-8,
+    /// whole in one read or split across reads (held, or past the budget); a malformed one is dropped,
+    /// Core's socket closes, and the failure frame ends the stream. Nothing is copied to check it, and
+    /// the budget comes back.
+    #[test]
+    fn a_malformed_event_line_never_goes_out() {
+        let budget = Arc::new(Semaphore::new(HOLDBACK_BUDGET));
+        let meta: &[u8] = b"{\"type\":\"meta\"}\n";
+        let framed = [
+            &b"data: {\"type\":\"meta\"}\n\n"[..],
+            FAILED_FRAME.as_bytes(),
+        ]
+        .concat();
+        let bad_utf8: &[u8] = b"{\"type\":\"delta\",\"text\":\"caf\xc3\x28 \xff\"}\n";
+        let bad: [&[u8]; 8] = [
+            b"{bad}\n",
+            b"{\"type\":\"delta\"\n",
+            b"{\"type\":\"delta\"} {}\n",
+            b"{\"type\":\"delta\",}\n",
+            b"{\"text\":\"tab\there\"}\n",
+            b"{\"type\":\"done\"}x\n",
+            bad_utf8,
+            b"{\"type\":\"delta\",\"text\":\"\xe2\x82\"}\n",
+        ];
+        for line in bad {
+            let name = String::from_utf8_lossy(line).to_string();
+            // Whole in one read.
+            let mut w = wire(&budget);
+            assert_eq!(read(&mut w, &[meta, line].concat()), framed, "{name}");
+            assert!(w.done, "{name}");
+            // Split at every point (invalid UTF-8 split inside a quoted value among them): held, then
+            // finished in its buffer.
+            for at in 1..line.len() - 1 {
+                let mut w = wire(&budget);
+                let mut out = read(&mut w, meta);
+                out.extend(read(&mut w, &line[..at]));
+                out.extend(read(&mut w, &line[at..]));
+                assert_eq!(out, framed, "{name} split at {at}");
+                assert!(w.done && w.pending.is_empty());
+            }
+        }
+        // Past the budget the held start and the line's end are checked where they are.
+        let tight = Arc::new(Semaphore::new(64));
+        for (line, ok) in [
+            (
+                &b"{\"type\":\"delta\",\"text\":\"\xc3\xa9t\xc3\xa9 ok\"}\n"[..],
+                true,
+            ),
+            (b"{\"type\":\"delta\",\"text\":\"\xc3\x28 bad\"}\n", false),
+        ] {
+            // Split inside the two-byte character: \xc3 held, \xa9 (or \x28) in the end.
+            let at = line.iter().position(|&b| b == 0xc3).unwrap() + 1;
+            let mut w = wire(&tight);
+            assert!(read(&mut w, &line[..at]).is_empty());
+            assert!(!w.held.is_empty());
+            // Spend the rest of the budget, so the line's end cannot join the held buffer.
+            let rest = tight.available_permits();
+            let spent = tight.try_acquire_many(rest as u32).unwrap();
+            let out = read(&mut w, &line[at..]);
+            drop(spent);
+            if ok {
+                let want = [&b"data: "[..], &line[..line.len() - 1], b"\n\n"].concat();
+                assert_eq!(out, want);
+                assert!(!w.done);
+            } else {
+                assert_eq!(out, FAILED_FRAME.as_bytes());
+                assert!(w.done);
+            }
+            drop(w);
+            assert_eq!(tight.available_permits(), 64);
+        }
+        // What JSON.parse reads stays readable: escapes, lone surrogates, deep values, a repeated type.
+        for line in [
+            &b"{\"type\":\"delta\",\"text\":\"\\ud800 lone, \\udfff, \\u0000, \xf0\x9f\x98\x80\"}\n"[..],
+            b"{\"type\":\"tool\",\"args\":{\"deep\":[[[{\"a\":-0,\"b\":1e21,\"c\":null}]]]}}\n",
+            b"{\"type\":\"delta\",\"type\":\"done\"}\n",
+            b"{ \"type\" : \"delta\" }\n",
+        ] {
+            let mut w = wire(&budget);
+            let want = [&b"data: "[..], &line[..line.len() - 1], b"\n\n"].concat();
+            assert_eq!(read(&mut w, line), want, "{}", String::from_utf8_lossy(line));
+            assert!(!w.done);
+        }
+        let mut w = wire(&budget);
+        read(&mut w, b"{\"type\":\"delta\",\"type\":\"done\"}\n");
+        assert!(w.complete, "the last type counts");
+        assert!(utf8(&[b"\xf0\x9f", b"\x98", b"\x80"]) && !utf8(&[b"\xf0\x9f", b"\x98"]));
+        assert_eq!(budget.available_permits(), HOLDBACK_BUDGET);
     }
 }
