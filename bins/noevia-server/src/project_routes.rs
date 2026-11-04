@@ -70,6 +70,14 @@ pub enum Route {
     /// GET /api/workspace (sbstndalton/noevia#2191 close-out, `rust-workspace`): the projects and
     /// free chats, after the delete-old-chats sweep and the orphan-context cleanup.
     Workspace,
+    /// GET /api/chats/search?q= (#1450, `rust-chat-search`): the ids of the user's chats whose text
+    /// holds the query (crates/server-projects `workspace::search`).
+    ChatSearch,
+    /// GET /api/chats/{chatId}/export (#1471, `rust-chat-export`): one chat as a Markdown file
+    /// (crates/server-projects `chat_download`, crates/server-export `single`).
+    ChatExport {
+        chat: String,
+    },
     MoveChat {
         chat: String,
     },
@@ -205,6 +213,10 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
             _ => None,
         };
     }
+    // routes/chat-lists.cjs `p === '/api/chats/search' && req.method === 'GET'` (#1450).
+    if path == crate::routes::CHAT_SEARCH {
+        return (method == "GET").then_some(Route::ChatSearch);
+    }
     // routes/projects.cjs `/^\/api\/chats\/([^/]+)\/context$/` for GET and POST.
     if let Some(rest) = path.strip_prefix("/api/chats/") {
         return match (method, rest.split('/').collect::<Vec<_>>().as_slice()) {
@@ -218,6 +230,11 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
             }),
             // routes/chat-lists.cjs `/^\/api\/chats\/([^/]+)\/history$/` for GET and POST.
             ("GET", [chat, "history"]) if !chat.is_empty() => Some(Route::History {
+                chat: (*chat).to_string(),
+            }),
+            // routes/chat-lists.cjs `/^\/api\/chats\/([^/]+)\/export$/`, GET only (#1471); other
+            // methods fell through to Node's 404.
+            ("GET", [chat, "export"]) if !chat.is_empty() => Some(Route::ChatExport {
                 chat: (*chat).to_string(),
             }),
             ("POST", [chat, "move"]) if !chat.is_empty() => Some(Route::MoveChat {
@@ -571,6 +588,8 @@ pub async fn serve(
         | Route::History { .. }
         | Route::Retention
         | Route::Workspace
+        | Route::ChatSearch
+        | Route::ChatExport { .. }
         | Route::DeleteFreeChat { .. }
         | Route::DeleteChat { .. }
         | Route::SourceText { .. }
@@ -591,6 +610,16 @@ pub async fn serve(
             .map(|(_, v)| v.into_owned())
     });
     let query = parts.uri.query().map(str::to_owned);
+    // `url.searchParams.get('q') ?? ''`: the first `q`, form-decoded (the chat search).
+    let search = parts
+        .uri
+        .query()
+        .and_then(|q| {
+            url::form_urlencoded::parse(q.as_bytes())
+                .find(|(k, _)| k == "q")
+                .map(|(_, v)| v.into_owned())
+        })
+        .unwrap_or_default();
     let upload = match limit {
         Some(limit) => match crate::account_routes::read_body(body, limit).await {
             Ok(b) => Some(b),
@@ -822,6 +851,8 @@ pub async fn serve(
             }
             (Route::Retention, _) => retention::get(ctx),
             (Route::Workspace, _) => workspace::get(ctx),
+            (Route::ChatSearch, _) => workspace::search(ctx, &search),
+            (Route::ChatExport { chat }, _) => chat_export(ctx, &chat),
             (Route::MoveChat { chat }, Some(b)) => {
                 chat_move::post(ctx, &chat, &b.bytes, b.over, &start_id)
             }
@@ -982,6 +1013,34 @@ pub async fn serve(
         Ok(Ok(r)) => respond(r),
         Ok(Err(refused)) => refusal(refused),
         Err(_) => reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true),
+    }
+}
+
+/// routes/chat-lists.cjs's single-chat download (#1471): the chat the lookup found, as Node's
+/// `res.writeHead(200, { Content-Type, Content-Length, Content-Disposition, Cache-Control })`.
+fn chat_export(ctx: Ctx<'_>, raw: &str) -> Reply {
+    use server_projects::chat_download::{find, Lookup};
+    let (chat, id, history) = match find(ctx, raw) {
+        Lookup::Found { chat, id, history } => (chat, id, history),
+        Lookup::Answer(reply) => return reply,
+    };
+    let Ok(download) = server_export::single::download(&chat, &id, &history) else {
+        return Reply::internal();
+    };
+    Reply {
+        status: 200,
+        body: server_projects::Body::Bytes {
+            headers: vec![
+                ("Content-Type", "text/markdown; charset=utf-8".to_owned()),
+                ("Content-Length", download.body.len().to_string()),
+                (
+                    "Content-Disposition",
+                    format!("attachment; filename=\"{}\"", download.name),
+                ),
+                ("Cache-Control", "no-store".to_owned()),
+            ],
+            bytes: download.body,
+        },
     }
 }
 

@@ -446,6 +446,10 @@ pub const FEATURES: &[&str] = &[
     "rust-health",
     "rust-auto-roles",
     "rust-workspace",
+    // GET /api/chats/search (#1450) and GET /api/chats/{chatId}/export (#1471): core rust-chat-search.cjs
+    // `RUST_CHAT_SEARCH_OWNED` and rust-chat-export.cjs `RUST_CHAT_EXPORT_OWNED` refuse them.
+    "rust-chat-search",
+    "rust-chat-export",
     #[cfg(feature = "rust-reasoning-settings")]
     "rust-reasoning-settings",
     #[cfg(feature = "rust-routing-mode")]
