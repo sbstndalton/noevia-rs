@@ -46,7 +46,10 @@ fn view(facts: &JValue) -> Option<JValue> {
                 .or_else(|| row_field(row, "progress").as_num());
             Some(JValue::obj([
                 ("id", first_truthy(row, &["id", "job_id"])),
-                ("model", first_truthy(row, &["model_name", "model", "checkpoint"])),
+                (
+                    "model",
+                    first_truthy(row, &["model_name", "model", "checkpoint"]),
+                ),
                 ("progress", progress.map_or(JValue::Null, JValue::Num)),
                 ("status", first_truthy(row, &["status", "state"])),
             ]))

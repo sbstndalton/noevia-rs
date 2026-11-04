@@ -64,20 +64,40 @@ async fn owner_shapes_and_failures_preserve_status() {
     for (facts, status, expected) in [
         (json!({"kind":"disabled"}), 200, json!([])),
         (
-            json!({"kind":"listing","direct":[{"fields":{"id":"direct"}}]}),
+            json!({"kind":"listing","direct":[{"fields":{"id":"direct","percent":40}}]}),
             200,
-            json!([{"id":"direct","model":"","progress":null,"status":""}]),
+            json!([{"id":"direct","model":"","progress":0.4,"status":""}]),
         ),
         (
             json!({"kind":"listing","jobs":false,"downloads":[{"fields":{"id":"fallback"}}]}),
             200,
             json!([{"id":"fallback","model":"","progress":null,"status":""}]),
         ),
-        (json!({"kind":"listing","jobs":[],"downloads":true}), 200, json!([])),
-        (json!({"kind":"failed"}), 502, json!({"error":"Download status unavailable"})),
-        (json!({"kind":"fault"}), 500, json!({"error":"Internal error"})),
-        (json!({"kind":"listing","jobs":true}), 500, json!({"error":"Internal error"})),
-        (json!({"kind":"listing","jobs":[null]}), 500, json!({"error":"Internal error"})),
+        (
+            json!({"kind":"listing","jobs":[],"downloads":true}),
+            200,
+            json!([]),
+        ),
+        (
+            json!({"kind":"failed"}),
+            502,
+            json!({"error":"Download status unavailable"}),
+        ),
+        (
+            json!({"kind":"fault"}),
+            500,
+            json!({"error":"Internal error"}),
+        ),
+        (
+            json!({"kind":"listing","jobs":true}),
+            500,
+            json!({"error":"Internal error"}),
+        ),
+        (
+            json!({"kind":"listing","jobs":[null]}),
+            500,
+            json!({"error":"Internal error"}),
+        ),
     ] {
         up.set(move |_| reply("200 OK", &facts.to_string()));
         let (actual, _, body) = raw_text(front.addr, "GET", PATH, ADMIN, "", b"").await;
@@ -90,7 +110,11 @@ async fn owner_shapes_and_failures_preserve_status() {
 async fn head_other_verbs_and_trailing_path_stay_with_node() {
     let (_d, front, up) = rig().await;
     up.set(|_| reply_with("202 NodeMethod", "X-Node-Method: yes\r\n", "{}"));
-    for (method, path) in [("HEAD", PATH), ("POST", PATH), ("GET", "/api/models/downloads/")] {
+    for (method, path) in [
+        ("HEAD", PATH),
+        ("POST", PATH),
+        ("GET", "/api/models/downloads/"),
+    ] {
         let (status, headers, _) = raw_text(front.addr, method, path, ADMIN, "", b"").await;
         assert_eq!(status, 202, "{method} {path}");
         assert!(headers.contains("x-node-method: yes"));
