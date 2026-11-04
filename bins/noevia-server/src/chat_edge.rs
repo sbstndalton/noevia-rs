@@ -23,18 +23,23 @@
 //!    refusal) through the unchanged pipeline.
 //! 6. `spaceId: 'diary'` with the add-on off: 404 `Diary add-on is disabled`.
 //!
-//! Node's inference gate answered before all of these, and a request it refused was never counted.
-//! So every refusal here is first offered to Core's gate (chat_turn.rs `gate_refusal`), whose 503
-//! wins; and a call this front counted is given back when Core's gate refused it (Core marks that
-//! answer with [`GATE_REFUSED_HEADER`], which never reaches the client).
+//! Node's inference gate ran before all of these: a call was counted only once the gate let it in,
+//! in the order the gate let calls in, and a call the gate refused was never counted. So the front
+//! takes the gate first and keeps it ([`hold`], Core rust-chat-edge.cjs leases): Core's
+//! `/internal/chat/gate?hold=1` enters the gate for this call (waiting as Node waited) and answers its
+//! refusal, or 200 with [`LEASE_HEADER`] and stays open while the gate is held. Only then is the call
+//! counted, and the refusals below are answered while the gate is held, as Node held it through them.
+//! A call that passes carries the lease, and Core's turn adopts the hold instead of entering the gate
+//! again. Nothing is given back to the budget, because nothing is counted that Node would not count.
 //!
-//! The Diary local exchange (`POST /api/diary/local-exchange`) stays Node's: the front counts its call
-//! on the same budget after Node's gate, add-on and method checks would have passed (signed in, the
-//! add-on on, a POST), and answers its 429 `Please wait before sending another message` itself.
+//! The Diary local exchange (`POST /api/diary/local-exchange`) stays Node's: once Node's own checks
+//! would have let it reach the budget (signed in, the add-on on, a POST), the front takes the gate
+//! as the local exchange meets it, counts the call on the same budget, and answers its 429 `Please
+//! wait before sending another message` itself; a call that passes is forwarded with the lease.
 use crate::{identity, reply, serve::Conn, App};
 use axum::{
     body::Body,
-    http::{HeaderMap, Method, Request, Response, StatusCode},
+    http::{HeaderMap, HeaderValue, Method, Request, Response, StatusCode},
 };
 use js_json::raw;
 use std::sync::Arc;
@@ -50,10 +55,12 @@ pub const DIARY_TOO_MANY: &str = "Please wait before sending another message";
 pub const LOCAL_EXCHANGE: &str = "/api/diary/local-exchange";
 /// Core rust-chat-edge.cjs `COWORK_PATH`: a Cowork start that passed the checks.
 pub const COWORK_PATH: &str = "/internal/chat/cowork";
-/// Core rust-chat-edge.cjs `GATE_REFUSED_HEADER`: Core's inference gate refused this call.
-pub const GATE_REFUSED_HEADER: &str = "x-noevia-gate-refused";
-/// Core rust-chat-edge.cjs `DIARY_GATE_PATH`: the gate probe as the local exchange meets it.
-pub const DIARY_GATE_PATH: &str = "/internal/chat/gate?route=diary-local-exchange";
+/// Core rust-chat-edge.cjs `LEASE_HEADER`: the gate hold a call carries to Core.
+pub const LEASE_HEADER: &str = "x-noevia-gate-lease";
+/// The gate taken and held for a chat turn or Cowork start.
+pub const CHAT_HOLD_PATH: &str = "/internal/chat/gate?hold=1";
+/// The gate taken and held as the local exchange meets it (its own refusal shape).
+pub const DIARY_HOLD_PATH: &str = "/internal/chat/gate?route=diary-local-exchange&hold=1";
 /// chat-mode.cjs `TURN_BOX_CAP` and `TURN_IMAGE_CAP`, and the id length both lists allow.
 const TURN_BOX_CAP: usize = 20;
 const TURN_IMAGE_CAP: usize = 12;
@@ -154,37 +161,80 @@ pub fn llm_key(user: &str) -> String {
     format!("llm:{user}")
 }
 
-/// One call counted on the shared budget: what to give back if Core's gate refuses it.
-#[derive(Debug, Clone)]
-pub struct Counted {
-    key: String,
-    window: i64,
-    pub limited: bool,
+/// `llmRateLimited(user)` at `now`: counts the call and says whether it is over the budget.
+pub fn charge_at(
+    rate: &mut server_account::rate::RateLimiter,
+    user: &str,
+    limit: u64,
+    now: i64,
+) -> bool {
+    rate.limited(&llm_key(user), limit, LLM_WINDOW_MS, now)
 }
 
-/// Counts one call for `user` on the shared `llm:` budget (core `llmRateLimited`).
-pub fn charge(app: &App, user: &str) -> Option<Counted> {
-    let key = llm_key(user);
-    let limit = app.config.chat_edge.llm_limit;
+/// Counts one call Core's gate let in for `user` on the shared `llm:` budget; `None` when the
+/// limiter cannot be used.
+pub fn charge(app: &App, user: &str) -> Option<bool> {
     let mut rate = app.llm_rate.lock().ok()?;
-    let c = rate.charge(&key, limit, LLM_WINDOW_MS, identity::now_ms());
-    Some(Counted {
-        key,
-        window: c.window,
-        limited: c.limited,
-    })
+    Some(charge_at(
+        &mut rate,
+        user,
+        app.config.chat_edge.llm_limit,
+        identity::now_ms(),
+    ))
 }
 
-/// Gives back a call Core's gate refused: Node never counted it.
-pub fn release(app: &App, counted: &Counted) {
-    if let Ok(mut rate) = app.llm_rate.lock() {
-        rate.release(&counted.key, counted.window, identity::now_ms());
+/// Core's inference gate, held for one call: its open answer (dropping it gives the gate back unless
+/// a call adopted the lease) and the lease.
+pub struct Hold {
+    _open: Response<Body>,
+    pub lease: HeaderValue,
+}
+
+/// What Core's gate said to [`hold`].
+pub enum Gate {
+    Held(Hold),
+    /// The gate's own answer (its refusal), or the 502 of a Core that did not answer.
+    Answer(Response<Body>),
+}
+
+/// Takes Core's gate for this call at `target` ([`CHAT_HOLD_PATH`] or [`DIARY_HOLD_PATH`]).
+pub async fn hold(app: &Arc<App>, conn: Conn, headers: &HeaderMap, target: &str) -> Gate {
+    let unavailable = || {
+        reply::error(
+            StatusCode::BAD_GATEWAY,
+            "The server is not answering. Please retry.",
+            true,
+        )
+    };
+    let Some(token) = app
+        .config
+        .research
+        .front_token()
+        .and_then(|t| HeaderValue::from_str(t).ok())
+        .map(|mut v| {
+            v.set_sensitive(true);
+            v
+        })
+    else {
+        return Gate::Answer(unavailable());
+    };
+    let Ok(mut probe) = Request::post(target).body(Body::empty()) else {
+        return Gate::Answer(unavailable());
+    };
+    if let Some(host) = headers.get(axum::http::header::HOST) {
+        probe
+            .headers_mut()
+            .insert(axum::http::header::HOST, host.clone());
     }
-}
-
-/// Whether Core's gate refused this answer; the mark is removed.
-pub fn take_gate_refused(headers: &mut HeaderMap) -> bool {
-    headers.remove(GATE_REFUSED_HEADER).is_some()
+    let extra = [(crate::project_store::TOKEN_HEADER, token)];
+    let Some(res) = app.proxy.relay(conn.peer, probe, target, &extra, 0).await else {
+        return Gate::Answer(unavailable());
+    };
+    match res.headers().get(LEASE_HEADER).cloned() {
+        Some(lease) if res.status() == StatusCode::OK => Gate::Held(Hold { _open: res, lease }),
+        _ if res.status().is_client_error() || res.status().is_server_error() => Gate::Answer(res),
+        _ => Gate::Answer(unavailable()),
+    }
 }
 
 /// The account facts the checks read.
@@ -356,37 +406,39 @@ pub fn harness_blocking(app: &App) -> Option<bool> {
 pub async fn forward_node(
     app: &Arc<App>,
     conn: Conn,
-    req: Request<Body>,
+    mut req: Request<Body>,
     path: Option<&str>,
 ) -> Response<Body> {
     if path != Some(LOCAL_EXCHANGE) || app.proxy.is_in_process() {
         return app.proxy.forward(conn.peer, req).await;
     }
-    let counted = if req.method() == Method::POST {
+    // Only this front names a hold.
+    req.headers_mut().remove(LEASE_HEADER);
+    let held = if req.method() == Method::POST {
         match local_exchange_turn(app, conn, req.headers().clone()).await {
-            Ok(counted) => counted,
+            Ok(held) => held,
             Err(answer) => return *answer,
         }
     } else {
         None
     };
-    let mut res = app.proxy.forward(conn.peer, req).await;
-    if take_gate_refused(res.headers_mut()) {
-        if let Some(c) = &counted {
-            release(app, c);
-        }
+    if let Some(h) = &held {
+        req.headers_mut().insert(LEASE_HEADER, h.lease.clone());
     }
+    let res = app.proxy.forward(conn.peer, req).await;
+    // Core adopted the hold when it read the request; the probe can close now.
+    drop(held);
     res
 }
 
-/// The local exchange's turn on the budget: `Ok(None)` when Node answers before the budget (signed
-/// out, CSRF, the add-on off), `Ok(Some)` when the call was counted and goes on, `Err` with the 429
-/// (or the gate's 503, which wins) when it is over.
+/// The local exchange's turn on the budget: `Ok(None)` when Node answers before its budget (signed
+/// out, CSRF, the add-on off), `Ok(Some)` with the gate held when the call was counted and goes on,
+/// `Err` with the gate's refusal or the 429.
 async fn local_exchange_turn(
     app: &Arc<App>,
     conn: Conn,
     headers: HeaderMap,
-) -> Result<Option<Counted>, Box<Response<Body>>> {
+) -> Result<Option<Hold>, Box<Response<Body>>> {
     let creds = server_auth::Creds::from_headers(
         "POST",
         headers.iter().map(|(k, v)| (k.as_str(), v.as_bytes())),
@@ -401,29 +453,38 @@ async fn local_exchange_turn(
     if !authn.user.diary_enabled {
         return Ok(None);
     }
-    let Some(counted) = charge(app, &authn.user.id) else {
-        return Ok(None);
+    let held = match hold(app, conn, &headers, DIARY_HOLD_PATH).await {
+        Gate::Held(h) => h,
+        Gate::Answer(answer) => return Err(Box::new(answer)),
     };
-    if !counted.limited {
-        return Ok(Some(counted));
+    match charge(app, &authn.user.id) {
+        Some(true) => Err(Box::new(reply::error(
+            StatusCode::TOO_MANY_REQUESTS,
+            DIARY_TOO_MANY,
+            true,
+        ))),
+        _ => Ok(Some(held)),
     }
-    if let Some(mut held) = crate::chat_turn::gate_probe(app, conn, &headers, DIARY_GATE_PATH).await
-    {
-        take_gate_refused(held.headers_mut());
-        release(app, &counted);
-        return Err(Box::new(held));
-    }
-    Err(Box::new(reply::error(
-        StatusCode::TOO_MANY_REQUESTS,
-        DIARY_TOO_MANY,
-        true,
-    )))
 }
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    /// Review P2-1: a call Node's gate refused is never counted, so the window opens with the first
+    /// call the gate let in. Limit 1: refused at t=0 (no charge: the front never reaches the budget),
+    /// let in at t=30 (opens the window to t=90), so t=61 is over the budget and t=90 opens anew.
+    #[test]
+    fn the_window_opens_with_the_first_call_the_gate_let_in() {
+        let mut rate = server_account::rate::RateLimiter::new(0);
+        assert!(!charge_at(&mut rate, "u", 1, 30_000));
+        assert!(charge_at(&mut rate, "u", 1, 61_000));
+        assert!(charge_at(&mut rate, "u", 1, 89_999));
+        assert!(!charge_at(&mut rate, "u", 1, 90_000));
+        // Another user's bucket is its own.
+        assert!(!charge_at(&mut rate, "v", 1, 61_000));
+    }
 
     #[test]
     fn llm_rate_limit_reads_as_number_and_math_max_read_it() {

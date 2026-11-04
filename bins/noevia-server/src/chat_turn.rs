@@ -8,21 +8,24 @@
 //! In order:
 //! 1. Node's request gate, as identity.rs answers it: 401 signed out, 403 `invalid CSRF token`, 403
 //!    `browser_session_required`.
-//! 2. The edge (chat_edge.rs): the shared `llm:` budget (429), the body cap (413), JSON and the
-//!    object (400), the request shape (400), Cowork (403/409) and the Diary add-on (404).
-//! 3. Node's inference gate answered before all of these, so every refusal of 1 and 2 is first
-//!    offered to Core's `POST /internal/chat/gate`: when the gate is held its 503 (`Retry-After: 3`
-//!    and the retryable body) is the answer, as Node gave it, and a call counted on the budget is
-//!    given back; otherwise the refusal.
+//!    Node's inference gate answered before these, so a refusal is first offered to Core's
+//!    `POST /internal/chat/gate`: when the gate is held its 503 (`Retry-After: 3` and the retryable
+//!    body) is the answer, as Node gave it; otherwise the refusal.
+//! 2. Node's inference gate, taken and held for this call (chat_edge.rs `hold`): its 503, or the
+//!    gate held while the rest is decided.
+//! 3. The edge (chat_edge.rs), the gate held: the shared `llm:` budget (429), counted only now, the
+//!    body cap (413), JSON and the object (400), the request shape (400), Cowork (403/409) and the
+//!    Diary add-on (404).
 //! 4. The request, its body as read, to `/internal/chat/turn` (a Cowork start to
-//!    `/internal/chat/cowork`) with the per-start secret and the signed-in user (legacy_proxy.rs
-//!    `relay`): the client's headers and credentials ride along, Core authenticates them again and
-//!    must find the same user.
+//!    `/internal/chat/cowork`) with the per-start secret, the signed-in user and the gate's lease,
+//!    which Core's turn adopts instead of entering the gate again (legacy_proxy.rs `relay`): the
+//!    client's headers and credentials ride along, Core authenticates them again and must find the
+//!    same user.
 //! 5. Core's answer: JSON and the 503 with `Retry-After` byte for byte; a turn's events, which Core
 //!    writes as NDJSON for the front since chat port S7, as the event stream the front writes itself
 //!    (chat_wire.rs: the headers, one frame per event, the `: keep-alive` comment every 5 s, the end).
 //!    The client leaving drops the response, which closes Core's socket (the turn stops and keeps its
-//!    interrupted reply, #679). A turn Core's gate refused gives its budget call back.
+//!    interrupted reply, #679).
 //!
 //! When Core fails before its headers the answer is the proxy's 502 JSON, and so is an event stream
 //! Core wrote itself (a Core that is not this front's pair). When the events break after the headers,
@@ -76,7 +79,7 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
     let authn = match gated {
         Ok(Ok(id)) => id,
         Ok(Err(rejection @ identity::Rejection::Refused(_))) => {
-            return refused(app, conn, &parts.headers, None, rejection.into_response()).await;
+            return refused(app, conn, &parts.headers, rejection.into_response()).await;
         }
         Ok(Err(rejection)) => return rejection.into_response(),
         Err(_) => return identity::Rejection::Unavailable.into_response(),
@@ -85,27 +88,30 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
     let (Some(token), Some(user)) = (token, sensitive(&authn.user.id)) else {
         return unavailable();
     };
-    // The edge (chat_edge.rs), in routes/chat.cjs's order: the budget before the body is read.
-    let Some(counted) = chat_edge::charge(app, &authn.user.id) else {
+    // Node's inference gate first: a call is counted only once the gate let it in.
+    let held = match chat_edge::hold(app, conn, &parts.headers, chat_edge::CHAT_HOLD_PATH).await {
+        chat_edge::Gate::Held(h) => h,
+        chat_edge::Gate::Answer(answer) => return answer,
+    };
+    // The edge (chat_edge.rs), in routes/chat.cjs's order, the gate held: the budget before the body.
+    let Some(limited) = chat_edge::charge(app, &authn.user.id) else {
         return unavailable();
     };
-    if counted.limited {
-        let over = reply::error(
+    if limited {
+        return reply::error(
             StatusCode::TOO_MANY_REQUESTS,
             chat_edge::CHAT_TOO_MANY,
             true,
         );
-        return refused(app, conn, &parts.headers, Some(&counted), over).await;
     }
     let bytes = match crate::account_routes::read_body(body, STORED_HISTORY_BYTES as usize).await {
         Ok(b) if !b.over => b.bytes,
-        failed => {
-            let chat_edge::Verdict::Refuse(status, text) = chat_edge::unread(failed.is_ok()) else {
-                return unavailable();
-            };
-            let answer = reply::json_text(status, text, true);
-            return refused(app, conn, &parts.headers, Some(&counted), answer).await;
-        }
+        failed => match chat_edge::unread(failed.is_ok()) {
+            chat_edge::Verdict::Refuse(status, text) => {
+                return reply::json_text(status, text, true)
+            }
+            _ => return unavailable(),
+        },
     };
     let account = chat_edge::Account {
         admin: authn.user.role == server_auth::Role::Admin,
@@ -126,10 +132,7 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
     let target = match verdict {
         chat_edge::Verdict::Turn => TURN_PATH,
         chat_edge::Verdict::Cowork => chat_edge::COWORK_PATH,
-        chat_edge::Verdict::Refuse(status, text) => {
-            let answer = reply::json_text(status, text, true);
-            return refused(app, conn, &parts.headers, Some(&counted), answer).await;
-        }
+        chat_edge::Verdict::Refuse(status, text) => return reply::json_text(status, text, true),
     };
     parts.headers.remove(header::TRANSFER_ENCODING);
     // The wire is the front's to ask for: a turn gets NDJSON (chat_wire.rs), anything else nothing.
@@ -147,19 +150,17 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
     let extra = [
         (crate::project_store::TOKEN_HEADER, token),
         (USER_HEADER, user),
+        (chat_edge::LEASE_HEADER, held.lease.clone()),
     ];
-    let Some(mut res) = app
+    let res = app
         .proxy
         .relay(conn.peer, req, target, &extra, RELAY_LIMIT)
-        .await
-    else {
-        // Core never saw the call, so Node would not have counted it.
-        chat_edge::release(app, &counted);
+        .await;
+    // Core's turn adopted the hold when it read the request; the probe can close now.
+    drop(held);
+    let Some(res) = res else {
         return unavailable();
     };
-    if chat_edge::take_gate_refused(res.headers_mut()) {
-        chat_edge::release(app, &counted);
-    }
     // Chat port S7 (chat_wire.rs): the turn's events come as NDJSON and the front writes the event
     // stream. A Core that writes its own event stream is not this front's pair: its answer is dropped
     // (which stops that turn) and the client gets the 502 of a Core that did not answer.
@@ -172,25 +173,17 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
     }
 }
 
-/// A refusal of the front's, after Core's inference gate: the gate's 503 when it is held (and the
-/// budget call given back), else `answer`.
+/// A refusal of the session gate's, after Core's inference gate: the gate's 503 when it is held,
+/// else `answer`.
 async fn refused(
     app: &Arc<App>,
     conn: Conn,
     headers: &HeaderMap,
-    counted: Option<&chat_edge::Counted>,
     answer: Response<Body>,
 ) -> Response<Body> {
-    match gate_probe(app, conn, headers, GATE_PATH).await {
-        Some(mut held) => {
-            chat_edge::take_gate_refused(held.headers_mut());
-            if let Some(c) = counted {
-                chat_edge::release(app, c);
-            }
-            held
-        }
-        None => answer,
-    }
+    gate_probe(app, conn, headers, GATE_PATH)
+        .await
+        .unwrap_or(answer)
 }
 
 /// Core's inference gate for a request the front refuses, at `target` (the chat gate, or the Diary
