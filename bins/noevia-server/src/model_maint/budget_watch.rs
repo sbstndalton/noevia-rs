@@ -1,5 +1,5 @@
 //! The #697 runtime safety net, moved from Core's `inference-budget-watch.cjs` (`createInferenceBudgetWatch`,
-//! wired in `index.cjs`) with its behaviour unchanged. `rust-budget-watch-v2` in `FEATURES`; Core's
+//! wired in `index.cjs`) with its behaviour unchanged. `rust-budget-watch-v3` in `FEATURES`; Core's
 //! `rust-budget-watch.cjs` `BUDGET_WATCH_OWNER` says that Core no longer starts its own, and the release
 //! assembly and the web supervisor refuse a pair where only one side moved (never two watches, never none).
 //!
@@ -1006,6 +1006,11 @@ impl Io for NativeIo {
         let Some(revision) = self.revision() else {
             return Some(false);
         };
+        let had_fence = journal::admission(
+            dir,
+            model_name,
+            &journal::Context::current(Some(revision.clone()), Some(budget_gib)),
+        );
         let entry = journal::Entry {
             model: model_name.to_owned(),
             revision,
@@ -1050,7 +1055,11 @@ impl Io for NativeIo {
         };
         let result = reply.ok().map(|r| r.ok);
         if result == Some(false) {
-            let _ = journal::remove(dir, model_name);
+            if !had_fence {
+                let _ = journal::remove(dir, model_name);
+            }
+        } else {
+            let _ = journal::clear_damage(dir, model_name);
         }
         result
     }
@@ -1065,7 +1074,7 @@ impl Io for NativeIo {
         match journal::read(dir, model) {
             Ok(entry) if entry.recorded => true,
             Ok(entry) => self.acknowledge(entry).await,
-            Err(e) => e.kind() == std::io::ErrorKind::NotFound,
+            Err(e) => e.kind() == std::io::ErrorKind::NotFound && !journal::fenced(dir, model),
         }
     }
 
@@ -1073,17 +1082,37 @@ impl Io for NativeIo {
         let Some(dir) = &self.journal_dir else {
             return false;
         };
-        let Ok(entries) = journal::entries(dir) else {
+        let current =
+            journal::Context::current(self.revision(), budget.is_finite().then_some(budget));
+        let Ok(entries) = journal::entries(dir, &current) else {
             return false;
         };
-        let revision = self.revision();
         let mut done = true;
-        for entry in entries {
-            if !entry.recorded
-                || (budget.is_finite() && entry.budget_gib != budget)
-                || revision.as_ref().is_some_and(|r| r != &entry.revision)
-            {
-                done &= self.acknowledge(entry).await;
+        for (key, record) in entries {
+            match record {
+                Ok(journal::Record::Healthy(entry)) => {
+                    let old = journal::Context::current(
+                        Some(entry.revision.clone()),
+                        Some(entry.budget_gib),
+                    );
+                    if old.changed(&current) {
+                        // A known configuration change invalidates locally, even if IPC is down.
+                        if journal::clear_key(dir, &key).is_ok() {
+                            if let Ok(mut r) = self.retries.lock() {
+                                r.remove(&entry.model);
+                            }
+                        }
+                    } else if !entry.recorded {
+                        done &= self.acknowledge(entry).await;
+                    }
+                }
+                Ok(journal::Record::Damaged { key, context }) => {
+                    if context.changed(&current) {
+                        let _ = journal::clear_key(dir, &key);
+                    }
+                    // Its hashed files fence only that model. Keep processing every other entry.
+                }
+                Err(_) => { /* unreadable per-model state remains fenced, not a global failure */ }
             }
         }
         done

@@ -708,3 +708,15 @@ fn status_objects_have_nodes_keys_in_order() {
         r#"{"state":"unloaded","models":["a"],"usedGib":14,"gttGib":12,"vramGib":0.5,"baselineGib":0,"containerGib":1.5,"budgetGib":12,"limitGib":13.2}"#
     );
 }
+
+#[test]
+fn a_fence_must_explicitly_carry_its_nullable_revision() {
+    assert!(serde_json::from_value::<journal::Entry>(
+        json!({"model":"a","budgetGib":12,"at":0,"recorded":false})
+    )
+    .is_err());
+    assert!(serde_json::from_value::<journal::Entry>(
+        json!({"model":"a","revision":null,"budgetGib":12,"at":0,"recorded":false})
+    )
+    .is_ok());
+}

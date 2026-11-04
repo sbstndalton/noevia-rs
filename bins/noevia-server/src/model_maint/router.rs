@@ -33,6 +33,8 @@ pub struct Router {
     base: String,
     authorization: Option<HeaderValue>,
     budget_fence: Option<std::path::PathBuf>,
+    budget_preset: Option<std::path::PathBuf>,
+    budget_node: Option<super::budget_watch::NodeBridge>,
 }
 
 impl std::fmt::Debug for Router {
@@ -60,11 +62,20 @@ impl Router {
             base: base.to_owned(),
             authorization,
             budget_fence: None,
+            budget_preset: None,
+            budget_node: None,
         })
     }
 
-    pub fn with_budget_fence(mut self, dir: Option<std::path::PathBuf>) -> Self {
+    pub fn with_budget_fence(
+        mut self,
+        dir: Option<std::path::PathBuf>,
+        preset: Option<std::path::PathBuf>,
+        node: super::budget_watch::NodeBridge,
+    ) -> Self {
         self.budget_fence = dir;
+        self.budget_preset = preset;
+        self.budget_node = Some(node);
         self
     }
 
@@ -103,9 +114,26 @@ impl Router {
                 &self.budget_fence,
                 body.and_then(|b| b.get("model")).and_then(Value::as_str),
             ) {
-                if std::fs::metadata(super::budget_watch::journal::file(dir, model))
-                    .map_or_else(|e| e.kind() != std::io::ErrorKind::NotFound, |_| true)
-                {
+                let fenced = if super::budget_watch::journal::fenced(dir, model) {
+                    let revision = match &self.budget_preset {
+                        Some(file) => crate::model_sizing::read_presets(file)
+                            .ok()
+                            .map(|p| Some(p.revision)),
+                        None => Some(None),
+                    };
+                    let budget = match &self.budget_node {
+                        Some(node) => node.budget().await,
+                        None => None,
+                    };
+                    super::budget_watch::journal::admission(
+                        dir,
+                        model,
+                        &super::budget_watch::journal::Context::current(revision, budget),
+                    )
+                } else {
+                    false
+                };
+                if fenced {
                     return Ok(Reply {
                         ok: false,
                         status: 409,

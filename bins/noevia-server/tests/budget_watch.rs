@@ -602,6 +602,135 @@ async fn cancellation_after_the_gate_accepted_unload_preserves_durable_quarantin
     assert_native_load_refused(&maint).await;
 }
 
+fn fence_dir(maint: &Maint) -> std::path::PathBuf {
+    maint
+        .data_dir
+        .as_ref()
+        .unwrap()
+        .join(format!("budget-watch-{}", maint.suffix))
+}
+fn seed_fence(maint: &Maint, model: &str, budget: f64, recorded: bool) -> std::path::PathBuf {
+    let dir = fence_dir(maint);
+    std::fs::create_dir_all(&dir).unwrap();
+    let revision = maint.ini.as_ref().map(|i| i.snapshot().unwrap().revision);
+    let hash = noevia_server::model_maint::ini::sha(model);
+    let file = dir.join(format!("{hash}.json"));
+    std::fs::write(
+        &file,
+        json!({"model":model,"revision":revision,"budgetGib":budget,"at":0,"recorded":recorded})
+            .to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join(format!("{hash}.context")),
+        json!({"revision":revision,"revisionKnown":true,"budgetGib":budget}).to_string(),
+    )
+    .unwrap();
+    file
+}
+async fn native_load(maint: &Maint, model: &str) -> u16 {
+    maint
+        .router
+        .as_ref()
+        .unwrap()
+        .request(
+            reqwest::Method::POST,
+            "/models/load",
+            Some(&json!({"model":model})),
+            None,
+            Duration::from_secs(1),
+        )
+        .await
+        .unwrap()
+        .status
+}
+fn model_artifacts(maint: &Maint, model: &str) -> Vec<String> {
+    let hash = noevia_server::model_maint::ini::sha(model);
+    let mut files: Vec<String> = std::fs::read_dir(fence_dir(maint))
+        .unwrap()
+        .map(|f| f.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with(&hash))
+        .collect();
+    files.sort();
+    files
+}
+
+#[tokio::test]
+async fn damaged_fence_is_isolated_valid_fences_reconcile_and_revision_change_clears_every_artifact(
+) {
+    let d = deployment().await;
+    let ini = d.dir.path().join("models.ini");
+    std::fs::write(&ini, "[chat]\nctx-size=1024\n[other]\n[third]\n").unwrap();
+    let mut env = d.env(false, false, &serde_json::Map::new());
+    env.insert("LLAMACPP_PRESET_PATH".into(), ini.display().to_string());
+    let maint = d.maint(&env);
+    let watch = d.watch(&env, Arc::clone(&maint));
+    let mut idle = over();
+    idle["listing"]["body"]["data"] = json!([]);
+    *d.world.step.lock().unwrap() = idle;
+    let broken = seed_fence(&maint, "chat", 12.0, false);
+    std::fs::write(&broken, "broken payload").unwrap();
+    seed_fence(&maint, "other", 8.0, false); // stale: must clear even without an IPC ack
+    seed_fence(&maint, "third", 12.0, false); // live: must still acknowledge
+    watch.tick().await;
+    assert_eq!(
+        *d.world.quarantined.lock().unwrap(),
+        vec![json!(["third", 12])]
+    );
+    assert!(model_artifacts(&maint, "other").is_empty());
+    assert!(!broken.exists());
+    let archived = model_artifacts(&maint, "chat");
+    assert_eq!(
+        archived.iter().filter(|n| n.contains(".damaged-")).count(),
+        1
+    );
+    assert_eq!(native_load(&maint, "chat").await, 409);
+    assert_ne!(native_load(&maint, "other").await, 409);
+    assert_eq!(native_load(&maint, "third").await, 409);
+    let restarted = d.watch(&env, Arc::clone(&maint));
+    restarted.tick().await;
+    assert_eq!(
+        model_artifacts(&maint, "chat"),
+        archived,
+        "restart does not rename/log the same damage again"
+    );
+    assert_eq!(native_load(&maint, "chat").await, 409);
+    // Admission itself invalidates stale damaged state immediately, without a watch tick.
+    std::fs::write(&ini, "[chat]\nctx-size=2048\n[other]\n[third]\n").unwrap();
+    assert_ne!(native_load(&maint, "chat").await, 409);
+    assert!(
+        model_artifacts(&maint, "chat").is_empty(),
+        "context and damaged archive both removed"
+    );
+    assert_ne!(native_load(&maint, "third").await, 409);
+    assert!(model_artifacts(&maint, "third").is_empty());
+}
+
+#[tokio::test]
+async fn legacy_damage_without_context_survives_restart_then_budget_change_invalidates_it_without_bridge_ack(
+) {
+    let d = deployment().await;
+    let env = d.env(false, false, &serde_json::Map::new());
+    let maint = d.maint(&env);
+    let mut idle = over();
+    idle["listing"]["body"]["data"] = json!([]);
+    *d.world.step.lock().unwrap() = idle.clone();
+    let file = seed_fence(&maint, "chat", 12.0, false);
+    std::fs::remove_file(file.with_extension("context")).unwrap();
+    std::fs::write(file, "legacy damage").unwrap();
+    d.watch(&env, Arc::clone(&maint)).tick().await;
+    assert_eq!(native_load(&maint, "chat").await, 409);
+    let saved = model_artifacts(&maint, "chat");
+    let restarted = d.watch(&env, Arc::clone(&maint));
+    restarted.tick().await;
+    assert_eq!(model_artifacts(&maint, "chat"), saved);
+    *d.world.quarantine_reply.lock().unwrap() = Some(Answer::Text(503, "{}".into()));
+    idle["budget"] = json!(24);
+    *d.world.step.lock().unwrap() = idle;
+    assert_ne!(native_load(&maint, "chat").await, 409);
+    assert!(model_artifacts(&maint, "chat").is_empty());
+}
+
 #[tokio::test]
 async fn the_production_timer_reads_on_its_interval_and_stops_at_shutdown() {
     let d = deployment().await;
@@ -637,7 +766,7 @@ async fn the_production_timer_reads_on_its_interval_and_stops_at_shutdown() {
 
 #[tokio::test]
 async fn only_a_llamacpp_front_with_the_watch_on_starts_it() {
-    assert!(noevia_server::FEATURES.contains(&"rust-budget-watch-v2"));
+    assert!(noevia_server::FEATURES.contains(&"rust-budget-watch-v3"));
     let d = deployment().await;
     let (_stop, rx) = tokio::sync::watch::channel(false);
     let on = d.env(false, false, &serde_json::Map::new());

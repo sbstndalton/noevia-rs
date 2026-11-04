@@ -161,6 +161,11 @@ impl Maint {
                     data_dir
                         .as_ref()
                         .map(|d| d.join(format!("budget-watch-{suffix}"))),
+                    first(get, &["LLAMACPP_PRESET_PATH"]).map(PathBuf::from),
+                    budget_watch::NodeBridge::new(
+                        first(get, &["NOEVIA_LEGACY_UPSTREAM"]).as_deref(),
+                        get("NOEVIA_PROJECT_STORE_TOKEN").as_deref(),
+                    )?,
                 ),
             )
         } else {
