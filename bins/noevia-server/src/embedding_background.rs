@@ -21,6 +21,7 @@ fn try_start(
         .clone()
         .ok_or("embedding data directory unavailable")?;
     let store = SqlStore {
+        rag_dir:get("RAG_DIR").filter(|s|!s.is_empty()).map(std::path::PathBuf::from),
         root,
         seed: runtime::seed(&get).unwrap_or_else(|_| runtime::invalid_seed()),
         open_vec: open_vec_required,

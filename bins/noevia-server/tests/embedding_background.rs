@@ -120,7 +120,7 @@ async fn nonfatal_config_case(profile:Option<&str>,damaged:bool) {
     if damaged {std::fs::write(dir.path().join("embedding-config.json"),"broken").unwrap();}
     let result=noevia_server::embedding_background::start(&front.app,|key|match key {"MODEL_LOADER_URL"=>Some(up.base()),"EMBEDDING_PROFILE"=>profile.map(str::to_owned),_=>None});
     assert!(result.is_ok(),"optional embedding configuration must never fail front startup");
-    let response=raw_text(front.addr,"GET","/api/ready","","",b"").await;assert!(response.0<500);
+    let response=raw_text(front.addr,"GET","/api/auth/session",MEMBER,"",b"").await;assert!(response.0<500);
     if let Some(worker)=result.unwrap() {worker.shutdown().await;}
 }
 #[tokio::test(flavor="multi_thread",worker_threads=2)]
@@ -134,7 +134,7 @@ async fn regression_p1_competing_owner_is_nonfatal() {
     let lookup=|key:&str|if key=="MODEL_LOADER_URL" {Some(up.base())}else {None};
     let first=noevia_server::embedding_background::start(&front.app,lookup).unwrap().unwrap();
     let second=noevia_server::embedding_background::start(&front.app,lookup);assert!(second.is_ok());
-    assert!(raw_text(front.addr,"GET","/api/ready","","",b"").await.0<500);first.shutdown().await;
+    assert!(raw_text(front.addr,"GET","/api/auth/session",MEMBER,"",b"").await.0<500);first.shutdown().await;
 }
 #[tokio::test(flavor="multi_thread",worker_threads=2)]
 async fn regression_p1_saved_config_repair_is_observed_without_restarting_front() {
@@ -146,5 +146,5 @@ async fn regression_p1_saved_config_repair_is_observed_without_restarting_front(
     async fn config_state(path:&std::path::Path,valid:bool) {tokio::time::timeout(std::time::Duration::from_secs(8),async {loop {if std::fs::read(path).ok().and_then(|b|serde_json::from_slice::<serde_json::Value>(&b).ok()).is_some_and(|v|v.get("configValid").and_then(serde_json::Value::as_bool)==Some(valid)) {break;}tokio::time::sleep(std::time::Duration::from_millis(20)).await;}}).await.unwrap();}
     let status=dir.path().join("embedding-worker-status.json");config_state(&status,false).await;
     std::fs::write(dir.path().join("embedding-config.json"),r#"{"version":1,"active":{"model":"fixed","profile":"nomic-v1","baseUrl":null},"next":null,"previous":null}"#).unwrap();config_state(&status,true).await;
-    assert!(raw_text(front.addr,"GET","/api/ready","","",b"").await.0<500);worker.shutdown().await;
+    assert!(raw_text(front.addr,"GET","/api/auth/session",MEMBER,"",b"").await.0<500);worker.shutdown().await;
 }

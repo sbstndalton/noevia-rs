@@ -301,7 +301,7 @@ pub fn start(
                     let paired=tokio::select! {r=host.http.ownership(&core,&token,&start)=>r.is_ok(),_=rx.changed()=>false};
                     if *rx.borrow() {break;}
                     if paired {
-                        let valid=host.store.config().is_ok(); let recovered=valid && !host.valid.swap(valid,Ordering::AcqRel); if recovered {control.kick();}
+                        let valid=host.store.config().is_ok(); let was_valid=host.valid.swap(valid,Ordering::AcqRel); let recovered=valid && !was_valid; if recovered {control.kick();}
                         let stamp=index_stamp(&host.store);let config=host.store.config();
                         if begun.elapsed()>=Duration::from_secs(30) && !initial {initial=true;if config.as_ref().is_ok_and(|c|c.next.is_some()) {control.kick();}}
                         if seen.as_ref().is_some_and(|s|s!=&stamp)&&config.as_ref().is_ok_and(|c|c.next.is_some()) {control.kick();}
@@ -336,12 +336,7 @@ fn index_stamp(store: &SqlStore) -> Vec<(Index, u64, u64)> {
         .indexes()
         .into_iter()
         .map(|index| {
-            let dir = index
-                .user
-                .as_ref()
-                .and_then(|u| server_projects::store::user_dir(&store.root, u).ok())
-                .unwrap_or_else(|| store.root.clone());
-            let path = dir.join("rag").join(format!("{}.db", index.project));
+            let path = store.index_path(&index).unwrap_or_default();
             let stamp = |p: &Path| {
                 std::fs::metadata(p)
                     .ok()
