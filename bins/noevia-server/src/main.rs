@@ -260,6 +260,14 @@ async fn server_main() -> ExitCode {
     }
     #[cfg(feature = "rust-storage-reads")]
     let storage_metadata = std::sync::Arc::clone(&app.storage_metadata);
+    let embedding_background =
+        match noevia_server::embedding_background::start(&app, |key| std::env::var(key).ok()) {
+            Ok(worker) => worker,
+            Err(error) => {
+                eprintln!("noevia-server: optional embedding background idle: {error}");
+                None
+            }
+        };
     let server = serve::serve(listener, app, serve::Limits::default(), async move {
         let mut rx = stop_rx;
         let _ = rx.wait_for(|s| *s).await;
@@ -276,6 +284,9 @@ async fn server_main() -> ExitCode {
         () = server => ExitCode::SUCCESS,
         _ = drained => ExitCode::SUCCESS,
     };
+    if let Some(worker) = embedding_background {
+        worker.shutdown().await;
+    }
     #[cfg(feature = "rust-storage-reads")]
     let _ = storage_metadata.shutdown().await;
     exit

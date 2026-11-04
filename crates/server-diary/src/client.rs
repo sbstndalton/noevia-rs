@@ -28,6 +28,10 @@ pub enum CallError {
     Config,
     Tenant(TenantError),
     Transport,
+    /// No connection at all: refused, or the name did not resolve (core's `ECONNREFUSED`,
+    /// `ENOTFOUND`, `EAI_AGAIN`). Every route treats it as [`CallError::Transport`]; the local
+    /// exchange's stream says "nothing was saved" for it alone.
+    Refused,
     Timeout,
     Redirect,
     /// A reply this port cannot hold as JS would (see `js_json::wtf16::Refusal::Unsupported`).
@@ -157,6 +161,35 @@ impl Sidecar {
         .is_ok_and(|r| r.ok)
     }
 
+    /// [`Sidecar::fetch_json`] without the parse: `(ok, status, body)`, the body `None` past the cap.
+    /// For a reply the caller reads as `JSON.parse` would, without a parsed tree's limits.
+    pub(crate) async fn fetch_raw(
+        &self,
+        tenant: &Tenant,
+        method: reqwest::Method,
+        path_and_query: &str,
+        body: Option<Bytes>,
+        timeout: Duration,
+    ) -> Result<(bool, u16, Option<Vec<u8>>), CallError> {
+        let url = self.url(path_and_query)?;
+        let (mut response, deadline) = self
+            .send(
+                tenant,
+                method,
+                &url,
+                Content::Json(body.as_deref()),
+                body.as_ref(),
+                || Instant::now() + timeout,
+            )
+            .await?;
+        let status = response.status().as_u16();
+        let ok = response.status().is_success();
+        match read_capped(&mut response, JSON_REPLY_CAP, deadline).await? {
+            Capped::Overflow => Ok((false, status, None)),
+            Capped::Bytes(bytes) => Ok((ok, status, Some(bytes))),
+        }
+    }
+
     /// `fetchJson` with the tenant headers and the 428 retry (`diaryFetchJson`).
     pub async fn fetch_json(
         &self,
@@ -234,7 +267,27 @@ pub(crate) fn map_error(error: reqwest::Error) -> CallError {
         CallError::Timeout
     } else if error.is_builder() {
         CallError::Config
+    } else if error.is_connect() && never_connected(&error) {
+        CallError::Refused
     } else {
         CallError::Transport
     }
+}
+
+/// A connect error whose cause is a refused connection or a failed name lookup (hyper-util's
+/// `dns error`). A connect timeout is not one (core's `ETIMEDOUT`/undici's connect timeout were not).
+fn never_connected(error: &(dyn std::error::Error + 'static)) -> bool {
+    let mut cause: Option<&(dyn std::error::Error + 'static)> = Some(error);
+    while let Some(e) = cause {
+        if let Some(io) = e.downcast_ref::<std::io::Error>() {
+            if io.kind() == std::io::ErrorKind::ConnectionRefused {
+                return true;
+            }
+        }
+        if e.to_string() == "dns error" {
+            return true;
+        }
+        cause = e.source();
+    }
+    false
 }

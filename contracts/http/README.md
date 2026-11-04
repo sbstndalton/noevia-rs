@@ -220,7 +220,7 @@ on the signed-in person's request, signed for that person, and writes nothing it
 | `/api/diary/workspace-import` (POST) | rust | `workspace-import.cjs`: 32 MiB body, 120 s, 24 MiB reply (#920), 428 resend of the buffered body |
 | `/api/diary/context` | rust (#2206) | moved: see "sbstndalton/noevia#2206" below |
 | `/api/diary/exchanges` | rust (#2206) | moved: see below |
-| `/api/diary/local-exchange` | node | `routes/diary.cjs` takes the model throttle shared with chat (`llmRateLimited`) and, via `index.cjs handleRequest`, the inference maintenance gate; both are Node memory. Re-evaluated in #2206 and kept: see below |
+| `/api/diary/local-exchange` | rust | moved after #2206: crates/server-diary `local_exchange`; the throttle and gate it holds stay Node's, taken by lease: see "Moved: the Diary local exchange" below |
 | `/api/diary/storage-status` | rust (#2206) | moved: see below |
 | `/api/diary-connector` | rust (#2206) | moved: see below |
 | `/api/profile/diary-connectors[/{id}]` | rust (#2206) | moved: see below |
@@ -297,20 +297,48 @@ container restarts (a set written by another start names nothing). It is never t
 record cannot be missing from the set while it runs. Fixing it would mean failing the finished exchange
 or retrying in a timer, and a stale name only costs a delayed dismissal.
 
-**Kept on Node: `POST /api/diary/local-exchange`.** Re-evaluated with both techniques. It takes the 60 per
-minute model throttle that chat shares (`llmRateLimited`, one bucket per account for both routes) and, from
-`index.cjs handleRequest`, the inference maintenance gate for the whole life of its response
-(`modelManager.enterInferenceWithin`, llamacpp-manager `maintenance`), so that a preset apply, a
-calibration or a tune waits for it. A re-reader carries state, not a lease: the front could read a
-published "gate held" flag, but could not make a maintenance wait for its exchange, so a preset apply
-could unload the model under it. Moving the whole authority means moving the gate and the throttle, i.e.
-the model manager and chat, which take them per turn; the model-manager routes and chat are other
-batches. What is movable (body cap 16 MiB, the SSE relay of `diary-stream.cjs`, the add-on gate) is the
-smaller part and moves with the gate: moving it alone would put two processes on one throttle. The seam
-to cut when the gate moves is a lease the front takes before the first byte to the sidecar and drops
-when its response ends. The paths the web client never names (`history`, `files`, `file`,
-`workspace-trash`, `external-sources`, `entries/edit`) are not in the route table and stay Node's with
-the local exchange.
+**Moved: the Diary local exchange (`/api/diary/local-exchange`, capability `rust-diary-local-exchange`).**
+#2206 kept it on Node because it holds two pieces of Node memory for the whole life of its response: the
+60 per minute model throttle chat shares (`llmRateLimited`, one bucket per account for both routes) and
+the inference maintenance gate (`modelManager.enterInferenceWithin`, waited for up to 3 s as chat waits),
+so that a preset apply, a calibration or a tune waits for it. The seam named then is the one cut: the
+front takes an inference-admission lease (core `inference-admission-lease.cjs`, ask
+`{ diaryExchange: { user } }`, crates/engine-admission `Ask::DiaryExchange`) after the add-on gate and
+the method and before the body, and drops it when its response ends. Node's lease enters the same gate
+the same way, then counts the same throttle bucket (429 `Please wait before sending another message`,
+the gate given back), then pauses the long-document backfill (`rag.foreground`), exactly what its own
+handler took; one throttle and one gate remain, both Node's. The rest moved: the add-on gate (404), the
+method (405), the 16 MiB JSON body (413, 400 `invalid JSON`, empty is `{}`), the non-streamed reply
+(600 s; Core's two storage codes and the bounded `Retry-After` only), and the relay of the companion's
+event stream with its failure wording (`diary-stream.cjs`: the stage tracking, `nothing was saved`,
+the relayable `reason` token, the older companion's JSON reply, 5 s keep-alive comments, the 15-minute
+deadline, cancellation when the browser goes away). Node refuses the route for every method before
+authentication and before its gate (core `rust-diary-local-exchange.cjs`).
+
+Differences, all deliberate: (1) Core took the gate before authentication for any non-GET request to
+the path; the front holds nothing for a request that is not signed in, lacks the add-on or is not a
+POST, so a maintenance-held gate no longer turns those 401/404/405 answers into 503. (2) A lease Node
+stops confirming (Node restarted, or unreachable for a whole TTL) ends the stream with the interrupted
+event, as a Node restart ended Core's proxy; for an unstreamed exchange it is 503 `The model is busy.
+Try again shortly.` while the body is still arriving and, once the sidecar was asked, the call is stopped
+and the answer is core's 503 `diaryUnavailable` for an aborted call. A Node that cannot be asked at all
+refuses the exchange 503 `The model is busy. Try again shortly.` (fail closed). (3) The sidecar client
+never follows a redirect (Core's stream `fetch` did): a redirect is the interrupted event, so tenant
+headers never go to another address. (4) The request body, each event object and the non-streamed reply
+(its `detail` or `error` on a failure) are read as `JSON.parse` reads them and written back as
+`JSON.stringify` writes them: no nesting limit; numbers with V8's digits, and `1e400` is `Infinity`,
+written `null` but truthy and not nullish wherever a property is read, as in Core; strings as JavaScript
+holds them, so a lone surrogate escape stays one and a character in U+10F800..U+10FFFF stays itself. The
+rewrite takes time linear in the text's length (keys are hashed, at expected constant cost each; index
+keys are radix-sorted) and, for the request, runs off the async workers. Core's `JSON.stringify` threw
+past V8's stack depth (some thousands of levels): such a request was a 500, such a non-streamed reply a
+500, and an event core rewrote (a dropped `reason`) the interrupted event. The front forwards and writes
+these out. (5) Two readings still go through a parsed tree that holds 128 levels: a `retryAfter` nested
+deeper in a sidecar refusal or error body is read as `{}` and ignored; and an older companion's whole
+JSON reply nested deeper, or holding a character in U+10F800..U+10FFFF (that range stands for lone
+surrogates there), ends the stream with the interrupted event. Both come only from the sidecar. (6) A
+body that has not fully arrived 120 s after admission is 408 `Request timed out`, as on the other Diary
+routes; Core had only its 20-minute server timeout.
 
 **Behaviour changes (Node bugs fixed on the way).**
 1. Creating a connector with a bad name, for an account without the add-on, or past ten threw a bare
@@ -411,6 +439,25 @@ or stale in-memory list is not seen. CI job `export-native` (workflow export.yml
 Node oracle, runs the differential and HTTP tests, and replays the whole corpus through the front
 with the switch on (exchange 182 is the export), plus a negative control: Node, confirmed, must
 refuse it with 503 (never skipped).
+
+## Chat search and single-chat download (`rust-chat-search`, `rust-chat-export`; #1450, #1471)
+
+`GET /api/chats/search?q=` and `GET /api/chats/{chatId}/export` are the front's (bins/noevia-server
+project_routes.rs, crates/server-projects `workspace::search` and `chat_download`, crates/server-export
+`single`), from the user's files on disk. Core refuses both GETs before authentication with 503
+(rust-chat-search.cjs, rust-chat-export.cjs); other methods and spellings stay Node's (404). Workflow
+chat-lists.yml regenerates the Node oracle (bins/noevia-server/tests/chat-lists-oracle.cjs) at the core in
+tests/fixtures/chat-lists-oracle.core-ref, the last one that still answers both, and replays every case
+through the front (tests/chat_lists_read.rs): status, headers and body byte for byte.
+
+Deliberate difference: the search also skips a chat whose reduced id is tombstoned (Node compared the raw id
+only and could read a transcript a failed delete left behind, #2245). A list, tombstone file or transcript the
+lossless reader refuses is a 500 here.
+
+The download's body is crates/server-export `markdown::render_as_node`: an ignored chat or message field of
+any depth does not refuse it, and `updatedAt` is `new Date(x).toISOString()` for every value Node takes
+(extended years, date-only and legacy strings; see the crate README). The workspace export keeps its own
+stricter admission.
 
 ## M6: ChatGPT connection status (`NOEVIA_RUST_CHATGPT_STATUS`, sbstndalton/noevia#1373)
 
@@ -1703,6 +1750,38 @@ the capability `rust-model-state-reads`; Core refuses both with 503 `RUST_MODEL_
 (`server/rust-model-state-reads.cjs`). The budget's PUT stays Node's. `POST /internal/models/facts` (trusted-front
 check) gives the front the budget Node enforces, the sidecar names and reports and the shared folder scan; no answer
 from it is a 503. The figure is never read from `settings`: Node's boot copy decides what is enforced.
+
+## sbstndalton/noevia#2286: native model evidence recheck
+
+`rust-model-evidence-recheck` owns POST `/api/models/evidence/recheck` in
+`model_maint/evidence_recheck.rs`. Authentication/CSRF, administrator and JSON/model/category
+validation, the exact 1×1 PNG / `max_tokens: 1` probe, bounded response handling and evidence filing
+run in Rust. Node retains the existing engine-admission lease: its live memory budget, quarantine,
+one-model queue and maintenance exclusion remain the shared arbiter. No new public proxy or facts
+endpoint is introduced. The Node POST policy and its obsolete inbox-wait tests are removed; other
+methods retain Node's role check and 405.
+
+The operation holds admission until filing finishes, sends its gate lease header and the manager credentials through the exact router object
+used for identity reads and cancels the HTTP request when that lease is lost. One detached recheck may run
+at a time, so a browser disconnect cannot strand an unbounded set of probes. The model identity is
+captured before the probe and compared afterwards; a changed identity returns 503 without filing.
+The record is stamped with the carried measurement identity. Missing-projector rejection records
+failed vision evidence as before; an ordinary HTTP/network error or an error envelope under HTTP200 does not qualify the model.
+The old Node probe used the default chat provider, which can differ from the manager: it could
+qualify manager B from engine A's answer. The native probe uses manager B's exact target and key;
+no gate/upstream or provider/manager alias is inferred. A two-engine synthetic regression covers this.
+Lone-surrogate model identifiers are refused before admission because they cannot name a UTF-8
+router model, preventing the internal WTF-16 mapping from targeting a different identifier.
+
+Synthetic proof covers both Node maintenance-lease fallback and foreign gate holds becoming visible
+to `tuningActive`, `inferenceBusy` and folder sync, plus the native HTTP request/recording and failure
+paths. It does not qualify a real model. The remaining gated proof is one administrator POST with
+`{"model":"<explicitly approved already-loaded vision model>","category":"vision"}` against an
+isolated candidate using its configured engine. That would perform real inference and could load
+or wake a model, so it requires the handoff's section 11 approval and has not been invoked. Verify
+that the returned vision category and stored identity match the approved configuration and retain
+`1×1 image accepted; not an accuracy test`; keep any required promotion/selector hold until that
+qualification is approved and completed.
 
 ## sbstndalton/noevia#2287: per-model auto-tune settings
 

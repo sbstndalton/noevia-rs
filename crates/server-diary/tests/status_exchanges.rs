@@ -40,7 +40,7 @@ async fn run(
         .await;
     match reply.body {
         ReplyBody::Json(t) => (reply.status, t),
-        ReplyBody::Zip(_) => panic!("a stream"),
+        ReplyBody::Zip(_) | ReplyBody::Events(_) => panic!("a stream"),
     }
 }
 
