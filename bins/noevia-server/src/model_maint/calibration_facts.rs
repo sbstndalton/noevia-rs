@@ -498,8 +498,9 @@ impl Worker {
         if let Some(r) = check(&before) {
             return Ok(refused(r));
         }
-        let hold = match self.take_hold(model).await {
+        let hold = match self.take_hold(model, &plan).await {
             Ok(h) => h,
+            Err(Refusal::Limit) => return Ok(refused("limit")),
             Err(Refusal::Hold(h)) => {
                 let mut out = refused("hold");
                 if let JValue::Obj(f) = &mut out {

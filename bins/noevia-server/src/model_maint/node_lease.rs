@@ -15,6 +15,8 @@ use std::time::{Duration, Instant};
 
 const PATH: &str = "/internal/model-maintenance/lease";
 const CALL_TIMEOUT: Duration = Duration::from_secs(5);
+/// model-maintenance-lease.cjs `MAX_MS`: the longest hard cap a lease may ask for.
+pub const MAX_LEASE: Duration = Duration::from_secs(8 * 3600);
 
 /// A lease Node granted.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,10 +95,22 @@ impl NodeLeases {
     }
 
     pub async fn acquire(&self) -> Result<LeaseGrant, LeaseFault> {
+        self.acquire_capped(None).await
+    }
+
+    /// A lease asking for hard cap `max` (`{maxMs}`; Node clamps it to [60 min, 8 h]); `None` asks
+    /// for nothing and sends no body, as before.
+    pub async fn acquire_capped(&self, max: Option<Duration>) -> Result<LeaseGrant, LeaseFault> {
         let asked = Instant::now();
-        let req = self
+        let mut req = self
             .request(reqwest::Method::POST, PATH)
             .ok_or(LeaseFault::Unavailable)?;
+        if let Some(max) = max {
+            let ms = u64::try_from(max.min(MAX_LEASE).as_millis()).unwrap_or(0);
+            req = req
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .body(serde_json::json!({ "maxMs": ms }).to_string());
+        }
         let res = req.send().await.map_err(|_| LeaseFault::Unavailable)?;
         match res.status().as_u16() {
             201 => {

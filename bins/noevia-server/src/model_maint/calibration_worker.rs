@@ -12,7 +12,7 @@ use super::calibration::{
     bound_load, grouped, ladder, over_budget_reason, verify_long, Applied, Feed, Kind, LongOutcome,
     LongPrompt, Progress, State, StateFile, Steps, Stop, NOT_RESTORED,
 };
-use super::{Hold, HoldError, Maint};
+use super::{Hold, HoldRefusal, Maint};
 use js_json::{wtf16, JValue};
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -21,8 +21,12 @@ use std::time::Duration;
 use tokio::sync::Notify;
 
 const PAD: &str = "This is synthetic padding for a context allocation validation.\n";
-/// Node's calibration hold has no limit of its own: it lasts until the run releases it.
-const UNBOUNDED: Duration = Duration::MAX;
+/// What a run that lost its exclusion records (the lease ended or Node stopped confirming it).
+pub const LEASE_LOST: &str = "Calibration stopped because its maintenance hold ended; other clients may have used the engine.";
+/// Added to a run's worst case before asking Node for a lease that long.
+const RUN_MARGIN: Duration = Duration::from_secs(15 * 60);
+/// The refusal of a run that could outlast the longest lease (no gate hold).
+pub const OVER_LIMIT: &str = "This calibration could take longer than the 8-hour maintenance limit. Choose a shorter prompt time limit.";
 const ANOTHER_CLIENT: &str = "Another client loaded a model during calibration. Stop Diary background jobs and other clients, then retry.";
 
 /// `limits`: the step timeouts (Node's defaults; tests shorten them).
@@ -37,6 +41,8 @@ pub struct Limits {
     pub recover: Duration,
     pub backend_poll: Duration,
     pub memory_settle: Duration,
+    /// How often a run checks that its hold still excludes other clients.
+    pub exclusion_poll: Duration,
 }
 
 impl Default for Limits {
@@ -51,6 +57,7 @@ impl Default for Limits {
             recover: Duration::from_millis(180_000),
             backend_poll: Duration::from_millis(2000),
             memory_settle: Duration::from_millis(1000),
+            exclusion_poll: Duration::from_millis(1000),
         }
     }
 }
@@ -124,6 +131,8 @@ pub enum Refusal {
     Hold(JValue),
     /// The state could not be saved, or the engine is not native llama.cpp.
     Unavailable,
+    /// No gate hold, and the run's worst case is over the longest lease Node grants.
+    Limit,
 }
 
 /// What a launch plans (the route's `plan`, already validated).
@@ -145,6 +154,8 @@ pub(super) struct Inner {
     /// Node's `objectId(inflight)`: 0 when no step controller is live.
     pub(super) controller: u64,
     pub(super) next_object: u64,
+    /// The running job's hold stopped excluding other clients: the run stops as on a cancel.
+    pub(super) lease_lost: bool,
 }
 
 /// The native worker: one per process, owning its state file, controller and job.
@@ -296,6 +307,7 @@ impl Worker {
                 job_object: 1,
                 controller: 0,
                 next_object: 2,
+                lease_lost: false,
             }),
             salt: random_hex(32),
             memory,
@@ -1208,7 +1220,7 @@ impl Worker {
         if busy {
             return Err(Refusal::Running);
         }
-        let launched = match self.take_hold(model).await {
+        let launched = match self.take_hold(model, &plan).await {
             Ok(hold) => self.start(hold, model, plan).await,
             Err(r) => Err(r),
         };
@@ -1217,15 +1229,62 @@ impl Worker {
     }
 
     /// `maintenance.hold(...)` for a run of `model`.
-    pub(super) async fn take_hold(&self, model: &str) -> Result<Hold, Refusal> {
+    pub(super) async fn take_hold(&self, model: &str, plan: &Plan) -> Result<Hold, Refusal> {
         if self.maint.router.is_none() || self.maint.ini.is_none() {
             return Err(Refusal::Unavailable);
         }
         let reason = format!("Chat is paused while noevia calibrates {model}. It will be available again when calibration finishes or is cancelled.");
-        self.maint
-            .acquire(&reason, UNBOUNDED, false)
+        match self
+            .maint
+            .acquire_for_run(&reason, self.worst_case(plan))
             .await
-            .map_err(|e| Refusal::Hold(hold_facts(&e)))
+        {
+            Ok(h) => Ok(h),
+            Err(HoldRefusal::OverLimit) => Err(Refusal::Limit),
+            Err(e) => Err(Refusal::Hold(hold_facts(&e))),
+        }
+    }
+
+    /// The longest `plan` can run: every load check (doublings to the top of its ladder, then three
+    /// bisections) at the load timeout, at most seven long-prompt tests each at the load timeout plus
+    /// 1.5 times the budget (where the stream is stopped), the final load, and a 15-minute margin.
+    pub fn worst_case(&self, plan: &Plan) -> Duration {
+        let grid = ladder(plan.native);
+        let (Some(start), Some(&top)) = (super::calibration::start_of(&grid), grid.last()) else {
+            return RUN_MARGIN;
+        };
+        let mut loads: u32 = 1;
+        let mut ctx = start;
+        while ctx < top {
+            ctx = grid
+                .iter()
+                .copied()
+                .find(|&c| c >= ctx * 2.0)
+                .unwrap_or(top);
+            loads += 1;
+        }
+        loads += 3;
+        let longs = u32::try_from(grid.iter().filter(|&&c| c >= start).count().min(7)).unwrap_or(7);
+        let budget = Duration::from_secs_f64(plan.prompt_budget_seconds.max(0.0) * 1.5);
+        self.limits.load * loads
+            + (self.limits.load + budget) * longs
+            + self.limits.load
+            + RUN_MARGIN
+    }
+
+    fn lease_lost(&self) -> bool {
+        self.with(|i| i.lease_lost)
+    }
+
+    /// The hold stopped excluding other clients: stop as a cancel does, and remember why.
+    fn lose_exclusion(&self) {
+        self.with(|i| {
+            i.lease_lost = true;
+            i.cancel_requested = true;
+            if let Some(a) = &i.inflight {
+                a.abort();
+            }
+        });
     }
 
     /// The job created and saved under `hold`, and its run spawned; the public job.
@@ -1281,18 +1340,67 @@ impl Worker {
 
     /// `run(job, release)`.
     async fn run(self: Arc<Self>, hold: Hold) {
-        let outcome = self.run_inner(&hold).await;
+        self.with(|i| i.lease_lost = false);
+        let outcome = {
+            // The run never goes on without its exclusion: a lost hold stops it as a cancel would.
+            let watch = async {
+                loop {
+                    tokio::time::sleep(self.limits.exclusion_poll).await;
+                    if !hold.excluded() {
+                        self.lose_exclusion();
+                        return;
+                    }
+                }
+            };
+            let inner = self.run_inner(&hold);
+            tokio::pin!(watch, inner);
+            let mut watching = true;
+            loop {
+                tokio::select! {
+                    o = &mut inner => break o,
+                    () = &mut watch, if watching => watching = false,
+                }
+            }
+        };
+        let outcome = match outcome {
+            Ok(_) if self.lease_lost() => Err(Thrown::Cancelled),
+            o => o,
+        };
         let model = self.job_get("model").as_str().unwrap_or("").to_owned();
         let budget = self.job_get("promptBudgetSeconds");
         if let Err(e) = outcome {
+            let lost = self.lease_lost();
+            let e = if lost {
+                Thrown::Fatal(LEASE_LOST.into())
+            } else {
+                e
+            };
             let cancelled = e == Thrown::Cancelled;
             self.job_set(
                 "status",
-                JValue::Str(if cancelled { "cancelled" } else { "failed" }.into()),
+                JValue::Str(
+                    if lost {
+                        "interrupted"
+                    } else if cancelled {
+                        "cancelled"
+                    } else {
+                        "failed"
+                    }
+                    .into(),
+                ),
             );
             self.job_set(
                 "phase",
-                JValue::Str(if cancelled { "Cancelled" } else { "Failed" }.into()),
+                JValue::Str(
+                    if lost {
+                        "Interrupted"
+                    } else if cancelled {
+                        "Cancelled"
+                    } else {
+                        "Failed"
+                    }
+                    .into(),
+                ),
             );
             if let Thrown::Fatal(m) | Thrown::Other(m) = &e {
                 let m = if m.is_empty() {
@@ -1325,7 +1433,7 @@ impl Worker {
                 }
             }
             // Evidence identity must reflect the restored profile, so record only after restoring.
-            if matches!(e, Thrown::Fatal(_)) {
+            if matches!(e, Thrown::Fatal(_)) && !lost {
                 let error = self.job_get("error").as_str().unwrap_or("").to_owned();
                 let limitation = wtf16::slice(&error, 200);
                 let record = JValue::obj([
@@ -1377,7 +1485,10 @@ impl Worker {
         }
         self.job_set("finishedAt", JValue::Num(now_ms()));
         self.job_remove("originalText");
-        self.with(|i| i.cancel_requested = false);
+        self.with(|i| {
+            i.cancel_requested = false;
+            i.lease_lost = false;
+        });
         let _ = self.save().await;
         hold.release().await;
     }
@@ -1438,6 +1549,9 @@ impl Worker {
         self.result_set("verifiedCtx", chosen);
         self.unload_all(hold).await?;
         let model = self.job_get("model").as_str().unwrap_or("").to_owned();
+        if self.lease_lost() {
+            return Err(Thrown::Cancelled);
+        }
         let options = self.base_options(("ctx-size", plain(chosen)));
         match self
             .maint
@@ -1465,6 +1579,9 @@ impl Worker {
             JValue::Str("Loading the calibrated profile".into()),
         );
         let _ = self.save().await;
+        if self.lease_lost() {
+            return Err(Thrown::Cancelled);
+        }
         let loaded = self.load_and_wait(hold, &model).await;
         self.with(|i| {
             if let Some(JValue::Obj(r)) = i
@@ -1569,12 +1686,12 @@ fn truthy(v: &Value) -> bool {
 }
 
 /// The hold refusal as the launch bridge reported it (`{ status, publicMessage, code }`).
-fn hold_facts(e: &HoldError) -> JValue {
+fn hold_facts(e: &HoldRefusal) -> JValue {
     // Node: a busy refusal is `busy()` (409, no message, no code); any other gate refusal is the
     // GateError itself. Anything else had no integer status there (null).
     let (status, message, code) = match e {
-        HoldError::Busy => (JValue::Num(409.0), JValue::Null, JValue::Null),
-        HoldError::Gate {
+        HoldRefusal::Busy => (JValue::Num(409.0), JValue::Null, JValue::Null),
+        HoldRefusal::Gate {
             status,
             code,
             message,
@@ -1591,7 +1708,14 @@ fn hold_facts(e: &HoldError) -> JValue {
                 JValue::Null
             },
         ),
-        HoldError::NeedsGate | HoldError::NodeUnavailable => {
+        HoldRefusal::ShortLease => (
+            JValue::Num(503.0),
+            JValue::Str(
+                "the maintenance lease is shorter than this calibration could take.".into(),
+            ),
+            JValue::Null,
+        ),
+        HoldRefusal::NeedsGate | HoldRefusal::NodeUnavailable | HoldRefusal::OverLimit => {
             (JValue::Null, JValue::Null, JValue::Null)
         }
     };
@@ -1730,15 +1854,16 @@ mod tests {
     }
 
     fn worker(dir: &std::path::Path, port: u16) -> Arc<Worker> {
-        let env = [
+        worker_with(dir, port, None)
+    }
+
+    /// `lease`: no gate admin token, and Node's lease route at this port instead.
+    fn worker_with(dir: &std::path::Path, port: u16, lease: Option<u16>) -> Arc<Worker> {
+        let mut env = vec![
             ("MODEL_MANAGER_KIND".to_owned(), "llamacpp".to_owned()),
             (
                 "MODEL_MANAGER_BASE_URL".to_owned(),
                 format!("http://127.0.0.1:{port}"),
-            ),
-            (
-                "INFERENCE_GATE_ADMIN_TOKEN".to_owned(),
-                "synthetic-admin".to_owned(),
             ),
             (
                 "LLAMACPP_PRESET_PATH".to_owned(),
@@ -1746,6 +1871,22 @@ mod tests {
             ),
             ("UI_DATA_DIR".to_owned(), dir.display().to_string()),
         ];
+        match lease {
+            None => env.push((
+                "INFERENCE_GATE_ADMIN_TOKEN".to_owned(),
+                "synthetic-admin".to_owned(),
+            )),
+            Some(p) => {
+                env.push((
+                    "NOEVIA_LEGACY_UPSTREAM".to_owned(),
+                    format!("http://127.0.0.1:{p}"),
+                ));
+                env.push((
+                    "NOEVIA_PROJECT_STORE_TOKEN".to_owned(),
+                    "synthetic-store-token".to_owned(),
+                ));
+            }
+        }
         let get = |k: &str| env.iter().find(|(e, _)| e == k).map(|(_, v)| v.clone());
         let engine = Arc::new(server_stats::Engine::from_lookup(&get).unwrap());
         let sizing = Arc::new(crate::model_sizing::Sizing::from_lookup(
@@ -1755,6 +1896,7 @@ mod tests {
         ));
         let maint = Arc::new(Maint::from_lookup(engine.kind(), &engine, sizing, &get).unwrap());
         let limits = Limits {
+            exclusion_poll: Duration::from_millis(20),
             poll: Duration::from_millis(10),
             unload: Duration::from_secs(5),
             recover: Duration::from_millis(500),
@@ -1965,12 +2107,12 @@ mod tests {
 
     #[test]
     fn hold_refusals_have_the_shape_node_launch_reported() {
-        let busy = hold_facts(&HoldError::Busy);
+        let busy = hold_facts(&HoldRefusal::Busy);
         assert_eq!(
             wtf16::stringify(&busy).unwrap(),
             r#"{"status":409,"publicMessage":null,"code":null}"#
         );
-        let gate = hold_facts(&HoldError::Gate {
+        let gate = hold_facts(&HoldRefusal::Gate {
             status: 503,
             code: "engine_unavailable".into(),
             message: "The local model engine is not answering. Try again shortly.".into(),
@@ -1979,14 +2121,14 @@ mod tests {
             wtf16::stringify(&gate).unwrap(),
             r#"{"status":503,"publicMessage":"The local model engine is not answering. Try again shortly.","code":"engine_unavailable"}"#
         );
-        let odd = hold_facts(&HoldError::Gate {
+        let odd = hold_facts(&HoldRefusal::Gate {
             status: 500,
             code: "bad code!".into(),
             message: "x".into(),
         });
         assert_eq!(odd.get("code"), &JValue::Null);
         assert_eq!(
-            hold_facts(&HoldError::NodeUnavailable).get("status"),
+            hold_facts(&HoldRefusal::NodeUnavailable).get("status"),
             &JValue::Null
         );
     }
@@ -2057,5 +2199,149 @@ mod tests {
         }
         assert_eq!(settled(&w).await.get("status").as_str(), Some("cancelled"));
         assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI);
+    }
+
+    /// Node's lease route (model-maintenance-lease.cjs): grants `hard` (None: the cap asked for, as
+    /// the new Core does), renews until `ended` is set, then answers 404. Logs requests and bodies.
+    async fn lease_stub(
+        hard: Option<u64>,
+        ended: Arc<AtomicBool>,
+    ) -> (u16, Arc<Mutex<Vec<String>>>) {
+        use axum::body::Body;
+        use axum::http::{Request, Response};
+        use http_body_util::BodyExt;
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let log = Arc::clone(&seen);
+        let app = axum::Router::new().fallback(move |req: Request<Body>| {
+            let (log, ended) = (Arc::clone(&log), Arc::clone(&ended));
+            async move {
+                let (parts, body) = req.into_parts();
+                let body = body.collect().await.map(|b| b.to_bytes()).unwrap_or_default();
+                let text = String::from_utf8_lossy(&body).into_owned();
+                log.lock().unwrap().push(format!("{} {} {text}", parts.method, parts.uri.path()));
+                let asked = serde_json::from_str::<Value>(&text)
+                    .ok()
+                    .and_then(|v| v["maxMs"].as_u64());
+                let (code, out) = match (parts.method.as_str(), parts.uri.path()) {
+                    ("POST", "/internal/model-maintenance/lease") => (
+                        201,
+                        json!({"lease": "fedcba9876543210fedcba9876543210", "ttlMs": 180000, "renewMs": 20,
+                               "hardMs": hard.or(asked).unwrap_or(3_600_000)}),
+                    ),
+                    ("POST", p) if p.ends_with("/renew") => {
+                        if ended.load(Ordering::Acquire) {
+                            (404, json!({"error": "Not found"}))
+                        } else {
+                            (200, json!({}))
+                        }
+                    }
+                    ("DELETE", _) => (204, json!({})),
+                    _ => (404, json!({"error": "Not found"})),
+                };
+                Response::builder()
+                    .status(code)
+                    .header("content-type", "application/json")
+                    .body(Body::from(if code == 204 { String::new() } else { out.to_string() }))
+                    .unwrap()
+            }
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move { axum::serve(listener, app).await });
+        (port, seen)
+    }
+
+    fn plan(native: f64, budget: f64) -> Plan {
+        Plan {
+            prompt_budget_seconds: budget,
+            native,
+            base: Vec::new(),
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn without_a_gate_hold_the_lease_asks_for_the_run_worst_case_and_refuses_over_8_hours() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (port, _) = synthetic_engine(ini.clone(), false).await;
+        let (lease, seen) = lease_stub(None, Arc::new(AtomicBool::new(false))).await;
+        let w = worker_with(d.path(), port, Some(lease));
+        // Over the 8-hour lease limit: refused before any lease is asked for.
+        let huge = plan(131_072.0, 1800.0);
+        assert!(w.worst_case(&huge) > super::super::node_lease::MAX_LEASE);
+        assert_eq!(w.launch("synthetic", huge).await, Err(Refusal::Limit));
+        assert!(seen.lock().unwrap().is_empty());
+        assert_eq!(w.job(), JValue::Null);
+        // Inside it: one lease asking for exactly the worst case, and the run passes.
+        let p = plan(32_768.0, 120.0);
+        let worst = u64::try_from(w.worst_case(&p).as_millis()).unwrap();
+        assert!(worst > 3_600_000 && worst < 8 * 3_600_000, "{worst}");
+        w.launch("synthetic", p).await.unwrap();
+        let job = settled(&w).await;
+        assert_eq!(job.get("status").as_str(), Some("passed"), "{job:?}");
+        let log = seen.lock().unwrap().clone();
+        assert_eq!(
+            log[0],
+            format!("POST /internal/model-maintenance/lease {{\"maxMs\":{worst}}}")
+        );
+        assert!(log
+            .iter()
+            .any(|l| l.starts_with("DELETE /internal/model-maintenance/lease/")));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_lease_granted_shorter_than_asked_is_given_back_and_nothing_runs() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (port, _) = synthetic_engine(ini.clone(), false).await;
+        // An older Core ignores maxMs and grants its 60-minute default.
+        let (lease, seen) = lease_stub(Some(3_600_000), Arc::new(AtomicBool::new(false))).await;
+        let w = worker_with(d.path(), port, Some(lease));
+        let p = plan(32_768.0, 1800.0);
+        assert!(w.worst_case(&p) > Duration::from_secs(3600));
+        let Err(Refusal::Hold(facts)) = w.launch("synthetic", p).await else {
+            panic!("refused")
+        };
+        assert_eq!(facts.get("status").as_num(), Some(503.0));
+        assert!(seen
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|l| l.starts_with("DELETE ")));
+        assert_eq!(w.job(), JValue::Null);
+        assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_lease_lost_mid_run_stops_it_restores_the_profile_and_marks_it_interrupted() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (port, _) = synthetic_engine(ini.clone(), true).await;
+        let ended = Arc::new(AtomicBool::new(false));
+        let (lease, _) = lease_stub(None, Arc::clone(&ended)).await;
+        let w = worker_with(d.path(), port, Some(lease));
+        w.launch("synthetic", plan(16_384.0, 120.0)).await.unwrap();
+        for _ in 0..600 {
+            if w.job()
+                .get("phase")
+                .as_str()
+                .is_some_and(|p| p.starts_with("Long-prompt"))
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        ended.store(true, Ordering::Release);
+        let job = settled(&w).await;
+        assert_eq!(job.get("status").as_str(), Some("interrupted"), "{job:?}");
+        assert_eq!(job.get("phase").as_str(), Some("Interrupted"));
+        assert_eq!(job.get("error").as_str(), Some(LEASE_LOST));
+        assert_eq!(job.get("restored"), &JValue::Bool(true));
+        assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI);
+        // The next run starts clean.
+        assert!(!w.lease_lost());
     }
 }
