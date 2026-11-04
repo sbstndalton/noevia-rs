@@ -104,8 +104,7 @@ async fn faulted_or_malformed_private_facts_fail_closed_without_leaking() {
             reply(status, facts)
         });
         for cookie in [MEMBER, ADMIN] {
-            let (status, headers, body) =
-                raw_text(front.addr, "GET", PATH, cookie, "", b"").await;
+            let (status, headers, body) = raw_text(front.addr, "GET", PATH, cookie, "", b"").await;
             assert_eq!(status, 503);
             assert!(headers.contains("cache-control: no-store"));
             assert_eq!(
