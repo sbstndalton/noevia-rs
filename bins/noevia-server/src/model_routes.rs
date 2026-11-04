@@ -49,6 +49,8 @@ pub const ROUTES: &[&str] = &[
     crate::autotune_read_routes::PATH,
     crate::preset_read_routes::PATH,
     crate::idle_unload_read::PATH,
+    crate::model_assignments::PATH,
+    crate::model_downloads_read::PATH,
 ];
 
 /// What the model reads answer from: the keys core index.cjs read at startup.
@@ -123,6 +125,9 @@ pub async fn serve(
     if path == crate::idle_unload_read::PATH {
         return crate::idle_unload_read::serve(app, conn, req, path).await;
     }
+    if path == crate::model_assignments::PATH {
+        return crate::model_assignments::serve(app, conn, req, path).await;
+    }
     if path == crate::autotune_read_routes::PATH {
         return crate::autotune_read_routes::serve(app, conn, req, path).await;
     }
@@ -165,6 +170,9 @@ pub async fn serve(
         Ok(Err(rejection)) => return rejection.into_response(),
         Err(_) => return identity::Rejection::Unavailable.into_response(),
     };
+    if path == crate::model_downloads_read::PATH {
+        return crate::model_downloads_read::serve(app).await;
+    }
     if path == crate::preset_read_routes::PATH {
         return crate::preset_read_routes::serve(app, id.user.role == Role::Admin, model).await;
     }
