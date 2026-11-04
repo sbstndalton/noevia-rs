@@ -275,6 +275,9 @@ mod tests {
 
 /// Bounded native conversation Markdown policy (#1317); no HTTP ownership.
 pub mod assemble;
+/// `new Date(x).toISOString()` as Node computes it (the single-chat download's date line).
+pub mod js_date;
 pub mod markdown;
 /// `GET /api/export/conversations`: what the route reads and answers (#1315).
 pub mod route;
+pub mod single;

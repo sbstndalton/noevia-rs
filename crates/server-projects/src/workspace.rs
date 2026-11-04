@@ -284,6 +284,9 @@ pub fn search(ctx: Ctx<'_>, query: &str) -> Reply {
     for project in projects {
         match project.get("chats") {
             JValue::Arr(v) => candidates.extend(v.iter().cloned()),
+            // `for (const chat of project.chats || [])`: a string iterates as its characters, none of
+            // which has a string `id`; any other value that is not a list throws (Node's 500).
+            JValue::Str(_) => (),
             v if !v.truthy() => (),
             _ => return Reply::internal(),
         }
@@ -307,6 +310,9 @@ pub fn search(ctx: Ctx<'_>, query: &str) -> Reply {
         scanned += 1;
         let history = match transcript::read_listed(ctx.data_dir, ctx.user_id, id) {
             Ok(v) => v.history,
+            // projects.cjs `readHistory` reads `[]` for an id that reduces to nothing (historyPath throws
+            // inside its try).
+            Err(transcript::TranscriptError::InvalidChat) => JValue::Arr(Vec::new()),
             Err(_) => return Reply::internal(),
         };
         let JValue::Arr(history) = history else {

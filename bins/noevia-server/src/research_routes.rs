@@ -254,6 +254,17 @@ impl Research {
         )
     }
 
+    /// The bridge call itself, its reply unread, for a module that must read a reply core never capped
+    /// (model_downloads_read.rs). `None`: no secret or no answer.
+    pub(crate) async fn node_open(
+        &self,
+        path: &str,
+        body: &Value,
+        timeout: Duration,
+    ) -> Option<reqwest::Response> {
+        self.bridge_post(path, body, timeout)?.send().await.ok()
+    }
+
     /// One call on the same loopback bridge for another route's module, with the reply's bytes as they came
     /// (so a lone surrogate in them survives). `None`: no secret, no answer, or a reply over the cap.
     pub(crate) async fn node_call(
