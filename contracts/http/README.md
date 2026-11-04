@@ -412,6 +412,20 @@ Node oracle, runs the differential and HTTP tests, and replays the whole corpus 
 with the switch on (exchange 182 is the export), plus a negative control: Node, confirmed, must
 refuse it with 503 (never skipped).
 
+## Chat search and single-chat download (`rust-chat-search`, `rust-chat-export`; #1450, #1471)
+
+`GET /api/chats/search?q=` and `GET /api/chats/{chatId}/export` are the front's (bins/noevia-server
+project_routes.rs, crates/server-projects `workspace::search` and `chat_download`, crates/server-export
+`single`), from the user's files on disk. Core refuses both GETs before authentication with 503
+(rust-chat-search.cjs, rust-chat-export.cjs); other methods and spellings stay Node's (404). Workflow
+chat-lists.yml regenerates the Node oracle (bins/noevia-server/tests/chat-lists-oracle.cjs) at the core in
+tests/fixtures/chat-lists-oracle.core-ref, the last one that still answers both, and replays every case
+through the front (tests/chat_lists_read.rs): status, headers and body byte for byte.
+
+Deliberate difference: the search also skips a chat whose reduced id is tombstoned (Node compared the raw id
+only and could read a transcript a failed delete left behind, #2245). A list, tombstone file or transcript the
+lossless reader refuses is a 500 here.
+
 ## M6: ChatGPT connection status (`NOEVIA_RUST_CHATGPT_STATUS`, sbstndalton/noevia#1373)
 
 `GET /api/providers/chatgpt` is Rust's under `NOEVIA_RUST_CHATGPT_STATUS=1` in a build with the

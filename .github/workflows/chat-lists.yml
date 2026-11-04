@@ -1,0 +1,56 @@
+name: Native chat search and download GET
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  chat-lists-native:
+    name: Required native chat search and download contracts (#1450, #1471)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Read the oracle's core pin
+        # The last core whose routes/chat-lists.cjs answers both routes (later cores refuse them).
+        id: core
+        run: |
+          set -euo pipefail
+          ref=$(tr -d ' \n' < bins/noevia-server/tests/fixtures/chat-lists-oracle.core-ref)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-core
+          ref: ${{ steps.core.outputs.sha }}
+          path: core
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.23.3
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked -p server-projects -p server-export -p noevia-server --all-targets -- -D warnings
+      - name: Actual core route oracle reproduces the committed cases
+        # core's own workspace load, readHistory, routes/chat-lists.cjs and http.cjs over synthetic
+        # tenants on disk.
+        run: |
+          set -euo pipefail
+          node bins/noevia-server/tests/chat-lists-oracle.cjs "$PWD/core" "$RUNNER_TEMP/node-chat-lists.json"
+          cmp "$RUNNER_TEMP/node-chat-lists.json" bins/noevia-server/tests/fixtures/node-chat-lists.v1.json
+      - name: Node-differential search and download through the front, tenant isolation, methods
+        run: NOEVIA_CHAT_LISTS_FIXTURE="$RUNNER_TEMP/node-chat-lists.json" cargo test --locked -p noevia-server --test chat_lists_read
+      - name: The lookup, the search and the file name
+        run: |
+          set -euo pipefail
+          cargo test --locked -p server-projects --lib chat_download
+          cargo test --locked -p server-projects --lib workspace
+          cargo test --locked -p server-export --lib single
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-chat-lists-evidence
+          path: ${{ runner.temp }}/node-chat-lists.json
+          if-no-files-found: ignore

@@ -462,7 +462,7 @@ async fn headers_cookies_and_forwarded_for() {
     let (res, _c) = call(
         front,
         "GET",
-        "/api/chats/search",
+        "/api/models/machines",
         &[("x-forwarded-for", "1.1.1.1, 203.0.113.7")],
         b"",
     )
@@ -472,7 +472,7 @@ async fn headers_cookies_and_forwarded_for() {
         echo["headers"]["x-forwarded-for"],
         serde_json::json!(["203.0.113.7"])
     );
-    let (res, _c) = call(front, "GET", "/api/chats/search", &[], b"").await;
+    let (res, _c) = call(front, "GET", "/api/models/machines", &[], b"").await;
     let echo: serde_json::Value = serde_json::from_str(&text(res).await).unwrap();
     assert_eq!(
         echo["headers"]["x-forwarded-for"],
@@ -564,7 +564,7 @@ async fn node_down_is_a_502_and_ready_is_a_503() {
     let dist = dist_dir("down");
     std::fs::remove_file(dist.join("version.json")).unwrap();
     let front = start_front(free, &dist, false).await;
-    let (res, _c) = call(front, "GET", "/api/chats/search", &[], b"").await;
+    let (res, _c) = call(front, "GET", "/api/models/machines", &[], b"").await;
     assert_eq!(res.status(), 502);
     let (res, _c) = call(front, "GET", "/api/ready", &[], b"").await;
     assert_eq!(res.status(), 503);

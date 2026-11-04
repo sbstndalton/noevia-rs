@@ -262,6 +262,8 @@ const PROJECT_ROUTES: &[&str] = &[
     PROJECT_BROWSER_TASK,
     server_projects::import::ROUTE,
     WORKSPACE,
+    CHAT_SEARCH,
+    CHAT_EXPORT,
 ];
 
 /// Deep research (every method; routes.toml), the front's under `rust-research` (sbstndalton/noevia#2218);
@@ -284,6 +286,12 @@ pub(crate) const PROJECT_BROWSER_TASK: &str = "/api/projects/{projectId}/browser
 /// (sbstndalton/noevia#2191 close-out); Node refuses the GET (core rust-workspace.cjs
 /// `RUST_WORKSPACE_OWNED`). It runs the delete-old-chats sweep and the orphan-context cleanup too.
 pub(crate) const WORKSPACE: &str = "/api/workspace";
+
+/// The transcript search (#1450) and one chat's Markdown download (#1471), GET only (routes.toml), the
+/// front's under `rust-chat-search` and `rust-chat-export`; Node refuses both GETs (core
+/// rust-chat-search.cjs, rust-chat-export.cjs). Other methods and spellings stay Node's (its 404).
+pub(crate) const CHAT_SEARCH: &str = "/api/chats/search";
+pub(crate) const CHAT_EXPORT: &str = "/api/chats/{chatId}/export";
 
 /// A project upload, folder sync and folder-import plan (POST only; routes.toml), the front's under
 /// `rust-project-source-work` (sbstndalton/noevia#2191 round 8), and a source job's status (GET only),

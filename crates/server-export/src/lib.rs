@@ -278,3 +278,4 @@ pub mod assemble;
 pub mod markdown;
 /// `GET /api/export/conversations`: what the route reads and answers (#1315).
 pub mod route;
+pub mod single;

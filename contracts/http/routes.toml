@@ -293,15 +293,19 @@ path = "/api/chats/{chatId}/move"
 owner = "rust"
 methods = ["POST"]
 
-# #1450 transcript search and #1471 single-chat Markdown download (noevia-core routes/chat-lists.cjs).
-# Listed for the web client at web.ref; Node answers them.
+# #1450 transcript search and #1471 single-chat Markdown download: the front's, GET only
+# (bins/noevia-server project_routes.rs, crates/server-projects workspace.rs `search` and
+# chat_download.rs, crates/server-export single.rs); Node refuses both GETs (core
+# rust-chat-search.cjs, rust-chat-export.cjs). Other methods stay Node's (its 404).
 [[route]]
 path = "/api/chats/search"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/chats/{chatId}/export"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/code/active"
