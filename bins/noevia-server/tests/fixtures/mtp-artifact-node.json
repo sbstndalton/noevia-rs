@@ -1,5 +1,6 @@
 {
  "core": "cf5c567ffa890a9556376357c234e8697fabfb44",
+ "node": "v22.23.3",
  "inspect": [
   {
    "name": "mtp tensor",
@@ -965,6 +966,661 @@
     "body": {
      "status": "unknown",
      "reason": "fetch failed",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "revision reply not JSON: text",
+   "query": "?repo=synthetic%2Fmeta-text&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/meta-text?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/meta-text": {
+     "status": 200,
+     "text": "hello"
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "Unexpected token 'h', \"hello\" is not valid JSON",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "revision reply not JSON: html",
+   "query": "?repo=synthetic%2Fmeta-html&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/meta-html?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/meta-html": {
+     "status": 200,
+     "text": "<!DOCTYPE html><html><body>Not Found</body></html>"
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "revision reply not JSON: cut",
+   "query": "?repo=synthetic%2Fmeta-cut&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/meta-cut?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/meta-cut": {
+     "status": 200,
+     "text": "{\"sha\":\"abababababababababababababababababababab"
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "Unterminated string in JSON at position 48 (line 1 column 49)",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "revision reply not JSON: empty",
+   "query": "?repo=synthetic%2Fmeta-empty&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/meta-empty?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/meta-empty": {
+     "status": 200,
+     "text": ""
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "Unexpected end of JSON input",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "revision reply not JSON: trailing",
+   "query": "?repo=synthetic%2Fmeta-trailing&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/meta-trailing?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/meta-trailing": {
+     "status": 200,
+     "text": "{\"sha\":\"abababababababababababababababababababab\"}x"
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "Unexpected non-whitespace character after JSON at position 50 (line 1 column 51)",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "revision reply not JSON: lone",
+   "query": "?repo=synthetic%2Fmeta-lone&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/meta-lone?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/meta-lone": {
+     "status": 200,
+     "text": "{\"sha\":\"\\uD83D\"}"
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "Immutable repository revision unavailable.",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "non-string revision: array",
+   "query": "?repo=synthetic%2Fsha-array&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/sha-array?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/sha-array": {
+     "status": 200,
+     "json": {
+      "sha": [
+       "abababababababababababababababababababab"
+      ]
+     }
+    },
+    "/synthetic/sha-array/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-184/185"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzBAAAAAEAAAAaAAAAAAAAAGJsay4xLm5leHRuLmVoX3Byb2oud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "present",
+     "reason": "MTP/NextN tensors are present in the selected files. Backend compatibility and a working head still require a load test.",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "revision": [
+      "abababababababababababababababababababab"
+     ],
+     "evidence": [
+      {
+       "file": "m-Q8_0.gguf",
+       "architecture": "synthetic",
+       "declaredLayers": 1,
+       "splitCount": 1,
+       "tensorCount": 1,
+       "tensors": [
+        "blk.1.nextn.eh_proj.weight"
+       ]
+      }
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "non-string revision: nested",
+   "query": "?repo=synthetic%2Fsha-nested&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/sha-nested?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/sha-nested": {
+     "status": 200,
+     "json": {
+      "sha": [
+       [
+        "abababababababababababababababababababab"
+       ]
+      ]
+     }
+    },
+    "/synthetic/sha-nested/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-184/185"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzBAAAAAEAAAAaAAAAAAAAAGJsay4xLm5leHRuLmVoX3Byb2oud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "present",
+     "reason": "MTP/NextN tensors are present in the selected files. Backend compatibility and a working head still require a load test.",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "revision": [
+      [
+       "abababababababababababababababababababab"
+      ]
+     ],
+     "evidence": [
+      {
+       "file": "m-Q8_0.gguf",
+       "architecture": "synthetic",
+       "declaredLayers": 1,
+       "splitCount": 1,
+       "tensorCount": 1,
+       "tensors": [
+        "blk.1.nextn.eh_proj.weight"
+       ]
+      }
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "non-string revision: two",
+   "query": "?repo=synthetic%2Fsha-two&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/sha-two?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/sha-two": {
+     "status": 200,
+     "json": {
+      "sha": [
+       "abababababababababababababababababababab",
+       "abababababababababababababababababababab"
+      ]
+     }
+    },
+    "/synthetic/sha-two/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-184/185"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzBAAAAAEAAAAaAAAAAAAAAGJsay4xLm5leHRuLmVoX3Byb2oud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "Immutable repository revision unavailable.",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "non-string revision: number",
+   "query": "?repo=synthetic%2Fsha-number&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/sha-number?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/sha-number": {
+     "status": 200,
+     "json": {
+      "sha": 1234
+     }
+    },
+    "/synthetic/sha-number/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-184/185"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzBAAAAAEAAAAaAAAAAAAAAGJsay4xLm5leHRuLmVoX3Byb2oud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "Immutable repository revision unavailable.",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "non-string revision: object",
+   "query": "?repo=synthetic%2Fsha-object&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/sha-object?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/sha-object": {
+     "status": 200,
+     "json": {
+      "sha": {
+       "a": "abababababababababababababababababababab"
+      }
+     }
+    },
+    "/synthetic/sha-object/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-184/185"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzBAAAAAEAAAAaAAAAAAAAAGJsay4xLm5leHRuLmVoX3Byb2oud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "Immutable repository revision unavailable.",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "non-string revision: true",
+   "query": "?repo=synthetic%2Fsha-true&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/sha-true?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/sha-true": {
+     "status": 200,
+     "json": {
+      "sha": true
+     }
+    },
+    "/synthetic/sha-true/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-184/185"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzBAAAAAEAAAAaAAAAAAAAAGJsay4xLm5leHRuLmVoX3Byb2oud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "Immutable repository revision unavailable.",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "non-string revision: zero",
+   "query": "?repo=synthetic%2Fsha-zero&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/sha-zero?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/sha-zero": {
+     "status": 200,
+     "json": {
+      "sha": 0
+     }
+    },
+    "/synthetic/sha-zero/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-184/185"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzBAAAAAEAAAAaAAAAAAAAAGJsay4xLm5leHRuLmVoX3Byb2oud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "Immutable repository revision unavailable.",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "non-string revision: empty",
+   "query": "?repo=synthetic%2Fsha-empty&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/sha-empty?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/sha-empty": {
+     "status": 200,
+     "json": {
+      "sha": ""
+     }
+    },
+    "/synthetic/sha-empty/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-184/185"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzBAAAAAEAAAAaAAAAAAAAAGJsay4xLm5leHRuLmVoX3Byb2oud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "Immutable repository revision unavailable.",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "revision reply null",
+   "query": "?repo=synthetic%2Fmeta-null&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/meta-null?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/meta-null": {
+     "status": 200,
+     "text": "null"
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "Cannot read properties of null (reading 'sha')",
      "files": [
       "m-Q8_0.gguf"
      ],

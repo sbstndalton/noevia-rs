@@ -3,7 +3,8 @@
 // Drives Core's own route (routes/models.cjs), variant lists (llamacpp-variants.cjs, model-manager.cjs),
 // fetchJson (http.cjs) and check (mtp-artifact.cjs) at the Core before the route moved, over synthetic
 // GGUF headers and a scripted model source (global fetch is replaced; nothing reaches the network).
-//   NOEVIA_CORE_CHECKOUT=<noevia-core at cf5c567f> node mtp-artifact-node.cjs > mtp-artifact-node.json
+//   NOEVIA_CORE_CHECKOUT=<noevia-core at cf5c567f> [NOEVIA_CORE_REF=<its sha, for an archive>] node mtp-artifact-node.cjs > mtp-artifact-node.json
+// Generated with the Node line production runs (22): the JSON.parse messages are V8's.
 // Synthetic data only. `checkedAt` is normalised to "X".
 const path = require('node:path');
 const core = process.env.NOEVIA_CORE_CHECKOUT;
@@ -98,6 +99,17 @@ scenario('list unreachable', '?repo=synthetic%2Fdown&variant=Q8_0', { '/api/mode
 scenario('revision unavailable', '?repo=synthetic%2Fnorev&variant=Q8_0', { ...blobs('synthetic/norev', sib('m-Q8_0.gguf')), '/api/models/synthetic/norev': { status: 500, json: {} } });
 scenario('mutable revision', '?repo=synthetic%2Fmut&variant=Q8_0', { ...blobs('synthetic/mut', sib('m-Q8_0.gguf')), ...meta('synthetic/mut', { sha: 'main' }) });
 scenario('meta unreachable', '?repo=synthetic%2Fmetadown&variant=Q8_0', { ...blobs('synthetic/metadown', sib('m-Q8_0.gguf')), '/api/models/synthetic/metadown': { fail: true } });
+// The revision reply is not JSON: the reason is JSON.parse's own message.
+for (const [k, text] of [['text', 'hello'], ['html', '<!DOCTYPE html><html><body>Not Found</body></html>'], ['cut', '{"sha":"' + REV], ['empty', ''], ['trailing', '{"sha":"' + REV + '"}x'], ['lone', '{"sha":"\\uD83D"}']]) {
+  const repo = `synthetic/meta-${k}`;
+  scenario(`revision reply not JSON: ${k}`, `?repo=${encodeURIComponent(repo)}&variant=Q8_0`, { ...blobs(repo, sib('m-Q8_0.gguf')), [`/api/models/${repo}`]: { status: 200, text } });
+}
+// A revision that is not a string: the hex test coerces it (String(value)), the answer keeps it.
+for (const [k, sha] of [['array', [REV]], ['nested', [[REV]]], ['two', [REV, REV]], ['number', 1234], ['object', { a: REV }], ['true', true], ['zero', 0], ['empty', '']]) {
+  const repo = `synthetic/sha-${k}`;
+  scenario(`non-string revision: ${k}`, `?repo=${encodeURIComponent(repo)}&variant=Q8_0`, { ...blobs(repo, sib('m-Q8_0.gguf')), ...meta(repo, { sha }), [res(repo, 'm-Q8_0.gguf')]: file(present) });
+}
+scenario('revision reply null', '?repo=synthetic%2Fmeta-null&variant=Q8_0', { ...blobs('synthetic/meta-null', sib('m-Q8_0.gguf')), '/api/models/synthetic/meta-null': { status: 200, text: 'null' } });
 scenario('file 404', '?repo=synthetic%2Ffile404&variant=Q8_0', { ...blobs('synthetic/file404', sib('m-Q8_0.gguf')), ...meta('synthetic/file404'), [res('synthetic/file404', 'm-Q8_0.gguf')]: { status: 404, text: 'no' } });
 scenario('unexpected range', '?repo=synthetic%2Frange&variant=Q8_0', { ...blobs('synthetic/range', sib('m-Q8_0.gguf')), ...meta('synthetic/range'), [res('synthetic/range', 'm-Q8_0.gguf')]: file(present, { headers: { 'content-range': 'bytes 10-20/30' } }) });
 scenario('file not GGUF', '?repo=synthetic%2Fnotgguf&variant=Q8_0', { ...blobs('synthetic/notgguf', sib('m-Q8_0.gguf')), ...meta('synthetic/notgguf'), [res('synthetic/notgguf', 'm-Q8_0.gguf')]: file(Buffer.alloc(64)) });
@@ -154,5 +166,5 @@ async function run(s) {
 (async () => {
   const http = [];
   for (const s of scenarios) http.push({ ...s, answer: await run(s) });
-  process.stdout.write(JSON.stringify({ core: require('node:child_process').execFileSync('git', ['-C', core, 'rev-parse', 'HEAD']).toString().trim(), inspect: inspected, http }, null, 1) + '\n');
+  process.stdout.write(JSON.stringify({ core: process.env.NOEVIA_CORE_REF || require('node:child_process').execFileSync('git', ['-C', core, 'rev-parse', 'HEAD']).toString().trim(), node: process.version, inspect: inspected, http }, null, 1) + '\n');
 })();

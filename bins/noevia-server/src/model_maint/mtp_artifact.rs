@@ -334,7 +334,7 @@ impl Maint {
         &self,
         repo: &str,
         files: &[String],
-    ) -> Result<(String, Vec<Inspection>), String> {
+    ) -> Result<(JValue, Vec<Inspection>), String> {
         let client = &self.mtp.file_client;
         let meta_url = format!("{}/api/models/{repo}", self.card_base);
         let meta = tokio::time::timeout(Duration::from_secs(10), async {
@@ -353,21 +353,37 @@ impl Maint {
                 }
                 bytes.extend_from_slice(&chunk);
             }
-            parse(&String::from_utf8_lossy(&bytes))
-                .map_err(|_| "Unexpected token in JSON".to_string())
+            let text = String::from_utf8_lossy(&bytes).into_owned();
+            let units: Vec<u16> = text.encode_utf16().collect();
+            // JSON.parse's own message (V8); a lone surrogate in it becomes U+FFFD here.
+            if let Some(message) = super::v8_json::parse_error(&units) {
+                return Err(String::from_utf16_lossy(&message));
+            }
+            // V8 accepts it. The reader keeps a lone surrogate escape as U+FFFD, which can only
+            // make a revision fail the hex test, as it does in Node.
+            Ok(parse(&text).unwrap_or(JValue::Undefined))
         })
         .await
         .map_err(|_| "Artifact check timed out.".to_string())??;
-        let revision = match &meta {
+        // `meta.sha`, then `/^[a-f0-9]{40,64}$/.test(revision || '')`: the test coerces the value to
+        // a string, and the URL and the answer use the value as it is (`${revision}`, `revision`).
+        let sha = match &meta {
             JValue::Null => return Err("Cannot read properties of null (reading 'sha')".into()),
-            JValue::Obj(_) => meta.get("sha").as_str().map(str::to_owned),
-            _ => None,
+            JValue::Obj(_) => meta.get("sha").clone(),
+            _ => JValue::Undefined,
+        };
+        let revision = if sha.truthy() {
+            js_json::to_js_string(&sha).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        if !((40..=64).contains(&revision.len())
+            && revision
+                .bytes()
+                .all(|b| matches!(b, b'a'..=b'f' | b'0'..=b'9')))
+        {
+            return Err("Immutable repository revision unavailable.".to_string());
         }
-        .filter(|r| {
-            (40..=64).contains(&r.len())
-                && r.bytes().all(|b| matches!(b, b'a'..=b'f' | b'0'..=b'9'))
-        })
-        .ok_or_else(|| "Immutable repository revision unavailable.".to_string())?;
         let mut evidence = Vec::new();
         for file in files {
             let path: Vec<String> = file.split('/').map(encode_component).collect();
@@ -381,7 +397,7 @@ impl Maint {
             found.file = file.clone();
             evidence.push(found);
         }
-        Ok((revision, evidence))
+        Ok((sha, evidence))
     }
 }
 
@@ -684,7 +700,7 @@ fn js_gt(x: &JValue, n: f64) -> bool {
     }
 }
 
-fn verdict(files: &JValue, revision: String, evidence: &[Inspection]) -> JValue {
+fn verdict(files: &JValue, revision: JValue, evidence: &[Inspection]) -> JValue {
     let count = match files {
         JValue::Arr(f) => f.len() as f64,
         _ => 0.0,
@@ -711,7 +727,7 @@ fn verdict(files: &JValue, revision: String, evidence: &[Inspection]) -> JValue 
         ("status", JValue::Str(status.into())),
         ("reason", JValue::Str(reason.into())),
         ("files", files.clone()),
-        ("revision", JValue::Str(revision)),
+        ("revision", revision),
         (
             "evidence",
             JValue::Arr(evidence.iter().map(Inspection::to_json).collect()),

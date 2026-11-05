@@ -219,7 +219,7 @@ async fn every_scenario_answers_as_node() {
     let mut checked = 0;
     for (kind, list) in by_kind {
         // The front refuses to start with the other engine kind (its statistics stay Node's), so
-        // those scenarios cannot reach it; they stay in the fixture as Node's record.
+        // those scenarios cannot reach it here; every_scenario_answers_as_node_in_process replays them.
         if kind == "lemonade" {
             checked += list.len();
             continue;
@@ -435,4 +435,129 @@ async fn a_range_ignoring_source_is_read_only_to_the_limit() {
     assert_eq!(status, 200);
     assert!(body.starts_with("{\"status\":\"present\""), "{body}");
     let _ = stop.send(());
+}
+
+const JSON_ORACLE: &str = include_str!("fixtures/json-parse-errors-node.json");
+
+fn units_of(v: &Value) -> Vec<u16> {
+    v.as_array()
+        .unwrap()
+        .iter()
+        .map(|u| u.as_u64().unwrap() as u16)
+        .collect()
+}
+
+#[test]
+fn json_parse_errors_are_node_22_messages_unit_for_unit() {
+    use noevia_server::model_maint::v8_json::parse_error;
+    let oracle: Value = serde_json::from_str(JSON_ORACLE).unwrap();
+    assert!(oracle["node"].as_str().unwrap().starts_with("v22."));
+    let cases = oracle["cases"].as_array().unwrap();
+    assert!(cases.len() >= 110);
+    for case in cases {
+        let ok = case.get("ok").is_some();
+        let input = if ok {
+            units_of(&case["units"])
+        } else {
+            units_of(&case["inputUnits"])
+        };
+        let got = parse_error(&input);
+        if ok {
+            assert_eq!(got, None, "{:?} parses", case["input"]);
+        } else {
+            assert_eq!(
+                got.map(|m| String::from_utf16_lossy(&m)),
+                Some(String::from_utf16_lossy(&units_of(&case["units"]))),
+                "{:?}",
+                case["input"]
+            );
+            assert_eq!(
+                got_units(&input),
+                units_of(&case["units"]),
+                "{:?}",
+                case["input"]
+            );
+        }
+    }
+}
+
+fn got_units(input: &[u16]) -> Vec<u16> {
+    noevia_server::model_maint::v8_json::parse_error(input).unwrap()
+}
+
+/// The front's handler called in-process for every scenario and every engine kind, the other engine
+/// kind included (the front refuses to start with it, so the HTTP replay cannot reach it there).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn every_scenario_answers_as_node_in_process() {
+    use http_body_util::BodyExt;
+    use noevia_server::model_maint::Maint;
+    let oracle: Value = serde_json::from_str(ORACLE).unwrap();
+    let scenarios = oracle["http"].as_array().unwrap();
+    let mut by_kind: HashMap<String, Vec<&Value>> = HashMap::new();
+    for s in scenarios {
+        by_kind
+            .entry(s["kind"].as_str().unwrap().to_owned())
+            .or_default()
+            .push(s);
+    }
+    assert_eq!(by_kind.len(), 3, "llamacpp, lemonade and none");
+    let mut checked = 0;
+    for (kind, list) in by_kind {
+        let sources: Sources = Arc::new(Mutex::new(HashMap::new()));
+        for s in &list {
+            for (target, spec) in s["sources"].as_object().unwrap() {
+                sources
+                    .lock()
+                    .unwrap()
+                    .insert(target.clone(), source_of(spec));
+            }
+        }
+        let (port, seen) = source_server(Arc::clone(&sources)).await;
+        let env: HashMap<String, String> = env_for(&kind, port).into_iter().collect();
+        let get = |k: &str| env.get(k).cloned();
+        let engine = Arc::new(server_stats::Engine::from_lookup(&get).unwrap());
+        let sizing = Arc::new(noevia_server::model_sizing::Sizing::from_lookup(
+            engine.kind(),
+            Arc::clone(&engine),
+            &get,
+        ));
+        let maint = Arc::new(Maint::from_lookup(engine.kind(), &engine, sizing, &get).unwrap());
+        for s in list {
+            let uri: axum::http::Uri =
+                format!("/api/models/mtp-artifact{}", s["query"].as_str().unwrap())
+                    .parse()
+                    .unwrap();
+            let res = mtp_artifact::serve(&maint, &uri).await;
+            let status = res.status().as_u16();
+            let body =
+                String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec())
+                    .unwrap();
+            assert_eq!(
+                Value::from(status),
+                s["answer"]["status"],
+                "{kind} {}: {body}",
+                s["name"]
+            );
+            assert_eq!(
+                normalise(&body),
+                js_text("http", &s["name"], true),
+                "{kind} {}",
+                s["name"]
+            );
+            checked += 1;
+        }
+        let seen = seen.lock().unwrap();
+        if kind == "lemonade" {
+            let (_, h) = seen
+                .iter()
+                .find(|(t, _)| t.starts_with("/api/v1/pull/variants"))
+                .unwrap();
+            assert_eq!(h.get("authorization").unwrap(), "Bearer synthetic-key");
+        }
+        for (t, h) in seen.iter().filter(|(t, _)| t.contains("/resolve/")) {
+            assert_eq!(h.get("range").unwrap(), "bytes=0-16777215", "{t}");
+            assert!(h.get("authorization").is_none(), "no key to the source");
+        }
+    }
+    assert_eq!(checked, scenarios.len());
 }
