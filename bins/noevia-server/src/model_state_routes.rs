@@ -314,7 +314,7 @@ async fn estimates(sizing: &Arc<Sizing>, listing: &Read, budget_gib: f64) -> Opt
 
 // ── The installed list ───────────────────────────────────────────────────────────────────────
 
-enum ListFault {
+pub(crate) enum ListFault {
     /// The router did not list: Node's 502.
     Engine,
     /// Node did not answer: what the rows mean cannot be told.
@@ -371,7 +371,7 @@ fn round1(n: f64) -> f64 {
 }
 
 /// models.cjs `modelsInstalledFresh` over the listing `listing`.
-async fn installed_list(
+pub(crate) async fn installed_list(
     app: &crate::App,
     sizing: &Arc<Sizing>,
     listing: &Read,
