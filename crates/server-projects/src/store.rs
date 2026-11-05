@@ -163,7 +163,7 @@ pub fn ensure_user_dir(data_dir: &Path, user_id: &str) -> Result<Ensured, StoreE
 /// fails with `NotFound` instead of recreating `users/<id>` (sbstndalton/noevia#1425, the account
 /// deletion fence of core's `workspace.assertActive`). Every writer of a file under a user's directory
 /// that can run long (a storage read, an extraction) creates its folders this way.
-pub(crate) fn create_dirs_below(user_dir: &Path, dir: &Path) -> std::io::Result<()> {
+pub fn create_dirs_below(user_dir: &Path, dir: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::DirBuilderExt;
     let below = dir
         .strip_prefix(user_dir)
