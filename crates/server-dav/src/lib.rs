@@ -1072,7 +1072,7 @@ impl<B: Backend> DavService<B> {
         }
         if headers
             .get(header::CONTENT_ENCODING)
-            .is_some_and(|v| v != "identity")
+            .is_some_and(|v| !v.as_bytes().is_empty() && v != "identity")
         {
             return reply(
                 StatusCode::UNSUPPORTED_MEDIA_TYPE,
@@ -1080,22 +1080,34 @@ impl<B: Backend> DavService<B> {
                 false,
             );
         }
-        if headers.contains_key("if") || headers.contains_key(header::IF_UNMODIFIED_SINCE) {
+        if headers.get("if").is_some_and(|v| !v.as_bytes().is_empty())
+            || headers
+                .get(header::IF_UNMODIFIED_SINCE)
+                .is_some_and(|v| !v.as_bytes().is_empty())
+        {
             return reply(
                 StatusCode::BAD_REQUEST,
                 "Use If-Match or If-None-Match",
                 false,
             );
         }
-        let matching = headers.get(header::IF_MATCH).and_then(|v| v.to_str().ok());
+        let matching = headers
+            .get(header::IF_MATCH)
+            .and_then(|v| v.to_str().ok())
+            .filter(|v| !v.is_empty());
         let new_only = headers
             .get(header::IF_NONE_MATCH)
-            .and_then(|v| v.to_str().ok());
+            .and_then(|v| v.to_str().ok())
+            .filter(|v| !v.is_empty());
         if (matching.is_some() && new_only.is_some())
             || matching.is_some_and(|v| !valid_quoted_tag(v))
             || new_only.is_some_and(|v| v != "*")
-            || (headers.contains_key(header::IF_MATCH) && matching.is_none())
-            || (headers.contains_key(header::IF_NONE_MATCH) && new_only.is_none())
+            || headers
+                .get(header::IF_MATCH)
+                .is_some_and(|v| v.to_str().is_err())
+            || headers
+                .get(header::IF_NONE_MATCH)
+                .is_some_and(|v| v.to_str().is_err())
         {
             return reply(
                 StatusCode::BAD_REQUEST,
@@ -1239,7 +1251,7 @@ impl<B: Backend> DavService<B> {
         }
         if headers
             .get(header::CONTENT_ENCODING)
-            .is_some_and(|v| v != "identity")
+            .is_some_and(|v| !v.as_bytes().is_empty() && v != "identity")
         {
             return reply(
                 StatusCode::UNSUPPORTED_MEDIA_TYPE,
@@ -1247,9 +1259,9 @@ impl<B: Backend> DavService<B> {
                 false,
             );
         }
-        if headers.contains_key("if")
-            || headers.contains_key(header::IF_MATCH)
-            || headers.contains_key(header::IF_NONE_MATCH)
+        if ["if", "if-match", "if-none-match"]
+            .iter()
+            .any(|name| headers.get(*name).is_some_and(|v| !v.as_bytes().is_empty()))
         {
             return reply(
                 StatusCode::BAD_REQUEST,

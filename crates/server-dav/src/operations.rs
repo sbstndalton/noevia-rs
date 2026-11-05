@@ -136,7 +136,7 @@ impl<B: Backend> DavService<B> {
                 })
                 .transpose()
         };
-        if header("content-encoding")?.is_some_and(|v| v != "identity") {
+        if header("content-encoding")?.is_some_and(|v| !v.is_empty() && v != "identity") {
             return Err(bad(
                 StatusCode::UNSUPPORTED_MEDIA_TYPE,
                 "Encoded bodies are unsupported",

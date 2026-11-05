@@ -1,5 +1,60 @@
 [
   {
+    "name": "empty preconditions",
+    "method": "PUT",
+    "path": "/dav/alice/new.md",
+    "body": "New",
+    "headers": {
+      "if-match": "",
+      "if-none-match": ""
+    },
+    "expected": {
+      "status": 201,
+      "body": "",
+      "allow": null,
+      "dav": null,
+      "etag": "\"18fdd549b2ed367ac0c74cbec1214644728515b30edbcb78e7d322757a7c8359\"",
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "empty encoding",
+    "method": "PUT",
+    "path": "/dav/alice/new.md",
+    "body": "New",
+    "headers": {
+      "content-encoding": ""
+    },
+    "expected": {
+      "status": 201,
+      "body": "",
+      "allow": null,
+      "dav": null,
+      "etag": "\"18fdd549b2ed367ac0c74cbec1214644728515b30edbcb78e7d322757a7c8359\"",
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "empty mkdir conditions",
+    "method": "MKCOL",
+    "path": "/dav/alice/folder",
+    "body": "",
+    "headers": {
+      "if": "",
+      "if-match": "",
+      "if-none-match": "",
+      "content-encoding": ""
+    },
+    "expected": {
+      "status": 201,
+      "body": "",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
     "name": "options",
     "method": "OPTIONS",
     "path": "/dav/alice/",
