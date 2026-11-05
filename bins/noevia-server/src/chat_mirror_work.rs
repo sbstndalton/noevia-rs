@@ -62,6 +62,9 @@ pub trait EngineSeam: Send + Sync + 'static {
         answer_model: Option<String>,
     ) -> BoxFut<Result<Option<String>, ()>>;
     fn complete(&self, call: Completion) -> BoxFut<Result<String, String>>;
+    /// A `brain.fallback` / `brain.built` entry for the decision log (core recordDecision('chat-brain')).
+    /// Fire and forget.
+    fn record(&self, _entry: JValue) {}
 }
 
 /// The production host: the App's own layers.
@@ -362,6 +365,9 @@ impl Reasoner for EngineReasoner {
     fn complete(&self, call: Completion) -> BoxFut<Result<String, String>> {
         self.engine.complete(call)
     }
+    fn record(&self, entry: JValue) {
+        self.engine.record(entry);
+    }
 }
 
 // ── The Diary as the account ────────────────────────────────────────────────────────────────
@@ -473,6 +479,17 @@ impl EngineSeam for NodeEngine {
         ]);
         let ask = self.ask(body, ENGINE_FACTS);
         Box::pin(async move { ask.await.ok_or(()).and_then(|v| opt_str(v.get("refusal"))) })
+    }
+    fn record(&self, entry: JValue) {
+        let ask = self.ask(
+            JValue::obj([("op", JValue::from("record")), ("entry", entry)]),
+            ENGINE_FACTS,
+        );
+        if let Ok(rt) = tokio::runtime::Handle::try_current() {
+            rt.spawn(async move {
+                let _ = ask.await;
+            });
+        }
     }
     fn complete(&self, call: Completion) -> BoxFut<Result<String, String>> {
         let body = JValue::obj([
