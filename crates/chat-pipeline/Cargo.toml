@@ -1,0 +1,18 @@
+[package]
+name = "chat-pipeline"
+version = "0.1.0"
+description = "The chat turn's pipeline of core chat.cjs in Rust (POST /api/chat generation), stage by stage, held to Node's answers by a differential oracle"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+prompt-framing = { path = "../prompt-framing" }
+
+[dev-dependencies]
+serde_json = "1"
