@@ -919,7 +919,11 @@ async fn a_hostile_connection_header_cannot_strip_the_fronts_lease_from_the_loca
         diary: true,
         harness: false,
     });
-    for connection in [LEASE, "keep-alive, x-noevia-admission-lease", "X-Noevia-Admission-Lease"] {
+    for connection in [
+        LEASE,
+        "keep-alive, x-noevia-admission-lease",
+        "X-Noevia-Admission-Lease",
+    ] {
         let got = send_with(
             &f,
             "POST",

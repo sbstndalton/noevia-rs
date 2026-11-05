@@ -1398,6 +1398,16 @@ async fn a_lease_node_keeps_confirming_lets_a_long_turn_run() {
     let mut body = res.into_body();
     body.frame().await.unwrap().unwrap();
     let next = tokio::time::timeout(Duration::from_secs(1), body.frame()).await;
-    assert!(next.is_err(), "the turn ended though its lease was renewed: {next:?}");
-    assert!(f.core.seen.lock().unwrap().releases.iter().any(|r| r.ends_with("/renew")));
+    assert!(
+        next.is_err(),
+        "the turn ended though its lease was renewed: {next:?}"
+    );
+    assert!(f
+        .core
+        .seen
+        .lock()
+        .unwrap()
+        .releases
+        .iter()
+        .any(|r| r.ends_with("/renew")));
 }

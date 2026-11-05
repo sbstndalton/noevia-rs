@@ -178,9 +178,9 @@ impl http_body::Body for Held {
             self.body = None;
             self.lease = None;
             return Poll::Ready(match self.on_loss.take() {
-                Some(OnLoss::Frame(frame)) => {
-                    Some(Ok(http_body::Frame::data(Bytes::from_static(frame.as_bytes()))))
-                }
+                Some(OnLoss::Frame(frame)) => Some(Ok(http_body::Frame::data(Bytes::from_static(
+                    frame.as_bytes(),
+                )))),
                 Some(OnLoss::Abort) => Some(Err(axum::Error::new(std::io::Error::other(
                     "the call's admission lease was lost",
                 )))),
@@ -199,7 +199,9 @@ impl http_body::Body for Held {
     }
 
     fn is_end_stream(&self) -> bool {
-        self.body.as_ref().is_none_or(http_body::Body::is_end_stream)
+        self.body
+            .as_ref()
+            .is_none_or(http_body::Body::is_end_stream)
     }
 
     fn size_hint(&self) -> http_body::SizeHint {

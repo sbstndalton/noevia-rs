@@ -710,7 +710,11 @@ mod tests {
         );
         // Node's words whole, however long (index.cjs keeps err.message).
         let long = "x".repeat(700);
-        let (base, _s) = node((503, format!(r#"{{"error":"{long}","code":"inferenceMaintenance"}}"#))).await;
+        let (base, _s) = node((
+            503,
+            format!(r#"{{"error":"{long}","code":"inferenceMaintenance"}}"#),
+        ))
+        .await;
         match admission(&base).enter_gate(Gate::Chat).await.err().unwrap() {
             GateRefusal::Refused(r) => assert_eq!(r.message, long),
             other => panic!("{other:?}"),
