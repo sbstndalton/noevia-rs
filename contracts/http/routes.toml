@@ -250,12 +250,12 @@ owner = "rust"
 methods = ["DELETE"]
 
 # sbstndalton/noevia#2190 close-out (rust-auto-roles): the GET is the front's, from the user's
-# auto-roles.json and the snapshot Node publishes (the served catalogue, the machine models). The PUT
-# stays Node's: a save warms the roles in the engine, which is chat-live (core rust-auto-roles.cjs).
+# auto-roles.json and the snapshot Node publishes. F1 moves PUT and deletion cleanup to the
+# native writer, keeping the existing warming trigger behind a private bridge.
 [[route]]
 path = "/api/auto-roles"
 owner = "rust"
-methods = ["GET"]
+methods = ["GET", "PUT"]
 
 [[route]]
 path = "/api/chat"
