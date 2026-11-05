@@ -18,9 +18,7 @@ const ALLOWLIST: &[(&str, [usize; 5])] = &[
     ("crates/mem-return/src/lib.rs", [1, 0, 1, 1, 0]),
     ("crates/gguf-memtest/tests/hostile.rs", [2, 3, 5, 1, 0]),
     ("crates/sqlite-vec-loader/src/lib.rs", [2, 0, 4, 1, 0]),
-    // The baseline already has 50 individually annotated exports (including
-    // untuned scan); its ABI budget was 50 but the annotation inventory lagged.
-    // No unsafe block, contract or token is permitted in this file.
+    // 50 exports, each one `#[allow(unsafe_code)]` + `#[no_mangle]`; main #2295 added `autotune_scan`.
     ("bins/dav-parse-wasm/src/lib.rs", [0, 0, 0, 50, 50]),
     ("bins/sandbox-bridge-wasm/src/lib.rs", [0, 0, 0, 10, 10]),
 ];
