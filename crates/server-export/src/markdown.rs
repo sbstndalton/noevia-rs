@@ -10,6 +10,9 @@ pub const MAX_INPUT_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_NODES: usize = 1_000_000;
 pub const MAX_DEPTH: usize = 32;
 pub const MAX_RENDER_BYTES: usize = 32 * 1024 * 1024;
+/// Arrays nested in a used field (`title`, `content`, a tool `name`) that `String()` joins. The
+/// parsed JSON is shallower than this; it bounds the recursion for any hand-made value.
+pub const MAX_COERCE_DEPTH: usize = 1000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
@@ -110,6 +113,12 @@ impl Buffer {
 // String-hint ToPrimitive for plain JSON data. Inherited Object.toString is callable
 // even when an own valueOf is not; unlike js-json::to_js_string, do not refuse that case.
 fn coerce(v: &JValue, out: &mut Buffer) -> Result<(), Error> {
+    coerce_at(v, out, 0)
+}
+fn coerce_at(v: &JValue, out: &mut Buffer, depth: usize) -> Result<(), Error> {
+    if depth > MAX_COERCE_DEPTH {
+        return Err(Error::Limit);
+    }
     match v {
         JValue::Undefined => out.push("undefined"),
         JValue::Null => out.push("null"),
@@ -129,7 +138,7 @@ fn coerce(v: &JValue, out: &mut Buffer) -> Result<(), Error> {
                     out.push(",")?;
                 }
                 if !item.is_nullish() {
-                    coerce(item, out)?;
+                    coerce_at(item, out, depth + 1)?;
                 }
             }
             Ok(())
@@ -218,10 +227,39 @@ fn iso(v: &JValue) -> Result<[u8; 24], Error> {
 
 /// Render actual admitted Node conversation Markdown. Entire input, including ignored
 /// fields/roles, is preflight-bounded before any formatting. See README for date refusals.
+/// This is the workspace export's admission; the single-chat download uses [`render_as_node`].
 pub fn render(chat: &JValue, history: &JValue) -> Result<String, Error> {
     let mut budget = Budget { nodes: 2, bytes: 0 };
     preflight(chat, 0, &mut budget)?;
     preflight(history, 0, &mut budget)?;
+    write(chat, history, |v| {
+        std::str::from_utf8(&iso(v)?)
+            .map(str::to_owned)
+            .map_err(|_| Error::UnsupportedDate)
+    })
+}
+
+/// Core's `chatMarkdown` for a parsed chat and history, as the single-chat download answers it:
+/// only the fields it reads are walked (an ignored field may be any shape or depth), `updatedAt`
+/// is `new Date(x).toISOString()` over the whole Date range (extended years and every string
+/// `Date.parse` takes, see [`crate::js_date`]), and the output stays bounded. `Date` is Node's
+/// RangeError, `Type` its TypeError; both are its 500.
+pub fn render_as_node(chat: &JValue, history: &JValue) -> Result<String, Error> {
+    write(chat, history, |v| {
+        crate::js_date::time_value(v)
+            .map(crate::js_date::iso)
+            .map_err(|e| match e {
+                crate::js_date::Error::Invalid => Error::Date,
+                crate::js_date::Error::Type => Error::Type,
+            })
+    })
+}
+
+fn write(
+    chat: &JValue,
+    history: &JValue,
+    date: impl Fn(&JValue) -> Result<String, Error>,
+) -> Result<String, Error> {
     if chat.is_nullish() {
         return Err(Error::Type);
     }
@@ -238,7 +276,7 @@ pub fn render(chat: &JValue, history: &JValue) -> Result<String, Error> {
     let updated = chat.get("updatedAt");
     if updated.truthy() {
         out.push("\n_Last updated ")?;
-        out.push(std::str::from_utf8(&iso(updated)?).map_err(|_| Error::UnsupportedDate)?)?;
+        out.push(&date(updated)?)?;
         out.push("_\n")?;
     }
     let messages = match history {
@@ -333,6 +371,62 @@ mod tests {
         }
         assert!(out.0.capacity() >= out.0.len());
         assert!(out.0.capacity() <= out.0.len() * 2 + 64);
+        Ok(())
+    }
+    fn obj(items: Vec<(&str, JValue)>) -> JValue {
+        JValue::Obj(items.into_iter().map(|(k, v)| (k.to_owned(), v)).collect())
+    }
+    fn user(content: &str) -> JValue {
+        obj(vec![
+            ("role", JValue::Str("user".into())),
+            ("content", JValue::Str(content.into())),
+        ])
+    }
+    #[test]
+    fn node_render_ignores_deep_unused_fields() -> Result<(), Error> {
+        let mut deep = JValue::Null;
+        for _ in 0..(MAX_DEPTH + 8) {
+            deep = obj(vec![("x", deep)]);
+        }
+        let chat = obj(vec![
+            ("title", JValue::Str("T".into())),
+            ("meta", deep.clone()),
+        ]);
+        let mut message = user("needle");
+        if let JValue::Obj(items) = &mut message {
+            items.push(("meta".into(), deep));
+        }
+        let history = JValue::Arr(vec![message]);
+        assert_eq!(render(&chat, &history), Err(Error::Limit));
+        assert_eq!(
+            render_as_node(&chat, &history)?,
+            "# T\n\n## You\n\nneedle\n"
+        );
+        Ok(())
+    }
+    #[test]
+    fn node_render_writes_every_date_node_does() -> Result<(), Error> {
+        let history = JValue::Arr(vec![]);
+        let at = |v: JValue| {
+            render_as_node(
+                &obj(vec![("title", JValue::Str("T".into())), ("updatedAt", v)]),
+                &history,
+            )
+        };
+        assert_eq!(
+            at(JValue::Num(253_402_300_800_000.0))?,
+            "# T\n\n_Last updated +010000-01-01T00:00:00.000Z_\n"
+        );
+        assert_eq!(
+            at(JValue::Str("2026-01-01".into()))?,
+            "# T\n\n_Last updated 2026-01-01T00:00:00.000Z_\n"
+        );
+        assert_eq!(at(JValue::Num(8.64e15 + 1.0)), Err(Error::Date));
+        assert_eq!(at(JValue::Str("soon".into())), Err(Error::Date));
+        assert_eq!(
+            at(obj(vec![("toString", JValue::Num(1.0))])),
+            Err(Error::Type)
+        );
         Ok(())
     }
     #[test]

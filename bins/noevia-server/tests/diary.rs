@@ -286,8 +286,15 @@ fn the_front_lists_the_capabilities_and_owns_exactly_these_routes() {
             );
         }
     }
-    // Node keeps the local exchange, and the paths the web client never names.
-    for path in ["/api/diary/local-exchange", "/api/diary/history"] {
+    // The local exchange is the front's, every method; the paths the web client never names stay Node's.
+    for method in ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"] {
+        assert_eq!(
+            routes::dispatch(method, "/api/diary/local-exchange"),
+            Some(routes::Native::Diary),
+            "{method}"
+        );
+    }
+    for path in ["/api/diary/history", "/api/diary/files"] {
         assert_eq!(routes::dispatch("GET", path), None, "{path}");
         assert_eq!(routes::dispatch("POST", path), None, "{path}");
     }

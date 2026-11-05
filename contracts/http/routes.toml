@@ -38,7 +38,7 @@ owner = "rust"
 [[route]]
 path = "/api/account/retention"
 owner = "rust"
-methods = ["GET"]
+methods = ["GET", "PUT"]
 
 # sbstndalton/noevia#2190: Settings -> Models -> Decision service, every method (each answers its
 # own 405); Rust alone writes decision:configuration, Node re-reads it per decision and refuses the
@@ -293,6 +293,20 @@ path = "/api/chats/{chatId}/move"
 owner = "rust"
 methods = ["POST"]
 
+# #1450 transcript search and #1471 single-chat Markdown download: the front's, GET only
+# (bins/noevia-server project_routes.rs, crates/server-projects workspace.rs `search` and
+# chat_download.rs, crates/server-export single.rs); Node refuses both GETs (core
+# rust-chat-search.cjs, rust-chat-export.cjs). Other methods stay Node's (its 404).
+[[route]]
+path = "/api/chats/search"
+owner = "rust"
+methods = ["GET"]
+
+[[route]]
+path = "/api/chats/{chatId}/export"
+owner = "rust"
+methods = ["GET"]
+
 [[route]]
 path = "/api/code/active"
 owner = "rust"
@@ -332,9 +346,8 @@ owner = "rust"
 methods = ["PUT"]
 
 [[route]]
-# sbstndalton/noevia#2206: the rest of the Diary routes the web client names, except POST
-# /api/diary/local-exchange (the shared model throttle and the inference gate are Node's, see
-# contracts/http/README.md). Every method unless `methods` is listed.
+# sbstndalton/noevia#2206: the rest of the Diary routes the web client names (the local exchange
+# moved later, below). Every method unless `methods` is listed.
 path = "/api/diary"
 owner = "rust"
 
@@ -353,8 +366,11 @@ owner = "rust"
 methods = ["GET", "POST"]
 
 [[route]]
+# The Diary local exchange (capability rust-diary-local-exchange): every method; a POST relays the
+# companion exchange. The model throttle chat shares and the inference gate it holds stay Node's and
+# are taken by the front's inference-admission lease (contracts/http/README.md).
 path = "/api/diary/local-exchange"
-owner = "node"
+owner = "rust"
 
 [[route]]
 # sbstndalton/noevia#2185: the five proxy-only Diary routes (crates/server-diary): source, today,
@@ -382,6 +398,11 @@ owner = "rust"
 [[route]]
 path = "/api/diary/workspace-import"
 owner = "rust"
+
+# The embedding role's settings (noevia-core routes/embedding.cjs), listed for the web client at web.ref.
+[[route]]
+path = "/api/embedding"
+owner = "node"
 
 [[route]]
 # M4 (#1315): GET only (crates/server-export, read from the user's files on disk); every other
@@ -505,6 +526,10 @@ path = "/api/model-manager/models"
 owner = "rust"
 methods = ["GET"]
 
+# The model role assignments, the missing-file prune and the reranker role (noevia-core
+# routes/models.cjs), listed for the web client at web.ref; Node answers them (`/api/models/{*}`
+# below already sent them there).
+
 [[route]]
 path = "/api/models/assignments"
 owner = "rust"
@@ -626,6 +651,14 @@ methods = ["GET"]
 path = "/api/models/preset/suggest"
 owner = "rust"
 methods = ["GET"]
+
+[[route]]
+path = "/api/models/prune-missing"
+owner = "node"
+
+[[route]]
+path = "/api/models/reranker"
+owner = "node"
 
 # sbstndalton/noevia#2210: the preset reload, the front's (bins/noevia-server model_maint/reload.rs);
 # Node's core server/rust-model-maintenance.cjs refuses its POST. Other methods stay Node's (403/405).

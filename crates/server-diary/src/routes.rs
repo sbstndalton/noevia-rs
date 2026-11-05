@@ -16,13 +16,15 @@
 //! `GET /api/diary/storage-status` and `GET`/`POST /api/diary/exchanges` (sbstndalton/noevia#2206) are
 //! here too; the connector credentials and the file bridge are [`crate::connector`].
 //!
-//! Kept on Node, with the reason, in contracts/http/README.md: `POST /api/diary/local-exchange` (the
-//! shared model throttle and the inference gate, both Node memory).
+//! `POST /api/diary/local-exchange` is [`Diary::local_exchange`] ([`crate::local_exchange`]); the shared
+//! model throttle and the inference gate it holds stay Node's, taken through the caller's admission.
 
 use crate::body::{ChannelBody, StreamError};
 use crate::client::{parse_or_text, read_capped, CallError, Capped, JsonReply, Sidecar};
 use crate::config::DiaryConfig;
 use crate::exchanges;
+use crate::js_raw;
+use crate::local_exchange::{self, ExchangeHold, ExchangeRefusal};
 use crate::tenant::{workspace_dir, Content, StorageIdentity, Tenant};
 use bytes::Bytes;
 use http_body::Body;
@@ -64,6 +66,8 @@ pub struct Limits {
     pub import_max_upload: usize,
     pub import_max_reply: usize,
     pub import_deadline: Duration,
+    /// The local exchange's body cap, deadlines and keep-alive.
+    pub exchange: local_exchange::ExchangeLimits,
 }
 
 impl Default for Limits {
@@ -79,6 +83,7 @@ impl Default for Limits {
             import_max_upload: 32 * 1024 * 1024,
             import_max_reply: 3 * 8 * 1024 * 1024,
             import_deadline: Duration::from_secs(120),
+            exchange: local_exchange::ExchangeLimits::default(),
         }
     }
 }
@@ -181,6 +186,9 @@ pub enum ReplyBody {
     Json(String),
     /// The workspace archive; the status is 200 and the headers are fixed by the caller.
     Zip(ChannelBody),
+    /// The local exchange's event stream (`text/event-stream`); the status is 200, the headers are
+    /// the caller's, and it always ends normally (every failure is an event in it).
+    Events(ChannelBody),
 }
 
 pub struct Reply {
@@ -228,7 +236,7 @@ fn diary_unavailable() -> Reply {
 /// else (a bad URL, a redirect, an unreadable storage row) stays core's generic 500.
 fn call_failed(error: CallError) -> Reply {
     match error {
-        CallError::Transport | CallError::Timeout => diary_unavailable(),
+        CallError::Transport | CallError::Refused | CallError::Timeout => diary_unavailable(),
         _ => internal(),
     }
 }
@@ -456,6 +464,134 @@ impl Diary {
             .map_err(CallError::from)
     }
 
+    /// [`Diary::tenant`] for the exchange's stream task.
+    pub(crate) async fn tenant_for(&self, ctx: &Ctx) -> Result<Arc<Tenant>, CallError> {
+        self.tenant(ctx).await
+    }
+
+    /// `POST /api/diary/local-exchange` (core `routes/diary.cjs` and `diary-stream.cjs`): the add-on
+    /// gate (404), the method (405), then `admit` (the throttle and the inference gate: its refusal is
+    /// `{ error }` with its status), the 16 MiB JSON body (413, 400 `invalid JSON`; empty is `{}`),
+    /// and the exchange: with `stream: true` an event stream that holds the admission until it ends,
+    /// otherwise the sidecar's JSON reply. `admit` is not polled before the method is known.
+    pub async fn local_exchange<B, A>(&self, ctx: Ctx, request: Request, body: B, admit: A) -> Reply
+    where
+        B: Body<Data = Bytes> + Unpin + Send,
+        A: std::future::Future<Output = Result<ExchangeHold, ExchangeRefusal>>,
+    {
+        if !ctx.identity.user.diary_enabled {
+            return disabled();
+        }
+        if request.method != "POST" {
+            return not_allowed();
+        }
+        let ExchangeHold { keep, mut lost } = match admit.await {
+            Ok(hold) => hold,
+            Err(refused) => return error_reply(refused.status, &refused.message),
+        };
+        let limits = self.limits.exchange;
+        let deadline = Instant::now() + limits.body_deadline;
+        // A hold lost before anything reached the sidecar is the admission's own refusal.
+        let read = read_body(body, limits.body, deadline);
+        let raw = tokio::select! {
+            read = read => read,
+            () = &mut lost => return error_reply(503, local_exchange::LEASE_LOST),
+        };
+        let raw = match raw {
+            Ok(bytes) => bytes,
+            Err(BodyFault::TooLarge) => return error_reply(413, "Request exceeds size limit"),
+            Err(BodyFault::Timeout) => return error_reply(408, "Request timed out"),
+            Err(BodyFault::Broken) => return internal(),
+        };
+        // `raw ? JSON.parse(raw) : {}` over the UTF-8 decoded text, then `JSON.stringify(parsed)`
+        // and `parsed?.stream === true`, read losslessly: any text JSON.parse takes is forwarded.
+        let text = String::from_utf8_lossy(&raw).into_owned();
+        let (forward, stream) = if text.is_empty() {
+            ("{}".to_owned(), false)
+        } else {
+            // Linear in the body, but the body is up to 16 MiB: rewritten off the async workers,
+            // and a hold lost meanwhile is still the admission's own refusal.
+            let rewrite = tokio::task::spawn_blocking(move || js_raw::read(&text));
+            let read = tokio::select! {
+                read = rewrite => read,
+                () = &mut lost => return error_reply(503, local_exchange::LEASE_LOST),
+            };
+            match read {
+                Err(_) => return internal(),
+                Ok(None) => return error_reply(400, "invalid JSON"),
+                Ok(Some(js_raw::Top::Other(out, _))) => (out, false),
+                Ok(Some(js_raw::Top::Object(fields))) => {
+                    let stream = fields
+                        .iter()
+                        .any(|f| js_raw::is_key(&f.key, "stream") && f.value == "true");
+                    (js_raw::join(&fields), stream)
+                }
+            }
+        };
+        let forward = Bytes::from(forward);
+        if stream {
+            let (tx, rx) = mpsc::channel(16);
+            tokio::spawn(local_exchange::relay(
+                self.clone(),
+                ctx,
+                forward,
+                ExchangeHold { keep, lost },
+                tx,
+                limits,
+            ));
+            return Reply {
+                status: 200,
+                body: ReplyBody::Events(ChannelBody::new(rx)),
+                retry_after: None,
+            };
+        }
+        // The call is this request's: a browser that goes away (this future dropped) or a hold that
+        // is lost stops it, and the hold is given back with the answer. A call stopped by a lost hold
+        // is core's answer for a sidecar call that was aborted: 503 diaryUnavailable.
+        let call = async {
+            let tenant = self.tenant(&ctx).await?;
+            self.sidecar
+                .fetch_raw(
+                    &tenant,
+                    Method::POST,
+                    local_exchange::SIDECAR_PATH,
+                    Some(forward),
+                    limits.reply_timeout,
+                )
+                .await
+        };
+        let reply = tokio::select! {
+            reply = call => reply,
+            () = &mut lost => return diary_unavailable(),
+        };
+        drop(keep);
+        let (ok, status, bytes) = match reply {
+            Ok(reply) => reply,
+            Err(e) => return call_failed(e),
+        };
+        // `fetchJson`'s body: `JSON.parse(text)`, or the text itself when that throws; written back
+        // as `JSON.stringify` writes it. Linear in the reply, and off the async workers.
+        let written = tokio::task::spawn_blocking(move || {
+            let text = bytes.map(|bytes| String::from_utf8_lossy(&bytes).into_owned());
+            match (ok, text) {
+                (true, Some(text)) => (
+                    js_raw::canonical(&text).unwrap_or_else(|| js_raw::quote(&text)),
+                    None,
+                ),
+                (_, text) => local_exchange::json_failure(text.as_deref()),
+            }
+        })
+        .await;
+        match written {
+            Ok((json, retry_after)) => Reply {
+                status,
+                body: ReplyBody::Json(json),
+                retry_after,
+            },
+            Err(_) => internal(),
+        }
+    }
+
     /// Whether the sidecar answers its `GET /api/health` for this person within [`HEALTH_TIMEOUT`]
     /// (core routes/health.cjs: `fetchJson(`${DIARY_BASE}/api/health`, { headers: diaryHeaders(...) }, 5000)`
     /// and its `ok`). Any failure, the tenant's included, is "not up"; nothing is said about why.
@@ -666,6 +802,7 @@ impl Diary {
             }
             Err(
                 e @ (CallError::Transport
+                | CallError::Refused
                 | CallError::Timeout
                 | CallError::Tenant(_)
                 | CallError::Unsupported),
