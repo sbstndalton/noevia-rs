@@ -5,7 +5,7 @@
 //! router and the gate the same requests, and leave the same models.ini and reload guard state file.
 //! The legacy upstream is dead, so only the native handler can answer. Then the front's own
 //! guarantees: the work outlives a client that leaves, a second reload while one runs is refused, a
-//! hold has a deadline, is taken again when the gate loses it, and is given back when dropped.
+//! hold has a deadline, stops when the gate loses it, and is given back when dropped.
 //! Synthetic data only; no engine is touched.
 #![allow(
     clippy::unwrap_used,
@@ -104,6 +104,9 @@ fn lines(seen: &[Req]) -> (Vec<String>, Vec<String>) {
     for r in seen {
         // Asked only to tell a gate without an admin token from no gate at all (#2210).
         if r.method == "GET" && r.target == "/gate/v1/status" {
+            continue;
+        }
+        if r.target.ends_with("/renew") {
             continue;
         }
         if r.target.starts_with("/gate/v1/") {
@@ -277,6 +280,7 @@ fn slow_reload(reload_ms: u64) -> Handler {
                 json!({"hold": TOKEN, "idle_ttl_ms": 600_000}).to_string(),
             ),
             ("DELETE", t) if t.starts_with("/gate/v1/") => Answer::Reply(204, String::new()),
+            ("POST", t) if t.ends_with("/renew") => Answer::Reply(200, "{}".into()),
             ("GET", "/models") => Answer::Reply(
                 200,
                 json!({"data": [{"id": "A", "status": {"value": "unloaded", "preset": "p"}}]})
@@ -471,7 +475,12 @@ fn maint_for(port: u16, dir: &Path) -> Maint {
 }
 
 fn gate_log(seen: &Arc<std::sync::Mutex<Vec<Req>>>) -> Vec<String> {
-    lines(&seen.lock().unwrap()).1
+    seen.lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r.target.starts_with("/gate/v1/"))
+        .map(|r| format!("{} {}", r.method, r.target.replace(TOKEN, "T")))
+        .collect()
 }
 
 #[tokio::test]
@@ -533,7 +542,7 @@ async fn a_hold_is_renewed_has_a_deadline_and_is_given_back_when_it_passes() {
 }
 
 #[tokio::test]
-async fn a_hold_the_gate_lost_is_taken_again_and_a_dropped_hold_is_given_back() {
+async fn a_lost_gate_hold_is_never_retaken_and_drop_gives_it_back() {
     let d = tempfile::tempdir().unwrap();
     let grants = Arc::new(AtomicUsize::new(0));
     let g2 = Arc::clone(&grants);
@@ -561,10 +570,10 @@ async fn a_hold_the_gate_lost_is_taken_again_and_a_dropped_hold_is_given_back() 
     tokio::time::sleep(Duration::from_millis(1500)).await;
     assert_eq!(
         grants.load(Ordering::SeqCst),
-        2,
-        "the hold was taken again after the renewal found it gone"
+        1,
+        "lost coverage must never be retaken to continue the same job"
     );
-    assert!(hold.token().is_some());
+    assert!(!hold.may_start(Duration::ZERO));
     // A hold dropped without release (the task died) still gives the gate's token back.
     drop(hold);
     tokio::time::sleep(Duration::from_millis(300)).await;

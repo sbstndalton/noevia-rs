@@ -174,12 +174,13 @@ async fn idle(app: Arc<App>, seconds: JValue, actor: String) -> Response<Body> {
         None
     };
     let out = async {
-        if hold.as_ref().is_some_and(|h| !h.may_start(STEP)) { return unavailable(); }
+        if let Some(h) = hold.as_ref() { if !h.confirm(STEP).await { return unavailable(); } }
         let Some(seconds) = wtf16::stringify(&seconds) else { return unavailable(); };
         let (mut next, preset) = match idle_call(&app, reqwest::Method::PUT, Some(format!("{{\"seconds\":{seconds}}}"))).await {
             Ok(v) => v, Err((status,message,id)) => return idle_error(status,message,id),
         };
-        let reload = if preset.as_deref() != Some("failed") && hold.as_ref().is_none_or(|h| h.may_start(Duration::from_secs(135))) {
+        if let Some(h) = hold.as_ref() { if !h.confirm(Duration::from_secs(135)).await { return unavailable(); } }
+        let reload = if preset.as_deref() != Some("failed") {
             if let (Some(router), Some(hold)) = (maint.router.as_ref(), hold.as_ref()) { Some(maint.reload_inner(router, hold, false).await) } else { None }
         } else { None };
         let applied_reload = reload.as_ref().is_some_and(|r| (200..300).contains(&r.status));
@@ -248,7 +249,10 @@ fn section_path(name: &str, revision: &JValue) -> Option<String> {
     } else {
         String::new()
     };
-    Some(format!("/api/v1/sections/{name}{query}"))
+    Some(format!(
+        "/api/v1/sections/{name}{query}{}missingOnly=true",
+        if query.is_empty() { "?" } else { "&" }
+    ))
 }
 async fn prune(app: Arc<App>, actor: String) -> Response<Body> {
     let loader = &app.config.model_manager_scan;
@@ -299,7 +303,7 @@ async fn prune(app: Arc<App>, actor: String) -> Response<Body> {
     let mut lost = false;
     let deadline = std::time::Instant::now() + Duration::from_secs(3600);
     for name in names {
-        if std::time::Instant::now() + STEP + STEP >= deadline || !hold.may_start(STEP + STEP) {
+        if std::time::Instant::now() + STEP + STEP >= deadline || !hold.confirm(STEP + STEP).await {
             lost = true;
             break;
         }
@@ -308,7 +312,11 @@ async fn prune(app: Arc<App>, actor: String) -> Response<Body> {
             .await;
         let section = sections.and_then(|(s, b)| s.is_success().then_some(b).flatten());
         let eligible = section.as_ref().is_some_and(|s| matches!(s.get("sections"),JValue::Arr(a) if a.iter().any(|v| v.get("name").as_str()==Some(name.as_str()) && v.get("hasFile").as_bool()==Some(false))));
-        let did_remove = if eligible && hold.may_start(STEP) {
+        if !hold.confirm(STEP).await {
+            lost = true;
+            break;
+        }
+        let did_remove = if eligible {
             let revision = section
                 .as_ref()
                 .map(|s| s.get("revision"))
@@ -332,7 +340,7 @@ async fn prune(app: Arc<App>, actor: String) -> Response<Body> {
     let reloaded = if !removed.is_empty()
         && !lost
         && std::time::Instant::now() + Duration::from_secs(135) < deadline
-        && hold.may_start(Duration::from_secs(135))
+        && hold.confirm(Duration::from_secs(135)).await
     {
         if let Some(router) = maint.router.as_ref() {
             (200..300).contains(&maint.reload_inner(router, &hold, false).await.status)
@@ -343,9 +351,11 @@ async fn prune(app: Arc<App>, actor: String) -> Response<Body> {
         false
     };
     // Existing Node role/last-loaded/identity consumers receive only the names actually removed.
-    let acknowledged = effects(&app, json!({"op":"removed","names":removed,"user":actor}))
-        .await
-        .is_some();
+    let acknowledged = !lost
+        && hold.confirm(Duration::from_secs(5)).await
+        && effects(&app, json!({"op":"removed","names":removed,"user":actor}))
+            .await
+            .is_some();
     hold.release().await;
     if lost || !acknowledged {
         return unavailable();
@@ -438,11 +448,11 @@ mod tests {
 
         assert_eq!(
             section_path("a!(x)~", &JValue::Num(3.0)).as_deref(),
-            Some("/api/v1/sections/a!(x)~?baseRevision=3")
+            Some("/api/v1/sections/a!(x)~?baseRevision=3&missingOnly=true")
         );
         assert_eq!(
             section_path("a", &JValue::Bool(false)).as_deref(),
-            Some("/api/v1/sections/a")
+            Some("/api/v1/sections/a?missingOnly=true")
         );
         assert!(section_path("a", &JValue::obj([("toString", JValue::Num(1.0))])).is_none());
         let lone = wtf16::lone_char(0xD800)

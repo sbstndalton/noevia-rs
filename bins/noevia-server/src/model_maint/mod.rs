@@ -262,52 +262,68 @@ impl Maint {
         {
             return Err(HoldError::Busy);
         }
-        let taken = self.acquire_locally_held(reason, max, need_gate).await;
-        if taken.is_err() {
-            self.local.store(false, Ordering::Release);
-        }
-        taken
-    }
-
-    async fn acquire_locally_held(
-        &self,
-        reason: &str,
-        max: Duration,
-        need_gate: bool,
-    ) -> Result<Hold, HoldError> {
-        let Some(gate) = self.gate.as_ref() else {
-            return Err(HoldError::NeedsGate);
-        };
-        match gate.hold(reason, Duration::ZERO).await {
-            Ok(Some(grant)) => Ok(Hold::gated(
-                Arc::clone(&self.local),
-                Arc::clone(gate),
-                grant,
-                reason,
-                Instant::now() + max,
-            )),
-            Ok(None) => {
-                if need_gate && !gate.has_admin() && gate.held().await.is_some() {
-                    return Err(HoldError::NeedsGate);
-                }
-                match self.node.acquire().await {
-                    Ok(grant) => Ok(Hold::leased(
-                        Arc::clone(&self.local),
-                        Arc::clone(&self.node),
-                        grant,
-                        reason,
-                        Instant::now() + max,
-                    )),
-                    Err(node_lease::LeaseFault::Busy) => Err(HoldError::Busy),
-                    Err(node_lease::LeaseFault::Unavailable) => Err(HoldError::NodeUnavailable),
+        // Acquisition itself owns its reservation. If the waiter is aborted while an HTTP
+        // grant is in flight, the task receives it and drops the unclaimed Hold, releasing it.
+        struct Reservation(Arc<AtomicBool>, bool);
+        impl Drop for Reservation {
+            fn drop(&mut self) {
+                if self.1 {
+                    self.0.store(false, Ordering::Release);
                 }
             }
-            Err(f) if f.busy() => Err(HoldError::Busy),
-            Err(f) => Err(HoldError::Gate {
-                status: f.status(),
-                message: f.message(),
-            }),
         }
+        let reservation = Reservation(Arc::clone(&self.local), true);
+        let gate = self.gate.clone();
+        let node = self.node.clone();
+        let local = self.local.clone();
+        let reason = reason.to_owned();
+        tokio::spawn(async move {
+            let mut reservation = reservation;
+            let taken = async {
+                let Some(gate) = gate else {
+                    return Err(HoldError::NeedsGate);
+                };
+                match gate.hold(&reason, Duration::ZERO).await {
+                    Ok(Some(grant)) => Ok(Hold::gated(
+                        local,
+                        gate,
+                        grant,
+                        &reason,
+                        Instant::now() + max,
+                    )),
+                    Ok(None) => {
+                        if need_gate && !gate.has_admin() && gate.held().await.is_some() {
+                            return Err(HoldError::NeedsGate);
+                        }
+                        match node.acquire().await {
+                            Ok(grant) => Ok(Hold::leased(
+                                local,
+                                node,
+                                grant,
+                                &reason,
+                                Instant::now() + max,
+                            )),
+                            Err(node_lease::LeaseFault::Busy) => Err(HoldError::Busy),
+                            Err(node_lease::LeaseFault::Unavailable) => {
+                                Err(HoldError::NodeUnavailable)
+                            }
+                        }
+                    }
+                    Err(f) if f.busy() => Err(HoldError::Busy),
+                    Err(f) => Err(HoldError::Gate {
+                        status: f.status(),
+                        message: f.message(),
+                    }),
+                }
+            }
+            .await;
+            if taken.is_ok() {
+                reservation.1 = false;
+            }
+            taken
+        })
+        .await
+        .unwrap_or(Err(HoldError::NodeUnavailable))
     }
 
     /// Node's boot warning, when a gate fronts the engine and this process has no admin token for it.

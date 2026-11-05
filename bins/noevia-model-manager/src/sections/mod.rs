@@ -139,7 +139,7 @@ pub trait Read: Send + Sync {
     fn response(&self, name: Option<&str>, defaults: bool) -> Result<Vec<u8>, Error>;
 }
 pub struct Sections {
-    reader: Arc<dyn Read>,
+    pub(crate) reader: Arc<dyn Read>,
     permits: Arc<tokio::sync::Semaphore>,
 }
 impl Sections {

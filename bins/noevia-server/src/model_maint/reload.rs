@@ -1263,7 +1263,7 @@ impl Maint {
             }
         }
         // Checked again here, right at the call: reading the file above takes what it takes.
-        if !holding.may_start(RELOAD_LIMIT) {
+        if !holding.confirm(RELOAD_LIMIT).await {
             return Ok(Err("lease_lost"));
         }
         let ticket = self.guard.begin(ORIGIN_RUST).ticket;
@@ -1380,13 +1380,13 @@ impl Maint {
         if kept.is_empty() {
             holding.cover(worst_case(loaded.len()));
             for id in &loaded {
-                if !holding.may_start(UNLOAD_LIMIT) {
+                if !holding.confirm(UNLOAD_LIMIT).await {
                     return message(503, LEASE_LOST);
                 }
                 let _ = router.unload(id, hold).await;
             }
         }
-        if !holding.may_start(RELOAD_LIMIT) {
+        if !holding.confirm(RELOAD_LIMIT).await {
             return message(503, LEASE_LOST);
         }
         let result = match self.router_reload(router, holding, expect.as_deref()).await {

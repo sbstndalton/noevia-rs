@@ -401,3 +401,28 @@ fn system_routing_section_follows_the_roles_not_the_other_spelling() {
     assert!(!system_routing_section(&cp, "b", &roles("system-routing")));
     assert!(!system_routing_section(&cp, "*", &roles("system-routing")));
 }
+
+#[test]
+fn prune_cas_retains_restored_file_and_roles() {
+    use crate::sections::Read;
+    let dir = tempfile::tempdir().unwrap();
+    let ini = dir.path().join("models.ini");
+    let original = "[gone]\nmodel = gone.gguf\n";
+    std::fs::write(&ini, original).unwrap();
+    let roles = dir.path().join("models.roles.json");
+    std::fs::write(&roles, "{\"chat\":\"gone\"}").unwrap();
+    let files = crate::sections::Files::new(dir.path(), &ini).unwrap();
+    let before: serde_json::Value =
+        serde_json::from_slice(&files.response(None, false).unwrap()).unwrap();
+    assert_eq!(before["sections"][0]["hasFile"], false);
+    // Barrier: publication after the caller's scan, with no INI revision change.
+    std::fs::write(dir.path().join("gone.gguf"), b"synthetic").unwrap();
+    let writes = SectionWrites::new(&ini, (0, 0));
+    let out = writes.delete_missing("gone", before["revision"].as_str().unwrap(), &files);
+    assert!(matches!(out, Outcome::Json(409, _)));
+    assert_eq!(std::fs::read_to_string(&ini).unwrap(), original);
+    assert_eq!(
+        std::fs::read_to_string(roles).unwrap(),
+        "{\"chat\":\"gone\"}"
+    );
+}

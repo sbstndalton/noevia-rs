@@ -77,13 +77,16 @@ async fn rig(spec: Value, prune: bool, delay: bool) -> Rig {
         }
         if r.path=="/api/v1/sections" { return at("sections",&l_spec,reply("200 OK",&json!({"revision":"synthetic-revision","sections":l_spec["sections"]}).to_string())); }
         if r.path.starts_with("/api/v1/sections/")&&r.method=="DELETE" {
-            assert!(r.path.ends_with("?baseRevision=synthetic-revision"));
+            assert!(r.path.ends_with("?baseRevision=synthetic-revision&missingOnly=true"));
             let mut result=reply("200 OK","{}");if delay{result.0=Duration::from_millis(250);}return at("delete",&l_spec,result);
         }
         reply("404 Not Found","{}")
     });
     let e_spec = spec.clone();
+    let renewals = AtomicUsize::new(0);
     engine.set(move|r|{
+        if e_spec["realGate"]==true && r.path=="/gate/v1/maintenance" {return reply("201 Created",r#"{"hold":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","idle_ttl_ms":600000}"#);}
+        if e_spec["realGate"]==true && r.path.ends_with("/renew") {let n=renewals.fetch_add(1,Ordering::SeqCst); return if n==0 {reply("200 OK","{}")} else {reply(e_spec["renewFailure"].as_str().unwrap_or("404 Not Found"),"{}")};}
         if r.path.starts_with("/gate/"){return reply("404 Not Found","{}");}
         if r.path.contains("reload=1") && e_spec["pending"]==true {return reply("503 Unavailable","{}");}
         if r.path.starts_with("/models") {
@@ -141,6 +144,14 @@ async fn rig(spec: Value, prune: bool, delay: bool) -> Rig {
             ("NOEVIA_LEGACY_UPSTREAM", owner.base()),
             ("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()),
             ("MODEL_LOADER_URL", loader_base),
+            (
+                "INFERENCE_GATE_ADMIN_TOKEN",
+                if spec["realGate"] == true {
+                    "synthetic-admin".into()
+                } else {
+                    String::new()
+                },
+            ),
             (
                 "MODEL_MANAGER_KIND",
                 if spec["noEngine"] == true {
@@ -491,4 +502,57 @@ async fn missing_consumer_acknowledgments_fail_closed_before_or_after_commit() {
         503
     );
     assert_eq!(r.owner.count(&format!("{LEASE}/")), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn gate_loss_after_sections_read_stops_delete_and_reload() {
+    for failure in ["404 Not Found", "503 Unavailable"] {
+        let r = rig(json!({"realGate":true,"renewFailure":failure,"installed":[{"name":"gone","missingFile":true},{"name":"ok"}],"sections":[{"name":"gone","hasFile":false}]}),true,false).await;
+        let (status, _) = raw(r.f.addr, "POST", PRUNE, ADMIN, CSRF, b"{}").await;
+        assert_eq!(
+            r.loader
+                .seen()
+                .iter()
+                .filter(|c| c.method == "DELETE")
+                .count(),
+            0
+        );
+        assert_eq!(r.engine.count("/models?reload=1"), 0);
+        assert_eq!(status, 503);
+        assert_eq!(
+            r.engine
+                .seen()
+                .iter()
+                .filter(|c| c.path == "/gate/v1/maintenance" && c.method == "POST")
+                .count(),
+            1
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn aborted_acquire_hands_late_grant_to_raii_cleanup() {
+    let r = rig(json!({"delayStage":"acquire"}), false, false).await;
+    let maint = r.f.app.config.maint.clone();
+    let waiting = maint.clone();
+    let task =
+        tokio::spawn(async move { waiting.acquire("", Duration::from_secs(300), false).await });
+    r.owner.wait_for(LEASE, 1).await;
+    task.abort();
+    assert!(maint.local_held());
+    r.resume.as_ref().unwrap().add_permits(1);
+    r.owner.wait_for(&format!("{LEASE}/"), 1).await;
+    assert!(!maint.local_held());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn idle_stops_after_gate_loss_without_reload() {
+    let r = rig(json!({"realGate":true}), false, false).await;
+    let (status, _) = raw(r.f.addr, "PUT", IDLE, ADMIN, CSRF, br#"{"seconds":900}"#).await;
+    assert_eq!(status, 503);
+    assert_eq!(
+        r.loader.seen().iter().filter(|r| r.method == "PUT").count(),
+        1
+    );
+    assert_eq!(r.engine.count("/models?reload=1"), 0);
 }

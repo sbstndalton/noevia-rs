@@ -1878,6 +1878,27 @@ async fn native_section_write(
         Ok(e) => e,
         Err(outcome) => return section_outcome(outcome),
     };
+    let missing_only = matches!(route, SectionWrite::Delete(_))
+        && form_urlencoded::parse(query.as_bytes()).any(|(k, v)| k == "missingOnly" && v == "true");
+    // Share the existing publication reservation with downloads: first prevent new jobs,
+    // then refuse while any admitted publisher could still restore a file.
+    #[cfg(feature = "native-downloads")]
+    let publication = if missing_only {
+        let Some(downloads) = state.downloads.as_ref() else {
+            return unavailable();
+        };
+        let guard = downloads.reserve_all();
+        if downloads.active() != 0 {
+            return unavailable();
+        }
+        Some(guard)
+    } else {
+        None
+    };
+    #[cfg(not(feature = "native-downloads"))]
+    if missing_only {
+        return unavailable();
+    }
     let guard = writes.lock().await;
     let plan = if let SectionWrite::SafeDefaults(name) = &route {
         if writes.has_native_defaults() {
@@ -1899,10 +1920,13 @@ async fn native_section_write(
         None
     };
     let job = {
+        let sections = state.sections.clone();
         let writes = writes.clone();
         let route = route.clone();
         move || -> Outcome {
             let _guard = guard;
+            #[cfg(feature = "native-downloads")]
+            let _publication = publication;
             let (section, ini, new) = early.unwrap_or((None, None, None));
             match route {
                 SectionWrite::Save(name) => match (body.as_ref(), section) {
@@ -1925,7 +1949,19 @@ async fn native_section_write(
                         .last()
                         .map(|(_, v)| v.into_owned())
                         .unwrap_or_default();
-                    writes.delete(&name, &base)
+                    if missing_only {
+                        match sections.as_ref() {
+                            Some(sections) => {
+                                writes.delete_missing(&name, &base, sections.reader.as_ref())
+                            }
+                            None => Outcome::Json(
+                                503,
+                                b"{\"detail\":\"section scan unavailable\"}".to_vec(),
+                            ),
+                        }
+                    } else {
+                        writes.delete(&name, &base)
+                    }
                 }
                 SectionWrite::SafeDefaults(name) if writes.has_native_defaults() => {
                     writes.native_defaults(&name)
