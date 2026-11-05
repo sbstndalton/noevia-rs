@@ -346,7 +346,7 @@ fn prepared(
     for role in ROLES {
         let value = body.get(role);
         let name = match value {
-            JValue::Str(s) => s.trim_matches(crate::mcp_broker::js_ws).to_owned(),
+            JValue::Str(s) => s.trim_matches(js_ws).to_owned(),
             JValue::Undefined if role == "creative" => {
                 previous.get(role).as_str().unwrap_or("").to_owned()
             }
@@ -456,7 +456,7 @@ async fn put(
     if ["fast", "smart"].iter().any(|k| {
         body.get(k)
             .as_str()
-            .is_none_or(|s| s.trim_matches(crate::mcp_broker::js_ws).is_empty())
+            .is_none_or(|s| s.trim_matches(js_ws).is_empty())
     }) {
         return bad("both fast and smart model names are required");
     }
@@ -874,4 +874,10 @@ mod reclamation_tests {
         );
         assert!(writer.0.lock().unwrap().len() <= 1);
     }
+}
+
+/// JavaScript `String.prototype.trim` whitespace, as Node's validator trims role names. Kept local
+/// because the MCP broker that defines the same set is feature-gated.
+fn js_ws(c: char) -> bool {
+    matches!(c, '\u{9}'..='\u{d}' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}')
 }
