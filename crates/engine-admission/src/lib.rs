@@ -36,6 +36,28 @@ use std::time::Duration;
 const PATH: &str = "/internal/inference-admission/lease";
 const TOKEN_HEADER: &str = "x-noevia-store-token";
 const CALL_TIMEOUT: Duration = Duration::from_secs(5);
+/// The most of an admission answer read (S8 re-review P2-4): far above anything Node writes (a lease, or
+/// a refusal's words); over it the answer is no answer, and admission fails closed.
+pub const MAX_ANSWER_BYTES: usize = 64 * 1024;
+
+/// `response`'s body, at most [`MAX_ANSWER_BYTES`] of it whatever it declares (chunked bodies too);
+/// `None` when it is longer or breaks.
+async fn capped(mut response: reqwest::Response) -> Option<Vec<u8>> {
+    if response
+        .content_length()
+        .is_some_and(|n| n > MAX_ANSWER_BYTES as u64)
+    {
+        return None;
+    }
+    let mut out = Vec::new();
+    while let Some(chunk) = response.chunk().await.ok()? {
+        if out.len() + chunk.len() > MAX_ANSWER_BYTES {
+            return None;
+        }
+        out.extend_from_slice(&chunk);
+    }
+    Some(out)
+}
 /// Node's own queue limit is under this (`max_wait_ms`), so a queued wait ends with Node's answer.
 pub const ENTER_TIMEOUT: Duration = Duration::from_secs(150);
 
@@ -189,10 +211,10 @@ impl Admission {
         };
         let response = answer.map_err(|_| Refused::unavailable())?;
         let status = response.status().as_u16();
-        let reading = response.bytes();
+        let reading = capped(response);
         let bytes = tokio::select! {
             () = cancel.cancelled() => return Err(cancelled()),
-            b = reading => b.map_err(|_| Refused::unavailable())?,
+            b = reading => b.ok_or_else(Refused::unavailable)?,
         };
         let parsed: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
         if status != 201 {
@@ -284,7 +306,7 @@ impl Admission {
             r = send => r.map_err(|_| GateRefusal::NoAnswer)?,
         };
         let status = response.status().as_u16();
-        let bytes = response.bytes().await.map_err(|_| GateRefusal::NoAnswer)?;
+        let bytes = capped(response).await.ok_or(GateRefusal::NoAnswer)?;
         let parsed: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
         if status == 201 {
             return self.grant(&parsed).ok_or(GateRefusal::NoAnswer);
@@ -341,24 +363,39 @@ struct Held {
     released: AtomicBool,
 }
 
+/// Renews the lease every third of its TTL. Node ends a lease it has not renewed for a TTL, counted
+/// from when it last heard a renewal; this side counts from when it *sent* the last renewal Node
+/// confirmed (no later than Node heard it), on a monotonic clock, so the time a renewal takes and a
+/// renewal that never answers both count against the TTL (S8 re-review P2-3). [`Lease::lost`] is
+/// cancelled once less than one renewal period is left without a confirmation: before Node can have
+/// ended the lease.
 async fn renew(held: Arc<Held>, ttl: Duration, lost: Cancel) {
+    use tokio::time::Instant;
     let every = (ttl / 3).max(Duration::from_millis(50));
-    let mut unconfirmed = Duration::ZERO;
+    // Node armed the lease just before its answer reached us.
+    let mut confirmed = Instant::now();
     loop {
         tokio::time::sleep(every).await;
         if held.released.load(Ordering::SeqCst) {
             return;
         }
-        match held.admission.renew_once(&held.id).await {
-            Some(true) => unconfirmed = Duration::ZERO,
-            Some(false) => {
+        let sent = Instant::now();
+        let deadline = confirmed + ttl;
+        let left = deadline.saturating_duration_since(sent);
+        if left <= every {
+            lost.cancel();
+            return;
+        }
+        // An answer that comes later than this proves nothing in time.
+        let wait = (left - every).min(CALL_TIMEOUT);
+        match tokio::time::timeout(wait, held.admission.renew_once(&held.id)).await {
+            Ok(Some(true)) => confirmed = sent,
+            Ok(Some(false)) => {
                 lost.cancel();
                 return;
             }
-            None => {
-                unconfirmed += every;
-                // By now Node has ended a lease it heard nothing about. Stop before it can matter.
-                if unconfirmed + every >= ttl {
+            Ok(None) | Err(_) => {
+                if deadline.saturating_duration_since(Instant::now()) <= every {
                     lost.cancel();
                     return;
                 }
@@ -424,6 +461,8 @@ mod tests {
     struct Node {
         seen: Mutex<Vec<String>>,
         renew_status: Mutex<u16>,
+        /// How long a renewal waits before its answer (`u64::MAX`: never answers).
+        renew_delay_ms: Mutex<u64>,
     }
 
     /// A synthetic Node: `POST` answers `grant`; renewals answer `renew_status`; records each request.
@@ -433,6 +472,7 @@ mod tests {
         let state = Arc::new(Node {
             seen: Mutex::default(),
             renew_status: Mutex::new(200),
+            renew_delay_ms: Mutex::new(0),
         });
         let st = Arc::clone(&state);
         tokio::spawn(async move {
@@ -451,6 +491,11 @@ mod tests {
                     let line = format!("{first} {}", if token { "T" } else { "-" });
                     st.seen.lock().unwrap().push(line);
                     let (status, body) = if first.starts_with("POST") && first.contains("/renew") {
+                        let delay = *st.renew_delay_ms.lock().unwrap();
+                        if delay == u64::MAX {
+                            std::future::pending::<()>().await;
+                        }
+                        tokio::time::sleep(Duration::from_millis(delay)).await;
                         (*st.renew_status.lock().unwrap(), "{}".to_owned())
                     } else if first.starts_with("POST") {
                         grant
@@ -825,5 +870,108 @@ mod tests {
             deleted.lock().unwrap().clone(),
             ["DELETE /internal/inference-admission/lease/0123456789abcdef0123456789abcdef HTTP/1.1"]
         );
+    }
+
+    // S8 re-review P2-3: the time a renewal takes counts against the TTL.
+
+    const SHORT: &str = r#"{"lease":"0123456789abcdef0123456789abcdef","ttlMs":600}"#;
+
+    #[tokio::test]
+    async fn renewals_that_never_answer_lose_the_lease_before_its_ttl() {
+        let (base, state) = node((201, SHORT.into())).await;
+        *state.renew_delay_ms.lock().unwrap() = u64::MAX;
+        let granted = tokio::time::Instant::now();
+        let lease = admission(&base)
+            .enter_gate(Gate::Chat)
+            .await
+            .unwrap();
+        // Node ends it 600 ms after it armed it; lost strictly before that (timer slop allowed).
+        tokio::time::timeout(Duration::from_millis(650), lease.lost().cancelled())
+            .await
+            .expect("still held when Node has ended it");
+        assert!(granted.elapsed() < Duration::from_millis(650));
+    }
+
+    #[tokio::test]
+    async fn prompt_acks_keep_the_lease_and_acks_too_late_to_prove_it_alive_lose_it() {
+        let (base, state) = node((201, SHORT.into())).await;
+        *state.renew_delay_ms.lock().unwrap() = 20;
+        let lease = admission(&base)
+            .enter_gate(Gate::Chat)
+            .await
+            .unwrap();
+        // Prompt acks: held for several TTLs.
+        tokio::time::sleep(Duration::from_millis(1500)).await;
+        assert!(!lease.lost().is_cancelled());
+        // Acks that come back later than the TTL left: lost before Node can have ended it.
+        *state.renew_delay_ms.lock().unwrap() = 500;
+        tokio::time::timeout(Duration::from_millis(700), lease.lost().cancelled())
+            .await
+            .expect("late acks kept a lease Node may have ended");
+    }
+
+    // S8 re-review P2-4: an admission answer is read to at most MAX_ANSWER_BYTES.
+
+    /// A Node that answers every ask with `status` and `body`, chunked when `chunked`.
+    async fn raw_node(status: u16, body: String, chunked: bool) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            loop {
+                let (mut s, _) = listener.accept().await.unwrap();
+                let body = body.clone();
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 4096];
+                    let _ = s.read(&mut buf).await;
+                    let head = if chunked {
+                        format!("HTTP/1.1 {status} X\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n")
+                    } else {
+                        format!("HTTP/1.1 {status} X\r\ncontent-length: {}\r\nconnection: close\r\n\r\n", body.len())
+                    };
+                    let _ = s.write_all(head.as_bytes()).await;
+                    if chunked {
+                        for piece in body.as_bytes().chunks(8192) {
+                            let _ = s.write_all(format!("{:x}\r\n", piece.len()).as_bytes()).await;
+                            let _ = s.write_all(piece).await;
+                            let _ = s.write_all(b"\r\n").await;
+                        }
+                        let _ = s.write_all(b"0\r\n\r\n").await;
+                    } else {
+                        let _ = s.write_all(body.as_bytes()).await;
+                    }
+                });
+            }
+        });
+        base
+    }
+
+    #[tokio::test]
+    async fn an_answer_over_the_cap_is_no_answer_and_words_within_it_are_whole() {
+        let pad = "p".repeat(MAX_ANSWER_BYTES);
+        let big = format!(r#"{{"lease":"0123456789abcdef0123456789abcdef","ttlMs":30000,"pad":"{pad}"}}"#);
+        for chunked in [false, true] {
+            let base = raw_node(201, big.clone(), chunked).await;
+            assert_eq!(
+                admission(&base).enter_gate(Gate::Chat).await.err(),
+                Some(GateRefusal::NoAnswer),
+                "chunked {chunked}"
+            );
+            let refused = admission(&base)
+                .enter(Ask::Engine { model: "m" }, &Cancel::new())
+                .await
+                .err()
+                .unwrap();
+            assert_eq!(refused, Refused::unavailable(), "chunked {chunked}");
+        }
+        // Within the cap, the gate's words are kept whole, chunked too.
+        let long = "w".repeat(MAX_ANSWER_BYTES - 200);
+        let body = format!(r#"{{"error":"{long}","code":"inferenceMaintenance"}}"#);
+        for chunked in [false, true] {
+            let base = raw_node(503, body.clone(), chunked).await;
+            match admission(&base).enter_gate(Gate::Chat).await.err().unwrap() {
+                GateRefusal::Refused(r) => assert_eq!(r.message, long),
+                other => panic!("{other:?}"),
+            }
+        }
     }
 }

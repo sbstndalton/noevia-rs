@@ -31,7 +31,7 @@ use axum::{
 pub use engine_admission::Gate;
 use engine_admission::{GateRefusal, Lease, Refused};
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 
 /// Core rust-chat-admission.cjs `LEASE_HEADER`: the lease a covered call carries.
@@ -142,27 +142,67 @@ pub enum OnLoss {
 }
 
 /// `res` with `lease` held until its body has ended or been dropped (the client left), then given
-/// back. When the lease is lost first, Core's body is dropped at once (which stops the call there)
-/// and the client gets `on_loss`.
+/// back. When the lease is lost first, Core's body is dropped at once by a task of its own (which
+/// closes Core's socket and stops the call there) whether or not the client is reading (S8
+/// re-review P2-2: a client that stopped reading must not keep the call running), and the client
+/// gets `on_loss` when it reads next.
 pub fn hold_until_end(res: Response<Body>, lease: Lease, on_loss: OnLoss) -> Response<Body> {
     let (parts, body) = res.into_parts();
+    let shared = Arc::new(Mutex::new(Shared {
+        body: Some(body),
+        lost: false,
+        waker: None,
+    }));
     let lost = lease.lost().clone();
+    let watched = Arc::clone(&shared);
+    let watch = tokio::spawn(async move {
+        lost.cancelled().await;
+        let dropped = {
+            let mut s = lock(&watched);
+            s.lost = true;
+            if let Some(w) = s.waker.take() {
+                w.wake();
+            }
+            s.body.take()
+        };
+        // Outside the lock: dropping Core's body closes its socket.
+        drop(dropped);
+    });
     Response::from_parts(
         parts,
         Body::new(Held {
-            body: Some(body),
+            shared,
             lease: Some(lease),
-            lost: Box::pin(async move { lost.cancelled().await }),
             on_loss: Some(on_loss),
+            watch,
         }),
     )
 }
 
-struct Held {
+struct Shared {
     body: Option<Body>,
+    lost: bool,
+    waker: Option<std::task::Waker>,
+}
+
+fn lock(m: &Mutex<Shared>) -> std::sync::MutexGuard<'_, Shared> {
+    match m.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    }
+}
+
+struct Held {
+    shared: Arc<Mutex<Shared>>,
     lease: Option<Lease>,
-    lost: Pin<Box<dyn std::future::Future<Output = ()> + Send>>,
     on_loss: Option<OnLoss>,
+    watch: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for Held {
+    fn drop(&mut self) {
+        self.watch.abort();
+    }
 }
 
 impl http_body::Body for Held {
@@ -173,39 +213,47 @@ impl http_body::Body for Held {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<http_body::Frame<Bytes>, Self::Error>>> {
-        if self.body.is_some() && self.lease.is_some() && self.lost.as_mut().poll(cx).is_ready() {
-            // Node no longer counts this call: stop it there, and tell the client.
-            self.body = None;
+        let shared = Arc::clone(&self.shared);
+        let mut s = lock(&shared);
+        if s.lost || self.lease.as_ref().is_some_and(|l| l.lost().is_cancelled()) {
+            // Node no longer counts this call: it is stopped there; tell the client once.
+            let dropped = s.body.take();
+            drop(s);
+            drop(dropped);
             self.lease = None;
             return Poll::Ready(match self.on_loss.take() {
-                Some(OnLoss::Frame(frame)) => Some(Ok(http_body::Frame::data(Bytes::from_static(
-                    frame.as_bytes(),
-                )))),
+                Some(OnLoss::Frame(frame)) => Some(Ok(http_body::Frame::data(
+                    Bytes::from_static(frame.as_bytes()),
+                ))),
                 Some(OnLoss::Abort) => Some(Err(axum::Error::new(std::io::Error::other(
                     "the call's admission lease was lost",
                 )))),
                 None => None,
             });
         }
-        let Some(body) = self.body.as_mut() else {
+        s.waker = Some(cx.waker().clone());
+        let Some(body) = s.body.as_mut() else {
             return Poll::Ready(None);
         };
         let polled = Pin::new(body).poll_frame(cx);
         if matches!(polled, Poll::Ready(None) | Poll::Ready(Some(Err(_)))) {
             // The answer has ended: the call's gate count goes with it (dropping gives it back).
+            s.body = None;
+            drop(s);
+            self.watch.abort();
             self.lease = None;
         }
         polled
     }
 
     fn is_end_stream(&self) -> bool {
-        self.body
-            .as_ref()
-            .is_none_or(http_body::Body::is_end_stream)
+        let s = lock(&self.shared);
+        !s.lost && s.body.as_ref().is_none_or(http_body::Body::is_end_stream)
     }
 
     fn size_hint(&self) -> http_body::SizeHint {
-        self.body
+        lock(&self.shared)
+            .body
             .as_ref()
             .map(http_body::Body::size_hint)
             .unwrap_or_default()
@@ -278,5 +326,81 @@ mod tests {
         assert!(res.headers().get("retry-after").is_none());
         assert_eq!(text(res).await, r#"{"error":"A model is being tuned."}"#);
         assert!(lines.is_empty());
+    }
+
+    /// A body that never yields and says when it is dropped (Core's socket closing).
+    struct Pending(Option<tokio::sync::oneshot::Sender<()>>);
+
+    impl http_body::Body for Pending {
+        type Data = Bytes;
+        type Error = axum::Error;
+        fn poll_frame(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Option<Result<http_body::Frame<Bytes>, Self::Error>>> {
+            Poll::Pending
+        }
+    }
+
+    impl Drop for Pending {
+        fn drop(&mut self) {
+            if let Some(tx) = self.0.take() {
+                let _ = tx.send(());
+            }
+        }
+    }
+
+    /// A lease from a synthetic Node that grants with a short TTL and then says it ended.
+    async fn losing_lease() -> Lease {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut s, _)) = listener.accept().await else {
+                    return;
+                };
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 4096];
+                    let n = s.read(&mut buf).await.unwrap_or(0);
+                    let first = String::from_utf8_lossy(&buf[..n]).lines().next().unwrap_or("").to_owned();
+                    let (status, body) = if first.contains("/renew") {
+                        (404, "{}")
+                    } else if first.starts_with("POST") {
+                        (201, r#"{"lease":"0123456789abcdef0123456789abcdef","ttlMs":150}"#)
+                    } else {
+                        (204, "")
+                    };
+                    let reply = format!("HTTP/1.1 {status} X\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len());
+                    let _ = s.write_all(reply.as_bytes()).await;
+                });
+            }
+        });
+        let admission = Arc::new(engine_admission::Admission::new(&base, Some("t")).unwrap());
+        admission.enter_gate(Gate::Chat).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_lease_lost_as_the_answer_commits_drops_cores_body_unread() {
+        // The commit race: the lease is lost just as the answer is wrapped, and nobody ever reads it.
+        let lease = losing_lease().await;
+        tokio::time::timeout(std::time::Duration::from_secs(2), lease.lost().cancelled())
+            .await
+            .unwrap();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let res = hold_until_end(
+            Response::new(Body::new(Pending(Some(tx)))),
+            lease,
+            OnLoss::Frame("data: lost\n\n"),
+        );
+        tokio::time::timeout(std::time::Duration::from_secs(1), rx)
+            .await
+            .expect("Core's body was kept though the lease was lost and nobody read it")
+            .unwrap();
+        // A client that reads after all gets the loss frame, then the end.
+        let mut body = res.into_body();
+        let first = body.frame().await.unwrap().unwrap();
+        assert_eq!(first.into_data().unwrap(), Bytes::from_static(b"data: lost\n\n"));
+        assert!(body.frame().await.is_none());
     }
 }

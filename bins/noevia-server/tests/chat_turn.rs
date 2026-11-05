@@ -57,6 +57,11 @@ enum Turn {
     DieBeforeHeaders,
     /// Core works without answering ([`Core::closed`] fires when the front closes its socket).
     Hang,
+    /// NDJSON lines of 64 KiB as fast as the front takes them (a client that stopped reading backs
+    /// them up).
+    Flood,
+    /// A JSON answer's headers, then its body never comes.
+    SlowJson,
     /// A Core that writes its own event stream (not this front's pair).
     OwnEventStream,
     /// NDJSON: [`Core::script`]'s chunks, then the end (or a break when `broken`).
@@ -108,10 +113,20 @@ struct Core {
     script: Mutex<(Vec<Bytes>, bool)>,
     /// [`Gate::Waiting`]: fires when the asker went away while Node waited.
     ask_closed: Mutex<Option<oneshot::Sender<Instant>>>,
-    /// Review P2-1: the lease's TTL as granted, and whether renewals are confirmed (404 once Node
-    /// ended the lease).
+    /// Review P2-1: the lease's TTL as granted, and how renewals are answered.
     ttl_ms: Mutex<u64>,
-    renew_ok: Mutex<bool>,
+    renew: Mutex<Renew>,
+}
+
+/// How the stand-in answers a lease renewal.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Renew {
+    /// 200: confirmed.
+    Ok,
+    /// 404: Node ended the lease.
+    Gone,
+    /// Never answers (Node too busy to hear it).
+    Hang,
 }
 
 /// Fires its sender when dropped (hyper drops a pending service future when its connection closes).
@@ -211,8 +226,14 @@ async fn core_service(
                 seen.live -= 1;
             }
             drop(seen);
-            if method == "POST" && !*core.renew_ok.lock().unwrap() {
-                return Ok(json(404, r#"{"error":"Not found"}"#.into()));
+            if method == "POST" {
+                let renew = *core.renew.lock().unwrap();
+                if renew == Renew::Gone {
+                    return Ok(json(404, r#"{"error":"Not found"}"#.into()));
+                }
+                if renew == Renew::Hang {
+                    std::future::pending::<()>().await;
+                }
             }
             return Ok(json(
                 if method == "DELETE" { 204 } else { 200 },
@@ -349,6 +370,32 @@ async fn core_service(
             std::future::pending::<()>().await;
             unreachable!()
         }
+        Turn::Flood => {
+            let (mut tx, body) = channel();
+            tokio::spawn(async move {
+                let line = format!("{{\"type\":\"delta\",\"text\":\"{}\"}}\n", "x".repeat(64 * 1024));
+                let line = Bytes::from(line);
+                while tx.send_data(line.clone()).await.is_ok() {}
+            });
+            ndjson(&core, body.boxed())
+        }
+        Turn::SlowJson => {
+            let (tx, body) = channel();
+            tokio::spawn(async move {
+                std::future::pending::<()>().await;
+                drop(tx);
+            });
+            let body = Watched {
+                inner: body.boxed(),
+                core: Arc::clone(&core),
+            };
+            Response::builder()
+                .status(200)
+                .header("content-type", "application/json")
+                .header("cache-control", "no-store")
+                .body(body.boxed())
+                .unwrap()
+        }
     })
 }
 
@@ -364,7 +411,7 @@ async fn core() -> Arc<Core> {
         script: Mutex::new((Vec::new(), false)),
         ask_closed: Mutex::new(None),
         ttl_ms: Mutex::new(30_000),
-        renew_ok: Mutex::new(true),
+        renew: Mutex::new(Renew::Ok),
     });
     let c = Arc::clone(&core);
     tokio::spawn(async move {
@@ -1341,7 +1388,7 @@ async fn a_core_that_does_not_know_the_gate_ask_is_the_proxys_502_and_no_turn_ru
 async fn losing_front() -> Front {
     let f = front().await;
     *f.core.ttl_ms.lock().unwrap() = 300;
-    *f.core.renew_ok.lock().unwrap() = false;
+    *f.core.renew.lock().unwrap() = Renew::Gone;
     f
 }
 
@@ -1410,4 +1457,82 @@ async fn a_lease_node_keeps_confirming_lets_a_long_turn_run() {
         .releases
         .iter()
         .any(|r| r.ends_with("/renew")));
+}
+
+// S8 re-review: loss is seen whatever the client does, and in time.
+
+/// A front whose grants have a 600 ms TTL and whose renewals Node never answers.
+async fn unheard_front() -> Front {
+    let f = front().await;
+    *f.core.ttl_ms.lock().unwrap() = 600;
+    *f.core.renew.lock().unwrap() = Renew::Hang;
+    f
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_client_that_stopped_reading_does_not_keep_a_turn_whose_lease_was_lost() {
+    // P2-2: the client reads nothing at all; Core floods its events, which back up. Losing the lease
+    // still closes Core's socket at once.
+    let f = losing_front().await;
+    *f.core.turn.lock().unwrap() = Turn::Flood;
+    let (closed_tx, closed_rx) = oneshot::channel();
+    *f.core.closed.lock().unwrap() = Some(closed_tx);
+    let mut s = TcpStream::connect(f.addr).await.unwrap();
+    let req = format!(
+        "POST /api/chat HTTP/1.1\r\nhost: front.test\r\norigin: {ORIGIN}\r\ncookie: {}\r\nx-csrf-token: {}\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n",
+        f.jar,
+        f.csrf,
+        TURN.len()
+    );
+    s.write_all(req.as_bytes()).await.unwrap();
+    s.write_all(TURN).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(3), closed_rx)
+        .await
+        .expect("a stalled reader kept Core's turn running after the lease was lost")
+        .unwrap();
+    drop(s);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_json_answer_whose_lease_is_lost_ends_with_an_error_before_nodes_ttl() {
+    // The JSON path, with renewals Node never answers: the loss is seen before Node's TTL ends.
+    let f = unheard_front().await;
+    *f.core.turn.lock().unwrap() = Turn::SlowJson;
+    let (closed_tx, closed_rx) = oneshot::channel();
+    *f.core.closed.lock().unwrap() = Some(closed_tx);
+    let started = Instant::now();
+    let (res, _c) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await;
+    assert_eq!(res.status(), 200);
+    assert_eq!(res.headers()["content-type"], "application/json");
+    let read = tokio::time::timeout(Duration::from_secs(3), res.into_body().collect())
+        .await
+        .expect("the JSON answer outlived its lease");
+    assert!(read.is_err(), "the answer ended as if complete: {read:?}");
+    tokio::time::timeout(Duration::from_secs(1), closed_rx)
+        .await
+        .expect("Core's call kept running")
+        .unwrap();
+    assert!(started.elapsed() < Duration::from_millis(1500), "{:?}", started.elapsed());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_lease_lost_after_cores_headers_and_before_its_first_event_is_the_gates_503() {
+    // Core's NDJSON headers at once and its first event after 1.5 s; Node never answers the renewals,
+    // so the lease is lost (before its 600 ms TTL) while the front waits for that event.
+    let f = unheard_front().await;
+    *f.core.turn.lock().unwrap() = Turn::LateFirstLine;
+    let (closed_tx, closed_rx) = oneshot::channel();
+    *f.core.closed.lock().unwrap() = Some(closed_tx);
+    let (res, _c) = tokio::time::timeout(
+        Duration::from_secs(3),
+        call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true),
+    )
+    .await
+    .unwrap();
+    assert_eq!(res.status(), 503, "the first event went out under a lost lease");
+    assert_eq!(res.headers()["retry-after"], "3");
+    tokio::time::timeout(Duration::from_secs(1), closed_rx)
+        .await
+        .expect("Core's turn kept running")
+        .unwrap();
 }
