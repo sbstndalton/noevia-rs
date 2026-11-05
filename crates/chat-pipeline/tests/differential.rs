@@ -171,7 +171,9 @@ fn base64(s: &str) -> Vec<u8> {
 
 #[test]
 fn provider_failure_text_matches_node() {
-    use chat_pipeline::failure::{capped_text, provider_failure_text, FailedReply, PROVIDER_ERROR_BODY_CAP};
+    use chat_pipeline::failure::{
+        capped_text, provider_failure_text, FailedReply, PROVIDER_ERROR_BODY_CAP,
+    };
     let c = wtf16::parse(include_str!("fixtures/failure-cases.json")).unwrap();
     let bodies: Vec<String> = arr(c.get("bodies"))
         .iter()
@@ -192,6 +194,11 @@ fn provider_failure_text_matches_node() {
             k.get("chatgpt") == &JValue::Bool(true),
             k.get("partial") == &JValue::Bool(true),
         );
-        assert_eq!(Some(got.as_str()), k.get("text").as_str(), "{}", wtf16::stringify(k).unwrap());
+        assert_eq!(
+            Some(got.as_str()),
+            k.get("text").as_str(),
+            "{}",
+            wtf16::stringify(k).unwrap()
+        );
     }
 }

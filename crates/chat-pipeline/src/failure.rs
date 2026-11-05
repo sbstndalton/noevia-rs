@@ -24,12 +24,17 @@ pub fn capped_text(body: &[u8], cap: usize) -> String {
         return String::from_utf8_lossy(body).into_owned();
     }
     let cut = String::from_utf8_lossy(body.get(..cap).unwrap_or(body)).into_owned();
-    cut.strip_suffix('\u{FFFD}').map_or(cut.clone(), str::to_owned)
+    cut.strip_suffix('\u{FFFD}')
+        .map_or(cut.clone(), str::to_owned)
 }
 
 /// `failureText(code, text, {partial})` with `text` as the module receives it.
 fn failure_text(code: i64, text: &str, partial: bool) -> String {
-    let fixed = if partial { STREAM_FAILED_PARTIAL_TEXT } else { STREAM_FAILED_TEXT };
+    let fixed = if partial {
+        STREAM_FAILED_PARTIAL_TEXT
+    } else {
+        STREAM_FAILED_TEXT
+    };
     let Ok(status) = u32::try_from(code) else {
         // dav-parse-wasm.cjs refuses the input; classify answers null.
         return fixed.to_owned();
@@ -37,11 +42,21 @@ fn failure_text(code: i64, text: &str, partial: bool) -> String {
     // The module's input: at most MAX_ERROR_UNITS units, made well formed, as UTF-8.
     let well: String = wtf16::slice(text, MAX_ERROR_UNITS)
         .chars()
-        .map(|c| if wtf16::lone_unit(c).is_some() { '\u{FFFD}' } else { c })
+        .map(|c| {
+            if wtf16::lone_unit(c).is_some() {
+                '\u{FFFD}'
+            } else {
+                c
+            }
+        })
         .collect();
     let c = provider_error::classify(status, &well);
     let r = c.reason;
-    let kept = if partial { " Partial output was preserved." } else { "" };
+    let kept = if partial {
+        " Partial output was preserved."
+    } else {
+        ""
+    };
     match c.kind {
         provider_error::Kind::ContextFull => CONTEXT_FULL_TEXT.to_owned(),
         provider_error::Kind::TemplateOrToolsUnsupported => format!(
@@ -86,7 +101,11 @@ fn shown(v: &JValue) -> Option<String> {
 }
 
 /// core chat.cjs `providerFailureText(response, chatgptProvider, partial)`.
-pub fn provider_failure_text(reply: &FailedReply<'_>, chatgpt_provider: bool, partial: bool) -> String {
+pub fn provider_failure_text(
+    reply: &FailedReply<'_>,
+    chatgpt_provider: bool,
+    partial: bool,
+) -> String {
     let code = reply.status.unwrap_or(500);
     let mut msg = failure_text(code, reply.detail, partial);
     if reply.gate_refusal {
