@@ -562,7 +562,12 @@ fn usage_reports_match_node() {
                             log.push(JValue::Arr(vec![s("evidence"), model.clone(), v]));
                         }
                         if let Some((p, ms)) = r.prefill_sample {
-                            log.push(JValue::Arr(vec![s("prefill"), model.clone(), JValue::Num(p), JValue::Num(ms)]));
+                            log.push(JValue::Arr(vec![
+                                s("prefill"),
+                                model.clone(),
+                                JValue::Num(p),
+                                JValue::Num(ms),
+                            ]));
                         }
                         log.push(JValue::Arr(vec![s("send"), r.event]));
                     }

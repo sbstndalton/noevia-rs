@@ -48,7 +48,8 @@ fn count(v: &JValue) -> Option<f64> {
         return None;
     }
     let n = js_number(v);
-    (n.is_finite() && n.fract() == 0.0 && n.abs() <= 9_007_199_254_740_991.0 && n >= 0.0).then_some(n)
+    (n.is_finite() && n.fract() == 0.0 && n.abs() <= 9_007_199_254_740_991.0 && n >= 0.0)
+        .then_some(n)
 }
 
 fn rate(v: &JValue) -> Option<f64> {
@@ -77,7 +78,14 @@ fn obj(pairs: Vec<(&str, JValue)>) -> JValue {
 impl Exchange {
     /// `exchangeStartedAt` is `started_at`; `model` is the turn's model as the events name it.
     pub fn new(model: JValue, started_at: f64) -> Self {
-        Self { model, started_at, round_started_at: 0.0, round_first_token_ms: None, first_token_ms: None, totals: Totals::default() }
+        Self {
+            model,
+            started_at,
+            round_started_at: 0.0,
+            round_first_token_ms: None,
+            first_token_ms: None,
+            totals: Totals::default(),
+        }
     }
 
     /// A round's engine request starts (`roundStartedAt = Date.now(); roundFirstTokenMs = null`).
@@ -150,7 +158,10 @@ impl Exchange {
             t.accepted += a;
             t.has_mtp = true;
         }
-        let aggregate = (t.has_completion && t.completion > 0.0 && !t.rate_incomplete && t.predicted_seconds > 0.0)
+        let aggregate = (t.has_completion
+            && t.completion > 0.0
+            && !t.rate_incomplete
+            && t.predicted_seconds > 0.0)
             .then(|| t.completion / t.predicted_seconds);
         let reported = obj(vec![
             ("promptTokens", num(prompt)),
@@ -175,14 +186,58 @@ impl Exchange {
             ("type", JValue::Str("usage".into())),
             ("phase", JValue::Str("streaming".into())),
             ("model", self.model.clone()),
-            ("promptTokens", if t.has_prompt { JValue::Num(t.prompt) } else { JValue::Null }),
-            ("completionTokens", if t.has_completion { JValue::Num(t.completion) } else { JValue::Null }),
-            ("totalTokens", if t.has_total { JValue::Num(t.total) } else { JValue::Null }),
+            (
+                "promptTokens",
+                if t.has_prompt {
+                    JValue::Num(t.prompt)
+                } else {
+                    JValue::Null
+                },
+            ),
+            (
+                "completionTokens",
+                if t.has_completion {
+                    JValue::Num(t.completion)
+                } else {
+                    JValue::Null
+                },
+            ),
+            (
+                "totalTokens",
+                if t.has_total {
+                    JValue::Num(t.total)
+                } else {
+                    JValue::Null
+                },
+            ),
             ("tokensPerSecond", num(aggregate)),
-            ("timeToFirstToken", self.first_token_ms.map_or(JValue::Null, |ms| JValue::Num(ms / 1000.0))),
-            ("drafted", if t.has_mtp { JValue::Num(t.drafted) } else { JValue::Null }),
-            ("accepted", if t.has_mtp { JValue::Num(t.accepted) } else { JValue::Null }),
+            (
+                "timeToFirstToken",
+                self.first_token_ms
+                    .map_or(JValue::Null, |ms| JValue::Num(ms / 1000.0)),
+            ),
+            (
+                "drafted",
+                if t.has_mtp {
+                    JValue::Num(t.drafted)
+                } else {
+                    JValue::Null
+                },
+            ),
+            (
+                "accepted",
+                if t.has_mtp {
+                    JValue::Num(t.accepted)
+                } else {
+                    JValue::Null
+                },
+            ),
         ]);
-        Some(Report { event, record_usage: counted.then_some(reported), mtp_value, prefill_sample })
+        Some(Report {
+            event,
+            record_usage: counted.then_some(reported),
+            mtp_value,
+            prefill_sample,
+        })
     }
 }
