@@ -12,8 +12,8 @@
 //!   POST /internal/chat-mirror/sync  {user, chats: [id...]}   -> 200 {outcome: done|off|failed}
 //!   POST /internal/chat-mirror/brain {user, chatId}           -> 200 {reason}
 //!
-//! An unreachable or unhappy Node is a failed pass (retried on the backoff) and writes nothing;
-//! it is never taken for success. REMAINING: those two executors.
+//! A failed transport does not prove Node stopped writing. Brain completion is reconciled
+//! with the same operation identity while the queue remains held. REMAINING: those two executors.
 //!
 //! Node's own triggers (a project change, an import, its request starts) reach this schedule on
 //! the project store's loopback listener with the same secret:
@@ -308,17 +308,37 @@ impl MirrorExecutor for NodeWork {
 impl BrainExecutor for NodeWork {
     fn run(&self, user: &str, chat: &str) -> BoxFut<String> {
         let research = Arc::clone(&self.research);
-        let body = json!({"user": user, "chatId": chat});
+        use rand_core::{OsRng, RngCore};
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::sync::OnceLock;
+        static INCARNATION: OnceLock<String> = OnceLock::new();
+        static SEQUENCE: AtomicU64 = AtomicU64::new(1);
+        let incarnation = INCARNATION.get_or_init(|| {
+            let mut bytes = [0u8; 16];
+            OsRng.fill_bytes(&mut bytes);
+            bytes.iter().map(|b| format!("{b:02x}")).collect()
+        });
+        let sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let body = json!({"user": user, "chatId": chat,
+            "incarnation": incarnation, "sequence": sequence});
         Box::pin(async move {
-            let Some((200, bytes)) = research.node_call(BRAIN_PATH, &body, BRAIN_DEADLINE).await
-            else {
-                return "error".to_string();
-            };
-            serde_json::from_slice::<Value>(&bytes)
-                .ok()
-                .and_then(|v| v.get("reason").and_then(Value::as_str).map(str::to_string))
-                .filter(|r| !r.is_empty() && r.len() <= 64)
-                .unwrap_or_else(|| "error".to_string())
+            loop {
+                if let Some((200, bytes)) =
+                    research.node_call(BRAIN_PATH, &body, BRAIN_DEADLINE).await
+                {
+                    if let Some(reason) = serde_json::from_slice::<Value>(&bytes)
+                        .ok()
+                        .and_then(|v| v.get("reason").and_then(Value::as_str).map(str::to_string))
+                        .filter(|r| !r.is_empty() && r.len() <= 64)
+                    {
+                        return reason;
+                    }
+                }
+                // No response, timeout, rejection or malformed response proves neither completion
+                // nor cancellation. Keep the queue held and reconcile the SAME operation. A Node
+                // restart has stopped the prior executor; replay there is safe (stored => current).
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
         })
     }
 }

@@ -138,7 +138,7 @@ async fn fire(inner: Arc<Inner>, key: Key, generation: u64, retried: bool) {
             "error".to_string()
         }
     };
-    if reason == "built" {
+    if reason == "built" || reason == "current" {
         // The mirror nudge never fails a build.
         (inner.built)(&key.0, &key.1);
     } else if !retried && RETRYABLE.contains(&reason.as_str()) {

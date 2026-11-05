@@ -36,6 +36,7 @@ struct Node {
     addr: SocketAddr,
     calls: Calls,
     fail_syncs: Arc<AtomicUsize>,
+    fail_brains: Arc<AtomicUsize>,
     brain_reason: Arc<Mutex<String>>,
 }
 
@@ -64,10 +65,13 @@ impl Node {
 async fn node() -> Node {
     let calls: Calls = Arc::default();
     let fail_syncs = Arc::new(AtomicUsize::new(0));
+    let fail_brains = Arc::new(AtomicUsize::new(0));
     let brain_reason = Arc::new(Mutex::new("built".to_string()));
     let (c, f, b) = (calls.clone(), fail_syncs.clone(), brain_reason.clone());
+    let failure = fail_brains.clone();
     let app = Router::new().fallback(any(move |uri: Uri, headers: HeaderMap, body: Bytes| {
         let (c, f, b) = (c.clone(), f.clone(), b.clone());
+        let failure = failure.clone();
         async move {
             let ok = headers
                 .get(TOKEN_HEADER)
@@ -77,6 +81,12 @@ async fn node() -> Node {
             }
             let body: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
             c.lock().unwrap().push((uri.path().to_string(), body));
+            if uri.path() == "/internal/chat-mirror/brain" && failure.load(Ordering::SeqCst) != 0 {
+                return (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "{}".to_string(),
+                );
+            }
             match uri.path() {
                 "/internal/chat-mirror/sync" => {
                     if f.load(Ordering::SeqCst) > 0 {
@@ -106,6 +116,7 @@ async fn node() -> Node {
         addr,
         calls,
         fail_syncs,
+        fail_brains,
         brain_reason,
     }
 }
@@ -255,7 +266,8 @@ async fn a_history_save_reaches_the_mirror_and_after_its_idle_time_the_brain_the
     until("the save's mirror pass", || node.syncs().len() > before).await;
     assert_eq!(chats_of(&node.syncs()[before]), vec!["qa-c1"]);
     until("the brain build", || !node.brains().is_empty()).await;
-    assert_eq!(node.brains()[0], json!({"user": USER, "chatId": "qa-c1"}));
+    assert_eq!(node.brains()[0]["user"], USER);
+    assert_eq!(node.brains()[0]["chatId"], "qa-c1");
     // The brain reported built: the mirror is nudged for that chat once more.
     let after_save = node.syncs().len();
     until("the mirror pass after the brain", || {
@@ -309,6 +321,7 @@ async fn an_unreachable_node_is_a_failed_pass_never_a_success() {
         addr,
         calls: Arc::default(),
         fail_syncs: Arc::default(),
+        fail_brains: Arc::default(),
         brain_reason: Arc::default(),
     };
     let mirror =
@@ -437,4 +450,43 @@ async fn nodes_triggers_reach_the_schedule_over_the_store_behind_the_secret() {
         status, 200,
         "a touch of a non-account id is taken and reads nothing"
     );
+}
+
+#[tokio::test]
+async fn uncertain_brain_completion_keeps_the_queue_held_and_reconciles_the_same_operation() {
+    let root = data_dir();
+    let store_addr = store(root.path()).await;
+    let node = node().await;
+    let mirror =
+        ChatMirror::start_with(research(&node), Some(root.path().to_path_buf()), quick()).unwrap();
+    mirror.touch(USER);
+    until("rescan", || !node.syncs().is_empty()).await;
+    node.fail_brains.store(1, Ordering::SeqCst);
+    save(
+        store_addr,
+        "qa-first",
+        json!([{"role":"user","content":"first"}]),
+    )
+    .await;
+    until("first build starts", || !node.brains().is_empty()).await;
+    save(
+        store_addr,
+        "qa-second",
+        json!([{"role":"user","content":"second"}]),
+    )
+    .await;
+    until("completion reconciliation", || node.brains().len() >= 2).await;
+    let calls = node.brains();
+    assert!(
+        calls.iter().all(|c| c == &calls[0]),
+        "transport failures must retain the exact operation and queue"
+    );
+    assert!(calls[0]["incarnation"].as_str().is_some());
+    let before = node.syncs().len();
+    node.fail_brains.store(0, Ordering::SeqCst);
+    until("queued newer brain", || {
+        node.brains().iter().any(|c| c["chatId"] == "qa-second")
+    })
+    .await;
+    until("recovered built nudge", || node.syncs().len() > before).await;
 }
