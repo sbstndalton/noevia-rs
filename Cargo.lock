@@ -2015,6 +2015,7 @@ dependencies = [
  "server-auth",
  "server-chatgpt-status",
  "server-diary",
+ "server-dav",
  "server-export",
  "server-features",
  "server-projects",

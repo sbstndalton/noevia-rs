@@ -347,9 +347,14 @@ impl<B: Backend> DavService<B> {
                     status,
                     if status == StatusCode::NOT_FOUND {
                         "Unknown sharing path"
-                    } else {
-                        "Invalid path"
-                    },
+                    } else if status == StatusCode::URI_TOO_LONG {
+                        "Path too long"
+                    } else if raw[5..].split('/').any(|part| {
+                        let b=part.as_bytes();
+                        b.iter().enumerate().any(|(i,c)| *c==b'%' && (b.get(i+1).is_none_or(|c|!c.is_ascii_hexdigit())||b.get(i+2).is_none_or(|c|!c.is_ascii_hexdigit()))) || percent_decode_str(part).decode_utf8().is_err()
+                    }) {
+                        "Invalid path encoding"
+                    } else { "Invalid path" },
                     false,
                 )
             }
@@ -432,10 +437,9 @@ fn basic(headers: &HeaderMap) -> Option<(String, String)> {
     {
         return None;
     }
-    let decoded = base64::engine::general_purpose::STANDARD
-        .decode(encoded)
-        .ok()?;
-    let text = String::from_utf8(decoded).ok()?;
+    let decoded = base64::engine::general_purpose::STANDARD.decode(encoded)
+        .or_else(|_|base64::engine::general_purpose::STANDARD_NO_PAD.decode(encoded)).ok()?;
+    let text = String::from_utf8_lossy(&decoded);
     let (user, password) = text.split_once(':')?;
     if user.is_empty() {
         return None;
@@ -1118,6 +1122,7 @@ impl<B: Backend> DavService<B> {
             Ok(Err(_)) => return reply(StatusCode::PAYLOAD_TOO_LARGE, "Request too large", false),
             Err(_) => return reply(StatusCode::REQUEST_TIMEOUT, "Request timed out", false),
         };
+        if std::str::from_utf8(&bytes).is_err() {return reply(StatusCode::BAD_REQUEST,"UTF-8 text required",false);}
         if !bytes.is_empty() {
             return reply(
                 StatusCode::UNSUPPORTED_MEDIA_TYPE,
@@ -1219,7 +1224,7 @@ mod tests {
     }
 
     #[test]
-    fn stale_rate_peers_are_pruned_before_capacity_refusal() -> Result<(), &'static str> {
+    fn stale_rate_peers_are_pruned_before_a_new_window() -> Result<(), &'static str> {
         let service = DavService::new(
             Arc::new(DenyAll),
             Config::new("http://localhost", Scope::Lan, None)?,
@@ -1229,12 +1234,22 @@ mod tests {
             let mut rates = service.rate.lock().map_err(|_| "rate lock")?;
             for n in 0u16..4096 {
                 let ip = IpAddr::V4(Ipv4Addr::new(10, 1, (n / 256) as u8, (n % 256) as u8));
-                rates.insert(ip, VecDeque::from([old]));
+                rates.entries.insert(ip, (1, old, u64::from(n)));
             }
         }
         let newcomer = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1));
         assert!(!service.rate_limited(newcomer));
-        assert_eq!(service.rate.lock().map_err(|_| "rate lock")?.len(), 1);
+        assert_eq!(service.rate.lock().map_err(|_| "rate lock")?.entries.len(), 1);
         Ok(())
     }
+    #[test]
+    fn fixed_window_resets_from_first_request_not_a_sliding_history() {
+        let mut rate=RateBudget::default();
+        let peer=IpAddr::V4(Ipv4Addr::new(192,0,2,9));let start=Instant::now();
+        assert!(!rate.charge(peer,start));
+        for _ in 1..120 {assert!(!rate.charge(peer,start+Duration::from_secs(59)));}
+        assert!(rate.charge(peer,start+Duration::from_secs(59)));
+        assert!(!rate.charge(peer,start+Duration::from_secs(60)));
+    }
+
 }
