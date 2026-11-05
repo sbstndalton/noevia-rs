@@ -4816,9 +4816,13 @@ mod tests {
         assert_eq!(job.get("status").as_str(), Some("passed"), "{job:?}");
         released(&seen, "DELETE /internal/model-maintenance/lease/").await;
         let log = seen.lock().unwrap().clone();
-        assert_eq!(
-            log[0],
-            format!("POST /internal/model-maintenance/lease {{\"maxMs\":{worst}}}")
+        // Row J review: the latch is asked for under the authority lease's id (its ticket).
+        let first = log[0].clone();
+        assert!(
+            first.starts_with(&format!(
+                "POST /internal/model-maintenance/lease {{\"maxMs\":{worst},\"ticket\":\""
+            )),
+            "{first}"
         );
         assert!(log
             .iter()
@@ -5083,9 +5087,13 @@ mod tests {
         w.launch("synthetic", p).await.unwrap();
         let job = settled(&w).await;
         assert_eq!(job.get("status").as_str(), Some("passed"), "{job:?}");
-        assert_eq!(
-            seen.lock().unwrap()[0],
-            format!("POST /internal/model-maintenance/lease {{\"maxMs\":{six}}}")
+        // Row J review: the latch is asked for under the authority lease's id (its ticket).
+        let first = seen.lock().unwrap()[0].clone();
+        assert!(
+            first.starts_with(&format!(
+                "POST /internal/model-maintenance/lease {{\"maxMs\":{six},\"ticket\":\""
+            )),
+            "{first}"
         );
         assert_eq!(live.load(Ordering::Acquire), 0);
     }
