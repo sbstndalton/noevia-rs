@@ -98,10 +98,24 @@ async fn media_notification_preserves_text(fail: bool) {
         None,
     )
     .unwrap();
-    wait_until(|| server_projects::outbox::jobs(&dir).unwrap().is_empty()).await;
+    let completed = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while !server_projects::outbox::jobs(&dir).unwrap().is_empty() {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .is_ok();
     // A new two-second drain must not retry a dropped media notification.
-    tokio::time::sleep(std::time::Duration::from_millis(2200)).await;
+    if completed {
+        tokio::time::sleep(std::time::Duration::from_millis(2200)).await;
+    }
+    // Join even on the failing baseline, before asserting, so an expected red
+    // result cannot leave background tasks behind during runtime teardown.
     worker.shutdown().await;
+    assert!(
+        completed,
+        "text job must complete on its last attempt even when media notification fails"
+    );
     assert_eq!(
         notices.load(Ordering::SeqCst),
         1,
