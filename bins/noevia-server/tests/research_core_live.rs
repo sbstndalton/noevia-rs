@@ -7,12 +7,14 @@
 //! stand-in router with one model, a Diary that answers 503; all on 127.0.0.1; no model, no web) over the data
 //! directory the front uses, and:
 //!
-//! - the front's availability call reaches Core's bridge and brings back Core's own words (no search tools on this
-//!   synthetic Core), not the "could not reach" words a 404 gives;
+//! - availability is the front's own now, read from the catalogue Core publishes (this synthetic Core offers no search
+//!   tools: Core's own words come back, not "being prepared" or the "could not reach" words a 404 gives);
+//! - the two facts only Core holds (`/internal/research/facts`, the model it last loaded) answer the front's secret and
+//!   nobody else's;
 //! - the front's admission client gets a real lease from Core's route and gives it back, and a wrong secret gets
 //!   nothing.
 //!
-//! The search tool itself (an MCP server behind Core) is not stood up here.
+//! The search tools are the front's own executor's (tests/mcp_exec.rs); no MCP server is stood up here.
 //!
 //! Needs a noevia-core checkout at `contracts/http/front-core.ref` with its server dependencies and `dav-parse.wasm`:
 //! `NOEVIA_RESEARCH_CORE` (CI: `front-core`, built by the paired-core action). Without it the test says so and
@@ -202,7 +204,7 @@ async fn a_real_core_answers_the_fronts_bridge_and_lease_calls() {
     };
     let f = front(&core_dir).await;
 
-    // The bridge: Core's own availability answer comes back (this synthetic Core has no search tools).
+    // Availability: the catalogue Core published says it has no search tools.
     let (s, v) = get(&f, "/api/projects/p1/research").await;
     assert_eq!(s, 200, "{v}");
     let reason = v["reason"].as_str().unwrap_or_default();
@@ -212,6 +214,55 @@ async fn a_real_core_answers_the_fronts_bridge_and_lease_calls() {
     );
     assert!(reason.contains("web-search toolbox"), "{v}");
     assert_eq!(v["available"], json!(false));
+
+    // The facts bridge: the front's secret gets Core's answer, another secret gets the 404 of an unknown path.
+    let facts = |token: String| {
+        let base = f.core.base();
+        let user = f.core.user.clone();
+        async move {
+            let mut s = TcpStream::connect(base.trim_start_matches("http://"))
+                .await
+                .unwrap();
+            let body = json!({ "user": user }).to_string();
+            s.write_all(
+                format!(
+                    "POST /internal/research/facts HTTP/1.1\r\nhost: core\r\nconnection: close\r\ncontent-type: application/json\r\ncontent-length: {}\r\n{}: {token}\r\n\r\n{body}",
+                    body.len(),
+                    noevia_server::project_store::TOKEN_HEADER
+                )
+                .as_bytes(),
+            )
+            .await
+            .unwrap();
+            let mut out = Vec::new();
+            s.read_to_end(&mut out).await.unwrap();
+            let text = String::from_utf8_lossy(&out).into_owned();
+            let status: u16 = text[9..12].parse().unwrap();
+            (
+                status,
+                text.split_once("\r\n\r\n")
+                    .map(|(_, b)| b.to_owned())
+                    .unwrap_or_default(),
+            )
+        }
+    };
+    let (status, body) = facts(f.core.token.clone()).await;
+    assert_eq!(status, 200, "{body}");
+    // (the body may arrive chunked: take the JSON object out of it)
+    let object = &body[body.find('{').unwrap()..=body.rfind('}').unwrap()];
+    assert!(
+        serde_json::from_str::<Value>(object)
+            .unwrap()
+            .get("lastLoaded")
+            .is_some(),
+        "{body}"
+    );
+    assert_eq!(
+        facts("not-the-fronts-secret-0123456789abcdef".into())
+            .await
+            .0,
+        404
+    );
 
     // The lease: a real grant from Core's admission route, and given back.
     let admission = Arc::new(Admission::new(&f.core.base(), Some(&f.core.token)).unwrap());

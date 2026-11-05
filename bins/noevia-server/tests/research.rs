@@ -126,7 +126,7 @@ fn sse(text: &str) -> String {
 }
 
 /// Node: lease granted, both tools there; extra behaviour by path.
-fn node_answer(path: &str, body: &str) -> Answer {
+fn node_answer(path: &str, _body: &str) -> Answer {
     let ok = |v: Value| Answer::Now(200, v.to_string());
     if path == "/internal/inference-admission/lease" {
         return Answer::Now(201, json!({"lease": LEASE, "ttlMs": 30000}).to_string());

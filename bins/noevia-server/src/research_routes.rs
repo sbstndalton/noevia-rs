@@ -42,6 +42,7 @@ use std::time::Duration;
 const BODY_LIMIT: usize = 1024 * 1024;
 /// core research-model.cjs: `AbortSignal.timeout(120000)` per model step.
 const STEP_DEADLINE: Duration = Duration::from_secs(120);
+#[cfg(feature = "rust-storage-reads")]
 const TOOL_DEADLINE: Duration = Duration::from_secs(120);
 const RETRIEVE_DEADLINE: Duration = Duration::from_secs(60);
 const FACTS_DEADLINE: Duration = Duration::from_secs(5);
@@ -57,9 +58,12 @@ const NODE_UNREACHABLE: &str = "Research could not reach this server's search to
 /// core index.cjs's reasons the search tools are not offered, in its words.
 const NO_WEB_SEARCH_TOOLBOX: &str =
     "Deep research needs the web-search toolbox (tavily_search and tavily_extract) on this server.";
+#[cfg(feature = "rust-storage-reads")]
 const WEB_SEARCH_NOT_CONFIGURED: &str = "Web search is not configured on this server.";
 /// The published catalogue (Node's discovery) is not current: the same "try again" the toolbox pages give.
+#[cfg(feature = "rust-storage-reads")]
 const TOOLS_PREPARING: &str = "Research's search tools are being prepared. Try again in a moment.";
+#[cfg(feature = "rust-storage-reads")]
 const TOOLS_TIMEOUT: &str = "Research's search tool did not answer in time.";
 const ONLY_SEARCH_TOOLS: &str = "Research asks only for its two search tools.";
 /// core rust-research-bridge.cjs `TEXT_CAP`.
