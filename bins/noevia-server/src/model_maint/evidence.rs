@@ -245,18 +245,19 @@ fn shared_runs(dir: &Path) -> Arc<RunRegistry> {
         return existing;
     }
     cache.retain(|_, registry| registry.strong_count() > 0);
-    let registry = Arc::new(Mutex::new(load_runs(dir)));
+    let registry = Arc::new(Mutex::new(load_runs(dir).ok()));
     cache.insert(dir.to_owned(), Arc::downgrade(&registry));
     registry
 }
 
 // Independent of the evidence append lock: an append stuck after its last permit check must
 // not prevent finalization from durably withdrawing its generation from every consumer.
-fn load_runs(dir: &Path) -> Option<RunLedger> {
+fn load_runs(dir: &Path) -> std::io::Result<RunLedger> {
     match std::fs::read(dir.join("run-state.json")) {
-        Ok(bytes) => serde_json::from_slice(&bytes).ok(),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(RunLedger::default()),
-        Err(_) => None, // unreadable/corrupt publication state is fail-closed
+        Ok(bytes) => serde_json::from_slice(&bytes)
+            .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(RunLedger::default()),
+        Err(e) => Err(e),
     }
 }
 
@@ -338,6 +339,15 @@ impl Store {
         }
     }
 
+    // An unavailable ledger is unhydrated, not a cached failure. Retry under the control lock
+    // on every mutation; readers remain fail-closed until an actual read succeeds.
+    fn hydrate_runs(&self, locked: &mut Option<RunLedger>) -> Result<(), StoreError> {
+        if locked.is_none() {
+            *locked = Some(load_runs(&self.dir).map_err(|e| StoreError::RunStorage(e.kind()))?);
+        }
+        Ok(())
+    }
+
     fn persist_runs(&self, ledger: &RunLedger) -> Result<(), StoreError> {
         #[cfg(test)]
         if self
@@ -381,6 +391,7 @@ impl Store {
     /// need no retained per-run tombstones once this stronger fence is durable.
     pub(super) fn admit_run(&self, model: &str, id: &str) -> Result<u64, StoreError> {
         let mut locked = self.runs.lock().map_err(|_| StoreError::Io)?;
+        self.hydrate_runs(&mut locked)?;
         let mut ledger = locked.as_ref().ok_or(StoreError::Io)?.clone();
         let generation = ledger
             .models
@@ -404,19 +415,20 @@ impl Store {
     /// Persist the tombstone before a failed run publishes completion and releases admission.
     /// The independent control file remains small: one current epoch per model; newer admission
     /// permanently hides every older epoch, including appends that physically finish later.
-    pub(super) fn tombstone(
-        &self,
-        model: &str,
-        id: &str,
-        generation: u64,
-    ) -> Result<(), StoreError> {
+    pub(super) fn tombstone(&self, model: &str, id: &str) -> Result<(), StoreError> {
         let mut locked = self.runs.lock().map_err(|_| StoreError::Io)?;
+        self.hydrate_runs(&mut locked)?;
         let mut ledger = locked.as_ref().ok_or(StoreError::Io)?.clone();
-        if ledger.models.get(model).is_some_and(|e| {
-            e.generation > generation || (e.generation == generation && e.id == id && e.tombstoned)
-        }) {
+        // Resolve only after hydration. A different admitted run already supersedes this one;
+        // a fallback zero captured while the ledger was unavailable must never skip withdrawal.
+        if ledger
+            .models
+            .get(model)
+            .is_some_and(|e| e.id != id || e.tombstoned)
+        {
             return Ok(());
         }
+        let generation = ledger.models.get(model).map_or(0, |e| e.generation);
         ledger.models.insert(
             model.to_owned(),
             RunEpoch {
@@ -471,7 +483,8 @@ impl Store {
             .as_str()
             .ok_or(StoreError::Invalid)?
             .to_owned();
-        let locked = self.runs.lock().map_err(|_| StoreError::Io)?;
+        let mut locked = self.runs.lock().map_err(|_| StoreError::Io)?;
+        self.hydrate_runs(&mut locked)?;
         let ledger = locked.as_ref().ok_or(StoreError::Io)?;
         let generation = ledger.models.get(&model).map_or(0, |e| e.generation);
         let id = if let Some(id) = entry.get("id").as_str().filter(|s| !s.is_empty()) {
