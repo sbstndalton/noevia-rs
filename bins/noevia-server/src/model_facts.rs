@@ -21,6 +21,9 @@ struct ScanState {
     // Budget adoptions in progress. While nonzero no scan may publish, so no
     // reader can observe a scan entry beside a newly visible budget snapshot.
     adopting: u32,
+    // Settled adoptions. Part of every token, so a token issued during an
+    // adoption is retired when it settles without advancing the generation.
+    settled: u64,
 }
 type ScanReply = Option<Option<js_json::JValue>>;
 /// Test-only observation point between a budget snapshot becoming visible and
@@ -112,6 +115,7 @@ impl Authority {
         let mut hash = Sha256::new();
         hash.update(self.epoch);
         hash.update(state.generation.to_le_bytes());
+        hash.update(state.settled.to_le_bytes());
         if entry {
             hash.update(state.entry.to_le_bytes());
         }
@@ -181,27 +185,26 @@ impl Authority {
     }
     /// Fences the cache before a new budget snapshot becomes visible: advances the
     /// generation, clears the entry and blocks publication until `end_adoption`.
-    /// Returns the generation the snapshot will carry once adoption settles.
+    /// Returns the generation the new snapshot carries.
     fn begin_adoption(&self) -> Option<u64> {
         let mut state = self.cache.lock().ok()?;
         let fenced = state.generation.checked_add(1)?;
-        let settled = fenced.checked_add(1)?;
         let adopting = state.adopting.checked_add(1)?;
         state.generation = fenced;
         state.adopting = adopting;
         let old = state.hit.take();
         drop(state);
         drop(old);
-        Some(settled)
+        Some(fenced)
     }
     /// Settles an adoption begun by `begin_adoption`: every token issued while it
-    /// was in progress is retired by a further generation advance.
+    /// was in progress is retired.
     fn end_adoption(&self) {
         let Ok(mut state) = self.cache.lock() else {
             return;
         };
         state.adopting = state.adopting.saturating_sub(1);
-        state.generation = state.generation.checked_add(1).unwrap_or(u64::MAX);
+        state.settled = state.settled.wrapping_add(1);
         let old = state.hit.take();
         drop(state);
         drop(old);
@@ -738,7 +741,8 @@ mod concurrency_tests {
         let body = || js_json::JValue::obj([("models", js_json::JValue::Arr(vec![]))]);
         let before = authority.scan_snapshot().unwrap();
         let before_token = before.get("token").as_str().unwrap().to_owned();
-        let observed: Arc<Mutex<Option<(bool, bool, bool, String)>>> = Arc::new(Mutex::new(None));
+        type Window = Option<(bool, bool, bool, String)>;
+        let observed: Arc<Mutex<Window>> = Arc::new(Mutex::new(None));
         let sink = Arc::clone(&observed);
         let token = before_token.clone();
         *AFTER_SNAPSHOT_PUBLISH.lock().unwrap() = Some(Box::new(move |a: &Authority| {
@@ -765,7 +769,7 @@ mod concurrency_tests {
         *AFTER_SNAPSHOT_PUBLISH.lock().unwrap() = None;
         assert!(saved.is_ok());
         let (budget_visible, published, hit_visible, during_token) =
-            observed.lock().unwrap().take().expect("hook observed the adoption window");
+            observed.lock().unwrap().take().unwrap();
         assert!(budget_visible, "the new budget snapshot is visible in the window");
         assert!(!published, "no scan may publish while the new budget is being adopted");
         assert!(!hit_visible, "no scan entry is readable beside the new budget");
