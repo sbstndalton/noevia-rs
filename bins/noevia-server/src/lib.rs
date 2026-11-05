@@ -48,6 +48,7 @@ pub mod mcp_routes;
 pub mod mcp_tools;
 pub mod model_assignments;
 pub mod model_downloads_read;
+pub mod model_folder_sync;
 pub mod model_kind;
 pub mod model_maint;
 pub mod model_manager_scan;
@@ -470,6 +471,8 @@ pub const FEATURES: &[&str] = &[
     "rust-model-downloads-read",
     "rust-autotune-resume",
     "rust-budget-watch-v3",
+    // The model folder sync worker (core model-folder-sync.cjs, moved): see model_folder_sync/mod.rs.
+    "rust-model-folder-sync-v1",
     #[cfg(feature = "rust-storage-reads")]
     "rust-connectors",
     // An account's deletion forgets the MCP sign-ins (rust-storage-reads) and the ChatGPT tokens

@@ -230,6 +230,14 @@ async fn server_main() -> ExitCode {
         &|k: &str| std::env::var(k).ok(),
         stop_rx.clone(),
     );
+    // A GGUF that appears in the models folder becomes usable without anyone opening a page (Core's
+    // model-folder-sync.cjs, which Core no longer starts: rust-model-folder-sync-v1).
+    let folder_sync = noevia_server::model_folder_sync::live::spawn(
+        &app.config.maint,
+        &app.config.model_manager_scan,
+        &|k: &str| std::env::var(k).ok(),
+        stop_rx.clone(),
+    );
     let mut stop_wait = stop_rx.clone();
     // sbstndalton/noevia#1264: Node's projects.json / free-chats.json writes, loopback only.
     let switch = app.config.rust_projects;
@@ -300,6 +308,15 @@ async fn server_main() -> ExitCode {
         {
             watch.abort();
             let _ = watch.await;
+        }
+    }
+    if let Some(mut sync) = folder_sync {
+        if tokio::time::timeout(Duration::from_secs(2), &mut sync)
+            .await
+            .is_err()
+        {
+            sync.abort();
+            let _ = sync.await;
         }
     }
     if let Some(worker) = embedding_background {

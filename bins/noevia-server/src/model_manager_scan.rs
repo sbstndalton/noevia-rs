@@ -60,6 +60,38 @@ impl Loader {
         query: &str,
         timeout: Duration,
     ) -> Option<(StatusCode, Option<JValue>)> {
+        self.send_bounded(Method::GET, path, query, timeout).await
+    }
+
+    /// Node `managerFetch(rest, 'GET')`: the model management service's `/api/v1/{rest}`, 120 s.
+    pub(crate) async fn manager_get(&self, rest: &str) -> Option<(StatusCode, Option<JValue>)> {
+        self.send_bounded(
+            Method::GET,
+            &format!("/api/v1/{rest}"),
+            "",
+            Duration::from_secs(120),
+        )
+        .await
+    }
+
+    /// Node `managerFetch(rest, 'POST')`: an empty JSON object body, 120 s.
+    pub(crate) async fn manager_post(&self, rest: &str) -> Option<(StatusCode, Option<JValue>)> {
+        self.send_bounded(
+            Method::POST,
+            &format!("/api/v1/{rest}"),
+            "",
+            Duration::from_secs(120),
+        )
+        .await
+    }
+
+    async fn send_bounded(
+        &self,
+        method: Method,
+        path: &str,
+        query: &str,
+        timeout: Duration,
+    ) -> Option<(StatusCode, Option<JValue>)> {
         let base = self.base.as_ref()?;
         let endpoint = if query.is_empty() {
             format!("{base}{path}")
@@ -71,11 +103,15 @@ impl Loader {
         if !url.username().is_empty() || url.password().is_some() {
             return None;
         }
+        let post = method == Method::POST;
         let mut request = self
             .client
-            .get(url)
+            .request(method, url)
             .header(header::CONTENT_TYPE, "application/json")
             .timeout(timeout);
+        if post {
+            request = request.body("{}");
+        }
         if let Some(token) = &self.token {
             let mut value = HeaderValue::from_str(token).ok()?;
             value.set_sensitive(true);

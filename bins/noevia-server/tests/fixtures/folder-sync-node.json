@@ -1,0 +1,717 @@
+{
+  "schema": "noevia-folder-sync-oracle/1",
+  "node": "v22.23.3",
+  "rows": [
+    {
+      "name": "two-new-files-one-reload",
+      "spec": {
+        "files": [
+          "new-a",
+          "new-b"
+        ],
+        "outcomes": {},
+        "busy": false,
+        "flipBusyAfter": null,
+        "writer": null,
+        "reloadOk": true,
+        "listStatus": null,
+        "runs": [
+          {},
+          {
+            "drop": [
+              "new-a",
+              "new-b"
+            ]
+          }
+        ]
+      },
+      "runs": [
+        {
+          "result": {
+            "added": [
+              "new-a",
+              "new-b"
+            ],
+            "skipped": [],
+            "failed": []
+          },
+          "hadClock": true,
+          "events": [
+            "list",
+            "register:new-a",
+            "register:new-b",
+            "reload"
+          ],
+          "logs": [
+            "[models] set up 2 new models from the models folder: new-a, new-b."
+          ],
+          "state": null,
+          "skipCount": 0
+        },
+        {
+          "result": {
+            "added": [],
+            "skipped": [],
+            "failed": []
+          },
+          "hadClock": true,
+          "events": [
+            "list"
+          ],
+          "logs": [],
+          "state": null,
+          "skipCount": 0
+        }
+      ]
+    },
+    {
+      "name": "refused-files-are-remembered",
+      "spec": {
+        "files": [
+          "draft-head",
+          "taken",
+          "gone",
+          "fine"
+        ],
+        "outcomes": {
+          "draft-head": 400,
+          "taken": 409,
+          "gone": 404
+        },
+        "busy": false,
+        "flipBusyAfter": null,
+        "writer": null,
+        "reloadOk": true,
+        "listStatus": null,
+        "runs": [
+          {},
+          {},
+          {
+            "restart": true
+          }
+        ]
+      },
+      "runs": [
+        {
+          "result": {
+            "added": [
+              "fine"
+            ],
+            "skipped": [
+              "draft-head",
+              "gone",
+              "taken"
+            ],
+            "failed": []
+          },
+          "hadClock": true,
+          "events": [
+            "list",
+            "register:draft-head",
+            "register:fine",
+            "register:gone",
+            "register:taken",
+            "reload"
+          ],
+          "logs": [
+            "[models] set up 1 new model from the models folder: fine."
+          ],
+          "state": {
+            "skip": [
+              "draft-head",
+              "gone",
+              "taken"
+            ]
+          },
+          "skipCount": 3
+        },
+        {
+          "result": {
+            "added": [],
+            "skipped": [
+              "draft-head",
+              "gone",
+              "taken"
+            ],
+            "failed": []
+          },
+          "hadClock": true,
+          "events": [
+            "list"
+          ],
+          "logs": [],
+          "state": {
+            "skip": [
+              "draft-head",
+              "gone",
+              "taken"
+            ]
+          },
+          "skipCount": 3
+        },
+        {
+          "result": {
+            "added": [],
+            "skipped": [
+              "draft-head",
+              "gone",
+              "taken"
+            ],
+            "failed": []
+          },
+          "hadClock": true,
+          "events": [
+            "list"
+          ],
+          "logs": [],
+          "state": {
+            "skip": [
+              "draft-head",
+              "gone",
+              "taken"
+            ]
+          },
+          "skipCount": 3
+        }
+      ]
+    },
+    {
+      "name": "transient-failure-is-retried",
+      "spec": {
+        "files": [
+          "later"
+        ],
+        "outcomes": {
+          "later": [
+            502,
+            "ok"
+          ]
+        },
+        "busy": false,
+        "flipBusyAfter": null,
+        "writer": null,
+        "reloadOk": true,
+        "listStatus": null,
+        "runs": [
+          {},
+          {}
+        ]
+      },
+      "runs": [
+        {
+          "result": {
+            "added": [],
+            "skipped": [],
+            "failed": [
+              "later (scripted 502)"
+            ]
+          },
+          "hadClock": true,
+          "events": [
+            "list",
+            "register:later"
+          ],
+          "logs": [
+            "[models] could not set up: later (scripted 502)"
+          ],
+          "state": null,
+          "skipCount": 0
+        },
+        {
+          "result": {
+            "added": [
+              "later"
+            ],
+            "skipped": [],
+            "failed": []
+          },
+          "hadClock": true,
+          "events": [
+            "list",
+            "register:later",
+            "reload"
+          ],
+          "logs": [
+            "[models] set up 1 new model from the models folder: later."
+          ],
+          "state": null,
+          "skipCount": 0
+        }
+      ]
+    },
+    {
+      "name": "busy-before-scan",
+      "spec": {
+        "files": [
+          "x",
+          "y"
+        ],
+        "outcomes": {},
+        "busy": true,
+        "flipBusyAfter": null,
+        "writer": null,
+        "reloadOk": true,
+        "listStatus": null,
+        "runs": [
+          {}
+        ]
+      },
+      "runs": [
+        {
+          "result": {
+            "added": [],
+            "deferred": true
+          },
+          "hadClock": true,
+          "events": [],
+          "logs": [],
+          "state": null,
+          "skipCount": 0
+        }
+      ]
+    },
+    {
+      "name": "busy-flips-mid-scan",
+      "spec": {
+        "files": [
+          "new-a",
+          "new-b"
+        ],
+        "outcomes": {},
+        "busy": false,
+        "flipBusyAfter": 1,
+        "writer": null,
+        "reloadOk": true,
+        "listStatus": null,
+        "runs": [
+          {},
+          {
+            "busy": false
+          }
+        ]
+      },
+      "runs": [
+        {
+          "result": {
+            "added": [
+              "new-a"
+            ],
+            "skipped": [],
+            "failed": [],
+            "deferred": true
+          },
+          "hadClock": true,
+          "events": [
+            "list",
+            "register:new-a",
+            "reload"
+          ],
+          "logs": [
+            "[models] set up 1 new model from the models folder: new-a."
+          ],
+          "state": null,
+          "skipCount": 0
+        },
+        {
+          "result": {
+            "added": [
+              "new-b"
+            ],
+            "skipped": [],
+            "failed": []
+          },
+          "hadClock": true,
+          "events": [
+            "list",
+            "register:new-b",
+            "reload"
+          ],
+          "logs": [
+            "[models] set up 1 new model from the models folder: new-b."
+          ],
+          "state": null,
+          "skipCount": 0
+        }
+      ]
+    },
+    {
+      "name": "busy-check-throws",
+      "spec": {
+        "files": [
+          "x"
+        ],
+        "outcomes": {},
+        "busy": "throw",
+        "flipBusyAfter": null,
+        "writer": null,
+        "reloadOk": true,
+        "listStatus": null,
+        "runs": [
+          {}
+        ]
+      },
+      "runs": [
+        {
+          "result": {
+            "added": [],
+            "deferred": true
+          },
+          "hadClock": true,
+          "events": [],
+          "logs": [],
+          "state": null,
+          "skipCount": 0
+        }
+      ]
+    },
+    {
+      "name": "held-writer-keeps-the-hold-across-the-batch",
+      "spec": {
+        "files": [
+          "one",
+          "two"
+        ],
+        "outcomes": {},
+        "busy": false,
+        "flipBusyAfter": null,
+        "writer": "ok",
+        "reloadOk": true,
+        "listStatus": null,
+        "runs": [
+          {}
+        ]
+      },
+      "runs": [
+        {
+          "result": {
+            "added": [
+              "one",
+              "two"
+            ],
+            "skipped": [],
+            "failed": []
+          },
+          "hadClock": true,
+          "events": [
+            "list",
+            "hold",
+            "register:one",
+            "register:two",
+            "reload",
+            "release"
+          ],
+          "logs": [
+            "[models] set up 2 new models from the models folder: one, two."
+          ],
+          "state": null,
+          "skipCount": 0
+        }
+      ]
+    },
+    {
+      "name": "held-writer-refused-is-transient",
+      "spec": {
+        "files": [
+          "one",
+          "two"
+        ],
+        "outcomes": {},
+        "busy": false,
+        "flipBusyAfter": null,
+        "writer": "refused",
+        "reloadOk": true,
+        "listStatus": null,
+        "runs": [
+          {},
+          {
+            "writer": "ok"
+          }
+        ]
+      },
+      "runs": [
+        {
+          "result": {
+            "added": [],
+            "skipped": [],
+            "deferred": true
+          },
+          "hadClock": true,
+          "events": [
+            "list"
+          ],
+          "logs": [],
+          "state": null,
+          "skipCount": 0
+        },
+        {
+          "result": {
+            "added": [
+              "one",
+              "two"
+            ],
+            "skipped": [],
+            "failed": []
+          },
+          "hadClock": true,
+          "events": [
+            "list",
+            "hold",
+            "register:one",
+            "register:two",
+            "reload",
+            "release"
+          ],
+          "logs": [
+            "[models] set up 2 new models from the models folder: one, two."
+          ],
+          "state": null,
+          "skipCount": 0
+        }
+      ]
+    },
+    {
+      "name": "held-writer-all-refused-no-reload",
+      "spec": {
+        "files": [
+          "draft-a",
+          "draft-b"
+        ],
+        "outcomes": {
+          "draft-a": 400,
+          "draft-b": 409
+        },
+        "busy": false,
+        "flipBusyAfter": null,
+        "writer": "ok",
+        "reloadOk": true,
+        "listStatus": null,
+        "runs": [
+          {}
+        ]
+      },
+      "runs": [
+        {
+          "result": {
+            "added": [],
+            "skipped": [
+              "draft-a",
+              "draft-b"
+            ],
+            "failed": []
+          },
+          "hadClock": true,
+          "events": [
+            "list",
+            "hold",
+            "register:draft-a",
+            "register:draft-b",
+            "release"
+          ],
+          "logs": [],
+          "state": {
+            "skip": [
+              "draft-a",
+              "draft-b"
+            ]
+          },
+          "skipCount": 2
+        }
+      ]
+    },
+    {
+      "name": "held-writer-other-error-is-a-scan-failure",
+      "spec": {
+        "files": [
+          "one"
+        ],
+        "outcomes": {},
+        "busy": false,
+        "flipBusyAfter": null,
+        "writer": "throws",
+        "reloadOk": true,
+        "listStatus": null,
+        "runs": [
+          {}
+        ]
+      },
+      "runs": [
+        {
+          "result": {
+            "added": [],
+            "error": "gate exploded"
+          },
+          "hadClock": false,
+          "events": [
+            "list"
+          ],
+          "logs": [
+            "[models] folder scan failed: gate exploded"
+          ],
+          "state": null,
+          "skipCount": 0
+        }
+      ]
+    },
+    {
+      "name": "scan-failure-is-logged",
+      "spec": {
+        "files": [
+          "x"
+        ],
+        "outcomes": {},
+        "busy": false,
+        "flipBusyAfter": null,
+        "writer": null,
+        "reloadOk": true,
+        "listStatus": 500,
+        "runs": [
+          {}
+        ]
+      },
+      "runs": [
+        {
+          "result": {
+            "added": [],
+            "error": "models folder unreadable"
+          },
+          "hadClock": false,
+          "events": [
+            "list"
+          ],
+          "logs": [
+            "[models] folder scan failed: models folder unreadable"
+          ],
+          "state": null,
+          "skipCount": 0
+        }
+      ]
+    },
+    {
+      "name": "engine-will-reload-later",
+      "spec": {
+        "files": [
+          "a"
+        ],
+        "outcomes": {},
+        "busy": false,
+        "flipBusyAfter": null,
+        "writer": null,
+        "reloadOk": false,
+        "listStatus": null,
+        "runs": [
+          {}
+        ]
+      },
+      "runs": [
+        {
+          "result": {
+            "added": [
+              "a"
+            ],
+            "skipped": [],
+            "failed": []
+          },
+          "hadClock": true,
+          "events": [
+            "list",
+            "register:a",
+            "reload"
+          ],
+          "logs": [
+            "[models] set up 1 new model from the models folder: a. The engine will offer them after its next reload."
+          ],
+          "state": null,
+          "skipCount": 0
+        }
+      ]
+    },
+    {
+      "name": "reload-throws-is-pending",
+      "spec": {
+        "files": [
+          "a"
+        ],
+        "outcomes": {},
+        "busy": false,
+        "flipBusyAfter": null,
+        "writer": null,
+        "reloadOk": "throw",
+        "listStatus": null,
+        "runs": [
+          {}
+        ]
+      },
+      "runs": [
+        {
+          "result": {
+            "added": [
+              "a"
+            ],
+            "skipped": [],
+            "failed": []
+          },
+          "hadClock": true,
+          "events": [
+            "list",
+            "register:a",
+            "reload"
+          ],
+          "logs": [
+            "[models] set up 1 new model from the models folder: a. The engine will offer them after its next reload."
+          ],
+          "state": null,
+          "skipCount": 0
+        }
+      ]
+    },
+    {
+      "name": "skip-list-keeps-the-last-500",
+      "spec": {
+        "files": {
+          "count": 503
+        },
+        "outcomes": "all 400",
+        "busy": false,
+        "flipBusyAfter": null,
+        "writer": null,
+        "reloadOk": true,
+        "listStatus": null,
+        "runs": [
+          {}
+        ]
+      },
+      "runs": [
+        {
+          "result": {
+            "added": [],
+            "skipped": {
+              "count": 503,
+              "first": "draft-000",
+              "last": "draft-502"
+            },
+            "failed": []
+          },
+          "hadClock": true,
+          "events": [
+            "list",
+            "register:draft-000",
+            "register:draft-001",
+            "register:draft-002",
+            "register:draft-003",
+            "register:draft-004",
+            "…498 more"
+          ],
+          "logs": [],
+          "state": {
+            "skip": {
+              "count": 500,
+              "first": "draft-003",
+              "last": "draft-502"
+            }
+          },
+          "skipCount": 503
+        }
+      ]
+    }
+  ]
+}
