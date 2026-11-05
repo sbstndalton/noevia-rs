@@ -167,9 +167,7 @@ async fn node(installed: Value) -> (u16, Stub) {
             if current.0 != 200 { return current.clone(); }
             return (200,json!({"env":{"EMBEDDING_MODEL":"syn-embed"},"embedding":{"status":{"stale":false,"enabled":true,"running":{"loaded":installed["sidecarLoaded"]}},"protected":["syn-embed"]},"config":null,"rerank":null,"revision":"synthetic-revision"}).to_string());
         }
-        if req.starts_with("POST /internal/model-manager-scan/snapshot ") {
-            return (200,json!({"token":"a".repeat(64),"hit":{"body":{"models":installed["scan"]}}}).to_string());
-        }
+        if req.starts_with("GET /api/v1/models ") { return (200,json!({"models":installed["scan"]}).to_string()); }
         (200,json!({"proxied":true}).to_string())
     })
     .await
@@ -196,6 +194,7 @@ async fn front(dir: &Path, node_port: u16, engine: Option<u16>) -> SocketAddr {
             "NOEVIA_LEGACY_UPSTREAM",
             format!("http://127.0.0.1:{node_port}"),
         ),
+        ("MODEL_LOADER_URL", format!("http://127.0.0.1:{node_port}")),
         ("UI_DATA_DIR", dir.display().to_string()),
         (
             "NOEVIA_START_ID",

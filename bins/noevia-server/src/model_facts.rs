@@ -10,6 +10,8 @@ pub const MAX_AGE_MS: i64 = 15_000;
 struct State {
     saved: Option<f64>,
     generation: u64,
+    entry: u64,
+    hit: Option<js_json::JValue>,
 }
 type ScanReply = Option<Option<js_json::JValue>>;
 type PendingScan = (String, tokio::sync::watch::Sender<ScanReply>);
@@ -17,6 +19,7 @@ type PendingScan = (String, tokio::sync::watch::Sender<ScanReply>);
 pub struct Authority {
     root: Option<PathBuf>,
     start: String,
+    epoch: [u8; 32],
     default: f64,
     meminfo: PathBuf,
     state: Mutex<State>,
@@ -62,7 +65,11 @@ impl Authority {
             let n = crate::model_maint::budget_watch::js_number(v.get("budgetGib"));
             (n > 0.0).then_some(n)
         });
+        use rand_core::RngCore;
+        let mut epoch = [0; 32];
+        rand_core::OsRng.fill_bytes(&mut epoch);
         Self {
+            epoch,
             root,
             start: get("NOEVIA_START_ID").unwrap_or_default(),
             default: get("INFERENCE_MEMORY_BUDGET_GIB")
@@ -78,8 +85,60 @@ impl Authority {
             state: Mutex::new(State {
                 saved,
                 generation: 0,
+                entry: 0,
+                hit: None,
             }),
         }
+    }
+    fn scan_token(&self, state: &State, entry: bool) -> String {
+        use sha2::{Digest, Sha256};
+        let mut hash = Sha256::new();
+        hash.update(self.epoch);
+        hash.update(state.generation.to_le_bytes());
+        if entry {
+            hash.update(state.entry.to_le_bytes());
+        }
+        format!("{:x}", hash.finalize())
+    }
+    pub fn scan_snapshot(&self) -> Option<js_json::JValue> {
+        use js_json::JValue;
+        let state = self.state.lock().ok()?;
+        Some(JValue::obj([
+            ("token", JValue::Str(self.scan_token(&state, false))),
+            ("entryToken", JValue::Str(self.scan_token(&state, true))),
+            ("now", JValue::Num(crate::identity::now_ms() as f64)),
+            ("hit", state.hit.clone().unwrap_or(JValue::Null)),
+        ]))
+    }
+    pub fn scan_publish(&self, token: &str, body: js_json::JValue) -> bool {
+        if !matches!(body, js_json::JValue::Obj(_) | js_json::JValue::Arr(_)) {
+            return false;
+        }
+        let Ok(mut state) = self.state.lock() else {
+            return false;
+        };
+        if token != self.scan_token(&state, false) {
+            return false;
+        }
+        let Some(entry) = state.entry.checked_add(1) else {
+            return false;
+        };
+        state.entry = entry;
+        state.hit = Some(js_json::JValue::obj([
+            ("at", js_json::JValue::Num(crate::identity::now_ms() as f64)),
+            ("body", body),
+        ]));
+        true
+    }
+    pub fn scan_refresh_token(&self, entry: &str) -> Option<String> {
+        let state = self.state.lock().ok()?;
+        (entry == self.scan_token(&state, true)).then(|| self.scan_token(&state, false))
+    }
+    pub fn scan_invalidate(&self) -> Option<()> {
+        let mut state = self.state.lock().ok()?;
+        state.generation = state.generation.checked_add(1)?;
+        state.hit = None;
+        Some(())
     }
     fn figure(&self, state: &State) -> Value {
         let text = std::fs::read_to_string(&self.meminfo).ok();
@@ -195,6 +254,7 @@ impl Authority {
             }
             return Err(unavailable());
         }
+        state.hit = None;
         Ok(self.figure(&state))
     }
 }
@@ -340,8 +400,12 @@ pub async fn sidecars(
     ))
 }
 
-// Coalesce only in-flight cold reads. G3 remains the sole persistent cache/generation owner.
-async fn shared_scan(app: &crate::App, token: &str) -> Option<js_json::JValue> {
+// One in-flight scan per native generation; invalidation never retargets an old reader.
+pub(crate) async fn shared_scan(
+    app: &crate::App,
+    token: &str,
+    seconds: u64,
+) -> Option<js_json::JValue> {
     let mut receiver = {
         let mut pending = app.config.model_facts.scan.lock().ok()?;
         if let Some((_, sender)) = pending
@@ -354,13 +418,17 @@ async fn shared_scan(app: &crate::App, token: &str) -> Option<js_json::JValue> {
             *pending = Some((token.to_owned(), sender.clone()));
             let authority = std::sync::Arc::clone(&app.config.model_facts);
             let loader = app.config.model_manager_scan.clone();
+            let token_owned = token.to_owned();
             tokio::spawn(async move {
                 let result = loader
-                    .facts_get("/api/v1/models", 8)
+                    .facts_get("/api/v1/models", seconds)
                     .await
                     .filter(|(s, _)| s.is_success())
                     .and_then(|(_, v)| v)
-                    .map(|v| v.get("models").clone());
+                    .filter(|v| matches!(v, js_json::JValue::Obj(_) | js_json::JValue::Arr(_)));
+                if let Some(body) = result.as_ref() {
+                    authority.scan_publish(&token_owned, body.clone());
+                }
                 let _ = sender.send(Some(result));
                 if let Ok(mut pending) = authority.scan.lock() {
                     if pending
@@ -434,19 +502,21 @@ async fn installed_inner(
     }
     let mut files = JValue::Null;
     if scan {
-        let before = crate::model_manager_scan::cache(app, "snapshot", &json!({})).await?;
+        let before = app.config.model_facts.scan_snapshot()?;
         let token = before.get("token").as_str()?;
         let hit = before.get("hit").get("body").get("models");
         let candidate = if matches!(hit, JValue::Arr(_)) {
             Some(hit.clone())
         } else {
-            shared_scan(app, token).await
+            shared_scan(app, token, 8)
+                .await
+                .map(|v| v.get("models").clone())
         };
         if sidecars(app, None).await?.2 != revision {
             return None;
         }
         // This is the final await before projection: invalidation during any earlier read wins.
-        let after = crate::model_manager_scan::cache(app, "snapshot", &json!({})).await?;
+        let after = app.config.model_facts.scan_snapshot()?;
         if Some(token) == after.get("token").as_str() {
             if let Some(JValue::Arr(rows)) = candidate {
                 if !rows.is_empty() {

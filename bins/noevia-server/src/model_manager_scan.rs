@@ -1,4 +1,4 @@
-//! #2304: exact GET folder scan policy. Core remains the single generation-fenced scan cache.
+//! Native folder scan policy and G1 generation-fenced cache.
 use crate::{identity, reply, App};
 use axum::{
     body::Body,
@@ -8,7 +8,6 @@ use axum::{
 use js_json::{wtf16, JValue};
 use std::{sync::Arc, time::Duration};
 pub const PATH: &str = "/api/model-manager/models";
-const PREFIX: &str = "/internal/model-manager-scan/";
 const CAP: usize = 8 * 1024 * 1024;
 #[derive(Clone)]
 pub struct Loader {
@@ -130,23 +129,15 @@ fn answer(status: StatusCode, body: &JValue, cached: bool) -> Response<Body> {
     }
     res
 }
+fn stale(now: f64, at: f64) -> bool {
+    now - at > 5000.0
+}
 fn opaque<'a>(v: &'a JValue, key: &str) -> Option<&'a str> {
     v.get(key).as_str().filter(|s| {
         s.len() == 64
             && s.bytes()
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
     })
-}
-pub(crate) async fn cache(app: &App, op: &str, body: &serde_json::Value) -> Option<JValue> {
-    let (status, bytes) = app
-        .config
-        .research
-        .node_call(&format!("{PREFIX}{op}"), body, Duration::from_secs(5))
-        .await?;
-    if status != 200 || bytes.len() > CAP + 4096 {
-        return None;
-    }
-    wtf16::parse(std::str::from_utf8(&bytes).ok()?).ok()
 }
 fn detail(body: JValue) -> JValue {
     if matches!(body, JValue::Obj(_) | JValue::Arr(_)) {
@@ -159,6 +150,68 @@ fn detail(body: JValue) -> JValue {
         };
         JValue::obj([("error", JValue::Str(text))])
     }
+}
+// Validate raw segments before WHATWG normalization or forwarding can hide traversal.
+pub fn invalid_manager_path(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("/api/model-manager/") else {
+        return false;
+    };
+    if rest.contains("..")
+        || !rest
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_./%:+@-".contains(&b))
+    {
+        return true;
+    }
+    rest.split('/').any(|part| {
+        let mut decoded = Vec::new();
+        let mut bytes = part.bytes();
+        while let Some(b) = bytes.next() {
+            if b == b'%' {
+                let hex = |b: u8| (b as char).to_digit(16);
+                let Some(a) = bytes.next().and_then(hex) else {
+                    return true;
+                };
+                let Some(b) = bytes.next().and_then(hex) else {
+                    return true;
+                };
+                decoded.push((a * 16 + b) as u8);
+            } else {
+                decoded.push(b);
+            }
+        }
+        let Ok(text) = std::str::from_utf8(&decoded) else {
+            return true;
+        };
+        text == "." || text == ".." || text.contains(['/', '\\'])
+    })
+}
+pub async fn reject_path(app: &Arc<App>, req: Request<Body>) -> Response<Body> {
+    let (parts, _) = req.into_parts();
+    let creds = identity::creds_of(&parts);
+    let gate = Arc::clone(&app.identity);
+    let id = match tokio::task::spawn_blocking(move || {
+        gate.gate_blocking(&creds, PATH, identity::now_ms())
+    })
+    .await
+    {
+        Ok(Ok(id)) => id,
+        Ok(Err(r)) => return r.into_response(),
+        Err(_) => return identity::Rejection::Unavailable.into_response(),
+    };
+    if id.user.role != server_auth::Role::Admin {
+        return error(
+            StatusCode::FORBIDDEN,
+            "Administrator required for model management",
+        );
+    }
+    if !app.config.model_manager_scan.configured() {
+        return error(
+            StatusCode::NOT_FOUND,
+            "Model management service is not configured",
+        );
+    }
+    error(StatusCode::BAD_REQUEST, "Invalid path")
 }
 pub async fn serve(
     app: &Arc<App>,
@@ -197,7 +250,7 @@ pub async fn serve(
     let query = parts.uri.query().unwrap_or("");
     // A nonempty query bypasses the shared cache entirely. A bare '?' has URL.search == ''.
     let snapshot = if query.is_empty() {
-        let Some(value) = cache(app, "snapshot", &serde_json::json!({})).await else {
+        let Some(value) = app.config.model_facts.scan_snapshot() else {
             return unavailable();
         };
         if opaque(&value, "token").is_none() || opaque(&value, "entryToken").is_none() {
@@ -214,13 +267,16 @@ pub async fn serve(
             if !now.is_finite() || !at.is_finite() {
                 return unavailable();
             }
-            if now - at > 5000.0 {
+            if stale(now, at) {
                 // The owner merely schedules its existing single in-flight refresher if this
                 // exact cache entry is still current; it never chooses public freshness policy.
                 if let Some(token) = opaque(&value, "entryToken").map(str::to_owned) {
                     let app = Arc::clone(app);
                     tokio::spawn(async move {
-                        let _ = cache(&app, "refresh", &serde_json::json!({"token":token})).await;
+                        if let Some(generation) = app.config.model_facts.scan_refresh_token(&token)
+                        {
+                            let _ = crate::model_facts::shared_scan(&app, &generation, 15).await;
+                        }
                     });
                 }
             }
@@ -241,13 +297,8 @@ pub async fn serve(
         if let Some(snapshot) = snapshot {
             // Publication is conditional and best effort. A restarted owner or intervening write
             // cannot accept the old epoch/generation. Never retry against a new instance/token.
-            if let Some(json) = wtf16::stringify(&body) {
-                let _ = cache(
-                    app,
-                    "publish",
-                    &serde_json::json!({"token":opaque(&snapshot,"token"),"bodyJson":json}),
-                )
-                .await;
+            if let Some(token) = opaque(&snapshot, "token") {
+                app.config.model_facts.scan_publish(token, body.clone());
             }
         }
         answer(status, &body, false)
@@ -264,9 +315,28 @@ pub async fn serve(
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used)]
+#[allow(clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    #[test]
+    fn cache_freshness_matches_recorded_node_thresholds() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/model-manager-scan-node.json"
+        ))
+        .expect("oracle fixture");
+        for row in fixture["rows"].as_array().expect("fixture rows") {
+            let Some(age) = row["spec"]["age"].as_f64() else {
+                continue;
+            };
+            let query = row["spec"]["search"].as_str().unwrap_or("");
+            if (query.is_empty() || query == "?") && row["spec"]["method"].is_null() {
+                assert_eq!(
+                    stale(10_000.0, 10_000.0 - age),
+                    row["refreshes"].as_u64() == Some(1)
+                );
+            }
+        }
+    }
     #[test]
     fn config_diagnostics_never_print_loader_url_or_credentials() {
         let loader = Loader::from_lookup(|key| match key {

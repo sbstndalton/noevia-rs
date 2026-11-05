@@ -640,6 +640,59 @@ pub fn router_with_app(
             async move { legacy_webdav(store, app, headers, raw).await }
         }),
     );
+    for op in ["read", "invalidate"] {
+        let (scan_store, scan_app) = (store.clone(), app.clone());
+        router = router.route(
+            &format!("/v1/model-scan/{op}"),
+            post(move |headers: HeaderMap, raw: Bytes| {
+                let (store, app) = (scan_store.clone(), scan_app.clone());
+                async move {
+                    if !authorised(&store, &headers)
+                        || headers.contains_key("x-forwarded-for")
+                        || headers.contains_key("x-noevia-client-ip")
+                    {
+                        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+                    }
+                    if raw.as_ref() != b"{}" {
+                        return error(StatusCode::BAD_REQUEST, "Invalid scan cache operation.");
+                    }
+                    let Some(app) = app else {
+                        return error(StatusCode::SERVICE_UNAVAILABLE, "Model scan unavailable");
+                    };
+                    if op == "invalidate" {
+                        return if app.config.model_facts.scan_invalidate().is_some() {
+                            reply(StatusCode::OK, &serde_json::json!({"ok":true}))
+                        } else {
+                            error(StatusCode::SERVICE_UNAVAILABLE, "Model scan unavailable")
+                        };
+                    }
+                    let Some(before) = app.config.model_facts.scan_snapshot() else {
+                        return error(StatusCode::SERVICE_UNAVAILABLE, "Model scan unavailable");
+                    };
+                    let Some(token) = before.get("token").as_str() else {
+                        return error(StatusCode::SERVICE_UNAVAILABLE, "Model scan unavailable");
+                    };
+                    let body = if !matches!(before.get("hit"), js_json::JValue::Null) {
+                        Some(before.get("hit").get("body").clone())
+                    } else {
+                        crate::model_facts::shared_scan(&app, token, 8).await
+                    };
+                    let current = app.config.model_facts.scan_snapshot();
+                    let body = body.filter(|_| {
+                        current
+                            .as_ref()
+                            .is_some_and(|s| s.get("token").as_str() == Some(token))
+                    });
+                    crate::reply::json_text(
+                        StatusCode::OK,
+                        js_json::wtf16::stringify(&body.unwrap_or(js_json::JValue::Null))
+                            .unwrap_or_else(|| "null".into()),
+                        true,
+                    )
+                }
+            }),
+        );
+    }
     let (installed_store, installed_app) = (store.clone(), app.clone());
     router = router.route(
         "/v1/model-facts/installed",

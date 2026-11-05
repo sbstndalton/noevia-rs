@@ -425,6 +425,7 @@ pub const FEATURES: &[&str] = &[
     "rust-calibration-routes",
     "rust-calibration-worker-v2",
     "rust-model-manager-scan",
+    "rust-model-scan-cache-v1",
     "rust-model-evidence-recheck",
     "rust-web-address-read",
     "rust-web-address-write",
@@ -716,6 +717,9 @@ async fn handle(
         }
     }
     let path = req.uri().path().to_string();
+    if model_manager_scan::invalid_manager_path(&path) {
+        return model_manager_scan::reject_path(&app, req).await;
+    }
     let switches = app.config.switches();
     let mut native = routes::dispatch_under(req.method().as_str(), &path, switches);
     // Node routes on the WHATWG pathname (`new URL(req.url, base)`): a Rust-owned switched route

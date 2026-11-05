@@ -39,3 +39,30 @@ The regression suite polls the admission snapshot during an induced commit
 failure and repeated publication failures. It also checks restoration of both a
 present and an absent row across restart, and injects a compensation failure to
 verify the explicitly documented restart behavior.
+
+## Scan cache (G3)
+
+The same authority mutex and generation own the folder scan. Budget adoption
+and scan invalidation both fence publication; each process has a fresh random
+epoch, so tokens from an earlier process are unusable. Entry tokens additionally
+fence a conditional refresh against replacement within a generation. There is
+no Node cache, publication operation, or refresh worker.
+
+The exact public GET retains the recorded Node policy: nonempty queries bypass
+cache storage; cached answers carry no-store and X-Model-Scan; entries older
+than 5,000 ms trigger one background read. A refresh has the oracle's 15-second
+bound, facts reads use 8 seconds, and cold public reads retain 600 seconds.
+Installed facts, private scan reads and refreshes share native in-flight reads.
+The private store accepts only fixed read and invalidate operations; it has no
+URL selector or scan-publication endpoint.
+
+Node's remaining model/manager writers await native invalidation before work,
+before releasing the response, and when the writer settles even if the caller
+leaves or the writer fails. This also fences scans started during a mutation,
+which the old before-only invalidation missed (#2405). Native budget saves
+clear the scan only after persistence and snapshot publication succeed.
+
+Assembly and supervisor pairing require rust-model-scan-cache-v1 with G1 and
+the matching Core consumer. Manager path validation runs on raw segments before
+URL normalization, preserving the administrator/configuration gates and the
+400 Invalid path response for decoded traversal or separators.
