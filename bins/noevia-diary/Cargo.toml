@@ -1,0 +1,30 @@
+[package]
+name = "noevia-diary"
+version = "0.1.0"
+description = "Diary server process (D4): serves the read routes Python forwards to it on 127.0.0.1:8011"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "io-util", "io-std", "signal"] }
+http-body-util = "0.1"
+rusqlite = { version = "0.40", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "=0.10.9"
+subtle = { version = "=2.6.1", default-features = false }
+chrono = { version = "=0.4.45", default-features = false, features = ["std", "clock"] }
+reqwest = { version = "0.12", default-features = false }
+regex = "1"
+tenant-assertion = { path = "../../crates/tenant-assertion" }
+diary-corpus-parse = { path = "../../crates/diary-corpus-parse" }
+
+[dev-dependencies]
+tempfile = "3"
+reqwest = { version = "0.12", default-features = false }

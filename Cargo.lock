@@ -1855,6 +1855,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "noevia-diary"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "diary-corpus-parse",
+ "http-body-util",
+ "regex",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "subtle",
+ "tempfile",
+ "tenant-assertion",
+ "tokio",
+]
+
+[[package]]
 name = "noevia-docling"
 version = "0.1.0"
 dependencies = [
