@@ -1,6 +1,6 @@
 //! Effective model facts. Rust owns the boot/live budget; the settings row is only its boot input.
 use serde_json::{json, Value};
-use server_store::rusqlite::{Connection, OptionalExtension, TransactionBehavior};
+use server_store::rusqlite::{Connection, OpenFlags, OptionalExtension, TransactionBehavior};
 use std::{path::PathBuf, sync::Mutex};
 
 pub const FILE: &str = "model-facts.json";
@@ -49,7 +49,11 @@ impl Authority {
             .filter(|s| !s.is_empty())
             .map(PathBuf::from);
         let saved = root.as_ref().and_then(|p| {
-            let c = Connection::open(p.join("cowork.db")).ok()?;
+            let c = Connection::open_with_flags(
+                p.join("cowork.db"),
+                OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+            )
+            .ok()?;
             let s: Option<String> = c
                 .query_row(
                     "SELECT value FROM settings WHERE key='inference:memory-budget'",
@@ -148,7 +152,11 @@ impl Authority {
         let max = field(&r, "maxGib").as_f64().unwrap_or(1024.0);
         let n = body.get("budgetGib").and_then(Value::as_f64).filter(|n|n.is_finite() && round1(*n)==*n && *n>=2.0 && *n<=max).ok_or_else(||(400,json!({"error":format!("Enter a budget from 2 to {max} GiB, in steps of 0.1."),"errorId":"invalidBudget","minGib":2,"maxGib":max})))?;
         let root = self.root.as_ref().ok_or_else(unavailable)?;
-        let mut c = Connection::open(root.join("cowork.db")).map_err(|_| unavailable())?;
+        let mut c = Connection::open_with_flags(
+            root.join("cowork.db"),
+            OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .map_err(|_| unavailable())?;
         c.busy_timeout(std::time::Duration::from_secs(2))
             .map_err(|_| unavailable())?;
         let old_saved = state.saved;
