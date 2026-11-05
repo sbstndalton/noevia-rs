@@ -443,22 +443,32 @@ async function fallbackRecord(core, toml, fixture, out) {
   };
   const { json, unauthorized } = load('server/http.cjs');
   const modelRoutes = load('server/routes/models.cjs').createModelRoutes({ json, env: {}, modelManager: { enabled: false }, service: { modelScanCache: { clear() {} } }, currentWorkspace: () => ({}) });
+  const authRoutes = load('server/routes/auth.cjs').createAuthRoutes({ json, readJson: async () => ({}) });
   const providerRoutes = load('server/routes/providers.cjs').createProviderRoutes({ json });
   const serveStatic = load('server/spa-routes.cjs').createStaticFallback({ json, staticFiles: { resolve: () => null } });
   const doc = JSON.parse(fs.readFileSync(fixture));
   const routes = rustRoutes(toml);
+  const credentials = load('server/rust-mcp-credentials.cjs');
+  const registry = load('server/rust-providers.cjs');
+  const providerModels = load('server/rust-provider-models.cjs');
+  const broker = load('server/rust-chatgpt-oauth.cjs');
   const selected = (c) => {
     const p = c.path, m = c.method;
+    if (p.startsWith('/api/models/') && p.endsWith('/') && routes.some((r) => !r.path.includes('{') && p.replace(/\/+$/, '') === r.path)) return true;
     if (['/api/models/installed', '/api/models/downloads', '/api/models/capabilities', '/api/models/hardware', '/api/models/estimate', '/api/models/preset/suggest'].includes(p)) return m !== 'GET';
+    if (p === '/api/models/assignments') return m !== 'GET';
     if (p === '/api/models/prune-missing') return m !== 'POST';
     if (p === '/api/models/reranker') return !['GET', 'PUT', 'DELETE'].includes(m);
+    if (['/api/mcp-keys', '/api/mcp-oauth'].some((b) => p === b || p.startsWith(`${b}/`))) return !credentials.owned(m, p) || (p === '/api/mcp-keys/servers' && ['PUT', 'DELETE'].includes(m)) || (['/api/mcp-oauth/servers', '/api/mcp-oauth/callback'].includes(p) && m === 'DELETE');
+    if (p === '/api/providers' || p.startsWith('/api/providers/')) return !(registry.owned(m, p) || providerModels.owned(p) || broker.owned(m,p) || (p === '/api/providers/chatgpt' && m === 'GET') || (p === '/api/providers/test' && m === 'POST'));
     if ((p === '/api/providers/test' && ['PUT', 'DELETE'].includes(m)) || (p === '/api/providers/chatgpt' && m === 'DELETE')) return false;
-    if (!['/api/connectors', '/api/integrations/storage', '/api/plugins/directory', '/api/toolboxes', '/api/providers'].some((b) => p === b || p.startsWith(`${b}/`))) return false;
+    if ((p === '/api/integrations/storage/files' || p.startsWith('/api/integrations/storage/files/')) && m !== 'GET') return true;
+    if (!['/api/connectors', '/api/integrations/storage', '/api/plugins/directory', '/api/toolboxes', '/api/admin/offsite-backup', '/api/providers'].some((b) => p === b || p.startsWith(`${b}/`))) return false;
     const r = routes.find((r) => !r.path.includes('{') && (p === r.path || p === `${r.path}/`));
     return !!r && (p !== r.path || (r.methods.length && !r.methods.includes(m)));
   };
   const rows = [];
-  const extras = ['/api/models/grid-unmatched/deep', '/api/connectors/grid-unmatched/deep', '/api/integrations/storage/grid-unmatched', '/api/toolboxes/grid-unmatched', '/api/providers/grid-unmatched/deep', '/api/providers/chatgpt/grid-unmatched'].flatMap((p) => METHODS.flatMap((method) => ROLES.filter((who) => !who.endsWith('-nocsrf') || UNSAFE.includes(method)).map((who) => ({ id: `${method} ${p} ${who}`, family: familyOf(p), route: p, shape: 'unmatched', method, path: p, who }))));
+  const extras = ['/api/models/pull', '/api/models/delete', '/api/models/load', '/api/models/unload', '/api/models/grid-unmatched/deep', '/api/connectors/grid-unmatched/deep', '/api/integrations/storage/grid-unmatched', '/api/toolboxes/grid-unmatched', '/api/providers/grid-unmatched/deep', '/api/providers/chatgpt/grid-unmatched'].flatMap((p) => METHODS.filter((m) => m !== 'POST' || !['/api/models/pull', '/api/models/delete', '/api/models/load', '/api/models/unload'].includes(p)).flatMap((method) => ROLES.filter((who) => !who.endsWith('-nocsrf') || UNSAFE.includes(method)).map((who) => ({ id: `${method} ${p} ${who}`, family: familyOf(p), route: p, shape: 'unmatched', method, path: p, who }))));
   for (const c of [...doc.cases.filter(selected), ...extras]) {
     const authn = c.who === 'anon' ? null : { user: { id: 'synthetic-grid-user', role: c.who.startsWith('admin') ? 'admin' : 'member' } };
     const noop = async () => false;
@@ -471,7 +481,7 @@ async function fallbackRecord(core, toml, fixture, out) {
       errorResponse: (e) => { throw e; }, console,
     };
     for (const n of ['webAddressRoutes', 'featureRoutes', 'chatFramingRoutes', 'exportRoutes', 'importRoutes', 'accountRoutes', 'codeRoutes', 'browserRoutes', 'storageRoutes', 'chatListRoutes', 'usageRoutes', 'reasoningSettingsRoutes', 'routingModeRoutes', 'samplingSettingsRoutes', 'embeddingRoutes', 'inferenceMachineRoutes', 'chatRoutes']) ctx[n] = noop;
-    ctx.authRoutes = { account: noop }; ctx.deviceRoutes = { open: noop }; ctx.readyRoutes = noop;
+    ctx.authRoutes = authRoutes; ctx.deviceRoutes = { open: noop }; ctx.readyRoutes = noop;
     const publicStart = index.indexOf('function publicHeaders(res)');
     const publicEnd = index.indexOf('\n}', publicStart) + 2;
     const start = index.indexOf('async function handleRequestScoped(req, res)');
@@ -481,9 +491,11 @@ async function fallbackRecord(core, toml, fixture, out) {
     const headers = { 'x-noevia-api': '1' };
     let status, text;
     const res = { setHeader: (k,v) => { headers[k.toLowerCase()] = v; }, writeHead: (s,h) => { status=s; for (const [k,v] of Object.entries(h)) headers[k.toLowerCase()]=v; }, end: (b) => { text = c.method === 'HEAD' ? '' : b; } };
-    await ctx.handleRequestScoped({ method: c.method, url: c.path, headers: { host: HOST } }, res);
+    const req = { method: c.method, url: c.path, headers: { host: HOST } };
+    ctx.publicHeaders(res);
+    if (!credentials.refuseOwned(req, res, { parseRequestUrl: ctx.parseRequestUrl, json })) await ctx.handleRequestScoped(req, res);
     if (c.status !== undefined && (status !== c.status || JSON.stringify(parseBody(text)) !== JSON.stringify(c.body))) throw new Error(`scoped oracle differs from stack: ${c.id}: ${status} ${text}`);
-    rows.push({ ...c, status, body: parseBody(text), wireBody: text, headers, answeredBy: c.route === '/api/models/downloads' && status === 200 ? 'front-node-facts' : 'front' });
+    rows.push({ ...c, status, body: parseBody(text), wireBody: text, headers, answeredBy: 'front' });
   }
   writeFixture(out, { coreRef, note: 'Scoped Node handler at origin/main, real residual mounts, synthetic identity and disabled engine. Existing full-stack grid supplies the comparison baseline. Identity backend and runtime facts are tested separately by Rust replay.', cases: rows });
 }

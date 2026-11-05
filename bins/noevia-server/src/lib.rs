@@ -80,6 +80,7 @@ pub mod provider_test_routes;
 pub mod public_pages;
 pub mod reasoning_settings_routes;
 pub mod reply;
+mod residual_fallback;
 pub mod research_routes;
 pub mod routes;
 pub mod routing_default_routes;
@@ -811,6 +812,11 @@ async fn handle(
             writes.upkeep_blocking(identity.authenticator(), &creds, now)
         })
         .await;
+    }
+    if let Some(p) = whatwg.as_deref() {
+        if let Some(kind) = residual_fallback::classify(req.method().as_str(), p) {
+            return residual_fallback::serve(&app, req, p.to_string(), kind).await;
+        }
     }
     match native {
         Some(routes::Native::StorageMetadata) => {

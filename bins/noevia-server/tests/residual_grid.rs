@@ -64,14 +64,25 @@ async fn sentinel() -> SocketAddr {
             };
             tokio::spawn(async move {
                 let svc = hyper::service::service_fn(|r: Request<Incoming>| async move {
+                    let facts = r.method() == "POST"
+                        && r.uri().path() == "/internal/model-downloads-read/facts"
+                        && r.headers()
+                            .get("x-noevia-store-token")
+                            .is_some_and(|h| h == "synthetic-residual-grid-private-token");
                     let _ = r.into_body().collect().await;
-                    Ok::<_, std::convert::Infallible>(
+                    let answer = if facts {
+                        Response::builder()
+                            .status(200)
+                            .body(Full::new(Bytes::from_static(br#"{"kind":"disabled"}"#)))
+                            .unwrap()
+                    } else {
                         Response::builder()
                             .status(599)
                             .header("x-residual-sentinel", "1")
                             .body(Full::new(Bytes::new()))
-                            .unwrap(),
-                    )
+                            .unwrap()
+                    };
+                    Ok::<_, std::convert::Infallible>(answer)
                 });
                 let _ = hyper::server::conn::http1::Builder::new()
                     .serve_connection(hyper_util::rt::TokioIo::new(stream), svc)
@@ -135,6 +146,10 @@ async fn front(up: SocketAddr, data: &Path) -> SocketAddr {
     let mut env: HashMap<&str, String> = HashMap::new();
     env.insert("NOEVIA_LEGACY_UPSTREAM", format!("http://{up}"));
     env.insert("UI_PORT", "1".into());
+    env.insert(
+        "NOEVIA_PROJECT_STORE_TOKEN",
+        "synthetic-residual-grid-private-token".into(),
+    );
     env.insert("UI_DATA_DIR", data.display().to_string());
     env.insert("NOEVIA_WEB_DIST", data.join("dist").display().to_string());
     env.insert("PUBLIC_ORIGIN", ORIGIN.into());
