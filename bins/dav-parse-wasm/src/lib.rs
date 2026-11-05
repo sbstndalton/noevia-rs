@@ -578,6 +578,17 @@ pub fn run_autotune_plan(input: &[u8]) -> (u32, String) {
     autotune_plan::plan_json(text)
 }
 
+/// Pure shared untuned scan/signature, separate from the unchanged next-step planner ABI.
+pub fn run_autotune_scan(input: &[u8]) -> (u32, String) {
+    if input.len() > autotune_plan::scan::MAX_BYTES {
+        return (1, "{\"error\":\"too_large\"}".into());
+    }
+    let Ok(text) = std::str::from_utf8(input) else {
+        return (2, "{\"error\":\"input_not_utf8\"}".into());
+    };
+    autotune_plan::scan::run_json(text)
+}
+
 /// Decide whether a router preset reload keeps every loaded model; see the crate docs.
 pub fn run_preset_reload(input: &[u8]) -> (u32, String) {
     if input.len() > preset_reload::MAX_INPUT_BYTES {
@@ -975,6 +986,13 @@ pub extern "C" fn serving_verdict() -> u32 {
 #[no_mangle]
 pub extern "C" fn autotune_plan() -> u32 {
     consume(run_autotune_plan)
+}
+
+/// Shared scan/signature policy for Node's runner and the native public route (#2295).
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn autotune_scan() -> u32 {
+    consume(run_autotune_scan)
 }
 
 /// Check a router preset reload from the input buffer; see the crate docs.

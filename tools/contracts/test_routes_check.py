@@ -46,6 +46,26 @@ class RoutesCheck(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("/api/projects/{id}/files", r.stdout)
 
+    def test_a_query_template_and_an_encoded_segment_before_a_suffix_are_seen(self):
+        # The two call sites routes.toml lacked until web.ref moved past f7d21353 (noevia-web src/api.ts
+        # and src/chat-export.ts, verbatim): the query is dropped and the encoded id becomes {chatId}.
+        d = pathlib.Path(tempfile.mkdtemp())
+        (d / "src").mkdir()
+        (d / "src" / "api.ts").write_text(
+            "export const s = (text: string) => getJson<{ chats: string[]; truncated: boolean }>(`/api/chats/search?q=${encodeURIComponent(text)}`).then((r) => r);\n"
+            "export const e = (chatId: string) => apiFetch(`/api/chats/${encodeURIComponent(chatId)}/export`);\n"
+        )
+        self.assertEqual(sorted(routes_check.client_paths(d)), ["/api/chats/search", "/api/chats/{chatId}/export"])
+        (d / "routes.toml").write_text('[[route]]\npath = "/api/chats/{chatId}/move"\nowner = "rust"\n')
+        r = self.run_check(d)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("/api/chats/search", r.stdout)
+        self.assertIn("/api/chats/{chatId}/export", r.stdout)
+        (d / "routes.toml").write_text(
+            '[[route]]\npath = "/api/chats/search"\nowner = "node"\n\n[[route]]\npath = "/api/chats/{id}/export"\nowner = "node"\n'
+        )
+        self.assertEqual(self.run_check(d).returncode, 0)
+
     def test_refuses_an_entry_without_an_owner(self):
         d = self.tree([])
         (d / "routes.toml").write_text('[[route]]\npath = "/api/profile"\n')
