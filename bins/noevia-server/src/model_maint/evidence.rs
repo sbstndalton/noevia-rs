@@ -348,6 +348,11 @@ impl Store {
         Ok(())
     }
 
+    pub(super) fn hydrate(&self) -> Result<(), StoreError> {
+        let mut locked = self.runs.lock().map_err(|_| StoreError::Io)?;
+        self.hydrate_runs(&mut locked)
+    }
+
     fn persist_runs(&self, ledger: &RunLedger) -> Result<(), StoreError> {
         #[cfg(test)]
         if self
