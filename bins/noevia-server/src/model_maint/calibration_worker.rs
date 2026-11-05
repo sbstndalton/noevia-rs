@@ -1781,6 +1781,7 @@ impl Worker {
     /// `run(job, release)`.
     async fn run(self: Arc<Self>, hold: Hold) {
         #[cfg(test)]
+        #[allow(clippy::panic)]
         if self.panic_on_run.swap(false, Ordering::AcqRel) {
             panic!("synthetic run panic");
         }
