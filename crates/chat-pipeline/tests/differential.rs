@@ -639,3 +639,87 @@ fn turn_endings_match_node() {
         );
     }
 }
+
+fn steps_log(steps: Vec<chat_pipeline::stream::Step>) -> Vec<JValue> {
+    use chat_pipeline::stream::Step;
+    steps
+        .into_iter()
+        .map(|s| match s {
+            Step::Send(e) => JValue::Arr(vec![JValue::Str("send".into()), e]),
+            Step::FirstOutput => JValue::Arr(vec![JValue::Str("first".into())]),
+            Step::Usage { usage, timings } => JValue::Arr(vec![
+                JValue::Str("usage".into()),
+                if usage.is_nullish() { JValue::Null } else { usage },
+                if timings.is_nullish() { JValue::Null } else { timings },
+            ]),
+            Step::End => JValue::Arr(vec![JValue::Str("end".into())]),
+        })
+        .collect()
+}
+
+fn slots_json(r: &chat_pipeline::stream::Round) -> String {
+    let tools: Vec<JValue> = r
+        .tool_calls
+        .iter()
+        .map(|(i, s)| {
+            let mut o = vec![
+                ("id".to_owned(), s.id.clone()),
+                ("idMade".to_owned(), JValue::Bool(s.id_made)),
+                ("name".to_owned(), JValue::Str(s.name.clone())),
+                ("args".to_owned(), JValue::Str(s.args.clone())),
+            ];
+            if s.too_large {
+                o.push(("tooLarge".into(), JValue::Bool(true)));
+            }
+            JValue::Arr(vec![JValue::Num(*i), JValue::Obj(o)])
+        })
+        .collect();
+    wtf16::stringify(&JValue::Arr(tools)).unwrap()
+}
+
+#[test]
+fn round_fallback_and_call_preparation_match_node() {
+    use chat_pipeline::stream::{Round, Slot};
+    let c = wtf16::parse(include_str!("fixtures/calls-cases.json")).unwrap();
+    for k in arr(c.get("fallback")) {
+        let b = k.get("before");
+        let mut r = Round::new(false, b.get("toolOffset").as_num().unwrap() as usize, b.get("shownText") == &JValue::Bool(true));
+        r.round_content = b.get("roundContent").as_str().unwrap().to_owned();
+        let log = steps_log(r.fallback(k.get("body")));
+        let what = wtf16::stringify(k.get("body")).unwrap();
+        assert_eq!(wtf16::stringify(&JValue::Arr(log)).unwrap(), wtf16::stringify(k.get("log")).unwrap(), "{what}");
+        let st = k.get("state");
+        assert_eq!(Some(r.round_content.as_str()), st.get("roundContent").as_str(), "{what}");
+        assert_eq!(Some(r.round_reasoning.as_str()), st.get("roundReasoning").as_str(), "{what}");
+        assert_eq!(JValue::Bool(r.round_has_content), *st.get("roundHasContent"), "{what}");
+        assert_eq!(JValue::Bool(r.shown_text), *st.get("shownText"), "{what}");
+        assert_eq!(slots_json(&r), wtf16::stringify(st.get("tools")).unwrap(), "{what}");
+    }
+    for k in arr(c.get("prepare")) {
+        let b = k.get("before");
+        let mut r = Round::new(false, 0, false);
+        r.round_content = b.get("roundContent").as_str().unwrap().to_owned();
+        r.round_has_content = b.get("roundHasContent") == &JValue::Bool(true);
+        for e in arr(k.get("slots")) {
+            let e = arr(e);
+            let s = &e[1];
+            r.tool_calls.push((
+                e[0].as_num().unwrap(),
+                Slot {
+                    id: s.get("id").clone(),
+                    id_made: s.get("idMade") == &JValue::Bool(true),
+                    name: s.get("name").as_str().unwrap().to_owned(),
+                    args: s.get("args").as_str().unwrap().to_owned(),
+                    too_large: s.get("tooLarge") == &JValue::Bool(true),
+                    name_cut: false,
+                },
+            ));
+        }
+        let (steps, msg) = r.prepare_calls();
+        let what = wtf16::stringify(k.get("slots")).unwrap();
+        assert_eq!(wtf16::stringify(&JValue::Arr(steps_log(steps))).unwrap(), wtf16::stringify(k.get("log")).unwrap(), "{what}");
+        assert_eq!(wtf16::stringify(&msg).unwrap(), wtf16::stringify(k.get("assistantMsg")).unwrap(), "{what}");
+        assert_eq!(JValue::Bool(r.round_has_content), *k.get("roundHasContent"), "{what}");
+        assert_eq!(slots_json(&r), wtf16::stringify(k.get("after")).unwrap(), "{what}");
+    }
+}
