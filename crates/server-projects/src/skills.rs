@@ -175,10 +175,16 @@ pub fn plan(project: &JValue) -> Result<Plan, Unsupported> {
     let mut next: Vec<(String, JValue)> = Vec::new();
     let mut placed: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for file in files {
-        if !file.is_object() {
+        if !matches!(file, JValue::Obj(_) | JValue::Arr(_)) {
             return Err(Unsupported);
         }
-        let Some(name) = file.get("name").as_str() else {
+        // Workspace cleanup retains arrays (`typeof f === 'object'`). They have no JSON
+        // `name` property; reconcile looks up the "undefined" key and otherwise ignores them.
+        let Some(name) = file
+            .get("name")
+            .as_str()
+            .or_else(|| matches!(file, JValue::Arr(_)).then_some("undefined"))
+        else {
             return Err(Unsupported);
         };
         let existing = by_name.get(name).copied();
