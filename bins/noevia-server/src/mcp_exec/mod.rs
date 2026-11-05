@@ -327,7 +327,11 @@ pub struct Call {
     pub internal_auth: Option<String>,
 }
 
+/// Where the executor's diagnostic lines go (stderr unless a test listens).
+pub type LogSink = Arc<dyn Fn(&str) + Send + Sync>;
+
 pub struct Executor {
+    log: Option<LogSink>,
     settings: Settings,
     operator: Option<Transport>,
     public: Transport,
@@ -349,11 +353,26 @@ fn cut(message: &str) -> String {
 impl Executor {
     pub fn new(settings: Settings, egress: &Arc<crate::mcp_egress::Egress>) -> Executor {
         Executor {
+            log: None,
             settings,
             operator: Transport::operator(),
             public: Transport::public(egress),
             limit: ToolRateLimit::default(),
             ids: AtomicI64::new(0),
+        }
+    }
+
+    /// The same executor writing its diagnostic lines to `sink` instead of stderr.
+    #[must_use]
+    pub fn with_log(mut self, sink: LogSink) -> Executor {
+        self.log = Some(sink);
+        self
+    }
+
+    fn say(&self, line: &str) {
+        match &self.log {
+            Some(sink) => sink(line),
+            None => eprintln!("{line}"),
         }
     }
 
@@ -695,7 +714,7 @@ impl Executor {
         };
         let is_error = result.get("isError").truthy();
         if is_error && limit::is_rate_limited_text(&text) {
-            eprintln!("[mcp] {name} rate limited (tool error)");
+            self.say(&format!("[mcp] {name} rate limited (tool error)"));
             return limit::rate_limited_text(name, self.limit.hit(rate_key, None));
         }
         if !is_error {
@@ -716,14 +735,14 @@ impl Executor {
                 retry_after,
                 ..
             } => {
-                eprintln!("[mcp] {name} rate limited (HTTP 429)");
+                self.say(&format!("[mcp] {name} rate limited (HTTP 429)"));
                 let wait = limit::parse_retry_after(retry_after.as_deref(), limit::now_ms());
                 limit::rate_limited_text(name, self.limit.hit(rate_key, wait))
             }
             RpcError::Http {
                 status, message, ..
             } => {
-                eprintln!("[mcp] {name} failed: {}", cut(message));
+                self.say(&format!("[mcp] {name} failed: {}", cut(message)));
                 format!("ERROR calling {name}: tool call failed (HTTP {status})")
             }
             RpcError::Msg(message) => format!("ERROR calling {name}: {}", cut(message)),

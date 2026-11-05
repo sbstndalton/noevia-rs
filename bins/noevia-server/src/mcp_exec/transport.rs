@@ -90,6 +90,9 @@ fn reserved(name: &str) -> bool {
 pub struct Transport {
     client: reqwest::Client,
     public: Option<Arc<Egress>>,
+    /// Tests only: stands in for an address lookup that has not answered yet.
+    #[cfg(test)]
+    lookup_gate: Option<Arc<tokio::sync::Semaphore>>,
 }
 
 impl Transport {
@@ -103,6 +106,8 @@ impl Transport {
         Some(Transport {
             client,
             public: None,
+            #[cfg(test)]
+            lookup_gate: None,
         })
     }
 
@@ -111,6 +116,8 @@ impl Transport {
         Transport {
             client: egress.client().clone(),
             public: Some(Arc::clone(egress)),
+            #[cfg(test)]
+            lookup_gate: None,
         }
     }
 
@@ -302,6 +309,12 @@ impl Transport {
         let Some(id) = session.take() else {
             return false;
         };
+        #[cfg(test)]
+        if let Some(gate) = &self.lookup_gate {
+            if let Ok(permit) = gate.acquire().await {
+                permit.forget();
+            }
+        }
         if let Some(egress) = &self.public {
             if !egress.url_allowed(url).await {
                 return false;
