@@ -207,17 +207,28 @@ impl Gate {
     /// Takes the gate's maintenance hold, waiting up to `wait` for the engine to be idle.
     /// `Ok(None)`: no admin token, or nothing at the engine address knows the hold.
     pub async fn hold(&self, reason: &str, wait: Duration) -> Result<Option<Grant>, GateFault> {
+        self.hold_for(reason, wait, Duration::from_secs(60)).await
+    }
+
+    /// Ask for coverage that can outlast the bounded work, within the gate's accepted idle range.
+    pub(super) async fn hold_for(
+        &self,
+        reason: &str,
+        wait: Duration,
+        coverage: Duration,
+    ) -> Result<Option<Grant>, GateFault> {
         if self.token.is_none() || self.absent() {
             return Ok(None);
         }
         let wait = wait.min(MAX_WAIT);
         let wait_ms = u64::try_from(wait.as_millis()).unwrap_or(0);
+        let idle_ms = coverage.as_millis().clamp(1_000, 600_000) as u64;
         let asked = Instant::now();
         let (status, body) = self
             .call(
                 reqwest::Method::POST,
                 "/gate/v1/maintenance",
-                Some(serde_json::json!({ "reason": clip(reason, 300), "wait_ms": wait_ms })),
+                Some(serde_json::json!({ "reason": clip(reason, 300), "wait_ms": wait_ms, "idle_ttl_ms":idle_ms })),
                 wait + Duration::from_secs(10),
             )
             .await?;
@@ -601,6 +612,21 @@ impl Hold {
             self.shared.lost.store(true, Ordering::Release);
         }
         covered
+    }
+
+    /// Whether the hold still excludes everyone else: not lost, and for Node's lease, Node's last
+    /// confirmation still covers now (an unconfirmed lease may already have ended at Node).
+    pub fn excluded(&self) -> bool {
+        if self.shared.lost.load(Ordering::Acquire) || self.shared.released.load(Ordering::Acquire)
+        {
+            return false;
+        }
+        let Some(ttl) = self.shared.lease_ttl else {
+            return false;
+        };
+        let now = Instant::now();
+        self.shared.confirmed.lock().is_ok_and(|at| now < *at + ttl)
+            && self.shared.lease_end.is_none_or(|end| now < end)
     }
 
     /// Makes the deadline at least `needed` from now: the work has found out how long it may take.

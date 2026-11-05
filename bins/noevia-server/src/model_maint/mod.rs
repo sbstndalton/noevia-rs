@@ -317,7 +317,7 @@ impl Maint {
                 let Some(gate) = gate else {
                     return Err(HoldError::NeedsGate);
                 };
-                match gate.hold(&reason, Duration::ZERO).await {
+                match gate.hold_for(&reason, Duration::ZERO, max).await {
                     Ok(Some(grant)) => Ok(Hold::gated(
                         local,
                         gate,
@@ -395,7 +395,10 @@ impl Maint {
         let Some(gate) = self.gate.as_ref() else {
             return Err(HoldRefusal::NeedsGate);
         };
-        match gate.hold(reason, Duration::ZERO).await {
+        match gate
+            .hold_for(reason, Duration::ZERO, lease_for.unwrap_or(max))
+            .await
+        {
             Ok(Some(grant)) => Ok(Hold::gated(
                 Arc::clone(&self.local),
                 Arc::clone(gate),
