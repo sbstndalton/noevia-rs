@@ -592,7 +592,10 @@ async fn a_grant_check_without_the_redeem_protocol_gets_no_grant() {
         assert!(answer.get("ticket").is_none(), "{answer}");
         assert_eq!(answer["code"], json!("APPROVAL_PROTOCOL"));
     }
-    assert!(f.granted("qa-one", "space:free", &b).await, "the grant stands");
+    assert!(
+        f.granted("qa-one", "space:free", &b).await,
+        "the grant stands"
+    );
 }
 
 /// Re-review 689d17a P1-1 (Astra's schedule, front side): a ticket is redeemed (Node will
@@ -619,7 +622,10 @@ async fn a_revoke_completes_only_after_a_redeemed_write_started_or_its_window() 
     assert_eq!(revoked.0, 200);
     assert_eq!(started, (200, json!({"settled":true})));
     let took = begun.elapsed();
-    assert!(took >= Duration::from_millis(300) && took < window, "{took:?}");
+    assert!(
+        took >= Duration::from_millis(300) && took < window,
+        "{took:?}"
+    );
     // A failed public move with a redeemed write never reported: waits out the window.
     let (b, t) = f.ticket("ap-2", "qa-two").await;
     assert!(f.redeem("qa-two", &b, &t).await);
@@ -638,7 +644,10 @@ async fn a_revoke_completes_only_after_a_redeemed_write_started_or_its_window() 
         .await;
     assert_eq!(status, 200);
     let took = redeemed.elapsed();
-    assert!(took >= window && took < window * 2 + Duration::from_millis(500), "{took:?}");
+    assert!(
+        took >= window && took < window * 2 + Duration::from_millis(500),
+        "{took:?}"
+    );
     // Nothing redeemed: a revoke answers at once.
     let begun = std::time::Instant::now();
     let (status, _) = f

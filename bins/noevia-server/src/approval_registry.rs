@@ -745,8 +745,10 @@ impl Registry {
     /// [`Registry::revoke_project`], completed only once that project's chats are drained.
     pub async fn revoke_project_drained(&self, user: &str, project: &str) -> usize {
         let revoked = self.revoke_project(user, project);
-        self.drain(|r| r.key.0 == user && matches!(&r.holder, Holder::Project(id) if id == project))
-            .await;
+        self.drain(|r| {
+            r.key.0 == user && matches!(&r.holder, Holder::Project(id) if id == project)
+        })
+        .await;
         revoked
     }
 
@@ -1433,12 +1435,20 @@ mod tests {
         assert!(started.elapsed() < window, "{:?}", started.elapsed());
         // Another chat's redeemed write does not hold this chat's revoke.
         let b2 = binding(OWNER, "c2", "space:free", json!({"kind":"free"}), "0");
-        r.open(write_q("w3", OWNER, Some("c2"), Some("space:free"), Some(b2.clone())))
-            .unwrap();
+        r.open(write_q(
+            "w3",
+            OWNER,
+            Some("c2"),
+            Some("space:free"),
+            Some(b2.clone()),
+        ))
+        .unwrap();
         let lc = r.grant_context(OWNER, "w3");
         r.decide(OWNER, "w3", "approve_all", false, lc.as_ref())
             .unwrap();
-        let t = r.grant_ticket(OWNER, "c2", "space:free", Some(&b2)).unwrap();
+        let t = r
+            .grant_ticket(OWNER, "c2", "space:free", Some(&b2))
+            .unwrap();
         assert!(r.redeem(OWNER, "c2", "space:free", Some(&b2), &t));
         let started = Instant::now();
         r.revoke_drained(OWNER, "c1").await;
@@ -1474,19 +1484,34 @@ mod tests {
         let r = Registry::new(Some(live));
         let b = binding(OWNER, "c1", "space:free", json!({"kind":"free"}), "0");
         r.state.lock().unwrap().serials = u64::MAX;
-        r.open(write_q("w1", OWNER, Some("c1"), Some("space:free"), Some(b.clone())))
-            .unwrap();
+        r.open(write_q(
+            "w1",
+            OWNER,
+            Some("c1"),
+            Some("space:free"),
+            Some(b.clone()),
+        ))
+        .unwrap();
         let lc = r.grant_context(OWNER, "w1");
         r.decide(OWNER, "w1", "approve_all", false, lc.as_ref())
             .unwrap();
-        assert!(!r.granted(OWNER, "c1", "space:free", Some(&b)), "approved once only");
+        assert!(
+            !r.granted(OWNER, "c1", "space:free", Some(&b)),
+            "approved once only"
+        );
         r.state.lock().unwrap().serials = 0;
         let t = granted_with_ticket(&r, "w2", &b);
         r.state.lock().unwrap().revocations = u64::MAX;
         r.revoke(OWNER, "c2");
         assert!(!r.redeem(OWNER, "c1", "space:free", Some(&b), &t));
-        r.open(write_q("w3", OWNER, Some("c1"), Some("space:free"), Some(b.clone())))
-            .unwrap();
+        r.open(write_q(
+            "w3",
+            OWNER,
+            Some("c1"),
+            Some("space:free"),
+            Some(b.clone()),
+        ))
+        .unwrap();
         let lc = r.grant_context(OWNER, "w3");
         r.decide(OWNER, "w3", "approve_all", false, lc.as_ref())
             .unwrap();

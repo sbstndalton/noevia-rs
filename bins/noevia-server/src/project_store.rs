@@ -677,7 +677,9 @@ pub fn router_with_app(
         app.as_ref().map(|a| a.config.maint.guard.clone()),
     ));
     // Port contract 2026-11-04 S9: the chat approval registry (approval_registry.rs).
-    for op in ["open", "wait", "cancel", "granted", "redeem", "started", "revoke"] {
+    for op in [
+        "open", "wait", "cancel", "granted", "redeem", "started", "revoke",
+    ] {
         let (store, app) = (store.clone(), app.clone());
         router = router.route(
             &format!("/v1/approvals/{op}"),
