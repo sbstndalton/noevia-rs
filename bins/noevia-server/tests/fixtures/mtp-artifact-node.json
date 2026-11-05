@@ -254,9 +254,7 @@
    "role": "member",
    "answer": {
     "status": 400,
-    "body": {
-     "error": "Invalid repository"
-    }
+    "bodyText": "{\"error\":\"Invalid repository\"}"
    }
   },
   {
@@ -267,9 +265,7 @@
    "role": "member",
    "answer": {
     "status": 400,
-    "body": {
-     "error": "Invalid repository"
-    }
+    "bodyText": "{\"error\":\"Invalid repository\"}"
    }
   },
   {
@@ -280,9 +276,7 @@
    "role": "member",
    "answer": {
     "status": 500,
-    "body": {
-     "error": "Internal error"
-    }
+    "bodyText": "{\"error\":\"Internal error\"}"
    }
   },
   {
@@ -307,9 +301,7 @@
    "role": "member",
    "answer": {
     "status": 500,
-    "body": {
-     "error": "Internal error"
-    }
+    "bodyText": "{\"error\":\"Internal error\"}"
    }
   },
   {
@@ -365,27 +357,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "present",
-     "reason": "MTP/NextN tensors are present in the selected files. Backend compatibility and a working head still require a load test.",
-     "files": [
-      "m-Q4_K_M.gguf"
-     ],
-     "revision": "abababababababababababababababababababab",
-     "evidence": [
-      {
-       "file": "m-Q4_K_M.gguf",
-       "architecture": "synthetic",
-       "declaredLayers": 1,
-       "splitCount": 1,
-       "tensorCount": 1,
-       "tensors": [
-        "blk.1.nextn.eh_proj.weight"
-       ]
-      }
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"present\",\"reason\":\"MTP/NextN tensors are present in the selected files. Backend compatibility and a working head still require a load test.\",\"files\":[\"m-Q4_K_M.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q4_K_M.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":1,\"splitCount\":1,\"tensorCount\":1,\"tensors\":[\"blk.1.nextn.eh_proj.weight\"]}],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -420,25 +392,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "absent",
-     "reason": "No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "revision": "abababababababababababababababababababab",
-     "evidence": [
-      {
-       "file": "m-Q8_0.gguf",
-       "architecture": "synthetic",
-       "declaredLayers": null,
-       "splitCount": 1,
-       "tensorCount": 1,
-       "tensors": []
-      }
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"absent\",\"reason\":\"No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":null,\"splitCount\":1,\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -476,25 +430,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "Metadata declares MTP layers, but no recognized MTP tensors were found.",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "revision": "abababababababababababababababababababab",
-     "evidence": [
-      {
-       "file": "m-Q8_0.gguf",
-       "architecture": "",
-       "declaredLayers": 1,
-       "splitCount": 1,
-       "tensorCount": 1,
-       "tensors": []
-      }
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Metadata declares MTP layers, but no recognized MTP tensors were found.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"\",\"declaredLayers\":1,\"splitCount\":1,\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -545,34 +481,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "absent",
-     "reason": "No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.",
-     "files": [
-      "sub dir/m-Q8_0-00001-of-00002.gguf",
-      "sub dir/m-Q8_0-00002-of-00002.gguf"
-     ],
-     "revision": "abababababababababababababababababababab",
-     "evidence": [
-      {
-       "file": "sub dir/m-Q8_0-00001-of-00002.gguf",
-       "architecture": "",
-       "declaredLayers": null,
-       "splitCount": 2,
-       "tensorCount": 1,
-       "tensors": []
-      },
-      {
-       "file": "sub dir/m-Q8_0-00002-of-00002.gguf",
-       "architecture": "synthetic",
-       "declaredLayers": null,
-       "splitCount": 1,
-       "tensorCount": 1,
-       "tensors": []
-      }
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"absent\",\"reason\":\"No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.\",\"files\":[\"sub dir/m-Q8_0-00001-of-00002.gguf\",\"sub dir/m-Q8_0-00002-of-00002.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"sub dir/m-Q8_0-00001-of-00002.gguf\",\"architecture\":\"\",\"declaredLayers\":null,\"splitCount\":2,\"tensorCount\":1,\"tensors\":[]},{\"file\":\"sub dir/m-Q8_0-00002-of-00002.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":null,\"splitCount\":1,\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -603,9 +512,7 @@
    "role": "member",
    "answer": {
     "status": 404,
-    "body": {
-     "error": "Variant no longer available"
-    }
+    "bodyText": "{\"error\":\"Variant no longer available\"}"
    }
   },
   {
@@ -636,9 +543,7 @@
    "role": "member",
    "answer": {
     "status": 404,
-    "body": {
-     "error": "Variant no longer available"
-    }
+    "bodyText": "{\"error\":\"Variant no longer available\"}"
    }
   },
   {
@@ -676,14 +581,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "The selected variant does not enumerate every GGUF shard.",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"The selected variant does not enumerate every GGUF shard.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -708,9 +606,7 @@
    "role": "member",
    "answer": {
     "status": 404,
-    "body": {
-     "error": "Variant no longer available"
-    }
+    "bodyText": "{\"error\":\"Variant no longer available\"}"
    }
   },
   {
@@ -735,9 +631,7 @@
    "role": "member",
    "answer": {
     "status": 404,
-    "body": {
-     "error": "Variant no longer available"
-    }
+    "bodyText": "{\"error\":\"Variant no longer available\"}"
    }
   },
   {
@@ -763,9 +657,7 @@
    "role": "member",
    "answer": {
     "status": 502,
-    "body": {
-     "error": "Could not resolve selected files"
-    }
+    "bodyText": "{\"error\":\"Could not resolve selected files\"}"
    }
   },
   {
@@ -783,9 +675,7 @@
    "role": "member",
    "answer": {
     "status": 502,
-    "body": {
-     "error": "Could not resolve selected files"
-    }
+    "bodyText": "{\"error\":\"Could not resolve selected files\"}"
    }
   },
   {
@@ -803,9 +693,7 @@
    "role": "member",
    "answer": {
     "status": 502,
-    "body": {
-     "error": "Could not resolve selected files"
-    }
+    "bodyText": "{\"error\":\"Could not resolve selected files\"}"
    }
   },
   {
@@ -821,9 +709,7 @@
    "role": "member",
    "answer": {
     "status": 502,
-    "body": {
-     "error": "Could not resolve selected files"
-    }
+    "bodyText": "{\"error\":\"Could not resolve selected files\"}"
    }
   },
   {
@@ -842,9 +728,7 @@
    "role": "member",
    "answer": {
     "status": 500,
-    "body": {
-     "error": "Internal error"
-    }
+    "bodyText": "{\"error\":\"Internal error\"}"
    }
   },
   {
@@ -859,9 +743,7 @@
    "role": "member",
    "answer": {
     "status": 500,
-    "body": {
-     "error": "Internal error"
-    }
+    "bodyText": "{\"error\":\"Internal error\"}"
    }
   },
   {
@@ -890,14 +772,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "Public repository revision unavailable.",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Public repository revision unavailable.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -928,14 +803,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "Immutable repository revision unavailable.",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Immutable repository revision unavailable.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -963,14 +831,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "fetch failed",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"fetch failed\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -999,14 +860,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "Unexpected token 'h', \"hello\" is not valid JSON",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Unexpected token 'h', \\\"hello\\\" is not valid JSON\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -1035,14 +889,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Unexpected token '<', \\\"<!DOCTYPE \\\"... is not valid JSON\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -1071,14 +918,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "Unterminated string in JSON at position 48 (line 1 column 49)",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Unterminated string in JSON at position 48 (line 1 column 49)\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -1107,14 +947,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "Unexpected end of JSON input",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Unexpected end of JSON input\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -1143,14 +976,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "Unexpected non-whitespace character after JSON at position 50 (line 1 column 51)",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Unexpected non-whitespace character after JSON at position 50 (line 1 column 51)\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -1179,14 +1005,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "Immutable repository revision unavailable.",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Immutable repository revision unavailable.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -1226,29 +1045,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "present",
-     "reason": "MTP/NextN tensors are present in the selected files. Backend compatibility and a working head still require a load test.",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "revision": [
-      "abababababababababababababababababababab"
-     ],
-     "evidence": [
-      {
-       "file": "m-Q8_0.gguf",
-       "architecture": "synthetic",
-       "declaredLayers": 1,
-       "splitCount": 1,
-       "tensorCount": 1,
-       "tensors": [
-        "blk.1.nextn.eh_proj.weight"
-       ]
-      }
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"present\",\"reason\":\"MTP/NextN tensors are present in the selected files. Backend compatibility and a working head still require a load test.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":[\"abababababababababababababababababababab\"],\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":1,\"splitCount\":1,\"tensorCount\":1,\"tensors\":[\"blk.1.nextn.eh_proj.weight\"]}],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -1290,31 +1087,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "present",
-     "reason": "MTP/NextN tensors are present in the selected files. Backend compatibility and a working head still require a load test.",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "revision": [
-      [
-       "abababababababababababababababababababab"
-      ]
-     ],
-     "evidence": [
-      {
-       "file": "m-Q8_0.gguf",
-       "architecture": "synthetic",
-       "declaredLayers": 1,
-       "splitCount": 1,
-       "tensorCount": 1,
-       "tensors": [
-        "blk.1.nextn.eh_proj.weight"
-       ]
-      }
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"present\",\"reason\":\"MTP/NextN tensors are present in the selected files. Backend compatibility and a working head still require a load test.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":[[\"abababababababababababababababababababab\"]],\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":1,\"splitCount\":1,\"tensorCount\":1,\"tensors\":[\"blk.1.nextn.eh_proj.weight\"]}],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -1355,14 +1128,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "Immutable repository revision unavailable.",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Immutable repository revision unavailable.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -1400,14 +1166,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "Immutable repository revision unavailable.",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Immutable repository revision unavailable.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -1447,14 +1206,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "Immutable repository revision unavailable.",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Immutable repository revision unavailable.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -1492,14 +1244,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "Immutable repository revision unavailable.",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Immutable repository revision unavailable.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -1537,14 +1282,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "Immutable repository revision unavailable.",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Immutable repository revision unavailable.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -1582,14 +1320,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "Immutable repository revision unavailable.",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Immutable repository revision unavailable.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -1618,14 +1349,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "Cannot read properties of null (reading 'sha')",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Cannot read properties of null (reading 'sha')\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -1660,14 +1384,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "Artifact metadata unavailable (404).",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Artifact metadata unavailable (404).\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -1705,14 +1422,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "Unexpected artifact byte range.",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Unexpected artifact byte range.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -1750,14 +1460,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "Not a supported little-endian GGUF file.",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Not a supported little-endian GGUF file.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -1791,14 +1494,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "fetch failed",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"fetch failed\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -1836,25 +1532,7 @@
    "role": "admin",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "absent",
-     "reason": "No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.",
-     "files": [
-      "m-Q8_0.gguf"
-     ],
-     "revision": "abababababababababababababababababababab",
-     "evidence": [
-      {
-       "file": "m-Q8_0.gguf",
-       "architecture": "synthetic",
-       "declaredLayers": null,
-       "splitCount": 1,
-       "tensorCount": 1,
-       "tensors": []
-      }
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"absent\",\"reason\":\"No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":null,\"splitCount\":1,\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -1899,25 +1577,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "absent",
-     "reason": "No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.",
-     "files": [
-      "m-Q4_0.gguf"
-     ],
-     "revision": "abababababababababababababababababababab",
-     "evidence": [
-      {
-       "file": "m-Q4_0.gguf",
-       "architecture": "synthetic",
-       "declaredLayers": null,
-       "splitCount": 1,
-       "tensorCount": 1,
-       "tensors": []
-      }
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"absent\",\"reason\":\"No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.\",\"files\":[\"m-Q4_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q4_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":null,\"splitCount\":1,\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -1998,34 +1658,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "absent",
-     "reason": "No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.",
-     "files": [
-      "model-IQ4_XS-00001-of-00002.gguf",
-      "model-IQ4_XS-00002-of-00002.gguf"
-     ],
-     "revision": "abababababababababababababababababababab",
-     "evidence": [
-      {
-       "file": "model-IQ4_XS-00001-of-00002.gguf",
-       "architecture": "",
-       "declaredLayers": null,
-       "splitCount": 2,
-       "tensorCount": 1,
-       "tensors": []
-      },
-      {
-       "file": "model-IQ4_XS-00002-of-00002.gguf",
-       "architecture": "synthetic",
-       "declaredLayers": null,
-       "splitCount": 1,
-       "tensorCount": 1,
-       "tensors": []
-      }
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"absent\",\"reason\":\"No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.\",\"files\":[\"model-IQ4_XS-00001-of-00002.gguf\",\"model-IQ4_XS-00002-of-00002.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"model-IQ4_XS-00001-of-00002.gguf\",\"architecture\":\"\",\"declaredLayers\":null,\"splitCount\":2,\"tensorCount\":1,\"tensors\":[]},{\"file\":\"model-IQ4_XS-00002-of-00002.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":null,\"splitCount\":1,\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -2099,14 +1732,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "The selected variant does not enumerate every GGUF shard.",
-     "files": [
-      "model-Q8_0.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"The selected variant does not enumerate every GGUF shard.\",\"files\":[\"model-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -2173,9 +1799,7 @@
    "role": "member",
    "answer": {
     "status": 404,
-    "body": {
-     "error": "Variant no longer available"
-    }
+    "bodyText": "{\"error\":\"Variant no longer available\"}"
    }
   },
   {
@@ -2242,9 +1866,7 @@
    "role": "member",
    "answer": {
     "status": 404,
-    "body": {
-     "error": "Variant no longer available"
-    }
+    "bodyText": "{\"error\":\"Variant no longer available\"}"
    }
   },
   {
@@ -2311,9 +1933,7 @@
    "role": "member",
    "answer": {
     "status": 404,
-    "body": {
-     "error": "Variant no longer available"
-    }
+    "bodyText": "{\"error\":\"Variant no longer available\"}"
    }
   },
   {
@@ -2349,27 +1969,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "present",
-     "reason": "MTP/NextN tensors are present in the selected files. Backend compatibility and a working head still require a load test.",
-     "files": [
-      "m-Q4.gguf"
-     ],
-     "revision": "abababababababababababababababababababab",
-     "evidence": [
-      {
-       "file": "m-Q4.gguf",
-       "architecture": "synthetic",
-       "declaredLayers": 1,
-       "splitCount": 1,
-       "tensorCount": 1,
-       "tensors": [
-        "blk.1.nextn.eh_proj.weight"
-       ]
-      }
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"present\",\"reason\":\"MTP/NextN tensors are present in the selected files. Backend compatibility and a working head still require a load test.\",\"files\":[\"m-Q4.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q4.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":1,\"splitCount\":1,\"tensorCount\":1,\"tensors\":[\"blk.1.nextn.eh_proj.weight\"]}],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -2394,14 +1994,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "Inspection supports up to four selected GGUF shards.",
-     "files": [
-      "../escape.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Inspection supports up to four selected GGUF shards.\",\"files\":[\"../escape.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -2430,18 +2023,7 @@
    "role": "member",
    "answer": {
     "status": 200,
-    "body": {
-     "status": "unknown",
-     "reason": "Inspection supports up to four selected GGUF shards.",
-     "files": [
-      "a.gguf",
-      "b.gguf",
-      "c.gguf",
-      "d.gguf",
-      "e.gguf"
-     ],
-     "checkedAt": "X"
-    }
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Inspection supports up to four selected GGUF shards.\",\"files\":[\"a.gguf\",\"b.gguf\",\"c.gguf\",\"d.gguf\",\"e.gguf\"],\"checkedAt\":\"X\"}"
    }
   },
   {
@@ -2459,9 +2041,7 @@
    "role": "member",
    "answer": {
     "status": 502,
-    "body": {
-     "error": "Could not resolve selected files"
-    }
+    "bodyText": "{\"error\":\"Could not resolve selected files\"}"
    }
   },
   {
@@ -2479,9 +2059,7 @@
    "role": "member",
    "answer": {
     "status": 500,
-    "body": {
-     "error": "Internal error"
-    }
+    "bodyText": "{\"error\":\"Internal error\"}"
    }
   },
   {
@@ -2501,9 +2079,7 @@
    "role": "member",
    "answer": {
     "status": 500,
-    "body": {
-     "error": "Internal error"
-    }
+    "bodyText": "{\"error\":\"Internal error\"}"
    }
   },
   {
@@ -2514,10 +2090,1365 @@
    "role": "member",
    "answer": {
     "status": 500,
-    "body": {
-     "error": "Internal error"
-    }
+    "bodyText": "{\"error\":\"Internal error\"}"
    }
+  },
+  {
+   "name": "revision reply with an unrelated lone surrogate and deep nesting",
+   "query": "?repo=synthetic%2Fmeta-surrogate&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/meta-surrogate?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/meta-surrogate": {
+     "status": 200,
+     "text": "{\"unused\":\"\\ud800\",\"deep\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]],\"sha\":\"abababababababababababababababababababab\",\"sha2\":\"\\ud800\"}"
+    },
+    "/synthetic/meta-surrogate/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-184/185"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzBAAAAAEAAAAaAAAAAAAAAGJsay4xLm5leHRuLmVoX3Byb2oud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"present\",\"reason\":\"MTP/NextN tensors are present in the selected files. Backend compatibility and a working head still require a load test.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":1,\"splitCount\":1,\"tensorCount\":1,\"tensors\":[\"blk.1.nextn.eh_proj.weight\"]}],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "list reply with an unrelated lone surrogate, deep nesting and a duplicate key",
+   "query": "?repo=synthetic%2Flist-surrogate&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/list-surrogate?blobs=true": {
+     "status": 200,
+     "text": "{\"siblings\":[],\"cardData\":{\"x\":\"\\ud800\",\"d\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]},\"siblings\":[{\"rfilename\":\"m-Q8_0.gguf\",\"lfs\":{\"size\":100}},{\"rfilename\":\"\\ud800\"},{\"rfilename\":\"x-\\udc00-Q4_0.gguf\"}]}"
+    },
+    "/api/models/synthetic/list-surrogate": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/list-surrogate/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-129/130"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAEAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYxEAAAAAAAAAdG9rZW5fZW1iZC53ZWlnaHQCAAAABAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"absent\",\"reason\":\"No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":null,\"splitCount\":1,\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "selected file name with a lone surrogate",
+   "query": "?repo=synthetic%2Fname-surrogate&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/name-surrogate?blobs=true": {
+     "status": 200,
+     "text": "{\"siblings\":[{\"rfilename\":\"m-\\ud800-Q8_0.gguf\",\"size\":3}]}"
+    },
+    "/api/models/synthetic/name-surrogate": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"URI malformed\",\"files\":[\"m-\\ud800-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "other engine files object with index keys",
+   "query": "?repo=synthetic%2Flemon7&variant=Q4",
+   "sources": {
+    "/api/v1/pull/variants?checkpoint=synthetic%2Flemon7": {
+     "status": 200,
+     "text": "{\"variants\":[{\"name\":\"Q4\",\"files\":{\"b\":\"x.gguf\",\"7\":\"\\ud800\",\"1\":\"y.gguf\",\"01\":2}}]}"
+    }
+   },
+   "kind": "lemonade",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Inspection supports up to four selected GGUF shards.\",\"files\":{\"1\":\"y.gguf\",\"7\":\"\\ud800\",\"b\":\"x.gguf\",\"01\":2},\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "other engine variant name with a lone surrogate",
+   "query": "?repo=synthetic%2Flemon8&variant=%EF%BF%BD",
+   "sources": {
+    "/api/v1/pull/variants?checkpoint=synthetic%2Flemon8": {
+     "status": 200,
+     "text": "{\"variants\":[{\"name\":\"\\ud800\",\"primary_file\":\"m.gguf\"}]}"
+    }
+   },
+   "kind": "lemonade",
+   "role": "member",
+   "answer": {
+    "status": 404,
+    "bodyText": "{\"error\":\"Variant no longer available\"}"
+   }
+  },
+  {
+   "name": "string split.count \"0x2\"",
+   "query": "?repo=synthetic%2Fsplit-hex&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/split-hex?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/split-hex": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/split-hex/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-163/164"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYwsAAAAAAAAAc3BsaXQuY291bnQIAAAAAwAAAAAAAAAweDIRAAAAAAAAAHRva2VuX2VtYmQud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"The selected variant does not enumerate every GGUF shard.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "string split.count \"0b10\"",
+   "query": "?repo=synthetic%2Fsplit-bin&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/split-bin?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/split-bin": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/split-bin/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-164/165"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYwsAAAAAAAAAc3BsaXQuY291bnQIAAAABAAAAAAAAAAwYjEwEQAAAAAAAAB0b2tlbl9lbWJkLndlaWdodAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"The selected variant does not enumerate every GGUF shard.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "string split.count \"0o2\"",
+   "query": "?repo=synthetic%2Fsplit-oct&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/split-oct?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/split-oct": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/split-oct/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-163/164"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYwsAAAAAAAAAc3BsaXQuY291bnQIAAAAAwAAAAAAAAAwbzIRAAAAAAAAAHRva2VuX2VtYmQud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"The selected variant does not enumerate every GGUF shard.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "string split.count \" 2 \"",
+   "query": "?repo=synthetic%2Fsplit-space&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/split-space?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/split-space": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/split-space/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-163/164"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYwsAAAAAAAAAc3BsaXQuY291bnQIAAAAAwAAAAAAAAAgMiARAAAAAAAAAHRva2VuX2VtYmQud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"The selected variant does not enumerate every GGUF shard.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "string split.count \" 2 \"",
+   "query": "?repo=synthetic%2Fsplit-jsspace&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/split-jsspace?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/split-jsspace": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/split-jsspace/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-166/167"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYwsAAAAAAAAAc3BsaXQuY291bnQIAAAABgAAAAAAAADCoDLigKgRAAAAAAAAAHRva2VuX2VtYmQud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"The selected variant does not enumerate every GGUF shard.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "string split.count \"\"",
+   "query": "?repo=synthetic%2Fsplit-empty&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/split-empty?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/split-empty": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/split-empty/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-160/161"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYwsAAAAAAAAAc3BsaXQuY291bnQIAAAAAAAAAAAAAAARAAAAAAAAAHRva2VuX2VtYmQud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"absent\",\"reason\":\"No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":null,\"splitCount\":\"\",\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "string split.count \"Infinity\"",
+   "query": "?repo=synthetic%2Fsplit-inf&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/split-inf?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/split-inf": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/split-inf/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-168/169"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYwsAAAAAAAAAc3BsaXQuY291bnQIAAAACAAAAAAAAABJbmZpbml0eREAAAAAAAAAdG9rZW5fZW1iZC53ZWlnaHQCAAAABAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"The selected variant does not enumerate every GGUF shard.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "string split.count \"-Infinity\"",
+   "query": "?repo=synthetic%2Fsplit-neginf&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/split-neginf?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/split-neginf": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/split-neginf/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-169/170"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYwsAAAAAAAAAc3BsaXQuY291bnQIAAAACQAAAAAAAAAtSW5maW5pdHkRAAAAAAAAAHRva2VuX2VtYmQud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"absent\",\"reason\":\"No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":null,\"splitCount\":\"-Infinity\",\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "string split.count \"+2\"",
+   "query": "?repo=synthetic%2Fsplit-plus&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/split-plus?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/split-plus": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/split-plus/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-162/163"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYwsAAAAAAAAAc3BsaXQuY291bnQIAAAAAgAAAAAAAAArMhEAAAAAAAAAdG9rZW5fZW1iZC53ZWlnaHQCAAAABAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"The selected variant does not enumerate every GGUF shard.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "string split.count \"2e0\"",
+   "query": "?repo=synthetic%2Fsplit-exp&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/split-exp?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/split-exp": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/split-exp/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-163/164"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYwsAAAAAAAAAc3BsaXQuY291bnQIAAAAAwAAAAAAAAAyZTARAAAAAAAAAHRva2VuX2VtYmQud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"The selected variant does not enumerate every GGUF shard.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "string split.count \"2px\"",
+   "query": "?repo=synthetic%2Fsplit-junk&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/split-junk?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/split-junk": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/split-junk/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-163/164"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYwsAAAAAAAAAc3BsaXQuY291bnQIAAAAAwAAAAAAAAAycHgRAAAAAAAAAHRva2VuX2VtYmQud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"absent\",\"reason\":\"No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":null,\"splitCount\":\"2px\",\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "string split.count \"0x\"",
+   "query": "?repo=synthetic%2Fsplit-barehex&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/split-barehex?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/split-barehex": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/split-barehex/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-162/163"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYwsAAAAAAAAAc3BsaXQuY291bnQIAAAAAgAAAAAAAAAweBEAAAAAAAAAdG9rZW5fZW1iZC53ZWlnaHQCAAAABAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"absent\",\"reason\":\"No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":null,\"splitCount\":\"0x\",\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "string split.count \"1\"",
+   "query": "?repo=synthetic%2Fsplit-one&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/split-one?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/split-one": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/split-one/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-161/162"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYwsAAAAAAAAAc3BsaXQuY291bnQIAAAAAQAAAAAAAAAxEQAAAAAAAAB0b2tlbl9lbWJkLndlaWdodAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"absent\",\"reason\":\"No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":null,\"splitCount\":\"1\",\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "string split.count \"-0x2\"",
+   "query": "?repo=synthetic%2Fsplit-signedhex&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/split-signedhex?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/split-signedhex": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/split-signedhex/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-164/165"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYwsAAAAAAAAAc3BsaXQuY291bnQIAAAABAAAAAAAAAAtMHgyEQAAAAAAAAB0b2tlbl9lbWJkLndlaWdodAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"absent\",\"reason\":\"No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":null,\"splitCount\":\"-0x2\",\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "string nextn_predict_layers \"0x1\"",
+   "query": "?repo=synthetic%2Flayers-hex&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/layers-hex?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/layers-hex": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/layers-hex/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-182/183"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzCAAAAAMAAAAAAAAAMHgxEQAAAAAAAAB0b2tlbl9lbWJkLndlaWdodAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Metadata declares MTP layers, but no recognized MTP tensors were found.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":\"0x1\",\"splitCount\":1,\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "string nextn_predict_layers \"0b0\"",
+   "query": "?repo=synthetic%2Flayers-zerobin&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/layers-zerobin?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/layers-zerobin": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/layers-zerobin/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-182/183"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzCAAAAAMAAAAAAAAAMGIwEQAAAAAAAAB0b2tlbl9lbWJkLndlaWdodAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"absent\",\"reason\":\"No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":\"0b0\",\"splitCount\":1,\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "string nextn_predict_layers \"\"",
+   "query": "?repo=synthetic%2Flayers-empty&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/layers-empty?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/layers-empty": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/layers-empty/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-179/180"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzCAAAAAAAAAAAAAAAEQAAAAAAAAB0b2tlbl9lbWJkLndlaWdodAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"absent\",\"reason\":\"No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":\"\",\"splitCount\":1,\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "string nextn_predict_layers \"  \"",
+   "query": "?repo=synthetic%2Flayers-blank&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/layers-blank?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/layers-blank": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/layers-blank/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-181/182"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzCAAAAAIAAAAAAAAAICARAAAAAAAAAHRva2VuX2VtYmQud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"absent\",\"reason\":\"No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":\"  \",\"splitCount\":1,\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "string nextn_predict_layers \"Infinity\"",
+   "query": "?repo=synthetic%2Flayers-inf&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/layers-inf?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/layers-inf": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/layers-inf/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-187/188"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzCAAAAAgAAAAAAAAASW5maW5pdHkRAAAAAAAAAHRva2VuX2VtYmQud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Metadata declares MTP layers, but no recognized MTP tensors were found.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":\"Infinity\",\"splitCount\":1,\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "string nextn_predict_layers \"-1\"",
+   "query": "?repo=synthetic%2Flayers-neg&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/layers-neg?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/layers-neg": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/layers-neg/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-181/182"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzCAAAAAIAAAAAAAAALTERAAAAAAAAAHRva2VuX2VtYmQud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"absent\",\"reason\":\"No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":\"-1\",\"splitCount\":1,\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "string nextn_predict_layers \"1px\"",
+   "query": "?repo=synthetic%2Flayers-junk&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/layers-junk?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/layers-junk": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/layers-junk/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-182/183"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzCAAAAAMAAAAAAAAAMXB4EQAAAAAAAAB0b2tlbl9lbWJkLndlaWdodAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"absent\",\"reason\":\"No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":\"1px\",\"splitCount\":1,\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "string nextn_predict_layers \"﻿1\"",
+   "query": "?repo=synthetic%2Flayers-bom&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/layers-bom?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/layers-bom": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/layers-bom/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-183/184"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzCAAAAAQAAAAAAAAA77u/MREAAAAAAAAAdG9rZW5fZW1iZC53ZWlnaHQCAAAABAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Metadata declares MTP layers, but no recognized MTP tensors were found.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":\"﻿1\",\"splitCount\":1,\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "string nextn_predict_layers \"0o1\"",
+   "query": "?repo=synthetic%2Flayers-oct&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/layers-oct?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/layers-oct": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/layers-oct/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-182/183"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzCAAAAAMAAAAAAAAAMG8xEQAAAAAAAAB0b2tlbl9lbWJkLndlaWdodAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Metadata declares MTP layers, but no recognized MTP tensors were found.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":\"0o1\",\"splitCount\":1,\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "null sibling before a valid one",
+   "query": "?repo=synthetic%2Fnull-first&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/null-first?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       null,
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 500,
+    "bodyText": "{\"error\":\"Internal error\"}"
+   }
+  },
+  {
+   "name": "null sibling after a valid one",
+   "query": "?repo=synthetic%2Fnull-last&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/null-last?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       },
+       null
+      ]
+     }
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 500,
+    "bodyText": "{\"error\":\"Internal error\"}"
+   }
+  },
+  {
+   "name": "incomplete shard set is not cached: the next request sees the new revision",
+   "query": "?repo=synthetic%2Fretry-incomplete&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/retry-incomplete?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/retry-incomplete": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/retry-incomplete/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-95/96"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAEAAAAAAAAACwAAAAAAAABzcGxpdC5jb3VudAIAAAACAAcAAAAAAAAAYmxrLjAueAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   },
+   "steps": [
+    {
+     "/api/models/synthetic/retry-incomplete?blobs=true": {
+      "status": 200,
+      "json": {
+       "siblings": [
+        {
+         "rfilename": "m-Q8_0.gguf",
+         "lfs": {
+          "size": 100
+         }
+        }
+       ]
+      }
+     },
+     "/api/models/synthetic/retry-incomplete": {
+      "status": 200,
+      "json": {
+       "sha": "abababababababababababababababababababab"
+      }
+     },
+     "/synthetic/retry-incomplete/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+      "status": 206,
+      "headers": {
+       "content-range": "bytes 0-95/96"
+      },
+      "base64": "R0dVRgMAAAABAAAAAAAAAAEAAAAAAAAACwAAAAAAAABzcGxpdC5jb3VudAIAAAACAAcAAAAAAAAAYmxrLjAueAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAA"
+     }
+    },
+    {
+     "/api/models/synthetic/retry-incomplete?blobs=true": {
+      "status": 200,
+      "json": {
+       "siblings": [
+        {
+         "rfilename": "m-Q8_0.gguf",
+         "lfs": {
+          "size": 100
+         }
+        }
+       ]
+      }
+     },
+     "/api/models/synthetic/retry-incomplete": {
+      "status": 200,
+      "json": {
+       "sha": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+      }
+     },
+     "/synthetic/retry-incomplete/resolve/cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd/m-Q8_0.gguf": {
+      "status": 206,
+      "headers": {
+       "content-range": "bytes 0-184/185"
+      },
+      "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzBAAAAAEAAAAaAAAAAAAAAGJsay4xLm5leHRuLmVoX3Byb2oud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+     }
+    }
+   ],
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"The selected variant does not enumerate every GGUF shard.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
+   },
+   "answers": [
+    {
+     "status": 200,
+     "bodyText": "{\"status\":\"unknown\",\"reason\":\"The selected variant does not enumerate every GGUF shard.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
+    },
+    {
+     "status": 200,
+     "bodyText": "{\"status\":\"present\",\"reason\":\"MTP/NextN tensors are present in the selected files. Backend compatibility and a working head still require a load test.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":1,\"splitCount\":1,\"tensorCount\":1,\"tensors\":[\"blk.1.nextn.eh_proj.weight\"]}],\"checkedAt\":\"X\"}"
+    }
+   ]
+  },
+  {
+   "name": "metadata-only inconsistency is cached: the next request keeps it",
+   "query": "?repo=synthetic%2Fretry-claim&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/retry-claim?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/retry-claim": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/retry-claim/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-126/127"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAEAAAAAAAAAHgAAAAAAAABzeW50aGV0aWMubmV4dG5fcHJlZGljdF9sYXllcnMEAAAAAQAAABEAAAAAAAAAdG9rZW5fZW1iZC53ZWlnaHQCAAAABAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+    }
+   },
+   "steps": [
+    {
+     "/api/models/synthetic/retry-claim?blobs=true": {
+      "status": 200,
+      "json": {
+       "siblings": [
+        {
+         "rfilename": "m-Q8_0.gguf",
+         "lfs": {
+          "size": 100
+         }
+        }
+       ]
+      }
+     },
+     "/api/models/synthetic/retry-claim": {
+      "status": 200,
+      "json": {
+       "sha": "abababababababababababababababababababab"
+      }
+     },
+     "/synthetic/retry-claim/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+      "status": 206,
+      "headers": {
+       "content-range": "bytes 0-126/127"
+      },
+      "base64": "R0dVRgMAAAABAAAAAAAAAAEAAAAAAAAAHgAAAAAAAABzeW50aGV0aWMubmV4dG5fcHJlZGljdF9sYXllcnMEAAAAAQAAABEAAAAAAAAAdG9rZW5fZW1iZC53ZWlnaHQCAAAABAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+     }
+    },
+    {
+     "/api/models/synthetic/retry-claim?blobs=true": {
+      "status": 200,
+      "json": {
+       "siblings": [
+        {
+         "rfilename": "m-Q8_0.gguf",
+         "lfs": {
+          "size": 100
+         }
+        }
+       ]
+      }
+     },
+     "/api/models/synthetic/retry-claim": {
+      "status": 200,
+      "json": {
+       "sha": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+      }
+     },
+     "/synthetic/retry-claim/resolve/cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd/m-Q8_0.gguf": {
+      "status": 206,
+      "headers": {
+       "content-range": "bytes 0-184/185"
+      },
+      "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzBAAAAAEAAAAaAAAAAAAAAGJsay4xLm5leHRuLmVoX3Byb2oud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+     }
+    }
+   ],
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Metadata declares MTP layers, but no recognized MTP tensors were found.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"\",\"declaredLayers\":1,\"splitCount\":1,\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
+   },
+   "answers": [
+    {
+     "status": 200,
+     "bodyText": "{\"status\":\"unknown\",\"reason\":\"Metadata declares MTP layers, but no recognized MTP tensors were found.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"\",\"declaredLayers\":1,\"splitCount\":1,\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
+    },
+    {
+     "status": 200,
+     "bodyText": "{\"status\":\"unknown\",\"reason\":\"Metadata declares MTP layers, but no recognized MTP tensors were found.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"\",\"declaredLayers\":1,\"splitCount\":1,\"tensorCount\":1,\"tensors\":[]}],\"checkedAt\":\"X\"}"
+    }
+   ]
+  },
+  {
+   "name": "a failed file read is not cached",
+   "query": "?repo=synthetic%2Fretry-fetch&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/retry-fetch?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/retry-fetch": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/retry-fetch/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 503,
+     "text": "busy"
+    }
+   },
+   "steps": [
+    {
+     "/api/models/synthetic/retry-fetch?blobs=true": {
+      "status": 200,
+      "json": {
+       "siblings": [
+        {
+         "rfilename": "m-Q8_0.gguf",
+         "lfs": {
+          "size": 100
+         }
+        }
+       ]
+      }
+     },
+     "/api/models/synthetic/retry-fetch": {
+      "status": 200,
+      "json": {
+       "sha": "abababababababababababababababababababab"
+      }
+     },
+     "/synthetic/retry-fetch/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+      "status": 503,
+      "text": "busy"
+     }
+    },
+    {
+     "/api/models/synthetic/retry-fetch?blobs=true": {
+      "status": 200,
+      "json": {
+       "siblings": [
+        {
+         "rfilename": "m-Q8_0.gguf",
+         "lfs": {
+          "size": 100
+         }
+        }
+       ]
+      }
+     },
+     "/api/models/synthetic/retry-fetch": {
+      "status": 200,
+      "json": {
+       "sha": "abababababababababababababababababababab"
+      }
+     },
+     "/synthetic/retry-fetch/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+      "status": 206,
+      "headers": {
+       "content-range": "bytes 0-184/185"
+      },
+      "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzBAAAAAEAAAAaAAAAAAAAAGJsay4xLm5leHRuLmVoX3Byb2oud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+     }
+    }
+   ],
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Artifact metadata unavailable (503).\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
+   },
+   "answers": [
+    {
+     "status": 200,
+     "bodyText": "{\"status\":\"unknown\",\"reason\":\"Artifact metadata unavailable (503).\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
+    },
+    {
+     "status": 200,
+     "bodyText": "{\"status\":\"present\",\"reason\":\"MTP/NextN tensors are present in the selected files. Backend compatibility and a working head still require a load test.\",\"files\":[\"m-Q8_0.gguf\"],\"revision\":\"abababababababababababababababababababab\",\"evidence\":[{\"file\":\"m-Q8_0.gguf\",\"architecture\":\"synthetic\",\"declaredLayers\":1,\"splitCount\":1,\"tensorCount\":1,\"tensors\":[\"blk.1.nextn.eh_proj.weight\"]}],\"checkedAt\":\"X\"}"
+    }
+   ]
   }
  ]
 }

@@ -172,6 +172,24 @@ fn js_text(section: &str, name: &Value, body: bool) -> String {
     js_json::stringify(if body { answer.get("body") } else { answer }).unwrap()
 }
 
+/// A scenario's requests: its sources and Node's answer, one per step (the source changes between
+/// steps, the front's state does not).
+fn steps_of(s: &Value) -> Vec<(&serde_json::Map<String, Value>, &Value)> {
+    match (s.get("steps"), s.get("answers")) {
+        (Some(Value::Array(steps)), Some(Value::Array(answers))) => steps
+            .iter()
+            .zip(answers)
+            .map(|(st, a)| (st.as_object().unwrap(), a))
+            .collect(),
+        _ => vec![(s["sources"].as_object().unwrap(), &s["answer"])],
+    }
+}
+
+/// Node's exact `JSON.stringify` of the answer (`checkedAt` normalised).
+fn node_text(answer: &Value) -> &str {
+    answer["bodyText"].as_str().unwrap()
+}
+
 #[test]
 fn inspect_matches_node_on_every_synthetic_header() {
     let oracle: Value = serde_json::from_str(ORACLE).unwrap();
@@ -217,6 +235,7 @@ async fn every_scenario_answers_as_node() {
             .push(s);
     }
     let mut checked = 0;
+    let mut mismatches: Vec<String> = Vec::new();
     for (kind, list) in by_kind {
         // The front refuses to start with the other engine kind (its statistics stay Node's), so
         // those scenarios cannot reach it here; every_scenario_answers_as_node_in_process replays them.
@@ -251,21 +270,23 @@ async fn every_scenario_answers_as_node() {
         for s in list {
             let cookie = if s["role"] == "admin" { ADMIN } else { MEMBER };
             let target = format!("/api/models/mtp-artifact{}", s["query"].as_str().unwrap());
-            let (status, headers, body) = call(addr, "GET", &target, Some(cookie), b"").await;
-            assert_eq!(
-                Value::from(status),
-                s["answer"]["status"],
-                "{kind} {}: {body}",
-                s["name"]
-            );
-            assert_eq!(
-                normalise(&body),
-                js_text("http", &s["name"], true),
-                "{kind} {}",
-                s["name"]
-            );
-            assert!(headers.contains("content-type: application/json"));
-            assert!(headers.contains("cache-control: no-store"));
+            for (step, (step_sources, answer)) in steps_of(s).into_iter().enumerate() {
+                for (t, spec) in step_sources {
+                    sources.lock().unwrap().insert(t.clone(), source_of(spec));
+                }
+                let (status, headers, body) = call(addr, "GET", &target, Some(cookie), b"").await;
+                if answer["status"].as_u64() != Some(u64::from(status))
+                    || normalise(&body) != node_text(answer)
+                {
+                    mismatches.push(format!(
+                        "{kind} {} step {step}: {status} {}",
+                        s["name"],
+                        normalise(&body)
+                    ));
+                }
+                assert!(headers.contains("content-type: application/json"));
+                assert!(headers.contains("cache-control: no-store"));
+            }
             checked += 1;
         }
         let seen = seen.lock().unwrap();
@@ -275,6 +296,13 @@ async fn every_scenario_answers_as_node() {
         }
         let _ = stop.send(());
     }
+    assert!(
+        mismatches.is_empty(),
+        "{} of {} scenarios differ from Node:\n{}",
+        mismatches.len(),
+        scenarios.len(),
+        mismatches.join("\n")
+    );
     assert_eq!(checked, scenarios.len());
 }
 
@@ -502,6 +530,7 @@ async fn every_scenario_answers_as_node_in_process() {
     }
     assert_eq!(by_kind.len(), 3, "llamacpp, lemonade and none");
     let mut checked = 0;
+    let mut mismatches: Vec<String> = Vec::new();
     for (kind, list) in by_kind {
         let sources: Sources = Arc::new(Mutex::new(HashMap::new()));
         for s in &list {
@@ -527,23 +556,25 @@ async fn every_scenario_answers_as_node_in_process() {
                 format!("/api/models/mtp-artifact{}", s["query"].as_str().unwrap())
                     .parse()
                     .unwrap();
-            let res = mtp_artifact::serve(&maint, &uri).await;
-            let status = res.status().as_u16();
-            let body =
-                String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec())
-                    .unwrap();
-            assert_eq!(
-                Value::from(status),
-                s["answer"]["status"],
-                "{kind} {}: {body}",
-                s["name"]
-            );
-            assert_eq!(
-                normalise(&body),
-                js_text("http", &s["name"], true),
-                "{kind} {}",
-                s["name"]
-            );
+            for (step, (step_sources, answer)) in steps_of(s).into_iter().enumerate() {
+                for (t, spec) in step_sources {
+                    sources.lock().unwrap().insert(t.clone(), source_of(spec));
+                }
+                let res = mtp_artifact::serve(&maint, &uri).await;
+                let status = res.status().as_u16();
+                let body =
+                    String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec())
+                        .unwrap();
+                if answer["status"].as_u64() != Some(u64::from(status))
+                    || normalise(&body) != node_text(answer)
+                {
+                    mismatches.push(format!(
+                        "{kind} {} step {step}: {status} {}",
+                        s["name"],
+                        normalise(&body)
+                    ));
+                }
+            }
             checked += 1;
         }
         let seen = seen.lock().unwrap();
@@ -559,5 +590,166 @@ async fn every_scenario_answers_as_node_in_process() {
             assert!(h.get("authorization").is_none(), "no key to the source");
         }
     }
+    assert!(
+        mismatches.is_empty(),
+        "{} of {} scenarios differ from Node:\n{}",
+        mismatches.len(),
+        scenarios.len(),
+        mismatches.join("\n")
+    );
     assert_eq!(checked, scenarios.len());
+}
+
+fn maint_for(kind: &str, port: u16) -> Arc<noevia_server::model_maint::Maint> {
+    let env: HashMap<String, String> = env_for(kind, port).into_iter().collect();
+    let get = |k: &str| env.get(k).cloned();
+    let engine = Arc::new(server_stats::Engine::from_lookup(&get).unwrap());
+    let sizing = Arc::new(noevia_server::model_sizing::Sizing::from_lookup(
+        engine.kind(),
+        Arc::clone(&engine),
+        &get,
+    ));
+    Arc::new(
+        noevia_server::model_maint::Maint::from_lookup(engine.kind(), &engine, sizing, &get)
+            .unwrap(),
+    )
+}
+
+fn uri_for(repo: &str) -> axum::http::Uri {
+    format!(
+        "/api/models/mtp-artifact?repo={}&variant=Q8_0",
+        repo.replace('/', "%2F")
+    )
+    .parse()
+    .unwrap()
+}
+
+async fn body_of(res: axum::http::Response<axum::body::Body>) -> String {
+    use http_body_util::BodyExt;
+    String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap()
+}
+
+fn requests_to(seen: &Seen, part: &str) -> usize {
+    seen.lock()
+        .unwrap()
+        .iter()
+        .filter(|(t, _)| t.contains(part))
+        .count()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_last_waiter_leaving_cancels_the_inspection_and_frees_its_slot() {
+    let sources: Sources = Arc::new(Mutex::new(HashMap::new()));
+    add_repo(&sources, "synthetic/left", Duration::from_millis(800));
+    add_repo(&sources, "synthetic/next-a", Duration::from_millis(300));
+    add_repo(&sources, "synthetic/next-b", Duration::from_millis(300));
+    let (port, seen) = source_server(Arc::clone(&sources)).await;
+    let maint = maint_for("llamacpp", port);
+    let left = uri_for("synthetic/left");
+    let gone = tokio::time::timeout(
+        Duration::from_millis(200),
+        mtp_artifact::serve(&maint, &left),
+    )
+    .await;
+    assert!(
+        gone.is_err(),
+        "the caller left while the revision was pending"
+    );
+    assert_eq!(maint.mtp_running(), 0, "the slot is freed at once");
+    tokio::time::sleep(Duration::from_millis(1200)).await;
+    assert_eq!(
+        requests_to(&seen, "/api/models/synthetic/left"),
+        2,
+        "list and revision only"
+    );
+    assert_eq!(
+        requests_to(&seen, "/synthetic/left/resolve/"),
+        0,
+        "no file read after the abort"
+    );
+    // Both slots are free: two other checks run side by side.
+    let (ua, ub) = (uri_for("synthetic/next-a"), uri_for("synthetic/next-b"));
+    let (a, b) = tokio::join!(
+        mtp_artifact::serve(&maint, &ua),
+        mtp_artifact::serve(&maint, &ub)
+    );
+    for res in [a, b] {
+        let body = body_of(res).await;
+        assert!(body.starts_with("{\"status\":\"present\""), "{body}");
+    }
+    assert_eq!(maint.mtp_running(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn one_of_two_waiters_leaving_keeps_the_inspection_for_the_other() {
+    let sources: Sources = Arc::new(Mutex::new(HashMap::new()));
+    add_repo(&sources, "synthetic/shared", Duration::from_millis(700));
+    let (port, seen) = source_server(Arc::clone(&sources)).await;
+    let maint = maint_for("llamacpp", port);
+    let uri = uri_for("synthetic/shared");
+    let (left, stayed) = tokio::join!(
+        tokio::time::timeout(
+            Duration::from_millis(300),
+            mtp_artifact::serve(&maint, &uri)
+        ),
+        async {
+            // Joins after the first has started the inspection.
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            mtp_artifact::serve(&maint, &uri).await
+        }
+    );
+    assert!(left.is_err(), "the first caller left");
+    let body = body_of(stayed).await;
+    assert!(body.starts_with("{\"status\":\"present\""), "{body}");
+    assert_eq!(
+        requests_to(&seen, "/api/models/synthetic/shared?"),
+        2,
+        "each caller lists"
+    );
+    assert_eq!(
+        seen.lock()
+            .unwrap()
+            .iter()
+            .filter(|(t, _)| t == "/api/models/synthetic/shared")
+            .count(),
+        1,
+        "one coalesced revision read"
+    );
+    assert_eq!(
+        requests_to(&seen, "/synthetic/shared/resolve/"),
+        1,
+        "one file read"
+    );
+    assert_eq!(maint.mtp_running(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_variant_list_read_is_cancelled_with_its_caller() {
+    let sources: Sources = Arc::new(Mutex::new(HashMap::new()));
+    add_repo(&sources, "synthetic/slow-list", Duration::ZERO);
+    sources
+        .lock()
+        .unwrap()
+        .get_mut("/api/models/synthetic/slow-list?blobs=true")
+        .unwrap()
+        .delay = Duration::from_millis(700);
+    let (port, seen) = source_server(Arc::clone(&sources)).await;
+    let maint = maint_for("llamacpp", port);
+    let gone = tokio::time::timeout(
+        Duration::from_millis(200),
+        mtp_artifact::serve(&maint, &uri_for("synthetic/slow-list")),
+    )
+    .await;
+    assert!(gone.is_err());
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    assert_eq!(
+        seen.lock()
+            .unwrap()
+            .iter()
+            .filter(|(t, _)| t == "/api/models/synthetic/slow-list")
+            .count(),
+        0,
+        "no revision read after the caller left during the list"
+    );
+    assert_eq!(maint.mtp_running(), 0);
 }

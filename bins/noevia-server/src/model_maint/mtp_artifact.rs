@@ -7,19 +7,32 @@
 //! Behaviour kept from Core:
 //! - the repository is `owner/name` of `[A-Za-z0-9_.-]`, else 400 `Invalid repository`;
 //! - the variant list failing in any way is 502 `Could not resolve selected files`; a list that
-//!   names no such variant is 404 `Variant no longer available`; a transport failure of the list
-//!   read (Node's `fetchJson` throws) is 500 `Internal error`;
+//!   names no such variant is 404 `Variant no longer available`; what makes Node's route throw (a
+//!   transport failure of the list read, a null sibling or variant, a variant list that is not an
+//!   array) is 500 `Internal error`;
 //! - the check itself always answers 200: `present`, `absent` or `unknown` with a reason. It pins
 //!   the repository's immutable revision, reads at most 16 MiB of each of up to four files, keeps
-//!   at most 100 answers for five minutes, coalesces identical checks and runs at most two at once.
+//!   at most 100 answers for five minutes (failures are never kept), coalesces identical checks and
+//!   runs at most two at once.
+//!
+//! Replies are read with [`super::v8_json`], one parser that accepts exactly what `JSON.parse`
+//! accepts (strings kept as UTF-16, lone surrogates included), and answers are written with its
+//! `JSON.stringify`.
+//!
+//! Lifetime: the variant list is read on the request's own future, so a caller that leaves cancels
+//! it. A coalesced inspection runs on its own task with a count of the callers waiting for it; when
+//! the last one leaves, the task is aborted, and its running slot is released by a guard inside the
+//! task (on completion, abort or panic).
 //!
 //! The source is `https://huggingface.co`, or the QA source (`NOEVIA_QA_MODEL_CARD_SOURCE`) in
-//! synthetic runs. Every check runs on its own task, so a client that leaves strands nothing.
+//! synthetic runs.
+use super::v8_json::{self, W};
 use super::Maint;
 use axum::body::Body;
 use axum::http::{HeaderValue, Response, StatusCode};
-use js_json::{parse, stringify, JValue};
+use js_json::JValue;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
@@ -33,8 +46,48 @@ const LIST_CAP: usize = 8 * 1024 * 1024;
 const CACHE_FOR: Duration = Duration::from_secs(300);
 const CACHE_MAX: usize = 100;
 const RUNNING_MAX: usize = 2;
+const INCOMPLETE: &str = "The selected variant does not enumerate every GGUF shard.";
 
-type Pending = HashMap<String, watch::Receiver<Option<JValue>>>;
+/// A check's answer (the object mtp-artifact.cjs `check` returns).
+pub struct Answer {
+    status: &'static str,
+    reason: String,
+    files: Arc<W>,
+    found: Option<(W, Vec<Inspection>)>,
+    checked_at: String,
+}
+
+impl Answer {
+    /// `JSON.stringify(answer)`: status, reason, files, [revision, evidence,] checkedAt.
+    pub fn render(&self) -> String {
+        let mut out = String::from("{\"status\":");
+        v8_json::quote(&units(self.status), &mut out);
+        out.push_str(",\"reason\":");
+        v8_json::quote(&units(&self.reason), &mut out);
+        out.push_str(",\"files\":");
+        v8_json::stringify(&self.files, &mut out);
+        if let Some((revision, evidence)) = &self.found {
+            out.push_str(",\"revision\":");
+            v8_json::stringify(revision, &mut out);
+            out.push_str(",\"evidence\":");
+            let list = JValue::Arr(evidence.iter().map(Inspection::to_json).collect());
+            out.push_str(&js_json::stringify(&list).unwrap_or_else(|| "[]".into()));
+        }
+        out.push_str(",\"checkedAt\":");
+        v8_json::quote(&units(&self.checked_at), &mut out);
+        out.push('}');
+        out
+    }
+}
+
+struct Entry {
+    gen: u64,
+    rx: watch::Receiver<Option<Arc<Answer>>>,
+    waiters: usize,
+    abort: tokio::task::AbortHandle,
+}
+
+type Pending = HashMap<String, Entry>;
 
 /// The check's state (mtp-artifact.cjs module scope) and the variant list's clients.
 pub struct Mtp {
@@ -46,8 +99,9 @@ pub struct Mtp {
     list_client: reqwest::Client,
     /// `fetch`: redirects followed (a resolve URL redirects to the file store).
     file_client: reqwest::Client,
-    cache: Mutex<Vec<(String, Instant, JValue)>>,
+    cache: Mutex<Vec<(String, Instant, Arc<Answer>)>>,
     pending: Arc<Mutex<Pending>>,
+    next_gen: AtomicU64,
 }
 
 impl std::fmt::Debug for Mtp {
@@ -81,8 +135,18 @@ impl Mtp {
             file_client,
             cache: Mutex::new(Vec::new()),
             pending: Arc::new(Mutex::new(HashMap::new())),
+            next_gen: AtomicU64::new(1),
         })
     }
+
+    /// How many inspections hold a running slot (for tests and diagnostics).
+    pub fn running(&self) -> usize {
+        self.pending.lock().map_or(0, |p| p.len())
+    }
+}
+
+fn units(s: &str) -> Vec<u16> {
+    s.encode_utf16().collect()
 }
 
 /// `url.searchParams.get(name)`.
@@ -106,19 +170,19 @@ pub fn repo_ok(repo: &str) -> bool {
     }
 }
 
-fn reply(status: u16, body: &JValue) -> Response<Body> {
+fn reply_text(status: u16, body: String) -> Response<Body> {
     crate::reply::json_text(
         StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-        stringify(body).unwrap_or_else(|| "null".into()),
+        body,
         true,
     )
 }
 
 fn error(status: u16, message: &str) -> Response<Body> {
-    reply(
-        status,
-        &JValue::obj([("error", JValue::Str(message.into()))]),
-    )
+    let mut out = String::from("{\"error\":");
+    v8_json::quote(&units(message), &mut out);
+    out.push('}');
+    reply_text(status, out)
 }
 
 pub async fn serve(maint: &Arc<Maint>, uri: &axum::http::Uri) -> Response<Body> {
@@ -126,65 +190,65 @@ pub async fn serve(maint: &Arc<Maint>, uri: &axum::http::Uri) -> Response<Body> 
     if !repo_ok(&repo) {
         return error(400, "Invalid repository");
     }
-    let variant = param(uri, "variant");
-    let m = Arc::clone(maint);
-    let work = tokio::spawn(async move {
-        let list = match m.mtp_variants(&repo).await {
-            Err(Thrown) => return Err(Thrown),
-            Ok(None) => return Ok(Err((502, "Could not resolve selected files"))),
-            Ok(Some(list)) => list,
-        };
-        let items = match &list {
-            JValue::Undefined | JValue::Null => Vec::new(),
-            v if !v.truthy() => Vec::new(),
-            JValue::Arr(items) => items.clone(),
-            // `.find` of a string, number or object: a TypeError.
-            _ => return Err(Thrown),
-        };
-        let mut chosen = None;
-        for v in items {
+    let variant: Option<Vec<u16>> = param(uri, "variant").map(|v| units(&v));
+    // On this future: a caller that leaves cancels the list read.
+    let mut list = match maint.mtp_variants(&repo).await {
+        Err(Thrown) => return error(500, "Internal error"),
+        Ok(None) => return error(502, "Could not resolve selected files"),
+        Ok(Some(list)) => list,
+    };
+    // `(result.body?.variants || []).find(v => v.name === url.searchParams.get('variant'))`.
+    let chosen = if !list.truthy() {
+        None
+    } else if let W::Arr(items) = &list {
+        let mut at = None;
+        for (k, v) in items.iter().enumerate() {
             if v.is_nullish() {
-                return Err(Thrown);
+                return error(500, "Internal error");
             }
-            let name = v.get("name");
-            let same = match (&variant, name) {
-                (None, JValue::Null) => true,
-                (Some(want), JValue::Str(s)) => s == want,
+            let same = match (&variant, v.get("name")) {
+                (None, W::Null) => true,
+                (Some(want), W::Str(s)) => s == want,
                 _ => false,
             };
             if same {
-                chosen = Some(v);
+                at = Some(k);
                 break;
             }
         }
-        let Some(v) = chosen else {
-            return Ok(Err((404, "Variant no longer available")));
-        };
-        let files = if v.get("files").truthy() {
-            v.get("files").clone()
-        } else {
-            JValue::Arr(vec![v.get("primary_file").clone()])
-        };
-        Ok(Ok(m.mtp_check(&repo, files).await))
-    });
-    match work.await {
-        Ok(Ok(Ok(body))) => reply(200, &body),
-        Ok(Ok(Err((status, message)))) => error(status, message),
-        Ok(Err(Thrown)) | Err(_) => error(500, "Internal error"),
-    }
+        at
+    } else {
+        // `.find` of a string, number, boolean or object: a TypeError.
+        return error(500, "Internal error");
+    };
+    let Some(at) = chosen else {
+        return error(404, "Variant no longer available");
+    };
+    let files = match &mut list {
+        W::Arr(items) => match items.get_mut(at) {
+            Some(v) if v.get("files").truthy() => v.take("files"),
+            Some(v) => W::Arr(vec![v.take("primary_file")]),
+            None => return error(500, "Internal error"),
+        },
+        _ => return error(500, "Internal error"),
+    };
+    drop(list);
+    let answer = maint.mtp_check(&repo, Arc::new(files)).await;
+    reply_text(200, answer.render())
 }
 
 /// A JS exception escaping the route: index.cjs answers 500 `Internal error`.
 #[derive(Debug)]
 struct Thrown;
 
-/// `fetchJson`'s answer: transport failure throws, an over-cap reply is `{ ok: false }`.
+/// `fetchJson`'s answer: transport failure throws, an over-cap or failed reply is `{ ok: false }`
+/// (`None`), a body that is not JSON is its text.
 async fn fetch_json(
     client: &reqwest::Client,
     url: &str,
     auth: Option<&HeaderValue>,
     within: Duration,
-) -> Result<Option<JValue>, Thrown> {
+) -> Result<Option<W>, Thrown> {
     let read = async {
         let mut req = client.get(url);
         if let Some(a) = auth {
@@ -206,18 +270,71 @@ async fn fetch_json(
         if !ok {
             return Ok(None);
         }
-        let text = String::from_utf8_lossy(&bytes).into_owned();
-        Ok(Some(parse(&text).unwrap_or(JValue::Str(text))))
+        let text = units(&String::from_utf8_lossy(&bytes));
+        Ok(Some(match v8_json::parse(&text) {
+            Ok(v) => v,
+            Err(_) => W::Str(text),
+        }))
     };
     tokio::time::timeout(within, read)
         .await
         .map_err(|_| Thrown)?
 }
 
+/// One caller waiting for a coalesced inspection: leaving takes it off the count, and the last
+/// one to leave aborts the work and frees its running slot.
+struct Waiting {
+    pending: Arc<Mutex<Pending>>,
+    key: String,
+    gen: u64,
+}
+
+impl Drop for Waiting {
+    fn drop(&mut self) {
+        let Ok(mut pending) = self.pending.lock() else {
+            return;
+        };
+        let last = match pending.get_mut(&self.key) {
+            Some(e) if e.gen == self.gen => {
+                e.waiters = e.waiters.saturating_sub(1);
+                e.waiters == 0
+            }
+            _ => false,
+        };
+        if last {
+            if let Some(e) = pending.remove(&self.key) {
+                e.abort.abort();
+            }
+        }
+    }
+}
+
+/// Held by the inspection task: its slot is freed however the task ends.
+struct Release {
+    pending: Arc<Mutex<Pending>>,
+    key: String,
+    gen: u64,
+}
+
+impl Drop for Release {
+    fn drop(&mut self) {
+        if let Ok(mut pending) = self.pending.lock() {
+            if pending.get(&self.key).is_some_and(|e| e.gen == self.gen) {
+                pending.remove(&self.key);
+            }
+        }
+    }
+}
+
 impl Maint {
+    /// How many MTP artifact inspections hold a running slot (at most two).
+    pub fn mtp_running(&self) -> usize {
+        self.mtp.running()
+    }
+
     /// `modelManager.variants(repo)`: the `variants` of a successful answer (`Ok(None)` for any
     /// `{ ok: false }`), or a thrown error.
-    async fn mtp_variants(&self, repo: &str) -> Result<Option<JValue>, Thrown> {
+    async fn mtp_variants(&self, repo: &str) -> Result<Option<W>, Thrown> {
         let mtp = &self.mtp;
         match mtp.kind {
             server_stats::Kind::LlamaCpp => {
@@ -227,7 +344,7 @@ impl Maint {
                 else {
                     return Ok(None);
                 };
-                Ok(variants_of(&body))
+                variants_of(&body)
             }
             server_stats::Kind::Lemonade => {
                 let auth = match &mtp.lemonade_auth {
@@ -242,10 +359,7 @@ impl Maint {
                 );
                 let body =
                     fetch_json(&mtp.list_client, &url, auth, Duration::from_secs(20)).await?;
-                Ok(body.map(|b| match b {
-                    JValue::Obj(_) => b.get("variants").clone(),
-                    _ => JValue::Undefined,
-                }))
+                Ok(body.map(|mut b| b.take("variants")))
             }
             // model-manager.cjs `requireEnabled` throws.
             server_stats::Kind::None => Err(Thrown),
@@ -253,76 +367,103 @@ impl Maint {
     }
 
     /// mtp-artifact.cjs `check(repo, files)`.
-    async fn mtp_check(self: &Arc<Self>, repo: &str, files: JValue) -> JValue {
+    async fn mtp_check(self: &Arc<Self>, repo: &str, files: Arc<W>) -> Arc<Answer> {
         if let Err(reason) = validate(repo, &files) {
-            return unknown(reason, &files);
+            return Arc::new(unknown(reason, files));
         }
-        let key = stringify(&JValue::Arr(vec![JValue::Str(repo.into()), files.clone()]))
-            .unwrap_or_default();
-        if let Some(saved) = self
-            .mtp
-            .cache
-            .lock()
-            .ok()
-            .and_then(|c| c.iter().find(|(k, _, _)| *k == key).cloned())
-            .filter(|(_, at, _)| at.elapsed() < CACHE_FOR)
-        {
-            return saved.2;
+        let key = {
+            let mut k = String::from("[");
+            v8_json::quote(&units(repo), &mut k);
+            k.push(',');
+            v8_json::stringify(&files, &mut k);
+            k.push(']');
+            k
+        };
+        if let Some(saved) = self.mtp.cache.lock().ok().and_then(|c| {
+            c.iter()
+                .find(|(k, at, _)| *k == key && at.elapsed() < CACHE_FOR)
+                .map(|(_, _, a)| Arc::clone(a))
+        }) {
+            return saved;
         }
-        let mut rx = {
+        let (mut rx, _waiting) = {
             let Ok(mut pending) = self.mtp.pending.lock() else {
-                return unknown("Internal error".into(), &files);
+                return Arc::new(unknown("Internal error".into(), files));
             };
-            if let Some(rx) = pending.get(&key) {
-                rx.clone()
+            if let Some(e) = pending.get_mut(&key) {
+                e.waiters += 1;
+                let w = Waiting {
+                    pending: Arc::clone(&self.mtp.pending),
+                    key: key.clone(),
+                    gen: e.gen,
+                };
+                (e.rx.clone(), w)
             } else if pending.len() >= RUNNING_MAX {
-                return unknown(
+                return Arc::new(unknown(
                     "Two artifact checks are already running. Try again shortly.".into(),
-                    &files,
-                );
+                    files,
+                ));
             } else {
+                let gen = self.mtp.next_gen.fetch_add(1, Ordering::Relaxed);
                 let (tx, rx) = watch::channel(None);
-                pending.insert(key.clone(), rx.clone());
                 let me = Arc::clone(self);
-                let (repo, files, key) = (repo.to_owned(), files.clone(), key.clone());
-                tokio::spawn(async move {
-                    let result = me.mtp_run(&repo, &files, &key).await;
-                    if let Ok(mut p) = me.mtp.pending.lock() {
-                        p.remove(&key);
-                    }
+                let release = Release {
+                    pending: Arc::clone(&self.mtp.pending),
+                    key: key.clone(),
+                    gen,
+                };
+                let (repo, run_files, run_key) = (repo.to_owned(), Arc::clone(&files), key.clone());
+                let task = tokio::spawn(async move {
+                    let _release = release;
+                    let result = me.mtp_run(&repo, run_files, &run_key).await;
                     let _ = tx.send(Some(result));
                 });
-                rx
+                pending.insert(
+                    key.clone(),
+                    Entry {
+                        gen,
+                        rx: rx.clone(),
+                        waiters: 1,
+                        abort: task.abort_handle(),
+                    },
+                );
+                let w = Waiting {
+                    pending: Arc::clone(&self.mtp.pending),
+                    key: key.clone(),
+                    gen,
+                };
+                (rx, w)
             }
         };
         let done = rx.wait_for(Option::is_some).await.map(|v| v.clone());
         match done {
-            Ok(v) => v.unwrap_or(JValue::Undefined),
-            Err(_) => unknown("Internal error".into(), &files),
+            Ok(Some(answer)) => answer,
+            _ => Arc::new(unknown("Internal error".into(), files)),
         }
     }
 
-    async fn mtp_run(&self, repo: &str, files: &JValue, key: &str) -> JValue {
-        let names: Vec<String> = match files {
-            JValue::Arr(items) => items
+    async fn mtp_run(&self, repo: &str, files: Arc<W>, key: &str) -> Arc<Answer> {
+        let names: Vec<Vec<u16>> = match &*files {
+            W::Arr(items) => items
                 .iter()
-                .filter_map(|f| f.as_str().map(str::to_owned))
+                .filter_map(|f| f.units().map(<[u16]>::to_vec))
                 .collect(),
             _ => Vec::new(),
         };
         match self.mtp_evidence(repo, &names).await {
-            Err(reason) => unknown(reason, files),
+            // A thrown failure answers unknown and is never kept (Node returns before the cache).
+            Err(reason) => Arc::new(unknown(reason, files)),
             Ok((revision, evidence)) => {
-                let result = verdict(files, revision, &evidence);
+                let result = Arc::new(verdict(files, revision, evidence));
                 if let Ok(mut cache) = self.mtp.cache.lock() {
                     if cache.len() >= CACHE_MAX {
                         cache.remove(0);
                     }
                     if let Some(slot) = cache.iter_mut().find(|(k, _, _)| k == key) {
                         slot.1 = Instant::now();
-                        slot.2 = result.clone();
+                        slot.2 = Arc::clone(&result);
                     } else {
-                        cache.push((key.to_owned(), Instant::now(), result.clone()));
+                        cache.push((key.to_owned(), Instant::now(), Arc::clone(&result)));
                     }
                 }
                 result
@@ -333,11 +474,11 @@ impl Maint {
     async fn mtp_evidence(
         &self,
         repo: &str,
-        files: &[String],
-    ) -> Result<(JValue, Vec<Inspection>), String> {
+        files: &[Vec<u16>],
+    ) -> Result<(W, Vec<Inspection>), String> {
         let client = &self.mtp.file_client;
         let meta_url = format!("{}/api/models/{repo}", self.card_base);
-        let meta = tokio::time::timeout(Duration::from_secs(10), async {
+        let mut meta = tokio::time::timeout(Duration::from_secs(10), async {
             let mut res = client
                 .get(&meta_url)
                 .send()
@@ -353,40 +494,37 @@ impl Maint {
                 }
                 bytes.extend_from_slice(&chunk);
             }
-            let text = String::from_utf8_lossy(&bytes).into_owned();
-            let units: Vec<u16> = text.encode_utf16().collect();
-            // JSON.parse's own message (V8); a lone surrogate in it becomes U+FFFD here.
-            if let Some(message) = super::v8_json::parse_error(&units) {
-                return Err(String::from_utf16_lossy(&message));
-            }
-            // V8 accepts it. The reader keeps a lone surrogate escape as U+FFFD, which can only
-            // make a revision fail the hex test, as it does in Node.
-            Ok(parse(&text).unwrap_or(JValue::Undefined))
+            // JSON.parse; its own message on failure (a lone surrogate in it becomes U+FFFD here).
+            v8_json::parse(&units(&String::from_utf8_lossy(&bytes)))
+                .map_err(|m| String::from_utf16_lossy(&m))
         })
         .await
         .map_err(|_| "Artifact check timed out.".to_string())??;
         // `meta.sha`, then `/^[a-f0-9]{40,64}$/.test(revision || '')`: the test coerces the value to
         // a string, and the URL and the answer use the value as it is (`${revision}`, `revision`).
         let sha = match &meta {
-            JValue::Null => return Err("Cannot read properties of null (reading 'sha')".into()),
-            JValue::Obj(_) => meta.get("sha").clone(),
-            _ => JValue::Undefined,
+            W::Null => return Err("Cannot read properties of null (reading 'sha')".into()),
+            W::Obj(_) => meta.take("sha"),
+            _ => W::Undefined,
         };
-        let revision = if sha.truthy() {
-            js_json::to_js_string(&sha).unwrap_or_default()
+        drop(meta);
+        let text = if sha.truthy() {
+            v8_json::to_js_string(&sha)?
         } else {
-            String::new()
+            Vec::new()
         };
-        if !((40..=64).contains(&revision.len())
-            && revision
-                .bytes()
-                .all(|b| matches!(b, b'a'..=b'f' | b'0'..=b'9')))
+        if !((40..=64).contains(&text.len())
+            && text.iter().all(|&u| matches!(u, 0x61..=0x66 | 0x30..=0x39)))
         {
             return Err("Immutable repository revision unavailable.".to_string());
         }
+        let revision = String::from_utf16_lossy(&text);
         let mut evidence = Vec::new();
         for file in files {
-            let path: Vec<String> = file.split('/').map(encode_component).collect();
+            let mut path: Vec<String> = Vec::new();
+            for seg in file.split(|&u| u == 0x2f) {
+                path.push(encode_units(seg).ok_or_else(|| "URI malformed".to_string())?);
+            }
             let url = format!(
                 "{}/{repo}/resolve/{revision}/{}",
                 self.card_base,
@@ -394,58 +532,68 @@ impl Maint {
             );
             let bytes = prefix(client, &url).await?;
             let mut found = inspect(&bytes)?;
-            found.file = file.clone();
+            found.file = String::from_utf16_lossy(file);
             evidence.push(found);
+        }
+        let count = files.len() as f64;
+        if evidence.iter().any(|e| js_gt(&e.split_count, count)) {
+            return Err(INCOMPLETE.into());
         }
         Ok((sha, evidence))
     }
 }
 
-/// llamacpp-variants.cjs over the source's model info: the variant rows, or `None` (`{ ok: false }`).
-fn variants_of(body: &JValue) -> Option<JValue> {
-    let siblings = match body {
-        JValue::Obj(_) if body.get("private").truthy() => return None,
-        JValue::Obj(_) => match body.get("siblings") {
-            JValue::Arr(s) => s,
-            _ => return None,
-        },
-        _ => return None,
+/// llamacpp-variants.cjs over the source's model info: the variant rows, `None` (`{ ok: false }`),
+/// or a thrown error (a nullish sibling: `file.rfilename` of null).
+fn variants_of(body: &W) -> Result<Option<W>, Thrown> {
+    if body.get("private").truthy() {
+        return Ok(None);
+    }
+    let W::Arr(siblings) = body.get("siblings") else {
+        return Ok(None);
     };
     struct File {
-        name: String,
-        size: JValue,
+        name: Vec<u16>,
+        size: Option<f64>,
         shard: Option<String>,
         count: Option<String>,
     }
     let mut groups: Vec<(String, Vec<File>)> = Vec::new();
     for file in siblings {
-        let Some(name) = (if file.is_object() {
-            file.get("rfilename").as_str()
-        } else {
-            None
-        }) else {
+        if file.is_nullish() {
+            return Err(Thrown);
+        }
+        let Some(name) = file.get("rfilename").units() else {
             continue;
         };
-        if name.to_ascii_lowercase().contains("mmproj") {
+        // The pattern and the projector test are ASCII: a lone surrogate reads as any other
+        // non-matching character.
+        let text = String::from_utf16_lossy(name);
+        if text.to_ascii_lowercase().contains("mmproj") {
             continue;
         }
-        let Some((quant, shard, count)) = quant_match(name) else {
+        let Some((quant, shard, count)) = quant_match(&text) else {
             continue;
         };
         let quant = quant.to_ascii_uppercase();
+        // `file.lfs?.size ?? file.size`
         let lfs = file.get("lfs");
         let lfs_size = if lfs.is_nullish() {
-            &JValue::Undefined
+            &W::Undefined
         } else {
             lfs.get("size")
         };
         let size = if lfs_size.is_nullish() {
-            file.get("size").clone()
+            file.get("size")
         } else {
-            lfs_size.clone()
+            lfs_size
+        };
+        let size = match size {
+            W::Num(n) if n.is_finite() && *n > 0.0 => Some(*n),
+            _ => None,
         };
         let entry = File {
-            name: name.to_owned(),
+            name: name.to_vec(),
             size,
             shard,
             count,
@@ -455,7 +603,7 @@ fn variants_of(body: &JValue) -> Option<JValue> {
             None => groups.push((quant, vec![entry])),
         }
     }
-    let mut rows: Vec<(String, JValue)> = Vec::new();
+    let mut rows: Vec<(String, W)> = Vec::new();
     for (name, files) in &groups {
         let Some(first) = files.first() else { continue };
         let count = first
@@ -488,33 +636,26 @@ fn variants_of(body: &JValue) -> Option<JValue> {
         if (files.len() != 1 && !complete) || (first.shard.is_some() && !complete) {
             continue;
         }
-        let sizes: Vec<Option<f64>> = files
-            .iter()
-            .map(|f| match f.size {
-                JValue::Num(n) if n.is_finite() && n > 0.0 => Some(n),
-                _ => None,
-            })
-            .collect();
-        let size = if sizes.iter().all(Option::is_some) {
-            JValue::Num(sizes.iter().flatten().sum())
+        let size = if files.iter().all(|f| f.size.is_some()) {
+            W::Num(files.iter().filter_map(|f| f.size).sum())
         } else {
-            JValue::Null
+            W::Null
         };
         rows.push((
             name.clone(),
-            JValue::obj([
-                ("name", JValue::Str(name.clone())),
-                ("primary_file", JValue::Str(first.name.clone())),
+            W::Obj(vec![
+                (units("name"), W::str(name)),
+                (units("primary_file"), W::Str(first.name.clone())),
                 (
-                    "files",
-                    JValue::Arr(files.iter().map(|f| JValue::Str(f.name.clone())).collect()),
+                    units("files"),
+                    W::Arr(files.iter().map(|f| W::Str(f.name.clone())).collect()),
                 ),
-                ("size_bytes", size),
+                (units("size_bytes"), size),
             ]),
         ));
     }
     rows.sort_by_key(|r| collate(&r.0));
-    Some(JValue::Arr(rows.into_iter().map(|(_, r)| r).collect()))
+    Ok(Some(W::Arr(rows.into_iter().map(|(_, r)| r).collect())))
 }
 
 /// `localeCompare` for quant names (`[A-Z0-9_]`, upper-cased): the root collation puts `_` before
@@ -606,13 +747,20 @@ pub fn quant_match(name: &str) -> Option<(String, Option<String>, Option<String>
     None
 }
 
-/// `name.replace(/-\d{5}-of-\d{5}\.gguf$/i, '')`.
-fn stem(name: &str) -> &str {
-    let b = name.as_bytes();
-    if b.len() >= 20 {
-        let at = b.len() - 20;
-        if matches!(tail(b, at), Some((Some(_), _))) {
-            return name.get(..at).unwrap_or(name);
+/// `name.replace(/-\d{5}-of-\d{5}\.gguf$/i, '')`, on UTF-16 units (the suffix is ASCII).
+fn stem(name: &[u16]) -> &[u16] {
+    if name.len() >= 20 {
+        let at = name.len() - 20;
+        let tail_bytes: Option<Vec<u8>> = name
+            .get(at..)
+            .unwrap_or_default()
+            .iter()
+            .map(|&u| u8::try_from(u).ok().filter(u8::is_ascii))
+            .collect();
+        if let Some(b) = tail_bytes {
+            if matches!(tail(&b, 0), Some((Some(_), _))) {
+                return name.get(..at).unwrap_or(name);
+            }
         }
     }
     name
@@ -631,33 +779,52 @@ pub fn encode_component(s: &str) -> String {
     out
 }
 
+/// `encodeURIComponent` of UTF-16 units: `None` for a lone surrogate (JS throws `URIError: URI malformed`).
+fn encode_units(s: &[u16]) -> Option<String> {
+    let mut text = String::new();
+    for c in char::decode_utf16(s.iter().copied()) {
+        text.push(c.ok()?);
+    }
+    Some(encode_component(&text))
+}
+
+/// `new Set(files).size !== files.length`: SameValueZero, objects and arrays by identity.
+fn same_value_zero(a: &W, b: &W) -> bool {
+    match (a, b) {
+        (W::Undefined, W::Undefined) | (W::Null, W::Null) => true,
+        (W::Bool(x), W::Bool(y)) => x == y,
+        (W::Num(x), W::Num(y)) => x == y || (x.is_nan() && y.is_nan()),
+        (W::Str(x), W::Str(y)) => x == y,
+        _ => false,
+    }
+}
+
 /// mtp-artifact.cjs `validate`.
-pub fn validate(repo: &str, files: &JValue) -> Result<(), String> {
+pub fn validate(repo: &str, files: &W) -> Result<(), String> {
     if !repo_ok(repo) || repo.split('/').any(|p| p == "." || p == "..") {
         return Err("Invalid public Hugging Face repository.".into());
     }
     let bad = || Err("Inspection supports up to four selected GGUF shards.".to_string());
-    let JValue::Arr(items) = files else {
+    let W::Arr(items) = files else {
         return bad();
     };
     if items.is_empty() || items.len() > 4 {
         return bad();
     }
-    let mut seen: Vec<String> = Vec::new();
-    for f in items {
-        let key = stringify(f).unwrap_or_else(|| "undefined".into());
-        if seen.contains(&key) {
+    for (k, a) in items.iter().enumerate() {
+        if items.iter().skip(k + 1).any(|b| same_value_zero(a, b)) {
             return bad();
         }
-        seen.push(key);
     }
+    let gguf = units(".gguf");
     for f in items {
-        let Some(f) = f.as_str() else { return bad() };
-        if !f.ends_with(".gguf")
-            || f.starts_with('/')
-            || f.split('/').any(|p| p.is_empty() || p == "." || p == "..")
-            || f.chars()
-                .any(|c| matches!(c, '?' | '#' | '\\' | '\u{0}'..='\u{1f}'))
+        let Some(f) = f.units() else { return bad() };
+        let segment_bad = |p: &[u16]| p.is_empty() || p == [0x2e] || p == [0x2e, 0x2e];
+        if !f.ends_with(&gguf)
+            || f.first() == Some(&0x2f)
+            || f.split(|&u| u == 0x2f).any(segment_bad)
+            || f.iter()
+                .any(|&u| matches!(u, 0x3f | 0x23 | 0x5c | 0x00..=0x1f))
         {
             return bad();
         }
@@ -672,45 +839,29 @@ fn now_iso() -> String {
     crate::project_config_routes::iso(ms)
 }
 
-fn unknown(reason: String, files: &JValue) -> JValue {
-    JValue::obj([
-        ("status", JValue::Str("unknown".into())),
-        ("reason", JValue::Str(reason)),
-        ("files", files.clone()),
-        ("checkedAt", JValue::Str(now_iso())),
-    ])
+fn unknown(reason: String, files: Arc<W>) -> Answer {
+    Answer {
+        status: "unknown",
+        reason,
+        files,
+        found: None,
+        checked_at: now_iso(),
+    }
 }
 
-/// JS `x > n` for a metadata value (a number, a string, `null`).
+/// JS `x > n` for a metadata value (a number, a string, `null`): a string by ECMAScript `ToNumber`.
 fn js_gt(x: &JValue, n: f64) -> bool {
     match x {
         JValue::Num(v) => *v > n,
-        JValue::Str(s) => {
-            let t = s.trim();
-            let v = if t.is_empty() {
-                0.0
-            } else {
-                t.parse::<f64>().unwrap_or(f64::NAN)
-            };
-            v > n
-        }
+        JValue::Str(s) => v8_json::to_number(s) > n,
         JValue::Bool(b) => f64::from(u8::from(*b)) > n,
         JValue::Null => 0.0 > n,
         _ => false,
     }
 }
 
-fn verdict(files: &JValue, revision: JValue, evidence: &[Inspection]) -> JValue {
-    let count = match files {
-        JValue::Arr(f) => f.len() as f64,
-        _ => 0.0,
-    };
-    if evidence.iter().any(|e| js_gt(&e.split_count, count)) {
-        return unknown(
-            "The selected variant does not enumerate every GGUF shard.".into(),
-            files,
-        );
-    }
+/// The cacheable verdict over complete evidence (the incomplete-shard failure is raised before).
+fn verdict(files: Arc<W>, revision: W, evidence: Vec<Inspection>) -> Answer {
     let found = evidence.iter().any(|e| !e.tensors.is_empty());
     let inconsistent = !found && evidence.iter().any(|e| js_gt(&e.declared_layers, 0.0));
     let (status, reason) = if found {
@@ -723,17 +874,13 @@ fn verdict(files: &JValue, revision: JValue, evidence: &[Inspection]) -> JValue 
     } else {
         ("absent", "No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.")
     };
-    JValue::obj([
-        ("status", JValue::Str(status.into())),
-        ("reason", JValue::Str(reason.into())),
-        ("files", files.clone()),
-        ("revision", revision),
-        (
-            "evidence",
-            JValue::Arr(evidence.iter().map(Inspection::to_json).collect()),
-        ),
-        ("checkedAt", JValue::Str(now_iso())),
-    ])
+    Answer {
+        status,
+        reason: reason.into(),
+        files,
+        found: Some((revision, evidence)),
+        checked_at: now_iso(),
+    }
 }
 
 /// mtp-artifact.cjs `prefix(url)`: at most [`LIMIT`] bytes from the start of the file, in 20 s.
@@ -1011,7 +1158,10 @@ mod tests {
         );
         assert_eq!(quant_match("modelQ4.gguf"), None);
         assert_eq!(quant_match("m-Q4.bin"), None);
-        assert_eq!(stem("m-Q8_0-00001-of-00002.gguf"), "m-Q8_0");
+        assert_eq!(
+            stem(&units("m-Q8_0-00001-of-00002.gguf")),
+            units("m-Q8_0").as_slice()
+        );
     }
 
     #[test]

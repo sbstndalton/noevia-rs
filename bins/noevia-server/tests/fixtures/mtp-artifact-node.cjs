@@ -73,6 +73,7 @@ const split2 = gguf({ kv: [split(2)], tensors: [['blk.0.x']] });
 const sib = (...names) => names.map((n, i) => ({ rfilename: n, lfs: { size: 100 + i } }));
 const scenarios = [];
 function scenario(name, query, sources, opts = {}) { scenarios.push({ name, query, sources, kind: opts.kind || 'llamacpp', role: opts.role || 'member' }); }
+function steps(name, query, list, opts = {}) { scenarios.push({ name, query, sources: list[0], steps: list, kind: opts.kind || 'llamacpp', role: opts.role || 'member' }); }
 const meta = (repo, j = { sha: REV }) => ({ [`/api/models/${repo}`]: { status: 200, json: j } });
 const blobs = (repo, siblings, extra = {}) => ({ [`/api/models/${repo}?blobs=true`]: { status: 200, json: { siblings, ...extra } } });
 const res = (repo, f) => `/${repo}/resolve/${REV}/${f.split('/').map(encodeURIComponent).join('/')}`;
@@ -130,6 +131,66 @@ scenario('other engine variants not a list', '?repo=synthetic%2Flemon5&variant=Q
 scenario('other engine null variant entry', '?repo=synthetic%2Flemon6&variant=Q4', { '/api/v1/pull/variants?checkpoint=synthetic%2Flemon6': { status: 200, json: { variants: [null] } } }, { kind: 'lemonade' });
 scenario('no model management', '?repo=synthetic%2Fnone&variant=Q4', {}, { kind: 'none' });
 
+// ── review round (2026-11-05): V8-accepted replies, ToNumber of string metadata, failures not
+// cached, nullish siblings. Reply texts are written out so lone-surrogate escapes and deep nesting
+// reach the parser as Node reads them.
+const deep = (n) => '['.repeat(n) + ']'.repeat(n);
+const lone = '"\\ud800"';
+{
+  const repo = 'synthetic/meta-surrogate';
+  scenario('revision reply with an unrelated lone surrogate and deep nesting', `?repo=${encodeURIComponent(repo)}&variant=Q8_0`, { ...blobs(repo, sib('m-Q8_0.gguf')), [`/api/models/${repo}`]: { status: 200, text: `{"unused":${lone},"deep":${deep(5000)},"sha":"${REV}","sha2":${lone}}` }, [res(repo, 'm-Q8_0.gguf')]: file(present) });
+}
+{
+  const repo = 'synthetic/list-surrogate';
+  const siblings = JSON.stringify(sib('m-Q8_0.gguf'));
+  scenario('list reply with an unrelated lone surrogate, deep nesting and a duplicate key', `?repo=${encodeURIComponent(repo)}&variant=Q8_0`, { [`/api/models/${repo}?blobs=true`]: { status: 200, text: `{"siblings":[],"cardData":{"x":${lone},"d":${deep(5000)}},"siblings":${siblings.slice(0, -1)},{"rfilename":${lone}},{"rfilename":"x-${'\\udc00'}-Q4_0.gguf"}]}` }, ...meta(repo), [res(repo, 'm-Q8_0.gguf')]: file(absent) });
+}
+{
+  const repo = 'synthetic/name-surrogate';
+  scenario('selected file name with a lone surrogate', `?repo=${encodeURIComponent(repo)}&variant=Q8_0`, { [`/api/models/${repo}?blobs=true`]: { status: 200, text: '{"siblings":[{"rfilename":"m-\\ud800-Q8_0.gguf","size":3}]}' }, ...meta(repo) });
+}
+scenario('other engine files object with index keys', '?repo=synthetic%2Flemon7&variant=Q4', { '/api/v1/pull/variants?checkpoint=synthetic%2Flemon7': { status: 200, text: '{"variants":[{"name":"Q4","files":{"b":"x.gguf","7":"\\ud800","1":"y.gguf","01":2}}]}' } }, { kind: 'lemonade' });
+scenario('other engine variant name with a lone surrogate', '?repo=synthetic%2Flemon8&variant=%EF%BF%BD', { '/api/v1/pull/variants?checkpoint=synthetic%2Flemon8': { status: 200, text: '{"variants":[{"name":"\\ud800","primary_file":"m.gguf"}]}' } }, { kind: 'lemonade' });
+// String-valued split.count / nextn_predict_layers: ECMAScript ToNumber.
+for (const [k, v] of [['hex', '0x2'], ['bin', '0b10'], ['oct', '0o2'], ['space', ' 2 '], ['jsspace', ' 2 '], ['empty', ''], ['inf', 'Infinity'], ['neginf', '-Infinity'], ['plus', '+2'], ['exp', '2e0'], ['junk', '2px'], ['barehex', '0x'], ['one', '1'], ['signedhex', '-0x2']]) {
+  const repo = `synthetic/split-${k}`;
+  const g = gguf({ kv: [arch('synthetic'), ['split.count', 8, str(v)]], tensors: [['token_embd.weight']] });
+  scenario(`string split.count ${JSON.stringify(v)}`, `?repo=${encodeURIComponent(repo)}&variant=Q8_0`, { ...blobs(repo, sib('m-Q8_0.gguf')), ...meta(repo), [res(repo, 'm-Q8_0.gguf')]: file(g) });
+}
+for (const [k, v] of [['hex', '0x1'], ['zerobin', '0b0'], ['empty', ''], ['blank', '  '], ['inf', 'Infinity'], ['neg', '-1'], ['junk', '1px'], ['bom', '﻿1'], ['oct', '0o1']]) {
+  const repo = `synthetic/layers-${k}`;
+  const g = gguf({ kv: [arch('synthetic'), ['synthetic.nextn_predict_layers', 8, str(v)]], tensors: [['token_embd.weight']] });
+  scenario(`string nextn_predict_layers ${JSON.stringify(v)}`, `?repo=${encodeURIComponent(repo)}&variant=Q8_0`, { ...blobs(repo, sib('m-Q8_0.gguf')), ...meta(repo), [res(repo, 'm-Q8_0.gguf')]: file(g) });
+}
+// A null sibling: `file.rfilename` of null throws, before or after a valid sibling.
+scenario('null sibling before a valid one', '?repo=synthetic%2Fnull-first&variant=Q8_0', { '/api/models/synthetic/null-first?blobs=true': { status: 200, json: { siblings: [null, ...sib('m-Q8_0.gguf')] } } });
+scenario('null sibling after a valid one', '?repo=synthetic%2Fnull-last&variant=Q8_0', { '/api/models/synthetic/null-last?blobs=true': { status: 200, json: { siblings: [...sib('m-Q8_0.gguf'), null] } } });
+// Sequential requests whose source changes in between: a thrown failure is not cached; a verdict is.
+const REV2 = 'cd'.repeat(20);
+{
+  const repo = 'synthetic/retry-incomplete';
+  const base = blobs(repo, sib('m-Q8_0.gguf'));
+  steps('incomplete shard set is not cached: the next request sees the new revision', `?repo=${encodeURIComponent(repo)}&variant=Q8_0`, [
+    { ...base, ...meta(repo), [res(repo, 'm-Q8_0.gguf')]: file(split2) },
+    { ...base, ...meta(repo, { sha: REV2 }), [`/${repo}/resolve/${REV2}/m-Q8_0.gguf`]: file(present) },
+  ]);
+}
+{
+  const repo = 'synthetic/retry-claim';
+  const base = blobs(repo, sib('m-Q8_0.gguf'));
+  steps('metadata-only inconsistency is cached: the next request keeps it', `?repo=${encodeURIComponent(repo)}&variant=Q8_0`, [
+    { ...base, ...meta(repo), [res(repo, 'm-Q8_0.gguf')]: file(claim) },
+    { ...base, ...meta(repo, { sha: REV2 }), [`/${repo}/resolve/${REV2}/m-Q8_0.gguf`]: file(present) },
+  ]);
+}
+{
+  const repo = 'synthetic/retry-fetch';
+  const base = blobs(repo, sib('m-Q8_0.gguf'));
+  steps('a failed file read is not cached', `?repo=${encodeURIComponent(repo)}&variant=Q8_0`, [
+    { ...base, ...meta(repo), [res(repo, 'm-Q8_0.gguf')]: { status: 503, text: 'busy' } },
+    { ...base, ...meta(repo), [res(repo, 'm-Q8_0.gguf')]: file(present) },
+  ]);
+}
 let sources = {};
 globalThis.fetch = async (url, init = {}) => {
   const u = new URL(url);
@@ -160,11 +221,18 @@ async function run(s) {
     if (!handled && !answer) answer = { status: 'unhandled' };
   } catch (err) { const f = errorResponse(err); answer = { status: f.status, body: f.body }; }
   if (answer.body && typeof answer.body.checkedAt === 'string') answer.body.checkedAt = 'X';
+  // The exact bytes Node sends; the parsed copy is left out (it can hold lone surrogates).
+  if (answer.body !== undefined) { answer.bodyText = JSON.stringify(answer.body); delete answer.body; }
   return answer;
 }
 
 (async () => {
   const http = [];
-  for (const s of scenarios) http.push({ ...s, answer: await run(s) });
+  for (const s of scenarios) {
+    if (!s.steps) { http.push({ ...s, answer: await run(s) }); continue; }
+    const answers = [];
+    for (const step of s.steps) answers.push(await run({ ...s, sources: step }));
+    http.push({ ...s, answer: answers[0], answers });
+  }
   process.stdout.write(JSON.stringify({ core: process.env.NOEVIA_CORE_REF || require('node:child_process').execFileSync('git', ['-C', core, 'rev-parse', 'HEAD']).toString().trim(), node: process.version, inspect: inspected, http }, null, 1) + '\n');
 })();
