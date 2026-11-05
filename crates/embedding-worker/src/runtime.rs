@@ -21,7 +21,7 @@ fn now() -> u64 {
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
 }
-fn parse_target(value: &Value) -> Result<Target, String> {
+pub(crate) fn parse_target(value: &Value) -> Result<Target, String> {
     let model = value
         .get("model")
         .and_then(Value::as_str)
