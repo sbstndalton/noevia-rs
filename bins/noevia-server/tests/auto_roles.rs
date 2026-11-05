@@ -337,7 +337,7 @@ async fn the_first_request_of_an_account_makes_its_directory_and_only_the_get_is
     let r = call(addr, "GET", "/api/auto-roles", COOKIE_B).await;
     assert_eq!(r.text, r#"{"configured":false,"roles":null,"missing":[]}"#);
     assert!(dir.path().join("users").join(B).is_dir());
-    // The save (the PUT, which warms the roles in the engine), and every other method, are Node's: dead here.
+    // The native PUT rejects an empty body; unsupported methods still proxy to Node (dead here).
     assert_eq!(
         call(addr, "PUT", "/api/auto-roles", COOKIE_A).await.status,
         400
