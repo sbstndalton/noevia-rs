@@ -278,6 +278,15 @@ use std::sync::Arc;
 /// the same lock file, so the web supervisor and the release assembly pair this capability with that
 /// Core in both directions.
 ///
+/// `rust-calibration-worker-v2`: this build runs the calibration job itself (sbstndalton/noevia#2303,
+/// src/model_maint/calibration_worker.rs): its launch under the maintenance hold, the run, its
+/// cancellation and evidence, `native-calibration-<hash>.json` and the boot recovery of a job a
+/// restart interrupted. Core then builds no public calibrator and does not recover the job at boot
+/// (core rust-calibration-routes.cjs `CALIBRATION_WORKER_OWNER`), so the web supervisor and the
+/// release assembly pair them in both directions. Generation 2: every load the job asks for is first
+/// decided by Core's own load refusal (`POST /internal/model-maintenance/load-refusal`, core
+/// model-load-refusal.cjs), so it pairs only with `noevia-calibration-worker-rust/2`.
+///
 /// `rust-preset-baseline`: this build is the preset reload baseline's one in-memory authority
 /// (port contract 2026-11-04 RS-1, model_maint/reload.rs `Guard`) and answers `POST
 /// /v1/preset-baseline/{session,begin,settle,invalidate,verdict,router-text}` on the project-store
@@ -405,6 +414,7 @@ pub const FEATURES: &[&str] = &[
     "rust-autotune-cancel",
     "rust-calibration-cancel",
     "rust-calibration-routes",
+    "rust-calibration-worker-v2",
     "rust-model-manager-scan",
     "rust-model-evidence-recheck",
     "rust-web-address-read",

@@ -208,6 +208,10 @@ async fn server_main() -> ExitCode {
     // sbstndalton/noevia#2210: the front is the evidence store's only writer; Node's producers leave
     // their records in the inbox, which is drained here.
     app.config.maint.spawn_inbox();
+    // #2303: a calibration interrupted by a restart restores the preset it was testing (Core's boot
+    // `modelManager.calibration?.recover()`, which is off now that the worker is native).
+    // The recovery takes the launch slot before the routes serve, so no launch races it.
+    let _ = app.config.spawn_calibration_recovery();
     {
         let maint = std::sync::Arc::clone(&app.config.maint);
         tokio::spawn(async move {
