@@ -454,6 +454,7 @@ async function fallbackRecord(core, toml, fixture, out) {
   const broker = load('server/rust-chatgpt-oauth.cjs');
   const selected = (c) => {
     const p = c.path, m = c.method;
+    if (c.shape === 'dotted' && p.startsWith('/api/providers/') && ['/api/', '/api/models'].includes(new URL(p, ORIGIN).pathname)) return true;
     if (p.startsWith('/api/models/') && p.endsWith('/') && routes.some((r) => !r.path.includes('{') && p.replace(/\/+$/, '') === r.path)) return true;
     if (['/api/models/installed', '/api/models/downloads', '/api/models/capabilities', '/api/models/hardware', '/api/models/estimate', '/api/models/preset/suggest'].includes(p)) return m !== 'GET';
     if (p === '/api/models/assignments') return m !== 'GET';

@@ -817,9 +817,10 @@ async fn handle(
     if let Some(p) = whatwg.as_deref() {
         let fallback = residual_fallback::classify(req.method().as_str(), p).or_else(|| {
             (p != path
-                && p.starts_with("/api/")
-                && routes::dispatch_under(req.method().as_str(), p, switches).is_none()
-                && residual_fallback::classify(req.method().as_str(), &path).is_some())
+                && ["/api/", "/api/models"].contains(&p)
+                && routes::route_for(p).is_none()
+                && (residual_fallback::classify(req.method().as_str(), &path).is_some()
+                    || path.starts_with("/api/providers/")))
             .then_some(residual_fallback::Kind::Missing)
         });
         if let Some(kind) = fallback {
