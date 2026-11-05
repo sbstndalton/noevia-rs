@@ -615,7 +615,7 @@ async fn chat_assignment_checks_served_models_and_machine_moves_require_confirma
         assert_eq!(r.path, "/v1/models");
         reply(
             "200 OK",
-            r#"{"data":[{"id":"synthetic-model"},{"id":"synthetic-model"}]}"#,
+            r#"{"data":[{"id":null,"model":"synthetic-model"},{"id":false,"model":"wrong"},{"id":"","model":"wrong"}]}"#,
         )
     });
     let owner = upstream().await;
@@ -639,6 +639,14 @@ async fn chat_assignment_checks_served_models_and_machine_moves_require_confirma
     .await;
     assert_eq!(status, 201);
     let id = added["machine"]["id"].as_str().unwrap();
+    let (status, listed) = get(
+        front.addr,
+        &format!("{PATH}?models={id}&port={}", engine.addr.port()),
+        ADMIN,
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(listed["models"], json!(["synthetic-model"]));
     let mut body = json!({"action":"assign","service":"chatFast","machine":id,"port":engine.addr.port(),"model":"not-served"});
     let (status, error) = write(front.addr, "POST", PATH, ADMIN, &body.to_string()).await;
     assert_eq!(status, 400);
@@ -663,13 +671,35 @@ async fn chat_assignment_checks_served_models_and_machine_moves_require_confirma
         .1["services"],
         json!(["chatFast"])
     );
+    engine.set(|_| {
+        reply(
+            "200 OK",
+            r#"{"models":[{"model":null,"name":"synthetic-model"}]}"#,
+        )
+    });
+    let (_, moved) = write(
+        front.addr,
+        "POST",
+        PATH,
+        ADMIN,
+        &json!({"action":"update","id":id,"address":"localhost"}).to_string(),
+    )
+    .await;
+    assert!(moved["services"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == "chatFast")
+        .unwrap()
+        .get("needsConfirm")
+        .is_none());
     engine.set(|_| reply("200 OK", r#"{"data":[{"id":"other-model"}]}"#));
     let (status, moved) = write(
         front.addr,
         "POST",
         PATH,
         ADMIN,
-        &json!({"action":"update","id":id,"address":"localhost"}).to_string(),
+        &json!({"action":"update","id":id,"address":"127.0.0.1"}).to_string(),
     )
     .await;
     assert_eq!(status, 200);
@@ -796,7 +826,7 @@ async fn a_late_begin_and_an_old_session_cannot_recreate_or_erase_chat_coverage(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn unsupported_valid_saved_json_is_refused_without_overwriting_it() {
+async fn existing_private_use_names_remain_readable_and_mutable() {
     let dir = tempfile::tempdir().unwrap();
     seed(dir.path());
     let db = server_store::rusqlite::Connection::open(dir.path().join("cowork.db")).unwrap();
@@ -806,10 +836,31 @@ async fn unsupported_valid_saved_json_is_refused_without_overwriting_it() {
         [&raw],
     )
     .unwrap();
+    let owner = upstream().await;
+    owner.set(|r| reply("200 OK", &j(&r.body)["view"].to_string()));
     let front = front_env(
         dir.path(),
         true,
-        &[("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into())],
+        &[
+            ("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()),
+            ("NOEVIA_LEGACY_UPSTREAM", owner.base()),
+        ],
+    )
+    .await;
+    let (status, view) = get(front.addr, PATH, ADMIN).await;
+    assert_eq!(status, 200);
+    assert_eq!(view["machines"][1]["name"], "\u{10ffff}");
+    let (status, body) = write(front.addr, "POST", PATH, ADMIN, "1e400").await;
+    assert_eq!(status, 400);
+    assert_eq!(body["error"], "A JSON object is required");
+    drop(front);
+    let front = front_env(
+        dir.path(),
+        true,
+        &[
+            ("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()),
+            ("NOEVIA_LEGACY_UPSTREAM", owner.base()),
+        ],
     )
     .await;
     assert_eq!(
@@ -818,11 +869,11 @@ async fn unsupported_valid_saved_json_is_refused_without_overwriting_it() {
             "POST",
             PATH,
             ADMIN,
-            r#"{"action":"remove","id":"box"}"#
+            r#"{"action":"update","id":"box","name":"renamed"}"#
         )
         .await
         .0,
-        503
+        200
     );
     let saved: String = db
         .query_row(
@@ -831,5 +882,59 @@ async fn unsupported_valid_saved_json_is_refused_without_overwriting_it() {
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(saved, raw);
+    assert_eq!(state(Some(&saved))["machines"][0]["name"], "renamed");
+}
+
+#[test]
+fn accepted_json_classes_round_trip_and_invalid_json_is_refused() {
+    assert_eq!(
+        name(&parse_json(&format!("\"{}\"", "\u{10f800}".repeat(30))).unwrap())
+            .unwrap()
+            .chars()
+            .count(),
+        30
+    );
+    assert!(name(&parse_json(&format!("\"{}\"", "\u{10f800}".repeat(31))).unwrap()).is_err());
+    assert_ne!(parse_json(r#""\ud800""#), parse_json("\"\u{10f800}\""));
+    assert_eq!(
+        encode_json(&parse_json(r#""\ud800""#).unwrap()),
+        r#""\ud800""#
+    );
+    assert_eq!(
+        encode_json(&parse_json("\"\u{10f800}\"").unwrap()),
+        "\"\u{10f800}\""
+    );
+    assert_eq!(
+        encode_json(&parse_json(r#"{"\ue000N":true}"#).unwrap()),
+        "{\"\u{e000}N\":true}"
+    );
+    assert_eq!(name(&parse_json("1e400").unwrap()).unwrap(), "Infinity");
+    assert!(port(&parse_json("1e400").unwrap()).is_err());
+    assert_eq!(encode_json(&parse_json("1e400").unwrap()), "null");
+    for raw in [
+        r#"{"action":"add","name":"\udbfe\udc00","address":"192.168.1.2","ignored":1e400}"#
+            .to_string(),
+        format!(
+            "{{\"action\":\"add\",\"name\":\"box\",\"address\":\"192.168.1.2\",\"ignored\":{}{}}}",
+            "[".repeat(300),
+            "]".repeat(300)
+        ),
+    ] {
+        let body = parse_json(&raw).unwrap();
+        let mut s = empty();
+        mutate(&mut s, &body, "box", false).unwrap();
+        assert_eq!(state(Some(&encode_json(&s))), s);
+    }
+    for raw in ["{\"ignored\":1e400,}", "[1,]", "{\"x\":[}"] {
+        assert!(parse_json(raw).is_none());
+    }
+    for raw in [
+        r#""\ud800""#,
+        "\"\u{10f800}\"",
+        "\"\u{e000}\"",
+        r#""\ue000\ud800""#,
+    ] {
+        let value = parse_json(raw).unwrap();
+        assert_eq!(parse_json(&encode_json(&value)).unwrap(), value);
+    }
 }

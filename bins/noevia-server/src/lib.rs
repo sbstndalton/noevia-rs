@@ -1166,3 +1166,5 @@ async fn handle(
 pub fn router(app: Arc<App>) -> Router {
     Router::new().fallback(handle).with_state(app)
 }
+
+mod machine_json;

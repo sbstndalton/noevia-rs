@@ -26,8 +26,10 @@ pub fn empty() -> Value {
 }
 pub fn clean_model(v: &Value) -> Option<String> {
     let s = crate::decision_settings_routes::js_trim(v.as_str()?);
-    (!s.is_empty() && js_json::wtf16::len(s) <= 200 && !s.chars().any(|c| c < ' ' || c == '\u{7f}'))
-        .then(|| s.to_string())
+    (!s.is_empty()
+        && crate::machine_json::len(s) <= 200
+        && !s.chars().any(|c| c < ' ' || c == '\u{7f}'))
+    .then(|| s.to_string())
 }
 pub fn state(raw: Option<&str>) -> Value {
     let Some(s) = raw.and_then(parse_json) else {
@@ -36,6 +38,7 @@ pub fn state(raw: Option<&str>) -> Value {
     if s["version"].as_f64() != Some(1.0)
         || !s["machines"].is_array()
         || !(s["assignments"].is_object() || s["assignments"].is_array())
+        || crate::machine_json::infinity(&s["assignments"]).is_some()
     {
         return empty();
     }
@@ -104,6 +107,14 @@ pub(crate) fn truthy(v: &Value) -> bool {
     }
 }
 pub fn text(v: &Value) -> String {
+    if let Some(n) = crate::machine_json::infinity(v) {
+        return if n.is_sign_negative() {
+            "-Infinity"
+        } else {
+            "Infinity"
+        }
+        .into();
+    }
     match v {
         Value::Null => String::new(),
         Value::String(s) => s.clone(),
@@ -123,7 +134,10 @@ pub fn name(v: &Value) -> Result<String, Refusal> {
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>()
         .join(" ");
-    if s.is_empty() || js_json::wtf16::len(&s) > 60 || s.chars().any(|c| c < ' ' || c == '\u{7f}') {
+    if s.is_empty()
+        || crate::machine_json::len(&s) > 60
+        || s.chars().any(|c| c < ' ' || c == '\u{7f}')
+    {
         Err(fail(
             400,
             "invalidName",
@@ -520,28 +534,32 @@ pub fn view_with(s: &Value, active: &Value, local: Option<&str>, workers: [bool;
     v
 }
 pub fn parse_json(text: &str) -> Option<Value> {
-    let value = js_json::wtf16::parse(text).ok()?;
-    serde_json::from_str(&js_json::stringify(&value)?).ok()
+    crate::machine_json::parse(text)
 }
 pub fn encode_json(value: &Value) -> String {
-    js_json::parse(&value.to_string())
-        .ok()
-        .and_then(|v| js_json::wtf16::stringify(&v))
-        .unwrap_or_else(|| "null".into())
+    crate::machine_json::encode(value)
 }
 pub(crate) fn coerce(v: &Value) -> Result<String, Refusal> {
-    if v.is_null() {
-        return Ok(String::new());
+    if let Some(n) = crate::machine_json::infinity(v) {
+        return Ok(if n.is_sign_negative() {
+            "-Infinity"
+        } else {
+            "Infinity"
+        }
+        .into());
     }
-    js_json::parse(&v.to_string())
-        .ok()
-        .and_then(|v| js_json::to_js_string(&v).ok())
-        .ok_or_else(|| {
-            Refusal(
-                500,
-                json!({"error":"The inference machines could not be changed."}),
-            )
-        })
+    Ok(match v {
+        Value::Null => String::new(),
+        Value::String(s) => s.clone(),
+        Value::Number(n) => js_json::number_to_string(n.as_f64().unwrap_or_default()),
+        Value::Bool(b) => b.to_string(),
+        Value::Object(_) => "[object Object]".into(),
+        Value::Array(a) => a
+            .iter()
+            .map(coerce)
+            .collect::<Result<Vec<_>, _>>()?
+            .join(","),
+    })
 }
 
 pub(crate) fn network_reason(ip: Option<std::net::IpAddr>) -> &'static str {

@@ -51,24 +51,11 @@ fn response(result: Result<Value, registry::Refusal>, status: u16) -> Response<B
     )
 }
 fn read_row(r: &Reader<'_>, key: &str) -> Result<Option<String>, StoreError> {
-    let raw = r.row(
+    r.row(
         "SELECT CAST(value AS TEXT) FROM settings WHERE key=?1",
         [key],
         |row| row.get::<_, String>(0),
-    )?;
-    if raw.as_deref().is_some_and(|raw| {
-        matches!(
-            js_json::wtf16::parse(raw),
-            Err(js_json::wtf16::Refusal::Unsupported)
-        )
-    }) {
-        // Unsupported valid JSON must never be mistaken for a missing/corrupt row
-        // and overwritten by a mutation. Keep the existing bytes intact.
-        return Err(StoreError::NotReady(
-            "machine registry JSON is unsupported".into(),
-        ));
-    }
-    Ok(raw)
+    )
 }
 fn read_registry(r: &Reader<'_>) -> Result<Value, StoreError> {
     Ok(registry::state(read_row(r, registry::KEY)?.as_deref()))
@@ -301,13 +288,14 @@ async fn models_at(address: &str, port: u16, name: &str) -> Result<Vec<String>, 
             row
         } else {
             row.get("id")
-                .or_else(|| row.get("model"))
-                .or_else(|| row.get("name"))
+                .filter(|v| !v.is_null())
+                .or_else(|| row.get("model").filter(|v| !v.is_null()))
+                .or_else(|| row.get("name").filter(|v| !v.is_null()))
                 .unwrap_or(&Value::Null)
         };
         if let Some(id) = id.as_str() {
             if !crate::decision_settings_routes::js_trim(id).is_empty()
-                && js_json::wtf16::len(id) <= 200
+                && crate::machine_json::len(id) <= 200
                 && !id.chars().any(|c| c < ' ' || c == '\u{7f}')
                 && !out.iter().any(|s| s == id)
             {
@@ -747,7 +735,7 @@ pub async fn serve(
             None => return reply::error(StatusCode::BAD_REQUEST, "invalid JSON", true),
         }
     };
-    if !body.is_object() {
+    if !body.is_object() || crate::machine_json::infinity(&body).is_some() {
         return reply::error(StatusCode::BAD_REQUEST, "A JSON object is required", true);
     }
     let mut body = body;
