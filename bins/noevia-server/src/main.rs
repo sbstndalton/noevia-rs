@@ -181,6 +181,9 @@ async fn server_main() -> ExitCode {
     // sbstndalton/noevia#2191 round 9 (review L5): an account folder with no account row is named in the log
     // (count and ids), never removed: a database restored from an older copy would make live data look orphaned.
     noevia_server::admin_user_routes::report_orphan_folders(&app).await;
+    // Complete the source-text sweep before the project store or public requests can run.
+    noevia_server::source_startup::run(&app).await;
+
     // sbstndalton/noevia#2190 round 5: the token broker removes the rows of deleted accounts.
     #[cfg(feature = "rust-chatgpt-status")]
     if let Some(broker) = app.chatgpt_oauth.as_ref() {

@@ -372,6 +372,7 @@ use std::sync::Arc;
 /// (NOEVIA_FRONT_CLIENT_IP=1), and Node believes that header only then, so a core release paired
 /// with a front that predates the strip cannot be handed a client-chosen address (#1578).
 pub const FEATURES: &[&str] = &[
+    "rust-source-startup-v1",
     "rust-embedding-background-v1",
     "client-address-header",
     "code-net-guard",
@@ -1171,3 +1172,5 @@ async fn handle(
 pub fn router(app: Arc<App>) -> Router {
     Router::new().fallback(handle).with_state(app)
 }
+
+pub mod source_startup;
