@@ -641,31 +641,75 @@ fn rejected_budget_publication_preserves_the_row_and_budget_after_restart() {
     }
 }
 
+// Poll the real admission reader, which intentionally does not acquire the writer mutex.
+fn rejected_budget_saves_are_never_observed(
+    authority: &noevia_server::model_facts::Authority,
+    attempts: usize,
+) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let ready = std::sync::Barrier::new(2);
+    let stop = AtomicBool::new(false);
+    let (statuses, (reads, saw_candidate)) = std::thread::scope(|scope| {
+        let reader = scope.spawn(|| {
+            let mut saw_candidate = false;
+            let mut reads = 0;
+            ready.wait();
+            while !stop.load(Ordering::SeqCst) {
+                if let Some(value) = authority.budget() {
+                    reads += 1;
+                    saw_candidate |= value["budgetGib"] == 9.0;
+                }
+            }
+            (reads, saw_candidate)
+        });
+        ready.wait();
+        let statuses: Vec<_> = (0..attempts)
+            .map(|_| authority.save(&json!({"budgetGib":9})).map_err(|e| e.0))
+            .collect();
+        stop.store(true, Ordering::SeqCst);
+        (statuses, reader.join().unwrap())
+    });
+    assert!(statuses.iter().all(|r| matches!(r, Err(503))));
+    assert!(
+        reads > 0,
+        "the concurrent admission reader must run during the saves"
+    );
+    assert!(
+        !saw_candidate,
+        "admission observed a budget from a rejected save"
+    );
+}
+
+fn native_budget_authority(dir: &Path, start: &str) -> noevia_server::model_facts::Authority {
+    std::fs::write(dir.join("meminfo"), "MemTotal:       67108864 kB\n").unwrap();
+    let env = HashMap::from([
+        ("UI_DATA_DIR", dir.display().to_string()),
+        (
+            "NOEVIA_TEST_MEMINFO_PATH",
+            dir.join("meminfo").display().to_string(),
+        ),
+        ("NOEVIA_START_ID", start.to_owned()),
+        ("INFERENCE_MEMORY_BUDGET_GIB", "6".to_owned()),
+    ]);
+    noevia_server::model_facts::Authority::from_lookup(&|k| env.get(k).cloned())
+}
+
 #[test]
-fn rejected_budget_commit_restores_the_snapshot_without_regressing_generation() {
+fn readers_never_observe_a_budget_rejected_at_commit() {
     let d = tempfile::tempdir().unwrap();
     let db = seed(d.path(), Some(r#"{"budgetGib":7}"#));
     db.pragma_update(None, "journal_mode", "DELETE").unwrap();
-    std::fs::write(d.path().join("meminfo"), "MemTotal:       67108864 kB\n").unwrap();
-    let env = HashMap::from([
-        ("UI_DATA_DIR", d.path().display().to_string()),
-        (
-            "NOEVIA_TEST_MEMINFO_PATH",
-            d.path().join("meminfo").display().to_string(),
-        ),
-        ("NOEVIA_START_ID", "synthetic-start".to_owned()),
-    ]);
-    let authority = noevia_server::model_facts::Authority::from_lookup(&|k| env.get(k).cloned());
+    let authority = native_budget_authority(d.path(), "synthetic-start");
     authority.publish().unwrap();
     let old = authority.budget().unwrap();
     // A concurrent reader allows the row update, but prevents its commit.
     db.execute_batch("BEGIN; SELECT value FROM settings;")
         .unwrap();
-    assert_eq!(authority.save(&json!({"budgetGib":9})).unwrap_err().0, 503);
+    rejected_budget_saves_are_never_observed(&authority, 1);
     db.execute_batch("ROLLBACK;").unwrap();
     assert_eq!(authority.budget().unwrap(), old);
     let snapshot = noevia_server::model_facts::snapshot(d.path(), "synthetic-start").unwrap();
-    assert_eq!(snapshot["generation"], 2);
+    assert_eq!(snapshot["generation"], 0);
     assert_eq!(
         db.query_row(
             "SELECT value FROM settings WHERE key='inference:memory-budget'",
@@ -675,6 +719,53 @@ fn rejected_budget_commit_restores_the_snapshot_without_regressing_generation() 
         .unwrap(),
         r#"{"budgetGib":7}"#
     );
+}
+
+#[test]
+fn readers_never_observe_a_budget_rejected_at_publication() {
+    let d = tempfile::tempdir().unwrap();
+    let _db = seed(d.path(), Some(r#"{"budgetGib":7}"#));
+    let authority = native_budget_authority(d.path(), "synthetic-start");
+    authority.publish().unwrap();
+    std::fs::create_dir(d.path().join("model-facts.json.tmp")).unwrap();
+    // Exercise repeated publication failures while a reader continuously polls. The
+    // writer must never expose the candidate, even while restoring the committed row.
+    rejected_budget_saves_are_never_observed(&authority, 32);
+    assert_eq!(authority.budget().unwrap()["budgetGib"], 7.0);
+}
+
+#[test]
+fn failed_compensation_retains_the_live_budget_but_restart_adopts_the_committed_row() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path(), Some(r#"{"budgetGib":7}"#));
+    db.execute_batch(
+        r#"CREATE TRIGGER reject_budget_restore BEFORE UPDATE ON settings
+        WHEN NEW.key='inference:memory-budget' AND NEW.value='{"budgetGib":7}'
+        BEGIN SELECT RAISE(ABORT,'synthetic compensation failure'); END;"#,
+    )
+    .unwrap();
+    let authority = native_budget_authority(d.path(), "synthetic-first-start");
+    authority.publish().unwrap();
+    let obstruction = d.path().join("model-facts.json.tmp");
+    std::fs::create_dir(&obstruction).unwrap();
+    assert_eq!(authority.save(&json!({"budgetGib":9})).unwrap_err().0, 503);
+    assert_eq!(authority.budget().unwrap()["budgetGib"], 7.0);
+    let stored: String = db
+        .query_row(
+            "SELECT value FROM settings WHERE key='inference:memory-budget'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(parse(&stored)["budgetGib"], 9.0);
+    std::fs::remove_dir(obstruction).unwrap();
+    // The regular publisher must retain the old live value, not silently adopt the row.
+    authority.publish().unwrap();
+    assert_eq!(authority.budget().unwrap()["budgetGib"], 7.0);
+    drop(authority);
+    let restarted = native_budget_authority(d.path(), "synthetic-second-start");
+    restarted.publish().unwrap();
+    assert_eq!(restarted.budget().unwrap()["budgetGib"], 9.0);
 }
 
 #[tokio::test]

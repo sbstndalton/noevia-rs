@@ -1,6 +1,6 @@
 //! Effective model facts. Rust owns the boot/live budget; the settings row is only its boot input.
 use serde_json::{json, Value};
-use server_store::rusqlite::{Connection, OptionalExtension};
+use server_store::rusqlite::{Connection, OptionalExtension, TransactionBehavior};
 use std::{path::PathBuf, sync::Mutex};
 
 pub const FILE: &str = "model-facts.json";
@@ -154,27 +154,44 @@ impl Authority {
         let old_saved = state.saved;
         let old_generation = state.generation;
         let next_generation = state.generation.checked_add(1).ok_or_else(unavailable)?;
-        // Reserve a later generation for compensation if COMMIT fails after publication.
-        // Readers may already have observed next_generation and must never see it regress.
-        let rollback_generation = next_generation.checked_add(1).ok_or_else(unavailable)?;
-        let tx = c.transaction().map_err(|_| unavailable())?;
+        let tx = c
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|_| unavailable())?;
+        let old_row: Option<String> = tx
+            .query_row(
+                "SELECT value FROM settings WHERE key='inference:memory-budget'",
+                [],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|_| unavailable())?;
         tx.execute("INSERT INTO settings(key,value) VALUES('inference:memory-budget',?1) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[json!({"budgetGib":n}).to_string()]).map_err(|_|unavailable())?;
+        // Admission readers bypass this mutex. Never publish a value before its
+        // transaction commits: compensating later cannot undo an admission.
+        tx.commit().map_err(|_| unavailable())?;
         state.saved = Some(n);
         state.generation = next_generation;
         if self.publish_locked(&state).is_err() {
             state.saved = old_saved;
             state.generation = old_generation;
-            // Dropping the uncommitted transaction preserves the exact prior row,
-            // including its absence. Restart cannot adopt this rejected value.
-            return Err(unavailable());
-        }
-        if tx.commit().is_err() {
-            state.saved = old_saved;
-            state.generation = rollback_generation;
-            if self.publish_locked(&state).is_err() {
-                // The candidate is not durable. Never leave it available for admission
-                // if the compensating publication also fails; the publisher retries.
-                let _ = std::fs::remove_file(root.join(FILE));
+            // Publication failed before rename, so readers still have the old
+            // snapshot. Restore its exact prior persistence under this writer lock.
+            let restored = (|| {
+                let tx = c.transaction_with_behavior(TransactionBehavior::Immediate)?;
+                if let Some(value) = old_row.as_deref() {
+                    tx.execute("INSERT INTO settings(key,value) VALUES('inference:memory-budget',?1) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [value])?;
+                } else {
+                    tx.execute(
+                        "DELETE FROM settings WHERE key='inference:memory-budget'",
+                        [],
+                    )?;
+                }
+                tx.commit()
+            })();
+            if restored.is_err() {
+                // Keep the old live state even in this degraded case. A later
+                // restart adopts the committed row; see docs/ports/model-facts.md.
+                eprintln!("model-facts: ERROR: could not restore the committed budget setting after snapshot publication failed; keeping the previous live budget; restart will adopt the committed setting");
             }
             return Err(unavailable());
         }
