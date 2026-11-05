@@ -204,18 +204,56 @@ type TerminalStall = (
     std::sync::mpsc::Receiver<()>,
 );
 
+#[cfg(test)]
+#[derive(Default)]
+struct SaveCounts {
+    outstanding: std::sync::atomic::AtomicUsize,
+    snapshots: std::sync::atomic::AtomicUsize,
+    peak: std::sync::atomic::AtomicUsize,
+    dispatched: std::sync::atomic::AtomicUsize,
+}
+#[cfg(test)]
+struct SaveCount(std::sync::Arc<SaveCounts>);
+#[cfg(test)]
+impl SaveCount {
+    fn new(counts: std::sync::Arc<SaveCounts>) -> Self {
+        let n = counts.outstanding.fetch_add(1, Ordering::AcqRel) + 1;
+        counts.snapshots.fetch_add(1, Ordering::AcqRel);
+        counts.peak.fetch_max(n, Ordering::AcqRel);
+        counts.dispatched.fetch_add(1, Ordering::AcqRel);
+        Self(counts)
+    }
+}
+#[cfg(test)]
+impl Drop for SaveCount {
+    fn drop(&mut self) {
+        self.0.outstanding.fetch_sub(1, Ordering::AcqRel);
+        self.0.snapshots.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+/// Owned by the Worker even when an observing async future is cancelled. Exactly one
+/// blocking write can exist; a retry drains this handle before dispatching any replacement.
+struct PendingWrite {
+    task: tokio::task::JoinHandle<std::io::Result<()>>,
+    permit: Arc<AtomicBool>,
+}
+
 /// The native worker: one per process, owning its state file, controller and job.
 pub struct Worker {
     pub(super) maint: Arc<Maint>,
     file: StateFile,
     inner: Arc<Mutex<Inner>>,
     writes: Arc<Mutex<()>>,
+    pending_write: tokio::sync::Mutex<Option<PendingWrite>>,
     // An owned restoration can outlive the cleanup deadline. Do not admit another run until
     // its write has a definitive result; cancellation cannot revoke a remote CAS already sent.
     restoring: Arc<AtomicBool>,
     local_fence: Mutex<Option<super::gate::AdmissionFence>>,
     fence_wake: Mutex<Arc<Notify>>,
     fence_interrupted: AtomicBool,
+    #[cfg(test)]
+    save_counts: Arc<SaveCounts>,
     #[cfg(test)]
     terminal_stall: Mutex<Option<TerminalStall>>,
     #[cfg(test)]
@@ -538,10 +576,13 @@ impl Worker {
             maint,
             file,
             writes: Arc::new(Mutex::new(())),
+            pending_write: tokio::sync::Mutex::new(None),
             restoring: Arc::new(AtomicBool::new(false)),
             local_fence: Mutex::new(None),
             fence_wake: Mutex::new(Arc::new(Notify::new())),
             fence_interrupted: AtomicBool::new(false),
+            #[cfg(test)]
+            save_counts: Arc::new(SaveCounts::default()),
             #[cfg(test)]
             terminal_stall: Mutex::new(None),
             #[cfg(test)]
@@ -582,14 +623,47 @@ impl Worker {
         f(&mut guard)
     }
 
-    /// Serialized, generation-fenced writes. A canceled blocking task cannot later commit a
-    /// superseded snapshot; admission never waits indefinitely for its kernel I/O to return.
+    /// Serial writes retain their blocking owner across cancellation/timeout. The async
+    /// slot bounds dispatched work; the blocking mutex covers checks, rename and fsync.
+    async fn drain_writes(&self) {
+        let mut slot = self.pending_write.lock().await;
+        if let Some(pending) = slot.as_mut() {
+            pending.permit.store(false, Ordering::Release);
+            let _ = (&mut pending.task).await;
+            *slot = None;
+        }
+    }
+
     async fn write_state(
         &self,
         mut state: State,
         object: u64,
         until: Option<Instant>,
     ) -> std::io::Result<()> {
+        let timed_out = || std::io::Error::new(std::io::ErrorKind::TimedOut, "state write ended");
+        let mut slot = match until {
+            Some(end) => tokio::time::timeout_at(end.into(), self.pending_write.lock())
+                .await
+                .map_err(|_| timed_out())?,
+            None => self.pending_write.lock().await,
+        };
+        if let Some(pending) = slot.as_mut() {
+            pending.permit.store(false, Ordering::Release);
+            match until {
+                Some(end) => {
+                    let _ = tokio::time::timeout_at(end.into(), &mut pending.task)
+                        .await
+                        .map_err(|_| timed_out())?;
+                }
+                None => {
+                    let _ = (&mut pending.task).await;
+                }
+            }
+            *slot = None;
+        }
+        if until.is_some_and(|end| Instant::now() >= end) {
+            return Err(timed_out());
+        }
         let evidence = self.maint.evidence.clone();
         if self.file.path.is_none() {
             return Err(std::io::Error::other("calibration state unavailable"));
@@ -624,13 +698,27 @@ impl Worker {
         if terminal && marker_free && self.terminal_error.load(Ordering::Acquire) {
             return Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
         }
+        #[cfg(test)]
+        let counted = SaveCount::new(Arc::clone(&self.save_counts));
         let task = tokio::task::spawn_blocking(move || {
+            #[cfg(test)]
+            let _counted = counted;
             #[cfg(test)]
             if let Some((_, entered, release)) = stall {
                 let _ = entered.send(());
                 let _ = release.recv_timeout(Duration::from_secs(10));
             }
             let _writer = writes.lock().unwrap_or_else(|p| p.into_inner());
+            // Reject queued/revoked generations before hydration, serialization or disk I/O.
+            if !allowed.load(Ordering::Acquire)
+                || until.is_some_and(|end| Instant::now() >= end)
+                || inner.lock().unwrap_or_else(|p| p.into_inner()).job_object != object
+            {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Interrupted,
+                    "state write ended",
+                ));
+            }
             // Unknown validity hides consumers, but must never destructively erase history.
             // Hydration and filtering are inside the bounded, generation-fenced write task.
             if let Some(store) = evidence {
@@ -646,19 +734,24 @@ impl Worker {
                     && inner.lock().unwrap_or_else(|p| p.into_inner()).job_object == object
             })
         });
+        *slot = Some(PendingWrite {
+            task,
+            permit: Arc::clone(&permit),
+        });
+        let pending = slot
+            .as_mut()
+            .ok_or_else(|| std::io::Error::other("state write task"))?;
         let result = match until {
-            Some(end) => match tokio::time::timeout_at(end.into(), task).await {
+            Some(end) => match tokio::time::timeout_at(end.into(), &mut pending.task).await {
                 Ok(result) => result,
                 Err(_) => {
                     permit.store(false, Ordering::Release);
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::TimedOut,
-                        "state write ended",
-                    ));
+                    return Err(timed_out());
                 }
             },
-            None => task.await,
+            None => (&mut pending.task).await,
         };
+        *slot = None;
         result.map_err(|_| std::io::Error::other("state write task"))?
     }
 
@@ -865,6 +958,7 @@ impl Worker {
     /// memory still has it (with [`UNSAVED`] on its error) and the save is retried: the job is not
     /// running, so launches are allowed, each saving it first ([`Worker::take_hold`]).
     async fn recover_held(self: &Arc<Self>) -> Option<Option<bool>> {
+        self.drain_writes().await;
         let file = self.file.clone();
         let loaded = tokio::task::spawn_blocking(move || file.load()).await.ok();
         let cached = self.with(|i| i.state.job().clone());
@@ -918,17 +1012,38 @@ impl Worker {
             return Some(restored);
         }
         let wake = Arc::clone(&self.fence_wake.lock().unwrap_or_else(|p| p.into_inner()));
-        let inner = Arc::clone(&self.inner);
         let object = self.with(|i| i.job_object);
-        let allowed: super::ini::WriteAllowed = Arc::new(move || {
-            inner
-                .lock()
-                .is_ok_and(|i| i.recovering && i.job_object == object)
-        });
-        let outcome = self
-            .maint
-            .recover_calibration_with_wake(Some(wake), Some(allowed))
-            .await;
+        let outcome = match self.maint.prepare_calibration_recovery(Some(wake)).await {
+            None => Recovery::Nothing,
+            Some(prepared) => {
+                let saved = if prepared.decided {
+                    self.save_decision(&prepared.state, object).await;
+                    true
+                } else {
+                    self.write_state(
+                        prepared.state.clone(),
+                        object,
+                        Some(Instant::now() + self.limits.finalize),
+                    )
+                    .await
+                    .is_ok()
+                };
+                if saved {
+                    Recovery::Saved {
+                        restored: prepared.restored,
+                        state: prepared.state,
+                    }
+                } else {
+                    Recovery::Unsaved {
+                        restored: prepared.restored,
+                        state: prepared.state,
+                    }
+                }
+            }
+        };
+        // Even a bounded legacy save may have an unresolved blocking owner after timeout.
+        // Resolve/discard it before publishing or releasing the recovery's admission fence.
+        self.drain_writes().await;
         let restored = outcome.restored();
         let unsaved = matches!(outcome, Recovery::Unsaved { .. });
         let replacement =
@@ -2434,20 +2549,24 @@ impl Worker {
         drop(hold);
     }
 
-    /// Same immutable intent on every retry, with bounded per-attempt I/O and interruptible
-    /// 1s..60s backoff. Persistent storage errors retain admission and Finalizing visibility.
+    /// Timeouts observe the SAME pending operation, never queue a replacement. Only a
+    /// completed failure gets the shared interruptible 1s..60s retry backoff.
     async fn save_decision(&self, state: &State, object: u64) {
         let wake = Arc::clone(&self.fence_wake.lock().unwrap_or_else(|p| p.into_inner()));
         let mut wait = Duration::from_secs(1);
         loop {
-            match self
-                .write_state(
-                    state.clone(),
-                    object,
-                    Some(Instant::now() + self.limits.finalize),
-                )
-                .await
-            {
+            let attempt = self.write_state(state.clone(), object, None);
+            tokio::pin!(attempt);
+            let result = loop {
+                tokio::select! {
+                    result = tokio::time::timeout(self.limits.finalize, &mut attempt) => match result {
+                        Ok(result) => break result,
+                        Err(_) => eprintln!("[models] calibration terminal persistence failed: TimedOut"),
+                    },
+                    () = wake.notified() => {},
+                }
+            };
+            match result {
                 Ok(()) => return,
                 Err(e) => eprintln!(
                     "[models] calibration terminal persistence failed: {:?}",
@@ -4142,6 +4261,170 @@ mod tests {
         w.cancel();
         settled(&w).await;
     }
+
+    // SERIAL_WRITER_REGRESSIONS_BEGIN
+    fn pause_commit(
+        w: &Worker,
+    ) -> (
+        std::sync::mpsc::Receiver<()>,
+        std::sync::mpsc::Sender<()>,
+        std::sync::mpsc::Receiver<()>,
+    ) {
+        let (entered, ready) = std::sync::mpsc::channel();
+        let (release, wait) = std::sync::mpsc::channel();
+        let (done, finished) = std::sync::mpsc::channel();
+        *w.file.commit_pause.lock().unwrap() = Some((entered, wait, done));
+        (ready, release, finished)
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_aborted_recovery_commit_cannot_overwrite_a_new_run() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("models.ini"), INI).unwrap();
+        let (port, seen) = synthetic_engine(d.path().join("models.ini"), true).await;
+        let w = worker(d.path(), port);
+        delta_pending(&w, "stalled-old-recovery");
+        let w = with_limits(&w, w.limits);
+        let (ready, release, done) = pause_commit(&w);
+        let first = w.spawn_recover().unwrap();
+        delta_wait(|| ready.try_recv().is_ok()).await;
+        // The old writer has passed its permission check and written/fsynced its temporary file.
+        first.abort();
+        assert!(first.await.unwrap_err().is_cancelled());
+        let mut retry = w.spawn_recover().expect("the recovery slot is retryable");
+        let overtook = tokio::time::timeout(Duration::from_millis(100), &mut retry)
+            .await
+            .is_ok();
+        let mut release = Some(release);
+        if !overtook {
+            assert!(w.maint.local_held());
+            assert!(w.launch("synthetic", plan(32768.0, 120.0)).await.is_err());
+            release.take().unwrap().send(()).unwrap();
+            tokio::time::timeout(Duration::from_secs(4), &mut retry)
+                .await
+                .unwrap()
+                .unwrap();
+        }
+        let next = w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        released(&seen, "POST /v1/chat/completions").await;
+        // Freeze normal checkpoints after the successor is durable. The broken recovery writer
+        // bypasses this lock; its stale rename must be observed before another checkpoint hides it.
+        let writes = Arc::clone(&w.writes);
+        let (entered, locked) = std::sync::mpsc::channel();
+        let (unlock, wait) = std::sync::mpsc::channel();
+        let checkpoint_block = tokio::task::spawn_blocking(move || {
+            let _writer = writes.lock().unwrap();
+            entered.send(()).unwrap();
+            let _ = wait.recv_timeout(Duration::from_secs(10));
+        });
+        delta_wait(|| locked.try_recv().is_ok()).await;
+        if let Some(release) = release {
+            release.send(()).unwrap();
+        }
+        delta_wait(|| done.try_recv().is_ok()).await;
+        let latest = w.file.load().job().get("id").clone();
+        let (_copy, restarted) = delta_restart(&w, port, false).await;
+        unlock.send(()).unwrap();
+        checkpoint_block.await.unwrap();
+        w.cancel();
+        settled(&w).await;
+        assert_eq!(
+            latest,
+            *next.get("id"),
+            "an old permitted recovery cannot overwrite the newest job"
+        );
+        assert!(!overtook, "retry waits for the unresolved blocking writer");
+        restarted.recover().await;
+        assert_eq!(restarted.job().get("id"), next.get("id"));
+        assert_eq!(restarted.job().get("status").as_str(), Some("interrupted"));
+    }
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_slow_decided_save_retains_exactly_one_blocking_operation_and_snapshot() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("models.ini"), INI).unwrap();
+        let w = worker(d.path(), 9);
+        let w = with_limits(
+            &w,
+            Limits {
+                finalize: Duration::from_millis(10),
+                ..w.limits
+            },
+        );
+        w.maint
+            .evidence
+            .as_ref()
+            .unwrap()
+            .admit_run("synthetic", "slow-decision")
+            .unwrap();
+        let mut state = State::empty();
+        state.set_job(JValue::obj([
+            ("id", JValue::Str("slow-decision".into())),
+            ("model", JValue::Str("synthetic".into())),
+            ("status", JValue::Str("passed".into())),
+            ("finishedAt", JValue::Num(100.0)),
+            ("pendingTombstone", JValue::Bool(true)),
+            ("terminalDecision", JValue::Str("passed".into())),
+        ]));
+        w.file.save(&state).unwrap();
+        let object = w.with(|i| {
+            i.state = state.clone();
+            i.active = true;
+            i.decided = true;
+            i.job_object
+        });
+        *w.local_fence.lock().unwrap() =
+            super::super::gate::AdmissionFence::reserve(Arc::clone(&w.maint.local));
+        let (ready, release, done) = pause_commit(&w);
+        let worker = Arc::clone(&w);
+        let task = tokio::spawn(async move { worker.complete_decision(state, object).await });
+        delta_wait(|| ready.try_recv().is_ok()).await;
+        tokio::time::pause();
+        for _ in 0..32 {
+            tokio::time::advance(Duration::from_secs(120)).await;
+            for _ in 0..4 {
+                tokio::task::yield_now().await;
+            }
+        }
+        let outstanding = w.save_counts.outstanding.load(Ordering::Acquire);
+        let snapshots = w.save_counts.snapshots.load(Ordering::Acquire);
+        let peak = w.save_counts.peak.load(Ordering::Acquire);
+        let dispatched = w.save_counts.dispatched.load(Ordering::Acquire);
+        let held = w.maint.local_held();
+        let status = w.job();
+        tokio::time::resume();
+        release.send(()).unwrap();
+        delta_wait(|| done.try_recv().is_ok()).await;
+        if outstanding != 1 || snapshots != 1 || peak != 1 || dispatched != 1 {
+            task.abort();
+            let _ = task.await;
+            delta_wait(|| w.save_counts.outstanding.load(Ordering::Acquire) == 0).await;
+        } else {
+            tokio::time::timeout(Duration::from_secs(4), task)
+                .await
+                .unwrap()
+                .unwrap();
+        }
+        assert_eq!(
+            outstanding, 1,
+            "only one blocking operation survives repeated deadline observations"
+        );
+        assert_eq!(snapshots, 1, "only one blocking snapshot is retained");
+        assert_eq!(peak, 1);
+        assert_eq!(dispatched, 1);
+        assert!(held);
+        assert_eq!(status.get("phase").as_str(), Some("Finalizing"));
+        assert!(status.get("finishedAt").is_nullish());
+        assert_eq!(w.job().get("status").as_str(), Some("passed"));
+        assert!(!w.maint.local_held());
+        assert_eq!(w.file.load().job().get("status").as_str(), Some("passed"));
+        assert_eq!(
+            w.save_counts.dispatched.load(Ordering::Acquire),
+            2,
+            "one intent commit and one final commit"
+        );
+        assert_eq!(w.save_counts.snapshots.load(Ordering::Acquire), 0);
+    }
+    // SERIAL_WRITER_REGRESSIONS_END
+
     // SETTLEMENT_DELTA_REGRESSIONS_END
 
     // SETTLEMENT_REGRESSIONS_END

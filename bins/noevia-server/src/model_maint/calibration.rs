@@ -9,7 +9,7 @@
 //!
 //! - [`StateFile`]: `native-calibration-<hash>.json`, `{ job, history }` exactly as Node writes it
 //!   (unknown keys kept), written through a temp file and a rename, mode 0600.
-//! - [`Maint::recover_calibration`]: `recover()`, a job still marked running when the process
+//! - [`Maint::prepare_calibration_recovery`]: `recover()`, a job still marked running when the process
 //!   stopped becomes `interrupted`, and the original profile goes back only if models.ini is still
 //!   exactly what the job last wrote (compare-and-swap on `lastRevision`).
 //! - [`ladder`], [`bound_load`], [`verify_long`]: `run()`'s search, quick load checks that only
@@ -133,10 +133,39 @@ impl State {
     }
 }
 
+#[cfg(test)]
+type CommitPoint = (
+    std::sync::mpsc::Sender<()>,
+    std::sync::mpsc::Receiver<()>,
+    std::sync::mpsc::Sender<()>,
+);
+#[cfg(test)]
+pub(super) type CommitPause = std::sync::Arc<std::sync::Mutex<Option<CommitPoint>>>;
+#[cfg(test)]
+fn commit_pause(path: Option<&Path>) -> CommitPause {
+    use std::sync::{Arc, Mutex, OnceLock, Weak};
+    type Registry = Mutex<std::collections::HashMap<PathBuf, Weak<Mutex<Option<CommitPoint>>>>>;
+    static PAUSES: OnceLock<Registry> = OnceLock::new();
+    let mut pauses = PAUSES
+        .get_or_init(|| Mutex::new(Default::default()))
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let key = path.unwrap_or_else(|| Path::new("")).to_owned();
+    if let Some(pause) = pauses.get(&key).and_then(Weak::upgrade) {
+        return pause;
+    }
+    pauses.retain(|_, p| p.strong_count() > 0);
+    let pause = Arc::new(Mutex::new(None));
+    pauses.insert(key, Arc::downgrade(&pause));
+    pause
+}
+
 /// `load()` / `save()` over the state file. `None`: no data directory, nothing persists.
 #[derive(Debug, Clone)]
 pub struct StateFile {
     pub path: Option<PathBuf>,
+    #[cfg(test)]
+    pub(super) commit_pause: CommitPause,
 }
 
 impl StateFile {
@@ -160,17 +189,14 @@ impl StateFile {
     }
 
     /// `save()`: a temp file beside it (mode 0600), then a rename over it.
+    #[cfg(test)]
     pub fn save(&self, state: &State) -> std::io::Result<()> {
         self.save_if(state, || true)
     }
 
     /// A timed-out/superseded writer may finish its disk work, but must not rename its stale
     /// snapshot over a newer job. The worker serializes these commits and revokes this permit.
-    pub(super) fn save_if(
-        &self,
-        state: &State,
-        allowed: impl FnOnce() -> bool,
-    ) -> std::io::Result<()> {
+    pub(super) fn save_if(&self, state: &State, allowed: impl Fn() -> bool) -> std::io::Result<()> {
         use std::io::Write as _;
         use std::os::unix::fs::OpenOptionsExt;
         let Some(path) = &self.path else {
@@ -190,6 +216,8 @@ impl StateFile {
             path.display(),
             nonce.iter().map(|b| format!("{b:02x}")).collect::<String>()
         ));
+        #[cfg(test)]
+        let mut completion = None;
         let written = (|| {
             let mut f = std::fs::OpenOptions::new()
                 .write(true)
@@ -205,6 +233,27 @@ impl StateFile {
                     "state write ended",
                 ));
             }
+            #[cfg(test)]
+            {
+                let pause = self
+                    .commit_pause
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .take();
+                if let Some((entered, release, done)) = pause {
+                    let _ = entered.send(());
+                    let _ = release.recv_timeout(Duration::from_secs(30));
+                    completion = Some(done);
+                }
+            }
+            // The Worker holds its single serialization lock through both this final check
+            // and rename/directory fsync. Revocation after the temporary write discards it.
+            if !allowed() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Interrupted,
+                    "state write ended",
+                ));
+            }
             std::fs::rename(&temp, path)?;
             let parent = path
                 .parent()
@@ -214,6 +263,10 @@ impl StateFile {
         })();
         if written.is_err() {
             let _ = std::fs::remove_file(&temp);
+        }
+        #[cfg(test)]
+        if let Some(done) = completion {
+            let _ = done.send(());
         }
         written
     }
@@ -259,32 +312,27 @@ pub fn settle_interrupted(job: &mut Vec<(String, JValue)>, restored: Option<bool
 impl Maint {
     /// The calibration state file of this engine.
     pub fn calibration_state(&self) -> StateFile {
+        let path = self.data_dir.as_ref().map(|d| state_path(d, &self.suffix));
         StateFile {
-            path: self.data_dir.as_ref().map(|d| state_path(d, &self.suffix)),
+            #[cfg(test)]
+            commit_pause: commit_pause(path.as_deref()),
+            path,
         }
     }
 
     /// `recover()`: a run still marked running when the worker stopped. The preset goes back only
     /// if the file is still exactly what the job last wrote, so an operator's later edit survives.
-    /// A failed save of the interrupted state is [`Recovery::Unsaved`], never "nothing to recover":
-    /// the profile may already be back, and the caller must keep the interrupted job.
-    pub async fn recover_calibration(&self) -> Recovery {
-        self.recover_calibration_with_wake(None, None).await
-    }
-
-    pub(super) async fn recover_calibration_with_wake(
+    /// Returns a prepared snapshot only. The Worker persists it through its single writer and
+    /// retains the admission fence while any earlier blocking commit remains unresolved.
+    pub(super) async fn prepare_calibration_recovery(
         &self,
         wake: Option<std::sync::Arc<tokio::sync::Notify>>,
-        allowed: Option<super::ini::WriteAllowed>,
-    ) -> Recovery {
-        let Some(ini) = self.ini.clone() else {
-            return Recovery::Nothing;
-        };
-        let file = self.calibration_state();
-        let loader = file.clone();
-        let Ok(mut state) = tokio::task::spawn_blocking(move || loader.load()).await else {
-            return Recovery::Nothing;
-        };
+    ) -> Option<PreparedRecovery> {
+        let ini = self.ini.clone()?;
+        let loader = self.calibration_state();
+        let mut state = tokio::task::spawn_blocking(move || loader.load())
+            .await
+            .ok()?;
         let decided = matches!(
             state.job().get("terminalDecision").as_str(),
             Some("passed" | "fenced")
@@ -293,34 +341,11 @@ impl Maint {
             if let Some(job) = state.job_mut() {
                 job.retain(|(k, _)| k != "terminalDecision" && k != "pendingTombstone");
             }
-            let mut wait = Duration::from_secs(1);
-            loop {
-                let (file, saving) = (file.clone(), state.clone());
-                let allowed = allowed.clone();
-                match tokio::task::spawn_blocking(move || {
-                    file.save_if(&saving, || allowed.as_ref().is_none_or(|a| a()))
-                })
-                .await
-                {
-                    Ok(Ok(())) => {
-                        return Recovery::Saved {
-                            restored: None,
-                            state,
-                        }
-                    }
-                    Ok(Err(e)) => eprintln!(
-                        "[models] calibration terminal persistence failed: {:?}",
-                        e.kind()
-                    ),
-                    Err(_) => eprintln!("[models] calibration terminal persistence failed: Other"),
-                }
-                if let Some(wake) = &wake {
-                    tokio::select! { () = tokio::time::sleep(wait) => {}, () = wake.notified() => {} }
-                } else {
-                    tokio::time::sleep(wait).await;
-                }
-                wait = (wait * 2).min(Duration::from_secs(60));
-            }
+            return Some(PreparedRecovery {
+                state,
+                restored: None,
+                decided: true,
+            });
         }
         let running = state.job().get("status").as_str() == Some("running");
         let pending_fence = state.job().get("pendingTombstone").truthy();
@@ -336,7 +361,7 @@ impl Maint {
             _ => None,
         };
         if !running && pending.is_none() && !pending_fence {
-            return Recovery::Nothing;
+            return None;
         }
         if let Some(store) = self.evidence.clone() {
             let model = state.job().get("model").as_str().unwrap_or("").to_owned();
@@ -359,9 +384,7 @@ impl Maint {
                 wait = (wait * 2).min(Duration::from_secs(60));
             }
         }
-        let Some(job) = state.job_mut() else {
-            return Recovery::Nothing;
-        };
+        let job = state.job_mut()?;
         let interrupted = if running {
             interrupt(job, now_ms())
         } else {
@@ -406,33 +429,22 @@ impl Maint {
                 k != "pendingRestore" && k != "pendingTombstone" && k != "terminalDecision"
             });
         }
-        let mut wait = Duration::from_secs(1);
-        loop {
-            let (saving, file, allowed) = (state.clone(), file.clone(), allowed.clone());
-            let saved = tokio::task::spawn_blocking(move || {
-                file.save_if(&saving, || allowed.as_ref().is_none_or(|a| a()))
-            })
-            .await;
-            match saved {
-                Ok(Ok(())) => return Recovery::Saved { restored, state },
-                _ if !decided => return Recovery::Unsaved { restored, state },
-                Ok(Err(e)) => eprintln!(
-                    "[models] calibration terminal persistence failed: {:?}",
-                    e.kind()
-                ),
-                Err(_) => eprintln!("[models] calibration terminal persistence failed: Other"),
-            }
-            if let Some(wake) = &wake {
-                tokio::select! { () = tokio::time::sleep(wait) => {}, () = wake.notified() => {} }
-            } else {
-                tokio::time::sleep(wait).await;
-            }
-            wait = (wait * 2).min(Duration::from_secs(60));
-        }
+        Some(PreparedRecovery {
+            state,
+            restored,
+            decided,
+        })
     }
 }
 
-/// What [`Maint::recover_calibration`] did.
+/// Recovery prepares a result; only the Worker owns persistence and its commit ordering.
+pub(super) struct PreparedRecovery {
+    pub state: State,
+    pub restored: Option<bool>,
+    pub decided: bool,
+}
+
+/// What the Worker published after recovery preparation and its serialized save.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Recovery {
     /// No job was running (or there is no models.ini): nothing changed.
