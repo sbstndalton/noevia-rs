@@ -32,6 +32,7 @@ use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::time::Instant;
 
 const PATH: &str = "/internal/inference-admission/lease";
 const TOKEN_HEADER: &str = "x-noevia-store-token";
@@ -51,7 +52,7 @@ async fn capped(mut response: reqwest::Response) -> Option<Vec<u8>> {
     }
     let mut out = Vec::new();
     while let Some(chunk) = response.chunk().await.ok()? {
-        if out.len() + chunk.len() > MAX_ANSWER_BYTES {
+        if chunk.len() > MAX_ANSWER_BYTES.saturating_sub(out.len()) {
             return None;
         }
         out.extend_from_slice(&chunk);
@@ -210,6 +211,7 @@ impl Admission {
             r = send => r,
         };
         let response = answer.map_err(|_| Refused::unavailable())?;
+        let confirmed = Instant::now();
         let status = response.status().as_u16();
         let reading = capped(response);
         let bytes = tokio::select! {
@@ -224,7 +226,7 @@ impl Admission {
                 (404, _) | (_, None) => Refused::unavailable(),
                 (_, Some(m)) => Refused {
                     status,
-                    message: m.chars().take(500).collect(),
+                    message: m.to_owned(),
                     code: parsed
                         .get("code")
                         .and_then(Value::as_str)
@@ -232,11 +234,14 @@ impl Admission {
                 },
             });
         }
-        self.grant(&parsed).ok_or_else(Refused::unavailable)
+        self.grant(&parsed, confirmed)
+            .ok_or_else(Refused::unavailable)
     }
 
-    /// The lease Node granted in `parsed` (its 201 body), renewed from now on; `None` when it is not one.
-    fn grant(self: &Arc<Self>, parsed: &Value) -> Option<Lease> {
+    /// The lease Node granted in `parsed` (its 201 body); `None` when it is not one. Start the clock
+    /// when its headers arrived, so reading the grant body does not postpone the first deadline.
+    /// Time waiting in Node's admission queue precedes the grant and is not part of its TTL.
+    fn grant(self: &Arc<Self>, parsed: &Value, confirmed: Instant) -> Option<Lease> {
         let id = parsed
             .get("lease")
             .and_then(Value::as_str)
@@ -269,7 +274,7 @@ impl Admission {
             id,
             released: AtomicBool::new(false),
         });
-        let renewing = tokio::spawn(renew(Arc::clone(&inner), ttl, lost.clone()));
+        let renewing = tokio::spawn(renew(Arc::clone(&inner), ttl, confirmed, lost.clone()));
         Some(Lease {
             inner,
             headers,
@@ -305,11 +310,12 @@ impl Admission {
             () = gone.cancelled() => return Err(GateRefusal::NoAnswer),
             r = send => r.map_err(|_| GateRefusal::NoAnswer)?,
         };
+        let confirmed = Instant::now();
         let status = response.status().as_u16();
         let bytes = capped(response).await.ok_or(GateRefusal::NoAnswer)?;
         let parsed: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
         if status == 201 {
-            return self.grant(&parsed).ok_or(GateRefusal::NoAnswer);
+            return self.grant(&parsed, confirmed).ok_or(GateRefusal::NoAnswer);
         }
         // The gate refuses only with its 503; anything else is not this route's answer (a Core that is
         // not this front's pair answers an ask it does not know with 400 or 404).
@@ -369,38 +375,41 @@ struct Held {
 /// renewal that never answers both count against the TTL (S8 re-review P2-3). [`Lease::lost`] is
 /// cancelled once less than one renewal period is left without a confirmation: before Node can have
 /// ended the lease.
-async fn renew(held: Arc<Held>, ttl: Duration, lost: Cancel) {
-    use tokio::time::Instant;
-    let every = (ttl / 3).max(Duration::from_millis(50));
-    // Node armed the lease just before its answer reached us.
-    let mut confirmed = Instant::now();
+async fn renew(held: Arc<Held>, ttl: Duration, mut confirmed: Instant, lost: Cancel) {
+    let every = (ttl / 3).max(Duration::from_millis(1));
+    let mut next = confirmed + every;
     loop {
-        tokio::time::sleep(every).await;
+        // Leave a renewal period of margin for stopping the covered work before Node expires it.
+        let deadline = confirmed + ttl.saturating_sub(every);
+        tokio::select! {
+            biased;
+            () = tokio::time::sleep_until(deadline) => {
+                lost.cancel();
+                return;
+            }
+            () = tokio::time::sleep_until(next) => {}
+        }
         if held.released.load(Ordering::SeqCst) {
             return;
         }
         let sent = Instant::now();
-        let deadline = confirmed + ttl;
-        let left = deadline.saturating_duration_since(sent);
-        if left <= every {
-            lost.cancel();
-            return;
-        }
-        // An answer that comes later than this proves nothing in time.
-        let wait = (left - every).min(CALL_TIMEOUT);
-        match tokio::time::timeout(wait, held.admission.renew_once(&held.id)).await {
-            Ok(Some(true)) => confirmed = sent,
-            Ok(Some(false)) => {
+        let answer = tokio::select! {
+            biased;
+            () = tokio::time::sleep_until(deadline) => {
                 lost.cancel();
                 return;
             }
-            Ok(None) | Err(_) => {
-                if deadline.saturating_duration_since(Instant::now()) <= every {
-                    lost.cancel();
-                    return;
-                }
+            answer = held.admission.renew_once(&held.id) => answer,
+        };
+        match answer {
+            Some(true) => confirmed = sent,
+            Some(false) => {
+                lost.cancel();
+                return;
             }
+            None => {}
         }
+        next = Instant::now() + every;
     }
 }
 
@@ -450,7 +459,12 @@ impl Drop for Lease {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
 mod tests {
     use super::*;
     use std::sync::Mutex;
@@ -881,25 +895,19 @@ mod tests {
         let (base, state) = node((201, SHORT.into())).await;
         *state.renew_delay_ms.lock().unwrap() = u64::MAX;
         let granted = tokio::time::Instant::now();
-        let lease = admission(&base)
-            .enter_gate(Gate::Chat)
-            .await
-            .unwrap();
-        // Node ends it 600 ms after it armed it; lost strictly before that (timer slop allowed).
-        tokio::time::timeout(Duration::from_millis(650), lease.lost().cancelled())
+        let lease = admission(&base).enter_gate(Gate::Chat).await.unwrap();
+        // Node ends it 600 ms after it armed it; loss must arrive with time left to stop the call.
+        tokio::time::timeout(Duration::from_millis(550), lease.lost().cancelled())
             .await
             .expect("still held when Node has ended it");
-        assert!(granted.elapsed() < Duration::from_millis(650));
+        assert!(granted.elapsed() < Duration::from_millis(550));
     }
 
     #[tokio::test]
     async fn prompt_acks_keep_the_lease_and_acks_too_late_to_prove_it_alive_lose_it() {
         let (base, state) = node((201, SHORT.into())).await;
         *state.renew_delay_ms.lock().unwrap() = 20;
-        let lease = admission(&base)
-            .enter_gate(Gate::Chat)
-            .await
-            .unwrap();
+        let lease = admission(&base).enter_gate(Gate::Chat).await.unwrap();
         // Prompt acks: held for several TTLs.
         tokio::time::sleep(Duration::from_millis(1500)).await;
         assert!(!lease.lost().is_cancelled());
@@ -931,7 +939,9 @@ mod tests {
                     let _ = s.write_all(head.as_bytes()).await;
                     if chunked {
                         for piece in body.as_bytes().chunks(8192) {
-                            let _ = s.write_all(format!("{:x}\r\n", piece.len()).as_bytes()).await;
+                            let _ = s
+                                .write_all(format!("{:x}\r\n", piece.len()).as_bytes())
+                                .await;
                             let _ = s.write_all(piece).await;
                             let _ = s.write_all(b"\r\n").await;
                         }
@@ -948,7 +958,9 @@ mod tests {
     #[tokio::test]
     async fn an_answer_over_the_cap_is_no_answer_and_words_within_it_are_whole() {
         let pad = "p".repeat(MAX_ANSWER_BYTES);
-        let big = format!(r#"{{"lease":"0123456789abcdef0123456789abcdef","ttlMs":30000,"pad":"{pad}"}}"#);
+        let big = format!(
+            r#"{{"lease":"0123456789abcdef0123456789abcdef","ttlMs":30000,"pad":"{pad}"}}"#
+        );
         for chunked in [false, true] {
             let base = raw_node(201, big.clone(), chunked).await;
             assert_eq!(
@@ -963,15 +975,29 @@ mod tests {
                 .unwrap();
             assert_eq!(refused, Refused::unavailable(), "chunked {chunked}");
         }
-        // Within the cap, the gate's words are kept whole, chunked too.
-        let long = "w".repeat(MAX_ANSWER_BYTES - 200);
+        // Exactly at the cap, the words (including a final multibyte character) remain whole.
+        let overhead = r#"{"error":"","code":"inferenceMaintenance"}"#.len();
+        let long = format!("{}🧪", "w".repeat(MAX_ANSWER_BYTES - overhead - "🧪".len()));
         let body = format!(r#"{{"error":"{long}","code":"inferenceMaintenance"}}"#);
+        assert_eq!(body.len(), MAX_ANSWER_BYTES);
         for chunked in [false, true] {
             let base = raw_node(503, body.clone(), chunked).await;
             match admission(&base).enter_gate(Gate::Chat).await.err().unwrap() {
                 GateRefusal::Refused(r) => assert_eq!(r.message, long),
                 other => panic!("{other:?}"),
             }
+            let refused = admission(&base)
+                .enter(Ask::Engine { model: "m" }, &Cancel::new())
+                .await
+                .err()
+                .unwrap();
+            assert_eq!(refused.message, long);
+            let over = raw_node(503, format!("{body} "), chunked).await;
+            assert_eq!(
+                admission(&over).enter_gate(Gate::Chat).await.err(),
+                Some(GateRefusal::NoAnswer),
+                "one byte over, chunked {chunked}"
+            );
         }
     }
 }

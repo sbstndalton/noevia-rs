@@ -220,12 +220,13 @@ async fn core_service(
     if admission {
         let token = headers.get("x-noevia-store-token") == Some(&vec![STORE_TOKEN.to_owned()]);
         if path != ADMISSION {
-            let mut seen = core.seen.lock().unwrap();
-            seen.releases.push(format!("{method} {path}"));
-            if method == "DELETE" && path == format!("{ADMISSION}/{LEASE}") {
-                seen.live -= 1;
+            {
+                let mut seen = core.seen.lock().unwrap();
+                seen.releases.push(format!("{method} {path}"));
+                if method == "DELETE" && path == format!("{ADMISSION}/{LEASE}") {
+                    seen.live -= 1;
+                }
             }
-            drop(seen);
             if method == "POST" {
                 let renew = *core.renew.lock().unwrap();
                 if renew == Renew::Gone {
@@ -373,7 +374,10 @@ async fn core_service(
         Turn::Flood => {
             let (mut tx, body) = channel();
             tokio::spawn(async move {
-                let line = format!("{{\"type\":\"delta\",\"text\":\"{}\"}}\n", "x".repeat(64 * 1024));
+                let line = format!(
+                    "{{\"type\":\"delta\",\"text\":\"{}\"}}\n",
+                    "x".repeat(64 * 1024)
+                );
                 let line = Bytes::from(line);
                 while tx.send_data(line.clone()).await.is_ok() {}
             });
@@ -1512,7 +1516,11 @@ async fn a_json_answer_whose_lease_is_lost_ends_with_an_error_before_nodes_ttl()
         .await
         .expect("Core's call kept running")
         .unwrap();
-    assert!(started.elapsed() < Duration::from_millis(1500), "{:?}", started.elapsed());
+    assert!(
+        started.elapsed() < Duration::from_millis(1500),
+        "{:?}",
+        started.elapsed()
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1529,7 +1537,11 @@ async fn a_lease_lost_after_cores_headers_and_before_its_first_event_is_the_gate
     )
     .await
     .unwrap();
-    assert_eq!(res.status(), 503, "the first event went out under a lost lease");
+    assert_eq!(
+        res.status(),
+        503,
+        "the first event went out under a lost lease"
+    );
     assert_eq!(res.headers()["retry-after"], "3");
     tokio::time::timeout(Duration::from_secs(1), closed_rx)
         .await

@@ -157,16 +157,16 @@ pub fn hold_until_end(res: Response<Body>, lease: Lease, on_loss: OnLoss) -> Res
     let watched = Arc::clone(&shared);
     let watch = tokio::spawn(async move {
         lost.cancelled().await;
-        let dropped = {
+        let (dropped, waker) = {
             let mut s = lock(&watched);
             s.lost = true;
-            if let Some(w) = s.waker.take() {
-                w.wake();
-            }
-            s.body.take()
+            (s.body.take(), s.waker.take())
         };
-        // Outside the lock: dropping Core's body closes its socket.
+        // Outside the lock: dropping Core's body closes its socket, even without another poll.
         drop(dropped);
+        if let Some(waker) = waker {
+            waker.wake();
+        }
     });
     Response::from_parts(
         parts,
@@ -202,6 +202,9 @@ struct Held {
 impl Drop for Held {
     fn drop(&mut self) {
         self.watch.abort();
+        // Release Core synchronously on client disconnect, without waiting for the watch to run.
+        let body = lock(&self.shared).body.take();
+        drop(body);
     }
 }
 
@@ -222,9 +225,9 @@ impl http_body::Body for Held {
             drop(dropped);
             self.lease = None;
             return Poll::Ready(match self.on_loss.take() {
-                Some(OnLoss::Frame(frame)) => Some(Ok(http_body::Frame::data(
-                    Bytes::from_static(frame.as_bytes()),
-                ))),
+                Some(OnLoss::Frame(frame)) => Some(Ok(http_body::Frame::data(Bytes::from_static(
+                    frame.as_bytes(),
+                )))),
                 Some(OnLoss::Abort) => Some(Err(axum::Error::new(std::io::Error::other(
                     "the call's admission lease was lost",
                 )))),
@@ -261,7 +264,7 @@ impl http_body::Body for Held {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use http_body_util::BodyExt;
@@ -363,11 +366,18 @@ mod tests {
                 tokio::spawn(async move {
                     let mut buf = vec![0u8; 4096];
                     let n = s.read(&mut buf).await.unwrap_or(0);
-                    let first = String::from_utf8_lossy(&buf[..n]).lines().next().unwrap_or("").to_owned();
+                    let first = String::from_utf8_lossy(&buf[..n])
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .to_owned();
                     let (status, body) = if first.contains("/renew") {
                         (404, "{}")
                     } else if first.starts_with("POST") {
-                        (201, r#"{"lease":"0123456789abcdef0123456789abcdef","ttlMs":150}"#)
+                        (
+                            201,
+                            r#"{"lease":"0123456789abcdef0123456789abcdef","ttlMs":150}"#,
+                        )
                     } else {
                         (204, "")
                     };
@@ -400,7 +410,10 @@ mod tests {
         // A client that reads after all gets the loss frame, then the end.
         let mut body = res.into_body();
         let first = body.frame().await.unwrap().unwrap();
-        assert_eq!(first.into_data().unwrap(), Bytes::from_static(b"data: lost\n\n"));
+        assert_eq!(
+            first.into_data().unwrap(),
+            Bytes::from_static(b"data: lost\n\n")
+        );
         assert!(body.frame().await.is_none());
     }
 }
