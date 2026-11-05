@@ -2,6 +2,7 @@
 // Run against the pre-move Core checkout (fixtures/routing-default-put-oracle.core-ref), never a reimplementation:
 // the actual models route (PUT /api/routing-default), http.cjs readBody, and the actual workspace store over the
 // project-store stand-in, on real files. Prints the cases as JSON: node routing-default-put-oracle.cjs > out.json
+console.log = console.warn = console.error = () => {};
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
 const { Readable } = require('node:stream');
 const { EventEmitter } = require('node:events');
@@ -40,6 +41,14 @@ function corrected(reply, initialProjects, finalText) {
 (async () => {
   const cases = [];
   // [name, prefs (raw text or null = no file), projects (list or null = no file), body (string | {hex}), role?]
+  const bare = (id, extra = {}) => ({ id, name: id, files: [], chats: [], ...extra });
+  const LOAD_MODES = S({ projects: [bare('m-none'), bare('m-code', { modes: ['code'], routing: 'manual' }), bare('m-ok', { modes: ['chat'], routing: 'auto' }), bare('m-order', { modes: ['code', 'cowork', 'chat', 'x'], routing: 'manual' })] });
+  const LOAD_INLINE = S({ projects: [bare('inl', { modes: ['chat'], routing: 'manual', files: [{ name: 'a.txt', content: 'hello' }, { name: 's/SKILL.md', content: '---\nname: x\n---\nB' }, { name: 'n.txt', content: 5 }] }), bare('other', { modes: ['chat'], routing: 'auto' })] });
+  const LOAD_MEMORY = S({ projects: [bare('lem', { modes: ['chat'], provider: 'lemonade', routing: 'manual' }), bare('fnull', { modes: ['chat'], files: [null, 5, { name: 'a.txt', textRef: 'b'.repeat(64), chars: 3 }], routing: 'auto' })] });
+  const LOAD_MEMORY_AUTO = S({ projects: [bare('lem', { modes: ['chat'], provider: 'lemonade', routing: 'auto' }), bare('fnull', { modes: ['chat'], files: [null], routing: 'auto' })] });
+  const LOAD_ALL = S({ projects: [bare('all', { modes: ['code'], provider: 'lemonade', routing: 'auto', files: [null, { name: 'a.txt', content: 'hi' }] })] });
+  const LOAD_ARRAY = S({ projects: [[1], bare('ok', { modes: ['chat'], routing: 'manual' })] });
+  const LOAD_NULL = S({ projects: [bare('a'), null] });
   const table = [
     ['manual-new-file', null, [], '{"routing":"manual"}'],
     ['auto-new-file', null, [], '{"routing":"auto"}'],
@@ -77,6 +86,20 @@ function corrected(reply, initialProjects, finalText) {
     ['apply-duplicate-last-true', null, MIXED, '{"applyToExisting":false,"routing":"auto","applyToExisting":true}'],
     ['apply-duplicate-last-false', null, MIXED, '{"applyToExisting":true,"routing":"auto","applyToExisting":false}'],
     ['default-alone-leaves-projects', null, MIXED, '{"routing":"manual"}'],
+    // The workspace load comes first (currentWorkspace()): its migrations are saved even when nothing is applied.
+    ['load-modes-default-only', null, LOAD_MODES, '{"routing":"auto"}'],
+    ['load-modes-apply', null, LOAD_MODES, '{"routing":"auto","applyToExisting":true}'],
+    ['load-inline-default-only', null, LOAD_INLINE, '{"routing":"manual"}'],
+    ['load-inline-apply', null, LOAD_INLINE, '{"routing":"auto","applyToExisting":true}'],
+    // Normalizations that are not saved at load ride on the apply's save, and only if it saves.
+    ['load-memory-only-default', null, LOAD_MEMORY, '{"routing":"auto"}'],
+    ['load-memory-only-apply-none-differ', null, LOAD_MEMORY_AUTO, '{"routing":"auto","applyToExisting":true}'],
+    ['load-memory-only-apply', null, LOAD_MEMORY, '{"routing":"auto","applyToExisting":true}'],
+    ['load-everything-apply', null, LOAD_ALL, '{"routing":"manual","applyToExisting":true}'],
+    ['load-array-entry-apply', null, LOAD_ARRAY, '{"routing":"auto","applyToExisting":true}'],
+    ['load-null-project-body-invalid', null, LOAD_NULL, '{'],
+    ['load-modes-backup-blocked-apply', null, LOAD_MODES, '{"routing":"auto","applyToExisting":true}', 'BLOCK'],
+    ['load-inline-backup-blocked', null, LOAD_INLINE, '{"routing":"auto"}', 'BLOCK'],
     ['apply-internal-only', null, [proj('cowork-diary-extras', 'manual'), proj('cowork-chat-context-abc', 'manual')], '{"routing":"auto","applyToExisting":true}'],
     ['apply-internal-lookalikes', null, [proj('cowork-diary-extras-2', 'manual'), proj('cowork-chat-contextual', 'manual'), proj('cowork-chat-context-', 'manual'), proj('my-cowork-diary-extras', 'manual')], '{"routing":"auto","applyToExisting":true}'],
     ['apply-internal-and-user', null, [proj('a', 'manual'), proj('cowork-chat-context-x', 'manual'), proj('b', 'auto'), proj('cowork-diary-extras')], '{"routing":"auto","applyToExisting":true}'],
@@ -110,7 +133,7 @@ function corrected(reply, initialProjects, finalText) {
     ['big-valid-body', null, [], { pad: 1024 * 1024 - 64, routing: 'manual' }],
     ['oversize-body', null, [], { pad: 1024 * 1024 + 1, routing: 'manual' }],
   ];
-  for (const [name, prefs, projects, body] of table) {
+  for (const [name, prefs, projects, body, flag] of table) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'synthetic-routing-'));
     const dir = path.join(root, 'users', USER);
     fs.mkdirSync(dir, { recursive: true });
@@ -119,10 +142,11 @@ function corrected(reply, initialProjects, finalText) {
     else if (typeof projects === 'string') fs.writeFileSync(path.join(dir, 'projects.json'), projects);
     else if (projects !== null) fs.writeFileSync(path.join(dir, 'projects.json'), S({ projects }));
     const initialProjects = projects === null || projects === 'DIR' ? null : typeof projects === 'string' ? projects : S({ projects });
+    if (flag === 'BLOCK') fs.writeFileSync(path.join(dir, 'migration-backups'), 'in the way');
     Date.now = () => NOW;
     const sent = [];
     try {
-      const store = createWorkspaceStore(root, { id: 'local', label: 'Local', baseUrl: '', apiKey: '' }, null, { projectStore: createStubStore(root), onStoreSave: (p) => saves.push(p) });
+      const store = createWorkspaceStore(root, { id: 'default', label: 'Default', baseUrl: '', apiKey: '' }, null, { projectStore: createStubStore(root), onStoreSave: (p) => saves.push(p) });
       var saves = [];
       const ws = store.get(USER);
       const routes = createModelRoutes({
@@ -139,11 +163,20 @@ function corrected(reply, initialProjects, finalText) {
       const res = Object.assign(new EventEmitter(), { setHeader() {} });
       await routes(req, res, { path: '/api/routing-default', authn: { user: { id: USER, role: 'member' } }, url: new URL('http://localhost/api/routing-default') });
       await Promise.all(saves);
-    } catch (e) { sent.push({ thrown: String(e && e.message || e) }); }
+    // A throw (the workspace load of a project that is not an object, say) is the router's 500.
+    } catch { sent.push({ status: 500, body: { error: 'Internal error' } }); }
     const read = (f) => { try { return fs.readFileSync(path.join(dir, f), 'utf8'); } catch { return null; } };
-    const node = { reply: sent[0], preferences: read('preferences.json'), projects: read('projects.json') };
+    // What the load wrote besides the two files: the backups of projects.json and the moved source texts.
+    const extras = {};
+    const walk = (rel) => { for (const e of fs.readdirSync(path.join(dir, rel), { withFileTypes: true })) {
+      const r = path.join(rel, e.name);
+      if (e.isDirectory()) walk(r);
+      else if (/^(migration-backups|project-sources)\//.test(r) && !r.endsWith('.tmp')) extras[r] = fs.readFileSync(path.join(dir, r), 'utf8');
+    } };
+    walk('');
+    const node = { reply: sent[0], preferences: read('preferences.json'), projects: read('projects.json'), ...(Object.keys(extras).length ? { extras } : {}) };
     const fix = corrected(node.reply, initialProjects, node.projects);
-    cases.push({ name, initial: { preferences: prefs, projects: initialProjects, ...(projects === 'DIR' ? { projectsDirectory: true } : {}) }, body: body && body.hex !== undefined ? { hex: body.hex } : body && body.pad !== undefined ? { pad: body.pad, routing: body.routing } : { text: body },
+    cases.push({ name, initial: { preferences: prefs, projects: initialProjects, ...(projects === 'DIR' ? { projectsDirectory: true } : {}), ...(flag === 'BLOCK' ? { blockBackups: true } : {}) }, body: body && body.hex !== undefined ? { hex: body.hex } : body && body.pad !== undefined ? { pad: body.pad, routing: body.routing } : { text: body },
       expected: fix ? { ...node, ...fix, deviation: '#2388' } : node, ...(fix ? { node } : {}) });
     fs.rmSync(root, { recursive: true, force: true });
   }

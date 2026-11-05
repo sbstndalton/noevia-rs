@@ -49,7 +49,31 @@ const REPAIR = [
   p('cowork-chat-context-both', { routing: 'manual', files: SKILL, reasoningEffort: 'low' }),
   p('other-skill', { files: SKILL, reasoningEffort: 'high' }),
 ];
+// Un-normalized stored projects, for each thing core's workspace load (workspace.cjs) normalizes or migrates. A project as the
+// load leaves it needs a modes list naming chat, no null in files, the default provider id, and its source text in its own file.
+const bare = (id, extra = {}) => ({ id, name: id, files: [], chats: [], reasoningEffort: 'high', ...extra });
+const FILE = { name: 'a.txt', textRef: 'b'.repeat(64), chars: 3 };
+const HEAL = (id) => bare(id, { modes: ['chat'], routing: 'manual' });
+const MIGRATE = {
+  // #1576: modes names chat first and keeps cowork / code in that order; a project without a list gets ['chat'].
+  'mig-modes': S({ projects: [bare('m-none'), bare('m-code', { modes: ['code'] }), bare('m-cowork', { modes: ['cowork'] }), bare('m-order', { modes: ['code', 'cowork', 'chat', 'x'] }), bare('m-str', { modes: 'chat' }), bare('m-ok', { modes: ['chat'] }), bare('m-empty', { modes: [] }), bare('m-null', { modes: null })] }),
+  // Normalizations that are not themselves saved (#1236 files, lemonade): in memory until some save carries them.
+  'mig-memory-only': S({ projects: [bare('lem', { modes: ['chat'], provider: 'lemonade', model: 'm' }), bare('fnull', { modes: ['chat'], files: [null, 5, 'x', FILE, [1]] }), HEAL('cowork-chat-context-h'), bare('plain', { modes: ['chat'] })] }),
+  // A null in files makes the reconcile throw unless the load dropped it first.
+  'mig-files-null-skill': S({ projects: [bare('fs', { modes: ['chat'], files: [null, { name: 'x/SKILL.md', textRef: 'a'.repeat(64), chars: 40, skillHeader: true }] }), bare('ok', { modes: ['chat'] })] }),
+  // #1806: text kept inline moves to its own file, with a backup of projects.json first.
+  'mig-inline': S({ projects: [bare('inl', { modes: ['chat'], files: [{ name: 'a.txt', content: 'hello' }, { name: 's/SKILL.md', content: '---\nname: x\ndescription: d\n---\nBody' }, { name: 'e.txt', content: '' }, { name: 'n.txt', content: 5 }, { name: 'u.txt', content: 'café 😀 \ud800' }] }), bare('other', { modes: ['chat'] })] }),
+  'mig-everything': S({ projects: [bare('all', { modes: ['code'], provider: 'lemonade', files: [null, { name: 'a.txt', content: 'hi' }] }), HEAL('cowork-chat-context-h2')] }),
+  // project-modes.cjs migrate() accepts any object, an array included (it sets a property JSON never carries).
+  'mig-before-reconcile-error': S({ projects: [bare('bad-files', { modes: ['code'], files: {} })] }),
+  'mig-array-entry': S({ projects: [[1], bare('ok', { modes: ['chat'] })] }),
+  // A backup that cannot be written: the modes stay as stored (#1839), and inline text refuses the load.
+  'mig-backup-blocked': S({ projects: [bare('m-code', { modes: ['code'] }), HEAL('cowork-chat-context-h')] }),
+  'mig-inline-backup-blocked': S({ projects: [bare('inl', { modes: ['chat'], files: [{ name: 'a.txt', content: 'hello' }] })] }),
+};
+const BLOCK_BACKUPS = new Set(['mig-backup-blocked', 'mig-inline-backup-blocked']);
 const SETS = {
+  ...MIGRATE,
   main: S({ projects: MAIN }),
   repair: S({ projects: REPAIR }),
   // A project that is not an object makes the workspace load throw before the route runs: a 500 with or without a query.
@@ -83,6 +107,18 @@ const SETTINGS = [
     }
   }
   for (const [skind, svalue] of SETTINGS.filter(([k]) => ['low', 'missing', 'blob'].includes(k))) for (const [qname, search] of repairQueries) plan.push({ set: 'repair', skind, svalue, qname, search, role: 'member' });
+  const migQueries = {
+    'mig-modes': ['m-code', 'm-ok', 'm-none', 'ghost'],
+    'mig-memory-only': ['lem', 'fnull', 'plain', 'cowork-chat-context-h'],
+    'mig-files-null-skill': ['fs', 'ok'],
+    'mig-inline': ['inl', 'other'],
+    'mig-everything': ['all', 'cowork-chat-context-h2'],
+    'mig-array-entry': ['ok'],
+    'mig-before-reconcile-error': ['bad-files'],
+    'mig-backup-blocked': ['m-code', 'cowork-chat-context-h'],
+    'mig-inline-backup-blocked': ['inl'],
+  };
+  for (const [set, ids] of Object.entries(migQueries)) for (const [qname, search] of [['none', ''], ...ids.map((id) => [id, '?projectId=' + id])]) plan.push({ set, skind: 'low', svalue: 'low', qname, search, role: 'member' });
   for (const [qname, search] of [['none', ''], ['a', '?projectId=a'], ['unknown', '?projectId=ghost']]) plan.push({ set: 'null-project', skind: 'low', svalue: 'low', qname, search, role: 'member' });
   for (const [qname, search] of [['none', ''], ['plain', '?projectId=plain']]) plan.push({ set: 'missing', skind: 'high', svalue: 'high', qname, search, role: 'member' });
   for (const c of plan) {
@@ -90,6 +126,7 @@ const SETTINGS = [
     const dir = path.join(root, 'users', USER);
     fs.mkdirSync(dir, { recursive: true });
     if (SETS[c.set] !== null) fs.writeFileSync(path.join(dir, 'projects.json'), SETS[c.set]);
+    if (BLOCK_BACKUPS.has(c.set)) fs.writeFileSync(path.join(dir, 'migration-backups'), 'in the way');
     const asked = [], sent = [], saves = [];
     let loadThrew = false;
     try {
@@ -107,14 +144,23 @@ const SETTINGS = [
           DEFAULT_PROVIDER_ID: 'default',
         });
         const req = Readable.from([]); req.method = 'GET';
-        await routes(req, {}, { path: '/api/reasoning-settings', authn: { user: { id: USER, role: c.role } }, url: new URL('http://localhost/api/reasoning-settings' + c.search) });
+        try { await routes(req, {}, { path: '/api/reasoning-settings', authn: { user: { id: USER, role: c.role } }, url: new URL('http://localhost/api/reasoning-settings' + c.search) }); }
+        catch { sent.push({ status: 500, body: { error: 'Internal error' } }); }
         await Promise.all(saves);
       }
     } finally { Date.now = realNow; }
     const after = (() => { try { return fs.readFileSync(path.join(dir, 'projects.json'), 'utf8'); } catch { return null; } })();
+    // What else the load and the read wrote into the account's folder: the backups and the moved source texts.
+    const extras = {};
+    const walk = (rel) => { for (const e of fs.readdirSync(path.join(dir, rel), { withFileTypes: true })) {
+      const r = path.join(rel, e.name);
+      if (e.isDirectory()) walk(r);
+      else if (/^(migration-backups|project-sources)\//.test(r) && !r.endsWith('.tmp')) extras[r] = fs.readFileSync(path.join(dir, r), 'utf8');
+    } };
+    walk('');
     const value = Buffer.isBuffer(c.svalue) ? { hex: c.svalue.toString('hex') } : c.svalue;
     cases.push({ name: `${c.set}/${c.skind}/${c.qname}/${c.role}`, set: c.set, settings: c.skind === 'missing' ? null : { kind: c.skind, value }, search: c.search, role: c.role,
-      reply: sent[0], loadThrew, asked, ...(after !== SETS[c.set] ? { projectsAfter: after } : {}) });
+      reply: sent[0], loadThrew, asked, ...(after !== SETS[c.set] ? { projectsAfter: after } : {}), ...(Object.keys(extras).length ? { extras } : {}) });
     fs.rmSync(root, { recursive: true, force: true });
   }
   process.stdout.write(JSON.stringify({ node: process.version, user: USER, sets: SETS, cases }, null, 1));

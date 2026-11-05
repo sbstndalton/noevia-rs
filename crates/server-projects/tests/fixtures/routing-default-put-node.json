@@ -787,6 +787,282 @@
    }
   },
   {
+   "name": "load-modes-default-only",
+   "initial": {
+    "preferences": null,
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"m-none\",\n      \"name\": \"m-none\",\n      \"files\": [],\n      \"chats\": []\n    },\n    {\n      \"id\": \"m-code\",\n      \"name\": \"m-code\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"code\"\n      ],\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"m-ok\",\n      \"name\": \"m-ok\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"m-order\",\n      \"name\": \"m-order\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"code\",\n        \"cowork\",\n        \"chat\",\n        \"x\"\n      ],\n      \"routing\": \"manual\"\n    }\n  ]\n}"
+   },
+   "body": {
+    "text": "{\"routing\":\"auto\"}"
+   },
+   "expected": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "auto",
+      "updated": 0
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"auto\"\n}",
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"m-none\",\n      \"name\": \"m-none\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ]\n    },\n    {\n      \"id\": \"m-code\",\n      \"name\": \"m-code\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\",\n        \"code\"\n      ],\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"m-ok\",\n      \"name\": \"m-ok\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"m-order\",\n      \"name\": \"m-order\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\",\n        \"cowork\",\n        \"code\"\n      ],\n      \"routing\": \"manual\"\n    }\n  ]\n}",
+    "extras": {
+     "migration-backups/projects-pre-1576-28409db6b6a23178.json": "{\n  \"projects\": [\n    {\n      \"id\": \"m-none\",\n      \"name\": \"m-none\",\n      \"files\": [],\n      \"chats\": []\n    },\n    {\n      \"id\": \"m-code\",\n      \"name\": \"m-code\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"code\"\n      ],\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"m-ok\",\n      \"name\": \"m-ok\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"m-order\",\n      \"name\": \"m-order\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"code\",\n        \"cowork\",\n        \"chat\",\n        \"x\"\n      ],\n      \"routing\": \"manual\"\n    }\n  ]\n}"
+    }
+   }
+  },
+  {
+   "name": "load-modes-apply",
+   "initial": {
+    "preferences": null,
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"m-none\",\n      \"name\": \"m-none\",\n      \"files\": [],\n      \"chats\": []\n    },\n    {\n      \"id\": \"m-code\",\n      \"name\": \"m-code\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"code\"\n      ],\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"m-ok\",\n      \"name\": \"m-ok\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"m-order\",\n      \"name\": \"m-order\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"code\",\n        \"cowork\",\n        \"chat\",\n        \"x\"\n      ],\n      \"routing\": \"manual\"\n    }\n  ]\n}"
+   },
+   "body": {
+    "text": "{\"routing\":\"auto\",\"applyToExisting\":true}"
+   },
+   "expected": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "auto",
+      "updated": 3
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"auto\"\n}",
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"m-none\",\n      \"name\": \"m-none\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\",\n      \"updatedAt\": 1800000000000\n    },\n    {\n      \"id\": \"m-code\",\n      \"name\": \"m-code\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\",\n        \"code\"\n      ],\n      \"routing\": \"auto\",\n      \"updatedAt\": 1800000000000\n    },\n    {\n      \"id\": \"m-ok\",\n      \"name\": \"m-ok\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"m-order\",\n      \"name\": \"m-order\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\",\n        \"cowork\",\n        \"code\"\n      ],\n      \"routing\": \"auto\",\n      \"updatedAt\": 1800000000000\n    }\n  ]\n}",
+    "extras": {
+     "migration-backups/projects-pre-1576-28409db6b6a23178.json": "{\n  \"projects\": [\n    {\n      \"id\": \"m-none\",\n      \"name\": \"m-none\",\n      \"files\": [],\n      \"chats\": []\n    },\n    {\n      \"id\": \"m-code\",\n      \"name\": \"m-code\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"code\"\n      ],\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"m-ok\",\n      \"name\": \"m-ok\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"m-order\",\n      \"name\": \"m-order\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"code\",\n        \"cowork\",\n        \"chat\",\n        \"x\"\n      ],\n      \"routing\": \"manual\"\n    }\n  ]\n}"
+    }
+   }
+  },
+  {
+   "name": "load-inline-default-only",
+   "initial": {
+    "preferences": null,
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"inl\",\n      \"name\": \"inl\",\n      \"files\": [\n        {\n          \"name\": \"a.txt\",\n          \"content\": \"hello\"\n        },\n        {\n          \"name\": \"s/SKILL.md\",\n          \"content\": \"---\\nname: x\\n---\\nB\"\n        },\n        {\n          \"name\": \"n.txt\",\n          \"content\": 5\n        }\n      ],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"other\",\n      \"name\": \"other\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    }\n  ]\n}"
+   },
+   "body": {
+    "text": "{\"routing\":\"manual\"}"
+   },
+   "expected": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "manual",
+      "updated": 0
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"manual\"\n}",
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"inl\",\n      \"name\": \"inl\",\n      \"files\": [\n        {\n          \"name\": \"a.txt\",\n          \"textRef\": \"2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824\",\n          \"chars\": 5\n        },\n        {\n          \"name\": \"s/SKILL.md\",\n          \"textRef\": \"b2d35ed2cab505ac6de8b41f313af308b72b613ffff503139d4489e540e27f80\",\n          \"chars\": 17,\n          \"skillHeader\": true\n        },\n        {\n          \"name\": \"n.txt\",\n          \"content\": 5\n        }\n      ],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"other\",\n      \"name\": \"other\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    }\n  ]\n}",
+    "extras": {
+     "migration-backups/projects-pre-1806-e9abf253e314e937.json": "{\n  \"projects\": [\n    {\n      \"id\": \"inl\",\n      \"name\": \"inl\",\n      \"files\": [\n        {\n          \"name\": \"a.txt\",\n          \"content\": \"hello\"\n        },\n        {\n          \"name\": \"s/SKILL.md\",\n          \"content\": \"---\\nname: x\\n---\\nB\"\n        },\n        {\n          \"name\": \"n.txt\",\n          \"content\": 5\n        }\n      ],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"other\",\n      \"name\": \"other\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    }\n  ]\n}",
+     "project-sources/inl/2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824.txt": "hello",
+     "project-sources/inl/b2d35ed2cab505ac6de8b41f313af308b72b613ffff503139d4489e540e27f80.txt": "---\nname: x\n---\nB"
+    }
+   }
+  },
+  {
+   "name": "load-inline-apply",
+   "initial": {
+    "preferences": null,
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"inl\",\n      \"name\": \"inl\",\n      \"files\": [\n        {\n          \"name\": \"a.txt\",\n          \"content\": \"hello\"\n        },\n        {\n          \"name\": \"s/SKILL.md\",\n          \"content\": \"---\\nname: x\\n---\\nB\"\n        },\n        {\n          \"name\": \"n.txt\",\n          \"content\": 5\n        }\n      ],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"other\",\n      \"name\": \"other\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    }\n  ]\n}"
+   },
+   "body": {
+    "text": "{\"routing\":\"auto\",\"applyToExisting\":true}"
+   },
+   "expected": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "auto",
+      "updated": 1
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"auto\"\n}",
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"inl\",\n      \"name\": \"inl\",\n      \"files\": [\n        {\n          \"name\": \"a.txt\",\n          \"textRef\": \"2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824\",\n          \"chars\": 5\n        },\n        {\n          \"name\": \"s/SKILL.md\",\n          \"textRef\": \"b2d35ed2cab505ac6de8b41f313af308b72b613ffff503139d4489e540e27f80\",\n          \"chars\": 17,\n          \"skillHeader\": true\n        },\n        {\n          \"name\": \"n.txt\",\n          \"content\": 5\n        }\n      ],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\",\n      \"updatedAt\": 1800000000000\n    },\n    {\n      \"id\": \"other\",\n      \"name\": \"other\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    }\n  ]\n}",
+    "extras": {
+     "migration-backups/projects-pre-1806-e9abf253e314e937.json": "{\n  \"projects\": [\n    {\n      \"id\": \"inl\",\n      \"name\": \"inl\",\n      \"files\": [\n        {\n          \"name\": \"a.txt\",\n          \"content\": \"hello\"\n        },\n        {\n          \"name\": \"s/SKILL.md\",\n          \"content\": \"---\\nname: x\\n---\\nB\"\n        },\n        {\n          \"name\": \"n.txt\",\n          \"content\": 5\n        }\n      ],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"other\",\n      \"name\": \"other\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    }\n  ]\n}",
+     "project-sources/inl/2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824.txt": "hello",
+     "project-sources/inl/b2d35ed2cab505ac6de8b41f313af308b72b613ffff503139d4489e540e27f80.txt": "---\nname: x\n---\nB"
+    }
+   }
+  },
+  {
+   "name": "load-memory-only-default",
+   "initial": {
+    "preferences": null,
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"lem\",\n      \"name\": \"lem\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"provider\": \"lemonade\",\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"fnull\",\n      \"name\": \"fnull\",\n      \"files\": [\n        null,\n        5,\n        {\n          \"name\": \"a.txt\",\n          \"textRef\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\n          \"chars\": 3\n        }\n      ],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    }\n  ]\n}"
+   },
+   "body": {
+    "text": "{\"routing\":\"auto\"}"
+   },
+   "expected": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "auto",
+      "updated": 0
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"auto\"\n}",
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"lem\",\n      \"name\": \"lem\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"provider\": \"lemonade\",\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"fnull\",\n      \"name\": \"fnull\",\n      \"files\": [\n        null,\n        5,\n        {\n          \"name\": \"a.txt\",\n          \"textRef\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\n          \"chars\": 3\n        }\n      ],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    }\n  ]\n}"
+   }
+  },
+  {
+   "name": "load-memory-only-apply-none-differ",
+   "initial": {
+    "preferences": null,
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"lem\",\n      \"name\": \"lem\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"provider\": \"lemonade\",\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"fnull\",\n      \"name\": \"fnull\",\n      \"files\": [\n        null\n      ],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    }\n  ]\n}"
+   },
+   "body": {
+    "text": "{\"routing\":\"auto\",\"applyToExisting\":true}"
+   },
+   "expected": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "auto",
+      "updated": 0
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"auto\"\n}",
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"lem\",\n      \"name\": \"lem\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"provider\": \"lemonade\",\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"fnull\",\n      \"name\": \"fnull\",\n      \"files\": [\n        null\n      ],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    }\n  ]\n}"
+   }
+  },
+  {
+   "name": "load-memory-only-apply",
+   "initial": {
+    "preferences": null,
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"lem\",\n      \"name\": \"lem\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"provider\": \"lemonade\",\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"fnull\",\n      \"name\": \"fnull\",\n      \"files\": [\n        null,\n        5,\n        {\n          \"name\": \"a.txt\",\n          \"textRef\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\n          \"chars\": 3\n        }\n      ],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    }\n  ]\n}"
+   },
+   "body": {
+    "text": "{\"routing\":\"auto\",\"applyToExisting\":true}"
+   },
+   "expected": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "auto",
+      "updated": 1
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"auto\"\n}",
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"lem\",\n      \"name\": \"lem\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"provider\": \"default\",\n      \"routing\": \"auto\",\n      \"updatedAt\": 1800000000000\n    },\n    {\n      \"id\": \"fnull\",\n      \"name\": \"fnull\",\n      \"files\": [\n        {\n          \"name\": \"a.txt\",\n          \"textRef\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\n          \"chars\": 3\n        }\n      ],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    }\n  ]\n}"
+   }
+  },
+  {
+   "name": "load-everything-apply",
+   "initial": {
+    "preferences": null,
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"all\",\n      \"name\": \"all\",\n      \"files\": [\n        null,\n        {\n          \"name\": \"a.txt\",\n          \"content\": \"hi\"\n        }\n      ],\n      \"chats\": [],\n      \"modes\": [\n        \"code\"\n      ],\n      \"provider\": \"lemonade\",\n      \"routing\": \"auto\"\n    }\n  ]\n}"
+   },
+   "body": {
+    "text": "{\"routing\":\"manual\",\"applyToExisting\":true}"
+   },
+   "expected": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "manual",
+      "updated": 1
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"manual\"\n}",
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"all\",\n      \"name\": \"all\",\n      \"files\": [\n        {\n          \"name\": \"a.txt\",\n          \"textRef\": \"8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4\",\n          \"chars\": 2\n        }\n      ],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\",\n        \"code\"\n      ],\n      \"provider\": \"default\",\n      \"routing\": \"manual\",\n      \"updatedAt\": 1800000000000\n    }\n  ]\n}",
+    "extras": {
+     "migration-backups/projects-pre-1576-c4215c0185d9d0ee.json": "{\n  \"projects\": [\n    {\n      \"id\": \"all\",\n      \"name\": \"all\",\n      \"files\": [\n        null,\n        {\n          \"name\": \"a.txt\",\n          \"content\": \"hi\"\n        }\n      ],\n      \"chats\": [],\n      \"modes\": [\n        \"code\"\n      ],\n      \"provider\": \"lemonade\",\n      \"routing\": \"auto\"\n    }\n  ]\n}",
+     "migration-backups/projects-pre-1806-c4215c0185d9d0ee.json": "{\n  \"projects\": [\n    {\n      \"id\": \"all\",\n      \"name\": \"all\",\n      \"files\": [\n        null,\n        {\n          \"name\": \"a.txt\",\n          \"content\": \"hi\"\n        }\n      ],\n      \"chats\": [],\n      \"modes\": [\n        \"code\"\n      ],\n      \"provider\": \"lemonade\",\n      \"routing\": \"auto\"\n    }\n  ]\n}",
+     "project-sources/all/8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4.txt": "hi"
+    }
+   }
+  },
+  {
+   "name": "load-array-entry-apply",
+   "initial": {
+    "preferences": null,
+    "projects": "{\n  \"projects\": [\n    [\n      1\n    ],\n    {\n      \"id\": \"ok\",\n      \"name\": \"ok\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\"\n    }\n  ]\n}"
+   },
+   "body": {
+    "text": "{\"routing\":\"auto\",\"applyToExisting\":true}"
+   },
+   "expected": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "auto",
+      "updated": 2
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"auto\"\n}",
+    "projects": "{\n  \"projects\": [\n    [\n      1\n    ],\n    {\n      \"id\": \"ok\",\n      \"name\": \"ok\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\",\n      \"updatedAt\": 1800000000000\n    }\n  ]\n}",
+    "extras": {
+     "migration-backups/projects-pre-1576-d634a7fbd4f5f9cf.json": "{\n  \"projects\": [\n    [\n      1\n    ],\n    {\n      \"id\": \"ok\",\n      \"name\": \"ok\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\"\n    }\n  ]\n}"
+    }
+   }
+  },
+  {
+   "name": "load-null-project-body-invalid",
+   "initial": {
+    "preferences": null,
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"a\",\n      \"name\": \"a\",\n      \"files\": [],\n      \"chats\": []\n    },\n    null\n  ]\n}"
+   },
+   "body": {
+    "text": "{"
+   },
+   "expected": {
+    "reply": {
+     "status": 500,
+     "body": {
+      "error": "Internal error"
+     }
+    },
+    "preferences": null,
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"a\",\n      \"name\": \"a\",\n      \"files\": [],\n      \"chats\": []\n    },\n    null\n  ]\n}"
+   }
+  },
+  {
+   "name": "load-modes-backup-blocked-apply",
+   "initial": {
+    "preferences": null,
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"m-none\",\n      \"name\": \"m-none\",\n      \"files\": [],\n      \"chats\": []\n    },\n    {\n      \"id\": \"m-code\",\n      \"name\": \"m-code\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"code\"\n      ],\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"m-ok\",\n      \"name\": \"m-ok\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"m-order\",\n      \"name\": \"m-order\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"code\",\n        \"cowork\",\n        \"chat\",\n        \"x\"\n      ],\n      \"routing\": \"manual\"\n    }\n  ]\n}",
+    "blockBackups": true
+   },
+   "body": {
+    "text": "{\"routing\":\"auto\",\"applyToExisting\":true}"
+   },
+   "expected": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "auto",
+      "updated": 3
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"auto\"\n}",
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"m-none\",\n      \"name\": \"m-none\",\n      \"files\": [],\n      \"chats\": [],\n      \"routing\": \"auto\",\n      \"updatedAt\": 1800000000000\n    },\n    {\n      \"id\": \"m-code\",\n      \"name\": \"m-code\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"code\"\n      ],\n      \"routing\": \"auto\",\n      \"updatedAt\": 1800000000000\n    },\n    {\n      \"id\": \"m-ok\",\n      \"name\": \"m-ok\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"m-order\",\n      \"name\": \"m-order\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"code\",\n        \"cowork\",\n        \"chat\",\n        \"x\"\n      ],\n      \"routing\": \"auto\",\n      \"updatedAt\": 1800000000000\n    }\n  ]\n}"
+   }
+  },
+  {
+   "name": "load-inline-backup-blocked",
+   "initial": {
+    "preferences": null,
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"inl\",\n      \"name\": \"inl\",\n      \"files\": [\n        {\n          \"name\": \"a.txt\",\n          \"content\": \"hello\"\n        },\n        {\n          \"name\": \"s/SKILL.md\",\n          \"content\": \"---\\nname: x\\n---\\nB\"\n        },\n        {\n          \"name\": \"n.txt\",\n          \"content\": 5\n        }\n      ],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"other\",\n      \"name\": \"other\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    }\n  ]\n}",
+    "blockBackups": true
+   },
+   "body": {
+    "text": "{\"routing\":\"auto\"}"
+   },
+   "expected": {
+    "reply": {
+     "status": 500,
+     "body": {
+      "error": "Internal error"
+     }
+    },
+    "preferences": null,
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"inl\",\n      \"name\": \"inl\",\n      \"files\": [\n        {\n          \"name\": \"a.txt\",\n          \"content\": \"hello\"\n        },\n        {\n          \"name\": \"s/SKILL.md\",\n          \"content\": \"---\\nname: x\\n---\\nB\"\n        },\n        {\n          \"name\": \"n.txt\",\n          \"content\": 5\n        }\n      ],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"other\",\n      \"name\": \"other\",\n      \"files\": [],\n      \"chats\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    }\n  ]\n}"
+   }
+  },
+  {
    "name": "apply-internal-only",
    "initial": {
     "preferences": null,

@@ -79,6 +79,25 @@ fn project_of(search: &str) -> Option<String> {
         .map(|(_, v)| v.into_owned())
 }
 
+/// Every file under `dir` (a directory or nothing), by path relative to the account's folder, skipping temp files.
+fn collect_files(
+    dir: &std::path::Path,
+    rel: &str,
+    out: &mut std::collections::BTreeMap<String, String>,
+) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let path = format!("{rel}/{}", e.file_name().to_string_lossy());
+        if e.path().is_dir() {
+            collect_files(&e.path(), &path, out);
+        } else if !path.ends_with(".tmp") {
+            out.insert(path, std::fs::read_to_string(e.path()).unwrap());
+        }
+    }
+}
+
 fn array(v: &JValue) -> &[JValue] {
     match v {
         JValue::Arr(items) => items,
@@ -91,7 +110,7 @@ async fn the_read_answers_like_the_real_core_route_and_asks_node_only_for_the_mo
     let (dir, f, owner, db) = rig().await;
     let fixture = wtf16::parse(include_str!("fixtures/reasoning-get-node.json")).unwrap();
     let cases = array(fixture.get("cases"));
-    assert!(cases.len() >= 200, "{}", cases.len());
+    assert!(cases.len() >= 230, "{}", cases.len());
     let (mut asked, mut healed) = (0, 0);
     for case in cases {
         let name = case.get("name").as_str().unwrap();
@@ -110,6 +129,14 @@ async fn the_read_answers_like_the_real_core_route_and_asks_node_only_for_the_mo
                 let _ = std::fs::remove_file(&file);
             }
         }
+        // The load's own files, from nothing: the backups of projects.json and the moved source texts.
+        let account = dir.path().join("users").join(user);
+        let _ = std::fs::remove_dir_all(account.join("project-sources"));
+        let _ = std::fs::remove_dir_all(account.join("migration-backups"));
+        let _ = std::fs::remove_file(account.join("migration-backups"));
+        if set.ends_with("backup-blocked") {
+            std::fs::write(account.join("migration-backups"), "in the way").unwrap();
+        }
         put_setting(&db, case.get("settings"));
         let expected = case.get("reply");
         let status = expected.get("status").as_num().unwrap() as u16;
@@ -124,6 +151,9 @@ async fn the_read_answers_like_the_real_core_route_and_asks_node_only_for_the_mo
                 .cloned()
         });
         let raw = |key: &str| match &project {
+            Some(p) if key == "provider" && p.get(key).as_str() == Some("lemonade") => {
+                JValue::from("default")
+            }
             Some(p) if p.get(key).truthy() => p.get(key).clone(),
             _ => JValue::Null,
         };
@@ -195,9 +225,21 @@ async fn the_read_answers_like_the_real_core_route_and_asks_node_only_for_the_mo
         if case.get("projectsAfter").as_str().is_some() {
             healed += 1;
         }
+        let mut found = std::collections::BTreeMap::new();
+        for sub in ["migration-backups", "project-sources"] {
+            collect_files(&account.join(sub), sub, &mut found);
+        }
+        let want: std::collections::BTreeMap<String, String> = match case.get("extras") {
+            JValue::Obj(items) => items
+                .iter()
+                .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_owned()))
+                .collect(),
+            _ => std::collections::BTreeMap::new(),
+        };
+        assert_eq!(found, want, "{name}: migration backups and moved texts");
     }
     assert!(asked >= 60, "{asked}");
-    assert!(healed >= 8, "{healed}");
+    assert!(healed >= 25, "{healed}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -467,17 +509,20 @@ async fn concurrent_routing_default_puts_leave_one_whole_document() {
         r#"{"theme":"dark"}"#,
     )
     .unwrap();
-    let tasks = (0..8).map(|i| {
-        let addr = f.addr;
-        tokio::spawn(async move {
-            let body = if i % 2 == 0 {
-                r#"{"routing":"manual"}"#
-            } else {
-                r#"{"routing":"auto"}"#
-            };
-            write(addr, "PUT", ROUTING, MEMBER, body).await.0
+    // Every request is spawned before any is awaited.
+    let tasks: Vec<_> = (0..8)
+        .map(|i| {
+            let addr = f.addr;
+            tokio::spawn(async move {
+                let body = if i % 2 == 0 {
+                    r#"{"routing":"manual"}"#
+                } else {
+                    r#"{"routing":"auto"}"#
+                };
+                write(addr, "PUT", ROUTING, MEMBER, body).await.0
+            })
         })
-    });
+        .collect();
     for t in tasks {
         assert_eq!(t.await.unwrap(), 200);
     }
@@ -510,17 +555,20 @@ async fn concurrent_applies_leave_the_default_and_the_projects_agreeing() {
                 mk("cowork-diary-extras", "manual")
             ]),
         );
-        let tasks = (0..10).map(|i| {
-            let addr = f.addr;
-            tokio::spawn(async move {
-                let body = if i % 2 == 0 {
-                    r#"{"routing":"manual","applyToExisting":true}"#
-                } else {
-                    r#"{"routing":"auto","applyToExisting":true}"#
-                };
-                write(addr, "PUT", ROUTING, MEMBER, body).await.0
+        // Every request is spawned before any is awaited: they race for real (a lazy iterator would run them one by one).
+        let tasks: Vec<_> = (0..10)
+            .map(|i| {
+                let addr = f.addr;
+                tokio::spawn(async move {
+                    let body = if i % 2 == 0 {
+                        r#"{"routing":"manual","applyToExisting":true}"#
+                    } else {
+                        r#"{"routing":"auto","applyToExisting":true}"#
+                    };
+                    write(addr, "PUT", ROUTING, MEMBER, body).await.0
+                })
             })
-        });
+            .collect();
         for t in tasks {
             assert_eq!(t.await.unwrap(), 200, "round {round}");
         }

@@ -460,7 +460,7 @@ fn build(
 
 /// source-text.cjs `headerNamesSkill(text)`: a front-matter block with a `name:` or `description:`
 /// line (`/^(?:name|description)\s*:/im`).
-fn header_names_skill(text: &str) -> bool {
+pub(crate) fn header_names_skill(text: &str) -> bool {
     let Some(header) = skills::front_matter(text) else {
         return false;
     };
@@ -489,7 +489,12 @@ fn fsync_dir(d: &Path) -> std::io::Result<()> {
 /// source-text.cjs `writeText(wsDir, projectId, ref, text)`: `project-sources/<safe id>/<ref>.txt`
 /// (0600 in 0700 folders, temp file fsynced and renamed, the folders up to the user's fsynced); an
 /// existing file with that text is kept.
-fn write_text(dir: &Path, project_id: &str, reference: &str, text: &str) -> std::io::Result<()> {
+pub(crate) fn write_text(
+    dir: &Path,
+    project_id: &str,
+    reference: &str,
+    text: &str,
+) -> std::io::Result<()> {
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
     let sources = dir.join("project-sources");
@@ -525,7 +530,7 @@ fn write_text(dir: &Path, project_id: &str, reference: &str, text: &str) -> std:
     Ok(())
 }
 
-fn sha_hex_bytes(bytes: &[u8]) -> String {
+pub(crate) fn sha_hex_bytes(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()
         .map(|b| format!("{b:02x}"))

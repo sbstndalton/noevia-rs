@@ -25,57 +25,11 @@ fn lists(ctx: Ctx<'_>) -> Result<(Vec<JValue>, Vec<JValue>), Reply> {
     );
     Ok((free, projects.into_iter().filter(visible).collect()))
 }
-/// core index.cjs `DEFAULT_PROVIDER_ID`.
-fn default_provider_id() -> String {
-    std::env::var("DEFAULT_PROVIDER_ID")
-        .ok()
-        .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| "default".to_owned())
-}
-
-/// project-modes.cjs `migrate(project)`: the list names Chat first and keeps the other recorded
-/// values; unchanged (and not rewritten) when it already does.
-fn migrate_modes(project: &mut JValue) {
-    if !matches!(project, JValue::Obj(_)) {
-        return;
-    }
-    let before: Option<Vec<JValue>> = match project.get("modes") {
-        JValue::Arr(items) => Some(items.clone()),
-        _ => None,
-    };
-    let has = |mode: &str| {
-        before
-            .as_ref()
-            .is_some_and(|b| b.iter().any(|m| m.as_str() == Some(mode)))
-    };
-    let mut next = vec![JValue::from("chat")];
-    for mode in ["cowork", "code"] {
-        if has(mode) {
-            next.push(JValue::from(mode));
-        }
-    }
-    if before.as_ref().is_some_and(|b| *b == next) {
-        return;
-    }
-    store::set(project, "modes", JValue::Arr(next));
-}
-
-/// What core's workspace load (workspace.cjs) makes of a stored project before any route sees it:
-/// a null or primitive entry of `files` dropped (#1236), the retired `lemonade` provider id read as
-/// the default's, and the `modes` migration (#1576).
+/// What core's workspace load (workspace.cjs) makes of a stored project before any route sees it: a null or primitive entry of
+/// `files` dropped (#1236), the retired `lemonade` provider id read as the default's, and the `modes` migration (#1576); the
+/// saves that go with them are [`crate::workspace_load`]'s.
 fn loaded(mut project: JValue, default_provider: &str) -> JValue {
-    if let JValue::Arr(files) = project.get("files") {
-        let kept: Vec<JValue> = files
-            .iter()
-            .filter(|f| matches!(f, JValue::Obj(_) | JValue::Arr(_)))
-            .cloned()
-            .collect();
-        store::set(&mut project, "files", JValue::Arr(kept));
-    }
-    if project.get("provider").as_str() == Some("lemonade") {
-        store::set(&mut project, "provider", JValue::from(default_provider));
-    }
-    migrate_modes(&mut project);
+    crate::workspace_load::normalize_one(&mut project, default_provider);
     project
 }
 
@@ -218,7 +172,7 @@ pub fn get(ctx: Ctx<'_>) -> Reply {
         Ok(d) => d,
         Err(_) => return Reply::internal(),
     };
-    let default_provider = default_provider_id();
+    let default_provider = crate::workspace_load::default_provider_id();
     let mut out = Vec::new();
     for project in projects {
         let mut project = loaded(project, &default_provider);

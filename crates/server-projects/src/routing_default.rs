@@ -28,6 +28,7 @@ use crate::chats;
 use crate::free_chats;
 use crate::routing_default_input as input;
 use crate::store;
+use crate::workspace_load;
 use crate::{Ctx, Reply};
 use js_json::wtf16;
 use js_json::JValue;
@@ -130,18 +131,30 @@ fn save(dir: &Path, text: &str) -> Result<(), store::StoreError> {
 
 /// PUT /api/routing-default. `failed`: the body could not be read (over the cap or the stream failed).
 pub fn put(ctx: Ctx<'_>, body: &[u8], failed: bool) -> Reply {
-    put_with(ctx, body, failed, &crate::wall_ms)
+    put_with(ctx, body, failed, &crate::wall_ms, &real_sleep)
 }
 
-/// [`put`] with the clock supplied: `Date.now()` is read as each project is changed.
+fn real_sleep(ms: u64) {
+    std::thread::sleep(std::time::Duration::from_millis(ms));
+}
+
+/// [`put`] with the clock (`Date.now()`, read as each project is changed) and the wait between tries for the preferences
+/// lock supplied.
 #[allow(clippy::cast_precision_loss)]
-fn put_with(ctx: Ctx<'_>, body: &[u8], failed: bool, clock: &dyn Fn() -> i64) -> Reply {
+fn put_with(
+    ctx: Ctx<'_>,
+    body: &[u8],
+    failed: bool,
+    clock: &dyn Fn() -> i64,
+    wait: &dyn Fn(u64),
+) -> Reply {
     let dir = match store::user_dir(ctx.data_dir, ctx.user_id) {
         Ok(d) => d,
         Err(e) => return chats::store_failure(&e),
     };
-    // currentWorkspace(): the load throws (a 500) on a project that is not an object.
-    if let Err(reply) = free_chats::workspace_projects(&dir) {
+    // currentWorkspace(): the workspace load, with its migrations and the saves they make; it throws (a 500) on a project
+    // that is not an object.
+    if let Err(reply) = workspace_load::open(ctx, None) {
         return reply;
     }
     if failed {
@@ -155,7 +168,7 @@ fn put_with(ctx: Ctx<'_>, body: &[u8], failed: bool, clock: &dyn Fn() -> i64) ->
         _ => return Reply::error(400, "routing must be 'auto' or 'manual'"),
     };
     // Held to the end: the default and the projects it switches are one section.
-    let _held = match crate::lock::acquire(&dir.join(FILE)) {
+    let _held = match crate::lock::acquire_with(&dir.join(FILE), &crate::wall_ms, wait) {
         Ok(h) => h,
         Err(_) => return Reply::error(503, "Routing settings are busy"),
     };
@@ -181,6 +194,8 @@ fn put_with(ctx: Ctx<'_>, body: &[u8], failed: bool, clock: &dyn Fn() -> i64) ->
             |p: &JValue| !internal(p) && p.get("routing").as_str() != Some(routing.as_str());
         if view.iter().any(differs) {
             let changed = store::update(&dir, ctx.switch, |projects| {
+                // saveProjects() writes the list as the load left it (its normalizations ride on this save).
+                *projects = workspace_load::for_save(&dir, std::mem::take(projects));
                 for project in projects.iter_mut() {
                     if differs(project) {
                         store::set(project, "routing", JValue::Str(routing.clone()));
@@ -225,7 +240,42 @@ mod tests {
         } else if case["initial"]["projectsDirectory"] == true {
             std::fs::create_dir(dir.join("projects.json")).unwrap();
         }
+        if case["initial"]["blockBackups"] == true {
+            std::fs::write(dir.join("migration-backups"), "in the way").unwrap();
+        }
         (root, dir)
+    }
+
+    /// What the load wrote besides the two files: `migration-backups/*` and `project-sources/**`, by relative path.
+    fn extras(dir: &std::path::Path) -> std::collections::BTreeMap<String, String> {
+        fn walk(
+            dir: &std::path::Path,
+            rel: &str,
+            out: &mut std::collections::BTreeMap<String, String>,
+        ) {
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                return;
+            };
+            for e in entries.flatten() {
+                let name = e.file_name().to_string_lossy().into_owned();
+                let path = if rel.is_empty() {
+                    name.clone()
+                } else {
+                    format!("{rel}/{name}")
+                };
+                if e.path().is_dir() {
+                    walk(&e.path(), &path, out);
+                } else if (path.starts_with("migration-backups/")
+                    || path.starts_with("project-sources/"))
+                    && !path.ends_with(".tmp")
+                {
+                    out.insert(path, std::fs::read_to_string(e.path()).unwrap());
+                }
+            }
+        }
+        let mut out = std::collections::BTreeMap::new();
+        walk(dir, "", &mut out);
+        out
     }
 
     /// The request body a case names: text, raw bytes, or a padded document of a given size.
@@ -269,7 +319,7 @@ mod tests {
             };
             let bytes = request(case);
             // The route reads at most 1 MiB; a larger body is a failed read.
-            let reply = put_with(ctx, &bytes, bytes.len() > BODY_LIMIT, &|| now);
+            let reply = put_with(ctx, &bytes, bytes.len() > BODY_LIMIT, &|| now, &real_sleep);
             let prefs = std::fs::read_to_string(dir.join(FILE)).ok();
             let projects = std::fs::read_to_string(dir.join("projects.json")).ok();
             let expected = &case["expected"];
@@ -294,6 +344,19 @@ mod tests {
                 "{name}: projects.json"
             );
             // No temp file is left behind, and the file keeps mode 0600.
+            let want_extras: std::collections::BTreeMap<String, String> = match &expected["extras"]
+            {
+                serde_json::Value::Object(m) => m
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_owned()))
+                    .collect(),
+                _ => std::collections::BTreeMap::new(),
+            };
+            assert_eq!(
+                extras(&dir),
+                want_extras,
+                "{name}: migration backups and moved texts"
+            );
             let leftovers: Vec<_> = std::fs::read_dir(&dir)
                 .unwrap()
                 .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
@@ -343,6 +406,7 @@ mod tests {
             br#"{"routing":"auto","applyToExisting":true}"#,
             false,
             &|| 99,
+            &real_sleep,
         );
         assert_eq!(body_text(&reply), r#"{"routing":"auto","updated":2}"#);
         let after: serde_json::Value =
@@ -482,6 +546,7 @@ mod tests {
                 tick.set(tick.get() + 1);
                 tick.get()
             },
+            &real_sleep,
         );
         assert_eq!(body_text(&reply), r#"{"routing":"auto","updated":3}"#);
         let after: serde_json::Value =
@@ -500,12 +565,16 @@ mod tests {
     }
 
     /// The default and the projects it switches are one section: while one apply waits for the projects lock, no
-    /// other can change the default under it.
+    /// other can change the default under it. The second writer says so itself: its wait for the preferences lock is
+    /// the signal, so nothing here depends on how long anything takes.
     #[test]
     fn the_default_and_the_projects_are_one_section() {
         let (root, dir) = account(&[("a", "manual"), ("b", "manual")]);
         let gate = crate::lock::acquire(&dir.join("projects.json")).unwrap();
-        let first = std::thread::scope(|scope| {
+        let (blocked_tx, blocked_rx) = std::sync::mpsc::channel::<()>();
+        let saved =
+            |want: &str| std::fs::read_to_string(dir.join(FILE)).is_ok_and(|t| t.contains(want));
+        let (first, second) = std::thread::scope(|scope| {
             let a = scope.spawn(|| {
                 put(
                     ctx_of(&root),
@@ -513,32 +582,44 @@ mod tests {
                     false,
                 )
             });
-            let saved = |want: &str| {
-                std::fs::read_to_string(dir.join(FILE)).is_ok_and(|t| t.contains(want))
-            };
-            for _ in 0..500 {
-                if saved("auto") {
-                    break;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(10));
+            // The first apply has saved its default and now waits for the projects lock the test holds.
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            while !saved("auto") {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "first writer never saved its default"
+                );
+                std::thread::yield_now();
             }
-            assert!(
-                saved("auto"),
-                "the first apply saved its default and waits for the projects"
-            );
             let b = scope.spawn(|| {
-                put(
+                put_with(
                     ctx_of(&root),
                     br#"{"routing":"manual","applyToExisting":true}"#,
                     false,
+                    &crate::wall_ms,
+                    &|ms| {
+                        // Each try that finds the preferences lock held reports it before it waits.
+                        let _ = blocked_tx.send(());
+                        real_sleep(ms);
+                    },
                 )
             });
-            std::thread::sleep(std::time::Duration::from_millis(600));
-            assert!(saved("auto") && !saved("manual"), "the second apply must not change the default while the first still holds the section");
+            // Fails (instead of passing by luck) when the second writer never meets the lock, as when the default is
+            // saved and unlocked before the projects are written.
+            assert!(
+                blocked_rx
+                    .recv_timeout(std::time::Duration::from_secs(20))
+                    .is_ok(),
+                "the second apply never waited for the preferences lock"
+            );
+            assert!(
+                saved("auto") && !saved("manual"),
+                "the second apply changed the default while the first still held the section"
+            );
             drop(gate);
             (a.join().unwrap(), b.join().unwrap())
         });
-        assert_eq!((first.0.status, first.1.status), (200, 200));
+        assert_eq!((first.status, second.status), (200, 200));
         let default = std::fs::read_to_string(dir.join(FILE)).unwrap();
         let after: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(dir.join("projects.json")).unwrap())

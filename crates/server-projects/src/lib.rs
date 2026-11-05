@@ -117,6 +117,7 @@ pub mod transcript;
 pub mod upload;
 pub mod uploads_ingest;
 pub mod workspace;
+mod workspace_load;
 pub mod workspace_scan;
 
 /// The whole-file cap of a streamed storage read (96 MiB, core's upload limit and the default of
