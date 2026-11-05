@@ -169,6 +169,8 @@ async fn every_recorded_core_answer_is_the_fronts_byte_for_byte() {
         let (node_port, _) = engine(Arc::new(|req: &Req| {
             if req.method == "POST" && req.target == "/internal/model-maintenance/lease" {
                 Answer::Reply(201, json!({"lease": TOKEN, "ttlMs": 600_000, "renewMs": 200_000, "hardMs": 3_600_000}).to_string())
+            } else if req.method == "POST" && req.target.ends_with("/renew") {
+                Answer::Reply(200, "{}".into())
             } else {
                 Answer::Reply(204, String::new())
             }
