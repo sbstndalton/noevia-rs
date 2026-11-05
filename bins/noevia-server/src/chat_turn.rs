@@ -106,7 +106,13 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
             true,
         );
     }
-    let bytes = match crate::account_routes::read_body(body, STORED_HISTORY_BYTES as usize).await {
+    // Review P2 (S5–S9): every await under the lease watches for its loss, the client's body
+    // included: a stalled upload must not keep a lost lease's request (and its body) alive.
+    let reading = crate::account_routes::read_body(body, STORED_HISTORY_BYTES as usize);
+    let Some(read) = chat_admission::until_lost(&lease, reading).await else {
+        return chat_admission::lost_answer(chat_admission::Gate::Chat);
+    };
+    let bytes = match read {
         Ok(b) if !b.over => b.bytes,
         failed => match chat_edge::unread(failed.is_ok()) {
             chat_edge::Verdict::Refuse(status, text) => {
@@ -123,10 +129,11 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
     let verdict = match chat_edge::check(&bytes, account, || None) {
         chat_edge::Verdict::Cowork => {
             let a = Arc::clone(app);
-            let harness = tokio::task::spawn_blocking(move || chat_edge::harness_blocking(&a))
-                .await
-                .ok()
-                .flatten();
+            let reading = tokio::task::spawn_blocking(move || chat_edge::harness_blocking(&a));
+            let Some(harness) = chat_admission::until_lost(&lease, reading).await else {
+                return chat_admission::lost_answer(chat_admission::Gate::Chat);
+            };
+            let harness = harness.ok().flatten();
             chat_edge::check(&bytes, account, || harness)
         }
         other => other,
