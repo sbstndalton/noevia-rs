@@ -407,6 +407,7 @@ pub const FEATURES: &[&str] = &[
     "rust-calibration-routes",
     "rust-model-manager-scan",
     "rust-model-evidence-recheck",
+    "rust-mtp-artifact",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",

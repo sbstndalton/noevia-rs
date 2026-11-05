@@ -642,6 +642,13 @@ owner = "node"
 path = "/api/models/machines"
 owner = "node"
 
+# The MTP/NextN artifact check, the front's (bins/noevia-server model_maint/mtp_artifact.rs); Node
+# refuses the GET (core rust-mtp-artifact.cjs). Other methods stay Node's.
+[[route]]
+path = "/api/models/mtp-artifact"
+owner = "rust"
+methods = ["GET"]
+
 [[route]]
 path = "/api/models/preset"
 owner = "rust"

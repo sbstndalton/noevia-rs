@@ -8,6 +8,8 @@
 //! - [`router`]: the router's HTTP API as the maintenance work uses it.
 //! - [`ini`]: the models.ini store (read, parse, commit through the model-loader or the web writer).
 //! - [`evidence_recheck`]: one image-input request under normal inference admission, with carried identity.
+//! - [`mtp_artifact`]: `GET /api/models/mtp-artifact`, whether a download choice carries MTP/NextN
+//!   tensors (read from the source's tensor directories; no engine involved).
 //! - [`reload`]: `POST /api/models/presets/reload` and the reload-guard state file
 //!   (`native-preset-reload-<hash>.json`).
 //!
@@ -24,6 +26,7 @@ pub mod evidence_live;
 pub mod evidence_recheck;
 pub mod gate;
 pub mod ini;
+pub mod mtp_artifact;
 pub mod node_lease;
 pub mod reload;
 pub mod router;
@@ -48,7 +51,13 @@ pub const EVIDENCE: &str = "/api/models/evidence";
 pub const EVIDENCE_IMPORT: &str = "/api/models/evidence/import";
 
 /// The maintenance routes this front answers.
-pub const ROUTES: &[&str] = &[RELOAD, EVIDENCE, EVIDENCE_IMPORT, evidence_recheck::PATH];
+pub const ROUTES: &[&str] = &[
+    RELOAD,
+    EVIDENCE,
+    EVIDENCE_IMPORT,
+    evidence_recheck::PATH,
+    mtp_artifact::PATH,
+];
 
 const MISSING_TOKEN_WARNING: &str = "[inference-gate] INFERENCE_GATE_ADMIN_TOKEN is not set: the memory watchdog cannot unload a model that is answering a request, and \"unload anyway\" on the Models page is unavailable. Set it to the admin token of the gate.";
 
@@ -56,7 +65,7 @@ const MISSING_TOKEN_WARNING: &str = "[inference-gate] INFERENCE_GATE_ADMIN_TOKEN
 pub fn owned(method: &Method, path: &str) -> bool {
     match path {
         RELOAD | EVIDENCE_IMPORT | evidence_recheck::PATH => method == Method::POST,
-        EVIDENCE => method == Method::GET,
+        EVIDENCE | mtp_artifact::PATH => method == Method::GET,
         _ => false,
     }
 }
@@ -103,6 +112,8 @@ pub struct Maint {
     pub data_dir: Option<PathBuf>,
     pub suffix: String,
     pub(crate) recheck: evidence_recheck::Recheck,
+    /// The MTP artifact check's cache, running checks and variant-list clients.
+    pub(crate) mtp: mtp_artifact::Mtp,
 }
 
 impl std::fmt::Debug for Maint {
@@ -239,6 +250,7 @@ impl Maint {
             data_dir,
             suffix,
             recheck: evidence_recheck::Recheck::new(get)?,
+            mtp: mtp_artifact::Mtp::new(kind, &raw_base, key.as_deref())?,
         })
     }
 
@@ -381,6 +393,9 @@ pub async fn serve(
         Err(_) => return identity::Rejection::Unavailable.into_response(),
     };
     let maint = Arc::clone(&app.config.maint);
+    if path == mtp_artifact::PATH {
+        return mtp_artifact::serve(&maint, &parts.uri).await;
+    }
     if parts.method == Method::GET {
         return evidence_get(&maint, &parts.uri).await;
     }

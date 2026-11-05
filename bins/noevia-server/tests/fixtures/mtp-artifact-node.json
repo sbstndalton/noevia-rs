@@ -1,0 +1,1867 @@
+{
+ "core": "cf5c567ffa890a9556376357c234e8697fabfb44",
+ "inspect": [
+  {
+   "name": "mtp tensor",
+   "gguf": "R0dVRgMAAAACAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzBAAAAAEAAAAbAAAAAAAAAGJsay4zMi5uZXh0bi5laF9wcm9qLndlaWdodAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAEQAAAAAAAAB0b2tlbl9lbWJkLndlaWdodAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAA",
+   "answer": {
+    "ok": {
+     "architecture": "synthetic",
+     "declaredLayers": 1,
+     "splitCount": 1,
+     "tensorCount": 2,
+     "tensors": [
+      "blk.32.nextn.eh_proj.weight"
+     ]
+    }
+   }
+  },
+  {
+   "name": "no mtp tensor",
+   "gguf": "R0dVRgMAAAACAAAAAAAAAAEAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYxEAAAAAAAAAdG9rZW5fZW1iZC53ZWlnaHQCAAAABAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAABMAAAAAAAAAYmxrLjAuYXR0bl9xLndlaWdodAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAA",
+   "answer": {
+    "ok": {
+     "architecture": "synthetic",
+     "declaredLayers": null,
+     "splitCount": 1,
+     "tensorCount": 2,
+     "tensors": []
+    }
+   }
+  },
+  {
+   "name": "metadata claim only",
+   "gguf": "R0dVRgMAAAAAAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzBAAAAAIAAAA=",
+   "answer": {
+    "ok": {
+     "architecture": "synthetic",
+     "declaredLayers": 2,
+     "splitCount": 1,
+     "tensorCount": 0,
+     "tensors": []
+    }
+   }
+  },
+  {
+   "name": "version 2",
+   "gguf": "R0dVRgIAAAABAAAAAAAAAAEAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYw8AAAAAAAAAbXRwX2hlYWQud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+   "answer": {
+    "ok": {
+     "architecture": "synthetic",
+     "declaredLayers": null,
+     "splitCount": 1,
+     "tensorCount": 1,
+     "tensors": [
+      "mtp_head.weight"
+     ]
+    }
+   }
+  },
+  {
+   "name": "version 4",
+   "gguf": "R0dVRgQAAAAAAAAAAAAAAAAAAAAAAAAA",
+   "answer": {
+    "error": "Unsupported GGUF version."
+   }
+  },
+  {
+   "name": "high-bit magic",
+   "gguf": "x8fVxgMAAAAAAAAAAAAAAAAAAAAAAAAA",
+   "answer": {
+    "ok": {
+     "architecture": "",
+     "declaredLayers": null,
+     "splitCount": 1,
+     "tensorCount": 0,
+     "tensors": []
+    }
+   }
+  },
+  {
+   "name": "bad magic",
+   "gguf": "R0dNTAMAAAAAAAAAAAAAAAAAAAAAAAAA",
+   "answer": {
+    "error": "Not a supported little-endian GGUF file."
+   }
+  },
+  {
+   "name": "too short",
+   "gguf": "R0dVRg==",
+   "answer": {
+    "error": "GGUF header exceeds inspection limit or is truncated."
+   }
+  },
+  {
+   "name": "truncated",
+   "gguf": "R0dVRgMAAAABAAAAAAAAAAEAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHU=",
+   "answer": {
+    "error": "GGUF header exceeds inspection limit or is truncated."
+   }
+  },
+  {
+   "name": "u8 / u16 / u64 layers and split",
+   "gguf": "R0dVRgMAAAAAAAAAAAAAAAMAAAAAAAAAHgAAAAAAAABzeW50aGV0aWMubmV4dG5fcHJlZGljdF9sYXllcnMAAAAAAwsAAAAAAAAAc3BsaXQuY291bnQCAAAAAgAaAAAAAAAAAG90aGVyLm5leHRuX3ByZWRpY3RfbGF5ZXJzCgAAAAcAAAAAAAAA",
+   "answer": {
+    "ok": {
+     "architecture": "",
+     "declaredLayers": 7,
+     "splitCount": 2,
+     "tensorCount": 0,
+     "tensors": []
+    }
+   }
+  },
+  {
+   "name": "non-kept layer type",
+   "gguf": "R0dVRgMAAAAAAAAAAAAAAAEAAAAAAAAAHgAAAAAAAABzeW50aGV0aWMubmV4dG5fcHJlZGljdF9sYXllcnMGAAAAAAAAAA==",
+   "answer": {
+    "ok": {
+     "architecture": "",
+     "declaredLayers": null,
+     "splitCount": 1,
+     "tensorCount": 0,
+     "tensors": []
+    }
+   }
+  },
+  {
+   "name": "numeric architecture",
+   "gguf": "R0dVRgMAAAAAAAAAAAAAAAEAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQQAAAAJAAAA",
+   "answer": {
+    "ok": {
+     "architecture": 9,
+     "declaredLayers": null,
+     "splitCount": 1,
+     "tensorCount": 0,
+     "tensors": []
+    }
+   }
+  },
+  {
+   "name": "array metadata skipped",
+   "gguf": "R0dVRgMAAAAAAAAAAAAAAAIAAAAAAAAAFQAAAAAAAAB0b2tlbml6ZXIuZ2dtbC50b2tlbnMJAAAACAAAAAIAAAAAAAAAAQAAAAAAAABhAQAAAAAAAABiFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAABAAAAAAAAAHg=",
+   "answer": {
+    "ok": {
+     "architecture": "x",
+     "declaredLayers": null,
+     "splitCount": 1,
+     "tensorCount": 0,
+     "tensors": []
+    }
+   }
+  },
+  {
+   "name": "nested arrays",
+   "gguf": "R0dVRgMAAAAAAAAAAAAAAAEAAAAAAAAAAQAAAAAAAABuCQAAAAkAAAABAAAAAAAAAAkAAAABAAAAAAAAAAkAAAABAAAAAAAAAAQAAAABAAAAAAAAAAEAAAA=",
+   "answer": {
+    "error": "Unsupported nested GGUF metadata."
+   }
+  },
+  {
+   "name": "array too long",
+   "gguf": "R0dVRgMAAAAAAAAAAAAAAAEAAAAAAAAAAQAAAAAAAABuCQAAAAAAAACBhB4AAAAAAA==",
+   "answer": {
+    "error": "GGUF array exceeds inspection limit."
+   }
+  },
+  {
+   "name": "unknown value type",
+   "gguf": "R0dVRgMAAAAAAAAAAAAAAAEAAAAAAAAAAQAAAAAAAABuDQAAAAAAAAA=",
+   "answer": {
+    "error": "Unsupported GGUF value type."
+   }
+  },
+  {
+   "name": "too many dims",
+   "gguf": "R0dVRgMAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAB0CQAAAAQAAAAAAAAABAAAAAAAAAAEAAAAAAAAAAQAAAAAAAAABAAAAAAAAAAEAAAAAAAAAAQAAAAAAAAABAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+   "answer": {
+    "error": "Unsupported GGUF tensor dimensions."
+   }
+  },
+  {
+   "name": "directory limit",
+   "gguf": "R0dVRgMAAABBDQMAAAAAAAAAAAAAAAAA",
+   "answer": {
+    "error": "GGUF directory exceeds inspection limit."
+   }
+  },
+  {
+   "name": "unsafe count",
+   "gguf": "R0dVRgMAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAA=",
+   "answer": {
+    "error": "GGUF count exceeds safe limits."
+   }
+  },
+  {
+   "name": "eight tensors kept",
+   "gguf": "R0dVRgMAAAAKAAAAAAAAAAAAAAAAAAAAFAAAAAAAAABibGsuMC5OZXh0Tl94LndlaWdodAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAFAAAAAAAAABibGsuMS5OZXh0Tl94LndlaWdodAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAFAAAAAAAAABibGsuMi5OZXh0Tl94LndlaWdodAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAFAAAAAAAAABibGsuMy5OZXh0Tl94LndlaWdodAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAFAAAAAAAAABibGsuNC5OZXh0Tl94LndlaWdodAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAFAAAAAAAAABibGsuNS5OZXh0Tl94LndlaWdodAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAFAAAAAAAAABibGsuNi5OZXh0Tl94LndlaWdodAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAFAAAAAAAAABibGsuNy5OZXh0Tl94LndlaWdodAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAFAAAAAAAAABibGsuOC5OZXh0Tl94LndlaWdodAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAFAAAAAAAAABibGsuOS5OZXh0Tl94LndlaWdodAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAA",
+   "answer": {
+    "ok": {
+     "architecture": "",
+     "declaredLayers": null,
+     "splitCount": 1,
+     "tensorCount": 10,
+     "tensors": [
+      "blk.0.NextN_x.weight",
+      "blk.1.NextN_x.weight",
+      "blk.2.NextN_x.weight",
+      "blk.3.NextN_x.weight",
+      "blk.4.NextN_x.weight",
+      "blk.5.NextN_x.weight",
+      "blk.6.NextN_x.weight",
+      "blk.7.NextN_x.weight"
+     ]
+    }
+   }
+  },
+  {
+   "name": "name patterns",
+   "gguf": "R0dVRgMAAAAFAAAAAAAAAAAAAAAAAAAABgAAAAAAAABhbXRwLngCAAAABAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAYAAAAAAAAAeC5tdHB5AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAE1UUC5oZWFkAgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAJAAAAAAAAAGEubmV4dG5fYgIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAABgAAAAAAAABuZXh0bngCAAAABAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+   "answer": {
+    "ok": {
+     "architecture": "",
+     "declaredLayers": null,
+     "splitCount": 1,
+     "tensorCount": 5,
+     "tensors": [
+      "MTP.head",
+      "a.nextn_b"
+     ]
+    }
+   }
+  },
+  {
+   "name": "utf8 key and arch",
+   "gguf": "R0dVRgMAAAAAAAAAAAAAAAEAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAMAAAAAAAAAMOpLXN5bnRoZXRpYw==",
+   "answer": {
+    "ok": {
+     "architecture": "é-synthetic",
+     "declaredLayers": null,
+     "splitCount": 1,
+     "tensorCount": 0,
+     "tensors": []
+    }
+   }
+  }
+ ],
+ "http": [
+  {
+   "name": "bad repository",
+   "query": "?repo=bad",
+   "sources": {},
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 400,
+    "body": {
+     "error": "Invalid repository"
+    }
+   }
+  },
+  {
+   "name": "no repository",
+   "query": "",
+   "sources": {},
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 400,
+    "body": {
+     "error": "Invalid repository"
+    }
+   }
+  },
+  {
+   "name": "traversal repository",
+   "query": "?repo=..%2F..",
+   "sources": {},
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 500,
+    "body": {
+     "error": "Internal error"
+    }
+   }
+  },
+  {
+   "name": "dot segment repository",
+   "query": "?repo=synthetic%2F..&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/..?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 500,
+    "body": {
+     "error": "Internal error"
+    }
+   }
+  },
+  {
+   "name": "present single file",
+   "query": "?repo=synthetic%2Fpresent&variant=Q4_K_M",
+   "sources": {
+    "/api/models/synthetic/present?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q4_K_M.gguf",
+        "lfs": {
+         "size": 100
+        }
+       },
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 101
+        }
+       },
+       {
+        "rfilename": "mmproj-F16.gguf",
+        "lfs": {
+         "size": 102
+        }
+       },
+       {
+        "rfilename": "README.md",
+        "lfs": {
+         "size": 103
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/present": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/present/resolve/abababababababababababababababababababab/m-Q4_K_M.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-184/185"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzBAAAAAEAAAAaAAAAAAAAAGJsay4xLm5leHRuLmVoX3Byb2oud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "present",
+     "reason": "MTP/NextN tensors are present in the selected files. Backend compatibility and a working head still require a load test.",
+     "files": [
+      "m-Q4_K_M.gguf"
+     ],
+     "revision": "abababababababababababababababababababab",
+     "evidence": [
+      {
+       "file": "m-Q4_K_M.gguf",
+       "architecture": "synthetic",
+       "declaredLayers": 1,
+       "splitCount": 1,
+       "tensorCount": 1,
+       "tensors": [
+        "blk.1.nextn.eh_proj.weight"
+       ]
+      }
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "absent single file, 200 whole body",
+   "query": "?repo=synthetic%2Fabsent&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/absent?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/absent": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/absent/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 200,
+     "base64": "R0dVRgMAAAABAAAAAAAAAAEAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYxEAAAAAAAAAdG9rZW5fZW1iZC53ZWlnaHQCAAAABAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "absent",
+     "reason": "No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "revision": "abababababababababababababababababababab",
+     "evidence": [
+      {
+       "file": "m-Q8_0.gguf",
+       "architecture": "synthetic",
+       "declaredLayers": null,
+       "splitCount": 1,
+       "tensorCount": 1,
+       "tensors": []
+      }
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "metadata claims layers",
+   "query": "?repo=synthetic%2Fclaim&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/claim?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/claim": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/claim/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-126/127"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAEAAAAAAAAAHgAAAAAAAABzeW50aGV0aWMubmV4dG5fcHJlZGljdF9sYXllcnMEAAAAAQAAABEAAAAAAAAAdG9rZW5fZW1iZC53ZWlnaHQCAAAABAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "Metadata declares MTP layers, but no recognized MTP tensors were found.",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "revision": "abababababababababababababababababababab",
+     "evidence": [
+      {
+       "file": "m-Q8_0.gguf",
+       "architecture": "",
+       "declaredLayers": 1,
+       "splitCount": 1,
+       "tensorCount": 1,
+       "tensors": []
+      }
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "complete shard set, nested path",
+   "query": "?repo=synthetic%2Fshards&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/shards?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "sub dir/m-Q8_0-00001-of-00002.gguf",
+        "lfs": {
+         "size": 100
+        }
+       },
+       {
+        "rfilename": "sub dir/m-Q8_0-00002-of-00002.gguf",
+        "lfs": {
+         "size": 101
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/shards": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/shards/resolve/abababababababababababababababababababab/sub%20dir/m-Q8_0-00001-of-00002.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-95/96"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAEAAAAAAAAACwAAAAAAAABzcGxpdC5jb3VudAIAAAACAAcAAAAAAAAAYmxrLjAueAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    "/synthetic/shards/resolve/abababababababababababababababababababab/sub%20dir/m-Q8_0-00002-of-00002.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-129/130"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAEAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYxEAAAAAAAAAdG9rZW5fZW1iZC53ZWlnaHQCAAAABAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "absent",
+     "reason": "No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.",
+     "files": [
+      "sub dir/m-Q8_0-00001-of-00002.gguf",
+      "sub dir/m-Q8_0-00002-of-00002.gguf"
+     ],
+     "revision": "abababababababababababababababababababab",
+     "evidence": [
+      {
+       "file": "sub dir/m-Q8_0-00001-of-00002.gguf",
+       "architecture": "",
+       "declaredLayers": null,
+       "splitCount": 2,
+       "tensorCount": 1,
+       "tensors": []
+      },
+      {
+       "file": "sub dir/m-Q8_0-00002-of-00002.gguf",
+       "architecture": "synthetic",
+       "declaredLayers": null,
+       "splitCount": 1,
+       "tensorCount": 1,
+       "tensors": []
+      }
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "incomplete shard set is not a variant",
+   "query": "?repo=synthetic%2Fpartial&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/partial?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0-00001-of-00003.gguf",
+        "lfs": {
+         "size": 100
+        }
+       },
+       {
+        "rfilename": "m-Q8_0-00002-of-00003.gguf",
+        "lfs": {
+         "size": 101
+        }
+       }
+      ]
+     }
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 404,
+    "body": {
+     "error": "Variant no longer available"
+    }
+   }
+  },
+  {
+   "name": "two unrelated files are not a variant",
+   "query": "?repo=synthetic%2Ftwo&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/two?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "a-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       },
+       {
+        "rfilename": "b-Q8_0.gguf",
+        "lfs": {
+         "size": 101
+        }
+       }
+      ]
+     }
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 404,
+    "body": {
+     "error": "Variant no longer available"
+    }
+   }
+  },
+  {
+   "name": "split file listed alone",
+   "query": "?repo=synthetic%2Fsplit&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/split?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/split": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/split/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-95/96"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAEAAAAAAAAACwAAAAAAAABzcGxpdC5jb3VudAIAAAACAAcAAAAAAAAAYmxrLjAueAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "The selected variant does not enumerate every GGUF shard.",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "unknown variant",
+   "query": "?repo=synthetic%2Funknown&variant=Q2_K",
+   "sources": {
+    "/api/models/synthetic/unknown?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 404,
+    "body": {
+     "error": "Variant no longer available"
+    }
+   }
+  },
+  {
+   "name": "missing variant parameter",
+   "query": "?repo=synthetic%2Fnovariant",
+   "sources": {
+    "/api/models/synthetic/novariant?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 404,
+    "body": {
+     "error": "Variant no longer available"
+    }
+   }
+  },
+  {
+   "name": "private repository",
+   "query": "?repo=synthetic%2Fprivate&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/private?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ],
+      "private": true
+     }
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 502,
+    "body": {
+     "error": "Could not resolve selected files"
+    }
+   }
+  },
+  {
+   "name": "list without siblings",
+   "query": "?repo=synthetic%2Fnosib&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/nosib?blobs=true": {
+     "status": 200,
+     "json": {
+      "id": "x"
+     }
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 502,
+    "body": {
+     "error": "Could not resolve selected files"
+    }
+   }
+  },
+  {
+   "name": "list 404",
+   "query": "?repo=synthetic%2Fgone&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/gone?blobs=true": {
+     "status": 404,
+     "json": {
+      "error": "not found"
+     }
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 502,
+    "body": {
+     "error": "Could not resolve selected files"
+    }
+   }
+  },
+  {
+   "name": "list not JSON",
+   "query": "?repo=synthetic%2Ftext&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/text?blobs=true": {
+     "status": 200,
+     "text": "hello"
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 502,
+    "body": {
+     "error": "Could not resolve selected files"
+    }
+   }
+  },
+  {
+   "name": "list redirect",
+   "query": "?repo=synthetic%2Fmoved&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/moved?blobs=true": {
+     "status": 302,
+     "headers": {
+      "location": "/elsewhere"
+     },
+     "text": ""
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 500,
+    "body": {
+     "error": "Internal error"
+    }
+   }
+  },
+  {
+   "name": "list unreachable",
+   "query": "?repo=synthetic%2Fdown&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/down?blobs=true": {
+     "fail": true
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 500,
+    "body": {
+     "error": "Internal error"
+    }
+   }
+  },
+  {
+   "name": "revision unavailable",
+   "query": "?repo=synthetic%2Fnorev&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/norev?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/norev": {
+     "status": 500,
+     "json": {}
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "Public repository revision unavailable.",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "mutable revision",
+   "query": "?repo=synthetic%2Fmut&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/mut?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/mut": {
+     "status": 200,
+     "json": {
+      "sha": "main"
+     }
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "Immutable repository revision unavailable.",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "meta unreachable",
+   "query": "?repo=synthetic%2Fmetadown&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/metadown?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/metadown": {
+     "fail": true
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "fetch failed",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "file 404",
+   "query": "?repo=synthetic%2Ffile404&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/file404?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/file404": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/file404/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 404,
+     "text": "no"
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "Artifact metadata unavailable (404).",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "unexpected range",
+   "query": "?repo=synthetic%2Frange&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/range?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/range": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/range/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 10-20/30"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzBAAAAAEAAAAaAAAAAAAAAGJsay4xLm5leHRuLmVoX3Byb2oud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "Unexpected artifact byte range.",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "file not GGUF",
+   "query": "?repo=synthetic%2Fnotgguf&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/notgguf?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/notgguf": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/notgguf/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-63/64"
+     },
+     "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "Not a supported little-endian GGUF file.",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "file unreachable",
+   "query": "?repo=synthetic%2Ffiledown&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/filedown?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/filedown": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/filedown/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "fail": true
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "fetch failed",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "admin asks too",
+   "query": "?repo=synthetic%2Fadmin&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/admin?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/admin": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/admin/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-129/130"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAEAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYxEAAAAAAAAAdG9rZW5fZW1iZC53ZWlnaHQCAAAABAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "admin",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "absent",
+     "reason": "No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.",
+     "files": [
+      "m-Q8_0.gguf"
+     ],
+     "revision": "abababababababababababababababababababab",
+     "evidence": [
+      {
+       "file": "m-Q8_0.gguf",
+       "architecture": "synthetic",
+       "declaredLayers": null,
+       "splitCount": 1,
+       "tensorCount": 1,
+       "tensors": []
+      }
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "sorted variants, sizes",
+   "query": "?repo=synthetic%2Fsorted&variant=Q4_0",
+   "sources": {
+    "/api/models/synthetic/sorted?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q40.gguf",
+        "size": 5
+       },
+       {
+        "rfilename": "m-Q4_0.gguf"
+       },
+       {
+        "rfilename": "m-BF16.gguf",
+        "lfs": {
+         "size": 7
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/sorted": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/sorted/resolve/abababababababababababababababababababab/m-Q4_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-129/130"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAEAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYxEAAAAAAAAAdG9rZW5fZW1iZC53ZWlnaHQCAAAABAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "absent",
+     "reason": "No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.",
+     "files": [
+      "m-Q4_0.gguf"
+     ],
+     "revision": "abababababababababababababababababababab",
+     "evidence": [
+      {
+       "file": "m-Q4_0.gguf",
+       "architecture": "synthetic",
+       "declaredLayers": null,
+       "splitCount": 1,
+       "tensorCount": 1,
+       "tensors": []
+      }
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "core variant list: IQ4_XS",
+   "query": "?repo=synthetic%2Fcore-list-iq4_xs&variant=IQ4_XS",
+   "sources": {
+    "/api/models/synthetic/core-list-iq4_xs?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "model-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       },
+       {
+        "rfilename": "mmproj-F16.gguf",
+        "lfs": {
+         "size": 20
+        }
+       },
+       {
+        "rfilename": "a-Q4_K_M.gguf",
+        "lfs": {
+         "size": 30
+        }
+       },
+       {
+        "rfilename": "b-Q4_K_M.gguf",
+        "lfs": {
+         "size": 40
+        }
+       },
+       {
+        "rfilename": "model-Q5_K_M-00001-of-00002.gguf",
+        "lfs": {
+         "size": 50
+        }
+       },
+       {
+        "rfilename": "model-IQ4_XS-00001-of-00002.gguf",
+        "lfs": {
+         "size": 70
+        }
+       },
+       {
+        "rfilename": "model-IQ4_XS-00002-of-00002.gguf",
+        "lfs": {
+         "size": 80
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/core-list-iq4_xs": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/core-list-iq4_xs/resolve/abababababababababababababababababababab/model-IQ4_XS-00001-of-00002.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-95/96"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAEAAAAAAAAACwAAAAAAAABzcGxpdC5jb3VudAIAAAACAAcAAAAAAAAAYmxrLjAueAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    "/synthetic/core-list-iq4_xs/resolve/abababababababababababababababababababab/model-IQ4_XS-00002-of-00002.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-129/130"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAEAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYxEAAAAAAAAAdG9rZW5fZW1iZC53ZWlnaHQCAAAABAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "absent",
+     "reason": "No recognized MTP/NextN tensors in the complete selected tensor directories. Separate head files are not included in this check.",
+     "files": [
+      "model-IQ4_XS-00001-of-00002.gguf",
+      "model-IQ4_XS-00002-of-00002.gguf"
+     ],
+     "revision": "abababababababababababababababababababab",
+     "evidence": [
+      {
+       "file": "model-IQ4_XS-00001-of-00002.gguf",
+       "architecture": "",
+       "declaredLayers": null,
+       "splitCount": 2,
+       "tensorCount": 1,
+       "tensors": []
+      },
+      {
+       "file": "model-IQ4_XS-00002-of-00002.gguf",
+       "architecture": "synthetic",
+       "declaredLayers": null,
+       "splitCount": 1,
+       "tensorCount": 1,
+       "tensors": []
+      }
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "core variant list: Q8_0",
+   "query": "?repo=synthetic%2Fcore-list-q8_0&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/core-list-q8_0?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "model-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       },
+       {
+        "rfilename": "mmproj-F16.gguf",
+        "lfs": {
+         "size": 20
+        }
+       },
+       {
+        "rfilename": "a-Q4_K_M.gguf",
+        "lfs": {
+         "size": 30
+        }
+       },
+       {
+        "rfilename": "b-Q4_K_M.gguf",
+        "lfs": {
+         "size": 40
+        }
+       },
+       {
+        "rfilename": "model-Q5_K_M-00001-of-00002.gguf",
+        "lfs": {
+         "size": 50
+        }
+       },
+       {
+        "rfilename": "model-IQ4_XS-00001-of-00002.gguf",
+        "lfs": {
+         "size": 70
+        }
+       },
+       {
+        "rfilename": "model-IQ4_XS-00002-of-00002.gguf",
+        "lfs": {
+         "size": 80
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/core-list-q8_0": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/core-list-q8_0/resolve/abababababababababababababababababababab/model-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-95/96"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAEAAAAAAAAACwAAAAAAAABzcGxpdC5jb3VudAIAAAACAAcAAAAAAAAAYmxrLjAueAIAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "The selected variant does not enumerate every GGUF shard.",
+     "files": [
+      "model-Q8_0.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "core variant list: Q4_K_M",
+   "query": "?repo=synthetic%2Fcore-list-q4_k_m&variant=Q4_K_M",
+   "sources": {
+    "/api/models/synthetic/core-list-q4_k_m?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "model-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       },
+       {
+        "rfilename": "mmproj-F16.gguf",
+        "lfs": {
+         "size": 20
+        }
+       },
+       {
+        "rfilename": "a-Q4_K_M.gguf",
+        "lfs": {
+         "size": 30
+        }
+       },
+       {
+        "rfilename": "b-Q4_K_M.gguf",
+        "lfs": {
+         "size": 40
+        }
+       },
+       {
+        "rfilename": "model-Q5_K_M-00001-of-00002.gguf",
+        "lfs": {
+         "size": 50
+        }
+       },
+       {
+        "rfilename": "model-IQ4_XS-00001-of-00002.gguf",
+        "lfs": {
+         "size": 70
+        }
+       },
+       {
+        "rfilename": "model-IQ4_XS-00002-of-00002.gguf",
+        "lfs": {
+         "size": 80
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/core-list-q4_k_m": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 404,
+    "body": {
+     "error": "Variant no longer available"
+    }
+   }
+  },
+  {
+   "name": "core variant list: Q5_K_M",
+   "query": "?repo=synthetic%2Fcore-list-q5_k_m&variant=Q5_K_M",
+   "sources": {
+    "/api/models/synthetic/core-list-q5_k_m?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "model-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       },
+       {
+        "rfilename": "mmproj-F16.gguf",
+        "lfs": {
+         "size": 20
+        }
+       },
+       {
+        "rfilename": "a-Q4_K_M.gguf",
+        "lfs": {
+         "size": 30
+        }
+       },
+       {
+        "rfilename": "b-Q4_K_M.gguf",
+        "lfs": {
+         "size": 40
+        }
+       },
+       {
+        "rfilename": "model-Q5_K_M-00001-of-00002.gguf",
+        "lfs": {
+         "size": 50
+        }
+       },
+       {
+        "rfilename": "model-IQ4_XS-00001-of-00002.gguf",
+        "lfs": {
+         "size": 70
+        }
+       },
+       {
+        "rfilename": "model-IQ4_XS-00002-of-00002.gguf",
+        "lfs": {
+         "size": 80
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/core-list-q5_k_m": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 404,
+    "body": {
+     "error": "Variant no longer available"
+    }
+   }
+  },
+  {
+   "name": "core variant list: F16",
+   "query": "?repo=synthetic%2Fcore-list-f16&variant=F16",
+   "sources": {
+    "/api/models/synthetic/core-list-f16?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "model-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       },
+       {
+        "rfilename": "mmproj-F16.gguf",
+        "lfs": {
+         "size": 20
+        }
+       },
+       {
+        "rfilename": "a-Q4_K_M.gguf",
+        "lfs": {
+         "size": 30
+        }
+       },
+       {
+        "rfilename": "b-Q4_K_M.gguf",
+        "lfs": {
+         "size": 40
+        }
+       },
+       {
+        "rfilename": "model-Q5_K_M-00001-of-00002.gguf",
+        "lfs": {
+         "size": 50
+        }
+       },
+       {
+        "rfilename": "model-IQ4_XS-00001-of-00002.gguf",
+        "lfs": {
+         "size": 70
+        }
+       },
+       {
+        "rfilename": "model-IQ4_XS-00002-of-00002.gguf",
+        "lfs": {
+         "size": 80
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/core-list-f16": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 404,
+    "body": {
+     "error": "Variant no longer available"
+    }
+   }
+  },
+  {
+   "name": "other engine variants",
+   "query": "?repo=synthetic%2Flemon&variant=Q4",
+   "sources": {
+    "/api/v1/pull/variants?checkpoint=synthetic%2Flemon": {
+     "status": 200,
+     "json": {
+      "variants": [
+       {
+        "name": "Q4",
+        "primary_file": "m-Q4.gguf"
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/lemon": {
+     "status": 200,
+     "json": {
+      "sha": "abababababababababababababababababababab"
+     }
+    },
+    "/synthetic/lemon/resolve/abababababababababababababababababababab/m-Q4.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-184/185"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzBAAAAAEAAAAaAAAAAAAAAGJsay4xLm5leHRuLmVoX3Byb2oud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "lemonade",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "present",
+     "reason": "MTP/NextN tensors are present in the selected files. Backend compatibility and a working head still require a load test.",
+     "files": [
+      "m-Q4.gguf"
+     ],
+     "revision": "abababababababababababababababababababab",
+     "evidence": [
+      {
+       "file": "m-Q4.gguf",
+       "architecture": "synthetic",
+       "declaredLayers": 1,
+       "splitCount": 1,
+       "tensorCount": 1,
+       "tensors": [
+        "blk.1.nextn.eh_proj.weight"
+       ]
+      }
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "other engine selected files invalid",
+   "query": "?repo=synthetic%2Flemon2&variant=Q4",
+   "sources": {
+    "/api/v1/pull/variants?checkpoint=synthetic%2Flemon2": {
+     "status": 200,
+     "json": {
+      "variants": [
+       {
+        "name": "Q4",
+        "files": [
+         "../escape.gguf"
+        ]
+       }
+      ]
+     }
+    }
+   },
+   "kind": "lemonade",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "Inspection supports up to four selected GGUF shards.",
+     "files": [
+      "../escape.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "other engine five files",
+   "query": "?repo=synthetic%2Flemon3&variant=Q4",
+   "sources": {
+    "/api/v1/pull/variants?checkpoint=synthetic%2Flemon3": {
+     "status": 200,
+     "json": {
+      "variants": [
+       {
+        "name": "Q4",
+        "files": [
+         "a.gguf",
+         "b.gguf",
+         "c.gguf",
+         "d.gguf",
+         "e.gguf"
+        ]
+       }
+      ]
+     }
+    }
+   },
+   "kind": "lemonade",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "body": {
+     "status": "unknown",
+     "reason": "Inspection supports up to four selected GGUF shards.",
+     "files": [
+      "a.gguf",
+      "b.gguf",
+      "c.gguf",
+      "d.gguf",
+      "e.gguf"
+     ],
+     "checkedAt": "X"
+    }
+   }
+  },
+  {
+   "name": "other engine refuses",
+   "query": "?repo=synthetic%2Flemon4&variant=Q4",
+   "sources": {
+    "/api/v1/pull/variants?checkpoint=synthetic%2Flemon4": {
+     "status": 500,
+     "json": {
+      "error": "x"
+     }
+    }
+   },
+   "kind": "lemonade",
+   "role": "member",
+   "answer": {
+    "status": 502,
+    "body": {
+     "error": "Could not resolve selected files"
+    }
+   }
+  },
+  {
+   "name": "other engine variants not a list",
+   "query": "?repo=synthetic%2Flemon5&variant=Q4",
+   "sources": {
+    "/api/v1/pull/variants?checkpoint=synthetic%2Flemon5": {
+     "status": 200,
+     "json": {
+      "variants": "Q4"
+     }
+    }
+   },
+   "kind": "lemonade",
+   "role": "member",
+   "answer": {
+    "status": 500,
+    "body": {
+     "error": "Internal error"
+    }
+   }
+  },
+  {
+   "name": "other engine null variant entry",
+   "query": "?repo=synthetic%2Flemon6&variant=Q4",
+   "sources": {
+    "/api/v1/pull/variants?checkpoint=synthetic%2Flemon6": {
+     "status": 200,
+     "json": {
+      "variants": [
+       null
+      ]
+     }
+    }
+   },
+   "kind": "lemonade",
+   "role": "member",
+   "answer": {
+    "status": 500,
+    "body": {
+     "error": "Internal error"
+    }
+   }
+  },
+  {
+   "name": "no model management",
+   "query": "?repo=synthetic%2Fnone&variant=Q4",
+   "sources": {},
+   "kind": "none",
+   "role": "member",
+   "answer": {
+    "status": 500,
+    "body": {
+     "error": "Internal error"
+    }
+   }
+  }
+ ]
+}

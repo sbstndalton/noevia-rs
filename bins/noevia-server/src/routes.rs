@@ -1413,6 +1413,7 @@ mod tests {
                 (crate::model_state_routes::BUDGET, &["GET"][..]),
                 (crate::idle_unload_read::PATH, &["GET"][..]),
                 (crate::model_state_routes::INSTALLED, &["GET"][..]),
+                (crate::model_maint::mtp_artifact::PATH, &["GET"][..]),
                 (crate::preset_read_routes::PATH, &["GET"][..]),
                 (crate::model_sizing::SUGGEST, &["GET"][..]),
                 (crate::model_maint::RELOAD, &["POST"][..]),
@@ -1421,7 +1422,9 @@ mod tests {
         // #2210: the maintenance routes are the front's for their one method only; every other
         // method stays Node's.
         for p in crate::model_maint::ROUTES {
-            let own = if *p == crate::model_maint::EVIDENCE {
+            let own = if *p == crate::model_maint::EVIDENCE
+                || *p == crate::model_maint::mtp_artifact::PATH
+            {
                 "GET"
             } else {
                 "POST"
