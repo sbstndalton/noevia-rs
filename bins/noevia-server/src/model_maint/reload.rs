@@ -1328,7 +1328,7 @@ impl Maint {
         outcome
     }
 
-    async fn reload_inner(&self, router: &Router, holding: &Hold, unload: bool) -> Outcome {
+    pub(crate) async fn reload_inner(&self, router: &Router, holding: &Hold, unload: bool) -> Outcome {
         let token = holding.token();
         let hold = token.as_deref();
         let listing = match router.models(hold).await {
