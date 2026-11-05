@@ -15,4 +15,6 @@ serde = "1"
 # float_roundtrip: correctly rounded number parsing, as JSON.parse (the default parser can be one
 # ULP off, so a Rust rewrite of a Node file would change stored numbers).
 serde_json = { version = "1", features = ["float_roundtrip"] }
-sandbox-bridge = { path = "../sandbox-bridge" }
+# Number::toString as V8 writes it: shortest round-trip digits, the even one of two equally near
+# (Rust's own shortest formatting rounds that tie up). Apache-2.0 OR BSL-1.0; pinned exactly.
+ryu-js = "=1.0.3"

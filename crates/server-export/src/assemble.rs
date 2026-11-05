@@ -81,7 +81,7 @@ fn js_string<E>(v: &JValue) -> Result<String, Error<E>> {
 
 /// `Buffer.from(text, 'utf8')` for a string that may hold [`js_json::wtf16`] lone surrogates:
 /// Node encodes a lone surrogate as U+FFFD (EF BF BD). Text without one is returned unchanged.
-fn utf8_like_buffer(text: String) -> String {
+pub(crate) fn utf8_like_buffer(text: String) -> String {
     if !text.chars().any(|c| js_json::wtf16::lone_unit(c).is_some()) {
         return text;
     }

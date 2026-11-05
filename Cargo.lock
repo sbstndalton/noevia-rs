@@ -671,6 +671,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "diary-backup-run"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "diary-backup-format",
+ "rusqlite",
+ "serde_json",
+]
+
+[[package]]
 name = "diary-corpus-parse"
 version = "0.1.0"
 dependencies = [
@@ -925,6 +935,30 @@ dependencies = [
  "rand_core 0.6.4",
  "sec1",
  "subtle",
+ "zeroize",
+]
+
+[[package]]
+name = "embedding-worker"
+version = "0.1.0"
+dependencies = [
+ "engine-admission",
+ "model-stream",
+ "proc-macro2",
+ "prompt-framing",
+ "quote",
+ "reqwest",
+ "rusqlite",
+ "rustix",
+ "serde_json",
+ "server-projects",
+ "server-store",
+ "sha2",
+ "sqlite-vec-loader",
+ "ssrf-policy",
+ "syn 2.0.119",
+ "tempfile",
+ "tokio",
  "zeroize",
 ]
 
@@ -1587,7 +1621,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 name = "js-json"
 version = "0.1.0"
 dependencies = [
- "sandbox-bridge",
+ "ryu-js",
  "serde",
  "serde_json",
 ]
@@ -1948,6 +1982,7 @@ dependencies = [
  "code-net-guard",
  "context-fit",
  "dav-parse",
+ "embedding-worker",
  "engine-admission",
  "flate2",
  "gguf",
@@ -2292,6 +2327,7 @@ dependencies = [
  "idna",
  "mcp-frame",
  "proptest",
+ "serde_json",
  "url",
 ]
 
@@ -2391,7 +2427,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2792,6 +2828,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
+name = "ryu-js"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04d056b875a9d2e6cb9a61d127afee9ac5999b9f87bcb32079d1318e505be714"
+
+[[package]]
 name = "s3-list-parse"
 version = "0.1.0"
 dependencies = [
@@ -3065,6 +3107,7 @@ dependencies = [
  "rand_core 0.6.4",
  "reqwest",
  "secret-envelope",
+ "serde_json",
  "server-auth",
  "server-storage-reads",
  "server-store",
@@ -3116,6 +3159,7 @@ dependencies = [
  "review-verdict",
  "rusqlite",
  "rustix",
+ "ryu-js",
  "serde_json",
  "server-store",
  "sha2",
@@ -3340,6 +3384,23 @@ checksum = "d91ed6c858b01f942cd56b37a94b3e0a1798290327d1236e4d9cf4eaca44d29d"
 dependencies = [
  "base64ct",
  "der",
+]
+
+[[package]]
+name = "sqlite-vec"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0ba424237a9a5db2f6071f193319e2b6a32f7f3961debb2fbbfe67067abce3f"
+dependencies = [
+ "cc",
+]
+
+[[package]]
+name = "sqlite-vec-loader"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "sqlite-vec",
 ]
 
 [[package]]
