@@ -268,8 +268,6 @@ pub struct Worker {
     #[cfg(test)]
     terminal_error: AtomicBool,
     #[cfg(test)]
-    terminal_attempts: std::sync::atomic::AtomicUsize,
-    #[cfg(test)]
     post_expiry: Notify,
     #[cfg(test)]
     finalize_gate: Mutex<Option<Arc<tests::TestGate>>>,
@@ -605,8 +603,6 @@ impl Worker {
             #[cfg(test)]
             terminal_error: AtomicBool::new(false),
             #[cfg(test)]
-            terminal_attempts: std::sync::atomic::AtomicUsize::new(0),
-            #[cfg(test)]
             post_expiry: Notify::new(),
             #[cfg(test)]
             finalize_gate: Mutex::new(None),
@@ -747,14 +743,7 @@ impl Worker {
             }
         };
         #[cfg(test)]
-        let terminal_fails = terminal && marker_free && self.terminal_error.load(Ordering::Acquire);
-        #[cfg(test)]
-        if terminal && marker_free {
-            self.terminal_attempts.fetch_add(1, Ordering::AcqRel);
-            test_changed();
-        }
-        #[cfg(test)]
-        if terminal_fails {
+        if terminal && marker_free && self.terminal_error.load(Ordering::Acquire) {
             return Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
         }
         #[cfg(test)]
@@ -4253,13 +4242,14 @@ mod tests {
         let (_copy, restarted) = delta_restart(&w, port, true).await;
         restarted.terminal_error.store(true, Ordering::Release);
         let recovery = restarted.spawn_recover().unwrap();
-        delta_wait(|| restarted.terminal_attempts.load(Ordering::Acquire) > 0).await;
+        let store = restarted.maint.evidence.as_ref().unwrap();
+        delta_wait(|| store.run_read_failures() > 0).await;
         assert!(restarted.maint.local_held());
         assert_eq!(restarted.job().get("status").as_str(), Some("running"));
         restarted.terminal_error.store(false, Ordering::Release);
-        let attempts = restarted.terminal_attempts.load(Ordering::Acquire);
-        restarted.interrupt_fence_wait();
-        delta_wait(|| restarted.terminal_attempts.load(Ordering::Acquire) > attempts).await;
+        let attempts = store.run_read_failures();
+        restarted.fence_wake.lock().unwrap().notify_one();
+        delta_wait(|| store.run_read_failures() > attempts).await;
         assert!(
             restarted.maint.local_held(),
             "a passed decision waits for ledger hydration without erasing history"
@@ -4278,7 +4268,7 @@ mod tests {
                 .join("run-state.json");
             std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
         }
-        restarted.interrupt_fence_wait();
+        restarted.fence_wake.lock().unwrap().notify_one();
         tokio::time::timeout(WATCHDOG, recovery)
             .await
             .unwrap()
@@ -4300,7 +4290,7 @@ mod tests {
             "valid passed history survives the read denial"
         );
         w.terminal_error.store(false, Ordering::Release);
-        w.interrupt_fence_wait();
+        w.fence_wake.lock().unwrap().notify_one();
         delta_wait(|| !w.maint.local_held()).await;
         assert_eq!(w.job().get("status").as_str(), Some("passed"));
     }
