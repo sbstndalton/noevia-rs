@@ -394,6 +394,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "chat-pipeline"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "prompt-framing",
+ "serde_json",
+]
+
+[[package]]
 name = "chat-template-caps"
 version = "0.1.0"
 dependencies = [
