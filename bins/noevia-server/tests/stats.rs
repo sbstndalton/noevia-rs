@@ -71,13 +71,19 @@ async fn call(
     cookie: &str,
     csrf: Option<&str>,
 ) -> (u16, String, String) {
+    call_body(addr, method, path, cookie, csrf, "").await
+}
+async fn call_body(
+    addr: std::net::SocketAddr, method: &str, path: &str, cookie: &str,
+    csrf: Option<&str>, body: &str,
+) -> (u16, String, String) {
     let mut s = TcpStream::connect(addr).await.unwrap();
     let csrf = csrf
         .map(|t| format!("X-CSRF-Token: {t}\r\nOrigin: http://{addr}\r\n"))
         .unwrap_or_default();
     s.write_all(
         format!(
-            "{method} {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\nCookie: {cookie}\r\n{csrf}Content-Length: 0\r\n\r\n"
+            "{method} {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\nCookie: {cookie}\r\n{csrf}Content-Length: {}\r\n\r\n{body}",body.len()
         )
         .as_bytes(),
     )
@@ -337,12 +343,29 @@ async fn concurrent_polls_share_one_engine_read_kept_two_seconds() {
     let _ = stop.send(());
 }
 
+// Synthetic private bridge only: no model manager or real engine can be reached.
+async fn role_bridge() -> (std::net::SocketAddr, tokio::task::JoinHandle<()>) {
+    let listener=TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr=listener.local_addr().unwrap();
+    let routes=axum::Router::new()
+        .route("/internal/auto-roles/facts", axum::routing::post(||async {r#"{"catalogue":[{"name":"chat-a"},{"name":"idle"}]}"#}))
+        .route("/internal/auto-roles/invalidate",axum::routing::post(||async {r#"{"ok":true}"#}))
+        .route("/internal/auto-roles/warm",axum::routing::post(||async {r#"{"ok":true}"#}))
+        .fallback(||async {axum::http::StatusCode::BAD_GATEWAY});
+    let task=tokio::spawn(async move {axum::serve(listener,routes).await.unwrap();});
+    (addr,task)
+}
+
 #[tokio::test]
 async fn a_gated_model_or_role_write_drops_the_shared_answer_nothing_else_does() {
     let d = tempfile::tempdir().unwrap();
     seed_database(d.path());
     let (engine, listings) = router(Duration::ZERO).await;
-    let (addr, stop, app) = start_app(d.path(), &switched_on(engine)).await;
+    let (bridge, bridge_task)=role_bridge().await;
+    let mut env=switched_on(engine);
+    env.push(("NOEVIA_LEGACY_UPSTREAM",format!("http://{bridge}")));
+    env.push(("NOEVIA_PROJECT_STORE_TOKEN","synthetic-role-writer-secret-000000000".into()));
+    let (addr, stop, app) = start_app(d.path(), &env).await;
     let stats = app.stats.as_ref().map(Arc::clone).unwrap();
     let poll = || async { call(addr, "GET", "/api/stats", MEMBER, None).await.0 };
     assert_eq!(poll().await, 200);
@@ -363,7 +386,7 @@ async fn a_gated_model_or_role_write_drops_the_shared_answer_nothing_else_does()
         assert_eq!(stats.drops(), 0, "{method} {path} {cookie:?} {csrf:?}");
     }
     // A member's role save, an admin's model write: dropped, the next poll reads the engine again
-    // (the writes themselves go to Node: 502 behind this dead upstream).
+    // (empty native roles input is Node-compatible 400; model writes still proxy to the dead upstream).
     let mut expected = listings.load(Ordering::SeqCst);
     let mut dropped = 0;
     for (method, path, cookie) in [
@@ -372,13 +395,24 @@ async fn a_gated_model_or_role_write_drops_the_shared_answer_nothing_else_does()
         ("DELETE", "/api/model-manager/sections/x", ADMIN),
         ("POST", "/api/models/../models/unload", ADMIN),
     ] {
-        assert_eq!(call(addr, method, path, cookie, Some("csrf")).await.0, 502);
+        let (status, _, body) = call(addr, method, path, cookie, Some("csrf")).await;
+        if path == "/api/auto-roles" {
+            assert_eq!((status,body.as_str()),(400,r#"{"error":"invalid JSON"}"#));
+        } else { assert_eq!(status,502); }
         dropped += 1;
         assert_eq!(stats.drops(), dropped, "{method} {path}");
         assert_eq!(poll().await, 200);
         expected += 1;
         assert_eq!(listings.load(Ordering::SeqCst), expected, "{method} {path}");
     }
+    // A successful native save must also drop the shared statistics answer.
+    let (status,_,body)=call_body(addr,"PUT","/api/auto-roles",MEMBER,Some("csrf"),
+        r#"{"fast":"chat-a","smart":"idle"}"#).await;
+    assert_eq!((status,body.as_str()),(200,r#"{"configured":true,"roles":{"fast":"chat-a","smart":"idle"}}"#));
+    assert_eq!(stats.drops(),dropped+1);
+    assert_eq!(poll().await,200);
+    assert_eq!(listings.load(Ordering::SeqCst),expected+1);
+    bridge_task.abort();
     let _ = stop.send(());
 }
 
@@ -475,7 +509,7 @@ async fn a_dead_engine_is_up_false_and_a_retired_switch_value_keeps_the_route_na
     let _ = stop.send(());
 
     // sbstndalton/noevia#1071: NOEVIA_RUST_STATS is retired; "0" still leaves GET native, and
-    // the role write stays Node's (the dead upstream's 502).
+    // the native role writer keeps Node's empty-body 400, regardless of that retired switch.
     let (engine, listings) = router(Duration::ZERO).await;
     let mut off = switched_on(engine);
     off.push(("NOEVIA_RUST_STATS", "0".into()));
@@ -485,7 +519,7 @@ async fn a_dead_engine_is_up_false_and_a_retired_switch_value_keeps_the_route_na
         call(addr, "PUT", "/api/auto-roles", ADMIN, Some("csrf"))
             .await
             .0,
-        502
+        400
     );
     assert_eq!(listings.load(Ordering::SeqCst), 1);
     let _ = stop.send(());

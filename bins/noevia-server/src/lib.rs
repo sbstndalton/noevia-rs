@@ -501,6 +501,7 @@ pub(crate) fn account_row_exists(writes: &upkeep::WriterLayer, id: &str) -> bool
 }
 
 pub struct App {
+    pub auto_roles: auto_roles_routes::Writer,
     /// The demand marker and the wait for Node's published snapshots (snapshot.rs).
     pub demand: Arc<snapshot::Demand>,
     /// Google Drive's token authority (sbstndalton/noevia#2190 round 7); `None` without UI_DATA_DIR.
@@ -668,6 +669,7 @@ impl App {
             plugin_directory: plugin_directory_routes::Directory::new(
                 config.plugin_directory.clone(),
             ),
+            auto_roles: auto_roles_routes::Writer::default(),
             proxy: legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy),
             statics: static_files::StaticFiles::new(config.dist.clone()),
             version,

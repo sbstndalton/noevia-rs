@@ -272,9 +272,36 @@ pub fn write_shared_projects(
     write_text_atomic(&dir.join(name), text, Parent::MustExist)
 }
 
-/// Per-user roles, under the caller's user lock. Never recreate a removed account.
-pub fn write_auto_roles(dir: &Path, text: &str) -> Result<(), JsonError> {
-    write_text_atomic(&dir.join("auto-roles.json"), text, Parent::MustExist)
+/// A role save whose bytes and fsync are prepared before entering the commit fence.
+/// Only the atomic rename remains at publication. Unpublished files are removed on drop.
+pub struct PreparedAutoRoles {
+    temporary: std::path::PathBuf,
+    destination: std::path::PathBuf,
+}
+impl PreparedAutoRoles {
+    pub fn publish(&self) -> Result<(), JsonError> {
+        Ok(std::fs::rename(&self.temporary, &self.destination)?)
+    }
+}
+impl Drop for PreparedAutoRoles {
+    fn drop(&mut self) { let _ = std::fs::remove_file(&self.temporary); }
+}
+pub fn prepare_auto_roles(dir: &Path, text: &str) -> Result<PreparedAutoRoles, JsonError> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let sequence = NEXT.fetch_add(1, Ordering::Relaxed);
+    let temporary = dir.join(format!("auto-roles.json.{}.{}.tmp", std::process::id(), sequence));
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)] {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(&temporary)?;
+    let staged = PreparedAutoRoles {temporary, destination:dir.join("auto-roles.json")};
+    file.write_all(text.as_bytes())?;
+    file.sync_all()?;
+    Ok(staged)
 }
 
 /// Writes [`crate::ROOT_PROVIDER_FILE`] in `data_dir` (which must exist) atomically with text the

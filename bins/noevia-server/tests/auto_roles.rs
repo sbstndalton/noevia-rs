@@ -525,7 +525,7 @@ async fn engine() -> EngineStub {
                 assert!(text.contains(SECRET));
                 let path = text.split_whitespace().nth(1).unwrap().to_owned();
                 c.lock().unwrap().push(path.clone());
-                if path.ends_with("/invalidate")
+                if path.ends_with("/facts")
                     && once.swap(false, std::sync::atomic::Ordering::SeqCst)
                 {
                     e.notify_one();
@@ -662,34 +662,31 @@ async fn only_admin_save_triggers_the_existing_warmer() {
 }
 
 #[tokio::test]
-async fn a_read_during_a_write_waits_for_the_user_fence_and_observes_saved_roles() {
+async fn slow_catalogue_does_not_block_reads_or_either_users_writes() {
     let dir = data();
     fresh(dir.path(), CATALOGUE);
     roles_file(dir.path(), A, r#"{"fast":"old","smart":"old"}"#);
     let node = engine().await;
     let addr = write_front(dir.path(), node.addr).await;
-    node.pause_once
-        .store(true, std::sync::atomic::Ordering::SeqCst);
-    let write = tokio::spawn(put_roles(
-        addr,
-        r#"{"fast":"alpha","smart":"beta"}"#,
-        COOKIE_A,
-    ));
+    node.pause_once.store(true, std::sync::atomic::Ordering::SeqCst);
+    let write = tokio::spawn(put_roles(addr, r#"{"fast":"alpha","smart":"beta"}"#, COOKIE_A));
     node.entered.notified().await;
-    let read = tokio::spawn(call(addr, "GET", "/api/auto-roles", COOKIE_A));
-    tokio::time::sleep(Duration::from_millis(80)).await;
-    assert!(!read.is_finished());
-    // Another tenant has a distinct lock and can still read.
-    assert_eq!(
-        call(addr, "GET", "/api/auto-roles", COOKIE_B).await.status,
-        200
-    );
+    // A stalled RPC may exceed the old three-second flock deadline. Node keeps
+    // answering reads and other saves while that request waits for its catalogue.
+    let read = tokio::time::timeout(Duration::from_secs(1), call(addr, "GET", "/api/auto-roles", COOKIE_A)).await;
+    assert!(read.is_ok(), "same-user read waited for the slow catalogue");
+    assert_eq!(read.unwrap().status, 200);
+    for cookie in [COOKIE_B, COOKIE_A] {
+        let save = tokio::time::timeout(Duration::from_secs(1), put_roles(addr,
+            r#"{"fast":"alpha","smart":"beta","creative":"creative"}"#,cookie)).await;
+        assert!(save.is_ok(), "an independent save waited for the slow catalogue");
+        assert_eq!(save.unwrap().status,200);
+    }
+    tokio::time::sleep(Duration::from_millis(3100)).await;
     node.pause.notify_one();
-    assert_eq!(write.await.unwrap().status, 200);
-    assert_eq!(
-        read.await.unwrap().text,
-        r#"{"configured":true,"roles":{"fast":"alpha","smart":"beta"},"missing":[]}"#
-    );
+    assert_eq!(write.await.unwrap().status,200);
+    // The old request must retain Creative from the newer committed save.
+    assert!(call(addr,"GET","/api/auto-roles",COOKIE_A).await.text.contains("creative"));
 }
 
 #[tokio::test]
