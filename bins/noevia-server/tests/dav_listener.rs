@@ -66,11 +66,11 @@ impl Rig {
     async fn new() -> Self {
         let dir = tempfile::tempdir().unwrap();
         let db = seed(dir.path());
-        let files = Arc::new(Mutex::new(HashMap::from([(
+        let files: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::from([(
             "entry.md".into(),
             "Synthetic".into(),
         )])));
-        let calls = Arc::new(Mutex::new(Vec::new()));
+        let calls: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
         let state = Arc::clone(&files);
         let records = Arc::clone(&calls);
         let router=Router::new().fallback(move|req:Request<Body>|{let files=Arc::clone(&state);let records=Arc::clone(&records);async move{
