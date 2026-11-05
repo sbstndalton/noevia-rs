@@ -32,6 +32,12 @@ pub struct Account {
     pub control: Control,
     pub workspaces: workspace::Store,
 }
+impl Drop for Account {
+    fn drop(&mut self) {
+        self.workspaces.retire();
+        let _ = self.lease.unlock();
+    }
+}
 impl Account {
     /// Run in the account registry's blocking initialization, once, before publishing the Arc.
     pub fn open(
@@ -167,8 +173,10 @@ mod tests {
             Account::open(root, USER, &config, "new".into(), 3),
             Err(Error::Busy)
         ));
+        let inherited = account.lease.try_clone().unwrap();
         drop(account);
         let recovered = Account::open(root, USER, &config, "new".into(), 4).unwrap();
+        drop(inherited);
         let view = server_projects::task_journals::get(root, USER, Surface::Code, "project", task)
             .unwrap();
         let server_projects::task_journals::Found::Task(view) = view else {

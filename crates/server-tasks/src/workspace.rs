@@ -131,7 +131,15 @@ pub struct Store {
     epoch: String,
     lease: fs::File,
 }
+impl Drop for Store {
+    fn drop(&mut self) {
+        self.retire();
+    }
+}
 impl Store {
+    pub(crate) fn retire(&self) {
+        let _ = self.lease.unlock();
+    }
     pub fn open(
         data_dir: &Path,
         user: &str,
