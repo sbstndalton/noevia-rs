@@ -212,71 +212,62 @@ pub(crate) fn string_to_number(s: &str) -> f64 {
 /// (U+017F). Each such literal outside a class becomes `(?-u:x)`, which keeps the enclosing `i`.
 /// No input character is rewritten (review S5–S9 P2: in-band sentinels collided with U+FFFF/U+FFFE).
 pub(crate) fn js_fold(src: &str) -> String {
-    let c: Vec<char> = src.chars().collect();
     let mut out = String::with_capacity(src.len() + 16);
-    let mut i = 0;
-    let copy_to = |out: &mut String, i: &mut usize, end: char| {
-        while *i < c.len() {
-            let ch = c[*i];
+    let mut it = src.chars().peekable();
+    // Copies through `end` (inclusive), escapes kept whole.
+    fn copy_to(out: &mut String, it: &mut std::iter::Peekable<std::str::Chars<'_>>, end: char) {
+        while let Some(ch) = it.next() {
             out.push(ch);
-            *i += 1;
-            if ch == '\\' && *i < c.len() {
-                out.push(c[*i]);
-                *i += 1;
+            if ch == '\\' {
+                if let Some(e) = it.next() {
+                    out.push(e);
+                }
             } else if ch == end {
                 break;
             }
         }
-    };
-    while i < c.len() {
-        match c[i] {
+    }
+    while let Some(ch) = it.next() {
+        match ch {
             '\\' => {
-                out.push('\\');
-                i += 1;
-                if i < c.len() {
-                    let e = c[i];
+                out.push(ch);
+                if let Some(e) = it.next() {
                     out.push(e);
-                    i += 1;
-                    if matches!(e, 'x' | 'u' | 'p' | 'P') && i < c.len() && c[i] == '{' {
-                        copy_to(&mut out, &mut i, '}');
+                    if matches!(e, 'x' | 'u' | 'p' | 'P') && it.peek() == Some(&'{') {
+                        copy_to(&mut out, &mut it, '}');
                     }
                 }
             }
             '[' => {
-                out.push('[');
-                i += 1;
-                if i < c.len() && c[i] == '^' {
-                    out.push('^');
-                    i += 1;
+                out.push(ch);
+                if let Some(c) = it.next_if_eq(&'^') {
+                    out.push(c);
                 }
-                if i < c.len() && c[i] == ']' {
-                    out.push(']');
-                    i += 1;
+                if let Some(c) = it.next_if_eq(&']') {
+                    out.push(c);
                 }
-                copy_to(&mut out, &mut i, ']');
+                copy_to(&mut out, &mut it, ']');
             }
-            '(' if c.get(i + 1) == Some(&'?') => {
-                // A group's flags (`(?i)`, `(?is)`, `(?-u:`) are not literals.
-                while i < c.len() {
-                    let ch = c[i];
-                    out.push(ch);
-                    i += 1;
-                    if ch == ':' || ch == ')' {
+            // A group's flags (`(?i)`, `(?is)`, `(?-u:`) are not literals.
+            '(' if it.peek() == Some(&'?') => {
+                out.push(ch);
+                for f in it.by_ref() {
+                    out.push(f);
+                    if f == ':' || f == ')' {
                         break;
                     }
                 }
             }
-            '{' => copy_to(&mut out, &mut i, '}'),
-            ch @ ('k' | 'K' | 's' | 'S') => {
+            '{' => {
+                out.push(ch);
+                copy_to(&mut out, &mut it, '}');
+            }
+            'k' | 'K' | 's' | 'S' => {
                 out.push_str("(?-u:");
                 out.push(ch);
                 out.push(')');
-                i += 1;
             }
-            ch => {
-                out.push(ch);
-                i += 1;
-            }
+            _ => out.push(ch),
         }
     }
     out

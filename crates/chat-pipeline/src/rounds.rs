@@ -42,7 +42,8 @@ fn announce() -> &'static Regex {
         let src = format!(
             r"(?i)(?:^|[{S}.!?:;(])(?:I{s}*(?:will|'ll|’ll|am{s}+going{s}+to|'m{s}+going{s}+to|’m{s}+going{s}+to|need{s}+to|have{s}+to|should)|let{s}+me|let's|(?:first|then|next),?{s}+I(?:{s}*'ll|{s}*’ll|{s}+will)?){s}+(?:now{s}+|first{s}+|quickly{s}+|carefully{s}+|go{s}+(?:and{s}+)?)?(?:{verbs})(?-u:\b)"
         );
-        Regex::new(&crate::text::js_fold(&src)).unwrap_or_else(|_| Regex::new("$^").unwrap_or_else(|_| unreachable!()))
+        Regex::new(&crate::text::js_fold(&src))
+            .unwrap_or_else(|_| Regex::new("$^").unwrap_or_else(|_| unreachable!()))
     })
 }
 
@@ -50,7 +51,8 @@ fn url_re() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
     R.get_or_init(|| {
         let src = format!(r#"(?i)(?-u:\b)https?://[^{S}<>"'`)\]}}]+"#);
-        Regex::new(&crate::text::js_fold(&src)).unwrap_or_else(|_| Regex::new("$^").unwrap_or_else(|_| unreachable!()))
+        Regex::new(&crate::text::js_fold(&src))
+            .unwrap_or_else(|_| Regex::new("$^").unwrap_or_else(|_| unreachable!()))
     })
 }
 

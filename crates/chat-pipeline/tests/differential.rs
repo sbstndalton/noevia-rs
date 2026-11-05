@@ -812,7 +812,12 @@ fn original_noncharacters_beside_kelvin_and_long_s_are_kept_as_node_keeps_them()
     let c = wtf16::parse(include_str!("fixtures/unicode-cases.json")).unwrap();
     let t = |k: &JValue| k.get("t").as_str().unwrap().to_owned();
     for k in arr(c.get("queries")) {
-        assert_eq!(search::clean_search_query(&t(k)), k.get("out").as_str().unwrap(), "{:?}", t(k));
+        assert_eq!(
+            search::clean_search_query(&t(k)),
+            k.get("out").as_str().unwrap(),
+            "{:?}",
+            t(k)
+        );
         let raw = JValue::Str(
             wtf16::stringify(&JValue::Obj(vec![
                 ("query".into(), JValue::Str(t(k))),

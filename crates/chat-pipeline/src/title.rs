@@ -152,7 +152,10 @@ fn res() -> Option<&'static Res> {
             pictographic: Regex::new(r"[\p{Extended_Pictographic}\u{200d}\u{fe0f}]").ok()?,
             hashes: Regex::new(&format!(r"\A#+[{S}]*")).ok()?,
             stars: Regex::new(r"\A\*{1,2}|\*{1,2}\z").ok()?,
-            prefix: Regex::new(&crate::text::js_fold(&format!(r"(?i)\A(?:chat[{S}]+)?title[{S}]*[:\-–][{S}]*"))).ok()?,
+            prefix: Regex::new(&crate::text::js_fold(&format!(
+                r"(?i)\A(?:chat[{S}]+)?title[{S}]*[:\-–][{S}]*"
+            )))
+            .ok()?,
             quotes: Regex::new(r#"\A["'“”‘’`«»]+|["'“”‘’`«»]+\z"#).ok()?,
             tail: Regex::new(&format!(r"[{S}.,;:!?…]+\z")).ok()?,
             spaces: Regex::new(&format!(r"[{S}]+")).ok()?,
