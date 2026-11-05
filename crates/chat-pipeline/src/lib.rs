@@ -10,6 +10,7 @@
 //! - [`title`]: the chat's generated title (#1785).
 //! - [`validate`]: what a turn refuses before anything is read or written.
 //! - [`failure`]: the words a failed engine reply shows.
+//! - [`writes`]: the writes already done in a chat (#658 repeat flag).
 //! - [`notes`]: the system notes a turn adds or removes (`withSystemNote`, `withoutSystemNote`).
 pub mod failure;
 pub mod notes;
@@ -18,6 +19,7 @@ pub mod rounds;
 mod text;
 pub mod title;
 pub mod validate;
+pub mod writes;
 
 /// A JavaScript `TypeError` the Node code would have thrown here (a value whose `String()`
 /// coercion throws, or a property read on `null`): the turn fails as Node's did.

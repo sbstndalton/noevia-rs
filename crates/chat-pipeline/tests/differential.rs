@@ -340,3 +340,20 @@ fn titles_match_node() {
     }
     assert_eq!(Some(title::TITLE_SYSTEM), c.get("system").as_str());
 }
+
+#[test]
+fn write_fingerprints_match_node() {
+    use chat_pipeline::writes;
+    let c = wtf16::parse(include_str!("fixtures/writes-cases.json")).unwrap();
+    let un = |v: &JValue| match v {
+        JValue::Str(s) if s == "__undefined" => JValue::Undefined,
+        v => v.clone(),
+    };
+    for k in arr(c.get("cases")) {
+        let (n, t, a) = (un(k.get("name")), un(k.get("target")), un(k.get("args")));
+        assert_eq!(Some(writes::fingerprint(&n, &t, &a).as_str()), k.get("fp").as_str(), "{}", wtf16::stringify(k).unwrap());
+        if let (Some(want), JValue::Str(raw)) = (k.get("canonical").as_str(), &a) {
+            assert_eq!(writes::canonical(&wtf16::parse(raw).unwrap()), want);
+        }
+    }
+}

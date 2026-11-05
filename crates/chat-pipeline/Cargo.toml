@@ -15,6 +15,7 @@ js-json = { path = "../js-json" }
 prompt-framing = { path = "../prompt-framing" }
 provider-error = { path = "../provider-error" }
 regex = "1"
+sha2 = "=0.10.9"
 
 [dev-dependencies]
 serde_json = "1"
