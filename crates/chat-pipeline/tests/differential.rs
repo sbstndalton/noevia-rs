@@ -362,3 +362,25 @@ fn write_fingerprints_match_node() {
         }
     }
 }
+
+#[test]
+fn interrupted_turn_records_match_node() {
+    use chat_pipeline::record::TurnRecord;
+    let c = wtf16::parse(include_str!("fixtures/turn-cases.json")).unwrap();
+    let show = |v: Option<JValue>| v.map_or("null".to_owned(), |v| wtf16::stringify(&v).unwrap());
+    for k in arr(c.get("cases")) {
+        // The oracle's clock: 1007 at creation, +7 at each later read (only `usage` reads it).
+        let mut clock = 1000.0;
+        let mut tick = || {
+            clock += 7.0;
+            clock
+        };
+        let mut rec = TurnRecord::new(tick());
+        for ev in arr(k.get("events")) {
+            rec.observe(ev, &mut tick);
+        }
+        let what = wtf16::stringify(k.get("events")).unwrap();
+        assert_eq!(show(rec.assistant_entry()), wtf16::stringify(k.get("assistant")).unwrap(), "assistant {what}");
+        assert_eq!(show(rec.partial_entry()), wtf16::stringify(k.get("partial")).unwrap(), "partial {what}");
+    }
+}
