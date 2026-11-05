@@ -5,13 +5,15 @@
 //   node residual-grid-oracle.cjs run <base> <data-dir> <routes.toml> <out.json> [--dry]
 //   node residual-grid-oracle.cjs merge <pass1.json> <pass2.json> <fixture.json>
 //   node residual-grid-oracle.cjs classify <fixture.json> <rust-report.json>
+//   node residual-grid-oracle.cjs selftest   (merge negative controls: volatile drift is refused)
 //
 // `run` drives a fresh stack started by tools/front/replay-front.sh (the front with Node at
 // contracts/http/front-core.ref behind it, synthetic data dir) the way a browser would: it
 // completes first-run setup as a synthetic admin, invites and signs up a synthetic member, then
 // sends every grid case and records status and body. `--dry` ignores SUCCESSFUL_WRITES and lists
 // the unsafe cases that succeeded, to review that list. `merge` takes two runs on two fresh stacks,
-// normalizes the reviewed VOLATILE fields, refuses any other body difference, applies the
+// normalizes and validates the reviewed VOLATILE fields in both, requires the normalized bodies
+// to be equal, applies the
 // INTENTIONAL changes and writes the fixture with the whole POLICY. `classify` copies who answered
 // each case (front or node) from a reviewed baseline run of tests/residual_grid.rs
 // (RESIDUAL_GRID_CLASSIFY=1, RESIDUAL_GRID_REPORT=<file>) into the fixture; the test then asserts it.
@@ -37,31 +39,56 @@ const FAMILIES = {
 // Operation policy. Every route x path shape x method x role is sent, except:
 // 1. Signed in without the CSRF token, safe methods (GET/HEAD/OPTIONS) are skipped: they need no
 //    token, so they are the same request as the signed-in-with-token case.
-// 2. START_WORK: operations that would start work or end the grid's own session, never sent
-//    with valid credentials (any shape): `[method, route pattern]`.
-// 3. SUCCESSFUL_WRITES: unsafe cases that a dry run (`run --dry`) saw succeed (2xx/3xx) and so
-//    change synthetic state for later cases; reviewed and listed by case id.
+// 2. START_WORK: the exact method/route/role/shape combinations that would start work or end
+//    the grid's own session with the grid's `{}` body. Source-reviewed (no work-starting request
+//    was sent to find out); `starts` cites where the work starts. All are static routes, so the
+//    only shapes are plain and slash.
+// 3. SUCCESSFUL_WRITES: unsafe cases that a dry run (`run --dry`) saw succeed and that write
+//    state (reviewed); listed by case id.
+//
+// Source review (rs at this branch, Core at front-core.ref) of what is sent although it looks
+// like work:
+// - Members get 403 before any work on every admin-only route here: calibration_routes.rs:297,
+//   autotune_resume_routes.rs:217, autotune_untuned_routes.rs:39, model_maint/mod.rs:388 (reload,
+//   import), model_maint/evidence_recheck.rs:108, offsite_routes.rs:1211,
+//   decision_settings_routes.rs:571-572.
+// - Slash variants (except logout) are proxied to Node; Node routes on the raw pathname
+//   (core index.cjs:1453) and its handlers and front-ownership refusals for these paths compare
+//   exactly (routes/models.cjs:494,503,510; rust-offsite-backup.cjs:21; rust-decision-settings.cjs:15;
+//   rust-storage-integrations.cjs:24; rust-provider-test.cjs:15), so they fall through to 404 (or
+//   models.cjs:213's member 403) and start nothing; the stack also has no model manager
+//   (contract-corpus mocks.cjs:90 MODEL_MANAGER_KIND none).
+// - POST /api/admin/offsite-backup/recovery-key: 405 (offsite_routes.rs:1227-1229).
+// - POST /api/models/calibration with `{}`: a facts read (calibration_routes.rs:307), 404 when
+//   calibration is unavailable (:311), else 400 because parse requires confirmPause (:108-110,
+//   answered at :345-347), all before the listing/start calls (:366).
+// - POST /api/models/autotune/untuned: 405 (autotune_untuned_routes.rs:76-78) before the scan (:84).
+// - POST /api/models/evidence/recheck with `{}`: 404 without a native engine (evidence_recheck.rs:125-130),
+//   else 400 Choose a model (:141-148), both before the probe task (:163).
+// - POST /api/models/evidence/import with `{}`: 404 without a native engine (model_maint/mod.rs:473-478),
+//   else 400 Choose a model (:491-493), both before the import task (:499).
+// - POST /api/integrations/storage/test with `{}`: the empty baseUrl is refused
+//   (storage_integration_routes.rs:1110-1114) or, if approved, yields the unparsable target `/`
+//   (:1128-1130), both before the only fetch (:1136).
+// - POST /api/providers/test with `{}`: 400 valid baseUrl required (provider_test_routes.rs:397-398)
+//   before any probe.
 const START_WORK = [
-  ['POST', '/api/auth/logout'],
-  ['POST', '/api/models/calibration'],
-  ['POST', '/api/models/autotune/resume'],
-  ['POST', '/api/models/autotune/untuned'],
-  ['POST', '/api/models/presets/reload'],
-  ['POST', '/api/models/evidence/recheck'],
-  ['POST', '/api/models/evidence/import'],
-  ['POST', '/api/admin/offsite-backup/run'],
-  ['POST', '/api/admin/offsite-backup/copy'],
-  ['POST', '/api/admin/offsite-backup/verify'],
-  ['POST', '/api/admin/offsite-backup/new-store'],
-  ['POST', '/api/admin/offsite-backup/recovery-key'],
-  ['POST', '/api/admin/decision-settings/test'],
-  ['POST', '/api/integrations/storage/test'],
-  ['POST', '/api/providers/test'],
+  { method: 'POST', route: '/api/auth/logout', roles: ['member', 'admin'], shapes: ['plain', 'slash'], starts: 'server-account account.rs:60-66 deletes the session (the slash shape reaches the same front handler; not proven otherwise)' },
+  { method: 'POST', route: '/api/models/autotune/resume', roles: ['admin'], shapes: ['plain'], starts: 'autotune_resume_routes.rs:251 prepare and :282 commit after :242 (an empty body is not proven refused first)' },
+  { method: 'POST', route: '/api/models/presets/reload', roles: ['admin'], shapes: ['plain'], starts: 'model_maint/mod.rs:421 spawns reload_presets (`{}` parses as unload false) once a router is configured' },
+  { method: 'POST', route: '/api/admin/offsite-backup/run', roles: ['admin'], shapes: ['plain'], starts: 'offsite_routes.rs:1265 run_now (body ignored)' },
+  { method: 'POST', route: '/api/admin/offsite-backup/verify', roles: ['admin'], shapes: ['plain'], starts: 'offsite_routes.rs:1266 Job::Verify (body ignored)' },
+  { method: 'POST', route: '/api/admin/offsite-backup/copy', roles: ['admin'], shapes: ['plain'], starts: 'offsite_routes.rs:1267 copy_now (body ignored)' },
+  { method: 'POST', route: '/api/admin/offsite-backup/new-store', roles: ['admin'], shapes: ['plain'], starts: 'offsite_routes.rs:1268 new_store (body ignored)' },
+  { method: 'POST', route: '/api/admin/decision-settings/test', roles: ['admin'], shapes: ['plain'], starts: 'decision_settings_routes.rs:589 connection_test, which probes the validated saved URL (:692 health)' },
 ];
 // Dry run 2026-11-05 (front at this branch, Node at front-core.ref): 27 unsafe cases succeeded.
 // Not listed: POST/PUT/PATCH/DELETE /api/models/downloads admin (200) - Node's models.cjs:786 answers
 // any non-GET method with the download list, a read, so they stay in the grid as residual answers.
-// Passkey option POSTs create a sign-in/registration challenge; the rest write settings or delete.
+// Passkey option POSTs save a challenge (server-account passkeys.rs:193, :403); the rest write
+// settings or delete. Not listed: POST /api/integrations/storage/nextcloud/cancel (200
+// {cancelled:false}): the empty flow id finds no flow (storage_integration_routes.rs:643-644,
+// :1354-1362), nothing is written.
 const SUCCESSFUL_WRITES = [
   'PUT /api/account/preferences member',
   'PUT /api/account/preferences admin',
@@ -74,8 +101,6 @@ const SUCCESSFUL_WRITES = [
   'POST /api/auth/passkeys/register/options admin',
   'POST /api/connectors/gdrive/disconnect member',
   'POST /api/connectors/gdrive/disconnect admin',
-  'POST /api/integrations/storage/nextcloud/cancel member',
-  'POST /api/integrations/storage/nextcloud/cancel admin',
   'DELETE /api/mcp-keys/grid-x member',
   'DELETE /api/mcp-keys/grid-x admin',
   'DELETE /api/mcp-oauth/grid-x member',
@@ -103,11 +128,13 @@ const VOLATILE = {
 // runtime registration, auto-tune/calibration/preset state, model-manager, Diary, MCP and tool
 // facts). The in-process replay has no Node, so for these routes `classify` accepts a differing
 // answer as `front-node-facts`: the replay still asserts the front answers them (never Node), but
-// compares their bodies only in the real stack (this oracle). Reviewed baseline 2026-11-05.
+// compares their bodies only in the real stack (this oracle). Reviewed baseline 2026-11-05;
+// `classify` refuses an entry no differing case needs. The harness seeds what Node writes at
+// boot (instance id, credential-encryption key), so routes needing only those are compared.
 const NODE_FACTS = [
   '/api/admin/features', '/api/admin/features/{name}', '/api/admin/mcp-directory/custom', '/api/admin/mcp-directory/{*}',
   '/api/chat-vault-mirror/preferences', '/api/connectors', '/api/connectors/nextcloud/policy', '/api/features',
-  '/api/integrations/storage/nextcloud/poll', '/api/models/assignments', '/api/models/autotune', '/api/models/autotune/cancel',
+  '/api/models/assignments', '/api/models/autotune', '/api/models/autotune/cancel',
   '/api/models/autotune/clear', '/api/models/autotune/resume', '/api/models/autotune/settings', '/api/models/autotune/untuned',
   '/api/models/calibration', '/api/models/calibration/cancel', '/api/models/downloads', '/api/models/inference-budget',
   '/api/models/preset', '/api/profile/diary-connectors', '/api/toolboxes', '/api/toolboxes/permitted',
@@ -163,9 +190,8 @@ function cases(toml, dry) {
     for (const [shape, p] of variants(r.path)) {
       for (const method of METHODS) {
         for (const who of ROLES) {
-          const csrf = who === 'member' || who === 'admin';
           if (who.endsWith('-nocsrf') && !UNSAFE.includes(method)) continue;
-          if (csrf && START_WORK.some(([m, route]) => m === method && route === r.path)) continue;
+          if (START_WORK.some((e) => e.method === method && e.route === r.path && e.roles.includes(who) && e.shapes.includes(shape))) continue;
           const id = `${method} ${p} ${who}`;
           if (writes.has(id) || seen.has(id)) continue;
           seen.add(id);
@@ -243,13 +269,22 @@ async function run(base, dataDir, toml, out, flag) {
     // request with 503 FEATURE_RUNTIME_CONTEXT_UNAVAILABLE ("Internal error") while it cannot
     // read the front's feature runtime context. That is a transient of the stack, not the
     // case's answer: retry it and count the retries (reported, not hidden).
+    // A HEAD answer has no body: a 503 HEAD is the transient only if the same request as GET
+    // (safe) shows it. Up to 60 retries, 500 ms apart.
+    const transient = async (res) => {
+      if (res.status !== 503) return false;
+      if (res.text === '{"error":"Internal error"}') return true;
+      if (c.method !== 'HEAD' || res.text !== '') return false;
+      const probe = await request(base, 'GET', c.path, headersFor({ ...c, method: 'GET' }, ids));
+      return probe.status === 503 && probe.text === '{"error":"Internal error"}';
+    };
     let res;
     let retries = 0;
     for (;;) {
       res = await request(base, c.method, c.path, headersFor(c, ids), UNSAFE.includes(c.method) ? '{}' : undefined);
-      if (!(res.status === 503 && res.text === '{"error":"Internal error"}') || retries === 20) break;
+      if (retries === 60 || !(await transient(res))) break;
       retries += 1;
-      await new Promise((r) => setTimeout(r, 250));
+      await new Promise((r) => setTimeout(r, 500));
     }
     results.push({ ...c, status: res.status, body: parseBody(res.text), ...(retries ? { transient503: retries } : {}) });
   }
@@ -277,50 +312,84 @@ const allowed = (pattern, p) => {
   return a.length === b.length && a.every((s, i) => s === '*' || s === b[i]);
 };
 
-// Replace the reviewed volatile fields with a typed marker (the Rust replay does the same).
+// Replace the reviewed volatile fields with a typed marker (the Rust replay does the same) and
+// collect the invalid ones: a volatile field must hold a non-empty string or a positive number.
 function normalize(body, patterns) {
+  const invalid = [];
   const walk = (v, at) => {
     if (patterns.some((p) => allowed(p, at))) {
       if (typeof v === 'string' && v !== '') return '<volatile:string>';
-      if (typeof v === 'number' && v > 0) return '<volatile:number>';
+      if (typeof v === 'number' && Number.isFinite(v) && v > 0) return '<volatile:number>';
+      invalid.push(`${at}=${JSON.stringify(v)}`);
       return v;
     }
     if (Array.isArray(v)) return v.map((x, i) => walk(x, `${at}/${i}`));
     if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x, `${at}/${k}`)]));
     return v;
   };
-  return walk(body, '');
+  return { body: walk(body, ''), invalid };
 }
 
-function merge(a, b, out) {
-  const one = JSON.parse(fs.readFileSync(a, 'utf8'));
-  const two = new Map(JSON.parse(fs.readFileSync(b, 'utf8')).map((c) => [c.id, c]));
-  const unreviewed = [];
+// Both passes' bodies are normalized and validated, and the normalized structures (markers with
+// their types, field presence, every stable value) must be equal.
+function mergeRows(one, two) {
+  const second = new Map(two.map((c) => [c.id, c]));
+  const problems = [];
   let retries = 0;
   const rows = one.map((c) => {
-    const d = two.get(c.id);
+    const d = second.get(c.id);
     if (!d || d.status !== c.status) throw new Error(`unstable status for ${c.id}: ${c.status} vs ${d?.status}`);
     retries += (c.transient503 || 0) + (d.transient503 || 0);
     const patterns = VOLATILE[`${c.method} ${c.route}`] || [];
-    const extra = differences(c.body, d.body).filter((p) => !patterns.some((q) => allowed(q, p)));
-    if (extra.length) unreviewed.push(`${c.id}: ${extra.join(' ')}`);
+    const [na, nb] = [normalize(c.body, patterns), normalize(d.body, patterns)];
+    for (const [pass, n] of [['a', na], ['b', nb]]) if (n.invalid.length) problems.push(`${c.id}: invalid volatile value in pass ${pass}: ${n.invalid.join(' ')}`);
+    const drift = differences(na.body, nb.body);
+    if (drift.length) problems.push(`${c.id}: bodies differ after normalization: ${drift.join(' ')}`);
     const { transient503: _t, ...row } = c;
     if (INTENTIONAL[c.id]) {
       const { issue, note, status, body, volatileKey } = INTENTIONAL[c.id];
-      return { ...row, status, body, intentional: `${issue}: ${note}`, nodeEra: { status: c.status, body: c.body }, volatileKey };
+      return { ...row, status, body, intentional: `${issue}: ${note}`, nodeEra: { status: c.status, body: na.body }, volatileKey };
     }
-    return { ...row, body: normalize(c.body, patterns) };
+    return { ...row, body: na.body };
   });
-  if (unreviewed.length) throw new Error(`bodies differ outside the reviewed VOLATILE fields:\n${unreviewed.join('\n')}`);
+  if (problems.length) throw new Error(`merge refused:\n${problems.join('\n')}`);
   for (const id of Object.keys(INTENTIONAL)) if (!rows.some((r) => r.id === id)) throw new Error(`intentional case ${id} not in the grid`);
+  return { rows, retries };
+}
+
+function merge(a, b, out) {
+  const { rows, retries } = mergeRows(JSON.parse(fs.readFileSync(a, 'utf8')), JSON.parse(fs.readFileSync(b, 'utf8')));
   writeFixture(out, {
-    note: 'Generated by tests/residual-grid-oracle.cjs: two runs on fresh synthetic stacks (tools/front/replay-front.sh, Node at contracts/http/front-core.ref). policy is the operation policy the case set follows; tests/residual_grid.rs recomputes the set from routes.toml. Bodies have the reviewed policy.volatile fields as <volatile:string|number>; answeredBy comes from `classify`.',
+    note: 'Generated by tests/residual-grid-oracle.cjs: two runs on fresh synthetic stacks (tools/front/replay-front.sh, Node at contracts/http/front-core.ref). policy is the operation policy the case set follows; tests/residual_grid.rs recomputes the set from routes.toml. Bodies have the reviewed policy.volatile fields as <volatile:string|number>, validated in both runs; answeredBy comes from `classify`.',
     frontCoreRef: fs.readFileSync(path.join(__dirname, '../../../contracts/http/front-core.ref'), 'utf8').trim(),
     transient503Retries: retries,
     policy: POLICY,
     cases: rows,
   });
   console.log(`${rows.length} cases, ${retries} transient 503 retries -> ${out}`);
+}
+
+// Merge negative controls: volatile drift between the passes must be refused.
+function selftest() {
+  const row = (json) => ({ id: 'GET /api/instance anon', family: 'N2', route: '/api/instance', shape: 'plain', method: 'GET', path: '/api/instance', who: 'anon', status: 200, body: { kind: 'json', json } });
+  const slash = { ...row({ id: 'x' }), id: 'GET /api/instance/ anon', path: '/api/instance/', shape: 'slash', status: 503, body: { kind: 'json', json: { error: 'Web address is unavailable right now.' } } };
+  const pair = (a, b) => [[row(a), slash], [row(b), slash]];
+  const ok = mergeRows(...pair({ id: 'aaa' }, { id: 'bbb' }));
+  if (ok.rows[0].body.json.id !== '<volatile:string>') throw new Error('selftest: valid volatile id was not normalized');
+  const controls = [
+    ['string -> number', { id: 'aaa' }, { id: 123 }, /bodies differ after normalization/],
+    ['missing field', { id: 'aaa' }, {}, /bodies differ after normalization/],
+    ['empty string', { id: 'aaa' }, { id: '' }, /invalid volatile value in pass b/],
+    ['non-positive number', { id: 0 }, { id: 0 }, /invalid volatile value in pass a/],
+    ['stable field drift', { id: 'aaa', x: 1 }, { id: 'bbb', x: 2 }, /bodies differ after normalization: \/json\/x/],
+  ];
+  for (const [name, a, b, expect] of controls) {
+    let message = null;
+    try { mergeRows(...pair(a, b)); } catch (e) { message = e.message; }
+    if (!message || !expect.test(message)) throw new Error(`selftest ${name}: merge ${message ? `refused differently: ${message}` : 'accepted the drift'}`);
+    console.log(`selftest ${name}: refused as expected`);
+  }
+  console.log('selftest ok');
 }
 
 function classify(fixture, report) {
@@ -338,6 +407,8 @@ function classify(fixture, report) {
     c.answeredBy = who;
   }
   if (bad.length) throw new Error(`baseline has native mismatches outside NODE_FACTS; fix them first:\n${bad.join('\n')}`);
+  const unused = NODE_FACTS.filter((r) => !doc.cases.some((c) => c.route === r && c.answeredBy === 'front-node-facts'));
+  if (unused.length) throw new Error(`NODE_FACTS routes with no differing case (remove them): ${unused.join(' ')}`);
   writeFixture(fixture, doc);
   const n = (k) => doc.cases.filter((c) => c.answeredBy === k).length;
   console.log(`classified ${doc.cases.length}: front ${n('front')}, front-node-facts ${n('front-node-facts')}, node ${n('node')}`);
@@ -350,6 +421,6 @@ function writeFixture(out, doc) {
 }
 
 const [mode, ...args] = process.argv.slice(2);
-const modes = { run, merge: async (...a) => merge(...a), classify: async (...a) => classify(...a) };
-(modes[mode] ? modes[mode](...args) : Promise.reject(new Error('usage: run|merge|classify')))
+const modes = { run, merge: async (...a) => merge(...a), classify: async (...a) => classify(...a), selftest: async () => selftest() };
+(modes[mode] ? modes[mode](...args) : Promise.reject(new Error('usage: run|merge|classify|selftest')))
   .catch((e) => { console.error(e.stack || e.message); process.exitCode = 1; });

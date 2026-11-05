@@ -123,6 +123,15 @@ async fn front(up: SocketAddr, data: &Path) -> SocketAddr {
     )
     .unwrap();
     drop(c);
+    // Node also writes the credential-encryption key at boot (core server/secrets.cjs:17-18: 32
+    // random bytes, mode 0600); the storage-integration flows read it. A fixed synthetic key.
+    let key = data.join("secrets.key");
+    std::fs::write(&key, [0x5au8; 32]).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
     let mut env: HashMap<&str, String> = HashMap::new();
     env.insert("NOEVIA_LEGACY_UPSTREAM", format!("http://{up}"));
     env.insert("UI_PORT", "1".into());
@@ -344,8 +353,8 @@ fn strings(v: &Value) -> Vec<String> {
         .collect()
 }
 
-/// The oracle's `variants`: concrete paths for one route pattern.
-fn variants(pattern: &str) -> Vec<String> {
+/// The oracle's `variants`: (shape, concrete path) for one route pattern.
+fn variants(pattern: &str) -> Vec<(&'static str, String)> {
     let base = pattern.strip_suffix("{*?}").unwrap_or(pattern);
     let fill = |v: &str| {
         let mut out = String::new();
@@ -359,14 +368,21 @@ fn variants(pattern: &str) -> Vec<String> {
         out.push_str(rest);
         out
     };
-    let mut out = vec![fill("grid-x"), format!("{}/", fill("grid-x"))];
+    let mut out = vec![
+        ("plain", fill("grid-x")),
+        ("slash", format!("{}/", fill("grid-x"))),
+    ];
     if base.contains('{') {
-        out.extend([fill("%zz"), fill(".."), fill("a%2Fb")]);
+        out.extend([
+            ("malformed", fill("%zz")),
+            ("dotted", fill("..")),
+            ("encoded-slash", fill("a%2Fb")),
+        ]);
     }
     if base.len() != pattern.len() {
-        out.push(format!("{}/grid-x", fill("grid-x")));
+        out.push(("suffix", format!("{}/grid-x", fill("grid-x"))));
     }
-    for p in &out {
+    for (_, p) in &out {
         assert!(!p.contains(['{', '}']), "template placeholder left in {p}");
     }
     out
@@ -380,11 +396,23 @@ fn expected_ids(policy: &Value) -> (BTreeSet<String>, usize) {
         strings(&policy["unsafe"]),
         strings(&policy["roles"]),
     );
-    let start_work: Vec<(String, String)> = policy["startWork"]
+    // Each exclusion names its method, route, roles and shapes, and cites where the work starts.
+    let start_work: Vec<(String, String, Vec<String>, Vec<String>)> = policy["startWork"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|p| (p[0].as_str().unwrap().into(), p[1].as_str().unwrap().into()))
+        .map(|e| {
+            assert!(
+                e["starts"].as_str().is_some_and(|s| !s.is_empty()),
+                "startWork entry without a source citation: {e}"
+            );
+            (
+                e["method"].as_str().unwrap().into(),
+                e["route"].as_str().unwrap().into(),
+                strings(&e["roles"]),
+                strings(&e["shapes"]),
+            )
+        })
         .collect();
     let writes: BTreeSet<String> = strings(&policy["successfulWrites"]).into_iter().collect();
     let in_family = |path: &str| {
@@ -403,14 +431,18 @@ fn expected_ids(policy: &Value) -> (BTreeSet<String>, usize) {
         .filter(|r| r.owner == Owner::Rust && !r.catch_all && in_family(r.path))
     {
         routes += 1;
-        for p in variants(r.path) {
+        for (shape, p) in variants(r.path) {
             for m in &methods {
                 for who in &roles {
-                    let csrf = who == "member" || who == "admin";
                     if who.ends_with("-nocsrf") && !unsafe_methods.contains(m) {
                         continue;
                     }
-                    if csrf && start_work.iter().any(|(sm, sr)| sm == m && sr == r.path) {
+                    if start_work.iter().any(|(sm, sr, sroles, sshapes)| {
+                        sm == m
+                            && sr == r.path
+                            && sroles.contains(who)
+                            && sshapes.iter().any(|x| x == shape)
+                    }) {
                         continue;
                     }
                     let id = format!("{m} {p} {who}");
