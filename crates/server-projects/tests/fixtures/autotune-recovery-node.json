@@ -1,0 +1,809 @@
+{
+  "source": "99ebd9c951b16cb6beeeae8bd79722cf4f3368bb",
+  "now": 123456,
+  "records": [
+    {
+      "input": {
+        "name": "empty",
+        "state": {}
+      },
+      "expected": {
+        "state": {},
+        "text": "[synthetic]\nctx-size = 8192\n",
+        "effects": []
+      }
+    },
+    {
+      "input": {
+        "name": "completed",
+        "state": {
+          "job": {
+            "id": "synthetic-job",
+            "model": "synthetic",
+            "status": "passed",
+            "phase": "Context size",
+            "_revision": "285844abf2238ac031aa8c1a99d0ee211de840ecfe2f6551d97d98c4e35f1fed",
+            "models": [
+              {
+                "model": "synthetic",
+                "status": "running",
+                "phases": [
+                  {
+                    "id": "context",
+                    "label": "Context size",
+                    "status": "running",
+                    "_beforeText": "[synthetic]\nctx-size = 4096\n",
+                    "steps": [
+                      {
+                        "id": "capacity",
+                        "label": "Load and long-prompt recall",
+                        "status": "running"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "state": {
+          "job": {
+            "id": "synthetic-job",
+            "model": "synthetic",
+            "status": "passed",
+            "phase": "Context size",
+            "_revision": "285844abf2238ac031aa8c1a99d0ee211de840ecfe2f6551d97d98c4e35f1fed",
+            "models": [
+              {
+                "model": "synthetic",
+                "status": "running",
+                "phases": [
+                  {
+                    "id": "context",
+                    "label": "Context size",
+                    "status": "running",
+                    "_beforeText": "[synthetic]\nctx-size = 4096\n",
+                    "steps": [
+                      {
+                        "id": "capacity",
+                        "label": "Load and long-prompt recall",
+                        "status": "running"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "text": "[synthetic]\nctx-size = 8192\n",
+        "effects": []
+      }
+    },
+    {
+      "input": {
+        "name": "restore-phase",
+        "state": {
+          "job": {
+            "id": "synthetic-job",
+            "model": "synthetic",
+            "status": "running",
+            "phase": "Context size",
+            "_revision": "285844abf2238ac031aa8c1a99d0ee211de840ecfe2f6551d97d98c4e35f1fed",
+            "models": [
+              {
+                "model": "synthetic",
+                "status": "running",
+                "phases": [
+                  {
+                    "id": "context",
+                    "label": "Context size",
+                    "status": "running",
+                    "_beforeText": "[synthetic]\nctx-size = 4096\n",
+                    "steps": [
+                      {
+                        "id": "capacity",
+                        "label": "Load and long-prompt recall",
+                        "status": "running"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "state": {
+          "job": {
+            "id": "synthetic-job",
+            "model": "synthetic",
+            "status": "interrupted",
+            "phase": "Interrupted",
+            "_revision": "abfcadc87b63e89f713f03fbf3843f210e0ed41c1f528111daa93463836d40ce",
+            "models": [
+              {
+                "model": "synthetic",
+                "status": "interrupted",
+                "phases": [
+                  {
+                    "id": "context",
+                    "label": "Context size",
+                    "status": "interrupted",
+                    "steps": [
+                      {
+                        "id": "capacity",
+                        "label": "Load and long-prompt recall",
+                        "status": "interrupted",
+                        "reason": "Restart interrupted this phase."
+                      }
+                    ],
+                    "restored": true,
+                    "reason": "Restart interrupted this phase."
+                  }
+                ]
+              }
+            ],
+            "_reloadPending": false,
+            "finishedAt": 123456,
+            "failedPhase": "Context size",
+            "failedStep": "Load and long-prompt recall",
+            "error": "Restart interrupted tuning. Completed settings remain saved."
+          },
+          "history": {},
+          "settings": {}
+        },
+        "text": "[synthetic]\nctx-size = 4096\n",
+        "effects": [
+          "unload",
+          "restore",
+          "invalidate",
+          "reload"
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "external-edit",
+        "text": "external edit",
+        "state": {
+          "job": {
+            "id": "synthetic-job",
+            "model": "synthetic",
+            "status": "running",
+            "phase": "Context size",
+            "_revision": "285844abf2238ac031aa8c1a99d0ee211de840ecfe2f6551d97d98c4e35f1fed",
+            "models": [
+              {
+                "model": "synthetic",
+                "status": "running",
+                "phases": [
+                  {
+                    "id": "context",
+                    "label": "Context size",
+                    "status": "running",
+                    "_beforeText": "[synthetic]\nctx-size = 4096\n",
+                    "steps": [
+                      {
+                        "id": "capacity",
+                        "label": "Load and long-prompt recall",
+                        "status": "running"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "state": {
+          "job": {
+            "id": "synthetic-job",
+            "model": "synthetic",
+            "status": "interrupted",
+            "phase": "Interrupted",
+            "_revision": "285844abf2238ac031aa8c1a99d0ee211de840ecfe2f6551d97d98c4e35f1fed",
+            "models": [
+              {
+                "model": "synthetic",
+                "status": "interrupted",
+                "phases": [
+                  {
+                    "id": "context",
+                    "label": "Context size",
+                    "status": "interrupted",
+                    "_beforeText": "[synthetic]\nctx-size = 4096\n",
+                    "steps": [
+                      {
+                        "id": "capacity",
+                        "label": "Load and long-prompt recall",
+                        "status": "interrupted",
+                        "reason": "Restart interrupted this phase."
+                      }
+                    ],
+                    "restored": false,
+                    "reason": "Restart interrupted this phase."
+                  }
+                ]
+              }
+            ],
+            "_unsafe": true,
+            "finishedAt": 123456,
+            "failedPhase": "Context size",
+            "failedStep": "Load and long-prompt recall",
+            "error": "Restart interrupted tuning; settings could not safely be restored. Inspect models.ini before resuming."
+          },
+          "history": {},
+          "settings": {}
+        },
+        "text": "external edit",
+        "effects": []
+      }
+    },
+    {
+      "input": {
+        "name": "deferred-reload",
+        "foreign": true,
+        "state": {
+          "job": {
+            "id": "synthetic-job",
+            "model": "synthetic",
+            "status": "running",
+            "phase": "Context size",
+            "_revision": "285844abf2238ac031aa8c1a99d0ee211de840ecfe2f6551d97d98c4e35f1fed",
+            "models": [
+              {
+                "model": "synthetic",
+                "status": "running",
+                "phases": [
+                  {
+                    "id": "context",
+                    "label": "Context size",
+                    "status": "running",
+                    "_beforeText": "[synthetic]\nctx-size = 4096\n",
+                    "steps": [
+                      {
+                        "id": "capacity",
+                        "label": "Load and long-prompt recall",
+                        "status": "running"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "state": {
+          "job": {
+            "id": "synthetic-job",
+            "model": "synthetic",
+            "status": "interrupted",
+            "phase": "Interrupted",
+            "_revision": "abfcadc87b63e89f713f03fbf3843f210e0ed41c1f528111daa93463836d40ce",
+            "models": [
+              {
+                "model": "synthetic",
+                "status": "interrupted",
+                "phases": [
+                  {
+                    "id": "context",
+                    "label": "Context size",
+                    "status": "interrupted",
+                    "steps": [
+                      {
+                        "id": "capacity",
+                        "label": "Load and long-prompt recall",
+                        "status": "interrupted",
+                        "reason": "Restart interrupted this phase."
+                      }
+                    ],
+                    "restored": true,
+                    "reason": "Restart interrupted this phase."
+                  }
+                ]
+              }
+            ],
+            "_reloadPending": true,
+            "log": [
+              {
+                "at": 123456,
+                "text": "models.ini is restored; the model server re-reads it once the other client is done."
+              }
+            ],
+            "finishedAt": 123456,
+            "failedPhase": "Context size",
+            "failedStep": "Load and long-prompt recall",
+            "error": "Restart interrupted tuning. Completed settings remain saved."
+          },
+          "history": {},
+          "settings": {}
+        },
+        "text": "[synthetic]\nctx-size = 4096\n",
+        "effects": [
+          "unload",
+          "restore"
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "unload-refused",
+        "unloadFails": true,
+        "state": {
+          "job": {
+            "id": "synthetic-job",
+            "model": "synthetic",
+            "status": "running",
+            "phase": "Context size",
+            "_revision": "285844abf2238ac031aa8c1a99d0ee211de840ecfe2f6551d97d98c4e35f1fed",
+            "models": [
+              {
+                "model": "synthetic",
+                "status": "running",
+                "phases": [
+                  {
+                    "id": "context",
+                    "label": "Context size",
+                    "status": "running",
+                    "_beforeText": "[synthetic]\nctx-size = 4096\n",
+                    "steps": [
+                      {
+                        "id": "capacity",
+                        "label": "Load and long-prompt recall",
+                        "status": "running"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "state": {
+          "job": {
+            "id": "synthetic-job",
+            "model": "synthetic",
+            "status": "interrupted",
+            "phase": "Interrupted",
+            "_revision": "285844abf2238ac031aa8c1a99d0ee211de840ecfe2f6551d97d98c4e35f1fed",
+            "models": [
+              {
+                "model": "synthetic",
+                "status": "interrupted",
+                "phases": [
+                  {
+                    "id": "context",
+                    "label": "Context size",
+                    "status": "interrupted",
+                    "_beforeText": "[synthetic]\nctx-size = 4096\n",
+                    "steps": [
+                      {
+                        "id": "capacity",
+                        "label": "Load and long-prompt recall",
+                        "status": "interrupted",
+                        "reason": "Restart interrupted this phase."
+                      }
+                    ],
+                    "restored": false,
+                    "reason": "Restart interrupted this phase."
+                  }
+                ]
+              }
+            ],
+            "_unsafe": true,
+            "finishedAt": 123456,
+            "failedPhase": "Context size",
+            "failedStep": "Load and long-prompt recall",
+            "error": "Restart interrupted tuning; settings could not safely be restored. Inspect models.ini before resuming."
+          },
+          "history": {},
+          "settings": {}
+        },
+        "text": "[synthetic]\nctx-size = 8192\n",
+        "effects": [
+          "unload"
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "reload-refused",
+        "reloadFails": true,
+        "state": {
+          "job": {
+            "id": "synthetic-job",
+            "model": "synthetic",
+            "status": "running",
+            "phase": "Context size",
+            "_revision": "285844abf2238ac031aa8c1a99d0ee211de840ecfe2f6551d97d98c4e35f1fed",
+            "models": [
+              {
+                "model": "synthetic",
+                "status": "running",
+                "phases": [
+                  {
+                    "id": "context",
+                    "label": "Context size",
+                    "status": "running",
+                    "_beforeText": "[synthetic]\nctx-size = 4096\n",
+                    "steps": [
+                      {
+                        "id": "capacity",
+                        "label": "Load and long-prompt recall",
+                        "status": "running"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "state": {
+          "job": {
+            "id": "synthetic-job",
+            "model": "synthetic",
+            "status": "interrupted",
+            "phase": "Interrupted",
+            "_revision": "abfcadc87b63e89f713f03fbf3843f210e0ed41c1f528111daa93463836d40ce",
+            "models": [
+              {
+                "model": "synthetic",
+                "status": "interrupted",
+                "phases": [
+                  {
+                    "id": "context",
+                    "label": "Context size",
+                    "status": "interrupted",
+                    "_beforeText": "[synthetic]\nctx-size = 4096\n",
+                    "steps": [
+                      {
+                        "id": "capacity",
+                        "label": "Load and long-prompt recall",
+                        "status": "interrupted",
+                        "reason": "Restart interrupted this phase."
+                      }
+                    ],
+                    "restored": false,
+                    "reason": "Restart interrupted this phase."
+                  }
+                ]
+              }
+            ],
+            "_unsafe": true,
+            "finishedAt": 123456,
+            "failedPhase": "Context size",
+            "failedStep": "Load and long-prompt recall",
+            "error": "Restart interrupted tuning; settings could not safely be restored. Inspect models.ini before resuming."
+          },
+          "history": {},
+          "settings": {}
+        },
+        "text": "[synthetic]\nctx-size = 4096\n",
+        "effects": [
+          "unload",
+          "restore",
+          "invalidate",
+          "reload"
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "no-snapshot",
+        "state": {
+          "job": {
+            "id": "synthetic-job",
+            "model": "synthetic",
+            "status": "running",
+            "phase": "Context size",
+            "_revision": "285844abf2238ac031aa8c1a99d0ee211de840ecfe2f6551d97d98c4e35f1fed",
+            "models": [
+              {
+                "model": "synthetic",
+                "status": "running",
+                "phases": [
+                  {
+                    "id": "context",
+                    "label": "Context size",
+                    "status": "running",
+                    "steps": [
+                      {
+                        "id": "capacity",
+                        "label": "Load and long-prompt recall",
+                        "status": "running"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "state": {
+          "job": {
+            "id": "synthetic-job",
+            "model": "synthetic",
+            "status": "interrupted",
+            "phase": "Interrupted",
+            "_revision": "285844abf2238ac031aa8c1a99d0ee211de840ecfe2f6551d97d98c4e35f1fed",
+            "models": [
+              {
+                "model": "synthetic",
+                "status": "interrupted",
+                "phases": [
+                  {
+                    "id": "context",
+                    "label": "Context size",
+                    "status": "interrupted",
+                    "steps": [
+                      {
+                        "id": "capacity",
+                        "label": "Load and long-prompt recall",
+                        "status": "interrupted",
+                        "reason": "Restart interrupted this phase."
+                      }
+                    ],
+                    "reason": "Restart interrupted this phase."
+                  }
+                ]
+              }
+            ],
+            "finishedAt": 123456,
+            "failedPhase": "Context size",
+            "failedStep": "Load and long-prompt recall",
+            "error": "Restart interrupted tuning. Completed settings remain saved."
+          },
+          "history": {},
+          "settings": {}
+        },
+        "text": "[synthetic]\nctx-size = 8192\n",
+        "effects": []
+      }
+    },
+    {
+      "input": {
+        "name": "pending-revision",
+        "state": {
+          "job": {
+            "id": "synthetic-job",
+            "model": "synthetic",
+            "status": "running",
+            "phase": "Context size",
+            "_revision": "older",
+            "models": [
+              {
+                "model": "synthetic",
+                "status": "running",
+                "phases": [
+                  {
+                    "id": "context",
+                    "label": "Context size",
+                    "status": "running",
+                    "_beforeText": "[synthetic]\nctx-size = 4096\n",
+                    "steps": [
+                      {
+                        "id": "capacity",
+                        "label": "Load and long-prompt recall",
+                        "status": "running"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "_pendingRevision": "285844abf2238ac031aa8c1a99d0ee211de840ecfe2f6551d97d98c4e35f1fed"
+          }
+        }
+      },
+      "expected": {
+        "state": {
+          "job": {
+            "id": "synthetic-job",
+            "model": "synthetic",
+            "status": "interrupted",
+            "phase": "Interrupted",
+            "_revision": "abfcadc87b63e89f713f03fbf3843f210e0ed41c1f528111daa93463836d40ce",
+            "models": [
+              {
+                "model": "synthetic",
+                "status": "interrupted",
+                "phases": [
+                  {
+                    "id": "context",
+                    "label": "Context size",
+                    "status": "interrupted",
+                    "steps": [
+                      {
+                        "id": "capacity",
+                        "label": "Load and long-prompt recall",
+                        "status": "interrupted",
+                        "reason": "Restart interrupted this phase."
+                      }
+                    ],
+                    "restored": true,
+                    "reason": "Restart interrupted this phase."
+                  }
+                ]
+              }
+            ],
+            "_reloadPending": false,
+            "finishedAt": 123456,
+            "failedPhase": "Context size",
+            "failedStep": "Load and long-prompt recall",
+            "error": "Restart interrupted tuning. Completed settings remain saved."
+          },
+          "history": {},
+          "settings": {}
+        },
+        "text": "[synthetic]\nctx-size = 4096\n",
+        "effects": [
+          "unload",
+          "restore",
+          "invalidate",
+          "reload"
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "pending-not-ours",
+        "state": {
+          "job": {
+            "id": "synthetic-job",
+            "model": "synthetic",
+            "status": "running",
+            "phase": "Context size",
+            "_revision": "older",
+            "models": [
+              {
+                "model": "synthetic",
+                "status": "running",
+                "phases": [
+                  {
+                    "id": "context",
+                    "label": "Context size",
+                    "status": "running",
+                    "_beforeText": "[synthetic]\nctx-size = 4096\n",
+                    "steps": [
+                      {
+                        "id": "capacity",
+                        "label": "Load and long-prompt recall",
+                        "status": "running"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "_pendingRevision": "different"
+          }
+        }
+      },
+      "expected": {
+        "state": {
+          "job": {
+            "id": "synthetic-job",
+            "model": "synthetic",
+            "status": "interrupted",
+            "phase": "Interrupted",
+            "_revision": "older",
+            "models": [
+              {
+                "model": "synthetic",
+                "status": "interrupted",
+                "phases": [
+                  {
+                    "id": "context",
+                    "label": "Context size",
+                    "status": "interrupted",
+                    "_beforeText": "[synthetic]\nctx-size = 4096\n",
+                    "steps": [
+                      {
+                        "id": "capacity",
+                        "label": "Load and long-prompt recall",
+                        "status": "interrupted",
+                        "reason": "Restart interrupted this phase."
+                      }
+                    ],
+                    "restored": false,
+                    "reason": "Restart interrupted this phase."
+                  }
+                ]
+              }
+            ],
+            "_unsafe": true,
+            "finishedAt": 123456,
+            "failedPhase": "Context size",
+            "failedStep": "Load and long-prompt recall",
+            "error": "Restart interrupted tuning; settings could not safely be restored. Inspect models.ini before resuming."
+          },
+          "history": {},
+          "settings": {}
+        },
+        "text": "[synthetic]\nctx-size = 8192\n",
+        "effects": []
+      }
+    },
+    {
+      "input": {
+        "name": "legacy",
+        "state": {
+          "job": {
+            "id": "old",
+            "model": "synthetic",
+            "status": "running",
+            "originalText": "[synthetic]\nctx-size = 4096\n",
+            "lastRevision": "285844abf2238ac031aa8c1a99d0ee211de840ecfe2f6551d97d98c4e35f1fed"
+          }
+        }
+      },
+      "expected": {
+        "state": {
+          "job": {
+            "id": "old",
+            "model": "synthetic",
+            "status": "interrupted",
+            "lastRevision": "285844abf2238ac031aa8c1a99d0ee211de840ecfe2f6551d97d98c4e35f1fed",
+            "restored": true,
+            "error": "An older tuning run was interrupted and restored. Start a new tune."
+          },
+          "history": {},
+          "settings": {}
+        },
+        "text": "[synthetic]\nctx-size = 4096\n",
+        "effects": [
+          "unload",
+          "restore",
+          "invalidate",
+          "reload"
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "legacy-external-edit",
+        "text": "external edit",
+        "state": {
+          "job": {
+            "id": "old",
+            "model": "synthetic",
+            "status": "running",
+            "originalText": "[synthetic]\nctx-size = 4096\n",
+            "lastRevision": "285844abf2238ac031aa8c1a99d0ee211de840ecfe2f6551d97d98c4e35f1fed"
+          }
+        }
+      },
+      "expected": {
+        "state": {
+          "job": {
+            "id": "old",
+            "model": "synthetic",
+            "status": "interrupted",
+            "lastRevision": "285844abf2238ac031aa8c1a99d0ee211de840ecfe2f6551d97d98c4e35f1fed",
+            "restored": false,
+            "error": "An older tuning run was interrupted; settings could not safely be restored. Inspect models.ini before tuning again."
+          },
+          "history": {},
+          "settings": {}
+        },
+        "text": "external edit",
+        "effects": []
+      }
+    }
+  ]
+}

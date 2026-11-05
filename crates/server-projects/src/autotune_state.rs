@@ -414,6 +414,19 @@ impl Owner {
         (409, JValue::Obj(fields))
     }
 
+    /// Check a native actor's exact registration without reattaching or adopting a newer run.
+    /// Cancellation and incarnation changes are terminal for that actor, including during restore.
+    pub fn actor_current(&self, writer: &str, job_rev: f64, epoch: f64) -> bool {
+        let guard = self.lock();
+        guard.as_ref().is_some_and(|b| {
+            b.available
+                && !b.cancelled
+                && b.writer.as_deref() == Some(writer)
+                && b.job_rev as f64 == job_rev
+                && b.epoch as f64 == epoch
+        })
+    }
+
     /// The actor's save: replaces the job and the history (never the settings), if the writer
     /// token and the job revision are current.
     pub fn commit(&self, body: &JValue) -> Answer {
@@ -426,6 +439,13 @@ impl Owner {
         }
         if body.get("jobRev").as_num() != Some(b.job_rev as f64) {
             return Self::fenced("job", Some(b));
+        }
+        // Native effects require an atomic cancellation/incarnation check in the same lock as
+        // publication. The older Node client does not send nativeEpoch during the staged port.
+        if !matches!(body.get("nativeEpoch"), JValue::Undefined)
+            && (b.cancelled || body.get("nativeEpoch").as_num() != Some(b.epoch as f64))
+        {
+            return Self::fenced("epoch", Some(b));
         }
         let register = body.get("register").as_bool() == Some(true);
         let history = body.get("history");

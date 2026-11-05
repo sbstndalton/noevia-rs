@@ -60,6 +60,7 @@
 //! the gate returned and nothing from the request picks another user's files.
 
 pub mod assets;
+pub mod autotune_actor;
 pub mod autotune_settings;
 pub mod autotune_state;
 pub mod chat_delete;
