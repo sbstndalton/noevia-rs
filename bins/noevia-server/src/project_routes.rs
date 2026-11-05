@@ -1032,26 +1032,20 @@ pub async fn serve(
         })
     })
     .await;
-    match revoke_grant {
-        Some((app, user, Some(chat), _)) => {
-            if app.revoke_approvals(&user, &chat).await.is_err() {
-                return reply::error(
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "Approval revocation pending; retry",
-                    true,
-                );
-            }
-        }
-        Some((app, user, None, Some(project))) => {
-            if app.revoke_project_approvals(&user, &project).await.is_err() {
-                return reply::error(
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "Approval revocation pending; retry",
-                    true,
-                );
-            }
-        }
-        _ => {}
+    let revocation = match revoke_grant {
+        Some((app, user, Some(chat), _)) => app.revoke_approvals(&user, &chat).await.map(|_| ()),
+        Some((app, user, None, Some(project))) => app
+            .revoke_project_approvals(&user, &project)
+            .await
+            .map(|_| ()),
+        _ => Ok(()),
+    };
+    if revocation.is_err() {
+        return reply::error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Approval revocation pending; retry",
+            true,
+        );
     }
     if let (Some((app, authn, data_dir)), Ok(Ok(r))) = (sweep_inputs, &done) {
         if r.status == 200 {
