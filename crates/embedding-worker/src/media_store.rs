@@ -256,7 +256,7 @@ impl SqlStore {
                 next += 1;
                 rows.push(Row { id: db.last_insert_rowid(), hash: hash.clone(), text: body.encode_utf16().collect() });
             }
-            Ok((rows, TailCoverage { wanted, final_window: window["final"] == true, to_page: hi }))
+            Ok((rows, TailCoverage { wanted: wanted.into_iter().map(|(hash, _, page)| (hash, page)).collect(), final_window: window["final"] == true, to_page: hi }))
         })
     }
     pub fn tail_coverage(
@@ -272,7 +272,7 @@ impl SqlStore {
             }
             let mut pending = 0;
             let mut first = None;
-            for (hash, _, page) in &coverage.wanted {
+            for (hash, page) in &coverage.wanted {
                 let id = db
                     .query_row(
                         "SELECT id FROM chunks WHERE file=? AND content_hash=?",
@@ -327,7 +327,7 @@ fn vectored(db: &Connection, target: &Target, id: i64, hash: &str) -> Result<boo
         .map_err(|_| fault())
 }
 pub struct TailCoverage {
-    wanted: Vec<(String, String, i64)>,
+    wanted: Vec<(String, i64)>,
     final_window: bool,
     to_page: i64,
 }

@@ -4,6 +4,9 @@
 // Reuse the integration fixtures in the private executor's unit tests.
 #[cfg(test)]
 extern crate self as embedding_worker;
+#[cfg(test)]
+#[path = "../tests/support/mod.rs"]
+pub(crate) mod test_support;
 
 use std::{
     collections::{BTreeMap, BTreeSet},

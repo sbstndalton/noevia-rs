@@ -24,10 +24,15 @@ pub fn seed() -> (tempfile::TempDir, SqlStore) {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     let auth = Connection::open(root.join("cowork.db")).unwrap();
-    auth.execute_batch(include_str!(
-        "../../../server-store/tests/fixtures/node-schema.sql"
-    ))
+    // Fixture setup is one durable transaction, rather than one fsync per DDL.
+    auth.pragma_update(None, "journal_mode", "WAL").unwrap();
+    auth.execute_batch("BEGIN IMMEDIATE").unwrap();
+    auth.execute_batch(
+        &include_str!("../../../server-store/tests/fixtures/node-schema.sql")
+            .replace("PRAGMA journal_mode = WAL;", ""),
+    )
     .unwrap();
+    auth.execute_batch("COMMIT").unwrap();
     std::fs::create_dir(root.join("rag")).unwrap();
     std::fs::write(
         root.join("projects.json"),
@@ -35,7 +40,7 @@ pub fn seed() -> (tempfile::TempDir, SqlStore) {
     )
     .unwrap();
     let db = Connection::open(root.join("rag/p.db")).unwrap();
-    db.execute_batch("PRAGMA journal_mode=WAL;CREATE TABLE chunks(id INTEGER PRIMARY KEY,file TEXT NOT NULL,chunk_no INTEGER NOT NULL,body TEXT NOT NULL,content_hash TEXT NOT NULL,updated_at TEXT,version TEXT,direct INTEGER,kind TEXT,meta TEXT);CREATE TABLE vec_meta(key TEXT PRIMARY KEY,value TEXT);INSERT INTO chunks VALUES(1,'synthetic.txt',0,'synthetic text','hash',NULL,NULL,0,'text',NULL)").unwrap();
+    db.execute_batch("PRAGMA journal_mode=WAL;BEGIN IMMEDIATE;CREATE TABLE chunks(id INTEGER PRIMARY KEY,file TEXT NOT NULL,chunk_no INTEGER NOT NULL,body TEXT NOT NULL,content_hash TEXT NOT NULL,updated_at TEXT,version TEXT,direct INTEGER,kind TEXT,meta TEXT);CREATE TABLE vec_meta(key TEXT PRIMARY KEY,value TEXT);INSERT INTO chunks VALUES(1,'synthetic.txt',0,'synthetic text','hash',NULL,NULL,0,'text',NULL);COMMIT").unwrap();
     let store = SqlStore {
         rag_dir: None,
         root: root.into(),

@@ -250,3 +250,29 @@ pub fn settings(env: &Value) -> Value {
         "intervalMs": n("PROJECT_BACKFILL_INTERVAL_MS", 300000.0, 10000.0, 86400000.0, true)
     })
 }
+
+/// rag.cjs clampInt uses parseInt(value, 10), including signs and trailing text.
+pub fn media_timeout_ms(raw: Option<&str>) -> u64 {
+    let Some(raw) = raw else {
+        return 120000;
+    };
+    let raw = server_projects::js::trim(raw);
+    let (negative, digits) = if let Some(rest) = raw.strip_prefix('-') {
+        (true, rest)
+    } else {
+        (false, raw.strip_prefix('+').unwrap_or(raw))
+    };
+    let mut number = 0.0_f64;
+    let mut count = 0;
+    for digit in digits.bytes().take_while(u8::is_ascii_digit) {
+        number = number * 10.0 + f64::from(digit - b'0');
+        count += 1;
+    }
+    if count == 0 || !number.is_finite() {
+        return 120000;
+    }
+    if negative {
+        number = -number;
+    }
+    number.clamp(5000.0, 600000.0) as u64
+}

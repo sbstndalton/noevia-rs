@@ -1,7 +1,6 @@
 #![allow(clippy::unwrap_used)]
 use super::*;
-#[path = "../tests/support/mod.rs"]
-mod support;
+use crate::test_support as support;
 use server_projects::outbox::{self, Job};
 use std::sync::atomic::AtomicUsize;
 use support::*;

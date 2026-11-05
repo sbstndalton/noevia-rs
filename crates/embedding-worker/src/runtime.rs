@@ -151,6 +151,19 @@ pub(crate) struct NativeHost {
     pub(crate) token: zeroize::Zeroizing<String>,
     pub(crate) start: String,
 }
+#[cfg(test)]
+pub(crate) fn media_test_host(store: SqlStore, http: Http, core: String) -> NativeHost {
+    NativeHost {
+        store,
+        http,
+        core,
+        valid: Arc::new(AtomicBool::new(true)),
+        off: Arc::new(AtomicBool::new(false)),
+        service_base: None,
+        token: zeroize::Zeroizing::new("synthetic-token".into()),
+        start: "11111111111111111111111111111111".into(),
+    }
+}
 impl NativeHost {
     fn off(&self, target: &Target) -> bool {
         self.off.load(Ordering::Acquire)

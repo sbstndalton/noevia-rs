@@ -259,6 +259,58 @@ pub fn claim_requests(
     requests
 }
 
+fn same_tail_source(before: &Value, after: &Value) -> bool {
+    let mut before = before.clone();
+    let mut after = after.clone();
+    for file in [&mut before, &mut after] {
+        if let Some(document) = file.get_mut("document").and_then(Value::as_object_mut) {
+            document.remove("searchable");
+        }
+    }
+    before == after
+}
+struct CancelTailRead(Arc<std::sync::atomic::AtomicBool>);
+impl Drop for CancelTailRead {
+    fn drop(&mut self) {
+        self.0.store(true, std::sync::atomic::Ordering::Release);
+    }
+}
+// The blocking task owns both the parsed record and its resource permit. Only
+// bounded embedding rows and compact coverage leave it; no record or permit
+// remains resident across HTTP/pacing awaits on the shared owner runtime.
+async fn with_tail_record<T: Send + 'static>(
+    path: std::path::PathBuf,
+    size: usize,
+    lock: Option<std::path::PathBuf>,
+    control: Control,
+    work: impl FnOnce(&Value) -> Result<T, String> + Send + 'static,
+) -> Result<Option<T>, String> {
+    let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let _cancel_on_drop = CancelTailRead(cancelled.clone());
+    tokio::task::spawn_blocking(move || {
+        let cancelled = || {
+            cancelled.load(std::sync::atomic::Ordering::Acquire)
+                || control.stopped()
+                || control.suspended()
+        };
+        let _held = extract::large_lock_cancellable(size, lock.as_deref(), &cancelled)?;
+        let record = read(&path);
+        if cancelled() {
+            return Err("tail work cancelled".into());
+        }
+        record.as_ref().map(work).transpose()
+    })
+    .await
+    .map_err(|_| "tail worker unavailable".to_owned())?
+}
+struct TailBatch {
+    rows: Vec<crate::fill::Row>,
+    coverage: crate::media_store::TailCoverage,
+    final_window: bool,
+    limited: bool,
+    to_page: i64,
+}
+
 struct Worker<'a> {
     host: &'a NativeHost,
     control: Control,
@@ -522,7 +574,20 @@ impl Worker<'_> {
                 .as_array()
                 .cloned()
                 .unwrap_or_default();
-            for file in files {
+            for selected in files {
+                let Ok(snapshot) = self.host.store.media_snapshot(
+                    snapshot.index.user.as_deref().unwrap_or_default(),
+                    &snapshot.index.project,
+                ) else {
+                    continue;
+                };
+                let Some(file) = snapshot.project["files"]
+                    .as_array()
+                    .and_then(|files| files.iter().find(|file| file["name"] == selected["name"]))
+                    .cloned()
+                else {
+                    continue;
+                };
                 if done >= env_num("NOEVIA_MULTIMODAL_FIGURE_SWEEP_MAX", 10, 1, 100) {
                     return;
                 }
@@ -601,7 +666,20 @@ impl Worker<'_> {
                 .as_array()
                 .cloned()
                 .unwrap_or_default();
-            for file in files {
+            for selected in files {
+                let Ok(snapshot) = self.host.store.media_snapshot(
+                    snapshot.index.user.as_deref().unwrap_or_default(),
+                    &snapshot.index.project,
+                ) else {
+                    continue;
+                };
+                let Some(file) = snapshot.project["files"]
+                    .as_array()
+                    .and_then(|files| files.iter().find(|file| file["name"] == selected["name"]))
+                    .cloned()
+                else {
+                    continue;
+                };
                 if self.control.stopped() {
                     return;
                 }
@@ -671,30 +749,19 @@ impl Worker<'_> {
                 {
                     continue;
                 }
-                let record = {
-                    let declared = file
-                        .pointer("/document/bytes")
-                        .and_then(Value::as_u64)
-                        .and_then(|n| usize::try_from(n).ok())
-                        .unwrap_or(extract::LARGE_BYTES + 1);
-                    let Ok(_large) = extract::large_lock_cancellable(
-                        declared,
-                        self.engine.large_lock_file().as_deref(),
-                        &|| self.control.stopped() || self.control.suspended(),
-                    ) else {
-                        continue;
-                    };
-                    server_projects::document_ingest::version_path(
-                        &dir,
-                        &current.index.project,
-                        file["document"]["availableVersion"]
-                            .as_str()
-                            .unwrap_or_default(),
-                        ".json",
-                    )
-                    .and_then(|p| read(&p))
-                };
-                let Some(record) = record else {
+                let declared = file
+                    .pointer("/document/bytes")
+                    .and_then(Value::as_u64)
+                    .and_then(|n| usize::try_from(n).ok())
+                    .unwrap_or(extract::LARGE_BYTES + 1);
+                let Some(path) = server_projects::document_ingest::version_path(
+                    &dir,
+                    &current.index.project,
+                    file["document"]["availableVersion"]
+                        .as_str()
+                        .unwrap_or_default(),
+                    ".json",
+                ) else {
                     continue;
                 };
                 let mut from = file
@@ -713,31 +780,60 @@ impl Worker<'_> {
                         return;
                     }
                     let limit = allowance.min(self.cfg["batch"].as_f64().unwrap_or(8.0) as usize);
-                    let window = media_policy::tail_window(
-                        &head,
-                        &record,
-                        &json!({"textLimit":Limits::from_env().text,"fromPage":from,"maxChars":(limit+2)*1200}),
-                        crate::outbox::chunks,
-                    );
-                    if window.is_null() {
-                        self.backoff
-                            .insert(key.clone(), Instant::now() + Duration::from_secs(3600));
-                        break;
-                    }
                     let started = Instant::now();
                     let Ok(config) = self.host.store.config() else {
                         return;
                     };
-                    let Ok((rows, coverage)) = self.host.store.prepare_tail(
-                        &current,
-                        &name,
-                        &head,
-                        &window,
-                        &config.active,
-                        limit,
-                        &self.control,
-                    ) else {
-                        break;
+                    let store = self.host.store.clone();
+                    let snapshot = current.clone();
+                    let head_copy = head.clone();
+                    let name_copy = name.clone();
+                    let target = config.active.clone();
+                    let control = self.control.clone();
+                    let options = json!({"textLimit":Limits::from_env().text,"fromPage":from,"maxChars":(limit+2)*1200});
+                    let prepared = with_tail_record(
+                        path.clone(),
+                        declared,
+                        self.engine.large_lock_file(),
+                        self.control.clone(),
+                        move |record| {
+                            let window = media_policy::tail_window(
+                                &head_copy,
+                                record,
+                                &options,
+                                crate::outbox::chunks,
+                            );
+                            if window.is_null() {
+                                return Ok(None);
+                            }
+                            let (rows, coverage) = store.prepare_tail(
+                                &snapshot, &name_copy, &head_copy, &window, &target, limit,
+                                &control,
+                            )?;
+                            Ok(Some(TailBatch {
+                                rows,
+                                coverage,
+                                final_window: window["final"] == true,
+                                limited: window["limited"] == true,
+                                to_page: window["toPage"].as_i64().unwrap_or(0),
+                            }))
+                        },
+                    )
+                    .await;
+                    let TailBatch {
+                        rows,
+                        coverage,
+                        final_window,
+                        limited,
+                        to_page,
+                    } = match prepared {
+                        Ok(Some(Some(batch))) => batch,
+                        Ok(Some(None)) => {
+                            self.backoff
+                                .insert(key.clone(), Instant::now() + Duration::from_secs(3600));
+                            break;
+                        }
+                        _ => break,
                     };
                     let attempted = rows.len();
                     let mut embedded = 0;
@@ -800,24 +896,29 @@ impl Worker<'_> {
                     else {
                         break;
                     };
-                    let complete = window["final"] == true && pending == 0;
+                    let complete = final_window && pending == 0;
                     let mut marker = json!({"version":file["document"]["availableVersion"],"page":if complete{None}else{page},"complete":complete});
-                    if window["limited"] == true {
+                    if limited {
                         marker["limited"] = json!(true);
                     }
                     if self.save_coverage(&current, &name, &file, marker).is_err() {
                         break;
                     }
-                    let Ok(s) = self
-                        .host
-                        .store
-                        .media_snapshot(user, &snapshot.index.project)
-                    else {
+                    let Ok(s) = self.host.store.media_snapshot(user, &current.index.project) else {
                         break;
                     };
                     current = s;
                     if failed {
                         return;
+                    }
+                    // Our coverage marker may change; a foreground source change
+                    // must not make a later window continue with the old record.
+                    if !current.project["files"]
+                        .as_array()
+                        .and_then(|files| files.iter().find(|file| file["name"] == name))
+                        .is_some_and(|now| same_tail_source(&file, now))
+                    {
+                        break;
                     }
                     if complete {
                         break;
@@ -831,7 +932,7 @@ impl Worker<'_> {
                         break;
                     }
                     if pending == 0 {
-                        from = window["toPage"].as_i64().unwrap_or(0) + 1;
+                        from = to_page + 1;
                     }
                     if attempted > 0 {
                         self.document_pause(started).await;
@@ -1097,5 +1198,30 @@ mod timing_tests {
         assert!(schedule.media_due(false));
         schedule.media_done(false);
         assert!(!schedule.media_due(false));
+    }
+}
+
+#[cfg(test)]
+#[path = "media_regression_tests.rs"]
+mod regression_tests;
+
+#[cfg(test)]
+mod source_fence_tests {
+    use super::*;
+    #[test]
+    fn tail_continuation_accepts_only_its_own_coverage_change() {
+        let file = json!({"name":"a.pdf","content":"same head","document":{"availableVersion":"a","byteHash":"original"}});
+        let mut progress = file.clone();
+        progress["document"]["searchable"] = json!({"version":"a","page":2,"complete":false});
+        assert!(same_tail_source(&file, &progress));
+        progress["document"]["availableVersion"] = json!("b");
+        assert!(
+            !same_tail_source(&file, &progress),
+            "same head cannot authorize a different record"
+        );
+        let mut edit = file.clone();
+        edit["content"] = json!("edited head");
+        assert!(!same_tail_source(&file, &edit));
+        assert!(!same_tail_source(&file, &Value::Null));
     }
 }

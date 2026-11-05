@@ -62,3 +62,16 @@ fn node_settings() {
         }
     }
 }
+
+#[test]
+fn node_media_timeout_parse_int() {
+    let fixture: Value = serde_json::from_str(include_str!("fixtures/media-u2-node.json")).unwrap();
+    for case in fixture["timeouts"].as_array().unwrap() {
+        assert_eq!(
+            embedding_worker::media_policy::media_timeout_ms(case["raw"].as_str()),
+            case["result"].as_u64().unwrap(),
+            "{}",
+            case["raw"]
+        );
+    }
+}

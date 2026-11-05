@@ -375,7 +375,7 @@ pub const FEATURES: &[&str] = &[
     "rust-research",
     "rust-task-reads",
     "rust-tool-approvals",
-    server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER,
+    "noevia-research-jobs-store/1",
     "rust-auth",
     "rust-diary",
     "rust-diary-routes",
@@ -1162,4 +1162,14 @@ async fn handle(
 /// `into_make_service_with_connect_info::<serve::Conn>()`, which has no timeouts).
 pub fn router(app: Arc<App>) -> Router {
     Router::new().fallback(handle).with_state(app)
+}
+
+#[cfg(test)]
+mod feature_literal_compatibility_tests {
+    #[test]
+    fn research_job_feature_literal_matches_its_store() {
+        assert!(
+            super::FEATURES.contains(&server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER)
+        );
+    }
 }

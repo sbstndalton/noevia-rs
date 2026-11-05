@@ -340,7 +340,7 @@ impl Http {
         };
         let operation = async {
             let (base, headers) = self.target(target)?;
-            let (status, body) = self.request(api(&base, "/v1/embeddings")?, Method::POST, headers, Some(serde_json::json!({"model":model,"input":[{"content":[part]}],"encoding_format":"float"}).to_string()), Duration::from_millis(std::env::var("RAG_MEDIA_EMBED_TIMEOUT_MS").ok().and_then(|s|s.parse::<u64>().ok()).unwrap_or(120000).clamp(5000,600000)), 4*1024*1024).await?;
+            let (status, body) = self.request(api(&base, "/v1/embeddings")?, Method::POST, headers, Some(serde_json::json!({"model":model,"input":[{"content":[part]}],"encoding_format":"float"}).to_string()), Duration::from_millis(crate::media_policy::media_timeout_ms(std::env::var("RAG_MEDIA_EMBED_TIMEOUT_MS").ok().as_deref())), 4*1024*1024).await?;
             if !(200..300).contains(&status) {
                 return Err(err());
             }
