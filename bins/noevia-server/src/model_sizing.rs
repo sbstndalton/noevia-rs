@@ -29,6 +29,7 @@
 use crate::reply;
 use axum::body::Body;
 use axum::http::{Response, StatusCode};
+use js_json::JValue;
 use prompt_framing::json::Value;
 use server_stats::compose::Read;
 use std::io::{Read as _, Seek, SeekFrom};
@@ -74,6 +75,12 @@ pub struct Sizing {
     explicit_gib: f64,
     /// inference-budget.cjs `cacheRamLimits(env).capMib`.
     cache_ram_max_mib: f64,
+    /// inference-budget.cjs `cacheRamLimits(env).hardMaxMib`.
+    cache_ram_hard_max_mib: f64,
+    /// index.cjs `autoconfigBudget.budgetGib`: the explicit figure, else the container memory limit.
+    autoconfig_budget_gib: f64,
+    /// index.cjs `autoconfigBudget.budgetFault`: the memory limit could not be evaluated.
+    budget_fault: bool,
 }
 
 impl Sizing {
@@ -85,6 +92,11 @@ impl Sizing {
 
     pub(crate) fn kind(&self) -> server_stats::Kind {
         self.kind
+    }
+
+    /// inference-budget.cjs `cacheRamLimits()`: `(capMib, hardMaxMib)`, as `prepare` reads them.
+    pub(crate) fn cache_ram_limits(&self) -> (f64, f64) {
+        (self.cache_ram_max_mib, self.cache_ram_hard_max_mib)
     }
 
     /// The router's `/models` listing (bounded by the engine's listing timeout).
@@ -101,6 +113,27 @@ impl std::fmt::Debug for Sizing {
             .field("models_path", &self.models_path)
             .finish_non_exhaustive()
     }
+}
+
+/// index.cjs `parseMemoryLimit(LLAMACPP_MEMORY_LIMIT)` through the Rust port: `Ok(Some(gib))`,
+/// `Ok(None)` (no limit), or `Err` where the evaluation faulted (`budgetFault`).
+fn memory_limit_gib(v: Option<&str>) -> Result<Option<f64>, ()> {
+    let args = match v {
+        Some(v) => serde_json::json!({ "value": v }).to_string(),
+        None => "{}".into(),
+    };
+    let mut input = vec![6u8];
+    input.extend_from_slice(args.as_bytes());
+    let (status, text) = llamacpp_autoconfig::call(&input);
+    if status != 0 {
+        return Err(());
+    }
+    let v: serde_json::Value = serde_json::from_str(&text).map_err(|_| ())?;
+    Ok(match v.get("gib") {
+        Some(serde_json::Value::Number(n)) => n.as_f64().filter(|g| *g != 0.0),
+        Some(serde_json::Value::String(s)) if s == "Infinity" => Some(f64::INFINITY),
+        _ => None,
+    })
 }
 
 /// JS `Number(text)` (`undefined` is NaN).
@@ -148,14 +181,101 @@ impl Sizing {
                 1024.0,
             )),
         );
+        let explicit_gib = or_zero(env_number(get("LLAMACPP_AUTOCONFIG_MEMORY_GIB").as_deref()));
+        let (autoconfig_budget_gib, budget_fault) = if explicit_gib != 0.0 {
+            (explicit_gib, false)
+        } else {
+            memory_limit_gib(get("LLAMACPP_MEMORY_LIMIT").as_deref())
+                .map_or((0.0, true), |g| (g.unwrap_or(0.0), false))
+        };
         Sizing {
             kind,
             engine,
+            autoconfig_budget_gib,
+            budget_fault,
             presets: set("LLAMACPP_PRESET_PATH").map(PathBuf::from),
             models_path: set("LLAMACPP_MODELS_PATH").unwrap_or_default(),
             cache_path: set("LLAMACPP_CACHE_PATH").unwrap_or_default(),
             explicit_gib: or_zero(env_number(get("LLAMACPP_AUTOCONFIG_MEMORY_GIB").as_deref())),
             cache_ram_max_mib: cap,
+            cache_ram_hard_max_mib: hard_max,
+        }
+    }
+
+    /// llamacpp-manager.cjs `sizingBudgetGib()` with Node's inference budget `inference` (0 when it
+    /// has none): that budget, lowered only by the explicit figure; else the autoconfig budget.
+    pub(crate) fn calibration_budget_gib(&self, inference: f64) -> f64 {
+        if inference > 0.0 {
+            return self.sizing_budget_gib(inference);
+        }
+        if self.autoconfig_budget_gib > 0.0 {
+            self.autoconfig_budget_gib
+        } else {
+            0.0
+        }
+    }
+
+    /// llamacpp-manager.cjs `conservativeFor(model)`: the native context from the model file and the
+    /// suggested starting values, or `None` (Node's null) on a budget fault, an unreadable model or
+    /// profile, or a refused suggestion.
+    pub(crate) fn conservative_for(
+        &self,
+        model: &str,
+        inference: f64,
+        listing: &Read,
+    ) -> Option<JValue> {
+        let budget = self.calibration_budget_gib(inference);
+        if self.budget_fault && budget.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater) {
+            return None;
+        }
+        let file = self.presets.clone()?;
+        let read = self.read_model(&file, model, listing).ok()?;
+        let current = read_presets(&file).ok()?.current(model);
+        let meta = meta_json(&read.summary);
+        let args = format!(
+            r#"{{"meta":{meta},"modelBytes":{},"mmprojBytes":{},"budgetGib":{},"current":{},"cacheRamMaxMib":{}}}"#,
+            num(read.model_bytes as f64),
+            num(read.mmproj_bytes as f64),
+            num(if budget > 0.0 { budget } else { 1e6 }),
+            current_json(&current),
+            num(self.cache_ram_max_mib)
+        );
+        let result = js_json::wtf16::parse(&port(1, &args)?).ok()?;
+        let native = match js_json::wtf16::parse(&meta).ok()?.get("contextLength") {
+            JValue::Num(n) if *n != 0.0 && !n.is_nan() => *n,
+            _ => 0.0,
+        };
+        let values = match result.get("values") {
+            v if v.truthy() => v.clone(),
+            _ => JValue::Null,
+        };
+        Some(JValue::obj([
+            ("native", JValue::Num(native)),
+            ("values", values),
+        ]))
+    }
+
+    /// What `tuneIdentity` reads through `readModel`: the summary's `arch` and the real model file,
+    /// or `None` for either when the read failed (`Err` when it threw).
+    pub(crate) fn identity_read(
+        &self,
+        model: &str,
+        listing: &Read,
+    ) -> Result<(JValue, Option<PathBuf>), ()> {
+        let Some(file) = self.presets.clone() else {
+            return Ok((JValue::Null, None));
+        };
+        match self.read_model(&file, model, listing) {
+            Ok(r) => {
+                let arch = js_json::wtf16::parse(&meta_json(&r.summary))
+                    .ok()
+                    .map(|m| m.get("arch").clone())
+                    .filter(JValue::truthy)
+                    .unwrap_or(JValue::Null);
+                Ok((arch, Some(r.model_file)))
+            }
+            Err(Stop::Answer(..)) => Ok((JValue::Null, None)),
+            Err(Stop::Thrown(_)) => Err(()),
         }
     }
 
@@ -196,7 +316,7 @@ const FIELDS: &[(&str, &[&str])] = &[
     ("repeat-penalty", &[]),
 ];
 
-fn canonical(key: &str) -> Option<&'static str> {
+pub(crate) fn canonical(key: &str) -> Option<&'static str> {
     FIELDS
         .iter()
         .find(|(k, aliases)| *k == key || aliases.contains(&key))
@@ -288,6 +408,9 @@ struct Section {
     options: Vec<(&'static str, String)>,
 }
 
+/// A section's canonical options, in insertion order.
+pub(crate) type Options = [(&'static str, String)];
+
 pub struct Presets {
     pub revision: String,
     /// The file's text as read (UTF-8, lossy), which `revision` hashes.
@@ -367,6 +490,22 @@ fn hex(text: &str) -> String {
 impl Presets {
     fn section(&self, name: &str) -> Option<&Section> {
         self.sections.iter().find(|s| s.name == name)
+    }
+
+    /// The file's lines (`text.split('\n')`), as `prepare` edits them.
+    pub(crate) fn lines(&self) -> &[String] {
+        &self.lines
+    }
+
+    /// A section's header line and end (exclusive), and its canonical options.
+    pub(crate) fn span(&self, name: &str) -> Option<(usize, usize, &Options)> {
+        self.section(name)
+            .map(|s| (s.start, s.end, s.options.as_slice()))
+    }
+
+    /// `get(model).fields`: every editable field name, in `fields` order.
+    pub fn field_names() -> Vec<&'static str> {
+        FIELDS.iter().map(|(k, _)| *k).collect()
     }
 
     /// `{...profile.defaults, ...profile.options}` of `get(model)`.
@@ -737,6 +876,7 @@ enum Stop {
 /// What readModel read: the summary text and the two sizes.
 struct ModelRead {
     summary: String,
+    model_file: PathBuf,
     model_bytes: u64,
     mmproj_bytes: u64,
 }
@@ -777,6 +917,7 @@ impl Sizing {
         })?;
         Ok(ModelRead {
             summary,
+            model_file,
             model_bytes,
             mmproj_bytes: mmproj.map_or(0, |(_, n)| n),
         })

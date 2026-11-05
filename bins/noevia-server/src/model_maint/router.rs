@@ -146,6 +146,33 @@ impl Router {
             .await
     }
 
+    /// A streamed request (`fetch` with the body left to the caller): the response once its head
+    /// arrived, or `Err` when it did not start. `timeout` bounds the whole exchange.
+    pub async fn stream(
+        &self,
+        path: &str,
+        body: &Value,
+        hold: Option<&str>,
+        timeout: Duration,
+    ) -> Result<reqwest::Response, Fault> {
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        if let Some(a) = &self.authorization {
+            headers.insert(AUTHORIZATION, a.clone());
+        }
+        if let Some(h) = hold.and_then(|h| HeaderValue::from_str(h).ok()) {
+            headers.insert(HeaderName::from_static("x-noevia-maintenance"), h);
+        }
+        self.client
+            .post(format!("{}{path}", self.base))
+            .headers(headers)
+            .timeout(timeout)
+            .body(body.to_string())
+            .send()
+            .await
+            .map_err(|_| Fault)
+    }
+
     /// `rawModels()`: the router's listing.
     pub async fn models(&self, hold: Option<&str>) -> Result<Reply, Fault> {
         self.get("/models", hold, DEFAULT_TIMEOUT).await
