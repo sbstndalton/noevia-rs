@@ -42,16 +42,22 @@ async fn a_burst_of_saves_is_one_pass_after_the_quiet_period() {
 async fn a_chat_that_keeps_changing_is_still_mirrored_every_max_wait() {
     let (m, exec, _) = make();
     let start = tokio::time::Instant::now();
-    for i in 0..12 {
-        m.schedule(U1, Some(&format!("c{i}")), false);
-        advance(s(4)).await;
+    // A save every 4 s, for 44 s, the clock moving a second at a time.
+    for second in 0..44u32 {
+        if second % 4 == 0 {
+            m.schedule(U1, Some(&format!("c{second}")), false);
+        }
+        advance(s(1)).await;
     }
     let calls = exec.calls.lock().unwrap().clone();
     assert!(!calls.is_empty(), "never starved by the debounce");
-    assert!(
-        calls[0].2 - start <= s(30) + Duration::from_millis(5),
-        "first pass within max_wait of the first save"
+    assert_eq!(
+        calls[0].2 - start,
+        s(30),
+        "the first pass is max_wait after the first save of the burst, not later"
     );
+    // The burst's first pass covered everything saved before it.
+    assert_eq!(calls[0].1.len(), 8, "c0 .. c28");
 }
 
 #[tokio::test(start_paused = true)]
@@ -128,11 +134,10 @@ async fn off_is_not_a_failure_and_the_account_is_forgotten() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_failed_pass_nudged_meanwhile_goes_again_on_the_debounce_with_its_chats() {
+async fn a_change_nudged_during_a_pass_is_delivered_by_the_next_pass() {
     let (m, exec, _) = make();
     let gate = Arc::new(tokio::sync::Notify::new());
     exec.then(Step::Hold(gate.clone()));
-    // the held pass ends Done, so script a failure next to prove the dirty set survives
     m.schedule(U1, Some("a"), true);
     advance(Duration::from_millis(1)).await;
     m.schedule(U1, Some("b"), false);

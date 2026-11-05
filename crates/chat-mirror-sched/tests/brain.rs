@@ -85,9 +85,16 @@ async fn builds_run_one_at_a_time_across_accounts_in_the_order_their_timers_fire
     b.schedule(U1, "a");
     advance(Duration::from_secs(1)).await;
     b.schedule(U2, "b");
+    advance(Duration::from_secs(1)).await;
     b.schedule(U1, "c");
-    advance(m(4)).await;
-    advance(m(2)).await;
+    // a's timer fires at 180 s and its build runs until 210 s; b (181 s) and c (182 s) wait their turn.
+    advance(Duration::from_secs(178)).await;
+    advance(Duration::from_secs(1)).await;
+    advance(Duration::from_secs(1)).await;
+    assert_eq!(exec.calls().len(), 1, "only the first build has started");
+    for _ in 0..8 {
+        advance(Duration::from_secs(30)).await;
+    }
     assert_eq!(exec.peak(), 1, "the reasoner never runs twice at once");
     let order: Vec<String> = exec.calls().into_iter().map(|(_, c)| c).collect();
     assert_eq!(order, vec!["a", "b", "c"]);
@@ -117,8 +124,10 @@ async fn a_panicking_executor_is_an_error_for_that_chat_only() {
     let (b, exec, _) = make();
     exec.then("panic");
     b.schedule(U1, "a");
+    advance(Duration::from_secs(1)).await;
     b.schedule(U2, "b");
-    advance(m(3)).await;
+    advance(Duration::from_secs(179)).await; // a fires and panics
+    advance(Duration::from_secs(1)).await; // b fires
     assert_eq!(exec.calls().len(), 2, "the next chat still builds");
     advance(m(15)).await;
     assert_eq!(
@@ -126,6 +135,7 @@ async fn a_panicking_executor_is_an_error_for_that_chat_only() {
         2,
         "the panicked build counts as an error and is retried once"
     );
+    assert_eq!(exec.calls().iter().filter(|(_, c)| c == "b").count(), 1);
 }
 
 #[tokio::test(start_paused = true)]

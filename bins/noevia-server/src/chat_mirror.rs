@@ -206,12 +206,16 @@ pub fn file_stamp(data_dir: &Path, user: &str) -> Option<String> {
 /// `None` while it cannot be read (logged once per run of failures).
 struct ActivityFile {
     file: PathBuf,
-    cache: Mutex<(
-        Option<(u64, SystemTime)>,
-        Option<HashMap<String, f64>>,
-        bool,
-    )>,
+    cache: Mutex<ActivityCache>,
 }
+
+/// The file's signal (size, mtime) at the last good read, what it held (`None`: unreadable), and
+/// whether the failure was already logged.
+type ActivityCache = (
+    Option<(u64, SystemTime)>,
+    Option<HashMap<String, f64>>,
+    bool,
+);
 
 impl ActivityFile {
     fn new(file: PathBuf) -> Arc<Self> {
