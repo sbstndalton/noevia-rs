@@ -49,9 +49,15 @@ pub fn compare(expected: &Value, actual: &Value) -> Vec<crate::diff::Diff> {
 
 /// Applies the directory-entry-only ignores (patterns ending in `/`) to a snapshot read from a file,
 /// so an `--expect-state` reference recorded without them is projected the same way as the live
-/// snapshot. Only directory entries are dropped; every path inside them stays.
-pub fn drop_dir_entries(snapshot: &mut Value, ignore: &[String]) {
-    let entry_only: Vec<&String> = ignore.iter().filter(|i| i.ends_with('/')).collect();
+/// snapshot. Only directory entries are dropped; every path inside them stays. The reference holds
+/// normalized paths (`<id:1>`), while walk() matches raw ones, so each pattern is normalized with
+/// the same bindings first.
+pub fn drop_dir_entries(snapshot: &mut Value, ignore: &[String], b: &Bindings) {
+    let entry_only: Vec<String> = ignore
+        .iter()
+        .filter(|i| i.ends_with('/'))
+        .map(|i| b.unbind(i))
+        .collect();
     if entry_only.is_empty() {
         return;
     }
@@ -319,23 +325,36 @@ mod tests {
         let expected = json!({"files": ["users/<id:1>/"]});
         assert!(compare(&expected, &json!({"files": ["users/alice/"]})).is_empty());
         let diffs = compare(&expected, &json!({"files": ["users/alice/", "extra.json"]}));
-        assert!(diffs.iter().any(|d| d.at == "state/files (paths)"));
+        assert!(diffs
+            .iter()
+            .any(|d| d.at == "state/files (paths)" && d.actual.contains("extra.json")));
     }
 
     #[test]
     fn a_reference_without_the_directory_ignore_is_projected_the_same_way() {
         let ignore = vec!["*/rag/".to_string()];
         let mut expected = json!({"files": ["users/", "users/<id:1>/", "users/<id:1>/rag/"]});
-        drop_dir_entries(&mut expected, &ignore);
+        let none = Bindings::new("");
+        drop_dir_entries(&mut expected, &ignore, &none);
         assert!(compare(&expected, &json!({"files": ["users/", "users/alice/"]})).is_empty());
         // A database inside the directory is still compared: missing it on either side fails.
         let mut with_db = json!({"files": ["users/", "users/<id:1>/", "users/<id:1>/rag/", "users/<id:1>/rag/p.db"]});
-        drop_dir_entries(&mut with_db, &ignore);
+        drop_dir_entries(&mut with_db, &ignore, &none);
         assert_eq!(
             with_db,
             json!({"files": ["users/", "users/<id:1>/", "users/<id:1>/rag/p.db"]})
         );
         assert!(!compare(&with_db, &json!({"files": ["users/", "users/alice/"]})).is_empty());
+        // An exact pattern names a concrete directory; the reference holds it normalized.
+        let mut bound = Bindings::new("");
+        bound.bind("<id:1>", "alice");
+        let exact = vec!["users/alice/rag/".to_string()];
+        let mut reference = json!({"files": ["users/", "users/<id:1>/", "users/<id:1>/rag/", "users/<id:1>/rag/p.db", "users/<id:2>/rag/"]});
+        drop_dir_entries(&mut reference, &exact, &bound);
+        assert_eq!(
+            reference,
+            json!({"files": ["users/", "users/<id:1>/", "users/<id:1>/rag/p.db", "users/<id:2>/rag/"]})
+        );
     }
 
     #[test]

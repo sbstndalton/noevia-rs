@@ -392,7 +392,7 @@ fn run(a: &Args) -> Result<bool, String> {
             let text = std::fs::read_to_string(p).map_err(|e| format!("read {p}: {e}"))?;
             let mut expected: Value =
                 serde_json::from_str(&text).map_err(|e| format!("{p}: {e}"))?;
-            state::drop_dir_entries(&mut expected, &ignore);
+            state::drop_dir_entries(&mut expected, &ignore, &b);
             let diffs = state::compare(&expected, projection.as_ref().unwrap_or(&snap));
             for d in &diffs {
                 println!("STATE {}: expected {} got {}", d.at, d.expected, d.actual);
