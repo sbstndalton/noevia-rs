@@ -294,7 +294,17 @@ impl Held {
 /// cannot cover it. The decoded frame is never longer than its line (an escape is at least as long as
 /// what it stands for), so the buffer is allocated once, at the line's length, and never grows: the
 /// decoding has no other copy and no scratch.
-fn relayed_frame(pieces: &[&[u8]], len: usize, mut reservation: Reservation) -> Option<Bytes> {
+fn relayed_frame(pieces: &[&[u8]], len: usize, reservation: Reservation) -> Option<Bytes> {
+    let (buf, reservation) = decode_relayed(pieces, len, reservation)?;
+    Some(reserved(buf, reservation))
+}
+
+/// [`relayed_frame`]'s decoded buffer and the reservation that covers exactly its capacity.
+fn decode_relayed(
+    pieces: &[&[u8]],
+    len: usize,
+    mut reservation: Reservation,
+) -> Option<(Vec<u8>, Reservation)> {
     if !reservation.cover(len) {
         return None;
     }
@@ -314,7 +324,7 @@ fn relayed_frame(pieces: &[&[u8]], len: usize, mut reservation: Reservation) -> 
     {
         return None;
     }
-    Some(reserved(buf, reservation))
+    Some((buf, reservation))
 }
 
 /// The UTF-8 lead byte `b`: how many continuation bytes follow, and the range the first must fall in.
@@ -544,6 +554,8 @@ struct Json {
     spill: Vec<u64>,
     /// Covers [`Self::spill`]'s capacity.
     reservation: Reservation,
+    /// The spill could not grow within the budget: the line is over the budget, not malformed.
+    over_budget: bool,
     depth: usize,
     /// The string being read is a key.
     key: bool,
@@ -580,6 +592,7 @@ impl Json {
             inline: [0; INLINE_DEPTH / 64],
             spill: Vec::new(),
             reservation,
+            over_budget: false,
             depth: 0,
             key: false,
             key_match: None,
@@ -655,6 +668,7 @@ impl Json {
     fn push(&mut self, object: bool) -> St {
         let i = self.depth;
         let Some(w) = self.word_mut(i / 64) else {
+            self.over_budget = true;
             return St::Bad;
         };
         if object {
@@ -870,25 +884,53 @@ impl Json {
     }
 }
 
-/// One whole event line (its pieces in order, nothing copied): `None` when it is not one JSON object
-/// in UTF-8 (or its nesting is over the budget, which `reservation` draws on), else whether the event
-/// completes the turn.
-fn event_line(pieces: &[&[u8]], reservation: Reservation) -> Option<bool> {
+/// What checking one whole line found.
+#[derive(Debug, PartialEq, Eq)]
+enum Checked {
+    /// One JSON object; whether it completes the turn.
+    Event(bool),
+    /// Not one JSON object in UTF-8.
+    Malformed,
+    /// Its nesting needs more of the budget than is left (`reservation` draws on it): it cannot be
+    /// told whether it is an event, so it is never taken as one that is not.
+    OverBudget,
+}
+
+fn check_line(pieces: &[&[u8]], reservation: Reservation) -> Checked {
     let mut json = Json::new(reservation);
-    pieces
-        .iter()
-        .all(|p| json.feed(p))
-        .then(|| json.finish())
-        .flatten()
+    let read = pieces.iter().all(|p| json.feed(p));
+    match (read, json.finish()) {
+        _ if json.over_budget => Checked::OverBudget,
+        (true, Some(completes)) => Checked::Event(completes),
+        _ => Checked::Malformed,
+    }
+}
+
+/// One whole event line (its pieces in order, nothing copied): `None` when it is not one JSON object
+/// in UTF-8 or its nesting is over the budget, else whether the event completes the turn.
+fn event_line(pieces: &[&[u8]], reservation: Reservation) -> Option<bool> {
+    match check_line(pieces, reservation) {
+        Checked::Event(completes) => Some(completes),
+        Checked::Malformed | Checked::OverBudget => None,
+    }
 }
 
 /// Whether a relayed frame completes the turn: its first `data: ` line is a `done` or `error` event
-/// (api.ts reads that line alone).
-fn frame_completes(frame: &[u8], reservation: Reservation) -> bool {
-    frame
+/// (api.ts reads that line alone; a data line that is not JSON completes nothing). `None` when that
+/// line's nesting is over the budget: then whether it completes the turn is unknown, and the frame
+/// must not go out as one that does not (the caller fails the stream before it is sent).
+fn frame_completes(frame: &[u8], reservation: Reservation) -> Option<bool> {
+    let Some(data) = frame
         .split(|&b| b == b'\n')
         .find_map(|l| l.strip_prefix(b"data: "))
-        .is_some_and(|d| event_line(&[d], reservation) == Some(true))
+    else {
+        return Some(false);
+    };
+    match check_line(&[data], reservation) {
+        Checked::Event(completes) => Some(completes),
+        Checked::Malformed => Some(false),
+        Checked::OverBudget => None,
+    }
 }
 
 /// Core's NDJSON turned into the event stream the client reads (module docs).
@@ -990,11 +1032,14 @@ impl EventWire {
             Some(b'"') => {
                 let reservation = self.held.reservation.none();
                 match relayed_frame(&[&line], line.len(), reservation) {
-                    Some(frame) => {
-                        self.complete |= frame_completes(&frame, self.held.reservation.none());
-                        self.send(frame);
-                        true
-                    }
+                    Some(frame) => match frame_completes(&frame, self.held.reservation.none()) {
+                        Some(completes) => {
+                            self.complete |= completes;
+                            self.send(frame);
+                            true
+                        }
+                        None => false,
+                    },
                     None => false,
                 }
             }
@@ -1048,11 +1093,14 @@ impl EventWire {
                 let decoded = relayed_frame(&[&buf, &part], len, copy);
                 drop((buf, reservation));
                 match decoded {
-                    Some(frame) => {
-                        self.complete |= frame_completes(&frame, self.held.reservation.none());
-                        self.send(frame);
-                        true
-                    }
+                    Some(frame) => match frame_completes(&frame, self.held.reservation.none()) {
+                        Some(completes) => {
+                            self.complete |= completes;
+                            self.send(frame);
+                            true
+                        }
+                        None => false,
+                    },
                     None => false,
                 }
             }
@@ -2036,5 +2084,174 @@ mod tests {
             );
         }
         assert_eq!(budget.available_permits(), HOLDBACK_BUDGET);
+    }
+
+    /// S7 re-review P2 (b0689c27): a relayed frame whose decoded copy takes what is left of the budget
+    /// leaves none for the nesting of its data line. Whether it completes the turn is then unknown, so
+    /// it must not go out as a frame that does not: the stream fails before it is sent (whole, and held
+    /// then finished), and with eight permits more the same frame completes the turn.
+    #[tokio::test]
+    async fn a_decoded_frame_that_spends_the_budget_never_goes_out_unfinished() {
+        let frame = format!(
+            "data: {{\"type\":\"done\",\"x\":{}{}}}\n\n",
+            "[".repeat(256),
+            "]".repeat(256)
+        );
+        let line = serde_json::to_string(&frame).unwrap();
+        let whole = format!("{line}\n").into_bytes();
+        // Exactly the decoded copy's reservation (the line's length) and nothing more.
+        let budget = Arc::new(Semaphore::new(line.len()));
+        let out = through(vec![whole.clone()], false, Arc::clone(&budget)).await;
+        assert_eq!(out, Bytes::from(FAILED_FRAME));
+        assert_eq!(budget.available_permits(), line.len());
+        // Four bytes held first (their four permits come back after decoding: still too few).
+        let budget = Arc::new(Semaphore::new(4 + line.len()));
+        let (a, b) = whole.split_at(4);
+        let out = through(vec![a.to_vec(), b.to_vec()], false, Arc::clone(&budget)).await;
+        assert_eq!(out, Bytes::from(FAILED_FRAME));
+        assert_eq!(budget.available_permits(), 4 + line.len());
+        // One spill word more: the stack fits, the frame goes out and completes the turn.
+        let budget = Arc::new(Semaphore::new(line.len() + 8));
+        let out = through(vec![whole], false, Arc::clone(&budget)).await;
+        assert_eq!(out, Bytes::from(frame));
+        assert_eq!(budget.available_permits(), line.len() + 8);
+    }
+}
+
+/// S7 re-review P3 (b0689c27): the memory this module allocates for a line is accounted on the
+/// budget itself, deterministically (the workspace forbids the unsafe code a counting allocator
+/// needs): a relayed frame's buffer is exactly its reservation and never moves or grows; the nesting
+/// stack is charged by its capacity at every growth; refusals take nothing; every permit comes back.
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod accounting_tests {
+    use super::*;
+
+    fn reservation(budget: &Arc<Semaphore>) -> Reservation {
+        Reservation {
+            budget: Arc::clone(budget),
+            bytes: 0,
+        }
+    }
+
+    fn in_use(budget: &Semaphore, total: usize) -> usize {
+        total - budget.available_permits()
+    }
+
+    #[test]
+    fn a_relayed_frames_buffer_is_exactly_its_reservation() {
+        const TOTAL: usize = 4096;
+        let budget = Arc::new(Semaphore::new(TOTAL));
+        let line: &[u8] = br#""data: {\"t\":\"\u00e9 \ud83d\ude00 \ud800 x \\ \/\"}\n\n""#;
+        let len = line.len();
+        // Decoding writes into the buffer as allocated: the same pointer and capacity throughout,
+        // split anywhere.
+        for at in 0..=len {
+            let mut buf = Vec::with_capacity(len);
+            let (ptr, cap) = (buf.as_ptr(), buf.capacity());
+            let mut d = Decode::default();
+            assert!(d.feed(&line[..at], &mut buf) && d.feed(&line[at..], &mut buf) && d.finish());
+            assert_eq!((buf.as_ptr(), buf.capacity()), (ptr, cap), "split at {at}");
+            assert!(buf.len() <= cap);
+        }
+        // Its capacity is its reservation, which is the line's length, all of it charged.
+        let (buf, r) = decode_relayed(&[line], len, reservation(&budget)).unwrap();
+        assert_eq!(buf.capacity(), r.bytes);
+        assert_eq!(r.bytes, len);
+        assert_eq!(in_use(&budget, TOTAL), len);
+        // The permits come back only when the last owner of the frame drops it.
+        let frame = reserved(buf, r);
+        let copy = frame.clone();
+        drop(frame);
+        assert_eq!(in_use(&budget, TOTAL), len);
+        drop(copy);
+        assert_eq!(in_use(&budget, TOTAL), 0);
+        // Too few permits: refused before anything is allocated, nothing taken.
+        let short = Arc::new(Semaphore::new(len - 1));
+        assert!(decode_relayed(&[line], len, reservation(&short)).is_none());
+        assert_eq!(short.available_permits(), len - 1);
+        // Malformed, or not one whole frame: refused, and every permit back.
+        for bad in [
+            &br#""data: x""#[..],
+            br#""data: \x\n\n""#,
+            b"\"data: \x01\\n\\n\"",
+            br#""a\n\nb\n\n""#,
+            br#""data: x\n\n" ""#,
+        ] {
+            assert!(decode_relayed(&[bad], bad.len(), reservation(&budget)).is_none());
+            assert_eq!(
+                in_use(&budget, TOTAL),
+                0,
+                "{}",
+                String::from_utf8_lossy(bad)
+            );
+        }
+        // The decoder never writes past the capacity it was given (it would rather refuse).
+        let mut tiny = Vec::with_capacity(2);
+        let cap = tiny.capacity();
+        assert!(!Decode::default().feed(b"\"abcdefgh\"", &mut tiny));
+        assert_eq!(tiny.capacity(), cap);
+    }
+
+    #[test]
+    fn the_nesting_stack_is_charged_by_its_capacity() {
+        const TOTAL: usize = 1024;
+        let budget = Arc::new(Semaphore::new(TOTAL));
+        let mut json = Json::new(reservation(&budget));
+        assert!(json.feed(b"{\"type\":\"done\",\"x\":"));
+        // The first INLINE_DEPTH levels cost nothing.
+        assert!(json.feed(&[b'['; INLINE_DEPTH - 1]));
+        assert_eq!(json.depth, INLINE_DEPTH);
+        assert_eq!((json.spill.capacity(), json.reservation.bytes), (0, 0));
+        assert_eq!(in_use(&budget, TOTAL), 0);
+        // Past them the spill grows by doubling, each capacity charged before it is allocated.
+        let mut capacities = Vec::new();
+        for _ in 0..1024 {
+            assert!(json.feed(b"["));
+            assert_eq!(json.reservation.bytes, json.spill.capacity() * 8);
+            assert_eq!(in_use(&budget, TOTAL), json.reservation.bytes);
+            if capacities.last() != Some(&json.spill.capacity()) {
+                capacities.push(json.spill.capacity());
+            }
+        }
+        assert_eq!(capacities, [1, 2, 4, 8, 16]);
+        assert!(json.feed(&[b']'; 1024 + INLINE_DEPTH - 1]) && json.feed(b"}"));
+        assert_eq!(json.finish(), Some(true));
+        drop(json);
+        assert_eq!(in_use(&budget, TOTAL), 0, "back when the checker drops");
+        // A growth the budget cannot cover (32 bytes doubled, 24 exact, 20 left): refused as over the
+        // budget, the charged capacity unchanged, and all of it back on drop.
+        let tight = Arc::new(Semaphore::new(20));
+        let mut json = Json::new(reservation(&tight));
+        assert!(json.feed(b"{\"x\":"));
+        // Levels 1 to 383 fit (inline, then spill words 1 and 2); level 384 needs a third word.
+        assert!(!json.feed(&[b'['; INLINE_DEPTH + 2 * 64]));
+        assert!(json.over_budget);
+        assert_eq!(json.depth, INLINE_DEPTH + 2 * 64);
+        assert_eq!((json.spill.capacity(), json.reservation.bytes), (2, 16));
+        assert_eq!(in_use(&tight, 20), 16);
+        drop(json);
+        assert_eq!(in_use(&tight, 20), 0);
+        // The same, through a line: over the budget is its own outcome, not "not an event".
+        let deep = [
+            &b"{\"type\":\"done\",\"x\":"[..],
+            &[b'['; 400],
+            &[b']'; 400],
+            b"}",
+        ]
+        .concat();
+        assert_eq!(
+            check_line(&[&deep], reservation(&tight)),
+            Checked::OverBudget
+        );
+        assert_eq!(
+            check_line(&[&deep], reservation(&budget)),
+            Checked::Event(true)
+        );
+        assert_eq!(
+            check_line(&[b"{x}"], reservation(&budget)),
+            Checked::Malformed
+        );
+        assert_eq!((in_use(&tight, 20), in_use(&budget, TOTAL)), (0, 0));
     }
 }
