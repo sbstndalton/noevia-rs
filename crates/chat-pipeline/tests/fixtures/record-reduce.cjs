@@ -30,4 +30,4 @@ for (const [t, text] of results.entries()) for (const maxChars of [0, 120, 400, 
   out.cases.push({ t, maxChars, maxValueChars, reduced: r.reduced, note: r.note, text: r.reduced ? r.text : null });
 }
 fs.writeFileSync(process.argv[3], JSON.stringify(out));
-console.log(`recorded ${out.cases.length}; reduced ${out.cases.filter((c) => c.out.reduced).length}`);
+console.log(`recorded ${out.cases.length}; reduced ${out.cases.filter((c) => c.reduced).length}`);

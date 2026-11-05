@@ -779,13 +779,20 @@ fn tool_result_reduction_matches_node() {
     let texts = arr(c.get("texts"));
     let mut reduced = 0;
     for k in arr(c.get("cases")) {
-        let text = texts[k.get("t").as_num().unwrap() as usize].as_str().unwrap();
+        let text = texts[k.get("t").as_num().unwrap() as usize]
+            .as_str()
+            .unwrap();
         let r = reduce_tool_result(
             text,
             k.get("maxChars").as_num().unwrap() as usize,
             k.get("maxValueChars").as_num().unwrap() as usize,
         );
-        let what = format!("t={} max={} mv={}", k.get("t").as_num().unwrap(), k.get("maxChars").as_num().unwrap(), k.get("maxValueChars").as_num().unwrap());
+        let what = format!(
+            "t={} max={} mv={}",
+            k.get("t").as_num().unwrap(),
+            k.get("maxChars").as_num().unwrap(),
+            k.get("maxValueChars").as_num().unwrap()
+        );
         assert_eq!(JValue::Bool(r.reduced), *k.get("reduced"), "{what}");
         assert_eq!(Some(r.note.as_str()), k.get("note").as_str(), "{what}");
         if r.reduced {

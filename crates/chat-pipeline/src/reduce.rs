@@ -25,7 +25,11 @@ fn list_keys(keys: &[String], budget: usize) -> String {
     let mut shown: Vec<String> = Vec::new();
     let mut length = 0;
     for key in keys.iter().take(MAX_LEGEND_KEYS) {
-        let k = if len(key) > 80 { format!("{}\u{2026}", slice(key, 80)) } else { key.clone() };
+        let k = if len(key) > 80 {
+            format!("{}\u{2026}", slice(key, 80))
+        } else {
+            key.clone()
+        };
         if !shown.is_empty() && length + len(&k) + 2 > budget {
             break;
         }
@@ -33,7 +37,11 @@ fn list_keys(keys: &[String], budget: usize) -> String {
         shown.push(k);
     }
     if keys.len() > shown.len() {
-        format!("{}, \u{2026} {} more", shown.join(", "), keys.len() - shown.len())
+        format!(
+            "{}, \u{2026} {} more",
+            shown.join(", "),
+            keys.len() - shown.len()
+        )
     } else {
         shown.join(", ")
     }
@@ -47,7 +55,11 @@ struct Clamped {
 
 fn clamp_text(text: &str, max: usize) -> Clamped {
     if len(text) <= max {
-        return Clamped { text: text.to_owned(), clamped: false, note: String::new() };
+        return Clamped {
+            text: text.to_owned(),
+            clamped: false,
+            note: String::new(),
+        };
     }
     let mut note = format!(
         "[truncated: showing the first part of {} characters to fit. Ask for a narrower query if you need the rest.]",
@@ -57,7 +69,11 @@ fn clamp_text(text: &str, max: usize) -> Clamped {
         note = slice(&note, max.saturating_sub(1));
     }
     let room = max.saturating_sub(len(&note) + 1);
-    Clamped { text: slice(&format!("{}\n{note}", slice(text, room)), max), clamped: true, note }
+    Clamped {
+        text: slice(&format!("{}\n{note}", slice(text, room)), max),
+        clamped: true,
+        note,
+    }
 }
 
 fn is_plain_object(v: &JValue) -> bool {
@@ -101,7 +117,9 @@ fn useful_keys(rows: &[JValue]) -> Vec<String> {
             }
         }
     }
-    keys.into_iter().filter(|k| rows.iter().any(|r| !is_empty_value(r.get(k)))).collect()
+    keys.into_iter()
+        .filter(|k| rows.iter().any(|r| !is_empty_value(r.get(k))))
+        .collect()
 }
 
 fn flat_tabs(s: &str) -> String {
@@ -152,7 +170,10 @@ fn compact_value(v: &JValue, max_value: usize) -> JValue {
         JValue::Str(_) => JValue::Str(truncate_value(v, max_value)),
         JValue::Arr(a) => JValue::Arr(a.iter().map(|x| compact_value(x, max_value)).collect()),
         JValue::Obj(o) => JValue::Obj(
-            o.iter().filter(|(_, x)| !is_empty_value(x)).map(|(k, x)| (k.clone(), compact_value(x, max_value))).collect(),
+            o.iter()
+                .filter(|(_, x)| !is_empty_value(x))
+                .map(|(k, x)| (k.clone(), compact_value(x, max_value)))
+                .collect(),
         ),
         other => other.clone(),
     }
@@ -170,17 +191,33 @@ pub struct Reduced {
 
 /// `reduceToolResult(text, {maxChars, maxValueChars})`; a 0 option is the default (`||`).
 pub fn reduce_tool_result(text: &str, max_chars: usize, max_value_chars: usize) -> Reduced {
-    let max = if max_chars == 0 { DEFAULT_MAX_CHARS } else { max_chars };
-    let max_value = if max_value_chars == 0 { DEFAULT_MAX_VALUE_CHARS } else { max_value_chars };
+    let max = if max_chars == 0 {
+        DEFAULT_MAX_CHARS
+    } else {
+        max_chars
+    };
+    let max_value = if max_value_chars == 0 {
+        DEFAULT_MAX_VALUE_CHARS
+    } else {
+        max_value_chars
+    };
     if len(text) <= max {
-        return Reduced { text: text.to_owned(), reduced: false, note: String::new() };
+        return Reduced {
+            text: text.to_owned(),
+            reduced: false,
+            note: String::new(),
+        };
     }
     let Ok(parsed) = wtf16::parse(text) else {
         let note = format!(
             "\n\n[truncated: showing the first {max} of {} characters. Ask for a narrower query if you need the rest.]",
             len(text)
         );
-        return Reduced { text: format!("{}{note}", slice(text, max)), reduced: true, note: note.trim().to_owned() };
+        return Reduced {
+            text: format!("{}{note}", slice(text, max)),
+            reduced: true,
+            note: note.trim().to_owned(),
+        };
     };
     if let JValue::Arr(rows) = &parsed {
         if rows.len() >= MIN_ROWS && rows.iter().all(is_plain_object) {
@@ -208,7 +245,10 @@ pub fn reduce_tool_result(text: &str, max_chars: usize, max_value_chars: usize) 
                 }
                 let cut: Vec<String> = all.get(keys.len()..).unwrap_or(&[]).to_vec();
                 let legend_budget = ((max as f64 * 0.1).floor() as usize).max(80);
-                let mut legend = format!("[{} records, tab-separated, first line is the column names", rows.len());
+                let mut legend = format!(
+                    "[{} records, tab-separated, first line is the column names",
+                    rows.len()
+                );
                 if !dropped.is_empty() {
                     legend.push_str(&format!(
                         "; {} column(s) omitted because they were empty in every record: {}",
@@ -217,7 +257,11 @@ pub fn reduce_tool_result(text: &str, max_chars: usize, max_value_chars: usize) 
                     ));
                 }
                 if !cut.is_empty() {
-                    legend.push_str(&format!("; {} further column(s) not shown to fit: {}", cut.len(), list_keys(&cut, legend_budget)));
+                    legend.push_str(&format!(
+                        "; {} further column(s) not shown to fit: {}",
+                        cut.len(),
+                        list_keys(&cut, legend_budget)
+                    ));
                 }
                 legend.push(']');
                 let lines = tabular_lines(rows, &keys, max_value);
@@ -229,15 +273,33 @@ pub fn reduce_tool_result(text: &str, max_chars: usize, max_value_chars: usize) 
                 };
                 let legend_len = len(&legend);
                 if legend_len + 1 + len(&body) > max {
-                    let fits = |n: usize, length: usize| legend_len + 1 + len(&note_for(n)) + 1 + length <= max;
+                    let fits = |n: usize, length: usize| {
+                        legend_len + 1 + len(&note_for(n)) + 1 + length <= max
+                    };
                     (kept, body) = fit_lines(lines.get(..rows.len()).unwrap_or(&lines), fits);
                 }
                 let omitted = total - kept;
-                let note = if omitted > 0 { note_for(kept) } else { legend.clone() };
-                let head = if omitted > 0 { format!("{legend}\n{note}") } else { legend.clone() };
+                let note = if omitted > 0 {
+                    note_for(kept)
+                } else {
+                    legend.clone()
+                };
+                let head = if omitted > 0 {
+                    format!("{legend}\n{note}")
+                } else {
+                    legend.clone()
+                };
                 let c = clamp_text(&format!("{head}\n{body}"), max);
-                let note = if c.clamped { format!("{note}\n{}", c.note) } else { note };
-                return Reduced { text: c.text, reduced: true, note };
+                let note = if c.clamped {
+                    format!("{note}\n{}", c.note)
+                } else {
+                    note
+                };
+                return Reduced {
+                    text: c.text,
+                    reduced: true,
+                    note,
+                };
             }
         }
     }
@@ -248,12 +310,19 @@ pub fn reduce_tool_result(text: &str, max_chars: usize, max_value_chars: usize) 
         len(&compacted)
     );
     if len(&compact_note) + 1 + len(&compacted) <= max {
-        return Reduced { text: format!("{compact_note}\n{compacted}"), reduced: true, note: compact_note };
+        return Reduced {
+            text: format!("{compact_note}\n{compacted}"),
+            reduced: true,
+            note: compact_note,
+        };
     }
     let note = format!(
         "\n\n[truncated: showing the first {max} of {} characters after compaction. Ask for a narrower query if you need the rest.]",
         len(&compacted)
     );
-    Reduced { text: format!("{}{note}", slice(&compacted, max)), reduced: true, note: note.trim().to_owned() }
+    Reduced {
+        text: format!("{}{note}", slice(&compacted, max)),
+        reduced: true,
+        note: note.trim().to_owned(),
+    }
 }
-
