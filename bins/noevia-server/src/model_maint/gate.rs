@@ -310,6 +310,18 @@ impl Gate {
 /// Added to a step's limit for what it does around its router call (reading models.ini).
 const STEP_MARGIN: Duration = Duration::from_secs(15);
 
+const RELEASE_LIMIT: Duration = Duration::from_secs(30);
+const EXPIRY_MARGIN: Duration = Duration::from_millis(100);
+
+#[derive(Clone, Copy, PartialEq)]
+enum ReleaseState {
+    Idle,
+    Pending,
+    Acknowledged,
+    Expired,
+    Unconfirmed,
+}
+
 struct Shared {
     /// The gate's hold token, or the id of Node's lease.
     token: Mutex<Option<String>>,
@@ -324,6 +336,12 @@ struct Shared {
     /// When Node ends the lease whatever happens.
     lease_end: Option<Instant>,
     lost: AtomicBool,
+    // Independent lease identity: taking the renewal token never proves DELETE completed.
+    lease_id: Option<String>,
+    // Upper bound measured after the grant arrived, unlike confirmed/lease_end (lower bounds).
+    expires_by: Option<Instant>,
+    release: Mutex<ReleaseState>,
+    release_wake: tokio::sync::Notify,
 }
 
 impl Shared {
@@ -332,8 +350,13 @@ impl Shared {
         deadline: Instant,
         lease_ttl: Option<Duration>,
         lease_end: Option<Instant>,
+        expires_by: Option<Instant>,
     ) -> Arc<Shared> {
         Arc::new(Shared {
+            lease_id: lease_ttl.and(token.clone()),
+            expires_by,
+            release: Mutex::new(ReleaseState::Idle),
+            release_wake: tokio::sync::Notify::new(),
             token: Mutex::new(token),
             released: AtomicBool::new(false),
             wake: tokio::sync::Notify::new(),
@@ -363,6 +386,57 @@ impl Shared {
     }
 }
 
+impl Shared {
+    fn start_release(self: &Arc<Self>, node: Arc<NodeLeases>) {
+        let Ok(rt) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
+        {
+            let mut state = match self.release.lock() {
+                Ok(s) => s,
+                Err(p) => p.into_inner(),
+            };
+            if *state != ReleaseState::Idle {
+                return;
+            }
+            *state = ReleaseState::Pending;
+        }
+        self.released.store(true, Ordering::Release);
+        self.wake.notify_one();
+        let shared = Arc::clone(self);
+        rt.spawn(async move {
+            let until = Instant::now() + RELEASE_LIMIT;
+            let mut wait = Duration::from_millis(100);
+            let outcome = loop {
+                let now = Instant::now();
+                if shared.expires_by.is_some_and(|at| now >= at) {
+                    break ReleaseState::Expired;
+                }
+                if now >= until {
+                    break ReleaseState::Unconfirmed;
+                }
+                let Some(id) = shared.lease_id.as_deref() else {
+                    break ReleaseState::Unconfirmed;
+                };
+                let end = shared.expires_by.map_or(until, |at| at.min(until));
+                if tokio::time::timeout_at(end.into(), node.release_confirmed(id))
+                    .await
+                    .is_ok_and(|ack| ack)
+                {
+                    break ReleaseState::Acknowledged;
+                }
+                tokio::time::sleep(wait.min(end.saturating_duration_since(Instant::now()))).await;
+                wait = (wait * 2).min(Duration::from_secs(1));
+            };
+            match shared.release.lock() {
+                Ok(mut s) => *s = outcome,
+                Err(p) => *p.into_inner() = outcome,
+            }
+            shared.release_wake.notify_waiters();
+        });
+    }
+}
+
 /// A maintenance hold. Always bounded by a deadline; `release().await` ends it, `Drop` ends it too.
 pub struct Hold {
     shared: Arc<Shared>,
@@ -370,6 +444,7 @@ pub struct Hold {
     node: Option<Arc<NodeLeases>>,
     local: Arc<AtomicBool>,
     reason: String,
+    local_finished: bool,
 }
 
 impl std::fmt::Debug for Hold {
@@ -395,6 +470,7 @@ impl Hold {
             deadline,
             Some(grant.ttl),
             Some(grant.asked + grant.hard),
+            Some(Instant::now() + grant.hard + EXPIRY_MARGIN),
         );
         if let Ok(mut at) = shared.confirmed.lock() {
             *at = grant.asked;
@@ -407,6 +483,7 @@ impl Hold {
             node: Some(node),
             local,
             reason: reason.to_owned(),
+            local_finished: false,
         }
     }
 
@@ -418,7 +495,7 @@ impl Hold {
         reason: &str,
         deadline: Instant,
     ) -> Hold {
-        let shared = Shared::new(Some(grant.token), deadline, None, None);
+        let shared = Shared::new(Some(grant.token), deadline, None, None, None);
         let every = (grant.idle_ttl / 3).max(Duration::from_secs(1));
         tokio::spawn(renew_loop(
             Arc::clone(&shared),
@@ -432,6 +509,7 @@ impl Hold {
             node: None,
             local,
             reason: reason.to_owned(),
+            local_finished: false,
         }
     }
 
@@ -496,22 +574,55 @@ impl Hold {
         }
     }
 
-    /// A fallback lease owns Core's local admission too. Keep this front's local admission
-    /// until Core acknowledges its release; a gate's remote release may remain asynchronous.
+    /// Join the same release operation as the deadline renewer. An absent renewal token is
+    /// not an acknowledgment; only DELETE204 or the grant's conservative hard-expiry bound is.
     pub(super) async fn release_node_lease(&mut self) {
         let Some(node) = self.node.as_ref() else {
             return;
         };
-        self.shared.released.store(true, Ordering::Release);
-        self.shared.wake.notify_one();
-        let token = self.shared.token.lock().ok().and_then(|mut t| t.take());
-        if let Some(token) = token {
-            let mut wait = Duration::from_millis(100);
-            while !node.release_confirmed(&token).await {
-                tokio::time::sleep(wait).await;
-                wait = (wait * 2).min(Duration::from_secs(60));
+        self.shared.start_release(Arc::clone(node));
+        let until = Instant::now() + RELEASE_LIMIT;
+        loop {
+            let notified = self.shared.release_wake.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            let state = self
+                .shared
+                .release
+                .lock()
+                .map(|s| *s)
+                .unwrap_or(ReleaseState::Unconfirmed);
+            if !matches!(state, ReleaseState::Idle | ReleaseState::Pending) {
+                return;
+            }
+            let wake = self
+                .shared
+                .expires_by
+                .map_or(until, |expiry| expiry.min(until));
+            if tokio::time::timeout_at(wake.into(), notified)
+                .await
+                .is_err()
+            {
+                return;
             }
         }
+    }
+
+    pub(super) fn node_release_confirmed(&self) -> bool {
+        self.node.is_none()
+            || self
+                .shared
+                .expires_by
+                .is_some_and(|end| Instant::now() >= end)
+            || self
+                .shared
+                .release
+                .lock()
+                .is_ok_and(|s| matches!(*s, ReleaseState::Acknowledged | ReleaseState::Expired))
+    }
+
+    pub(super) fn lost(&self) -> bool {
+        self.shared.lost.load(Ordering::Acquire)
     }
 
     /// Ends the hold: the gate's token is given back, the local flag cleared.
@@ -521,21 +632,28 @@ impl Hold {
         if let (Some(gate), Some(token)) = (self.gate.as_ref(), token.as_ref()) {
             gate.release(token).await;
         }
-        if let (Some(node), Some(token)) = (self.node.as_ref(), token.as_ref()) {
-            node.release(token).await;
+        if self.node.is_some() {
+            self.release_node_lease().await;
         }
     }
 
     fn finish(&mut self) {
         self.shared.released.store(true, Ordering::Release);
         self.shared.wake.notify_one();
-        self.local.store(false, Ordering::Release);
+        if !self.local_finished {
+            self.local.store(false, Ordering::Release);
+            self.local_finished = true;
+        }
     }
 }
 
 impl Drop for Hold {
     fn drop(&mut self) {
         self.finish();
+        if let Some(node) = self.node.take() {
+            self.shared.start_release(node);
+            return;
+        }
         let token = self.shared.token.lock().ok().and_then(|mut t| t.take());
         let Some(token) = token else {
             return;
@@ -545,8 +663,6 @@ impl Drop for Hold {
         };
         if let Some(gate) = self.gate.take() {
             rt.spawn(async move { gate.release(&token).await });
-        } else if let Some(node) = self.node.take() {
-            rt.spawn(async move { node.release(&token).await });
         }
     }
 }
@@ -583,6 +699,7 @@ async fn renew_loop(shared: Arc<Shared>, gate: Arc<Gate>, every: Duration, reaso
                     if let Ok(mut t) = shared.token.lock() {
                         *t = None;
                     }
+                    shared.lost.store(true, Ordering::Release);
                     eprintln!("[inference-gate] the gate lost this process's maintenance hold and it could not be taken again; this work goes on without it, so other clients may use the engine until it ends");
                     return;
                 }
@@ -590,6 +707,7 @@ async fn renew_loop(shared: Arc<Shared>, gate: Arc<Gate>, every: Duration, reaso
         }
     }
     // The deadline: the work is overdue. The hold is given back so it cannot outlive its work.
+    shared.lost.store(true, Ordering::Release);
     let token = shared.token.lock().ok().and_then(|mut t| t.take());
     if let Some(token) = token {
         eprintln!("[inference-gate] a maintenance hold passed its deadline and was given back");
@@ -625,17 +743,105 @@ async fn lease_loop(shared: Arc<Shared>, node: Arc<NodeLeases>, every: Duration)
         }
     }
     shared.lost.store(true, Ordering::Release);
-    let id = shared.token.lock().ok().and_then(|mut t| t.take());
-    if let Some(id) = id {
-        eprintln!("[models] a maintenance lease passed its deadline and was given back");
-        node.release(&id).await;
-    }
+    shared.start_release(node);
 }
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+
+    // REVIEW_RELEASE_TESTS_BEGIN
+    async fn review_release_hold(
+        hard: Duration,
+        deadline: Duration,
+    ) -> (
+        Hold,
+        Arc<tokio::sync::Notify>,
+        Arc<tokio::sync::Notify>,
+        Arc<AtomicBool>,
+    ) {
+        use axum::{
+            body::Body,
+            http::{Request, Response},
+        };
+        let seen = Arc::new(tokio::sync::Notify::new());
+        let proceed = Arc::new(tokio::sync::Notify::new());
+        let ack = Arc::new(AtomicBool::new(false));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (a, b, c) = (Arc::clone(&seen), Arc::clone(&proceed), Arc::clone(&ack));
+        let app = axum::Router::new().fallback(move |r: Request<Body>| {
+            let (seen, proceed, ack) = (Arc::clone(&a), Arc::clone(&b), Arc::clone(&c));
+            async move {
+                if r.method() == "DELETE" {
+                    seen.notify_one();
+                    proceed.notified().await;
+                    ack.store(true, Ordering::Release);
+                    Response::builder().status(204).body(Body::empty()).unwrap()
+                } else {
+                    Response::builder()
+                        .status(200)
+                        .body(Body::from("{}"))
+                        .unwrap()
+                }
+            }
+        });
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let node = Arc::new(
+            NodeLeases::new(Some(&format!("http://127.0.0.1:{port}")), Some("synthetic")).unwrap(),
+        );
+        let hold = Hold::leased(
+            Arc::new(AtomicBool::new(true)),
+            node,
+            LeaseGrant {
+                id: "fedcba9876543210fedcba9876543210".into(),
+                ttl: hard,
+                renew_every: Duration::from_millis(5),
+                hard,
+                asked: Instant::now(),
+            },
+            "synthetic",
+            Instant::now() + deadline,
+        );
+        (hold, seen, proceed, ack)
+    }
+
+    #[tokio::test]
+    async fn review_deadline_delete_is_joined_before_completion() {
+        let (mut hold, seen, proceed, ack) =
+            review_release_hold(Duration::from_secs(5), Duration::from_millis(10)).await;
+        tokio::time::timeout(Duration::from_secs(1), seen.notified())
+            .await
+            .unwrap();
+        let join = tokio::spawn(async move {
+            hold.release_node_lease().await;
+            hold
+        });
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        assert!(!join.is_finished(), "deadline DELETE is still in flight");
+        proceed.notify_one();
+        let _hold = tokio::time::timeout(Duration::from_secs(1), join)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(ack.load(Ordering::Acquire));
+    }
+
+    #[tokio::test]
+    async fn review_confirmed_hard_expiry_ends_delete_wait() {
+        let (mut hold, _seen, _proceed, ack) =
+            review_release_hold(Duration::from_millis(30), Duration::from_secs(1)).await;
+        let started = Instant::now();
+        tokio::time::timeout(Duration::from_millis(500), hold.release_node_lease())
+            .await
+            .expect("verified expiry ends release");
+        assert!(started.elapsed() >= Duration::from_millis(30));
+        assert!(!ack.load(Ordering::Acquire));
+    }
+    // REVIEW_RELEASE_TESTS_END
 
     #[test]
     fn tokens_are_32_lowercase_hex() {

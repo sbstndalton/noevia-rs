@@ -161,6 +161,16 @@ impl StateFile {
 
     /// `save()`: a temp file beside it (mode 0600), then a rename over it.
     pub fn save(&self, state: &State) -> std::io::Result<()> {
+        self.save_if(state, || true)
+    }
+
+    /// A timed-out/superseded writer may finish its disk work, but must not rename its stale
+    /// snapshot over a newer job. The worker serializes these commits and revokes this permit.
+    pub(super) fn save_if(
+        &self,
+        state: &State,
+        allowed: impl FnOnce() -> bool,
+    ) -> std::io::Result<()> {
         use std::io::Write as _;
         use std::os::unix::fs::OpenOptionsExt;
         let Some(path) = &self.path else {
@@ -189,6 +199,12 @@ impl StateFile {
             f.write_all(text.as_bytes())?;
             f.sync_all()?;
             drop(f);
+            if !allowed() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Interrupted,
+                    "state write ended",
+                ));
+            }
             std::fs::rename(&temp, path)
         })();
         if written.is_err() {

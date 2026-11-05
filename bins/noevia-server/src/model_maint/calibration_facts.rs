@@ -6,7 +6,7 @@
 //! issued for (Node's per-process HMAC), so a launch or an abort applies only to the exact job,
 //! controller, listing row and prepared profile the route checked.
 
-use super::calibration_worker::{id_of, public, Plan, Refusal, Worker};
+use super::calibration_worker::{id_of, visible_job, Plan, Refusal, Worker};
 use super::evidence as ev;
 use js_json::{wtf16, JValue};
 use serde_json::Value;
@@ -162,7 +162,7 @@ impl Worker {
             obj(vec![
                 ("token", JValue::Str(token)),
                 ("starting", JValue::Bool(i.launching)),
-                ("job", public(i.state.job())),
+                ("job", visible_job(i)),
                 (
                     "history",
                     match i.state.get("history") {
@@ -551,7 +551,7 @@ impl Worker {
         }
         let generation = self.cancel_generation();
         let job = self.with(|i| {
-            let job = public(i.state.job());
+            let job = visible_job(i);
             i.cancel_requested = true;
             if let Some(a) = &i.inflight {
                 a.abort();

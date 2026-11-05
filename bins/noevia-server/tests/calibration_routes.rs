@@ -98,22 +98,12 @@ async fn finished_status_has_a_final_saved_record_and_admits_the_next_start() {
             .0,
         202
     );
-    tokio::time::timeout(Duration::from_secs(15), async {
-        loop {
-            let (_, v) = get(f.addr, PATH, ADMIN).await;
-            if v["job"]["status"] == "cancelled" {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .unwrap();
-    // A failed final save cannot be advertised as completion. The old worker publishes
-    // finishedAt before even attempting this rename, so this public status check fails there.
+    // The raw outcome may be cancelled, but clients must see no terminal status until the
+    // final saved record and admission release are published together.
     let until = tokio::time::Instant::now() + Duration::from_secs(1);
     while tokio::time::Instant::now() < until {
         let (_, v) = get(f.addr, PATH, ADMIN).await;
+        assert_eq!(v["job"]["status"], "running", "{v}");
         assert!(v["job"].get("finishedAt").is_none(), "{v}");
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
