@@ -10,7 +10,17 @@ use std::sync::OnceLock;
 const S: &str = r"\t\n\x0B\x0C\r \u{a0}\u{1680}\u{2000}-\u{200a}\u{2028}\u{2029}\u{202f}\u{205f}\u{3000}\u{feff}";
 
 fn js_space(c: char) -> bool {
-    matches!(c, '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}')
+    matches!(
+        c,
+        '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
+    )
 }
 
 /// announced-action.cjs `TAIL_CHARS`.
@@ -49,7 +59,8 @@ fn url_re() -> &'static Regex {
 /// and the long s (U+017F) for `s`. Neither is a word character in either engine, so each is held as
 /// a noncharacter while matching.
 fn js_fold_guard(s: &str) -> String {
-    s.replace('\u{212A}', "\u{FFFF}").replace('\u{17F}', "\u{FFFE}")
+    s.replace('\u{212A}', "\u{FFFF}")
+        .replace('\u{17F}', "\u{FFFE}")
 }
 
 /// `s.slice(-n)` over UTF-16 units: a surrogate pair cut in half leaves its low half, held here as
@@ -127,8 +138,13 @@ pub fn source_links(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for m in url_re().find_iter(&guarded) {
         // The guard only ever replaced a character the class could include; put it back.
-        let raw = m.as_str().replace('\u{FFFF}', "\u{212A}").replace('\u{FFFE}', "\u{17F}");
-        let url = raw.trim_end_matches(['.', ',', ';', ':', '!', '?']).to_owned();
+        let raw = m
+            .as_str()
+            .replace('\u{FFFF}', "\u{212A}")
+            .replace('\u{FFFE}', "\u{17F}");
+        let url = raw
+            .trim_end_matches(['.', ',', ';', ':', '!', '?'])
+            .to_owned();
         if wtf16::len(&url) > 400 || out.contains(&url) {
             continue;
         }

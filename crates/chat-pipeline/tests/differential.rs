@@ -218,12 +218,25 @@ fn round_checks_match_node() {
     for k in arr(c.get("announced")) {
         let want = k.get("out") == &JValue::Bool(true);
         yes += usize::from(want);
-        assert_eq!(rounds::announces_tool_action(&text(k.get("t"))), want, "{:?}", k.get("t"));
+        assert_eq!(
+            rounds::announces_tool_action(&text(k.get("t"))),
+            want,
+            "{:?}",
+            k.get("t")
+        );
     }
     assert!(yes > 300, "{yes}");
     for k in arr(c.get("links")) {
-        let want: Vec<String> = arr(k.get("out")).iter().map(|u| u.as_str().unwrap().to_owned()).collect();
-        assert_eq!(rounds::source_links(&text(k.get("t"))), want, "{:?}", k.get("t"));
+        let want: Vec<String> = arr(k.get("out"))
+            .iter()
+            .map(|u| u.as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(
+            rounds::source_links(&text(k.get("t"))),
+            want,
+            "{:?}",
+            k.get("t")
+        );
     }
     for k in arr(c.get("pass")) {
         assert_eq!(
@@ -236,9 +249,21 @@ fn round_checks_match_node() {
         );
     }
     for k in arr(c.get("fallback")) {
-        let s: Vec<String> = arr(k.get("sources")).iter().map(|u| u.as_str().unwrap().to_owned()).collect();
-        assert_eq!(Some(rounds::fallback_text(&s).as_str()), k.get("out").as_str());
+        let s: Vec<String> = arr(k.get("sources"))
+            .iter()
+            .map(|u| u.as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(
+            Some(rounds::fallback_text(&s).as_str()),
+            k.get("out").as_str()
+        );
     }
-    assert_eq!(Some(rounds::ANNOUNCED_NOTE), c.get("notes").get("announced").as_str());
-    assert_eq!(Some(rounds::FINAL_ANSWER_NOTE), c.get("notes").get("final").as_str());
+    assert_eq!(
+        Some(rounds::ANNOUNCED_NOTE),
+        c.get("notes").get("announced").as_str()
+    );
+    assert_eq!(
+        Some(rounds::FINAL_ANSWER_NOTE),
+        c.get("notes").get("final").as_str()
+    );
 }

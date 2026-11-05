@@ -400,6 +400,7 @@ dependencies = [
  "js-json",
  "prompt-framing",
  "provider-error",
+ "regex",
  "serde_json",
 ]
 
