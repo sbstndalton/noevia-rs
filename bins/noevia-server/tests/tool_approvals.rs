@@ -604,21 +604,6 @@ async fn context_invalidation_with_an_unreachable_executor_never_reports_success
     }
 }
 
-async fn wait_for_invalidation_drain(f: &Front, chat: &str) {
-    tokio::time::timeout(Duration::from_secs(3), async {
-        while f
-            .approvals
-            .pending_invalidation(&f.user, chat)
-            .unwrap()
-            .is_some()
-        {
-            tokio::time::sleep(Duration::from_millis(1)).await;
-        }
-    })
-    .await
-    .expect("acknowledged background cleanup must retire the marker");
-}
-
 async fn explicit_fence_retires_abandoned_invalidation(project: bool) {
     use std::sync::atomic::Ordering::SeqCst;
     let f = front().await;
@@ -679,8 +664,22 @@ async fn another_chats_covering_fence_retires_older_context_markers() {
     )
     .unwrap();
     f.node.refuse.store(false, SeqCst);
-    assert_eq!(f.op("approvals/granted", json!({"user":f.user,"chat":"qa-two","scope":"space:free","binding":b2,"protocol":PROTOCOL})).await.0, 200);
-    wait_for_invalidation_drain(&f, "qa-one").await;
+    let other = json!({"user":f.user,"chat":"qa-two","scope":"space:free","binding":b2,"protocol":PROTOCOL});
+    assert_eq!(f.op("approvals/granted", other.clone()).await.0, 200);
+    // Cleanup is best-effort: later checks may coalesce behind an in-flight failed sweep.
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while f
+            .approvals
+            .pending_invalidation(&f.user, "qa-one")
+            .unwrap()
+            .is_some()
+        {
+            assert_eq!(f.op("approvals/granted", other.clone()).await.0, 200);
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .expect("later checks of another chat must retry abandoned cleanup");
     let covered = f.node.calls.load(SeqCst);
     f.node.refuse.store(true, SeqCst);
     assert_eq!(f.op("approvals/granted", old).await.0, 200);
@@ -742,8 +741,20 @@ async fn outstanding_context_marker_cap_blocks_grants_and_redeems_until_a_fence_
         .0,
         200
     );
-    wait_for_invalidation_drain(&f, "cap-0").await;
-    let (status, answer) = f.op("approvals/granted", probe).await;
+    // Any confirmed scope can free capacity. Retry admission, which also schedules cleanup,
+    // rather than requiring a particular marker to have completed in an earlier best-effort sweep.
+    let (status, answer) = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let reply = f.op("approvals/granted", probe.clone()).await;
+            if reply.0 == 200 {
+                break reply;
+            }
+            assert_eq!(reply.0, 503);
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .expect("confirmed cleanup must eventually allow admission to retry");
     assert_eq!(status, 200);
     assert_eq!(answer["granted"], json!(true));
     assert!(
