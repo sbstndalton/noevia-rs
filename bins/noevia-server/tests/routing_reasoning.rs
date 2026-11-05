@@ -107,14 +107,32 @@ fn array(v: &JValue) -> &[JValue] {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_read_answers_like_the_real_core_route_and_asks_node_only_for_the_mode() {
+    check_reasoning_cases(None).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn routing_repair_is_saved_before_reconcile_throws() {
+    check_reasoning_cases(Some("repair-before-reconcile-error")).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn routing_repair_and_modes_are_saved_before_reconcile_throws() {
+    check_reasoning_cases(Some("repair-and-modes-before-reconcile-error")).await;
+}
+
+async fn check_reasoning_cases(only_set: Option<&str>) {
     let (dir, f, owner, db) = rig().await;
     let fixture = wtf16::parse(include_str!("fixtures/reasoning-get-node.json")).unwrap();
     let cases = array(fixture.get("cases"));
     assert!(cases.len() >= 230, "{}", cases.len());
-    let (mut asked, mut healed) = (0, 0);
+    let (mut asked, mut healed, mut matched) = (0, 0, 0);
     for case in cases {
         let name = case.get("name").as_str().unwrap();
         let set = case.get("set").as_str().unwrap();
+        if only_set.is_some_and(|wanted| wanted != set) {
+            continue;
+        }
+        matched += 1;
         let initial = fixture.get("sets").get(set).as_str();
         let (user, cookie) = if case.get("role").as_str() == Some("admin") {
             (A, ADMIN)
@@ -238,8 +256,12 @@ async fn the_read_answers_like_the_real_core_route_and_asks_node_only_for_the_mo
         };
         assert_eq!(found, want, "{name}: migration backups and moved texts");
     }
-    assert!(asked >= 60, "{asked}");
-    assert!(healed >= 25, "{healed}");
+    if only_set.is_none() {
+        assert!(asked >= 60, "{asked}");
+        assert!(healed >= 25, "{healed}");
+    } else {
+        assert_eq!(matched, 2, "with and without projectId");
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

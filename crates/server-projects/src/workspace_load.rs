@@ -266,21 +266,20 @@ fn pass(dir: &Path, raw: Vec<JValue>, id: Option<&str>, backups: bool) -> Result
         Some(id) => match chats::locate(&projects, id) {
             Ok(Some(at)) => {
                 let found = projects.get(at).ok_or_else(Reply::internal)?;
-                let effects = match chats::get_project_effects(found) {
-                    Ok(effects) => effects,
-                    Err(_) => {
-                        return Ok(Pass {
-                            projects,
-                            target: Target::Failed(Reply::internal()),
-                            save,
-                        })
-                    }
-                };
-                // Node saved after the reconcile had assigned its result, so a save for any reason carries it.
+                let (effects, result) = chats::get_project_attempt(found);
+                // Node saves its routing repair before reconcile can throw (projects.cjs:80-84).
+                // Keep that partial save alongside any load migration, under this same lock.
                 save = save || effects.saved.is_some();
                 let memory = effects.memory;
                 if let Some(slot) = projects.get_mut(at) {
                     *slot = memory.clone();
+                }
+                if result.is_err() {
+                    return Ok(Pass {
+                        projects,
+                        target: Target::Failed(Reply::internal()),
+                        save,
+                    });
                 }
                 Target::Found(memory)
             }

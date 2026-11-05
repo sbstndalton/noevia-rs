@@ -129,6 +129,13 @@ pub(crate) struct Effects {
 }
 
 pub(crate) fn get_project_effects(project: &JValue) -> Result<Effects, skills::Unsupported> {
+    let (effects, result) = get_project_attempt(project);
+    result.map(|()| effects)
+}
+
+/// The ordered getProject attempt, retaining the routing save even if reconciliation throws.
+/// Callers reproducing save-before-error must persist `effects.saved` before returning the error.
+pub(crate) fn get_project_attempt(project: &JValue) -> (Effects, Result<(), skills::Unsupported>) {
     let mut memory = project.clone();
     let mut saved = None;
     let heal = !memory.get("routingChosen").truthy()
@@ -141,10 +148,12 @@ pub(crate) fn get_project_effects(project: &JValue) -> Result<Effects, skills::U
         store::set(&mut memory, "routing", JValue::Str("auto".into()));
         saved = Some(memory.clone());
     }
-    if skills::reconcile(&mut memory)? {
-        saved = Some(memory.clone());
-    }
-    Ok(Effects { memory, saved })
+    let result = skills::reconcile(&mut memory).map(|changed| {
+        if changed {
+            saved = Some(memory.clone());
+        }
+    });
+    (Effects { memory, saved }, result)
 }
 
 /// `sanitizeChats(chats)`: `Err` where JS throws (a truthy non-array has no `filter`).

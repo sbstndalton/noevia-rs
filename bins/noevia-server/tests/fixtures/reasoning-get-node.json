@@ -8,6 +8,8 @@
   "mig-inline": "{\n  \"projects\": [\n    {\n      \"id\": \"inl\",\n      \"name\": \"inl\",\n      \"files\": [\n        {\n          \"name\": \"a.txt\",\n          \"content\": \"hello\",\n          \"textRef\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\n          \"chars\": 99,\n          \"skillHeader\": true\n        },\n        {\n          \"name\": \"s/SKILL.md\",\n          \"content\": \"---\\nname: x\\ndescription: d\\n---\\nBody\"\n        },\n        {\n          \"name\": \"e.txt\",\n          \"content\": \"\"\n        },\n        {\n          \"name\": \"n.txt\",\n          \"content\": 5\n        },\n        {\n          \"name\": \"u.txt\",\n          \"content\": \"café 😀 \\ud800\"\n        }\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"modes\": [\n        \"chat\"\n      ]\n    },\n    {\n      \"id\": \"other\",\n      \"name\": \"other\",\n      \"files\": [],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"modes\": [\n        \"chat\"\n      ]\n    }\n  ]\n}",
   "mig-everything": "{\n  \"projects\": [\n    {\n      \"id\": \"all\",\n      \"name\": \"all\",\n      \"files\": [\n        null,\n        {\n          \"name\": \"a.txt\",\n          \"content\": \"hi\"\n        }\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"modes\": [\n        \"code\"\n      ],\n      \"provider\": \"lemonade\"\n    },\n    {\n      \"id\": \"cowork-chat-context-h2\",\n      \"name\": \"cowork-chat-context-h2\",\n      \"files\": [],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\"\n    }\n  ]\n}",
   "mig-before-reconcile-error": "{\n  \"projects\": [\n    {\n      \"id\": \"bad-files\",\n      \"name\": \"bad-files\",\n      \"files\": {},\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"modes\": [\n        \"code\"\n      ]\n    }\n  ]\n}",
+  "repair-before-reconcile-error": "{\n  \"projects\": [\n    {\n      \"id\": \"cowork-chat-context-failed\",\n      \"name\": \"cowork-chat-context-failed\",\n      \"files\": {},\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\"\n    }\n  ]\n}",
+  "repair-and-modes-before-reconcile-error": "{\n  \"projects\": [\n    {\n      \"id\": \"cowork-chat-context-failed\",\n      \"name\": \"cowork-chat-context-failed\",\n      \"files\": {},\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"modes\": [\n        \"code\"\n      ],\n      \"routing\": \"manual\"\n    }\n  ]\n}",
   "mig-array-entry": "{\n  \"projects\": [\n    [\n      1\n    ],\n    {\n      \"id\": \"ok\",\n      \"name\": \"ok\",\n      \"files\": [],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"modes\": [\n        \"chat\"\n      ]\n    }\n  ]\n}",
   "mig-backup-blocked": "{\n  \"projects\": [\n    {\n      \"id\": \"m-code\",\n      \"name\": \"m-code\",\n      \"files\": [],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"modes\": [\n        \"code\"\n      ]\n    },\n    {\n      \"id\": \"cowork-chat-context-h\",\n      \"name\": \"cowork-chat-context-h\",\n      \"files\": [],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\"\n    }\n  ]\n}",
   "mig-inline-backup-blocked": "{\n  \"projects\": [\n    {\n      \"id\": \"inl\",\n      \"name\": \"inl\",\n      \"files\": [\n        {\n          \"name\": \"a.txt\",\n          \"content\": \"hello\"\n        }\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"modes\": [\n        \"chat\"\n      ]\n    }\n  ]\n}",
@@ -5907,6 +5909,105 @@
    "projectsAfter": "{\n  \"projects\": [\n    [\n      1\n    ],\n    {\n      \"id\": \"ok\",\n      \"name\": \"ok\",\n      \"files\": [],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"instructionSkills\": {}\n    }\n  ]\n}",
    "extras": {
     "migration-backups/projects-pre-1576-5cf956f41743e2cb.json": "{\n  \"projects\": [\n    [\n      1\n    ],\n    {\n      \"id\": \"ok\",\n      \"name\": \"ok\",\n      \"files\": [],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"modes\": [\n        \"chat\"\n      ]\n    }\n  ]\n}"
+   }
+  },
+  {
+   "name": "repair-before-reconcile-error/low/none/member",
+   "set": "repair-before-reconcile-error",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "repair-before-reconcile-error/low/cowork-chat-context-failed/member",
+   "set": "repair-before-reconcile-error",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=cowork-chat-context-failed",
+   "role": "member",
+   "reply": {
+    "status": 500,
+    "body": {
+     "error": "Internal error"
+    }
+   },
+   "loadThrew": false,
+   "asked": [],
+   "projectsAfter": "{\n  \"projects\": [\n    {\n      \"id\": \"cowork-chat-context-failed\",\n      \"name\": \"cowork-chat-context-failed\",\n      \"files\": {},\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\"\n    }\n  ]\n}"
+  },
+  {
+   "name": "repair-and-modes-before-reconcile-error/low/none/member",
+   "set": "repair-and-modes-before-reconcile-error",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ],
+   "projectsAfter": "{\n  \"projects\": [\n    {\n      \"id\": \"cowork-chat-context-failed\",\n      \"name\": \"cowork-chat-context-failed\",\n      \"files\": {},\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"modes\": [\n        \"chat\",\n        \"code\"\n      ],\n      \"routing\": \"manual\"\n    }\n  ]\n}",
+   "extras": {
+    "migration-backups/projects-pre-1576-be6d83491d5d7ee8.json": "{\n  \"projects\": [\n    {\n      \"id\": \"cowork-chat-context-failed\",\n      \"name\": \"cowork-chat-context-failed\",\n      \"files\": {},\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"modes\": [\n        \"code\"\n      ],\n      \"routing\": \"manual\"\n    }\n  ]\n}"
+   }
+  },
+  {
+   "name": "repair-and-modes-before-reconcile-error/low/cowork-chat-context-failed/member",
+   "set": "repair-and-modes-before-reconcile-error",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=cowork-chat-context-failed",
+   "role": "member",
+   "reply": {
+    "status": 500,
+    "body": {
+     "error": "Internal error"
+    }
+   },
+   "loadThrew": false,
+   "asked": [],
+   "projectsAfter": "{\n  \"projects\": [\n    {\n      \"id\": \"cowork-chat-context-failed\",\n      \"name\": \"cowork-chat-context-failed\",\n      \"files\": {},\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"modes\": [\n        \"chat\",\n        \"code\"\n      ],\n      \"routing\": \"auto\"\n    }\n  ]\n}",
+   "extras": {
+    "migration-backups/projects-pre-1576-be6d83491d5d7ee8.json": "{\n  \"projects\": [\n    {\n      \"id\": \"cowork-chat-context-failed\",\n      \"name\": \"cowork-chat-context-failed\",\n      \"files\": {},\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"modes\": [\n        \"code\"\n      ],\n      \"routing\": \"manual\"\n    }\n  ]\n}"
    }
   },
   {

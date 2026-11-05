@@ -66,6 +66,8 @@ const MIGRATE = {
   'mig-everything': S({ projects: [bare('all', { modes: ['code'], provider: 'lemonade', files: [null, { name: 'a.txt', content: 'hi' }] }), HEAL('cowork-chat-context-h2')] }),
   // project-modes.cjs migrate() accepts any object, an array included (it sets a property JSON never carries).
   'mig-before-reconcile-error': S({ projects: [bare('bad-files', { modes: ['code'], files: {} })] }),
+  'repair-before-reconcile-error': S({ projects: [bare('cowork-chat-context-failed', { modes: ['chat'], routing: 'manual', files: {} })] }),
+  'repair-and-modes-before-reconcile-error': S({ projects: [bare('cowork-chat-context-failed', { modes: ['code'], routing: 'manual', files: {} })] }),
   'mig-array-entry': S({ projects: [[1], bare('ok', { modes: ['chat'] })] }),
   // A backup that cannot be written: the modes stay as stored (#1839), and inline text refuses the load.
   'mig-backup-blocked': S({ projects: [bare('m-code', { modes: ['code'] }), HEAL('cowork-chat-context-h')] }),
@@ -114,6 +116,8 @@ const SETTINGS = [
     'mig-inline': ['inl', 'other'],
     'mig-everything': ['all', 'cowork-chat-context-h2'],
     'mig-array-entry': ['ok'],
+    'repair-before-reconcile-error': ['cowork-chat-context-failed'],
+    'repair-and-modes-before-reconcile-error': ['cowork-chat-context-failed'],
     'mig-before-reconcile-error': ['bad-files'],
     'mig-backup-blocked': ['m-code', 'cowork-chat-context-h'],
     'mig-inline-backup-blocked': ['inl'],
