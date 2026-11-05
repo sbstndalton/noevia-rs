@@ -4,7 +4,8 @@ The native authority owns the effective boot/live budget. Admission reads the
 start-bound atomic snapshot directly, without taking the writer mutex. The
 settings row is persistence for the next start, never an admission fallback.
 
-Every save holds the authority's writer mutex through all of these steps:
+Every save holds the authority's persistence mutex through all of these steps.
+Scan operations never acquire this mutex:
 
 1. Capture the exact previous settings row, including its absence, and write the
    new row in one SQLite transaction. Commit it before publishing anything.
@@ -16,8 +17,9 @@ Every save holds the authority's writer mutex through all of these steps:
 
 A failed initial commit never changes the snapshot or its generation. A failed
 publication never exposes the candidate, so it needs no compensating snapshot or
-generation change. Periodic publication uses the same mutex and cannot publish
-an intermediate candidate. Node writes its audit only after a successful native
+generation change in the published snapshot. Periodic publication uses the same
+persistence mutex and cannot publish an intermediate budget candidate. Concurrent
+scan invalidations remain independent and are never rolled back by a failed save. Node writes its audit only after a successful native
 save acknowledgement; every rejected save therefore writes no success audit.
 
 ## Crash and compensation failure
@@ -42,7 +44,16 @@ verify the explicitly documented restart behavior.
 
 ## Scan cache (G3)
 
-The same authority mutex and generation own the folder scan. Budget adoption
+A separate short-lived mutex in the same authority owns the folder scan and
+generation. It performs no database or filesystem I/O. Snapshot reads capture an
+Arc under that lock, then clone its value outside it; replaced entries are also
+dropped after releasing the lock. Persistence remains serialized by the budget
+writer mutex. A successful save takes a final short cache fence before returning,
+so it also rejects scans started during persistence. Snapshot generation stamps
+are sampled without holding the scan lock during publication; concurrent scan
+invalidations can advance the cache further while the snapshot is written, as
+with ordinary invalidations between periodic publications. Serialized snapshot
+publication keeps stamps monotonic. Budget adoption
 and scan invalidation both fence publication; each process has a fresh random
 epoch, so tokens from an earlier process are unusable. Entry tokens additionally
 fence a conditional refresh against replacement within a generation. There is
@@ -66,3 +77,8 @@ Assembly and supervisor pairing require rust-model-scan-cache-v1 with G1 and
 the matching Core consumer. Manager path validation runs on raw segments before
 URL normalization, preserving the administrator/configuration gates and the
 400 Invalid path response for decoded traversal or separators.
+
+Startup reads the existing application database with READ_ONLY and never CREATE.
+Budget writes require an existing database with READ_WRITE and never CREATE.
+A missing/unusable store retains the existing unavailable/default-budget behavior
+without leaving an empty SQLite file before the application store bootstraps.

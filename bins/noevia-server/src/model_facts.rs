@@ -1,7 +1,10 @@
 //! Effective model facts. Rust owns the boot/live budget; the settings row is only its boot input.
 use serde_json::{json, Value};
-use server_store::rusqlite::{Connection, OptionalExtension, TransactionBehavior};
-use std::{path::PathBuf, sync::Mutex};
+use server_store::rusqlite::{Connection, OpenFlags, OptionalExtension, TransactionBehavior};
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 pub const FILE: &str = "model-facts.json";
 pub const PROTOCOL: &str = "model-facts/1";
@@ -9,9 +12,12 @@ pub const MAX_AGE_MS: i64 = 15_000;
 #[derive(Debug)]
 struct State {
     saved: Option<f64>,
+}
+#[derive(Debug, Default)]
+struct ScanState {
     generation: u64,
     entry: u64,
-    hit: Option<js_json::JValue>,
+    hit: Option<Arc<js_json::JValue>>,
 }
 type ScanReply = Option<Option<js_json::JValue>>;
 type PendingScan = (String, tokio::sync::watch::Sender<ScanReply>);
@@ -22,7 +28,9 @@ pub struct Authority {
     epoch: [u8; 32],
     default: f64,
     meminfo: PathBuf,
+    // Serializes budget persistence/publication only; scan operations never take it.
     state: Mutex<State>,
+    cache: Mutex<ScanState>,
     sidecar_names: Mutex<Option<(Vec<String>, String)>>,
     scan: Mutex<Option<PendingScan>>,
 }
@@ -52,7 +60,11 @@ impl Authority {
             .filter(|s| !s.is_empty())
             .map(PathBuf::from);
         let saved = root.as_ref().and_then(|p| {
-            let c = Connection::open(p.join("cowork.db")).ok()?;
+            let c = Connection::open_with_flags(
+                p.join("cowork.db"),
+                OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+            )
+            .ok()?;
             let s: Option<String> = c
                 .query_row(
                     "SELECT value FROM settings WHERE key='inference:memory-budget'",
@@ -82,15 +94,11 @@ impl Authority {
                 .unwrap_or_else(|| PathBuf::from("/proc/meminfo")),
             sidecar_names: Mutex::new(None),
             scan: Mutex::new(None),
-            state: Mutex::new(State {
-                saved,
-                generation: 0,
-                entry: 0,
-                hit: None,
-            }),
+            state: Mutex::new(State { saved }),
+            cache: Mutex::new(ScanState::default()),
         }
     }
-    fn scan_token(&self, state: &State, entry: bool) -> String {
+    fn scan_token(&self, state: &ScanState, entry: bool) -> String {
         use sha2::{Digest, Sha256};
         let mut hash = Sha256::new();
         hash.update(self.epoch);
@@ -102,43 +110,62 @@ impl Authority {
     }
     pub fn scan_snapshot(&self) -> Option<js_json::JValue> {
         use js_json::JValue;
-        let state = self.state.lock().ok()?;
+        let (token, entry_token, hit) = {
+            let state = self.cache.lock().ok()?;
+            if state.generation == u64::MAX {
+                return None;
+            }
+            (
+                self.scan_token(&state, false),
+                self.scan_token(&state, true),
+                state.hit.clone(),
+            )
+        };
         Some(JValue::obj([
-            ("token", JValue::Str(self.scan_token(&state, false))),
-            ("entryToken", JValue::Str(self.scan_token(&state, true))),
+            ("token", JValue::Str(token)),
+            ("entryToken", JValue::Str(entry_token)),
             ("now", JValue::Num(crate::identity::now_ms() as f64)),
-            ("hit", state.hit.clone().unwrap_or(JValue::Null)),
+            ("hit", hit.as_deref().cloned().unwrap_or(JValue::Null)),
         ]))
     }
     pub fn scan_publish(&self, token: &str, body: js_json::JValue) -> bool {
         if !matches!(body, js_json::JValue::Obj(_) | js_json::JValue::Arr(_)) {
             return false;
         }
-        let Ok(mut state) = self.state.lock() else {
+        let hit = Arc::new(js_json::JValue::obj([
+            ("at", js_json::JValue::Num(crate::identity::now_ms() as f64)),
+            ("body", body),
+        ]));
+        let Ok(mut state) = self.cache.lock() else {
             return false;
         };
-        if token != self.scan_token(&state, false) {
+        if state.generation == u64::MAX || token != self.scan_token(&state, false) {
             return false;
         }
         let Some(entry) = state.entry.checked_add(1) else {
             return false;
         };
         state.entry = entry;
-        state.hit = Some(js_json::JValue::obj([
-            ("at", js_json::JValue::Num(crate::identity::now_ms() as f64)),
-            ("body", body),
-        ]));
+        let old = state.hit.replace(hit);
+        drop(state);
+        drop(old);
         true
     }
     pub fn scan_refresh_token(&self, entry: &str) -> Option<String> {
-        let state = self.state.lock().ok()?;
-        (entry == self.scan_token(&state, true)).then(|| self.scan_token(&state, false))
+        let state = self.cache.lock().ok()?;
+        (state.generation != u64::MAX && entry == self.scan_token(&state, true))
+            .then(|| self.scan_token(&state, false))
     }
     pub fn scan_invalidate(&self) -> Option<()> {
-        let mut state = self.state.lock().ok()?;
-        state.generation = state.generation.checked_add(1)?;
-        state.hit = None;
-        Some(())
+        let mut state = self.cache.lock().ok()?;
+        let next = state.generation.checked_add(1);
+        if let Some(generation) = next {
+            state.generation = generation;
+        }
+        let old = state.hit.take();
+        drop(state);
+        drop(old);
+        next.map(|_| ())
     }
     fn figure(&self, state: &State) -> Value {
         let text = std::fs::read_to_string(&self.meminfo).ok();
@@ -165,9 +192,14 @@ impl Authority {
     }
     pub fn publish(&self) -> Result<(), String> {
         let state = self.state.lock().map_err(|_| "budget unavailable")?;
-        self.publish_locked(&state)
+        let generation = self
+            .cache
+            .lock()
+            .map_err(|_| "scan generation unavailable")?
+            .generation;
+        self.publish_locked(&state, generation)
     }
-    fn publish_locked(&self, state: &State) -> Result<(), String> {
+    fn publish_locked(&self, state: &State, generation: u64) -> Result<(), String> {
         let root = self.root.as_ref().ok_or("budget directory unavailable")?;
         if self.start.is_empty() {
             return Err("budget start unavailable".into());
@@ -175,8 +207,9 @@ impl Authority {
         let sidecars = self
             .sidecar_names
             .lock()
-            .map_err(|_| "sidecar facts unavailable")?;
-        let body = json!({"protocol":PROTOCOL,"start":self.start,"generation":state.generation,"at":crate::identity::now_ms(),"budget":self.figure(state),"sidecarNames":sidecars.as_ref().map(|n|&n.0),"configRevision":sidecars.as_ref().map(|n|&n.1)});
+            .map_err(|_| "sidecar facts unavailable")?
+            .clone();
+        let body = json!({"protocol":PROTOCOL,"start":self.start,"generation":generation,"at":crate::identity::now_ms(),"budget":self.figure(state),"sidecarNames":sidecars.as_ref().map(|n|&n.0),"configRevision":sidecars.as_ref().map(|n|&n.1)});
         std::fs::create_dir_all(root).map_err(|_| "budget directory unavailable")?;
         let tmp = root.join("model-facts.json.tmp");
         use std::io::Write;
@@ -207,12 +240,14 @@ impl Authority {
         let max = field(&r, "maxGib").as_f64().unwrap_or(1024.0);
         let n = body.get("budgetGib").and_then(Value::as_f64).filter(|n|n.is_finite() && round1(*n)==*n && *n>=2.0 && *n<=max).ok_or_else(||(400,json!({"error":format!("Enter a budget from 2 to {max} GiB, in steps of 0.1."),"errorId":"invalidBudget","minGib":2,"maxGib":max})))?;
         let root = self.root.as_ref().ok_or_else(unavailable)?;
-        let mut c = Connection::open(root.join("cowork.db")).map_err(|_| unavailable())?;
+        let mut c = Connection::open_with_flags(
+            root.join("cowork.db"),
+            OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .map_err(|_| unavailable())?;
         c.busy_timeout(std::time::Duration::from_secs(2))
             .map_err(|_| unavailable())?;
         let old_saved = state.saved;
-        let old_generation = state.generation;
-        let next_generation = state.generation.checked_add(1).ok_or_else(unavailable)?;
         let tx = c
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| unavailable())?;
@@ -229,10 +264,18 @@ impl Authority {
         // transaction commits: compensating later cannot undo an admission.
         tx.commit().map_err(|_| unavailable())?;
         state.saved = Some(n);
-        state.generation = next_generation;
-        if self.publish_locked(&state).is_err() {
+        // Only capture the generation under the cache lock. SQLite, meminfo and
+        // snapshot fsync/rename never run with that lock held. A concurrent cache
+        // invalidation can advance it further; the settlement fence below covers
+        // every scan started while this save was doing I/O.
+        let next_generation = self
+            .cache
+            .lock()
+            .ok()
+            .and_then(|cache| cache.generation.checked_add(1));
+        if next_generation.is_none_or(|generation| self.publish_locked(&state, generation).is_err())
+        {
             state.saved = old_saved;
-            state.generation = old_generation;
             // Publication failed before rename, so readers still have the old
             // snapshot. Restore its exact prior persistence under this writer lock.
             let restored = (|| {
@@ -254,7 +297,10 @@ impl Authority {
             }
             return Err(unavailable());
         }
-        state.hit = None;
+        // The cache check-and-publish and this settlement fence share one short
+        // critical section. No scan captured before/during adoption can republish.
+        // Poisoned or exhausted cache state already refuses every read/publication.
+        let _ = self.scan_invalidate();
         Ok(self.figure(&state))
     }
 }
@@ -552,4 +598,84 @@ async fn installed_inner(
         ),
         ("scan", files),
     ]))
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
+mod concurrency_tests {
+    use super::*;
+    use std::{
+        sync::Arc,
+        time::{Duration, Instant},
+    };
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn scan_operations_complete_while_budget_save_waits_for_sqlite() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Connection::open(dir.path().join("cowork.db")).unwrap();
+        db.execute_batch("CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT);")
+            .unwrap();
+        let authority = Arc::new(Authority::from_lookup(&|key| match key {
+            "UI_DATA_DIR" => Some(dir.path().display().to_string()),
+            "NOEVIA_START_ID" => Some("synthetic-start".into()),
+            _ => None,
+        }));
+        authority.publish().unwrap();
+        let old = authority.scan_snapshot().unwrap();
+        let old_token = old.get("token").as_str().unwrap().to_owned();
+        db.execute_batch("BEGIN IMMEDIATE;").unwrap();
+        let saving = Arc::clone(&authority);
+        let writer = std::thread::spawn(move || saving.save(&json!({"budgetGib": 2})));
+        // Prove the writer entered its serialized persistence path while SQLite
+        // is held. This same check exercises the old implementation's long lock.
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while authority.state.try_lock().is_ok() && Instant::now() < deadline {
+            std::thread::yield_now();
+        }
+        let entered = authority.state.try_lock().is_err();
+        let scanning = Arc::clone(&authority);
+        let mut scan_task = tokio::spawn(async move {
+            let read = scanning.scan_snapshot().is_some();
+            let invalidated = scanning.scan_invalidate().is_some();
+            let old_refused = !scanning.scan_publish(
+                &old_token,
+                js_json::JValue::obj([("models", js_json::JValue::Arr(vec![]))]),
+            );
+            let current = scanning.scan_snapshot().unwrap();
+            let token = current.get("token").as_str().unwrap().to_owned();
+            let applied = scanning.scan_publish(
+                &token,
+                js_json::JValue::obj([("models", js_json::JValue::Arr(vec![]))]),
+            );
+            (read, invalidated, old_refused, applied, token)
+        });
+        let result = tokio::time::timeout(Duration::from_millis(250), &mut scan_task).await;
+        // Always release and join before asserting, including the fail-before case.
+        db.execute_batch("ROLLBACK;").unwrap();
+        let saved = writer.join().unwrap();
+        if result.is_err() {
+            let _ = scan_task.await;
+        }
+        assert!(
+            entered,
+            "the save must have entered while the SQLite writer is held"
+        );
+        assert!(
+            saved.is_ok(),
+            "the save completes after the held writer is released"
+        );
+        let (read, invalidated, old_refused, applied, during_token) = result
+            .unwrap_or_else(|_| panic!("scan operations blocked behind persistence I/O"))
+            .unwrap();
+        assert!(read && invalidated && old_refused && applied);
+        // Successful budget adoption also fences entries published DURING its I/O.
+        assert!(!authority.scan_publish(
+            &during_token,
+            js_json::JValue::obj([("models", js_json::JValue::Arr(vec![]))])
+        ));
+        assert!(matches!(
+            authority.scan_snapshot().unwrap().get("hit"),
+            js_json::JValue::Null
+        ));
+    }
 }

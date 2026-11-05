@@ -307,3 +307,27 @@ fn budget_mutation_uses_the_same_generation_fence() {
     ));
     assert!(!authority.scan_publish(token, body));
 }
+
+#[test]
+fn boot_and_scan_operations_never_create_the_application_database() {
+    let d = tempfile::tempdir().unwrap();
+    let authority = noevia_server::model_facts::Authority::from_lookup(&|key| match key {
+        "UI_DATA_DIR" => Some(d.path().display().to_string()),
+        "NOEVIA_START_ID" => Some("synthetic-start".into()),
+        _ => None,
+    });
+    let db = d.path().join("cowork.db");
+    assert!(!db.exists(), "reading a boot budget must not create SQLite");
+    authority.publish().unwrap();
+    let snapshot = authority.scan_snapshot().unwrap();
+    let body = js_json::wtf16::parse(r#"{"models":[]}"#).unwrap();
+    assert!(authority.scan_publish(snapshot.get("token").as_str().unwrap(), body));
+    authority.scan_invalidate().unwrap();
+    assert!(authority.scan_snapshot().is_some());
+    assert!(!db.exists(), "scan paths are purely in memory");
+    assert_eq!(authority.save(&json!({"budgetGib": 2})).unwrap_err().0, 503);
+    assert!(
+        !db.exists(),
+        "an early budget write requires an existing store"
+    );
+}
