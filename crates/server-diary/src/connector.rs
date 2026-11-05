@@ -440,6 +440,31 @@ impl Diary {
         endpoint: &str,
         body: Option<String>,
     ) -> Result<JValue, Fault> {
+        self.call_file_within(
+            store,
+            data_dir,
+            user_id,
+            method,
+            endpoint,
+            body,
+            CALL_TIMEOUT,
+        )
+        .await
+    }
+
+    /// [`Diary::call_file`] with its own deadline: the native chat mirror pass (core `diaryFiles`,
+    /// the same call, 15 s).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn call_file_within(
+        &self,
+        store: &Arc<Store>,
+        data_dir: &Path,
+        user_id: &str,
+        method: Method,
+        endpoint: &str,
+        body: Option<String>,
+        timeout: Duration,
+    ) -> Result<JValue, Fault> {
         let (s, d, u) = (
             Arc::clone(store),
             data_dir.to_path_buf(),
@@ -462,7 +487,7 @@ impl Diary {
                 method,
                 &format!("/api{endpoint}"),
                 body.map(Bytes::from),
-                CALL_TIMEOUT,
+                timeout,
             )
             .await;
         // A thrown fetch error carries no status: a generic 500.
