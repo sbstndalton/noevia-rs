@@ -122,8 +122,8 @@ async fn media_notification_preserves_text(fail: bool) {
         "notify once, independently of text success"
     );
     assert!(
-        prepared.load(Ordering::SeqCst),
-        "prepare source before media notification"
+        !prepared.load(Ordering::SeqCst),
+        "notify before source preparation, matching Node"
     );
     let index = Index {
         user: Some("11111111-1111-4111-8111-111111111111".into()),
@@ -146,7 +146,7 @@ async fn media_notification_preserves_text(fail: bool) {
     );
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn media_notification_is_sent_once_after_source_preparation() {
+async fn media_notification_is_sent_once_before_source_preparation() {
     media_notification_preserves_text(false).await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -191,4 +191,73 @@ async fn failed_text_job_persists_a_bounded_sanitized_diagnostic() {
             .unwrap(),
         5
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn final_attempt_text_preparation_failure_still_notifies_media() {
+    for failed_notification in [false, true] {
+        let (_tmp, store, dir) =
+            queued_media_source(serde_json::json!({"name":"a.md","textRef":"a".repeat(64)}));
+        let notices = Arc::new(AtomicUsize::new(0));
+        let seen = notices.clone();
+        let stub = server(move |path, _| {
+            if path == "/internal/embedding-worker-owner/source-changed" {
+                seen.fetch_add(1, Ordering::SeqCst);
+                if failed_notification {
+                    return (503, "{}".into());
+                }
+            }
+            outbox_ready_reply(path)
+        })
+        .await;
+        let http = Http::new(&stub.base, None, &stub.base, None).unwrap();
+        let worker = runtime::start(
+            store,
+            http,
+            stub.base.clone(),
+            "synthetic-token".into(),
+            START.into(),
+            Options::default(),
+            None,
+        )
+        .unwrap();
+        let db = rusqlite::Connection::open(dir.join("index-outbox.db")).unwrap();
+        let failed = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            while !db
+                .query_row("SELECT state='failed' FROM jobs", [], |r| {
+                    r.get::<_, bool>(0)
+                })
+                .unwrap_or(false)
+            {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .is_ok();
+        worker.shutdown().await;
+        assert!(
+            failed,
+            "missing text must still fail its final text attempt"
+        );
+        assert_eq!(
+            notices.load(Ordering::SeqCst),
+            1,
+            "notify media even when text preparation fails"
+        );
+        let (attempts, error): (i64, String) = db
+            .query_row("SELECT attempts,last_error FROM jobs", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(attempts, 5);
+        let error: serde_json::Value = serde_json::from_str(&error).unwrap();
+        assert_eq!(
+            error["operation"], "prepare",
+            "media errors must not replace text diagnostics"
+        );
+        assert!(
+            !dir.join("rag/p.db").exists(),
+            "no text index is created for a missing blob"
+        );
+    }
 }

@@ -479,18 +479,19 @@ impl NativeHost {
             deferred: false,
         };
         let result:Result<(),Error>=async {
-            let ctl=Control::default();
-            crate::fill::Embed::authorize(&self.http,&ctl).await.map_err(|e|Error::new(row,Op::Prepare,&e))?;
-            let source=self.store.index_source(user,row,&ctl).map_err(|e|Error::new(row,Op::Prepare,&e))?;
-            attempt.prepared=true;
-            // Node sourceChanged drops scheduling errors without retrying the
-            // notification. Keep media best-effort and outside text retry state;
-            // the Node media owner retains its own backfill retry policy.
+            // Match Node: notify before text eligibility/preparation, including
+            // missing text blobs on the final attempt. Scheduling errors are
+            // warning-only; the media owner retains its own backfill retries.
             if row.kind=="index" {
                 if let Err(error)=self.http.source_changed(&self.core,&self.token,&self.start,user,&row.project).await {
                     eprintln!("{}",Error::new(row,Op::Notify,&error).warning());
                 }
             }
+            let ctl=Control::default();
+            crate::fill::Embed::authorize(&self.http,&ctl).await.map_err(|e|Error::new(row,Op::Prepare,&e))?;
+            let preparation=self.store.index_source(user,row,&ctl);
+            let source=preparation.map_err(|e|Error::new(row,Op::Prepare,&e))?;
+            attempt.prepared=true;
             let Some(source)=source else {return Ok(())};
             let config=self.store.config().map_err(|e|Error::new(row,Op::Prepare,&e))?;
             if self.off(&config.active) {return Ok(());}
