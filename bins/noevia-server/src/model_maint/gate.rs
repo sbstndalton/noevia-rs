@@ -131,6 +131,14 @@ impl Gate {
         self.token.is_some()
     }
 
+    /// The gate's admin header (inference-gate-client.cjs `adminHeaders()`), for an admin's forced unload
+    /// (row A, model_load_routes.rs). `None` without a token.
+    pub(crate) fn admin_header(&self) -> Option<(HeaderName, HeaderValue)> {
+        let mut t = HeaderValue::from_str(self.token.as_deref()?).ok()?;
+        t.set_sensitive(true);
+        Some((HeaderName::from_static(ADMIN_HEADER), t))
+    }
+
     fn absent(&self) -> bool {
         self.absent_at
             .lock()

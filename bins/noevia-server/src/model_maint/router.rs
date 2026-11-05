@@ -86,6 +86,36 @@ impl Router {
         request
     }
 
+    /// One request with extra headers (a gate lease, the gate's admin header), never a maintenance hold
+    /// (row A, model_load_routes.rs: llamacpp-manager.cjs `request(path, {headers})`).
+    pub(crate) async fn request_with(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&Value>,
+        extra: &[(HeaderName, HeaderValue)],
+        timeout: Duration,
+    ) -> Result<Reply, Fault> {
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        if let Some(a) = &self.authorization {
+            headers.insert(AUTHORIZATION, a.clone());
+        }
+        for (k, v) in extra {
+            headers.insert(k.clone(), v.clone());
+        }
+        let mut req = self
+            .client
+            .request(method, format!("{}{path}", self.base))
+            .headers(headers)
+            .timeout(timeout);
+        if let Some(b) = body {
+            req = req.body(b.to_string());
+        }
+        let res = req.send().await.map_err(|_| Fault)?;
+        settle(res).await
+    }
+
     /// One request. `hold` is the maintenance hold token this process holds (its requests carry it).
     pub async fn request(
         &self,
@@ -112,28 +142,7 @@ impl Router {
             req = req.body(b.to_string());
         }
         let res = req.send().await.map_err(|_| Fault)?;
-        let status = res.status().as_u16();
-        let ok = res.status().is_success();
-        let bytes = match read_capped(res).await {
-            Ok(Some(b)) => b,
-            Ok(None) => {
-                return Ok(Reply {
-                    ok: false,
-                    status,
-                    body: None,
-                })
-            }
-            Err(()) => return Err(Fault),
-        };
-        let body = match serde_json::from_slice::<Value>(&bytes) {
-            Ok(v) => v,
-            Err(_) => Value::String(String::from_utf8_lossy(&bytes).into_owned()),
-        };
-        Ok(Reply {
-            ok,
-            status,
-            body: Some(body),
-        })
+        settle(res).await
     }
 
     pub async fn get(
@@ -189,6 +198,32 @@ impl Router {
         )
         .await
     }
+}
+
+/// fetchJson's settlement of an answer: `{ok, status, body}` (text when not JSON), `Err` on a read failure.
+async fn settle(res: reqwest::Response) -> Result<Reply, Fault> {
+    let status = res.status().as_u16();
+    let ok = res.status().is_success();
+    let bytes = match read_capped(res).await {
+        Ok(Some(b)) => b,
+        Ok(None) => {
+            return Ok(Reply {
+                ok: false,
+                status,
+                body: None,
+            })
+        }
+        Err(()) => return Err(Fault),
+    };
+    let body = match serde_json::from_slice::<Value>(&bytes) {
+        Ok(v) => v,
+        Err(_) => Value::String(String::from_utf8_lossy(&bytes).into_owned()),
+    };
+    Ok(Reply {
+        ok,
+        status,
+        body: Some(body),
+    })
 }
 
 /// The body, or `Ok(None)` when it passes [`MAX_RESPONSE_BYTES`].

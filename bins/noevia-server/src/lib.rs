@@ -49,6 +49,7 @@ pub mod mcp_tools;
 pub mod model_assignments;
 pub mod model_downloads_read;
 pub mod model_kind;
+pub mod model_load_routes;
 pub mod model_maint;
 pub mod model_manager_scan;
 pub mod model_routes;
@@ -461,6 +462,7 @@ pub const FEATURES: &[&str] = &[
     "rust-idle-unload-read",
     "rust-model-assignments",
     "rust-model-downloads-read",
+    "noevia-model-load-authority/1",
     "rust-autotune-resume",
     #[cfg(feature = "rust-storage-reads")]
     "rust-connectors",

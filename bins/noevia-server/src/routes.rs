@@ -470,6 +470,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
         p if auth
             && (crate::model_routes::ROUTES.contains(&p)
                 || crate::model_maint::ROUTES.contains(&p)
+                || crate::model_load_routes::ROUTES.contains(&p)
                 || p == crate::autotune_resume_routes::PATH
                 || p == crate::autotune_cancel_routes::PATH
                 || p == crate::autotune_untuned_routes::PATH
@@ -1365,7 +1366,6 @@ mod tests {
         for p in [
             "/api/model-manager",
             "/api/models/delete",
-            "/api/models/load",
             "/api/models/machines",
             "/api/models/preset/",
             "/api/models/downloads/",
@@ -1413,11 +1413,25 @@ mod tests {
                 (crate::model_state_routes::BUDGET, &["GET"][..]),
                 (crate::idle_unload_read::PATH, &["GET"][..]),
                 (crate::model_state_routes::INSTALLED, &["GET"][..]),
+                (crate::model_load_routes::LOAD, &["POST"][..]),
+                (crate::model_load_routes::UNLOAD, &["POST"][..]),
                 (crate::preset_read_routes::PATH, &["GET"][..]),
                 (crate::model_sizing::SUGGEST, &["GET"][..]),
                 (crate::model_maint::RELOAD, &["POST"][..]),
             ]
         );
+        // Row A: load and unload are the front's for POST only.
+        assert!(crate::FEATURES.contains(&"noevia-model-load-authority/1"));
+        for p in crate::model_load_routes::ROUTES {
+            assert_eq!(
+                dispatch_under("POST", p, on),
+                Some(Native::Models),
+                "POST {p}"
+            );
+            for m in ["GET", "HEAD", "PUT", "PATCH", "DELETE", "OPTIONS"] {
+                assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
+            }
+        }
         // #2210: the maintenance routes are the front's for their one method only; every other
         // method stays Node's.
         for p in crate::model_maint::ROUTES {

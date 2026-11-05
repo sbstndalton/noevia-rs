@@ -63,6 +63,8 @@ pub struct Refused {
     pub status: u16,
     pub message: String,
     pub code: Option<String>,
+    /// Core's `retryable: true` (the gate's own flag on a queue or engine refusal); false when absent.
+    pub retryable: bool,
 }
 
 impl Refused {
@@ -71,6 +73,7 @@ impl Refused {
             status: 503,
             message: "The model is busy. Try again shortly.".into(),
             code: None,
+            retryable: false,
         }
     }
 }
@@ -172,6 +175,7 @@ impl Admission {
                         .get("code")
                         .and_then(Value::as_str)
                         .map(str::to_owned),
+                    retryable: parsed.get("retryable") == Some(&Value::Bool(true)),
                 },
             });
         }
@@ -245,6 +249,7 @@ fn cancelled() -> Refused {
         status: 499,
         message: "Cancelled.".into(),
         code: None,
+        retryable: false,
     }
 }
 

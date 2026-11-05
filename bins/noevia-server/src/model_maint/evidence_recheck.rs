@@ -25,7 +25,7 @@ const CATEGORY: &str =
 const LIMIT: usize = 64 * 1024;
 
 pub struct Recheck {
-    admission: Arc<Admission>,
+    pub(crate) admission: Arc<Admission>,
     slots: Arc<tokio::sync::Semaphore>,
 }
 impl std::fmt::Debug for Recheck {

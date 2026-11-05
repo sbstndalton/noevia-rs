@@ -152,6 +152,9 @@ pub async fn serve(
     if path == crate::autotune_untuned_routes::PATH {
         return crate::autotune_untuned_routes::serve(app, conn, req, path).await;
     }
+    if crate::model_load_routes::ROUTES.contains(&path.as_str()) {
+        return crate::model_load_routes::serve(app, conn, req).await;
+    }
     if crate::model_maint::ROUTES.contains(&path.as_str()) {
         return crate::model_maint::serve(app, conn, req, path).await;
     }

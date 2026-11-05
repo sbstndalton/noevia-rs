@@ -411,7 +411,7 @@ impl Maint {
 }
 
 /// The body of a request, capped (http.cjs `readBody`): `Err(413)` over the limit.
-async fn body_text(body: Body, limit: usize, within: Duration) -> Result<String, u16> {
+pub(crate) async fn body_text(body: Body, limit: usize, within: Duration) -> Result<String, u16> {
     let read = async {
         let mut body = body;
         let mut out: Vec<u8> = Vec::new();

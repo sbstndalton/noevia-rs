@@ -1,0 +1,1195 @@
+{
+ "version": 1,
+ "core": "088d880",
+ "node": "v22.23.3",
+ "scenarios": [
+  {
+   "name": "invalid JSON",
+   "path": "/api/models/load",
+   "raw": "{",
+   "expect": {
+    "status": 400,
+    "body": {
+     "error": "invalid JSON"
+    }
+   },
+   "routerCalls": []
+  },
+  {
+   "name": "empty body",
+   "path": "/api/models/load",
+   "raw": "",
+   "expect": {
+    "status": 400,
+    "body": {
+     "error": "invalid JSON"
+    }
+   },
+   "routerCalls": []
+  },
+  {
+   "name": "no name",
+   "path": "/api/models/load",
+   "raw": "{}",
+   "expect": {
+    "status": 400,
+    "body": {
+     "error": "name required"
+    }
+   },
+   "routerCalls": []
+  },
+  {
+   "name": "empty name",
+   "path": "/api/models/unload",
+   "raw": "{\"name\":\"\"}",
+   "expect": {
+    "status": 400,
+    "body": {
+     "error": "name required"
+    }
+   },
+   "routerCalls": []
+  },
+  {
+   "name": "null body",
+   "path": "/api/models/load",
+   "raw": "null",
+   "expect": {
+    "status": 500,
+    "body": {
+     "error": "Internal error"
+    }
+   },
+   "routerCalls": []
+  },
+  {
+   "name": "member",
+   "path": "/api/models/load",
+   "raw": "{\"name\":\"m\"}",
+   "role": "user",
+   "expect": {
+    "status": 403,
+    "body": {
+     "error": "administrator required"
+    }
+   },
+   "routerCalls": []
+  },
+  {
+   "name": "disabled",
+   "path": "/api/models/load",
+   "raw": "{\"name\":\"m\"}",
+   "kind": "none",
+   "expect": {
+    "status": 404,
+    "body": {
+     "error": "model management is disabled"
+    }
+   },
+   "routerCalls": []
+  },
+  {
+   "name": "system model load",
+   "path": "/api/models/load",
+   "raw": "{\"name\":\"laya-router\"}",
+   "expect": {
+    "status": 409,
+    "body": {
+     "error": "System routing model runs in its own service — it is not loaded or unloaded here"
+    }
+   },
+   "routerCalls": []
+  },
+  {
+   "name": "system model unload",
+   "path": "/api/models/unload",
+   "raw": "{\"name\":\"laya\"}",
+   "expect": {
+    "status": 409,
+    "body": {
+     "error": "System routing model runs in its own service — it is not loaded or unloaded here"
+    }
+   },
+   "routerCalls": []
+  },
+  {
+   "name": "sidecar load",
+   "path": "/api/models/load",
+   "raw": "{\"name\":\"embed-sidecar\"}",
+   "expect": {
+    "status": 409,
+    "body": {
+     "error": "A running sidecar (embedding or reranking) manages this model — it is not loaded or unloaded here"
+    }
+   },
+   "routerCalls": []
+  },
+  {
+   "name": "sidecar unload",
+   "path": "/api/models/unload",
+   "raw": "{\"name\":\"embed-sidecar\"}",
+   "expect": {
+    "status": 409,
+    "body": {
+     "error": "A running sidecar (embedding or reranking) manages this model — it is not loaded or unloaded here"
+    }
+   },
+   "routerCalls": []
+  },
+  {
+   "name": "missing file",
+   "path": "/api/models/load",
+   "raw": "{\"name\":\"m\"}",
+   "missingFile": true,
+   "expect": {
+    "status": 409,
+    "body": {
+     "error": "This preset points at a model file that is not in the models folder — it cannot be loaded"
+    }
+   },
+   "routerCalls": []
+  },
+  {
+   "name": "missing file unload allowed",
+   "path": "/api/models/unload",
+   "raw": "{\"name\":\"m\"}",
+   "missingFile": true,
+   "expect": {
+    "status": 200,
+    "body": {
+     "ok": true
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "POST /models/unload",
+     "body": {
+      "model": "m"
+     },
+     "lease": null,
+     "admin": false
+    }
+   ]
+  },
+  {
+   "name": "installed read fails, load goes on",
+   "path": "/api/models/load",
+   "raw": "{\"name\":\"m\"}",
+   "installedThrows": true,
+   "expect": {
+    "status": 200,
+    "body": {
+     "ok": true
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "GET /models",
+     "body": null,
+     "lease": null,
+     "admin": false
+    },
+    {
+     "call": "POST /models/load",
+     "body": {
+      "model": "m"
+     },
+     "lease": "syntheticLease1",
+     "admin": false
+    },
+    {
+     "call": "GET /models",
+     "body": null,
+     "lease": null,
+     "admin": false
+    }
+   ]
+  },
+  {
+   "name": "mtp refused",
+   "path": "/api/models/load",
+   "raw": "{\"name\":\"m\",\"mtp\":true}",
+   "expect": {
+    "status": 400,
+    "body": {
+     "error": "Use the native preset editor to configure speculative decoding."
+    }
+   },
+   "routerCalls": []
+  },
+  {
+   "name": "load ready",
+   "path": "/api/models/load",
+   "raw": "{\"name\":\"m\"}",
+   "router": {
+    "GET /models": [
+     {
+      "rows": "unloaded"
+     },
+     {
+      "rows": "loading"
+     },
+     {
+      "rows": "loaded"
+     }
+    ],
+    "POST /models/load": [
+     {
+      "status": 200,
+      "body": {
+       "success": true
+      }
+     }
+    ]
+   },
+   "expect": {
+    "status": 200,
+    "body": {
+     "ok": true
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "GET /models",
+     "body": null,
+     "lease": null,
+     "admin": false
+    },
+    {
+     "call": "POST /models/load",
+     "body": {
+      "model": "m"
+     },
+     "lease": "syntheticLease1",
+     "admin": false
+    },
+    {
+     "call": "GET /models",
+     "body": null,
+     "lease": null,
+     "admin": false
+    },
+    {
+     "call": "GET /models",
+     "body": null,
+     "lease": null,
+     "admin": false
+    }
+   ]
+  },
+  {
+   "name": "load sleeping",
+   "path": "/api/models/load",
+   "raw": "{\"name\":\"m\"}",
+   "router": {
+    "GET /models": [
+     {
+      "rows": "sleeping"
+     }
+    ]
+   },
+   "expect": {
+    "status": 200,
+    "body": {
+     "ok": true
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "GET /models",
+     "body": null,
+     "lease": null,
+     "admin": false
+    }
+   ]
+  },
+  {
+   "name": "load already running",
+   "path": "/api/models/load",
+   "raw": "{\"name\":\"m\"}",
+   "router": {
+    "GET /models": [
+     {
+      "rows": "unloaded"
+     },
+     {
+      "rows": "loaded"
+     }
+    ],
+    "POST /models/load": [
+     {
+      "status": 400,
+      "body": {
+       "error": {
+        "message": "model is already running"
+       }
+      }
+     }
+    ]
+   },
+   "expect": {
+    "status": 200,
+    "body": {
+     "ok": true
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "GET /models",
+     "body": null,
+     "lease": null,
+     "admin": false
+    },
+    {
+     "call": "POST /models/load",
+     "body": {
+      "model": "m"
+     },
+     "lease": "syntheticLease1",
+     "admin": false
+    },
+    {
+     "call": "GET /models",
+     "body": null,
+     "lease": null,
+     "admin": false
+    }
+   ]
+  },
+  {
+   "name": "load router 500",
+   "path": "/api/models/load",
+   "raw": "{\"name\":\"m\"}",
+   "router": {
+    "GET /models": [
+     {
+      "rows": "unloaded"
+     }
+    ],
+    "POST /models/load": [
+     {
+      "status": 500,
+      "body": {
+       "error": "boom"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "status": 502,
+    "body": {
+     "error": "load failed: 500"
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "GET /models",
+     "body": null,
+     "lease": null,
+     "admin": false
+    },
+    {
+     "call": "POST /models/load",
+     "body": {
+      "model": "m"
+     },
+     "lease": "syntheticLease1",
+     "admin": false
+    }
+   ]
+  },
+  {
+   "name": "load gate refusal on load",
+   "path": "/api/models/load",
+   "raw": "{\"name\":\"m\"}",
+   "router": {
+    "GET /models": [
+     {
+      "rows": "unloaded"
+     }
+    ],
+    "POST /models/load": [
+     {
+      "status": 409,
+      "body": {
+       "error": {
+        "type": "gate_error",
+        "code": "engine_busy",
+        "message": "Synthetic engine_busy.",
+        "retryable": true
+       }
+      }
+     }
+    ]
+   },
+   "expect": {
+    "status": 409,
+    "body": {
+     "error": "Synthetic engine_busy.",
+     "code": "engine_busy",
+     "retryable": true
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "GET /models",
+     "body": null,
+     "lease": null,
+     "admin": false
+    },
+    {
+     "call": "POST /models/load",
+     "body": {
+      "model": "m"
+     },
+     "lease": "syntheticLease1",
+     "admin": false
+    }
+   ]
+  },
+  {
+   "name": "load gate refusal unknown code",
+   "path": "/api/models/load",
+   "raw": "{\"name\":\"m\"}",
+   "router": {
+    "GET /models": [
+     {
+      "rows": "unloaded"
+     }
+    ],
+    "POST /models/load": [
+     {
+      "status": 409,
+      "body": {
+       "error": {
+        "type": "gate_error",
+        "code": "something_else",
+        "message": "Synthetic something_else.",
+        "retryable": false
+       }
+      }
+     }
+    ]
+   },
+   "expect": {
+    "status": 502,
+    "body": {
+     "error": "load failed: 409"
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "GET /models",
+     "body": null,
+     "lease": null,
+     "admin": false
+    },
+    {
+     "call": "POST /models/load",
+     "body": {
+      "model": "m"
+     },
+     "lease": "syntheticLease1",
+     "admin": false
+    }
+   ]
+  },
+  {
+   "name": "load raw code refusal",
+   "path": "/api/models/load",
+   "raw": "{\"name\":\"m\"}",
+   "router": {
+    "GET /models": [
+     {
+      "rows": "unloaded"
+     }
+    ],
+    "POST /models/load": [
+     {
+      "status": 503,
+      "body": {
+       "code": "engine_unavailable",
+       "error": "Synthetic raw.",
+       "retryable": true
+      }
+     }
+    ]
+   },
+   "expect": {
+    "status": 503,
+    "body": {
+     "error": "Synthetic raw.",
+     "code": "engine_unavailable",
+     "retryable": true
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "GET /models",
+     "body": null,
+     "lease": null,
+     "admin": false
+    },
+    {
+     "call": "POST /models/load",
+     "body": {
+      "model": "m"
+     },
+     "lease": "syntheticLease1",
+     "admin": false
+    }
+   ]
+  },
+  {
+   "name": "load failed to become ready",
+   "path": "/api/models/load",
+   "raw": "{\"name\":\"m\"}",
+   "router": {
+    "GET /models": [
+     {
+      "rows": "unloaded"
+     },
+     {
+      "status": 200,
+      "body": {
+       "data": [
+        {
+         "id": "m",
+         "status": {
+          "value": "loading",
+          "failed": true
+         }
+        }
+       ]
+      }
+     }
+    ],
+    "POST /models/load": [
+     {
+      "status": 200,
+      "body": {
+       "success": true
+      }
+     }
+    ]
+   },
+   "expect": {
+    "status": 502,
+    "body": {
+     "error": "load failed: 502"
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "GET /models",
+     "body": null,
+     "lease": null,
+     "admin": false
+    },
+    {
+     "call": "POST /models/load",
+     "body": {
+      "model": "m"
+     },
+     "lease": "syntheticLease1",
+     "admin": false
+    },
+    {
+     "call": "GET /models",
+     "body": null,
+     "lease": null,
+     "admin": false
+    }
+   ]
+  },
+  {
+   "name": "load vanished",
+   "path": "/api/models/load",
+   "raw": "{\"name\":\"m\"}",
+   "router": {
+    "GET /models": [
+     {
+      "rows": "unloaded"
+     },
+     {
+      "status": 200,
+      "body": {
+       "data": []
+      }
+     }
+    ],
+    "POST /models/load": [
+     {
+      "status": 200,
+      "body": {}
+     }
+    ]
+   },
+   "expect": {
+    "status": 502,
+    "body": {
+     "error": "load failed: 502"
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "GET /models",
+     "body": null,
+     "lease": null,
+     "admin": false
+    },
+    {
+     "call": "POST /models/load",
+     "body": {
+      "model": "m"
+     },
+     "lease": "syntheticLease1",
+     "admin": false
+    },
+    {
+     "call": "GET /models",
+     "body": null,
+     "lease": null,
+     "admin": false
+    }
+   ]
+  },
+  {
+   "name": "load listing fails while waiting",
+   "path": "/api/models/load",
+   "raw": "{\"name\":\"m\"}",
+   "router": {
+    "GET /models": [
+     {
+      "rows": "unloaded"
+     },
+     {
+      "status": 503,
+      "body": {
+       "error": "down"
+      }
+     }
+    ],
+    "POST /models/load": [
+     {
+      "status": 200,
+      "body": {}
+     }
+    ]
+   },
+   "expect": {
+    "status": 502,
+    "body": {
+     "error": "load failed: 503"
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "GET /models",
+     "body": null,
+     "lease": null,
+     "admin": false
+    },
+    {
+     "call": "POST /models/load",
+     "body": {
+      "model": "m"
+     },
+     "lease": "syntheticLease1",
+     "admin": false
+    },
+    {
+     "call": "GET /models",
+     "body": null,
+     "lease": null,
+     "admin": false
+    }
+   ]
+  },
+  {
+   "name": "load transport fault",
+   "path": "/api/models/load",
+   "raw": "{\"name\":\"m\"}",
+   "router": {
+    "GET /models": [
+     {
+      "throw": true
+     }
+    ]
+   },
+   "expect": {
+    "status": 500,
+    "body": {
+     "error": "Internal error"
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "GET /models",
+     "body": null,
+     "lease": null,
+     "admin": false
+    }
+   ]
+  },
+  {
+   "name": "queue full",
+   "path": "/api/models/load",
+   "raw": "{\"name\":\"m\"}",
+   "acquire": {
+    "gate": {
+     "code": "inference_queue_full",
+     "status": 503,
+     "retryable": true,
+     "message": "Synthetic queue full."
+    }
+   },
+   "expect": {
+    "status": 503,
+    "body": {
+     "error": "Synthetic queue full.",
+     "code": "inference_queue_full",
+     "retryable": true
+    }
+   },
+   "routerCalls": [],
+   "lease": {
+    "status": 503,
+    "body": {
+     "error": "Synthetic queue full.",
+     "code": "inference_queue_full"
+    }
+   }
+  },
+  {
+   "name": "queue gate unknown code",
+   "path": "/api/models/load",
+   "raw": "{\"name\":\"m\"}",
+   "acquire": {
+    "gate": {
+     "code": "gate_error",
+     "status": 503,
+     "retryable": false,
+     "message": "Synthetic gate error."
+    }
+   },
+   "expect": {
+    "status": 502,
+    "body": {
+     "error": "load failed: 503"
+    }
+   },
+   "routerCalls": [],
+   "lease": {
+    "status": 503,
+    "body": {
+     "error": "Synthetic gate error.",
+     "code": "gate_error"
+    }
+   }
+  },
+  {
+   "name": "budget refusal",
+   "path": "/api/models/load",
+   "raw": "{\"name\":\"m\"}",
+   "acquire": {
+    "status": 409,
+    "code": "inference_budget",
+    "message": "m needs about 99 GiB to load, above the budget."
+   },
+   "expect": {
+    "status": 502,
+    "body": {
+     "error": "load failed: 409"
+    }
+   },
+   "routerCalls": [],
+   "lease": {
+    "status": 409,
+    "body": {
+     "error": "m needs about 99 GiB to load, above the budget.",
+     "code": "inference_budget"
+    }
+   }
+  },
+  {
+   "name": "invalid size refusal",
+   "path": "/api/models/load",
+   "raw": "{\"name\":\"m\"}",
+   "acquire": {
+    "status": 409,
+    "code": "invalid_size",
+    "message": "m was not loaded: ctx-size must be a whole number"
+   },
+   "expect": {
+    "status": 502,
+    "body": {
+     "error": "load failed: 409"
+    }
+   },
+   "routerCalls": [],
+   "lease": {
+    "status": 409,
+    "body": {
+     "error": "m was not loaded: ctx-size must be a whole number",
+     "code": "invalid_size"
+    }
+   }
+  },
+  {
+   "name": "unload ok",
+   "path": "/api/models/unload",
+   "raw": "{\"name\":\"m\"}",
+   "router": {
+    "POST /models/unload": [
+     {
+      "status": 200,
+      "body": {
+       "success": true
+      }
+     }
+    ]
+   },
+   "expect": {
+    "status": 200,
+    "body": {
+     "ok": true
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "POST /models/unload",
+     "body": {
+      "model": "m"
+     },
+     "lease": null,
+     "admin": false
+    }
+   ]
+  },
+  {
+   "name": "unload in use, no admin",
+   "path": "/api/models/unload",
+   "raw": "{\"name\":\"m\"}",
+   "router": {
+    "POST /models/unload": [
+     {
+      "status": 409,
+      "body": {
+       "error": {
+        "type": "gate_error",
+        "code": "model_in_use",
+        "message": "Synthetic model_in_use.",
+        "retryable": false
+       }
+      }
+     }
+    ]
+   },
+   "expect": {
+    "status": 409,
+    "body": {
+     "error": "Synthetic model_in_use.",
+     "code": "model_in_use",
+     "retryable": false,
+     "canForce": false
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "POST /models/unload",
+     "body": {
+      "model": "m"
+     },
+     "lease": null,
+     "admin": false
+    }
+   ]
+  },
+  {
+   "name": "unload in use, admin",
+   "path": "/api/models/unload",
+   "raw": "{\"name\":\"m\"}",
+   "admin": true,
+   "router": {
+    "POST /models/unload": [
+     {
+      "status": 409,
+      "body": {
+       "error": {
+        "type": "gate_error",
+        "code": "model_in_use",
+        "message": "Synthetic model_in_use.",
+        "retryable": false
+       }
+      }
+     }
+    ]
+   },
+   "expect": {
+    "status": 409,
+    "body": {
+     "error": "Synthetic model_in_use.",
+     "code": "model_in_use",
+     "retryable": false,
+     "canForce": true
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "POST /models/unload",
+     "body": {
+      "model": "m"
+     },
+     "lease": null,
+     "admin": false
+    }
+   ]
+  },
+  {
+   "name": "unload other refusal",
+   "path": "/api/models/unload",
+   "raw": "{\"name\":\"m\"}",
+   "admin": true,
+   "router": {
+    "POST /models/unload": [
+     {
+      "status": 503,
+      "body": {
+       "error": {
+        "type": "gate_error",
+        "code": "engine_switch_stuck",
+        "message": "Synthetic engine_switch_stuck.",
+        "retryable": true
+       }
+      }
+     }
+    ]
+   },
+   "expect": {
+    "status": 503,
+    "body": {
+     "error": "Synthetic engine_switch_stuck.",
+     "code": "engine_switch_stuck",
+     "retryable": true
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "POST /models/unload",
+     "body": {
+      "model": "m"
+     },
+     "lease": null,
+     "admin": false
+    }
+   ]
+  },
+  {
+   "name": "unload router 500",
+   "path": "/api/models/unload",
+   "raw": "{\"name\":\"m\"}",
+   "router": {
+    "POST /models/unload": [
+     {
+      "status": 500,
+      "body": "text"
+     }
+    ]
+   },
+   "expect": {
+    "status": 502,
+    "body": {
+     "error": "unload failed: 500"
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "POST /models/unload",
+     "body": {
+      "model": "m"
+     },
+     "lease": null,
+     "admin": false
+    }
+   ]
+  },
+  {
+   "name": "unload transport fault",
+   "path": "/api/models/unload",
+   "raw": "{\"name\":\"m\"}",
+   "router": {
+    "POST /models/unload": [
+     {
+      "throw": true
+     }
+    ]
+   },
+   "expect": {
+    "status": 500,
+    "body": {
+     "error": "Internal error"
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "POST /models/unload",
+     "body": {
+      "model": "m"
+     },
+     "lease": null,
+     "admin": false
+    }
+   ]
+  },
+  {
+   "name": "force without admin",
+   "path": "/api/models/unload",
+   "raw": "{\"name\":\"m\",\"force\":true}",
+   "expect": {
+    "status": 403,
+    "body": {
+     "error": "Unloading a model in use is not set up on this server.",
+     "code": "admin_required",
+     "retryable": false
+    }
+   },
+   "routerCalls": []
+  },
+  {
+   "name": "force ok",
+   "path": "/api/models/unload",
+   "raw": "{\"name\":\"m\",\"force\":true}",
+   "admin": true,
+   "router": {
+    "POST /models/unload": [
+     {
+      "status": 200,
+      "body": {
+       "success": true
+      }
+     }
+    ]
+   },
+   "expect": {
+    "status": 200,
+    "body": {
+     "ok": true,
+     "forced": true
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "POST /models/unload",
+     "body": {
+      "model": "m",
+      "force": true
+     },
+     "lease": null,
+     "admin": true
+    }
+   ]
+  },
+  {
+   "name": "force refused",
+   "path": "/api/models/unload",
+   "raw": "{\"name\":\"m\",\"force\":true}",
+   "admin": true,
+   "router": {
+    "POST /models/unload": [
+     {
+      "status": 404,
+      "body": {
+       "error": {
+        "type": "gate_error",
+        "code": "model_not_found",
+        "message": "Synthetic model_not_found.",
+        "retryable": false
+       }
+      }
+     }
+    ]
+   },
+   "expect": {
+    "status": 404,
+    "body": {
+     "error": "Synthetic model_not_found.",
+     "code": "model_not_found",
+     "retryable": false
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "POST /models/unload",
+     "body": {
+      "model": "m",
+      "force": true
+     },
+     "lease": null,
+     "admin": true
+    }
+   ]
+  },
+  {
+   "name": "force router 500",
+   "path": "/api/models/unload",
+   "raw": "{\"name\":\"m\",\"force\":true}",
+   "admin": true,
+   "router": {
+    "POST /models/unload": [
+     {
+      "status": 500,
+      "body": {}
+     }
+    ]
+   },
+   "expect": {
+    "status": 502,
+    "body": {
+     "error": "unload failed: 500"
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "POST /models/unload",
+     "body": {
+      "model": "m",
+      "force": true
+     },
+     "lease": null,
+     "admin": true
+    }
+   ]
+  },
+  {
+   "name": "force not exactly true",
+   "path": "/api/models/unload",
+   "raw": "{\"name\":\"m\",\"force\":\"yes\"}",
+   "router": {
+    "POST /models/unload": [
+     {
+      "status": 200,
+      "body": {}
+     }
+    ]
+   },
+   "expect": {
+    "status": 200,
+    "body": {
+     "ok": true
+    }
+   },
+   "routerCalls": [
+    {
+     "call": "POST /models/unload",
+     "body": {
+      "model": "m"
+     },
+     "lease": null,
+     "admin": false
+    }
+   ]
+  }
+ ]
+}

@@ -633,9 +633,17 @@ path = "/api/models/installed"
 owner = "rust"
 methods = ["GET"]
 
+# Row A (2026-11-05): model load and unload are the front's (bins/noevia-server model_load_routes.rs);
+# Node refuses both POSTs (core rust-model-load.cjs). Other methods stay Node's.
 [[route]]
 path = "/api/models/load"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
+
+[[route]]
+path = "/api/models/unload"
+owner = "rust"
+methods = ["POST"]
 
 # #1638: Settings → Inference machines (noevia-core routes/inference-machines.cjs), administrators only.
 [[route]]
