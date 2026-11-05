@@ -112,6 +112,23 @@ fn install(up: &Upstream, a: &Shared) {
 }
 
 async fn store_at(addr: std::net::SocketAddr, op: &str, body: &str) -> (u16, Value) {
+    let mut body = body.to_owned();
+    if op == "attach" && j(&body).get("actor").is_none() {
+        static SESSION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let actor = format!(
+            "{:032x}",
+            SESSION.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        );
+        let payload: Value = serde_json::from_str(&body).unwrap();
+        let mut open = payload.clone();
+        open["actor"] = json!(actor);
+        open["open"] = json!(true);
+        let (_, session) = Box::pin(store_at(addr, op, &open.to_string())).await;
+        let mut attach = payload;
+        attach["actor"] = json!(actor);
+        attach["incarnation"] = session["incarnation"].clone();
+        body = attach.to_string();
+    }
     let mut s = TcpStream::connect(addr).await.unwrap();
     s.write_all(format!("POST /v1/autotune-state/{op} HTTP/1.1\r\nhost: store\r\nconnection: close\r\ncontent-type: application/json\r\ncontent-length: {}\r\n{}: {STORE_TOKEN}\r\n\r\n{body}", body.len(), project_store::TOKEN_HEADER).as_bytes()).await.unwrap();
     let mut out = Vec::new();
@@ -668,4 +685,104 @@ async fn auth_role_and_csrf_precede_every_owner_and_actor_call() {
         std::fs::read_to_string(r.d.path().join(BASE)).unwrap(),
         NODE_STATE
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn delayed_retired_actor_cannot_reattach_through_the_store() {
+    let r = rig(None).await;
+    let a = "a".repeat(32);
+    let b = "b".repeat(32);
+    let open = |actor: &str| json!({"actor":actor,"open":true}).to_string();
+    let attach = |actor: &str, incarnation: u64| {
+        json!({"actor":actor,"incarnation":incarnation,"base":BASE,"available":true}).to_string()
+    };
+    assert_eq!(store_at(r.f.store, "attach", &open(&a)).await.0, 200);
+    assert_eq!(store_at(r.f.store, "attach", &attach(&a, 1)).await.0, 200);
+    assert_eq!(store_at(r.f.store, "attach", &open(&b)).await.0, 200);
+    let current = store_at(r.f.store, "attach", &attach(&b, 2)).await;
+    assert_eq!(current.0, 200);
+    assert_eq!(store_at(r.f.store, "attach", &attach(&a, 1)).await.0, 409);
+    assert_eq!(store_at(r.f.store, "attach", &open(&a)).await.0, 409);
+    assert_eq!(store_at(r.f.store, "attach", &attach(&b, 2)).await, current);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dropped_resume_caller_still_settles_refused_launch() {
+    let r = rig(None).await;
+    let a = r.attach().await;
+    r.commit(a["writer"].as_str().unwrap(), 1, &interrupted(), &json!({}))
+        .await;
+    let auto = Arc::clone(&r.f.app.config.autotune);
+    let facts = auto.call("resume/facts", &json!({})).await.unwrap();
+    let token = facts.1.get("token").as_str().unwrap().to_owned();
+    // Keep outside responses valid, but block and then refuse the launch.
+    r.up.set(|req| {
+        if req.path.ends_with("/outside") {
+            reply("200 OK",r#"{"revision":"r1","allowBelowQ5Kv":false,"models":{"m":{"configured":true,"system":false}}}"#)
+        } else {
+            (Duration::from_millis(200),reply("200 OK",r#"{"launched":false}"#).1)
+        }
+    });
+    let caller = tokio::spawn(async move {
+        auto.call(
+            "resume/commit",
+            &json!({"token":token,"plan":{"kind":"launch","reset":[]}}),
+        )
+        .await
+    });
+    r.up.wait_for("/internal/autotune-actor/launch", 1).await;
+    caller.abort();
+    let _ = caller.await;
+    for _ in 0..100 {
+        if r.disk()["job"]["status"] == "interrupted" {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("cancelled caller abandoned a persisted launch");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dropped_cancel_caller_still_undoes_refused_abort() {
+    let r = rig(None).await;
+    let a = r.attach().await;
+    r.commit(a["writer"].as_str().unwrap(), 1, &running(), &json!({}))
+        .await;
+    let auto = Arc::clone(&r.f.app.config.autotune);
+    let before = auto
+        .owner()
+        .state_snapshot()
+        .unwrap()
+        .get("rev")
+        .as_num()
+        .unwrap();
+    let facts = auto.call("cancel/facts", &json!({})).await.unwrap();
+    let token = facts.1.get("token").as_str().unwrap().to_owned();
+    r.up.set(|_| {
+        (
+            Duration::from_millis(200),
+            reply("200 OK", r#"{"aborted":false}"#).1,
+        )
+    });
+    let worker = Arc::clone(&auto);
+    let caller =
+        tokio::spawn(async move { worker.call("cancel/abort", &json!({"token":token})).await });
+    r.up.wait_for("/internal/autotune-actor/abort", 1).await;
+    caller.abort();
+    let _ = caller.await;
+    for _ in 0..100 {
+        if auto
+            .owner()
+            .state_snapshot()
+            .unwrap()
+            .get("rev")
+            .as_num()
+            .unwrap()
+            >= before + 2.0
+        {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("cancelled caller abandoned its abort request");
 }

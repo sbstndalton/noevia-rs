@@ -15,7 +15,7 @@
 //! future is dropped at any await.
 use crate::research_routes::Research;
 use js_json::{wtf16, JValue};
-use server_projects::autotune_state::{Answer, Fault, Outside, Owner, Stage};
+use server_projects::autotune_state::{Answer, Outside, Owner, Stage};
 use std::{path::Path, sync::Arc, time::Duration};
 
 /// Node's private actor-control endpoints (rust-autotune-actor-bridge.cjs).
@@ -59,12 +59,17 @@ fn text(v: &JValue) -> String {
 }
 
 /// Releases a preparation's hold if its future is dropped before it settles.
-struct PrepGuard<'a> {
-    auto: &'a Autotune,
+struct PrepGuard {
+    auto: Arc<Autotune>,
     id: u64,
     armed: bool,
 }
-impl Drop for PrepGuard<'_> {
+impl PrepGuard {
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+impl Drop for PrepGuard {
     fn drop(&mut self) {
         if self.armed {
             self.auto.owner.resume_prepare_abandon(self.id);
@@ -276,17 +281,20 @@ impl Autotune {
             .blocking(move |me| {
                 me.owner
                     .resume_prepare_begin(&token, &stage, &selectors, &outside)
+                    .map(|p| {
+                        let guard = PrepGuard {
+                            auto: Arc::clone(me),
+                            id: p.id,
+                            armed: true,
+                        };
+                        (p, guard)
+                    })
             })
             .await;
-        let prepared = match begun {
+        let (prepared, mut guard) = match begun {
             None => return unavailable(),
             Some(Err(answer)) => return answer,
             Some(Ok(p)) => p,
-        };
-        let mut guard = PrepGuard {
-            auto: self,
-            id: prepared.id,
-            armed: true,
         };
         let gathered = tokio::time::timeout(PREPARE, async {
             match prepared.stage {
@@ -334,13 +342,24 @@ impl Autotune {
         let Some(fresh) = self.resume_outside().await else {
             return unavailable();
         };
-        guard.armed = false;
-        self.blocking(move |me| me.owner.resume_prepare_end(id, result, &fresh))
-            .await
-            .unwrap_or_else(unavailable)
+        self.blocking(move |me| {
+            let answer = me.owner.resume_prepare_end(id, result, &fresh);
+            guard.disarm();
+            answer
+        })
+        .await
+        .unwrap_or_else(unavailable)
     }
 
     async fn resume_commit(self: &Arc<Self>, ask: &JValue) -> Answer {
+        let me = Arc::clone(self);
+        let ask = ask.clone();
+        tokio::spawn(async move { me.resume_commit_owned(&ask).await })
+            .await
+            .unwrap_or_else(|_| unavailable())
+    }
+
+    async fn resume_commit_owned(self: &Arc<Self>, ask: &JValue) -> Answer {
         if let Some(a) = self.gate() {
             return a;
         }
@@ -406,6 +425,14 @@ impl Autotune {
     }
 
     async fn cancel_abort(self: &Arc<Self>, ask: &JValue) -> Answer {
+        let me = Arc::clone(self);
+        let ask = ask.clone();
+        tokio::spawn(async move { me.cancel_abort_owned(&ask).await })
+            .await
+            .unwrap_or_else(|_| unavailable())
+    }
+
+    async fn cancel_abort_owned(self: &Arc<Self>, ask: &JValue) -> Answer {
         let JValue::Obj(fields) = ask else {
             return invalid("Invalid cancellation state request.");
         };
@@ -487,19 +514,7 @@ pub async fn store_op(auto: Arc<Autotune>, op: &'static str, raw: Vec<u8>) -> (u
         return (400, JValue::obj([("error", "invalid JSON".into())]));
     };
     tokio::task::spawn_blocking(move || match op {
-        "attach" => {
-            let base = body.get("base").as_str().unwrap_or_default();
-            let Some(available) = body.get("available").as_bool() else {
-                return (400, JValue::obj([("error", "invalid attach".into())]));
-            };
-            match auto.owner.attach(base, available) {
-                Ok(snapshot) => (200, snapshot),
-                Err(Fault::Unbound | Fault::State) => (
-                    503,
-                    JValue::obj([("error", "auto-tune state unavailable".into())]),
-                ),
-            }
-        }
+        "attach" => auto.owner.attach_actor(&body),
         "commit" => auto.owner.commit(&body),
         "start" => match body.get("op").as_str() {
             Some("begin") => auto.owner.start_hold(&body, true),
@@ -511,4 +526,94 @@ pub async fn store_op(auto: Arc<Autotune>, op: &'static str, raw: Vec<u8>) -> (u
     })
     .await
     .unwrap_or_else(|_| (500, JValue::obj([("error", "Internal error".into())])))
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+
+    #[tokio::test]
+    async fn an_unreceived_acquisition_result_drops_its_hold() {
+        for cancel_before_acquisition in [true, false] {
+            let d = tempfile::tempdir().unwrap();
+            let research = Research::new(crate::research_routes::Settings {
+                upstream: "http://127.0.0.1:1".into(),
+                ..Default::default()
+            })
+            .unwrap();
+            let auto = Arc::new(Autotune::new(d.path(), Arc::new(research)));
+            let attached = auto
+                .owner
+                .attach("native-autotune-0123456789abcdef.json", true)
+                .unwrap();
+            let writer = attached.get("writer").as_str().unwrap().to_owned();
+            fn parse(s: &str) -> JValue {
+                wtf16::parse(s).unwrap()
+            }
+            let body = parse(&format!(
+                r#"{{"writer":"{writer}","jobRev":1,"history":{{}},"job":{{"id":"j","status":"interrupted","models":[]}}}}"#
+            ));
+            assert_eq!(auto.owner.commit(&body).0, 200);
+            let outside = Outside::parse(&parse(
+                r#"{"revision":"r1","allowBelowQ5Kv":false,"models":{}}"#,
+            ))
+            .unwrap();
+            let token = auto
+                .owner
+                .resume_facts(&outside)
+                .1
+                .get("token")
+                .as_str()
+                .unwrap()
+                .to_owned();
+            let (entered, entry) = tokio::sync::oneshot::channel();
+            let (release, released) = std::sync::mpsc::channel();
+            let me = Arc::clone(&auto);
+            let (acquired, acquisition) = tokio::sync::oneshot::channel();
+            let task = tokio::task::spawn_blocking(move || {
+                let _ = entered.send(());
+                if cancel_before_acquisition {
+                    released.recv().unwrap();
+                }
+                let p = me
+                    .owner
+                    .resume_prepare_begin(&token, &"listing".into(), &JValue::Arr(vec![]), &outside)
+                    .unwrap();
+                let guard = PrepGuard {
+                    auto: me,
+                    id: p.id,
+                    armed: true,
+                };
+                let _ = acquired.send(());
+                if !cancel_before_acquisition {
+                    released.recv().unwrap();
+                }
+                guard
+            });
+            entry.await.unwrap();
+            let mut acquisition = Some(acquisition);
+            if !cancel_before_acquisition {
+                acquisition.take().unwrap().await.unwrap();
+            }
+            // Dropping the receiver while the blocking closure is queued/running cannot cancel it.
+            drop(task);
+            release.send(()).unwrap();
+            if let Some(acquisition) = acquisition {
+                acquisition.await.unwrap();
+            }
+            let mut free = false;
+            for _ in 0..100 {
+                let result = auto
+                    .owner
+                    .start_hold(&parse(&format!(r#"{{"writer":"{writer}"}}"#)), true);
+                if result.0 == 200 {
+                    free = true;
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+            assert!(free, "abandoned acquisition retained its hold");
+        }
+    }
 }

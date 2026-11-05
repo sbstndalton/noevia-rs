@@ -532,7 +532,11 @@ fn any_other_change_across_a_preparation_makes_it_stale() {
         .resume_prepare_begin(&t, &JValue::from("identities"), &parse("[]"), &outs)
         .unwrap();
     let moved = outside("r2", &[("m", true, false)]);
-    let _ = o.resume_prepare_end(prep.id, Ok(parse(r#"{"identities":[]}"#)), &moved);
+    assert_eq!(
+        o.resume_prepare_end(prep.id, Ok(parse(r#"{"identities":[]}"#)), &moved)
+            .0,
+        409
+    );
     // an abandoned preparation (the caller went away) releases the hold
     let t = tok(&o.resume_facts(&outs));
     let prep = o
@@ -1018,4 +1022,97 @@ fn the_owner_answers_every_recorded_node_actor_scenario_the_same_way() {
             }
         }
     }
+}
+
+#[test]
+fn retired_or_delayed_actor_sessions_cannot_attach_over_the_new_writer() {
+    let d = tempfile::tempdir().unwrap();
+    let o = Owner::new(d.path());
+    let open = |actor: &str| parse(&format!(r#"{{"actor":"{actor}","open":true}}"#));
+    let attach = |actor: &str, incarnation: u64| {
+        parse(&format!(
+            r#"{{"actor":"{actor}","incarnation":{incarnation},"base":"{}","available":true}}"#,
+            base()
+        ))
+    };
+    let a = "a".repeat(32);
+    let b = "b".repeat(32);
+    assert_eq!(o.attach_actor(&open(&a)).0, 200);
+    assert_eq!(o.attach_actor(&attach(&a, 1)).0, 200);
+    assert_eq!(o.attach_actor(&open(&b)).0, 200);
+    let current = o.attach_actor(&attach(&b, 2));
+    assert_eq!(current.0, 200);
+    assert_eq!(o.attach_actor(&attach(&a, 1)).0, 409);
+    assert_eq!(o.attach_actor(&open(&a)).0, 409);
+    assert_eq!(o.attach_actor(&attach(&b, 2)), current);
+}
+
+#[test]
+fn reload_note_cannot_erase_settings_cancel_history_or_outside_changes() {
+    for change in ["settings", "cancel", "history", "revision", "system"] {
+        let d = tempfile::tempdir().unwrap();
+        let (o, w) = owner(d.path(), None);
+        commit(&o, &w, 1, models_interrupted(), "{}");
+        let outs = outside("r1", &[("m", true, false)]);
+        let t = tok(&o.resume_facts(&outs));
+        let p = o
+            .resume_prepare_begin(&t, &JValue::from("identities"), &parse("[]"), &outs)
+            .unwrap();
+        if change == "settings" {
+            let f = o.settings_facts(&JValue::from("m"), Some(&outs));
+            let token = f.1.get("facts").get("token").as_str().unwrap();
+            assert_eq!(o.settings_commit("m", true, token, &outs).0, 200);
+        }
+        if change == "cancel" {
+            let token = tok(&o.cancel_facts());
+            o.cancel_begin(&token).unwrap();
+        }
+        let noted = models_interrupted().replace(r#""_reloadPending":true,"#, r#""_reloadPending":false,"log":[{"at":5,"text":"The model server re-read the restored models.ini."}],"#);
+        let hist = if change == "history" {
+            r#"{"m":[1]}"#
+        } else {
+            "{}"
+        };
+        commit(&o, &w, 1, &noted, hist);
+        let fresh = match change {
+            "revision" => outside("r2", &[("m", true, false)]),
+            "system" => outside("r1", &[("m", true, true)]),
+            _ => outs.clone(),
+        };
+        assert_eq!(
+            o.resume_prepare_end(p.id, Ok(parse(r#"{"identities":[]}"#)), &fresh)
+                .0,
+            409,
+            "{change}"
+        );
+    }
+}
+
+#[test]
+fn a_new_actor_waits_for_the_old_writers_effects_to_settle() {
+    let d = tempfile::tempdir().unwrap();
+    let o = Owner::new(d.path());
+    let a = "a".repeat(32);
+    let b = "b".repeat(32);
+    let request = |actor: &str, open: bool, n: u64| {
+        parse(&format!(
+            r#"{{"actor":"{actor}","open":{open},"incarnation":{n},"base":"{}","available":true}}"#,
+            base()
+        ))
+    };
+    o.attach_actor(&request(&a, true, 0));
+    let first = o.attach_actor(&request(&a, false, 1));
+    let writer = first.1.get("writer").as_str().unwrap();
+    assert_eq!(
+        commit(&o, writer, 1, r#"{"id":"j","status":"running"}"#, "{}").0,
+        200
+    );
+    o.attach_actor(&request(&b, true, 0));
+    assert_eq!(o.attach_actor(&request(&b, false, 2)).0, 409);
+    assert_eq!(
+        commit(&o, writer, 1, r#"{"id":"j","status":"interrupted"}"#, "{}").0,
+        200
+    );
+    assert_eq!(o.attach_actor(&request(&b, false, 2)).0, 200);
+    assert_eq!(o.attach_actor(&request(&a, false, 1)).0, 409);
 }

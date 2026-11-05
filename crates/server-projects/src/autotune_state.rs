@@ -260,7 +260,8 @@ struct Prep {
     epoch: u64,
     baseline_rev: u64,
     owed: bool,
-    before_job: JValue,
+    before_doc: JValue,
+    outside: Outside,
     noted: bool,
 }
 
@@ -277,6 +278,7 @@ struct Bound {
     prep: Option<Prep>,
     writer: Option<String>,
     prep_seq: u64,
+    actor: Option<String>,
 }
 
 /// The single owner. One per front process.
@@ -284,6 +286,7 @@ pub struct Owner {
     dir: PathBuf,
     salt: [u8; 32],
     inner: Mutex<Option<Bound>>,
+    sessions: Mutex<Vec<String>>,
 }
 
 /// A prepared listing/identities call: what the actor must read, and the handle that settles it.
@@ -327,6 +330,7 @@ impl Owner {
             dir: dir.to_owned(),
             salt,
             inner: Mutex::new(None),
+            sessions: Mutex::new(Vec::new()),
         }
     }
     fn lock(&self) -> MutexGuard<'_, Option<Bound>> {
@@ -393,11 +397,77 @@ impl Owner {
                     prep: None,
                     writer: Some(writer.clone()),
                     prep_seq: 0,
+                    actor: None,
                 });
             }
         }
         let b = guard.as_ref().ok_or(Fault::State)?;
         Ok(snapshot(b, Some(&writer)))
+    }
+
+    /// Reserve once per actor process. A delayed attach cannot overtake a newer reservation;
+    /// retries by a retired process can never allocate a newer incarnation.
+    pub fn attach_actor(&self, body: &JValue) -> Answer {
+        let Some(actor) = body
+            .get("actor")
+            .as_str()
+            .filter(|s| s.len() == 32 && s.bytes().all(|b| b.is_ascii_hexdigit()))
+        else {
+            return bad("Invalid actor session.");
+        };
+        let mut sessions = self
+            .sessions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let index = match sessions.iter().position(|a| a == actor) {
+            Some(i) => i,
+            None if body.get("open").as_bool() == Some(true) => {
+                sessions.push(actor.to_owned());
+                sessions.len() - 1
+            }
+            None => return Self::fenced("session", None),
+        };
+        if index + 1 != sessions.len() {
+            return Self::fenced("retired", None);
+        }
+        if body.get("open").as_bool() == Some(true) {
+            return ok(JValue::obj([(
+                "incarnation",
+                JValue::Num((index + 1) as f64),
+            )]));
+        }
+        if body.get("incarnation").as_num() != Some((index + 1) as f64) {
+            return Self::fenced("session", None);
+        }
+        // Repeated delivery is idempotent, including a response lost after acquisition.
+        let base = body.get("base").as_str().unwrap_or_default();
+        let Some(available) = body.get("available").as_bool() else {
+            return bad("Invalid attach.");
+        };
+        let guard = self.lock();
+        if let Some(b) = guard.as_ref() {
+            if b.actor.as_deref() == Some(actor) {
+                return ok(snapshot(b, b.writer.as_deref()));
+            }
+            // A live front cannot prove another process has stopped its engine effects. Only
+            // hand over an idle, settled writer. A restarted front is unbound and may recover disk.
+            if b.hold.is_some()
+                || b.doc.get("job").get("status").as_str() == Some("running")
+                || b.doc.get("job").get("_reloadPending").truthy()
+            {
+                return Self::fenced("busy", None);
+            }
+        }
+        drop(guard);
+        match self.attach(base, available) {
+            Ok(snapshot) => {
+                if let Some(b) = self.lock().as_mut() {
+                    b.actor = Some(actor.to_owned());
+                }
+                ok(snapshot)
+            }
+            Err(_) => unavailable(),
+        }
     }
 
     fn writer_ok(b: &Bound, body: &JValue) -> bool {
@@ -445,6 +515,7 @@ impl Owner {
         if let Err(e) = persist(&b.path, &next) {
             return (e, JValue::obj([("error", "state write failed".into())]));
         }
+        let before_rev = b.rev;
         b.doc = next;
         b.rev += 1;
         if register {
@@ -455,13 +526,19 @@ impl Owner {
         }
         // A reload note the actor commits during a preparation is the one change that preparation
         // allows across its await; anything else leaves the revision behind the baseline.
-        let after_job = b.doc.get("job").clone();
+        let after_doc = b.doc.clone();
         let rev = b.rev;
         if let Some(p) = b.prep.as_mut() {
             if p.stage == Stage::Identities
                 && p.owed
                 && !p.noted
-                && reload_note_only(&p.before_job, &after_job)
+                && before_rev == p.baseline_rev
+                && reload_note_only(p.before_doc.get("job"), after_doc.get("job"))
+                && {
+                    let mut expected = p.before_doc.clone();
+                    set_key(&mut expected, "job", after_doc.get("job").clone());
+                    same_fields(&expected, &after_doc)
+                }
             {
                 p.noted = true;
                 p.baseline_rev = rev;
@@ -1232,7 +1309,8 @@ impl Owner {
             epoch: b.epoch,
             baseline_rev: b.rev,
             owed,
-            before_job: b.doc.get("job").clone(),
+            before_doc: b.doc.clone(),
+            outside: o.clone(),
             noted: false,
         });
         let items = JValue::Arr(
@@ -1266,7 +1344,10 @@ impl Owner {
         };
         b.hold = None;
         b.rev += 1;
-        let current = b.job_serial == p.serial && b.epoch == p.epoch && b.rev == p.baseline_rev + 1;
+        let current = b.job_serial == p.serial
+            && b.epoch == p.epoch
+            && b.rev == p.baseline_rev + 1
+            && p.outside == *o;
         let result = match result {
             Ok(r) if current => r,
             Ok(_) | Err(false) => return not_applied(),
