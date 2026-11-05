@@ -69,7 +69,15 @@ fn sha256(data: &[u8]) -> String {
 }
 
 async fn start(root: &Path, corpus_write_impl: &str) -> std::net::SocketAddr {
-    let cfg = serde_json::json!({
+    start_with(root, corpus_write_impl, None).await
+}
+
+async fn start_with(
+    root: &Path,
+    corpus_write_impl: &str,
+    external_sources: Option<Vec<String>>,
+) -> std::net::SocketAddr {
+    let mut cfg = serde_json::json!({
         "port": 0, "control_token": "ctl", "forward_secret": SECRET, "auth_token": TOKEN, "tenant_key": "k",
         "data_root": root.to_str().unwrap(), "legacy_user_id": "",
         "corpus": {"entry_layout": "daily", "entries_prefix": "Entries", "index_enabled": false,
@@ -80,9 +88,11 @@ async fn start(root: &Path, corpus_write_impl: &str) -> std::net::SocketAddr {
                          "fallback_setting_key": "LLM_AUX_FALLBACK_MODEL"},
                 "aux_prefers_main": true, "configured": "chat-a"},
         "corpus_write_impl": corpus_write_impl,
-    })
-    .to_string();
-    let cfg = noevia_diary::config::parse(&cfg).unwrap();
+    });
+    if let Some(paths) = external_sources {
+        cfg["external_sources"] = serde_json::json!(paths);
+    }
+    let cfg = noevia_diary::config::parse(&cfg.to_string()).unwrap();
     let app = Arc::new(noevia_diary::server::App::new(cfg));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -787,4 +797,63 @@ async fn body_shape_refusals_precede_auth_on_every_write_route() {
         }
     }
     assert!(file_row(dir.path(), "a.md").is_none());
+}
+
+#[tokio::test]
+async fn external_import_logs_one_exchange_like_python() {
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[]);
+    let src = dir.path().join("src");
+    std::fs::create_dir_all(src.join("sub")).unwrap();
+    std::fs::write(src.join("sub/2026-09-06 trip.md"), "Walked.\n\n# not a heading here\n").unwrap();
+    std::fs::write(src.join("blank.txt"), "  \n").unwrap();
+    std::fs::write(src.join("bad.txt"), [0xff, 0xfe]).unwrap();
+    std::fs::write(src.join("image.png"), "x").unwrap();
+    let outside = dir.path().join("outside.md");
+    std::fs::write(&outside, "secret").unwrap();
+    std::os::unix::fs::symlink(&outside, src.join("escape.md")).unwrap();
+    let source = src.to_str().unwrap().to_string();
+    let addr = start_with(dir.path(), "rust", Some(vec![source.clone()])).await;
+    let post = |body: serde_json::Value| {
+        let h = writer();
+        async move { send(addr, "POST", "/api/external-sources/import", &h, &body).await }
+    };
+    let (s, d, body) = post(serde_json::json!({"source_path": source, "rel_path": "sub/2026-09-06 trip.md"})).await;
+    assert_eq!((s, d), (200, false), "{body}");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["imported"], true);
+    assert_eq!(v["day"], "2026-09-06");
+    assert_eq!(v["date_source"], "filename");
+    let xid = v["xid"].as_str().unwrap();
+    assert_eq!(xid.len(), 36);
+    assert_eq!(xid.as_bytes()[14], b'4');
+    let (doc, _) = file_row(dir.path(), "Entries/2026/September/September 6, 2026.md").unwrap();
+    let doc = String::from_utf8(doc).unwrap();
+    assert!(doc.contains("### 12:00 \u{2014} Imported: 2026-09-06 trip.md"), "{doc}");
+    assert!(doc.contains("**Me:** Walked."), "{doc}");
+    assert!(doc.contains(&format!("<!-- xid:{xid} -->")), "{doc}");
+    // refusals, in app.py's order
+    let cases = [
+        (serde_json::json!({"source_path": "/elsewhere", "rel_path": "x.md"}), 400, "source path is not configured"),
+        (serde_json::json!({"source_path": source, "rel_path": "missing.md"}), 404, "file not found in source"),
+        (serde_json::json!({"source_path": source, "rel_path": "../outside.md"}), 404, "file not found in source"),
+        (serde_json::json!({"source_path": source, "rel_path": "/etc/passwd"}), 404, "file not found in source"),
+        (serde_json::json!({"source_path": source, "rel_path": "image.png"}), 404, "file not found in source"),
+        (serde_json::json!({"source_path": source, "rel_path": "escape.md"}), 404, "file not found in source"),
+        (serde_json::json!({"source_path": source, "rel_path": "blank.txt"}), 400, "file is empty"),
+        (serde_json::json!({"source_path": source, "rel_path": "bad.txt"}), 400, "file unreadable (not UTF-8 text or not accessible)"),
+    ];
+    for (b, status, text) in cases {
+        let (s, d, body) = post(b.clone()).await;
+        assert_eq!((s, d, body.as_str()), (status, false, format!(r#"{{"detail":"{text}"}}"#).as_str()), "{b}");
+    }
+    // a body FastAPI answers 422 to is Python's
+    let (s, d, _) = post(serde_json::json!({"source_path": source})).await;
+    assert_eq!((s, d), (421, true));
+    // not the tenant's writer, or the transforms Python itself does not use: declined
+    let (s, d, _) = send(addr, "POST", "/api/external-sources/import", &without(writer(), "x-noevia-diary-writer"), &serde_json::json!({"source_path": source, "rel_path": "blank.txt"})).await;
+    assert_eq!((s, d), (421, true));
+    let addr = start_with(dir.path(), "python", Some(vec![source.clone()])).await;
+    let (s, d, _) = send(addr, "POST", "/api/external-sources/import", &writer(), &serde_json::json!({"source_path": source, "rel_path": "blank.txt"})).await;
+    assert_eq!((s, d), (421, true));
 }

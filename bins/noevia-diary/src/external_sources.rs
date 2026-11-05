@@ -322,6 +322,162 @@ fn json(v: &Listing) -> Reply {
     }
 }
 
+// ------------------------------------------------------------------ POST /api/external-sources/import
+
+const MAX_IMPORT_BYTES: usize = 2 * 1024 * 1024;
+
+/// The ImportRequest model (pydantic): both fields strings, extras ignored. None: FastAPI would
+/// answer 422 (decline).
+pub struct ImportReq {
+    source_path: String,
+    rel_path: String,
+}
+
+pub fn import_model(body: &serde_json::Map<String, serde_json::Value>) -> Option<ImportReq> {
+    let s = |k: &str| match body.get(k) {
+        Some(serde_json::Value::String(v)) => Some(v.clone()),
+        _ => None,
+    };
+    Some(ImportReq {
+        source_path: s("source_path")?,
+        rel_path: s("rel_path")?,
+    })
+}
+
+/// `resolve_import_target`: Ok(None) is Python's None (404); Err: only Python can judge it.
+fn resolve_target(source: &str, rel: &str) -> Result<Option<PathBuf>, ()> {
+    if source.is_empty() || rel.is_empty() {
+        return Ok(None);
+    }
+    if source.contains('\0') || rel.contains('\0') {
+        return Err(());
+    }
+    if rel.starts_with('/') {
+        return Ok(None);
+    }
+    let parts: Vec<&str> = rel.split('/').filter(|p| !p.is_empty() && *p != ".").collect();
+    if parts.contains(&"..") {
+        return Ok(None);
+    }
+    let root = Path::new(source);
+    let root_real = fs::canonicalize(root).map_err(|_| ())?;
+    let joined = parts.iter().fold(root.to_path_buf(), |acc, p| acc.join(p));
+    let full = match fs::canonicalize(&joined) {
+        Ok(p) => p,
+        Err(e) if e.raw_os_error() == Some(40) => return Err(()),
+        Err(_) => return Ok(None),
+    };
+    if full.strip_prefix(&root_real).is_err() {
+        return Ok(None);
+    }
+    let is_file = fs::metadata(&full).map(|m| m.is_file()).unwrap_or(false);
+    let name = full.file_name().and_then(|n| n.to_str()).ok_or(())?;
+    Ok((is_file && allowed_suffix(name)).then_some(full))
+}
+
+fn uuid4() -> Option<String> {
+    use std::io::Read;
+    let mut b = [0u8; 16];
+    fs::File::open("/dev/urandom").ok()?.read_exact(&mut b).ok()?;
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    let hex: String = b.iter().map(|x| format!("{x:02x}")).collect();
+    let p = |from: usize, to: usize| hex.get(from..to).unwrap_or("");
+    Some(format!(
+        "{}-{}-{}-{}-{}",
+        p(0, 8),
+        p(8, 12),
+        p(12, 16),
+        p(16, 20),
+        p(20, 32)
+    ))
+}
+
+fn detail(status: u16, text: &str) -> Reply {
+    match serde_json::to_vec(&serde_json::json!({ "detail": text })) {
+        Ok(body) => Reply::Json(status, body),
+        Err(_) => Reply::Decline,
+    }
+}
+
+#[derive(Serialize)]
+struct Imported<'a> {
+    imported: bool,
+    xid: &'a str,
+    day: String,
+    date_source: &'a str,
+}
+
+/// `api_external_sources_import` after auth and the tenant: the named source must be configured,
+/// the file is read once (at most 2 MiB, UTF-8, not blank), dated like the scan, and logged as an
+/// exchange at 12:00 through the journal-durable write. The original file is only read.
+pub fn import(c: &crate::writes::Ctx<'_>, configured: &[String], req: &ImportReq) -> Reply {
+    use std::io::Read;
+    if !configured.contains(&req.source_path) {
+        return detail(400, "source path is not configured");
+    }
+    let target = match resolve_target(&req.source_path, &req.rel_path) {
+        Ok(Some(t)) => t,
+        Ok(None) => return detail(404, "file not found in source"),
+        Err(()) => return Reply::Decline,
+    };
+    let unreadable = || detail(400, "file unreadable (not UTF-8 text or not accessible)");
+    let mut raw = Vec::new();
+    let read = fs::File::open(&target).and_then(|f| {
+        f.take(u64::try_from(MAX_IMPORT_BYTES + 1).unwrap_or(0))
+            .read_to_end(&mut raw)
+    });
+    if read.is_err() {
+        return unreadable();
+    }
+    if raw.len() > MAX_IMPORT_BYTES {
+        return detail(413, "Source file exceeds 2 MiB");
+    }
+    let Ok(text) = String::from_utf8(raw) else {
+        return unreadable();
+    };
+    if crate::py::strip(&text).is_empty() {
+        return detail(400, "file is empty");
+    }
+    let Some(name) = target.file_name().and_then(|n| n.to_str()).map(str::to_string) else {
+        return Reply::Decline;
+    };
+    if name.chars().any(|ch| !ch.is_ascii() && ch.is_numeric()) {
+        return Reply::Decline;
+    }
+    let (file_date, method) = match filename_date(&name) {
+        Some(d) => (Some(d), "filename"),
+        None => match fs::metadata(&target).ok().map(|m| mtime_date(&m)) {
+            Some(Some(x)) => x,
+            Some(None) => return Reply::Decline,
+            None => (None, "unavailable"),
+        },
+    };
+    let day = file_date.unwrap_or_else(|| chrono::Local::now().date_naive());
+    if !(1900..=2100).contains(&day.year()) {
+        return Reply::Decline;
+    }
+    let Some(xid) = uuid4() else {
+        return Reply::Decline;
+    };
+    let title = format!("Imported: {name}");
+    match crate::writes::log_exchange(c, day, (12, 0), &title, &text, &xid) {
+        Ok(true) => {}
+        // log_exchange raised (pending native save, storage or journal failure): Python's 502.
+        _ => return detail(502, "import failed; check the Diary service log"),
+    }
+    let body = Imported {
+        imported: true,
+        xid: &xid,
+        day: day.format("%Y-%m-%d").to_string(),
+        date_source: if file_date.is_some() { method } else { "today" },
+    };
+    match serde_json::to_vec(&body) {
+        Ok(b) => Reply::Json(200, b),
+        Err(_) => Reply::Decline,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]

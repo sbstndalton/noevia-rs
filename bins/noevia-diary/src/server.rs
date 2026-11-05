@@ -190,6 +190,8 @@ pub enum Route {
     ExternalSources,
     /// D6: GET /api/workspace-trash.
     TrashList,
+    /// D6: POST /api/external-sources/import (a write: the tenant's writer only).
+    ExternalImport,
 }
 
 impl Route {
@@ -209,7 +211,11 @@ impl Route {
     pub fn write(self) -> bool {
         matches!(
             self,
-            Route::PutFile | Route::Directory | Route::Append | Route::Edit
+            Route::PutFile
+                | Route::Directory
+                | Route::Append
+                | Route::Edit
+                | Route::ExternalImport
         )
     }
 }
@@ -228,6 +234,7 @@ pub fn route(method: &Method, path: &str) -> Option<Route> {
         ("POST", "/api/entries/edit") => Some(Route::Edit),
         ("GET", "/api/external-sources") => Some(Route::ExternalSources),
         ("GET", "/api/workspace-trash") => Some(Route::TrashList),
+        ("POST", "/api/external-sources/import") => Some(Route::ExternalImport),
         _ => None,
     }
 }
@@ -341,15 +348,20 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
         | Route::Append
         | Route::Edit
         | Route::ExternalSources
-        | Route::TrashList => {
-            if r == Route::ExternalSources && app.external_sources.is_none() {
+        | Route::TrashList
+        | Route::ExternalImport => {
+            if matches!(r, Route::ExternalSources | Route::ExternalImport)
+                && app.external_sources.is_none()
+            {
                 return Plan::Decline;
             }
             if r.write() && header_uid.is_empty() {
                 // The legacy (header-less) tenant's writes stay with Python.
                 return Plan::Decline;
             }
-            if matches!(r, Route::Append | Route::Edit) && app.corpus_write_impl != "rust" {
+            if matches!(r, Route::Append | Route::Edit | Route::ExternalImport)
+                && app.corpus_write_impl != "rust"
+            {
                 return Plan::Decline;
             }
             if r == Route::WorkspaceExport && export_settings(app, &Settings::new()).is_none() {
@@ -609,6 +621,7 @@ async fn json_body(headers: &HeaderMap, body: Body) -> Option<serde_json::Map<St
 struct WriteBody {
     json: serde_json::Map<String, Value>,
     edit: Option<writes::EditReq>,
+    import: Option<external_sources::ImportReq>,
 }
 
 async fn write_body(r: Route, headers: &HeaderMap, body: Body) -> Option<WriteBody> {
@@ -618,7 +631,12 @@ async fn write_body(r: Route, headers: &HeaderMap, body: Body) -> Option<WriteBo
     } else {
         None
     };
-    Some(WriteBody { json, edit })
+    let import = if matches!(r, Route::ExternalImport) {
+        Some(external_sources::import_model(&json)?)
+    } else {
+        None
+    };
+    Some(WriteBody { json, edit, import })
 }
 
 /// The D5 write routes, in app.py's order: FastAPI reads the body first (422 → decline, in
@@ -633,7 +651,7 @@ async fn serve_write(
     tenant: Option<Tenant>,
     write: Option<WriteBody>,
 ) -> Response<Body> {
-    let Some(WriteBody { json, edit }) = write else {
+    let Some(WriteBody { json, edit, import }) = write else {
         return decline();
     };
     enum Op {
@@ -641,6 +659,7 @@ async fn serve_write(
         Dir,
         Append(writes::AppendReq),
         Edit(writes::EditReq),
+        Import(external_sources::ImportReq),
     }
     let op = match r {
         Route::PutFile => Op::File,
@@ -658,6 +677,10 @@ async fn serve_write(
             }
             Op::Edit(req)
         }
+        Route::ExternalImport => match import {
+            Some(req) => Op::Import(req),
+            None => return decline(),
+        },
         _ => return decline(),
     };
     let tenant = match resolve_tenant(&app, header_uid, asserted, headers, tenant) {
@@ -690,6 +713,10 @@ async fn serve_write(
                     Op::Dir => writes::directory_create(&ctx, &json),
                     Op::Append(req) => writes::append(&ctx, req),
                     Op::Edit(req) => writes::edit(&ctx, req),
+                    Op::Import(req) => match app2.external_sources.as_deref() {
+                        Some(paths) => external_sources::import(&ctx, paths, req),
+                        None => Reply::Decline,
+                    },
                 }
             })
             .unwrap_or(Reply::Decline)

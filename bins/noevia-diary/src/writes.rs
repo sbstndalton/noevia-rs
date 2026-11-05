@@ -473,22 +473,51 @@ pub fn append(c: &Ctx<'_>, req: &AppendReq) -> Reply {
         Ok(false) => {}
         Err(()) => return internal(),
     }
-    let time = chrono::NaiveTime::from_hms_opt(req.now.hour(), req.now.minute(), 0);
-    let Some(time) = time else {
-        return internal();
-    };
-    let rendered = cw::render_subsection_header(time, py::strip(&req.title));
-    let Some(sub_header) = rendered.strip_prefix("### ").map(str::to_owned) else {
-        return internal();
-    };
-    let body = cw::render_exchange(&req.text, "", xid);
+    match log_exchange(
+        c,
+        req.day,
+        (req.now.hour(), req.now.minute()),
+        &req.title,
+        &req.text,
+        xid,
+    ) {
+        Ok(true) => {}
+        // NativeWriteUnavailable: 503 {"error": ...}.
+        Ok(false) => return error(503, PENDING_NATIVE),
+        Err(()) => return internal(),
+    }
+    match has(&document) {
+        Ok(true) => ok(false),
+        _ => ok(true),
+    }
+}
+
+/// CorpusStore.log_exchange with the native transform: journal the exchange, then apply it.
+/// Ok(true): applied; Ok(false): the journal holds it (storage refused it); Err: nothing usable.
+pub fn log_exchange(
+    c: &Ctx<'_>,
+    day: NaiveDate,
+    (hour, minute): (u32, u32),
+    title: &str,
+    text: &str,
+    xid: &str,
+) -> Result<bool, ()> {
+    let l = c.layout;
+    let document = corpus::document_path(l, day);
+    let time = chrono::NaiveTime::from_hms_opt(hour, minute, 0).ok_or(())?;
+    let rendered = cw::render_subsection_header(time, py::strip(title));
+    let sub_header = rendered
+        .strip_prefix("### ")
+        .map(str::to_owned)
+        .ok_or(())?;
+    let body = cw::render_exchange(text, "", xid);
     let scaffold = match (c.journal.has_exchange(), corpus::list_months(c.reader, l)) {
         (Ok(has), Ok(months)) => !has && months.is_empty(),
-        _ => return internal(),
+        _ => return Err(()),
     };
-    let month = corpus::month_filename(l, req.day);
-    let label = format!("{} {}", corpus::month_name(req.day.month()), req.day.year());
-    let day_iso = req.day.format("%Y-%m-%d").to_string();
+    let month = corpus::month_filename(l, day);
+    let label = format!("{} {}", corpus::month_name(day.month()), day.year());
+    let day_iso = day.format("%Y-%m-%d").to_string();
     let payload = write::py_json(&[
         ("scaffold", PyVal::Bool(scaffold)),
         ("xid", PyVal::Str(xid)),
@@ -504,19 +533,15 @@ pub fn append(c: &Ctx<'_>, req: &AppendReq) -> Reply {
     // process lost at any later point (after the corpus commit, or after the journal row is marked
     // applied) still leaves its retrieval invalidation behind. A failed write leaves one extra
     // reindex, which is harmless.
-    if c.journal.mark_dirty(&document).is_err() {
-        return internal();
-    }
-    let Ok(id) = c.journal.enqueue("exchange", &payload) else {
-        return internal();
-    };
-    let applied = apply_entry(c, &id, || {
+    c.journal.mark_dirty(&document).map_err(|_| ())?;
+    let id = c.journal.enqueue("exchange", &payload).map_err(|_| ())?;
+    apply_entry(c, &id, || {
         c.store.guarded_write(&document, |current| {
             if let Some(text) = current.filter(|t| cw::has_marker(t, xid)) {
                 return Ok((text.to_string(), false));
             }
             // apply_append with the canonical day header.
-            cw::append_to_month_text(current, req.day, &sub_header, &body)
+            cw::append_to_month_text(current, day, &sub_header, &body)
                 .map(|t| (t, true))
                 .ok_or_else(|| "invalid day".to_string())
         })?;
@@ -524,17 +549,8 @@ pub fn append(c: &Ctx<'_>, req: &AppendReq) -> Reply {
             seed(c)?;
         }
         Ok(())
-    });
-    match applied {
-        Ok(true) => {}
-        // NativeWriteUnavailable: 503 {"error": ...}.
-        Ok(false) => return error(503, PENDING_NATIVE),
-        Err(_) => return internal(),
-    }
-    match has(&document) {
-        Ok(true) => ok(false),
-        _ => ok(true),
-    }
+    })
+    .map_err(|_| ())
 }
 
 /// CorpusStore._scaffold: create-only seed files.
