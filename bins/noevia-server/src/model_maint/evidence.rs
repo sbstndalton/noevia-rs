@@ -353,6 +353,8 @@ impl Store {
                 #[cfg(test)]
                 self.run_read_failures
                     .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                #[cfg(test)]
+                super::calibration_worker::test_changed();
                 StoreError::RunStorage(e.kind())
             })?);
         }
@@ -373,6 +375,7 @@ impl Store {
             if let Ok(mut attempts) = self.run_write_failures.lock() {
                 attempts.push(std::time::Instant::now());
             }
+            super::calibration_worker::test_changed();
             return Err(StoreError::RunStorage(std::io::ErrorKind::PermissionDenied));
         }
         use std::os::unix::fs::OpenOptionsExt;
@@ -696,10 +699,13 @@ impl Store {
                 self.append_stall.lock().ok().and_then(|mut s| s.take())
             {
                 let _ = entered.send(());
+                super::calibration_worker::test_changed();
                 let _ = release.recv_timeout(std::time::Duration::from_secs(120));
             }
             f.write_all(format!("{line}\n").as_bytes())
                 .map_err(|_| StoreError::Io)?;
+            #[cfg(test)]
+            super::calibration_worker::test_changed();
         }
         // Counted once per process and kept up to date by append and compact.
         let count = self.count();

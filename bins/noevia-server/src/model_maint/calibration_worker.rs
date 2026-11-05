@@ -20,6 +20,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::Notify;
 
+#[cfg(test)]
+static TEST_CHANGED: Notify = Notify::const_new();
+
+#[cfg(test)]
+pub(super) fn test_changed() {
+    TEST_CHANGED.notify_waiters();
+}
+
 const PAD: &str = "This is synthetic padding for a context allocation validation.\n";
 /// What a run that lost its exclusion records (the lease ended or Node stopped confirming it).
 pub const LEASE_LOST: &str = "Calibration stopped because its maintenance hold ended; other clients may have used the engine.";
@@ -229,6 +237,7 @@ impl Drop for SaveCount {
     fn drop(&mut self) {
         self.0.outstanding.fetch_sub(1, Ordering::AcqRel);
         self.0.snapshots.fetch_sub(1, Ordering::AcqRel);
+        test_changed();
     }
 }
 
@@ -561,6 +570,8 @@ impl RestoreResolver {
                 .settle_restore(&resolver.candidate, resolver.retry)
                 .await;
             resolver.pending.store(false, Ordering::Release);
+            #[cfg(test)]
+            test_changed();
             guard.armed = false;
             restored
         })
@@ -632,13 +643,42 @@ impl Worker {
             Ok(g) => g,
             Err(p) => p.into_inner(),
         };
-        f(&mut guard)
+        #[cfg(test)]
+        let before = (
+            wtf16::stringify(guard.state.job()),
+            guard.active,
+            guard.decided,
+            guard.launching,
+            guard.recovering,
+            guard.unsaved,
+            guard.lease_lost,
+            guard.cancel_requested,
+        );
+        let result = f(&mut guard);
+        #[cfg(test)]
+        if before
+            != (
+                wtf16::stringify(guard.state.job()),
+                guard.active,
+                guard.decided,
+                guard.launching,
+                guard.recovering,
+                guard.unsaved,
+                guard.lease_lost,
+                guard.cancel_requested,
+            )
+        {
+            test_changed();
+        }
+        result
     }
 
     /// Serial writes retain their blocking owner across cancellation/timeout. The async
     /// slot bounds dispatched work; the blocking mutex covers checks, rename and fsync.
     async fn drain_writes(&self) {
         let mut slot = self.pending_write.lock().await;
+        #[cfg(test)]
+        test_changed();
         if let Some(pending) = slot.as_mut() {
             pending.permit.store(false, Ordering::Release);
             let _ = (&mut pending.task).await;
@@ -707,11 +747,14 @@ impl Worker {
             }
         };
         #[cfg(test)]
+        let terminal_fails = terminal && marker_free && self.terminal_error.load(Ordering::Acquire);
+        #[cfg(test)]
         if terminal && marker_free {
             self.terminal_attempts.fetch_add(1, Ordering::AcqRel);
+            test_changed();
         }
         #[cfg(test)]
-        if terminal && marker_free && self.terminal_error.load(Ordering::Acquire) {
+        if terminal_fails {
             return Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
         }
         #[cfg(test)]
@@ -722,6 +765,7 @@ impl Worker {
             #[cfg(test)]
             if let Some((_, entered, release)) = stall {
                 let _ = entered.send(());
+                test_changed();
                 let _ = release.recv_timeout(Duration::from_secs(120));
             }
             let _writer = writes.lock().unwrap_or_else(|p| p.into_inner());
@@ -768,6 +812,8 @@ impl Worker {
             None => (&mut pending.task).await,
         };
         *slot = None;
+        #[cfg(test)]
+        test_changed();
         result.map_err(|_| std::io::Error::other("state write task"))?
     }
 
@@ -2933,37 +2979,13 @@ mod tests {
         rows: Mutex<Vec<String>>,
         changed: Notify,
     }
-    struct RequestRows<'a> {
-        rows: std::sync::MutexGuard<'a, Vec<String>>,
-        changed: &'a Notify,
-        dirty: bool,
-    }
-    impl std::ops::Deref for RequestRows<'_> {
-        type Target = Vec<String>;
-        fn deref(&self) -> &Self::Target {
-            &self.rows
-        }
-    }
-    impl std::ops::DerefMut for RequestRows<'_> {
-        fn deref_mut(&mut self) -> &mut Self::Target {
-            self.dirty = true;
-            &mut self.rows
-        }
-    }
-    impl Drop for RequestRows<'_> {
-        fn drop(&mut self) {
-            if self.dirty {
-                self.changed.notify_waiters();
-            }
-        }
-    }
     impl RequestLog {
-        fn lock(&self) -> Result<RequestRows<'_>, &'static str> {
-            Ok(RequestRows {
-                rows: self.rows.lock().map_err(|_| "poisoned request log")?,
-                changed: &self.changed,
-                dirty: false,
-            })
+        fn lock(&self) -> std::sync::LockResult<std::sync::MutexGuard<'_, Vec<String>>> {
+            self.rows.lock()
+        }
+        fn record(&self, row: String) {
+            self.rows.lock().unwrap().push(row);
+            self.changed.notify_waiters();
         }
     }
 
@@ -2975,6 +2997,7 @@ mod tests {
     impl TestGate {
         pub(super) async fn wait(&self) {
             self.entered.store(true, Ordering::Release);
+            test_changed();
             tokio::time::timeout(WATCHDOG, self.release.notified())
                 .await
                 .unwrap();
@@ -3004,8 +3027,15 @@ mod tests {
     async fn abort_wakes_a_waiter_and_stays_aborted() {
         let a = Arc::new(Abort::default());
         let b = Arc::clone(&a);
-        let waiter = tokio::spawn(async move { b.wait().await });
-        tokio::task::yield_now().await;
+        let (entered, ready) = tokio::sync::oneshot::channel();
+        let waiter = tokio::spawn(async move {
+            entered.send(()).unwrap();
+            b.wait().await;
+        });
+        tokio::time::timeout(WATCHDOG, ready)
+            .await
+            .unwrap()
+            .unwrap();
         a.abort();
         tokio::time::timeout(WATCHDOG, waiter)
             .await
@@ -3120,7 +3150,7 @@ mod tests {
                 let path = parts.uri.path().to_owned();
                 let body = body.collect().await.map(|b| b.to_bytes()).unwrap_or_default();
                 let body: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
-                log.lock().unwrap().push(format!("{} {}", parts.method, parts.uri));
+                log.record(format!("{} {}", parts.method, parts.uri));
                 let json = |code: u16, v: Value| {
                     Response::builder().status(code).header("content-type", "application/json").body(Body::from(v.to_string())).unwrap()
                 };
@@ -3166,6 +3196,7 @@ mod tests {
                         json(200, json!({"build_info": "b-synthetic"}))
                     }
                     ("POST", "/v1/chat/completions") if body["stream"] == Value::Bool(true) => {
+                        log.record("STREAM /v1/chat/completions".into());
                         let content = body["messages"][0]["content"].as_str().unwrap_or("").to_owned();
                         let marker: String = content
                             .strip_prefix("Remember the start marker: ")
@@ -3259,18 +3290,13 @@ mod tests {
     }
 
     async fn settled(w: &Worker) -> JValue {
-        let deadline = Instant::now() + WATCHDOG;
-        while Instant::now() < deadline {
+        delta_wait(|| {
             let job = w.job();
-            // finishedAt is published only after persistence and local admission release.
-            if job.get("status").as_str() != Some("running")
+            job.get("status").as_str() != Some("running")
                 && !matches!(job.get("finishedAt"), JValue::Undefined)
-            {
-                return job;
-            }
-            tokio::task::yield_now().await;
-        }
-        panic!("the synthetic run did not finish: {:?}", w.job());
+        })
+        .await;
+        w.job()
     }
 
     async fn released(log: &RequestLog, prefix: &str) {
@@ -3422,9 +3448,7 @@ mod tests {
             .expect("panic reconciled");
         review_failed(&w, &job);
         tokio::time::timeout(WATCHDOG, async {
-            while w.unsaved() {
-                tokio::task::yield_now().await;
-            }
+            delta_wait(|| !w.unsaved()).await;
         })
         .await
         .unwrap();
@@ -3473,9 +3497,7 @@ mod tests {
             .expect("bounded DELETE");
         review_failed(&w, &job);
         tokio::time::timeout(WATCHDOG, async {
-            while w.unsaved() {
-                tokio::task::yield_now().await;
-            }
+            delta_wait(|| !w.unsaved()).await;
         })
         .await
         .expect("failed record retry persisted");
@@ -3590,6 +3612,7 @@ mod tests {
                     (409, json!({"detail":"changed"}))
                 } else if text == INI {
                     let attempt = attempts.fetch_add(1, Ordering::AcqRel);
+                    test_changed();
                     match mode {
                         "lost" if attempt == 0 => {
                             std::fs::write(&file, text).unwrap();
@@ -3645,16 +3668,14 @@ mod tests {
     }
     async fn wait_restoration(w: &Worker) {
         tokio::time::timeout(WATCHDOG, async {
-            while w.restoring.load(Ordering::Acquire) {
-                tokio::task::yield_now().await;
-            }
+            delta_wait(|| !w.restoring.load(Ordering::Acquire)).await;
         })
         .await
         .expect("owned restoration settles and readmits");
     }
     async fn begin_restore_run(w: &Arc<Worker>, seen: &RequestLog) {
         w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
-        released(seen, "POST /v1/chat/completions").await;
+        released(seen, "STREAM /v1/chat/completions").await;
         w.cancel().unwrap();
     }
     async fn assert_restore_readmits(w: &Arc<Worker>) {
@@ -3705,9 +3726,7 @@ mod tests {
         let (_d, w, available, calls, seen) = restore_rig("down").await;
         begin_restore_run(&w, &seen).await;
         tokio::time::timeout(WATCHDOG, async {
-            while calls.load(Ordering::Acquire) == 0 {
-                tokio::task::yield_now().await;
-            }
+            delta_wait(|| calls.load(Ordering::Acquire) != 0).await;
         })
         .await
         .unwrap();
@@ -3780,9 +3799,7 @@ mod tests {
         let worker = Arc::clone(&w);
         let recovery = tokio::spawn(async move { worker.recover().await });
         tokio::time::timeout(WATCHDOG, async {
-            while calls.load(Ordering::Acquire) < 2 {
-                tokio::task::yield_now().await;
-            }
+            delta_wait(|| calls.load(Ordering::Acquire) >= 2).await;
         })
         .await
         .expect("boot recovery retains and retries the unsettled CAS");
@@ -3851,12 +3868,12 @@ mod tests {
         let _ = w.cancel();
         release.send(()).unwrap();
         tokio::time::timeout(WATCHDOG, async {
-            while !std::fs::read_to_string(store.file())
-                .unwrap_or_default()
-                .contains(old.get("id").as_str().unwrap())
-            {
-                tokio::task::yield_now().await;
-            }
+            delta_wait(|| {
+                std::fs::read_to_string(store.file())
+                    .unwrap_or_default()
+                    .contains(old.get("id").as_str().unwrap())
+            })
+            .await;
         })
         .await
         .expect("old physical append really completed after successor admission");
@@ -3917,13 +3934,11 @@ mod tests {
         let w = worker(d.path(), port);
         let store = Arc::clone(w.maint.evidence.as_ref().unwrap());
         w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
-        released(&seen, "POST /v1/chat/completions").await;
+        released(&seen, "STREAM /v1/chat/completions").await;
         store.inject_run_write_error(true);
         w.cancel().unwrap();
         tokio::time::timeout(WATCHDOG, async {
-            while store.run_write_failures().len() < 2 {
-                tokio::task::yield_now().await;
-            }
+            delta_wait(|| store.run_write_failures().len() >= 2).await;
         })
         .await
         .unwrap();
@@ -3946,9 +3961,7 @@ mod tests {
         let attempts = store.run_write_failures().len();
         w.cancel().unwrap();
         tokio::time::timeout(WATCHDOG, async {
-            while store.run_write_failures().len() == attempts {
-                tokio::task::yield_now().await;
-            }
+            delta_wait(|| store.run_write_failures().len() != attempts).await;
         })
         .await
         .expect("cancellation interrupts the retry wait");
@@ -3969,9 +3982,7 @@ mod tests {
         let job = tokio::time::timeout(WATCHDOG, settled(&w)).await.unwrap();
         review_failed(&w, &job);
         tokio::time::timeout(WATCHDOG, async {
-            while w.unsaved() {
-                tokio::task::yield_now().await;
-            }
+            delta_wait(|| !w.unsaved()).await;
         })
         .await
         .unwrap();
@@ -4004,9 +4015,7 @@ mod tests {
         store.inject_run_write_error(true);
         let recovery = restarted.spawn_recover().unwrap();
         tokio::time::timeout(WATCHDOG, async {
-            while store.run_write_failures().is_empty() {
-                tokio::task::yield_now().await;
-            }
+            delta_wait(|| !store.run_write_failures().is_empty()).await;
         })
         .await
         .expect("recovery retries the pending fence first");
@@ -4049,9 +4058,7 @@ mod tests {
         store.inject_run_write_error(true);
         w.run_abort.lock().unwrap().as_ref().unwrap().abort();
         tokio::time::timeout(WATCHDOG, async {
-            while store.run_write_failures().is_empty() {
-                tokio::task::yield_now().await;
-            }
+            delta_wait(|| !store.run_write_failures().is_empty()).await;
         })
         .await
         .unwrap();
@@ -4069,8 +4076,14 @@ mod tests {
     // SETTLEMENT_DELTA_REGRESSIONS_BEGIN
     async fn delta_wait(mut ready: impl FnMut() -> bool) {
         tokio::time::timeout(WATCHDOG, async {
-            while !ready() {
-                tokio::task::yield_now().await;
+            loop {
+                let changed = TEST_CHANGED.notified();
+                tokio::pin!(changed);
+                changed.as_mut().enable();
+                if ready() {
+                    return;
+                }
+                changed.await;
             }
         })
         .await
@@ -4409,7 +4422,7 @@ mod tests {
                 .unwrap();
         }
         let next = w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
-        released(&seen, "POST /v1/chat/completions").await;
+        released(&seen, "STREAM /v1/chat/completions").await;
         // Freeze normal checkpoints after the successor is durable. The broken recovery writer
         // bypasses this lock; its stale rename must be observed before another checkpoint hides it.
         let writes = Arc::clone(&w.writes);
@@ -4418,6 +4431,7 @@ mod tests {
         let checkpoint_block = tokio::task::spawn_blocking(move || {
             let _writer = writes.lock().unwrap();
             entered.send(()).unwrap();
+            test_changed();
             let _ = wait.recv_timeout(WATCHDOG);
         });
         delta_wait(|| locked.try_recv().is_ok()).await;
@@ -4601,7 +4615,7 @@ mod tests {
             base: Vec::new(),
         };
         w.launch("synthetic", plan).await.unwrap();
-        released(&seen, "POST /v1/chat/completions").await;
+        released(&seen, "STREAM /v1/chat/completions").await;
         let snapshot = w.cancel().unwrap();
         assert_eq!(snapshot.get("status").as_str(), Some("running"));
         let job = settled(&w).await;
@@ -4623,7 +4637,7 @@ mod tests {
             base: Vec::new(),
         };
         w.launch("synthetic", plan).await.unwrap();
-        released(&seen, "POST /v1/chat/completions").await;
+        released(&seen, "STREAM /v1/chat/completions").await;
         let file = d.join(format!("native-calibration-{}.json", w.maint.suffix));
         let state = std::fs::read_to_string(&file).unwrap();
         let profile = std::fs::read_to_string(&ini).unwrap();
@@ -4816,7 +4830,7 @@ mod tests {
                 let (parts, body) = req.into_parts();
                 let body = body.collect().await.map(|b| b.to_bytes()).unwrap_or_default();
                 let text = String::from_utf8_lossy(&body).into_owned();
-                log.lock().unwrap().push(format!("{} {} {text}", parts.method, parts.uri.path()));
+                log.record(format!("{} {} {text}", parts.method, parts.uri.path()));
                 let asked = serde_json::from_str::<Value>(&text)
                     .ok()
                     .and_then(|v| v["maxMs"].as_u64());
@@ -4977,7 +4991,7 @@ mod tests {
         let (lease, _) = lease_stub(None, Arc::clone(&ended)).await;
         let w = worker_with(d.path(), port, Some(lease));
         w.launch("synthetic", plan(16_384.0, 120.0)).await.unwrap();
-        released(&seen, "POST /v1/chat/completions").await;
+        released(&seen, "STREAM /v1/chat/completions").await;
         ended.store(true, Ordering::Release);
         let job = settled(&w).await;
         assert_eq!(job.get("status").as_str(), Some("interrupted"), "{job:?}");
