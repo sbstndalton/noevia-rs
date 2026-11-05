@@ -499,6 +499,14 @@ pub fn append(c: &Ctx<'_>, req: &AppendReq) -> Reply {
         ("document", PyVal::Str(&document)),
         ("month_label", PyVal::Str(&label)),
     ]);
+    // The index refresh Python runs in the background is left to Python's next _reindex_dirty.
+    // The document is marked dirty BEFORE anything is written (as file_write and edit do), so a
+    // process lost at any later point (after the corpus commit, or after the journal row is marked
+    // applied) still leaves its retrieval invalidation behind. A failed write leaves one extra
+    // reindex, which is harmless.
+    if c.journal.mark_dirty(&document).is_err() {
+        return internal();
+    }
     let Ok(id) = c.journal.enqueue("exchange", &payload) else {
         return internal();
     };
@@ -522,10 +530,6 @@ pub fn append(c: &Ctx<'_>, req: &AppendReq) -> Reply {
         // NativeWriteUnavailable: 503 {"error": ...}.
         Ok(false) => return error(503, PENDING_NATIVE),
         Err(_) => return internal(),
-    }
-    // The index refresh Python runs in the background is left to Python's next _reindex_dirty.
-    if c.journal.mark_dirty(&document).is_err() {
-        return internal();
     }
     match has(&document) {
         Ok(true) => ok(false),

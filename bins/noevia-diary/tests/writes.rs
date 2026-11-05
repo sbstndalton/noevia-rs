@@ -379,6 +379,39 @@ async fn append_journals_then_writes_once_and_is_idempotent() {
 }
 
 #[tokio::test]
+async fn append_invalidates_retrieval_before_it_writes() {
+    // The process can be lost at any point after the corpus commit (before the journal row is
+    // marked applied, before the reply). The retrieval invalidation must already be persisted:
+    // here the corpus write itself fails at commit, and the document is still marked dirty.
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[]);
+    {
+        let db =
+            rusqlite::Connection::open(tenant_root(dir.path()).join("managed-diary.db")).unwrap();
+        db.execute_batch(
+            "CREATE TRIGGER synthetic_commit_failure BEFORE INSERT ON files \
+             BEGIN SELECT RAISE(ABORT, 'synthetic commit failure'); END;",
+        )
+        .unwrap();
+    }
+    let addr = start(dir.path(), "rust").await;
+    let rid = "aaaaaaaa-bbbb-4ccc-8ddd-ffffffffffff";
+    let b = serde_json::json!({"text": "Synthetic note.", "title": "walk", "requestId": rid, "entryTime": now_iso()});
+    let (s, _, body) = send(addr, "POST", "/api/entries/append", &writer(), &b).await;
+    assert_ne!(s, 200, "{body}");
+    let marked = dirty(dir.path());
+    assert_eq!(marked.len(), 1, "{marked:?}");
+    assert!(
+        marked[0].starts_with("Entries/") && marked[0].ends_with(".md"),
+        "{marked:?}"
+    );
+    assert!(
+        file_row(dir.path(), &marked[0]).is_none(),
+        "nothing was written"
+    );
+}
+
+#[tokio::test]
 async fn append_validation_and_impl_gate() {
     let dir = tempfile::tempdir().unwrap();
     managed_tenant(dir.path(), &[]);
