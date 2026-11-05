@@ -59,6 +59,15 @@ fn available(acct: &Account, reader: &Reader<'_>, user: &str) -> Result<bool, St
     let Some(controller) = acct.feature_context.as_ref() else {
         return Err(StoreError::NotReady("feature context".into()));
     };
+    available_with(controller, reader, user)
+}
+
+/// [`available`] for a caller that holds the feature controller itself.
+fn available_with(
+    controller: &crate::feature_context::Controller,
+    reader: &Reader<'_>,
+    user: &str,
+) -> Result<bool, StoreError> {
     let view = controller.view(reader)?;
     if !crate::features::evaluate(reader, &view, Feature::ChatFraming)?.enabled {
         return Ok(false);
@@ -71,6 +80,55 @@ fn available(acct: &Account, reader: &Reader<'_>, user: &str) -> Result<bool, St
         )?
         .flatten()
         .is_some_and(|v| v != 0))
+}
+
+/// What the native mirror pass and brain build check before they do anything (crate
+/// chat-mirror-exec, wired in bins/noevia-server chat_mirror.rs), in core's order and from the
+/// same sources: `available` is `vaultMirrorAvailable(userId)`, `opted_in` the account's own
+/// `readPreferences(dir).enabled`, `reasoner` `features.enabled('framingReasoner')`,
+/// `framing` `features.enabled('chatFraming')`, and `reasoner_model` the admin setting
+/// `framing:roles` `framingReasonerModel` ('' when unset). `Err`: the feature runtime is not ready
+/// (core threw, and the pass failed or the build ended `error`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecGates {
+    pub available: bool,
+    pub opted_in: bool,
+    pub reasoner: bool,
+    pub framing: bool,
+    pub reasoner_model: String,
+}
+
+pub fn exec_gates(
+    controller: &crate::feature_context::Controller,
+    reader: &Reader<'_>,
+    data_dir: &Path,
+    user: &str,
+) -> Result<ExecGates, StoreError> {
+    let view = controller.view(reader)?;
+    let reasoner = crate::features::evaluate(reader, &view, Feature::FramingReasoner)?.enabled;
+    let framing = crate::features::evaluate(reader, &view, Feature::ChatFraming)?.enabled;
+    let available = available_with(controller, reader, user)?;
+    // workspace.cjs userDir: a user id is 36 of [0-9a-f-], so it never names a path outside users/.
+    let id_ok = user.len() == 36 && user.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-');
+    let opted_in = id_ok && read(&data_dir.join("users").join(user));
+    let roles: Option<String> = reader
+        .row(
+            "SELECT value FROM settings WHERE key=?1",
+            ["framing:roles"],
+            |r| r.get::<_, Option<String>>(0),
+        )?
+        .flatten();
+    let reasoner_model = roles
+        .and_then(|t| js_json::parse(&t).ok())
+        .and_then(|v| v.get("framingReasonerModel").as_str().map(str::to_owned))
+        .unwrap_or_default();
+    Ok(ExecGates {
+        available,
+        opted_in,
+        reasoner,
+        framing,
+        reasoner_model,
+    })
 }
 
 fn context_unavailable() -> Outcome {
