@@ -412,6 +412,21 @@ impl Maint {
         Ok(hold)
     }
 
+    /// Delta review P1: a fresh hold for a recovery after a lost one, taken while the caller keeps this
+    /// process's local admission closed itself (its admission fence): no new reservation, and the hold
+    /// never clears local admission when it ends. The lost hold is never reused.
+    pub(super) async fn acquire_recovery(
+        &self,
+        reason: &str,
+        lease_for: Duration,
+    ) -> Result<Hold, HoldRefusal> {
+        let mut hold = self
+            .acquire_inner(reason, Duration::MAX, false, Some(lease_for))
+            .await?;
+        drop(hold.defer_local_release());
+        Ok(hold)
+    }
+
     async fn acquire_inner(
         &self,
         reason: &str,
