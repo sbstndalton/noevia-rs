@@ -1,26 +1,29 @@
-//! Admission to the model engine from the Rust front (sbstndalton/noevia#2218).
+//! Admission to the model engine from the Rust front (sbstndalton/noevia#2218, port contract row H).
 //!
-//! While chat lives in Node, Node is where the rules about the shared engine are held: the maintenance gate
-//! (a tune, a calibration, a reload holds the engine, `modelManager.enterInference`), the inference memory
-//! budget and the memory-watchdog quarantine (`prepareLoad`, #697), and, when one is configured, the
-//! inference gate's one-model queue (`acquireLease`, #2115). These counts and caches are Node's memory, so
-//! a second copy here could only disagree. So a caller asks Node for an inference lease, over the loopback
-//! connection, and Node takes the same steps it takes for its own work and holds them until the lease ends
-//! (core `inference-admission-lease.cjs`). The sibling of the models round's maintenance lease
-//! (`/internal/model-maintenance/lease`): that one holds the engine for maintenance and refuses while
-//! inference runs; this one holds a place in inference and refuses while maintenance runs. Same transport,
-//! same token, same renewal rule, and the same exclusion is what makes them correct together.
+//! This front is the one admission authority ([`authority`]): it issues every lease, owns its renewal,
+//! hard cap, expiry and release, orders Node's process starts and decides when a lease no longer covers
+//! its holder. What a lease holds in Node's memory (the maintenance gate's inference count, the memory
+//! budget and the gate's one-model queue, a machine's turn, the Diary exchange's throttle and pause) is
+//! taken by Node's latch for a ticket this authority issued (core `inference-admission-lease.cjs`) and
+//! held until the lease is given back.
 //!
-//! - A lease is renewed every third of its TTL by a task of its own. When Node says it ended, or stops
-//!   confirming it for a whole TTL, [`Lease::lost`] is cancelled, so the holder's model request stops: Node
-//!   may start maintenance from then on. It is never taken again silently.
-//! - [`Lease::release`] gives it back. A lease dropped without that (a panic, a dropped task) gives it back
-//!   from `Drop`; if even that cannot run, Node ends it by itself after the TTL.
-//! - No answer from Node is a refusal: admission fails closed, nothing reaches the engine.
+//! - A lease is renewed at Node every third of its TTL by a task of its own, and coverage is checked
+//!   before each renewal and at every change of the authority: when Node says it ended, stops confirming
+//!   it for a whole TTL, restarts (a newer incarnation registered), or the hard cap passes,
+//!   [`Lease::lost`] is cancelled, so the holder's model request stops. It is never taken again silently.
+//! - [`Lease::release`] gives it back. A lease dropped without that, or a ticket whose enter future is
+//!   dropped at any await, gives it back from `Drop`; if even that cannot run, Node ends it after the TTL.
+//! - No Node session, no answer from Node or an unreadable one is a refusal: admission fails closed.
+//!
+//! Partial port (row H): this authority owns lease *lifetime*. The admission *decisions* (maintenance
+//! permit, budget/quarantine, machine assignment/readiness, the Diary throttle) are still made by Node's
+//! latch and trusted here, until their owners (maintenance, budget, machines, chat) move them.
 //!
 //! [`machines`]: which machine serves a chat role, read from the settings row Node owns.
+pub mod authority;
 pub mod machines;
 
+pub use authority::{Authority, Ticket};
 use model_stream::Cancel;
 use reqwest::header::{HeaderName, HeaderValue};
 use serde_json::{json, Value};
@@ -30,6 +33,9 @@ use std::time::Duration;
 
 const PATH: &str = "/internal/inference-admission/lease";
 const TOKEN_HEADER: &str = "x-noevia-store-token";
+/// The authority's epoch and the Node incarnation every latch call carries.
+const EPOCH_HEADER: &str = "x-noevia-admission-epoch";
+const INCARNATION_HEADER: &str = "x-noevia-admission-incarnation";
 const CALL_TIMEOUT: Duration = Duration::from_secs(5);
 /// Node's own queue limit is under this (`max_wait_ms`), so a queued wait ends with Node's answer.
 pub const ENTER_TIMEOUT: Duration = Duration::from_secs(150);
@@ -83,6 +89,7 @@ pub struct Admission {
     client: reqwest::Client,
     base: String,
     token: Option<HeaderValue>,
+    authority: Authority,
 }
 
 impl std::fmt::Debug for Admission {
@@ -94,15 +101,17 @@ impl std::fmt::Debug for Admission {
     }
 }
 
-fn valid_id(s: &str) -> bool {
-    s.len() == 32
-        && s.bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-}
-
 impl Admission {
-    /// `base`: Node's loopback address. `token`: the per-start secret both processes were handed.
+    /// A client of this process's one authority ([`authority::global`]).
     pub fn new(base: &str, token: Option<&str>) -> Result<Admission, String> {
+        Self::with_authority(base, token, authority::global().clone())
+    }
+
+    pub fn with_authority(
+        base: &str,
+        token: Option<&str>,
+        authority: Authority,
+    ) -> Result<Admission, String> {
         let client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .no_proxy()
@@ -119,19 +128,36 @@ impl Admission {
             client,
             base: base.trim_end_matches('/').to_owned(),
             token,
+            authority,
         })
     }
 
-    fn request(&self, method: reqwest::Method, path: &str) -> Option<reqwest::RequestBuilder> {
+    pub fn authority(&self) -> &Authority {
+        &self.authority
+    }
+
+    fn request(
+        &self,
+        method: reqwest::Method,
+        ticket: &Ticket,
+        suffix: &str,
+    ) -> Option<reqwest::RequestBuilder> {
         let token = self.token.clone()?;
         Some(
             self.client
-                .request(method, format!("{}{path}", self.base))
-                .header(HeaderName::from_static(TOKEN_HEADER), token),
+                .request(method, format!("{}{PATH}/{}{suffix}", self.base, ticket.id))
+                .header(HeaderName::from_static(TOKEN_HEADER), token)
+                .header(HeaderName::from_static(EPOCH_HEADER), ticket.epoch.as_str())
+                .header(
+                    HeaderName::from_static(INCARNATION_HEADER),
+                    ticket.incarnation.to_string(),
+                ),
         )
     }
 
-    /// Takes a lease, waiting as long as Node's queue does, or until `cancel`.
+    /// Takes a lease: this authority issues it, then Node's latch takes what it holds there. Fails
+    /// closed: no Node session, no answer or an unreadable one is the `503` busy refusal. Cancel-safe at
+    /// every await: the ticket is given back (here and to Node) when this future is dropped.
     pub async fn enter(self: &Arc<Self>, ask: Ask<'_>, cancel: &Cancel) -> Result<Lease, Refused> {
         let body = match ask {
             Ask::Embedding { model } => json!({ "model": model, "embedding": true }),
@@ -143,9 +169,24 @@ impl Admission {
             } => json!({ "role": role, "machine": machine, "model": model }),
             Ask::DiaryExchange { user } => json!({ "diaryExchange": { "user": user } }),
         };
-        let Some(req) = self.request(reqwest::Method::POST, PATH) else {
+        if self.token.is_none() {
+            return Err(Refused::unavailable());
+        }
+        let ticket = self.authority.issue().ok_or_else(Refused::unavailable)?;
+        // From here the ticket is a guard: every early return and every drop gives it back.
+        let guard = Arc::new(Held {
+            admission: Arc::clone(self),
+            ticket,
+            released: AtomicBool::new(false),
+            confirmed_until: std::sync::Mutex::new(tokio::time::Instant::now()),
+        });
+        let mut pending = Pending(Some(Arc::clone(&guard)));
+        let Some(req) = self.request(reqwest::Method::PUT, &guard.ticket, "") else {
             return Err(Refused::unavailable());
         };
+        // Node arms its latch's TTL no earlier than it receives this request, so the grant is proven to
+        // hold only until `sent + ttl`: an answer that took longer is not a lease (row H review P1).
+        let sent = tokio::time::Instant::now();
         let send = req
             .header("content-type", "application/json")
             .timeout(ENTER_TIMEOUT)
@@ -165,9 +206,8 @@ impl Admission {
         let parsed: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
         if status != 201 {
             let message = parsed.get("error").and_then(Value::as_str);
-            // A 404 is Node without this route, or one that did not trust the call.
             return Err(match (status, message) {
-                (404, _) | (_, None) => Refused::unavailable(),
+                (404 | 410, _) | (_, None) => Refused::unavailable(),
                 (_, Some(m)) => Refused {
                     status,
                     message: m.chars().take(500).collect(),
@@ -179,19 +219,20 @@ impl Admission {
                 },
             });
         }
-        let id = parsed
-            .get("lease")
-            .and_then(Value::as_str)
-            .filter(|l| valid_id(l))
-            .ok_or_else(Refused::unavailable)?
-            .to_owned();
         let ttl = parsed
             .get("ttlMs")
             .and_then(Value::as_u64)
             .filter(|t| *t > 0)
             .map(Duration::from_millis)
             .ok_or_else(Refused::unavailable)?;
-        // The gate's own lease header, when Node holds one for this: only that name, and a lease token.
+        // Node echoes the ticket it latched; anything else is not this lease.
+        if parsed.get("lease").and_then(Value::as_str) != Some(guard.ticket.id.as_str()) {
+            return Err(Refused::unavailable());
+        }
+        // Coverage may have ended while Node answered (a newer Node start registered).
+        if !self.authority.covers(&guard.ticket.id) {
+            return Err(Refused::unavailable());
+        }
         let headers = parsed
             .get("headers")
             .and_then(Value::as_object)
@@ -207,13 +248,14 @@ impl Admission {
             })
             .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_owned())))
             .collect();
+        let until = sent + ttl;
+        if tokio::time::Instant::now() >= until {
+            return Err(Refused::unavailable());
+        }
+        guard.confirm(until);
+        let inner = pending.0.take().ok_or_else(Refused::unavailable)?;
         let lost = Cancel::new();
-        let inner = Arc::new(Held {
-            admission: Arc::clone(self),
-            id,
-            released: AtomicBool::new(false),
-        });
-        let renewing = tokio::spawn(renew(Arc::clone(&inner), ttl, lost.clone()));
+        let renewing = tokio::spawn(renew(Arc::clone(&inner), ttl, lost.clone(), sent));
         Ok(Lease {
             inner,
             headers,
@@ -222,28 +264,27 @@ impl Admission {
         })
     }
 
-    async fn renew_once(&self, id: &str) -> Option<bool> {
+    async fn renew_once(&self, ticket: &Ticket) -> Option<bool> {
         let res = self
-            .request(reqwest::Method::POST, &format!("{PATH}/{id}/renew"))?
+            .request(reqwest::Method::POST, ticket, "/renew")?
             .timeout(CALL_TIMEOUT)
             .send()
             .await
             .ok()?;
         match res.status().as_u16() {
             200 => Some(true),
-            404 => Some(false),
+            404 | 410 => Some(false),
             _ => None,
         }
     }
 
-    async fn release_once(&self, id: &str) {
-        if let Some(req) = self.request(reqwest::Method::DELETE, &format!("{PATH}/{id}")) {
+    async fn release_once(&self, ticket: &Ticket) {
+        if let Some(req) = self.request(reqwest::Method::DELETE, ticket, "") {
             let _ = req.timeout(CALL_TIMEOUT).send().await;
         }
     }
 }
 
-/// The words of a cancel seen while waiting for admission (the caller knows it cancelled).
 fn cancelled() -> Refused {
     Refused {
         status: 499,
@@ -255,37 +296,133 @@ fn cancelled() -> Refused {
 
 struct Held {
     admission: Arc<Admission>,
-    id: String,
+    ticket: Ticket,
     released: AtomicBool,
+    /// Until when Node's latch is proven held: the send time of the last confirmed call plus the TTL.
+    confirmed_until: std::sync::Mutex<tokio::time::Instant>,
 }
 
-async fn renew(held: Arc<Held>, ttl: Duration, lost: Cancel) {
-    let every = (ttl / 3).max(Duration::from_millis(50));
-    let mut unconfirmed = Duration::ZERO;
-    loop {
-        tokio::time::sleep(every).await;
-        if held.released.load(Ordering::SeqCst) {
-            return;
+impl Held {
+    fn confirm(&self, until: tokio::time::Instant) {
+        let mut c = match self.confirmed_until.lock() {
+            Ok(c) => c,
+            Err(p) => p.into_inner(),
+        };
+        if until > *c {
+            *c = until;
         }
-        match held.admission.renew_once(&held.id).await {
-            Some(true) => unconfirmed = Duration::ZERO,
-            Some(false) => {
-                lost.cancel();
-                return;
-            }
-            None => {
-                unconfirmed += every;
-                // By now Node has ended a lease it heard nothing about. Stop before it can matter.
-                if unconfirmed + every >= ttl {
-                    lost.cancel();
-                    return;
-                }
+    }
+
+    fn confirmed_until(&self) -> tokio::time::Instant {
+        match self.confirmed_until.lock() {
+            Ok(c) => *c,
+            Err(p) => *p.into_inner(),
+        }
+    }
+
+    /// Covered now: the authority's entry holds and Node's latch is proven held.
+    fn covered(&self) -> bool {
+        !self.released.load(Ordering::SeqCst)
+            && self.admission.authority.covers(&self.ticket.id)
+            && tokio::time::Instant::now() < self.confirmed_until()
+    }
+
+    /// Ends the lease here and asks Node to give its latch back (once). The authority's entry ends at
+    /// once, so nothing is covered from then on whether or not Node answers.
+    fn give_back(self: &Arc<Self>) -> Option<impl std::future::Future<Output = ()>> {
+        if self.released.swap(true, Ordering::SeqCst) {
+            return None;
+        }
+        self.admission.authority.end(&self.ticket.id);
+        let me = Arc::clone(self);
+        Some(async move { me.admission.release_once(&me.ticket).await })
+    }
+
+    fn give_back_detached(self: &Arc<Self>) {
+        if let Some(fut) = self.give_back() {
+            if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                handle.spawn(fut);
             }
         }
     }
 }
 
-/// A place in inference, held until released.
+/// The ticket between its issue and the lease: dropped (any early return, any cancelled await), it
+/// gives the ticket back, so a latch Node took but whose answer never arrived is released too.
+struct Pending(Option<Arc<Held>>);
+
+impl Drop for Pending {
+    fn drop(&mut self) {
+        if let Some(held) = self.0.take() {
+            held.give_back_detached();
+        }
+    }
+}
+
+/// Renews the latch on an absolute schedule (`sent + every`, then each confirmed call's send time plus
+/// `every`) that no notification resets, and ends the lease at the first of: a newer Node start or an
+/// ended entry (checked at every authority change, also while a renewal is in flight), the hard cap, or
+/// the absolute deadline until which Node's latch is proven held (`confirmed_until`), whatever the HTTP
+/// calls in flight are doing.
+async fn renew(held: Arc<Held>, ttl: Duration, lost: Cancel, sent: tokio::time::Instant) {
+    use tokio::time::{sleep_until, Instant};
+    let authority = held.admission.authority.clone();
+    let every = (ttl / 3).max(Duration::from_millis(50));
+    let hard_at = authority.hard_at(&held.ticket.id);
+    let mut next = sent + every;
+    let end = |held: &Arc<Held>| {
+        lost.cancel();
+        held.give_back_detached();
+    };
+    loop {
+        if held.released.load(Ordering::SeqCst) {
+            return;
+        }
+        let changed = authority.changed();
+        tokio::pin!(changed);
+        changed.as_mut().enable();
+        if !held.covered() {
+            return end(&held);
+        }
+        let deadline = hard_at.map_or(held.confirmed_until(), |h| h.min(held.confirmed_until()));
+        tokio::select! {
+            () = sleep_until(next) => {}
+            () = &mut changed => continue,
+            () = sleep_until(deadline) => continue,
+        }
+        // A renewal: raced against every way coverage can end while it is in flight.
+        let started = Instant::now();
+        let call = held.admission.renew_once(&held.ticket);
+        tokio::pin!(call);
+        let answer = loop {
+            let changed = authority.changed();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            if !held.covered() {
+                return end(&held);
+            }
+            let deadline =
+                hard_at.map_or(held.confirmed_until(), |h| h.min(held.confirmed_until()));
+            tokio::select! {
+                a = &mut call => break a,
+                () = &mut changed => {}
+                () = sleep_until(deadline) => {}
+            }
+        };
+        match answer {
+            Some(true) => {
+                held.confirm(started + ttl);
+                next = started + every;
+            }
+            Some(false) => return end(&held),
+            // No answer: try again on the schedule; the proven deadline is not extended.
+            None => next = Instant::now() + every,
+        }
+    }
+}
+
+/// A held lease. Watch [`Lease::lost`]: it is cancelled once the lease no longer holds (Node ended it,
+/// stopped confirming it, restarted, or the hard cap passed); the holder's model request must stop then.
 pub struct Lease {
     inner: Arc<Held>,
     headers: Vec<(String, String)>,
@@ -294,19 +431,30 @@ pub struct Lease {
 }
 
 impl Lease {
-    /// Headers to send with the model request (the inference gate's lease, when there is a gate).
+    /// What the holder's engine requests carry (the gate's lease token), as Node gave it.
     pub fn headers(&self) -> &[(String, String)] {
         &self.headers
     }
-    /// Cancelled when the lease ended without [`Lease::release`]: stop the model request.
+
     pub fn lost(&self) -> &Cancel {
         &self.lost
     }
-    /// Gives it back, and waits for that to be asked.
+
+    /// The authority's id of this lease.
+    pub fn id(&self) -> &str {
+        &self.inner.ticket.id
+    }
+
+    /// Whether the lease still holds, checked synchronously before a step.
+    pub fn covered(&self) -> bool {
+        !self.lost.is_cancelled() && self.inner.covered()
+    }
+
+    /// Gives the lease back and waits for Node's answer (bounded).
     pub async fn release(self) {
-        if !self.inner.released.swap(true, Ordering::SeqCst) {
-            self.renewing.abort();
-            self.inner.admission.release_once(&self.inner.id).await;
+        self.renewing.abort();
+        if let Some(fut) = self.inner.give_back() {
+            fut.await;
         }
     }
 }
@@ -314,15 +462,7 @@ impl Lease {
 impl Drop for Lease {
     fn drop(&mut self) {
         self.renewing.abort();
-        if self.inner.released.swap(true, Ordering::SeqCst) {
-            return;
-        }
-        if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            let inner = Arc::clone(&self.inner);
-            handle.spawn(async move {
-                inner.admission.release_once(&inner.id).await;
-            });
-        }
+        self.inner.give_back_detached();
     }
 }
 
@@ -334,22 +474,36 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
-    #[derive(Default)]
     struct Node {
+        /// `METHOD path token epoch incarnation` of each request.
         seen: Mutex<Vec<String>>,
         renew_status: Mutex<u16>,
-        /// The body of each lease request.
         asks: Mutex<Vec<String>>,
+        /// `None`: echo the ticket id; `Some`: this lease id instead.
+        echo: Mutex<Option<String>>,
+        /// Never answer a PUT (a wait that does not end).
+        stall: bool,
     }
 
-    /// A synthetic Node: `POST` answers `grant`; renewals answer `renew_status`; records each request.
-    async fn node(grant: (u16, String)) -> (String, Arc<Node>) {
+    fn header<'a>(text: &'a str, name: &str) -> &'a str {
+        text.lines()
+            .find_map(|l| {
+                let (k, v) = l.split_once(':')?;
+                k.eq_ignore_ascii_case(name).then(|| v.trim())
+            })
+            .unwrap_or("-")
+    }
+
+    /// A synthetic Node latch: `PUT` answers `grant` (echoing the ticket); renewals `renew_status`.
+    async fn node_with(grant: (u16, String), stall: bool) -> (String, Arc<Node>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         let state = Arc::new(Node {
             seen: Mutex::default(),
             renew_status: Mutex::new(200),
             asks: Mutex::default(),
+            echo: Mutex::new(None),
+            stall,
         });
         let st = Arc::clone(&state);
         tokio::spawn(async move {
@@ -362,18 +516,35 @@ mod tests {
                     let n = s.read(&mut buf).await.unwrap_or(0);
                     let text = String::from_utf8_lossy(&buf[..n]).into_owned();
                     let first = text.lines().next().unwrap_or("").to_owned();
-                    let token = text
-                        .to_ascii_lowercase()
-                        .contains("x-noevia-store-token: secret");
-                    let line = format!("{first} {}", if token { "T" } else { "-" });
+                    let path = first.split(' ').nth(1).unwrap_or("").to_owned();
+                    let line = format!(
+                        "{} {path} {} {} {}",
+                        first.split(' ').next().unwrap_or(""),
+                        if header(&text, "x-noevia-store-token") == "secret" {
+                            "T"
+                        } else {
+                            "-"
+                        },
+                        header(&text, "x-noevia-admission-epoch"),
+                        header(&text, "x-noevia-admission-incarnation"),
+                    );
                     st.seen.lock().unwrap().push(line);
                     if let Some((_, body)) = text.split_once("\r\n\r\n") {
                         st.asks.lock().unwrap().push(body.to_owned());
                     }
+                    let id = path
+                        .rsplit('/')
+                        .find(|p| p.len() == 32)
+                        .unwrap_or("")
+                        .to_owned();
                     let (status, body) = if first.starts_with("POST") && first.contains("/renew") {
                         (*st.renew_status.lock().unwrap(), "{}".to_owned())
-                    } else if first.starts_with("POST") {
-                        grant
+                    } else if first.starts_with("PUT") {
+                        if st.stall {
+                            tokio::time::sleep(Duration::from_secs(30)).await;
+                        }
+                        let echo = st.echo.lock().unwrap().clone().unwrap_or(id);
+                        (grant.0, grant.1.replace("{ID}", &echo))
                     } else {
                         (204, String::new())
                     };
@@ -385,20 +556,46 @@ mod tests {
         (base, state)
     }
 
-    const GRANT: &str = r#"{"lease":"0123456789abcdef0123456789abcdef","ttlMs":300,"headers":{"x-noevia-lease":"abc123","x-evil":"no"}}"#;
+    async fn node(grant: (u16, String)) -> (String, Arc<Node>) {
+        node_with(grant, false).await
+    }
+
+    const GRANT: &str =
+        r#"{"lease":"{ID}","ttlMs":300,"headers":{"x-noevia-lease":"abc123","x-evil":"no"}}"#;
+
+    fn admission_with(base: &str, authority: &Authority) -> Arc<Admission> {
+        Arc::new(Admission::with_authority(base, Some("secret"), authority.clone()).unwrap())
+    }
+
+    fn registered() -> Authority {
+        let a = Authority::new();
+        a.node_session("boot-1", 1).unwrap();
+        a
+    }
 
     fn admission(base: &str) -> Arc<Admission> {
-        Arc::new(Admission::new(base, Some("secret")).unwrap())
+        admission_with(base, &registered())
     }
 
     async fn settle() {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
+    fn deletes(state: &Node) -> usize {
+        state
+            .seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|l| l.starts_with("DELETE"))
+            .count()
+    }
+
     #[tokio::test]
-    async fn a_lease_is_given_only_the_gate_header_passes_and_release_is_asked() {
+    async fn a_lease_is_issued_here_latched_by_ticket_and_given_back() {
         let (base, state) = node((201, GRANT.into())).await;
-        let lease = admission(&base)
+        let authority = registered();
+        let lease = admission_with(&base, &authority)
             .enter(Ask::Engine { model: "m" }, &Cancel::new())
             .await
             .unwrap();
@@ -406,19 +603,36 @@ mod tests {
             lease.headers(),
             &[("x-noevia-lease".to_owned(), "abc123".to_owned())]
         );
+        assert!(lease.covered());
+        assert_eq!(authority.held(), 1);
+        let id = lease.id().to_owned();
         lease.release().await;
+        assert_eq!(authority.held(), 0);
         let seen = state.seen.lock().unwrap().clone();
+        let put = format!(
+            "PUT /internal/inference-admission/lease/{id} T {} 1",
+            authority.epoch()
+        );
+        assert_eq!(seen[0], put, "{seen:?}");
         assert!(
-            seen[0].starts_with("POST /internal/inference-admission/lease")
-                && seen[0].ends_with('T'),
+            seen.iter().any(|l| l.starts_with(&format!(
+                "DELETE /internal/inference-admission/lease/{id} T"
+            ))),
             "{seen:?}"
         );
-        assert!(
-            seen.iter().any(|l| l.starts_with("DELETE")
-                && l.contains("0123456789abcdef")
-                && l.ends_with('T')),
-            "{seen:?}"
-        );
+        assert_eq!(state.asks.lock().unwrap()[0], r#"{"model":"m"}"#);
+    }
+
+    #[tokio::test]
+    async fn without_a_node_session_nothing_is_asked_and_it_fails_closed() {
+        let (base, state) = node((201, GRANT.into())).await;
+        let refused = admission_with(&base, &Authority::new())
+            .enter(Ask::Engine { model: "m" }, &Cancel::new())
+            .await
+            .err()
+            .unwrap();
+        assert_eq!(refused, Refused::unavailable());
+        assert!(state.seen.lock().unwrap().is_empty());
     }
 
     #[tokio::test]
@@ -428,7 +642,8 @@ mod tests {
             r#"{"error":"Please wait before sending another message"}"#.into(),
         ))
         .await;
-        let refused = admission(&base)
+        let authority = registered();
+        let refused = admission_with(&base, &authority)
             .enter(
                 Ask::DiaryExchange {
                     user: "u-synthetic",
@@ -446,12 +661,7 @@ mod tests {
             state.asks.lock().unwrap().first().map(String::as_str),
             Some(r#"{"diaryExchange":{"user":"u-synthetic"}}"#)
         );
-        let (base, _s) = node((201, GRANT.into())).await;
-        let lease = admission(&base)
-            .enter(Ask::DiaryExchange { user: "u1" }, &Cancel::new())
-            .await
-            .unwrap();
-        lease.release().await;
+        assert_eq!(authority.held(), 0, "a refused ticket is given back");
     }
 
     #[tokio::test]
@@ -472,16 +682,21 @@ mod tests {
         );
         for grant in [
             (404, "{}".to_owned()),
-            (201, r#"{"lease":"short","ttlMs":1}"#.to_owned()),
+            (410, r#"{"error":"retired"}"#.to_owned()),
+            (201, r#"{"lease":"{ID}","ttlMs":0}"#.to_owned()),
             (500, "x".to_owned()),
         ] {
-            let (base, _s) = node(grant).await;
-            let refused = admission(&base)
+            let (base, state) = node(grant).await;
+            let authority = registered();
+            let refused = admission_with(&base, &authority)
                 .enter(Ask::Engine { model: "m" }, &Cancel::new())
                 .await
                 .err()
                 .unwrap();
             assert_eq!(refused, Refused::unavailable());
+            settle().await;
+            assert_eq!(authority.held(), 0);
+            assert_eq!(deletes(&state), 1, "the ticket is given back to Node too");
         }
         let refused = admission("http://127.0.0.1:9")
             .enter(Ask::Engine { model: "m" }, &Cancel::new())
@@ -489,7 +704,8 @@ mod tests {
             .err()
             .unwrap();
         assert_eq!(refused, Refused::unavailable());
-        let no_token = Arc::new(Admission::new("http://127.0.0.1:9", None).unwrap());
+        let no_token =
+            Arc::new(Admission::with_authority("http://127.0.0.1:9", None, registered()).unwrap());
         assert!(no_token
             .enter(Ask::Engine { model: "m" }, &Cancel::new())
             .await
@@ -497,20 +713,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_grant_of_another_lease_is_not_this_lease() {
+        let (base, state) = node((201, GRANT.into())).await;
+        *state.echo.lock().unwrap() = Some("0123456789abcdef0123456789abcdef".into());
+        let authority = registered();
+        let refused = admission_with(&base, &authority)
+            .enter(Ask::Engine { model: "m" }, &Cancel::new())
+            .await
+            .err()
+            .unwrap();
+        assert_eq!(refused, Refused::unavailable());
+        settle().await;
+        assert_eq!((authority.held(), deletes(&state)), (0, 1));
+    }
+
+    #[tokio::test]
     async fn dropping_a_lease_gives_it_back() {
         let (base, state) = node((201, GRANT.into())).await;
-        let lease = admission(&base)
+        let authority = registered();
+        let lease = admission_with(&base, &authority)
             .enter(Ask::Engine { model: "m" }, &Cancel::new())
             .await
             .unwrap();
         drop(lease);
+        assert_eq!(authority.held(), 0);
         settle().await;
-        assert!(state
-            .seen
-            .lock()
-            .unwrap()
-            .iter()
-            .any(|l| l.starts_with("DELETE")));
+        assert_eq!(deletes(&state), 1);
     }
 
     #[tokio::test]
@@ -532,14 +760,15 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(5), lease.lost().cancelled())
             .await
             .unwrap();
-        let posts = state
+        assert!(!lease.covered());
+        let puts = state
             .seen
             .lock()
             .unwrap()
             .iter()
-            .filter(|l| l.starts_with("POST") && !l.contains("/renew"))
+            .filter(|l| l.starts_with("PUT"))
             .count();
-        assert_eq!(posts, 1);
+        assert_eq!(puts, 1);
     }
 
     #[tokio::test]
@@ -556,8 +785,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_node_restart_fences_the_lease_at_once() {
+        let (base, state) = node((201, GRANT.into())).await;
+        let authority = registered();
+        let lease = admission_with(&base, &authority)
+            .enter(Ask::Engine { model: "m" }, &Cancel::new())
+            .await
+            .unwrap();
+        authority.node_session("boot-2", 2).unwrap();
+        assert!(
+            !lease.covered(),
+            "checked synchronously before the next step"
+        );
+        tokio::time::timeout(Duration::from_millis(80), lease.lost().cancelled())
+            .await
+            .unwrap();
+        settle().await;
+        assert_eq!((authority.held(), deletes(&state)), (0, 1));
+        // The new start's leases carry its incarnation.
+        let next = admission_with(&base, &authority)
+            .enter(Ask::Engine { model: "m" }, &Cancel::new())
+            .await
+            .unwrap();
+        assert!(state.seen.lock().unwrap().last().unwrap().ends_with(" 2"));
+        next.release().await;
+    }
+
+    #[tokio::test]
+    async fn the_hard_cap_ends_the_lease() {
+        let (base, _state) = node((201, r#"{"lease":"{ID}","ttlMs":30000}"#.into())).await;
+        let authority = Authority::with_hard(Duration::from_millis(120));
+        authority.node_session("b", 1).unwrap();
+        let lease = admission_with(&base, &authority)
+            .enter(Ask::Engine { model: "m" }, &Cancel::new())
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(2), lease.lost().cancelled())
+            .await
+            .unwrap();
+        assert_eq!(authority.held(), 0);
+    }
+
+    #[tokio::test]
     async fn the_machine_ask_names_its_machine() {
-        let (base, _s) = node((201, GRANT.into())).await;
+        let (base, state) = node((201, GRANT.into())).await;
         let lease = admission(&base)
             .enter(
                 Ask::Machine {
@@ -570,16 +841,14 @@ mod tests {
             .await
             .unwrap();
         lease.release().await;
+        let ask: Value = serde_json::from_str(&state.asks.lock().unwrap()[0]).unwrap();
+        assert_eq!(ask, json!({"role": "smart", "machine": "m1", "model": "x"}));
     }
 
     #[tokio::test]
-    async fn a_cancel_while_waiting_ends_the_wait() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        tokio::spawn(async move {
-            let (_s, _) = listener.accept().await.unwrap();
-            tokio::time::sleep(Duration::from_secs(30)).await;
-        });
+    async fn a_cancel_while_waiting_ends_the_wait_and_gives_the_ticket_back() {
+        let (base, state) = node_with((201, GRANT.into()), true).await;
+        let authority = registered();
         let cancel = Cancel::new();
         let trigger = cancel.clone();
         tokio::spawn(async move {
@@ -588,12 +857,36 @@ mod tests {
         });
         let refused = tokio::time::timeout(
             Duration::from_secs(5),
-            admission(&base).enter(Ask::Engine { model: "m" }, &cancel),
+            admission_with(&base, &authority).enter(Ask::Engine { model: "m" }, &cancel),
         )
         .await
         .unwrap()
         .err()
         .unwrap();
         assert_eq!(refused.status, 499);
+        assert_eq!(authority.held(), 0);
+        settle().await;
+        assert_eq!(
+            deletes(&state),
+            1,
+            "a latch whose answer was lost is released by ticket"
+        );
+    }
+
+    #[tokio::test]
+    async fn aborting_the_enter_future_gives_the_ticket_back() {
+        let (base, state) = node_with((201, GRANT.into()), true).await;
+        let authority = registered();
+        let adm = admission_with(&base, &authority);
+        let task = tokio::spawn(async move {
+            let _ = adm.enter(Ask::Engine { model: "m" }, &Cancel::new()).await;
+        });
+        settle().await;
+        assert_eq!(authority.held(), 1);
+        task.abort();
+        let _ = task.await;
+        assert_eq!(authority.held(), 0);
+        settle().await;
+        assert_eq!(deletes(&state), 1);
     }
 }

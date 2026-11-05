@@ -287,6 +287,10 @@ use std::sync::Arc;
 /// release assembly pair them in both directions. Generation 2: every load the job asks for is first
 /// decided by Core's own load refusal (`POST /internal/model-maintenance/load-refusal`, core
 /// model-load-refusal.cjs), so it pairs only with `noevia-calibration-worker-rust/2`.
+/// `noevia-inference-admission-authority/1` (engine_admission::authority `AUTHORITY_MARKER`, port contract
+/// row H): this build issues every inference admission lease and answers `POST
+/// /v1/inference-admission/session` on the project-store listener; Core's latch
+/// (`noevia-inference-admission-latch/1`) takes its holds only for leases issued here.
 ///
 /// `rust-preset-baseline`: this build is the preset reload baseline's one in-memory authority
 /// (port contract 2026-11-04 RS-1, model_maint/reload.rs `Guard`) and answers `POST
@@ -412,6 +416,8 @@ pub const FEATURES: &[&str] = &[
     "rust-model-sizing",
     "rust-model-maintenance",
     "rust-preset-baseline",
+    // Port contract row H (engine_admission::authority AUTHORITY_MARKER; the release assembly reads this literal).
+    "noevia-inference-admission-authority/1",
     "rust-autotune-cancel",
     "rust-calibration-cancel",
     "rust-calibration-routes",
