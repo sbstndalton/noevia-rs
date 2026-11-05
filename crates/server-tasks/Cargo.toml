@@ -1,0 +1,19 @@
+[package]
+name = "server-tasks"
+version = "0.1.0"
+description = "Native task reservations, scoped approvals, and sandbox ACP transport"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+server-projects = { path = "../server-projects" }
+server-account = { path = "../server-account" }
+rand_core = { version = "0.6", features = ["getrandom"] }
+zeroize = { version = "=1.9.1", default-features = false, features = ["alloc"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync", "signal", "fs"] }

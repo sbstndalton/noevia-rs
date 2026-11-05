@@ -1,0 +1,81 @@
+{
+  "writes": [
+    {
+      "noevia": "start",
+      "cwd": "/synthetic/tree",
+      "env": {
+        "PATH": "/synthetic/bin",
+        "HOME": "/synthetic/home",
+        "LANG": "C",
+        "CURL_HOME": "/nonexistent",
+        "WGETRC": "/dev/null"
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "initialize",
+      "params": {
+        "protocolVersion": 1,
+        "clientCapabilities": {
+          "fs": {
+            "readTextFile": true,
+            "writeTextFile": true
+          },
+          "terminal": false
+        },
+        "clientInfo": {
+          "name": "noevia",
+          "version": "1"
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "method": "session/new",
+      "params": {
+        "cwd": "/synthetic/tree",
+        "mcpServers": []
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "method": "session/prompt",
+      "params": {
+        "sessionId": "session",
+        "prompt": [
+          {
+            "type": "text",
+            "text": "change this"
+          }
+        ]
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 99,
+      "result": {
+        "outcome": {
+          "outcome": "selected",
+          "optionId": "allow"
+        }
+      }
+    }
+  ],
+  "updates": [
+    {
+      "sessionUpdate": "agent_message_chunk"
+    }
+  ],
+  "result": {
+    "stopReason": "end_turn"
+  },
+  "agent": {
+    "name": "synthetic-agent",
+    "version": "1",
+    "protocolVersion": 1
+  },
+  "stopped": true
+}

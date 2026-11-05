@@ -3271,6 +3271,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "server-tasks"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "rand_core 0.6.4",
+ "server-account",
+ "server-projects",
+ "tokio",
+ "zeroize",
+]
+
+[[package]]
 name = "server-usage"
 version = "0.1.0"
 dependencies = [
