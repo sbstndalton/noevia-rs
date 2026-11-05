@@ -72,9 +72,13 @@ const FAMILIES = {
 //   (:1128-1130), both before the only fetch (:1136).
 // - POST /api/providers/test with `{}`: 400 valid baseUrl required (provider_test_routes.rs:397-398)
 //   before any probe.
+// - POST /api/models/autotune/resume with `{}`: 404 when auto-tune is unavailable
+//   (autotune_resume_routes.rs:231), else validate(confirmPause) refuses (:242; Fault::Confirm 400,
+//   server-projects autotune_resume.rs:48-51) before prepare (:251) and commit (:282).
+// - POST /api/auth/logout/ (slash): account.rs:60 requires p == "/api/auth/logout", so the slash
+//   path is passed on and proxied; pinned Core's logout match is exact, so Node answers 404.
 const START_WORK = [
-  { method: 'POST', route: '/api/auth/logout', roles: ['member', 'admin'], shapes: ['plain', 'slash'], starts: 'server-account account.rs:60-66 deletes the session (the slash shape reaches the same front handler; not proven otherwise)' },
-  { method: 'POST', route: '/api/models/autotune/resume', roles: ['admin'], shapes: ['plain'], starts: 'autotune_resume_routes.rs:251 prepare and :282 commit after :242 (an empty body is not proven refused first)' },
+  { method: 'POST', route: '/api/auth/logout', roles: ['member', 'admin'], shapes: ['plain'], starts: 'server-account account.rs:60-66 deletes the session' },
   { method: 'POST', route: '/api/models/presets/reload', roles: ['admin'], shapes: ['plain'], starts: 'model_maint/mod.rs:421 spawns reload_presets (`{}` parses as unload false) once a router is configured' },
   { method: 'POST', route: '/api/admin/offsite-backup/run', roles: ['admin'], shapes: ['plain'], starts: 'offsite_routes.rs:1265 run_now (body ignored)' },
   { method: 'POST', route: '/api/admin/offsite-backup/verify', roles: ['admin'], shapes: ['plain'], starts: 'offsite_routes.rs:1266 Job::Verify (body ignored)' },
