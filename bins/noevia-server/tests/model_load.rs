@@ -15,7 +15,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const SECRET: &str = "synthetic-store-token-0123456789abcdef";
-const LEASE_ID: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 fn oracle() -> Value {
     serde_json::from_str(include_str!("fixtures/model-load-node.v1.json")).unwrap()
@@ -48,11 +47,15 @@ type Script = Arc<Mutex<HashMap<String, Vec<Value>>>>;
 
 impl World {
     async fn new(s: &Value) -> World {
+        engine_admission::authority::global()
+            .node_session("load-tests", 1)
+            .unwrap();
         let dir = tempfile::tempdir().unwrap();
         let _db = seed_database(dir.path());
         let ini = dir.path().join("models.ini");
         std::fs::write(&ini, "[m]\nmodel=/models/m.gguf\nctx-size=4096\n").unwrap();
-        let missing = s.get("missingFile") == Some(&Value::Bool(true));
+        let restored = s.get("restored") == Some(&Value::Bool(true));
+        let missing = s.get("missingFile") == Some(&Value::Bool(true)) || restored;
         let mut script: HashMap<String, Vec<Value>> = HashMap::new();
         if let Some(r) = s.get("router").and_then(Value::as_object) {
             for (k, v) in r {
@@ -79,12 +82,28 @@ impl World {
             }
         }
         let script: Script = Arc::new(Mutex::new(script));
+        let long_load = s.get("longLoad") == Some(&Value::Bool(true));
+        let launched = Mutex::new(None::<std::time::Instant>);
         let (port, router) = engine(Arc::new(move |req: &Req| {
             let key = format!("{} {}", req.method, req.target.split('?').next().unwrap());
+            if long_load {
+                if key == "POST /models/load" {
+                    *launched.lock().unwrap() = Some(std::time::Instant::now());
+                    return Answer::Reply(200, "{}".into());
+                }
+                if key == "GET /models" {
+                    let state = match *launched.lock().unwrap() {
+                        None => "unloaded",
+                        Some(t) if t.elapsed() < Duration::from_millis(1500) => "loading",
+                        Some(_) => "loaded",
+                    };
+                    return Answer::Reply(200, json!({"data":[{"id":"m", "status":{"value":state}}]}).to_string());
+                }
+            }
             if missing && key == "GET /models" {
                 return Answer::Reply(
                     200,
-                    json!({"data":[{"id":"m","source":"preset","status":{"value":"unloaded"}}]})
+                    json!({"data":[{"id":"m","source":"preset","status":{"value": if restored {"loaded"} else {"unloaded"}}}]})
                         .to_string(),
                 );
             }
@@ -113,6 +132,9 @@ impl World {
                 l["body"]["retryable"] = Value::Bool(true);
             }
         }
+        let invalidated = Arc::new(Mutex::new(None::<std::time::Instant>));
+        let invalidate_fails = s.get("invalidateFails") == Some(&Value::Bool(true));
+        let expired = s.get("expiredGrant") == Some(&Value::Bool(true));
         let (node_port, node) = engine(Arc::new(move |req: &Req| {
             if req.headers.get("x-noevia-store-token").map(String::as_str) != Some(SECRET) {
                 return Answer::Reply(404, "{}".into());
@@ -120,7 +142,8 @@ impl World {
             match (req.method.as_str(), req.target.as_str()) {
                 ("DELETE", _) => Answer::Reply(204, String::new()),
                 (_, t) if t.ends_with("/renew") => Answer::Reply(200, "{}".into()),
-                ("POST", "/internal/inference-admission/lease") => match &lease {
+                ("PUT", t) if t.starts_with("/internal/inference-admission/lease/") => match &lease
+                {
                     Some(l) => {
                         Answer::Reply(l["status"].as_u64().unwrap() as u16, l["body"].to_string())
                     }
@@ -131,15 +154,26 @@ impl World {
                         } else {
                             json!({"x-noevia-lease":"syntheticLease1"})
                         };
-                        let mut b = json!({"lease":LEASE_ID,"ttlMs":30000});
+                        let mut b = json!({"lease":t.rsplit('/').next().unwrap(),"ttlMs":30000});
                         if !headers.is_null() {
                             b["headers"] = headers;
+                        }
+                        if expired {
+                            b["ttlMs"] = json!(1);
+                            return Answer::After(Duration::from_millis(50), 201, b.to_string());
                         }
                         Answer::Reply(201, b.to_string())
                     }
                 },
                 ("POST", "/internal/models/facts") => {
-                    let scan = if missing {
+                    let scan = if restored
+                        && invalidated
+                            .lock()
+                            .unwrap()
+                            .is_some_and(|t| t.elapsed() >= Duration::from_millis(70))
+                    {
+                        json!([{ "key":"m.gguf", "modelId":"m" }])
+                    } else if missing {
                         json!([{"key":"other.gguf","modelId":"other"}])
                     } else {
                         json!([])
@@ -151,7 +185,12 @@ impl World {
                     )
                 }
                 ("POST", "/internal/models/invalidate") => {
-                    Answer::Reply(200, r#"{"ok":true}"#.into())
+                    *invalidated.lock().unwrap() = Some(std::time::Instant::now());
+                    if invalidate_fails {
+                        Answer::Reply(503, "{}".into())
+                    } else {
+                        Answer::After(Duration::from_millis(80), 200, r#"{"ok":true}"#.into())
+                    }
                 }
                 _ => Answer::Reply(404, "{}".into()),
             }
@@ -224,7 +263,10 @@ impl World {
             let node = self.node.lock().unwrap().clone();
             let granted = node
                 .iter()
-                .filter(|r| r.target == "/internal/inference-admission/lease" && r.method == "POST")
+                .filter(|r| {
+                    r.target.starts_with("/internal/inference-admission/lease/")
+                        && r.method == "PUT"
+                })
                 .count();
             let released = node.iter().filter(|r| r.method == "DELETE").count();
             if released >= granted || tokio::time::Instant::now() >= end {
@@ -295,7 +337,9 @@ async fn every_recorded_node_answer_is_the_fronts() {
         let node = w.node.lock().unwrap().clone();
         let granted = node
             .iter()
-            .filter(|r| r.target == "/internal/inference-admission/lease" && r.method == "POST")
+            .filter(|r| {
+                r.target.starts_with("/internal/inference-admission/lease/") && r.method == "PUT"
+            })
             .count();
         let released = node.iter().filter(|r| r.method == "DELETE").count();
         if s.get("lease").is_none() && released != granted {
@@ -366,7 +410,9 @@ async fn a_load_takes_the_engine_lease_and_an_unload_only_the_maintenance_gate()
         .lock()
         .unwrap()
         .iter()
-        .filter(|r| r.target == "/internal/inference-admission/lease" && r.method == "POST")
+        .filter(|r| {
+            r.target.starts_with("/internal/inference-admission/lease/") && r.method == "PUT"
+        })
         .map(|r| serde_json::from_str(&r.body).unwrap())
         .collect();
     assert_eq!(asks, vec![json!({"model":"m"})]);
@@ -381,7 +427,9 @@ async fn a_load_takes_the_engine_lease_and_an_unload_only_the_maintenance_gate()
     let node = w.node.lock().unwrap().clone();
     let asks: Vec<Value> = node
         .iter()
-        .filter(|r| r.target == "/internal/inference-admission/lease" && r.method == "POST")
+        .filter(|r| {
+            r.target.starts_with("/internal/inference-admission/lease/") && r.method == "PUT"
+        })
         .map(|r| serde_json::from_str(&r.body).unwrap())
         .collect();
     assert_eq!(asks, vec![json!({"model":"m","embedding":true})]);
@@ -430,7 +478,7 @@ async fn a_maintenance_hold_or_an_unreachable_node_refuses_without_touching_the_
 }
 
 #[tokio::test]
-async fn a_caller_who_leaves_mid_load_gives_the_lease_back() {
+async fn a_caller_who_leaves_mid_load_retains_exclusion_until_settled() {
     let o = oracle();
     let mut s = o["scenarios"]
         .as_array()
@@ -439,8 +487,9 @@ async fn a_caller_who_leaves_mid_load_gives_the_lease_back() {
         .find(|s| s["name"] == "load ready")
         .unwrap()
         .clone();
-    // The engine never becomes ready while the caller waits.
-    s["router"] = json!({"GET /models":[{"rows":"unloaded"},{"rows":"unloaded"},{"rows":"loading"}],"POST /models/load":[{"status":200,"body":{}}]});
+    s["longLoad"] = json!(true);
+    // This fake engine continues independently after its launch acknowledgement.
+    s["router"] = json!({"GET /models":[{"rows":"unloaded"},{"rows":"unloaded"},{"rows":"loading"},{"rows":"loading"},{"rows":"loading"},{"rows":"loading"},{"rows":"loading"},{"rows":"loaded"}],"POST /models/load":[{"status":200,"body":{}}]});
     let w = World::new(&s).await;
     let addr = w.addr;
     let task = tokio::spawn(async move {
@@ -469,6 +518,12 @@ async fn a_caller_who_leaves_mid_load_gives_the_lease_back() {
     }
     task.abort();
     let _ = task.await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(
+        !w.node.lock().unwrap().iter().any(|r| r.method == "DELETE"),
+        "launched work released before settlement"
+    );
+    // The synthetic engine finishes independently of the disconnected HTTP caller.
     let end = tokio::time::Instant::now() + Duration::from_secs(10);
     loop {
         let released = w
@@ -491,4 +546,44 @@ async fn a_caller_who_leaves_mid_load_gives_the_lease_back() {
     let seen = w.router.lock().unwrap().len();
     tokio::time::sleep(Duration::from_millis(600)).await;
     assert!(w.router.lock().unwrap().len() <= seen + 1);
+}
+
+#[tokio::test]
+async fn freshness_and_expired_grants_refuse_before_engine_mutation() {
+    for flag in ["invalidateFails", "expiredGrant"] {
+        let o = oracle();
+        let mut s = o["scenarios"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["name"] == "load ready")
+            .unwrap()
+            .clone();
+        s[flag] = json!(true);
+        let w = World::new(&s).await;
+        assert_eq!(
+            w.post("/api/models/load", r#"{"name":"m"}"#, ADMIN).await.0,
+            503,
+            "{flag}"
+        );
+        assert!(w.router.lock().unwrap().iter().all(|r| r.method == "GET"));
+    }
+}
+
+#[tokio::test]
+async fn restored_file_waits_for_scan_invalidation_acknowledgement() {
+    let o = oracle();
+    let mut s = o["scenarios"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["name"] == "load ready")
+        .unwrap()
+        .clone();
+    s["restored"] = json!(true);
+    let w = World::new(&s).await;
+    assert_eq!(
+        w.post("/api/models/load", r#"{"name":"m"}"#, ADMIN).await.0,
+        200
+    );
 }

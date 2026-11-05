@@ -568,3 +568,41 @@ async fn requests_and_leases_waiting_out_a_hold_count_against_the_waiter_limit()
     let lease = b.await.unwrap().unwrap();
     assert_eq!(release_lease(&gate, &lease).await, 204);
 }
+
+#[tokio::test]
+async fn acknowledged_load_keeps_exclusion_until_engine_settles() {
+    let router = FakeRouter::start(
+        &[(CODE, St::Unloaded, false), (SMART, St::Unloaded, false)],
+        FakeConfig {
+            load_ms: 1200,
+            ..FakeConfig::default()
+        },
+    )
+    .await;
+    let gate = start_gate(test_config(router.url())).await;
+    let r = client()
+        .post(gate.url("/models/load"))
+        .body(format!(r#"{{"model":"{CODE}"}}"#))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status().as_u16(), 200);
+    drop(r); // Launch acknowledgement is consumed/discarded; the engine still runs.
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    assert_eq!(router.status(CODE), St::Loading);
+    let (code, _) = hold(
+        &gate,
+        Some(ADMIN),
+        serde_json::json!({"reason":"synthetic", "wait_ms":0}),
+    )
+    .await;
+    assert_eq!(code, 409, "maintenance overlapped accepted engine work");
+    tokio::time::sleep(Duration::from_millis(1400)).await;
+    let (code, body) = hold(
+        &gate,
+        Some(ADMIN),
+        serde_json::json!({"reason":"synthetic", "wait_ms":0}),
+    )
+    .await;
+    assert_eq!(code, 201, "settled engine should release exclusion: {body}");
+}

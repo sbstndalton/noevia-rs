@@ -105,7 +105,41 @@ pub(crate) async fn proxy(gate: Arc<Gate>, request: Request) -> Response {
                         }
                         guard.set_session(conv_id);
                     }
-                    send(&gate, &parts, outgoing, Some(guard), permit).await
+                    if path == "/models/load" {
+                        // A launch acknowledgement does not end engine work. Own both the HTTP
+                        // exchange and its scheduler count independently of the front's lease/client.
+                        let (tx, rx) = tokio::sync::oneshot::channel();
+                        let task_gate = Arc::clone(&gate);
+                        tokio::spawn(async move {
+                            let answer = forward(
+                                &task_gate,
+                                &parts,
+                                outgoing,
+                                permit,
+                                task_gate.cfg.header_timeout,
+                            )
+                            .await;
+                            let needs_settlement =
+                                answer.as_ref().map_or(true, |r| r.status().is_success());
+                            let response = match answer {
+                                Ok(upstream) => {
+                                    buffer_response(upstream, task_gate.cfg.header_timeout).await
+                                }
+                                Err(refusal) => refuse(&task_gate, refusal),
+                            };
+                            let _ = tx.send(response);
+                            if needs_settlement {
+                                settle_load(&task_gate, &model).await;
+                            }
+                            guard.complete();
+                            drop(guard);
+                            task_gate.kick();
+                        });
+                        rx.await
+                            .unwrap_or_else(|_| respond::refusal(Refusal::EngineUnavailable))
+                    } else {
+                        send(&gate, &parts, outgoing, Some(guard), permit).await
+                    }
                 }
                 Ok(None) => send(&gate, &parts, outgoing, None, permit).await,
                 Err(refusal) => refuse(&gate, refusal),
@@ -232,6 +266,49 @@ pub(crate) async fn proxy(gate: Arc<Gate>, request: Request) -> Response {
             rx.await
                 .unwrap_or_else(|_| respond::refusal(Refusal::EngineUnavailable))
         }
+    }
+}
+
+/// An accepted load is fenced until a fresh listing proves it terminal. An unavailable,
+/// malformed or transitional listing retains exclusion; it never launches a compensating unload.
+async fn settle_load(gate: &Arc<Gate>, model: &str) {
+    let mut seen_loading = false;
+    loop {
+        let terminal = async {
+            let request = axum::http::Request::builder()
+                .method(Method::GET)
+                .uri(format!("{}/models", gate.cfg.upstream))
+                .body(Body::empty())
+                .ok()?;
+            let response = gate.client.request(request).await.ok()?;
+            if !response.status().is_success() {
+                return None;
+            }
+            let body = http_body_util::Limited::new(response.into_body(), 8 * 1024 * 1024)
+                .collect()
+                .await
+                .ok()?;
+            let listing = inference_admission::parse_listing(&body.to_bytes())?;
+            match listing.status_of(model) {
+                Some(inference_admission::RowStatus::Loading) => {
+                    seen_loading = true;
+                    Some(false)
+                }
+                Some(
+                    inference_admission::RowStatus::Loaded
+                    | inference_admission::RowStatus::Sleeping,
+                ) => Some(true),
+                Some(inference_admission::RowStatus::Unloaded) => Some(seen_loading),
+                _ => None,
+            }
+        };
+        if matches!(
+            tokio::time::timeout(Duration::from_secs(5), terminal).await,
+            Ok(Some(true))
+        ) {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
     }
 }
 

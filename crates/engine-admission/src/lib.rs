@@ -454,7 +454,8 @@ impl Lease {
     pub async fn release(self) {
         self.renewing.abort();
         if let Some(fut) = self.inner.give_back() {
-            fut.await;
+            // Spawn before awaiting: cancelling release must not cancel the give-back.
+            let _ = tokio::spawn(fut).await;
         }
     }
 }
@@ -725,6 +726,21 @@ mod tests {
         assert_eq!(refused, Refused::unavailable());
         settle().await;
         assert_eq!((authority.held(), deletes(&state)), (0, 1));
+    }
+
+    #[tokio::test]
+    async fn explicit_release_is_owned_before_its_first_await() {
+        let (base, state) = node((201, GRANT.into())).await;
+        let lease = admission(&base)
+            .enter(Ask::Engine { model: "m" }, &Cancel::new())
+            .await
+            .unwrap();
+        // Poll release through its first await, then discard it immediately.
+        let release = lease.release();
+        tokio::pin!(release);
+        tokio::select! { biased; () = &mut release => {}, () = std::future::ready(()) => {} }
+        settle().await;
+        assert_eq!(deletes(&state), 1);
     }
 
     #[tokio::test]
