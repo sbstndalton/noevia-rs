@@ -307,6 +307,8 @@ async fn residual_methods_are_native_and_substantive_routes_keep_their_owner() {
         ("HEAD", "/api/model-manager/models"),
         ("GET", "/api/model-manager/models/"),
         ("GET", "/api/model-manager"),
+        // Normalization must not turn a substantive Node executor into an unmatched response.
+        ("POST", "/api/providers/../models/pull"),
     ] {
         let (s, _, b) = call(addr, m, p, &csrf).await;
         let residual = [
