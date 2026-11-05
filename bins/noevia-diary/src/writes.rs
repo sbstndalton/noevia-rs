@@ -494,6 +494,7 @@ pub fn append(c: &Ctx<'_>, req: &AppendReq) -> Reply {
 
 /// CorpusStore.log_exchange with the native transform: journal the exchange, then apply it.
 /// Ok(true): applied; Ok(false): the journal holds it (storage refused it); Err: nothing usable.
+#[allow(clippy::result_unit_err)]
 pub fn log_exchange(
     c: &Ctx<'_>,
     day: NaiveDate,

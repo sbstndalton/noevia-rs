@@ -574,7 +574,7 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
                 Err(_) => internal_error(),
             }
         }
-        Route::PutFile | Route::Directory | Route::Append | Route::Edit => {
+        Route::PutFile | Route::Directory | Route::Append | Route::Edit | Route::ExternalImport => {
             serve_write(app, r, &header_uid, asserted, &headers, tenant, write).await
         }
     }
