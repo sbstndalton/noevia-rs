@@ -130,7 +130,7 @@ impl<B: Backend> DavService<B> {
         }
         let depth = header("depth")?;
         if depth.is_some_and(|d| d != "infinity" && !(method == "COPY" && d == "0")) {
-            return Err(bad(StatusCode::BAD_REQUEST, "Invalid Depth"));
+            return Err(bad(StatusCode::BAD_REQUEST, "Folder operations apply to the whole folder (Depth: infinity)"));
         }
         let mut version = header("if-match")?
             .map(|v| {
@@ -141,7 +141,8 @@ impl<B: Backend> DavService<B> {
         if !self.is_allowed(identity).await {
             return Err(bad(StatusCode::FORBIDDEN, "Sharing was disabled"));
         }
-        if version.is_none() && method != "COPY" {
+        let unconditional=version.is_none() && method!="COPY";
+        if unconditional {
             let stat = self
                 .operation(identity, json!({"op":"stat","path":path}))
                 .await?;
@@ -153,11 +154,13 @@ impl<B: Backend> DavService<B> {
             );
         }
         if method == "DELETE" {
-            self.operation(
+            let result=self.operation(
                 identity,
                 json!({"op":"delete","path":path,"version":version}),
             )
             .await?;
+            let trashed=result.get("trash").and_then(Value::as_array).map_or(0,Vec::len);
+            self.backend.audit(identity,"dav.delete",json!({"path":path,"trashed":trashed,"unconditional":unconditional})).await.map_err(|f|Box::new(fault_reply(f,false)))?;
             return Ok(*bad(StatusCode::NO_CONTENT, ""));
         }
         let (target, url) = destination(
@@ -199,7 +202,7 @@ impl<B: Backend> DavService<B> {
             if stat.get("isDir") != Some(&Value::Bool(false)) {
                 return Err(bad(
                     StatusCode::FORBIDDEN,
-                    "Copying a folder without contents is unsupported",
+                    "Copying a folder without its contents is unsupported",
                 ));
             }
         }
@@ -215,6 +218,7 @@ impl<B: Backend> DavService<B> {
                 .insert("destinationVersion".into(), json!(v));
         }
         let result = self.operation(identity, body).await?;
+        self.backend.audit(identity,&format!("dav.{}",method.to_ascii_lowercase()),json!({"path":path,"destination":target,"replaced":result.get("replaced")==Some(&Value::Bool(true)),"unconditional":unconditional})).await.map_err(|f|Box::new(fault_reply(f,false)))?;
         Ok(*bad(
             if result.get("replaced") == Some(&Value::Bool(true)) {
                 StatusCode::NO_CONTENT

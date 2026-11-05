@@ -72,6 +72,7 @@ rand_core = { version = "0.6", features = ["getrandom"] }
 google-token-seal = { path = "../../crates/google-token-seal" }
 offsite-backup-format = { path = "../../crates/offsite-backup-format" }
 dav-parse = { path = "../../crates/dav-parse" }
+server-dav = { path = "../../crates/server-dav" }
 policy-leaves = { path = "../../crates/policy-leaves" }
 server-routing-mode = { path = "../../crates/server-routing-mode" }
 server-reasoning-settings = { path = "../../crates/server-reasoning-settings" }

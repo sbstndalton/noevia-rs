@@ -151,13 +151,15 @@ impl CodeNetGuard {
     }
 
     /// The 403 with no body (core deny()), logged at most once a minute.
-    pub fn deny(&self) -> Response<Body> {
+    pub fn deny(&self) -> Response<Body> { self.deny_listener("ui") }
+
+    pub fn deny_listener(&self, listener: &str) -> Response<Body> {
         let n = self.refused.fetch_add(1, Ordering::Relaxed) + 1;
         if let Ok(mut last) = self.last_logged.lock() {
             let now = std::time::Instant::now();
             if last.is_none_or(|t| now.duration_since(t) >= Duration::from_secs(60)) {
                 *last = Some(now);
-                eprintln!(r#"{{"event":"codenet.refused","listener":"ui","refused":{n}}}"#);
+                eprintln!(r#"{{"event":"codenet.refused","listener":"{listener}","refused":{n}}}"#);
             }
         }
         reply::code_net_refused()

@@ -41,6 +41,29 @@ pub fn verify_dav(
     password: &str,
     scope: &str,
 ) -> Result<Option<DavIdentity>, StoreError> {
+    verify_inner(store, None, username, password, scope)
+}
+
+/// The inbound listener also owns Node's guarded last-used write. Hashing runs
+/// outside transactions; the exact hash and live account are checked at commit.
+pub fn verify_dav_and_touch(
+    store: &Store,
+    writer: &server_store::Writer,
+    username: &str,
+    password: &str,
+    scope: &str,
+    now: i64,
+) -> Result<Option<DavIdentity>, StoreError> {
+    verify_inner(store, Some((writer, now)), username, password, scope)
+}
+
+fn verify_inner(
+    store: &Store,
+    touch: Option<(&server_store::Writer, i64)>,
+    username: &str,
+    password: &str,
+    scope: &str,
+) -> Result<Option<DavIdentity>, StoreError> {
     if scope != "lan" && scope != "public" {
         return Ok(None);
     }
@@ -93,6 +116,15 @@ pub fn verify_dav(
             |row| row.get::<_, i64>(0),
         )
     })?;
+    if still.is_some() {
+        if let Some((writer, now)) = touch {
+            let updated = writer.write(|tx| tx.execute(
+                "UPDATE app_passwords SET last_used_at=?1 WHERE id=?2 AND password_hash=?3 AND EXISTS (SELECT 1 FROM users WHERE id=app_passwords.user_id AND disabled_at IS NULL)",
+                server_store::rusqlite::params![now, cred, hash],
+            ))?;
+            if updated == 0 { return Ok(None); }
+        }
+    }
     Ok(still.map(|_| DavIdentity {
         user_id: user.to_string(),
         credential_id: cred.to_string(),

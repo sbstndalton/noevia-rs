@@ -184,6 +184,14 @@ pub async fn serve_router(
     limits: Limits,
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) {
+    serve_router_with_socket_timeout(listener,router,limits,None,shutdown).await;
+}
+
+/// A dedicated listener may enforce inactivity even while a request is active.
+pub async fn serve_router_with_socket_timeout(
+    listener: TcpListener, router: Router, limits: Limits, socket_timeout: Option<Duration>,
+    shutdown: impl Future<Output=()> + Send + 'static,
+) {
     let max = limits
         .max_connections
         .clamp(1, tokio::sync::Semaphore::MAX_PERMITS);
@@ -194,7 +202,7 @@ pub async fn serve_router(
         let _ = stop_tx.send(true);
     });
     let mut stop = stop_rx.clone();
-    accept_loop(&listener, &permits, &router, limits, &stop_rx, &mut stop).await;
+    accept_loop(&listener, &permits, &router, limits, &stop_rx, &mut stop, socket_timeout).await;
     drop(listener);
     // Every connection holds a permit until it closes: wait for all of them.
     let _ = permits
@@ -209,6 +217,7 @@ async fn accept_loop(
     limits: Limits,
     stop_rx: &tokio::sync::watch::Receiver<bool>,
     stop: &mut tokio::sync::watch::Receiver<bool>,
+    socket_timeout: Option<Duration>,
 ) {
     loop {
         let permit = tokio::select! {
@@ -234,7 +243,7 @@ async fn accept_loop(
         let router = router.clone();
         let stop = stop_rx.clone();
         tokio::spawn(async move {
-            serve_connection(stream, conn, router, limits, stop).await;
+            serve_connection(stream, conn, router, limits, stop, socket_timeout).await;
             drop(permit);
         });
     }
@@ -246,6 +255,7 @@ async fn serve_connection(
     router: Router,
     limits: Limits,
     mut stop: tokio::sync::watch::Receiver<bool>,
+    socket_timeout: Option<Duration>,
 ) {
     let activity = Arc::new(Activity {
         start: Instant::now(),
@@ -286,8 +296,9 @@ async fn serve_connection(
     loop {
         tokio::select! {
             _ = connection.as_mut() => return,
-            _ = tokio::time::sleep(tick), if !closing => {
-                if activity.in_flight.load(Ordering::Relaxed) == 0
+            _ = tokio::time::sleep(tick) => {
+                if socket_timeout.is_some_and(|bound| activity.idle_for() >= bound) { return; }
+                if !closing && activity.in_flight.load(Ordering::Relaxed) == 0
                     && activity.idle_for() >= limits.keep_alive_idle
                 {
                     closing = true;

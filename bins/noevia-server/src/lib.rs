@@ -373,6 +373,7 @@ use std::sync::Arc;
 /// with a front that predates the strip cannot be handed a client-chosen address (#1578).
 pub const FEATURES: &[&str] = &[
     "rust-source-startup-v1",
+    "rust-dav-listener-v1",
     "rust-embedding-background-v1",
     "client-address-header",
     "code-net-guard",
@@ -1174,3 +1175,5 @@ pub fn router(app: Arc<App>) -> Router {
 }
 
 pub mod source_startup;
+
+pub mod dav;
