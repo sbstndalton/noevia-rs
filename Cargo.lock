@@ -902,6 +902,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "egress-issuer"
+version = "0.1.0"
+dependencies = [
+ "egress",
+ "futures-util",
+ "hmac",
+ "rand_core 0.6.4",
+ "rustix",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "egress-proxy"
 version = "0.1.0"
 dependencies = [
