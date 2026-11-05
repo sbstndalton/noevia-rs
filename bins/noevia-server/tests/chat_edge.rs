@@ -597,8 +597,17 @@ async fn the_llm_budget_is_nodes_sixty_a_minute_shared_with_the_diary_local_exch
     // LLM_RATE_LIMIT unset: Node's default.
     let f = front(&[]).await;
     f.account(account_of(&case["account"]));
+    // The Diary local exchange is native now (diary_routes.rs, tests/diary_local_exchange.rs counts it on this
+    // same budget); here each of its calls stands in as a turn, which costs the shared budget the same one.
     for (i, step) in case["steps"].as_array().unwrap().iter().enumerate() {
-        replay_step(&f, &format!("budget step {}", i + 1), step).await;
+        let mut step = step.clone();
+        if step["route"] == "diary" {
+            step["route"] = "chat".into();
+            if step["node"]["pass"] == "diary" {
+                step["node"]["pass"] = "turn".into();
+            }
+        }
+        replay_step(&f, &format!("budget step {}", i + 1), &step).await;
     }
 }
 
@@ -749,109 +758,6 @@ async fn the_budget_comes_after_authentication_and_before_the_body() {
         assert_eq!(got.status, 429);
         assert_eq!(f.hits(), [HOLD]);
     }
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn the_diary_local_exchange_shares_the_budget_after_nodes_own_checks() {
-    let f = front(&[("LLM_RATE_LIMIT", "3")]).await;
-    let on = Account {
-        admin: false,
-        diary: true,
-        harness: false,
-    };
-    // Not counted and no hold taken: another method, signed out, CSRF, the add-on off (Node answers each
-    // before its budget). A lease a client names is never passed on.
-    f.account(on);
-    for _ in 0..3 {
-        f.clear();
-        let got = send(
-            &f,
-            "GET",
-            "/api/diary/local-exchange",
-            Vec::new(),
-            Who::SignedIn,
-        )
-        .await;
-        assert_eq!(got.json()["proxied"], "GET /api/diary/local-exchange");
-        let got = send(
-            &f,
-            "POST",
-            "/api/diary/local-exchange",
-            b"{}".to_vec(),
-            Who::SignedOut,
-        )
-        .await;
-        assert_eq!(got.json()["proxied"], "POST /api/diary/local-exchange");
-        assert_eq!(got.json()["lease"], Value::Null);
-        let got = send(
-            &f,
-            "POST",
-            "/api/diary/local-exchange",
-            b"{}".to_vec(),
-            Who::BadCsrf,
-        )
-        .await;
-        assert_eq!(got.json()["proxied"], "POST /api/diary/local-exchange");
-        assert!(f.hits().iter().all(|h| !h.contains("/internal/chat/gate")));
-    }
-    f.account(Account { diary: false, ..on });
-    for _ in 0..3 {
-        assert_eq!(
-            exchange(&f, b"{}").await.json()["proxied"],
-            "POST /api/diary/local-exchange"
-        );
-    }
-    // The gate refusing the exchange: its own 503 (no Retry-After), not counted.
-    f.account(on);
-    f.gate(GateMode::Refuse);
-    for _ in 0..3 {
-        f.clear();
-        let got = exchange(&f, b"{}").await;
-        assert_eq!((got.status, got.text().as_str()), (503, DIARY_BUSY));
-        assert!(got.headers.get("retry-after").is_none());
-        assert_eq!(f.hits(), [DIARY_HOLD]);
-    }
-    f.gate(GateMode::Open);
-    // One budget: a chat turn and two exchanges use it up; then both routes refuse, in their own words.
-    assert_eq!(turn(&f, br#"{"message":"hi"}"#).await.status, 200);
-    for _ in 0..2 {
-        let got = exchange(&f, b"{}").await;
-        assert_eq!(got.status, 200);
-        assert_eq!(
-            got.json()["lease"],
-            f.last_lease(),
-            "the exchange carries its hold to Core"
-        );
-    }
-    f.clear();
-    let got = exchange(&f, b"{}").await;
-    assert_eq!(
-        (got.status, got.text().as_str()),
-        (
-            429,
-            r#"{"error":"Please wait before sending another message"}"#
-        )
-    );
-    assert_eq!(f.hits(), [DIARY_HOLD]);
-    assert_eq!(turn(&f, br#"{"message":"hi"}"#).await.status, 429);
-    // Spellings and siblings are not the local exchange.
-    for path in [
-        "/api/diary/x/../local-exchange",
-        "/api/diary/local-exchange?x=1",
-    ] {
-        assert_eq!(
-            send(&f, "POST", path, b"{}".to_vec(), Who::SignedIn)
-                .await
-                .status,
-            429,
-            "{path}"
-        );
-    }
-    for path in ["/api/diary/local-exchange/", "/api/diary/local-exchangex"] {
-        let got = send(&f, "POST", path, b"{}".to_vec(), Who::SignedIn).await;
-        assert_eq!(got.status, 200, "{path}");
-    }
-    f.holds_closed().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
