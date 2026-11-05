@@ -1,5 +1,6 @@
-//! D6: GET /api/external-sources over the real server on a synthetic managed tenant and a synthetic
-//! source folder. The byte-for-byte comparison with Python is services' tests/test_rust_forward_d6.py.
+//! D6: GET /api/external-sources and GET /api/workspace-trash over the real server on a synthetic
+//! managed tenant (and, for the first, a synthetic source folder). The byte-for-byte comparison with
+//! Python is services' tests/test_rust_forward_d6.py.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -22,7 +23,9 @@ fn managed_tenant(root: &std::path::Path) {
          CREATE TABLE directories(path TEXT PRIMARY KEY);
          CREATE TABLE workspace_imports(fingerprint TEXT PRIMARY KEY, destination TEXT NOT NULL);
          CREATE TABLE workspace_index_outbox(path TEXT PRIMARY KEY);
-         CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+         CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+         CREATE TABLE backups(destination TEXT PRIMARY KEY, generation INTEGER NOT NULL DEFAULT -1,
+             last_success REAL, retry_at REAL NOT NULL DEFAULT 0, failures INTEGER NOT NULL DEFAULT 0, error TEXT);",
     )
     .unwrap();
     for (k, v) in [
@@ -145,4 +148,108 @@ async fn declines_when_python_did_not_name_the_folders() {
         (s, body.as_str()),
         (200, r#"{"configured":false,"sources":[],"total":0}"#)
     );
+}
+
+async fn get_path(
+    addr: std::net::SocketAddr,
+    target: &str,
+    token: &str,
+) -> (u16, Option<String>, Option<String>, String) {
+    let resp = reqwest::Client::new()
+        .get(format!("http://{addr}{target}"))
+        .header("authorization", format!("Bearer {token}"))
+        .header("x-cowork-user-id", UID)
+        .header("x-noevia-diary-forward", SECRET)
+        .header("x-noevia-diary-recovered", "1")
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status().as_u16();
+    let h = |n: &str| {
+        resp.headers()
+            .get(n)
+            .map(|v| v.to_str().unwrap().to_string())
+    };
+    let (decline, cache) = (h("x-noevia-diary-decline"), h("cache-control"));
+    (status, decline, cache, resp.text().await.unwrap())
+}
+
+fn capsule(id: &str, data: &[u8]) -> Vec<u8> {
+    use sha2::{Digest, Sha256};
+    let version: String = Sha256::digest(data)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    // base64 of "hello" (no padding needed for this test's bytes: 5 bytes -> "aGVsbG8=")
+    assert_eq!(data, b"hello");
+    format!(
+        r#"{{"data":"aGVsbG8=","format":"noevia-trash-v1","id":"{id}","path":"Notes/a.md","state":"trashed","trashedAt":1730000000.5,"version":"{version}"}}"#
+    )
+    .into_bytes()
+}
+
+#[tokio::test]
+async fn workspace_trash_lists_capsules_like_python() {
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path());
+    let ids = [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+    ];
+    let db =
+        rusqlite::Connection::open(dir.path().join("users").join(UID).join("managed-diary.db"))
+            .unwrap();
+    for id in ids {
+        db.execute(
+            "INSERT INTO files VALUES (?,?,'v',1.0)",
+            rusqlite::params![format!(".noevia-trash/{id}.json"), capsule(id, b"hello")],
+        )
+        .unwrap();
+    }
+    db.execute(
+        "INSERT INTO files VALUES ('.noevia-trash/00000000-0000-4000-8000-000000000003.json',?,'v',1.0)",
+        rusqlite::params![b"{not json".to_vec()],
+    )
+    .unwrap();
+    let addr = start(dir.path(), None).await;
+    let (s, d, cache, body) = get_path(addr, "/api/workspace-trash", TOKEN).await;
+    assert_eq!((s, d, cache.as_deref()), (200, None, Some("no-store")));
+    let v = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
+    let rec = |n: u8| {
+        format!(
+            r#"{{"id":"00000000-0000-4000-8000-00000000000{n}","path":"Notes/a.md","version":"{v}","state":"trashed","trashedAt":1730000000.5}}"#
+        )
+    };
+    assert_eq!(
+        body,
+        format!(
+            r#"{{"records":[{},{},{{"id":"00000000-0000-4000-8000-000000000003","path":null,"version":null,"state":"invalid","trashedAt":null,"invalid":true}}],"next":null}}"#,
+            rec(1),
+            rec(2)
+        )
+    );
+    // after: the records past that id
+    let (s, _, _, body) = get_path(
+        addr,
+        "/api/workspace-trash?after=00000000-0000-4000-8000-000000000001",
+        TOKEN,
+    )
+    .await;
+    assert_eq!(s, 200);
+    assert!(body.starts_with(&format!(r#"{{"records":[{},"#, rec(2))));
+    // an id Python alone can read declines; one it refuses is its 409
+    let (s, d, _, _) = get_path(addr, "/api/workspace-trash?after=not-a-uuid", TOKEN).await;
+    assert_eq!((s, d.as_deref()), (421, Some("1")));
+    let (s, _, cache, body) = get_path(addr, "/api/workspace-trash?after=abc", TOKEN).await;
+    assert_eq!(
+        (s, cache, body.as_str()),
+        (
+            409,
+            None,
+            r#"{"detail":"A valid recovery operation ID is required"}"#
+        )
+    );
+    // HTTPException(401), like the D4b routes
+    let (s, _, _, body) = get_path(addr, "/api/workspace-trash", "wrong").await;
+    assert_eq!((s, body.as_str()), (401, r#"{"detail":"unauthorized"}"#));
 }

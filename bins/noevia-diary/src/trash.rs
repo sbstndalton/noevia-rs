@@ -107,7 +107,7 @@ fn strict_b64(data: &str) -> Result<Option<Vec<u8>>, ()> {
     }
     // Python's regex accepted the shape; the decoder's own padding rules are left to it unless the
     // input is exactly what an encoder writes.
-    if data.len() % 4 != 0 || (pad == 0 && body.len() % 4 != 0) {
+    if !data.len().is_multiple_of(4) || (pad == 0 && !body.len().is_multiple_of(4)) {
         return Err(());
     }
     let val = |b: u8| -> u32 {
@@ -307,7 +307,7 @@ pub fn list(store: &Managed, after: &str) -> Reply {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
     use super::*;
 
     #[test]

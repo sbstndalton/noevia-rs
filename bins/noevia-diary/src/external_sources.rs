@@ -324,7 +324,7 @@ fn json(v: &Listing) -> Reply {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
     use super::*;
 
     fn d(s: &str) -> Option<String> {

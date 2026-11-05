@@ -257,7 +257,11 @@ async fn declines_until_python_has_recovered_and_while_recovery_is_outstanding()
             "{clear}"
         );
     }
-    assert_eq!(get(addr, "/api/workspace-trash", &forwarded()).await.0, 421);
+    // Not a native route: declined.
+    assert_eq!(
+        get(addr, "/api/internal/embedding", &forwarded()).await.0,
+        421
+    );
     db.execute(
         "UPDATE meta SET value='{\"index_enabled\": true}' WHERE key='settings'",
         [],
