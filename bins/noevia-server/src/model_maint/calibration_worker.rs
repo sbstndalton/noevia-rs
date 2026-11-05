@@ -2849,6 +2849,29 @@ mod tests {
             "expired evidence must never append later"
         );
     }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn recovery_save_publishes_unsaved_and_launch_release_together() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("models.ini"), INI).unwrap();
+        let (port, _) = synthetic_engine(d.path().join("models.ini"), true).await;
+        let w = worker(d.path(), port);
+        w.with(|i| {
+            i.state = State::empty();
+            i.state
+                .set_job(wtf16::parse(r#"{"id":"recovered","status":"interrupted"}"#).unwrap());
+            i.unsaved = true;
+            i.launching = true;
+        });
+        // The background retry publishes the recovered record before it returns to its caller.
+        // A reader observing unsaved=false must also observe the released launch reservation.
+        w.save_recovered(true).await.unwrap();
+        assert_eq!(w.with(|i| (i.unsaved, i.launching)), (false, false));
+        w.launch("synthetic", plan(32768.0, 120.0))
+            .await
+            .expect("immediate restart after recovery publication");
+        let _ = w.cancel();
+        settled(&w).await;
+    }
     // REVIEW_REGRESSIONS_END
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
