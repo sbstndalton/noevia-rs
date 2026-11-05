@@ -1,0 +1,4135 @@
+{
+  "cases": [
+    {
+      "call": null,
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "the checker did not answer"
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be checked (the checker did not answer), so a person has to approve it. The paths its command would touch are unknown, so the task’s workspace limits could not be checked either.",
+        "standable": false
+      }
+    },
+    {
+      "call": null,
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "the checker did not answer"
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be checked (the checker did not answer), so a person has to approve it. The paths its command would touch are unknown, so the task’s workspace limits could not be checked either.",
+        "standable": false
+      }
+    },
+    {
+      "call": null,
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "the checker did not answer"
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be checked (the checker did not answer), so a person has to approve it. The paths its command would touch are unknown, so the task’s workspace limits could not be checked either.",
+        "standable": false
+      }
+    },
+    {
+      "call": null,
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "the checker did not answer"
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted external account. (This command could not be checked, so it is treated as the most consequential kind of action.)"
+      }
+    },
+    {
+      "call": null,
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "the checker did not answer"
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted external account. (This command could not be checked, so it is treated as the most consequential kind of action.)"
+      }
+    },
+    {
+      "call": null,
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "the checker did not answer"
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted external account. (This command could not be checked, so it is treated as the most consequential kind of action.)"
+      }
+    },
+    {
+      "call": null,
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "the checker did not answer"
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be checked (the checker did not answer), so a person has to approve it. The paths its command would touch are unknown, so the task’s workspace limits could not be checked either.",
+        "standable": false
+      }
+    },
+    {
+      "call": null,
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "the checker did not answer"
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be checked (the checker did not answer), so a person has to approve it. The paths its command would touch are unknown, so the task’s workspace limits could not be checked either.",
+        "standable": false
+      }
+    },
+    {
+      "call": null,
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "the checker did not answer"
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be checked (the checker did not answer), so a person has to approve it. The paths its command would touch are unknown, so the task’s workspace limits could not be checked either.",
+        "standable": false
+      }
+    },
+    {
+      "call": {},
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "The harness did not say what it would run."
+      }
+    },
+    {
+      "call": {},
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "The harness did not say what it would run."
+      }
+    },
+    {
+      "call": {},
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "The harness did not say what it would run."
+      }
+    },
+    {
+      "call": {},
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted execute command."
+      }
+    },
+    {
+      "call": {},
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted execute command."
+      }
+    },
+    {
+      "call": {},
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted execute command."
+      }
+    },
+    {
+      "call": {},
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "The harness did not say what it would run."
+      }
+    },
+    {
+      "call": {},
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "The harness did not say what it would run."
+      }
+    },
+    {
+      "call": {},
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "The harness did not say what it would run."
+      }
+    },
+    {
+      "call": {
+        "kind": "read"
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "read_repository",
+        "approval": "never",
+        "command": "",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "read_repository"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "allow",
+        "reason": "Read-only."
+      }
+    },
+    {
+      "call": {
+        "kind": "read"
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "read_repository",
+        "approval": "never",
+        "command": "",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "read_repository"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "allow",
+        "reason": "Read-only."
+      }
+    },
+    {
+      "call": {
+        "kind": "read"
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "read_repository",
+        "approval": "never",
+        "command": "",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "read_repository"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "allow",
+        "reason": "Read-only."
+      }
+    },
+    {
+      "call": {
+        "kind": "read"
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "read_repository",
+        "approval": "never",
+        "command": "",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "read_repository"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "allow",
+        "reason": "Read-only."
+      }
+    },
+    {
+      "call": {
+        "kind": "read"
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "read_repository",
+        "approval": "never",
+        "command": "",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "read_repository"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "allow",
+        "reason": "Read-only."
+      }
+    },
+    {
+      "call": {
+        "kind": "read"
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "read_repository",
+        "approval": "never",
+        "command": "",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "read_repository"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "allow",
+        "reason": "Read-only."
+      }
+    },
+    {
+      "call": {
+        "kind": "read"
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "read_repository",
+        "approval": "never",
+        "command": "",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "read_repository"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "allow",
+        "reason": "Read-only."
+      }
+    },
+    {
+      "call": {
+        "kind": "read"
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "read_repository",
+        "approval": "never",
+        "command": "",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "read_repository"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "allow",
+        "reason": "Read-only."
+      }
+    },
+    {
+      "call": {
+        "kind": "read"
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "read_repository",
+        "approval": "never",
+        "command": "",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "read_repository"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "allow",
+        "reason": "Read-only."
+      }
+    },
+    {
+      "call": {
+        "kind": "edit",
+        "locations": [
+          {
+            "path": "a"
+          }
+        ],
+        "rawInput": {
+          "path": "a"
+        }
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "edit_file",
+        "approval": "always",
+        "command": "",
+        "paths": [
+          "a"
+        ],
+        "readable": true,
+        "actions": [
+          "edit_file"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "edit",
+        "locations": [
+          {
+            "path": "a"
+          }
+        ],
+        "rawInput": {
+          "path": "a"
+        }
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "edit_file",
+        "approval": "always",
+        "command": "",
+        "paths": [
+          "a"
+        ],
+        "readable": true,
+        "actions": [
+          "edit_file"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "The path is outside this task’s workspace."
+      }
+    },
+    {
+      "call": {
+        "kind": "edit",
+        "locations": [
+          {
+            "path": "a"
+          }
+        ],
+        "rawInput": {
+          "path": "a"
+        }
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "edit_file",
+        "approval": "always",
+        "command": "",
+        "paths": [
+          "a"
+        ],
+        "readable": true,
+        "actions": [
+          "edit_file"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "edit",
+        "locations": [
+          {
+            "path": "a"
+          }
+        ],
+        "rawInput": {
+          "path": "a"
+        }
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "edit_file",
+        "approval": "always",
+        "command": "",
+        "paths": [
+          "a"
+        ],
+        "readable": true,
+        "actions": [
+          "edit_file"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted edit file."
+      }
+    },
+    {
+      "call": {
+        "kind": "edit",
+        "locations": [
+          {
+            "path": "a"
+          }
+        ],
+        "rawInput": {
+          "path": "a"
+        }
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "edit_file",
+        "approval": "always",
+        "command": "",
+        "paths": [
+          "a"
+        ],
+        "readable": true,
+        "actions": [
+          "edit_file"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "The path is outside this task’s workspace."
+      }
+    },
+    {
+      "call": {
+        "kind": "edit",
+        "locations": [
+          {
+            "path": "a"
+          }
+        ],
+        "rawInput": {
+          "path": "a"
+        }
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "edit_file",
+        "approval": "always",
+        "command": "",
+        "paths": [
+          "a"
+        ],
+        "readable": true,
+        "actions": [
+          "edit_file"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted edit file."
+      }
+    },
+    {
+      "call": {
+        "kind": "edit",
+        "locations": [
+          {
+            "path": "a"
+          }
+        ],
+        "rawInput": {
+          "path": "a"
+        }
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "edit_file",
+        "approval": "always",
+        "command": "",
+        "paths": [
+          "a"
+        ],
+        "readable": true,
+        "actions": [
+          "edit_file"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted edit file."
+      }
+    },
+    {
+      "call": {
+        "kind": "edit",
+        "locations": [
+          {
+            "path": "a"
+          }
+        ],
+        "rawInput": {
+          "path": "a"
+        }
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "edit_file",
+        "approval": "always",
+        "command": "",
+        "paths": [
+          "a"
+        ],
+        "readable": true,
+        "actions": [
+          "edit_file"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "The path is outside this task’s workspace."
+      }
+    },
+    {
+      "call": {
+        "kind": "edit",
+        "locations": [
+          {
+            "path": "a"
+          }
+        ],
+        "rawInput": {
+          "path": "a"
+        }
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "edit_file",
+        "approval": "always",
+        "command": "",
+        "paths": [
+          "a"
+        ],
+        "readable": true,
+        "actions": [
+          "edit_file"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted edit file."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "printf synthetic"
+        },
+        "locations": []
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "printf synthetic",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "printf synthetic"
+        },
+        "locations": []
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "printf synthetic",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "printf synthetic"
+        },
+        "locations": []
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "printf synthetic",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "printf synthetic"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "printf synthetic",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted execute command."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "printf synthetic"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "printf synthetic",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted execute command."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "printf synthetic"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "printf synthetic",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted execute command."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "printf synthetic"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "printf synthetic",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "printf synthetic"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "printf synthetic",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "printf synthetic"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "printf synthetic",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "rm source.txt"
+        },
+        "locations": []
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "delete",
+        "approval": "always",
+        "command": "rm source.txt",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "delete"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "rm source.txt"
+        },
+        "locations": []
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "delete",
+        "approval": "always",
+        "command": "rm source.txt",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "delete"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "rm source.txt"
+        },
+        "locations": []
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "delete",
+        "approval": "always",
+        "command": "rm source.txt",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "delete"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "rm source.txt"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "delete",
+        "approval": "always",
+        "command": "rm source.txt",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "delete"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted delete."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "rm source.txt"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "delete",
+        "approval": "always",
+        "command": "rm source.txt",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "delete"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted delete."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "rm source.txt"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "delete",
+        "approval": "always",
+        "command": "rm source.txt",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "delete"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted delete."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "rm source.txt"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "delete",
+        "approval": "always",
+        "command": "rm source.txt",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "delete"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted delete."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "rm source.txt"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "delete",
+        "approval": "always",
+        "command": "rm source.txt",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "delete"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted delete."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "rm source.txt"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "delete",
+        "approval": "always",
+        "command": "rm source.txt",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "delete"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted delete."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "git push origin main"
+        },
+        "locations": []
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "git_push",
+        "approval": "always",
+        "command": "git push origin main",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "git_push"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "git push origin main"
+        },
+        "locations": []
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "git_push",
+        "approval": "always",
+        "command": "git push origin main",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "git_push"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "git push origin main"
+        },
+        "locations": []
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "git_push",
+        "approval": "always",
+        "command": "git push origin main",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "git_push"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "git push origin main"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "git_push",
+        "approval": "always",
+        "command": "git push origin main",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "git_push"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted git push."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "git push origin main"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "git_push",
+        "approval": "always",
+        "command": "git push origin main",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "git_push"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted git push."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "git push origin main"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "git_push",
+        "approval": "always",
+        "command": "git push origin main",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "git_push"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted git push."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "git push origin main"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "git_push",
+        "approval": "always",
+        "command": "git push origin main",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "git_push"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted git push."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "git push origin main"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "git_push",
+        "approval": "always",
+        "command": "git push origin main",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "git_push"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted git push."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "git push origin main"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "git_push",
+        "approval": "always",
+        "command": "git push origin main",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "git_push"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted git push."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "curl -q https://synthetic.invalid/"
+        },
+        "locations": []
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "network",
+        "approval": "capability",
+        "command": "curl -q https://synthetic.invalid/",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "network"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "allow",
+        "reason": "synthetic.invalid is on this task’s allowed list."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "curl -q https://synthetic.invalid/"
+        },
+        "locations": []
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "network",
+        "approval": "capability",
+        "command": "curl -q https://synthetic.invalid/",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "network"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "allow",
+        "reason": "synthetic.invalid is on this task’s allowed list."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "curl -q https://synthetic.invalid/"
+        },
+        "locations": []
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "network",
+        "approval": "capability",
+        "command": "curl -q https://synthetic.invalid/",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "network"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "allow",
+        "reason": "synthetic.invalid is on this task’s allowed list."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "curl -q https://synthetic.invalid/"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "network",
+        "approval": "capability",
+        "command": "curl -q https://synthetic.invalid/",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "network"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted network."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "curl -q https://synthetic.invalid/"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "network",
+        "approval": "capability",
+        "command": "curl -q https://synthetic.invalid/",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "network"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted network."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "curl -q https://synthetic.invalid/"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "network",
+        "approval": "capability",
+        "command": "curl -q https://synthetic.invalid/",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "network"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted network."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "curl -q https://synthetic.invalid/"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "network",
+        "approval": "capability",
+        "command": "curl -q https://synthetic.invalid/",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "network"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "allow",
+        "reason": "synthetic.invalid is on this task’s allowed list."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "curl -q https://synthetic.invalid/"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "network",
+        "approval": "capability",
+        "command": "curl -q https://synthetic.invalid/",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "network"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "allow",
+        "reason": "synthetic.invalid is on this task’s allowed list."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "curl -q https://synthetic.invalid/"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "network",
+        "approval": "capability",
+        "command": "curl -q https://synthetic.invalid/",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "network"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "allow",
+        "reason": "synthetic.invalid is on this task’s allowed list."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "curl -q https://127.1/"
+        },
+        "locations": []
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "network",
+        "approval": "capability",
+        "command": "curl -q https://127.1/",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "network"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be verified, so a person has to approve it.",
+        "standable": false
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "curl -q https://127.1/"
+        },
+        "locations": []
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "network",
+        "approval": "capability",
+        "command": "curl -q https://127.1/",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "network"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be verified, so a person has to approve it.",
+        "standable": false
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "curl -q https://127.1/"
+        },
+        "locations": []
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "network",
+        "approval": "capability",
+        "command": "curl -q https://127.1/",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "network"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be verified, so a person has to approve it.",
+        "standable": false
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "curl -q https://127.1/"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "network",
+        "approval": "capability",
+        "command": "curl -q https://127.1/",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "network"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted network."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "curl -q https://127.1/"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "network",
+        "approval": "capability",
+        "command": "curl -q https://127.1/",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "network"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted network."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "curl -q https://127.1/"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "network",
+        "approval": "capability",
+        "command": "curl -q https://127.1/",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "network"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted network."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "curl -q https://127.1/"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "network",
+        "approval": "capability",
+        "command": "curl -q https://127.1/",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "network"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be verified, so a person has to approve it.",
+        "standable": false
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "curl -q https://127.1/"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "network",
+        "approval": "capability",
+        "command": "curl -q https://127.1/",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "network"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be verified, so a person has to approve it.",
+        "standable": false
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "curl -q https://127.1/"
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "network",
+        "approval": "capability",
+        "command": "curl -q https://127.1/",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "network"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be verified, so a person has to approve it.",
+        "standable": false
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "sh -c \"printf synthetic\""
+        },
+        "locations": []
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "sh -c \"printf synthetic\"",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": false
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "sh -c \"printf synthetic\""
+        },
+        "locations": []
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "sh -c \"printf synthetic\"",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": false
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "sh -c \"printf synthetic\""
+        },
+        "locations": []
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "sh -c \"printf synthetic\"",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": false
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "sh -c \"printf synthetic\""
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "sh -c \"printf synthetic\"",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": false
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted execute command."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "sh -c \"printf synthetic\""
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "sh -c \"printf synthetic\"",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": false
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted execute command."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "sh -c \"printf synthetic\""
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "sh -c \"printf synthetic\"",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": false
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted execute command."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "sh -c \"printf synthetic\""
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "sh -c \"printf synthetic\"",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": false
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "sh -c \"printf synthetic\""
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "sh -c \"printf synthetic\"",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": false
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "sh -c \"printf synthetic\""
+        },
+        "locations": []
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "sh -c \"printf synthetic\"",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": false
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "args": [
+            {}
+          ],
+          "noeviaOutsideWorkspace": true
+        },
+        "locations": [
+          {
+            "path": "outside"
+          },
+          {
+            "path": "outside"
+          }
+        ]
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "[object Object]",
+        "paths": [
+          "outside"
+        ],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "it names a host that cannot be read exactly",
+        "outsideWorkspace": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be checked (it names a host that cannot be read exactly), so a person has to approve it. It reaches outside the task’s workspace.",
+        "standable": false
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "args": [
+            {}
+          ],
+          "noeviaOutsideWorkspace": true
+        },
+        "locations": [
+          {
+            "path": "outside"
+          },
+          {
+            "path": "outside"
+          }
+        ]
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "[object Object]",
+        "paths": [
+          "outside"
+        ],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "it names a host that cannot be read exactly",
+        "outsideWorkspace": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be checked (it names a host that cannot be read exactly), so a person has to approve it. It reaches outside the task’s workspace.",
+        "standable": false
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "args": [
+            {}
+          ],
+          "noeviaOutsideWorkspace": true
+        },
+        "locations": [
+          {
+            "path": "outside"
+          },
+          {
+            "path": "outside"
+          }
+        ]
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "[object Object]",
+        "paths": [
+          "outside"
+        ],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "it names a host that cannot be read exactly",
+        "outsideWorkspace": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be checked (it names a host that cannot be read exactly), so a person has to approve it. It reaches outside the task’s workspace.",
+        "standable": false
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "args": [
+            {}
+          ],
+          "noeviaOutsideWorkspace": true
+        },
+        "locations": [
+          {
+            "path": "outside"
+          },
+          {
+            "path": "outside"
+          }
+        ]
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "[object Object]",
+        "paths": [
+          "outside"
+        ],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "it names a host that cannot be read exactly",
+        "outsideWorkspace": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted external account. (This command could not be checked, so it is treated as the most consequential kind of action.)"
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "args": [
+            {}
+          ],
+          "noeviaOutsideWorkspace": true
+        },
+        "locations": [
+          {
+            "path": "outside"
+          },
+          {
+            "path": "outside"
+          }
+        ]
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "[object Object]",
+        "paths": [
+          "outside"
+        ],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "it names a host that cannot be read exactly",
+        "outsideWorkspace": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted external account. (This command could not be checked, so it is treated as the most consequential kind of action.)"
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "args": [
+            {}
+          ],
+          "noeviaOutsideWorkspace": true
+        },
+        "locations": [
+          {
+            "path": "outside"
+          },
+          {
+            "path": "outside"
+          }
+        ]
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "[object Object]",
+        "paths": [
+          "outside"
+        ],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "it names a host that cannot be read exactly",
+        "outsideWorkspace": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted external account. (This command could not be checked, so it is treated as the most consequential kind of action.)"
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "args": [
+            {}
+          ],
+          "noeviaOutsideWorkspace": true
+        },
+        "locations": [
+          {
+            "path": "outside"
+          },
+          {
+            "path": "outside"
+          }
+        ]
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "[object Object]",
+        "paths": [
+          "outside"
+        ],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "it names a host that cannot be read exactly",
+        "outsideWorkspace": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be checked (it names a host that cannot be read exactly), so a person has to approve it. It reaches outside the task’s workspace.",
+        "standable": false
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "args": [
+            {}
+          ],
+          "noeviaOutsideWorkspace": true
+        },
+        "locations": [
+          {
+            "path": "outside"
+          },
+          {
+            "path": "outside"
+          }
+        ]
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "[object Object]",
+        "paths": [
+          "outside"
+        ],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "it names a host that cannot be read exactly",
+        "outsideWorkspace": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be checked (it names a host that cannot be read exactly), so a person has to approve it. It reaches outside the task’s workspace.",
+        "standable": false
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "args": [
+            {}
+          ],
+          "noeviaOutsideWorkspace": true
+        },
+        "locations": [
+          {
+            "path": "outside"
+          },
+          {
+            "path": "outside"
+          }
+        ]
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "[object Object]",
+        "paths": [
+          "outside"
+        ],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "it names a host that cannot be read exactly",
+        "outsideWorkspace": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be checked (it names a host that cannot be read exactly), so a person has to approve it. It reaches outside the task’s workspace.",
+        "standable": false
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": [
+            100000000000000000000
+          ]
+        }
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "100000000000000000000",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "it names a host that cannot be read exactly"
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be checked (it names a host that cannot be read exactly), so a person has to approve it. The paths its command would touch are unknown, so the task’s workspace limits could not be checked either.",
+        "standable": false
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": [
+            100000000000000000000
+          ]
+        }
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "100000000000000000000",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "it names a host that cannot be read exactly"
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be checked (it names a host that cannot be read exactly), so a person has to approve it. The paths its command would touch are unknown, so the task’s workspace limits could not be checked either.",
+        "standable": false
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": [
+            100000000000000000000
+          ]
+        }
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "100000000000000000000",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "it names a host that cannot be read exactly"
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be checked (it names a host that cannot be read exactly), so a person has to approve it. The paths its command would touch are unknown, so the task’s workspace limits could not be checked either.",
+        "standable": false
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": [
+            100000000000000000000
+          ]
+        }
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "100000000000000000000",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "it names a host that cannot be read exactly"
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted external account. (This command could not be checked, so it is treated as the most consequential kind of action.)"
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": [
+            100000000000000000000
+          ]
+        }
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "100000000000000000000",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "it names a host that cannot be read exactly"
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted external account. (This command could not be checked, so it is treated as the most consequential kind of action.)"
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": [
+            100000000000000000000
+          ]
+        }
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "100000000000000000000",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "it names a host that cannot be read exactly"
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted external account. (This command could not be checked, so it is treated as the most consequential kind of action.)"
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": [
+            100000000000000000000
+          ]
+        }
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "100000000000000000000",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "it names a host that cannot be read exactly"
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be checked (it names a host that cannot be read exactly), so a person has to approve it. The paths its command would touch are unknown, so the task’s workspace limits could not be checked either.",
+        "standable": false
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": [
+            100000000000000000000
+          ]
+        }
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "100000000000000000000",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "it names a host that cannot be read exactly"
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be checked (it names a host that cannot be read exactly), so a person has to approve it. The paths its command would touch are unknown, so the task’s workspace limits could not be checked either.",
+        "standable": false
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "command": [
+            100000000000000000000
+          ]
+        }
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "external_account",
+        "approval": "always",
+        "command": "100000000000000000000",
+        "paths": [],
+        "readable": false,
+        "actions": [
+          "external_account",
+          "execute_command"
+        ],
+        "simple": false,
+        "standable": false,
+        "unverified": true,
+        "unverifiedWhy": "it names a host that cannot be read exactly"
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": "This action could not be checked (it names a host that cannot be read exactly), so a person has to approve it. The paths its command would touch are unknown, so the task’s workspace limits could not be checked either.",
+        "standable": false
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "args": [
+            "printf",
+            "synthetic"
+          ]
+        }
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "printf synthetic",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "args": [
+            "printf",
+            "synthetic"
+          ]
+        }
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "printf synthetic",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "args": [
+            "printf",
+            "synthetic"
+          ]
+        }
+      },
+      "capabilities": [],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "printf synthetic",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "args": [
+            "printf",
+            "synthetic"
+          ]
+        }
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "printf synthetic",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted execute command."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "args": [
+            "printf",
+            "synthetic"
+          ]
+        }
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "printf synthetic",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted execute command."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "args": [
+            "printf",
+            "synthetic"
+          ]
+        }
+      },
+      "capabilities": [
+        "read_repository"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "printf synthetic",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "deny",
+        "reason": "This task was not granted execute command."
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "args": [
+            "printf",
+            "synthetic"
+          ]
+        }
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": true,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "printf synthetic",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "args": [
+            "printf",
+            "synthetic"
+          ]
+        }
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": false,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "printf synthetic",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    },
+    {
+      "call": {
+        "kind": "execute",
+        "rawInput": {
+          "args": [
+            "printf",
+            "synthetic"
+          ]
+        }
+      },
+      "capabilities": [
+        "execute_command",
+        "network",
+        "external_account"
+      ],
+      "domains": [
+        "synthetic.invalid"
+      ],
+      "inside": null,
+      "classified": {
+        "action": "execute_command",
+        "approval": "always",
+        "command": "printf synthetic",
+        "paths": [],
+        "readable": true,
+        "actions": [
+          "execute_command"
+        ],
+        "simple": true,
+        "standable": true
+      },
+      "verdict": {
+        "decision": "ask",
+        "reason": ""
+      }
+    }
+  ],
+  "picks": [
+    {
+      "options": null,
+      "wanted": "allow_once",
+      "output": {
+        "outcome": "cancelled"
+      }
+    },
+    {
+      "options": null,
+      "wanted": "allow_always",
+      "output": {
+        "outcome": "cancelled"
+      }
+    },
+    {
+      "options": null,
+      "wanted": "reject_once",
+      "output": {
+        "outcome": "cancelled"
+      }
+    },
+    {
+      "options": null,
+      "wanted": "reject_always",
+      "output": {
+        "outcome": "cancelled"
+      }
+    },
+    {
+      "options": [],
+      "wanted": "allow_once",
+      "output": {
+        "outcome": "cancelled"
+      }
+    },
+    {
+      "options": [],
+      "wanted": "allow_always",
+      "output": {
+        "outcome": "cancelled"
+      }
+    },
+    {
+      "options": [],
+      "wanted": "reject_once",
+      "output": {
+        "outcome": "cancelled"
+      }
+    },
+    {
+      "options": [],
+      "wanted": "reject_always",
+      "output": {
+        "outcome": "cancelled"
+      }
+    },
+    {
+      "options": [
+        {
+          "optionId": "allow",
+          "kind": "allow_once"
+        },
+        {
+          "optionId": "reject",
+          "kind": "reject_once"
+        }
+      ],
+      "wanted": "allow_once",
+      "output": {
+        "outcome": "selected",
+        "optionId": "allow"
+      }
+    },
+    {
+      "options": [
+        {
+          "optionId": "allow",
+          "kind": "allow_once"
+        },
+        {
+          "optionId": "reject",
+          "kind": "reject_once"
+        }
+      ],
+      "wanted": "allow_always",
+      "output": {
+        "outcome": "selected",
+        "optionId": "allow"
+      }
+    },
+    {
+      "options": [
+        {
+          "optionId": "allow",
+          "kind": "allow_once"
+        },
+        {
+          "optionId": "reject",
+          "kind": "reject_once"
+        }
+      ],
+      "wanted": "reject_once",
+      "output": {
+        "outcome": "selected",
+        "optionId": "reject"
+      }
+    },
+    {
+      "options": [
+        {
+          "optionId": "allow",
+          "kind": "allow_once"
+        },
+        {
+          "optionId": "reject",
+          "kind": "reject_once"
+        }
+      ],
+      "wanted": "reject_always",
+      "output": {
+        "outcome": "selected",
+        "optionId": "reject"
+      }
+    },
+    {
+      "options": [
+        {
+          "optionId": "always",
+          "kind": "allow_always"
+        },
+        null
+      ],
+      "wanted": "allow_once",
+      "output": {
+        "outcome": "selected",
+        "optionId": "always"
+      }
+    },
+    {
+      "options": [
+        {
+          "optionId": "always",
+          "kind": "allow_always"
+        },
+        null
+      ],
+      "wanted": "allow_always",
+      "output": {
+        "outcome": "selected",
+        "optionId": "always"
+      }
+    },
+    {
+      "options": [
+        {
+          "optionId": "always",
+          "kind": "allow_always"
+        },
+        null
+      ],
+      "wanted": "reject_once",
+      "output": {
+        "outcome": "cancelled"
+      }
+    },
+    {
+      "options": [
+        {
+          "optionId": "always",
+          "kind": "allow_always"
+        },
+        null
+      ],
+      "wanted": "reject_always",
+      "output": {
+        "outcome": "cancelled"
+      }
+    },
+    {
+      "options": [
+        {
+          "optionId": 3,
+          "kind": "allow_once"
+        }
+      ],
+      "wanted": "allow_once",
+      "output": {
+        "outcome": "cancelled"
+      }
+    },
+    {
+      "options": [
+        {
+          "optionId": 3,
+          "kind": "allow_once"
+        }
+      ],
+      "wanted": "allow_always",
+      "output": {
+        "outcome": "cancelled"
+      }
+    },
+    {
+      "options": [
+        {
+          "optionId": 3,
+          "kind": "allow_once"
+        }
+      ],
+      "wanted": "reject_once",
+      "output": {
+        "outcome": "cancelled"
+      }
+    },
+    {
+      "options": [
+        {
+          "optionId": 3,
+          "kind": "allow_once"
+        }
+      ],
+      "wanted": "reject_always",
+      "output": {
+        "outcome": "cancelled"
+      }
+    }
+  ]
+}

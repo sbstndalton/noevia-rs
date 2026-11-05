@@ -11,6 +11,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+code-actions = { path = "../code-actions" }
 js-json = { path = "../js-json" }
 server-projects = { path = "../server-projects" }
 server-account = { path = "../server-account" }
