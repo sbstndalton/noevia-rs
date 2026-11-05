@@ -1859,3 +1859,15 @@ Each stage compares the exact job/run/config snapshot; preparation uses the exis
 only within its own call and returns its token after releasing it. Rust owns confirmation,
 resumability/restoration checks, protected-queue filtering, identity decisions, phase/step reset
 instructions and public projection. No cross-request reservation or replacement-job retry is used.
+
+## Code egress issuer (row V)
+
+`rust-code-egress-issuer` makes the front the only issuer of the code-sandbox egress proxy's control
+key and of the signed task grants (`bins/noevia-server/src/code_egress.rs`, `crates/egress-issuer`).
+It is not a public route: Node asks it over the internal store listener (`POST /v1/egress/{status,
+grant,activity,revoke,forget}`, header `x-noevia-store-token`). The shared proxy key keeps its
+published contract (`CODE_EGRESS_CONTROL_KEY_FILE`, mode 0440, owner `CODE_EGRESS_KEY_UID`/`_GID`,
+64 hex digits and LF, replaced by rename); new private issuer state is `code-egress-issuer.json` in
+`UI_DATA_DIR` (override `CODE_EGRESS_ISSUER_STATE_FILE`), mode 0600, and a restart keeps the key
+and replaces its own session. The paired Core carries `noevia-code-egress-client/1`
+(`server/code-egress-client.cjs`) and publishes no key.

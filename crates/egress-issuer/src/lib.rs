@@ -15,6 +15,8 @@
 
 pub mod client;
 pub mod files;
+#[cfg(feature = "testing")]
+pub mod testing;
 pub mod transport;
 pub mod wire;
 

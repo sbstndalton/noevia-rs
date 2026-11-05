@@ -10,6 +10,10 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# A fake proxy for tests (src/testing.rs); never enabled in the front.
+testing = []
+
 [dependencies]
 egress = { path = "../egress" }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
@@ -20,6 +24,7 @@ sha2 = "0.10"
 tokio = { version = "1", features = ["rt", "macros", "net", "io-util", "time", "sync"] }
 
 [dev-dependencies]
+egress-issuer = { path = ".", features = ["testing"] }
 hmac = "0.12"
 rustix = { version = "1.1.5", features = ["process"] }
 tempfile = "3"

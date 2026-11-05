@@ -94,6 +94,9 @@ pub struct Config {
     /// supervisor hands over a port (it always does, and Node refuses to start without it). Refused
     /// without UI_DATA_DIR or the secret.
     pub project_store: Option<ProjectStoreConfig>,
+    /// The code-sandbox egress profile (`CODE_EGRESS_*`, row V; src/code_egress.rs). `None` when
+    /// `CODE_EGRESS_PORT` is unset or `0`; an invalid profile refuses startup, as Node's did.
+    pub code_egress: Option<crate::code_egress::Settings>,
     /// NOEVIA_START_ID: the id the web supervisor makes for this container start (32 lowercase
     /// hex) and hands Node too, which writes it into a running reply's partial file
     /// (`running: { start }`, core chat-partial.cjs; sbstndalton/noevia#1071). A partial whose
@@ -399,6 +402,7 @@ impl Config {
             maint,
             rust_export,
             project_store,
+            code_egress: crate::code_egress::Settings::from_lookup(&get)?,
             start_id,
             rust_chatgpt_status,
             #[cfg(feature = "rust-chatgpt-status")]
