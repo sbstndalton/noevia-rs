@@ -1985,6 +1985,7 @@ dependencies = [
  "embedding-worker",
  "engine-admission",
  "flate2",
+ "futures-util",
  "gguf",
  "google-token-seal",
  "http-body",

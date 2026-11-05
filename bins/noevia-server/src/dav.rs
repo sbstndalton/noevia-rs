@@ -1,12 +1,7 @@
 //! Dedicated inbound sharing service. The existing signed Diary API remains the
 //! corpus authority; no request is delegated to the legacy application runtime.
 use crate::{serve, App};
-use axum::{
-    body::Body,
-    extract::ConnectInfo,
-    http::{Request, Response},
-    Router,
-};
+use axum::{body::Body, extract::ConnectInfo, http::Request, Router};
 use serde_json::{json, Value};
 use server_dav::{
     Backend, BackendFuture, Capabilities, Entry, Fault, File, Identity, Scope, WriteCondition,
@@ -89,6 +84,15 @@ impl NativeBackend {
         })
         .await
         .map_err(|_| Fault::Unavailable)??;
+        // Never sign a remote descriptor captured during a local-storage change.
+        // Recheck the live grant after constructing the exact outbound tenant.
+        if tenant
+            .storage_identity()
+            .is_none_or(|storage| storage.kind != "local")
+            || !self.eligible(id, self.scope).await?
+        {
+            return Err(Fault::Forbidden);
+        }
         let bytes = body.map(|v| bytes::Bytes::from(v.to_string()));
         let response = self
             .sidecar
@@ -336,6 +340,44 @@ impl Backend for NativeBackend {
     }
 }
 
+/// Limit reception, not storage processing after the body is complete. Socket
+/// inactivity still bounds response work, as on the original dedicated server.
+fn request_body(body: Body, bound: Duration) -> (Body, Arc<std::sync::atomic::AtomicBool>) {
+    use http_body::Body as _;
+    let complete = Arc::new(std::sync::atomic::AtomicBool::new(body.is_end_stream()));
+    let finished = Arc::clone(&complete);
+    use futures_util::{stream, StreamExt};
+    let deadline = tokio::time::Instant::now() + bound;
+    let input = Box::pin(body.into_data_stream());
+    let timed = stream::unfold(
+        (input, deadline, false, finished),
+        |(mut input, deadline, done, finished)| async move {
+            if done {
+                return None;
+            }
+            match tokio::time::timeout_at(deadline, input.next()).await {
+                Ok(Some(Ok(bytes))) => Some((Ok(bytes), (input, deadline, false, finished))),
+                Ok(Some(Err(error))) => Some((
+                    Err(std::io::Error::other(error)),
+                    (input, deadline, true, finished),
+                )),
+                Ok(None) => {
+                    finished.store(true, std::sync::atomic::Ordering::Release);
+                    None
+                }
+                Err(_) => Some((
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "Request timed out",
+                    )),
+                    (input, deadline, true, finished),
+                )),
+            }
+        },
+    );
+    (Body::from_stream(timed), complete)
+}
+
 /// Exact Node bind fallback; per-user opt-in never changes where the port binds.
 pub fn bind_host(get: &impl Fn(&str) -> Option<String>) -> String {
     get("COWORK_DAV_HOST")
@@ -358,20 +400,20 @@ pub fn router(app: &Arc<App>, service: Arc<server_dav::DavService<NativeBackend>
                 {
                     return guard.deny_listener("file-sharing");
                 }
-                match tokio::time::timeout(
-                    Duration::from_secs(60),
-                    service.handle(request, conn.peer.ip()),
-                )
-                .await
-                {
-                    Ok(response) => response,
-                    Err(_) => Response::builder()
-                        .status(408)
-                        .header("cache-control", "no-store")
-                        .header("x-content-type-options", "nosniff")
-                        .body(Body::empty())
-                        .unwrap_or_else(|_| Response::new(Body::empty())),
+                let (parts, body) = request.into_parts();
+                let (body, complete) = request_body(body, Duration::from_secs(60));
+                let mut response = service
+                    .handle(Request::from_parts(parts, body), conn.peer.ip())
+                    .await;
+                // Do not drain an ignored/oversize request indefinitely after its
+                // response. Every retained connection has received its full body.
+                if !complete.load(std::sync::atomic::Ordering::Acquire) {
+                    response.headers_mut().insert(
+                        axum::http::header::CONNECTION,
+                        axum::http::HeaderValue::from_static("close"),
+                    );
                 }
+                response
             }
         },
     )
@@ -460,6 +502,10 @@ pub async fn start(
         tokio::net::TcpListener::bind((bind_host(&|k| std::env::var(k).ok()).as_str(), port))
             .await
             .map_err(|_| "DAV listener bind failed")?;
+    println!(
+        "Diary file sharing listener on port {port}; scope {}; per-user opt-in required",
+        scope.as_str()
+    );
     let router = router(app, service);
     Ok(Some(tokio::spawn(serve::serve_router_with_socket_timeout(
         listener,
@@ -474,4 +520,21 @@ pub async fn start(
             let _ = stop.wait_for(|s| *s).await;
         },
     ))))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn pending_request_body_expires_without_a_detached_receiver() {
+        let body = Body::from_stream(futures_util::stream::pending::<
+            Result<bytes::Bytes, std::io::Error>,
+        >());
+        let result = tokio::time::timeout(
+            Duration::from_secs(1),
+            axum::body::to_bytes(request_body(body, Duration::from_millis(10)).0, 1024),
+        )
+        .await;
+        assert!(matches!(result, Ok(Err(_))));
+    }
 }

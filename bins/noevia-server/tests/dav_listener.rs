@@ -274,8 +274,10 @@ async fn optin_scope_revocation_and_path_errors_never_reach_diary() {
         ("UPDATE dav_settings SET scope='off'", 403),
         ("UPDATE dav_settings SET scope='public'", 403),
         ("UPDATE user_features SET diary_enabled=0", 403),
+        ("INSERT INTO storage_connections(user_id,kind,updated_at) SELECT id,'webdav',1 FROM users",403),
         ("UPDATE users SET disabled_at=1", 401),
     ] {
+        r.db.execute("DELETE FROM storage_connections",[]).unwrap();
         r.db.execute("UPDATE dav_settings SET scope='lan'", [])
             .unwrap();
         r.db.execute("UPDATE user_features SET diary_enabled=1", [])
@@ -454,4 +456,71 @@ async fn first_partial_headers_use_header_deadline_not_keepalive_idle() {
         .await
         .unwrap()
         .unwrap();
+}
+
+#[tokio::test]
+async fn dedicated_router_refuses_code_network_before_authentication_or_diary() {
+    use tower::ServiceExt;
+    let r = Rig::new().await;
+    let config = noevia_server::config::Config::from_lookup(|key| match key {
+        "UI_DATA_DIR" => Some(r._dir.path().to_string_lossy().into()),
+        "NOEVIA_LEGACY_UPSTREAM" => Some("http://127.0.0.1:9".into()),
+        "COWORK_CODE_NET_ADDR" => Some("127.0.0.1".into()),
+        _ => None,
+    })
+    .unwrap();
+    let app = noevia_server::App::new(config);
+    let router = noevia_server::dav::router(&app, Arc::clone(&r.service));
+    let req = Request::builder()
+        .uri("/dav/alice/entry.md")
+        .extension(axum::extract::ConnectInfo(noevia_server::serve::Conn {
+            peer: "192.0.2.7:1234".parse().unwrap(),
+            local: Some("127.0.0.1:8031".parse().unwrap()),
+        }))
+        .body(Body::empty())
+        .unwrap();
+    let response = tokio::time::timeout(Duration::from_secs(5), router.oneshot(req))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(response.status(), 403);
+    assert!(r.calls.lock().unwrap().is_empty());
+    assert!(r
+        .db
+        .query_row("SELECT last_used_at FROM app_passwords", [], |row| row
+            .get::<_, Option<
+            i64,
+        >>(
+            0
+        ))
+        .unwrap()
+        .is_none());
+}
+
+#[tokio::test]
+async fn decoded_punctuation_paths_are_confined_and_href_encoded_like_the_original() {
+    let r = Rig::new().await;
+    r.files.lock().unwrap().clear();
+    r.files
+        .lock()
+        .unwrap()
+        .insert("a?#$,`.md".into(), "Synthetic".into());
+    assert_eq!(
+        r.call("GET", "/dav/alice/a%3F%23%24%2C%60.md", "", &[])
+            .await
+            .status(),
+        200
+    );
+    let response = r
+        .call("PROPFIND", "/dav/alice/", "", &[("depth", "1")])
+        .await;
+    assert_eq!(response.status(), 207);
+    let body = String::from_utf8(
+        to_bytes(response.into_body(), 2 * 1024 * 1024)
+            .await
+            .unwrap()
+            .to_vec(),
+    )
+    .unwrap();
+    assert!(body.contains("/dav/alice/a%3F%23%24%2C%60.md"));
 }

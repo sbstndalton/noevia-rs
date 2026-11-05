@@ -146,7 +146,7 @@ impl<B: Backend> DavService<B> {
             .await
         {
             Ok(Ok(bytes)) => bytes,
-            Ok(Err(_)) => return Err(bad(StatusCode::PAYLOAD_TOO_LARGE, "Request too large")),
+            Ok(Err(error)) => return Err(Box::new(body_error(error))),
             Err(_) => return Err(bad(StatusCode::REQUEST_TIMEOUT, "Request timed out")),
         };
         if std::str::from_utf8(&body).is_err() {

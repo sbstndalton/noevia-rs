@@ -1,6 +1,5 @@
-//! Source-only inbound Diary DAV contract. No production adapter or listener is shipped.
-//! A future adapter must prove tenant isolation, live revocation and symlink-safe
-//! Diary operations before this handler can be wired into an image.
+//! Inbound Diary DAV HTTP contract. The dedicated server adapter owns the
+//! listener and signs guarded Diary API calls for the verified account.
 #![forbid(unsafe_code)]
 
 mod operations;
@@ -148,12 +147,12 @@ pub enum Fault {
 }
 
 /// Every method receives an authenticated user, not an arbitrary tenant ID.
-/// The future production adapter must use server-auth::app_passwords::verify_dav,
+/// An adapter must use server-auth app-password verification and
 /// recheck credential/user/Diary/scope/local-storage on every allowed() call.
 /// Every list/read/write/mkdir implementation must ALSO enforce this live check
 /// at its own operation boundary (atomically with writes), so revocation between
 /// allowed() and a backend call cannot disclose or mutate data. list() must
-/// bound its result before allocation (at most 1024 direct children). Mutations
+/// bound its result before allocation with the existing response-byte cap. Mutations
 /// must route through Diary's guarded workspace operations. The adapter must
 /// refuse symlink traversal; this crate never opens a filesystem path.
 pub trait Backend: Send + Sync + 'static {
@@ -571,6 +570,22 @@ fn reply(status: StatusCode, body: &str, head: bool) -> Response<Body> {
     );
     response
 }
+fn body_error(error: axum::Error) -> Response<Body> {
+    let mut source: &(dyn std::error::Error + 'static) = &error;
+    loop {
+        if source
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|e| e.kind() == std::io::ErrorKind::TimedOut)
+        {
+            return reply(StatusCode::REQUEST_TIMEOUT, "Request timed out", false);
+        }
+        match source.source() {
+            Some(next) => source = next,
+            None => break,
+        }
+    }
+    reply(StatusCode::PAYLOAD_TOO_LARGE, "Request too large", false)
+}
 fn challenge() -> Response<Body> {
     let mut response = reply(
         StatusCode::UNAUTHORIZED,
@@ -657,9 +672,6 @@ impl<B: Backend> DavService<B> {
         }
         let parent = path.rsplit_once('/').map_or("", |(p, _)| p);
         let entries = self.call(self.backend.list(identity, parent)).await?;
-        if entries.len() > 1024 {
-            return Err(Fault::TooMany);
-        }
         if !entries.iter().all(|e| valid_entry(parent, e)) {
             return Err(Fault::Unavailable);
         }
@@ -841,7 +853,7 @@ impl<B: Backend> DavService<B> {
         }
         let bytes = match tokio::time::timeout(self.config.deadline, to_bytes(body, 8192)).await {
             Ok(Ok(b)) => b,
-            Ok(Err(_)) => return reply(StatusCode::PAYLOAD_TOO_LARGE, "Request too large", false),
+            Ok(Err(error)) => return body_error(error),
             Err(_) => {
                 return reply(
                     StatusCode::REQUEST_TIMEOUT,
@@ -1091,13 +1103,12 @@ impl<B: Backend> DavService<B> {
             Ok(_) => return reply(StatusCode::CONFLICT, "Parent folder does not exist", false),
             Err(f) => return fault_reply(f, true),
         }
-        let bytes = match tokio::time::timeout(self.config.deadline, to_bytes(body, 512 * 1024))
-            .await
-        {
-            Ok(Ok(b)) => b,
-            Ok(Err(_)) => return reply(StatusCode::PAYLOAD_TOO_LARGE, "Request too large", false),
-            Err(_) => return reply(StatusCode::REQUEST_TIMEOUT, "Request timed out", false),
-        };
+        let bytes =
+            match tokio::time::timeout(self.config.deadline, to_bytes(body, 512 * 1024)).await {
+                Ok(Ok(b)) => b,
+                Ok(Err(error)) => return body_error(error),
+                Err(_) => return reply(StatusCode::REQUEST_TIMEOUT, "Request timed out", false),
+            };
         let content = match std::str::from_utf8(&bytes) {
             Ok(s) => s,
             Err(_) => return reply(StatusCode::BAD_REQUEST, "UTF-8 text required", false),
@@ -1230,7 +1241,7 @@ impl<B: Backend> DavService<B> {
         }
         let bytes = match tokio::time::timeout(self.config.deadline, to_bytes(body, 8192)).await {
             Ok(Ok(b)) => b,
-            Ok(Err(_)) => return reply(StatusCode::PAYLOAD_TOO_LARGE, "Request too large", false),
+            Ok(Err(error)) => return body_error(error),
             Err(_) => return reply(StatusCode::REQUEST_TIMEOUT, "Request timed out", false),
         };
         if std::str::from_utf8(&bytes).is_err() {
@@ -1297,7 +1308,14 @@ fn valid_entry(parent: &str, entry: &Entry) -> bool {
     expected == parent
         && !entry.name.is_empty()
         && entry.path.rsplit('/').next() == Some(entry.name.as_str())
-        && parse_path(&format!("/dav/synthetic/{}", entry.path)).is_ok()
+        && entry.path.encode_utf16().count() <= 500
+        && entry.path.split('/').all(|segment| {
+            !segment.is_empty()
+                && !segment.starts_with('.')
+                && !segment
+                    .chars()
+                    .any(|c| matches!(c, '\\' | '%' | '\u{7f}') || (c as u32) <= 31)
+        })
 }
 fn propstat(status: &str, values: &str) -> String {
     if values.is_empty() {
@@ -1310,6 +1328,9 @@ const ENCODE: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
     .add(b' ')
     .add(b'"')
     .add(b'#')
+    .add(b'$')
+    .add(b',')
+    .add(b'`')
     .add(b'%')
     .add(b'&')
     .add(b'+')
