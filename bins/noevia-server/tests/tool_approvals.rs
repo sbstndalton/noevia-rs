@@ -26,9 +26,59 @@ const ORIGIN: &str = "http://127.0.0.1:18021";
 const STORE_TOKEN: &str = "synthetic-store-token-0123456789abcdef";
 const START: &str = "0123456789abcdef0123456789abcdef";
 const STRANGER: &str = "99999999-2222-4333-8444-555555555555";
-const PROTOCOL: &str = "registry-redeem-v2";
+const PROTOCOL: &str = "registry-executor-v3";
 
+#[derive(Default)]
+struct Node {
+    refuse: std::sync::atomic::AtomicBool,
+    block: std::sync::atomic::AtomicBool,
+    entered: tokio::sync::Notify,
+    release: tokio::sync::Notify,
+    calls: std::sync::atomic::AtomicUsize,
+}
+async fn node() -> (SocketAddr, Arc<Node>) {
+    let state = Arc::new(Node::default());
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let copy = Arc::clone(&state);
+    let router = axum::Router::new().route(
+        "/internal/approvals/revoke",
+        axum::routing::post(
+            move |headers: axum::http::HeaderMap, raw: axum::body::Bytes| {
+                let state = Arc::clone(&copy);
+                async move {
+                    let body: Value = serde_json::from_slice(&raw).unwrap();
+                    assert_eq!(headers.get("x-noevia-store-token").unwrap(), STORE_TOKEN);
+                    assert_eq!(body["protocol"], json!(PROTOCOL));
+                    assert!(body["user"].is_string());
+                    state
+                        .calls
+                        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    state.entered.notify_one();
+                    if state.block.load(std::sync::atomic::Ordering::SeqCst) {
+                        state.release.notified().await;
+                    }
+                    let status = if state.refuse.load(std::sync::atomic::Ordering::SeqCst) {
+                        axum::http::StatusCode::SERVICE_UNAVAILABLE
+                    } else {
+                        axum::http::StatusCode::OK
+                    };
+                    (
+                        status,
+                        [("content-type", "application/json")],
+                        json!({"acknowledged":true,"protocol":PROTOCOL}).to_string(),
+                    )
+                }
+            },
+        ),
+    );
+    tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    (addr, state)
+}
 struct Front {
+    node: Arc<Node>,
     _dir: tempfile::TempDir,
     data: PathBuf,
     addr: SocketAddr,
@@ -39,6 +89,10 @@ struct Front {
 }
 
 async fn front() -> Front {
+    front_with_node(true).await
+}
+async fn front_with_node(reachable: bool) -> Front {
+    let (node_addr, node) = node().await;
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().to_path_buf();
     let c = Connection::open(server_store::db_path(&data)).unwrap();
@@ -49,8 +103,15 @@ async fn front() -> Front {
     )
     .unwrap();
     let mut env: HashMap<&str, String> = HashMap::new();
-    // Nothing listens upstream: the decision route needs no Node any more.
-    env.insert("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".to_owned());
+    // Approval decisions stay native; completing revocations additionally require Node acknowledgement.
+    env.insert(
+        "NOEVIA_LEGACY_UPSTREAM",
+        if reachable {
+            format!("http://{node_addr}")
+        } else {
+            "http://127.0.0.1:9".to_owned()
+        },
+    );
     env.insert("UI_PORT", "1".into());
     env.insert("UI_DATA_DIR", data.display().to_string());
     env.insert("NOEVIA_WEB_DIST", data.join("dist").display().to_string());
@@ -120,6 +181,7 @@ async fn front() -> Front {
     )
     .unwrap();
     Front {
+        node,
         _dir: dir,
         data,
         addr,
@@ -581,7 +643,12 @@ async fn redeem_needs_a_ticket() {
 async fn a_grant_check_without_the_redeem_protocol_gets_no_grant() {
     let f = front().await;
     let (b, _) = f.ticket("ap-1", "qa-one").await;
-    for protocol in [Value::Null, json!("rust-approval-registry"), json!(1)] {
+    for protocol in [
+        Value::Null,
+        json!("rust-approval-registry"),
+        json!("registry-redeem-v2"),
+        json!(1),
+    ] {
         let mut body = json!({"user":f.user,"chat":"qa-one","scope":"space:free","binding":b});
         if !protocol.is_null() {
             body["protocol"] = protocol;
@@ -598,61 +665,85 @@ async fn a_grant_check_without_the_redeem_protocol_gets_no_grant() {
     );
 }
 
-/// Re-review 689d17a P1-1 (Astra's schedule, front side): a ticket is redeemed (Node will
-/// dispatch on that answer), and a revocation then starts. It does not complete until Node
-/// reports the write started, or the dispatch window after the redeem has passed, after which Node
-/// no longer dispatches. So once a revoke has returned, no write redeemed before it can start.
+/// Revocation success requires Node's epoch acknowledgement, in either redeem/revoke order.
 #[tokio::test]
-async fn a_revoke_completes_only_after_a_redeemed_write_started_or_its_window() {
-    let window = Duration::from_millis(2000);
-    let f = front().await;
-    // Node's revoke, Node reporting the write started 300 ms in: completes then.
-    let (b, t) = f.ticket("ap-1", "qa-one").await;
-    assert!(f.redeem("qa-one", &b, &t).await);
-    let begun = std::time::Instant::now();
-    let report = async {
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        f.op("approvals/started", json!({"user":f.user,"ticket":t}))
+async fn revocation_waits_for_node_and_orders_with_redeem() {
+    use std::sync::atomic::Ordering::SeqCst;
+    for redeem_first in [true, false] {
+        let f = front().await;
+        let (b, ticket) = f.ticket("ap-order", "qa-one").await;
+        if redeem_first {
+            assert!(f.redeem("qa-one", &b, &ticket).await);
+        }
+        f.node.block.store(true, SeqCst);
+        let revoking = f.op("approvals/revoke", json!({"user":f.user,"chat":"qa-one"}));
+        tokio::pin!(revoking);
+        tokio::select! { _ = &mut revoking => panic!("revoke returned before Node acknowledgement"), () = f.node.entered.notified() => {} }
+        assert!(
+            !f.redeem("qa-one", &b, &ticket).await,
+            "registry revocation already recorded"
+        );
+        f.node.release.notify_one();
+        assert_eq!(revoking.await.0, 200);
+    }
+}
+#[tokio::test]
+async fn unreachable_node_never_reports_success_and_retry_can_confirm() {
+    use std::sync::atomic::Ordering::SeqCst;
+    let f = front_with_node(false).await;
+    let (b, ticket) = f.ticket("ap-down", "qa-one").await;
+    assert_eq!(
+        f.op("approvals/revoke", json!({"user":f.user,"chat":"qa-one"}))
             .await
-    };
-    let (revoked, started) = tokio::join!(
-        f.op("approvals/revoke", json!({"user":f.user,"chat":"qa-one"})),
-        report
+            .0,
+        503
     );
-    assert_eq!(revoked.0, 200);
-    assert_eq!(started, (200, json!({"settled":true})));
-    let took = begun.elapsed();
     assert!(
-        took >= Duration::from_millis(300) && took < window,
-        "{took:?}"
+        !f.redeem("qa-one", &b, &ticket).await,
+        "revocation is recorded despite failed ack"
     );
-    // A failed public move with a redeemed write never reported: waits out the window.
-    let (b, t) = f.ticket("ap-2", "qa-two").await;
-    assert!(f.redeem("qa-two", &b, &t).await);
-    let redeemed = std::time::Instant::now();
-    assert_eq!(f.public("POST", "/api/chats/qa-two/move", "{}").await, 400);
-    assert!(redeemed.elapsed() >= window, "{:?}", redeemed.elapsed());
-    // Node's store delete, the same.
-    let (b, t) = f.ticket("ap-3", "qa-one").await;
-    assert!(f.redeem("qa-one", &b, &t).await);
-    let redeemed = std::time::Instant::now();
-    let (status, _) = f
-        .op(
+    for (method, path) in [
+        ("POST", "/api/chats/qa-one/move"),
+        ("DELETE", "/api/freechats/qa-one"),
+        ("DELETE", "/api/projects/qa-p"),
+    ] {
+        assert_eq!(f.public(method, path, "{}").await, 503, "{path}");
+    }
+    assert_eq!(
+        f.op(
             "chat/delete",
-            json!({"user":f.user,"chat":"qa-one","kind":"free"}),
+            json!({"user":f.user,"chat":"qa-one","kind":"free"})
         )
-        .await;
-    assert_eq!(status, 200);
-    let took = redeemed.elapsed();
-    assert!(
-        took >= window && took < window * 2 + Duration::from_millis(500),
-        "{took:?}"
+        .await
+        .0,
+        503
     );
-    // Nothing redeemed: a revoke answers at once.
-    let begun = std::time::Instant::now();
+    let f = front().await;
+    f.node.refuse.store(true, SeqCst);
+    assert_eq!(
+        f.op("approvals/revoke", json!({"user":f.user,"chat":"qa-one"}))
+            .await
+            .0,
+        503
+    );
+    f.node.refuse.store(false, SeqCst);
+    assert_eq!(
+        f.op("approvals/revoke", json!({"user":f.user,"chat":"qa-one"}))
+            .await
+            .0,
+        200
+    );
+}
+
+#[tokio::test]
+async fn missing_epoch_acknowledgement_times_out_fail_closed() {
+    use std::sync::atomic::Ordering::SeqCst;
+    let f = front().await;
+    f.node.block.store(true, SeqCst);
+    let started = std::time::Instant::now();
     let (status, _) = f
-        .op("approvals/revoke", json!({"user":f.user,"chat":"qa-two"}))
+        .op("approvals/revoke", json!({"user":f.user,"chat":"qa-one"}))
         .await;
-    assert_eq!(status, 200);
-    assert!(begun.elapsed() < Duration::from_millis(500));
+    assert_eq!(status, 503);
+    assert!(started.elapsed() < Duration::from_secs(4));
 }

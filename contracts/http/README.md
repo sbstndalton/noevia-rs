@@ -1854,17 +1854,30 @@ and Node together under a new start id. Core's marker is `server/rust-approval-r
 from `index.cjs`. Assembly and startup refuse mixed pairs, and old/old remains a valid rollback.
 This supersedes the earlier sections calling the public approval endpoint chat-bound; the pending state still is.
 
-`registry-redeem-v2` (re-reviews 1ed3a14 and 689d17a) is the grant protocol on top of it. A grant check
-(`granted`) answers with a single-use ticket that authorises nothing by itself; Node redeems it
-(`redeem`) just before dispatch, and the registry's lock orders that redeem against every revocation
-of the chat (Node's revoke, a public or store move or delete before and after the change, a failed
-move, a project delete). Node dispatches only within `window_ms` (2 s) of sending the redeem, by its
-own monotonic clock in the same synchronous step as the dispatch, and then reports `started`. A
-revocation completes only once every write redeemed in its chat before it was dispatched: settled, or
-`window_ms` past its redeem, which is later than Node's send. So once a revoke returns, no write
-starts for a ticket issued before it. A grant check or redeem that does not name the protocol gets no
-grant, and Core's marker is `REGISTRY_PROTOCOL = 'registry-redeem-v2'` in
-`server/rust-approval-registry.cjs`; assembly and startup refuse a pair where only one side has it.
+`registry-executor-v3` is the grant protocol. `granted` issues an expiring single-use ticket,
+`redeem` consumes it under the registry lock, and Node's executor checks its captured revocation
+epoch immediately before each outbound write. Credential loading, connection establishment and
+credential refresh happen before that final synchronous check-and-send block. This includes MCP
+`transport.callTool` and built-in Drive write fetches. The local 2 s fence expiry is extra defence;
+elapsed time and wrapper entry never acknowledge that a write was sent.
+
+Every completing revoke (store revoke, store move/delete, public move/delete before and after,
+including failed operations, and project delete) first revokes in the registry, then calls Node's
+private `POST /internal/approvals/revoke {user,chat,protocol}` with the shared per-start store token.
+Only a direct loopback request without client-forwarding headers is accepted. Node advances its
+epoch synchronously before returning `{acknowledged:true,protocol}`. Project deletion uses `chat:null`
+to invalidate the user's outstanding tickets conservatively, including tickets whose front grants
+have already disappeared. No success is returned without this acknowledgement (2 s bound).
+
+Node unreachable, timed out, wrong protocol or refusing: 503 `Approval revocation pending; retry`.
+The front revocation stays recorded. Node-originated revokes retain the existing pending-revoke
+backoff; public/store mutation callers can retry. If the second acknowledgement fails, a mutation
+may already have applied but its response is 503; no successful revocation is claimed. This is a
+fail-closed API deviation. The retired `started` op and front time drain are removed.
+
+A grant check/redeem without the exact protocol gets no grant. Assembly and startup require
+`REGISTRY_PROTOCOL = 'registry-executor-v3'` on Core and the matching front capability, rejecting
+v2/v3 pairs in both directions. Nothing survives restart; both processes restart together.
 
 
 GET only of `/api/models/autotune` belongs to `autotune_read_routes.rs`

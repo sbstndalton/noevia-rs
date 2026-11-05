@@ -18,6 +18,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct Config {
+    pub approval_revocation: crate::approval_revocation::Revoker,
     pub host: String,
     pub port: u16,
     pub trust_proxy: bool,
@@ -358,6 +359,10 @@ impl Config {
                     format!("http://{}", upstream.authority()),
                 )?,
             )?),
+            approval_revocation: crate::approval_revocation::Revoker::new(
+                format!("http://{}", upstream.authority()),
+                get("NOEVIA_PROJECT_STORE_TOKEN"),
+            ),
             upstream,
             dist: get("NOEVIA_WEB_DIST")
                 .filter(|d| !d.is_empty())

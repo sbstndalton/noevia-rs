@@ -104,19 +104,16 @@
 //! `POST /v1/approvals/granted { user, chat, scope, binding, protocol }` -> 200 `{ granted, ticket? }`
 //! `POST /v1/approvals/redeem { user, chat, scope, binding, ticket, protocol }`
 //!                                                  -> 200 `{ redeemed, protocol, window_ms }`
-//!   Capability `registry-redeem-v2`: `protocol` must be that string, or the answer is no grant
+//!   Capability `registry-executor-v3`: `protocol` must be that string, or the answer is no grant
 //!   (`code: "APPROVAL_PROTOCOL"`), so a Core from before tickets never reads a ticket as approval.
 //!   A grant answer authorises nothing by itself: Node redeems its single-use ticket just before
 //!   it dispatches the write, and the redeem succeeds only if no revocation of that chat (Node's,
 //!   a move, a delete, a failed move, anything) ordered before it under the registry's lock.
-//!   Node dispatches only within `window_ms` of SENDING the redeem (its monotonic clock, checked in
-//!   the same synchronous step as the dispatch); a later answer is not run.
-//! `POST /v1/approvals/started { user, ticket }`   -> 200 `{ settled }` Node's fire-and-forget
-//!   report that a redeemed write was dispatched (or never will be).
-//! `POST /v1/approvals/revoke { user, chat }`      -> 200 `{ revoked }`, answered only once every
-//!   write redeemed in that chat before it was dispatched: settled, or `window_ms` past its redeem
-//!   (at most window + 250 ms). Node's store move and delete, and the public move and deletes, revoke
-//!   the same way before and after the change.
+//!   The executor rechecks Node's revocation epoch immediately before its outbound write.
+//! `POST /v1/approvals/revoke { user, chat }` -> 200 `{ revoked }` only after authenticated Node
+//!   epoch acknowledgement; 503 on missing/refused/timed-out acknowledgement. Revocation is still
+//!   recorded; Node's pending-revoke backoff retries it. Mutations fence before and after as well.
+
 //!
 //! Errors use Node's shapes: 503 `{ error, code: "PROJECTS_BUSY" }` (the lock was held past its
 //! wait), 410 `account no longer exists`, 400 a bad request, 413 a body over the limit, 500 else.
@@ -677,9 +674,7 @@ pub fn router_with_app(
         app.as_ref().map(|a| a.config.maint.guard.clone()),
     ));
     // Port contract 2026-11-04 S9: the chat approval registry (approval_registry.rs).
-    for op in [
-        "open", "wait", "cancel", "granted", "redeem", "started", "revoke",
-    ] {
+    for op in ["open", "wait", "cancel", "granted", "redeem", "revoke"] {
         let (store, app) = (store.clone(), app.clone());
         router = router.route(
             &format!("/v1/approvals/{op}"),
@@ -841,13 +836,23 @@ async fn revoking_chat_change(
     });
     // Each revoke completes only once its chat is drained (re-review 689d17a P1-1).
     if let Some((user, chat)) = &target {
-        app.approvals.revoke_drained(user, chat).await;
+        if app.revoke_approvals(user, chat).await.is_err() {
+            return error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Approval revocation pending; retry",
+            );
+        }
     }
     let response = next
         .run(axum::http::Request::from_parts(parts, Body::from(bytes)))
         .await;
     if let Some((user, chat)) = &target {
-        app.approvals.revoke_drained(user, chat).await;
+        if app.revoke_approvals(user, chat).await.is_err() {
+            return error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Approval revocation pending; retry",
+            );
+        }
     }
     response
 }
@@ -945,25 +950,18 @@ async fn approvals_op(
             StatusCode::OK,
             &json!({"cancelled": app.approvals.cancel(&user, &id)}),
         ),
-        "started" => {
-            let Ok(Some(ticket)) = text("ticket") else {
-                return error(StatusCode::BAD_REQUEST, "ticket required");
-            };
-            reply(
-                StatusCode::OK,
-                &json!({"settled": app.approvals.settle(&user, &ticket)}),
-            )
-        }
         "granted" | "revoke" | "redeem" => {
             let (Ok(Some(chat)), Ok(scope)) = (text("chat"), text("scope")) else {
                 return error(StatusCode::BAD_REQUEST, "chat required");
             };
             if op == "revoke" {
-                // Answered only once no write redeemed before it can still start.
-                return reply(
-                    StatusCode::OK,
-                    &json!({"revoked": app.approvals.revoke_drained(&user, &chat).await}),
-                );
+                return match app.revoke_approvals(&user, &chat).await {
+                    Ok(revoked) => reply(StatusCode::OK, &json!({"revoked":revoked})),
+                    Err(_) => error(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Approval revocation pending; retry",
+                    ),
+                };
             }
             // Re-review 689d17a P1-2: a caller that does not name the redeem protocol (a Core from
             // before tickets, which would read a ticketed answer as plain approval) gets no grant.

@@ -782,17 +782,26 @@ pub async fn serve(
     // (the registry also refuses any grant whose live context changed).
     // Re-review 1ed3a14: before the change as well as after, whatever its outcome, so every grant
     // redeem orders strictly before or after it at the registry's lock.
-    // Re-review 689d17a P1-1: each revocation completes only once no write redeemed before it can
-    // still be dispatched (approval_registry.rs `drain`), so the change itself also runs after them.
+    // Completion requires Node to acknowledge its executor epoch advance before the mutation.
     let revoke_grant = match &route {
         Route::MoveChat { chat }
         | Route::DeleteFreeChat { chat }
         | Route::DeleteChat { chat, .. } => {
-            app.approvals.revoke_drained(&user, chat).await;
+            if app.revoke_approvals(&user, chat).await.is_err() {
+                return error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Approval revocation pending; retry",
+                );
+            }
             Some((Arc::clone(app), user.clone(), Some(chat.clone()), None))
         }
         Route::DeleteProject { project } => {
-            app.approvals.revoke_project_drained(&user, project).await;
+            if app.revoke_project_approvals(&user, project).await.is_err() {
+                return error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Approval revocation pending; retry",
+                );
+            }
             Some((Arc::clone(app), user.clone(), None, Some(project.clone())))
         }
         _ => None,
@@ -1023,10 +1032,20 @@ pub async fn serve(
     .await;
     match revoke_grant {
         Some((app, user, Some(chat), _)) => {
-            app.approvals.revoke_drained(&user, &chat).await;
+            if app.revoke_approvals(&user, &chat).await.is_err() {
+                return error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Approval revocation pending; retry",
+                );
+            }
         }
         Some((app, user, None, Some(project))) => {
-            app.approvals.revoke_project_drained(&user, &project).await;
+            if app.revoke_project_approvals(&user, &project).await.is_err() {
+                return error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Approval revocation pending; retry",
+                );
+            }
         }
         _ => {}
     }

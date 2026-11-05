@@ -5,6 +5,7 @@
 pub mod account_routes;
 pub mod admin_user_routes;
 pub mod approval_registry;
+pub mod approval_revocation;
 pub mod auto_roles_routes;
 pub mod autotune_cancel_routes;
 pub mod autotune_clear_routes;
@@ -377,7 +378,7 @@ pub const FEATURES: &[&str] = &[
     "rust-approval-registry",
     // Re-reviews 1ed3a14/689d17a: single-use grant tickets redeemed at dispatch, revocations that
     // drain redeemed writes; Core names it (approval_registry.rs PROTOCOL).
-    "registry-redeem-v2",
+    "registry-executor-v3",
     server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER,
     "rust-auth",
     "rust-diary",
