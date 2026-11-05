@@ -38,6 +38,7 @@ pub enum Error {
     Cancelled,
     Unavailable,
     Protocol,
+    NoSession,
     Remote(RpcError),
     HandshakeTimeout,
 }
@@ -203,7 +204,7 @@ impl Client {
         let session = self.request("session/new", obj(params)).await?;
         self.session = session.get("sessionId").clone();
         if !self.session.truthy() {
-            return Err(Error::Protocol);
+            return Err(Error::NoSession);
         }
         Ok(())
     }

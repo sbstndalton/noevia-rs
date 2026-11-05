@@ -1,0 +1,727 @@
+{
+  "cases": [
+    {
+      "mode": "happy",
+      "events": [
+        {
+          "type": "checkpoint.created",
+          "data": {
+            "branch": "noevia/task-11111111-1111-4111-8111-111111111111",
+            "task": "synthetic task",
+            "baseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        },
+        {
+          "type": "step.started",
+          "data": {
+            "id": "harness.config",
+            "title": "Pin the harness configuration"
+          }
+        },
+        {
+          "type": "step.completed",
+          "data": {
+            "id": "harness.config",
+            "file": "opencode.json",
+            "files": [
+              "./opencode.json"
+            ],
+            "permission": {
+              "edit": "ask",
+              "bash": "ask",
+              "webfetch": "ask"
+            },
+            "model": "local/synthetic",
+            "endpoint": "http://engine.invalid/v1"
+          }
+        },
+        {
+          "type": "progress",
+          "data": {
+            "stage": "running"
+          }
+        },
+        {
+          "type": "progress",
+          "data": {
+            "stage": "writing"
+          }
+        },
+        {
+          "type": "assistant.output",
+          "data": {
+            "text": "hello",
+            "truncated": false
+          }
+        },
+        {
+          "type": "checkpoint.created",
+          "data": {
+            "branch": "noevia/task-11111111-1111-4111-8111-111111111111",
+            "task": "synthetic task",
+            "identityHash": "7e3b143e141b04c961e747509447eeacd19dab8b577648edbc8d0b6a992f72cc",
+            "identity": {
+              "backend": "acp",
+              "harness": "synthetic-agent",
+              "harnessVersion": "1",
+              "model": "synthetic",
+              "provider": null,
+              "protocolVersion": 1,
+              "capabilities": [
+                "edit_file",
+                "read_repository"
+              ],
+              "promptPreparation": "direct",
+              "sandbox": "sandbox"
+            },
+            "meta": {
+              "harness": "synthetic-agent",
+              "harnessVersion": "1",
+              "protocolVersion": 1,
+              "usage": {
+                "input": 3,
+                "output": 4,
+                "total": 7
+              },
+              "context": null,
+              "commands": 0,
+              "failedCommands": 0,
+              "exitCodes": [],
+              "messageChunks": 1,
+              "limitations": [
+                "No command exit codes were reported."
+              ]
+            },
+            "baseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        },
+        {
+          "type": "checkpoint.created",
+          "data": {
+            "branch": "noevia/task-11111111-1111-4111-8111-111111111111",
+            "task": "synthetic task",
+            "identityHash": "7e3b143e141b04c961e747509447eeacd19dab8b577648edbc8d0b6a992f72cc",
+            "identity": {
+              "backend": "acp",
+              "harness": "synthetic-agent",
+              "harnessVersion": "1",
+              "model": "synthetic",
+              "provider": null,
+              "protocolVersion": 1,
+              "capabilities": [
+                "edit_file",
+                "read_repository"
+              ],
+              "promptPreparation": "direct",
+              "sandbox": "sandbox"
+            },
+            "meta": {
+              "harness": "synthetic-agent",
+              "harnessVersion": "1",
+              "protocolVersion": 1,
+              "usage": {
+                "input": 3,
+                "output": 4,
+                "total": 7
+              },
+              "context": null,
+              "commands": 0,
+              "failedCommands": 0,
+              "exitCodes": [],
+              "messageChunks": 1,
+              "limitations": [
+                "No command exit codes were reported."
+              ]
+            },
+            "baseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      ],
+      "result": {
+        "stopReason": "end_turn",
+        "branch": "noevia/task-11111111-1111-4111-8111-111111111111",
+        "identityHash": "7e3b143e141b04c961e747509447eeacd19dab8b577648edbc8d0b6a992f72cc",
+        "meta": {
+          "harness": "synthetic-agent",
+          "harnessVersion": "1",
+          "protocolVersion": 1,
+          "usage": {
+            "input": 3,
+            "output": 4,
+            "total": 7
+          },
+          "context": null,
+          "commands": 0,
+          "failedCommands": 0,
+          "exitCodes": [],
+          "messageChunks": 1,
+          "limitations": [
+            "No command exit codes were reported."
+          ]
+        },
+        "tools": 0,
+        "approvals": 0,
+        "allowed": 0,
+        "refused": 0,
+        "denied": 0,
+        "workspace": "/synthetic/tree"
+      },
+      "error": null,
+      "cleaned": 1,
+      "prompt": "Reference context\n\nTask:\nsynthetic task",
+      "answers": []
+    },
+    {
+      "mode": "bad_json_then_reply",
+      "events": [
+        {
+          "type": "checkpoint.created",
+          "data": {
+            "branch": "noevia/task-11111111-1111-4111-8111-111111111111",
+            "task": "synthetic task",
+            "baseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        },
+        {
+          "type": "step.started",
+          "data": {
+            "id": "harness.config",
+            "title": "Pin the harness configuration"
+          }
+        },
+        {
+          "type": "step.completed",
+          "data": {
+            "id": "harness.config",
+            "file": "opencode.json",
+            "files": [
+              "./opencode.json"
+            ],
+            "permission": {
+              "edit": "ask",
+              "bash": "ask",
+              "webfetch": "ask"
+            },
+            "model": "local/synthetic",
+            "endpoint": "http://engine.invalid/v1"
+          }
+        },
+        {
+          "type": "progress",
+          "data": {
+            "stage": "running"
+          }
+        },
+        {
+          "type": "progress",
+          "data": {
+            "stage": "writing"
+          }
+        },
+        {
+          "type": "assistant.output",
+          "data": {
+            "text": "hello",
+            "truncated": false
+          }
+        },
+        {
+          "type": "checkpoint.created",
+          "data": {
+            "branch": "noevia/task-11111111-1111-4111-8111-111111111111",
+            "task": "synthetic task",
+            "identityHash": "7e3b143e141b04c961e747509447eeacd19dab8b577648edbc8d0b6a992f72cc",
+            "identity": {
+              "backend": "acp",
+              "harness": "synthetic-agent",
+              "harnessVersion": "1",
+              "model": "synthetic",
+              "provider": null,
+              "protocolVersion": 1,
+              "capabilities": [
+                "edit_file",
+                "read_repository"
+              ],
+              "promptPreparation": "direct",
+              "sandbox": "sandbox"
+            },
+            "meta": {
+              "harness": "synthetic-agent",
+              "harnessVersion": "1",
+              "protocolVersion": 1,
+              "usage": {
+                "input": 3,
+                "output": 4,
+                "total": 7
+              },
+              "context": null,
+              "commands": 0,
+              "failedCommands": 0,
+              "exitCodes": [],
+              "messageChunks": 1,
+              "limitations": [
+                "No command exit codes were reported."
+              ]
+            },
+            "baseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        },
+        {
+          "type": "checkpoint.created",
+          "data": {
+            "branch": "noevia/task-11111111-1111-4111-8111-111111111111",
+            "task": "synthetic task",
+            "identityHash": "7e3b143e141b04c961e747509447eeacd19dab8b577648edbc8d0b6a992f72cc",
+            "identity": {
+              "backend": "acp",
+              "harness": "synthetic-agent",
+              "harnessVersion": "1",
+              "model": "synthetic",
+              "provider": null,
+              "protocolVersion": 1,
+              "capabilities": [
+                "edit_file",
+                "read_repository"
+              ],
+              "promptPreparation": "direct",
+              "sandbox": "sandbox"
+            },
+            "meta": {
+              "harness": "synthetic-agent",
+              "harnessVersion": "1",
+              "protocolVersion": 1,
+              "usage": {
+                "input": 3,
+                "output": 4,
+                "total": 7
+              },
+              "context": null,
+              "commands": 0,
+              "failedCommands": 0,
+              "exitCodes": [],
+              "messageChunks": 1,
+              "limitations": [
+                "No command exit codes were reported."
+              ]
+            },
+            "baseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      ],
+      "result": {
+        "stopReason": "end_turn",
+        "branch": "noevia/task-11111111-1111-4111-8111-111111111111",
+        "identityHash": "7e3b143e141b04c961e747509447eeacd19dab8b577648edbc8d0b6a992f72cc",
+        "meta": {
+          "harness": "synthetic-agent",
+          "harnessVersion": "1",
+          "protocolVersion": 1,
+          "usage": {
+            "input": 3,
+            "output": 4,
+            "total": 7
+          },
+          "context": null,
+          "commands": 0,
+          "failedCommands": 0,
+          "exitCodes": [],
+          "messageChunks": 1,
+          "limitations": [
+            "No command exit codes were reported."
+          ]
+        },
+        "tools": 0,
+        "approvals": 0,
+        "allowed": 0,
+        "refused": 0,
+        "denied": 0,
+        "workspace": "/synthetic/tree"
+      },
+      "error": null,
+      "cleaned": 1,
+      "prompt": "Reference context\n\nTask:\nsynthetic task",
+      "answers": []
+    },
+    {
+      "mode": "missing_session",
+      "events": [
+        {
+          "type": "checkpoint.created",
+          "data": {
+            "branch": "noevia/task-11111111-1111-4111-8111-111111111111",
+            "task": "synthetic task",
+            "baseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        },
+        {
+          "type": "step.started",
+          "data": {
+            "id": "harness.config",
+            "title": "Pin the harness configuration"
+          }
+        },
+        {
+          "type": "step.completed",
+          "data": {
+            "id": "harness.config",
+            "file": "opencode.json",
+            "files": [
+              "./opencode.json"
+            ],
+            "permission": {
+              "edit": "ask",
+              "bash": "ask",
+              "webfetch": "ask"
+            },
+            "model": "local/synthetic",
+            "endpoint": "http://engine.invalid/v1"
+          }
+        }
+      ],
+      "result": null,
+      "error": {
+        "error": "The coding harness did not open a session.",
+        "result": null
+      },
+      "cleaned": 1,
+      "prompt": null,
+      "answers": []
+    },
+    {
+      "mode": "closed_prompt",
+      "events": [
+        {
+          "type": "checkpoint.created",
+          "data": {
+            "branch": "noevia/task-11111111-1111-4111-8111-111111111111",
+            "task": "synthetic task",
+            "baseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        },
+        {
+          "type": "step.started",
+          "data": {
+            "id": "harness.config",
+            "title": "Pin the harness configuration"
+          }
+        },
+        {
+          "type": "step.completed",
+          "data": {
+            "id": "harness.config",
+            "file": "opencode.json",
+            "files": [
+              "./opencode.json"
+            ],
+            "permission": {
+              "edit": "ask",
+              "bash": "ask",
+              "webfetch": "ask"
+            },
+            "model": "local/synthetic",
+            "endpoint": "http://engine.invalid/v1"
+          }
+        },
+        {
+          "type": "progress",
+          "data": {
+            "stage": "running"
+          }
+        }
+      ],
+      "result": null,
+      "error": {
+        "error": "The coding harness stopped unexpectedly.",
+        "result": null
+      },
+      "cleaned": 1,
+      "prompt": "Reference context\n\nTask:\nsynthetic task",
+      "answers": []
+    },
+    {
+      "mode": "remote_error",
+      "events": [
+        {
+          "type": "checkpoint.created",
+          "data": {
+            "branch": "noevia/task-11111111-1111-4111-8111-111111111111",
+            "task": "synthetic task",
+            "baseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        },
+        {
+          "type": "step.started",
+          "data": {
+            "id": "harness.config",
+            "title": "Pin the harness configuration"
+          }
+        },
+        {
+          "type": "step.completed",
+          "data": {
+            "id": "harness.config",
+            "file": "opencode.json",
+            "files": [
+              "./opencode.json"
+            ],
+            "permission": {
+              "edit": "ask",
+              "bash": "ask",
+              "webfetch": "ask"
+            },
+            "model": "local/synthetic",
+            "endpoint": "http://engine.invalid/v1"
+          }
+        },
+        {
+          "type": "progress",
+          "data": {
+            "stage": "running"
+          }
+        }
+      ],
+      "result": null,
+      "error": {
+        "error": "synthetic engine refused",
+        "result": null
+      },
+      "cleaned": 1,
+      "prompt": "Reference context\n\nTask:\nsynthetic task",
+      "answers": []
+    },
+    {
+      "mode": "guarded_malformed",
+      "events": [
+        {
+          "type": "checkpoint.created",
+          "data": {
+            "branch": "noevia/task-11111111-1111-4111-8111-111111111111",
+            "task": "synthetic task",
+            "baseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        },
+        {
+          "type": "step.started",
+          "data": {
+            "id": "harness.config",
+            "title": "Pin the harness configuration"
+          }
+        },
+        {
+          "type": "step.completed",
+          "data": {
+            "id": "harness.config",
+            "file": "opencode.json",
+            "files": [
+              "./opencode.json"
+            ],
+            "permission": {
+              "edit": "ask",
+              "bash": "ask",
+              "webfetch": "ask"
+            },
+            "model": "local/synthetic",
+            "endpoint": "http://engine.invalid/v1"
+          }
+        },
+        {
+          "type": "progress",
+          "data": {
+            "stage": "running"
+          }
+        },
+        {
+          "type": "approval.decided",
+          "data": {
+            "decision": "denied",
+            "action": "external_account",
+            "automatic": true,
+            "reason": "noevia refused this malformed tool call (violation 1 of 3). Correct the arguments and call the tool again. Type mismatch at $: expected object. Use one of the ACP tool kinds: read, edit, delete, move, search, execute, think, fetch, switch_mode, other.",
+            "violation": {
+              "type": "schema_violation_correction",
+              "violation": {
+                "message": "Type mismatch at $: expected object",
+                "path": "$"
+              },
+              "tool": "session/request_permission",
+              "kind": null,
+              "hint": "Use one of the ACP tool kinds: read, edit, delete, move, search, execute, think, fetch, switch_mode, other.",
+              "count": 1,
+              "limit": 3,
+              "blocked": false
+            }
+          }
+        },
+        {
+          "type": "approval.decided",
+          "data": {
+            "decision": "denied",
+            "action": "execute_command",
+            "automatic": true,
+            "reason": "noevia refused this malformed tool call (violation 2 of 3). Correct the arguments and call the tool again. Missing command at $.rawInput.command. Send the shell command as one non-empty string in rawInput.command.",
+            "violation": {
+              "type": "schema_violation_correction",
+              "violation": {
+                "message": "Missing command at $.rawInput.command",
+                "path": "$.rawInput.command"
+              },
+              "tool": "session/request_permission",
+              "kind": "execute",
+              "hint": "Send the shell command as one non-empty string in rawInput.command.",
+              "count": 2,
+              "limit": 3,
+              "blocked": false
+            }
+          }
+        },
+        {
+          "type": "approval.decided",
+          "data": {
+            "decision": "denied",
+            "action": "edit_file",
+            "automatic": true,
+            "reason": "noevia refused this malformed tool call and stopped the task (violation 3 of 3). A edit names no file: missing $.locations[].path. Name the file to change as a non-empty string in locations[].path (or rawInput.path).",
+            "violation": {
+              "type": "schema_violation_correction",
+              "violation": {
+                "message": "A edit names no file: missing $.locations[].path",
+                "path": "$.locations"
+              },
+              "tool": "session/request_permission",
+              "kind": "edit",
+              "hint": "Name the file to change as a non-empty string in locations[].path (or rawInput.path).",
+              "count": 3,
+              "limit": 3,
+              "blocked": true
+            }
+          }
+        },
+        {
+          "type": "step.started",
+          "data": {
+            "id": "executor.guard",
+            "title": "Tool-call guard"
+          }
+        },
+        {
+          "type": "step.completed",
+          "data": {
+            "id": "executor.guard",
+            "failed": true,
+            "blocked": true,
+            "violations": 3,
+            "error": "Stopped after 3 malformed tool calls."
+          }
+        }
+      ],
+      "result": null,
+      "error": {
+        "error": "Blocked: the coding agent sent 3 malformed tool calls, so the task was stopped.",
+        "result": {
+          "blocked": true,
+          "reason": "executor_guard",
+          "violations": [
+            {
+              "tool": "session/request_permission",
+              "kind": null,
+              "path": "$",
+              "message": "Type mismatch at $: expected object"
+            },
+            {
+              "tool": "session/request_permission",
+              "kind": "execute",
+              "path": "$.rawInput.command",
+              "message": "Missing command at $.rawInput.command"
+            },
+            {
+              "tool": "session/request_permission",
+              "kind": "edit",
+              "path": "$.locations",
+              "message": "A edit names no file: missing $.locations[].path"
+            }
+          ]
+        }
+      },
+      "cleaned": 1,
+      "prompt": "Reference context\n\nTask:\nsynthetic task",
+      "answers": [
+        {
+          "outcome": {
+            "outcome": "selected",
+            "optionId": "reject",
+            "_meta": {
+              "noevia": {
+                "reason": "noevia refused this malformed tool call (violation 1 of 3). Correct the arguments and call the tool again. Type mismatch at $: expected object. Use one of the ACP tool kinds: read, edit, delete, move, search, execute, think, fetch, switch_mode, other.",
+                "violation": {
+                  "type": "schema_violation_correction",
+                  "violation": {
+                    "message": "Type mismatch at $: expected object",
+                    "path": "$"
+                  },
+                  "tool": "session/request_permission",
+                  "kind": null,
+                  "hint": "Use one of the ACP tool kinds: read, edit, delete, move, search, execute, think, fetch, switch_mode, other.",
+                  "count": 1,
+                  "limit": 3,
+                  "blocked": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "outcome": {
+            "outcome": "selected",
+            "optionId": "reject",
+            "_meta": {
+              "noevia": {
+                "reason": "noevia refused this malformed tool call (violation 2 of 3). Correct the arguments and call the tool again. Missing command at $.rawInput.command. Send the shell command as one non-empty string in rawInput.command.",
+                "violation": {
+                  "type": "schema_violation_correction",
+                  "violation": {
+                    "message": "Missing command at $.rawInput.command",
+                    "path": "$.rawInput.command"
+                  },
+                  "tool": "session/request_permission",
+                  "kind": "execute",
+                  "hint": "Send the shell command as one non-empty string in rawInput.command.",
+                  "count": 2,
+                  "limit": 3,
+                  "blocked": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "outcome": {
+            "outcome": "selected",
+            "optionId": "reject",
+            "_meta": {
+              "noevia": {
+                "reason": "noevia refused this malformed tool call and stopped the task (violation 3 of 3). A edit names no file: missing $.locations[].path. Name the file to change as a non-empty string in locations[].path (or rawInput.path).",
+                "violation": {
+                  "type": "schema_violation_correction",
+                  "violation": {
+                    "message": "A edit names no file: missing $.locations[].path",
+                    "path": "$.locations"
+                  },
+                  "tool": "session/request_permission",
+                  "kind": "edit",
+                  "hint": "Name the file to change as a non-empty string in locations[].path (or rawInput.path).",
+                  "count": 3,
+                  "limit": 3,
+                  "blocked": true
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

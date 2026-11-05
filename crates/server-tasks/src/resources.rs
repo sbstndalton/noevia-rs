@@ -141,6 +141,16 @@ impl Resources {
         }
         Ok(())
     }
+    pub fn proxy_endpoint(&self) -> &str {
+        self.egress
+            .as_ref()
+            .map(|e| e.endpoint())
+            .filter(|s| !s.is_empty())
+            .unwrap_or("egress")
+    }
+    pub fn released(&self) -> Option<&Released> {
+        self.released.as_ref()
+    }
     pub fn grant(&self) -> Option<&Grant> {
         self.grant.as_ref()
     }

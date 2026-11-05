@@ -5,6 +5,7 @@ pub mod acp;
 pub mod code;
 pub mod context;
 pub mod egress;
+pub mod execution;
 pub mod facts;
 pub mod files;
 pub mod git;

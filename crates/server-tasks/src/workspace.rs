@@ -699,6 +699,20 @@ impl Store {
         }
         None
     }
+    pub fn head_sha(&self, id: &str, cancelled: &AtomicBool) -> Option<String> {
+        let _transaction = TRANSACTION.lock().ok()?;
+        let record = self.read(id).ok()??;
+        if record.get("status").as_str() != Some("held") || record.get("owner").truthy() {
+            return None;
+        }
+        self.safe(
+            Path::new(record.get("path").as_str()?),
+            &["rev-parse", "HEAD"],
+            cancelled,
+        )
+        .ok()
+        .filter(|s| !s.is_empty())
+    }
     pub fn branch_head(&self, record: &JValue, cancelled: &AtomicBool) -> Option<String> {
         let branch = record.get("branch").as_str()?;
         if !valid_branch(branch) {
@@ -1242,5 +1256,30 @@ mod tests {
             ]),
             vec!["a/b.json"]
         );
+    }
+    #[test]
+    fn live_head_is_never_read_from_a_harness_owned_tree() {
+        let root = tempfile::tempdir().unwrap();
+        let (repo, config) = init(root.path());
+        let store = Store::open(root.path(), USER, &config, "epoch".into()).unwrap();
+        let cancelled = AtomicBool::new(false);
+        let record = store
+            .claim(TASK, &repo, None, &[], &[], &[], 1, &cancelled)
+            .unwrap();
+        assert_eq!(store.head_sha(TASK, &cancelled), None);
+        let mut workstation = record.clone();
+        set(&mut workstation, "owner", JValue::Null);
+        store.write(&workstation).unwrap();
+        assert_eq!(
+            store.head_sha(TASK, &cancelled).as_deref(),
+            record.get("baseSha").as_str()
+        );
+        store.write(&record).unwrap();
+        let tree = PathBuf::from(record.get("path").as_str().unwrap());
+        let secret = root.path().join("synthetic-other-tenant");
+        fs::write(&secret, format!("{}\n", "b".repeat(40))).unwrap();
+        fs::remove_file(tree.join(".git/HEAD")).unwrap();
+        std::os::unix::fs::symlink(&secret, tree.join(".git/HEAD")).unwrap();
+        assert_eq!(store.head_sha(TASK, &cancelled), None);
     }
 }

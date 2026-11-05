@@ -69,7 +69,7 @@ impl Failure {
                 "Code request failed"
             })
     }
-    fn recorded(&self) -> String {
+    pub(crate) fn recorded(&self) -> String {
         wtf16::slice(self.public_message.as_deref().unwrap_or(&self.message), 500)
     }
 }
