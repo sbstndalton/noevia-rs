@@ -56,6 +56,9 @@ impl JournalContext {
             timeout,
         })
     }
+    pub(crate) fn account(&self) -> &Arc<Account> {
+        &self.account
+    }
     pub fn scope(&self) -> &Scope {
         &self.guard.execution.scope
     }
