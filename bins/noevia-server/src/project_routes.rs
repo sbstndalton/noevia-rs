@@ -788,18 +788,20 @@ pub async fn serve(
         | Route::DeleteFreeChat { chat }
         | Route::DeleteChat { chat, .. } => {
             if app.revoke_approvals(&user, chat).await.is_err() {
-                return error(
+                return reply::error(
                     StatusCode::SERVICE_UNAVAILABLE,
                     "Approval revocation pending; retry",
+                    true,
                 );
             }
             Some((Arc::clone(app), user.clone(), Some(chat.clone()), None))
         }
         Route::DeleteProject { project } => {
             if app.revoke_project_approvals(&user, project).await.is_err() {
-                return error(
+                return reply::error(
                     StatusCode::SERVICE_UNAVAILABLE,
                     "Approval revocation pending; retry",
+                    true,
                 );
             }
             Some((Arc::clone(app), user.clone(), None, Some(project.clone())))
@@ -1033,17 +1035,19 @@ pub async fn serve(
     match revoke_grant {
         Some((app, user, Some(chat), _)) => {
             if app.revoke_approvals(&user, &chat).await.is_err() {
-                return error(
+                return reply::error(
                     StatusCode::SERVICE_UNAVAILABLE,
                     "Approval revocation pending; retry",
+                    true,
                 );
             }
         }
         Some((app, user, None, Some(project))) => {
             if app.revoke_project_approvals(&user, &project).await.is_err() {
-                return error(
+                return reply::error(
                     StatusCode::SERVICE_UNAVAILABLE,
                     "Approval revocation pending; retry",
+                    true,
                 );
             }
         }
