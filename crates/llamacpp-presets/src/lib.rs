@@ -32,11 +32,12 @@ use std::cmp::Ordering;
 
 pub mod read;
 
-/// The largest request [`call`] accepts (the op byte and the JSON): a models.ini inside the editor
+/// The largest request [`call`] accepts (the op byte and the JSON). A models.ini inside the editor
 /// limit ([`read::MAX_TEXT_BYTES`], 1 MiB) written as JSON is at most six bytes a byte (`\u0000`),
-/// 6 MiB, plus the model name and the envelope. The limit itself is the parser's alone; this bound
-/// must never refuse a file the parser accepts.
-pub const MAX_INPUT_BYTES: usize = 7 * 1024 * 1024 + 1;
+/// 6 MiB; a read's model name is bounded by nothing but the file (a section name cannot be longer
+/// than the file holding it), so it is up to 6 MiB more, plus the envelope. The limit itself is the
+/// parser's alone; this bound must never refuse a request the parser would answer.
+pub const MAX_INPUT_BYTES: usize = 12 * 1024 * 1024 + 64 * 1024 + 1;
 /// Work units a request may use per byte of its size (plus [`WORK_FLOOR`]).
 pub const WORK_PER_BYTE: u64 = 16;
 /// Work units every request may use, whatever its size.
@@ -47,7 +48,7 @@ pub const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
 const JSON_CAP: usize = 4;
 
 // The request bound covers the editor limit at its widest escaping, with room for a model name.
-const _: () = assert!(MAX_INPUT_BYTES > 6 * read::MAX_TEXT_BYTES + 512 * 1024);
+const _: () = assert!(MAX_INPUT_BYTES > 12 * read::MAX_TEXT_BYTES + 32 * 1024);
 
 /// Why the port gives no answer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -637,7 +638,11 @@ fn run(op: u8, args: &[Value], work: &mut Work) -> R<Vec<u8>> {
                 (6, [t, m]) => (string(t)?, Some(string(m)?)),
                 _ => return Err(Refusal::Input),
             };
-            work.charge(text.len().saturating_mul(4))?;
+            work.charge(
+                text.len()
+                    .saturating_add(model.map_or(0, <[u16]>::len))
+                    .saturating_mul(4),
+            )?;
             read_reply(&mut out, text, model);
         }
         _ => return Err(Refusal::Input),
@@ -896,6 +901,16 @@ mod tests {
         let mut facts = vec![6u8];
         facts.extend(format!("[\"{nuls}\",\"m\"]").as_bytes());
         assert_eq!(call(&facts).0, 0);
+        // The widest file and the widest name at once: a section named by 1 MiB less its brackets.
+        let name = "\\u0000".repeat(read::MAX_TEXT_BYTES - 16);
+        let file = format!("[{name}]\\nc=4096\\n");
+        let mut both = vec![6u8];
+        both.extend(format!("[\"{file}\",\"{name}\"]").as_bytes());
+        assert!(both.len() > 12 * read::MAX_TEXT_BYTES - 1024);
+        let (status, out) = call(&both);
+        let out = String::from_utf8(out).unwrap();
+        assert_eq!(status, 0, "{}", &out[..out.len().min(80)]);
+        assert!(out.contains(r#""exists":true,"options":[["ctx-size","4096"]]"#), "{}", &out[..80]);
     }
 
     #[test]
