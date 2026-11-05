@@ -48,12 +48,13 @@ struct User {
 }
 impl Writer {
     fn user(&self, id: &str) -> Arc<User> {
-        self.0
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .entry(id.to_owned())
-            .or_default()
-            .clone()
+        let mut users = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        // Lookups and reclamation share this mutex. A count of one means there
+        // is no caller that can still read, stage, or publish with this fence.
+        // Cloning the requested state before unlocking also prevents a racing
+        // lookup from replacing it while the new operation is starting.
+        users.retain(|_, state| Arc::strong_count(state) > 1);
+        Arc::clone(users.entry(id.to_owned()).or_default())
     }
 }
 impl User {
@@ -801,5 +802,76 @@ mod writer_tests {
         assert!(prepared(&body, &JValue::Null, &JValue::Null, &Default::default()).is_err());
         let body = wtf16::parse(r#"{"fast":"a","smart":"a","vision":"a","code":"a"}"#).unwrap();
         assert!(prepared(&body, &JValue::Null, &rows, &Default::default()).is_ok());
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod reclamation_tests {
+    use super::*;
+
+    #[test]
+    fn writer_reclaims_inactive_accounts_under_churn() {
+        let writer = Writer::default();
+        for number in 0..10_000 {
+            drop(writer.user(&format!("account-{number}")));
+        }
+        assert!(
+            writer.0.lock().unwrap().len() <= 1,
+            "completed accounts remain resident"
+        );
+    }
+
+    #[test]
+    fn writer_keeps_one_active_fence_during_concurrent_reclamation() {
+        let writer = Writer::default();
+        let dir = tempfile::tempdir().unwrap();
+        let first = writer.user("active-account");
+        let retired = Arc::downgrade(&first);
+        let ready = std::sync::Barrier::new(3);
+        std::thread::scope(|scope| {
+            let operations: Vec<_> = ["alpha", "beta"]
+                .into_iter()
+                .map(|name| {
+                    let (writer, first, ready, dir) = (&writer, &first, &ready, dir.path());
+                    scope.spawn(move || {
+                        let state = writer.user("active-account");
+                        assert!(Arc::ptr_eq(first, &state), "an active fence was replaced");
+                        let (generation, _) = state.read(dir).unwrap();
+                        let staged = stage(
+                            dir,
+                            &JValue::obj([
+                                ("fast", JValue::from(name)),
+                                ("smart", JValue::from(name)),
+                            ]),
+                        )
+                        .unwrap();
+                        ready.wait();
+                        state.publish(generation, &staged).unwrap()
+                    })
+                })
+                .collect();
+            // Both saves retain the same state while unrelated account entries are reclaimed.
+            for number in 0..1_000 {
+                drop(writer.user(&format!("temporary-{number}")));
+            }
+            ready.wait();
+            let committed = operations
+                .into_iter()
+                .map(|job| job.join().unwrap())
+                .filter(|ok| *ok)
+                .count();
+            assert_eq!(committed, 1, "two stale stages shared a generation");
+        });
+        // Exactly one generation can have been published by the two staged saves.
+        assert_eq!(first.read(dir.path()).unwrap().0, 1);
+        assert!(Arc::ptr_eq(&first, &writer.user("active-account")));
+        drop(first);
+        drop(writer.user("next-account"));
+        assert!(
+            retired.upgrade().is_none(),
+            "the completed fence was never reclaimed"
+        );
+        assert!(writer.0.lock().unwrap().len() <= 1);
     }
 }
