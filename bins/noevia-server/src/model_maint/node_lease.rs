@@ -121,11 +121,23 @@ impl NodeLeases {
         max: Option<Duration>,
         ticket: Option<&str>,
     ) -> Result<LeaseGrant, LeaseFault> {
+        self.acquire_kind(max, ticket, false).await
+    }
+
+    pub(super) async fn acquire_kind(
+        &self,
+        max: Option<Duration>,
+        ticket: Option<&str>,
+        recovery: bool,
+    ) -> Result<LeaseGrant, LeaseFault> {
         let asked = Instant::now();
         let mut req = self
             .request(reqwest::Method::POST, PATH)
             .ok_or(LeaseFault::Unavailable)?;
         let mut ask = serde_json::Map::new();
+        if recovery {
+            ask.insert("recovery".into(), true.into());
+        }
         if let Some(max) = max {
             let ms = u64::try_from(max.min(MAX_LEASE).as_millis()).unwrap_or(0);
             ask.insert("maxMs".into(), ms.into());
@@ -216,6 +228,19 @@ impl NodeLeases {
             Some(r @ Value::Object(_)) => LoadDecision::Refused(r),
             _ => LoadDecision::Unavailable,
         }
+    }
+
+    /// Transfer exclusion to/from the recovery-required Node barrier, with acknowledgement.
+    pub(super) async fn recovery_barrier(&self, required: bool, ticket: &str) -> bool {
+        let method = if required {
+            reqwest::Method::POST
+        } else {
+            reqwest::Method::DELETE
+        };
+        let Some(req) = self.request(method, &format!("{PATH}/recovery/{ticket}")) else {
+            return false;
+        };
+        req.send().await.is_ok_and(|r| r.status().as_u16() == 204)
     }
 
     /// Core's idempotent DELETE acknowledges that its local admission is clear.

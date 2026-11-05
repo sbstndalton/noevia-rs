@@ -379,7 +379,7 @@ impl Maint {
         max: Duration,
         need_gate: bool,
     ) -> Result<Hold, HoldError> {
-        self.acquire_inner(reason, max, need_gate, None)
+        self.acquire_inner(reason, max, need_gate, None, false)
             .await
             .map_err(|r| match r {
                 HoldRefusal::Busy => HoldError::Busy,
@@ -406,7 +406,7 @@ impl Maint {
             return Err(HoldRefusal::Busy);
         };
         let hold = self
-            .acquire_inner(reason, Duration::MAX, false, Some(lease_for))
+            .acquire_inner(reason, Duration::MAX, false, Some(lease_for), false)
             .await?;
         reserved.transfer();
         Ok(hold)
@@ -421,7 +421,7 @@ impl Maint {
         lease_for: Duration,
     ) -> Result<Hold, HoldRefusal> {
         let mut hold = self
-            .acquire_inner(reason, Duration::MAX, false, Some(lease_for))
+            .acquire_inner(reason, Duration::MAX, false, Some(lease_for), true)
             .await?;
         drop(hold.defer_local_release());
         Ok(hold)
@@ -433,6 +433,7 @@ impl Maint {
         max: Duration,
         need_gate: bool,
         lease_for: Option<Duration>,
+        recovery: bool,
     ) -> Result<Hold, HoldRefusal> {
         let Some(gate) = self.gate.as_ref() else {
             return Err(HoldRefusal::NeedsGate);
@@ -454,10 +455,19 @@ impl Maint {
                 }
                 // The authority first: a lease Node's gate or another job of this front holds is a 409
                 // before Node is asked anything.
-                let Ok(own) = self
-                    .authority
-                    .try_acquire(lease::Origin::Front, lease_for, reason)
-                else {
+                if recovery {
+                    let ticket = self.authority.require_recovery();
+                    if !self.node.recovery_barrier(true, &ticket).await {
+                        return Err(HoldRefusal::NodeUnavailable);
+                    }
+                }
+                let grant = if recovery {
+                    self.authority.try_recovery(lease_for, reason)
+                } else {
+                    self.authority
+                        .try_acquire(lease::Origin::Front, lease_for, reason)
+                };
+                let Ok(own) = grant else {
                     return Err(HoldRefusal::Busy);
                 };
                 // Review P2: the authority grant and the latch it asks Node for are owned from here; a
@@ -471,7 +481,11 @@ impl Maint {
                 };
                 let ticket = pending.grant.as_ref().map(|g| g.id.clone());
                 pending.ticket.clone_from(&ticket);
-                match self.node.acquire_capped(lease_for, ticket.as_deref()).await {
+                match self
+                    .node
+                    .acquire_kind(lease_for, ticket.as_deref(), recovery)
+                    .await
+                {
                     Ok(grant) if lease_for.is_some_and(|d| grant.hard < d) => {
                         drop(pending);
                         self.node.release(&grant.id).await;

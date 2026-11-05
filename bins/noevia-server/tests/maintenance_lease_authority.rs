@@ -299,8 +299,12 @@ async fn an_old_waiting_acquire_or_old_session_after_a_new_starts_grant_changes_
     tokio::time::sleep(Duration::from_millis(50)).await;
     let b = session(&app, "boot-b", 20).await;
     authority.release(&front.id, Some(front.generation));
-    let (s, g) = op(&app, "acquire", Some(SECRET), json!({"incarnation": b})).await;
-    assert_eq!(s, StatusCode::CREATED);
+    let (s, _) = op(&app, "acquire", Some(SECRET), json!({"incarnation": b})).await;
+    assert_eq!(
+        s,
+        StatusCode::CONFLICT,
+        "unsettled front recovery retains exclusion"
+    );
     let (s, w) = tokio::time::timeout(Duration::from_secs(2), waiting)
         .await
         .unwrap()
@@ -329,11 +333,10 @@ async fn an_old_waiting_acquire_or_old_session_after_a_new_starts_grant_changes_
     )
     .await;
     assert_eq!(s, StatusCode::GONE, "an ambiguous start is retired too");
-    assert!(authority.covers(
-        g["lease"].as_str().unwrap(),
-        g["generation"].as_u64().unwrap(),
-        Duration::ZERO
-    ));
+    assert!(
+        authority.held_by_front(),
+        "retired traffic cannot clear recovery exclusion"
+    );
     assert_eq!(
         session(&app, "boot-b", 20).await,
         b,
@@ -429,6 +432,9 @@ fn latch(calls: Arc<AtomicUsize>, acquire: &'static str, status: u16) -> Handler
             req.headers.get("x-noevia-store-token").map(String::as_str),
             Some(SECRET)
         );
+        if req.target.contains("/recovery/") {
+            return Answer::Reply(204, String::new());
+        }
         if req.method == "POST" && req.target == LATCH {
             calls.fetch_add(1, Ordering::SeqCst);
             return Answer::Reply(status, acquire.into());
@@ -511,12 +517,15 @@ async fn a_node_restart_under_a_front_hold_fences_its_next_step_and_keeps_exclus
     );
     hold.release().await;
     assert!(
-        !m.authority
+        m.authority
             .node_session("b-restarted", 2)
             .unwrap()
             .front_held
     );
-    assert!(m.authority.try_acquire(new, None, "t").is_ok());
+    assert_eq!(
+        m.authority.try_acquire(new, None, "t"),
+        Err(lease::Refusal::Busy)
+    );
 }
 
 // Review P2: aborting the acquisition while Node's latch answer is outstanding leaks nothing: the
@@ -691,13 +700,14 @@ async fn a_hold_whose_authority_lease_ended_is_fenced_out() {
         "lost coverage: the hold no longer claims exclusion"
     );
     assert!(!hold.may_start(Duration::ZERO));
-    let other = m
-        .authority
-        .try_acquire(node_origin(&m.authority), None, "tune")
-        .unwrap();
-    // The old hold's release does not end the newer lease (fencing by id and generation).
+    assert_eq!(
+        m.authority
+            .try_acquire(node_origin(&m.authority), None, "tune"),
+        Err(lease::Refusal::Busy)
+    );
     hold.release().await;
-    assert!(m
-        .authority
-        .covers(&other.id, other.generation, Duration::ZERO));
+    assert!(
+        m.authority.held_by_front(),
+        "expired work must settle before writers resume"
+    );
 }

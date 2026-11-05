@@ -525,6 +525,7 @@ impl Drop for RecoveryGuard {
 /// Dropping a panicked/cancelled restoration schedules the same idempotent settlement again.
 /// The reservation remains held until that resolver reaches a definitive success or conflict.
 struct RestoreResolver {
+    allowed: super::ini::WriteAllowed,
     ini: super::ini::Store,
     candidate: super::ini::Candidate,
     pending: Arc<AtomicBool>,
@@ -559,9 +560,15 @@ impl RestoreResolver {
             }
             let restored = resolver
                 .ini
-                .settle_restore(&resolver.candidate, resolver.retry)
+                .settle_restore(
+                    &resolver.candidate,
+                    resolver.retry,
+                    Arc::clone(&resolver.allowed),
+                )
                 .await;
-            resolver.pending.store(false, Ordering::Release);
+            if restored {
+                resolver.pending.store(false, Ordering::Release);
+            }
             guard.armed = false;
             restored
         })
@@ -1052,7 +1059,7 @@ impl Worker {
         // Even a bounded legacy save may have an unresolved blocking owner after timeout.
         // Resolve/discard it before publishing or releasing the recovery's admission fence.
         self.drain_writes().await;
-        let restored = outcome.restored();
+        let mut restored = outcome.restored();
         let unsaved = matches!(outcome, Recovery::Unsaved { .. });
         let replacement =
             if let Recovery::Saved { state, .. } | Recovery::Unsaved { state, .. } = outcome {
@@ -1067,6 +1074,9 @@ impl Worker {
             } else {
                 None
             };
+        let repair = replacement
+            .as_ref()
+            .is_some_and(|state| state.job().get("pendingRestore").truthy());
         self.with(|i| {
             if let Some(state) = replacement {
                 i.state = state;
@@ -1074,10 +1084,23 @@ impl Worker {
                 i.next_object += 1;
                 i.unsaved = unsaved;
             }
-            self.release_local_fence();
-            i.launching = false;
-            i.recovering = false;
+            if !repair {
+                self.release_local_fence();
+            }
+            i.launching = repair;
+            i.recovering = repair;
         });
+        if repair {
+            self.maint.authority.require_recovery();
+            self.restoring.store(true, Ordering::Release);
+            self.recovery.store(true, Ordering::Release);
+            Arc::clone(self).recover_after_loss().await;
+            self.with(|i| {
+                i.launching = false;
+                i.recovering = false;
+            });
+            restored = Some(Some(self.job_get("restored") == JValue::Bool(true)));
+        }
         if unsaved {
             self.spawn_save_retry();
         }
@@ -2423,7 +2446,7 @@ impl Worker {
                 let restored = match (original.as_str(), last.as_str()) {
                     // Delta review P1: nothing runs on a lost hold; a recovery under a fresh one restores.
                     (Some(text), Some(rev)) if lost => {
-                        self.require_recovery(rev, text, &allowed).await;
+                        self.require_recovery(rev, text).await;
                         false
                     }
                     (Some(text), Some(rev))
@@ -2433,6 +2456,11 @@ impl Worker {
                     }
                     _ => false,
                 };
+                if !restored {
+                    if let (Some(text), Some(rev)) = (original.as_str(), last.as_str()) {
+                        self.require_recovery(rev, text).await;
+                    }
+                }
                 self.job_set("restored", JValue::Bool(restored));
                 // A lost run's restore is owed to its recovery, not given up: no "not restored" note.
                 if !restored && !self.recovery.load(Ordering::Acquire) {
@@ -2512,6 +2540,13 @@ impl Worker {
     }
 
     async fn finalize(self: &Arc<Self>, mut hold: Hold, until: Instant, post_failed: bool) {
+        if self.restoring.load(Ordering::Acquire) || post_failed {
+            let original = self.job_get("originalText");
+            let revision = self.job_get("lastRevision");
+            if let (Some(text), Some(rev)) = (original.as_str(), revision.as_str()) {
+                self.require_recovery(rev, text).await;
+            }
+        }
         let (mut state, object) = self.with(|i| {
             // Cancellation already handled by run's outcome must not turn cancelled into failed.
             if matches!(
@@ -2647,15 +2682,9 @@ impl Worker {
 
     /// Persists the restore a lost run owes (the same `pendingRestore` marker boot recovery settles) and
     /// arms the recovery: local admission stays closed until it has run.
-    async fn require_recovery(
-        &self,
-        revision: &str,
-        text: &str,
-        allowed: &super::ini::WriteAllowed,
-    ) {
-        if !allowed() {
-            return;
-        }
+    async fn require_recovery(&self, revision: &str, text: &str) {
+        // Safety markers are not execution on the old hold. Preserve them even after its permit ends.
+        self.maint.authority.require_recovery();
         self.job_set(
             "pendingRestore",
             JValue::obj([
@@ -2680,7 +2709,23 @@ impl Worker {
                 .acquire_recovery(RECOVERY_REASON, RECOVERY_LEASE)
                 .await
             {
-                let done = self.recover_once(&hold).await;
+                let ticket = self.maint.authority.recovery_ticket().unwrap_or_default();
+                let mut done = self.recover_once(&hold).await;
+                if done {
+                    done = hold.excluded()
+                        && (hold.gated_now()
+                            || self.maint.node.recovery_barrier(false, &ticket).await)
+                        && hold.excluded();
+                    if done {
+                        self.maint.authority.complete_recovery();
+                    }
+                }
+                if !done {
+                    self.maint.authority.require_recovery();
+                    if !hold.gated_now() {
+                        let _ = self.maint.node.recovery_barrier(true, &ticket).await;
+                    }
+                }
                 hold.release().await;
                 if done {
                     break;
@@ -2692,7 +2737,16 @@ impl Worker {
         self.with(|i| {
             if let Some(job) = i.state.job_mut() {
                 job.retain(|(k, _)| k != "pendingRestore");
-                wtf16::set(job, "restored", JValue::Bool(true));
+                if job
+                    .iter()
+                    .any(|(k, v)| k == "restored" && v == &JValue::Bool(true))
+                {
+                    if let Some((_, JValue::Str(error))) =
+                        job.iter_mut().find(|(k, _)| k == "error")
+                    {
+                        *error = error.replace(NOT_RESTORED, "");
+                    }
+                }
             }
         });
         let _ = self.save().await;
@@ -2712,11 +2766,13 @@ impl Worker {
         ) else {
             return true;
         };
+        let desired = super::ini::sha(&text);
         if self.current_revision().await.as_deref() == Some(revision.as_str()) {
             let Some(ini) = self.maint.ini.clone() else {
                 return false;
             };
             let resolver = Arc::new(RestoreResolver {
+                allowed: hold.write_fence(),
                 ini,
                 candidate: super::ini::Candidate {
                     base_revision: revision,
@@ -2728,29 +2784,41 @@ impl Worker {
                 #[cfg(test)]
                 panic_once: Arc::new(AtomicBool::new(false)),
             });
-            if !resolver.spawn().await.unwrap_or(false) {
+            let restored = resolver.spawn().await.unwrap_or(false);
+            if !hold.excluded() {
+                return false;
+            }
+            if !restored
+                && self.current_revision().await.as_deref()
+                    == Some(resolver.candidate.base_revision.as_str())
+            {
                 return false;
             }
         }
-        self.request(
-            hold,
-            reqwest::Method::GET,
-            "/models?reload=1",
-            None,
-            RELOAD,
-            None,
-        )
-        .await
-        .is_ok_and(|r| r.ok)
+        let settled = self
+            .request(
+                hold,
+                reqwest::Method::GET,
+                "/models?reload=1",
+                None,
+                RELOAD,
+                None,
+            )
+            .await
+            .is_ok_and(|r| r.ok)
+            && hold.excluded();
+        if settled {
+            self.job_set(
+                "restored",
+                JValue::Bool(self.current_revision().await.as_deref() == Some(desired.as_str())),
+            );
+        }
+        settled
     }
 
     /// Put `text` back if models.ini is still at `revision`, then reload the router.
     ///
-    /// After a lost hold this runs without exclusion, on purpose: the profile under test must not
-    /// outlive the run, and the file write is still compare-and-swap on the revision, so nothing
-    /// another writer saved is overwritten. Only the raw reload is unexcluded: once Node has ended
-    /// the lease it can admit a chat, which that reload may interrupt. Leaving a half-tested profile
-    /// live would be worse, so the trade-off is kept.
+    /// Every asynchronous write and retry carries this exact hold's fence; reread is part of success.
     async fn restore(
         &self,
         hold: &Hold,
@@ -2791,7 +2859,10 @@ impl Worker {
             return false;
         }
         self.restoring.store(true, Ordering::Release);
+        let fence = hold.write_fence();
+        let permit = Arc::clone(&allowed);
         let resolver = Arc::new(RestoreResolver {
+            allowed: Arc::new(move || fence() && permit()),
             ini,
             candidate: c,
             pending: Arc::clone(&self.restoring),
@@ -2800,8 +2871,8 @@ impl Worker {
             panic_once: Arc::clone(&self.panic_on_restore),
         });
         let restored = resolver.spawn().await.unwrap_or(false);
-        if restored && allowed() {
-            let _ = self
+        if restored && allowed() && hold.excluded() {
+            return self
                 .request(
                     hold,
                     reqwest::Method::GET,
@@ -2810,9 +2881,11 @@ impl Worker {
                     RELOAD,
                     None,
                 )
-                .await;
+                .await
+                .is_ok_and(|r| r.ok)
+                && hold.excluded();
         }
-        restored
+        false
     }
 
     /// The search and the final write; the history entry on a pass.
@@ -3588,6 +3661,126 @@ mod tests {
         let _ = w.cancel();
         settled(&w).await;
     }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn r4_restore_retry_stops_on_exact_hold_loss() {
+        let (d, w, _available, calls, _) = restore_rig("r4down").await;
+        w.maint.authority.node_session("a", 1).unwrap();
+        let hold = w
+            .maint
+            .acquire_recovery("repair", RECOVERY_LEASE)
+            .await
+            .unwrap();
+        let trial = format!("{INI}# trial\n");
+        std::fs::write(d.path().join("models.ini"), &trial).unwrap();
+        let revision = super::super::ini::sha(&trial);
+        let task = {
+            let w = Arc::clone(&w);
+            tokio::spawn(async move { w.restore(&hold, &revision, INI, Arc::new(|| true)).await })
+        };
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while calls.load(Ordering::Acquire) == 0 {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .unwrap();
+        w.maint.authority.node_session("b", 2).unwrap();
+        assert!(!tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("lost restore must stop retrying")
+            .unwrap());
+        let n = calls.load(Ordering::Acquire);
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        assert_eq!(calls.load(Ordering::Acquire), n);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn r4_fresh_recovery_cas_retry_stops_on_loss() {
+        let (d, w, _available, calls, _) = restore_rig("r4down").await;
+        w.maint.authority.node_session("a", 1).unwrap();
+        let hold = w
+            .maint
+            .acquire_recovery("repair", RECOVERY_LEASE)
+            .await
+            .unwrap();
+        let trial = format!("{INI}# trial\n");
+        std::fs::write(d.path().join("models.ini"), &trial).unwrap();
+        w.with(|i| i.state.set_job(JValue::obj([] as [(&str, JValue); 0])));
+        w.job_set(
+            "pendingRestore",
+            JValue::obj([
+                ("baseRevision", JValue::Str(super::super::ini::sha(&trial))),
+                ("text", JValue::Str(INI.into())),
+            ]),
+        );
+        let task = {
+            let w = Arc::clone(&w);
+            tokio::spawn(async move { w.recover_once(&hold).await })
+        };
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while calls.load(Ordering::Acquire) == 0 {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .unwrap();
+        w.maint.authority.node_session("b", 2).unwrap();
+        assert!(!tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("lost recovery must stop retrying")
+            .unwrap());
+        let n = calls.load(Ordering::Acquire);
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        assert_eq!(calls.load(Ordering::Acquire), n);
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn r4_loss_during_restore_intent_persistence_prevents_cas() {
+        let (d, w, _, calls, _) = restore_rig("r4down").await;
+        w.maint.authority.node_session("a", 1).unwrap();
+        let hold = w
+            .maint
+            .acquire_recovery("repair", RECOVERY_LEASE)
+            .await
+            .unwrap();
+        let trial = format!("{INI}# trial\n");
+        std::fs::write(d.path().join("models.ini"), &trial).unwrap();
+        let revision = super::super::ini::sha(&trial);
+        let (ready, release, _) = pause_commit(&w);
+        let task = {
+            let w = Arc::clone(&w);
+            tokio::spawn(async move { w.restore(&hold, &revision, INI, Arc::new(|| true)).await })
+        };
+        delta_wait(|| ready.try_recv().is_ok()).await;
+        w.maint.authority.node_session("b", 2).unwrap();
+        release.send(()).unwrap();
+        assert!(!tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("lost persistence cannot launch restore CAS")
+            .unwrap());
+        assert_eq!(calls.load(Ordering::Acquire), 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn r4_restore_cannot_succeed_when_router_reread_is_unconfirmed() {
+        let (d, mut w, available, _, _) = restore_rig("r4down").await;
+        available.store(true, Ordering::Release);
+        Arc::get_mut(&mut Arc::get_mut(&mut w).unwrap().maint)
+            .unwrap()
+            .router = Some(super::super::router::Router::new("http://127.0.0.1:9", None).unwrap());
+        let hold = w
+            .maint
+            .acquire_recovery("repair", RECOVERY_LEASE)
+            .await
+            .unwrap();
+        let trial = format!("{INI}# trial\n");
+        std::fs::write(d.path().join("models.ini"), &trial).unwrap();
+        let revision = super::super::ini::sha(&trial);
+        assert!(
+            !w.restore(&hold, &revision, INI, Arc::new(|| true)).await,
+            "file CAS alone is not restoration settlement"
+        );
+    }
+
     // SETTLEMENT_REGRESSIONS_BEGIN
     async fn restore_rig(
         mode: &'static str,
@@ -3607,7 +3800,7 @@ mod tests {
         let ini = d.path().join("models.ini");
         std::fs::write(&ini, INI).unwrap();
         let (engine, seen) = synthetic_engine(ini.clone(), true).await;
-        let available = Arc::new(AtomicBool::new(mode != "down"));
+        let available = Arc::new(AtomicBool::new(mode != "down" && mode != "r4down"));
         let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -3655,7 +3848,12 @@ mod tests {
         tokio::spawn(async move {
             let _ = axum::serve(listener, app).await;
         });
-        let mut w = worker(d.path(), engine);
+        let mut w = if mode == "r4down" {
+            let (node, _) = lease_stub(None, Arc::new(AtomicBool::new(false))).await;
+            worker_with(d.path(), engine, Some(node))
+        } else {
+            worker(d.path(), engine)
+        };
         let maint = Arc::get_mut(&mut Arc::get_mut(&mut w).unwrap().maint).unwrap();
         maint.ini = Some(super::super::ini::Store::new(
             ini,
@@ -3732,7 +3930,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn an_unreachable_restore_refuses_calibration_but_keeps_inference_admitted() {
+    async fn an_unreachable_restore_retains_admission_until_settlement() {
         let (_d, w, available, calls, seen) = restore_rig("down").await;
         begin_restore_run(&w, &seen).await;
         tokio::time::timeout(Duration::from_secs(2), async {
@@ -3748,25 +3946,7 @@ mod tests {
             w.launch("synthetic", plan(32768.0, 120.0)).await,
             Err(Refusal::Unavailable)
         );
-        assert!(!w.maint.local_held());
-        let reply = w
-            .maint
-            .router
-            .as_ref()
-            .unwrap()
-            .request(
-                reqwest::Method::POST,
-                "/v1/chat/completions",
-                Some(&json!({"messages":[],"stream":false})),
-                None,
-                Duration::from_secs(1),
-            )
-            .await
-            .unwrap();
-        assert_eq!(
-            reply.status, 200,
-            "ordinary inference remains admitted while only calibration waits"
-        );
+        assert!(w.maint.local_held());
         available.store(true, Ordering::Release);
         assert_restore_readmits(&w).await;
     }
@@ -4728,7 +4908,8 @@ mod tests {
             let name = case["name"].as_str().unwrap();
             let dir = tempfile::tempdir().unwrap();
             std::fs::write(dir.path().join("models.ini"), case["ini"].as_str().unwrap()).unwrap();
-            let w = worker(dir.path(), 9);
+            let (port, _) = synthetic_engine(dir.path().join("models.ini"), false).await;
+            let w = worker(dir.path(), port);
             let file = dir
                 .path()
                 .join(format!("native-calibration-{}.json", w.maint.suffix));
@@ -4890,6 +5071,7 @@ mod tests {
                     .and_then(|v| v["maxMs"].as_u64());
                 let (code, out) = match (parts.method.as_str(), parts.uri.path()) {
                     // While ended, the authority grants no new lease (a recovery waits for it).
+                    ("POST", p) if p.starts_with("/internal/model-maintenance/lease/recovery/") => (204, json!({})),
                     ("POST", "/internal/model-maintenance/lease") if ended.load(Ordering::Acquire) => (
                         409, json!({"error": "Busy"}),
                     ),

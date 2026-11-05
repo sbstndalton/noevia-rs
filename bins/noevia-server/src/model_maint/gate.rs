@@ -414,7 +414,6 @@ impl Shared {
 
 impl Shared {
     fn start_release(self: &Arc<Self>, node: Arc<NodeLeases>) {
-        self.release_authority();
         let Ok(rt) = tokio::runtime::Handle::try_current() else {
             return;
         };
@@ -428,6 +427,21 @@ impl Shared {
             }
             *state = ReleaseState::Pending;
         }
+        let needs_recovery = self.lost.load(Ordering::Acquire)
+            || !self.fenced(Duration::ZERO)
+            || self
+                .auth
+                .as_ref()
+                .is_some_and(|(a, _)| a.recovery_pending());
+        let recovery_ticket = if needs_recovery {
+            Some(self.auth.as_ref().map_or_else(
+                || self.lease_id.clone().unwrap_or_default(),
+                |(a, _)| a.require_recovery(),
+            ))
+        } else {
+            None
+        };
+        self.release_authority();
         self.released.store(true, Ordering::Release);
         self.wake.notify_one();
         let shared = Arc::clone(self);
@@ -436,6 +450,24 @@ impl Shared {
             let mut wait = Duration::from_millis(100);
             let outcome = loop {
                 let now = Instant::now();
+                // Acknowledged barrier precedes relinquishing the old latch. If Node is down,
+                // authority registration reconstructs exclusion; retry without opening admission.
+                let still_required = shared
+                    .auth
+                    .as_ref()
+                    .is_none_or(|(a, _)| a.recovery_pending());
+                if now >= until {
+                    break ReleaseState::Unconfirmed;
+                }
+                if needs_recovery
+                    && still_required
+                    && !node
+                        .recovery_barrier(true, recovery_ticket.as_deref().unwrap_or_default())
+                        .await
+                {
+                    tokio::time::sleep(wait).await;
+                    continue;
+                }
                 if shared.expires_by.is_some_and(|at| now >= at) {
                     break ReleaseState::Expired;
                 }
@@ -610,6 +642,23 @@ impl Hold {
         self.shared.fenced(Duration::ZERO)
             && self.shared.confirmed.lock().is_ok_and(|at| now < *at + ttl)
             && self.shared.lease_end.is_none_or(|end| now < end)
+    }
+
+    /// Owned exact-hold fence for asynchronous CAS resolvers. It never follows a replacement lease.
+    pub(super) fn write_fence(&self) -> super::ini::WriteAllowed {
+        let shared = Arc::clone(&self.shared);
+        Arc::new(move || {
+            !shared.lost.load(Ordering::Acquire)
+                && !shared.released.load(Ordering::Acquire)
+                && shared.fenced(Duration::ZERO)
+                && shared.lease_ttl.is_none_or(|ttl| {
+                    shared
+                        .confirmed
+                        .lock()
+                        .is_ok_and(|at| Instant::now() < *at + ttl)
+                })
+                && shared.lease_end.is_none_or(|end| Instant::now() < end)
+        })
     }
 
     /// Makes the deadline at least `needed` from now: the work has found out how long it may take.
@@ -838,7 +887,9 @@ mod tests {
         let app = axum::Router::new().fallback(move |r: Request<Body>| {
             let (seen, proceed, ack) = (Arc::clone(&a), Arc::clone(&b), Arc::clone(&c));
             async move {
-                if r.method() == "DELETE" {
+                if r.uri().path().contains("/recovery/") {
+                    Response::builder().status(204).body(Body::empty()).unwrap()
+                } else if r.method() == "DELETE" {
                     seen.notify_one();
                     proceed.notified().await;
                     ack.store(true, Ordering::Release);

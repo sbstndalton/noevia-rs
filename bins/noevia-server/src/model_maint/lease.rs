@@ -104,6 +104,8 @@ struct NodeStart {
 }
 
 struct State {
+    recovery_required: bool,
+    recovery_ticket: Option<String>,
     holder: Option<Entry>,
     generation: u64,
     node: Option<NodeStart>,
@@ -162,6 +164,8 @@ impl Authority {
         Authority {
             inner: Arc::new(Inner {
                 state: Mutex::new(State {
+                    recovery_required: false,
+                    recovery_ticket: None,
                     holder: None,
                     generation: 0,
                     node: None,
@@ -205,6 +209,10 @@ impl Authority {
             .is_some_and(|e| now >= e.renewed_until || now >= e.hard_at);
         if gone {
             if let Some(e) = state.holder.take() {
+                if e.origin == Origin::Front {
+                    state.recovery_required = true;
+                    state.recovery_ticket.get_or_insert_with(|| e.id.clone());
+                }
                 let why = if now >= e.hard_at {
                     "passed its limit"
                 } else {
@@ -250,28 +258,37 @@ impl Authority {
                         Origin::Node { incarnation: i } if i != incarnation => freed = true,
                         Origin::Front if e.bound_node != Some(incarnation) && !e.fenced => {
                             e.fenced = true;
+
                             eprintln!("[models] Node restarted while this front held the maintenance lease; its work stops before its next step");
                         }
                         _ => {}
                     }
                 }
+                if state.holder.as_ref().is_some_and(|e| e.fenced) {
+                    state.recovery_required = true;
+                    if state.recovery_ticket.is_none() {
+                        state.recovery_ticket = state.holder.as_ref().map(|e| e.id.clone());
+                    }
+                }
                 if freed {
                     state.holder = None;
                     eprintln!("[models] Node restarted; the maintenance lease its previous start held has ended");
+                    let front_held = state.recovery_required;
                     drop(state);
                     self.inner.changed.notify_waiters();
                     return Ok(Session {
                         incarnation,
-                        front_held: false,
+                        front_held,
                     });
                 }
                 incarnation
             }
         };
-        let front_held = state
-            .holder
-            .as_ref()
-            .is_some_and(|e| e.origin == Origin::Front);
+        let front_held = state.recovery_required
+            || state
+                .holder
+                .as_ref()
+                .is_some_and(|e| e.origin == Origin::Front);
         drop(state);
         if issued {
             // Waiting acquires of retired incarnations end now.
@@ -298,6 +315,51 @@ impl Authority {
         requested: Option<Duration>,
         reason: &str,
     ) -> Result<Grant, Refusal> {
+        self.take(origin, requested, reason, false)
+    }
+
+    pub(super) fn try_recovery(
+        &self,
+        requested: Option<Duration>,
+        reason: &str,
+    ) -> Result<Grant, Refusal> {
+        self.take(Origin::Front, requested, reason, true)
+    }
+
+    pub(super) fn recovery_pending(&self) -> bool {
+        self.lock().recovery_required
+    }
+    pub(super) fn recovery_ticket(&self) -> Option<String> {
+        self.lock().recovery_ticket.clone()
+    }
+    pub(super) fn require_recovery(&self) -> String {
+        let mut state = self.lock();
+        state.recovery_required = true;
+        if state.recovery_ticket.is_none() {
+            state.recovery_ticket = Some(
+                state
+                    .holder
+                    .as_ref()
+                    .map_or_else(random_hex, |e| e.id.clone()),
+            );
+        }
+        state.recovery_ticket.clone().unwrap_or_default()
+    }
+    pub(super) fn complete_recovery(&self) {
+        let mut state = self.lock();
+        state.recovery_required = false;
+        state.recovery_ticket = None;
+        drop(state);
+        self.inner.changed.notify_waiters();
+    }
+
+    fn take(
+        &self,
+        origin: Origin,
+        requested: Option<Duration>,
+        reason: &str,
+        recovery: bool,
+    ) -> Result<Grant, Refusal> {
         let now = Instant::now();
         let cap = cap_for(requested, self.inner.hard, self.inner.max);
         let mut state = self.lock();
@@ -312,7 +374,7 @@ impl Authority {
             }
         }
         Self::expire(&mut state, now);
-        if state.holder.is_some() {
+        if state.holder.is_some() || (state.recovery_required && !recovery) {
             return Err(Refusal::Busy);
         }
         let bound_node = state.node.as_ref().map(|n| n.incarnation);
@@ -480,6 +542,9 @@ impl Authority {
 
     /// Whether this front (not Node) holds it now.
     pub fn held_by_front(&self) -> bool {
+        if self.lock().recovery_required {
+            return true;
+        }
         self.held()
             && self
                 .lock()
@@ -672,6 +737,31 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn r4_node_restart_retains_barrier_between_lost_release_and_fresh_recovery() {
+        let a = Authority::new();
+        a.node_session("a", 1).unwrap();
+        let old = a.try_acquire(Origin::Front, None, "trial").unwrap();
+        a.node_session("b", 2).unwrap();
+        a.release(&old.id, Some(old.generation));
+        assert!(
+            a.held_by_front(),
+            "recovery-required survives old latch release"
+        );
+        assert!(
+            a.node_session("c", 3).unwrap().front_held,
+            "restarted Node must reconstruct admission barrier"
+        );
+        assert_eq!(
+            a.try_acquire(
+                Origin::Node { incarnation: 3 },
+                None,
+                "chat-adjacent writer"
+            ),
+            Err(Refusal::Busy)
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn exclusive_hold_and_busy() {
         let a = Authority::new();
         let n = node(&a, "n1", 1);
@@ -726,6 +816,7 @@ mod tests {
             !a.renew(&g.id, Some(g.generation)),
             "an expired lease is not renewed"
         );
+        a.complete_recovery(); // synthetic settlement of the expired front work
         assert!(a.try_acquire(n, None, "t").is_ok());
     }
 
@@ -752,6 +843,8 @@ mod tests {
         assert!(!a.covers(&g.id, g.generation, Duration::from_secs(120)));
         tokio::time::advance(TTL).await;
         assert!(!a.covers(&g.id, g.generation, Duration::ZERO));
+        assert!(!a.held()); // observe expiry before synthetic recovery completion
+        a.complete_recovery();
         let g2 = a.try_acquire(Origin::Front, None, "r").unwrap();
         assert!(!a.covers(&g.id, g.generation, Duration::ZERO));
         assert!(!a.renew(&g.id, Some(g.generation)));
@@ -821,6 +914,7 @@ mod tests {
         // B starts, and gets the lease once the front releases.
         let new = node(&a, "boot-b", 20);
         a.release(&front.id, Some(front.generation));
+        a.complete_recovery();
         let b = a.try_acquire(new.clone(), None, "delete").unwrap();
         assert_eq!(
             waiting.await.unwrap(),
@@ -864,6 +958,8 @@ mod tests {
         };
         assert_eq!(a.try_acquire(new.clone(), None, "t"), Err(Refusal::Busy));
         a.release(&f.id, Some(f.generation));
+        assert!(a.node_session("boot-b", 20).unwrap().front_held);
+        a.complete_recovery();
         assert!(!a.node_session("boot-b", 20).unwrap().front_held);
         assert!(a.try_acquire(new, None, "t").is_ok());
         // A front lease taken under the current start is not fenced by the same start again.
@@ -929,6 +1025,10 @@ mod tests {
         let n = node(&a, "n", 1);
         let _g = a.try_acquire(Origin::Front, None, "r").unwrap();
         let got = a.acquire(n, None, "t", Duration::from_secs(10)).await;
-        assert!(got.is_ok());
+        assert_eq!(got, Err(Refusal::Busy));
+        assert!(
+            a.held_by_front(),
+            "expiry requires settlement before new writers"
+        );
     }
 }
