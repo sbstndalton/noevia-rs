@@ -201,6 +201,9 @@ pub struct Worker {
     file: StateFile,
     inner: Arc<Mutex<Inner>>,
     writes: Arc<Mutex<()>>,
+    // An owned restoration can outlive the cleanup deadline. Do not admit another run until
+    // its write has a definitive result; cancellation cannot revoke a remote CAS already sent.
+    restoring: Arc<AtomicBool>,
     #[cfg(test)]
     panic_on_run: AtomicBool,
     memory: Arc<dyn Fn() -> Option<f64> + Send + Sync>,
@@ -426,6 +429,7 @@ impl Worker {
             maint,
             file,
             writes: Arc::new(Mutex::new(())),
+            restoring: Arc::new(AtomicBool::new(false)),
             #[cfg(test)]
             panic_on_run: AtomicBool::new(false),
             inner: Arc::new(Mutex::new(Inner {
@@ -627,7 +631,7 @@ impl Worker {
 
     /// Writes the recovered job the file is missing (without [`UNSAVED`]), then drops the note from
     /// memory. The caller holds the launch slot, so no launch's save can land in between.
-    async fn save_recovered(&self) -> std::io::Result<()> {
+    async fn save_recovered(&self, release_launch: bool) -> std::io::Result<()> {
         let (object, mut state) = self.with(|i| (i.job_object, i.state.clone()));
         if let Some(job) = state.job_mut() {
             strip_unsaved(job);
@@ -640,6 +644,9 @@ impl Worker {
                     strip_unsaved(job);
                 }
                 i.unsaved = false;
+                if release_launch {
+                    i.launching = false;
+                }
             }
         });
         Ok(())
@@ -668,8 +675,10 @@ impl Worker {
                     None => return,
                     Some(false) => {}
                     Some(true) => {
-                        let saved = worker.save_recovered().await;
-                        worker.with(|i| i.launching = false);
+                        let saved = worker.save_recovered(true).await;
+                        if saved.is_err() {
+                            worker.with(|i| i.launching = false);
+                        }
                         if saved.is_ok() {
                             return;
                         }
@@ -1589,10 +1598,13 @@ impl Worker {
     /// A recovered job the state file does not have yet is saved first: a launch that cannot save
     /// it is refused before any hold (its own first save would fail the same way).
     pub(super) async fn take_hold(&self, model: &str, plan: &Plan) -> Result<Hold, Refusal> {
-        if self.maint.router.is_none() || self.maint.ini.is_none() {
+        if self.restoring.load(Ordering::Acquire)
+            || self.maint.router.is_none()
+            || self.maint.ini.is_none()
+        {
             return Err(Refusal::Unavailable);
         }
-        if self.unsaved() && self.save_recovered().await.is_err() {
+        if self.unsaved() && self.save_recovered(false).await.is_err() {
             return Err(Refusal::Unavailable);
         }
         let reason = format!("Chat is paused while noevia calibrates {model}. It will be available again when calibration finishes or is cancelled.");
@@ -1807,6 +1819,34 @@ impl Worker {
                 }
             }
         };
+        // One deadline covers every post-outcome await, including blocking-store work.
+        let until = Instant::now() + self.limits.finalize;
+        let object = self.with(|i| i.job_object);
+        let permit = Arc::new(AtomicBool::new(true));
+        let inner = Arc::clone(&self.inner);
+        let live = Arc::clone(&permit);
+        let allowed: super::ini::WriteAllowed = Arc::new(move || {
+            live.load(Ordering::Acquire)
+                && Instant::now() < until
+                && inner
+                    .lock()
+                    .is_ok_and(|i| i.active && i.job_object == object)
+        });
+        let revoke = WritePermit(permit);
+        let timed_out =
+            tokio::time::timeout_at(until.into(), self.post_outcome(&hold, outcome, allowed))
+                .await
+                .is_err();
+        drop(revoke);
+        self.finalize(hold, until, timed_out).await;
+    }
+
+    async fn post_outcome(
+        self: &Arc<Self>,
+        hold: &Hold,
+        outcome: Result<Option<JValue>, Thrown>,
+        allowed: super::ini::WriteAllowed,
+    ) {
         // A step can see the loss first (its reload refused under the ended lease) and fail before
         // the watch notices: however the run ended, a hold that no longer excludes is a lost one.
         if !hold.excluded() {
@@ -1868,7 +1908,7 @@ impl Worker {
                     (Some(text), Some(rev))
                         if self.current_revision().await.as_deref() == Some(rev) =>
                     {
-                        self.restore(&hold, rev, text).await
+                        self.restore(hold, rev, text, Arc::clone(&allowed)).await
                     }
                     _ => false,
                 };
@@ -1900,12 +1940,14 @@ impl Worker {
                     ("source", JValue::Str("calibration".into())),
                     ("limitations", JValue::Arr(vec![JValue::Str(limitation)])),
                 ]);
-                let _ = self.maint.record_evidence(&model, &record).await;
+                let _ = self
+                    .maint
+                    .record_evidence_if(&model, &record, Arc::clone(&allowed))
+                    .await;
             }
         } else if let Some(entry) = outcome.ok().flatten() {
             // After the lease check: a run whose hold ended after it passed was restored above and
             // must not leave a verified size in the history that the profile no longer has.
-            self.with(|i| i.state.push_history(&model, entry.clone()));
             let ctx = entry.get("verifiedCtx").clone();
             let record = JValue::obj([
                 ("category", JValue::Str("context_capacity".into())),
@@ -1934,13 +1976,17 @@ impl Worker {
                     ))]),
                 ),
             ]);
-            let _ = self.maint.record_evidence(&model, &record).await;
+            let _ = self
+                .maint
+                .record_evidence_if(&model, &record, Arc::clone(&allowed))
+                .await;
+            if allowed() {
+                self.with(|i| i.state.push_history(&model, entry));
+            }
         }
-        self.finalize(hold).await;
     }
 
-    async fn finalize(self: &Arc<Self>, mut hold: Hold) {
-        let until = Instant::now() + self.limits.finalize;
+    async fn finalize(self: &Arc<Self>, mut hold: Hold, until: Instant, post_failed: bool) {
         let (mut state, object) = self.with(|i| {
             // Cancellation already handled by run's outcome must not turn cancelled into failed.
             if matches!(
@@ -1951,7 +1997,7 @@ impl Worker {
             }
             (i.state.clone(), i.job_object)
         });
-        finish_snapshot(&mut state, false);
+        finish_snapshot(&mut state, post_failed);
         let mut saved = false;
         let mut wait = self.limits.save_retry.max(Duration::from_millis(1));
         loop {
@@ -1976,7 +2022,8 @@ impl Worker {
             .await
             .is_ok()
             && hold.node_release_confirmed();
-        let failed = !saved
+        let failed = post_failed
+            || !saved
             || !released
             || self.cancelled()
             || (hold.lost() && state.job().get("status").as_str() == Some("passed"));
@@ -2011,7 +2058,13 @@ impl Worker {
     /// another writer saved is overwritten. Only the raw reload is unexcluded: once Node has ended
     /// the lease it can admit a chat, which that reload may interrupt. Leaving a half-tested profile
     /// live would be worse, so the trade-off is kept.
-    async fn restore(&self, hold: &Hold, revision: &str, text: &str) -> bool {
+    async fn restore(
+        &self,
+        hold: &Hold,
+        revision: &str,
+        text: &str,
+        allowed: super::ini::WriteAllowed,
+    ) -> bool {
         let Some(ini) = self.maint.ini.clone() else {
             return false;
         };
@@ -2020,21 +2073,40 @@ impl Worker {
             text: text.to_owned(),
             before: String::new(),
         };
-        if ini.commit_reconciled(&c, true).await.is_err() {
+        if !allowed() {
             return false;
         }
-        let _ = self
-            .request(
-                hold,
-                reqwest::Method::GET,
-                "/models?reload=1",
-                None,
-                RELOAD,
-                None,
-            )
-            .await;
-        // The raw reload Node sends (no reload-guard record or forget, as in Node's run()).
-        true
+        self.restoring.store(true, Ordering::Release);
+        let pending = Arc::clone(&self.restoring);
+        let router = self.maint.router.clone();
+        let token = hold.token();
+        // Owned task: a timeout drops only the waiter, never a remote write's supervision.
+        tokio::spawn(async move {
+            let result = ini.commit_if(&c, true, Arc::clone(&allowed)).await;
+            let confirmed = result.as_ref().err().is_none_or(|e| !e.uncertain);
+            let restored = result.is_ok();
+            if restored && allowed() {
+                if let Some(router) = router {
+                    let _ = router
+                        .request(
+                            reqwest::Method::GET,
+                            "/models?reload=1",
+                            None,
+                            token.as_deref(),
+                            RELOAD,
+                        )
+                        .await;
+                }
+            }
+            // An uncertain remote response is not proof that it stopped writing. Keep launches
+            // refused until restart/recovery rather than allowing a late write into a newer run.
+            if confirmed {
+                pending.store(false, Ordering::Release);
+            }
+            restored
+        })
+        .await
+        .unwrap_or(false)
     }
 
     /// The search and the final write; the history entry on a pass.
@@ -2720,7 +2792,62 @@ mod tests {
             .await
             .expect("bounded DELETE");
         review_failed(&w, &job);
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while w.unsaved() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("failed record retry persisted");
         assert_eq!(w.file.load().job().get("status").as_str(), Some("failed"));
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn stalled_post_outcome_evidence_is_bounded_and_cannot_write_into_a_new_run() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        std::fs::write(d.path().join("synthetic.gguf"), b"GGUF synthetic").unwrap();
+        let (port, _) = synthetic_engine(ini, false).await;
+        let w = worker(d.path(), port);
+        let w = with_limits(
+            &w,
+            Limits {
+                finalize: Duration::from_millis(300),
+                ..w.limits
+            },
+        );
+        let store = Arc::clone(w.maint.evidence.as_ref().unwrap());
+        let (entered, started) = std::sync::mpsc::channel();
+        let (release, resume) = std::sync::mpsc::channel();
+        let blocked = std::thread::spawn(move || store.stall_writes(entered, resume));
+        started.recv_timeout(Duration::from_secs(1)).unwrap();
+        w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        review_wait_outcome(&w).await;
+        // Evidence is waiting on the actual store mutex after the successful search.
+        let result = tokio::time::timeout(Duration::from_secs(2), settled(&w)).await;
+        if let Ok(job) = &result {
+            review_failed(&w, job);
+            assert!(!w.with(|i| i.active));
+            let h = w
+                .maint
+                .acquire_for_run("synthetic admission after timeout", Duration::from_secs(1))
+                .await;
+            assert!(h.is_ok(), "local maintenance admission released");
+            drop(h);
+            w.launch("synthetic", plan(32768.0, 120.0))
+                .await
+                .expect("new run after timeout");
+            let _ = w.cancel();
+        }
+        release.send(()).unwrap();
+        blocked.join().unwrap();
+        result.expect("post-outcome evidence deadline must publish failure");
+        settled(&w).await;
+        assert_eq!(
+            evidence_count(&w).await,
+            0,
+            "expired evidence must never append later"
+        );
     }
     // REVIEW_REGRESSIONS_END
 
