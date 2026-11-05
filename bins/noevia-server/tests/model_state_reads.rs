@@ -680,6 +680,8 @@ fn rejected_budget_commit_restores_the_snapshot_without_regressing_generation() 
 #[tokio::test]
 async fn null_address_targets_keep_protection_when_the_managed_service_has_no_address() {
     for address in [Value::Null, json!("")] {
+        let d = tempfile::tempdir().unwrap();
+        let _db = seed(d.path(), None);
         let raw = json!({
             "embedding":{"baseUrl":address,"status":{"stale":false,"enabled":true,"running":{"loaded":[]}},"protected":["synthetic-running"]},
             "config":{"names":["synthetic-active","synthetic-next","synthetic-previous"],"targets":[
@@ -690,6 +692,11 @@ async fn null_address_targets_keep_protection_when_the_managed_service_has_no_ad
         });
         let (np, _) = stub((200, raw.to_string()), |_, current| current.clone()).await;
         let env = HashMap::from([
+            ("UI_DATA_DIR", d.path().display().to_string()),
+            (
+                "NOEVIA_START_ID",
+                "0123456789abcdef0123456789abcdef".to_owned(),
+            ),
             ("NOEVIA_LEGACY_UPSTREAM", format!("http://127.0.0.1:{np}")),
             ("NOEVIA_PROJECT_STORE_TOKEN", SECRET.to_owned()),
         ]);
