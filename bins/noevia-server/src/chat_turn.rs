@@ -53,7 +53,7 @@ pub const RELAY_LIMIT: u64 = STORED_HISTORY_BYTES + 1;
 /// index.cjs handleRequestScoped's answer once the headers are out (chat_wire.rs writes it).
 pub use chat_wire::FAILED_FRAME;
 /// The proxy's 502 (legacy_proxy.rs) for a Core that does not answer.
-const UNAVAILABLE: &str = "The server is not answering. Please retry.";
+pub(crate) const UNAVAILABLE: &str = "The server is not answering. Please retry.";
 
 fn unavailable() -> Response<Body> {
     reply::error(StatusCode::BAD_GATEWAY, UNAVAILABLE, true)
