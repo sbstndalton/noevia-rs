@@ -394,6 +394,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "chat-mirror-exec"
+version = "0.1.0"
+dependencies = [
+ "icu_normalizer",
+ "js-json",
+ "mcp-frame",
+ "prompt-framing",
+ "sha2",
+ "tokio",
+]
+
+[[package]]
 name = "chat-mirror-sched"
 version = "0.1.0"
 dependencies = [
@@ -1987,6 +1999,7 @@ dependencies = [
  "base64 0.22.1",
  "brotli",
  "bytes",
+ "chat-mirror-exec",
  "chat-mirror-sched",
  "code-net-guard",
  "context-fit",
