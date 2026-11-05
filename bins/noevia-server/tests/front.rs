@@ -313,6 +313,7 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     // #2292 calibration cancellation and #2293 clear leave 14; cancellation and resume leave 12.
     // #2306 moves status GET (11); #2303 moves calibration start/read (10); chat ports S4 and S5 move the
     // framing suggestion and the chat turn's POST (8).
+    // (stage S3/S4 base) Calibration start/read leaves 10; evidence recheck leaves 9; untuned discovery leaves 8.
     assert!(node_routes >= 8, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
@@ -463,7 +464,7 @@ async fn headers_cookies_and_forwarded_for() {
     let (res, _c) = call(
         front,
         "GET",
-        "/api/chats/search",
+        "/api/models/machines",
         &[("x-forwarded-for", "1.1.1.1, 203.0.113.7")],
         b"",
     )
@@ -473,7 +474,7 @@ async fn headers_cookies_and_forwarded_for() {
         echo["headers"]["x-forwarded-for"],
         serde_json::json!(["203.0.113.7"])
     );
-    let (res, _c) = call(front, "GET", "/api/chats/search", &[], b"").await;
+    let (res, _c) = call(front, "GET", "/api/models/machines", &[], b"").await;
     let echo: serde_json::Value = serde_json::from_str(&text(res).await).unwrap();
     assert_eq!(
         echo["headers"]["x-forwarded-for"],
@@ -567,7 +568,7 @@ async fn node_down_is_a_502_and_ready_is_a_503() {
     let dist = dist_dir("down");
     std::fs::remove_file(dist.join("version.json")).unwrap();
     let front = start_front(free, &dist, false).await;
-    let (res, _c) = call(front, "GET", "/api/chats/search", &[], b"").await;
+    let (res, _c) = call(front, "GET", "/api/models/machines", &[], b"").await;
     assert_eq!(res.status(), 502);
     let (res, _c) = call(front, "GET", "/api/ready", &[], b"").await;
     assert_eq!(res.status(), 503);

@@ -19,11 +19,19 @@ jobs:
           ref=$(tr -d ' \n' < bins/noevia-server/tests/fixtures/framing-suggest-oracle.core-ref)
           [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
           echo "sha=$ref" >> "$GITHUB_OUTPUT"
+          front=$(tr -d ' \n' < contracts/http/front-core.ref)
+          [[ "$front" =~ ^[0-9a-f]{40}$ ]]
+          echo "front=$front" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: sbstndalton/noevia-core
           ref: ${{ steps.core.outputs.sha }}
           path: core
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-core
+          ref: ${{ steps.core.outputs.front }}
+          path: front-core
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22.23.3
@@ -37,7 +45,7 @@ jobs:
         # core's own routes/chat-framing.cjs and http.cjs, the decision faked; no model runs.
         run: |
           set -euo pipefail
-          node bins/noevia-server/tests/framing-suggest-oracle.cjs "$PWD/core" "$RUNNER_TEMP/node-framing-suggest.json"
+          node bins/noevia-server/tests/framing-suggest-oracle.cjs "$PWD/core" "$RUNNER_TEMP/node-framing-suggest.json" "$PWD/front-core"
           cmp "$RUNNER_TEMP/node-framing-suggest.json" bins/noevia-server/tests/fixtures/node-framing-suggest.v1.json
       - name: Node-differential suggestion through the front, gate, fail-open, corpus
         run: NOEVIA_FRAMING_SUGGEST_FIXTURE="$RUNNER_TEMP/node-framing-suggest.json" cargo test --locked -p noevia-server --test framing_suggest
