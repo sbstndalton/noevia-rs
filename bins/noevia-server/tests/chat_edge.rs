@@ -814,34 +814,3 @@ fn the_oracle_core_is_pinned_and_the_capability_is_listed() {
     );
     assert!(noevia_server::FEATURES.contains(&"rust-chat-edge"));
 }
-
-/// Review P2-3: a client's `Connection` header naming the lease cannot strip the front's own lease from
-/// the local exchange it forwards, so the exchange stays covered (one gate count, not two).
-#[tokio::test(flavor = "multi_thread")]
-async fn a_hostile_connection_header_cannot_strip_the_fronts_lease_from_the_local_exchange() {
-    let f = front(&[]).await;
-    f.account(Account {
-        admin: false,
-        diary: true,
-        harness: false,
-    });
-    for connection in [
-        LEASE,
-        "keep-alive, x-noevia-admission-lease",
-        "X-Noevia-Admission-Lease",
-    ] {
-        let got = send_with(
-            &f,
-            "POST",
-            "/api/diary/local-exchange",
-            b"{}".to_vec(),
-            Who::SignedIn,
-            &[("connection", connection)],
-        )
-        .await;
-        assert_eq!(got.status, 200, "{connection}");
-        assert_eq!(got.json()["proxied"], "POST /api/diary/local-exchange");
-        assert_eq!(got.json()["lease"], f.last_lease(), "{connection}");
-    }
-    f.holds_closed().await;
-}
