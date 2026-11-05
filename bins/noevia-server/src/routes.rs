@@ -765,6 +765,18 @@ mod tests {
         assert!(crate::FEATURES.contains(&"rust-chat-turn"));
     }
 
+    /// Chat port S6: the edge rides on the turn's route; the Diary local exchange is native (diary_routes.rs),
+    /// which counts its call on the same shared budget after the gate.
+    #[test]
+    fn the_chat_edge_keeps_the_route_table_and_the_local_exchange_is_native() {
+        assert!(crate::FEATURES.contains(&"rust-chat-edge"));
+        assert_eq!(
+            dispatch("POST", "/api/diary/local-exchange"),
+            Some(Native::Diary)
+        );
+        assert_eq!(dispatch("POST", "/api/chat"), Some(Native::ChatTurn));
+    }
+
     #[test]
     fn the_chat_turn_is_marked_transitional_until_the_front_owns_its_execution() {
         // Review S5–S9 P1: the turn's pipeline still runs in Node (/internal/chat/turn), so the
