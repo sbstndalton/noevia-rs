@@ -29,16 +29,17 @@ pub fn capped_text(body: &[u8], cap: usize) -> String {
 }
 
 /// `failureText(code, text, {partial})` with `text` as the module receives it.
-fn failure_text(code: i64, text: &str, partial: bool) -> String {
+fn failure_text(code: f64, text: &str, partial: bool) -> String {
     let fixed = if partial {
         STREAM_FAILED_PARTIAL_TEXT
     } else {
         STREAM_FAILED_TEXT
     };
-    let Ok(status) = u32::try_from(code) else {
+    if !(0.0..=f64::from(u32::MAX)).contains(&code) || code.fract() != 0.0 {
         // dav-parse-wasm.cjs refuses the input; classify answers null.
         return fixed.to_owned();
-    };
+    }
+    let status = code as u32;
     // The module's input: at most MAX_ERROR_UNITS units, made well formed, as UTF-8.
     let well: String = wtf16::slice(text, MAX_ERROR_UNITS)
         .chars()
