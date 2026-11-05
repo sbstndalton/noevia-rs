@@ -5,6 +5,7 @@
 pub mod assertion;
 pub mod config;
 pub mod corpus;
+pub mod external_sources;
 pub mod health;
 pub mod managed;
 pub mod py;

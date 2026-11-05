@@ -52,6 +52,10 @@ pub struct Config {
     /// Python's DIARY_CORPUS_WRITE_IMPL ("python" when absent).
     #[serde(default)]
     pub corpus_write_impl: String,
+    /// D6: the folders `external_source_paths()` resolves (DIARY_EXTERNAL_SOURCES), as Python
+    /// would list them; absent from an older Python, in which case the route declines.
+    #[serde(default)]
+    pub external_sources: Option<Vec<String>>,
 }
 
 pub fn parse(line: &str) -> Result<Config, String> {

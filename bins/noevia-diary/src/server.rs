@@ -15,6 +15,7 @@
 
 use crate::config::Config;
 use crate::corpus::{self, BaseCorpus, Layout};
+use crate::external_sources;
 use crate::health::{self, Models};
 use crate::managed::{self, Managed, Settings};
 use crate::py;
@@ -61,6 +62,8 @@ pub struct App {
     /// DIARY_CORPUS_WRITE_IMPL in Python: entries are written here only when Python itself uses
     /// the same native transforms ("rust").
     pub corpus_write_impl: String,
+    /// D6: GET /api/external-sources is served only when Python named the folders.
+    pub external_sources: Option<Vec<String>>,
     pub writers: Writers,
 }
 
@@ -85,6 +88,7 @@ impl App {
             http: reqwest::Client::builder().build().unwrap_or_default(),
             export: cfg.workspace_export,
             corpus_write_impl: cfg.corpus_write_impl,
+            external_sources: cfg.external_sources,
             writers: Writers::default(),
         }
     }
@@ -181,6 +185,8 @@ pub enum Route {
     Directory,
     Append,
     Edit,
+    /// D6: GET /api/external-sources.
+    ExternalSources,
 }
 
 impl Route {
@@ -216,6 +222,7 @@ pub fn route(method: &Method, path: &str) -> Option<Route> {
         ("POST", "/api/directory") => Some(Route::Directory),
         ("POST", "/api/entries/append") => Some(Route::Append),
         ("POST", "/api/entries/edit") => Some(Route::Edit),
+        ("GET", "/api/external-sources") => Some(Route::ExternalSources),
         _ => None,
     }
 }
@@ -327,7 +334,11 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
         | Route::PutFile
         | Route::Directory
         | Route::Append
-        | Route::Edit => {
+        | Route::Edit
+        | Route::ExternalSources => {
+            if r == Route::ExternalSources && app.external_sources.is_none() {
+                return Plan::Decline;
+            }
             if r.write() && header_uid.is_empty() {
                 // The legacy (header-less) tenant's writes stay with Python.
                 return Plan::Decline;
@@ -524,6 +535,18 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
             let app2 = app.clone();
             let task = tokio::task::spawn_blocking(move || serve_corpus(&app2, r, &query, &tenant));
             task.await.unwrap_or_else(|_| internal_error())
+        }
+        Route::ExternalSources => {
+            if let Err(resp) = resolve_tenant(&app, &header_uid, asserted, &headers, tenant) {
+                return *resp;
+            }
+            let Some(paths) = app.external_sources.clone() else {
+                return decline();
+            };
+            match tokio::task::spawn_blocking(move || external_sources::list(&paths)).await {
+                Ok(r) => reply(r),
+                Err(_) => internal_error(),
+            }
         }
         Route::PutFile | Route::Directory | Route::Append | Route::Edit => {
             serve_write(app, r, &header_uid, asserted, &headers, tenant, write).await
