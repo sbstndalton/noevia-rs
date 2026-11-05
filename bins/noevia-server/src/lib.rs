@@ -51,10 +51,10 @@ pub mod model_downloads_read;
 pub mod model_kind;
 pub mod model_maint;
 pub mod model_manager_scan;
-pub mod model_writes_d;
 pub mod model_routes;
 pub mod model_sizing;
 pub mod model_state_routes;
+pub mod model_writes_d;
 #[cfg(feature = "rust-storage-reads")]
 pub mod nextcloud_routes;
 pub mod offsite_engine;
