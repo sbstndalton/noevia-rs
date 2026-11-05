@@ -18,10 +18,13 @@ fn quoted(s: &str) -> String {
 /// recent-writes.cjs `canonical(value)`: JSON with object keys sorted by UTF-16 units.
 pub fn canonical(v: &JValue) -> String {
     match v {
-        JValue::Arr(items) => format!("[{}]", items.iter().map(canonical).collect::<Vec<_>>().join(",")),
+        JValue::Arr(items) => format!(
+            "[{}]",
+            items.iter().map(canonical).collect::<Vec<_>>().join(",")
+        ),
         JValue::Obj(items) => {
             let mut keys: Vec<&(String, JValue)> = items.iter().collect();
-            keys.sort_by(|a, b| units(&a.0).cmp(&units(&b.0)));
+            keys.sort_by_key(|a| units(&a.0));
             format!(
                 "{{{}}}",
                 keys.iter()
@@ -46,14 +49,26 @@ pub fn fingerprint(name: &JValue, target: &JValue, raw_args: &JValue) -> String 
         // `String(rawArgs || '')`: only a non-empty string fails to parse.
         Err(_) => text.to_owned(),
     };
-    let name = if name.truthy() { js_json::to_js_string(name).unwrap_or_default() } else { String::new() };
+    let name = if name.truthy() {
+        js_json::to_js_string(name).unwrap_or_default()
+    } else {
+        String::new()
+    };
     let where_ = match target {
         JValue::Str(t) if !t.is_empty() => JValue::Str(t.clone()),
         _ => JValue::Null,
     };
-    let line = wtf16::stringify(&JValue::Arr(vec![JValue::Str(name), where_, JValue::Str(args)])).unwrap_or_default();
+    let line = wtf16::stringify(&JValue::Arr(vec![
+        JValue::Str(name),
+        where_,
+        JValue::Str(args),
+    ]))
+    .unwrap_or_default();
     // A lone surrogate never reaches the hash: JSON.stringify wrote it as an escape.
-    Sha256::digest(line.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
+    Sha256::digest(line.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 /// recent-writes.cjs `createRecentWrites`: per account and chat, the last writes within the TTL.
@@ -73,7 +88,12 @@ impl Default for RecentWrites {
 
 impl RecentWrites {
     pub fn new(ttl_ms: i64, per_chat: usize, max_chats: usize) -> Self {
-        Self { ttl_ms, per_chat, max_chats, chats: VecDeque::new() }
+        Self {
+            ttl_ms,
+            per_chat,
+            max_chats,
+            chats: VecDeque::new(),
+        }
     }
 
     fn key(user: &str, chat: &str) -> Option<String> {
@@ -134,10 +154,16 @@ mod tests {
         for (i, fp) in ["a", "b", "c"].iter().enumerate() {
             w.record("u", "c", fp, i as i64);
         }
-        assert!(!w.has("u", "c", "a", 3) && w.has("u", "c", "b", 3), "the last two");
+        assert!(
+            !w.has("u", "c", "a", 3) && w.has("u", "c", "b", 3),
+            "the last two"
+        );
         w.record("u", "d", "x", 3);
         w.record("u", "e", "y", 3);
-        assert!(!w.has("u", "c", "b", 3), "the least recently written chat went first");
+        assert!(
+            !w.has("u", "c", "b", 3),
+            "the least recently written chat went first"
+        );
         w.record("", "c", "z", 3);
         assert!(!w.has("", "c", "z", 3));
     }

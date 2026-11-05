@@ -351,7 +351,12 @@ fn write_fingerprints_match_node() {
     };
     for k in arr(c.get("cases")) {
         let (n, t, a) = (un(k.get("name")), un(k.get("target")), un(k.get("args")));
-        assert_eq!(Some(writes::fingerprint(&n, &t, &a).as_str()), k.get("fp").as_str(), "{}", wtf16::stringify(k).unwrap());
+        assert_eq!(
+            Some(writes::fingerprint(&n, &t, &a).as_str()),
+            k.get("fp").as_str(),
+            "{}",
+            wtf16::stringify(k).unwrap()
+        );
         if let (Some(want), JValue::Str(raw)) = (k.get("canonical").as_str(), &a) {
             assert_eq!(writes::canonical(&wtf16::parse(raw).unwrap()), want);
         }
