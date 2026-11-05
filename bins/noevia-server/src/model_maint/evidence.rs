@@ -270,6 +270,8 @@ pub struct Store {
     #[cfg(test)]
     run_write_failures: Mutex<Vec<std::time::Instant>>,
     #[cfg(test)]
+    run_read_failures: std::sync::atomic::AtomicUsize,
+    #[cfg(test)]
     append_stall: Mutex<Option<(std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>)>>,
     /// The only writer: appends and compactions of this process do not interleave.
     write: Mutex<Option<usize>>,
@@ -315,6 +317,8 @@ impl Store {
             #[cfg(test)]
             run_write_failures: Mutex::new(Vec::new()),
             #[cfg(test)]
+            run_read_failures: std::sync::atomic::AtomicUsize::new(0),
+            #[cfg(test)]
             append_stall: Mutex::new(None),
             caps: Caps::default(),
             write: Mutex::new(None),
@@ -332,6 +336,8 @@ impl Store {
             #[cfg(test)]
             run_write_failures: Mutex::new(Vec::new()),
             #[cfg(test)]
+            run_read_failures: std::sync::atomic::AtomicUsize::new(0),
+            #[cfg(test)]
             append_stall: Mutex::new(None),
             caps,
             write: Mutex::new(None),
@@ -343,7 +349,12 @@ impl Store {
     // on every mutation; readers remain fail-closed until an actual read succeeds.
     fn hydrate_runs(&self, locked: &mut Option<RunLedger>) -> Result<(), StoreError> {
         if locked.is_none() {
-            *locked = Some(load_runs(&self.dir).map_err(|e| StoreError::RunStorage(e.kind()))?);
+            *locked = Some(load_runs(&self.dir).map_err(|e| {
+                #[cfg(test)]
+                self.run_read_failures
+                    .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                StoreError::RunStorage(e.kind())
+            })?);
         }
         Ok(())
     }
@@ -547,6 +558,12 @@ impl Store {
 
     pub fn count(&self) -> usize {
         self.list().len()
+    }
+
+    #[cfg(test)]
+    pub(super) fn run_read_failures(&self) -> usize {
+        self.run_read_failures
+            .load(std::sync::atomic::Ordering::Acquire)
     }
 
     #[cfg(test)]

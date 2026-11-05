@@ -2503,7 +2503,11 @@ impl Worker {
     async fn finalize(self: &Arc<Self>, mut hold: Hold, until: Instant, post_failed: bool) {
         #[cfg(test)]
         let until = {
-            let gate = self.finalize_gate.lock().unwrap().clone();
+            let gate = self
+                .finalize_gate
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .clone();
             if let Some(gate) = gate {
                 gate.wait().await;
                 Instant::now()
@@ -4312,7 +4316,7 @@ mod tests {
         );
         let w = worker(d.path(), port);
         let recovery = w.spawn_recover().unwrap();
-        delta_wait(|| w.with(|i| i.decided)).await;
+        delta_wait(|| w.maint.evidence.as_ref().unwrap().run_read_failures() > 0).await;
         assert!(w.maint.local_held());
         assert!(w.launch("synthetic", plan(32768.0, 120.0)).await.is_err());
         std::fs::set_permissions(&ledger, std::fs::Permissions::from_mode(0o600)).unwrap();
@@ -4724,7 +4728,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let ini = d.path().join("models.ini");
         std::fs::write(&ini, INI).unwrap();
-        let (port, seen) = synthetic_engine(ini.clone(), true).await;
+        let (port, _) = synthetic_engine(ini.clone(), true).await;
         let w = worker(d.path(), port);
         let plan = json!({"promptBudgetSeconds": 120, "native": 16384, "base": {}});
         let plan = wtf16::parse(&plan.to_string()).unwrap();
