@@ -311,12 +311,12 @@ async fn automatic_delete_rechecks_restoration_at_authority_and_explicit_delete_
     mutable.downloads = Some(table.clone());
     mutable.sections = Some(Arc::new(sections::Sections::new(Arc::new(files))));
     std::fs::write(dir.path().join("gone.gguf"), b"synthetic").unwrap();
-    for (query, want) in [("&missingOnly=true", 409), ("", 200)] {
+    for (query, want) in [("/missing", 409), ("", 200)] {
         let answer = noevia_model_manager::router(s.clone())
             .oneshot(
                 Request::builder()
                     .method("DELETE")
-                    .uri(format!("/api/v1/sections/gone?baseRevision={rev}{query}"))
+                    .uri(format!("/api/v1/sections/gone{query}?baseRevision={rev}"))
                     .header("x-model-loader-token", TOKEN)
                     .body(Body::empty())
                     .unwrap(),

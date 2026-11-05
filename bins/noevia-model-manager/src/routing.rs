@@ -39,6 +39,7 @@ const ROUTES: &[(&str, &str)] = &[
     ("GET", "/api/v1/sections/{name}/draft-heads"),
     ("POST", "/api/v1/sections/{name}/rename"),
     ("DELETE", "/api/v1/sections/{name}"),
+    ("DELETE", "/api/v1/sections/{name}/missing"),
     ("GET", "/api/v1/sections/{name}/autoconfig"),
     ("GET", "/api/v1/backends"),
     ("POST", "/api/v1/backends/{name}/restart"),

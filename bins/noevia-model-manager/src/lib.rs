@@ -667,6 +667,7 @@ fn native_badges_route(state: &StateData, method: &Method, path: &str) -> bool {
 pub enum SectionWrite {
     Save(String),
     Delete(String),
+    DeleteMissing(String),
     Rename(String),
     SafeDefaults(String),
     ModelsIni,
@@ -693,6 +694,7 @@ pub fn section_write_route(method: &Method, path: &str) -> Option<SectionWrite> 
     match (method, tail) {
         (&Method::PUT, None) => Some(SectionWrite::Save(name)),
         (&Method::DELETE, None) => Some(SectionWrite::Delete(name)),
+        (&Method::DELETE, Some("missing")) => Some(SectionWrite::DeleteMissing(name)),
         (&Method::POST, Some("rename")) => Some(SectionWrite::Rename(name)),
         (&Method::POST, Some("safe-defaults")) => Some(SectionWrite::SafeDefaults(name)),
         _ => None,
@@ -1878,8 +1880,7 @@ async fn native_section_write(
         Ok(e) => e,
         Err(outcome) => return section_outcome(outcome),
     };
-    let missing_only = matches!(route, SectionWrite::Delete(_))
-        && form_urlencoded::parse(query.as_bytes()).any(|(k, v)| k == "missingOnly" && v == "true");
+    let missing_only = matches!(route, SectionWrite::DeleteMissing(_));
     // Share the existing publication reservation with downloads: first prevent new jobs,
     // then refuse while any admitted publisher could still restore a file.
     #[cfg(feature = "native-downloads")]
@@ -1943,7 +1944,7 @@ async fn native_section_write(
                     (Some(body), Some(new)) => writes.rename(&old, &new, body.get("baseRevision")),
                     _ => Outcome::Failed,
                 },
-                SectionWrite::Delete(name) => {
+                SectionWrite::Delete(name) | SectionWrite::DeleteMissing(name) => {
                     let base = form_urlencoded::parse(query.as_bytes())
                         .filter(|(k, _)| k == "baseRevision")
                         .last()

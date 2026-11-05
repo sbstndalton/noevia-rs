@@ -249,10 +249,7 @@ fn section_path(name: &str, revision: &JValue) -> Option<String> {
     } else {
         String::new()
     };
-    Some(format!(
-        "/api/v1/sections/{name}{query}{}missingOnly=true",
-        if query.is_empty() { "?" } else { "&" }
-    ))
+    Some(format!("/api/v1/sections/{name}/missing{query}"))
 }
 async fn prune(app: Arc<App>, actor: String) -> Response<Body> {
     let loader = &app.config.model_manager_scan;
@@ -448,11 +445,11 @@ mod tests {
 
         assert_eq!(
             section_path("a!(x)~", &JValue::Num(3.0)).as_deref(),
-            Some("/api/v1/sections/a!(x)~?baseRevision=3&missingOnly=true")
+            Some("/api/v1/sections/a!(x)~/missing?baseRevision=3")
         );
         assert_eq!(
             section_path("a", &JValue::Bool(false)).as_deref(),
-            Some("/api/v1/sections/a?missingOnly=true")
+            Some("/api/v1/sections/a/missing")
         );
         assert!(section_path("a", &JValue::obj([("toString", JValue::Num(1.0))])).is_none());
         let lone = wtf16::lone_char(0xD800)

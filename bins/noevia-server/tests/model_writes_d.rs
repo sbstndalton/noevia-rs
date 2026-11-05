@@ -77,7 +77,8 @@ async fn rig(spec: Value, prune: bool, delay: bool) -> Rig {
         }
         if r.path=="/api/v1/sections" { return at("sections",&l_spec,reply("200 OK",&json!({"revision":"synthetic-revision","sections":l_spec["sections"]}).to_string())); }
         if r.path.starts_with("/api/v1/sections/")&&r.method=="DELETE" {
-            assert!(r.path.ends_with("?baseRevision=synthetic-revision&missingOnly=true"));
+            if l_spec["oldLoader"]==true {return reply("404 Not Found","{}");}
+            assert!(r.path.ends_with("?baseRevision=synthetic-revision"));
             let mut result=reply("200 OK","{}");if delay{result.0=Duration::from_millis(250);}return at("delete",&l_spec,result);
         }
         reply("404 Not Found","{}")
@@ -355,7 +356,7 @@ async fn disconnect_at_external_awaits_finishes_and_releases_the_same_job() {
         ("facts", "owner", "/internal/models/facts"),
         ("acquire", "owner", LEASE),
         ("sections", "loader", "/api/v1/sections"),
-        ("delete", "loader", "/api/v1/sections/gone?"),
+        ("delete", "loader", "/api/v1/sections/gone/missing?"),
         ("reload", "engine", "/models?reload=1"),
         ("removed", "owner", "/internal/model-writes/effects"),
     ] {
@@ -466,7 +467,7 @@ async fn concurrent_prunes_never_execute_deletes_together() {
     let r = rig(spec, true, true).await;
     let addr = r.f.addr;
     let first = tokio::spawn(async move { raw(addr, "POST", PRUNE, ADMIN, CSRF, b"{}").await });
-    r.loader.wait_for("/api/v1/sections/gone?", 1).await;
+    r.loader.wait_for("/api/v1/sections/gone/missing?", 1).await;
     let (status, body) = raw(addr, "POST", PRUNE, ADMIN, CSRF, b"{}").await;
     assert_eq!(status, 409, "{body}");
     assert_eq!(body["code"], "maintenance_held");
@@ -555,4 +556,21 @@ async fn idle_stops_after_gate_loss_without_reload() {
         1
     );
     assert_eq!(r.engine.count("/models?reload=1"), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn old_loader_never_falls_back_to_unconditional_deletion() {
+    let r=rig(json!({"oldLoader":true,"installed":[{"name":"gone","missingFile":true},{"name":"ok"}],"sections":[{"name":"gone","hasFile":false}]}),true,false).await;
+    let (status, body) = raw(r.f.addr, "POST", PRUNE, ADMIN, CSRF, b"{}").await;
+    assert_eq!(status, 200);
+    assert_eq!(body["removed"], json!([]));
+    assert_eq!(body["kept"], json!(["gone"]));
+    let deletes = r
+        .loader
+        .seen()
+        .into_iter()
+        .filter(|r| r.method == "DELETE")
+        .collect::<Vec<_>>();
+    assert_eq!(deletes.len(), 1);
+    assert!(deletes[0].path.contains("/missing?"));
 }
