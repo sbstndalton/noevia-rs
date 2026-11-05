@@ -543,7 +543,7 @@ async fn public_delete_replays_node_validation_errors_and_result_projection() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn synthetic_files_and_presets_use_the_existing_owner_under_distinct_activity_and_hold() {
+async fn synthetic_engine_delete_retains_unfenced_presets_under_distinct_activity_and_hold() {
     use std::sync::atomic::AtomicBool;
     for missing in [false, true] {
         let d = tempfile::tempdir().unwrap();
@@ -567,7 +567,6 @@ async fn synthetic_files_and_presets_use_the_existing_owner_under_distinct_activ
             Arc::clone(&reloads),
         );
         let owner_model = model.clone();
-        let owner_ini = ini.clone();
         let up = upstream().await;
         up.set(move|r|{
    match(r.method.as_str(),r.path.as_str()){
@@ -581,7 +580,7 @@ async fn synthetic_files_and_presets_use_the_existing_owner_under_distinct_activ
     ("POST","/models/unload")=>{assert!(a.load(Ordering::SeqCst));return reply(if missing{"404 Missing"}else{"200 OK"},"{}");},
     ("DELETE","/models?model=synthetic")=>{assert!(a.load(Ordering::SeqCst));assert!(!h.load(Ordering::SeqCst));if !missing{std::fs::remove_file(&owner_model).unwrap();}return reply(if missing{"404 Missing"}else{"200 OK"},"{}");},
     ("GET","/api/v1/sections")=>{assert!(h.load(Ordering::SeqCst));return reply("200 OK",r#"{"sections":[{"name":"synthetic","hasFile":false}],"revision":"base"}"#);},
-    ("DELETE","/api/v1/sections/synthetic/missing?baseRevision=base")=>{assert!(h.load(Ordering::SeqCst));assert!(!owner_model.exists());std::fs::write(&owner_ini,"").unwrap();s.store(false,Ordering::SeqCst);return reply("204 No Content","");},
+    ("DELETE","/api/v1/sections/synthetic/missing?baseRevision=base")=>panic!("unfenced cleanup dispatched"),
     ("GET","/models?reload=1")=>{assert!(h.load(Ordering::SeqCst));reloads_owner.fetch_add(1,Ordering::SeqCst);return reply("200 OK","{}");},
     _=>{}
    }
@@ -615,14 +614,14 @@ async fn synthetic_files_and_presets_use_the_existing_owner_under_distinct_activ
             assert!(!activity.load(Ordering::SeqCst));
             continue;
         }
-        assert_eq!(status, 200, "missing={missing}: {body}");
-        assert_eq!(body["presetRemoved"], true);
-        assert_eq!(body["presetsReloaded"], true);
-        assert_eq!(body["unloaded"], !missing);
+        assert_eq!(status, 503, "missing={missing}: {body}");
         assert!(!model.exists());
         assert_eq!(std::fs::read(&outside).unwrap(), b"keep");
-        assert_eq!(std::fs::read_to_string(&ini).unwrap(), "");
-        assert_eq!(reloads.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            std::fs::read_to_string(&ini).unwrap(),
+            "[synthetic]\nmodel = synthetic.gguf\n"
+        );
+        assert_eq!(reloads.load(Ordering::SeqCst), 0);
         assert!(!activity.load(Ordering::SeqCst));
         assert!(!hold.load(Ordering::SeqCst));
     }
@@ -727,7 +726,9 @@ async fn review_cleanup_rig(mode: &'static str) -> (tempfile::TempDir, Front, Up
                     reply("409 Conflict", r#"{"error":{"type":"gate_error","code":"model_in_use","message":"Busy","retryable":true}}"#)
                 } else { std::fs::remove_file(&file).unwrap(); reply("200 OK", "{}") }
             }
+            ("POST", "/models") => reply("200 OK", "{}"),
             ("GET", "/api/v1/sections") => {
+                if mode == "publisher-unfenced" { std::fs::write(&file, b"late engine publication").unwrap(); }
                 if mode == "restored-before-cas" { std::fs::write(&file, b"restored synthetic").unwrap(); }
                 if ["renew-lost", "renew-outage", "retake-success"].contains(&mode) { lost.store(true, Ordering::SeqCst); }
                 let response = reply("200 OK", r#"{"revision":"base","sections":[{"name":"synthetic","hasFile":false}]}"#);
@@ -895,4 +896,35 @@ async fn review_cancelled_cleanup_acquire_releases_the_late_grant() {
             .count(),
         1
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn review_unfenced_publisher_never_dispatches_conditional_cleanup() {
+    let (dir, f, up) = review_cleanup_rig("publisher-unfenced").await;
+    // Actual E3 engine POST /models can return before its publisher finishes.
+    let (pull_status, _) = write(
+        f.addr,
+        "POST",
+        PULL,
+        ADMIN,
+        r#"{"checkpoint":"synthetic/repo"}"#,
+    )
+    .await;
+    assert_eq!(pull_status, 200);
+    let (status, body) = write(f.addr, "POST", DELETE, ADMIN, r#"{"name":"synthetic"}"#).await;
+    assert_eq!(status, 503, "{body}");
+    assert!(!up
+        .seen()
+        .iter()
+        .any(|r| r.method == "DELETE" && r.path.starts_with("/api/v1/sections")));
+    assert!(!f.app.config.maint.local_held());
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("models.ini")).unwrap(),
+        "[synthetic]\nmodel = synthetic.gguf\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("users").join(A).join("auto-roles.json")).unwrap(),
+        r#"{"fast":"synthetic","smart":"other"}"#
+    );
+    assert!(!up.seen().iter().any(|r| r.path.ends_with("/commit")));
 }

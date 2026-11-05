@@ -488,38 +488,11 @@ async fn remove_section(app: &App, name: &str, hold: &super::Hold) -> Option<boo
     {
         return Some(false);
     }
-    let mut path = format!(
-        "/api/v1/sections/{}/missing",
-        crate::gdrive::encode_uri_component(name)
-    );
-    let revision = listing.get("revision").cloned().unwrap_or(Value::Null);
-    let revision_text = revision.to_string();
-    let Ok(revision) = v8_json::parse(&revision_text.encode_utf16().collect::<Vec<_>>()) else {
-        return None;
-    };
-    if revision.truthy() {
-        let Ok(units) = v8_json::to_js_string(&revision) else {
-            return None;
-        };
-        let Ok(revision) = String::from_utf16(&units) else {
-            return None;
-        };
-        path.push_str("?baseRevision=");
-        path.push_str(&crate::gdrive::encode_uri_component(&revision));
-    }
-    let deleted = loader
-        .mutation_request(
-            reqwest::Method::DELETE,
-            &path,
-            None,
-            Duration::from_secs(15),
-        )
-        .await
-        .is_some_and(|(s, _)| (200..300).contains(&s));
-    if !deleted || !hold.excluded() {
-        return None;
-    }
-    Some(true)
+    // The engine POST /models publisher does not share the loader's download reservation
+    // or INI revision. Until both authorities enforce one publication epoch, absence is
+    // not stable and automatic pruning must fail closed. Do not dispatch a remote write:
+    // its HTTP timeout/cancellation cannot prove that the destructive effect has settled.
+    None
 }
 fn refusal(r: &super::router::ExactReply, unloaded: bool) -> Option<Response<Body>> {
     let e = r.body.get("error");

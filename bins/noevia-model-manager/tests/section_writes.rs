@@ -288,7 +288,7 @@ async fn native_safe_defaults_never_asks_child_for_a_plan() {
 
 #[cfg(all(feature = "native-downloads", feature = "native-sections"))]
 #[tokio::test]
-async fn review_conditional_http_delete_rechecks_restored_file_and_releases_reservation() {
+async fn review_conditional_http_delete_refuses_unfenced_publication_but_explicit_delete_works() {
     use noevia_model_manager::{downloads, sections};
     use sections::Read;
     let dir = tempfile::tempdir().unwrap();
@@ -311,7 +311,7 @@ async fn review_conditional_http_delete_rechecks_restored_file_and_releases_rese
     mutable.downloads = Some(table.clone());
     mutable.sections = Some(Arc::new(sections::Sections::new(Arc::new(files))));
     std::fs::write(dir.path().join("gone.gguf"), b"synthetic").unwrap();
-    for (query, want) in [("/missing", 409), ("", 200)] {
+    for (query, want) in [("/missing", 503), ("", 200)] {
         let answer = noevia_model_manager::router(s.clone())
             .oneshot(
                 Request::builder()
@@ -325,7 +325,7 @@ async fn review_conditional_http_delete_rechecks_restored_file_and_releases_rese
             .unwrap();
         assert_eq!(answer.status().as_u16(), want);
         assert_eq!(table.whole_reservations(), 0);
-        if want == 409 {
+        if want == 503 {
             assert_eq!(std::fs::read_to_string(&ini).unwrap(), original);
             assert_eq!(
                 std::fs::read_to_string(&roles).unwrap(),

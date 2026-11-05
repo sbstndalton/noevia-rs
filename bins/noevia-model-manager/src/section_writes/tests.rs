@@ -419,10 +419,61 @@ fn review_conditional_cleanup_retains_restored_file_and_roles() {
     std::fs::write(dir.path().join("gone.gguf"), b"synthetic").unwrap();
     let writes = SectionWrites::new(&ini, (0, 0));
     let out = writes.delete_missing("gone", before["revision"].as_str().unwrap(), &files);
-    assert!(matches!(out, Outcome::Json(409, _)));
+    assert!(matches!(out, Outcome::Json(503, _)));
     assert_eq!(std::fs::read_to_string(&ini).unwrap(), original);
     assert_eq!(
         std::fs::read_to_string(roles).unwrap(),
         "{\"gone\":\"chat\"}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn review_delayed_conditional_job_refuses_without_publisher_fence() {
+    use crate::sections::Read;
+    let dir = tempfile::tempdir().unwrap();
+    let ini = dir.path().join("models.ini");
+    let original = "[gone]\nmodel = gone.gguf\n";
+    std::fs::write(&ini, original).unwrap();
+    let roles = dir.path().join("models.roles.json");
+    std::fs::write(&roles, r#"{"gone":"chat"}"#).unwrap();
+    let files = crate::sections::Files::new(dir.path(), &ini).unwrap();
+    let before: serde_json::Value =
+        serde_json::from_slice(&files.response(None, false).unwrap()).unwrap();
+    assert_eq!(before["sections"][0]["hasFile"], false);
+    let revision = before["revision"].as_str().unwrap().to_owned();
+    let writes = SectionWrites::new(&ini, (0, 0));
+    let (resume, admitted) = std::sync::mpsc::channel();
+    let (started, entered) = tokio::sync::oneshot::channel();
+    let (finished, settled) = tokio::sync::oneshot::channel();
+    let mut caller = tokio::spawn(async move {
+        crate::docker::spawn_blocking_admitted(move || {
+            started.send(()).unwrap();
+            admitted.recv().unwrap();
+            let out = writes.delete_missing("gone", &revision, &files);
+            finished.send(out).ok();
+        })
+        .await
+    });
+    entered.await.unwrap();
+    // Real admitted blocking work survives the HTTP caller's timeout and cancellation.
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(10), &mut caller)
+            .await
+            .is_err()
+    );
+    caller.abort();
+    assert!(caller.await.unwrap_err().is_cancelled());
+    // Resume after the caller (and any caller-owned hold) is gone. The destination must
+    // refuse even unchanged INI and missing files when no commit fence was supplied.
+    resume.send(()).unwrap();
+    let out = tokio::time::timeout(std::time::Duration::from_secs(5), settled)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(out, Outcome::Json(503, _)));
+    assert_eq!(std::fs::read_to_string(&ini).unwrap(), original);
+    assert_eq!(
+        std::fs::read_to_string(roles).unwrap(),
+        r#"{"gone":"chat"}"#
     );
 }

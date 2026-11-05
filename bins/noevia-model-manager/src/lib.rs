@@ -1881,22 +1881,8 @@ async fn native_section_write(
         Err(outcome) => return section_outcome(outcome),
     };
     let missing_only = matches!(route, SectionWrite::DeleteMissing(_));
-    // Share the existing publication reservation with downloads: first prevent new jobs,
-    // then refuse while any admitted publisher could still restore a file.
-    #[cfg(feature = "native-downloads")]
-    let publication = if missing_only {
-        let Some(downloads) = state.downloads.as_ref() else {
-            return unavailable();
-        };
-        let guard = downloads.reserve_all();
-        if downloads.active() != 0 {
-            return unavailable();
-        }
-        Some(guard)
-    } else {
-        None
-    };
-    #[cfg(not(feature = "native-downloads"))]
+    // Engine pulls bypass the native Downloads table. Refuse before admission rather
+    // than treating that table's reservation as a cross-process publication fence.
     if missing_only {
         return unavailable();
     }
@@ -1926,8 +1912,6 @@ async fn native_section_write(
         let route = route.clone();
         move || -> Outcome {
             let _guard = guard;
-            #[cfg(feature = "native-downloads")]
-            let _publication = publication;
             let (section, ini, new) = early.unwrap_or((None, None, None));
             match route {
                 SectionWrite::Save(name) => match (body.as_ref(), section) {

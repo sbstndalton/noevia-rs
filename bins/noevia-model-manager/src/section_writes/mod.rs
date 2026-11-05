@@ -838,35 +838,20 @@ impl SectionWrites {
         }
     }
 
-    /// Automatic prune only: repeat the authoritative file scan inside the writer CAS.
-    /// The caller owns the writer lock throughout this synchronous check and commit.
-    /// Unknown scans, restored files and concurrent INI changes retain the preset and roles.
+    /// Automatic pruning is unavailable until the engine publisher and this writer
+    /// enforce the same destination epoch. A download-table reservation or INI revision
+    /// cannot fence engine file publication, nor can a caller's hold fence a delayed job.
+    /// Refuse even previously admitted work; explicit section deletion is separate.
     pub fn delete_missing(
         &self,
-        name: &str,
-        base: &str,
-        reader: &dyn crate::sections::Read,
+        _name: &str,
+        _base: &str,
+        _reader: &dyn crate::sections::Read,
     ) -> Outcome {
-        let scan = reader
-            .response(None, false)
-            .ok()
-            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
-        let absent = scan.as_ref().is_some_and(|v| {
-            v.get("revision").and_then(serde_json::Value::as_str) == Some(base)
-                && v.get("sections")
-                    .and_then(serde_json::Value::as_array)
-                    .is_some_and(|rows| {
-                        rows.iter().any(|r| {
-                            r.get("name").and_then(serde_json::Value::as_str) == Some(name)
-                                && r.get("hasFile").and_then(serde_json::Value::as_bool)
-                                    == Some(false)
-                        })
-                    })
-        });
-        if !absent {
-            return detail(409, "section file absence could not be confirmed");
-        }
-        self.delete(name, base)
+        detail(
+            503,
+            "automatic section cleanup requires a publication fence",
+        )
     }
 
     /// `DELETE /api/v1/sections/{name}?baseRevision=` (the caller holds the lock).
