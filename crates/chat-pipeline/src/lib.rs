@@ -7,6 +7,7 @@
 //!   results, applied and declined writes are folded, and the role alternation strict chat
 //!   templates need (core `normalizeReplayHistory` and the history mapping of `createChatHandler`).
 //! - [`rounds`]: the loop's checks of a reply's text (an announced but untaken tool action, the final-answer pass).
+//! - [`title`]: the chat's generated title (#1785).
 //! - [`validate`]: what a turn refuses before anything is read or written.
 //! - [`failure`]: the words a failed engine reply shows.
 //! - [`notes`]: the system notes a turn adds or removes (`withSystemNote`, `withoutSystemNote`).
@@ -14,6 +15,7 @@ pub mod failure;
 pub mod notes;
 pub mod replay;
 pub mod rounds;
+pub mod title;
 mod text;
 pub mod validate;
 
