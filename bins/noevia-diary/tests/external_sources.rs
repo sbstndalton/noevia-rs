@@ -103,6 +103,7 @@ async fn lists_a_synthetic_folder_like_python() {
     let src = dir.path().join("src");
     write(&src.join("2026-09-06 trip.md"), "abc");
     write(&src.join("sub/notes_20260907.txt"), "hello");
+    write(&src.join("ünï 2026-1-2.txt"), "u");
     write(&src.join("image.png"), "no");
     write(&src.join(".md"), "no");
     let missing = dir.path().join("missing");
@@ -121,7 +122,7 @@ async fn lists_a_synthetic_folder_like_python() {
     assert_eq!(
         body,
         format!(
-            r#"{{"configured":true,"sources":[{{"path":"{p}","exists":true,"files":[{{"name":"2026-09-06 trip.md","rel_path":"2026-09-06 trip.md","size":3,"date":"2026-09-06","date_source":"filename"}},{{"name":"notes_20260907.txt","rel_path":"sub/notes_20260907.txt","size":5,"date":"2026-09-07","date_source":"filename"}}],"total":2,"truncated":false}},{{"path":"{m}","exists":false,"files":[],"total":0,"truncated":false}}],"total":2}}"#
+            r#"{{"configured":true,"sources":[{{"path":"{p}","exists":true,"files":[{{"name":"ünï 2026-1-2.txt","rel_path":"ünï 2026-1-2.txt","size":1,"date":"2026-01-02","date_source":"filename"}},{{"name":"2026-09-06 trip.md","rel_path":"2026-09-06 trip.md","size":3,"date":"2026-09-06","date_source":"filename"}},{{"name":"notes_20260907.txt","rel_path":"sub/notes_20260907.txt","size":5,"date":"2026-09-07","date_source":"filename"}}],"total":3,"truncated":false}},{{"path":"{m}","exists":false,"files":[],"total":0,"truncated":false}}],"total":3}}"#
         )
     );
     // The token check answers {"error": ...} on this route.
