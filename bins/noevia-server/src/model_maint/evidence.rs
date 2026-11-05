@@ -144,6 +144,16 @@ pub enum StoreError {
     /// A task record: the front stores none (no producer exists).
     Task,
     Io,
+    RunStorage(std::io::ErrorKind),
+}
+
+impl StoreError {
+    pub(super) fn kind(&self) -> std::io::ErrorKind {
+        match self {
+            Self::RunStorage(kind) => *kind,
+            _ => std::io::ErrorKind::Other,
+        }
+    }
 }
 
 /// A credential-shaped string: core's `/Bearer\s+[A-Za-z0-9._~+/=-]{8,}|\bhf_[A-Za-z0-9]{20,}|
@@ -255,6 +265,10 @@ pub struct Store {
     caps: Caps,
     runs: Arc<RunRegistry>,
     #[cfg(test)]
+    run_write_error: std::sync::atomic::AtomicBool,
+    #[cfg(test)]
+    run_write_failures: Mutex<Vec<std::time::Instant>>,
+    #[cfg(test)]
     append_stall: Mutex<Option<(std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>)>>,
     /// The only writer: appends and compactions of this process do not interleave.
     write: Mutex<Option<usize>>,
@@ -296,6 +310,10 @@ impl Store {
             dir,
             runs,
             #[cfg(test)]
+            run_write_error: std::sync::atomic::AtomicBool::new(false),
+            #[cfg(test)]
+            run_write_failures: Mutex::new(Vec::new()),
+            #[cfg(test)]
             append_stall: Mutex::new(None),
             caps: Caps::default(),
             write: Mutex::new(None),
@@ -309,6 +327,10 @@ impl Store {
             dir,
             runs,
             #[cfg(test)]
+            run_write_error: std::sync::atomic::AtomicBool::new(false),
+            #[cfg(test)]
+            run_write_failures: Mutex::new(Vec::new()),
+            #[cfg(test)]
             append_stall: Mutex::new(None),
             caps,
             write: Mutex::new(None),
@@ -317,25 +339,37 @@ impl Store {
     }
 
     fn persist_runs(&self, ledger: &RunLedger) -> Result<(), StoreError> {
+        #[cfg(test)]
+        if self
+            .run_write_error
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            if let Ok(mut attempts) = self.run_write_failures.lock() {
+                attempts.push(std::time::Instant::now());
+            }
+            return Err(StoreError::RunStorage(std::io::ErrorKind::PermissionDenied));
+        }
         use std::os::unix::fs::OpenOptionsExt;
-        create_private_dir(&self.dir).map_err(|_| StoreError::Io)?;
+        create_private_dir(&self.dir).map_err(|e| StoreError::RunStorage(e.kind()))?;
         let tmp = self.dir.join("run-state.json.tmp");
         let result = (|| -> Result<(), StoreError> {
-            let bytes = serde_json::to_vec(ledger).map_err(|_| StoreError::Io)?;
+            let bytes = serde_json::to_vec(ledger)
+                .map_err(|_| StoreError::RunStorage(std::io::ErrorKind::InvalidData))?;
             let mut file = std::fs::OpenOptions::new()
                 .create(true)
                 .truncate(true)
                 .write(true)
                 .mode(0o600)
                 .open(&tmp)
-                .map_err(|_| StoreError::Io)?;
+                .map_err(|e| StoreError::RunStorage(e.kind()))?;
             file.write_all(&bytes)
                 .and_then(|()| file.sync_all())
-                .map_err(|_| StoreError::Io)?;
-            std::fs::rename(&tmp, self.dir.join("run-state.json")).map_err(|_| StoreError::Io)?;
+                .map_err(|e| StoreError::RunStorage(e.kind()))?;
+            std::fs::rename(&tmp, self.dir.join("run-state.json"))
+                .map_err(|e| StoreError::RunStorage(e.kind()))?;
             std::fs::File::open(&self.dir)
                 .and_then(|d| d.sync_all())
-                .map_err(|_| StoreError::Io)
+                .map_err(|e| StoreError::RunStorage(e.kind()))
         })();
         if result.is_err() {
             let _ = std::fs::remove_file(tmp);
@@ -495,6 +529,19 @@ impl Store {
 
     pub fn count(&self) -> usize {
         self.list().len()
+    }
+
+    #[cfg(test)]
+    pub(super) fn inject_run_write_error(&self, failing: bool) {
+        self.run_write_error
+            .store(failing, std::sync::atomic::Ordering::Release);
+    }
+    #[cfg(test)]
+    pub(super) fn run_write_failures(&self) -> Vec<std::time::Instant> {
+        self.run_write_failures
+            .lock()
+            .map(|a| a.clone())
+            .unwrap_or_default()
     }
 
     #[cfg(test)]
