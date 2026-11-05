@@ -333,7 +333,10 @@ async fn the_front_counts_the_shared_llm_budget_after_the_gate_and_gives_the_lea
     let dir = tempfile::tempdir().unwrap();
     seed(dir.path(), true);
     let (node, held) = node((201, GRANT)).await;
-    let (sidecar, heard) = server(Arc::new(|_, _| (200, r#"{"reply":"ok"}"#.into(), "application/json"))).await;
+    let (sidecar, heard) = server(Arc::new(|_, _| {
+        (200, r#"{"reply":"ok"}"#.into(), "application/json")
+    }))
+    .await;
     let app = app_with(dir.path(), &node, &sidecar, &[("LLM_RATE_LIMIT", "1")]);
     let first = call(&app, "POST", true, br#"{"message":"hi"}"#).await;
     assert_eq!(first.status(), StatusCode::OK);
@@ -346,9 +349,20 @@ async fn the_front_counts_the_shared_llm_budget_after_the_gate_and_gives_the_lea
     );
     let release = format!("DELETE /internal/inference-admission/lease/{LEASE} ");
     assert!(
-        settle(|| held.lock().unwrap().iter().filter(|l| **l == release).count() == 2).await,
+        settle(|| held
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|l| **l == release)
+            .count()
+            == 2)
+        .await,
         "{:?}",
         held.lock().unwrap()
     );
-    assert_eq!(heard.lock().unwrap().len(), 1, "only the first call reached the sidecar");
+    assert_eq!(
+        heard.lock().unwrap().len(),
+        1,
+        "only the first call reached the sidecar"
+    );
 }
