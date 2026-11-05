@@ -437,6 +437,23 @@ impl Shared {
     }
 }
 
+/// Local admission transferred to a durable finalization fence. Dropping a task must not
+/// clear it: only verified finalization/recovery explicitly releases this reservation.
+pub(super) struct AdmissionFence {
+    local: Arc<AtomicBool>,
+}
+impl AdmissionFence {
+    pub(super) fn reserve(local: Arc<AtomicBool>) -> Option<Self> {
+        local
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .ok()?;
+        Some(Self { local })
+    }
+    pub(super) fn release(self) {
+        self.local.store(false, Ordering::Release);
+    }
+}
+
 /// A maintenance hold. Always bounded by a deadline; `release().await` ends it, `Drop` ends it too.
 pub struct Hold {
     shared: Arc<Shared>,
@@ -457,6 +474,13 @@ impl std::fmt::Debug for Hold {
 }
 
 impl Hold {
+    pub(super) fn defer_local_release(&mut self) -> AdmissionFence {
+        self.local_finished = true;
+        AdmissionFence {
+            local: Arc::clone(&self.local),
+        }
+    }
+
     /// A lease on Node's gate, renewed until `deadline`.
     pub(super) fn leased(
         local: Arc<AtomicBool>,
