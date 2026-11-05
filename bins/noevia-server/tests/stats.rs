@@ -74,8 +74,12 @@ async fn call(
     call_body(addr, method, path, cookie, csrf, "").await
 }
 async fn call_body(
-    addr: std::net::SocketAddr, method: &str, path: &str, cookie: &str,
-    csrf: Option<&str>, body: &str,
+    addr: std::net::SocketAddr,
+    method: &str,
+    path: &str,
+    cookie: &str,
+    csrf: Option<&str>,
+    body: &str,
 ) -> (u16, String, String) {
     let mut s = TcpStream::connect(addr).await.unwrap();
     let csrf = csrf
@@ -345,15 +349,28 @@ async fn concurrent_polls_share_one_engine_read_kept_two_seconds() {
 
 // Synthetic private bridge only: no model manager or real engine can be reached.
 async fn role_bridge() -> (std::net::SocketAddr, tokio::task::JoinHandle<()>) {
-    let listener=TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr=listener.local_addr().unwrap();
-    let routes=axum::Router::new()
-        .route("/internal/auto-roles/facts", axum::routing::post(||async {r#"{"catalogue":[{"name":"chat-a"},{"name":"idle"}]}"#}))
-        .route("/internal/auto-roles/invalidate",axum::routing::post(||async {r#"{"ok":true}"#}))
-        .route("/internal/auto-roles/warm",axum::routing::post(||async {r#"{"ok":true}"#}))
-        .fallback(||async {axum::http::StatusCode::BAD_GATEWAY});
-    let task=tokio::spawn(async move {axum::serve(listener,routes).await.unwrap();});
-    (addr,task)
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let routes = axum::Router::new()
+        .route(
+            "/internal/auto-roles/facts",
+            axum::routing::post(|| async {
+                r#"{"catalogue":[{"name":"chat-a"},{"name":"idle"}]}"#
+            }),
+        )
+        .route(
+            "/internal/auto-roles/invalidate",
+            axum::routing::post(|| async { r#"{"ok":true}"# }),
+        )
+        .route(
+            "/internal/auto-roles/warm",
+            axum::routing::post(|| async { r#"{"ok":true}"# }),
+        )
+        .fallback(|| async { axum::http::StatusCode::BAD_GATEWAY });
+    let task = tokio::spawn(async move {
+        axum::serve(listener, routes).await.unwrap();
+    });
+    (addr, task)
 }
 
 #[tokio::test]
@@ -361,10 +378,13 @@ async fn a_gated_model_or_role_write_drops_the_shared_answer_nothing_else_does()
     let d = tempfile::tempdir().unwrap();
     seed_database(d.path());
     let (engine, listings) = router(Duration::ZERO).await;
-    let (bridge, bridge_task)=role_bridge().await;
-    let mut env=switched_on(engine);
-    env.push(("NOEVIA_LEGACY_UPSTREAM",format!("http://{bridge}")));
-    env.push(("NOEVIA_PROJECT_STORE_TOKEN","synthetic-role-writer-secret-000000000".into()));
+    let (bridge, bridge_task) = role_bridge().await;
+    let mut env = switched_on(engine);
+    env.push(("NOEVIA_LEGACY_UPSTREAM", format!("http://{bridge}")));
+    env.push((
+        "NOEVIA_PROJECT_STORE_TOKEN",
+        "synthetic-role-writer-secret-000000000".into(),
+    ));
     let (addr, stop, app) = start_app(d.path(), &env).await;
     let stats = app.stats.as_ref().map(Arc::clone).unwrap();
     let poll = || async { call(addr, "GET", "/api/stats", MEMBER, None).await.0 };
@@ -397,8 +417,13 @@ async fn a_gated_model_or_role_write_drops_the_shared_answer_nothing_else_does()
     ] {
         let (status, _, body) = call(addr, method, path, cookie, Some("csrf")).await;
         if path == "/api/auto-roles" {
-            assert_eq!((status,body.as_str()),(400,r#"{"error":"invalid JSON"}"#));
-        } else { assert_eq!(status,502); }
+            assert_eq!(
+                (status, body.as_str()),
+                (400, r#"{"error":"invalid JSON"}"#)
+            );
+        } else {
+            assert_eq!(status, 502);
+        }
         dropped += 1;
         assert_eq!(stats.drops(), dropped, "{method} {path}");
         assert_eq!(poll().await, 200);
@@ -406,12 +431,25 @@ async fn a_gated_model_or_role_write_drops_the_shared_answer_nothing_else_does()
         assert_eq!(listings.load(Ordering::SeqCst), expected, "{method} {path}");
     }
     // A successful native save must also drop the shared statistics answer.
-    let (status,_,body)=call_body(addr,"PUT","/api/auto-roles",MEMBER,Some("csrf"),
-        r#"{"fast":"chat-a","smart":"idle"}"#).await;
-    assert_eq!((status,body.as_str()),(200,r#"{"configured":true,"roles":{"fast":"chat-a","smart":"idle"}}"#));
-    assert_eq!(stats.drops(),dropped+1);
-    assert_eq!(poll().await,200);
-    assert_eq!(listings.load(Ordering::SeqCst),expected+1);
+    let (status, _, body) = call_body(
+        addr,
+        "PUT",
+        "/api/auto-roles",
+        MEMBER,
+        Some("csrf"),
+        r#"{"fast":"chat-a","smart":"idle"}"#,
+    )
+    .await;
+    assert_eq!(
+        (status, body.as_str()),
+        (
+            200,
+            r#"{"configured":true,"roles":{"fast":"chat-a","smart":"idle"}}"#
+        )
+    );
+    assert_eq!(stats.drops(), dropped + 1);
+    assert_eq!(poll().await, 200);
+    assert_eq!(listings.load(Ordering::SeqCst), expected + 1);
     bridge_task.abort();
     let _ = stop.send(());
 }

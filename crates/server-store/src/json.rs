@@ -284,21 +284,31 @@ impl PreparedAutoRoles {
     }
 }
 impl Drop for PreparedAutoRoles {
-    fn drop(&mut self) { let _ = std::fs::remove_file(&self.temporary); }
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.temporary);
+    }
 }
 pub fn prepare_auto_roles(dir: &Path, text: &str) -> Result<PreparedAutoRoles, JsonError> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let sequence = NEXT.fetch_add(1, Ordering::Relaxed);
-    let temporary = dir.join(format!("auto-roles.json.{}.{}.tmp", std::process::id(), sequence));
+    let temporary = dir.join(format!(
+        "auto-roles.json.{}.{}.tmp",
+        std::process::id(),
+        sequence
+    ));
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create_new(true);
-    #[cfg(unix)] {
+    #[cfg(unix)]
+    {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
     let mut file = options.open(&temporary)?;
-    let staged = PreparedAutoRoles {temporary, destination:dir.join("auto-roles.json")};
+    let staged = PreparedAutoRoles {
+        temporary,
+        destination: dir.join("auto-roles.json"),
+    };
     file.write_all(text.as_bytes())?;
     file.sync_all()?;
     Ok(staged)

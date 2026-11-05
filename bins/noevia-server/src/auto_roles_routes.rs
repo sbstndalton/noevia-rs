@@ -48,28 +48,41 @@ struct User {
 }
 impl Writer {
     fn user(&self, id: &str) -> Arc<User> {
-        self.0.lock().unwrap_or_else(|p|p.into_inner()).entry(id.to_owned()).or_default().clone()
+        self.0
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .entry(id.to_owned())
+            .or_default()
+            .clone()
     }
 }
 impl User {
-    fn read(&self, dir: &Path) -> Result<(u64,JValue),()> {
+    fn read(&self, dir: &Path) -> Result<(u64, JValue), ()> {
         use std::sync::atomic::Ordering;
         for _ in 0..32 {
-            let generation=self.generation.load(Ordering::Acquire);
-            let roles=read_roles(dir);
-            if generation==self.generation.load(Ordering::Acquire) {return Ok((generation,roles));}
+            let generation = self.generation.load(Ordering::Acquire);
+            let roles = read_roles(dir);
+            if generation == self.generation.load(Ordering::Acquire) {
+                return Ok((generation, roles));
+            }
         }
         Err(())
     }
-    fn publish(&self, generation:u64, staged:&server_store::json::PreparedAutoRoles) -> Result<bool,()> {
+    fn publish(
+        &self,
+        generation: u64,
+        staged: &server_store::json::PreparedAutoRoles,
+    ) -> Result<bool, ()> {
         use std::sync::atomic::Ordering;
-        let _held=self.commit.lock().unwrap_or_else(|p|p.into_inner());
-        if self.generation.load(Ordering::Acquire)!=generation {return Ok(false);}
-        let next=generation.checked_add(1).ok_or(())?;
+        let _held = self.commit.lock().unwrap_or_else(|p| p.into_inner());
+        if self.generation.load(Ordering::Acquire) != generation {
+            return Ok(false);
+        }
+        let next = generation.checked_add(1).ok_or(())?;
         // Bytes and fsync are already complete. No await, read, or staging I/O is
         // performed here: just the atomic namespace replacement and generation.
-        staged.publish().map_err(|_|())?;
-        self.generation.store(next,Ordering::Release);
+        staged.publish().map_err(|_| ())?;
+        self.generation.store(next, Ordering::Release);
         Ok(true)
     }
 }
@@ -390,13 +403,20 @@ fn stage(dir: &Path, roles: &JValue) -> Result<server_store::json::PreparedAutoR
 
 // RPC facts are captured outside the commit section. A racing PUT or cleanup
 // makes CAS fail; retry the read/prepare phase so omitted Creative is retained.
-fn commit_roles(writer:&User, dir:&Path, body:&JValue, catalogue:&JValue,
-    section_roles:&std::collections::HashMap<String,String>) -> Result<JValue, Option<String>> {
+fn commit_roles(
+    writer: &User,
+    dir: &Path,
+    body: &JValue,
+    catalogue: &JValue,
+    section_roles: &std::collections::HashMap<String, String>,
+) -> Result<JValue, Option<String>> {
     for _ in 0..32 {
-        let (generation,previous)=writer.read(dir).map_err(|_|None)?;
-        let roles=prepared(body,&previous,catalogue,section_roles).map_err(Some)?;
-        let staged=stage(dir,&roles).map_err(|_|None)?;
-        if writer.publish(generation,&staged).map_err(|_|None)? {return Ok(roles);}
+        let (generation, previous) = writer.read(dir).map_err(|_| None)?;
+        let roles = prepared(body, &previous, catalogue, section_roles).map_err(Some)?;
+        let staged = stage(dir, &roles).map_err(|_| None)?;
+        if writer.publish(generation, &staged).map_err(|_| None)? {
+            return Ok(roles);
+        }
     }
     Err(None)
 }
@@ -466,15 +486,17 @@ async fn save(
             Some(f) => f,
             None => return unavailable(),
         };
-        let writer=app.auto_roles.user(user);
-        let presets=app.config.sizing.presets_path().map(Path::to_path_buf);
-        let roles=match tokio::task::spawn_blocking(move || {
-            let section_roles=crate::model_kind::roles_beside(presets.as_deref());
-            commit_roles(&writer,&dir,&body,facts.get("catalogue"),&section_roles)
-        }).await {
-            Ok(Ok(roles))=>roles,
-            Ok(Err(Some(error)))=>return bad(&error),
-            _=>return unavailable(),
+        let writer = app.auto_roles.user(user);
+        let presets = app.config.sizing.presets_path().map(Path::to_path_buf);
+        let roles = match tokio::task::spawn_blocking(move || {
+            let section_roles = crate::model_kind::roles_beside(presets.as_deref());
+            commit_roles(&writer, &dir, &body, facts.get("catalogue"), &section_roles)
+        })
+        .await
+        {
+            Ok(Ok(roles)) => roles,
+            Ok(Err(Some(error))) => return bad(&error),
+            _ => return unavailable(),
         };
         if admin {
             let _ = node(app, "warm", &serde_json::json!({"user":user})).await;
@@ -513,48 +535,59 @@ fn clear_all(writer: &Writer, data_dir: &Path, user: &str, name: &str) -> Result
         if !entry.file_type().map_err(|_| ())?.is_dir() {
             continue;
         }
-        let writer=writer.user(&id);
-        let mut completed=false;
+        let writer = writer.user(&id);
+        let mut completed = false;
         for _ in 0..32 {
-        let (generation,current)=writer.read(&dir)?;
-        let JValue::Obj(mut roles) = current else { completed=true; break; };
-        let mut changed = Vec::new();
-        for role in ROLES {
-            if !roles
-                .iter()
-                .any(|(k, v)| k == role && v.as_str() == Some(name))
-            {
-                continue;
-            }
-            changed.push(role.to_owned());
-            if matches!(role, "fast" | "smart") {
-                let other = if role == "fast" { "smart" } else { "fast" };
-                let fallback = roles
+            let (generation, current) = writer.read(&dir)?;
+            let JValue::Obj(mut roles) = current else {
+                completed = true;
+                break;
+            };
+            let mut changed = Vec::new();
+            for role in ROLES {
+                if !roles
                     .iter()
-                    .find(|(k, v)| k == other && v.truthy() && v.as_str() != Some(name))
-                    .map(|(_, v)| v.clone())
-                    .unwrap_or(JValue::from(""));
-                wtf16::set(&mut roles, role, fallback);
-            } else {
-                roles.retain(|(k, _)| k != role);
+                    .any(|(k, v)| k == role && v.as_str() == Some(name))
+                {
+                    continue;
+                }
+                changed.push(role.to_owned());
+                if matches!(role, "fast" | "smart") {
+                    let other = if role == "fast" { "smart" } else { "fast" };
+                    let fallback = roles
+                        .iter()
+                        .find(|(k, v)| k == other && v.truthy() && v.as_str() != Some(name))
+                        .map(|(_, v)| v.clone())
+                        .unwrap_or(JValue::from(""));
+                    wtf16::set(&mut roles, role, fallback);
+                } else {
+                    roles.retain(|(k, _)| k != role);
+                }
             }
-        }
-        if changed.is_empty() { completed=true; break; }
-        let value = JValue::Obj(roles);
-        let value =
-            if value.get("fast").as_str() == Some("") && value.get("smart").as_str() == Some("") {
+            if changed.is_empty() {
+                completed = true;
+                break;
+            }
+            let value = JValue::Obj(roles);
+            let value = if value.get("fast").as_str() == Some("")
+                && value.get("smart").as_str() == Some("")
+            {
                 JValue::Null
             } else {
                 value
             };
-        let staged=stage(&dir,&value)?;
-        if writer.publish(generation,&staged)? {
-            if id==user {cleared=changed;}
-            completed=true;
-            break;
+            let staged = stage(&dir, &value)?;
+            if writer.publish(generation, &staged)? {
+                if id == user {
+                    cleared = changed;
+                }
+                completed = true;
+                break;
+            }
         }
+        if !completed {
+            return Err(());
         }
-        if !completed {return Err(());}
     }
     Ok(cleared)
 }
@@ -600,7 +633,7 @@ pub fn store_route(store: crate::project_store::Store, app: Option<Arc<App>>) ->
                     {
                         return unavailable();
                     }
-                    let writer_app=Arc::clone(&app);
+                    let writer_app = Arc::clone(&app);
                     let done = tokio::task::spawn_blocking(move || {
                         clear_all(&writer_app.auto_roles, &store.data_dir, &ask.0, &ask.1)
                     })
@@ -704,7 +737,7 @@ mod writer_tests {
     #[test]
     fn cleanup_includes_dormant_users_falls_back_and_unsets_without_changing_other_roles() {
         let root = tempfile::tempdir().unwrap();
-        let writer=Writer::default();
+        let writer = Writer::default();
         let a = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
         let b = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
         let c = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
@@ -729,10 +762,27 @@ mod writer_tests {
             wtf16::parse(r#"{"fast":"stay","smart":"stay","code":"stay"}"#).unwrap()
         );
         assert_eq!(read_roles(&root.path().join("users").join(b)), JValue::Null);
-        assert!(clear_all(&writer, root.path(), a, "gone").unwrap().is_empty());
+        assert!(clear_all(&writer, root.path(), a, "gone")
+            .unwrap()
+            .is_empty());
         assert_eq!(
             std::fs::read_to_string(root.path().join("users").join(c).join(FILE)).unwrap(),
             r#"{"fast":"stay","smart":"stay"}"#
+        );
+        // A staged PUT based on pre-cleanup roles must not resurrect a deleted
+        // reference. The same-user generation rejects it after cleanup commits.
+        let dir = root.path().join("users").join(c);
+        let state = writer.user(c);
+        let (generation, old) = state.read(&dir).unwrap();
+        let late = stage(&dir, &old).unwrap();
+        clear_all(&writer, root.path(), c, "stay").unwrap();
+        assert!(!state.publish(generation, &late).unwrap());
+        assert_eq!(read_roles(&dir), JValue::Null);
+        drop(late);
+        assert_eq!(
+            std::fs::read_dir(&dir).unwrap().count(),
+            1,
+            "staged files removed after a rejected CAS"
         );
     }
     #[test]
