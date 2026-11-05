@@ -1,5 +1,10 @@
 //! Synthetic SQLite accounts and a signed loopback Diary; no production state.
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 use axum::{
     body::{to_bytes, Body},
     http::{Request, Response},

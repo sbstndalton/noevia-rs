@@ -396,7 +396,7 @@ impl<B: Backend> DavService<B> {
                         "Unknown sharing path"
                     } else if status == StatusCode::URI_TOO_LONG {
                         "Path too long"
-                    } else if raw[5..].split('/').any(|part| {
+                    } else if raw.get(5..).unwrap_or_default().split('/').any(|part| {
                         let b = part.as_bytes();
                         b.iter().enumerate().any(|(i, c)| {
                             *c == b'%'
@@ -506,10 +506,10 @@ fn parse_path(raw: &str) -> Result<(String, String), StatusCode> {
         return Err(StatusCode::BAD_REQUEST);
     }
     let mut segments = Vec::new();
-    for (index, raw_part) in raw[5..].split('/').enumerate() {
+    for (index, raw_part) in raw.get(5..).unwrap_or_default().split('/').enumerate() {
         let bytes = raw_part.as_bytes();
-        for i in 0..bytes.len() {
-            if bytes[i] == b'%'
+        for (i, byte) in bytes.iter().enumerate() {
+            if *byte == b'%'
                 && (bytes.get(i + 1).is_none_or(|b| !b.is_ascii_hexdigit())
                     || bytes.get(i + 2).is_none_or(|b| !b.is_ascii_hexdigit()))
             {
@@ -1128,7 +1128,7 @@ impl<B: Backend> DavService<B> {
                 if !valid_tag(&file.version) {
                     return fault_reply(Fault::Unavailable, true);
                 }
-                let preserved = tokio::time::timeout(
+                let preserve_result = tokio::time::timeout(
                     self.config.deadline,
                     self.backend.workspace(
                         identity,
@@ -1136,7 +1136,7 @@ impl<B: Backend> DavService<B> {
                     ),
                 )
                 .await;
-                match preserved {
+                match preserve_result {
                     Ok(Ok((200, body)))
                         if body.get("trash").is_some_and(serde_json::Value::is_string) =>
                     {

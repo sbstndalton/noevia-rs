@@ -57,9 +57,11 @@ pub fn verify_dav_and_touch(
     verify_inner(store, Some((writer, now)), username, password, scope)
 }
 
+type Touch<'a> = (&'a server_store::Writer, fn() -> i64);
+
 fn verify_inner(
     store: &Store,
-    touch: Option<(&server_store::Writer, fn() -> i64)>,
+    touch: Option<Touch<'_>>,
     username: &str,
     password: &str,
     scope: &str,

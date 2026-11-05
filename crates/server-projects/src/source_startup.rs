@@ -100,7 +100,8 @@ pub fn migrate(dir: &Path, switch: RustProjects) -> Result<bool, store::StoreErr
         if let JValue::Obj(p) = project {
             if let Some((_, JValue::Arr(files))) = p.iter_mut().find(|(k, _)| k == "files") {
                 for (index, len) in lengths {
-                    store::set(&mut files[index], "chars", JValue::Num(len as f64));
+                    let file = files.get_mut(index).ok_or(store::StoreError::Corrupt)?;
+                    store::set(file, "chars", JValue::Num(len as f64));
                 }
             }
         }
@@ -113,7 +114,7 @@ pub fn migrate(dir: &Path, switch: RustProjects) -> Result<bool, store::StoreErr
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::panic)]
+#[allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     #[test]
