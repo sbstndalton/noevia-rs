@@ -590,10 +590,7 @@ impl Worker {
         object: u64,
         until: Option<Instant>,
     ) -> std::io::Result<()> {
-        if let Some(store) = &self.maint.evidence {
-            let history = store.filter_history(state.get("history").clone());
-            wtf16::set(&mut state.0, "history", history);
-        }
+        let evidence = self.maint.evidence.clone();
         if self.file.path.is_none() {
             return Err(std::io::Error::other("calibration state unavailable"));
         }
@@ -634,6 +631,15 @@ impl Worker {
                 let _ = release.recv_timeout(Duration::from_secs(10));
             }
             let _writer = writes.lock().unwrap_or_else(|p| p.into_inner());
+            // Unknown validity hides consumers, but must never destructively erase history.
+            // Hydration and filtering are inside the bounded, generation-fenced write task.
+            if let Some(store) = evidence {
+                store
+                    .hydrate()
+                    .map_err(|e| std::io::Error::from(e.kind()))?;
+                let history = store.filter_history(state.get("history").clone());
+                wtf16::set(&mut state.0, "history", history);
+            }
             file.save_if(&state, || {
                 allowed.load(Ordering::Acquire)
                     && until.is_none_or(|end| Instant::now() < end)
@@ -3871,7 +3877,11 @@ mod tests {
         *w.terminal_stall.lock().unwrap() = Some((marker_free, entered, wait));
         (ready, release)
     }
-    async fn delta_restart(source: &Worker, port: u16) -> (tempfile::TempDir, Arc<Worker>) {
+    async fn delta_restart(
+        source: &Worker,
+        port: u16,
+        deny_ledger: bool,
+    ) -> (tempfile::TempDir, Arc<Worker>) {
         let d = tempfile::tempdir().unwrap();
         std::fs::write(d.path().join("models.ini"), INI).unwrap();
         let restarted = worker(d.path(), port);
@@ -3889,6 +3899,15 @@ mod tests {
         )
         .unwrap();
         drop(restarted);
+        if deny_ledger {
+            use std::os::unix::fs::PermissionsExt;
+            let path = new.parent().unwrap().join("run-state.json");
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o0)).unwrap();
+            assert_eq!(
+                std::fs::read(path).unwrap_err().kind(),
+                std::io::ErrorKind::PermissionDenied
+            );
+        }
         let reopened = worker(d.path(), port);
         (d, reopened)
     }
@@ -3918,7 +3937,7 @@ mod tests {
         release.send(()).unwrap();
         delta_wait(|| w.run_abort.lock().unwrap().as_ref().unwrap().is_finished()).await;
         // An abort after the decision cannot convert it into an unpersisted failure fence.
-        let (_copy, restarted) = delta_restart(&w, port).await;
+        let (_copy, restarted) = delta_restart(&w, port, false).await;
         restarted.recover().await;
         assert!(
             !cancelled && !applied,
@@ -3932,6 +3951,11 @@ mod tests {
             .unwrap()
             .inject_run_write_error(false);
         delta_wait(|| !w.maint.local_held()).await;
+        assert_eq!(
+            w.job().get("status").as_str(),
+            Some("passed"),
+            "abort cleanup preserves the original decision too"
+        );
 
         // Cancellation before the decision stays fenced across a failed control write/restart.
         let w = worker(d.path(), port);
@@ -3955,7 +3979,7 @@ mod tests {
         })
         .await;
         assert!(w.file.load().job().get("pendingTombstone").truthy());
-        let (_copy, restarted) = delta_restart(&w, port).await;
+        let (_copy, restarted) = delta_restart(&w, port, false).await;
         let store = restarted.maint.evidence.as_ref().unwrap();
         store.inject_run_write_error(true);
         let recovery = restarted.spawn_recover().unwrap();
@@ -3991,13 +4015,32 @@ mod tests {
         assert!(w.maint.local_held());
         assert!(w.cancel().is_none());
         assert!(w.launch("synthetic", plan(32768.0, 120.0)).await.is_err());
-        let (_copy, restarted) = delta_restart(&w, port).await;
+        let (_copy, restarted) = delta_restart(&w, port, true).await;
         restarted.terminal_error.store(true, Ordering::Release);
         let recovery = restarted.spawn_recover().unwrap();
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert!(restarted.maint.local_held());
         assert_eq!(restarted.job().get("status").as_str(), Some("running"));
         restarted.terminal_error.store(false, Ordering::Release);
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+        assert!(
+            restarted.maint.local_held(),
+            "a passed decision waits for ledger hydration without erasing history"
+        );
+        assert_eq!(restarted.job().get("phase").as_str(), Some("Finalizing"));
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let path = restarted
+                .maint
+                .evidence
+                .as_ref()
+                .unwrap()
+                .file()
+                .parent()
+                .unwrap()
+                .join("run-state.json");
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
         restarted.interrupt_fence_wait();
         tokio::time::timeout(Duration::from_secs(4), recovery)
             .await
@@ -4015,6 +4058,10 @@ mod tests {
             .get("pendingTombstone")
             .is_nullish());
         assert!(!restarted.maint.local_held());
+        assert!(
+            matches!(restarted.history("synthetic"), JValue::Arr(h) if !h.is_empty()),
+            "valid passed history survives the read denial"
+        );
         w.terminal_error.store(false, Ordering::Release);
         w.interrupt_fence_wait();
         delta_wait(|| !w.maint.local_held()).await;
