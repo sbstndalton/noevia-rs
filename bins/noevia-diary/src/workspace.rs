@@ -36,6 +36,8 @@ const BLOCKED_ERROR: &str = "Backup endpoint is not approved. Ask an administrat
 /// What a route produced: a JSON reply (status, value), raw bytes with headers, or a decline.
 pub enum Reply {
     Json(u16, Vec<u8>),
+    /// A 200 JSON reply with `Cache-Control: no-store` (the workspace-trash list).
+    JsonNoStore(Vec<u8>),
     Zip(Vec<u8>),
     /// A plain-text reply (Starlette's 500 for an unhandled exception).
     Text(u16, String),

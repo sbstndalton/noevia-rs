@@ -10,6 +10,7 @@ pub mod health;
 pub mod managed;
 pub mod py;
 pub mod server;
+pub mod trash;
 pub mod workspace;
 pub mod write;
 pub mod writes;

@@ -19,6 +19,7 @@ use crate::external_sources;
 use crate::health::{self, Models};
 use crate::managed::{self, Managed, Settings};
 use crate::py;
+use crate::trash;
 use crate::workspace::{self, Reply};
 use crate::write::Writers;
 use crate::writes;
@@ -187,6 +188,8 @@ pub enum Route {
     Edit,
     /// D6: GET /api/external-sources.
     ExternalSources,
+    /// D6: GET /api/workspace-trash.
+    TrashList,
 }
 
 impl Route {
@@ -195,6 +198,7 @@ impl Route {
         matches!(
             self,
             Route::Files
+                | Route::TrashList
                 | Route::StorageStatus
                 | Route::WorkspaceExport
                 | Route::PutFile
@@ -223,6 +227,7 @@ pub fn route(method: &Method, path: &str) -> Option<Route> {
         ("POST", "/api/entries/append") => Some(Route::Append),
         ("POST", "/api/entries/edit") => Some(Route::Edit),
         ("GET", "/api/external-sources") => Some(Route::ExternalSources),
+        ("GET", "/api/workspace-trash") => Some(Route::TrashList),
         _ => None,
     }
 }
@@ -335,7 +340,8 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
         | Route::Directory
         | Route::Append
         | Route::Edit
-        | Route::ExternalSources => {
+        | Route::ExternalSources
+        | Route::TrashList => {
             if r == Route::ExternalSources && app.external_sources.is_none() {
                 return Plan::Decline;
             }
@@ -548,6 +554,18 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
                 Err(_) => internal_error(),
             }
         }
+        Route::TrashList => {
+            // app.py: HTTPException(401, 'unauthorized') like the D4b routes, then the tenant.
+            let tenant = match resolve_tenant(&app, &header_uid, asserted, &headers, tenant) {
+                Ok(t) => t,
+                Err(resp) => return *resp,
+            };
+            let after = py::query_get(&query, "after").unwrap_or_default();
+            match tokio::task::spawn_blocking(move || trash::list(&tenant.store, &after)).await {
+                Ok(r) => reply(r),
+                Err(_) => internal_error(),
+            }
+        }
         Route::PutFile | Route::Directory | Route::Append | Route::Edit => {
             serve_write(app, r, &header_uid, asserted, &headers, tenant, write).await
         }
@@ -559,6 +577,12 @@ fn reply(r: Reply) -> Response<Body> {
     match r {
         Reply::Json(status, body) => Response::builder()
             .status(status)
+            .header("content-type", "application/json")
+            .body(Body::from(body))
+            .unwrap_or_default(),
+        Reply::JsonNoStore(body) => Response::builder()
+            .status(200)
+            .header("cache-control", "no-store")
             .header("content-type", "application/json")
             .body(Body::from(body))
             .unwrap_or_default(),
