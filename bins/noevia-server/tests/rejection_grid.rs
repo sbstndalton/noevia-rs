@@ -283,7 +283,7 @@ async fn manifest_rejection_grid_matches_pinned_core() {
         let accounts = ready["accounts"].as_array().unwrap();
         // On every entry: admin, member, signed-out, bad-CSRF admin and bad-CSRF member.
         for (template, method, path) in &wire_cases {
-            for state in 0..5 {
+            for (state, &state_name) in states.iter().enumerate() {
                 let account = match state {
                     0 | 3 => Some(&accounts[0]),
                     1 | 4 => Some(&accounts[1]),
@@ -293,13 +293,13 @@ async fn manifest_rejection_grid_matches_pinned_core() {
                 let actual = answer(&client, native, method, path, account, state >= 3).await;
                 *status_counts.entry(expected.status).or_insert(0usize) += 1;
                 *session_statuses
-                    .entry(states[state])
+                    .entry(state_name)
                     .or_default()
                     .entry(expected.status)
                     .or_default() += 1;
                 // Count a protected exact path: public endpoints can return 405 even signed out.
                 if path == "/api/account/retention" && state < 2 && expected.status == 405 {
-                    *protected_405s.entry(states[state]).or_default() += 1;
+                    *protected_405s.entry(state_name).or_default() += 1;
                 }
                 compared += 1;
                 let equal = actual.status == expected.status
