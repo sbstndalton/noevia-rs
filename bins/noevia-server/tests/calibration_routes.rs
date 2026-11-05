@@ -581,3 +581,14 @@ async fn a_load_nodes_decision_refuses_never_reaches_the_engine() {
         core_untouched(&up);
     }
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn unknown_native_budget_never_selects_a_configured_calibration_limit() {
+    let (d, f, _up, e) = rig().await;
+    std::fs::remove_file(d.path().join("model-facts.json")).unwrap();
+    let (status, _) = write(f.addr, "POST", PATH, ADMIN, ASK).await;
+    assert_eq!(status, 503);
+    assert_eq!(e.count("POST /gate/"), 0);
+    assert_eq!(e.count("POST /models/load"), 0);
+    assert_eq!(cal::ini(d.path()), format!("{}{}", cal::INI, cal::LAYA_INI));
+}

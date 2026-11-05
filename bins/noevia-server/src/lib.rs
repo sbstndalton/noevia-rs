@@ -48,6 +48,7 @@ pub mod mcp_routes;
 pub mod mcp_tools;
 pub mod model_assignments;
 pub mod model_downloads_read;
+pub mod model_facts;
 pub mod model_kind;
 pub mod model_maint;
 pub mod model_manager_scan;
@@ -379,6 +380,7 @@ use std::sync::Arc;
 /// (NOEVIA_FRONT_CLIENT_IP=1), and Node believes that header only then, so a core release paired
 /// with a front that predates the strip cannot be handed a client-chosen address (#1578).
 pub const FEATURES: &[&str] = &[
+    "rust-model-facts-v1",
     "rust-embedding-background-v1",
     "client-address-header",
     "code-net-guard",
@@ -606,6 +608,9 @@ impl App {
 
     /// [`App::new`] with the code-network guard's host lookups made by `lookup`.
     pub fn with_lookup(config: config::Config, lookup: code_net::Lookup) -> Arc<Self> {
+        // App initialization publishes the sole effective boot state, before requests can consume it.
+        // Unavailable publication keeps all budget readers fail-closed; main also gates readiness.
+        let _ = config.model_facts.publish();
         let code_net = code_net::CodeNetGuard::new(&config.code_net, lookup);
         let version = health::local_version(&config.dist, config.stamp_version.as_deref());
         let identity = Arc::new(identity::IdentityLayer::new(&config));

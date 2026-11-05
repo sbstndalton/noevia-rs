@@ -205,7 +205,16 @@ pub async fn native(dir: &Path, gate: bool) -> (Arc<Engine>, Vec<(&'static str, 
     std::fs::write(models.join("laya-mini.gguf"), gguf()).unwrap();
     std::fs::write(dir.join("models.ini"), format!("{INI}{LAYA_INI}")).unwrap();
     let e = engine(dir.join("models.ini")).await;
+    std::fs::write(dir.join("meminfo"), "MemTotal:       67108864 kB\n").unwrap();
     let mut env = vec![
+        (
+            "NOEVIA_START_ID",
+            "0123456789abcdef0123456789abcdef".to_owned(),
+        ),
+        (
+            "NOEVIA_TEST_MEMINFO_PATH",
+            dir.join("meminfo").display().to_string(),
+        ),
         ("MODEL_MANAGER_KIND", "llamacpp".to_owned()),
         ("MODEL_MANAGER_BASE_URL", e.base()),
         (

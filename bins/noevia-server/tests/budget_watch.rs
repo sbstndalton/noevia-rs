@@ -288,6 +288,10 @@ impl Deployment {
             ("MODEL_MANAGER_API_KEY", "synthetic-key".to_owned()),
             ("UI_DATA_DIR", self.dir.path().display().to_string()),
             (
+                "NOEVIA_START_ID",
+                "0123456789abcdef0123456789abcdef".to_owned(),
+            ),
+            (
                 "NOEVIA_LEGACY_UPSTREAM",
                 format!("http://127.0.0.1:{}", self.node),
             ),
@@ -313,6 +317,7 @@ impl Deployment {
         for (k, v) in extra {
             env.insert(k.clone(), v.as_str().unwrap().to_owned());
         }
+        self.snapshot_budget(12.0);
         env
     }
 
@@ -342,7 +347,13 @@ impl Deployment {
         Watch::new(Settings::from_lookup(&get), io)
     }
 
+    fn snapshot_budget(&self, budget: f64) {
+        std::fs::write(self.dir.path().join("model-facts.json"),json!({"protocol":"model-facts/1","start":"0123456789abcdef0123456789abcdef","generation":1,"at":noevia_server::identity::now_ms(),"budget":{"budgetGib":budget}}).to_string()).unwrap();
+    }
     fn files(&self, step: &Value) {
+        if let Some(budget) = step["budget"].as_f64() {
+            self.snapshot_budget(budget);
+        }
         for (path, key) in [(self.gtt(), "gtt"), (self.vram(), "vram")] {
             match step[key].as_str() {
                 Some(text) => std::fs::write(&path, text).unwrap(),
@@ -544,6 +555,7 @@ async fn quarantine_503_timeout_and_false_remain_fenced_until_acknowledged_then_
         assert_native_load_refused(&maint).await;
         let mut changed = over();
         changed["budget"] = json!(24);
+        d.snapshot_budget(24.0);
         *d.world.step.lock().unwrap() = changed;
         assert_eq!(restarted.tick().await.unwrap().state(), "ok");
         let reply = maint
@@ -726,6 +738,7 @@ async fn legacy_damage_without_context_survives_restart_then_budget_change_inval
     assert_eq!(model_artifacts(&maint, "chat"), saved);
     *d.world.quarantine_reply.lock().unwrap() = Some(Answer::Text(503, "{}".into()));
     idle["budget"] = json!(24);
+    d.snapshot_budget(24.0);
     *d.world.step.lock().unwrap() = idle;
     assert_ne!(native_load(&maint, "chat").await, 409);
     assert!(model_artifacts(&maint, "chat").is_empty());

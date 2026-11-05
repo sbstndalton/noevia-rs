@@ -54,6 +54,14 @@ impl Loader {
             .await
     }
 
+    pub(crate) async fn facts_get(
+        &self,
+        path: &str,
+        seconds: u64,
+    ) -> Option<(StatusCode, Option<JValue>)> {
+        self.get_bounded(path, "", Duration::from_secs(seconds))
+            .await
+    }
     async fn get_bounded(
         &self,
         path: &str,
@@ -129,7 +137,7 @@ fn opaque<'a>(v: &'a JValue, key: &str) -> Option<&'a str> {
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
     })
 }
-async fn cache(app: &App, op: &str, body: &serde_json::Value) -> Option<JValue> {
+pub(crate) async fn cache(app: &App, op: &str, body: &serde_json::Value) -> Option<JValue> {
     let (status, bytes) = app
         .config
         .research

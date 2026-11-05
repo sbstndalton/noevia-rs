@@ -225,6 +225,22 @@ async fn server_main() -> ExitCode {
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
     // #697: the memory watchdog (Core's inference-budget-watch.cjs, which Core no longer starts:
     // rust-budget-watch). Its first reading is one interval from now; it stops with the server.
+    let facts = std::sync::Arc::clone(&app.config.model_facts);
+    if facts.publish().is_err() {
+        eprintln!("noevia-server: budget snapshot unavailable");
+        return ExitCode::FAILURE;
+    }
+    let mut facts_stop = stop_rx.clone();
+    let facts_app = std::sync::Arc::clone(&app);
+    let facts_job = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+        loop {
+            tokio::select! {
+                _=interval.tick()=>{ facts.set_sidecars(noevia_server::model_facts::sidecars(&facts_app,None).await.map(|p|(p.0,p.2))); let facts=std::sync::Arc::clone(&facts); let _=tokio::task::spawn_blocking(move || facts.publish()).await; },
+                _=facts_stop.changed()=>break,
+            }
+        }
+    });
     let budget_watch = noevia_server::model_maint::budget_watch::spawn(
         &app.config.maint,
         &|k: &str| std::env::var(k).ok(),
@@ -293,6 +309,7 @@ async fn server_main() -> ExitCode {
         _ = drained => ExitCode::SUCCESS,
     };
     let _ = worker_stop.send(true);
+    let _ = facts_job.await;
     if let Some(mut watch) = budget_watch {
         if tokio::time::timeout(Duration::from_secs(2), &mut watch)
             .await

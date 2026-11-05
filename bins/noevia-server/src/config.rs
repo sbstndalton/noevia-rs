@@ -18,6 +18,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct Config {
+    pub model_facts: std::sync::Arc<crate::model_facts::Authority>,
     pub host: String,
     pub port: u16,
     pub trust_proxy: bool,
@@ -429,6 +430,7 @@ impl Config {
                 .and_then(|p| std::fs::read(p).ok()),
             sizing,
             model_manager_scan: crate::model_manager_scan::Loader::from_lookup(&get)?,
+            model_facts: std::sync::Arc::new(crate::model_facts::Authority::from_lookup(&get)),
             maint,
             calibration,
             rust_export,
@@ -472,6 +474,7 @@ pub const RETIRED_SWITCHES: &[&str] = &[
 /// The cargo features the permanent front routes need, and whether this build has each. The
 /// web supervisor checks the same names in `--features` before starting either process.
 pub const FRONT_ROUTE_FEATURES: &[(&str, bool)] = &[
+    ("rust-model-facts-v1", true),
     ("rust-project-writes", cfg!(feature = "rust-project-writes")),
     ("rust-chatgpt-status", cfg!(feature = "rust-chatgpt-status")),
     ("rust-storage-reads", cfg!(feature = "rust-storage-reads")),

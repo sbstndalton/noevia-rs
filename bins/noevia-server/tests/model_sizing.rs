@@ -128,6 +128,10 @@ async fn start(
     let mut env: HashMap<String, String> = HashMap::from([
         ("NOEVIA_LEGACY_UPSTREAM".into(), "http://127.0.0.1:9".into()),
         ("UI_DATA_DIR".into(), dir.display().to_string()),
+        (
+            "NOEVIA_START_ID".into(),
+            "0123456789abcdef0123456789abcdef".into(),
+        ),
         ("TRUST_PROXY".into(), "true".into()),
         ("NOEVIA_FEATURE_NATIVE_CLIENT_AUTH".into(), "1".into()),
         ("PUBLIC_ORIGIN".into(), format!("http://{addr}")),
@@ -155,6 +159,8 @@ async fn start(
         );
     }
     let app = App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
+    // Synthetic native live state; sizing must consume this, never the settings row.
+    std::fs::write(dir.join("model-facts.json"),serde_json::json!({"protocol":"model-facts/1","start":"0123456789abcdef0123456789abcdef","generation":1,"at":noevia_server::identity::now_ms(),"budget":{"budgetGib":live_budget}}).to_string()).unwrap();
     let (stop, rx) = oneshot::channel();
     tokio::spawn(serve(
         listener,

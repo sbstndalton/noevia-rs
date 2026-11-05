@@ -1,5 +1,5 @@
 //! sbstndalton/noevia#2262 `rust-model-state-reads`: GET inference-budget and GET installed through the whole front,
-//! with a synthetic Node answering the loopback facts call and a synthetic router. No engine, no model loads.
+//! with native budget authority, synthetic config/cache owners and a synthetic router. No engine or model loads.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -160,27 +160,17 @@ async fn stub(
     (port, s)
 }
 
-/// A synthetic Node: `/internal/models/facts` by `want`, needing the secret; anything else is a proxied request.
-/// `answer` is the budget figure; `installed` the installed facts.
+/// Synthetic configuration/cache owners. The retired model-facts bridge never answers.
 async fn node(installed: Value) -> (u16, Stub) {
-    let budget = (
-        200,
-        r#"{"budgetGib":6,"source":"deployment","defaultGib":6,"minGib":2,"maxGib":60,"hostRamGib":64,"limited":false}"#.to_owned(),
-    );
-    stub(budget, move |req, current| {
-        if !req.starts_with("POST /internal/models/facts ") {
-            return (200, r#"{"proxied":true}"#.to_owned());
+    stub((200,"{}".to_owned()), move |req, current| {
+        if req.starts_with("POST /internal/model-config ") {
+            if current.0 != 200 { return current.clone(); }
+            return (200,json!({"env":{"EMBEDDING_MODEL":"syn-embed"},"embedding":{"status":{"stale":false,"enabled":true,"running":{"loaded":installed["sidecarLoaded"]}},"protected":["syn-embed"]},"config":null,"rerank":null,"revision":"synthetic-revision"}).to_string());
         }
-        if !req
-            .to_ascii_lowercase()
-            .contains(&format!("x-noevia-store-token: {SECRET}"))
-        {
-            return (404, r#"{"error":"Not found"}"#.to_owned());
+        if req.starts_with("POST /internal/model-manager-scan/snapshot ") {
+            return (200,json!({"token":"a".repeat(64),"hit":{"body":{"models":installed["scan"]}}}).to_string());
         }
-        if req.contains(r#""want":"installed""#) {
-            return (200, installed.to_string());
-        }
-        (current.0, format!(r#"{{"budget":{}}}"#, current.1))
+        (200,json!({"proxied":true}).to_string())
     })
     .await
 }
@@ -207,6 +197,11 @@ async fn front(dir: &Path, node_port: u16, engine: Option<u16>) -> SocketAddr {
             format!("http://127.0.0.1:{node_port}"),
         ),
         ("UI_DATA_DIR", dir.display().to_string()),
+        (
+            "NOEVIA_START_ID",
+            "0123456789abcdef0123456789abcdef".to_owned(),
+        ),
+        ("INFERENCE_MEMORY_BUDGET_GIB", "6".to_owned()),
         ("TRUST_PROXY", "true".to_owned()),
         ("NOEVIA_FEATURE_NATIVE_CLIENT_AUTH", "1".to_owned()),
         ("PUBLIC_ORIGIN", format!("http://{addr}")),
@@ -233,6 +228,7 @@ async fn front(dir: &Path, node_port: u16, engine: Option<u16>) -> SocketAddr {
         }
     }
     let app = App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
+    app.config.model_facts.publish().unwrap();
     tokio::spawn(serve(
         listener,
         app,
@@ -300,85 +296,25 @@ fn parse(text: &str) -> Value {
 }
 
 #[tokio::test]
-async fn the_budget_is_the_figure_node_enforces_not_the_settings_row() {
+async fn native_live_budget_does_not_reread_settings_or_ask_node() {
     let d = tempfile::tempdir().unwrap();
     lay(d.path());
-    // The row says 50: a boot read that failed left Node on the deployment's 6, and that is what limits loads.
-    let _db = seed(d.path(), Some(r#"{"budgetGib":50}"#));
+    let db = seed(d.path(), Some(r#"{"budgetGib":7}"#));
     let (np, n) = node(installed_facts()).await;
     let (ep, _e) = router(listing()).await;
     let addr = front(d.path(), np, Some(ep)).await;
-    let (status, head, body) = call(addr, "GET", "/api/models/inference-budget", ADMIN).await;
-    assert_eq!(status, 200, "{body}");
-    assert!(head.contains("cache-control: no-store"));
-    let v = parse(&body);
-    assert_eq!(
-        (v["budgetGib"].as_f64(), v["source"].as_str()),
-        (Some(6.0), Some("deployment"))
-    );
-    assert!(v.get("estimateError").is_none());
-    // Node's key order: the budget's own keys, then the rows.
-    assert!(body.starts_with(r#"{"budgetGib":6,"source":"deployment","defaultGib":6,"minGib":2,"maxGib":60,"hostRamGib":64,"limited":false,"models":["#), "{body}");
-    let rows = v["models"].as_array().unwrap();
-    let names: Vec<_> = rows.iter().map(|r| r["model"].as_str().unwrap()).collect();
-    assert!(
-        !names.contains(&"gone"),
-        "#1708: a missing file is not in the table: {names:?}"
-    );
-    assert!(
-        names.contains(&"syn-sleeper") && names.contains(&"good-long"),
-        "{names:?}"
-    );
-    let good = rows.iter().find(|r| r["model"] == "good").unwrap();
-    assert_eq!(good["labels"], json!(["vision"]));
-    assert_eq!(good["loaded"], true);
-    assert_eq!(good["sleeping"], false);
-    let total = good["estimate"]["totalGib"].as_f64().unwrap();
-    assert!(total > 4.5, "{total}");
-    assert_eq!(good["fits"], json!(total <= 6.0));
-    let sleeper = rows.iter().find(|r| r["model"] == "syn-sleeper").unwrap();
-    assert_eq!(
-        (&sleeper["loaded"], &sleeper["sleeping"]),
-        (&json!(false), &json!(true))
-    );
-    assert_eq!(
-        (&sleeper["estimate"], &sleeper["fits"]),
-        (&Value::Null, &Value::Null)
-    );
-    assert_eq!(
-        rows.iter()
-            .find(|r| r["model"] == "laya_multilingual_f16")
-            .unwrap()["system"],
-        true
-    );
-
-    // A PUT goes through Node and lands in its figure: the very next GET has it, against the same row and the fit moves.
-    n.set(200, json!({"budgetGib":60,"source":"admin","defaultGib":6,"minGib":2,"maxGib":60,"hostRamGib":64,"limited":false}).to_string());
-    let (_, _, body) = call(addr, "GET", "/api/models/inference-budget", ADMIN).await;
-    let v = parse(&body);
-    assert_eq!(
-        (v["budgetGib"].as_f64(), v["source"].as_str()),
-        (Some(60.0), Some("admin"))
-    );
-    assert_eq!(
-        v["models"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|r| r["model"] == "good")
-            .unwrap()["fits"],
-        true
-    );
-    let (_, _, body) = call(addr, "PUT", "/api/models/inference-budget", ADMIN).await;
-    assert_eq!(
-        parse(&body),
-        json!({"proxied":true}),
-        "the PUT stays Node's"
-    );
-    assert!(n
+    db.execute(
+        r#"UPDATE settings SET value='{"budgetGib":50}' WHERE key='inference:memory-budget'"#,
+        [],
+    )
+    .unwrap();
+    let (status, _, body) = call(addr, "GET", "/api/models/inference-budget", ADMIN).await;
+    assert_eq!(status, 200);
+    assert_eq!(parse(&body)["budgetGib"], 7.0);
+    assert!(!n
         .seen()
         .iter()
-        .any(|r| r.starts_with("PUT /api/models/inference-budget ")));
+        .any(|r| r.contains("/internal/models/facts")));
 }
 
 #[tokio::test]
@@ -464,15 +400,13 @@ async fn the_installed_list_is_nodes_row_for_row() {
         e.seen()
     );
     let asked = n.seen();
-    assert_eq!(asked.len(), 1);
+    assert_eq!(asked.len(), 4);
     let sent = parse(asked[0].split_once("\r\n\r\n").unwrap().1);
-    assert_eq!(sent["want"], "installed");
-    assert_eq!(sent["scan"], true);
+    assert!(asked.iter().all(|r| !r.contains("/internal/models/facts")));
     assert_eq!(
         sent["firstLoaded"], "good",
         "Node's remembered model keeps its source"
     );
-    assert_eq!(sent["ids"][0], "good");
     // Another method is Node's.
     let (_, _, body) = call(addr, "POST", "/api/models/installed", ADMIN).await;
     assert_eq!(parse(&body), json!({"proxied":true}));
@@ -543,6 +477,12 @@ async fn an_engine_that_is_down_is_nodes_answer_on_both_reads() {
     let addr = front(d.path(), np, Some(ep)).await;
     let (status, _, _) = call(addr, "GET", "/api/models/installed", ADMIN).await;
     assert_eq!(status, 502);
+    e.set(200, json!({"data":[null]}).to_string());
+    let (status, _, _) = call(addr, "GET", "/api/models/installed", ADMIN).await;
+    assert_eq!(
+        status, 502,
+        "a malformed unknown listing never becomes an empty catalogue"
+    );
     e.set(500, "{}".to_owned());
     let (status, _, _) = call(addr, "GET", "/api/models/installed", ADMIN).await;
     assert_eq!(status, 502);
@@ -552,27 +492,22 @@ async fn an_engine_that_is_down_is_nodes_answer_on_both_reads() {
 }
 
 #[tokio::test]
-async fn no_answer_from_node_is_a_503_never_a_guess() {
+async fn unavailable_configuration_is_not_an_empty_catalogue() {
     let d = tempfile::tempdir().unwrap();
     lay(d.path());
-    let _db = seed(d.path(), Some(r#"{"budgetGib":50}"#));
+    let _db = seed(d.path(), None);
     let (ep, _e) = router(listing()).await;
-    // Nothing listens on port 9: no Node.
     let addr = front(d.path(), 9, Some(ep)).await;
-    for path in ["/api/models/inference-budget", "/api/models/installed"] {
-        let (status, _, body) = call(addr, "GET", path, ADMIN).await;
-        assert_eq!(status, 503, "{path} {body}");
-        assert!(!body.contains("50"), "{body}");
-    }
-    // Node faulting behind the bridge, or answering nonsense, is the same.
-    let (np, n) = node(installed_facts()).await;
-    let addr = front(d.path(), np, Some(ep)).await;
-    n.set(503, "null".to_owned());
-    let (status, _, _) = call(addr, "GET", "/api/models/inference-budget", ADMIN).await;
-    assert_eq!(status, 503);
-    n.set(200, r#"{"budgetGib":"six"}"#.to_owned());
-    let (status, _, _) = call(addr, "GET", "/api/models/inference-budget", ADMIN).await;
-    assert_eq!(status, 503);
+    assert_eq!(
+        call(addr, "GET", "/api/models/installed", ADMIN).await.0,
+        503
+    );
+    assert_eq!(
+        call(addr, "GET", "/api/models/inference-budget", ADMIN)
+            .await
+            .0,
+        200
+    );
 }
 
 #[tokio::test]
@@ -593,4 +528,171 @@ async fn with_no_model_manager_the_answers_are_nodes_recorded_ones() {
     let v = parse(&body);
     assert_eq!(v["models"], Value::Null);
     assert!(v.get("estimateError").is_none());
+}
+
+#[test]
+fn budget_boot_failure_live_save_and_snapshot_are_one_state() {
+    let d = tempfile::tempdir().unwrap();
+    std::fs::write(d.path().join("meminfo"), "MemTotal:       67108864 kB\n").unwrap();
+    let env = HashMap::from([
+        (
+            "NOEVIA_TEST_MEMINFO_PATH",
+            d.path().join("meminfo").display().to_string(),
+        ),
+        ("UI_DATA_DIR", d.path().display().to_string()),
+        ("NOEVIA_START_ID", "synthetic-start".to_owned()),
+        ("INFERENCE_MEMORY_BUDGET_GIB", "6".to_owned()),
+    ]);
+    // No readable settings table at boot: the deployment limit is the enforced value.
+    let authority = noevia_server::model_facts::Authority::from_lookup(&|k| env.get(k).cloned());
+    authority.publish().unwrap();
+    assert_eq!(authority.budget().unwrap()["budgetGib"], 6.0);
+    let c = Connection::open(d.path().join("cowork.db")).unwrap();
+    c.execute_batch("CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT); INSERT INTO settings VALUES('inference:memory-budget','{\"budgetGib\":50}');").unwrap();
+    assert_eq!(authority.budget().unwrap()["budgetGib"], 6.0);
+    assert_eq!(
+        authority.save(&json!({"budgetGib":9})).unwrap()["budgetGib"],
+        9.0
+    );
+    let snapshot = noevia_server::model_facts::snapshot(d.path(), "synthetic-start").unwrap();
+    assert_eq!(snapshot["generation"], 1);
+    assert_eq!(snapshot["budget"]["source"], "admin");
+    assert!(noevia_server::model_facts::snapshot(d.path(), "old-start").is_none());
+    std::fs::write(d.path().join("model-facts.json"), "{\"budget\":").unwrap();
+    assert!(noevia_server::model_facts::snapshot(d.path(), "synthetic-start").is_none());
+}
+
+#[tokio::test]
+async fn stale_generation_scan_is_not_published_and_loading_stays_loading() {
+    let d = tempfile::tempdir().unwrap();
+    lay(d.path());
+    let _db = seed(d.path(), None);
+    let config_reads = std::sync::atomic::AtomicUsize::new(0);
+    let invalidated = std::sync::atomic::AtomicBool::new(false);
+    let (np,_n)=stub((200,"{}".into()),move |req,_|{
+        if req.contains("/internal/model-config ") {
+            if config_reads.fetch_add(1,std::sync::atomic::Ordering::SeqCst)>0 {invalidated.store(true,std::sync::atomic::Ordering::SeqCst);}
+            return (200,json!({"env":{},"revision":"same-config"}).to_string());
+        }
+        if req.contains("/internal/model-manager-scan/snapshot ") {
+            return (200,json!({"token":if invalidated.load(std::sync::atomic::Ordering::SeqCst){"new"}else{"old"},"hit":{"body":{"models":[{"modelId":"obsolete","bytes":5e9}]}}}).to_string());
+        }
+        (500,"{}".into())
+    }).await;
+    let (ep,_e)=router(json!({"data":[{"id":"synthetic-loading","source":"preset","status":{"value":"loading","failed":false}}]})).await;
+    let addr = front(d.path(), np, Some(ep)).await;
+    let (status, _, body) = call(addr, "GET", "/api/models/installed", ADMIN).await;
+    assert_eq!(status, 200);
+    let rows = parse(&body);
+    assert_eq!(rows[0]["status"], "loading");
+    assert_eq!(rows[0]["missingFile"], false);
+    assert_eq!(rows[0]["shape"], Value::Null);
+}
+
+#[tokio::test]
+async fn concurrent_cold_facts_share_one_bounded_scan() {
+    let d = tempfile::tempdir().unwrap();
+    let _db = seed(d.path(), None);
+    let (np, _node) = stub((200, "{}".into()), |req, _| {
+        if req.contains("/internal/model-config ") {
+            return (200, json!({"env":{},"revision":"synthetic"}).to_string());
+        }
+        (
+            200,
+            json!({"token":"synthetic-generation","hit":null}).to_string(),
+        )
+    })
+    .await;
+    let loader = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = loader.local_addr().unwrap().port();
+    let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let seen = Arc::clone(&count);
+    let task = tokio::spawn(async move {
+        while let Ok((mut stream, _)) = loader.accept().await {
+            seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            tokio::spawn(async move {
+                let mut bytes = [0u8; 8192];
+                let _ = stream.read(&mut bytes).await;
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let body = json!({"models":[{"modelId":"synthetic","bytes":12}]}).to_string();
+                stream.write_all(format!("HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",body.len()).as_bytes()).await.unwrap();
+            });
+        }
+    });
+    let env = HashMap::from([
+        ("UI_DATA_DIR", d.path().display().to_string()),
+        ("NOEVIA_LEGACY_UPSTREAM", format!("http://127.0.0.1:{np}")),
+        ("NOEVIA_PROJECT_STORE_TOKEN", SECRET.to_owned()),
+        (
+            "NOEVIA_START_ID",
+            "0123456789abcdef0123456789abcdef".to_owned(),
+        ),
+        ("MODEL_LOADER_URL", format!("http://127.0.0.1:{port}")),
+    ]);
+    let app = App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
+    let (a, b) = tokio::join!(
+        noevia_server::model_facts::installed(&app, &[], true, None),
+        noevia_server::model_facts::installed(&app, &[], true, None)
+    );
+    assert_eq!(a, b);
+    assert!(a.is_some());
+    assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
+    task.abort();
+    let _ = task.await;
+}
+
+#[tokio::test]
+async fn changed_config_during_scan_is_unavailable_not_a_stale_protection_catalogue() {
+    let d = tempfile::tempdir().unwrap();
+    lay(d.path());
+    let _db = seed(d.path(), None);
+    let calls = std::sync::atomic::AtomicUsize::new(0);
+    let (np,_n)=stub((200,"{}".into()),move |req,_|{
+        if req.contains("/internal/model-config ") {
+            return (200,json!({"env":{},"revision":calls.fetch_add(1,std::sync::atomic::Ordering::SeqCst).to_string()}).to_string());
+        }
+        (200,json!({"token":"same-generation","hit":null}).to_string())
+    }).await;
+    let (ep, _e) = router(listing()).await;
+    let addr = front(d.path(), np, Some(ep)).await;
+    assert_eq!(
+        call(addr, "GET", "/api/models/installed", ADMIN).await.0,
+        503
+    );
+}
+
+#[test]
+fn saved_boot_budget_keeps_the_oracles_number_coercion_and_host_bound() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path(), None);
+    std::fs::write(d.path().join("meminfo"), "MemTotal:       67108864 kB\n").unwrap();
+    let env = HashMap::from([
+        ("UI_DATA_DIR", d.path().display().to_string()),
+        (
+            "NOEVIA_START_ID",
+            "0123456789abcdef0123456789abcdef".to_owned(),
+        ),
+        (
+            "NOEVIA_TEST_MEMINFO_PATH",
+            d.path().join("meminfo").display().to_string(),
+        ),
+    ]);
+    for (row, budget, source) in [
+        (json!({"budgetGib":[["3"]]}), 3.0, "admin"),
+        (json!({"budgetGib":true}), 2.0, "admin"),
+        (json!({"budgetGib":"Infinity"}), 60.0, "admin"),
+        (json!({"budgetGib":{}}), 16.0, "deployment"),
+    ] {
+        db.execute(
+            "INSERT OR REPLACE INTO settings(key,value) VALUES('inference:memory-budget',?1)",
+            [row.to_string()],
+        )
+        .unwrap();
+        let authority =
+            noevia_server::model_facts::Authority::from_lookup(&|k| env.get(k).cloned());
+        authority.publish().unwrap();
+        let got = authority.budget().unwrap();
+        assert_eq!(got["budgetGib"], budget);
+        assert_eq!(got["source"], source);
+    }
 }

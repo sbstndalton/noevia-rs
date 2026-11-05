@@ -89,7 +89,7 @@ async fn call(app: &App, op: Op<'_>) -> Option<JValue> {
             token,
             row_token,
         } => {
-            let inference = inference(app).await;
+            let inference = inference(app).await?;
             tokio::time::timeout(
                 DEADLINE,
                 worker.preparation_facts(model, token, row_token, inference),
@@ -105,7 +105,7 @@ async fn call(app: &App, op: Op<'_>) -> Option<JValue> {
             prepared_token,
             plan,
         } => {
-            let inference = inference(app).await;
+            let inference = inference(app).await?;
             // A launch runs to its end even if the client leaves: the hold and the job's first save
             // are never cut in half. Past the deadline the client is told it is unavailable.
             let task = launch(
@@ -145,11 +145,9 @@ async fn launch(
         )
         .await
 }
-/// Core's inference budget for `conservativeFor` (0 when it cannot be read: the autoconfig budget).
-async fn inference(app: &App) -> f64 {
-    crate::model_state_routes::sizing_budget(app)
-        .await
-        .unwrap_or(0.0)
+/// The effective native budget. Unknown state must never select a configured sizing fallback.
+async fn inference(app: &App) -> Option<f64> {
+    crate::model_state_routes::sizing_budget(app).await
 }
 async fn body(mut body: Body) -> Result<JValue, Box<Response<Body>>> {
     let read = async {

@@ -640,6 +640,53 @@ pub fn router_with_app(
             async move { legacy_webdav(store, app, headers, raw).await }
         }),
     );
+    let (installed_store, installed_app) = (store.clone(), app.clone());
+    router = router.route(
+        "/v1/model-facts/installed",
+        post(move |headers: HeaderMap| {
+            let (store, app) = (installed_store.clone(), installed_app.clone());
+            async move {
+                if !authorised(&store, &headers) {
+                    return error(StatusCode::UNAUTHORIZED, "unauthorised");
+                }
+                let Some(app) = app else {
+                    return error(StatusCode::SERVICE_UNAVAILABLE, "Model facts unavailable");
+                };
+                crate::model_state_routes::serve(&app, crate::model_state_routes::INSTALLED, true)
+                    .await
+            }
+        }),
+    );
+    let (facts_store, facts_app) = (store.clone(), app.clone());
+    router = router.route(
+        "/v1/model-facts/budget",
+        post(move |headers: HeaderMap, raw: Bytes| {
+            let (store, app) = (facts_store.clone(), facts_app.clone());
+            async move {
+                if !authorised(&store, &headers) {
+                    return error(StatusCode::UNAUTHORIZED, "unauthorised");
+                }
+                let Some(app) = app else {
+                    return error(StatusCode::SERVICE_UNAVAILABLE, "Model facts unavailable");
+                };
+                if raw.len() > 1024 * 1024 {
+                    return error(StatusCode::PAYLOAD_TOO_LARGE, "Request exceeds size limit");
+                }
+                let Ok(body) = serde_json::from_slice::<Value>(&raw) else {
+                    return error(StatusCode::BAD_REQUEST, "invalid JSON");
+                };
+                match tokio::task::spawn_blocking(move || app.config.model_facts.save(&body)).await
+                {
+                    Ok(Ok(value)) => reply(StatusCode::OK, &value),
+                    Ok(Err((status, value))) => reply(
+                        StatusCode::from_u16(status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
+                        &value,
+                    ),
+                    Err(_) => error(StatusCode::SERVICE_UNAVAILABLE, "Model facts unavailable"),
+                }
+            }
+        }),
+    );
     // Port contract 2026-11-04 RS-1: the preset reload baseline's authority.
     router = router.merge(preset_baseline_routes(
         store.clone(),

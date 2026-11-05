@@ -27,9 +27,8 @@
 //!   loads. Quarantine IPC must answer ok:true; failures are retried with 250 ms–30 s capped backoff.
 //!   The tick keeps its strikes and does not start cooldown or publish completion until acknowledged.
 //!
-//! The budget is the one Core enforces (`/internal/models/facts` `{want:'budget'}`, as the model state reads use).
-//! Node read it in process; here the last answer stands while Node does not answer, so a Node restart does not
-//! blind the watchdog (before the first answer there is no budget, the tick is `no-budget`).
+//! The budget is Rust's effective live state, published in the same start-bound snapshot Node enforcement
+//! consumes. A missing, expired or wrong-start snapshot gives no budget; no configured fallback is used.
 
 pub(super) mod journal;
 
@@ -47,8 +46,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 pub const LOG_PREFIX: &str = "[inference-budget] ";
 /// The Core bridge for what only Core has.
 pub const BRIDGE_PATH: &str = "/internal/budget-watch";
-/// The Core facts call the budget comes from.
-pub const FACTS_PATH: &str = "/internal/models/facts";
 const GIB: f64 = 1_073_741_824.0;
 /// `engineReaderFromModelLoader`: `fetchJson(..., 4000)`.
 const LOADER_TIMEOUT: Duration = Duration::from_millis(4000);
@@ -72,7 +69,7 @@ fn js_number_str(s: &str) -> f64 {
 }
 
 /// `Number(value)` over a parsed JSON value (`undefined` is a missing key: NaN).
-fn js_number(v: Option<&Value>) -> f64 {
+pub(crate) fn js_number(v: Option<&Value>) -> f64 {
     match v {
         None => f64::NAN,
         Some(Value::Null) => 0.0,
@@ -759,14 +756,6 @@ impl NodeBridge {
         }
     }
 
-    /// `inferenceBudget.budgetGib()`, as Core enforces it.
-    pub async fn budget(&self) -> Option<f64> {
-        let o = self
-            .call(FACTS_PATH, &serde_json::json!({ "want": "budget" }))
-            .await?;
-        Some(js_number(field(o.get("budget"), "budgetGib")))
-    }
-
     /// `modelManager.maintenanceHeld()`.
     pub async fn held(&self) -> Option<bool> {
         let o = self
@@ -795,7 +784,7 @@ pub struct Loader {
     containers: Vec<String>,
 }
 
-/// The production readings: sysfs, the model manager, the router through the gate, and Core for the budget,
+/// The production readings: sysfs, the model manager, the router through the gate, and the native effective budget,
 /// the maintenance state and the quarantine.
 pub struct NativeIo {
     maint: Arc<Maint>,
@@ -804,7 +793,8 @@ pub struct NativeIo {
     files: GpuFiles,
     loader: Option<Loader>,
     node: NodeBridge,
-    budget: Mutex<Option<f64>>,
+    facts_root: Option<PathBuf>,
+    facts_start: String,
     journal_dir: Option<PathBuf>,
     retries: Mutex<std::collections::HashMap<String, (tokio::time::Instant, u32)>>,
     log: Arc<dyn Fn(&str) + Send + Sync>,
@@ -859,7 +849,8 @@ impl NativeIo {
             files: gpu_memory_files(get, drm_root),
             loader,
             node,
-            budget: Mutex::new(None),
+            facts_root: get("UI_DATA_DIR").map(PathBuf::from),
+            facts_start: get("NOEVIA_START_ID").unwrap_or_default(),
             journal_dir: maint
                 .data_dir
                 .as_ref()
@@ -948,12 +939,10 @@ impl NativeIo {
 
 impl Io for NativeIo {
     async fn budget(&self) -> Option<f64> {
-        let fresh = self.node.budget().await;
-        let mut cached = self.budget.lock().ok()?;
-        if fresh.is_some() {
-            *cached = fresh;
-        }
-        *cached
+        crate::model_facts::snapshot(self.facts_root.as_ref()?, &self.facts_start)?
+            .get("budget")?
+            .get("budgetGib")?
+            .as_f64()
     }
 
     async fn read_gpu(&self) -> Option<Gpu> {

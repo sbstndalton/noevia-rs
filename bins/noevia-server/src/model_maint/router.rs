@@ -34,7 +34,8 @@ pub struct Router {
     authorization: Option<HeaderValue>,
     budget_fence: Option<std::path::PathBuf>,
     budget_preset: Option<std::path::PathBuf>,
-    budget_node: Option<super::budget_watch::NodeBridge>,
+    budget_root: Option<std::path::PathBuf>,
+    budget_start: String,
 }
 
 impl std::fmt::Debug for Router {
@@ -63,7 +64,8 @@ impl Router {
             authorization,
             budget_fence: None,
             budget_preset: None,
-            budget_node: None,
+            budget_root: None,
+            budget_start: String::new(),
         })
     }
 
@@ -71,11 +73,13 @@ impl Router {
         mut self,
         dir: Option<std::path::PathBuf>,
         preset: Option<std::path::PathBuf>,
-        node: super::budget_watch::NodeBridge,
+        root: Option<std::path::PathBuf>,
+        start: String,
     ) -> Self {
         self.budget_fence = dir;
         self.budget_preset = preset;
-        self.budget_node = Some(node);
+        self.budget_root = root;
+        self.budget_start = start;
         self
     }
 
@@ -142,8 +146,9 @@ impl Router {
                             .map(|p| Some(p.revision)),
                         None => Some(None),
                     };
-                    let budget = match &self.budget_node {
-                        Some(node) => node.budget().await,
+                    let budget = match &self.budget_root {
+                        Some(root) => crate::model_facts::snapshot(root, &self.budget_start)
+                            .and_then(|s| s.get("budget")?.get("budgetGib")?.as_f64()),
                         None => None,
                     };
                     super::budget_watch::journal::admission(

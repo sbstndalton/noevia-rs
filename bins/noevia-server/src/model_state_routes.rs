@@ -1,45 +1,23 @@
-//! `GET /api/models/inference-budget` and `GET /api/models/installed` (sbstndalton/noevia#2262, capability
-//! `rust-model-state-reads`). Node refuses both GETs (core server/rust-model-state-reads.cjs); other methods stay
-//! Node's, among them the budget's PUT.
-//!
-//! **The budget's figure is asked of Node, never read from `settings`.** Node reads the row once at boot
-//! (inference-budget.cjs `saved`) and refuses loads and runs its watchdog on that copy. A boot read that failed leaves
-//! the row in place and Node enforcing the deployment's figure, so an answer from the row would show a limit nothing
-//! enforces. A PUT goes through Node, so asking Node sees it at once. The boot fault of `LLAMACPP_MEMORY_LIMIT`
-//! (`budgetFault`) never reaches this answer: Node's estimates and the budget do not consult it, because the inference
-//! budget is always at least 2 GiB. No answer from Node is a 503, never a guessed figure.
-//!
-//! **The installed list is built here.** The router's listing, the long-profile pairing, `models.roles.json` and the
-//! rows are this front's; the sidecar names and reports (the embedding service's state) and the shared folder scan
-//! are in Node's memory and come over the loopback bridge (core rust-model-facts.cjs). Node keeps its own list for its
-//! own readers (chat, the auto-router, deletes), so the first loaded model it remembers is passed on the same call.
-//!
-//! Behaviour changed on purpose:
-//! - The `/props` probe of each loaded model is gone. Node's list threw its answers away.
-//! - A router row with no string id is left out. Node sent a row without `name`, which made the web client refuse
-//!   the whole list.
-//! - No 2 s shared answer: one listing and one loopback call per GET, always current, so no write has to drop it.
-//! - Node's estimates kept a footprint for 60 s; here each GET reads the GGUF headers again.
+//! Native inference-budget and installed-model projections. Rust owns effective boot/live budget state;
+//! Node enforcement reads the paired start-bound atomic snapshot, and saves through the private store.
+//! Raw embedding/rerank configuration stays with its existing owners. Scan cache ownership stays with
+//! G3: reads compare its existing generation token after the bounded scan before publishing any rows.
+//! Unknown configuration is unavailable; unknown/failed engine listings never become empty catalogues.
 use crate::model_sizing::{read_presets, Presets, Sizing};
 use crate::reply;
 use axum::body::Body;
 use axum::http::{Response, StatusCode};
 use js_json::{wtf16, JValue};
 use prompt_framing::json::Value;
-use serde_json::json;
 use server_stats::compose::Read;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::Duration;
 
 pub const BUDGET: &str = "/api/models/inference-budget";
 pub const INSTALLED: &str = "/api/models/installed";
 pub const ROUTES: &[&str] = &[BUDGET, INSTALLED];
 
-const FACTS_PATH: &str = "/internal/models/facts";
-const BUDGET_DEADLINE: Duration = Duration::from_secs(5);
 /// Node's own bounds behind this call: 4 s for the sidecar backends, then 8 s for the folder scan.
-const INSTALLED_DEADLINE: Duration = Duration::from_secs(15);
 const ADMIN_REQUIRED: &str = "Administrator required for shared model profiles";
 const LIST_FAILED: &str = "Could not list installed models.";
 const BUDGET_UNAVAILABLE: &str =
@@ -59,31 +37,13 @@ fn answer(status: StatusCode, body: &JValue) -> Response<Body> {
     )
 }
 
-async fn node_facts(
-    app: &crate::App,
-    body: &serde_json::Value,
-    deadline: Duration,
-) -> Option<JValue> {
-    let (status, bytes) = app
-        .config
-        .research
-        .node_call(FACTS_PATH, body, deadline)
-        .await?;
-    if status != 200 {
-        return None;
-    }
-    wtf16::parse(&String::from_utf8_lossy(&bytes))
-        .ok()
-        .filter(JValue::is_object)
-}
-
 /// Shared with the sizing reads: never re-read a row that admission may not enforce.
 pub(crate) async fn sizing_budget(app: &crate::App) -> Option<f64> {
-    node_facts(app, &json!({ "want": "budget" }), BUDGET_DEADLINE)
-        .await?
-        .get("budget")
-        .get("budgetGib")
-        .as_num()
+    app.config
+        .model_facts
+        .budget()?
+        .get("budgetGib")?
+        .as_f64()
         .filter(|n| n.is_finite() && *n > 0.0)
 }
 
@@ -110,8 +70,11 @@ async fn budget(app: &Arc<crate::App>, admin: bool) -> Response<Body> {
     if !admin {
         return reply::error(StatusCode::FORBIDDEN, ADMIN_REQUIRED, true);
     }
-    let facts = node_facts(app, &json!({ "want": "budget" }), BUDGET_DEADLINE).await;
-    let figure = facts.as_ref().map(|f| f.get("budget").clone());
+    let figure = app
+        .config
+        .model_facts
+        .budget()
+        .and_then(|f| wtf16::parse(&f.to_string()).ok());
     let Some(JValue::Obj(mut body)) = figure.filter(|b| b.get("budgetGib").as_num().is_some())
     else {
         return reply::error(StatusCode::SERVICE_UNAVAILABLE, BUDGET_UNAVAILABLE, true);
@@ -255,7 +218,8 @@ fn meta_number(row: &Value, key: &str) -> Option<f64> {
 
 fn data_rows(listing: &Read) -> Option<&[Value]> {
     match listing.ok_body()?.get("data") {
-        Some(Value::Arr(rows)) => Some(rows),
+        // Node's adapter throws on a null row while reading model.status. It is unknown, not an empty list.
+        Some(Value::Arr(rows)) if !rows.iter().any(|row| matches!(row, Value::Null)) => Some(rows),
         _ => None,
     }
 }
@@ -314,7 +278,7 @@ async fn estimates(sizing: &Arc<Sizing>, listing: &Read, budget_gib: f64) -> Opt
 
 // ── The installed list ───────────────────────────────────────────────────────────────────────
 
-enum ListFault {
+pub(crate) enum ListFault {
     /// The router did not list: Node's 502.
     Engine,
     /// Node did not answer: what the rows mean cannot be told.
@@ -371,7 +335,7 @@ fn round1(n: f64) -> f64 {
 }
 
 /// models.cjs `modelsInstalledFresh` over the listing `listing`.
-async fn installed_list(
+pub(crate) async fn installed_list(
     app: &crate::App,
     sizing: &Arc<Sizing>,
     listing: &Read,
@@ -418,11 +382,7 @@ async fn installed_list(
         .iter()
         .any(|r| string_at(r, "source").as_deref() == Some("preset"));
     let ids: Vec<String> = rows.iter().filter_map(|r| id_of(r)).collect();
-    let mut ask = json!({ "want": "installed", "ids": ids, "scan": presetted });
-    if let (Some(first), Some(o)) = (first_loaded, ask.as_object_mut()) {
-        o.insert("firstLoaded".into(), first.into());
-    }
-    let facts = node_facts(app, &ask, INSTALLED_DEADLINE)
+    let facts = crate::model_facts::installed(app, &ids, presetted, first_loaded.as_deref())
         .await
         .ok_or(ListFault::Node)?;
     let sidecars = strings(facts.get("sidecarNames"));
