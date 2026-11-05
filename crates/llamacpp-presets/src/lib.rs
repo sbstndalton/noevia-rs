@@ -910,7 +910,11 @@ mod tests {
         let (status, out) = call(&both);
         let out = String::from_utf8(out).unwrap();
         assert_eq!(status, 0, "{}", &out[..out.len().min(80)]);
-        assert!(out.contains(r#""exists":true,"options":[["ctx-size","4096"]]"#), "{}", &out[..80]);
+        assert!(
+            out.contains(r#""exists":true,"options":[["ctx-size","4096"]]"#),
+            "{}",
+            &out[..80]
+        );
     }
 
     #[test]
