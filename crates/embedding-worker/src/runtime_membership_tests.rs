@@ -15,7 +15,7 @@ enum Missing {
     Tenant,
 }
 async fn refuses_notification(missing: Missing) {
-    let (_tmp, mut store) = seed();
+    let (_tmp, mut store) = support::seed();
     store.seed.next = None;
     let auth = rusqlite::Connection::open(store.root.join("cowork.db")).unwrap();
     for user in [USER, OTHER] {
