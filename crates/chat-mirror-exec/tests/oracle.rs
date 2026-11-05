@@ -53,6 +53,7 @@ struct DiaryState {
     trash: Vec<JValue>,
     calls: Vec<JValue>,
     fail_write: HashSet<String>,
+    fail_delete: HashSet<String>,
     n: u64,
 }
 
@@ -164,6 +165,7 @@ impl Diary for FakeDiary {
                     Ok(JValue::Obj(vec![]))
                 }
             }
+            ("delete", _) if st.fail_delete.contains(&p) => Err(status(503)),
             ("delete", Some(i)) => {
                 let (_, c, _) = st.files.remove(i);
                 st.trash.push(JValue::obj([
@@ -288,8 +290,28 @@ async fn mirror_passes_match_node() {
                         d.put(p, c.as_str().unwrap().to_owned(), v);
                     }
                 }
+                if let JValue::Obj(e) = step.get("editV") {
+                    for (p, cv) in e {
+                        let cv = arr(cv);
+                        d.put(
+                            p,
+                            cv[0].as_str().unwrap().to_owned(),
+                            cv[1].as_str().unwrap().to_owned(),
+                        );
+                    }
+                }
                 for p in arr(step.get("mkdir")) {
                     d.dirs.insert(p.as_str().unwrap().to_owned());
+                }
+                if step.get("failDelete").truthy() {
+                    d.fail_delete = arr(step.get("failDelete"))
+                        .iter()
+                        .map(|v| v.as_str().unwrap().to_owned())
+                        .collect();
+                }
+                for p in arr(step.get("remove")) {
+                    let p = p.as_str().unwrap().to_owned();
+                    d.files.retain(|(q, _, _)| *q != p);
                 }
                 if step.get("failWrite").truthy() {
                     d.fail_write = arr(step.get("failWrite"))
@@ -355,7 +377,7 @@ async fn mirror_passes_match_node() {
         assert_eq!(pass_no, expected.len(), "{name}: pass count");
         let _ = std::fs::remove_dir_all(&dir);
     }
-    assert!(compared == 18, "compared {compared} passes");
+    assert!(compared == 32, "compared {compared} passes");
 }
 
 #[test]

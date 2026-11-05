@@ -16,7 +16,7 @@ const brainLib = require(path.join(server, 'chat-brain.cjs'));
 
 /** The fake Diary: the Rust test implements the same rules. */
 function fakeDiary() {
-  const files = new Map(); const dirs = new Set(); const trash = []; const calls = []; const failWrite = new Set();
+  const files = new Map(); const dirs = new Set(); const trash = []; const calls = []; const failWrite = new Set(); const failDelete = new Set();
   let n = 0;
   const next = () => `v${++n}`;
   const err = (status) => Object.assign(Error(`status ${status}`), { status });
@@ -29,12 +29,12 @@ function fakeDiary() {
       const f = files.get(body.path);
       if (body.op === 'stat') { if (f) return { isDir: false, version: f.version }; if (dirs.has(body.path)) return { isDir: true }; throw err(404); }
       if (body.op === 'move') { if (!f) throw err(404); if (files.has(body.destination)) throw err(409); files.delete(body.path); files.set(body.destination, f); return {}; }
-      if (body.op === 'delete') { if (!f) throw err(404); trash.push({ op: 'delete', path: body.path, content: f.content }); files.delete(body.path); return {}; }
+      if (body.op === 'delete') { if (failDelete.has(body.path)) throw err(503); if (!f) throw err(404); trash.push({ op: 'delete', path: body.path, content: f.content }); files.delete(body.path); return {}; }
       if (body.op === 'preserve') { if (!f) throw err(404); trash.push({ op: 'preserve', path: body.path, content: f.content }); return {}; }
       throw err(400);
     },
   };
-  return { api, files, dirs, trash, calls, failWrite, next };
+  return { api, files, dirs, trash, calls, failWrite, failDelete, next };
 }
 
 const sorted = (m) => Object.fromEntries([...m.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
@@ -59,8 +59,11 @@ async function runMirror(scenario) {
     if (step.tombstones) state.tombstones = step.tombstones;
     if (step.brains) for (const [id, b] of Object.entries(step.brains)) brainLib.writeBrain(dir, id, { brain: b, sourceUpdatedAt: 1, builtAt: 2 });
     if (step.edit) for (const [p, content] of Object.entries(step.edit)) d.files.set(p, { content, version: d.next() });
+    if (step.editV) for (const [p, [content, version]] of Object.entries(step.editV)) d.files.set(p, { content, version });
     if (step.mkdir) for (const p of step.mkdir) d.dirs.add(p);
     if (step.failWrite) { d.failWrite.clear(); for (const p of step.failWrite) d.failWrite.add(p); }
+    if (step.failDelete) { d.failDelete.clear(); for (const p of step.failDelete) d.failDelete.add(p); }
+    if (step.remove) for (const p of step.remove) d.files.delete(p);
     if (step.index !== undefined) fs.writeFileSync(path.join(dir, 'chat-vault-mirror-index.json'), step.index);
     if (!step.pass) continue;
     d.calls.length = 0;
@@ -138,6 +141,35 @@ const MIRROR = [
   ] },
   { name: 'threw-project-chats', steps: [
     { lists: { freeChats: [{ id: 'a', title: 'A', createdAt: ts }], projects: [{ name: 'Bad', chats: { not: 'a list' } }] }, pass: {} },
+  ] },
+  { name: '757-old-gone-foreign-at-new', steps: [
+    { lists: { freeChats: [{ id: 'a', title: 'Old', createdAt: ts }], projects: [] }, pass: {} },
+    { remove: ['Chats/Inbox/Old.md'], edit: { 'Chats/Inbox/New.md': 'foreign' }, lists: { freeChats: [{ id: 'a', title: 'New', createdAt: ts }], projects: [] }, pass: {} },
+    { pass: {} },
+  ] },
+  { name: '757-old-present-foreign-at-new', steps: [
+    { lists: { freeChats: [{ id: 'a', title: 'Old', createdAt: ts }], projects: [] }, pass: {} },
+    { edit: { 'Chats/Inbox/New.md': 'foreign' }, lists: { freeChats: [{ id: 'a', title: 'New', createdAt: ts }], projects: [] }, pass: {} },
+  ] },
+  { name: '764-edited-old-skipped', steps: [
+    { mkdir: ['Chats', 'Chats/Inbox'], edit: { 'Chats/Inbox/Old.md': 'edited old', 'Chats/Inbox/New.md': 'ours' },
+      index: '{"notes":{"a":{"path":"Chats/Inbox/Old.md","version":"v2","meta":"m"}}}',
+      lists: { freeChats: [{ id: 'a', title: 'New', createdAt: ts }], projects: [] }, pass: {} },
+  ] },
+  { name: '764-failed-old-trash', steps: [
+    { lists: { freeChats: [{ id: 'a', title: 'Old', createdAt: ts }], projects: [] }, pass: {} },
+    { lists: { freeChats: [{ id: 'a', title: 'New', createdAt: ts }], projects: [] }, pass: {} },
+    { editV: { 'Chats/Inbox/Old.md': ['x', 'v2'] }, index: '{"notes":{"a":{"path":"Chats/Inbox/Old.md","version":"v2","meta":"m"}}}', failDelete: ['Chats/Inbox/Old.md'], pass: {} },
+  ] },
+  { name: '757-null-version-preserved', steps: [
+    { mkdir: ['Chats', 'Chats/Inbox'], edit: { 'Chats/Inbox/A.md': 'vault copy' }, index: '{"notes":{"a":{"path":"Chats/Inbox/A.md","version":null,"meta":"m"}}}',
+      lists: { freeChats: [{ id: 'a', title: 'A', createdAt: ts }], projects: [] }, pass: {} },
+  ] },
+  { name: '2167-repeated-removes', steps: [
+    { lists: { freeChats: [1, 2, 3, 4].map((i) => ({ id: `r${i}`, title: `R ${i}`, createdAt: ts + i })), projects: [] }, pass: {} },
+    { tombstones: ['r1'], lists: { freeChats: [2, 3, 4].map((i) => ({ id: `r${i}`, title: `R ${i}`, createdAt: ts + i })), projects: [] }, pass: { dirty: ['r1'] } },
+    { tombstones: ['r1', 'r3'], lists: { freeChats: [2, 4].map((i) => ({ id: `r${i}`, title: `R ${i}`, createdAt: ts + i })), projects: [] }, pass: { dirty: ['r3'] } },
+    { pass: { dirty: ['r1', 'r3'] } },
   ] },
 ];
 

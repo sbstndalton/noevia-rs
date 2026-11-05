@@ -947,6 +947,611 @@
      "index": null
     }
    ]
+  },
+  {
+   "name": "757-old-gone-foreign-at-new",
+   "steps": "[{\"lists\":{\"freeChats\":[{\"id\":\"a\",\"title\":\"Old\",\"createdAt\":1730000000000}],\"projects\":[]},\"pass\":{}},{\"remove\":[\"Chats/Inbox/Old.md\"],\"edit\":{\"Chats/Inbox/New.md\":\"foreign\"},\"lists\":{\"freeChats\":[{\"id\":\"a\",\"title\":\"New\",\"createdAt\":1730000000000}],\"projects\":[]},\"pass\":{}},{\"pass\":{}}]",
+   "passes": [
+    {
+     "result": "ok",
+     "calls": [
+      [
+       "mkdir",
+       "u1",
+       "{\"path\":\"Chats\"}"
+      ],
+      [
+       "mkdir",
+       "u1",
+       "{\"path\":\"Chats/Inbox\"}"
+      ],
+      [
+       "read",
+       "u1",
+       "{\"path\":\"Chats/Inbox/Old.md\"}"
+      ],
+      [
+       "write",
+       "u1",
+       "{\"path\":\"Chats/Inbox/Old.md\",\"content\":\"---\\nnoevia_id: \\\"a\\\"\\ncreated: 2024-10-27T03:33:20.000Z\\nupdated: null\\nproject: null\\nkind: null\\ntags: []\\nbrain_schema: 0\\n---\\n# Old\\n\",\"version\":null}"
+      ]
+     ],
+     "files": {
+      "Chats/Inbox/Old.md": {
+       "content": "---\nnoevia_id: \"a\"\ncreated: 2024-10-27T03:33:20.000Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# Old\n",
+       "version": "v1"
+      }
+     },
+     "trash": [],
+     "index": "{\"notes\":{\"a\":{\"path\":\"Chats/Inbox/Old.md\",\"version\":\"v1\",\"meta\":\"fc76f70c3265a6b6cc96543daef11aed9099b5fa4087c4927e62a36263ec4498\"}}}"
+    },
+    {
+     "result": "partial",
+     "calls": [
+      [
+       "mkdir",
+       "u1",
+       "{\"path\":\"Chats\"}"
+      ],
+      [
+       "mkdir",
+       "u1",
+       "{\"path\":\"Chats/Inbox\"}"
+      ],
+      [
+       "read",
+       "u1",
+       "{\"path\":\"Chats/Inbox/Old.md\"}"
+      ],
+      [
+       "read",
+       "u1",
+       "{\"path\":\"Chats/Inbox/New.md\"}"
+      ]
+     ],
+     "files": {
+      "Chats/Inbox/New.md": {
+       "content": "foreign",
+       "version": "v2"
+      }
+     },
+     "trash": [],
+     "index": "{\"notes\":{\"a\":{\"path\":\"Chats/Inbox/Old.md\",\"version\":\"v1\",\"meta\":\"fc76f70c3265a6b6cc96543daef11aed9099b5fa4087c4927e62a36263ec4498\"},\"taken:Chats/Inbox/New.md\":{\"path\":\"Chats/Inbox/New.md\",\"foreign\":true}}}"
+    },
+    {
+     "result": "ok",
+     "calls": [
+      [
+       "read",
+       "u1",
+       "{\"path\":\"Chats/Inbox/New.md\"}"
+      ],
+      [
+       "mkdir",
+       "u1",
+       "{\"path\":\"Chats\"}"
+      ],
+      [
+       "mkdir",
+       "u1",
+       "{\"path\":\"Chats/Inbox\"}"
+      ],
+      [
+       "read",
+       "u1",
+       "{\"path\":\"Chats/Inbox/Old.md\"}"
+      ],
+      [
+       "read",
+       "u1",
+       "{\"path\":\"Chats/Inbox/New (2).md\"}"
+      ],
+      [
+       "write",
+       "u1",
+       "{\"path\":\"Chats/Inbox/New (2).md\",\"content\":\"---\\nnoevia_id: \\\"a\\\"\\ncreated: 2024-10-27T03:33:20.000Z\\nupdated: null\\nproject: null\\nkind: null\\ntags: []\\nbrain_schema: 0\\n---\\n# New\\n\",\"version\":null}"
+      ]
+     ],
+     "files": {
+      "Chats/Inbox/New (2).md": {
+       "content": "---\nnoevia_id: \"a\"\ncreated: 2024-10-27T03:33:20.000Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# New\n",
+       "version": "v3"
+      },
+      "Chats/Inbox/New.md": {
+       "content": "foreign",
+       "version": "v2"
+      }
+     },
+     "trash": [],
+     "index": "{\"notes\":{\"a\":{\"path\":\"Chats/Inbox/New (2).md\",\"version\":\"v3\",\"meta\":\"cc79c4f920514662a9c78e117e81fe7999f3cc606c2355b8dcde4139c29fbab9\"},\"taken:Chats/Inbox/New.md\":{\"path\":\"Chats/Inbox/New.md\",\"foreign\":true}}}"
+    }
+   ]
+  },
+  {
+   "name": "757-old-present-foreign-at-new",
+   "steps": "[{\"lists\":{\"freeChats\":[{\"id\":\"a\",\"title\":\"Old\",\"createdAt\":1730000000000}],\"projects\":[]},\"pass\":{}},{\"edit\":{\"Chats/Inbox/New.md\":\"foreign\"},\"lists\":{\"freeChats\":[{\"id\":\"a\",\"title\":\"New\",\"createdAt\":1730000000000}],\"projects\":[]},\"pass\":{}}]",
+   "passes": [
+    {
+     "result": "ok",
+     "calls": [
+      [
+       "mkdir",
+       "u1",
+       "{\"path\":\"Chats\"}"
+      ],
+      [
+       "mkdir",
+       "u1",
+       "{\"path\":\"Chats/Inbox\"}"
+      ],
+      [
+       "read",
+       "u1",
+       "{\"path\":\"Chats/Inbox/Old.md\"}"
+      ],
+      [
+       "write",
+       "u1",
+       "{\"path\":\"Chats/Inbox/Old.md\",\"content\":\"---\\nnoevia_id: \\\"a\\\"\\ncreated: 2024-10-27T03:33:20.000Z\\nupdated: null\\nproject: null\\nkind: null\\ntags: []\\nbrain_schema: 0\\n---\\n# Old\\n\",\"version\":null}"
+      ]
+     ],
+     "files": {
+      "Chats/Inbox/Old.md": {
+       "content": "---\nnoevia_id: \"a\"\ncreated: 2024-10-27T03:33:20.000Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# Old\n",
+       "version": "v1"
+      }
+     },
+     "trash": [],
+     "index": "{\"notes\":{\"a\":{\"path\":\"Chats/Inbox/Old.md\",\"version\":\"v1\",\"meta\":\"fc76f70c3265a6b6cc96543daef11aed9099b5fa4087c4927e62a36263ec4498\"}}}"
+    },
+    {
+     "result": "partial",
+     "calls": [
+      [
+       "mkdir",
+       "u1",
+       "{\"path\":\"Chats\"}"
+      ],
+      [
+       "mkdir",
+       "u1",
+       "{\"path\":\"Chats/Inbox\"}"
+      ],
+      [
+       "read",
+       "u1",
+       "{\"path\":\"Chats/Inbox/Old.md\"}"
+      ],
+      [
+       "read",
+       "u1",
+       "{\"path\":\"Chats/Inbox/New.md\"}"
+      ]
+     ],
+     "files": {
+      "Chats/Inbox/New.md": {
+       "content": "foreign",
+       "version": "v2"
+      },
+      "Chats/Inbox/Old.md": {
+       "content": "---\nnoevia_id: \"a\"\ncreated: 2024-10-27T03:33:20.000Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# Old\n",
+       "version": "v1"
+      }
+     },
+     "trash": [],
+     "index": "{\"notes\":{\"a\":{\"path\":\"Chats/Inbox/Old.md\",\"version\":\"v1\",\"meta\":\"fc76f70c3265a6b6cc96543daef11aed9099b5fa4087c4927e62a36263ec4498\"},\"taken:Chats/Inbox/New.md\":{\"path\":\"Chats/Inbox/New.md\",\"foreign\":true}}}"
+    }
+   ]
+  },
+  {
+   "name": "764-edited-old-skipped",
+   "steps": "[{\"mkdir\":[\"Chats\",\"Chats/Inbox\"],\"edit\":{\"Chats/Inbox/Old.md\":\"edited old\",\"Chats/Inbox/New.md\":\"ours\"},\"index\":\"{\\\"notes\\\":{\\\"a\\\":{\\\"path\\\":\\\"Chats/Inbox/Old.md\\\",\\\"version\\\":\\\"v2\\\",\\\"meta\\\":\\\"m\\\"}}}\",\"lists\":{\"freeChats\":[{\"id\":\"a\",\"title\":\"New\",\"createdAt\":1730000000000}],\"projects\":[]},\"pass\":{}}]",
+   "passes": [
+    {
+     "result": "ok",
+     "calls": [
+      [
+       "mkdir",
+       "u1",
+       "{\"path\":\"Chats\"}"
+      ],
+      [
+       "mkdir",
+       "u1",
+       "{\"path\":\"Chats/Inbox\"}"
+      ],
+      [
+       "read",
+       "u1",
+       "{\"path\":\"Chats/Inbox/Old.md\"}"
+      ],
+      [
+       "read",
+       "u1",
+       "{\"path\":\"Chats/Inbox/New.md\"}"
+      ],
+      [
+       "write",
+       "u1",
+       "{\"path\":\"Chats/Inbox/New.md\",\"content\":\"---\\nnoevia_id: \\\"a\\\"\\ncreated: 2024-10-27T03:33:20.000Z\\nupdated: null\\nproject: null\\nkind: null\\ntags: []\\nbrain_schema: 0\\n---\\n# New\\n\",\"version\":\"v2\"}"
+      ]
+     ],
+     "files": {
+      "Chats/Inbox/New.md": {
+       "content": "---\nnoevia_id: \"a\"\ncreated: 2024-10-27T03:33:20.000Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# New\n",
+       "version": "v3"
+      },
+      "Chats/Inbox/Old.md": {
+       "content": "edited old",
+       "version": "v1"
+      }
+     },
+     "trash": [],
+     "index": "{\"notes\":{\"a\":{\"path\":\"Chats/Inbox/New.md\",\"version\":\"v3\",\"meta\":\"cc79c4f920514662a9c78e117e81fe7999f3cc606c2355b8dcde4139c29fbab9\"}}}"
+    }
+   ]
+  },
+  {
+   "name": "764-failed-old-trash",
+   "steps": "[{\"lists\":{\"freeChats\":[{\"id\":\"a\",\"title\":\"Old\",\"createdAt\":1730000000000}],\"projects\":[]},\"pass\":{}},{\"lists\":{\"freeChats\":[{\"id\":\"a\",\"title\":\"New\",\"createdAt\":1730000000000}],\"projects\":[]},\"pass\":{}},{\"editV\":{\"Chats/Inbox/Old.md\":[\"x\",\"v2\"]},\"index\":\"{\\\"notes\\\":{\\\"a\\\":{\\\"path\\\":\\\"Chats/Inbox/Old.md\\\",\\\"version\\\":\\\"v2\\\",\\\"meta\\\":\\\"m\\\"}}}\",\"failDelete\":[\"Chats/Inbox/Old.md\"],\"pass\":{}}]",
+   "passes": [
+    {
+     "result": "ok",
+     "calls": [
+      [
+       "mkdir",
+       "u1",
+       "{\"path\":\"Chats\"}"
+      ],
+      [
+       "mkdir",
+       "u1",
+       "{\"path\":\"Chats/Inbox\"}"
+      ],
+      [
+       "read",
+       "u1",
+       "{\"path\":\"Chats/Inbox/Old.md\"}"
+      ],
+      [
+       "write",
+       "u1",
+       "{\"path\":\"Chats/Inbox/Old.md\",\"content\":\"---\\nnoevia_id: \\\"a\\\"\\ncreated: 2024-10-27T03:33:20.000Z\\nupdated: null\\nproject: null\\nkind: null\\ntags: []\\nbrain_schema: 0\\n---\\n# Old\\n\",\"version\":null}"
+      ]
+     ],
+     "files": {
+      "Chats/Inbox/Old.md": {
+       "content": "---\nnoevia_id: \"a\"\ncreated: 2024-10-27T03:33:20.000Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# Old\n",
+       "version": "v1"
+      }
+     },
+     "trash": [],
+     "index": "{\"notes\":{\"a\":{\"path\":\"Chats/Inbox/Old.md\",\"version\":\"v1\",\"meta\":\"fc76f70c3265a6b6cc96543daef11aed9099b5fa4087c4927e62a36263ec4498\"}}}"
+    },
+    {
+     "result": "ok",
+     "calls": [
+      [
+       "mkdir",
+       "u1",
+       "{\"path\":\"Chats\"}"
+      ],
+      [
+       "mkdir",
+       "u1",
+       "{\"path\":\"Chats/Inbox\"}"
+      ],
+      [
+       "read",
+       "u1",
+       "{\"path\":\"Chats/Inbox/Old.md\"}"
+      ],
+      [
+       "read",
+       "u1",
+       "{\"path\":\"Chats/Inbox/New.md\"}"
+      ],
+      [
+       "ops",
+       "u1",
+       "{\"op\":\"move\",\"path\":\"Chats/Inbox/Old.md\",\"destination\":\"Chats/Inbox/New.md\",\"overwrite\":false,\"version\":\"v1\"}"
+      ],
+      [
+       "read",
+       "u1",
+       "{\"path\":\"Chats/Inbox/New.md\"}"
+      ],
+      [
+       "write",
+       "u1",
+       "{\"path\":\"Chats/Inbox/New.md\",\"content\":\"---\\nnoevia_id: \\\"a\\\"\\ncreated: 2024-10-27T03:33:20.000Z\\nupdated: null\\nproject: null\\nkind: null\\ntags: []\\nbrain_schema: 0\\n---\\n# New\\n\",\"version\":\"v1\"}"
+      ]
+     ],
+     "files": {
+      "Chats/Inbox/New.md": {
+       "content": "---\nnoevia_id: \"a\"\ncreated: 2024-10-27T03:33:20.000Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# New\n",
+       "version": "v2"
+      }
+     },
+     "trash": [],
+     "index": "{\"notes\":{\"a\":{\"path\":\"Chats/Inbox/New.md\",\"version\":\"v2\",\"meta\":\"cc79c4f920514662a9c78e117e81fe7999f3cc606c2355b8dcde4139c29fbab9\"}}}"
+    },
+    {
+     "result": "ok",
+     "calls": [
+      [
+       "mkdir",
+       "u1",
+       "{\"path\":\"Chats\"}"
+      ],
+      [
+       "mkdir",
+       "u1",
+       "{\"path\":\"Chats/Inbox\"}"
+      ],
+      [
+       "read",
+       "u1",
+       "{\"path\":\"Chats/Inbox/Old.md\"}"
+      ],
+      [
+       "read",
+       "u1",
+       "{\"path\":\"Chats/Inbox/New.md\"}"
+      ],
+      [
+       "ops",
+       "u1",
+       "{\"op\":\"delete\",\"path\":\"Chats/Inbox/Old.md\",\"version\":\"v2\"}"
+      ]
+     ],
+     "files": {
+      "Chats/Inbox/New.md": {
+       "content": "---\nnoevia_id: \"a\"\ncreated: 2024-10-27T03:33:20.000Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# New\n",
+       "version": "v2"
+      },
+      "Chats/Inbox/Old.md": {
+       "content": "x",
+       "version": "v2"
+      }
+     },
+     "trash": [],
+     "index": "{\"notes\":{\"a\":{\"path\":\"Chats/Inbox/New.md\",\"version\":\"v2\",\"meta\":\"cc79c4f920514662a9c78e117e81fe7999f3cc606c2355b8dcde4139c29fbab9\"}}}"
+    }
+   ]
+  },
+  {
+   "name": "757-null-version-preserved",
+   "steps": "[{\"mkdir\":[\"Chats\",\"Chats/Inbox\"],\"edit\":{\"Chats/Inbox/A.md\":\"vault copy\"},\"index\":\"{\\\"notes\\\":{\\\"a\\\":{\\\"path\\\":\\\"Chats/Inbox/A.md\\\",\\\"version\\\":null,\\\"meta\\\":\\\"m\\\"}}}\",\"lists\":{\"freeChats\":[{\"id\":\"a\",\"title\":\"A\",\"createdAt\":1730000000000}],\"projects\":[]},\"pass\":{}}]",
+   "passes": [
+    {
+     "result": "ok",
+     "calls": [
+      [
+       "mkdir",
+       "u1",
+       "{\"path\":\"Chats\"}"
+      ],
+      [
+       "mkdir",
+       "u1",
+       "{\"path\":\"Chats/Inbox\"}"
+      ],
+      [
+       "read",
+       "u1",
+       "{\"path\":\"Chats/Inbox/A.md\"}"
+      ],
+      [
+       "ops",
+       "u1",
+       "{\"op\":\"preserve\",\"path\":\"Chats/Inbox/A.md\",\"version\":\"v1\"}"
+      ],
+      [
+       "write",
+       "u1",
+       "{\"path\":\"Chats/Inbox/A.md\",\"content\":\"---\\nnoevia_id: \\\"a\\\"\\ncreated: 2024-10-27T03:33:20.000Z\\nupdated: null\\nproject: null\\nkind: null\\ntags: []\\nbrain_schema: 0\\n---\\n# A\\n\",\"version\":\"v1\"}"
+      ]
+     ],
+     "files": {
+      "Chats/Inbox/A.md": {
+       "content": "---\nnoevia_id: \"a\"\ncreated: 2024-10-27T03:33:20.000Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# A\n",
+       "version": "v2"
+      }
+     },
+     "trash": [
+      {
+       "op": "preserve",
+       "path": "Chats/Inbox/A.md",
+       "content": "vault copy"
+      }
+     ],
+     "index": "{\"notes\":{\"a\":{\"path\":\"Chats/Inbox/A.md\",\"version\":\"v2\",\"meta\":\"7c821044f32a93d50f12331691d20cde22ed93392e09d91e6b458f6a92fcbe00\"}}}"
+    }
+   ]
+  },
+  {
+   "name": "2167-repeated-removes",
+   "steps": "[{\"lists\":{\"freeChats\":[{\"id\":\"r1\",\"title\":\"R 1\",\"createdAt\":1730000000001},{\"id\":\"r2\",\"title\":\"R 2\",\"createdAt\":1730000000002},{\"id\":\"r3\",\"title\":\"R 3\",\"createdAt\":1730000000003},{\"id\":\"r4\",\"title\":\"R 4\",\"createdAt\":1730000000004}],\"projects\":[]},\"pass\":{}},{\"tombstones\":[\"r1\"],\"lists\":{\"freeChats\":[{\"id\":\"r2\",\"title\":\"R 2\",\"createdAt\":1730000000002},{\"id\":\"r3\",\"title\":\"R 3\",\"createdAt\":1730000000003},{\"id\":\"r4\",\"title\":\"R 4\",\"createdAt\":1730000000004}],\"projects\":[]},\"pass\":{\"dirty\":[\"r1\"]}},{\"tombstones\":[\"r1\",\"r3\"],\"lists\":{\"freeChats\":[{\"id\":\"r2\",\"title\":\"R 2\",\"createdAt\":1730000000002},{\"id\":\"r4\",\"title\":\"R 4\",\"createdAt\":1730000000004}],\"projects\":[]},\"pass\":{\"dirty\":[\"r3\"]}},{\"pass\":{\"dirty\":[\"r1\",\"r3\"]}}]",
+   "passes": [
+    {
+     "result": "ok",
+     "calls": [
+      [
+       "mkdir",
+       "u1",
+       "{\"path\":\"Chats\"}"
+      ],
+      [
+       "mkdir",
+       "u1",
+       "{\"path\":\"Chats/Inbox\"}"
+      ],
+      [
+       "read",
+       "u1",
+       "{\"path\":\"Chats/Inbox/R 1.md\"}"
+      ],
+      [
+       "write",
+       "u1",
+       "{\"path\":\"Chats/Inbox/R 1.md\",\"content\":\"---\\nnoevia_id: \\\"r1\\\"\\ncreated: 2024-10-27T03:33:20.001Z\\nupdated: null\\nproject: null\\nkind: null\\ntags: []\\nbrain_schema: 0\\n---\\n# R 1\\n\",\"version\":null}"
+      ],
+      [
+       "read",
+       "u1",
+       "{\"path\":\"Chats/Inbox/R 2.md\"}"
+      ],
+      [
+       "write",
+       "u1",
+       "{\"path\":\"Chats/Inbox/R 2.md\",\"content\":\"---\\nnoevia_id: \\\"r2\\\"\\ncreated: 2024-10-27T03:33:20.002Z\\nupdated: null\\nproject: null\\nkind: null\\ntags: []\\nbrain_schema: 0\\n---\\n# R 2\\n\",\"version\":null}"
+      ],
+      [
+       "read",
+       "u1",
+       "{\"path\":\"Chats/Inbox/R 3.md\"}"
+      ],
+      [
+       "write",
+       "u1",
+       "{\"path\":\"Chats/Inbox/R 3.md\",\"content\":\"---\\nnoevia_id: \\\"r3\\\"\\ncreated: 2024-10-27T03:33:20.003Z\\nupdated: null\\nproject: null\\nkind: null\\ntags: []\\nbrain_schema: 0\\n---\\n# R 3\\n\",\"version\":null}"
+      ],
+      [
+       "read",
+       "u1",
+       "{\"path\":\"Chats/Inbox/R 4.md\"}"
+      ],
+      [
+       "write",
+       "u1",
+       "{\"path\":\"Chats/Inbox/R 4.md\",\"content\":\"---\\nnoevia_id: \\\"r4\\\"\\ncreated: 2024-10-27T03:33:20.004Z\\nupdated: null\\nproject: null\\nkind: null\\ntags: []\\nbrain_schema: 0\\n---\\n# R 4\\n\",\"version\":null}"
+      ]
+     ],
+     "files": {
+      "Chats/Inbox/R 1.md": {
+       "content": "---\nnoevia_id: \"r1\"\ncreated: 2024-10-27T03:33:20.001Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# R 1\n",
+       "version": "v1"
+      },
+      "Chats/Inbox/R 2.md": {
+       "content": "---\nnoevia_id: \"r2\"\ncreated: 2024-10-27T03:33:20.002Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# R 2\n",
+       "version": "v2"
+      },
+      "Chats/Inbox/R 3.md": {
+       "content": "---\nnoevia_id: \"r3\"\ncreated: 2024-10-27T03:33:20.003Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# R 3\n",
+       "version": "v3"
+      },
+      "Chats/Inbox/R 4.md": {
+       "content": "---\nnoevia_id: \"r4\"\ncreated: 2024-10-27T03:33:20.004Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# R 4\n",
+       "version": "v4"
+      }
+     },
+     "trash": [],
+     "index": "{\"notes\":{\"r1\":{\"path\":\"Chats/Inbox/R 1.md\",\"version\":\"v1\",\"meta\":\"a3ce89197cce744aa56ab3edba7c0627b092444433a2dd80a2554a0c67725aaf\"},\"r2\":{\"path\":\"Chats/Inbox/R 2.md\",\"version\":\"v2\",\"meta\":\"78e2e72406767fabebbcdacf5eb322e1d79b1d7c2815c475be9501ac3168d6e8\"},\"r3\":{\"path\":\"Chats/Inbox/R 3.md\",\"version\":\"v3\",\"meta\":\"3a6fee33bc3a15a21702a64a8b304c5e547ddda5b4939f5bc522d9990454ee39\"},\"r4\":{\"path\":\"Chats/Inbox/R 4.md\",\"version\":\"v4\",\"meta\":\"ea49ac4c1c99d08ae7ddec5601ac9420c58d17f9ac615bdc603028cbd2bd152b\"}}}"
+    },
+    {
+     "result": "ok",
+     "calls": [
+      [
+       "ops",
+       "u1",
+       "{\"op\":\"stat\",\"path\":\"Chats/Inbox/R 1.md\"}"
+      ],
+      [
+       "ops",
+       "u1",
+       "{\"op\":\"delete\",\"path\":\"Chats/Inbox/R 1.md\",\"version\":\"v1\"}"
+      ]
+     ],
+     "files": {
+      "Chats/Inbox/R 2.md": {
+       "content": "---\nnoevia_id: \"r2\"\ncreated: 2024-10-27T03:33:20.002Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# R 2\n",
+       "version": "v2"
+      },
+      "Chats/Inbox/R 3.md": {
+       "content": "---\nnoevia_id: \"r3\"\ncreated: 2024-10-27T03:33:20.003Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# R 3\n",
+       "version": "v3"
+      },
+      "Chats/Inbox/R 4.md": {
+       "content": "---\nnoevia_id: \"r4\"\ncreated: 2024-10-27T03:33:20.004Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# R 4\n",
+       "version": "v4"
+      }
+     },
+     "trash": [
+      {
+       "op": "delete",
+       "path": "Chats/Inbox/R 1.md",
+       "content": "---\nnoevia_id: \"r1\"\ncreated: 2024-10-27T03:33:20.001Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# R 1\n"
+      }
+     ],
+     "index": "{\"notes\":{\"r2\":{\"path\":\"Chats/Inbox/R 2.md\",\"version\":\"v2\",\"meta\":\"78e2e72406767fabebbcdacf5eb322e1d79b1d7c2815c475be9501ac3168d6e8\"},\"r3\":{\"path\":\"Chats/Inbox/R 3.md\",\"version\":\"v3\",\"meta\":\"3a6fee33bc3a15a21702a64a8b304c5e547ddda5b4939f5bc522d9990454ee39\"},\"r4\":{\"path\":\"Chats/Inbox/R 4.md\",\"version\":\"v4\",\"meta\":\"ea49ac4c1c99d08ae7ddec5601ac9420c58d17f9ac615bdc603028cbd2bd152b\"}}}"
+    },
+    {
+     "result": "ok",
+     "calls": [
+      [
+       "ops",
+       "u1",
+       "{\"op\":\"stat\",\"path\":\"Chats/Inbox/R 3.md\"}"
+      ],
+      [
+       "ops",
+       "u1",
+       "{\"op\":\"delete\",\"path\":\"Chats/Inbox/R 3.md\",\"version\":\"v3\"}"
+      ]
+     ],
+     "files": {
+      "Chats/Inbox/R 2.md": {
+       "content": "---\nnoevia_id: \"r2\"\ncreated: 2024-10-27T03:33:20.002Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# R 2\n",
+       "version": "v2"
+      },
+      "Chats/Inbox/R 4.md": {
+       "content": "---\nnoevia_id: \"r4\"\ncreated: 2024-10-27T03:33:20.004Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# R 4\n",
+       "version": "v4"
+      }
+     },
+     "trash": [
+      {
+       "op": "delete",
+       "path": "Chats/Inbox/R 1.md",
+       "content": "---\nnoevia_id: \"r1\"\ncreated: 2024-10-27T03:33:20.001Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# R 1\n"
+      },
+      {
+       "op": "delete",
+       "path": "Chats/Inbox/R 3.md",
+       "content": "---\nnoevia_id: \"r3\"\ncreated: 2024-10-27T03:33:20.003Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# R 3\n"
+      }
+     ],
+     "index": "{\"notes\":{\"r2\":{\"path\":\"Chats/Inbox/R 2.md\",\"version\":\"v2\",\"meta\":\"78e2e72406767fabebbcdacf5eb322e1d79b1d7c2815c475be9501ac3168d6e8\"},\"r4\":{\"path\":\"Chats/Inbox/R 4.md\",\"version\":\"v4\",\"meta\":\"ea49ac4c1c99d08ae7ddec5601ac9420c58d17f9ac615bdc603028cbd2bd152b\"}}}"
+    },
+    {
+     "result": "ok",
+     "calls": [],
+     "files": {
+      "Chats/Inbox/R 2.md": {
+       "content": "---\nnoevia_id: \"r2\"\ncreated: 2024-10-27T03:33:20.002Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# R 2\n",
+       "version": "v2"
+      },
+      "Chats/Inbox/R 4.md": {
+       "content": "---\nnoevia_id: \"r4\"\ncreated: 2024-10-27T03:33:20.004Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# R 4\n",
+       "version": "v4"
+      }
+     },
+     "trash": [
+      {
+       "op": "delete",
+       "path": "Chats/Inbox/R 1.md",
+       "content": "---\nnoevia_id: \"r1\"\ncreated: 2024-10-27T03:33:20.001Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# R 1\n"
+      },
+      {
+       "op": "delete",
+       "path": "Chats/Inbox/R 3.md",
+       "content": "---\nnoevia_id: \"r3\"\ncreated: 2024-10-27T03:33:20.003Z\nupdated: null\nproject: null\nkind: null\ntags: []\nbrain_schema: 0\n---\n# R 3\n"
+      }
+     ],
+     "index": "{\"notes\":{\"r2\":{\"path\":\"Chats/Inbox/R 2.md\",\"version\":\"v2\",\"meta\":\"78e2e72406767fabebbcdacf5eb322e1d79b1d7c2815c475be9501ac3168d6e8\"},\"r4\":{\"path\":\"Chats/Inbox/R 4.md\",\"version\":\"v4\",\"meta\":\"ea49ac4c1c99d08ae7ddec5601ac9420c58d17f9ac615bdc603028cbd2bd152b\"}}}"
+    }
+   ]
   }
  ],
  "brain": {
