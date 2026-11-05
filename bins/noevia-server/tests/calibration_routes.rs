@@ -545,6 +545,12 @@ async fn boot_recovery_whose_save_fails_keeps_the_interrupted_job_and_saves_it_o
     env.push(("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()));
     let f = front_env(d.path(), true, &env).await;
     let worker = f.app.config.calibration.clone().unwrap();
+    // This fixture fails calibration-state writes, while the mandatory evidence fence remains
+    // writable in its independent child directory (as the preset file already does).
+    let evidence_file = f.app.config.maint.evidence.as_ref().unwrap().file();
+    let evidence_dir = evidence_file.parent().unwrap();
+    std::fs::create_dir_all(evidence_dir).unwrap();
+    std::fs::set_permissions(evidence_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
     // Storage fails: the data directory takes no new file (the save's temp file).
     let mode = Mode(d.path().to_path_buf());
     std::fs::set_permissions(d.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
