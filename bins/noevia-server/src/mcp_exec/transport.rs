@@ -5,8 +5,15 @@
 //! ordinary client, as core's `fetch` did. No redirect is followed and no proxy is used.
 //!
 //! **Cancellation.** A call that is dropped (the chat's Stop, a client that left, research's cancel)
-//! must still close the session it opened: [`CloseGuard`] hands the session to a task of its own at
-//! the moment it is dropped, with core's shortened wait for an aborted caller.
+//! must still close the session it opened. The session id lives in a shared cell until the moment a
+//! close is *started*; starting one takes the id out of the cell and hands it, in the same
+//! synchronous step, to a task of its own ([`Transport::start_close`]) that is bounded by one
+//! deadline covering the address check, the connection and the `DELETE`. Dropping the caller after
+//! that point cannot lose the close, and the id can be taken only once, so two closes never
+//! compete. [`CloseGuard`] starts that same close for a caller dropped before it got that far.
+//!
+//! **Errors.** A server's text (an HTTP body, a JSON-RPC message) can echo the credential the call
+//! carried, so none of it is kept: an HTTP failure is its status, a JSON-RPC failure its code.
 use crate::mcp_egress::{rpc_result, Egress};
 use js_json::JValue;
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -25,7 +32,7 @@ const ABORTED_DISCONNECT: Duration = Duration::from_millis(1000);
 const BODY_LIMIT: &str = "MCP: response body exceeded the 8 MB limit";
 
 /// A failed exchange. `Http` carries core's `httpStatus` (and the `Retry-After` a 429 may bring); its
-/// message is core's `MCP <status>: <body>` and never reaches the model (a neutral line does).
+/// message is `MCP <status>` (core's added the server's body: dropped, it can echo a credential).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RpcError {
     Http {
@@ -194,11 +201,11 @@ impl Transport {
             };
             let (content_type, retry_after) = (header("content-type"), header("retry-after"));
             if !(200..300).contains(&status) {
-                let detail = read_capped(&mut response).await.unwrap_or_default();
+                // The body is never read into a message: it is the server's text.
                 return Err(RpcError::Http {
                     status,
                     retry_after,
-                    message: format!("MCP {status}: {}", js_json::js_slice(&detail, 200)),
+                    message: format!("MCP {status}"),
                 });
             }
             // A notification has no id and the server answers 202 with an empty body.
@@ -299,6 +306,8 @@ impl Transport {
     }
 
     /// core `disconnect`: best effort by contract; a session that never got an id has nothing to close.
+    /// The close runs in a task of its own (see [`Transport::start_close`]), so dropping this future
+    /// while it waits cannot lose it, and the wait is `timeout` for the whole close.
     pub async fn disconnect(
         &self,
         url: &str,
@@ -306,9 +315,34 @@ impl Transport {
         session: &SessionId,
         timeout: Duration,
     ) -> bool {
-        let Some(id) = session.take() else {
-            return false;
-        };
+        match self.start_close(url, headers, session, timeout) {
+            Some(task) => task.await.unwrap_or(false),
+            None => false,
+        }
+    }
+
+    /// Takes the session id out of its cell and gives it, with the duty to close it, to a task that
+    /// belongs to no caller: there is no await between the two steps. The one deadline covers the
+    /// address check (a directory server's name is looked up again), the connection and the
+    /// `DELETE`. `None`: no id, or no runtime to run the task on.
+    fn start_close(
+        &self,
+        url: &str,
+        headers: &[(String, String)],
+        session: &SessionId,
+        timeout: Duration,
+    ) -> Option<tokio::task::JoinHandle<bool>> {
+        let runtime = tokio::runtime::Handle::try_current().ok()?;
+        let id = session.take()?;
+        let (transport, url, headers) = (self.clone(), url.to_owned(), headers.to_vec());
+        Some(runtime.spawn(async move {
+            tokio::time::timeout(timeout, transport.delete_session(&url, &headers, &id))
+                .await
+                .unwrap_or(false)
+        }))
+    }
+
+    async fn delete_session(&self, url: &str, headers: &[(String, String)], id: &str) -> bool {
         #[cfg(test)]
         if let Some(gate) = &self.lookup_gate {
             if let Ok(permit) = gate.acquire().await {
@@ -324,10 +358,7 @@ impl Transport {
             .with_headers(self.client.delete(url), headers)
             .header("mcp-protocol-version", PROTOCOL_VERSION)
             .header("mcp-session-id", id);
-        match tokio::time::timeout(timeout, request.send()).await {
-            Ok(Ok(r)) => r.status().is_success(),
-            _ => false,
-        }
+        matches!(request.send().await, Ok(r) if r.status().is_success())
     }
 }
 
@@ -374,23 +405,10 @@ impl CloseGuard {
 
 impl Drop for CloseGuard {
     fn drop(&mut self) {
-        if self.session.get().is_none() {
-            return;
-        }
-        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
-            return;
-        };
-        let (transport, url, headers, session) = (
-            self.transport.clone(),
-            std::mem::take(&mut self.url),
-            std::mem::take(&mut self.headers),
-            self.session.clone(),
-        );
-        runtime.spawn(async move {
-            transport
-                .disconnect(&url, &headers, &session, ABORTED_DISCONNECT)
-                .await;
-        });
+        // A close already started took the id; there is then nothing left to start.
+        let _ =
+            self.transport
+                .start_close(&self.url, &self.headers, &self.session, ABORTED_DISCONNECT);
     }
 }
 
@@ -411,7 +429,10 @@ mod tests {
 
     async fn server(hold: Duration, fail_initialized: bool) -> Server {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let url = format!("http://127.0.0.1:{}/mcp", listener.local_addr().unwrap().port());
+        let url = format!(
+            "http://127.0.0.1:{}/mcp",
+            listener.local_addr().unwrap().port()
+        );
         let deletes = Arc::new(AtomicUsize::new(0));
         let count = Arc::clone(&deletes);
         tokio::spawn(async move {
@@ -445,15 +466,22 @@ mod tests {
                     let reply = if text.starts_with("DELETE") {
                         count.fetch_add(1, Ordering::SeqCst);
                         tokio::time::sleep(hold).await;
-                        "HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: close\r\n\r\n".to_owned()
+                        "HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
+                            .to_owned()
                     } else if text.contains("notifications/initialized") {
                         let status = if fail_initialized { "500 X" } else { "202 X" };
-                        format!("HTTP/1.1 {status}\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
+                        format!(
+                            "HTTP/1.1 {status}\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
+                        )
                     } else {
                         let id = text
                             .split("\"id\":")
                             .nth(1)
-                            .map(|r| r.chars().take_while(char::is_ascii_digit).collect::<String>())
+                            .map(|r| {
+                                r.chars()
+                                    .take_while(char::is_ascii_digit)
+                                    .collect::<String>()
+                            })
                             .unwrap_or_default();
                         let body = format!("{{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{{}}}}");
                         format!(
@@ -486,7 +514,12 @@ mod tests {
     }
 
     /// The task a call runs in: the guard `call_once` holds, then `disconnect` (what the abort lands in).
-    fn closing(t: &Transport, url: &str, session: &SessionId, timeout: Duration) -> tokio::task::JoinHandle<bool> {
+    fn closing(
+        t: &Transport,
+        url: &str,
+        session: &SessionId,
+        timeout: Duration,
+    ) -> tokio::task::JoinHandle<bool> {
         let (t, url, session) = (t.clone(), url.to_owned(), session.clone());
         tokio::spawn(async move {
             let _guard = CloseGuard::new(&t, &url, &[], &session);
@@ -506,11 +539,22 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(150)).await;
         task.abort();
         assert!(task.await.unwrap_err().is_cancelled());
-        assert_eq!(s.deletes.load(Ordering::SeqCst), 0, "the lookup has not answered yet");
+        assert_eq!(
+            s.deletes.load(Ordering::SeqCst),
+            0,
+            "the lookup has not answered yet"
+        );
         gate.add_permits(1);
-        assert!(until(|| s.deletes.load(Ordering::SeqCst) == 1).await, "the session was never closed");
+        assert!(
+            until(|| s.deletes.load(Ordering::SeqCst) == 1).await,
+            "the session was never closed"
+        );
         tokio::time::sleep(Duration::from_millis(300)).await;
-        assert_eq!(s.deletes.load(Ordering::SeqCst), 1, "one close, no competing second");
+        assert_eq!(
+            s.deletes.load(Ordering::SeqCst),
+            1,
+            "one close, no competing second"
+        );
     }
 
     /// A lookup that never answers does not hold the close open for ever: the whole close, address
@@ -531,7 +575,10 @@ mod tests {
         assert!(!closed);
         assert!(started.elapsed() < Duration::from_secs(3));
         assert_eq!(s.deletes.load(Ordering::SeqCst), 0);
-        assert!(session.get().is_none(), "the id is spent, not left for a second close");
+        assert!(
+            session.get().is_none(),
+            "the id is spent, not left for a second close"
+        );
     }
 
     /// Cancelled while the `DELETE` is in flight: it is not sent a second time by the guard.
@@ -546,7 +593,11 @@ mod tests {
         task.abort();
         assert!(task.await.unwrap_err().is_cancelled());
         tokio::time::sleep(Duration::from_millis(400)).await;
-        assert_eq!(s.deletes.load(Ordering::SeqCst), 1, "no duplicate competing close");
+        assert_eq!(
+            s.deletes.load(Ordering::SeqCst),
+            1,
+            "no duplicate competing close"
+        );
     }
 
     /// The close after a failed `initialized` (connect's own disconnect) is covered the same way.
@@ -566,12 +617,18 @@ mod tests {
         // initialize answered (the session id was known) and `initialized` failed: connect is in its
         // disconnect, which has taken the id and waits on the lookup.
         tokio::time::sleep(Duration::from_millis(500)).await;
-        assert!(session.get().is_none(), "connect never reached its disconnect");
+        assert!(
+            session.get().is_none(),
+            "connect never reached its disconnect"
+        );
         assert_eq!(s.deletes.load(Ordering::SeqCst), 0);
         task.abort();
         let _ = task.await;
         gate.add_permits(1);
-        assert!(until(|| s.deletes.load(Ordering::SeqCst) == 1).await, "the session was never closed");
+        assert!(
+            until(|| s.deletes.load(Ordering::SeqCst) == 1).await,
+            "the session was never closed"
+        );
         tokio::time::sleep(Duration::from_millis(300)).await;
         assert_eq!(s.deletes.load(Ordering::SeqCst), 1);
     }

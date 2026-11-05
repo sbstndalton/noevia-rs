@@ -164,6 +164,10 @@ pub fn parse_retry_after(value: Option<&str>, now: f64) -> Option<f64> {
 }
 
 /// `Date.parse` of an IMF-fixdate (`Wed, 21 Oct 2015 07:28:00 GMT`), the HTTP date form.
+///
+/// **Known deviation from core:** only the IMF-fixdate is read. `Date.parse` also accepts the obsolete RFC 850 and
+/// asctime dates (and other forms); here those fall back to the exponential wait instead of honouring the date.
+/// The wait stays bounded (clamped to 300 s) either way.
 fn http_date_ms(v: &str) -> Option<f64> {
     let rest = v.split_once(", ")?.1;
     let mut it = rest.split(' ');

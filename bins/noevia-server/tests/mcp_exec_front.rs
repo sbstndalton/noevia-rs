@@ -16,7 +16,18 @@ use serde_json::{json, Value};
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 
-/// The synthetic MCP server: a session at `initialize`, and `tools/call` answers with the credential it was shown.
+/// A credential shown back reversed: the executor redacts a credential a server repeats verbatim, and what
+/// this test needs from the server's answer is which credential arrived, not the credential itself.
+fn rev(v: Option<String>) -> Value {
+    v.map_or(Value::Null, |s| json!(s.chars().rev().collect::<String>()))
+}
+
+/// The same, for a value the test expects.
+fn reversed(s: &str) -> Value {
+    rev(Some(s.to_owned()))
+}
+
+/// The synthetic MCP server: a session at `initialize`, and `tools/call` answers with the credential it was shown (reversed).
 fn echo(r: &Seen) -> (Duration, String) {
     if r.path != "/mcp" {
         return reply("404 Not Found", "");
@@ -37,7 +48,7 @@ fn echo(r: &Seen) -> (Duration, String) {
         "notifications/initialized" => reply("202 Accepted", ""),
         "tools/call" => {
             let shown = json!({
-                "key": r.header("x-api-key"), "auth": r.header("authorization"), "uid": r.header("x-cowork-user-id"),
+                "key": rev(r.header("x-api-key")), "auth": rev(r.header("authorization")), "uid": r.header("x-cowork-user-id"),
                 "args": body["params"]["arguments"],
             });
             reply(
@@ -128,7 +139,7 @@ async fn each_account_gets_its_own_credential_and_never_anothers() {
     let f = &w.front;
     // A personal key: the account's own, asked of the broker for this call.
     let a = shown(&text(&call(f, request(A, "t", "dir-p", &["dir-p"])).await));
-    assert_eq!(a["key"], "synthetic-key");
+    assert_eq!(a["key"], reversed("synthetic-key"));
     assert_eq!(a["args"], json!({"q": 1}));
     assert_eq!(
         text(&call(f, request(B, "t", "dir-p", &["dir-p"])).await),
@@ -137,7 +148,7 @@ async fn each_account_gets_its_own_credential_and_never_anothers() {
     // A sign-in: the account's own access token.
     assert_eq!(
         shown(&text(&call(f, request(A, "t", "dir-o", &["dir-o"])).await))["auth"],
-        "bearer acc-of-a"
+        reversed("bearer acc-of-a")
     );
     assert_eq!(
         text(&call(f, request(B, "t", "dir-o", &["dir-o"])).await),
@@ -148,7 +159,7 @@ async fn each_account_gets_its_own_credential_and_never_anothers() {
     let nc = shown(&text(&call(f, request(A, "t", "nc", &["nc"])).await));
     assert_eq!(
         (nc["auth"].clone(), nc["uid"].clone()),
-        (json!(format!("Basic {basic}").to_lowercase()), json!(A))
+        (reversed(&format!("Basic {basic}").to_lowercase()), json!(A))
     );
     assert!(text(&call(f, request(B, "t", "nc", &["nc"])).await)
         .starts_with("ERROR: this tool needs your Nextcloud account."));
@@ -162,7 +173,7 @@ async fn each_account_gets_its_own_credential_and_never_anothers() {
             shown(&text(
                 &call(f, request(user, "t", "dir-s", &["dir-s"])).await
             ))["key"],
-            "shared-key"
+            reversed("shared-key")
         );
     }
     // No account in the call: nothing is invented.

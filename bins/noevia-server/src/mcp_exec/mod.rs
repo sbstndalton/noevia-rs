@@ -350,6 +350,65 @@ fn cut(message: &str) -> String {
     js_json::js_slice(message, 300)
 }
 
+/// Shortest credential value that is looked for in a server's text: below this a "value" would
+/// match ordinary words. Real keys and tokens are far longer.
+const MIN_SECRET: usize = 6;
+const REDACTED: &str = "[redacted]";
+
+/// The credential values a call carried, so that nothing the server sends back can repeat one to the
+/// model or a log: every header value, the part after an auth scheme, and (for `Basic`) the decoded
+/// `user:secret` and its two halves. Held for one call only.
+#[derive(Default)]
+struct Secrets(Vec<String>);
+
+impl Secrets {
+    fn add_headers(&mut self, headers: &[(String, String)]) {
+        for (name, value) in headers {
+            // The account id a Nextcloud server is told is an identifier, not a secret.
+            if !name.eq_ignore_ascii_case("x-cowork-user-id") {
+                self.add_value(value);
+            }
+        }
+    }
+
+    fn add_value(&mut self, value: &str) {
+        let mut add = |v: &str| {
+            if v.len() >= MIN_SECRET && !self.0.iter().any(|x| x == v) {
+                self.0.push(v.to_owned());
+            }
+        };
+        add(value);
+        if let Some((scheme, rest)) = value.split_once(' ') {
+            let rest = rest.trim();
+            add(rest);
+            if scheme.eq_ignore_ascii_case("basic") {
+                if let Ok(raw) = base64::engine::general_purpose::STANDARD.decode(rest) {
+                    let raw = String::from_utf8_lossy(&raw).into_owned();
+                    add(&raw);
+                    if let Some((user, secret)) = raw.split_once(':') {
+                        add(user);
+                        add(secret);
+                    }
+                }
+            }
+        }
+    }
+
+    /// `text` with every credential value replaced. Longest first, so a value that contains another
+    /// is replaced whole.
+    fn scrub(&self, text: &str) -> String {
+        let mut values: Vec<&String> = self.0.iter().collect();
+        values.sort_by_key(|v| std::cmp::Reverse(v.len()));
+        let mut out = text.to_owned();
+        for v in values {
+            if out.contains(v.as_str()) {
+                out = out.replace(v.as_str(), REDACTED);
+            }
+        }
+        out
+    }
+}
+
 impl Executor {
     pub fn new(settings: Settings, egress: &Arc<crate::mcp_egress::Egress>) -> Executor {
         Executor {
@@ -610,6 +669,8 @@ impl Executor {
             }
         };
         let args = call.args.clone().unwrap_or(JValue::Undefined);
+        let mut secrets = Secrets::default();
+        secrets.add_headers(&headers);
         let mut result = self
             .call_once(&transport, &server.url, &headers, &name, &args)
             .await;
@@ -627,13 +688,15 @@ impl Executor {
                         &args,
                         first.clone(),
                         session,
+                        &mut secrets,
                     )
                     .await;
             }
         }
+        // Whatever the server sent, no credential this call carried (also the retry's) leaves with it.
         match result {
-            Ok(value) => self.finish(&name, &rate_key, &value),
-            Err(err) => self.failed(&name, &rate_key, &err),
+            Ok(value) => self.finish(&name, &rate_key, &value, &secrets),
+            Err(err) => secrets.scrub(&self.failed(&name, &rate_key, &err)),
         }
     }
 
@@ -662,6 +725,7 @@ impl Executor {
         args: &JValue,
         first: RpcError,
         session: (String, String),
+        secrets: &mut Secrets,
     ) -> Result<JValue, RpcError> {
         let next = match Self::oauth_session(creds, user, &server.id, Some(&session.0)).await {
             Ok(Some(next)) => next,
@@ -674,6 +738,7 @@ impl Executor {
             return Err(first);
         }
         let headers = vec![("Authorization".to_owned(), format!("Bearer {}", next.0))];
+        secrets.add_headers(&headers);
         let again = self
             .call_once(transport, &server.url, &headers, name, args)
             .await;
@@ -707,9 +772,9 @@ impl Executor {
     }
 
     /// The text of a result that came back.
-    fn finish(&self, name: &str, rate_key: &str, result: &JValue) -> String {
+    fn finish(&self, name: &str, rate_key: &str, result: &JValue, secrets: &Secrets) -> String {
         let text = match result_to_text(result) {
-            Ok(t) => t,
+            Ok(t) => secrets.scrub(&t),
             Err(message) => return format!("ERROR calling {name}: {}", cut(&message)),
         };
         let is_error = result.get("isError").truthy();
@@ -726,8 +791,8 @@ impl Executor {
         reduce::reduce_tool_result(&text, RESULT_CAP).text
     }
 
-    /// core's catch: a failed call is information the model can act on or relay. An HTTP failure carries the
-    /// server's body in its message; that is third-party text, so the model gets a neutral line with the status.
+    /// core's catch: a failed call is information the model can act on or relay. An HTTP failure is a neutral
+    /// line with the status and a JSON-RPC failure its code: neither carries the server's own text.
     fn failed(&self, name: &str, rate_key: &str, err: &RpcError) -> String {
         match err {
             RpcError::Http {
@@ -739,10 +804,9 @@ impl Executor {
                 let wait = limit::parse_retry_after(retry_after.as_deref(), limit::now_ms());
                 limit::rate_limited_text(name, self.limit.hit(rate_key, wait))
             }
-            RpcError::Http {
-                status, message, ..
-            } => {
-                self.say(&format!("[mcp] {name} failed: {}", cut(message)));
+            RpcError::Http { status, .. } => {
+                // The status only: a server's body can repeat the credential it was sent.
+                self.say(&format!("[mcp] {name} failed: HTTP {status}"));
                 format!("ERROR calling {name}: tool call failed (HTTP {status})")
             }
             RpcError::Msg(message) => format!("ERROR calling {name}: {}", cut(message)),

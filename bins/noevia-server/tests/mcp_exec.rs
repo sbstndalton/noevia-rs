@@ -1003,8 +1003,14 @@ fn echo_behaviours(echo: &str) -> Vec<(&'static str, Value, Option<&'static str>
 fn assert_clean(at: &str, text: &str, logs: &Mutex<Vec<String>>, secrets: &[&str]) {
     let log = logs.lock().unwrap().join("\n");
     for secret in secrets {
-        assert!(!text.contains(secret), "{at}: the model text repeats {secret}: {text}");
-        assert!(!log.contains(secret), "{at}: a log line repeats {secret}: {log}");
+        assert!(
+            !text.contains(secret),
+            "{at}: the model text repeats {secret}: {text}"
+        );
+        assert!(
+            !log.contains(secret),
+            "{at}: a log line repeats {secret}: {log}"
+        );
     }
 }
 
@@ -1108,7 +1114,10 @@ async fn nothing_a_server_sends_back_repeats_a_credential_the_call_carried() {
             // A result that is the tool's own words keeps them, minus the credential.
             if what.starts_with("tool") && !text.contains("(the tool returned no output)") {
                 assert!(text.contains("[redacted]"), "{at}: {text}");
-                assert!(text.contains("Authorization:"), "{at}: the rest of the text is kept");
+                assert!(
+                    text.contains("Authorization:"),
+                    "{at}: the rest of the text is kept"
+                );
             }
         }
     }
@@ -1117,8 +1126,7 @@ async fn nothing_a_server_sends_back_repeats_a_credential_the_call_carried() {
 #[tokio::test]
 async fn the_failure_log_line_is_the_status_and_nothing_the_server_said() {
     let fake = Fake::start().await;
-    *fake.behaviour.lock().unwrap() =
-        json!({"call":[{"http":{"status":502,"body":"hostile-body-text Bearer SYNTH-unlisted-0001"}}]});
+    *fake.behaviour.lock().unwrap() = json!({"call":[{"http":{"status":502,"body":"hostile-body-text Bearer SYNTH-unlisted-0001"}}]});
     let (sink, logs) = lines();
     let exec = Executor::new(
         Settings {
