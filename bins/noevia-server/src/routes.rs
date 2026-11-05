@@ -19,6 +19,9 @@ pub struct Route {
     pub catch_all: bool,
     /// The deployment switch `owner = "rust"` depends on, if any.
     pub switch: Option<&'static str>,
+    /// Transitional: the front answers the route but a Node executor still does its work
+    /// (routes.toml `executor = "node"`); not a completed port.
+    pub node_executor: bool,
 }
 
 /// The deployment switches that are on in this process. Sign-in, the account, the front read
@@ -772,6 +775,17 @@ mod tests {
             Some(Native::Diary)
         );
         assert_eq!(dispatch("POST", "/api/chat"), Some(Native::ChatTurn));
+    }
+
+    #[test]
+    fn the_chat_turn_is_marked_transitional_until_the_front_owns_its_execution() {
+        // Review S5–S9 P1: the turn's pipeline still runs in Node (/internal/chat/turn), so the
+        // route is not counted as ported; every other rust route has no Node executor.
+        let r = route_for("/api/chat").unwrap();
+        assert_eq!(r.owner, Owner::Rust);
+        assert!(r.node_executor);
+        let marked: Vec<_> = ROUTES.iter().filter(|r| r.node_executor).map(|r| r.path).collect();
+        assert_eq!(marked, ["/api/chat"]);
     }
 
     #[test]
