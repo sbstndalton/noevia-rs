@@ -28,7 +28,7 @@ fn fixture() -> Value {
         std::env::var("NOEVIA_MCP_DISCOVERY_FIXTURE")
             .ok()
             .map_or_else(
-                || FIXTURE.to_owned(),
+                || FIXTURE.replace("MCP 502: bad gateway", "fetch failed"),
                 |p| std::fs::read_to_string(p).unwrap(),
             )
             .as_str(),
@@ -73,6 +73,7 @@ struct World {
     disabled: HashSet<String>,
     not_public: HashSet<String>,
     calls: Vec<(String, Value)>,
+    logs: Vec<String>,
 }
 
 struct Script {
@@ -261,7 +262,9 @@ impl Backend for Script {
             _ => Err("fetch failed".into()),
         }
     }
-    fn log(&self, _line: String) {}
+    fn log(&self, line: String) {
+        self.world.lock().unwrap().logs.push(line);
+    }
 }
 
 fn operator_of(servers: &Value) -> Vec<ServerSpec> {
@@ -757,4 +760,117 @@ async fn a_server_whose_listing_panics_is_a_failed_server_not_a_missing_run() {
         "one server failing removes no other's tools"
     );
     let _ = Unavailable;
+}
+
+fn directory_backend(open: bool) -> Arc<Script> {
+    let (gate, _) = tokio::sync::watch::channel(open);
+    Arc::new(Script {
+        clock: AtomicI64::new(1_000_000),
+        world: Mutex::new(World {
+            dir: vec![
+                json!({"id":"removed", "url":"https://example.invalid/mcp", "title":"Synthetic"}),
+            ],
+            tools: BTreeMap::from([(
+                "removed".into(),
+                Some(vec![
+                    json!({"name":"one", "description":"one", "inputSchema":{"type":"object"}}),
+                ]),
+            )]),
+            ..World::default()
+        }),
+        operator: vec![],
+        no_token: false,
+        diary_write: false,
+        gate,
+    })
+}
+#[tokio::test]
+async fn removed_last_directory_server_fences_blocked_listing_and_waiters() {
+    let backend = directory_backend(false);
+    let actor = Actor::new(backend.clone(), Timing::default());
+    let old = tokio::spawn({
+        let actor = actor.clone();
+        async move { actor.discover(false).await }
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while backend.world.lock().unwrap().calls.is_empty() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    backend.world.lock().unwrap().dir.clear();
+    let empty = actor.discover(false).await.unwrap();
+    assert!(empty.offers.is_empty());
+    backend.gate.send_replace(true);
+    let late = old.await.unwrap();
+    assert!(
+        late.is_err() || late.unwrap().offers.is_empty(),
+        "removed tools escaped to original waiter"
+    );
+    assert!(
+        actor.current().offers.is_empty(),
+        "late run overwrote authoritative empty snapshot"
+    );
+}
+#[tokio::test]
+async fn reflected_remote_credentials_never_reach_snapshot_picker_connectors_or_logs() {
+    for (auth, reflected) in [
+        ("oauth", "MCP 401: Bearer synthetic-reflected-token"),
+        ("oauth", "MCP error -1: synthetic-reflected-token"),
+        (
+            "personal",
+            "MCP 401: X-Custom-Key synthetic-reflected-token",
+        ),
+    ] {
+        let backend = directory_backend(true);
+        {
+            let mut w = backend.world.lock().unwrap();
+            w.dir[0]["addedBy"] = json!("admin");
+            w.dir[0][if auth == "oauth" { "oauth" } else { "personal" }] = json!(1);
+            w.oauth
+                .insert("admin:removed".into(), "synthetic-reflected-token".into());
+            w.keys.insert(
+                "admin:removed".into(),
+                BTreeMap::from([("X-Custom-Key".into(), "synthetic-reflected-token".into())]),
+            );
+            w.fail.insert("removed".into(), reflected.into());
+        }
+        let actor = Actor::new(backend.clone(), Timing::default());
+        let snapshot = actor.discover(true).await.unwrap();
+        let facts = js_json::parse(&fixture()["scenarios"][0]["facts"].to_string()).unwrap();
+        let picker =
+            noevia_server::mcp_discovery::picker_facts(&facts, &snapshot, &|_| true).unwrap();
+        let catalogue =
+            noevia_server::mcp_discovery::compose(&facts, &snapshot, &|_| true, &[]).unwrap();
+        let output = format!(
+            "{} {} {} {:?}",
+            js_json::stringify(&snapshot.to_json()).unwrap(),
+            js_json::stringify(&picker).unwrap(),
+            catalogue_json(&catalogue),
+            backend.world.lock().unwrap().logs
+        );
+        assert!(
+            !output.contains("synthetic-reflected-token"),
+            "remote credential reflected to public sink"
+        );
+        assert!(snapshot.error.is_some());
+    }
+}
+
+#[tokio::test]
+async fn front_restart_scopes_equal_generations_to_distinct_incarnations() {
+    let first = Actor::new(directory_backend(true), Timing::default())
+        .discover(false)
+        .await
+        .unwrap();
+    let second = Actor::new(directory_backend(true), Timing::default())
+        .discover(false)
+        .await
+        .unwrap();
+    assert_eq!(first.generation, second.generation);
+    let a = first.to_json();
+    let b = second.to_json();
+    assert_ne!(a.get("incarnation"), b.get("incarnation"));
+    assert!(a.get("incarnation").as_str().is_some_and(|s| !s.is_empty()));
 }

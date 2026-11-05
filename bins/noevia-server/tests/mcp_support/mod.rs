@@ -857,6 +857,7 @@ pub fn write_snapshot(front: &Front, dir: &std::path::Path, body: serde_json::Va
     let mut guard = front.source.0.lock().unwrap();
     *guard = Arc::new(Snapshot {
         generation: guard.generation + 1,
+        incarnation: "synthetic-front".into(),
         enabled: doc["mcpEnabled"].as_bool().unwrap(),
         servers,
         boxes: bound.iter().map(jv).collect(),

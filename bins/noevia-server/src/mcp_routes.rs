@@ -381,13 +381,19 @@ async fn discovery_op(app: &Arc<App>, body: &JValue) -> Response<Body> {
     let force = body.get("force").as_bool() == Some(true);
     let known = body.get("generation").as_num();
     match handle.source.discover(force).await {
-        Ok(snapshot) if known == Some(snapshot.generation as f64) => internal(
-            200,
-            &JValue::obj([
-                ("unchanged", JValue::Bool(true)),
-                ("generation", JValue::Num(snapshot.generation as f64)),
-            ]),
-        ),
+        Ok(snapshot)
+            if known == Some(snapshot.generation as f64)
+                && body.get("incarnation").as_str() == Some(snapshot.incarnation.as_str()) =>
+        {
+            internal(
+                200,
+                &JValue::obj([
+                    ("unchanged", JValue::Bool(true)),
+                    ("incarnation", JValue::Str(snapshot.incarnation.clone())),
+                    ("generation", JValue::Num(snapshot.generation as f64)),
+                ]),
+            )
+        }
         Ok(snapshot) => internal(200, &snapshot.to_json()),
         Err(_) => internal_error(503, "unavailable"),
     }

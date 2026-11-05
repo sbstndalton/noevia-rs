@@ -160,6 +160,7 @@ pub struct Found {
 #[derive(Clone, Debug, Default)]
 pub struct Snapshot {
     pub generation: u64,
+    pub incarnation: String,
     /// `MCP_ENABLED`: at least one server is configured.
     pub enabled: bool,
     pub error: Option<String>,
@@ -196,6 +197,7 @@ impl Snapshot {
         JValue::obj([
             ("version", JValue::Num(1.0)),
             ("generation", JValue::Num(self.generation as f64)),
+            ("incarnation", JValue::Str(self.incarnation.clone())),
             ("enabled", JValue::Bool(self.enabled)),
             ("error", opt(&self.error)),
             ("discoveredAt", JValue::Num(self.discovered_at as f64)),
@@ -267,12 +269,14 @@ struct State {
     synced_with: Option<String>,
     inflight: Option<watch::Receiver<Done>>,
     generation: u64,
+    epoch: u64,
 }
 
 /// The discovery actor. Hold it in an `Arc`.
 pub struct Actor<B: Backend> {
     backend: Arc<B>,
     timing: Timing,
+    incarnation: String,
     state: Mutex<State>,
     /// This actor's own `Arc` (a run is a spawned task that owns one).
     pub(crate) me: std::sync::Weak<Actor<B>>,
@@ -283,12 +287,19 @@ struct Finish<B: Backend> {
     actor: Arc<Actor<B>>,
     tx: watch::Sender<Done>,
     sent: bool,
+    epoch: u64,
 }
 
 impl<B: Backend> Finish<B> {
-    fn done(mut self, snapshot: Arc<Snapshot>) {
-        self.actor.lock().inflight = None;
-        let _ = self.tx.send(Some(Ok(snapshot)));
+    fn done(mut self, snapshot: Result<Arc<Snapshot>, Unavailable>) {
+        let mut st = self.actor.lock();
+        let snapshot = if st.epoch == self.epoch {
+            st.inflight = None;
+            snapshot
+        } else {
+            Err(Unavailable)
+        };
+        let _ = self.tx.send(Some(snapshot));
         self.sent = true;
     }
 }
@@ -296,7 +307,10 @@ impl<B: Backend> Finish<B> {
 impl<B: Backend> Drop for Finish<B> {
     fn drop(&mut self) {
         if !self.sent {
-            self.actor.lock().inflight = None;
+            let mut st = self.actor.lock();
+            if st.epoch == self.epoch {
+                st.inflight = None;
+            }
             let _ = self.tx.send(Some(Err(Unavailable)));
         }
     }
@@ -308,6 +322,10 @@ impl<B: Backend> Actor<B> {
             me: me.clone(),
             backend,
             timing,
+            incarnation: crate::mcp_broker::random::<16>()
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect(),
             state: Mutex::new(State {
                 current: Arc::new(Snapshot::default()),
                 discovered_at: 0,
@@ -317,6 +335,7 @@ impl<B: Backend> Actor<B> {
                 synced_with: None,
                 inflight: None,
                 generation: 0,
+                epoch: 0,
             }),
         })
     }
@@ -380,6 +399,8 @@ impl<B: Backend> Actor<B> {
                 // The first look only records the table (nothing was discovered yet); a later change forces.
                 if st.synced_with.as_ref().is_some_and(|seen| *seen != signal) {
                     force = true;
+                    st.epoch += 1;
+                    st.inflight = None;
                 }
                 st.synced_with = Some(signal);
                 if !force
@@ -389,12 +410,17 @@ impl<B: Backend> Actor<B> {
                         .is_some_and(|w| w != credentials)
                 {
                     force = true;
+                    st.epoch += 1;
+                    st.inflight = None;
                 }
                 if servers.is_empty() {
                     // Nothing may stay offered from a list that is gone.
+                    st.epoch += 1;
+                    st.inflight = None;
                     st.generation += 1;
                     let snapshot = Arc::new(Snapshot {
                         generation: st.generation,
+                        incarnation: self.incarnation.clone(),
                         discovered_at: st.current.discovered_at,
                         failed_at: st.current.failed_at,
                         remote_fail_streak: st.current.remote_fail_streak,
@@ -419,7 +445,8 @@ impl<B: Backend> Actor<B> {
                     let (tx, rx) = watch::channel(None);
                     st.inflight = Some(rx.clone());
                     st.discovered_with = Some(credentials);
-                    (None, Some((tx, rx)))
+                    st.epoch += 1;
+                    (None, Some((tx, rx, st.epoch)))
                 }
             };
             if let Some(rx) = waiting {
@@ -431,7 +458,7 @@ impl<B: Backend> Actor<B> {
                 }
                 return outcome;
             }
-            let Some((tx, rx)) = start else {
+            let Some((tx, rx, epoch)) = start else {
                 return Err(Unavailable);
             };
             let me = Arc::clone(self);
@@ -440,8 +467,9 @@ impl<B: Backend> Actor<B> {
                     actor: Arc::clone(&me),
                     tx,
                     sent: false,
+                    epoch,
                 };
-                let snapshot = me.run(servers).await;
+                let snapshot = me.run(servers, epoch).await;
                 finish.done(snapshot);
             });
             return wait(rx).await;
@@ -449,7 +477,11 @@ impl<B: Backend> Actor<B> {
     }
 
     /// One whole discovery, then the state it leaves.
-    async fn run(self: &Arc<Self>, servers: Vec<ServerSpec>) -> Arc<Snapshot> {
+    async fn run(
+        self: &Arc<Self>,
+        servers: Vec<ServerSpec>,
+        epoch: u64,
+    ) -> Result<Arc<Snapshot>, Unavailable> {
         let mut set = tokio::task::JoinSet::new();
         for (index, server) in servers.iter().cloned().enumerate() {
             let backend = Arc::clone(&self.backend);
@@ -599,6 +631,9 @@ impl<B: Backend> Actor<B> {
         ));
 
         let mut st = self.lock();
+        if st.epoch != epoch {
+            return Err(Unavailable);
+        }
         st.streak = if remote_down { st.streak + 1 } else { 0 };
         let retry = if remote_down && !self.timing.retry_ms.is_empty() {
             let step = (st.streak as usize).clamp(1, self.timing.retry_ms.len());
@@ -622,6 +657,7 @@ impl<B: Backend> Actor<B> {
         st.generation += 1;
         let snapshot = Arc::new(Snapshot {
             generation: st.generation,
+            incarnation: self.incarnation.clone(),
             enabled: !servers.is_empty(),
             error,
             discovered_at: st.discovered_at,
@@ -633,7 +669,7 @@ impl<B: Backend> Actor<B> {
             manifest: curated,
         });
         st.current = Arc::clone(&snapshot);
-        snapshot
+        Ok(snapshot)
     }
 }
 
@@ -682,7 +718,11 @@ async fn discover_one<B: Backend>(backend: &B, server: &ServerSpec) -> Result<Ve
             }
         }
         let admin = added_by.clone().unwrap_or_default();
-        match backend.key_headers(&admin, &server.id).await? {
+        match backend
+            .key_headers(&admin, &server.id)
+            .await
+            .map_err(|_| "credential unavailable".to_owned())?
+        {
             Some(h) if !h.is_empty() => headers = h,
             _ => {
                 return Err("waiting for the administrator who added it to enter their key".into())
@@ -696,7 +736,11 @@ async fn discover_one<B: Backend>(backend: &B, server: &ServerSpec) -> Result<Ve
             }
         }
         let admin = added_by.clone().unwrap_or_default();
-        match backend.oauth_token(&admin, &server.id).await? {
+        match backend
+            .oauth_token(&admin, &server.id)
+            .await
+            .map_err(|_| "credential unavailable".to_owned())?
+        {
             Some(token) => {
                 headers = vec![("Authorization".to_owned(), format!("Bearer {token}"))];
             }
@@ -705,7 +749,10 @@ async fn discover_one<B: Backend>(backend: &B, server: &ServerSpec) -> Result<Ve
             }
         }
     }
-    let listed = backend.list_tools(server, &headers).await?;
+    let listed = backend
+        .list_tools(server, &headers)
+        .await
+        .map_err(|_| "fetch failed".to_owned())?;
     let mut entries: Vec<Entry> = Vec::new();
     let mut dropped: Vec<String> = Vec::new();
     for tool in &listed {
