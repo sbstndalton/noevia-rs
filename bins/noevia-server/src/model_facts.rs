@@ -18,8 +18,17 @@ struct ScanState {
     generation: u64,
     entry: u64,
     hit: Option<Arc<js_json::JValue>>,
+    // Budget adoptions in progress. While nonzero no scan may publish, so no
+    // reader can observe a scan entry beside a newly visible budget snapshot.
+    adopting: u32,
 }
 type ScanReply = Option<Option<js_json::JValue>>;
+/// Test-only observation point between a budget snapshot becoming visible and
+/// the adoption settling.
+#[cfg(test)]
+type AdoptionHook = Box<dyn Fn(&Authority) + Send>;
+#[cfg(test)]
+static AFTER_SNAPSHOT_PUBLISH: Mutex<Option<AdoptionHook>> = Mutex::new(None);
 type PendingScan = (String, tokio::sync::watch::Sender<ScanReply>);
 #[derive(Debug)]
 pub struct Authority {
@@ -139,7 +148,10 @@ impl Authority {
         let Ok(mut state) = self.cache.lock() else {
             return false;
         };
-        if state.generation == u64::MAX || token != self.scan_token(&state, false) {
+        if state.generation == u64::MAX
+            || state.adopting != 0
+            || token != self.scan_token(&state, false)
+        {
             return false;
         }
         let Some(entry) = state.entry.checked_add(1) else {
@@ -166,6 +178,33 @@ impl Authority {
         drop(state);
         drop(old);
         next.map(|_| ())
+    }
+    /// Fences the cache before a new budget snapshot becomes visible: advances the
+    /// generation, clears the entry and blocks publication until `end_adoption`.
+    /// Returns the generation the snapshot will carry once adoption settles.
+    fn begin_adoption(&self) -> Option<u64> {
+        let mut state = self.cache.lock().ok()?;
+        let fenced = state.generation.checked_add(1)?;
+        let settled = fenced.checked_add(1)?;
+        let adopting = state.adopting.checked_add(1)?;
+        state.generation = fenced;
+        state.adopting = adopting;
+        let old = state.hit.take();
+        drop(state);
+        drop(old);
+        Some(settled)
+    }
+    /// Settles an adoption begun by `begin_adoption`: every token issued while it
+    /// was in progress is retired by a further generation advance.
+    fn end_adoption(&self) {
+        let Ok(mut state) = self.cache.lock() else {
+            return;
+        };
+        state.adopting = state.adopting.saturating_sub(1);
+        state.generation = state.generation.checked_add(1).unwrap_or(u64::MAX);
+        let old = state.hit.take();
+        drop(state);
+        drop(old);
     }
     fn figure(&self, state: &State) -> Value {
         let text = std::fs::read_to_string(&self.meminfo).ok();
@@ -264,17 +303,22 @@ impl Authority {
         // transaction commits: compensating later cannot undo an admission.
         tx.commit().map_err(|_| unavailable())?;
         state.saved = Some(n);
-        // Only capture the generation under the cache lock. SQLite, meminfo and
-        // snapshot fsync/rename never run with that lock held. A concurrent cache
-        // invalidation can advance it further; the settlement fence below covers
-        // every scan started while this save was doing I/O.
-        let next_generation = self
-            .cache
-            .lock()
-            .ok()
-            .and_then(|cache| cache.generation.checked_add(1));
-        if next_generation.is_none_or(|generation| self.publish_locked(&state, generation).is_err())
-        {
+        // Fence the cache before the snapshot rename makes the new budget visible.
+        // The cache lock is only held for the in-memory fence; SQLite, meminfo and
+        // snapshot fsync/rename never run with it held.
+        let next_generation = self.begin_adoption();
+        let published = next_generation
+            .is_some_and(|generation| self.publish_locked(&state, generation).is_ok());
+        #[cfg(test)]
+        if published {
+            if let Some(hook) = AFTER_SNAPSHOT_PUBLISH.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+                hook(self);
+            }
+        }
+        if next_generation.is_some() {
+            self.end_adoption();
+        }
+        if !published {
             state.saved = old_saved;
             // Publication failed before rename, so readers still have the old
             // snapshot. Restore its exact prior persistence under this writer lock.
@@ -297,10 +341,9 @@ impl Authority {
             }
             return Err(unavailable());
         }
-        // The cache check-and-publish and this settlement fence share one short
-        // critical section. No scan captured before/during adoption can republish.
-        // Poisoned or exhausted cache state already refuses every read/publication.
-        let _ = self.scan_invalidate();
+        // begin_adoption fenced the cache before the snapshot rename and
+        // end_adoption retired every token issued during it, so no scan captured
+        // before or during adoption can publish or be read beside the new budget.
         Ok(self.figure(&state))
     }
 }
@@ -677,5 +720,58 @@ mod concurrency_tests {
             authority.scan_snapshot().unwrap().get("hit"),
             js_json::JValue::Null
         ));
+    }
+
+    #[test]
+    fn no_scan_entry_is_visible_beside_a_newly_published_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Connection::open(dir.path().join("cowork.db")).unwrap();
+        db.execute_batch("CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT);")
+            .unwrap();
+        drop(db);
+        let authority = Arc::new(Authority::from_lookup(&|key| match key {
+            "UI_DATA_DIR" => Some(dir.path().display().to_string()),
+            "NOEVIA_START_ID" => Some("adoption-window-start".into()),
+            _ => None,
+        }));
+        authority.publish().unwrap();
+        let body = || js_json::JValue::obj([("models", js_json::JValue::Arr(vec![]))]);
+        let before = authority.scan_snapshot().unwrap();
+        let before_token = before.get("token").as_str().unwrap().to_owned();
+        let observed: Arc<Mutex<Option<(bool, bool, bool, String)>>> = Arc::new(Mutex::new(None));
+        let sink = Arc::clone(&observed);
+        let token = before_token.clone();
+        *AFTER_SNAPSHOT_PUBLISH.lock().unwrap() = Some(Box::new(move |a: &Authority| {
+            if a.start != "adoption-window-start" {
+                return;
+            }
+            let budget_visible = a
+                .budget()
+                .and_then(|b| b.get("budgetGib").and_then(Value::as_f64))
+                == Some(2.0);
+            let old_published = a.scan_publish(&token, body());
+            let during = a.scan_snapshot().unwrap();
+            let during_token = during.get("token").as_str().unwrap().to_owned();
+            let during_published = a.scan_publish(&during_token, body());
+            let hit_visible = !matches!(a.scan_snapshot().unwrap().get("hit"), js_json::JValue::Null);
+            *sink.lock().unwrap() = Some((
+                budget_visible,
+                old_published || during_published,
+                hit_visible,
+                during_token,
+            ));
+        }));
+        let saved = authority.save(&json!({"budgetGib": 2}));
+        *AFTER_SNAPSHOT_PUBLISH.lock().unwrap() = None;
+        assert!(saved.is_ok());
+        let (budget_visible, published, hit_visible, during_token) =
+            observed.lock().unwrap().take().expect("hook observed the adoption window");
+        assert!(budget_visible, "the new budget snapshot is visible in the window");
+        assert!(!published, "no scan may publish while the new budget is being adopted");
+        assert!(!hit_visible, "no scan entry is readable beside the new budget");
+        assert!(!authority.scan_publish(&before_token, body()));
+        assert!(!authority.scan_publish(&during_token, body()));
+        let after = authority.scan_snapshot().unwrap();
+        assert!(authority.scan_publish(after.get("token").as_str().unwrap(), body()));
     }
 }
