@@ -85,6 +85,80 @@ pub fn chunks(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// The source version captured while preparing text under the project lock.
+pub struct PreparedSource {
+    pub index: Index,
+    pub version: String,
+}
+
+fn source_text(
+    dir: &std::path::Path,
+    project: &str,
+    file: &js_json::JValue,
+) -> Result<String, String> {
+    let text = server_projects::sources::text(dir, project, file).map_err(|_| fault())?;
+    Ok(if matches!(file.get("content"), js_json::JValue::Str(_)) {
+        text.chars()
+            .map(|c| {
+                if js_json::wtf16::lone_unit(c).is_some() {
+                    '\u{fffd}'
+                } else {
+                    c
+                }
+            })
+            .collect()
+    } else {
+        text
+    })
+}
+fn excluded(
+    dir: &std::path::Path,
+    project: &js_json::JValue,
+    file: &js_json::JValue,
+) -> Result<bool, String> {
+    let skill = server_projects::instruction_skills::inspect(
+        server_projects::instruction_skills::View {
+            project,
+            dir,
+            known: &[],
+        },
+        file,
+    )
+    .map_err(|_| fault())?
+    .is_some();
+    let unreadable = file.get("attachment").get("state").as_str() == Some("stored")
+        && matches!(
+            file.get("attachment").get("group").as_str(),
+            Some("Text" | "Documents")
+        );
+    Ok(skill || unreadable)
+}
+/// Called only while the shared project publication lock is held. A delete
+/// need not enqueue a newer index generation: membership and content must still match.
+pub(crate) fn current_source_version(
+    dir: &std::path::Path,
+    row: &IndexClaim,
+) -> Result<Option<String>, String> {
+    let projects = server_projects::store::read(dir).map_err(|_| fault())?;
+    let Some(project) = server_projects::store::find(&projects, &row.project) else {
+        return Ok(None);
+    };
+    let js_json::JValue::Arr(files) = project.get("files") else {
+        return Ok(None);
+    };
+    let Some(file) = files
+        .iter()
+        .find(|f| f.get("name").as_str() == row.file.as_deref())
+    else {
+        return Ok(None);
+    };
+    if excluded(dir, project, file)? {
+        return Ok(None);
+    }
+    let text = source_text(dir, &row.project, file)?;
+    Ok((!text.is_empty()).then(|| hash(&text)))
+}
+
 impl SqlStore {
     /// Update only the still-current source's document status under the shared
     /// projects lock. Account removal is fenced by the auth writer as in vector publication.
@@ -104,27 +178,31 @@ impl SqlStore {
         writer.write(|auth| {
             if auth.reader().row("SELECT id FROM users WHERE id=?",[user],|r|r.get::<_,String>(0))?.is_none() {return Ok(Ok(()));}
             let result=server_projects::store::update(&dir,server_store::RustProjects::owned(),|projects| {
-                let current=crate::sqlite::open_existing(&dir.join("index-outbox.db")).ok().and_then(|db|server_projects::outbox::index_current(&db,row).ok()).unwrap_or(false);
-                if !current {return ((),false);}
-                let Some(project)=server_projects::store::find_mut(projects,&row.project) else {return ((),false)};
-                let js_json::JValue::Obj(fields)=project else {return ((),false)};
-                let Some((_,js_json::JValue::Arr(files)))=fields.iter_mut().find(|(k,_)|k=="files") else {return ((),false)};
-                let Some(file)=files.iter_mut().find(|f|f.get("name").as_str()==row.file.as_deref()) else {return ((),false)};
-                let state=if !prepared {"unavailable"} else if success {
-                    let index=Index{user:Some(user.into()),project:row.project.clone()};
-                    let counts=self.index_path(&index).ok().and_then(|p|crate::sqlite::open_existing(&p).ok()).and_then(|db|db.query_row("SELECT COUNT(*),COALESCE(MAX(direct),0) FROM chunks WHERE file=? AND COALESCE(kind,'text')='text'",[row.file.as_deref().unwrap_or_default()],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,i64>(1)?))).ok());
-                    match counts {Some((0,_))=>"unavailable",Some((_,1))=>"direct",Some(_)=>{
-                        let remaining=self.config().ok().and_then(|c|SourceStore{store:self,row}.remaining(&index,&c.active).ok());
-                        if remaining==Some(0) {"ready"} else {"partial"}
-                    },None=>"unavailable"}
-                } else {"partial"};
-                let js_json::JValue::Obj(_) = file.get("document") else {return ((),false)};
-                if file.get("document").get("indexing").as_str()==Some(state) {return ((),false);}
-                if let js_json::JValue::Obj(fields)=file {
-                    if let Some((_,document))=fields.iter_mut().find(|(k,_)|k=="document") {server_projects::store::set(document,"indexing",js_json::JValue::Str(state.into()));}
-                }
-                ((),true)
-            }).map_err(|_|fault());
+                let changed=(||->Result<bool,String> {
+                    let db=crate::sqlite::open_existing(&dir.join("index-outbox.db"))?;
+                    if !server_projects::outbox::index_current(&db,row).map_err(|_|fault())? {return Ok(false);}
+                    let Some(project)=server_projects::store::find_mut(projects,&row.project) else {return Ok(false)};
+                    let js_json::JValue::Obj(fields)=project else {return Ok(false)};
+                    let Some((_,js_json::JValue::Arr(files)))=fields.iter_mut().find(|(k,_)|k=="files") else {return Ok(false)};
+                    let Some(file)=files.iter_mut().find(|f|f.get("name").as_str()==row.file.as_deref()) else {return Ok(false)};
+                    let js_json::JValue::Obj(_) = file.get("document") else {return Ok(false)};
+                    let state=if !prepared {"unavailable"} else if !success {"partial"} else {
+                        let index=Index{user:Some(user.into()),project:row.project.clone()};
+                        let db=crate::sqlite::open_existing(&self.index_path(&index)?)?;
+                        let counts=db.query_row("SELECT COUNT(*),COALESCE(MAX(direct),0) FROM chunks WHERE file=? AND COALESCE(kind,'text')='text'",[row.file.as_deref().unwrap_or_default()],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,i64>(1)?))).map_err(|_|fault())?;
+                        match counts { (0,_)=>"unavailable",(_,1)=>"direct",_=>{
+                            let config=self.config()?;
+                            if (SourceStore{store:self,row,version:None}).remaining(&index,&config.active)?==0 {"ready"} else {"partial"}
+                        }}
+                    };
+                    if file.get("document").get("indexing").as_str()==Some(state) {return Ok(false);}
+                    if let js_json::JValue::Obj(fields)=file {
+                        if let Some((_,document))=fields.iter_mut().find(|(k,_)|k=="document") {server_projects::store::set(document,"indexing",js_json::JValue::Str(state.into()));}
+                    }
+                    Ok(true)
+                })();
+                match changed {Ok(changed)=>(Ok(()),changed),Err(error)=>(Err(error),false)}
+            }).map_err(|_|fault()).and_then(|result|result);
             Ok(result)
         }).map_err(|_|fault())?
     }
@@ -136,7 +214,7 @@ impl SqlStore {
         user: &str,
         row: &IndexClaim,
         control: &Control,
-    ) -> Result<Option<Index>, String> {
+    ) -> Result<Option<PreparedSource>, String> {
         let index = Index {
             user: Some(user.into()),
             project: row.project.clone(),
@@ -161,16 +239,11 @@ impl SqlStore {
                 let files=match project.get("files") {js_json::JValue::Arr(files)=>files.as_slice(),_=>&[]};
                 let file=files.iter().find(|f|f.get("name").as_str()==Some(name));
                 if (row.kind=="index" && file.is_none()) || (row.kind=="unindex" && file.is_some()) {return Ok(None);}
-                let (text,unreadable,skill)=if let Some(file)=file {
-                    let text=server_projects::sources::text(&dir,&row.project,file).map_err(|_|fault())?;
-                    // The lossless project reader maps lone UTF-16 surrogates to
-                    // private scalars; SQLite/UTF-8 hashing use Node's replacement bytes.
-                    let text=if matches!(file.get("content"),js_json::JValue::Str(_)) {text.chars().map(|c|if js_json::wtf16::lone_unit(c).is_some() {'\u{fffd}'} else {c}).collect()} else {text};
-                    let unreadable=file.get("attachment").get("state").as_str()==Some("stored") && matches!(file.get("attachment").get("group").as_str(),Some("Text"|"Documents"));
-                    let skill=server_projects::skills::is_front_matter_skill(name,&text) || file.get("skillHeader")==&js_json::JValue::Bool(true);
-                    (text,unreadable,skill)
-                } else {(String::new(),false,false)};
-                let empty=text.is_empty() || unreadable || skill;
+                let (text,empty)=if let Some(file)=file {
+                    let text=source_text(&dir,&row.project,file)?;
+                    let empty=text.is_empty() || excluded(&dir,project,file)?;
+                    (text,empty)
+                } else {(String::new(),true)};
                 control.renew_publication_proof()?;
                 if !control.ownership_fresh() {return Err(fault());}
                 let path=self.index_path(&index)?;
@@ -186,22 +259,35 @@ impl SqlStore {
                 self.prepare(&tx)?;
                 let version=hash(&text);
                 let direct=text.encode_utf16().count()<=2400;
-                // Keep same-version document tail rows and every media row.
-                let keep_tail=!empty && !direct;
-                let ids={let mut stmt=tx.prepare("SELECT id FROM chunks WHERE file=?1 AND (?4 OR COALESCE(kind,'text')='text') AND NOT (?2 AND COALESCE(meta,'') LIKE '{\"tail\":1,%' AND version IS ?3)").map_err(|_|fault())?;
-                    let collected=stmt.query_map(rusqlite::params![name,keep_tail,version,row.kind=="unindex"],|r|r.get::<_,i64>(0)).map_err(|_|fault())?.collect::<Result<Vec<_>,_>>().map_err(|_|fault())?; collected};
-                self.drop_chunks(&tx,&ids)?;
                 let mut seen=BTreeSet::new();
                 let pieces=if empty {Vec::new()} else if direct {vec![text]} else {chunks(&text)};
-                for (n,body) in pieces.into_iter().filter(|b|seen.insert(hash(b))).enumerate() {
-                    // Head/tail duplicate hashes are replaced by the head.
-                    let clash=tx.query_row("SELECT id FROM chunks WHERE file=? AND content_hash=? AND COALESCE(meta,'') LIKE '{\"tail\":1,%'",rusqlite::params![name,hash(&body)],|r|r.get::<_,i64>(0));
-                    if let Ok(id)=clash {self.drop_chunks(&tx,&[id])?;}
-                    tx.execute("INSERT INTO chunks(file,chunk_no,body,content_hash,version,direct) VALUES(?1,?2,?3,?4,?5,?6)",rusqlite::params![name,i64::try_from(n).map_err(|_|fault())?,body,hash(&body),version,direct]).map_err(|_|fault())?;
+                let desired=pieces.into_iter().filter(|b|seen.insert(hash(b))).enumerate()
+                    .map(|(n,body)|Ok((hash(&body),(i64::try_from(n).map_err(|_|fault())?,body))))
+                    .collect::<Result<std::collections::BTreeMap<_,_>,String>>()?;
+                // Resume unchanged heads in place: row IDs, active vectors and
+                // vectors already migrated to another slot must survive yielding.
+                let existing={
+                    let mut stmt=tx.prepare("SELECT id,chunk_no,body,content_hash,version,direct,COALESCE(meta,'') LIKE '{\"tail\":1,%' FROM chunks WHERE file=? AND (? OR COALESCE(kind,'text')='text')").map_err(|_|fault())?;
+                    let rows=stmt.query_map(rusqlite::params![name,row.kind=="unindex"],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,i64>(1)?,r.get::<_,String>(2)?,r.get::<_,String>(3)?,r.get::<_,Option<String>>(4)?,r.get::<_,Option<bool>>(5)?,r.get::<_,bool>(6)?))).map_err(|_|fault())?.collect::<Result<Vec<_>,_>>().map_err(|_|fault())?;
+                    rows
+                };
+                let mut retained=BTreeSet::new(); let mut remove=Vec::new();
+                for (id,n,body,digest,old_version,old_direct,tail) in existing {
+                    let same=old_version.as_deref()==Some(version.as_str());
+                    let head_matches=!tail && same && old_direct==Some(direct) && desired.get(&digest).is_some_and(|(want_n,want_body)|*want_n==n && *want_body==body);
+                    let tail_matches=tail && same && !empty && !direct && !desired.contains_key(&digest);
+                    if head_matches {retained.insert(digest);} else if !tail_matches {remove.push(id);}
+                }
+                self.drop_chunks(&tx,&remove)?;
+                let mut ordered=desired.into_iter().collect::<Vec<_>>();
+                ordered.sort_by_key(|(_, (n,_))|*n);
+                for (digest,(n,body)) in ordered {
+                    if retained.contains(&digest) {continue;}
+                    tx.execute("INSERT INTO chunks(file,chunk_no,body,content_hash,version,direct) VALUES(?1,?2,?3,?4,?5,?6)",rusqlite::params![name,n,body,digest,version,direct]).map_err(|_|fault())?;
                 }
                 control.renew_publication_proof()?;
                 tx.commit().map_err(|_|fault())?;
-                Ok(if empty {None} else {Some(index)})
+                Ok(if empty {None} else {Some(PreparedSource {index,version})})
             })())
         }).map_err(|_|fault())?
     }

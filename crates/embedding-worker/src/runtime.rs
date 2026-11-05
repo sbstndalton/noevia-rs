@@ -327,65 +327,43 @@ pub fn start(
             };
             let mut outbox_rx=rx.clone();
             let outbox=async {
+                use server_projects::outbox::{self,JobDiagnostic,JobOperation};
                 let mut recovered=BTreeSet::new();
+                let mut pending=std::collections::BTreeMap::<String,RagCompletion>::new();
                 loop {
                     if *outbox_rx.borrow() {break;}
+                    pending.retain(|_,completion|completion.apply().is_err());
                     if host.http.outbox_ready(&core,&token,&start).await.unwrap_or(false) {
-                        for user in host.store.users().unwrap_or_default() {
+                        let users=match host.store.users() {Ok(users)=>users,Err(_)=>{eprintln!("[index-outbox] operation=users reason=unavailable");Vec::new()}};
+                        for user in users {
                             if *outbox_rx.borrow() {break;}
+                            if pending.contains_key(&user) {continue;}
                             let Ok(dir)=server_projects::store::user_dir(&host.store.root,&user) else {continue;};
-                            let recover=!recovered.contains(&user);
-                            if let Ok(rows)=server_projects::outbox::pending_rag(&dir,recover) {
-                                    // A missing database may appear later. Do not mark it recovered yet.
-                                    if server_projects::outbox::path(&dir).exists() {recovered.insert(user.clone());}
-                                    for row in rows {
-                                        if *outbox_rx.borrow() || !host.http.outbox_ready(&core,&token,&start).await.unwrap_or(false) {break;}
-                                        if !server_projects::outbox::claim_rag(&dir,&row,now() as i64).unwrap_or(false) {continue;}
-                                        let ctl=Control::default();
-                                        let result=match crate::fill::Embed::authorize(&host.http,&ctl).await {
-                                            Ok(())=>host.store.index_source(&user,&row,&ctl),
-                                            Err(e)=>Err(e),
-                                        };
-                                        let prepared=result.is_ok();
-                                        let ok=match result {
-                                            Ok(Some(index))=> {
-                                                if let Ok(config)=host.store.config() {
-                                                    if host.off(&config.active) {true} else {
-                                                    // Bounded batches and a pause let foreground admission win.
-                                                    let mut success=true;
-                                                    loop {
-                                                        if !host.http.outbox_ready(&core,&token,&start).await.unwrap_or(false) {success=false;break;}
-                                                        let excluded=BTreeSet::new();
-                                                        let filler=Filler{store:crate::sqlite::SourceStore{store:&host.store,row:&row},embedder:host.http.clone()};
-                                                        let batch=tokio::select! {
-                                                            r=filler.fill(&index,&config.active,4,&excluded,config.version,&ctl)=>r,
-                                                            _=outbox_rx.changed()=>{ctl.stop();Err("source indexing stopped".into())}
-                                                        };
-                                                        match batch {
-                                                            Ok(Some(batch)) if batch.remaining>0 && batch.embedded>0 => {},
-                                                            Ok(Some(batch))=>{success=batch.remaining==0;break;},
-                                                            Ok(None)=>break,
-                                                            Err(_)=>{success=false;break;}
-                                                        }
-                                                        tokio::select! {_=tokio::time::sleep(Duration::from_millis(50))=>{},_=outbox_rx.changed()=>{success=false;break;}}
-                                                    }
-                                                    success
-                                                    }
-                                                } else {false}
-                                            },
-                                            Ok(None)=>true,
-                                            Err(_)=>false,
-                                        };
-                                        if !*outbox_rx.borrow() {let _=host.store.mark_index_source(&user,&row,ok,prepared);}
-                                        if !ok && !host.http.outbox_ready(&core,&token,&start).await.unwrap_or(false) {
-                                            let _=server_projects::outbox::defer_index(&dir,&row);
-                                        } else {let _=server_projects::outbox::finish_index(&dir,&row,ok);}
+                            let rows=match outbox::pending_rag(&dir,!recovered.contains(&user)) {
+                                Ok(rows)=>rows,
+                                Err(_)=>{eprintln!("[index-outbox] operation=scan reason=unavailable");continue;}
+                            };
+                            if outbox::path(&dir).exists() {recovered.insert(user.clone());}
+                            for row in rows {
+                                if *outbox_rx.borrow() || !host.http.outbox_ready(&core,&token,&start).await.unwrap_or(false) {break;}
+                                match outbox::claim_rag(&dir,&row,now() as i64) {
+                                    Ok(true)=>{},Ok(false)=>continue,
+                                    Err(error)=>{
+                                        let error=JobDiagnostic::new(&row,JobOperation::Claim,&format!("{error:?}"));
+                                        eprintln!("{}",error.warning());
+                                        if outbox::record_error(&dir,&row,&error).is_err() {eprintln!("[index-outbox] operation=record-error reason=unavailable");}
+                                        break;
                                     }
+                                }
+                                let attempt=host.run_rag(&user,&row,&mut outbox_rx).await;
+                                let status=if *outbox_rx.borrow() {Ok(())} else {host.store.mark_index_source(&user,&row,attempt.result.is_ok() && !attempt.deferred,attempt.prepared)};
+                                let completion=RagCompletion::from_attempt(dir.clone(),row,attempt,status);
+                                if completion.apply().is_err() {pending.insert(user.clone(),completion);break;}
+                                tokio::task::yield_now().await;
                             }
-                            tokio::task::yield_now().await;
                         }
                     }
-                    tokio::select! {_=tokio::time::sleep(Duration::from_secs(2))=>{},_=outbox_rx.changed()=>{break;}}
+                    tokio::select! {_=tokio::time::sleep(Duration::from_secs(2))=>{},_=outbox_rx.changed()=>break}
                 }
             };
             let migrate=async {
@@ -479,5 +457,199 @@ fn update_snapshot(root: &Path, state: &std::sync::Mutex<Value>, fields: Value) 
             object.insert("at".into(), Value::from(now()));
         }
         let _ = publish_snapshot(root, &state);
+    }
+}
+
+struct RagAttempt {
+    result: Result<(), server_projects::outbox::JobDiagnostic>,
+    prepared: bool,
+    deferred: bool,
+}
+impl NativeHost {
+    async fn run_rag(
+        &self,
+        user: &str,
+        row: &server_projects::outbox::IndexClaim,
+        stop: &mut watch::Receiver<bool>,
+    ) -> RagAttempt {
+        use server_projects::outbox::{JobDiagnostic as Error, JobOperation as Op};
+        let mut attempt = RagAttempt {
+            result: Ok(()),
+            prepared: false,
+            deferred: false,
+        };
+        let result:Result<(),Error>=async {
+            if row.kind=="index" {
+                self.http.source_changed(&self.core,&self.token,&self.start,user,&row.project).await.map_err(|e|Error::new(row,Op::Notify,&e))?;
+            }
+            let ctl=Control::default();
+            crate::fill::Embed::authorize(&self.http,&ctl).await.map_err(|e|Error::new(row,Op::Prepare,&e))?;
+            let source=self.store.index_source(user,row,&ctl).map_err(|e|Error::new(row,Op::Prepare,&e))?;
+            attempt.prepared=true;
+            let Some(source)=source else {return Ok(())};
+            let config=self.store.config().map_err(|e|Error::new(row,Op::Prepare,&e))?;
+            if self.off(&config.active) {return Ok(());}
+            let filler=Filler{store:crate::sqlite::SourceStore{store:&self.store,row,version:Some(&source.version)},embedder:self.http.clone()};
+            loop {
+                if *stop.borrow() || !self.http.outbox_ready(&self.core,&self.token,&self.start).await.unwrap_or(false) {attempt.deferred=true;return Ok(());}
+                let excluded=BTreeSet::new();
+                let batch=tokio::select! {
+                    r=filler.fill(&source.index,&config.active,4,&excluded,config.version,&ctl)=>r.map_err(|e|Error::new(row,Op::Embed,&e))?,
+                    _=stop.changed()=>{ctl.stop();attempt.deferred=true;return Ok(());}
+                };
+                match batch {
+                    Some(batch) if batch.remaining>0 && batch.embedded>0=>{},
+                    Some(batch) if batch.remaining>0=>return Err(Error::new(row,Op::Embed,"incomplete vectors")),
+                    _=>return Ok(())
+                }
+                tokio::select! {_=tokio::time::sleep(Duration::from_millis(50))=>{},_=stop.changed()=>{ctl.stop();attempt.deferred=true;return Ok(());}}
+            }
+        }.await;
+        attempt.result = result;
+        attempt
+    }
+}
+
+enum RagCompletionAction {
+    Defer,
+    Finish(Option<server_projects::outbox::JobDiagnostic>),
+}
+struct RagCompletion {
+    dir: std::path::PathBuf,
+    row: server_projects::outbox::IndexClaim,
+    action: RagCompletionAction,
+}
+impl RagCompletion {
+    fn from_attempt(
+        dir: std::path::PathBuf,
+        row: server_projects::outbox::IndexClaim,
+        mut attempt: RagAttempt,
+        status: Result<(), String>,
+    ) -> Self {
+        use server_projects::outbox::{JobDiagnostic as Error, JobOperation as Op};
+        if let Err(error) = &attempt.result {
+            eprintln!("{}", error.warning());
+        }
+        if let Err(error) = status {
+            let error = Error::new(&row, Op::Status, &error);
+            eprintln!("{}", error.warning());
+            attempt.result = Err(error);
+            attempt.deferred = false;
+        }
+        let action = if attempt.deferred {
+            RagCompletionAction::Defer
+        } else {
+            RagCompletionAction::Finish(attempt.result.err())
+        };
+        Self { dir, row, action }
+    }
+    /// A failed status/ack never disappears into `let _`: keep the completion in
+    /// memory for the next tick, with the durable running row as restart recovery.
+    fn apply(&self) -> Result<(), server_projects::outbox::JobDiagnostic> {
+        use server_projects::outbox::{self, JobDiagnostic as Error, JobOperation as Op};
+        let (operation, result) = match &self.action {
+            RagCompletionAction::Defer => (Op::Defer, outbox::defer_index(&self.dir, &self.row)),
+            RagCompletionAction::Finish(error) => (
+                Op::Ack,
+                outbox::finish_index_with_error(&self.dir, &self.row, error.as_ref()),
+            ),
+        };
+        if let Err(error) = result {
+            let error = Error::new(&self.row, operation, &format!("{error:?}"));
+            eprintln!("{}", error.warning());
+            if outbox::record_error(&self.dir, &self.row, &error).is_err() {
+                eprintln!("[index-outbox] operation=record-error reason=unavailable");
+            }
+            Err(error)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod rag_completion_tests {
+    use super::*;
+    use server_projects::outbox::{self, Job};
+    fn claimed() -> (tempfile::TempDir, outbox::IndexClaim) {
+        let dir = tempfile::tempdir().unwrap();
+        outbox::enqueue(
+            dir.path(),
+            &[Job {
+                kind: "index",
+                project: "p",
+                file: Some("synthetic.md"),
+                payload: None,
+            }],
+            1,
+        )
+        .unwrap();
+        let row = outbox::claim_index(dir.path(), false, 2).unwrap().unwrap();
+        (dir, row)
+    }
+    #[test]
+    fn status_and_ack_errors_are_recorded_sanitized_and_ack_is_retried() {
+        let (dir, mut row) = claimed();
+        let db = rusqlite::Connection::open(outbox::path(dir.path())).unwrap();
+        db.execute("UPDATE jobs SET attempts=5", []).unwrap();
+        row.attempts = 4;
+        let completion = RagCompletion::from_attempt(
+            dir.path().into(),
+            row,
+            RagAttempt {
+                result: Ok(()),
+                prepared: true,
+                deferred: false,
+            },
+            Err("private credential https://secret.invalid/token".repeat(1000)),
+        );
+        completion.apply().unwrap();
+        let (state, error): (String, String) = db
+            .query_row("SELECT state,last_error FROM jobs", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(state, "failed");
+        assert!(error.len() < 256);
+        assert!(error.contains("status"));
+        assert!(!error.contains("credential"));
+        assert!(!error.contains("secret.invalid"));
+        outbox::enqueue(
+            dir.path(),
+            &[Job {
+                kind: "index",
+                project: "p",
+                file: Some("synthetic.md"),
+                payload: None,
+            }],
+            3,
+        )
+        .unwrap();
+        let row = outbox::claim_index(dir.path(), false, 4).unwrap().unwrap();
+        db.execute_batch("CREATE TRIGGER synthetic_ack_failure BEFORE DELETE ON jobs BEGIN SELECT RAISE(ABORT,'private token must never be logged'); END;").unwrap();
+        let completion = RagCompletion::from_attempt(
+            dir.path().into(),
+            row,
+            RagAttempt {
+                result: Ok(()),
+                prepared: true,
+                deferred: false,
+            },
+            Ok(()),
+        );
+        let error = completion.apply().unwrap_err();
+        assert_eq!(error.operation, "ack");
+        assert!(!error.warning().contains("token"));
+        assert!(error.warning().len() < 256);
+        let stored: String = db
+            .query_row("SELECT last_error FROM jobs", [], |r| r.get(0))
+            .unwrap();
+        assert!(stored.contains("ack"));
+        assert!(!stored.contains("token"));
+        db.execute_batch("DROP TRIGGER synthetic_ack_failure")
+            .unwrap();
+        completion.apply().unwrap();
+        assert!(outbox::jobs(dir.path()).unwrap().is_empty());
     }
 }

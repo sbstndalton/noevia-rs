@@ -431,7 +431,7 @@ impl SqlStore {
         &self,
         index: &Index,
         publish: bool,
-        expected: Option<&server_projects::outbox::IndexClaim>,
+        expected: Option<(&server_projects::outbox::IndexClaim, &str)>,
         run: impl FnOnce(&Connection) -> Result<T, String>,
     ) -> Result<T, String> {
         let _config = server_projects::lock::acquire(&self.root.join("embedding-config.json"))
@@ -460,8 +460,11 @@ impl SqlStore {
                     if dead {
                         return Err(fault());
                     }
-                    if let Some(row) = expected {
-                        if !server_projects::outbox::index_current(&tx, row).map_err(|_| fault())? {
+                    if let Some((row, version)) = expected {
+                        if !server_projects::outbox::index_current(&tx, row).map_err(|_| fault())?
+                            || crate::outbox::current_source_version(&dir, row)?.as_deref()
+                                != Some(version)
+                        {
                             return Err("source indexing superseded".into());
                         }
                     }
@@ -637,7 +640,10 @@ impl SqlStore {
         rows: &[Row],
         vectors: &[Vec<f32>],
         version: u64,
-        context: (&Control, Option<&server_projects::outbox::IndexClaim>),
+        context: (
+            &Control,
+            Option<(&server_projects::outbox::IndexClaim, &str)>,
+        ),
     ) -> Result<usize, String> {
         let (control, expected) = context;
         self.fenced_expected(index, true, expected, |db| {
@@ -704,6 +710,7 @@ impl SqlStore {
 /// Active-slot fill restricted to the source claimed by the outbox. It never
 /// participates in refresh or migration of another source or target.
 pub struct SourceStore<'a> {
+    pub version: Option<&'a str>,
     pub store: &'a SqlStore,
     pub row: &'a server_projects::outbox::IndexClaim,
 }
@@ -758,7 +765,10 @@ impl FillStore for SourceStore<'_> {
             rows,
             vectors,
             version,
-            (control, Some(self.row)),
+            (
+                control,
+                Some((self.row, self.version.ok_or("source version unavailable")?)),
+            ),
         )
     }
 }

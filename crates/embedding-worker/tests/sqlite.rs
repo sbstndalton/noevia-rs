@@ -747,9 +747,22 @@ fn outbox_fill_only_selects_claimed_source_and_fences_superseded_vectors() {
     let row = server_projects::outbox::claim_index(&dir, false, 2)
         .unwrap()
         .unwrap();
+    use sha2::{Digest, Sha256};
+    let version = format!("{:x}", Sha256::digest(b"synthetic chunk"));
+    std::fs::write(
+        dir.join("projects.json"),
+        json!({"projects":[{"id":"p","files":[{"name":"f1","content":"synthetic chunk"}]}]})
+            .to_string(),
+    )
+    .unwrap();
+    Connection::open(store.index_path(&index).unwrap())
+        .unwrap()
+        .execute("UPDATE chunks SET version=? WHERE file='f1'", [&version])
+        .unwrap();
     let source = SourceStore {
         store: &store,
         row: &row,
+        version: Some(&version),
     };
     let rows = source
         .missing(&index, &target("active"), 4, &Default::default())
@@ -839,5 +852,266 @@ fn native_unindex_preserves_reuploads_and_removes_rows_only_after_source_is_abse
             .get::<_, i64>(0))
             .unwrap(),
         1
+    );
+}
+
+#[test]
+fn late_source_vectors_are_not_published_after_file_deletion() {
+    let (_tmp, store, index) = setup();
+    let dir = store.root.join("users").join(USER);
+    let text = (0..400)
+        .map(|n| format!("synthetic paragraph {n:04}. "))
+        .collect::<String>();
+    std::fs::write(
+        dir.join("projects.json"),
+        json!({"projects":[{"id":"p","files":[{"name":"late.md","content":text}]}]}).to_string(),
+    )
+    .unwrap();
+    server_projects::outbox::enqueue(
+        &dir,
+        &[server_projects::outbox::Job {
+            kind: "index",
+            project: "p",
+            file: Some("late.md"),
+            payload: None,
+        }],
+        1,
+    )
+    .unwrap();
+    let row = server_projects::outbox::claim_index(&dir, false, 2)
+        .unwrap()
+        .unwrap();
+    let prepared = store
+        .index_source(USER, &row, &Control::default())
+        .unwrap()
+        .unwrap();
+    let source = SourceStore {
+        store: &store,
+        row: &row,
+        version: Some(&prepared.version),
+    };
+    let rows = source
+        .missing(&index, &target("active"), 4, &Default::default())
+        .unwrap()
+        .unwrap();
+    assert!(!rows.is_empty());
+    // This deletion queues its own unindex job; it need not replace the running index key.
+    std::fs::write(
+        dir.join("projects.json"),
+        r#"{"projects":[{"id":"p","files":[]}]}"#,
+    )
+    .unwrap();
+    let vectors = vec![vec![1.0, 0.0]; rows.len()];
+    let written = source
+        .publish(
+            &index,
+            &target("active"),
+            &rows,
+            &vectors,
+            0,
+            &Control::default(),
+        )
+        .unwrap_or(0);
+    assert_eq!(
+        written, 0,
+        "a response arriving after source deletion must publish nothing"
+    );
+}
+
+fn stage_review_source(
+    store: &SqlStore,
+    text: &str,
+) -> (
+    std::path::PathBuf,
+    server_projects::outbox::IndexClaim,
+    embedding_worker::outbox::PreparedSource,
+) {
+    let dir = store.root.join("users").join(USER);
+    std::fs::write(
+        dir.join("projects.json"),
+        json!({"projects":[{"id":"p","files":[{"name":"source.md","content":text}]}]}).to_string(),
+    )
+    .unwrap();
+    server_projects::outbox::enqueue(
+        &dir,
+        &[server_projects::outbox::Job {
+            kind: "index",
+            project: "p",
+            file: Some("source.md"),
+            payload: None,
+        }],
+        1,
+    )
+    .unwrap();
+    let row = server_projects::outbox::claim_index(&dir, false, 2)
+        .unwrap()
+        .unwrap();
+    let source = store
+        .index_source(USER, &row, &Control::default())
+        .unwrap()
+        .unwrap();
+    (dir, row, source)
+}
+
+#[test]
+fn late_source_vectors_are_not_published_after_content_changes_without_replacing_the_claim() {
+    let (_tmp, store, index) = setup();
+    let text = (0..400)
+        .map(|n| format!("synthetic original {n:04}. "))
+        .collect::<String>();
+    let (dir, row, prepared) = stage_review_source(&store, &text);
+    let source = SourceStore {
+        store: &store,
+        row: &row,
+        version: Some(&prepared.version),
+    };
+    let rows = source
+        .missing(&index, &target("active"), 4, &Default::default())
+        .unwrap()
+        .unwrap();
+    assert!(!rows.is_empty());
+    std::fs::write(dir.join("projects.json"),json!({"projects":[{"id":"p","files":[{"name":"source.md","content":"superseding text"}]}]}).to_string()).unwrap();
+    assert_eq!(
+        source
+            .publish(
+                &index,
+                &target("active"),
+                &rows,
+                &vec![vec![1.0, 0.0]; rows.len()],
+                0,
+                &Control::default()
+            )
+            .unwrap_or(0),
+        0
+    );
+}
+
+#[tokio::test]
+async fn repeated_yields_keep_head_ids_and_active_and_migrated_vectors() {
+    use embedding_worker::{
+        fill::{Embed, Filler},
+        Task,
+    };
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    struct Synthetic(AtomicUsize);
+    impl Embed for &Synthetic {
+        fn embed<'a>(
+            &'a self,
+            _: &'a Target,
+            input: &'a [Vec<u16>],
+            _: &'a Control,
+        ) -> Task<'a, Result<Vec<Vec<f32>>, String>> {
+            Box::pin(async move {
+                self.0.fetch_add(input.len(), Ordering::SeqCst);
+                Ok(vec![vec![1.0, 0.0]; input.len()])
+            })
+        }
+    }
+    let (_tmp, store, index) = setup();
+    let text = (0..1200)
+        .map(|n| format!("unique synthetic paragraph {n:04}. "))
+        .collect::<String>();
+    let (dir, mut row, mut prepared) = stage_review_source(&store, &text);
+    let db = open_vec_required(&store.index_path(&index).unwrap()).unwrap();
+    let ids = || {
+        let mut stmt = db
+            .prepare("SELECT id,content_hash FROM chunks WHERE file='source.md' ORDER BY chunk_no")
+            .unwrap();
+        let entries = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        entries
+    };
+    let original = ids();
+    assert!(original.len() > 8);
+    let embed = Synthetic(AtomicUsize::new(0));
+    for pass in 0..3 {
+        let source = SourceStore {
+            store: &store,
+            row: &row,
+            version: Some(&prepared.version),
+        };
+        let selected = source
+            .missing(&index, &target("active"), 2, &Default::default())
+            .unwrap()
+            .unwrap();
+        assert_eq!(selected.len(), 2);
+        let batch = Filler {
+            store: source,
+            embedder: &embed,
+        }
+        .fill(
+            &index,
+            &target("active"),
+            2,
+            &Default::default(),
+            0,
+            &Control::default(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(batch.embedded, 2);
+        // The existing migration owner has already written this source's next slot.
+        store
+            .publish(
+                &index,
+                &target("next"),
+                &selected,
+                &vec![vec![0.0, 1.0]; selected.len()],
+                0,
+                &Control::default(),
+            )
+            .unwrap();
+        server_projects::outbox::defer_index(&dir, &row).unwrap();
+        row = server_projects::outbox::claim_index(&dir, false, 3 + pass)
+            .unwrap()
+            .unwrap();
+        prepared = store
+            .index_source(USER, &row, &Control::default())
+            .unwrap()
+            .unwrap();
+        assert_eq!(ids(), original);
+        let resumed = SourceStore {
+            store: &store,
+            row: &row,
+            version: Some(&prepared.version),
+        };
+        for slot in [target("active"), target("next")] {
+            assert_eq!(
+                resumed.remaining(&index, &slot).unwrap(),
+                original.len() - 2 * usize::try_from(pass + 1).unwrap()
+            );
+        }
+    }
+    assert_eq!(
+        embed.0.load(Ordering::SeqCst),
+        6,
+        "completed heads must not be embedded again after yielding"
+    );
+}
+
+#[test]
+fn tracked_skill_remains_excluded_when_front_matter_is_removed() {
+    let (_tmp, store, index) = setup();
+    let (dir, row, _prepared) =
+        stage_review_source(&store, "ordinary readable text with no front matter");
+    let value = json!({"projects":[{"id":"p","instructionSkills":{"source.md":{"enabled":false}},"files":[{"name":"source.md","content":"ordinary readable text with no front matter"}]}]});
+    std::fs::write(dir.join("projects.json"), value.to_string()).unwrap();
+    assert!(store
+        .index_source(USER, &row, &Control::default())
+        .unwrap()
+        .is_none());
+    let db = Connection::open(store.index_path(&index).unwrap()).unwrap();
+    assert_eq!(
+        db.query_row(
+            "SELECT COUNT(*) FROM chunks WHERE file='source.md'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        0
     );
 }
