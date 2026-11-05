@@ -285,6 +285,15 @@ impl Store {
 
     /// `append(record)`: the entry as stored. `id`, `at` and an empty `limitations` come first.
     pub fn append(&self, record: &JValue, at_ms: i64) -> Result<JValue, StoreError> {
+        self.append_if(record, at_ms, &|| true)
+    }
+
+    fn append_if(
+        &self,
+        record: &JValue,
+        at_ms: i64,
+        allowed: &dyn Fn() -> bool,
+    ) -> Result<JValue, StoreError> {
         let JValue::Obj(rest) = record else {
             return Err(StoreError::Invalid);
         };
@@ -339,6 +348,9 @@ impl Store {
             return Err(StoreError::Credentials);
         }
         let mut lines = self.write.lock().map_err(|_| StoreError::Io)?;
+        if !allowed() {
+            return Err(StoreError::Io);
+        }
         create_private_dir(&self.dir).map_err(|_| StoreError::Io)?;
         {
             use std::os::unix::fs::OpenOptionsExt;
@@ -371,7 +383,19 @@ impl Store {
 
     /// Skips a record when the newest one for the same model, category and identity says the same.
     pub fn append_if_changed(&self, record: &JValue, at_ms: i64) -> Result<JValue, StoreError> {
+        self.append_if_changed_if(record, at_ms, &|| true)
+    }
+
+    pub(super) fn append_if_changed_if(
+        &self,
+        record: &JValue,
+        at_ms: i64,
+        allowed: &dyn Fn() -> bool,
+    ) -> Result<JValue, StoreError> {
         let _deciding = self.decide.lock().map_err(|_| StoreError::Io)?;
+        if !allowed() {
+            return Err(StoreError::Io);
+        }
         let (model, category, hash) = keys_of(record);
         let newest = self
             .list()
@@ -385,7 +409,19 @@ impl Store {
                 return Ok(n);
             }
         }
-        self.append(record, at_ms)
+        self.append_if(record, at_ms, allowed)
+    }
+
+    #[cfg(test)]
+    #[allow(clippy::unwrap_used)]
+    pub(super) fn stall_writes(
+        &self,
+        entered: std::sync::mpsc::Sender<()>,
+        release: std::sync::mpsc::Receiver<()>,
+    ) {
+        let _lock = self.decide.lock().unwrap();
+        entered.send(()).unwrap();
+        release.recv().unwrap();
     }
 
     /// Reported rates drift a little on every reply; one record per meaningful change or per day.
