@@ -2006,6 +2006,7 @@ dependencies = [
  "regex",
  "reqwest",
  "research-core",
+ "rustix",
  "rustls",
  "s3-sign",
  "secret-envelope",

@@ -1334,6 +1334,16 @@ impl Maint {
         holding: &Hold,
         unload: bool,
     ) -> Outcome {
+        self.reload_expected(router, holding, unload, None).await
+    }
+
+    pub(crate) async fn reload_expected(
+        &self,
+        router: &Router,
+        holding: &Hold,
+        unload: bool,
+        expected: Option<&str>,
+    ) -> Outcome {
         let token = holding.token();
         let hold = token.as_deref();
         let listing = match router.models(hold).await {
@@ -1346,9 +1356,12 @@ impl Maint {
         let first: Vec<Value> = rows(&listing.body).cloned().unwrap_or_default();
         let loaded = live_ids(&first);
         let mut kept: Vec<String> = Vec::new();
-        let mut expect: Option<String> = None;
+        let mut expect: Option<String> = expected.map(str::to_owned);
         if !loaded.is_empty() && !unload {
             let judged = self.ini_text().await;
+            if expected.is_some_and(|text| judged.as_deref() != Some(text)) {
+                return refuse(&loaded, Some("file_changed"));
+            }
             let v = self
                 .verdict_of(judged.clone(), Some(first.clone()), loaded.clone())
                 .await;

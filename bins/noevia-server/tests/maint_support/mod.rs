@@ -151,6 +151,8 @@ pub enum Answer {
     Drop,
     /// Answer after a pause.
     After(Duration, u16, String),
+    /// Admitted mutation completes even if its HTTP caller disconnects.
+    CommitAfter(Duration, Box<dyn FnOnce() -> (u16, String) + Send>),
 }
 
 pub type Handler = Arc<dyn Fn(&Req) -> Answer + Send + Sync>;
@@ -231,8 +233,13 @@ pub async fn engine_on(
                     tokio::time::sleep(wait).await;
                     answer = Answer::Reply(code, text);
                 }
+                if let Answer::CommitAfter(wait, commit) = answer {
+                    tokio::time::sleep(wait).await;
+                    let (code, text) = commit();
+                    answer = Answer::Reply(code, text);
+                }
                 match answer {
-                    Answer::Drop | Answer::After(..) => {}
+                    Answer::Drop | Answer::After(..) | Answer::CommitAfter(..) => {}
                     Answer::Reply(code, text) => {
                         let reply = if code == 204 {
                             "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n".to_string()

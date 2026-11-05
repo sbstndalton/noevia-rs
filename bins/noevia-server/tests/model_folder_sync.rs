@@ -46,6 +46,34 @@ async fn rig(
     node_renew: fn(usize) -> Answer,
     loader_delay: fn(&str) -> Duration,
 ) -> Rig {
+    rig_delayed(stems, node_renew, loader_delay, Duration::ZERO).await
+}
+
+async fn rig_delayed(
+    stems: &'static [&'static str],
+    node_renew: fn(usize) -> Answer,
+    loader_delay: fn(&str) -> Duration,
+    acquisition_delay: Duration,
+) -> Rig {
+    rig_full(
+        stems,
+        node_renew,
+        loader_delay,
+        acquisition_delay,
+        false,
+        false,
+    )
+    .await
+}
+
+async fn rig_full(
+    stems: &'static [&'static str],
+    node_renew: fn(usize) -> Answer,
+    loader_delay: fn(&str) -> Duration,
+    acquisition_delay: Duration,
+    gated: bool,
+    external_write: bool,
+) -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let models = dir.path().join("models");
     std::fs::create_dir_all(&models).unwrap();
@@ -55,7 +83,22 @@ async fn rig(
     let renews = Arc::new(AtomicUsize::new(0));
     // The engine router (no gate: the router's own 404 for /gate/).
     let o = Arc::clone(&order);
+    let external_ini = ini.clone();
     let (router, _) = engine(Arc::new(move |req: &Req| {
+        if gated && req.target.starts_with("/gate/v1/") {
+            o.lock()
+                .unwrap()
+                .push(format!("gate {} {}", req.method, req.target));
+            return if req.method == "POST" && req.target == "/gate/v1/maintenance" {
+                Answer::After(
+                    acquisition_delay,
+                    201,
+                    serde_json::json!({"hold": ID, "idle_ttl_ms": 600_000}).to_string(),
+                )
+            } else {
+                Answer::Reply(204, String::new())
+            };
+        }
         if req.target.starts_with("/gate/v1/") {
             return Answer::Reply(404, r#"{"error":"not found"}"#.into());
         }
@@ -63,7 +106,14 @@ async fn rig(
             .unwrap()
             .push(format!("router {} {}", req.method, req.target));
         match (req.method.as_str(), req.target.as_str()) {
-            ("GET", "/models") => Answer::Reply(200, r#"{"data":[]}"#.into()),
+            ("GET", "/models") => {
+                if external_write {
+                    let mut text = std::fs::read_to_string(&external_ini).unwrap();
+                    text.push_str("# external writer\n");
+                    std::fs::write(&external_ini, text).unwrap();
+                }
+                Answer::Reply(200, r#"{"data":[]}"#.into())
+            }
             ("GET", "/models?reload=1") => Answer::Reply(200, r#"{"success":true}"#.into()),
             _ => Answer::Reply(404, "{}".into()),
         }
@@ -80,7 +130,7 @@ async fn rig(
             .unwrap()
             .push(format!("node {} {}", req.method, req.target));
         if req.method == "POST" && req.target == LEASE {
-            Answer::Reply(201, GRANT.into())
+            Answer::After(acquisition_delay, 201, GRANT.into())
         } else if req.method == "POST" {
             node_renew(renews.fetch_add(1, Ordering::SeqCst))
         } else {
@@ -112,16 +162,34 @@ async fn rig(
             .strip_prefix("/api/v1/sections/")
             .and_then(|r| r.strip_suffix("/safe-defaults"))
         {
-            let mut text = std::fs::read_to_string(&ini2).unwrap();
-            text.push_str(&format!("[{stem}]\nmodel = /models/{stem}.gguf\n"));
-            std::fs::write(&ini2, &text).unwrap();
-            let body = serde_json::json!({"ok": true, "revision": hex(&text)}).to_string();
-            return Answer::After(loader_delay(stem), 200, body);
+            let delay = loader_delay(stem);
+            let stem = stem.to_owned();
+            let ini = ini2.clone();
+            return Answer::CommitAfter(
+                delay,
+                Box::new(move || {
+                    let mut text = std::fs::read_to_string(&ini).unwrap();
+                    text.push_str(&format!("[{stem}]\nmodel = /models/{stem}.gguf\n"));
+                    std::fs::write(&ini, &text).unwrap();
+                    (
+                        200,
+                        serde_json::json!({"ok": true, "revision": hex(&text)}).to_string(),
+                    )
+                }),
+            );
         }
         Answer::Reply(404, "{}".into())
     }))
     .await;
     let env = [
+        (
+            "INFERENCE_GATE_ADMIN_TOKEN",
+            if gated {
+                "synthetic-admin".into()
+            } else {
+                String::new()
+            },
+        ),
         ("MODEL_MANAGER_KIND", "llamacpp".to_owned()),
         (
             "MODEL_MANAGER_BASE_URL",
@@ -372,9 +440,9 @@ async fn partial_and_unsafe_files_are_never_registered() {
     );
 }
 
-#[tokio::test]
-async fn the_hold_is_given_back_when_the_run_is_dropped() {
-    let r = rig(&["fresh"], ok, |_| Duration::from_secs(30)).await;
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_hold_waits_for_the_admitted_registration_when_the_run_is_dropped() {
+    let r = rig(&["fresh"], ok, |_| Duration::from_millis(700)).await;
     gguf(
         &r.dir.path().join("models/fresh.gguf"),
         Duration::from_secs(3600),
@@ -399,6 +467,18 @@ async fn the_hold_is_given_back_when_the_run_is_dropped() {
     }
     task.abort();
     let _ = task.await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(live(&r).busy(), "the registration response has not settled");
+    assert!(
+        !std::fs::read_to_string(&r.ini).unwrap().contains("[fresh]"),
+        "manager is paused before commit"
+    );
+    assert!(!r
+        .order
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|e| e.starts_with("node DELETE")));
     let started = std::time::Instant::now();
     while !r
         .order
@@ -414,6 +494,88 @@ async fn the_hold_is_given_back_when_the_run_is_dropped() {
         );
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
-    // And the worker is usable again.
+    // The delayed commit settled before the lease was returned.
+    assert!(std::fs::read_to_string(&r.ini).unwrap().contains("[fresh]"));
     assert!(!live(&r).busy());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancelling_node_acquisition_drains_and_releases_the_grant() {
+    let r = rig_delayed(&[], ok, instant, Duration::from_millis(300)).await;
+    let env = live(&r);
+    let task = tokio::spawn(async move { env.take().await });
+    let started = std::time::Instant::now();
+    while !r
+        .order
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|e| e == &format!("node POST {LEASE}"))
+    {
+        assert!(started.elapsed() < Duration::from_secs(5));
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    task.abort();
+    let _ = task.await;
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    assert!(
+        !live(&r).busy(),
+        "cancelled acquisition leaked local maintenance"
+    );
+    assert!(
+        r.order
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| e.starts_with("node DELETE")),
+        "late grant was not released"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancelling_gate_acquisition_drains_and_releases_the_grant() {
+    let r = rig_full(&[], ok, instant, Duration::from_millis(300), true, false).await;
+    let env = live(&r);
+    let task = tokio::spawn(async move { env.take().await });
+    let started = std::time::Instant::now();
+    while !r
+        .order
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|e| e == "gate POST /gate/v1/maintenance")
+    {
+        assert!(started.elapsed() < Duration::from_secs(5));
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    task.abort();
+    let _ = task.await;
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    assert!(
+        !live(&r).busy(),
+        "cancelled gate acquisition leaked local maintenance"
+    );
+    assert!(r
+        .order
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|e| e.starts_with("gate DELETE")));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_revision_change_during_router_listing_refuses_reload() {
+    let r = rig_full(&["fresh"], ok, instant, Duration::ZERO, false, true).await;
+    gguf(
+        &r.dir.path().join("models/fresh.gguf"),
+        Duration::from_secs(3600),
+    );
+    let (w, _) = worker(&r);
+    assert_eq!(w.run().await.added, vec!["fresh"]);
+    assert!(!r
+        .order
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|e| e == "router GET /models?reload=1"));
 }

@@ -53,6 +53,7 @@ rust-free-chats = []
 rust-project-writes = []
 
 [dependencies]
+rustix = { version = "1.1", features = ["fs"] }
 autotune-plan = { path = "../../crates/autotune-plan" }
 embedding-worker = { path = "../../crates/embedding-worker" }
 context-fit = { path = "../../crates/context-fit" }

@@ -51,6 +51,7 @@ impl Hold for FakeHold {
 #[derive(Clone)]
 enum Out {
     Ok,
+    MissingRevision,
     Status(u16),
 }
 
@@ -101,7 +102,9 @@ impl Fake {
     async fn tick(&self) {
         if let Some(b) = &self.budget {
             if b.fetch_sub(1, Ordering::SeqCst) <= 0 {
-                std::future::pending::<()>().await;
+                while b.load(Ordering::SeqCst) <= 0 {
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
             }
             tokio::task::yield_now().await;
         }
@@ -179,6 +182,7 @@ impl Env for Arc<Fake> {
                     revision: Some(self.wrote.lock().unwrap().clone()),
                 })
             }
+            Out::MissingRevision => Ok(Registered { revision: None }),
             Out::Status(s) => Err(Fault {
                 status: Some(s),
                 message: format!("scripted {s}"),
@@ -189,7 +193,7 @@ impl Env for Arc<Fake> {
         self.tick().await;
         Some(self.on_disk.lock().unwrap().clone())
     }
-    async fn reload(&self, _: &FakeHold) -> Reloaded {
+    async fn reload(&self, _: &FakeHold, _: &str) -> Reloaded {
         self.tick().await;
         self.sh.push("reload");
         if self.reload_ok.load(Ordering::SeqCst) {
@@ -544,17 +548,16 @@ async fn aborting_at_every_await_gives_the_hold_back_and_frees_the_slot() {
             task.abort();
             let _ = task.await;
         }
-        let registers_at_abort = f.sh.registers.load(Ordering::SeqCst);
-        tokio::time::sleep(Duration::from_millis(5)).await;
+        if let Some(b) = &f.budget {
+            b.store(1000, Ordering::SeqCst);
+        }
+        // tick's blocked await is separately exercised below; the run must own the hold
+        // until the effect settles, rather than treating caller cancellation as settlement.
+        tokio::time::sleep(Duration::from_millis(20)).await;
         assert_eq!(
             f.sh.taken.load(Ordering::SeqCst),
             f.sh.dropped.load(Ordering::SeqCst),
             "budget {budget}: the hold is given back"
-        );
-        assert_eq!(
-            f.sh.registers.load(Ordering::SeqCst),
-            registers_at_abort,
-            "budget {budget}: no work after the abort"
         );
         // The slot is free again, whatever happened.
         let f2 = Arc::new(Fake::new(&["c"]));
@@ -780,4 +783,14 @@ mod settled_files {
         assert!(look(&r, "ghost").is_err());
         assert!(look(&r.join("nope"), "ghost").is_err());
     }
+}
+
+#[tokio::test]
+async fn a_final_registration_without_revision_must_not_reuse_an_earlier_revision() {
+    let mut f = Fake::new(&["a", "b"]);
+    f.outcomes.insert("b".into(), vec![Out::MissingRevision]);
+    let f = Arc::new(f);
+    let (w, _) = worker(&f, None);
+    w.run().await;
+    assert!(!f.sh.events().contains(&"reload".to_owned()));
 }

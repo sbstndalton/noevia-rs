@@ -151,6 +151,15 @@ fn first(get: &impl Fn(&str) -> Option<String>, keys: &[&str]) -> Option<String>
     keys.iter().find_map(|k| get(k).filter(|v| !v.is_empty()))
 }
 
+struct LocalReservation(Option<Arc<AtomicBool>>);
+impl Drop for LocalReservation {
+    fn drop(&mut self) {
+        if let Some(local) = &self.0 {
+            local.store(false, Ordering::Release);
+        }
+    }
+}
+
 impl Maint {
     pub fn from_lookup(
         kind: server_stats::Kind,
@@ -304,9 +313,11 @@ impl Maint {
         {
             return Err(HoldError::Busy);
         }
+        let mut reservation = LocalReservation(Some(Arc::clone(&self.local)));
         let taken = self.acquire_locally_held(reason, max, need_gate).await;
-        if taken.is_err() {
-            self.local.store(false, Ordering::Release);
+        if taken.is_ok() {
+            // Ownership transfers to Hold; until then every await is covered by the reservation.
+            reservation.0.take();
         }
         taken
     }
@@ -347,11 +358,12 @@ impl Maint {
         {
             return Err(HoldRefusal::Busy);
         }
+        let mut reservation = LocalReservation(Some(Arc::clone(&self.local)));
         let taken = self
             .acquire_inner(reason, Duration::MAX, false, Some(lease_for))
             .await;
-        if taken.is_err() {
-            self.local.store(false, Ordering::Release);
+        if taken.is_ok() {
+            reservation.0.take();
         }
         taken
     }

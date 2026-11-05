@@ -27,7 +27,19 @@ ownership marker, paired by the web supervisor and release assembly with the fro
 | registers whatever the manager lists | registers only a settled file: regular `.gguf` inside the models root (no link followed), no download temp beside it, older than 120 s, a GGUF header, unchanged across a 2 s probe |
 | a gate error other than "refused" was a scan failure | any refusal defers |
 
-Aborting the scan at any await drops the exclusion (`Hold` gives itself back on drop) and clears the run slot.
+Caller cancellation detaches the owned run; it keeps its exclusion and run slot until completion.
+Graceful stop drains that run before ending the schedule. Acquisition also has an owning task, so
+late gate/Node grants are released even if their waiter disappears. Local acquisition uses an RAII reservation.
+
+## Remaining authority requirements
+
+This branch still requires the shared maintenance barrier before release. An HTTP timeout is not
+proof a manager write settled, and neither the manager write nor engine reload currently accepts
+an authority-enforced epoch. The expected reload text is now retained across router awaits, but
+checking before sending cannot serialize engine publication with another process's INI write.
+Descriptor-relative file probes refuse link swaps and compare inode identity across probes; the
+manager still independently resolves the stem on registration and must validate that same identity.
+These require manager/engine protocol integration, rather than another worker-side check.
 
 ## Interfaces to switch when the neighbours merge
 

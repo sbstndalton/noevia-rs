@@ -113,14 +113,15 @@ impl Env for Live {
     }
 
     async fn take(&self) -> Result<model_maint::Hold, Refusal> {
-        match self
-            .maint
-            .acquire("model folder sync", HOLD_MAX, false)
+        // Dropping this waiter detaches acquisition. A late grant is dropped by its owning
+        // task and releases normally; local reservation remains owned until the answer settles.
+        let maint = Arc::clone(&self.maint);
+        match tokio::spawn(async move { maint.acquire("model folder sync", HOLD_MAX, false).await })
             .await
         {
-            Ok(h) => Ok(h),
-            Err(HoldError::Busy) => Err(Refusal::Busy),
-            Err(_) => Err(Refusal::Unavailable),
+            Ok(Ok(h)) => Ok(h),
+            Ok(Err(HoldError::Busy)) => Err(Refusal::Busy),
+            _ => Err(Refusal::Unavailable),
         }
     }
 
@@ -162,9 +163,12 @@ impl Env for Live {
         let rest = format!("sections/{}/safe-defaults", encode_component(stem));
         match self.loader.manager_post(&rest).await {
             Some((status, body)) if status.is_success() => Ok(Registered {
-                revision: body
-                    .as_ref()
-                    .and_then(|b| b.get("revision").as_str().map(str::to_owned)),
+                revision: body.as_ref().and_then(|b| {
+                    b.get("revision")
+                        .as_str()
+                        .filter(|r| r.len() == 64 && r.bytes().all(|b| b.is_ascii_hexdigit()))
+                        .map(str::to_owned)
+                }),
             }),
             other => Err(fault(other)),
         }
@@ -178,12 +182,32 @@ impl Env for Live {
             .flatten()
     }
 
-    async fn reload(&self, hold: &model_maint::Hold) -> Reloaded {
+    async fn reload(&self, hold: &model_maint::Hold, revision: &str) -> Reloaded {
         let Some(router) = self.maint.router.as_ref() else {
             return Reloaded::No;
         };
+        let Some(store) = self.maint.ini.clone() else {
+            return Reloaded::No;
+        };
+        let expected = revision.to_owned();
+        let text = tokio::task::spawn_blocking(move || {
+            store
+                .snapshot()
+                .ok()
+                .filter(|s| s.revision == expected)
+                .map(|s| s.text)
+        })
+        .await
+        .ok()
+        .flatten();
+        let Some(text) = text else {
+            return Reloaded::No;
+        };
         // Guarded, nothing unloaded: a loaded model whose preset the reload would change refuses.
-        let outcome = self.maint.reload_inner(router, hold, false).await;
+        let outcome = self
+            .maint
+            .reload_expected(router, hold, false, Some(&text))
+            .await;
         if outcome.status == 200 {
             Reloaded::Yes
         } else {
@@ -193,7 +217,7 @@ impl Env for Live {
 }
 
 /// Starts the worker when this front can run it. `stop` ends the timer; a scan in flight is
-/// dropped, and the exclusion it holds gives itself back.
+/// drained under its exclusion.
 pub fn spawn(
     maint: &Arc<Maint>,
     loader: &Loader,

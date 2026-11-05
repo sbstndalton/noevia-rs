@@ -112,7 +112,7 @@ pub trait Env: Send + Sync + 'static {
     /// The revision of `models.ini` on disk now.
     fn revision(&self) -> impl Future<Output = Option<String>> + Send;
     /// The guarded reload, under `hold` (nothing is unloaded).
-    fn reload(&self, hold: &Self::Hold) -> impl Future<Output = Reloaded> + Send;
+    fn reload(&self, hold: &Self::Hold, revision: &str) -> impl Future<Output = Reloaded> + Send;
 }
 
 /// What one run did, in Node's result shape ([`RunResult::to_json`]).
@@ -248,18 +248,18 @@ impl Drop for RunSlot<'_> {
 
 /// The worker. `run` is one scan; [`spawn`] schedules it.
 pub struct Worker<E: Env> {
-    env: E,
-    skips: Mutex<Skips>,
-    running: AtomicBool,
+    env: Arc<E>,
+    skips: Arc<Mutex<Skips>>,
+    running: Arc<AtomicBool>,
     log: Log,
 }
 
 impl<E: Env> Worker<E> {
     pub fn new(env: E, state_file: Option<PathBuf>, log: Log) -> Worker<E> {
         Worker {
-            env,
-            skips: Mutex::new(Skips::load(state_file)),
-            running: AtomicBool::new(false),
+            env: Arc::new(env),
+            skips: Arc::new(Mutex::new(Skips::load(state_file))),
+            running: Arc::new(AtomicBool::new(false)),
             log,
         }
     }
@@ -281,7 +281,23 @@ impl<E: Env> Worker<E> {
         }
     }
 
+    /// The task owns the run slot and hold through completion, even if its caller goes away.
     pub async fn run(&self) -> RunResult {
+        let owned = Worker {
+            env: Arc::clone(&self.env),
+            skips: Arc::clone(&self.skips),
+            running: Arc::clone(&self.running),
+            log: Arc::clone(&self.log),
+        };
+        tokio::spawn(async move { owned.run_inner().await })
+            .await
+            .unwrap_or_else(|_| RunResult {
+                error: Some("folder sync task failed".into()),
+                ..RunResult::default()
+            })
+    }
+
+    async fn run_inner(&self) -> RunResult {
         let Some(_slot) = RunSlot::take(&self.running) else {
             return RunResult {
                 skipped: Some(Vec::new()),
@@ -365,9 +381,8 @@ impl<E: Env> Worker<E> {
             match self.env.register(stem).await {
                 Ok(done) => {
                     out.added.push(stem.clone());
-                    if done.revision.is_some() {
-                        revision = done.revision;
-                    }
+                    // The final success owns provenance; never retain an older registration's fence.
+                    revision = done.revision;
                 }
                 Err(f) if f.status.is_some_and(|s| RETRY_NEVER.contains(&s)) => {
                     self.remember(stem);
@@ -394,7 +409,7 @@ impl<E: Env> Worker<E> {
                 let fenced = match (&revision, &on_disk) {
                     (Some(wrote), Some(now)) => wrote != now,
                     (Some(_), None) => true,
-                    (None, _) => false,
+                    (None, _) => true,
                 };
                 if fenced {
                     note = " models.ini changed after the last registration, so the presets were not reloaded; the engine will offer them after its next reload.".into();
@@ -403,7 +418,11 @@ impl<E: Env> Worker<E> {
                     out.deferred = true;
                     note = " The exclusion ended first, so the presets were not reloaded; the engine will offer them after its next reload.".into();
                 } else {
-                    reload = Some(self.env.reload(hold).await);
+                    reload = Some(
+                        self.env
+                            .reload(hold, revision.as_deref().unwrap_or_default())
+                            .await,
+                    );
                 }
             }
         }
@@ -449,8 +468,7 @@ impl Default for Schedule {
     }
 }
 
-/// Scans on a timer until `stop` is sent. Dropping the handle's task aborts the scan in flight; the
-/// exclusion it holds gives itself back (see [`Hold`]).
+/// Scans on a timer until `stop` is sent. An admitted run drains under its hold.
 pub fn spawn<E: Env>(
     worker: Arc<Worker<E>>,
     schedule: Schedule,
@@ -463,9 +481,9 @@ pub fn spawn<E: Env>(
                 () = tokio::time::sleep(wait) => {}
                 _ = stop.wait_for(|s| *s) => return,
             }
-            tokio::select! {
-                _ = worker.run() => {}
-                _ = stop.wait_for(|s| *s) => return,
+            worker.run().await;
+            if *stop.borrow() {
+                return;
             }
             wait = schedule.every;
         }
