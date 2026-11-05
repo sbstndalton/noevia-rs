@@ -32,7 +32,7 @@ const ROLES = ['anon', 'member', 'member-nocsrf', 'admin', 'admin-nocsrf'];
 // family when its pattern equals a prefix or continues it with `/` or `{`.
 const FAMILIES = {
   N2: ['/api/account', '/api/admin/invitations', '/api/admin/users', '/api/admin/web-address', '/api/admin/features', '/api/instance', '/api/auth', '/api/profile', '/api/setup', '/api/features', '/api/chat-framing/preferences', '/api/chat-vault-mirror'],
-  N3: ['/api/connectors', '/api/integrations/storage', '/api/mcp-keys', '/api/mcp-oauth', '/api/admin/mcp-directory', '/api/admin/offsite-backup', '/api/plugins/directory', '/api/toolboxes'],
+  N3: ['/api/connectors', '/api/integrations/storage', '/api/admin/mcp-directory', '/api/admin/offsite-backup', '/api/plugins/directory', '/api/toolboxes'],
   N4: ['/api/models', '/api/model-manager/models', '/api/providers', '/api/sampling-settings', '/api/reasoning-settings', '/api/routing-mode', '/api/routing-default', '/api/admin/decision-settings', '/api/auto-roles', '/api/usage', '/api/stats'],
 };
 
@@ -424,7 +424,71 @@ function writeFixture(out, doc) {
   fs.writeFileSync(out, `{\n${headLines} "cases": [\n${doc.cases.map((r) => `  ${JSON.stringify(r)}`).join(',\n')}\n ]\n}\n`);
 }
 
+// Focused scoped-handler oracle at Core origin/main. Real Node fallback mounts and HTTP
+// helpers; synthetic identities and disabled engine only. No server boot, model or external IO.
+async function fallbackRecord(core, toml, fixture, out) {
+  const cp = require('node:child_process');
+  const vm = require('node:vm');
+  const coreRef = cp.execFileSync('git', ['-C', core, 'rev-parse', 'origin/main'], { encoding: 'utf8' }).trim();
+  const coreHead = cp.execFileSync('git', ['-C', core, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  if (coreHead !== coreRef) throw new Error('fallback-record requires a clean Core checkout at origin/main');
+  if (cp.execFileSync('git', ['-C', core, 'status', '--porcelain'], { encoding: 'utf8' }).trim()) throw new Error('fallback-record requires an unchanged Core checkout');
+  const source = (file) => cp.execFileSync('git', ['-C', core, 'show', `${coreRef}:${file}`], { encoding: 'utf8' });
+  const index = source('server/index.cjs');
+  const load = (file) => {
+    const Module = require('node:module');
+    const m = new Module(path.join(core, file), module);
+    m.filename = path.join(core, file); m.paths = Module._nodeModulePaths(path.dirname(m.filename));
+    m._compile(source(file), m.filename); return m.exports;
+  };
+  const { json, unauthorized } = load('server/http.cjs');
+  const modelRoutes = load('server/routes/models.cjs').createModelRoutes({ json, env: {}, modelManager: { enabled: false }, service: { modelScanCache: { clear() {} } }, currentWorkspace: () => ({}) });
+  const providerRoutes = load('server/routes/providers.cjs').createProviderRoutes({ json });
+  const serveStatic = load('server/spa-routes.cjs').createStaticFallback({ json, staticFiles: { resolve: () => null } });
+  const doc = JSON.parse(fs.readFileSync(fixture));
+  const routes = rustRoutes(toml);
+  const selected = (c) => {
+    const p = c.path, m = c.method;
+    if (['/api/models/installed', '/api/models/downloads', '/api/models/capabilities', '/api/models/hardware', '/api/models/estimate', '/api/models/preset/suggest'].includes(p)) return m !== 'GET';
+    if (p === '/api/models/prune-missing') return m !== 'POST';
+    if (p === '/api/models/reranker') return !['GET', 'PUT', 'DELETE'].includes(m);
+    if ((p === '/api/providers/test' && ['PUT', 'DELETE'].includes(m)) || (p === '/api/providers/chatgpt' && m === 'DELETE')) return false;
+    if (!['/api/connectors', '/api/integrations/storage', '/api/plugins/directory', '/api/toolboxes', '/api/providers'].some((b) => p === b || p.startsWith(`${b}/`))) return false;
+    const r = routes.find((r) => !r.path.includes('{') && (p === r.path || p === `${r.path}/`));
+    return !!r && (p !== r.path || (r.methods.length && !r.methods.includes(m)));
+  };
+  const rows = [];
+  const extras = ['/api/models/grid-unmatched/deep', '/api/connectors/grid-unmatched/deep', '/api/integrations/storage/grid-unmatched', '/api/toolboxes/grid-unmatched', '/api/providers/grid-unmatched/deep', '/api/providers/chatgpt/grid-unmatched'].flatMap((p) => METHODS.flatMap((method) => ROLES.filter((who) => !who.endsWith('-nocsrf') || UNSAFE.includes(method)).map((who) => ({ id: `${method} ${p} ${who}`, family: familyOf(p), route: p, shape: 'unmatched', method, path: p, who }))));
+  for (const c of [...doc.cases.filter(selected), ...extras]) {
+    const authn = c.who === 'anon' ? null : { user: { id: 'synthetic-grid-user', role: c.who.startsWith('admin') ? 'admin' : 'member' } };
+    const noop = async () => false;
+    const ctx = { json, unauthorized, providerRoutes, modelRoutes, serveStatic,
+      parseRequestUrl: (req) => new URL(req.url, ORIGIN), publicAuthRoutes: new Set(),
+      requestAuth: { authenticate: () => authn, csrfValid: () => !c.who.endsWith('-nocsrf'), browserOnly: () => false },
+      authService: { originValid: () => true }, changeJournal: { touch() {} },
+      vaultMirrorLib: { mirrorTrigger: () => null }, publicHeaders: () => {},
+      require: (id) => id === './project-store-client.cjs' ? {} : { refuseOwned: () => false, refuseOwnedRoute: () => false },
+      errorResponse: (e) => { throw e; }, console,
+    };
+    for (const n of ['webAddressRoutes', 'featureRoutes', 'chatFramingRoutes', 'exportRoutes', 'importRoutes', 'accountRoutes', 'codeRoutes', 'browserRoutes', 'storageRoutes', 'chatListRoutes', 'usageRoutes', 'reasoningSettingsRoutes', 'routingModeRoutes', 'samplingSettingsRoutes', 'embeddingRoutes', 'inferenceMachineRoutes', 'chatRoutes']) ctx[n] = noop;
+    ctx.authRoutes = { account: noop }; ctx.deviceRoutes = { open: noop }; ctx.readyRoutes = noop;
+    const publicStart = index.indexOf('function publicHeaders(res)');
+    const publicEnd = index.indexOf('\n}', publicStart) + 2;
+    const start = index.indexOf('async function handleRequestScoped(req, res)');
+    const end = index.indexOf('\nasync function handleRequest(req,res)', start);
+    vm.createContext(ctx);
+    vm.runInContext(index.slice(publicStart, publicEnd) + '\n' + index.slice(start, end), ctx);
+    const headers = { 'x-noevia-api': '1' };
+    let status, text;
+    const res = { setHeader: (k,v) => { headers[k.toLowerCase()] = v; }, writeHead: (s,h) => { status=s; for (const [k,v] of Object.entries(h)) headers[k.toLowerCase()]=v; }, end: (b) => { text = c.method === 'HEAD' ? '' : b; } };
+    await ctx.handleRequestScoped({ method: c.method, url: c.path, headers: { host: HOST } }, res);
+    if (c.status !== undefined && (status !== c.status || JSON.stringify(parseBody(text)) !== JSON.stringify(c.body))) throw new Error(`scoped oracle differs from stack: ${c.id}: ${status} ${text}`);
+    rows.push({ ...c, status, body: parseBody(text), wireBody: text, headers, answeredBy: c.route === '/api/models/downloads' && status === 200 ? 'front-node-facts' : 'front' });
+  }
+  writeFixture(out, { coreRef, note: 'Scoped Node handler at origin/main, real residual mounts, synthetic identity and disabled engine. Existing full-stack grid supplies the comparison baseline. Identity backend and runtime facts are tested separately by Rust replay.', cases: rows });
+}
+
 const [mode, ...args] = process.argv.slice(2);
-const modes = { run, merge: async (...a) => merge(...a), classify: async (...a) => classify(...a), selftest: async () => selftest() };
+const modes = { 'fallback-record': fallbackRecord, run, merge: async (...a) => merge(...a), classify: async (...a) => classify(...a), selftest: async () => selftest() };
 (modes[mode] ? modes[mode](...args) : Promise.reject(new Error('usage: run|merge|classify|selftest')))
   .catch((e) => { console.error(e.stack || e.message); process.exitCode = 1; });
