@@ -177,7 +177,7 @@ fn walk(root: &Path) -> Walk {
             let Some(name) = entry.file_name().to_str().map(str::to_string) else {
                 return Walk::Decline;
             };
-            if !name.is_ascii() && name.chars().any(char::is_numeric) {
+            if name.chars().any(|c| !c.is_ascii() && c.is_numeric()) {
                 return Walk::Decline;
             }
             let path = entry.path();
