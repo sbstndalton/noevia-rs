@@ -671,6 +671,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "diary-backup-run"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "diary-backup-format",
+ "rusqlite",
+ "serde_json",
+]
+
+[[package]]
 name = "diary-corpus-parse"
 version = "0.1.0"
 dependencies = [
@@ -1843,6 +1853,27 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "libc",
+]
+
+[[package]]
+name = "noevia-diary"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "diary-corpus-parse",
+ "diary-workspace-export",
+ "http-body-util",
+ "regex",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "subtle",
+ "tempfile",
+ "tenant-assertion",
+ "tokio",
 ]
 
 [[package]]

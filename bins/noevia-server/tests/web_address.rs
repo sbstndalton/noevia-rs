@@ -140,6 +140,29 @@ async fn public_gets_and_admin_view_follow_live_node_writes() {
 }
 
 #[tokio::test]
+async fn instance_trailing_slash_answers_as_the_canonical_route() {
+    // sbstndalton/noevia#2411: /api/instance/ was 503 "unavailable" while /api/instance had an id.
+    let dir = tempfile::tempdir().unwrap();
+    let db = seed(dir.path());
+    let app = app(dir.path());
+    assert!(routes::dispatch("GET", "/api/instance/").is_some());
+    let (status, _) = get(&app, "/api/instance/", None).await;
+    assert_eq!(
+        status,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "no id yet: as canonical"
+    );
+    put(&db, "instance_id", "synthetic-instance");
+    for path in ["/api/instance", "/api/instance/"] {
+        assert_eq!(
+            get(&app, path, None).await,
+            (StatusCode::OK, r#"{"id":"synthetic-instance"}"#.into()),
+            "{path}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn admin_gate_and_missing_instance_fail_closed_without_a_write() {
     let dir = tempfile::tempdir().unwrap();
     let db = seed(dir.path());

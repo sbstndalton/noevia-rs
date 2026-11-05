@@ -59,6 +59,8 @@ pub fn gguf() -> Vec<u8> {
 #[derive(Default)]
 pub struct Engine {
     pub port: u16,
+    /// The synthetic long request is in flight and will remain pending until cancellation.
+    pub stream_started: AtomicBool,
     /// `/models` answers 502.
     pub down: AtomicBool,
     /// The row's `meta.n_ctx_train`.
@@ -182,6 +184,7 @@ pub async fn engine(ini: PathBuf) -> Arc<Engine> {
                 }
                 ("POST", "/tokenize") => reply(200, json!({"tokens": vec![1; 650]})),
                 ("POST", "/v1/chat/completions") if body["stream"] == Value::Bool(true) => {
+                    e.stream_started.store(true, Ordering::Release);
                     tokio::time::sleep(Duration::from_secs(60)).await;
                     reply(500, json!({}))
                 }
