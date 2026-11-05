@@ -465,6 +465,18 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
         return unverified();
     }
 
+    // FastAPI validates a write's body against the handler's parameter (its 422) before the
+    // handler runs `check_auth` (its 401): a body it would refuse is Python's to answer, whatever
+    // the token.
+    let write = if r.write() {
+        match write_body(r, &headers, body).await {
+            Some(w) => Some(w),
+            None => return decline(),
+        }
+    } else {
+        None
+    };
+
     // ---- seam: the routes below read the tenant only from `header_uid` and `asserted` (the
     // trusted forward headers above).
     match check_auth(&app, &headers) {
@@ -514,7 +526,7 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
             task.await.unwrap_or_else(|_| internal_error())
         }
         Route::PutFile | Route::Directory | Route::Append | Route::Edit => {
-            serve_write(app, r, &header_uid, asserted, &headers, tenant, body).await
+            serve_write(app, r, &header_uid, asserted, &headers, tenant, write).await
         }
     }
 }
@@ -545,9 +557,26 @@ async fn json_body(headers: &HeaderMap, body: Body) -> Option<serde_json::Map<St
     workspace::file_body(content_type, &bytes)
 }
 
-/// The D5 write routes, in app.py's order: FastAPI reads the body first (422 → decline), then
-/// auth (already checked), then for the entry routes the body checks, then `_tenant_state`,
-/// then the write under the tenant's writer lock.
+/// A write's body as FastAPI's handler parameter reads it: `body: dict` for the file, directory
+/// and append routes, `EditEntryRequest` for edit. None: FastAPI would answer 422 (decline).
+struct WriteBody {
+    json: serde_json::Map<String, Value>,
+    edit: Option<writes::EditReq>,
+}
+
+async fn write_body(r: Route, headers: &HeaderMap, body: Body) -> Option<WriteBody> {
+    let json = json_body(headers, body).await?;
+    let edit = if matches!(r, Route::Edit) {
+        Some(writes::edit_model(&json)?)
+    } else {
+        None
+    };
+    Some(WriteBody { json, edit })
+}
+
+/// The D5 write routes, in app.py's order: FastAPI reads the body first (422 → decline, in
+/// `handle` before auth), then auth (already checked), then for the entry routes the body
+/// checks, then `_tenant_state`, then the write under the tenant's writer lock.
 async fn serve_write(
     app: Arc<App>,
     r: Route,
@@ -555,9 +584,9 @@ async fn serve_write(
     asserted: bool,
     headers: &HeaderMap,
     tenant: Option<Tenant>,
-    body: Body,
+    write: Option<WriteBody>,
 ) -> Response<Body> {
-    let Some(json) = json_body(headers, body).await else {
+    let Some(WriteBody { json, edit }) = write else {
         return decline();
     };
     enum Op {
@@ -574,7 +603,7 @@ async fn serve_write(
             Err(resp) => return reply(resp),
         },
         Route::Edit => {
-            let Some(req) = writes::edit_model(&json) else {
+            let Some(req) = edit else {
                 return decline();
             };
             if let Err(resp) = writes::edit_validate(&req) {

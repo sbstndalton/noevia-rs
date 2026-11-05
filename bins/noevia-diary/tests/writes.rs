@@ -126,6 +126,25 @@ async fn send(
     (status, declined, resp.text().await.unwrap())
 }
 
+async fn send_raw(
+    addr: std::net::SocketAddr,
+    method: &str,
+    target: &str,
+    headers: &[(&str, String)],
+    body: &'static [u8],
+) -> (u16, bool, String) {
+    let mut req = reqwest::Client::new()
+        .request(method.parse().unwrap(), format!("http://{addr}{target}"))
+        .body(body);
+    for (k, v) in headers {
+        req = req.header(*k, v);
+    }
+    let resp = req.send().await.unwrap();
+    let status = resp.status().as_u16();
+    let declined = resp.headers().get("x-noevia-diary-decline").is_some();
+    (status, declined, resp.text().await.unwrap())
+}
+
 fn file_row(root: &Path, path: &str) -> Option<(Vec<u8>, String)> {
     let db = rusqlite::Connection::open(tenant_root(root).join("managed-diary.db")).unwrap();
     db.query_row(
@@ -708,4 +727,64 @@ async fn concurrent_appends_on_one_tenant_keep_journal_order() {
         })
         .unwrap();
     assert_eq!(pending, 0);
+}
+
+/// FastAPI validates the handler's body parameter (422) before the handler's `check_auth` (401):
+/// with a bad or missing token, a body Python refuses with 422 must decline (Python answers),
+/// never get Rust's 401. Semantic refusals come after auth, so they still get the 401.
+#[tokio::test]
+async fn body_shape_refusals_precede_auth_on_every_write_route() {
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[]);
+    let addr = start(dir.path(), "rust").await;
+    let routes = [
+        ("PUT", "/api/file"),
+        ("POST", "/api/directory"),
+        ("POST", "/api/entries/append"),
+        ("POST", "/api/entries/edit"),
+    ];
+    let shape: [&'static [u8]; 5] = [b"{\"path\":", b"[1]", b"\"text\"", b"", b"{\"x\":NaN}"];
+    let edit_model: [&'static [u8]; 4] = [
+        br#"{"me":"x"}"#,
+        br#"{"xid":5,"me":"x"}"#,
+        br#"{"xid":"0123abcd","me":"x","month":3}"#,
+        br#"{"xid":"0123abcd","me":"x","assistant":null}"#,
+    ];
+    let tokens = [
+        without(writer(), "authorization"),
+        without(writer(), "authorization")
+            .into_iter()
+            .chain([("authorization", "Bearer wrong-token".to_string())])
+            .collect::<Vec<_>>(),
+    ];
+    for headers in &tokens {
+        for (method, target) in routes {
+            let bodies: Vec<&'static [u8]> = if target == "/api/entries/edit" {
+                shape.iter().chain(edit_model.iter()).copied().collect()
+            } else {
+                shape.to_vec()
+            };
+            for body in bodies {
+                let (status, declined, _) = send_raw(addr, method, target, headers, body).await;
+                assert_eq!(
+                    (status, declined),
+                    (421, true),
+                    "{method} {target} {:?}",
+                    String::from_utf8_lossy(body)
+                );
+            }
+            // A body the model accepts reaches check_auth.
+            let valid: &'static [u8] = match target {
+                "/api/entries/edit" => br#"{"xid":"zz","me":"x"}"#,
+                _ => br#"{"path":"a.md","text":"x"}"#,
+            };
+            let (status, declined, _) = send_raw(addr, method, target, headers, valid).await;
+            assert_eq!(
+                (status, declined),
+                (401, false),
+                "{method} {target} valid shape"
+            );
+        }
+    }
+    assert!(file_row(dir.path(), "a.md").is_none());
 }
