@@ -929,6 +929,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "embedding-worker"
+version = "0.1.0"
+dependencies = [
+ "engine-admission",
+ "model-stream",
+ "proc-macro2",
+ "prompt-framing",
+ "quote",
+ "reqwest",
+ "rusqlite",
+ "rustix",
+ "serde_json",
+ "server-projects",
+ "server-store",
+ "sha2",
+ "sqlite-vec-loader",
+ "ssrf-policy",
+ "syn 2.0.119",
+ "tempfile",
+ "tokio",
+ "zeroize",
+]
+
+[[package]]
 name = "engine-admission"
 version = "0.1.0"
 dependencies = [
@@ -1927,6 +1951,7 @@ dependencies = [
  "code-net-guard",
  "context-fit",
  "dav-parse",
+ "embedding-worker",
  "engine-admission",
  "flate2",
  "gguf",
@@ -2271,6 +2296,7 @@ dependencies = [
  "idna",
  "mcp-frame",
  "proptest",
+ "serde_json",
  "url",
 ]
 
@@ -3327,6 +3353,23 @@ checksum = "d91ed6c858b01f942cd56b37a94b3e0a1798290327d1236e4d9cf4eaca44d29d"
 dependencies = [
  "base64ct",
  "der",
+]
+
+[[package]]
+name = "sqlite-vec"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0ba424237a9a5db2f6071f193319e2b6a32f7f3961debb2fbbfe67067abce3f"
+dependencies = [
+ "cc",
+]
+
+[[package]]
+name = "sqlite-vec-loader"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "sqlite-vec",
 ]
 
 [[package]]

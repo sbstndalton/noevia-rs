@@ -37,6 +37,10 @@ pub const ENTER_TIMEOUT: Duration = Duration::from_secs(150);
 /// What to hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ask<'a> {
+    /// Embeddings need the maintenance guard, never a text-model load or router queue.
+    /// PAIRED ONLY: callers MUST verify the boot-bound embedding-background-v1
+    /// ownership capability. Older Core treats this request as a text-engine load.
+    Embedding { model: &'a str },
     /// This machine's engine, for this model.
     Engine { model: &'a str },
     /// A chat role on another machine: nothing is admitted here, the machine counts a turn (#1880), and
@@ -127,6 +131,7 @@ impl Admission {
     /// Takes a lease, waiting as long as Node's queue does, or until `cancel`.
     pub async fn enter(self: &Arc<Self>, ask: Ask<'_>, cancel: &Cancel) -> Result<Lease, Refused> {
         let body = match ask {
+            Ask::Embedding { model } => json!({ "model": model, "embedding": true }),
             Ask::Engine { model } => json!({ "model": model }),
             Ask::Machine {
                 role,
