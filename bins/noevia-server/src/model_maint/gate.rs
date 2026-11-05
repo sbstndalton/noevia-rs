@@ -837,7 +837,7 @@ mod tests {
         let started = Instant::now();
         tokio::time::timeout(Duration::from_millis(500), hold.release_node_lease())
             .await
-            .expect("verified expiry ends release");
+            .unwrap();
         assert!(started.elapsed() >= Duration::from_millis(30));
         assert!(!ack.load(Ordering::Acquire));
     }
