@@ -1861,6 +1861,7 @@ dependencies = [
  "axum",
  "chrono",
  "diary-corpus-parse",
+ "diary-workspace-export",
  "http-body-util",
  "regex",
  "reqwest",

@@ -19,6 +19,18 @@ pub struct Llm {
     pub configured: Value,
 }
 
+/// GET /api/workspace-export (D4b): Python's WORKSPACE_EXPORT_IMPL, its exporter binary path
+/// (workspace_export_native.BINARY) and the base `corpus.<key>` value of each SETTING_KEYS key.
+#[derive(Debug, Default, Deserialize)]
+pub struct WorkspaceExport {
+    #[serde(default, rename = "impl")]
+    pub implementation: String,
+    #[serde(default)]
+    pub binary: String,
+    #[serde(default)]
+    pub settings: serde_json::Map<String, Value>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub port: u16,
@@ -35,6 +47,8 @@ pub struct Config {
     pub legacy_user_id: String,
     pub corpus: BaseCorpus,
     pub llm: Llm,
+    #[serde(default)]
+    pub workspace_export: WorkspaceExport,
 }
 
 pub fn parse(line: &str) -> Result<Config, String> {

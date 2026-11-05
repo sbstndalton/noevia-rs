@@ -11,8 +11,9 @@
 use crate::config::Config;
 use crate::corpus::{self, BaseCorpus, Layout};
 use crate::health::{self, Models};
-use crate::managed::{self, Managed};
+use crate::managed::{self, Managed, Settings};
 use crate::py;
+use crate::workspace::{self, Reply};
 use axum::body::Body;
 use axum::http::{HeaderMap, Method, Request, Response, StatusCode};
 use serde::Serialize;
@@ -43,6 +44,7 @@ pub struct App {
     pub corpus: BaseCorpus,
     pub models: Option<Models>,
     pub http: reqwest::Client,
+    pub export: crate::config::WorkspaceExport,
 }
 
 impl App {
@@ -64,6 +66,7 @@ impl App {
             corpus: cfg.corpus,
             models,
             http: reqwest::Client::builder().build().unwrap_or_default(),
+            export: cfg.workspace_export,
         }
     }
 }
@@ -150,6 +153,19 @@ pub enum Route {
     Health,
     Months,
     Day,
+    /// D4b: GET /api/files, GET /api/storage-status, GET /api/workspace-export.
+    Files,
+    StorageStatus,
+    WorkspaceExport,
+}
+
+impl Route {
+    fn d4b(self) -> bool {
+        matches!(
+            self,
+            Route::Files | Route::StorageStatus | Route::WorkspaceExport
+        )
+    }
 }
 
 pub fn route(method: &Method, path: &str) -> Option<Route> {
@@ -157,6 +173,9 @@ pub fn route(method: &Method, path: &str) -> Option<Route> {
         ("GET", "/api/health") => Some(Route::Health),
         ("GET", "/api/months") => Some(Route::Months),
         ("GET", "/api/day") => Some(Route::Day),
+        ("GET", "/api/files") => Some(Route::Files),
+        ("GET", "/api/storage-status") => Some(Route::StorageStatus),
+        ("GET", "/api/workspace-export") => Some(Route::WorkspaceExport),
         _ => None,
     }
 }
@@ -201,6 +220,37 @@ struct Tenant {
     store: Managed,
     layout: Layout,
     descriptor: Option<serde_json::Map<String, Value>>,
+    settings: Settings,
+}
+
+/// The exact settings text Python's export would send its exporter, when this side reproduces
+/// the export at all: WORKSPACE_EXPORT_IMPL=rust (the Python exporter stamps the current local
+/// time into the ZIP) with the exporter binary installed (else Python answers 409).
+fn export_settings(app: &App, tenant: &Settings) -> Option<String> {
+    use std::os::unix::fs::PermissionsExt;
+    if app.export.implementation != "rust" {
+        return None;
+    }
+    let meta = std::fs::metadata(&app.export.binary).ok()?;
+    if !meta.is_file() || meta.permissions().mode() & 0o111 == 0 {
+        return None;
+    }
+    workspace::export_settings_text(&app.export.settings, tenant)
+}
+
+/// api_health's `has_tenant`: Some(effective user id) when Python would add tenant detail (journal,
+/// retrieval stats) unless `_tenant_state` refuses the tenant.
+fn health_tenant(app: &App, headers: &HeaderMap) -> Option<String> {
+    let header_uid = header(headers, "x-cowork-user-id");
+    let uid = if header_uid.is_empty() {
+        app.legacy_user_id.clone()
+    } else {
+        header_uid
+    };
+    let has_tenant = is_uuid(&uid)
+        && (!header(headers, "x-cowork-storage").is_empty()
+            || (!app.legacy_user_id.is_empty() && uid == app.legacy_user_id));
+    has_tenant.then_some(uid)
 }
 
 enum Plan {
@@ -216,22 +266,27 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
             if app.models.is_none() {
                 return Plan::Decline;
             }
-            let uid = if header_uid.is_empty() {
-                app.legacy_user_id.clone()
-            } else {
-                header_uid
-            };
-            let has_tenant = is_uuid(&uid)
-                && (!header(headers, "x-cowork-storage").is_empty()
-                    || (!app.legacy_user_id.is_empty() && uid == app.legacy_user_id));
-            // Tenant detail (journal, retrieval stats) stays with Python for now.
-            if has_tenant {
-                Plan::Decline
-            } else {
+            // Tenant detail (journal, retrieval stats) stays with Python. Served here with a
+            // tenant: only the refusals `_tenant_state` makes before touching storage, whose reply
+            // carries no detail (an unasserted legacy fallback, an oversized storage header). The
+            // handler re-checks them.
+            if health_tenant(app, headers).is_none()
+                || (header_uid.is_empty() && !app.tenant_key.is_empty())
+                || header(headers, "x-cowork-storage").len() > MAX_STORAGE_HEADER_LEN
+            {
                 Plan::Serve(None)
+            } else {
+                Plan::Decline
             }
         }
-        Route::Months | Route::Day => {
+        Route::Months
+        | Route::Day
+        | Route::Files
+        | Route::StorageStatus
+        | Route::WorkspaceExport => {
+            if r == Route::WorkspaceExport && export_settings(app, &Settings::new()).is_none() {
+                return Plan::Decline;
+            }
             if header_uid.is_empty() {
                 return if app.legacy_user_id.is_empty() {
                     Plan::Serve(None)
@@ -254,11 +309,17 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
             let uid = header_uid.to_ascii_lowercase();
             let root = app.data_root.join("users").join(&uid);
             match managed::ready(&root, &uid) {
+                Ok(Some((_, ref settings)))
+                    if r == Route::WorkspaceExport && export_settings(app, settings).is_none() =>
+                {
+                    Plan::Decline
+                }
                 Ok(Some((store, settings))) => match corpus::layout(&app.corpus, &settings) {
                     Some(layout) => Plan::Serve(Some(Tenant {
                         store,
                         layout,
                         descriptor,
+                        settings,
                     })),
                     None => Plan::Decline,
                 },
@@ -338,8 +399,12 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
         return unverified();
     }
 
+    // ---- seam: the routes below read the tenant only from `header_uid` and `asserted` (the
+    // trusted forward headers above).
     match check_auth(&app, &headers) {
         Err(()) => return internal_error(),
+        // app.py raises HTTPException(401) on the D4b routes: {"detail": ...}.
+        Ok(false) if r.d4b() => return detail(401, "unauthorized"),
         Ok(false) => return error(401, "unauthorized"),
         Ok(true) => {}
     }
@@ -349,8 +414,35 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
             let Some(models) = app.models.as_ref() else {
                 return internal_error();
             };
+            if let Some(uid) = health_tenant(&app, &headers) {
+                // Tenant detail needs Python's per-process state (sqlite-vec, the live embedding
+                // target, recovery): only the refusals that leave it out are answered here.
+                match resolve_tenant(&app, &uid, asserted, &headers, None) {
+                    Err(resp) if resp.status().is_client_error() => {}
+                    _ => return decline(),
+                }
+            }
             let h = health::health(&app.http, models, !app.auth_token.is_empty()).await;
             json_response(200, &h)
+        }
+        Route::Files | Route::StorageStatus | Route::WorkspaceExport => {
+            let tenant = match resolve_tenant(&app, &header_uid, asserted, &headers, tenant) {
+                Ok(t) => t,
+                Err(resp) => return *resp,
+            };
+            let app2 = app.clone();
+            let task =
+                tokio::task::spawn_blocking(move || serve_workspace(&app2, r, &query, &tenant));
+            match task.await {
+                Ok(Reply::Json(status, body)) => Response::builder()
+                    .status(status)
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap_or_default(),
+                Ok(Reply::Zip(zip)) => zip_response(zip),
+                Ok(Reply::Decline) => decline(),
+                Err(_) => internal_error(),
+            }
         }
         Route::Months | Route::Day => {
             let tenant = match resolve_tenant(&app, &header_uid, asserted, &headers, tenant) {
@@ -361,6 +453,42 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
             let task = tokio::task::spawn_blocking(move || serve_corpus(&app2, r, &query, &tenant));
             task.await.unwrap_or_else(|_| internal_error())
         }
+    }
+}
+
+/// Starlette's Response for api_workspace_export: its headers in Starlette's order (the given
+/// ones, then content-length, then content-type).
+fn zip_response(zip: Vec<u8>) -> Response<Body> {
+    Response::builder()
+        .status(200)
+        .header(
+            "content-disposition",
+            "attachment; filename=\"noevia-workspace.zip\"",
+        )
+        .header("cache-control", "no-store")
+        .header("x-content-type-options", "nosniff")
+        .header("content-length", zip.len())
+        .header("content-type", "application/zip")
+        .body(Body::from(zip))
+        .unwrap_or_default()
+}
+
+/// The D4b routes. A decline here (a stored value this side does not reproduce) is safe: the
+/// request was verified once, by Python, which then serves it without verifying it again.
+fn serve_workspace(app: &App, r: Route, query: &[u8], t: &Tenant) -> Reply {
+    match r {
+        Route::Files => {
+            // FastAPI `path: str = ""`: the last value given.
+            let path = py::query_get(query, "path").unwrap_or_default();
+            workspace::files(&t.store, &path)
+        }
+        // _request_storage: the descriptor when it decodes to an object, else {}.
+        Route::StorageStatus => workspace::storage_status(&t.store, t.descriptor.as_ref()),
+        Route::WorkspaceExport => match export_settings(app, &t.settings) {
+            Some(settings) => workspace::export(&t.store, &settings),
+            None => Reply::Decline,
+        },
+        _ => Reply::Decline,
     }
 }
 
@@ -504,7 +632,7 @@ fn serve_corpus(_app: &App, r: Route, query: &[u8], t: &Tenant) -> Response<Body
                 },
             )
         }
-        Route::Health => internal_error(),
+        _ => internal_error(),
     }
 }
 

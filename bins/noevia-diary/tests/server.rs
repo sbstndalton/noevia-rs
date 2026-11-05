@@ -257,7 +257,7 @@ async fn declines_until_python_has_recovered_and_while_recovery_is_outstanding()
             "{clear}"
         );
     }
-    assert_eq!(get(addr, "/api/files", &forwarded()).await.0, 421);
+    assert_eq!(get(addr, "/api/workspace-trash", &forwarded()).await.0, 421);
     db.execute(
         "UPDATE meta SET value='{\"index_enabled\": true}' WHERE key='settings'",
         [],
@@ -304,4 +304,57 @@ async fn health_process_part_and_control() {
         .0,
         404
     );
+}
+
+#[tokio::test]
+async fn d4b_files_and_status_are_native_and_unreproducible_states_decline() {
+    let dir = tempfile::tempdir().unwrap();
+    let addr = start(dir.path()).await;
+    managed_tenant(
+        dir.path(),
+        &[("memory.md", "# m"), ("Notes/a.md", "a")],
+        "{}",
+    );
+    let (s, _, body) = get(addr, "/api/files", &forwarded()).await;
+    assert_eq!(
+        (s, body.as_str()),
+        (
+            200,
+            r#"{"files":[{"path":"memory.md","name":"memory.md","isDir":false,"modified":1.0},{"path":"Notes","name":"Notes","isDir":true,"modified":1.0}]}"#
+        )
+    );
+    let (s, _, body) = get(addr, "/api/storage-status", &forwarded()).await;
+    assert_eq!(
+        (s, body.as_str()),
+        (
+            200,
+            r#"{"mode":"managed","backup":"not_configured","lastBackedUp":null,"retryAt":null,"error":null}"#
+        )
+    );
+    // The token check on these routes answers {"detail": ...}.
+    let bad = with(forwarded(), "authorization", "Bearer wrong");
+    let (s, _, body) = get(addr, "/api/files", &bad).await;
+    assert_eq!((s, body.as_str()), (401, r#"{"detail":"unauthorized"}"#));
+    // The Python exporter (the default) stamps the clock into the ZIP: declined.
+    assert_eq!(
+        get(addr, "/api/workspace-export", &forwarded()).await.0,
+        421
+    );
+    // POST /api/file has a body and is never forwarded: not a native route.
+    assert_eq!(
+        reqwest::Client::new()
+            .post(format!("http://{addr}/api/file"))
+            .header("x-noevia-diary-forward", SECRET)
+            .send()
+            .await
+            .unwrap()
+            .status()
+            .as_u16(),
+        421
+    );
+    // Health with a tenant: an oversized storage header is refused before storage (no detail).
+    let long = with(forwarded(), "x-cowork-storage", &"A".repeat(4097));
+    let (s, _, body) = get(addr, "/api/health", &long).await;
+    assert_eq!(s, 200);
+    assert!(body.starts_with(r#"{"ok":true"#) && !body.contains("journal_pending"));
 }
