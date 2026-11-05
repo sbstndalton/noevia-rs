@@ -12,6 +12,7 @@ use std::{
 };
 pub mod fill;
 pub mod http;
+pub mod media_policy;
 pub mod runtime;
 pub mod service;
 pub mod sqlite;

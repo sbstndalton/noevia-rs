@@ -1,0 +1,585 @@
+{
+  "candidates": [
+    {
+      "name": "plain",
+      "file": {
+        "name": "sample.txt"
+      },
+      "record": null,
+      "figures": false,
+      "upload": false,
+      "tail": false
+    },
+    {
+      "name": "document",
+      "file": {
+        "name": "sample.pdf",
+        "content": "head",
+        "document": {
+          "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "byteHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "availableVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "extractor": "old",
+          "indexing": "ready",
+          "state": "ready"
+        }
+      },
+      "record": null,
+      "figures": true,
+      "upload": true,
+      "tail": true
+    },
+    {
+      "name": "figure-tried",
+      "file": {
+        "name": "sample.pdf",
+        "content": "head",
+        "document": {
+          "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "byteHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "availableVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "extractor": "old",
+          "indexing": "ready",
+          "state": "ready",
+          "figureSweep": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "record": null,
+      "figures": false,
+      "upload": true,
+      "tail": true
+    },
+    {
+      "name": "figure-new-version",
+      "file": {
+        "name": "sample.pdf",
+        "content": "head",
+        "document": {
+          "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "byteHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "availableVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "extractor": "old",
+          "indexing": "ready",
+          "state": "ready",
+          "figureSweep": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      },
+      "record": null,
+      "figures": true,
+      "upload": true,
+      "tail": true
+    },
+    {
+      "name": "new-extractor",
+      "file": {
+        "name": "sample.pdf",
+        "content": "head",
+        "document": {
+          "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "byteHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "availableVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "extractor": "old:figures-v1",
+          "indexing": "ready",
+          "state": "ready"
+        }
+      },
+      "record": null,
+      "figures": false,
+      "upload": false,
+      "tail": true
+    },
+    {
+      "name": "scan",
+      "file": {
+        "name": "sample.pdf",
+        "content": "head",
+        "document": {
+          "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "byteHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "availableVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "extractor": "old",
+          "indexing": "ready",
+          "state": "ready"
+        }
+      },
+      "record": {
+        "pageTexts": [
+          {
+            "number": 1,
+            "status": "ocr",
+            "text": "scan"
+          }
+        ]
+      },
+      "figures": false,
+      "upload": true,
+      "tail": true
+    },
+    {
+      "name": "mixed-scan",
+      "file": {
+        "name": "sample.pdf",
+        "content": "head",
+        "document": {
+          "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "byteHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "availableVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "extractor": "old",
+          "indexing": "ready",
+          "state": "ready"
+        }
+      },
+      "record": {
+        "pageTexts": [
+          {
+            "number": 1,
+            "status": "ocr"
+          },
+          {
+            "number": 2,
+            "status": "native"
+          }
+        ]
+      },
+      "figures": true,
+      "upload": true,
+      "tail": true
+    },
+    {
+      "name": "blank",
+      "file": {
+        "name": "sample.pdf",
+        "content": "head",
+        "document": {
+          "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "byteHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "availableVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "extractor": "old",
+          "indexing": "ready",
+          "state": "ready"
+        }
+      },
+      "record": {
+        "pageTexts": [
+          {
+            "number": 1,
+            "status": "blank"
+          }
+        ]
+      },
+      "figures": true,
+      "upload": true,
+      "tail": true
+    },
+    {
+      "name": "image",
+      "file": {
+        "name": "sample.PNG",
+        "content": "head",
+        "document": {
+          "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "byteHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "availableVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "extractor": "old",
+          "indexing": "ready",
+          "state": "ready"
+        }
+      },
+      "record": null,
+      "figures": false,
+      "upload": false,
+      "tail": true
+    },
+    {
+      "name": "queued",
+      "file": {
+        "name": "sample.pdf",
+        "content": "head",
+        "document": {
+          "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "byteHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "availableVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "extractor": "old",
+          "indexing": "ready",
+          "state": "queued"
+        }
+      },
+      "record": null,
+      "figures": false,
+      "upload": true,
+      "tail": true
+    },
+    {
+      "name": "failed",
+      "file": {
+        "name": "sample.pdf",
+        "content": "head",
+        "document": {
+          "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "byteHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "availableVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "extractor": "old",
+          "indexing": "ready",
+          "state": "failed"
+        }
+      },
+      "record": null,
+      "figures": false,
+      "upload": true,
+      "tail": true
+    },
+    {
+      "name": "upload-tried",
+      "file": {
+        "name": "sample.pdf",
+        "content": "head",
+        "document": {
+          "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "byteHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "availableVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "extractor": "old",
+          "indexing": "ready",
+          "state": "ready",
+          "completionSweep": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "record": null,
+      "figures": true,
+      "upload": false,
+      "tail": true
+    },
+    {
+      "name": "connected",
+      "file": {
+        "name": "sample.pdf",
+        "content": "head",
+        "document": {
+          "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "byteHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "availableVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "extractor": "old",
+          "indexing": "ready",
+          "state": "ready"
+        },
+        "source": {
+          "path": "/synthetic"
+        }
+      },
+      "record": null,
+      "figures": true,
+      "upload": false,
+      "tail": true
+    },
+    {
+      "name": "tail-complete",
+      "file": {
+        "name": "sample.pdf",
+        "content": "head",
+        "document": {
+          "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "byteHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "availableVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "extractor": "old",
+          "indexing": "ready",
+          "state": "ready",
+          "searchable": {
+            "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "page": null,
+            "complete": true
+          }
+        }
+      },
+      "record": null,
+      "figures": true,
+      "upload": true,
+      "tail": false
+    },
+    {
+      "name": "tail-old-complete",
+      "file": {
+        "name": "sample.pdf",
+        "content": "head",
+        "document": {
+          "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "byteHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "availableVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "extractor": "old",
+          "indexing": "ready",
+          "state": "ready",
+          "searchable": {
+            "version": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "page": null,
+            "complete": true
+          }
+        }
+      },
+      "record": null,
+      "figures": true,
+      "upload": true,
+      "tail": true
+    },
+    {
+      "name": "direct",
+      "file": {
+        "name": "sample.pdf",
+        "content": "head",
+        "document": {
+          "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "byteHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "availableVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "extractor": "old",
+          "indexing": "direct",
+          "state": "ready"
+        }
+      },
+      "record": null,
+      "figures": true,
+      "upload": true,
+      "tail": false
+    }
+  ],
+  "windows": [
+    {
+      "name": "all",
+      "content": "[Page 1]\nfirst\n\n[Page 2]\nsec",
+      "record": {
+        "pageTexts": [
+          {
+            "number": 3,
+            "status": "native",
+            "text": "third"
+          },
+          {
+            "number": 1,
+            "status": "native",
+            "text": "first"
+          },
+          {
+            "number": 2,
+            "status": "ocr",
+            "text": "second"
+          }
+        ]
+      },
+      "options": {},
+      "result": {
+        "chunks": [
+          {
+            "body": "[Page 2]\nsecond",
+            "page": 2
+          },
+          {
+            "body": "[Page 3]\nthird",
+            "page": 3
+          }
+        ],
+        "fromPage": 2,
+        "toPage": 3,
+        "final": true,
+        "limited": false,
+        "headPage": 2
+      }
+    },
+    {
+      "name": "resume",
+      "content": "[Page 1]\nfirst\n\n[Page 2]\nsec",
+      "record": {
+        "pageTexts": [
+          {
+            "number": 3,
+            "status": "native",
+            "text": "third"
+          },
+          {
+            "number": 1,
+            "status": "native",
+            "text": "first"
+          },
+          {
+            "number": 2,
+            "status": "ocr",
+            "text": "second"
+          }
+        ]
+      },
+      "options": {
+        "fromPage": 3
+      },
+      "result": {
+        "chunks": [
+          {
+            "body": "[Page 3]\nthird",
+            "page": 3
+          }
+        ],
+        "fromPage": 3,
+        "toPage": 3,
+        "final": true,
+        "limited": false,
+        "headPage": 2
+      }
+    },
+    {
+      "name": "limited",
+      "content": "[Page 1]\nfirst\n\n[Page 2]\nsec",
+      "record": {
+        "pageTexts": [
+          {
+            "number": 3,
+            "status": "native",
+            "text": "third"
+          },
+          {
+            "number": 1,
+            "status": "native",
+            "text": "first"
+          },
+          {
+            "number": 2,
+            "status": "ocr",
+            "text": "second"
+          }
+        ]
+      },
+      "options": {
+        "textLimit": 30
+      },
+      "result": {
+        "chunks": [
+          {
+            "body": "[Page 2]\nsecon",
+            "page": 2
+          }
+        ],
+        "fromPage": 2,
+        "toPage": 2,
+        "final": true,
+        "limited": true,
+        "headPage": 2
+      }
+    },
+    {
+      "name": "one-window",
+      "content": "[Page 1]\nfirst\n\n[Page 2]\nsec",
+      "record": {
+        "pageTexts": [
+          {
+            "number": 3,
+            "status": "native",
+            "text": "third"
+          },
+          {
+            "number": 1,
+            "status": "native",
+            "text": "first"
+          },
+          {
+            "number": 2,
+            "status": "ocr",
+            "text": "second"
+          }
+        ]
+      },
+      "options": {
+        "maxChars": 1
+      },
+      "result": {
+        "chunks": [
+          {
+            "body": "[Page 2]\nsecond",
+            "page": 2
+          }
+        ],
+        "fromPage": 2,
+        "toPage": 2,
+        "final": false,
+        "limited": false,
+        "headPage": 2
+      }
+    },
+    {
+      "name": "mismatch",
+      "content": "unrelated",
+      "record": {
+        "pageTexts": [
+          {
+            "number": 3,
+            "status": "native",
+            "text": "third"
+          },
+          {
+            "number": 1,
+            "status": "native",
+            "text": "first"
+          },
+          {
+            "number": 2,
+            "status": "ocr",
+            "text": "second"
+          }
+        ]
+      },
+      "options": {},
+      "result": null
+    },
+    {
+      "name": "empty-head",
+      "content": "",
+      "record": {
+        "pageTexts": [
+          {
+            "number": 3,
+            "status": "native",
+            "text": "third"
+          },
+          {
+            "number": 1,
+            "status": "native",
+            "text": "first"
+          },
+          {
+            "number": 2,
+            "status": "ocr",
+            "text": "second"
+          }
+        ]
+      },
+      "options": {},
+      "result": null
+    }
+  ],
+  "settings": [
+    {
+      "env": {},
+      "result": {
+        "perPass": 48,
+        "perHour": 480,
+        "perDocument": 24,
+        "batch": 8,
+        "uploads": 2,
+        "duty": 0.25,
+        "minPauseMs": 250,
+        "delayMs": 90000,
+        "intervalMs": 300000
+      }
+    },
+    {
+      "env": {
+        "PROJECT_BACKFILL_DUTY": "0",
+        "PROJECT_TAIL_EMBED_BATCH": "100",
+        "PROJECT_UPLOAD_COMPLETION_PER_PASS": "0"
+      },
+      "result": {
+        "perPass": 48,
+        "perHour": 480,
+        "perDocument": 24,
+        "batch": 64,
+        "uploads": 0,
+        "duty": 0.05,
+        "minPauseMs": 250,
+        "delayMs": 90000,
+        "intervalMs": 300000
+      }
+    }
+  ]
+}
