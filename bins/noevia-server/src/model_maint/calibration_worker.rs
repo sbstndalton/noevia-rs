@@ -3033,7 +3033,7 @@ mod tests {
                         let (code, answer) = node.as_ref().map_or((200, json!({"refusal": null})), |f| f(n, &body));
                         json(code, answer)
                     }
-                    ("POST", "/gate/v1/maintenance") => json(201, json!({"hold": "0123456789abcdef0123456789abcdef", "idle_ttl_ms": 60000})),
+                    ("POST", "/gate/v1/maintenance") => json(201, json!({"hold": "0123456789abcdef0123456789abcdef", "idle_ttl_ms": body["idle_ttl_ms"].as_u64().unwrap_or(60000)})),
                     ("GET", "/gate/v1/status") => json(200, json!({"maintenance": {"held": false}})),
                     (_, p) if p.starts_with("/gate/") => json(200, json!({})),
                     ("GET", "/models") => {
