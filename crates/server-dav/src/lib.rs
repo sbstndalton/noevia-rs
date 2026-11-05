@@ -317,7 +317,27 @@ impl<B: Backend> DavService<B> {
 
     /// The caller supplies the actual socket address. Forwarded client-IP headers
     /// never affect this budget. The returned future owns no detached work.
-    pub async fn handle(&self, req: Request<Body>, peer: IpAddr) -> Response<Body> {
+    pub async fn handle(&self, mut req: Request<Body>, peer: IpAddr) -> Response<Body> {
+        // Match the HTTP server header view: Host and Authorization keep the
+        // first value; ordinary duplicate fields are comma-space joined.
+        let names: Vec<_> = req.headers().keys().cloned().collect();
+        for name in names {
+            if name == header::HOST || name == header::AUTHORIZATION {
+                continue;
+            }
+            let values: Vec<_> = req
+                .headers()
+                .get_all(&name)
+                .iter()
+                .map(|v| v.as_bytes().to_vec())
+                .collect();
+            if values.len() > 1 {
+                let joined = values.join(&b", "[..]);
+                if let Ok(value) = HeaderValue::from_bytes(&joined) {
+                    req.headers_mut().insert(name, value);
+                }
+            }
+        }
         let is_head = req.method() == axum::http::Method::HEAD;
         let mut result = self.handle_inner(req, peer).await;
         if is_head {
@@ -335,9 +355,6 @@ impl<B: Backend> DavService<B> {
 
     async fn handle_inner(&self, req: Request<Body>, peer: IpAddr) -> Response<Body> {
         let headers = req.headers();
-        if duplicate_security_header(headers) {
-            return reply(StatusCode::BAD_REQUEST, "Duplicate security header", false);
-        }
         if headers
             .get(header::HOST)
             .and_then(|v| v.to_str().ok())
@@ -421,15 +438,15 @@ impl<B: Backend> DavService<B> {
             Err(_) => return fault_reply(Fault::Unavailable, false),
         };
         match self.is_allowed(&identity).await {
-            Ok(true)=>(),
-            Ok(false)=>{
-            return reply(
-                StatusCode::FORBIDDEN,
-                "Sharing is off for this account or storage",
-                false,
-            );
-        },
-            Err(f)=>return fault_reply(f,false),
+            Ok(true) => (),
+            Ok(false) => {
+                return reply(
+                    StatusCode::FORBIDDEN,
+                    "Sharing is off for this account or storage",
+                    false,
+                );
+            }
+            Err(f) => return fault_reply(f, false),
         }
         self.dispatch(req, &identity, &username, &path).await
     }
@@ -442,22 +459,13 @@ impl<B: Backend> DavService<B> {
     }
 
     async fn is_allowed(&self, identity: &Identity) -> Result<bool, Fault> {
-        tokio::time::timeout(self.config.deadline,self.backend.allowed(identity,self.config.scope)).await.map_err(|_|Fault::AuthorityUnavailable)?
+        tokio::time::timeout(
+            self.config.deadline,
+            self.backend.allowed(identity, self.config.scope),
+        )
+        .await
+        .map_err(|_| Fault::AuthorityUnavailable)?
     }
-
-}
-
-fn duplicate_security_header(headers: &HeaderMap) -> bool {
-    [
-        header::HOST,
-        header::AUTHORIZATION,
-        header::IF_MATCH,
-        header::IF_NONE_MATCH,
-        header::HeaderName::from_static("x-cowork-dav-proxy-token"),
-        header::HeaderName::from_static("x-forwarded-proto"),
-    ]
-    .iter()
-    .any(|name| headers.get_all(name).iter().nth(1).is_some())
 }
 
 fn basic(headers: &HeaderMap) -> Option<(String, String)> {
@@ -490,7 +498,7 @@ fn parse_path(raw: &str) -> Result<(String, String), StatusCode> {
     if !raw.starts_with("/dav/")
         || raw.contains('?')
         || raw.contains('#')
-        || raw.chars().any(|c| c == '\\' || c.is_control())
+        || raw.chars().any(|c| c == '\\' || (c as u32) <= 31)
     {
         return Err(StatusCode::NOT_FOUND);
     }
@@ -517,9 +525,9 @@ fn parse_path(raw: &str) -> Result<(String, String), StatusCode> {
         }
         if index > 0
             && (part.starts_with('.')
-                || part
-                    .chars()
-                    .any(|c| c == '/' || c == '\\' || c == '%' || c.is_control() || c == '\u{7f}'))
+                || part.chars().any(|c| {
+                    c == '/' || c == '\\' || c == '%' || (c as u32) <= 31 || c == '\u{7f}'
+                }))
         {
             return Err(StatusCode::BAD_REQUEST);
         }
@@ -611,7 +619,10 @@ fn fault_reply(fault: Fault, write: bool) -> Response<Body> {
             StatusCode::PAYLOAD_TOO_LARGE,
             "Folder exceeds the sharing limit",
         ),
-        Fault::AuthorityUnavailable => (StatusCode::SERVICE_UNAVAILABLE, "Sharing authority is unavailable"),
+        Fault::AuthorityUnavailable => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Sharing authority is unavailable",
+        ),
         Fault::Unavailable => (StatusCode::BAD_GATEWAY, "Diary storage is unavailable"),
     };
     let mut response = reply(status, message, false);
@@ -865,7 +876,9 @@ impl<B: Backend> DavService<B> {
             }
             entries.extend(children);
         }
-        let Some(deadline) = Instant::now().checked_add(self.config.deadline) else {
+        let Some(deadline) =
+            Instant::now().checked_add(self.config.deadline.min(Duration::from_secs(45)))
+        else {
             return reply(
                 StatusCode::GATEWAY_TIMEOUT,
                 "Property read timed out",
@@ -882,16 +895,16 @@ impl<B: Backend> DavService<B> {
                 );
             }
             match self.is_allowed(identity).await {
-            Ok(true)=>(),
-            Ok(false)=>{
-                return reply(
-                    StatusCode::FORBIDDEN,
-                    "Sharing was disabled or credential revoked",
-                    false,
-                );
-            },
-            Err(f)=>return fault_reply(f,false),
-        }
+                Ok(true) => (),
+                Ok(false) => {
+                    return reply(
+                        StatusCode::FORBIDDEN,
+                        "Sharing was disabled or credential revoked",
+                        false,
+                    );
+                }
+                Err(f) => return fault_reply(f, false),
+            }
             let wants = |name: &str| {
                 selection
                     .as_ref()
@@ -1090,11 +1103,11 @@ impl<B: Backend> DavService<B> {
             Err(_) => return reply(StatusCode::BAD_REQUEST, "UTF-8 text required", false),
         };
         match self.is_allowed(identity).await {
-            Ok(true)=>(),
-            Ok(false)=>{
-            return reply(StatusCode::FORBIDDEN, "Sharing was disabled", false);
-        },
-            Err(f)=>return fault_reply(f,false),
+            Ok(true) => (),
+            Ok(false) => {
+                return reply(StatusCode::FORBIDDEN, "Sharing was disabled", false);
+            }
+            Err(f) => return fault_reply(f, false),
         }
         let unconditional = condition.is_none();
         let mut preserved = serde_json::Value::Null;
@@ -1231,11 +1244,11 @@ impl<B: Backend> DavService<B> {
             );
         }
         match self.is_allowed(identity).await {
-            Ok(true)=>(),
-            Ok(false)=>{
-            return reply(StatusCode::FORBIDDEN, "Sharing was disabled", false);
-        },
-            Err(f)=>return fault_reply(f,false),
+            Ok(true) => (),
+            Ok(false) => {
+                return reply(StatusCode::FORBIDDEN, "Sharing was disabled", false);
+            }
+            Err(f) => return fault_reply(f, false),
         }
         match tokio::time::timeout(self.config.deadline, self.backend.mkdir(identity, path)).await {
             Ok(Ok(())) => {

@@ -24,6 +24,14 @@ fn destination(raw: &str, origin: &str, username: &str) -> Result<(String, Url),
     {
         return Err(StatusCode::BAD_REQUEST);
     }
+    let prefix = format!("/dav/{}/", encode(username));
+    if !url
+        .path()
+        .to_lowercase()
+        .starts_with(&prefix.to_lowercase())
+    {
+        return Err(StatusCode::FORBIDDEN);
+    }
     let (user, path) = parse_path(url.path())?;
     if !user.eq_ignore_ascii_case(username) || path.is_empty() {
         return Err(StatusCode::FORBIDDEN);
@@ -34,9 +42,20 @@ fn destination_tag(raw: &str, destination: &Url) -> Option<String> {
     // Accept only tagged strong entity conditions. Other DAV If expressions do not
     // become a guessed precondition; the actual current target is statted below.
     for part in raw.split('<').skip(1) {
-        let Some((uri, rest)) = part.split_once('>') else {continue};
-        let Some(rest) = rest.trim_start().strip_prefix('(').map(str::trim_start).and_then(|r|r.strip_prefix('[')) else {continue};
-        let Some((etag,end)) = rest.split_once(']') else {continue};
+        let Some((uri, rest)) = part.split_once('>') else {
+            continue;
+        };
+        let Some(rest) = rest
+            .trim_start()
+            .strip_prefix('(')
+            .map(str::trim_start)
+            .and_then(|r| r.strip_prefix('['))
+        else {
+            continue;
+        };
+        let Some((etag, end)) = rest.split_once(']') else {
+            continue;
+        };
         if !end.trim_start().starts_with(')') {
             continue;
         }
@@ -90,17 +109,6 @@ impl<B: Backend> DavService<B> {
         }
         let method = req.method().as_str().to_owned();
         let headers = req.headers().clone();
-        for name in [
-            "destination",
-            "overwrite",
-            "depth",
-            "if",
-            "content-encoding",
-        ] {
-            if headers.get_all(name).iter().nth(1).is_some() {
-                return Err(bad(StatusCode::BAD_REQUEST, "Duplicate operation header"));
-            }
-        }
         let header = |name: &str| -> Result<Option<&str>, Box<Response<Body>>> {
             headers
                 .get(name)
@@ -138,9 +146,9 @@ impl<B: Backend> DavService<B> {
             })
             .transpose()?;
         match self.is_allowed(identity).await {
-            Ok(true)=>(),
-            Ok(false)=>return Err(bad(StatusCode::FORBIDDEN,"Sharing was disabled")),
-            Err(f)=>return Err(Box::new(fault_reply(f,false))),
+            Ok(true) => (),
+            Ok(false) => return Err(bad(StatusCode::FORBIDDEN, "Sharing was disabled")),
+            Err(f) => return Err(Box::new(fault_reply(f, false))),
         }
         let unconditional = version.is_none() && method != "COPY";
         if unconditional {

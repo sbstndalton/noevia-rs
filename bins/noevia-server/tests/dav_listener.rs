@@ -177,7 +177,14 @@ fn bind_fallback_matches_original_without_new_exposure() {
 #[tokio::test]
 async fn native_listener_uses_scoped_signed_operations_and_audits() {
     let r = Rig::new().await;
-    let options = r.call("OPTIONS", "/dav/alice/", "", &[]).await;
+    let options = r
+        .call(
+            "OPTIONS",
+            "/dav/alice/",
+            "",
+            &[("x-cowork-user-id", "other-tenant")],
+        )
+        .await;
     assert_eq!(options.status(), 200);
     assert_eq!(options.headers()["dav"], "1");
     assert!(options.headers()["allow"]
@@ -328,4 +335,79 @@ async fn revoking_while_a_put_body_waits_blocks_every_mutation() {
     );
     assert_eq!(r.files.lock().unwrap()["entry.md"], "Synthetic");
     assert!(!r.calls.lock().unwrap().iter().any(|v| v["method"] == "PUT"));
+}
+
+#[tokio::test]
+async fn replay_original_node_http_responses() {
+    let cases: Vec<Value> = serde_json::from_str(include_str!("fixtures/dav-node.json")).unwrap();
+    for case in cases {
+        let r = Rig::new().await;
+        let fields = case["headers"].as_object().unwrap();
+        let headers: Vec<(&str, &str)> = fields
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str().unwrap()))
+            .collect();
+        let response = r
+            .call(
+                case["method"].as_str().unwrap(),
+                case["path"].as_str().unwrap(),
+                case["body"].as_str().unwrap(),
+                &headers,
+            )
+            .await;
+        let status = response.status().as_u16();
+        let header = response.headers();
+        let value = |key: &str| {
+            header
+                .get(key)
+                .map(|v| Value::String(v.to_str().unwrap().into()))
+                .unwrap_or(Value::Null)
+        };
+        let mut actual = json!({"status":status,"allow":value("allow"),"dav":value("dav"),"etag":value("etag"),"type":value("content-type")});
+        actual["body"] = json!(String::from_utf8(
+            to_bytes(response.into_body(), 2 * 1024 * 1024)
+                .await
+                .unwrap()
+                .to_vec()
+        )
+        .unwrap());
+        assert_eq!(actual, case["expected"], "case {}", case["name"]);
+    }
+}
+
+#[tokio::test]
+async fn dedicated_socket_deadline_closes_an_active_partial_request() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let router = Router::new().fallback(|req: Request<Body>| async move {
+        let _ = to_bytes(req.into_body(), 1024).await;
+        Response::new(Body::empty())
+    });
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    let task = tokio::spawn(noevia_server::serve::serve_router_with_socket_timeout(
+        listener,
+        router,
+        noevia_server::serve::Limits {
+            header_read: Duration::from_millis(100),
+            keep_alive_idle: Duration::from_millis(20),
+            max_connections: 4,
+        },
+        Some(Duration::from_millis(60)),
+        async move {
+            let _ = rx.await;
+        },
+    ));
+    let mut socket = tokio::net::TcpStream::connect(addr).await.unwrap();
+    socket.write_all(b"PUT /dav/alice/entry.md HTTP/1.1\r\nHost: sharing.test\r\nContent-Length: 100\r\n\r\na").await.unwrap();
+    let mut response = Vec::new();
+    tokio::time::timeout(Duration::from_secs(2), socket.read_to_end(&mut response))
+        .await
+        .unwrap()
+        .unwrap();
+    let _ = tx.send(());
+    tokio::time::timeout(Duration::from_secs(2), task)
+        .await
+        .unwrap()
+        .unwrap();
 }

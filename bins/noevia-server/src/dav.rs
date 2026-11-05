@@ -142,7 +142,7 @@ impl Backend for NativeBackend {
             let permit = Arc::clone(&self.hashing)
                 .acquire_owned()
                 .await
-                .map_err(|_| Fault::Unavailable)?;
+                .map_err(|_| Fault::AuthorityUnavailable)?;
             let store = Arc::clone(&self.store);
             let writer = Arc::clone(&self.writer);
             let username = username.to_owned();
@@ -163,10 +163,10 @@ impl Backend for NativeBackend {
                         credential_id: i.credential_id,
                     })
                 })
-                .map_err(|_| Fault::Unavailable)
+                .map_err(|_| Fault::AuthorityUnavailable)
             })
             .await
-            .map_err(|_| Fault::Unavailable)?
+            .map_err(|_| Fault::AuthorityUnavailable)?
         })
     }
     fn allowed<'a>(
@@ -387,11 +387,16 @@ pub async fn start(
     }
     let a = Arc::clone(app);
     let (store, writer, public) = tokio::task::spawn_blocking(move || -> Result<_, String> {
-        let store = a
-            .identity
-            .store_blocking()
-            .map_err(|_| "DAV account store unavailable")?;
-        let writer = a.writes.writer().map_err(|_| "DAV writer unavailable")?;
+        let deadline = std::time::Instant::now() + Duration::from_secs(60);
+        let (store, writer) = loop {
+            if let (Ok(store), Ok(writer)) = (a.identity.store_blocking(), a.writes.writer()) {
+                break (store, writer);
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err("DAV account store unavailable".into());
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        };
         let public = store
             .read(|r| {
                 for key in ["public_origin_admin", "public_origin"] {
@@ -441,6 +446,8 @@ pub async fn start(
     };
     let config =
         server_dav::Config::new(&origin, scope, std::env::var("COWORK_DAV_PROXY_TOKEN").ok())
+            .map_err(str::to_owned)?
+            .with_deadline(Duration::from_secs(60))
             .map_err(str::to_owned)?;
     let data = app
         .config
