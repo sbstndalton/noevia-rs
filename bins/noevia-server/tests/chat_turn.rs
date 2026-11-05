@@ -1591,7 +1591,7 @@ async fn a_70042_byte_refusal_keeps_its_complete_message_code_and_retry_hints() 
         let refusal = format!(r#"{{"error":"{reason}","code":"inferenceMaintenance"}}"#);
         assert_eq!(refusal.len(), 70_042);
         *f.core.admission_reply.lock().unwrap() = Some((503, refusal, None, None, chunked));
-        let (res, _) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await;
+        let (res, _client) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await;
         assert_eq!(res.status(), 503, "chunked {chunked}");
         assert_eq!(res.headers()["retry-after"], "3");
         let got: serde_json::Value = serde_json::from_str(&text(res).await).unwrap();
@@ -1623,7 +1623,7 @@ async fn an_over_one_mib_refusal_keeps_status_header_code_and_retry_semantics() 
             Some("engineHeld".into()),
             chunked,
         ));
-        let (res, _) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await;
+        let (res, _client) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await;
         assert_eq!(res.status(), 503, "chunked {chunked}");
         assert_eq!(res.headers()["retry-after"], "11");
         let got: serde_json::Value = serde_json::from_str(&text(res).await).unwrap();
@@ -1651,7 +1651,7 @@ async fn an_over_one_mib_non_refusal_fails_closed() {
         let f = front().await;
         *f.core.admission_reply.lock().unwrap() =
             Some((200, " ".repeat(1024 * 1024 + 1), None, None, chunked));
-        let (res, _) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await;
+        let (res, _client) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await;
         assert_eq!(res.status(), 502, "chunked {chunked}");
         assert!(f
             .core
