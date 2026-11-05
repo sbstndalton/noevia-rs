@@ -1862,7 +1862,7 @@ credential refresh happen before that final synchronous check-and-send block. Th
 elapsed time and wrapper entry never acknowledge that a write was sent.
 
 Every completing revoke (store revoke, store move/delete, public move/delete before and after,
-including failed operations, and project delete) first revokes in the registry, then calls Node's
+including failed operations, project delete, and grant/redeem live-context invalidation) first revokes in the registry, then calls Node's
 private `POST /internal/approvals/revoke {user,chat,protocol}` with the shared per-start store token.
 Only a direct loopback request without client-forwarding headers is accepted. Node advances its
 epoch synchronously before returning `{acknowledged:true,protocol}`. Project deletion uses `chat:null`
@@ -1870,7 +1870,11 @@ to invalidate the user's outstanding tickets conservatively, including tickets w
 have already disappeared. No success is returned without this acknowledgement (2 s bound).
 
 Node unreachable, timed out, wrong protocol or refusing: 503 `Approval revocation pending; retry`.
-The front revocation stays recorded. Node-originated revokes retain the existing pending-revoke
+The front revocation stays recorded. A context-invalidating grant check or redeem also waits for
+this acknowledgement before its 200/false answer. An unconfirmed context invalidation remains
+pending after the grant/ticket is removed; subsequent checks retry it and keep returning 503 until
+it is confirmed. Confirmations name an internal generation so an older response cannot clear a
+newer invalidation. There is no time-based eviction of unconfirmed context invalidations. Node-originated revokes retain the existing pending-revoke
 backoff; public/store mutation callers can retry. If the second acknowledgement fails, a mutation
 may already have applied but its response is 503; no successful revocation is claimed. This is a
 fail-closed API deviation. The retired `started` op and front time drain are removed.

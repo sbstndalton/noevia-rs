@@ -264,6 +264,10 @@ struct State {
     /// Each chat's revocation epoch: the sequence of its latest revocation, and when (kept for
     /// TICKET_TTL, after which every ticket issued before it has expired anyway; monotonic clock).
     revoked: HashMap<(String, String), (u64, Instant)>,
+    /// Context-invalidating checks must not finish until Node confirms its executor epoch.
+    /// Retained without a time limit: already-redeemed executors may still be paused, and a failed
+    /// acknowledgement must remain retryable even after this check removed the grant.
+    invalidated: HashMap<(String, String), u64>,
     /// A counter would have overflowed: no grant is given or honoured again (fail closed).
     exhausted: bool,
 }
@@ -705,9 +709,36 @@ impl Registry {
         }
         // Moved, deleted or restarted: that grant is revoked (a newer one is left alone).
         if same {
-            s.revoke(key);
+            s.revoke(key.clone());
+            let generation = s.revocations;
+            s.invalidated.insert(key, generation);
         }
         None
+    }
+
+    /// Propagates a context invalidation (including an earlier unconfirmed one) to the async
+    /// store caller. Poisoned state cannot be confirmed as safe.
+    pub fn pending_invalidation(&self, user: &str, chat: &str) -> Result<Option<u64>, DecideError> {
+        let s = self.state.lock().map_err(|_| DecideError::Unavailable)?;
+        Ok(s.invalidated
+            .get(&(user.to_owned(), safe_id(chat)))
+            .copied())
+    }
+
+    /// A response covers only the generation sent before its await. A concurrent newer
+    /// invalidation remains pending and needs its own acknowledgement.
+    pub fn acknowledge_invalidation(
+        &self,
+        user: &str,
+        chat: &str,
+        generation: u64,
+    ) -> Result<(), DecideError> {
+        let mut s = self.state.lock().map_err(|_| DecideError::Unavailable)?;
+        let key = (user.to_owned(), safe_id(chat));
+        if s.invalidated.get(&key) == Some(&generation) {
+            s.invalidated.remove(&key);
+        }
+        Ok(())
     }
 
     /// approvals.cjs `revokeChatGrant(user, chat)`; also run by the public move and delete, and
@@ -1431,5 +1462,50 @@ mod tests {
             r.open(route_q(&format!("q{i}"), OWNER)).unwrap();
         }
         assert_eq!(r.open(route_q("one-more", OWNER)), Err(OpenError::Capacity));
+    }
+    #[tokio::test]
+    async fn old_context_confirmation_cannot_clear_a_newer_invalidation() {
+        let (dir, live) = store();
+        let r = Registry::new(Some(live));
+        let mut generations = Vec::new();
+        for (id, generation) in [("w-first", "0"), ("w-second", "2")] {
+            let b = binding(
+                OWNER,
+                "c1",
+                "space:free",
+                json!({"kind":"free"}),
+                generation,
+            );
+            r.open(write_q(
+                id,
+                OWNER,
+                Some("c1"),
+                Some("space:free"),
+                Some(b.clone()),
+            ))
+            .unwrap();
+            let context = r.grant_context(OWNER, id);
+            r.decide(OWNER, id, "approve_all", false, context.as_ref())
+                .unwrap();
+            chat_move::move_chat(
+                dir.path(),
+                OWNER,
+                "c1",
+                Holder::Project("p1".into()),
+                None,
+                START,
+            )
+            .unwrap();
+            assert!(!r.granted(OWNER, "c1", "space:free", Some(&b)));
+            generations.push(r.pending_invalidation(OWNER, "c1").unwrap().unwrap());
+            chat_move::move_chat(dir.path(), OWNER, "c1", Holder::Free, None, START).unwrap();
+        }
+        let first = generations.first().copied().unwrap();
+        let second = generations.last().copied().unwrap();
+        assert!(second > first);
+        r.acknowledge_invalidation(OWNER, "c1", first).unwrap();
+        assert_eq!(r.pending_invalidation(OWNER, "c1").unwrap(), Some(second));
+        r.acknowledge_invalidation(OWNER, "c1", second).unwrap();
+        assert_eq!(r.pending_invalidation(OWNER, "c1").unwrap(), None);
     }
 }

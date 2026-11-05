@@ -1,4 +1,4 @@
-//! Completion barrier for every explicit revocation: record it first, then have Node advance
+//! Completion barrier for every revocation, including context invalidation: record it first, then have Node advance
 //! its executor epoch. Time and wrapper-entry reports never establish that a write was sent.
 use reqwest::header::{HeaderName, HeaderValue};
 use serde_json::{json, Value};
@@ -77,6 +77,34 @@ impl Revoker {
     }
 }
 impl crate::App {
+    /// Context invalidation is discovered in a blocking check, but its completion barrier is
+    /// asynchronous. The persisted generation also covers retries after the grant was removed.
+    pub async fn confirm_approval_invalidation(
+        &self,
+        user: &str,
+        chat: &str,
+        mut generation: Option<u64>,
+    ) -> Result<(), Pending> {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while let Some(covers) = generation {
+                self.config
+                    .approval_revocation
+                    .ack(user, Some(chat))
+                    .await?;
+                self.approvals
+                    .acknowledge_invalidation(user, chat, covers)
+                    .map_err(|_| Pending)?;
+                generation = self
+                    .approvals
+                    .pending_invalidation(user, chat)
+                    .map_err(|_| Pending)?;
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|_| Pending)?
+    }
+
     pub async fn revoke_approvals(&self, user: &str, chat: &str) -> Result<bool, Pending> {
         let revoked = self.approvals.revoke(user, chat);
         self.config

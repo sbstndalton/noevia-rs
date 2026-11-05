@@ -35,6 +35,7 @@ struct Node {
     entered: tokio::sync::Notify,
     release: tokio::sync::Notify,
     calls: std::sync::atomic::AtomicUsize,
+    epoch: std::sync::atomic::AtomicU64,
 }
 async fn node() -> (SocketAddr, Arc<Node>) {
     let state = Arc::new(Node::default());
@@ -61,6 +62,10 @@ async fn node() -> (SocketAddr, Arc<Node>) {
                     let status = if state.refuse.load(std::sync::atomic::Ordering::SeqCst) {
                         axum::http::StatusCode::SERVICE_UNAVAILABLE
                     } else {
+                        // The reviewed executor-side contract: bump synchronously before ack.
+                        state
+                            .epoch
+                            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                         axum::http::StatusCode::OK
                     };
                     (
@@ -753,4 +758,151 @@ async fn missing_epoch_acknowledgement_times_out_fail_closed() {
         .await;
     assert_eq!(status, 503);
     assert!(started.elapsed() < Duration::from_secs(4));
+}
+
+// Direct store mutation represents a changed live context discovered by the next check, without
+// an explicit HTTP revoke path that would already have notified the executor.
+fn change_live_context(f: &Front) {
+    server_projects::chat_move::move_chat(
+        &f.data,
+        &f.user,
+        "qa-one",
+        server_projects::chat_move::Holder::Project("qa-p".into()),
+        None,
+        START,
+    )
+    .unwrap();
+}
+async fn context_check_payload(f: &Front, op: &str, b: &Value) -> Value {
+    let mut body =
+        json!({"user":f.user,"chat":"qa-one","scope":"space:free","binding":b,"protocol":PROTOCOL});
+    if op == "redeem" {
+        let (status, grant) = f.op("approvals/granted", body.clone()).await;
+        assert_eq!(status, 200);
+        body["ticket"] = grant["ticket"].clone();
+        assert!(body["ticket"].is_string());
+    }
+    body
+}
+async fn check_context_invalidation_with_paused_executor(op: &str) {
+    use std::sync::atomic::Ordering::SeqCst;
+    let f = front().await;
+    let (b, ticket_a) = f.ticket("ap-context", "qa-one").await;
+    let payload = context_check_payload(&f, op, &b).await;
+    assert!(f.redeem("qa-one", &b, &ticket_a).await);
+    let captured = f.node.epoch.load(SeqCst);
+    // Ticket A is already redeemed and parked inside credential setup. Only the final outbound
+    // epoch check remains; the earlier registry redeem is not repeated by this executor.
+    let credentials = Arc::new(tokio::sync::Semaphore::new(0));
+    let writes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let parked = Arc::new(tokio::sync::Notify::new());
+    let running = {
+        let parked = Arc::clone(&parked);
+        let (credentials, node, writes) = (
+            Arc::clone(&credentials),
+            Arc::clone(&f.node),
+            Arc::clone(&writes),
+        );
+        tokio::spawn(async move {
+            parked.notify_one();
+            let _credential = credentials.acquire().await.unwrap();
+            if node.epoch.load(SeqCst) == captured {
+                writes.fetch_add(1, SeqCst); // synthetic transport's outbound write call
+            }
+        })
+    };
+    parked.notified().await;
+    change_live_context(&f);
+    let (status, answer) = f.op(&format!("approvals/{op}"), payload).await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        answer[if op == "granted" {
+            "granted"
+        } else {
+            "redeemed"
+        }],
+        json!(false)
+    );
+    credentials.add_permits(1);
+    running.await.unwrap();
+    assert_eq!(
+        writes.load(SeqCst),
+        0,
+        "context-invalidating success must fence ticket A's outbound write"
+    );
+    assert_eq!(
+        f.node.calls.load(SeqCst),
+        1,
+        "context invalidation requires the private acknowledgement"
+    );
+}
+#[tokio::test]
+async fn context_invalidating_grant_check_fences_an_executor_paused_in_credentials() {
+    check_context_invalidation_with_paused_executor("granted").await;
+}
+#[tokio::test]
+async fn context_invalidating_redeem_fences_an_executor_paused_in_credentials() {
+    check_context_invalidation_with_paused_executor("redeem").await;
+}
+#[tokio::test]
+async fn context_invalidation_cannot_complete_before_the_epoch_acknowledgement() {
+    use std::sync::atomic::Ordering::SeqCst;
+    let f = front().await;
+    let (b, _) = f.ticket("ap-context-wait", "qa-one").await;
+    let payload = context_check_payload(&f, "granted", &b).await;
+    change_live_context(&f);
+    f.node.block.store(true, SeqCst);
+    let checking = f.op("approvals/granted", payload);
+    tokio::pin!(checking);
+    tokio::select! {
+        answer = &mut checking => panic!("context invalidation completed without Node acknowledgement: {answer:?}"),
+        () = f.node.entered.notified() => {}
+    }
+    assert_eq!(f.node.epoch.load(SeqCst), 0);
+    f.node.release.notify_one();
+    assert_eq!(checking.await, (200, json!({"granted":false})));
+    assert_eq!(f.node.epoch.load(SeqCst), 1);
+}
+#[tokio::test]
+async fn failed_context_ack_remains_pending_after_the_grant_and_ticket_are_gone() {
+    use std::sync::atomic::Ordering::SeqCst;
+    for op in ["granted", "redeem"] {
+        let f = front().await;
+        let (b, _) = f.ticket("ap-context-retry", "qa-one").await;
+        let payload = context_check_payload(&f, op, &b).await;
+        change_live_context(&f);
+        f.node.refuse.store(true, SeqCst);
+        for _ in 0..2 {
+            assert_eq!(
+                f.op(&format!("approvals/{op}"), payload.clone()).await.0,
+                503
+            );
+        }
+        f.node.refuse.store(false, SeqCst);
+        assert_eq!(
+            f.op(&format!("approvals/{op}"), payload.clone()).await.0,
+            200
+        );
+        assert_eq!(f.node.calls.load(SeqCst), 3);
+        assert_eq!(f.op(&format!("approvals/{op}"), payload).await.0, 200);
+        assert_eq!(
+            f.node.calls.load(SeqCst),
+            3,
+            "confirmed invalidation is retired"
+        );
+    }
+}
+#[tokio::test]
+async fn context_invalidation_with_an_unreachable_executor_never_reports_success() {
+    for op in ["granted", "redeem"] {
+        let f = front_with_node(false).await;
+        let (b, _) = f.ticket("ap-context-down", "qa-one").await;
+        let payload = context_check_payload(&f, op, &b).await;
+        change_live_context(&f);
+        assert_eq!(
+            f.op(&format!("approvals/{op}"), payload.clone()).await.0,
+            503
+        );
+        assert_eq!(f.op(&format!("approvals/{op}"), payload).await.0, 503);
+    }
 }

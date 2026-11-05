@@ -980,9 +980,11 @@ async fn approvals_op(
             }
             let scope = scope.unwrap_or_default();
             // The live grant context is a store read under the chat's lock: the blocking pool.
+            let registry = Arc::clone(&app.approvals);
+            let (check_user, check_chat) = (user.clone(), chat.clone());
             let answer = tokio::task::spawn_blocking(move || {
-                let approvals = &app.approvals;
-                match ticket {
+                let approvals = registry;
+                let body = match ticket {
                     Some(t) if op == "redeem" => json!({
                         "redeemed": approvals.redeem(&user, &chat, &scope, binding.as_ref(), &t),
                         "protocol": crate::approval_registry::PROTOCOL,
@@ -992,11 +994,28 @@ async fn approvals_op(
                         Some(t) => json!({"granted": true, "ticket": t}),
                         None => json!({"granted": false}),
                     },
-                }
+                };
+                (body, approvals.pending_invalidation(&user, &chat))
             })
             .await;
             match answer {
-                Ok(body) => reply(StatusCode::OK, &body),
+                Ok((body, Ok(invalidated))) => {
+                    if app
+                        .confirm_approval_invalidation(&check_user, &check_chat, invalidated)
+                        .await
+                        .is_err()
+                    {
+                        return error(
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            "Approval revocation pending; retry",
+                        );
+                    }
+                    reply(StatusCode::OK, &body)
+                }
+                Ok((_, Err(_))) => error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Approval revocation pending; retry",
+                ),
                 Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error"),
             }
         }
