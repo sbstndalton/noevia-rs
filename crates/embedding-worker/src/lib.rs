@@ -1,6 +1,10 @@
-//! Native orchestration of Core's embedding-service refresh and background migration.
+//! Native embedding-service refresh, migration and durable source outbox execution.
 //! Server lifecycle is gated by paired ownership proof. Adapters enforce the
 //! storage fences documented by [`Host`].
+// Reuse the integration fixtures in the private executor's unit tests.
+#[cfg(test)]
+extern crate self as embedding_worker;
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     future::Future,
@@ -13,6 +17,7 @@ use std::{
 pub mod fill;
 pub mod http;
 pub mod media_policy;
+pub mod outbox;
 pub mod runtime;
 pub mod service;
 pub mod sqlite;

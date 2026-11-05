@@ -125,6 +125,10 @@ pub async fn server(reply: impl Fn(&str, &str) -> (u16, String) + Send + Sync + 
     Server { base, task }
 }
 pub fn default_reply(path: &str) -> (u16, String) {
+    if path == "/internal/embedding-worker-owner/source-changed" {
+        return (200,serde_json::json!({"protocol":"rust-embedding-worker-v1","start":START,"notified":true}).to_string());
+    }
+
     match path {
         "/internal/embedding-worker-owner" => (200, PROOF.into()),
         "/api/v1/embedding-service" => (200, "{\"managed\":true,\"enabled\":true}".into()),
