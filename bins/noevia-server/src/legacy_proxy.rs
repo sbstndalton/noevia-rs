@@ -278,32 +278,151 @@ impl LegacyProxy {
             over: Arc::clone(&over),
         };
         let upstream_req = Request::from_parts(parts, body);
+        match self.exchange(upstream_req).await {
+            Ok(res) => res,
+            Err(()) if over.load(Ordering::SeqCst) => too_large(),
+            Err(()) => unavailable(),
+        }
+    }
 
+    /// One request on a fresh loopback connection to Node: its response with the hop-by-hop headers
+    /// gone and a body that closes Node's socket when dropped, or `Err` when Node could not be
+    /// reached or failed before its headers.
+    async fn exchange<B>(&self, upstream_req: Request<B>) -> Result<Response<Body>, ()>
+    where
+        B: HttpBody<Data = Bytes, Error = BoxError> + Send + 'static,
+    {
         let Ok(stream) =
             tokio::net::TcpStream::connect((self.upstream.ip, self.upstream.port)).await
         else {
-            return unavailable();
+            return Err(());
         };
         let _ = stream.set_nodelay(true);
         let Ok((mut sender, conn)) =
             hyper::client::conn::http1::handshake(hyper_util::rt::TokioIo::new(stream)).await
         else {
-            return unavailable();
+            return Err(());
         };
         let guard = AbortOnDrop(tokio::spawn(conn).abort_handle());
-        match sender.send_request(upstream_req).await {
-            Ok(res) => {
-                let (mut parts, incoming) = res.into_parts();
-                strip_hop_by_hop(&mut parts.headers);
-                let body = UpstreamBody {
-                    inner: incoming,
-                    _conn: guard,
-                };
-                Response::from_parts(parts, Body::new(body))
-            }
-            Err(_) if over.load(Ordering::SeqCst) => too_large(),
-            Err(_) => unavailable(),
+        let res = sender.send_request(upstream_req).await.map_err(|_| ())?;
+        let (mut parts, incoming) = res.into_parts();
+        strip_hop_by_hop(&mut parts.headers);
+        let body = UpstreamBody {
+            inner: incoming,
+            _conn: guard,
+        };
+        Ok(Response::from_parts(parts, Body::new(body)))
+    }
+
+    /// Chat port S5 (chat_turn.rs): the client's request, unread, to one of Node's loopback paths
+    /// for the front's own calls, on the same exchange as [`Self::forward`] (one connection, frames
+    /// as they come, Node's socket closed when the client's response is dropped).
+    ///
+    /// - The request goes to `target` (no query), with `extra` headers (the per-start secret, the
+    ///   user) replacing any copy the client sent.
+    /// - The client's address is worked out as [`Self::forward`] does, and carried under
+    ///   [`RELAY_CLIENT_HEADER`] / [`RELAY_FORWARDED_HEADER`]: Node's trusted-front check refuses a
+    ///   call carrying `x-noevia-client-ip` or `x-forwarded-for` (those mark a proxied request),
+    ///   and puts them back under their own names once the call is trusted. Whatever the client
+    ///   sent under any of these four names is dropped.
+    /// - At most `limit` body bytes reach Node: the rest is cut and the body ends there (a
+    ///   declared length over the limit is dropped, so the cut body is sent chunked). Node's own
+    ///   cap below the limit then answers as it always has.
+    ///
+    /// `None`: Node could not be reached or failed before its headers. The in-process native
+    /// executor mode has no Node: callers forward instead.
+    pub async fn relay(
+        &self,
+        peer: SocketAddr,
+        req: Request<Body>,
+        target: &str,
+        extra: &[(&'static str, HeaderValue)],
+        limit: u64,
+    ) -> Option<Response<Body>> {
+        let (mut parts, body) = req.into_parts();
+        parts.uri = target.parse().ok()?;
+        parts.version = axum::http::Version::HTTP_11;
+        strip_hop_by_hop(&mut parts.headers);
+        let xff = forwarded_for(self.trust_proxy, peer.ip(), &parts.headers);
+        let client = client_address(self.trust_proxy, peer.ip(), &parts.headers);
+        for name in [
+            "x-forwarded-for",
+            CLIENT_ADDRESS_HEADER,
+            RELAY_CLIENT_HEADER,
+            RELAY_FORWARDED_HEADER,
+        ] {
+            parts.headers.remove(name);
         }
+        if let Some(v) = xff.and_then(|a| HeaderValue::from_str(&a).ok()) {
+            parts.headers.insert(RELAY_FORWARDED_HEADER, v);
+        }
+        if let Ok(v) = HeaderValue::from_str(&client) {
+            parts.headers.insert(RELAY_CLIENT_HEADER, v);
+        }
+        for (name, value) in extra {
+            parts.headers.insert(*name, value.clone());
+        }
+        let declared = parts
+            .headers
+            .get(header::CONTENT_LENGTH)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.trim().parse::<u64>().ok());
+        if declared.is_none_or(|n| n > limit) {
+            parts.headers.remove(header::CONTENT_LENGTH);
+        }
+        let body = TruncatedBody {
+            inner: body,
+            left: limit,
+        };
+        self.exchange(Request::from_parts(parts, body)).await.ok()
+    }
+}
+
+/// Node's name, on a relayed call, for the client address the proxy would send as
+/// [`CLIENT_ADDRESS_HEADER`] (core rust-chat-turn.cjs `RELAY_CLIENT_HEADER`).
+pub const RELAY_CLIENT_HEADER: &str = "x-noevia-relay-client-ip";
+/// And for the `X-Forwarded-For` it would send (core `RELAY_FORWARDED_HEADER`).
+pub const RELAY_FORWARDED_HEADER: &str = "x-noevia-relay-forwarded-for";
+
+/// The client's request body on its way to Node, ended (not failed) after `left` more bytes.
+struct TruncatedBody {
+    inner: Body,
+    left: u64,
+}
+
+impl HttpBody for TruncatedBody {
+    type Data = Bytes;
+    type Error = BoxError;
+
+    fn poll_frame(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Bytes>, BoxError>>> {
+        if self.left == 0 {
+            return Poll::Ready(None);
+        }
+        match Pin::new(&mut self.inner).poll_frame(cx) {
+            Poll::Ready(Some(Ok(frame))) => match frame.into_data() {
+                Ok(mut data) => {
+                    let len = data.len() as u64;
+                    if len > self.left {
+                        data.truncate(usize::try_from(self.left).unwrap_or(usize::MAX));
+                    }
+                    self.left = self.left.saturating_sub(len);
+                    Poll::Ready(Some(Ok(Frame::data(data))))
+                }
+                // Trailers are not part of what Node reads; a cut body never sends them.
+                Err(frame) if self.left > 0 => Poll::Ready(Some(Ok(frame))),
+                Err(_) => Poll::Ready(None),
+            },
+            Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(Box::new(e)))),
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.left == 0 || self.inner.is_end_stream()
     }
 }
 
