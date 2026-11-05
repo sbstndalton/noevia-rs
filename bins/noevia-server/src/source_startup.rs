@@ -8,7 +8,18 @@ pub async fn run(app: &Arc<App>) {
     };
     let a = Arc::clone(app);
     let result = tokio::task::spawn_blocking(move || -> Result<(), String> {
-        let writer = a.writes.writer().map_err(|_| "account store unavailable")?;
+        // Core's schema bootstrap precedes its old sweep. Wait for that same
+        // account authority before opening the project store to any readers.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        let writer = loop {
+            if let Ok(writer) = a.writes.writer() {
+                break writer;
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err("account store unavailable".into());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        };
         let users: Vec<String> = writer
             .read(|r| r.rows("SELECT id FROM users", [], |row| row.get::<_, String>(0)))
             .map_err(|_| "account list unavailable")?;

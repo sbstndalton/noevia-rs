@@ -481,10 +481,28 @@ fn basic(headers: &HeaderMap) -> Option<(String, String)> {
     {
         return None;
     }
-    let decoded = base64::engine::general_purpose::STANDARD
-        .decode(encoded)
-        .or_else(|_| base64::engine::general_purpose::STANDARD_NO_PAD.decode(encoded))
-        .ok()?;
+    let payload = encoded.trim_end_matches('=');
+    if encoded.len() - payload.len() > 2
+        || payload.is_empty()
+        || !payload
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'+' || b == b'/')
+    {
+        return None;
+    }
+    // Buffer.from(base64) ignores an incomplete final sextet and unused bits.
+    let payload = if payload.len() % 4 == 1 {
+        payload.get(..payload.len().saturating_sub(1))?
+    } else {
+        payload
+    };
+    let decoder = base64::engine::GeneralPurpose::new(
+        &base64::alphabet::STANDARD,
+        base64::engine::GeneralPurposeConfig::new()
+            .with_decode_padding_mode(base64::engine::DecodePaddingMode::RequireNone)
+            .with_decode_allow_trailing_bits(true),
+    );
+    let decoded = decoder.decode(payload).ok()?;
     let text = String::from_utf8_lossy(&decoded);
     let (user, password) = text.split_once(':')?;
     if user.is_empty() {
@@ -1400,5 +1418,14 @@ mod tests {
         }
         assert!(rate.charge(peer, start + Duration::from_secs(59)));
         assert!(!rate.charge(peer, start + Duration::from_secs(60)));
+    }
+    #[test]
+    fn basic_retains_the_original_lenient_base64_tail_behavior() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Basic YWxpY2U6c3ludGhldGljA=="),
+        );
+        assert_eq!(basic(&headers), Some(("alice".into(), "synthetic".into())));
     }
 }
