@@ -1859,12 +1859,3 @@ Each stage compares the exact job/run/config snapshot; preparation uses the exis
 only within its own call and returns its token after releasing it. Rust owns confirmation,
 resumability/restoration checks, protected-queue filtering, identity decisions, phase/step reset
 instructions and public projection. No cross-request reservation or replacement-job retry is used.
-
-G1 replay state comparison excludes `model-facts.json`, the native effective-budget
-snapshot (boot identity, generation and heartbeat), and `embedding-worker-status.json`
-and `embedding-worker.lock`, the native worker heartbeat and lifetime flock. These
-are process coordination files absent from the pinned Node recording oracle, not
-additional user state. The embedding exclusions match the main-branch integration
-in c6472b07. Budget persistence remains compared in `cowork.db`; authority and
-missing-store behavior remain covered by `model_state_reads` and `identity` tests.
-The native move-state proof and comparison of all other files/tables stay required.

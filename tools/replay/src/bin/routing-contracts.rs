@@ -80,14 +80,6 @@ fn replay(core: &Path, corpus: &Path, out: &Path, name: &str, front: bool) -> Re
             "*mcp-discovery.json",
             "--state-ignore",
             "*snapshot-demand",
-            // Native worker liveness/ownership and effective-budget publication are runtime
-            // coordination state. The recording oracle predates these native owners.
-            "--state-ignore",
-            "*embedding-worker-status.json",
-            "--state-ignore",
-            "*embedding-worker.lock",
-            "--state-ignore",
-            "*model-facts.json",
         ])
         .arg("--seed")
         .arg(out.join("seed"))
