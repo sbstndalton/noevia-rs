@@ -12,9 +12,9 @@
 //! #339): committed is a success, still the base is a retryable 503, anything else a 409 that never
 //! overwrites it.
 //!
-//! The Rust front is the only process that writes models.ini for the routes it owns; Node's
-//! remaining writers (the preset editor, the folder sync, auto-tune) write through the model-loader
-//! too, whose compare-and-swap is the arbiter between them.
+//! The Rust front is the only process that writes models.ini for the routes it owns (the preset editor,
+//! [`preset_edit`](super::preset_edit)); Node's remaining writers (the folder sync, calibration,
+//! auto-tune) write through the model-loader too, whose compare-and-swap is the arbiter between them.
 
 use crate::model_sizing::{read_presets, Presets, Thrown};
 use reqwest::header::{HeaderName, HeaderValue};

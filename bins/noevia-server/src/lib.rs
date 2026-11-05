@@ -448,6 +448,7 @@ pub const FEATURES: &[&str] = &[
     "rust-autotune-clear",
     "rust-autotune-read",
     "rust-preset-read",
+    "rust-preset-editor-d2-v1",
     "rust-idle-unload-read",
     "rust-model-assignments",
     "rust-model-downloads-read",

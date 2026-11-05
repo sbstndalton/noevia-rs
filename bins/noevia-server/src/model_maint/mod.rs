@@ -25,6 +25,7 @@ pub mod evidence_recheck;
 pub mod gate;
 pub mod ini;
 pub mod node_lease;
+pub mod preset_edit;
 pub mod reload;
 pub mod router;
 

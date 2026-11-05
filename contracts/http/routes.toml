@@ -645,7 +645,7 @@ owner = "node"
 [[route]]
 path = "/api/models/preset"
 owner = "rust"
-methods = ["GET"]
+methods = ["GET", "PUT"]
 
 [[route]]
 path = "/api/models/preset/suggest"
