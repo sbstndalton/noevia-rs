@@ -385,6 +385,9 @@ impl<B: Backend> DavService<B> {
                 );
             }
         }
+        if req.uri().scheme().is_some() || req.uri().authority().is_some() {
+            return reply(StatusCode::NOT_FOUND, "Unknown sharing path", false);
+        }
         let raw = req.uri().path_and_query().map(|v| v.as_str()).unwrap_or("");
         let (username, path) = match parse_path(raw) {
             Ok(v) => v,

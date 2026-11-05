@@ -1,5 +1,20 @@
 [
   {
+    "name": "absolute target",
+    "method": "GET",
+    "path": "http://sharing.test:8031/dav/alice/entry.md",
+    "body": "",
+    "headers": {},
+    "expected": {
+      "status": 404,
+      "body": "Unknown sharing path",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
     "name": "empty preconditions",
     "method": "PUT",
     "path": "/dav/alice/new.md",

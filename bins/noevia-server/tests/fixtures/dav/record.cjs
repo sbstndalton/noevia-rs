@@ -6,6 +6,7 @@ const file=path.join(process.env.NOEVIA_DAV_ORACLE_CORE,'tests/oracles/dav/recor
 let source=fs.readFileSync(file,'utf8');
 if(!source.includes('const cases=['))throw Error('Update the fixture recorder for this oracle format');
 source=source.replace('const cases=[',`const cases=[
+ ['absolute target','GET','http://sharing.test:8031/dav/alice/entry.md'],
  ['empty preconditions','PUT','/dav/alice/new.md','New',{'if-match':'','if-none-match':''}],
  ['empty encoding','PUT','/dav/alice/new.md','New',{'content-encoding':''}],
  ['empty mkdir conditions','MKCOL','/dav/alice/folder','',{'if':'','if-match':'','if-none-match':'','content-encoding':''}],`);
