@@ -32,8 +32,11 @@ use std::cmp::Ordering;
 
 pub mod read;
 
-/// The largest request [`call`] accepts (the op byte and the JSON).
-pub const MAX_INPUT_BYTES: usize = 4 * 1024 * 1024 + 1;
+/// The largest request [`call`] accepts (the op byte and the JSON): a models.ini inside the editor
+/// limit ([`read::MAX_TEXT_BYTES`], 1 MiB) written as JSON is at most six bytes a byte (`\u0000`),
+/// 6 MiB, plus the model name and the envelope. The limit itself is the parser's alone; this bound
+/// must never refuse a file the parser accepts.
+pub const MAX_INPUT_BYTES: usize = 7 * 1024 * 1024 + 1;
 /// Work units a request may use per byte of its size (plus [`WORK_FLOOR`]).
 pub const WORK_PER_BYTE: u64 = 16;
 /// Work units every request may use, whatever its size.
@@ -42,6 +45,9 @@ pub const WORK_FLOOR: u64 = 1 << 16;
 pub const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
 
 const JSON_CAP: usize = 4;
+
+// The request bound covers the editor limit at its widest escaping, with room for a model name.
+const _: () = assert!(MAX_INPUT_BYTES > 6 * read::MAX_TEXT_BYTES + 512 * 1024);
 
 /// Why the port gives no answer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -866,6 +872,30 @@ mod tests {
         let mut wrong = vec![6u8];
         wrong.extend(br#"[1,"m"]"#);
         assert_eq!(call(&wrong).0, 1);
+    }
+
+    #[test]
+    fn the_worst_case_escaped_file_inside_the_limit_is_read() {
+        // Every byte a NUL, which JSON writes as six bytes: 6 MiB on the wire for 1 MiB of file.
+        let nuls = "\\u0000".repeat(read::MAX_TEXT_BYTES);
+        let mut wire = vec![5u8];
+        wire.extend(format!("[\"{nuls}\"]").as_bytes());
+        assert!(wire.len() > 6 * read::MAX_TEXT_BYTES);
+        let (status, out) = call(&wire);
+        let out = String::from_utf8(out).unwrap();
+        assert_eq!(status, 0, "{}", &out[..out.len().min(80)]);
+        assert!(
+            out.starts_with(r#"{"revision":""#) && out.contains(r#""sections":[]"#),
+            "{out}"
+        );
+        // One more byte is the parser's 413, not a transport refusal.
+        let mut over = vec![5u8];
+        over.extend(format!("[\"{nuls}\\u0000\"]").as_bytes());
+        assert_eq!(call(&over), (0, br#"{"fault":"oversized"}"#.to_vec()));
+        // With a model name beside it (op 6).
+        let mut facts = vec![6u8];
+        facts.extend(format!("[\"{nuls}\",\"m\"]").as_bytes());
+        assert_eq!(call(&facts).0, 0);
     }
 
     #[test]

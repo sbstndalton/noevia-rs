@@ -207,6 +207,17 @@ async fn owner_faults_keep_public_status_and_hide_private_data() {
         200,
         "exactly at the limit"
     );
+    // The limit counts decoded bytes, whatever they would cost escaped (a NUL is six bytes of JSON).
+    let nuls = "\u{0}".repeat(1024 * 1024);
+    std::fs::write(&file, &nuls).unwrap();
+    let (status, body) = get(f.addr, PATH, ADMIN).await;
+    assert_eq!((status, body["revision"].clone()), (200, json!(hex(&nuls))));
+    std::fs::write(&file, format!("{nuls}\u{0}")).unwrap();
+    assert_eq!(
+        get(f.addr, PATH, ADMIN).await.0,
+        413,
+        "one byte past the limit"
+    );
     std::fs::remove_file(&file).unwrap();
     std::os::unix::fs::symlink(d.path().join("absent.ini"), &file).unwrap();
     assert_eq!(
