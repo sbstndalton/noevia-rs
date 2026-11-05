@@ -1834,8 +1834,10 @@ impl Worker {
             tokio::time::sleep(wait).await;
             wait = (wait * 2).min(SAVE_RETRY_MAX);
         }
+        let mut hold = hold;
+        hold.release_node_lease().await;
         self.with(|i| {
-            // Drop synchronously clears local admission and schedules the remote DELETE. Publish
+            // Drop synchronously clears local admission and schedules the remote gate DELETE. Publish
             // under the same lock: status/start cannot observe a finished job with a local hold.
             drop(hold);
             i.state = final_state;
@@ -2680,8 +2682,9 @@ mod tests {
         use http_body_util::BodyExt;
         let seen = Arc::new(Mutex::new(Vec::new()));
         let log = Arc::clone(&seen);
+        let held = Arc::new(AtomicBool::new(false));
         let app = axum::Router::new().fallback(move |req: Request<Body>| {
-            let (log, ended) = (Arc::clone(&log), Arc::clone(&ended));
+            let (log, ended, held) = (Arc::clone(&log), Arc::clone(&ended), Arc::clone(&held));
             async move {
                 let (parts, body) = req.into_parts();
                 let body = body.collect().await.map(|b| b.to_bytes()).unwrap_or_default();
@@ -2691,6 +2694,9 @@ mod tests {
                     .ok()
                     .and_then(|v| v["maxMs"].as_u64());
                 let (code, out) = match (parts.method.as_str(), parts.uri.path()) {
+                    ("POST", "/internal/model-maintenance/lease") if held.swap(true, Ordering::AcqRel) => (
+                        409, json!({"error": "Busy"}),
+                    ),
                     ("POST", "/internal/model-maintenance/lease") => (
                         201,
                         json!({"lease": "fedcba9876543210fedcba9876543210", "ttlMs": 180000, "renewMs": 20,
@@ -2698,12 +2704,17 @@ mod tests {
                     ),
                     ("POST", p) if p.ends_with("/renew") => {
                         if ended.load(Ordering::Acquire) {
+                            held.store(false, Ordering::Release);
                             (404, json!({"error": "Not found"}))
                         } else {
                             (200, json!({}))
                         }
                     }
-                    ("DELETE", _) => (204, json!({})),
+                    ("DELETE", _) => {
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        held.store(false, Ordering::Release);
+                        (204, json!({}))
+                    },
                     ("POST", "/internal/model-maintenance/load-refusal") => (200, json!({"refusal": null})),
                     _ => (404, json!({"error": "Not found"})),
                 };
@@ -2773,6 +2784,26 @@ mod tests {
         assert!(log
             .iter()
             .any(|l| l.starts_with("DELETE /internal/model-maintenance/lease/")));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_finished_job_restarts_without_busy_while_core_lease_release_is_delayed() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (port, _) = synthetic_engine(ini, false).await;
+        let (lease, _) = lease_stub(None, Arc::new(AtomicBool::new(false))).await;
+        let w = worker_with(d.path(), port, Some(lease));
+        w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        let job = settled(&w).await;
+        let saved = w.file.load();
+        assert_eq!(saved.job().get("finishedAt"), job.get("finishedAt"));
+        assert!(matches!(saved.job().get("originalText"), JValue::Undefined));
+        // No event wait or private local-held observation: public completion must suffice.
+        let next = w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        assert_ne!(next.get("id"), job.get("id"));
+        let _ = w.cancel();
+        settled(&w).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

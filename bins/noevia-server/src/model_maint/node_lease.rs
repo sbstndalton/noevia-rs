@@ -206,10 +206,16 @@ impl NodeLeases {
         }
     }
 
+    /// Core's idempotent DELETE acknowledges that its local admission is clear.
+    pub(super) async fn release_confirmed(&self, id: &str) -> bool {
+        let Some(req) = self.request(reqwest::Method::DELETE, &format!("{PATH}/{id}")) else {
+            return false;
+        };
+        req.send().await.is_ok_and(|r| r.status().as_u16() == 204)
+    }
+
     /// Best effort: an unreleased lease ends by itself.
     pub async fn release(&self, id: &str) {
-        if let Some(req) = self.request(reqwest::Method::DELETE, &format!("{PATH}/{id}")) {
-            let _ = req.send().await;
-        }
+        let _ = self.release_confirmed(id).await;
     }
 }
