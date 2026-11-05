@@ -1,166 +1,398 @@
 {
-  "gate": "BLOCKED",
-  "reason": "Native Chromium launch: no usable sandbox on test host",
+  "gate": "FAIL",
   "oracleCommit": "99ebd9c951b16cb6beeeae8bd79722cf4f3368bb",
-  "nativeChecks": {
-    "clippy": "PASS",
-    "unit": "1 PASS"
+  "originalCases": {
+    "pass": 31,
+    "total": 31
   },
-  "actions": [
+  "expandedCases": {
+    "pass": 45,
+    "total": 46
+  },
+  "launchFlagsPass": true,
+  "isolationPass": true,
+  "approvalCancellationPass": true,
+  "nativeCloseConfirmed": true,
+  "secondCloseConfirmed": true,
+  "deniedRequestsReachedFixture": {
+    "popup": 1,
+    "resource": 0,
+    "socket": 1
+  },
+  "networkEnforcementPass": false,
+  "deniedPopupOutcome": {
+    "origin": "http://fixture.test:33955",
+    "reason": "Navigation left this task's allowed list.",
+    "status": "blocked"
+  },
+  "cases": [
     {
       "name": "navigate",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 91,
+      "oracleElapsedMs": 25
     },
     {
       "name": "extract",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 1,
+      "oracleElapsedMs": 35
     },
     {
       "name": "truncate",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 3,
+      "oracleElapsedMs": 15
     },
     {
       "name": "hover",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 7,
+      "oracleElapsedMs": 48
     },
     {
       "name": "click",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 10,
+      "oracleElapsedMs": 28
     },
     {
       "name": "click-dom",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 6,
+      "oracleElapsedMs": 8
     },
     {
       "name": "type",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 11,
+      "oracleElapsedMs": 11
     },
     {
       "name": "select",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 10,
+      "oracleElapsedMs": 12
     },
     {
       "name": "press",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 14,
+      "oracleElapsedMs": 13
     },
     {
       "name": "upload",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 227,
+      "oracleElapsedMs": 251
     },
     {
       "name": "screenshot",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 16,
+      "oracleElapsedMs": 26
     },
     {
       "name": "scroll",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 7,
+      "oracleElapsedMs": 12
     },
     {
       "name": "wait",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 27,
+      "oracleElapsedMs": 27
     },
     {
       "name": "delayed",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 9,
+      "oracleElapsedMs": 37
     },
     {
       "name": "missing",
+      "differential": "PASS",
+      "nativeStatus": "blocked",
       "oracleStatus": "blocked",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 427,
+      "oracleElapsedMs": 401
     },
     {
       "name": "non-get",
+      "differential": "PASS",
+      "nativeStatus": "blocked",
       "oracleStatus": "blocked",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 0,
+      "oracleElapsedMs": 0
     },
     {
       "name": "denied-domain",
+      "differential": "PASS",
+      "nativeStatus": "blocked",
       "oracleStatus": "blocked",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 1,
+      "oracleElapsedMs": 0
     },
     {
       "name": "secret",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 10,
+      "oracleElapsedMs": 12
     },
     {
       "name": "secret-screenshot",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 1,
+      "oracleElapsedMs": 0
     },
     {
       "name": "secret-mask",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 4,
+      "oracleElapsedMs": 4
     },
     {
       "name": "submit",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 232,
+      "oracleElapsedMs": 212
     },
     {
       "name": "redirect",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 13,
+      "oracleElapsedMs": 12
     },
     {
       "name": "download",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 24,
+      "oracleElapsedMs": 53
     },
     {
       "name": "download-wait",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 203,
+      "oracleElapsedMs": 200
     },
     {
       "name": "arm-approval-mutation",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 17,
+      "oracleElapsedMs": 33
     },
     {
       "name": "approval-mutation",
+      "differential": "PASS",
+      "nativeStatus": "blocked",
       "oracleStatus": "blocked",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 206,
+      "oracleElapsedMs": 205
     },
     {
       "name": "popup",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 41,
+      "oracleElapsedMs": 23
     },
     {
       "name": "popup-wait",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 53,
+      "oracleElapsedMs": 51
     },
     {
       "name": "popup-read",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 3,
+      "oracleElapsedMs": 12
     },
     {
       "name": "popup-close",
+      "differential": "PASS",
+      "nativeStatus": "blocked",
       "oracleStatus": "blocked",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 409,
+      "oracleElapsedMs": 127
     },
     {
       "name": "popup-fallback",
+      "differential": "PASS",
+      "nativeStatus": "done",
       "oracleStatus": "done",
-      "differential": "BLOCKED"
+      "nativeElapsedMs": 8,
+      "oracleElapsedMs": 5
+    },
+    {
+      "name": "network",
+      "differential": "PASS",
+      "nativeStatus": "done",
+      "oracleStatus": "done",
+      "nativeElapsedMs": 6,
+      "oracleElapsedMs": 34
+    },
+    {
+      "name": "network-wait",
+      "differential": "PASS",
+      "nativeStatus": "done",
+      "oracleStatus": "done",
+      "nativeElapsedMs": 605,
+      "oracleElapsedMs": 601
+    },
+    {
+      "name": "network-outcome",
+      "differential": "FAIL",
+      "nativeStatus": "done",
+      "oracleStatus": "done",
+      "nativeElapsedMs": 7,
+      "oracleElapsedMs": 6
+    },
+    {
+      "name": "service-worker",
+      "differential": "PASS",
+      "nativeStatus": "done",
+      "oracleStatus": "done",
+      "nativeElapsedMs": 8,
+      "oracleElapsedMs": 29
+    },
+    {
+      "name": "service-worker-wait",
+      "differential": "PASS",
+      "nativeStatus": "done",
+      "oracleStatus": "done",
+      "nativeElapsedMs": 105,
+      "oracleElapsedMs": 100
+    },
+    {
+      "name": "service-worker-outcome",
+      "differential": "PASS",
+      "nativeStatus": "done",
+      "oracleStatus": "done",
+      "nativeElapsedMs": 5,
+      "oracleElapsedMs": 6
+    },
+    {
+      "name": "actionability-arm",
+      "differential": "PASS",
+      "nativeStatus": "done",
+      "oracleStatus": "done",
+      "nativeElapsedMs": 3,
+      "oracleElapsedMs": 14
+    },
+    {
+      "name": "actionability-hover-disabled",
+      "differential": "PASS",
+      "nativeStatus": "done",
+      "oracleStatus": "done",
+      "nativeElapsedMs": 19,
+      "oracleElapsedMs": 57
+    },
+    {
+      "name": "actionability-click",
+      "differential": "PASS",
+      "nativeStatus": "done",
+      "oracleStatus": "done",
+      "nativeElapsedMs": 65,
+      "oracleElapsedMs": 25
+    },
+    {
+      "name": "actionability-dom",
+      "differential": "PASS",
+      "nativeStatus": "done",
+      "oracleStatus": "done",
+      "nativeElapsedMs": 3,
+      "oracleElapsedMs": 5
+    },
+    {
+      "name": "scroll-reset",
+      "differential": "PASS",
+      "nativeStatus": "done",
+      "oracleStatus": "done",
+      "nativeElapsedMs": 9,
+      "oracleElapsedMs": 33
+    },
+    {
+      "name": "scroll-wheel",
+      "differential": "PASS",
+      "nativeStatus": "done",
+      "oracleStatus": "done",
+      "nativeElapsedMs": 13,
+      "oracleElapsedMs": 18
+    },
+    {
+      "name": "scroll-settle",
+      "differential": "PASS",
+      "nativeStatus": "done",
+      "oracleStatus": "done",
+      "nativeElapsedMs": 103,
+      "oracleElapsedMs": 100
+    },
+    {
+      "name": "scroll-position",
+      "differential": "PASS",
+      "nativeStatus": "done",
+      "oracleStatus": "done",
+      "nativeElapsedMs": 8,
+      "oracleElapsedMs": 5
+    },
+    {
+      "name": "wait-cap",
+      "differential": "PASS",
+      "nativeStatus": "done",
+      "oracleStatus": "done",
+      "nativeElapsedMs": 5014,
+      "oracleElapsedMs": 5001
     }
   ]
 }

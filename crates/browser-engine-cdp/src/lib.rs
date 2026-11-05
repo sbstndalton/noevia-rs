@@ -11,7 +11,16 @@ use chromiumoxide_types::{Command, Method, MethodId};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{collections::BTreeMap, future::Future, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeMap,
+    future::Future,
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 use tokio::{
     task::JoinHandle,
     time::{timeout, Instant},
@@ -116,6 +125,16 @@ fn navigation(url: &str, domains: &[String]) -> bool {
         .and_then(|v| v.get("ok").and_then(Value::as_bool))
         == Some(true)
 }
+fn validate_proxy(server: &str) -> Result<()> {
+    let url = url::Url::parse(server).context("Invalid proxy server")?;
+    if !matches!(url.scheme(), "http" | "https" | "socks5") || url.host_str().is_none() {
+        bail!("Unsupported proxy server")
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        bail!("Authenticated proxy grants are not yet supported by this adapter")
+    }
+    Ok(())
+}
 fn origin(url: &str) -> String {
     url::Url::parse(url)
         .ok()
@@ -148,21 +167,37 @@ fn mask(text: &str, secrets: &BTreeMap<String, Secret>) -> String {
     }
     out
 }
+struct ActionLease {
+    interrupted: Arc<AtomicBool>,
+    complete: bool,
+}
+impl Drop for ActionLease {
+    fn drop(&mut self) {
+        if !self.complete {
+            self.interrupted.store(true, Ordering::SeqCst);
+        }
+    }
+}
 /// Profile paths must be fresh task-local directories, never shared with another session.
 pub struct CdpEngine {
     browser: Browser,
     page: Page,
     pump: JoinHandle<()>,
+    event_error: Arc<tokio::sync::Mutex<Option<String>>>,
     config: Launch,
     secret_used: bool,
     closed: bool,
+    interrupted: Arc<AtomicBool>,
     downloads: Arc<tokio::sync::Mutex<Vec<Value>>>,
     download_task: JoinHandle<()>,
+    targets: Arc<tokio::sync::Mutex<Vec<String>>>,
+    page_watch: JoinHandle<()>,
 }
 impl Drop for CdpEngine {
     fn drop(&mut self) {
         self.pump.abort();
         self.download_task.abort();
+        self.page_watch.abort();
     }
 }
 impl CdpEngine {
@@ -172,6 +207,9 @@ impl CdpEngine {
         }
         if config.proxy.is_none() && !config.synthetic_direct {
             bail!("A browser task needs an egress proxy grant for its domains.")
+        }
+        if let Some(proxy) = &config.proxy {
+            validate_proxy(proxy)?;
         }
         // Exclusive profile creation prevents accidental session reuse.
         std::fs::create_dir(&config.profile_dir).context("Profile must be fresh")?;
@@ -186,13 +224,26 @@ impl CdpEngine {
             )?;
         }
         let mut builder = BrowserConfig::builder()
+            .disable_default_args()
+            .args(
+                serde_json::from_str::<Vec<String>>(include_str!("launch-flags.json"))?
+                    .into_iter()
+                    .map(|s| s.trim_start_matches("--").to_owned()),
+            )
             .chrome_executable(&config.executable)
             .user_data_dir(&config.profile_dir)
             .launch_timeout(LIMIT)
-            .request_timeout(config.timeout)
-            .args(config.args.clone());
+            .request_timeout(LIMIT)
+            .args(
+                config
+                    .args
+                    .iter()
+                    .map(|s| s.trim_start_matches("--").to_owned()),
+            );
         if let Some(proxy) = &config.proxy {
-            builder = builder.arg(format!("--proxy-server={proxy}"));
+            builder = builder
+                .arg(format!("proxy-server={proxy}"))
+                .arg("proxy-bypass-list=<-loopback>");
         }
         builder = builder.respect_https_errors().viewport(None);
         let launched = bounded(LIMIT, async {
@@ -210,9 +261,18 @@ impl CdpEngine {
                 return Err(error);
             }
         };
+        let event_error = Arc::new(tokio::sync::Mutex::new(None));
+        let errors = event_error.clone();
+        let pump_secrets = config.secrets.clone();
         let pump = tokio::spawn(async move {
             while let Some(event) = handler.next().await {
-                if event.is_err() {
+                if let Err(error) = event {
+                    *errors.lock().await = Some(
+                        mask(&error.to_string(), &pump_secrets)
+                            .chars()
+                            .take(300)
+                            .collect(),
+                    );
                     break;
                 }
             }
@@ -223,6 +283,30 @@ impl CdpEngine {
         };
         let mut begins = browser.event_listener::<EventDownloadWillBegin>().await?;
         let mut progress = browser.event_listener::<EventDownloadProgress>().await?;
+        use chromiumoxide::cdp::browser_protocol::target::{
+            EventTargetCreated, EventTargetDestroyed,
+        };
+        let mut created = browser.event_listener::<EventTargetCreated>().await?;
+        let mut destroyed = browser.event_listener::<EventTargetDestroyed>().await?;
+        let targets = Arc::new(tokio::sync::Mutex::new(vec![page
+            .target_id()
+            .as_ref()
+            .to_owned()]));
+        let changes = targets.clone();
+        let page_watch = tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    event=created.next()=>{let Some(e)=event else {break};
+                        if let Ok(v)=serde_json::to_value(&*e) {if v.pointer("/targetInfo/type").and_then(Value::as_str)==Some("page") {
+                            if let Some(id)=v.pointer("/targetInfo/targetId").and_then(Value::as_str) {changes.lock().await.push(id.to_owned());}
+                        }}
+                    },
+                    event=destroyed.next()=>{let Some(e)=event else{break};
+                        if let Ok(v)=serde_json::to_value(&*e) {if let Some(id)=v.get("targetId").and_then(Value::as_str){changes.lock().await.retain(|t|t!=id);}}
+                    }
+                }
+            }
+        });
         let downloads = Arc::new(tokio::sync::Mutex::new(Vec::new()));
         let output = downloads.clone();
         let dir = config.downloads_dir.clone();
@@ -232,6 +316,7 @@ impl CdpEngine {
             let mut seq = 0u64;
             loop {
                 tokio::select! {
+                    biased;
                     event=begins.next()=>{let Some(event)=event else{break};
                         if let Ok(v)=serde_json::to_value(&*event) {
                             seq+=1;let suggested=string(&v,"suggestedFilename");
@@ -262,11 +347,15 @@ impl CdpEngine {
             browser,
             page,
             pump,
+            event_error,
             config,
             secret_used: false,
             closed: false,
+            interrupted: Arc::new(AtomicBool::new(false)),
             downloads,
             download_task,
+            targets,
+            page_watch,
         };
         if let Err(e) = engine.prepare().await {
             engine.close().await;
@@ -283,7 +372,7 @@ impl CdpEngine {
         )
         .await?;
         // Registration is blocked too: bypass alone would allow persistent worker side effects.
-        let script="Object.defineProperty(navigator,'serviceWorker',{value:undefined,configurable:false});";
+        let script="if(navigator.serviceWorker) navigator.serviceWorker.register=async()=>{console.warn('Service worker registration blocked');};";
         command(
             &self.page,
             "Page.addScriptToEvaluateOnNewDocument",
@@ -303,7 +392,7 @@ impl CdpEngine {
                 }
             }
         }
-        patterns.push(json!({"urlPattern":"*","block":true}));
+        patterns.push(json!({"urlPattern":"*://*:*/*","block":true}));
         command(
             &self.page,
             "Network.setBlockedURLs",
@@ -313,7 +402,35 @@ impl CdpEngine {
         self.browser.execute(raw("Browser.setDownloadBehavior",json!({"behavior":"allowAndName","downloadPath":self.config.downloads_dir,"eventsEnabled":true}))).await?;
         Ok(())
     }
-    pub async fn inspect(&self, expression: &str) -> Result<Value> {
+    async fn refresh_page(&mut self) -> Result<()> {
+        let newest = self
+            .targets
+            .lock()
+            .await
+            .last()
+            .cloned()
+            .ok_or_else(|| anyhow!("No page is open in this session."))?;
+        if newest != self.page.target_id().as_ref() {
+            self.page = bounded(self.config.timeout, async {
+                Ok(self.browser.get_page(newest.into()).await?)
+            })
+            .await?;
+            self.prepare().await?;
+        }
+        Ok(())
+    }
+    pub async fn event_error(&self) -> Option<String> {
+        self.event_error.lock().await.clone()
+    }
+    pub async fn launch_arguments(&self) -> Result<Value> {
+        Ok(self
+            .browser
+            .execute(raw("Browser.getBrowserCommandLine", json!({})))
+            .await?
+            .result)
+    }
+    pub async fn inspect(&mut self, expression: &str) -> Result<Value> {
+        self.refresh_page().await?;
         evaluate(&self.page, expression.to_owned()).await
     }
     async fn url(&self) -> Result<String> {
@@ -373,6 +490,79 @@ impl CdpEngine {
             }
         }
     }
+    async fn navigate(&self, url: &str) -> Result<()> {
+        // Use the library's raw connection: its high-level navigation watcher waits
+        // beyond the requested action deadline on this browser revision.
+        let mut endpoint = url::Url::parse(self.browser.websocket_address())?;
+        endpoint.set_path(&format!(
+            "/devtools/page/{}",
+            self.page.target_id().as_ref()
+        ));
+        let mut connection =
+            chromiumoxide::Connection::<chromiumoxide_types::CdpJsonEventMessage>::connect(
+                endpoint.as_str(),
+            )
+            .await?;
+        let enable = connection.submit_command("Page.enable".into(), None, json!({}))?;
+        loop {
+            match connection
+                .next()
+                .await
+                .ok_or_else(|| anyhow!("Browser connection closed"))??
+            {
+                chromiumoxide_types::Message::Response(response) if response.id == enable => {
+                    if response.error.is_some() {
+                        bail!("Cannot enable navigation events")
+                    }
+                    break;
+                }
+                _ => {}
+            }
+        }
+        let navigation =
+            connection.submit_command("Page.navigate".into(), None, json!({"url":url}))?;
+        let mut acknowledged = false;
+        let mut loaded = false;
+        loop {
+            match connection
+                .next()
+                .await
+                .ok_or_else(|| anyhow!("Browser connection closed"))??
+            {
+                chromiumoxide_types::Message::Response(response) if response.id == navigation => {
+                    if response.error.is_some() {
+                        bail!("Navigation rejected")
+                    }
+                    let result = response.result.unwrap_or(Value::Null);
+                    if result.get("errorText").is_some() {
+                        bail!("Navigation failed")
+                    }
+                    if result.get("loaderId").is_none() {
+                        return Ok(());
+                    }
+                    acknowledged = true;
+                }
+                chromiumoxide_types::Message::Event(event)
+                    if event.method.as_ref() == "Page.loadEventFired" =>
+                {
+                    loaded = true
+                }
+                _ => {}
+            }
+            if acknowledged && loaded {
+                return Ok(());
+            }
+        }
+    }
+    async fn actionable(&self, id: &str, enabled: bool) -> Result<Value> {
+        bounded(self.config.timeout,async {
+            loop {
+                let point=on_node(&self.page,id,"function(enabled){if(!this.isConnected)throw Error('Detached target');this.scrollIntoView({block:'center',inline:'center'});const r=this.getBoundingClientRect();if((enabled&&this.matches(':disabled'))||getComputedStyle(this).visibility==='hidden'||r.width===0||r.height===0)return null;const x=r.x+r.width/2,y=r.y+r.height/2;const hit=document.elementFromPoint(x,y);return hit&&(hit===this||this.contains(hit))?{x,y}:null;}".into(),vec![json!(enabled)]).await?;
+                if !point.is_null(){return Ok(point)}
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        }).await
+    }
     async fn dispatch(
         &mut self,
         a: &Value,
@@ -383,7 +573,7 @@ impl CdpEngine {
         let target = id.unwrap_or("");
         match kind.as_str() {
             "navigate" => {
-                self.page.goto(string(a, "url")).await?;
+                self.navigate(&string(a, "url")).await?;
             }
             "extract" => {
                 let text = if id.is_some() {
@@ -458,7 +648,7 @@ impl CdpEngine {
                 .await?;
             }
             "click" | "hover" => {
-                let p=on_node(&self.page,target,"function(){this.scrollIntoView({block:'center',inline:'center'});const r=this.getBoundingClientRect();if(!this.isConnected||this.disabled||r.width===0||r.height===0)throw Error('Not actionable');const x=r.x+r.width/2,y=r.y+r.height/2;const hit=document.elementFromPoint(x,y);if(!hit||!(hit===this||this.contains(hit)))throw Error('Covered target');return {x,y};}".into(),vec![]).await?;
+                let p = self.actionable(target, kind == "click").await?;
                 let event = json!({"type":"mouseMoved","x":p.get("x"),"y":p.get("y")});
                 command(&self.page, "Input.dispatchMouseEvent", event.clone()).await?;
                 if kind == "click" {
@@ -525,14 +715,29 @@ impl CdpEngine {
         {
             return Ok(result("blocked", "Unknown action"));
         }
+        if kind == "navigate"
+            && a.get("method")
+                .and_then(Value::as_str)
+                .is_some_and(|m| !m.is_empty() && !m.eq_ignore_ascii_case("GET"))
+        {
+            return Ok(result(
+                "blocked",
+                "Only plain navigation is supported; submit the page’s form instead.",
+            ));
+        }
         let element = if let Some(id) = id {
             self.describe(id).await?
         } else {
             json!({})
         };
+        let projected = json!({"tag":string(&element,"tag"),"type":string(&element,"type"),"role":string(&element,"role"),"name":string(&element,"name"),"text":string(&element,"text"),"value":string(&element,"value"),"inForm":element.get("inForm").and_then(Value::as_bool).unwrap_or(false)});
         let verdict = policy(
             1,
-            json!([{"type":kind,"url":a.get("url"),"method":a.get("method").unwrap_or(&json!("GET")),"key":a.get("key")},element,{"origin":before,"allowedDomains":self.config.allowed_domains}]),
+            json!([
+                {"type":kind,"url":if kind=="navigate"{a.get("url").cloned().unwrap_or(Value::Null)}else{Value::Null},"method":if kind=="navigate"{a.get("method").cloned().unwrap_or(json!("GET"))}else{Value::Null},"key":if kind=="press"{a.get("key").cloned().unwrap_or(json!(""))}else{Value::Null}},
+                projected,
+                {"origin":before,"allowedDomains":if kind=="navigate"{self.config.allowed_domains.clone()}else{vec![]}}
+            ]),
         )?;
         if verdict.get("status").and_then(Value::as_str) == Some("blocked") {
             return Ok(result("blocked", &string(&verdict, "reason")));
@@ -590,7 +795,10 @@ impl CdpEngine {
             {
                 return Ok(result("blocked", "Declined."));
             }
-            if origin(&self.url().await?) != before {
+            let active_target = self.targets.lock().await.last().cloned();
+            if active_target.as_deref() != Some(self.page.target_id().as_ref())
+                || origin(&self.url().await?) != before
+            {
                 return Ok(result(
                     "blocked",
                     "The page changed while approval was pending; review the action again.",
@@ -626,11 +834,31 @@ impl CdpEngine {
             "navigate", "click", "type", "select", "press", "upload", "submit",
         ]
         .contains(&kind.as_str());
-        let output = bounded(
-            self.config.timeout.max(Duration::from_secs(6)),
+        let dispatched_target = self.page.target_id().as_ref().to_owned();
+        let mut output = bounded(
+            if kind == "wait" {
+                Duration::from_secs(6)
+            } else {
+                self.config.timeout
+            },
             self.dispatch(a, id, typed),
         )
         .await;
+        if !self
+            .targets
+            .lock()
+            .await
+            .iter()
+            .any(|id| id == &dispatched_target)
+        {
+            output = Err(anyhow!("Target page closed during the action"));
+        }
+        if let Err(error) = self.refresh_page().await {
+            return Ok(result(
+                if effect { "uncertain" } else { "blocked" },
+                &mask(&error.to_string(), &self.config.secrets),
+            ));
+        }
         let landed = self.url().await.unwrap_or_default();
         if landed.starts_with("http") && !navigation(&landed, &self.config.allowed_domains) {
             if let Ok(history) = command(&self.page, "Page.getNavigationHistory", json!({})).await {
@@ -673,10 +901,47 @@ impl CdpEngine {
 #[async_trait]
 impl BrowserEngine for CdpEngine {
     async fn act(&mut self, action: Value, approval: &dyn Approval) -> Result<Value> {
+        if self.interrupted.load(Ordering::SeqCst) {
+            return Ok(
+                json!({"status":"blocked","origin":"","reason":"The browser session was interrupted; close it before starting another task."}),
+            );
+        }
+        let mut lease = ActionLease {
+            interrupted: self.interrupted.clone(),
+            complete: false,
+        };
+        let result = self.act_once(action, approval).await;
+        lease.complete = true;
+        result
+    }
+    async fn close(&mut self) -> bool {
+        self.closed = true;
+        let result = bounded(LIMIT, async {
+            self.browser.close().await?;
+            self.browser.wait().await?;
+            Ok(())
+        })
+        .await
+        .is_ok();
+        self.pump.abort();
+        self.download_task.abort();
+        self.page_watch.abort();
+        if result {
+            let _ = tokio::fs::remove_dir_all(&self.config.profile_dir).await;
+        }
+        result
+    }
+}
+
+impl CdpEngine {
+    async fn act_once(&mut self, action: Value, approval: &dyn Approval) -> Result<Value> {
         if self.closed {
             return Ok(
                 json!({"status":"blocked","origin":"","reason":"The browser session is closed."}),
             );
+        }
+        if let Err(error) = self.refresh_page().await {
+            return Ok(json!({"status":"blocked","origin":"","reason":error.to_string()}));
         }
         let kind = string(&action, "type");
         let id = if (action.get("selector").is_some() && kind != "navigate") || kind == "press" {
@@ -700,27 +965,17 @@ impl BrowserEngine for CdpEngine {
         }
         result
     }
-    async fn close(&mut self) -> bool {
-        self.closed = true;
-        let result = bounded(LIMIT, async {
-            self.browser.close().await?;
-            self.browser.wait().await?;
-            Ok(())
-        })
-        .await
-        .is_ok();
-        self.pump.abort();
-        self.download_task.abort();
-        if result {
-            let _ = tokio::fs::remove_dir_all(&self.config.profile_dir).await;
-        }
-        result
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn unsupported_proxy_credentials_fail_before_launch() {
+        assert!(validate_proxy("http://proxy.test:3128").is_ok());
+        assert!(validate_proxy("http://user:synthetic-password@proxy.test:3128").is_err());
+        assert!(validate_proxy("file:///example").is_err());
+    }
     #[test]
     fn policy_and_evidence_boundaries() {
         assert!(navigation(
