@@ -1,0 +1,166 @@
+{
+  "gate": "BLOCKED",
+  "reason": "Native Chromium launch: no usable sandbox on test host",
+  "oracleCommit": "99ebd9c951b16cb6beeeae8bd79722cf4f3368bb",
+  "nativeChecks": {
+    "clippy": "PASS",
+    "unit": "1 PASS"
+  },
+  "actions": [
+    {
+      "name": "navigate",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "extract",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "truncate",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "hover",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "click",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "click-dom",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "type",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "select",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "press",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "upload",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "screenshot",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "scroll",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "wait",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "delayed",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "missing",
+      "oracleStatus": "blocked",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "non-get",
+      "oracleStatus": "blocked",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "denied-domain",
+      "oracleStatus": "blocked",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "secret",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "secret-screenshot",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "secret-mask",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "submit",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "redirect",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "download",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "download-wait",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "arm-approval-mutation",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "approval-mutation",
+      "oracleStatus": "blocked",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "popup",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "popup-wait",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "popup-read",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "popup-close",
+      "oracleStatus": "blocked",
+      "differential": "BLOCKED"
+    },
+    {
+      "name": "popup-fallback",
+      "oracleStatus": "done",
+      "differential": "BLOCKED"
+    }
+  ]
+}

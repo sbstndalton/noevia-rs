@@ -1,0 +1,10 @@
+{
+  "commit": "99ebd9c951b16cb6beeeae8bd79722cf4f3368bb",
+  "files": {
+    "server/browser-executor.cjs": "1e840a96148d5a74be915a54a05920f60926fe31d38072e84de08ba6a9c94cb9",
+    "server/browser-policy.cjs": "b6e31e9bc82695c28f3c3408dbc55ee71c88f3a5fae9d19ce8aeb0eb50a7ed2d",
+    "server/dav-parse-wasm.cjs": "29e749a2f00eeead883f06e76cde96e1a2d6083bd1687ef5d70edd82a287f2ca",
+    "server/dav-parse.lock": "bcbac548e0f685d940bf8fffc96a7e7c385ece9c41c77318cd80091baf7cc795"
+  },
+  "wasm": "2305d64d1a75a57b3c52eda673b384c819718aae540c570837b4aeb4ef5e5cb9"
+}
