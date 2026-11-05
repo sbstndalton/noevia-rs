@@ -483,7 +483,7 @@ impl NativeHost {
             // source, then notify before fallible text eligibility/preparation.
             // Scheduling errors stay outside text retries and diagnostics.
             if row.kind=="index" && self.store.index_source_member(user,row).map_err(|e|Error::new(row,Op::Prepare,&e))? {
-                if let Err(error)=self.http.source_changed(&self.core,&self.token,&self.start,user,&row.project).await {
+                if let Err(error)=self.http.source_changed(&self.core,&self.token,&self.start,user,&row.project,row.file.as_deref().unwrap_or_default()).await {
                     eprintln!("{}",Error::new(row,Op::Notify,&error).warning());
                 }
             }

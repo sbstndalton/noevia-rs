@@ -52,6 +52,7 @@ INSERT OR IGNORE INTO meta (key, value) VALUES ('generation', 0);
 #[derive(Debug)]
 pub enum OutboxError {
     Sql(rusqlite::Error),
+    Io(std::io::Error),
 }
 
 impl From<rusqlite::Error> for OutboxError {
@@ -398,12 +399,21 @@ fn open_claims(dir: &Path) -> Result<Connection, OutboxError> {
 /// after this connection is dropped. Persistence is the original outbox schema.
 #[derive(Debug, Clone)]
 pub struct IndexClaim {
+    origin: PathBuf,
     pub kind: String,
     pub key: String,
     pub project: String,
     pub file: Option<String>,
     pub generation: i64,
     pub attempts: i64,
+}
+
+impl IndexClaim {
+    /// Claims are scoped to the outbox they came from, independent of per-tenant
+    /// key/generation collisions. This identity is in-memory only.
+    pub fn belongs_to(&self, dir: &Path) -> bool {
+        std::fs::canonicalize(path(dir)).is_ok_and(|p| p == self.origin)
+    }
 }
 
 pub fn claim_index(
@@ -433,10 +443,12 @@ pub fn pending_rag(dir: &Path, recover: bool) -> Result<Vec<IndexClaim>, OutboxE
         // a file removal interrupted by restart. Storage sweep recovery stays separate.
         conn.execute("UPDATE jobs SET state='pending',claimed_at=NULL WHERE kind IN ('index','unindex') AND state='running'",[])?;
     }
+    let origin = std::fs::canonicalize(path(dir)).map_err(OutboxError::Io)?;
     let mut stmt=conn.prepare("SELECT key,project,file,generation,attempts,kind FROM jobs WHERE kind IN ('index','unindex') AND state='pending' ORDER BY generation,key")?;
     let rows = stmt
         .query_map([], |r| {
             Ok(IndexClaim {
+                origin: origin.clone(),
                 key: r.get(0)?,
                 project: r.get(1)?,
                 file: r.get(2)?,
@@ -451,7 +463,7 @@ pub fn pending_rag(dir: &Path, recover: bool) -> Result<Vec<IndexClaim>, OutboxE
 
 /// Compare-and-claim a snapshotted generation immediately before execution.
 pub fn claim_rag(dir: &Path, row: &IndexClaim, now_ms: i64) -> Result<bool, OutboxError> {
-    if !path(dir).exists() {
+    if !row.belongs_to(dir) {
         return Ok(false);
     }
     let conn = open_claims(dir)?;
@@ -461,12 +473,20 @@ pub fn claim_rag(dir: &Path, row: &IndexClaim, now_ms: i64) -> Result<bool, Outb
 /// True only while this exact generation remains claimed and its project has
 /// no tombstone. Publication must hold this transaction until its index commit.
 pub fn index_current(conn: &Connection, row: &IndexClaim) -> Result<bool, OutboxError> {
+    if conn
+        .path()
+        .and_then(|p| std::fs::canonicalize(p).ok())
+        .as_ref()
+        != Some(&row.origin)
+    {
+        return Ok(false);
+    }
     Ok(conn.query_row("SELECT EXISTS(SELECT 1 FROM jobs WHERE key=?1 AND generation=?2 AND state='running') AND NOT EXISTS(SELECT 1 FROM tombstones WHERE project=?3)", params![row.key,row.generation,row.project], |r|r.get(0))?)
 }
 
 /// Yield to foreground/ownership loss without charging a failed execution.
 pub fn defer_index(dir: &Path, row: &IndexClaim) -> Result<(), OutboxError> {
-    if !path(dir).exists() {
+    if !row.belongs_to(dir) {
         return Ok(());
     }
     let conn = open_claims(dir)?;
@@ -572,7 +592,7 @@ pub fn record_error(
     row: &IndexClaim,
     error: &JobDiagnostic,
 ) -> Result<(), OutboxError> {
-    if !path(dir).exists() {
+    if !row.belongs_to(dir) {
         return Ok(());
     }
     let conn = open_claims(dir)?;
@@ -589,7 +609,7 @@ pub fn finish_index_with_error(
     row: &IndexClaim,
     error: Option<&JobDiagnostic>,
 ) -> Result<(), OutboxError> {
-    if !path(dir).exists() {
+    if !row.belongs_to(dir) {
         return Ok(());
     }
     let conn = open_claims(dir)?;
@@ -626,6 +646,42 @@ mod tests {
             file: Some(file),
             payload: None,
         }
+    }
+
+    #[test]
+    fn equal_running_keys_and_generations_remain_bound_to_their_origin() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        for dir in [first.path(), second.path()] {
+            enqueue(dir, &[index("p", "source.md")], 1).unwrap();
+        }
+        let a = claim_index(first.path(), false, 2).unwrap().unwrap();
+        let b = claim_index(second.path(), false, 2).unwrap().unwrap();
+        assert_eq!(a.key, b.key);
+        assert_eq!(a.generation, b.generation);
+        let db = Connection::open(path(second.path())).unwrap();
+        assert!(index_current(&db, &b).unwrap());
+        assert!(
+            !index_current(&db, &a).unwrap(),
+            "foreign claim must not match an equal running row"
+        );
+        finish_index(second.path(), &a, true).unwrap();
+        defer_index(second.path(), &a).unwrap();
+        record_error(
+            second.path(),
+            &a,
+            &JobDiagnostic::new(&a, JobOperation::Ack, "synthetic"),
+        )
+        .unwrap();
+        assert_eq!(jobs(second.path()).unwrap()[0].state, "running");
+        let error: Option<String> = db
+            .query_row("SELECT last_error FROM jobs", [], |r| r.get(0))
+            .unwrap();
+        assert!(error.is_none());
+        finish_index(first.path(), &a, true).unwrap();
+        finish_index(second.path(), &b, true).unwrap();
+        assert!(jobs(first.path()).unwrap().is_empty());
+        assert!(jobs(second.path()).unwrap().is_empty());
     }
 
     #[test]

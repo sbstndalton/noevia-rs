@@ -264,6 +264,7 @@ impl Http {
         start: &str,
         user: &str,
         project: &str,
+        file: &str,
     ) -> Result<(), String> {
         let (status, body) = self
             .request(
@@ -273,7 +274,15 @@ impl Http {
                 )?,
                 Method::POST,
                 headers(Some(token), "x-noevia-store-token")?,
-                Some(serde_json::json!({"start":start,"user":user,"project":project}).to_string()),
+                Some(
+                    js_json::wtf16::stringify(&js_json::JValue::obj([
+                        ("start", js_json::JValue::from(start)),
+                        ("user", js_json::JValue::from(user)),
+                        ("project", js_json::JValue::from(project)),
+                        ("file", js_json::JValue::from(file)),
+                    ]))
+                    .ok_or_else(err)?,
+                ),
                 Duration::from_secs(3),
                 8192,
             )

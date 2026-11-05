@@ -30,6 +30,22 @@ async fn refuses_notification(missing: Missing) {
         outbox::enqueue(&dir, &[], 0).unwrap();
     }
     let dir = store.root.join("users").join(USER);
+    let local = if matches!(missing, Missing::Tenant) {
+        outbox::enqueue(
+            &dir,
+            &[Job {
+                kind: "index",
+                project: "p",
+                file: Some("a.md"),
+                payload: None,
+            }],
+            1,
+        )
+        .unwrap();
+        Some(outbox::claim_index(&dir, false, 2).unwrap().unwrap())
+    } else {
+        None
+    };
     let owner = if matches!(missing, Missing::Tenant) {
         OTHER
     } else {
@@ -48,6 +64,10 @@ async fn refuses_notification(missing: Missing) {
     )
     .unwrap();
     let row = outbox::claim_index(&job_dir, false, 2).unwrap().unwrap();
+    if let Some(local) = local {
+        assert_eq!(local.key, row.key);
+        assert_eq!(local.generation, row.generation);
+    }
     match missing {
         Missing::File => std::fs::write(
             dir.join("projects.json"),
@@ -61,7 +81,7 @@ async fn refuses_notification(missing: Missing) {
             auth.execute("DELETE FROM users WHERE id=?", [USER])
                 .unwrap();
         }
-        // Both tenants contain p/a.md. Only OTHER owns this running claim.
+        // Both tenants contain p/a.md. Both have equal running keys/generations; this claim originated in OTHER.
         Missing::Tenant => {}
     }
     let notices = Arc::new(AtomicUsize::new(0));
@@ -97,19 +117,19 @@ async fn refuses_notification(missing: Missing) {
         "non-member source must never notify media"
     );
 }
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn deleted_file_does_not_notify_media() {
     refuses_notification(Missing::File).await;
 }
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn removed_project_does_not_notify_media() {
     refuses_notification(Missing::Project).await;
 }
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn inactive_account_does_not_notify_media() {
     refuses_notification(Missing::Account).await;
 }
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn foreign_tenant_claim_does_not_notify_media_even_with_matching_names() {
     refuses_notification(Missing::Tenant).await;
 }
