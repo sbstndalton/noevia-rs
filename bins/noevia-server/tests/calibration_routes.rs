@@ -609,13 +609,16 @@ async fn boot_recovery_whose_save_fails_keeps_the_interrupted_job_and_saves_it_o
     assert_eq!(s, 202, "{v}");
     // Cancellation's bounded compare-and-abort retries legitimately refuse a constantly
     // changing start snapshot. Wait for the fixture's pending long request, not a fixed delay.
-    tokio::time::timeout(Duration::from_secs(10), async {
-        while !e.stream_started.load(Ordering::Acquire) {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .expect("the recovered worker starts the successor's long request");
+    assert!(
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while !e.stream_started.load(Ordering::Acquire) {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .is_ok(),
+        "the recovered worker starts the successor's long request"
+    );
     let (s, _) = write(f.addr, "POST", "/api/models/calibration/cancel", ADMIN, "").await;
     assert_eq!(s, 202);
     let job = settled(&f).await;
