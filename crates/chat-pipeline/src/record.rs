@@ -26,7 +26,9 @@ fn count(v: &JValue) -> JValue {
 }
 
 fn tool_name_ok(n: &str) -> bool {
-    (1..=80).contains(&n.len()) && n.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.' || b == b'-')
+    (1..=80).contains(&n.len())
+        && n.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.' || b == b'-')
 }
 
 fn detail_code_ok(d: &str) -> bool {
@@ -34,11 +36,22 @@ fn detail_code_ok(d: &str) -> bool {
     !b.is_empty()
         && b.len() <= 40
         && b.first().is_some_and(u8::is_ascii_lowercase)
-        && b.iter().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'-')
+        && b.iter()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'-')
 }
 
 fn js_space(c: char) -> bool {
-    matches!(c, '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}')
+    matches!(
+        c,
+        '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
+    )
 }
 
 /// `Number.isInteger(v) && v >= 0`.
@@ -50,7 +63,13 @@ fn index(v: &JValue) -> Option<f64> {
 }
 
 fn obj(pairs: Vec<(&str, JValue)>) -> JValue {
-    JValue::Obj(pairs.into_iter().filter(|(_, v)| !matches!(v, JValue::Undefined)).map(|(k, v)| (k.to_owned(), v)).collect())
+    JValue::Obj(
+        pairs
+            .into_iter()
+            .filter(|(_, v)| !matches!(v, JValue::Undefined))
+            .map(|(k, v)| (k.to_owned(), v))
+            .collect(),
+    )
 }
 
 /// The tool calls as the JS array holds them: elements up to the largest array index (holes are
@@ -63,7 +82,10 @@ struct Tools {
 
 impl Tools {
     fn len(&self) -> f64 {
-        self.elements.keys().next_back().map_or(0.0, |k| (*k + 1) as f64)
+        self.elements
+            .keys()
+            .next_back()
+            .map_or(0.0, |k| (*k + 1) as f64)
     }
     fn get(&self, at: f64) -> Option<&JValue> {
         if at <= MAX_INDEX {
@@ -181,7 +203,10 @@ impl TurnRecord {
                 self.tools.set(
                     at,
                     obj(vec![
-                        ("name", JValue::Str(if name.is_empty() { "tool".into() } else { name })),
+                        (
+                            "name",
+                            JValue::Str(if name.is_empty() { "tool".into() } else { name }),
+                        ),
                         ("args", JValue::Str(str_of(get(ev, "args")))),
                         ("status", JValue::Str("running".into())),
                     ]),
@@ -191,7 +216,10 @@ impl TurnRecord {
                 let at = index(get(ev, "index")).unwrap_or((self.tools.len() - 1.0).max(0.0));
                 let name = str_of(get(ev, "name"));
                 let mut t = vec![
-                    ("name", JValue::Str(if name.is_empty() { "tool".into() } else { name })),
+                    (
+                        "name",
+                        JValue::Str(if name.is_empty() { "tool".into() } else { name }),
+                    ),
                     ("args", JValue::Str(str_of(get(ev, "args")))),
                     ("status", JValue::Str("pending".into())),
                 ];
@@ -209,7 +237,11 @@ impl TurnRecord {
                     Some(i) => i,
                     None => {
                         let found = as_str(name_ev).and_then(|n| {
-                            self.tools.elements.iter().find(|(_, t)| as_str(get(t, "name")) == Some(n)).map(|(k, _)| *k as f64)
+                            self.tools
+                                .elements
+                                .iter()
+                                .find(|(_, t)| as_str(get(t, "name")) == Some(n))
+                                .map(|(k, _)| *k as f64)
                         });
                         found.unwrap_or(self.tools.len())
                     }
@@ -219,7 +251,8 @@ impl TurnRecord {
                 let target = {
                     let t = str_of(get(ev, "target"));
                     if t.is_empty() {
-                        prev.map(|p| get(p, "target").clone()).unwrap_or(JValue::Undefined)
+                        prev.map(|p| get(p, "target").clone())
+                            .unwrap_or(JValue::Undefined)
                     } else {
                         JValue::Str(t)
                     }
@@ -244,8 +277,15 @@ impl TurnRecord {
                 };
                 let mut t = vec![
                     ("name", name),
-                    ("args", prev.map(|p| get(p, "args").clone()).unwrap_or(JValue::Str(String::new()))),
-                    ("result", JValue::Str(wtf16::slice(&str_of(get(ev, "text")), TOOL_RESULT_LIMIT))),
+                    (
+                        "args",
+                        prev.map(|p| get(p, "args").clone())
+                            .unwrap_or(JValue::Str(String::new())),
+                    ),
+                    (
+                        "result",
+                        JValue::Str(wtf16::slice(&str_of(get(ev, "text")), TOOL_RESULT_LIMIT)),
+                    ),
                     ("status", JValue::Str(status.into())),
                 ];
                 if target.truthy() {
@@ -276,11 +316,20 @@ impl TurnRecord {
                         obj(vec![
                             ("reason", JValue::Str("declined".into())),
                             ("applied", JValue::Num(applied)),
-                            ("declined", JValue::Arr(names.into_iter().map(JValue::Str).collect())),
+                            (
+                                "declined",
+                                JValue::Arr(names.into_iter().map(JValue::Str).collect()),
+                            ),
                         ])
                     }
-                    Some("sensitive-tool-result") => obj(vec![("reason", JValue::Str("sensitive".into())), ("applied", JValue::Num(applied))]),
-                    _ => obj(vec![("reason", JValue::Str("supervision".into())), ("applied", JValue::Num(applied))]),
+                    Some("sensitive-tool-result") => obj(vec![
+                        ("reason", JValue::Str("sensitive".into())),
+                        ("applied", JValue::Num(applied)),
+                    ]),
+                    _ => obj(vec![
+                        ("reason", JValue::Str("supervision".into())),
+                        ("applied", JValue::Num(applied)),
+                    ]),
                 });
             }
             "usage" => {
@@ -317,19 +366,33 @@ impl TurnRecord {
     /// `assistantEntry()`: the reply as it stood when the client went away, or `None`.
     pub fn assistant_entry(&self) -> Option<JValue> {
         let calls = self.settled_calls();
-        let applied = calls.iter().filter(|c| get(c, "applied") == &JValue::Bool(true)).count() as f64;
+        let applied = calls
+            .iter()
+            .filter(|c| get(c, "applied") == &JValue::Bool(true))
+            .count() as f64;
         if self.failed {
             if applied == 0.0 {
                 return None;
             }
             let paused = match &self.paused {
                 Some(p) if as_str(get(p, "reason")) == Some("declined") => p.clone(),
-                _ => obj(vec![("reason", JValue::Str("stopped".into())), ("applied", JValue::Num(applied))]),
+                _ => obj(vec![
+                    ("reason", JValue::Str("stopped".into())),
+                    ("applied", JValue::Num(applied)),
+                ]),
             };
             return Some(obj(vec![
                 ("role", JValue::Str("assistant".into())),
                 ("content", JValue::Str(String::new())),
-                ("toolCalls", JValue::Arr(calls.into_iter().filter(|c| as_str(get(c, "status")) != Some("denied")).collect())),
+                (
+                    "toolCalls",
+                    JValue::Arr(
+                        calls
+                            .into_iter()
+                            .filter(|c| as_str(get(c, "status")) != Some("denied"))
+                            .collect(),
+                    ),
+                ),
                 ("paused", paused),
             ]));
         }
@@ -338,15 +401,29 @@ impl TurnRecord {
         } else {
             self.content.trim_start_matches(js_space).to_owned()
         };
-        let note = self
-            .paused
-            .clone()
-            .or_else(|| (applied > 0.0).then(|| obj(vec![("reason", JValue::Str("stopped".into())), ("applied", JValue::Num(applied))])));
+        let note = self.paused.clone().or_else(|| {
+            (applied > 0.0).then(|| {
+                obj(vec![
+                    ("reason", JValue::Str("stopped".into())),
+                    ("applied", JValue::Num(applied)),
+                ])
+            })
+        });
         let stopped = trim(&text).is_empty() && note.is_none();
         let mut e = vec![
             ("role", JValue::Str("assistant".into())),
-            ("content", JValue::Str(if stopped { String::new() } else { text })),
-            ("model", if stopped { JValue::Str(STOPPED_SENDER.into()) } else { self.model.clone() }),
+            (
+                "content",
+                JValue::Str(if stopped { String::new() } else { text }),
+            ),
+            (
+                "model",
+                if stopped {
+                    JValue::Str(STOPPED_SENDER.into())
+                } else {
+                    self.model.clone()
+                },
+            ),
         ];
         if self.routing_decision.truthy() && !stopped {
             e.push(("routingDecision", self.routing_decision.clone()));
@@ -379,7 +456,8 @@ impl TurnRecord {
             return None;
         }
         let base = self.assistant_entry()?;
-        let stopped = as_str(get(&base, "model")) == Some(STOPPED_SENDER) && !get(&base, "content").truthy();
+        let stopped =
+            as_str(get(&base, "model")) == Some(STOPPED_SENDER) && !get(&base, "content").truthy();
         let mut entry = if stopped {
             let mut e = vec![
                 ("role", JValue::Str("assistant".into())),
@@ -397,7 +475,11 @@ impl TurnRecord {
             crate::text::set(&mut entry, "reasoning", JValue::Str(self.reasoning.clone()));
         }
         let calls = matches!(get(&entry, "toolCalls"), JValue::Arr(a) if !a.is_empty());
-        if !get(&entry, "content").truthy() && !get(&entry, "reasoning").truthy() && !calls && !get(&entry, "paused").truthy() {
+        if !get(&entry, "content").truthy()
+            && !get(&entry, "reasoning").truthy()
+            && !calls
+            && !get(&entry, "paused").truthy()
+        {
             return None;
         }
         crate::text::set(&mut entry, "interrupted", JValue::Bool(true));

@@ -380,7 +380,15 @@ fn interrupted_turn_records_match_node() {
             rec.observe(ev, &mut tick);
         }
         let what = wtf16::stringify(k.get("events")).unwrap();
-        assert_eq!(show(rec.assistant_entry()), wtf16::stringify(k.get("assistant")).unwrap(), "assistant {what}");
-        assert_eq!(show(rec.partial_entry()), wtf16::stringify(k.get("partial")).unwrap(), "partial {what}");
+        assert_eq!(
+            show(rec.assistant_entry()),
+            wtf16::stringify(k.get("assistant")).unwrap(),
+            "assistant {what}"
+        );
+        assert_eq!(
+            show(rec.partial_entry()),
+            wtf16::stringify(k.get("partial")).unwrap(),
+            "partial {what}"
+        );
     }
 }
