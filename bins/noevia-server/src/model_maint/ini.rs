@@ -24,6 +24,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+pub(super) type WriteAllowed = std::sync::Arc<dyn Fn() -> bool + Send + Sync>;
+
 /// llamacpp-presets.cjs `BACKUP_KEEP`.
 pub const BACKUP_KEEP: usize = 20;
 
@@ -215,6 +217,16 @@ impl Store {
 
     /// `commit(candidate, { backup })`.
     pub async fn commit(&self, c: &Candidate, backup: bool) -> Result<(), IniError> {
+        self.commit_if(c, backup, std::sync::Arc::new(|| true))
+            .await
+    }
+
+    pub(super) async fn commit_if(
+        &self,
+        c: &Candidate,
+        backup: bool,
+        allowed: WriteAllowed,
+    ) -> Result<(), IniError> {
         let store = self.clone();
         let base = c.base_revision.clone();
         let current = tokio::task::spawn_blocking(move || store.read())
@@ -226,19 +238,28 @@ impl Store {
                 "Presets changed while applying. Reload before retrying.",
             ));
         }
+        if !allowed() {
+            return Err(IniError::new(409, "Calibration finalization failed."));
+        }
         if let Some(w) = &self.writer {
             return w.write(c, backup).await;
         }
         let store = self.clone();
         let c = c.clone();
         let before = current.text;
-        tokio::task::spawn_blocking(move || store.web_write(&c, backup, &before))
+        tokio::task::spawn_blocking(move || store.web_write(&c, backup, &before, &*allowed))
             .await
             .map_err(|_| IniError::new(500, "Internal error"))?
     }
 
     /// The web writer: backup, temp file, rename, directory fsync, prune.
-    fn web_write(&self, c: &Candidate, backup: bool, before: &str) -> Result<(), IniError> {
+    fn web_write(
+        &self,
+        c: &Candidate,
+        backup: bool,
+        before: &str,
+        allowed: &dyn Fn() -> bool,
+    ) -> Result<(), IniError> {
         let dir = self
             .file
             .parent()
@@ -301,6 +322,9 @@ impl Store {
                 .and_then(|()| f.sync_all())
                 .map_err(|_| IniError::new(500, "Internal error"))?;
             drop(f);
+            if !allowed() {
+                return Err(IniError::new(409, "Calibration finalization failed."));
+            }
             std::fs::rename(&temp, &self.file).map_err(|_| IniError::new(500, "Internal error"))?;
             if let Ok(d) = std::fs::File::open(dir) {
                 let _ = d.sync_all();
@@ -312,6 +336,34 @@ impl Store {
         // Only after the new file is in place; best-effort, never fails the write.
         prune_backups(&self.file, self.backup_keep);
         Ok(())
+    }
+
+    /// Settle the original-profile CAS, including a lost reply. An uncertain attempt remains
+    /// owned until the desired content is visible or the CAS base no longer applies. Local
+    /// blocking I/O that never returns is outside this protocol, as in the original worker.
+    pub(super) async fn settle_restore(&self, c: &Candidate, initial: Duration) -> bool {
+        let mut wait = initial
+            .max(Duration::from_millis(1))
+            .min(Duration::from_secs(60));
+        loop {
+            let store = self.clone();
+            if let Ok(Ok(current)) = tokio::task::spawn_blocking(move || store.snapshot()).await {
+                if current.text == c.text {
+                    return true;
+                }
+                if current.revision != c.base_revision {
+                    return false;
+                }
+                match self.commit(c, true).await {
+                    Ok(()) => return true,
+                    Err(e) if e.status == 409 => return false,
+                    // Transport, lost body and service failures all retain an owned resolver.
+                    Err(_) => {}
+                }
+            }
+            tokio::time::sleep(wait).await;
+            wait = (wait * 2).min(Duration::from_secs(60));
+        }
     }
 
     /// `commitReconciled`: settles an uncertain model-loader write by reading the file back (#339).
