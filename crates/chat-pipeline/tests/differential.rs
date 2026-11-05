@@ -583,3 +583,43 @@ fn usage_reports_match_node() {
         );
     }
 }
+
+#[test]
+fn turn_endings_match_node() {
+    use chat_pipeline::end;
+    let c = wtf16::parse(include_str!("fixtures/end-cases.json")).unwrap();
+    let strs = |v: &JValue| -> Vec<String> { arr(v).iter().map(|x| x.as_str().unwrap().to_owned()).collect() };
+    for k in arr(c.get("pauses")) {
+        let n = k.get("applied").as_num().unwrap() as usize;
+        let got = vec![
+            end::declined_pause(n, &strs(k.get("names"))),
+            end::supervision_pause(n),
+            end::sensitive_pause(k.get("flag"), n),
+        ];
+        assert_eq!(wtf16::stringify(&JValue::Arr(got)).unwrap(), wtf16::stringify(k.get("sent")).unwrap());
+    }
+    for k in arr(c.get("endings")) {
+        let st = k.get("state");
+        let b = |key: &str| st.get(key) == &JValue::Bool(true);
+        let e = end::Ending {
+            compact_only: st.get("body").get("compactOnly") == &JValue::Bool(true),
+            paused: b("paused"),
+            round_has_content: b("roundHasContent"),
+            round_content: st.get("roundContent").as_str().unwrap(),
+            round_reasoning: st.get("roundReasoning").as_str().unwrap(),
+            final_pass: b("finalPass"),
+            message: st.get("message"),
+            injected: st.get("injectedEntries"),
+            placed: arr(st.get("placedEntries")),
+            readable_files: st.get("readableFiles"),
+            reply_sources: st.get("replySources").as_num().unwrap() as usize,
+            gathered_sources: &strs(st.get("gatheredSources")),
+            model: st.get("model"),
+            first_token_ms: st.get("exchangeFirstTokenMs").as_num(),
+        };
+        let (sent, replaced) = end::ending(&e);
+        let what = wtf16::stringify(st).unwrap();
+        assert_eq!(wtf16::stringify(&JValue::Arr(sent)).unwrap(), wtf16::stringify(k.get("sent")).unwrap(), "{what}");
+        assert_eq!(replaced.map(|r| wtf16::stringify(&JValue::Arr(r)).unwrap()), wtf16::stringify(k.get("replaced")).filter(|s| s != "null"), "{what}");
+    }
+}

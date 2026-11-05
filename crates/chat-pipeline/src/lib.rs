@@ -13,10 +13,12 @@
 //! - [`title`]: the chat's generated title (#1785).
 //! - [`usage`]: the exchange's usage and first-token telemetry across tool rounds.
 //! - [`validate`]: what a turn refuses before anything is read or written.
+//! - [`end`]: how a turn ends (pauses, the last sources, the fallback text, telemetry).
 //! - [`failure`]: the words a failed engine reply shows.
 //! - [`writes`]: the writes already done in a chat (#658 repeat flag).
 //! - [`record`]: the reply a turn keeps when its client went away (#679, #1507).
 //! - [`notes`]: the system notes a turn adds or removes (`withSystemNote`, `withoutSystemNote`).
+pub mod end;
 pub mod failure;
 pub mod notes;
 pub mod record;
