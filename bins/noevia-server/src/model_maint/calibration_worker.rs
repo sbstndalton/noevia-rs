@@ -170,6 +170,8 @@ pub(super) struct Inner {
     pub(super) cancel_requested: bool,
     pub(super) inflight: Option<Arc<Abort>>,
     pub(super) launching: bool,
+    /// A live run, including its final persistence and admission release.
+    pub(super) active: bool,
     /// Node's `objectId(state.job)`: changes whenever the job object is replaced (launch, reload).
     pub(super) job_object: u64,
     /// Node's `objectId(inflight)`: 0 when no step controller is live.
@@ -198,10 +200,6 @@ pub struct Worker {
     limits: Limits,
     /// The per-process salt of the facts tokens (Node's `launchSalt` / `cancelSalt`).
     pub(super) salt: String,
-    /// Runs whose task has not returned yet: a run publishes `finishedAt`, then saves the state
-    /// file and gives its hold back, so a test waits for this to reach 0 before reading either.
-    #[cfg(test)]
-    runs: std::sync::atomic::AtomicUsize,
 }
 
 /// The job keys the bridge and the public routes may show (`cancellationFacts`).
@@ -363,6 +361,7 @@ impl Worker {
                 cancel_requested: false,
                 inflight: None,
                 launching: false,
+                active: false,
                 job_object: 1,
                 controller: 0,
                 next_object: 2,
@@ -372,8 +371,6 @@ impl Worker {
                 unsaved: false,
             }),
             salt: random_hex(32),
-            #[cfg(test)]
-            runs: std::sync::atomic::AtomicUsize::new(0),
             memory,
             floor_gib,
             limits,
@@ -479,7 +476,7 @@ impl Worker {
 
     fn begin_recovery(&self) -> bool {
         self.with(|i| {
-            if i.launching {
+            if i.launching || i.active {
                 return false;
             }
             i.launching = true;
@@ -1468,7 +1465,8 @@ impl Worker {
     /// The public job, or why nothing started.
     pub async fn launch(self: &Arc<Self>, model: &str, plan: Plan) -> Result<JValue, Refusal> {
         let busy = self.with(|i| {
-            let busy = i.launching || i.state.job().get("status").as_str() == Some("running");
+            let busy =
+                i.launching || i.active || i.state.job().get("status").as_str() == Some("running");
             if !busy {
                 i.launching = true;
             }
@@ -1660,17 +1658,12 @@ impl Worker {
             return Err(Refusal::Unavailable);
         }
         // The file now has this job: nothing recovered is left to save.
-        self.with(|i| i.unsaved = false);
-        let worker = Arc::clone(self);
-        #[cfg(test)]
-        worker.runs.fetch_add(1, Ordering::AcqRel);
-        tokio::spawn(async move {
-            #[cfg(test)]
-            let completion = Arc::clone(&worker);
-            worker.run(hold).await;
-            #[cfg(test)]
-            completion.runs.fetch_sub(1, Ordering::AcqRel);
+        self.with(|i| {
+            i.unsaved = false;
+            i.active = true;
         });
+        let worker = Arc::clone(self);
+        tokio::spawn(async move { worker.run(hold).await });
         Ok(self.job())
     }
 
@@ -1827,14 +1820,37 @@ impl Worker {
             ]);
             let _ = self.maint.record_evidence(&model, &record).await;
         }
-        self.job_set("finishedAt", JValue::Num(now_ms()));
-        self.job_remove("originalText");
+        // Persist the final snapshot before a reader can observe completion. While the write
+        // yields, active keeps launches out even though the outcome status is already terminal.
+        let mut final_state = self.with(|i| i.state.clone());
+        if let Some(job) = final_state.job_mut() {
+            wtf16::set(job, "finishedAt", JValue::Num(now_ms()));
+            job.retain(|(key, _)| key != "originalText");
+        }
+        let mut wait = self.limits.save_retry;
+        loop {
+            let file = self.file.clone();
+            let state = final_state.clone();
+            if tokio::task::spawn_blocking(move || file.save(&state))
+                .await
+                .is_ok_and(|saved| saved.is_ok())
+            {
+                break;
+            }
+            // Never advertise a finished record that is still missing on disk. Keep admission
+            // until persistence recovers, with the same bounded retry backoff as boot recovery.
+            tokio::time::sleep(wait).await;
+            wait = (wait * 2).min(SAVE_RETRY_MAX);
+        }
         self.with(|i| {
+            // Drop synchronously clears local admission and schedules the remote DELETE. Publish
+            // under the same lock: status/start cannot observe a finished job with a local hold.
+            drop(hold);
+            i.state = final_state;
             i.cancel_requested = false;
             i.lease_lost = false;
+            i.active = false;
         });
-        let _ = self.save().await;
-        hold.release().await;
     }
 
     /// Put `text` back if models.ini is still at `revision`, then reload the router.
@@ -2357,17 +2373,25 @@ mod tests {
     async fn settled(w: &Worker) -> JValue {
         for _ in 0..600 {
             let job = w.job();
-            // A run sets its status before its last reads; it is over once it has finishedAt and
-            // its task has returned (after the final save and the hold's release).
+            // finishedAt is published only after persistence and local admission release.
             if job.get("status").as_str() != Some("running")
                 && !matches!(job.get("finishedAt"), JValue::Undefined)
-                && w.runs.load(Ordering::Acquire) == 0
             {
                 return job;
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         panic!("the synthetic run did not finish: {:?}", w.job());
+    }
+
+    async fn released(log: &Mutex<Vec<String>>, prefix: &str) {
+        for _ in 0..600 {
+            if log.lock().unwrap().iter().any(|r| r.starts_with(prefix)) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        panic!("remote release was not observed: {prefix}");
     }
 
     const INI: &str =
@@ -2418,11 +2442,7 @@ mod tests {
         assert!(steps
             .iter()
             .all(|s| matches!(s.get("status").as_str(), Some("passed" | "failed"))));
-        assert!(seen
-            .lock()
-            .unwrap()
-            .iter()
-            .any(|r| r == "DELETE /gate/v1/maintenance/0123456789abcdef0123456789abcdef"));
+        released(&seen, "DELETE /gate/v1/maintenance/").await;
         // A new worker reads the same file (restart/rollback): the job and history are there.
         let again = worker(d.path(), port);
         assert_eq!(again.job().get("id"), job.get("id"));
@@ -2747,6 +2767,7 @@ mod tests {
         w.launch("synthetic", p).await.unwrap();
         let job = settled(&w).await;
         assert_eq!(job.get("status").as_str(), Some("passed"), "{job:?}");
+        released(&seen, "DELETE /internal/model-maintenance/lease/").await;
         let log = seen.lock().unwrap().clone();
         assert_eq!(
             log[0],

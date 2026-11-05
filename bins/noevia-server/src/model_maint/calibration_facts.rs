@@ -434,8 +434,9 @@ impl Worker {
                 ("reason", JValue::Str(reason.into())),
             ])
         };
-        let busy =
-            self.with(|i| i.launching || i.state.job().get("status").as_str() == Some("running"));
+        let busy = self.with(|i| {
+            i.launching || i.active || i.state.job().get("status").as_str() == Some("running")
+        });
         if busy || token != self.launch_token() {
             return Ok(refused("stale"));
         }
