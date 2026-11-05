@@ -158,7 +158,7 @@ impl Worker {
     /// `stateFacts()`: `{ token, starting, job, history }`.
     pub fn state_facts(&self) -> JValue {
         let token = self.launch_token();
-        self.with(|i| {
+        let mut facts = self.with(|i| {
             obj(vec![
                 ("token", JValue::Str(token)),
                 ("starting", JValue::Bool(i.launching)),
@@ -171,7 +171,12 @@ impl Worker {
                     },
                 ),
             ])
-        })
+        });
+        let history = self.filtered_history(facts.get("history").clone());
+        if let JValue::Obj(fields) = &mut facts {
+            wtf16::set(fields, "history", history);
+        }
+        facts
     }
 
     /// `listingFacts(model, token)`: `{ stale }`, `{ backend: false }`, or the row, whether it is a

@@ -303,7 +303,10 @@ impl Maint {
                 }
             }
         }
-        let entry = JValue::Obj(entry);
+        let mut entry = JValue::Obj(entry);
+        store
+            .tag_record(&mut entry)
+            .map_err(|_| Failure::internal())?;
         let rate = result == "reported"
             && record
                 .get("value")
