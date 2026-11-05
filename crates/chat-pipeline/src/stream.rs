@@ -360,20 +360,29 @@ impl Round {
             JValue::Arr(a) => Some(a.clone()),
             _ => None,
         };
-        if get(&msg, "reasoning_content").truthy() || get(&msg, "content").truthy() || calls.as_ref().is_some_and(|c| !c.is_empty()) {
+        if get(&msg, "reasoning_content").truthy()
+            || get(&msg, "content").truthy()
+            || calls.as_ref().is_some_and(|c| !c.is_empty())
+        {
             steps.push(Step::FirstOutput);
         }
         let r = get(&msg, "reasoning_content");
         if r.truthy() {
             self.round_reasoning.push_str(&plus(r));
-            steps.push(Step::Send(obj(vec![("type", s("reasoning")), ("text", r.clone())])));
+            steps.push(Step::Send(obj(vec![
+                ("type", s("reasoning")),
+                ("text", r.clone()),
+            ])));
         }
         let c = get(&msg, "content");
         if c.truthy() {
             self.round_has_content = true;
             self.shown_text = true;
             self.round_content.push_str(&plus(c));
-            steps.push(Step::Send(obj(vec![("type", s("delta")), ("text", c.clone())])));
+            steps.push(Step::Send(obj(vec![
+                ("type", s("delta")),
+                ("text", c.clone()),
+            ])));
         }
         for tc in calls.unwrap_or_default() {
             let index = self.tool_calls.len() as f64;
@@ -382,14 +391,26 @@ impl Round {
             let too_large = [get(&tc, "id"), get(f, "name"), get(f, "arguments")]
                 .iter()
                 .any(|v| wtf16::len(&or_empty(v)) > MAX_TOOL_ARGS_UNITS);
-            let name = if too_large { shown_tool_name(&or_empty(get(f, "name"))) } else { or_empty(get(f, "name")) };
+            let name = if too_large {
+                shown_tool_name(&or_empty(get(f, "name")))
+            } else {
+                or_empty(get(f, "name"))
+            };
             let id = get(&tc, "id");
             let made = too_large || !id.truthy();
-            let args = if too_large { String::new() } else { or_empty(get(f, "arguments")) };
+            let args = if too_large {
+                String::new()
+            } else {
+                or_empty(get(f, "arguments"))
+            };
             self.tool_calls.push((
                 index,
                 Slot {
-                    id: if made { JValue::Str(format!("call-{}", js_json::number_to_string(index))) } else { id.clone() },
+                    id: if made {
+                        JValue::Str(format!("call-{}", js_json::number_to_string(index)))
+                    } else {
+                        id.clone()
+                    },
                     id_made: made,
                     name: name.clone(),
                     args: args.clone(),
@@ -409,7 +430,10 @@ impl Round {
                 ("args", shown),
             ])));
         }
-        steps.push(Step::Usage { usage: get(body, "usage").clone(), timings: get(body, "timings").clone() });
+        steps.push(Step::Usage {
+            usage: get(body, "usage").clone(),
+            timings: get(body, "timings").clone(),
+        });
         self.saw_anything = true;
         steps
     }
@@ -423,14 +447,19 @@ impl Round {
             c.args = if c.too_large {
                 "{}".into()
             } else {
-                match clean_search_args(&JValue::Str(c.name.clone()), &JValue::Str(c.args.clone())) {
+                match clean_search_args(&JValue::Str(c.name.clone()), &JValue::Str(c.args.clone()))
+                {
                     JValue::Str(a) => a,
                     other => plus(&other),
                 }
             };
         }
-        let mut used: std::collections::HashSet<String> =
-            self.tool_calls.iter().filter(|(_, c)| !c.id_made).filter_map(|(_, c)| id_key(&c.id)).collect();
+        let mut used: std::collections::HashSet<String> = self
+            .tool_calls
+            .iter()
+            .filter(|(_, c)| !c.id_made)
+            .filter_map(|(_, c)| id_key(&c.id))
+            .collect();
         let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         for (i, c) in &mut self.tool_calls {
             let key = id_key(&c.id);
@@ -443,16 +472,25 @@ impl Round {
             let base = format!("call-{}", js_json::number_to_string(*i));
             let mut id = base.clone();
             let mut k = 2;
-            while used.contains(&format!("v{}", wtf16::stringify(&JValue::Str(id.clone())).unwrap_or_default())) {
+            while used.contains(&format!(
+                "v{}",
+                wtf16::stringify(&JValue::Str(id.clone())).unwrap_or_default()
+            )) {
                 id = format!("{base}-{k}");
                 k += 1;
             }
-            used.insert(format!("v{}", wtf16::stringify(&JValue::Str(id.clone())).unwrap_or_default()));
+            used.insert(format!(
+                "v{}",
+                wtf16::stringify(&JValue::Str(id.clone())).unwrap_or_default()
+            ));
             c.id = JValue::Str(id);
         }
         let mut steps = Vec::new();
         if !trim(&self.round_content).is_empty() {
-            steps.push(Step::Send(obj(vec![("type", s("preamble")), ("text", JValue::Str(self.round_content.clone()))])));
+            steps.push(Step::Send(obj(vec![
+                ("type", s("preamble")),
+                ("text", JValue::Str(self.round_content.clone())),
+            ])));
             self.round_has_content = false;
         }
         let calls = self
@@ -462,11 +500,21 @@ impl Round {
                 obj(vec![
                     ("id", c.id.clone()),
                     ("type", s("function")),
-                    ("function", obj(vec![("name", JValue::Str(c.name.clone())), ("arguments", JValue::Str(c.args.clone()))])),
+                    (
+                        "function",
+                        obj(vec![
+                            ("name", JValue::Str(c.name.clone())),
+                            ("arguments", JValue::Str(c.args.clone())),
+                        ]),
+                    ),
                 ])
             })
             .collect();
-        let message = obj(vec![("role", s("assistant")), ("content", JValue::Null), ("tool_calls", JValue::Arr(calls))]);
+        let message = obj(vec![
+            ("role", s("assistant")),
+            ("content", JValue::Null),
+            ("tool_calls", JValue::Arr(calls)),
+        ]);
         (steps, message)
     }
 }
