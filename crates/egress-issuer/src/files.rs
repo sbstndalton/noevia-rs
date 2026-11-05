@@ -10,8 +10,10 @@
 //!   last session, so the next start can replace its own session instead of waiting for it to die.
 use crate::wire::{hex, unhex};
 use crate::{err, ControlError, Reason};
+use std::ffi::{OsStr, OsString};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
+use std::os::fd::OwnedFd;
 use std::os::unix::fs::{fchown, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -296,61 +298,190 @@ impl PrivateState {
     }
 }
 
-/// Reads the private state: `Ok(None)` when there is none. A file that is not exactly ours (not a
-/// regular single-link file owned by the issuer with no group/other access, or not valid) is an
-/// error, never "no state": a silent fresh key would be a silent rotation.
+fn dir_flags() -> rustix::fs::OFlags {
+    rustix::fs::OFlags::RDONLY
+        | rustix::fs::OFlags::DIRECTORY
+        | rustix::fs::OFlags::NOFOLLOW
+        | rustix::fs::OFlags::CLOEXEC
+}
+
+fn fd_meta(fd: &OwnedFd) -> Option<std::fs::Metadata> {
+    File::from(fd.try_clone().ok()?).metadata().ok()
+}
+
+/// A directory above the state directory: owned by root or the issuer, and not writable by group or
+/// other unless it is a root-owned sticky directory (such as `/tmp`), where others cannot rename or
+/// remove what is not theirs.
+fn trusted_ancestor(m: &std::fs::Metadata, me: u32) -> bool {
+    let mode = m.mode();
+    m.is_dir()
+        && (m.uid() == 0 || m.uid() == me)
+        && (mode & 0o022 == 0 || (mode & 0o1000 != 0 && m.uid() == 0))
+}
+
+/// The directory holding the private state: the issuer's own, writable by no one else.
+fn trusted_state_dir(m: &std::fs::Metadata, me: u32) -> bool {
+    m.is_dir() && m.uid() == me && m.mode() & 0o022 == 0 && m.nlink() > 0
+}
+
+/// The state file itself: regular, one link, the issuer's, exactly 0600.
+fn state_leaf_ok(m: &std::fs::Metadata, me: u32) -> bool {
+    m.is_file() && m.nlink() == 1 && m.uid() == me && m.mode() & 0o7777 == 0o600
+}
+
+/// A validated, held directory descriptor for the private state. Every component from `/` was opened
+/// without following links and is trusted; every read and publication goes through this descriptor
+/// (never a path), and the path is re-resolved to the same identity before a publication.
+struct StateDir {
+    fd: OwnedFd,
+    path: PathBuf,
+    leaf: OsString,
+    dev: u64,
+    ino: u64,
+}
+
+impl StateDir {
+    fn open(path: &Path) -> Result<Self, ControlError> {
+        let me = process_uid();
+        let (Some(parent), Some(leaf)) = (path.parent(), path.file_name()) else {
+            return publication();
+        };
+        if !canonical_absolute(path) || leaf.as_encoded_bytes().starts_with(b".egress-issuer-") {
+            return publication();
+        }
+        let parts: Vec<&OsStr> = parent
+            .components()
+            .filter_map(|c| match c {
+                Component::Normal(p) => Some(p),
+                _ => None,
+            })
+            .collect();
+        let mut fd = rustix::fs::open("/", dir_flags(), rustix::fs::Mode::empty())
+            .map_err(|_| ControlError(Reason::Publication))?;
+        let mut meta = fd_meta(&fd).ok_or(ControlError(Reason::Publication))?;
+        let mut trusted = if parts.is_empty() {
+            trusted_state_dir(&meta, me)
+        } else {
+            trusted_ancestor(&meta, me)
+        };
+        for (i, part) in parts.iter().enumerate() {
+            if !trusted {
+                return publication();
+            }
+            fd = rustix::fs::openat(&fd, *part, dir_flags(), rustix::fs::Mode::empty())
+                .map_err(|_| ControlError(Reason::Publication))?;
+            meta = fd_meta(&fd).ok_or(ControlError(Reason::Publication))?;
+            trusted = if i + 1 == parts.len() {
+                trusted_state_dir(&meta, me)
+            } else {
+                trusted_ancestor(&meta, me)
+            };
+        }
+        if !trusted {
+            return publication();
+        }
+        Ok(Self {
+            fd,
+            path: path.to_path_buf(),
+            leaf: leaf.to_os_string(),
+            dev: meta.dev(),
+            ino: meta.ino(),
+        })
+    }
+
+    /// The path still resolves, through trusted components, to the directory this descriptor holds.
+    fn unchanged(&self) -> Result<(), ControlError> {
+        let again = Self::open(&self.path)?;
+        if again.dev == self.dev && again.ino == self.ino {
+            Ok(())
+        } else {
+            publication()
+        }
+    }
+
+    /// The state file as it is now: `None` when absent; an error (never "no state", never repaired)
+    /// when something that is not exactly ours is there.
+    fn open_leaf(&self) -> Result<Option<File>, ControlError> {
+        let flags = rustix::fs::OFlags::RDONLY
+            | rustix::fs::OFlags::NOFOLLOW
+            | rustix::fs::OFlags::NONBLOCK
+            | rustix::fs::OFlags::CLOEXEC;
+        match rustix::fs::openat(&self.fd, &self.leaf, flags, rustix::fs::Mode::empty()) {
+            Ok(fd) => {
+                let file = File::from(fd);
+                match file.metadata() {
+                    Ok(m) if state_leaf_ok(&m, process_uid()) => Ok(Some(file)),
+                    _ => publication(),
+                }
+            }
+            Err(rustix::io::Errno::NOENT) => Ok(None),
+            Err(_) => publication(),
+        }
+    }
+}
+
+/// Reads the private state: `Ok(None)` when there is none. Anything not exactly ours (an untrusted or
+/// symlinked directory chain, or a file that is not a regular single-link 0600 file owned by the
+/// issuer, or not valid) is an error, never "no state": a silent fresh key would be a silent rotation.
 pub fn load_state(path: &Path) -> Result<Option<PrivateState>, ControlError> {
-    let mut f = match OpenOptions::new()
-        .read(true)
-        .custom_flags(nofollow_nonblock())
-        .open(path)
-    {
-        Ok(f) => f,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(_) => return publication(),
+    let dir = StateDir::open(path)?;
+    let Some(mut f) = dir.open_leaf()? else {
+        dir.unchanged()?;
+        return Ok(None);
     };
     let Ok(meta) = f.metadata() else {
         return publication();
     };
-    if !meta.is_file()
-        || meta.nlink() != 1
-        || meta.uid() != process_uid()
-        || meta.mode() & 0o077 != 0
-        || meta.len() > 4096
-    {
+    if meta.len() > 4096 {
         return publication();
     }
     let mut text = String::new();
     if f.read_to_string(&mut text).is_err() {
         return publication();
     }
+    dir.unchanged()?;
     PrivateState::decode(&text)
         .map(Some)
         .ok_or(ControlError(Reason::Publication))
 }
 
-/// Atomic 0600 write: temporary file in the same directory, fsync, rename, fsync of the directory.
+/// Atomic 0600 write through the validated directory descriptor: temporary file, fsync, a fresh check
+/// that the directory and the destination are still exactly ours, rename, fsync of the directory.
+/// An unsafe destination (substituted symlink, foreign file, loosened mode) is refused, not replaced.
 pub fn save_state(path: &Path, state: &PrivateState) -> Result<(), ControlError> {
-    let Some(dir) = path.parent() else {
-        return publication();
-    };
-    let temporary = dir.join(format!(".egress-issuer-{}.tmp", random_name()));
-    let done = (|| -> std::io::Result<()> {
-        let mut out = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits() as i32)
-            .open(&temporary)?;
-        out.set_permissions(std::fs::Permissions::from_mode(0o600))?;
-        out.write_all(state.encode().as_bytes())?;
-        out.sync_all()?;
+    let dir = StateDir::open(path)?;
+    dir.open_leaf()?;
+    let name = OsString::from(format!(".egress-issuer-{}.tmp", random_name()));
+    let done = (|| -> Result<(), ControlError> {
+        let fd = rustix::fs::openat(
+            &dir.fd,
+            &name,
+            rustix::fs::OFlags::WRONLY
+                | rustix::fs::OFlags::CREATE
+                | rustix::fs::OFlags::EXCL
+                | rustix::fs::OFlags::NOFOLLOW
+                | rustix::fs::OFlags::CLOEXEC,
+            rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR,
+        )
+        .map_err(|_| ControlError(Reason::Publication))?;
+        let mut out = File::from(fd);
+        let written = (|| -> std::io::Result<()> {
+            out.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+            out.write_all(state.encode().as_bytes())?;
+            out.sync_all()
+        })();
         drop(out);
-        std::fs::rename(&temporary, path)?;
-        File::open(dir)?.sync_all()
+        if written.is_err() {
+            return publication();
+        }
+        dir.unchanged()?;
+        dir.open_leaf()?;
+        rustix::fs::renameat(&dir.fd, &name, &dir.fd, &dir.leaf)
+            .map_err(|_| ControlError(Reason::Publication))?;
+        rustix::fs::fsync(&dir.fd).map_err(|_| ControlError(Reason::Publication))
     })();
     if done.is_err() {
-        let _ = std::fs::remove_file(&temporary);
+        let _ = rustix::fs::unlinkat(&dir.fd, &name, rustix::fs::AtFlags::empty());
         return publication();
     }
     Ok(())
@@ -468,18 +599,28 @@ impl KeyKeeper {
             }
             other => {
                 // First publication, or one that never completed: the candidate is persisted first,
-                // so a crash before the rename is retried with the same key.
+                // so a crash before the rename is retried with the same key. A key somebody else
+                // published is never touched: the file must be absent (created exclusively) or hold
+                // exactly this candidate (an interrupted publication); anything else is refused as
+                // superseded, before any state is written. Adopting or rotating a legacy key is an
+                // explicit operator migration (remove the old key file), never an automatic overwrite.
                 let candidate = match other {
                     Some(PrivateState { next: Some(n), .. }) => n,
                     _ => fresh_key(&rng, &master)?,
                 };
+                let published = key_file_state(&files.key_file, &candidate);
+                if !matches!(published, KeyState::Missing | KeyState::Own) {
+                    return publication();
+                }
                 let pending = PrivateState {
                     key: None,
                     next: Some(candidate),
                     epoch: None,
                 };
                 save_state(&files.state_file, &pending)?;
-                write_key_file(&files, true, &mut || Ok(candidate), &mut || Ok(()))?;
+                if published == KeyState::Missing {
+                    write_key_file(&files, false, &mut || Ok(candidate), &mut || Ok(()))?;
+                }
                 let state = PrivateState {
                     key: Some(candidate),
                     next: None,

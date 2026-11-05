@@ -35,6 +35,8 @@ fn rig() -> Option<Rig> {
     }
     let dir = tempfile::tempdir().unwrap();
     let root = std::fs::canonicalize(dir.path()).unwrap();
+    // The private state directory must be the issuer's own and writable by no one else.
+    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
     let keydir = root.join("key");
     std::fs::create_dir(&keydir).unwrap();
     std::os::unix::fs::chown(&keydir, Some(uid), Some(gid)).unwrap();
@@ -449,4 +451,244 @@ async fn neither_errors_nor_debug_output_carry_key_material_or_tokens() {
     );
     assert!(!shown.contains(&key_hex) && !shown.contains(&h.token) && !shown.contains("ngr1."));
     let _ = c.close().await;
+}
+
+// ---- v-r2: private state is only ever read or published through a trusted directory chain ----
+
+fn open_at(r: &Rig, state_file: PathBuf) -> Result<(KeyKeeper, Opened), ControlError> {
+    let files = IssuerFiles {
+        state_file,
+        ..r.files.clone()
+    };
+    KeyKeeper::open(files, master(), os_rng())
+}
+fn root_of(r: &Rig) -> PathBuf {
+    r.state_file.parent().unwrap().to_path_buf()
+}
+fn names(dir: &std::path::Path) -> Vec<String> {
+    let mut v: Vec<String> = std::fs::read_dir(dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    v.sort();
+    v
+}
+
+#[tokio::test]
+async fn private_state_in_an_untrusted_directory_chain_is_refused_without_repair() {
+    let Some(r) = rig() else { return };
+    let root = root_of(&r);
+    // The state directory is writable by group or other: refused, mode not repaired, nothing created.
+    let writable = root.join("writable");
+    std::fs::create_dir(&writable).unwrap();
+    for unsafe_mode in [0o770, 0o707, 0o777, 0o722] {
+        std::fs::set_permissions(&writable, std::fs::Permissions::from_mode(unsafe_mode)).unwrap();
+        assert_eq!(
+            open_at(&r, writable.join("issuer.json")).unwrap_err().0,
+            Reason::Publication,
+            "{unsafe_mode:o}"
+        );
+        assert_eq!(
+            mode(&writable),
+            unsafe_mode,
+            "the directory is not repaired"
+        );
+        assert!(
+            names(&writable).is_empty(),
+            "no secret state is created there"
+        );
+        assert!(!r.key_file.exists(), "no key was published for it");
+    }
+    // A symlinked state directory (leaf of the chain) and a symlinked ancestor are not followed.
+    let real = root.join("real");
+    std::fs::create_dir(&real).unwrap();
+    std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o700)).unwrap();
+    std::fs::create_dir(real.join("sub")).unwrap();
+    std::fs::set_permissions(real.join("sub"), std::fs::Permissions::from_mode(0o700)).unwrap();
+    let link = root.join("link");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+    for via in [
+        link.join("issuer.json"),
+        link.join("sub").join("issuer.json"),
+    ] {
+        assert_eq!(open_at(&r, via.clone()).unwrap_err().0, Reason::Publication);
+        assert!(load_state(&via).is_err());
+        assert!(names(&real).iter().all(|n| n == "sub"));
+        assert!(names(&real.join("sub")).is_empty());
+    }
+    // An ancestor that other users can write to (not a root-owned sticky directory) is not trusted.
+    let wide = root.join("wide");
+    std::fs::create_dir(&wide).unwrap();
+    std::fs::create_dir(wide.join("sub")).unwrap();
+    std::fs::set_permissions(wide.join("sub"), std::fs::Permissions::from_mode(0o700)).unwrap();
+    std::fs::set_permissions(&wide, std::fs::Permissions::from_mode(0o777)).unwrap();
+    assert_eq!(
+        open_at(&r, wide.join("sub").join("issuer.json"))
+            .unwrap_err()
+            .0,
+        Reason::Publication
+    );
+    assert!(names(&wide.join("sub")).is_empty());
+    assert!(!r.key_file.exists());
+    // A missing state directory is not created.
+    assert!(open_at(&r, root.join("absent").join("issuer.json")).is_err());
+    assert!(!root.join("absent").exists());
+    // The trusted case still works and is 0600.
+    let good = root.join("good");
+    std::fs::create_dir(&good).unwrap();
+    std::fs::set_permissions(&good, std::fs::Permissions::from_mode(0o750)).unwrap();
+    let (_, how) = open_at(&r, good.join("issuer.json")).unwrap();
+    assert_eq!(how, Opened::Fresh);
+    assert_eq!(mode(&good.join("issuer.json")), 0o600);
+}
+
+#[tokio::test]
+async fn private_state_writes_refuse_a_destination_replaced_after_open() {
+    let Some(r) = rig() else { return };
+    let (mut keeper, _) = open(&r).unwrap();
+    let key_before = std::fs::read(&r.key_file).unwrap();
+    let epoch = || Some((BOOT.to_string(), "ab".repeat(16)));
+    let target = r.state_file.with_extension("target");
+    // 1. a substituted symlink: neither written through nor replaced
+    std::fs::remove_file(&r.state_file).unwrap();
+    std::fs::write(&target, b"foreign").unwrap();
+    std::os::unix::fs::symlink(&target, &r.state_file).unwrap();
+    keeper.save_epoch(epoch());
+    assert!(
+        keeper.persisted_epoch().is_none(),
+        "a refused save is not remembered"
+    );
+    assert!(std::fs::symlink_metadata(&r.state_file)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert_eq!(std::fs::read(&target).unwrap(), b"foreign");
+    assert!(
+        keeper.rekey().is_none(),
+        "no rotation without a trusted state file"
+    );
+    assert_eq!(std::fs::read(&r.key_file).unwrap(), key_before);
+    // 2. a foreign file (loosened mode) and 3. an extra link: left exactly as they are
+    std::fs::remove_file(&r.state_file).unwrap();
+    std::fs::write(&r.state_file, b"foreign-2").unwrap();
+    for loose in [0o644, 0o666, 0o400, 0o700] {
+        std::fs::set_permissions(&r.state_file, std::fs::Permissions::from_mode(loose)).unwrap();
+        keeper.save_epoch(epoch());
+        assert!(keeper.rekey().is_none());
+        assert_eq!(mode(&r.state_file), loose, "{loose:o}: no repair");
+        assert_eq!(std::fs::read(&r.state_file).unwrap(), b"foreign-2");
+    }
+    std::fs::set_permissions(&r.state_file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let alias = r.state_file.with_extension("alias");
+    std::fs::hard_link(&r.state_file, &alias).unwrap();
+    keeper.save_epoch(epoch());
+    assert_eq!(std::fs::read(&r.state_file).unwrap(), b"foreign-2");
+    assert_eq!(std::fs::read(&alias).unwrap(), b"foreign-2");
+    std::fs::remove_file(&alias).unwrap();
+    // 4. the directory became writable by others after open
+    std::fs::set_permissions(&r.state_file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let root = root_of(&r);
+    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o777)).unwrap();
+    keeper.save_epoch(epoch());
+    assert_eq!(std::fs::read(&r.state_file).unwrap(), b"foreign-2");
+    assert!(keeper.rekey().is_none());
+    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+    // No temporary file is left behind by any refusal, and the published key never moved.
+    assert!(names(&root).iter().all(|n| !n.ends_with(".tmp")));
+    assert_eq!(std::fs::read(&r.key_file).unwrap(), key_before);
+    // Control: with our own 0600 file back, the same keeper saves normally.
+    std::fs::remove_file(&r.state_file).unwrap();
+    egress_issuer::files::save_state(
+        &r.state_file,
+        &egress_issuer::files::PrivateState {
+            key: Some(keeper.key()),
+            next: None,
+            epoch: None,
+        },
+    )
+    .unwrap();
+    keeper.save_epoch(epoch());
+    assert_eq!(keeper.persisted_epoch(), epoch());
+    assert_eq!(mode(&r.state_file), 0o600);
+}
+
+#[tokio::test]
+async fn private_state_writes_refuse_a_state_directory_swapped_for_a_link() {
+    let Some(r) = rig() else { return };
+    let root = root_of(&r);
+    let dir = root.join("sd");
+    std::fs::create_dir(&dir).unwrap();
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let state = dir.join("issuer.json");
+    let (mut keeper, _) = open_at(&r, state.clone()).unwrap();
+    // The keeper in `open_at` keeps `state`; swap the directory at that path for a symlink.
+    let moved = root.join("sd.old");
+    std::fs::rename(&dir, &moved).unwrap();
+    std::os::unix::fs::symlink(&moved, &dir).unwrap();
+    let before = std::fs::read(moved.join("issuer.json")).unwrap();
+    keeper.save_epoch(Some((BOOT.to_string(), "cd".repeat(16))));
+    assert_eq!(std::fs::read(moved.join("issuer.json")).unwrap(), before);
+    assert!(names(&moved).iter().all(|n| !n.ends_with(".tmp")));
+    assert!(keeper.rekey().is_none());
+}
+
+fn publish_foreign(r: &Rig, key: &[u8; 32]) -> Vec<u8> {
+    let keydir = r.key_file.parent().unwrap();
+    let text = format!("{}\n", hex(key));
+    let _ = std::fs::remove_file(&r.key_file);
+    std::fs::write(&r.key_file, &text).unwrap();
+    std::os::unix::fs::chown(&r.key_file, Some(r.uid), Some(r.gid)).unwrap();
+    std::fs::set_permissions(&r.key_file, std::fs::Permissions::from_mode(0o440)).unwrap();
+    assert!(keydir.exists());
+    text.into_bytes()
+}
+
+#[tokio::test]
+async fn first_publication_never_overwrites_a_key_someone_else_published() {
+    let Some(r) = rig() else { return };
+    let keydir = r.key_file.parent().unwrap().to_path_buf();
+    // Absent private state (lost volume / new issuer path) and a valid-looking foreign key (right
+    // owner, group, 0440): refused, and nothing changes anywhere.
+    let foreign = publish_foreign(&r, &[0x99u8; 32]);
+    let inode = std::fs::metadata(&r.key_file).unwrap().ino();
+    assert_eq!(open(&r).unwrap_err().0, Reason::Publication);
+    assert_eq!(std::fs::read(&r.key_file).unwrap(), foreign);
+    assert_eq!(std::fs::metadata(&r.key_file).unwrap().ino(), inode);
+    assert_eq!(mode(&r.key_file), 0o440);
+    assert!(
+        !r.state_file.exists(),
+        "no state is created for a refused publication"
+    );
+    assert_eq!(names(&keydir), vec!["current.key".to_string()]);
+    // A persisted pending candidate and somebody else's key published before the retry: refused as
+    // superseded; state bytes, key bytes and inode all unchanged.
+    let pending = egress_issuer::files::PrivateState {
+        key: None,
+        next: Some([0x42u8; 32]),
+        epoch: None,
+    };
+    egress_issuer::files::save_state(&r.state_file, &pending).unwrap();
+    let state_before = std::fs::read(&r.state_file).unwrap();
+    assert_eq!(open(&r).unwrap_err().0, Reason::Publication);
+    assert_eq!(std::fs::read(&r.state_file).unwrap(), state_before);
+    assert_eq!(std::fs::read(&r.key_file).unwrap(), foreign);
+    assert_eq!(std::fs::metadata(&r.key_file).unwrap().ino(), inode);
+    assert_eq!(names(&keydir), vec!["current.key".to_string()]);
+    // The candidate itself already published (a crash after the link): adopted, not rewritten.
+    publish_foreign(&r, &[0x42u8; 32]);
+    let inode = std::fs::metadata(&r.key_file).unwrap().ino();
+    let (keeper, how) = open(&r).unwrap();
+    assert_eq!((how, keeper.key()), (Opened::Fresh, [0x42u8; 32]));
+    assert_eq!(std::fs::metadata(&r.key_file).unwrap().ino(), inode);
+    // An explicit migration (the operator removes the old key file) lets a new issuer publish.
+    drop(keeper);
+    std::fs::remove_file(&r.key_file).unwrap();
+    std::fs::remove_file(&r.state_file).unwrap();
+    let (fresh, how) = open(&r).unwrap();
+    assert_eq!(how, Opened::Fresh);
+    assert_eq!(
+        std::fs::read_to_string(&r.key_file).unwrap().trim(),
+        hex(&fresh.key())
+    );
 }

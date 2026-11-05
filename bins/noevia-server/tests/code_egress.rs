@@ -119,7 +119,11 @@ fn rig(proxy_port: Option<u16>) -> Option<Rig> {
     let root = tempfile::tempdir().unwrap();
     let base = std::fs::canonicalize(root.path()).unwrap();
     let (data, keydir) = (base.join("data"), base.join("key"));
+    // The private issuer state lives in `data`: its chain must be the issuer's own and not writable
+    // by group or other.
+    std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o700)).unwrap();
     std::fs::create_dir(&data).unwrap();
+    std::fs::set_permissions(&data, std::fs::Permissions::from_mode(0o700)).unwrap();
     std::fs::create_dir(&keydir).unwrap();
     std::os::unix::fs::chown(&keydir, Some(uid), Some(gid)).unwrap();
     std::fs::set_permissions(&keydir, std::fs::Permissions::from_mode(0o750)).unwrap();

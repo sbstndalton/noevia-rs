@@ -95,6 +95,7 @@ async fn native_issuer_replays_every_oracle_scenario() {
                 continue;
             }
             let root = std::fs::canonicalize(dir.path()).unwrap();
+            std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
             let keydir = root.join("key");
             std::fs::create_dir(&keydir).unwrap();
             std::os::unix::fs::chown(&keydir, Some(uid), Some(gid)).unwrap();
