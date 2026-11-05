@@ -314,7 +314,11 @@ impl Authority {
             .is_some_and(|generation| self.publish_locked(&state, generation).is_ok());
         #[cfg(test)]
         if published {
-            if let Some(hook) = AFTER_SNAPSHOT_PUBLISH.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            if let Some(hook) = AFTER_SNAPSHOT_PUBLISH
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .as_ref()
+            {
                 hook(self);
             }
         }
@@ -757,7 +761,8 @@ mod concurrency_tests {
             let during = a.scan_snapshot().unwrap();
             let during_token = during.get("token").as_str().unwrap().to_owned();
             let during_published = a.scan_publish(&during_token, body());
-            let hit_visible = !matches!(a.scan_snapshot().unwrap().get("hit"), js_json::JValue::Null);
+            let hit_visible =
+                !matches!(a.scan_snapshot().unwrap().get("hit"), js_json::JValue::Null);
             *sink.lock().unwrap() = Some((
                 budget_visible,
                 old_published || during_published,
@@ -770,9 +775,18 @@ mod concurrency_tests {
         assert!(saved.is_ok());
         let (budget_visible, published, hit_visible, during_token) =
             observed.lock().unwrap().take().unwrap();
-        assert!(budget_visible, "the new budget snapshot is visible in the window");
-        assert!(!published, "no scan may publish while the new budget is being adopted");
-        assert!(!hit_visible, "no scan entry is readable beside the new budget");
+        assert!(
+            budget_visible,
+            "the new budget snapshot is visible in the window"
+        );
+        assert!(
+            !published,
+            "no scan may publish while the new budget is being adopted"
+        );
+        assert!(
+            !hit_visible,
+            "no scan entry is readable beside the new budget"
+        );
         assert!(!authority.scan_publish(&before_token, body()));
         assert!(!authority.scan_publish(&during_token, body()));
         let after = authority.scan_snapshot().unwrap();
