@@ -42,6 +42,8 @@ pub(crate) struct Field {
     pub(crate) key: String,
     /// The value, as `JSON.stringify` writes it.
     pub(crate) value: String,
+    /// Original lexeme for coercions before stringify (nested Infinity must not become null first).
+    pub(crate) source: String,
     /// The number the value is, when it is one, as JavaScript holds it: `1e400` is `Infinity`,
     /// which is written `null` but is truthy, not nullish, and no finite number.
     pub(crate) number: Option<f64>,
@@ -205,7 +207,7 @@ fn array_index(written: &str) -> Option<u32> {
 
 // ── first pass: which objects are reordered ─────────────────────────────────────────────────────
 
-fn string_end(b: &[u8], start: usize) -> Option<usize> {
+pub(crate) fn string_end(b: &[u8], start: usize) -> Option<usize> {
     let mut j = start + 1;
     loop {
         match *b.get(j)? {
@@ -216,7 +218,7 @@ fn string_end(b: &[u8], start: usize) -> Option<usize> {
     }
 }
 
-fn scalar_end(b: &[u8], start: usize) -> usize {
+pub(crate) fn scalar_end(b: &[u8], start: usize) -> usize {
     let mut j = start;
     while let Some(c) = b.get(j) {
         if matches!(c, b',' | b'}' | b']' | b' ' | b'\t' | b'\n' | b'\r') {
@@ -536,6 +538,7 @@ pub(crate) fn read(text: &str) -> Option<Top> {
             let mut value = String::new();
             write(text, &plan, entry.value.0, entry.value.1, &mut value)?;
             out.push(Field {
+                source: text.get(entry.value.0..entry.value.1)?.to_owned(),
                 key: entry.key.text(text).to_owned(),
                 value,
                 number: number_of(text.get(entry.value.0..entry.value.1)?),

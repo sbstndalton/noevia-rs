@@ -1088,3 +1088,35 @@ owner = "rust"
 methods = ["GET", "HEAD"]
 catch_all = true
 client = false
+
+# Remaining proxy surface; unmatched import/edit verbs retain Core fallback.
+
+[[route]]
+path = "/api/diary/files"
+owner = "rust"
+
+[[route]]
+path = "/api/diary/file"
+owner = "rust"
+
+[[route]]
+path = "/api/diary/workspace-trash"
+owner = "rust"
+
+[[route]]
+path = "/api/diary/history"
+owner = "rust"
+
+[[route]]
+path = "/api/diary/external-sources"
+owner = "rust"
+
+[[route]]
+path = "/api/diary/external-sources/import"
+owner = "rust"
+methods = ["POST"]
+
+[[route]]
+path = "/api/diary/entries/edit"
+owner = "rust"
+methods = ["POST"]

@@ -186,6 +186,13 @@ const CHATGPT_OAUTH: &[&str] = &[
 /// routes.toml answer only those; the rest answer every method and give their own 405 after the
 /// add-on gate, as core does.
 pub(crate) const DIARY_ROUTES: &[&str] = &[
+    "/api/diary/files",
+    "/api/diary/file",
+    "/api/diary/workspace-trash",
+    "/api/diary/history",
+    "/api/diary/external-sources",
+    "/api/diary/external-sources/import",
+    "/api/diary/entries/edit",
     "/api/diary/source",
     "/api/diary/today",
     "/api/diary/storage-import",
@@ -1246,6 +1253,11 @@ mod tests {
         // Every method: the proxies, `/api/diary` itself, the storage status and the connector
         // endpoint (which answers its own 405 before authentication).
         for p in [
+            "/api/diary/files",
+            "/api/diary/file",
+            "/api/diary/workspace-trash",
+            "/api/diary/history",
+            "/api/diary/external-sources",
             "/api/diary/source",
             "/api/diary/today",
             "/api/diary/storage-import",
@@ -1263,6 +1275,8 @@ mod tests {
         }
         // The methods core mounted and no more: another method is Node's (its unknown-path answer).
         for (p, methods) in [
+            ("/api/diary/entries/edit", &["POST"][..]),
+            ("/api/diary/external-sources/import", &["POST"][..]),
             ("/api/diary/context", &["GET", "POST"][..]),
             ("/api/diary/exchanges", &["GET", "POST"][..]),
             ("/api/profile/diary-connectors", &["GET", "POST"][..]),
@@ -1282,12 +1296,6 @@ mod tests {
         // What the web client never names is not in the route table at all.
         for p in [
             "/api/diary/local-exchangex",
-            "/api/diary/history",
-            "/api/diary/files",
-            "/api/diary/file",
-            "/api/diary/workspace-trash",
-            "/api/diary/entries/edit",
-            "/api/diary/external-sources",
             "/api/diary/sourcex",
             "/api/diary/source/x",
         ] {
