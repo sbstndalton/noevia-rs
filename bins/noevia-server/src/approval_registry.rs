@@ -856,9 +856,10 @@ impl Registry {
         chat: Option<&str>,
         through: u64,
     ) -> Result<(), DecideError> {
+        let canonical = chat.map(safe_id);
         let mut s = self.state.lock().map_err(|_| DecideError::Unavailable)?;
         s.invalidated.retain(|(u, c), generation| {
-            u != user || chat.is_some_and(|ch| ch != c) || *generation > through
+            u != user || canonical.as_ref().is_some_and(|ch| ch != c) || *generation > through
         });
         Ok(())
     }
@@ -1663,6 +1664,17 @@ mod tests {
         assert_eq!(r.pending_invalidation(OWNER, "old").unwrap(), None);
         assert_eq!(r.pending_invalidation(OWNER, "new").unwrap(), Some(3));
         assert_eq!(r.pending_invalidation(OTHER, "other").unwrap(), Some(2));
+    }
+    #[test]
+    fn chat_acknowledgements_canonicalise_aliases_before_retiring_markers() {
+        let r = Registry::new(None);
+        r.state
+            .lock()
+            .unwrap()
+            .invalidated
+            .insert((OWNER.into(), "old".into()), 1);
+        r.acknowledge_through(OWNER, Some("o/l.d"), 1).unwrap();
+        assert_eq!(r.pending_invalidation(OWNER, "old").unwrap(), None);
     }
     #[test]
     fn saturated_revocation_generation_refuses_new_admission() {

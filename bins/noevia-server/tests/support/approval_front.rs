@@ -30,6 +30,9 @@ pub const PROTOCOL: &str = "registry-executor-v3";
 
 #[derive(Default)]
 pub struct Node {
+    pub selective_user: std::sync::Mutex<Option<String>>,
+    pub selective_refuse: std::sync::atomic::AtomicBool,
+    pub selective_block: std::sync::atomic::AtomicBool,
     pub refuse: std::sync::atomic::AtomicBool,
     pub block: std::sync::atomic::AtomicBool,
     pub entered: tokio::sync::Notify,
@@ -56,10 +59,22 @@ pub async fn node() -> (SocketAddr, Arc<Node>) {
                         .calls
                         .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                     state.entered.notify_one();
-                    if state.block.load(std::sync::atomic::Ordering::SeqCst) {
+                    let selected =
+                        state.selective_user.lock().unwrap().as_deref() == body["user"].as_str();
+                    if state.block.load(std::sync::atomic::Ordering::SeqCst)
+                        || selected
+                            && state
+                                .selective_block
+                                .load(std::sync::atomic::Ordering::SeqCst)
+                    {
                         state.release.notified().await;
                     }
-                    let status = if state.refuse.load(std::sync::atomic::Ordering::SeqCst) {
+                    let status = if state.refuse.load(std::sync::atomic::Ordering::SeqCst)
+                        || selected
+                            && state
+                                .selective_refuse
+                                .load(std::sync::atomic::Ordering::SeqCst)
+                    {
                         axum::http::StatusCode::SERVICE_UNAVAILABLE
                     } else {
                         // The reviewed executor-side contract: bump synchronously before ack.
@@ -83,6 +98,7 @@ pub async fn node() -> (SocketAddr, Arc<Node>) {
     (addr, state)
 }
 pub struct Front {
+    pub approvals: Arc<noevia_server::approval_registry::Registry>,
     pub node: Arc<Node>,
     pub _dir: tempfile::TempDir,
     pub data: PathBuf,
@@ -148,6 +164,7 @@ pub async fn front_with_upstream(upstream: String, node: Arc<Node>) -> Front {
     ));
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
+    let approvals = Arc::clone(&app.approvals);
     tokio::spawn(serve(
         listener,
         app,
@@ -190,6 +207,7 @@ pub async fn front_with_upstream(upstream: String, node: Arc<Node>) -> Front {
     )
     .unwrap();
     Front {
+        approvals,
         node,
         _dir: dir,
         data,

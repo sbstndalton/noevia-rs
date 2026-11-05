@@ -2,7 +2,9 @@
 //! its executor epoch. Time and wrapper-entry reports never establish that a write was sent.
 use reqwest::header::{HeaderName, HeaderValue};
 use serde_json::{json, Value};
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Semaphore;
 
 #[derive(Debug)]
 pub struct Pending;
@@ -12,6 +14,7 @@ pub struct Revoker {
     client: Option<reqwest::Client>,
     base: String,
     token: Option<HeaderValue>,
+    cleanup: Arc<Semaphore>,
 }
 impl std::fmt::Debug for Revoker {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -37,6 +40,7 @@ impl Revoker {
             client,
             base,
             token,
+            cleanup: Arc::new(Semaphore::new(1)),
         }
     }
     pub async fn ack(&self, user: &str, chat: Option<&str>) -> Result<(), Pending> {
@@ -77,43 +81,42 @@ impl Revoker {
     }
 }
 impl crate::App {
-    /// Snapshot pending generations, then acknowledge every covered chat using the existing
-    /// v3 API. Preserve scope: only an explicit project/user fence is user-wide. Partial progress
-    /// is retired after each ack so timeout/failure can be retried without retaining covered debt.
-    async fn covering_approval_fence(
-        &self,
-        target: Option<(&str, Option<&str>)>,
-    ) -> Result<(), Pending> {
+    /// Only the requested scope gates completion. Its generation is captured before the await;
+    /// a concurrent newer invalidation cannot be retired by this acknowledgement.
+    async fn target_approval_fence(&self, user: &str, chat: Option<&str>) -> Result<(), Pending> {
         tokio::time::timeout(Duration::from_secs(2), async {
             let cover = self.approvals.covering_fence().map_err(|_| Pending)?;
-            if let Some((user, chat)) = target {
-                self.config.approval_revocation.ack(user, chat).await?;
-                self.approvals
-                    .acknowledge_through(user, chat, cover.through)
-                    .map_err(|_| Pending)?;
-            }
-            for (user, chat) in cover.chats {
-                if target.is_some_and(|(u, c)| u == user && c.is_none_or(|ch| ch == chat)) {
-                    continue;
-                }
-                self.config
-                    .approval_revocation
-                    .ack(&user, Some(&chat))
-                    .await?;
-                self.approvals
-                    .acknowledge_through(&user, Some(&chat), cover.through)
-                    .map_err(|_| Pending)?;
-            }
-            Ok(())
+            self.config.approval_revocation.ack(user, chat).await?;
+            self.approvals
+                .acknowledge_through(user, chat, cover.through)
+                .map_err(|_| Pending)
         })
         .await
         .map_err(|_| Pending)?
     }
 
-    /// Reconcile at-capacity admission without issuing or consuming a ticket. This request
-    /// remains 503; once an acknowledgement drains debt, a retry can be admitted normally.
-    pub async fn drain_approval_invalidations(&self) -> Result<(), Pending> {
-        self.covering_approval_fence(None).await
+    /// At most one bounded cleanup runs per peer. No caller awaits unrelated acknowledgements;
+    /// each successful scope retires its covered generations, and failures stay retryable.
+    pub fn drain_approval_invalidations(&self) {
+        let revoker = self.config.approval_revocation.clone();
+        let Ok(permit) = Arc::clone(&revoker.cleanup).try_acquire_owned() else {
+            return;
+        };
+        let registry = Arc::clone(&self.approvals);
+        tokio::spawn(async move {
+            let _permit = permit;
+            let _ = tokio::time::timeout(Duration::from_secs(2), async {
+                let Ok(cover) = registry.covering_fence() else {
+                    return;
+                };
+                for (user, chat) in cover.chats {
+                    if revoker.ack(&user, Some(&chat)).await.is_ok() {
+                        let _ = registry.acknowledge_through(&user, Some(&chat), cover.through);
+                    }
+                }
+            })
+            .await;
+        });
     }
 
     pub async fn confirm_approval_invalidation(
@@ -124,22 +127,24 @@ impl crate::App {
     ) -> Result<(), Pending> {
         tokio::time::timeout(Duration::from_secs(2), async {
             while generation.is_some() {
-                self.covering_approval_fence(None).await?;
+                self.target_approval_fence(user, Some(chat)).await?;
                 generation = self
                     .approvals
                     .pending_invalidation(user, chat)
                     .map_err(|_| Pending)?;
             }
-            Ok(())
+            Ok::<(), Pending>(())
         })
         .await
-        .map_err(|_| Pending)?
+        .map_err(|_| Pending)??;
+        self.drain_approval_invalidations();
+        Ok(())
     }
 
     pub async fn revoke_approvals(&self, user: &str, chat: &str) -> Result<bool, Pending> {
         let revoked = self.approvals.revoke(user, chat);
-        self.covering_approval_fence(Some((user, Some(chat))))
-            .await?;
+        self.target_approval_fence(user, Some(chat)).await?;
+        self.drain_approval_invalidations();
         Ok(revoked)
     }
     pub async fn revoke_project_approvals(
@@ -148,7 +153,8 @@ impl crate::App {
         project: &str,
     ) -> Result<usize, Pending> {
         let revoked = self.approvals.revoke_project(user, project);
-        self.covering_approval_fence(Some((user, None))).await?;
+        self.target_approval_fence(user, None).await?;
+        self.drain_approval_invalidations();
         Ok(revoked)
     }
 }

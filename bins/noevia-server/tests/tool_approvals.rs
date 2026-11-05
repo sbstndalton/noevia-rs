@@ -604,6 +604,21 @@ async fn context_invalidation_with_an_unreachable_executor_never_reports_success
     }
 }
 
+async fn wait_for_invalidation_drain(f: &Front, chat: &str) {
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while f
+            .approvals
+            .pending_invalidation(&f.user, chat)
+            .unwrap()
+            .is_some()
+        {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .expect("acknowledged background cleanup must retire the marker");
+}
+
 async fn explicit_fence_retires_abandoned_invalidation(project: bool) {
     use std::sync::atomic::Ordering::SeqCst;
     let f = front().await;
@@ -665,6 +680,7 @@ async fn another_chats_covering_fence_retires_older_context_markers() {
     .unwrap();
     f.node.refuse.store(false, SeqCst);
     assert_eq!(f.op("approvals/granted", json!({"user":f.user,"chat":"qa-two","scope":"space:free","binding":b2,"protocol":PROTOCOL})).await.0, 200);
+    wait_for_invalidation_drain(&f, "qa-one").await;
     let covered = f.node.calls.load(SeqCst);
     f.node.refuse.store(true, SeqCst);
     assert_eq!(f.op("approvals/granted", old).await.0, 200);
@@ -726,6 +742,7 @@ async fn outstanding_context_marker_cap_blocks_grants_and_redeems_until_a_fence_
         .0,
         200
     );
+    wait_for_invalidation_drain(&f, "cap-0").await;
     let (status, answer) = f.op("approvals/granted", probe).await;
     assert_eq!(status, 200);
     assert_eq!(answer["granted"], json!(true));
@@ -733,4 +750,108 @@ async fn outstanding_context_marker_cap_blocks_grants_and_redeems_until_a_fence_
         f.redeem(&chat, &b, &ticket).await,
         "capacity rejection must not consume a previously issued ticket"
     );
+}
+
+// One front, registry and authenticated callback endpoint serve two distinct synthetic users.
+// Only user B's callback fails/stalls: A's deletion must depend solely on A's own epoch fences.
+async fn deletion_ignores_another_users_pending_invalidation(project: bool, stall: bool) {
+    use std::sync::atomic::Ordering::SeqCst;
+    let f = front().await;
+    let db = Connection::open(server_store::db_path(&f.data)).unwrap();
+    db.execute("INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) SELECT ?1,'other','other','Other','member',password_hash,'synthetic-other-passkey',created_at,updated_at FROM users WHERE id=?2", [STRANGER, &f.user]).unwrap();
+    let dir = f.data.join("users").join(STRANGER);
+    std::fs::create_dir_all(&dir).unwrap();
+    for file in ["free-chats.json", "projects.json"] {
+        std::fs::copy(
+            f.data.join("users").join(&f.user).join(file),
+            dir.join(file),
+        )
+        .unwrap();
+    }
+    let (status, context) = f
+        .op(
+            "chat/grant-context",
+            json!({"user":STRANGER,"chat":"qa-one"}),
+        )
+        .await;
+    assert_eq!(status, 200);
+    let b =
+        json!({"user":STRANGER,"canonicalChatId":"qa-one","scope":"space:free","context":context});
+    assert_eq!(f.op("approvals/open", json!({"user":STRANGER,"id":"ap-other","kind":"write","chat":"qa-one","scope":"space:free","binding":b})).await.0, 200);
+    let live = f.approvals.grant_context(STRANGER, "ap-other");
+    f.approvals
+        .decide(STRANGER, "ap-other", "approve_all", false, live.as_ref())
+        .unwrap();
+    let check = json!({"user":STRANGER,"chat":"qa-one","scope":"space:free","binding":b,"protocol":PROTOCOL});
+    assert_eq!(
+        f.op("approvals/granted", check.clone()).await.1["granted"],
+        json!(true)
+    );
+    server_projects::chat_move::move_chat(
+        &f.data,
+        STRANGER,
+        "qa-one",
+        server_projects::chat_move::Holder::Project("qa-p".into()),
+        None,
+        START,
+    )
+    .unwrap();
+    *f.node.selective_user.lock().unwrap() = Some(STRANGER.into());
+    f.node.selective_refuse.store(true, SeqCst);
+    assert_eq!(f.op("approvals/granted", check).await.0, 503);
+    assert!(f
+        .approvals
+        .pending_invalidation(STRANGER, "qa-one")
+        .unwrap()
+        .is_some());
+    f.node.selective_refuse.store(!stall, SeqCst);
+    f.node.selective_block.store(stall, SeqCst);
+
+    let path = if project {
+        "/api/projects/qa-p"
+    } else {
+        "/api/freechats/qa-one"
+    };
+    let status = tokio::time::timeout(Duration::from_millis(1500), f.public("DELETE", path, ""))
+        .await
+        .expect("A's deletion must not await B's two-second stalled callback");
+    assert_eq!(
+        status, 200,
+        "A's acknowledged revoke must not fail because of B's cleanup"
+    );
+    assert!(
+        f.approvals
+            .pending_invalidation(STRANGER, "qa-one")
+            .unwrap()
+            .is_some(),
+        "unconfirmed B debt must remain retryable"
+    );
+    let file = if project {
+        "projects.json"
+    } else {
+        "free-chats.json"
+    };
+    let after = std::fs::read_to_string(f.data.join("users").join(&f.user).join(file)).unwrap();
+    assert!(
+        !after.contains(if project { "qa-p" } else { "qa-one" }),
+        "the deletion must actually mutate A's store"
+    );
+    let other = std::fs::read_to_string(dir.join("projects.json")).unwrap();
+    assert!(other.contains("qa-one"), "B's own chat remains intact");
+}
+#[tokio::test]
+async fn chat_delete_succeeds_when_another_users_marker_callback_fails() {
+    deletion_ignores_another_users_pending_invalidation(false, false).await;
+}
+#[tokio::test]
+async fn project_delete_succeeds_when_another_users_marker_callback_fails() {
+    deletion_ignores_another_users_pending_invalidation(true, false).await;
+}
+#[tokio::test]
+async fn chat_delete_does_not_wait_for_another_users_stalled_marker() {
+    deletion_ignores_another_users_pending_invalidation(false, true).await;
+}
+#[tokio::test]
+async fn project_delete_does_not_wait_for_another_users_stalled_marker() {
+    deletion_ignores_another_users_pending_invalidation(true, true).await;
 }

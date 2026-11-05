@@ -1000,7 +1000,7 @@ async fn approvals_op(
             .await;
             match answer {
                 Ok((None, _)) => {
-                    let _ = app.drain_approval_invalidations().await;
+                    app.drain_approval_invalidations();
                     error(
                         StatusCode::SERVICE_UNAVAILABLE,
                         "Approval revocation pending; retry",
