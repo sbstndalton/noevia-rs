@@ -168,7 +168,7 @@ async fn a_launch_runs_in_the_front_under_the_gate_and_its_state_is_private() {
         }
     })
     .await
-    .expect("running profile snapshot captured");
+    .unwrap();
     assert!(file["job"]["originalText"].is_string());
     // Cancelled through the native cancel route; the profile goes back.
     let (s, _) = write(f.addr, "POST", "/api/models/calibration/cancel", ADMIN, "").await;
