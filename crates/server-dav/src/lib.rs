@@ -1140,7 +1140,7 @@ impl<B: Backend> DavService<B> {
                     Ok(Ok((200, body)))
                         if body.get("trash").is_some_and(serde_json::Value::is_string) =>
                     {
-                        preserved = body["trash"].clone();
+                        preserved = body.get("trash").cloned().unwrap_or_default();
                     }
                     Ok(Ok((status, _))) if (400..600).contains(&status) => {
                         return reply(
