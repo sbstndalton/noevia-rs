@@ -156,10 +156,12 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
         (USER_HEADER, user),
         (chat_admission::LEASE_HEADER, lease_id),
     ];
-    let res = app
-        .proxy
-        .relay(conn.peer, req, target, &extra, RELAY_LIMIT)
-        .await;
+    // Review P2-1: a lease lost while Core works (Node ended it, or stopped hearing its renewals)
+    // stops the call: Core no longer counts it, so maintenance may begin.
+    let relaying = app.proxy.relay(conn.peer, req, target, &extra, RELAY_LIMIT);
+    let Some(res) = chat_admission::until_lost(&lease, relaying).await else {
+        return chat_admission::lost_answer(chat_admission::Gate::Chat);
+    };
     let Some(res) = res else {
         return unavailable();
     };
@@ -168,11 +170,15 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
     // (which stops that turn) and the client gets the 502 of a Core that did not answer.
     // The lease is the call's one gate count until its answer has ended (chat_admission.rs).
     if chat_wire::is_ndjson(res.headers()) {
-        chat_admission::hold_until_end(chat_wire::stream(res).await, lease)
+        // The headers wait for Core's first event; a loss before it is the gate's 503.
+        let Some(stream) = chat_admission::until_lost(&lease, chat_wire::stream(res)).await else {
+            return chat_admission::lost_answer(chat_admission::Gate::Chat);
+        };
+        chat_admission::hold_until_end(stream, lease, chat_admission::OnLoss::Frame(FAILED_FRAME))
     } else if chat_wire::is_event_stream(res.headers()) {
         unavailable()
     } else {
-        chat_admission::hold_until_end(res, lease)
+        chat_admission::hold_until_end(res, lease, chat_admission::OnLoss::Abort)
     }
 }
 

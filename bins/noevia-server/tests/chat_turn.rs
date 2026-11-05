@@ -55,6 +55,8 @@ enum Turn {
     DieAfterHeaders,
     /// Core goes away before its headers.
     DieBeforeHeaders,
+    /// Core works without answering ([`Core::closed`] fires when the front closes its socket).
+    Hang,
     /// A Core that writes its own event stream (not this front's pair).
     OwnEventStream,
     /// NDJSON: [`Core::script`]'s chunks, then the end (or a break when `broken`).
@@ -106,6 +108,10 @@ struct Core {
     script: Mutex<(Vec<Bytes>, bool)>,
     /// [`Gate::Waiting`]: fires when the asker went away while Node waited.
     ask_closed: Mutex<Option<oneshot::Sender<Instant>>>,
+    /// Review P2-1: the lease's TTL as granted, and whether renewals are confirmed (404 once Node
+    /// ended the lease).
+    ttl_ms: Mutex<u64>,
+    renew_ok: Mutex<bool>,
 }
 
 /// Fires its sender when dropped (hyper drops a pending service future when its connection closes).
@@ -204,6 +210,10 @@ async fn core_service(
             if method == "DELETE" && path == format!("{ADMISSION}/{LEASE}") {
                 seen.live -= 1;
             }
+            drop(seen);
+            if method == "POST" && !*core.renew_ok.lock().unwrap() {
+                return Ok(json(404, r#"{"error":"Not found"}"#.into()));
+            }
             return Ok(json(
                 if method == "DELETE" { 204 } else { 200 },
                 "{}".into(),
@@ -219,7 +229,8 @@ async fn core_service(
         return Ok(match gate {
             Gate::Open => {
                 core.seen.lock().unwrap().live += 1;
-                json(201, format!(r#"{{"lease":"{LEASE}","ttlMs":30000}}"#))
+                let ttl = *core.ttl_ms.lock().unwrap();
+                json(201, format!(r#"{{"lease":"{LEASE}","ttlMs":{ttl}}}"#))
             }
             Gate::Held => json(
                 503,
@@ -333,6 +344,11 @@ async fn core_service(
                 .unwrap()
         }
         Turn::DieBeforeHeaders => return Err(std::io::Error::other("Core went away")),
+        Turn::Hang => {
+            let _closed = OnDrop(core.closed.lock().unwrap().take());
+            std::future::pending::<()>().await;
+            unreachable!()
+        }
     })
 }
 
@@ -347,6 +363,8 @@ async fn core() -> Arc<Core> {
         closed: Mutex::new(None),
         script: Mutex::new((Vec::new(), false)),
         ask_closed: Mutex::new(None),
+        ttl_ms: Mutex::new(30_000),
+        renew_ok: Mutex::new(true),
     });
     let c = Arc::clone(&core);
     tokio::spawn(async move {
@@ -1314,4 +1332,72 @@ async fn a_core_that_does_not_know_the_gate_ask_is_the_proxys_502_and_no_turn_ru
     // A refusal of the front's own stands when the gate gives no answer of its own.
     let (res, _c) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), false).await;
     assert_eq!(res.status(), 401);
+}
+
+// Review P2-1: a lease Node ended (or stopped hearing renewals for) stops the call it covered, while
+// Core works and while its events stream: Core no longer counts it, so maintenance may begin.
+
+/// A front whose grants have a short TTL (renewed every 100 ms) that Node stops confirming.
+async fn losing_front() -> Front {
+    let f = front().await;
+    *f.core.ttl_ms.lock().unwrap() = 300;
+    *f.core.renew_ok.lock().unwrap() = false;
+    f
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_lease_lost_while_core_works_is_the_gates_503_and_cores_socket_closes() {
+    let f = losing_front().await;
+    *f.core.turn.lock().unwrap() = Turn::Hang;
+    let (closed_tx, closed_rx) = oneshot::channel();
+    *f.core.closed.lock().unwrap() = Some(closed_tx);
+    let (res, _c) = tokio::time::timeout(
+        Duration::from_secs(5),
+        call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true),
+    )
+    .await
+    .expect("the call outlived its lease");
+    assert_eq!(res.status(), 503);
+    assert_eq!(res.headers()["retry-after"], "3");
+    assert_eq!(
+        text(res).await,
+        r#"{"error":"Model configuration is being applied. Try again shortly.","code":"inferenceMaintenance","retryable":true,"retryAfter":3}"#
+    );
+    tokio::time::timeout(Duration::from_secs(1), closed_rx)
+        .await
+        .expect("Core's turn kept running")
+        .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_lease_lost_mid_stream_ends_the_turn_with_the_failure_frame_and_closes_cores_socket() {
+    let f = losing_front().await;
+    *f.core.turn.lock().unwrap() = Turn::Silent;
+    let (closed_tx, closed_rx) = oneshot::channel();
+    *f.core.closed.lock().unwrap() = Some(closed_tx);
+    let (res, _c) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await;
+    assert_eq!(res.status(), 200);
+    let got = tokio::time::timeout(Duration::from_secs(5), text(res))
+        .await
+        .expect("the stream outlived its lease");
+    assert!(got.starts_with("data: {\"type\":\"meta\""), "{got}");
+    assert!(got.ends_with(FAILED), "{got}");
+    tokio::time::timeout(Duration::from_secs(1), closed_rx)
+        .await
+        .expect("Core's turn kept running")
+        .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_lease_node_keeps_confirming_lets_a_long_turn_run() {
+    // Control: renewed (every 100 ms) and confirmed, the same silent turn is still streaming after 1 s.
+    let f = front().await;
+    *f.core.ttl_ms.lock().unwrap() = 300;
+    *f.core.turn.lock().unwrap() = Turn::Silent;
+    let (res, _c) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await;
+    let mut body = res.into_body();
+    body.frame().await.unwrap().unwrap();
+    let next = tokio::time::timeout(Duration::from_secs(1), body.frame()).await;
+    assert!(next.is_err(), "the turn ended though its lease was renewed: {next:?}");
+    assert!(f.core.seen.lock().unwrap().releases.iter().any(|r| r.ends_with("/renew")));
 }

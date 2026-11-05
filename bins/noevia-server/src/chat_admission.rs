@@ -105,21 +105,64 @@ pub fn refusal(gate: Gate, refused: &Refused, log: &mut dyn FnMut(&str)) -> Resp
     res
 }
 
-/// `res` with `lease` held until its body has ended or been dropped (the client left), then given back.
-pub fn hold_until_end(res: Response<Body>, lease: Lease) -> Response<Body> {
+/// Node's words for a gate it no longer holds for this call (inference-maintenance.cjs `enter`): the
+/// lease was lost, so maintenance may already be running.
+pub const LOST: &str = "Model configuration is being applied. Try again shortly.";
+
+/// The answer for a call whose lease was lost before its headers went out: the gate's refusal, as
+/// index.cjs answers a gate that is held (for chat with its `[chat] 503` line).
+pub fn lost_answer(gate: Gate) -> Response<Body> {
+    let refused = Refused {
+        status: 503,
+        message: LOST.into(),
+        code: None,
+    };
+    refusal(gate, &refused, &mut |l| {
+        eprintln!("{l}");
+    })
+}
+
+/// `work`, unless `lease` is lost first (Node ended it, or stopped confirming it): then `None`, and
+/// `work` is dropped, which closes Core's socket and stops the call there (review P2-1).
+pub async fn until_lost<T>(lease: &Lease, work: impl std::future::Future<Output = T>) -> Option<T> {
+    let lost = lease.lost().clone();
+    tokio::select! {
+        biased;
+        () = lost.cancelled() => None,
+        done = work => Some(done),
+    }
+}
+
+/// What the answer's body does when the lease is lost after the headers went out.
+pub enum OnLoss {
+    /// Writes this last frame (the chat turn's failure event) and ends.
+    Frame(&'static str),
+    /// Ends the body with an error (the connection is aborted, as for a Core that went away).
+    Abort,
+}
+
+/// `res` with `lease` held until its body has ended or been dropped (the client left), then given
+/// back. When the lease is lost first, Core's body is dropped at once (which stops the call there)
+/// and the client gets `on_loss`.
+pub fn hold_until_end(res: Response<Body>, lease: Lease, on_loss: OnLoss) -> Response<Body> {
     let (parts, body) = res.into_parts();
+    let lost = lease.lost().clone();
     Response::from_parts(
         parts,
         Body::new(Held {
-            body,
+            body: Some(body),
             lease: Some(lease),
+            lost: Box::pin(async move { lost.cancelled().await }),
+            on_loss: Some(on_loss),
         }),
     )
 }
 
 struct Held {
-    body: Body,
+    body: Option<Body>,
     lease: Option<Lease>,
+    lost: Pin<Box<dyn std::future::Future<Output = ()> + Send>>,
+    on_loss: Option<OnLoss>,
 }
 
 impl http_body::Body for Held {
@@ -130,7 +173,24 @@ impl http_body::Body for Held {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<http_body::Frame<Bytes>, Self::Error>>> {
-        let polled = Pin::new(&mut self.body).poll_frame(cx);
+        if self.body.is_some() && self.lease.is_some() && self.lost.as_mut().poll(cx).is_ready() {
+            // Node no longer counts this call: stop it there, and tell the client.
+            self.body = None;
+            self.lease = None;
+            return Poll::Ready(match self.on_loss.take() {
+                Some(OnLoss::Frame(frame)) => {
+                    Some(Ok(http_body::Frame::data(Bytes::from_static(frame.as_bytes()))))
+                }
+                Some(OnLoss::Abort) => Some(Err(axum::Error::new(std::io::Error::other(
+                    "the call's admission lease was lost",
+                )))),
+                None => None,
+            });
+        }
+        let Some(body) = self.body.as_mut() else {
+            return Poll::Ready(None);
+        };
+        let polled = Pin::new(body).poll_frame(cx);
         if matches!(polled, Poll::Ready(None) | Poll::Ready(Some(Err(_)))) {
             // The answer has ended: the call's gate count goes with it (dropping gives it back).
             self.lease = None;
@@ -139,11 +199,14 @@ impl http_body::Body for Held {
     }
 
     fn is_end_stream(&self) -> bool {
-        self.body.is_end_stream()
+        self.body.as_ref().is_none_or(http_body::Body::is_end_stream)
     }
 
     fn size_hint(&self) -> http_body::SizeHint {
-        self.body.size_hint()
+        self.body
+            .as_ref()
+            .map(http_body::Body::size_hint)
+            .unwrap_or_default()
     }
 }
 

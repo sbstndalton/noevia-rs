@@ -373,10 +373,16 @@ pub async fn forward_node(
             true,
         );
     };
-    req.headers_mut().insert(chat_admission::LEASE_HEADER, id);
-    let res = app.proxy.forward(conn.peer, req).await;
-    // The lease covers the call in Core (its one gate count) until its answer has ended.
-    chat_admission::hold_until_end(res, lease)
+    // Set after the proxy sanitized the client's headers: a `Connection` header naming the lease
+    // cannot strip it (review P2-3).
+    let extra = [(chat_admission::LEASE_HEADER, id)];
+    let forwarding = app.proxy.forward_with(conn.peer, req, &extra);
+    // The lease covers the call in Core (its one gate count) until its answer has ended; losing it
+    // stops the call (review P2-1).
+    let Some(res) = chat_admission::until_lost(&lease, forwarding).await else {
+        return chat_admission::lost_answer(chat_admission::Gate::Diary);
+    };
+    chat_admission::hold_until_end(res, lease, chat_admission::OnLoss::Abort)
 }
 
 /// The local exchange's turn on the budget: `Ok(None)` when Node answers before its budget (signed

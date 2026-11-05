@@ -292,9 +292,10 @@ impl Admission {
         // The gate refuses only with its 503; anything else is not this route's answer (a Core that is
         // not this front's pair answers an ask it does not know with 400 or 404).
         match (status, parsed.get("error").and_then(Value::as_str)) {
+            // The gate's words whole, as index.cjs sends them (refusalBody keeps err.message).
             (503, Some(m)) => Err(GateRefusal::Refused(Refused {
                 status,
-                message: m.chars().take(500).collect(),
+                message: m.to_owned(),
                 code: parsed
                     .get("code")
                     .and_then(Value::as_str)
@@ -707,6 +708,13 @@ mod tests {
                 code: Some("inferenceMaintenance".into()),
             })
         );
+        // Node's words whole, however long (index.cjs keeps err.message).
+        let long = "x".repeat(700);
+        let (base, _s) = node((503, format!(r#"{{"error":"{long}","code":"inferenceMaintenance"}}"#))).await;
+        match admission(&base).enter_gate(Gate::Chat).await.err().unwrap() {
+            GateRefusal::Refused(r) => assert_eq!(r.message, long),
+            other => panic!("{other:?}"),
+        }
         for grant in [
             (404, r#"{"error":"Not found"}"#.to_owned()),
             (400, r#"{"error":"A model is required."}"#.to_owned()),

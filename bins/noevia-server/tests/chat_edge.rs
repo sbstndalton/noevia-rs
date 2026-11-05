@@ -406,6 +406,18 @@ enum Who {
 }
 
 async fn send(f: &Front, method: &str, path: &str, body: Vec<u8>, who: Who) -> Answer {
+    send_with(f, method, path, body, who, &[]).await
+}
+
+/// [`send`] with headers of the client's own.
+async fn send_with(
+    f: &Front,
+    method: &str,
+    path: &str,
+    body: Vec<u8>,
+    who: Who,
+    extra: &[(&str, &str)],
+) -> Answer {
     let stream = TcpStream::connect(f.addr).await.unwrap();
     let (mut send, conn) =
         hyper::client::conn::http1::handshake(hyper_util::rt::TokioIo::new(stream))
@@ -429,6 +441,9 @@ async fn send(f: &Front, method: &str, path: &str, body: Vec<u8>, who: Who) -> A
             &f.csrf
         };
         b = b.header("cookie", &f.jar).header("x-csrf-token", csrf);
+    }
+    for (k, v) in extra {
+        b = b.header(*k, *v);
     }
     let res = send
         .send_request(b.body(Full::new(Bytes::from(body))).unwrap())
@@ -892,4 +907,31 @@ fn the_oracle_core_is_pinned_and_the_capability_is_listed() {
         "{pin}"
     );
     assert!(noevia_server::FEATURES.contains(&"rust-chat-edge"));
+}
+
+/// Review P2-3: a client's `Connection` header naming the lease cannot strip the front's own lease from
+/// the local exchange it forwards, so the exchange stays covered (one gate count, not two).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_hostile_connection_header_cannot_strip_the_fronts_lease_from_the_local_exchange() {
+    let f = front(&[]).await;
+    f.account(Account {
+        admin: false,
+        diary: true,
+        harness: false,
+    });
+    for connection in [LEASE, "keep-alive, x-noevia-admission-lease", "X-Noevia-Admission-Lease"] {
+        let got = send_with(
+            &f,
+            "POST",
+            "/api/diary/local-exchange",
+            b"{}".to_vec(),
+            Who::SignedIn,
+            &[("connection", connection)],
+        )
+        .await;
+        assert_eq!(got.status, 200, "{connection}");
+        assert_eq!(got.json()["proxied"], "POST /api/diary/local-exchange");
+        assert_eq!(got.json()["lease"], f.last_lease(), "{connection}");
+    }
+    f.holds_closed().await;
 }
