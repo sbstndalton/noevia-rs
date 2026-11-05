@@ -105,3 +105,32 @@ fn the_oracle_is_the_paired_core_and_names_its_notes() {
     assert_eq!(c.get("core").as_str().map(str::len), Some(40));
     assert!(notes::CODE_ROUTE_NOTE.starts_with("For commands and code"));
 }
+
+#[test]
+fn validation_matches_node() {
+    use chat_pipeline::validate::{check, Account, Early};
+    let c = wtf16::parse(include_str!("fixtures/validate-cases.json")).unwrap();
+    let mut seen = std::collections::HashSet::new();
+    for k in arr(c.get("cases")) {
+        let a = Account {
+            diary_enabled: k.get("diaryEnabled") == &JValue::Bool(true),
+            extras_project: k.get("extrasProject") == &JValue::Bool(true),
+        };
+        let got = check(k.get("body"), a);
+        let want = k.get("outcome");
+        let what = wtf16::stringify(k).unwrap();
+        match (got, want) {
+            (Ok(Early::Continue(_)), JValue::Str(s)) if s == "continue" => {}
+            (Ok(Early::StartPreparation), JValue::Str(s)) if s == "prepare" => {}
+            (Ok(Early::Refuse(status, error)), w) => {
+                assert_eq!(f64::from(status), w.get("status").as_num().unwrap(), "{what}");
+                assert_eq!(Some(error), w.get("payload").get("error").as_str(), "{what}");
+                assert_eq!(wtf16::stringify(w.get("payload")).unwrap().len(), error.len() + 12, "{what}");
+            }
+            (Err(Thrown), w) if w.get("throws").as_str().is_some() => {}
+            (got, _) => panic!("{what}: got {got:?}"),
+        }
+        seen.insert(wtf16::stringify(want).unwrap());
+    }
+    assert!(seen.len() >= 8, "{seen:?}");
+}

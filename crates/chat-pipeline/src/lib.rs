@@ -6,9 +6,11 @@
 //! - [`replay`]: the saved history a turn replays to the model: which items are kept, how tool
 //!   results, applied and declined writes are folded, and the role alternation strict chat
 //!   templates need (core `normalizeReplayHistory` and the history mapping of `createChatHandler`).
+//! - [`validate`]: what a turn refuses before anything is read or written.
 //! - [`notes`]: the system notes a turn adds or removes (`withSystemNote`, `withoutSystemNote`).
 pub mod notes;
 pub mod replay;
+pub mod validate;
 mod text;
 
 /// A JavaScript `TypeError` the Node code would have thrown here (a value whose `String()`

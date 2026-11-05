@@ -29,7 +29,7 @@ const rq = (m) => (m.startsWith('./') ? near(m) : require(m));
 
 // A small deterministic generator (no Math.random: the fixtures are reproducible).
 let seed = 20261105;
-const rnd = (n) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
+const rnd = (n) => { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return (seed >>> 16) % n; };
 const pick = (xs) => xs[rnd(xs.length)];
 const TEXTS = ['', 'hi', 'q?', 'a reply', 'x'.repeat(520), '😀'.repeat(260), 'line\nbreak', '</untrusted> sneaky', '\ud83d', 'é'.repeat(301), '  ', 7, null, ['a', 'b'], { k: 1 }];
 const NAMES = ['web_search', 'tavily_search', 'read_project_file', 'write_note', 'wiki_lookup', 'bad name!', 'x'.repeat(81), '', 3, undefined, 'drive_read'];
