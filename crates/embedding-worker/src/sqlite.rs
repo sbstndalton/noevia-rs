@@ -280,7 +280,7 @@ impl SqlStore {
         out
     }
 
-    fn live(&self, index: &Index) -> Result<(), String> {
+    pub(crate) fn live(&self, index: &Index) -> Result<(), String> {
         if let Some(user) = &index.user {
             let live = server_store::Store::open(&self.root)
                 .map_err(|_| fault())?

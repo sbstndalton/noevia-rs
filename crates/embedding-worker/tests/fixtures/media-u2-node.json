@@ -550,6 +550,24 @@
   ],
   "settings": [
     {
+      "env": {
+        "PROJECT_TAIL_EMBED_BATCH": "0x10",
+        "PROJECT_TAIL_EMBED_PER_PASS": "0b100",
+        "PROJECT_UPLOAD_COMPLETION_PER_PASS": "0o3"
+      },
+      "result": {
+        "perPass": 4,
+        "perHour": 480,
+        "perDocument": 24,
+        "batch": 16,
+        "uploads": 3,
+        "duty": 0.25,
+        "minPauseMs": 250,
+        "delayMs": 90000,
+        "intervalMs": 300000
+      }
+    },
+    {
       "env": {},
       "result": {
         "perPass": 48,

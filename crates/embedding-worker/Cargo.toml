@@ -9,6 +9,7 @@ publish.workspace = true
 [lints]
 workspace = true
 [dependencies]
+base64 = "0.22"
 js-json = { path = "../js-json" }
 engine-admission = { path = "../engine-admission" }
 model-stream = { path = "../model-stream" }
@@ -29,4 +30,4 @@ quote = "1"
 proc-macro2 = "1"
 syn = { version = "2", features = ["full", "visit"] }
 tempfile = "3"
-tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "io-util"] }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "io-util", "test-util"] }

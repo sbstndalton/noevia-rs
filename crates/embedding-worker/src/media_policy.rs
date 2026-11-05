@@ -192,6 +192,35 @@ pub fn tail_window(
     };
     json!({"chunks": chunks, "fromPage": start, "toPage": to_page, "final": final_window, "limited": limited, "headPage": last})
 }
+/// Number(string) for worker environment settings, including the radix forms
+/// accepted by the existing Node settings. Nonfinite values remain unavailable.
+pub fn env_number(raw: &str) -> Option<f64> {
+    let raw = server_projects::js::trim(raw);
+    if raw.is_empty() {
+        return Some(0.0);
+    }
+    for (prefix, base) in [
+        ("0x", 16),
+        ("0X", 16),
+        ("0o", 8),
+        ("0O", 8),
+        ("0b", 2),
+        ("0B", 2),
+    ] {
+        if let Some(digits) = raw.strip_prefix(prefix) {
+            if digits.is_empty() {
+                return None;
+            }
+            let mut result = 0.0;
+            for digit in digits.chars() {
+                result = result * (base as f64) + (digit.to_digit(base)? as f64);
+            }
+            return result.is_finite().then_some(result);
+        }
+    }
+    raw.parse::<f64>().ok().filter(|n| n.is_finite())
+}
+
 /// Environment coercion and clamping match document-backfill.cjs settings().
 pub fn settings(env: &Value) -> Value {
     let n = |key: &str, default: f64, lo: f64, hi: f64, round: bool| {
@@ -199,13 +228,7 @@ pub fn settings(env: &Value) -> Value {
             .get(key)
             .and_then(Value::as_str)
             .filter(|s| !s.is_empty())
-            .and_then(|s| {
-                if s.trim().is_empty() {
-                    Some(0.0)
-                } else {
-                    s.trim().parse::<f64>().ok()
-                }
-            })
+            .and_then(env_number)
             .filter(|v| v.is_finite())
             .unwrap_or(default)
             .clamp(lo, hi);
