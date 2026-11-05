@@ -101,6 +101,8 @@ struct Seen {
     releases: Vec<String>,
 }
 
+type AdmissionReply = (u16, String, Option<String>, Option<String>, bool);
+
 struct Core {
     addr: SocketAddr,
     turn: Mutex<Turn>,
@@ -116,6 +118,8 @@ struct Core {
     /// Review P2-1: the lease's TTL as granted, and how renewals are answered.
     ttl_ms: Mutex<u64>,
     renew: Mutex<Renew>,
+    /// Arbitrary admission response and retry metadata for bounded-body regressions.
+    admission_reply: Mutex<Option<AdmissionReply>>,
 }
 
 /// How the stand-in answers a lease renewal.
@@ -246,6 +250,35 @@ async fn core_service(
             seen.hits.push(format!("{method} {path}"));
             seen.asks
                 .push((String::from_utf8_lossy(&body).into_owned(), token));
+        }
+        if let Some((status, body, retry, code, chunked)) =
+            core.admission_reply.lock().unwrap().clone()
+        {
+            let mut reply = json(status, body.clone());
+            if chunked {
+                // An unknown-size body forces HTTP/1 chunking, independent of its byte length.
+                let (mut tx, stream) =
+                    http_body_util::channel::Channel::<Bytes, std::io::Error>::new(1);
+                tokio::spawn(async move {
+                    for part in body.as_bytes().chunks(8192) {
+                        if tx.send_data(Bytes::copy_from_slice(part)).await.is_err() {
+                            break;
+                        }
+                    }
+                });
+                *reply.body_mut() = stream.boxed();
+            }
+            if let Some(retry) = retry {
+                reply
+                    .headers_mut()
+                    .insert("retry-after", retry.parse().unwrap());
+            }
+            if let Some(code) = code {
+                reply
+                    .headers_mut()
+                    .insert("x-noevia-admission-code", code.parse().unwrap());
+            }
+            return Ok(reply);
         }
         let gate = *core.gate.lock().unwrap();
         return Ok(match gate {
@@ -416,6 +449,7 @@ async fn core() -> Arc<Core> {
         ask_closed: Mutex::new(None),
         ttl_ms: Mutex::new(30_000),
         renew: Mutex::new(Renew::Ok),
+        admission_reply: Mutex::new(None),
     });
     let c = Arc::clone(&core);
     tokio::spawn(async move {
@@ -1547,4 +1581,85 @@ async fn a_lease_lost_after_cores_headers_and_before_its_first_event_is_the_gate
         .await
         .expect("Core's turn kept running")
         .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_70042_byte_refusal_keeps_its_complete_message_code_and_retry_hints() {
+    for chunked in [false, true] {
+        let f = front().await;
+        let reason = "r".repeat(70_000);
+        let refusal = format!(r#"{{"error":"{reason}","code":"inferenceMaintenance"}}"#);
+        assert_eq!(refusal.len(), 70_042);
+        *f.core.admission_reply.lock().unwrap() = Some((503, refusal, None, None, chunked));
+        let (res, _) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await;
+        assert_eq!(res.status(), 503, "chunked {chunked}");
+        assert_eq!(res.headers()["retry-after"], "3");
+        let got: serde_json::Value = serde_json::from_str(&text(res).await).unwrap();
+        assert_eq!(got["error"], reason);
+        assert_eq!(got["code"], "inferenceMaintenance");
+        assert_eq!(got["retryable"], true);
+        assert_eq!(got["retryAfter"], 3);
+        assert!(f
+            .core
+            .seen
+            .lock()
+            .unwrap()
+            .hits
+            .iter()
+            .all(|h| !h.contains("/internal/chat/turn")));
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_over_one_mib_refusal_keeps_status_header_code_and_retry_semantics() {
+    for chunked in [false, true] {
+        let f = front().await;
+        let reason = "r".repeat(1024 * 1024);
+        let refusal = format!(r#"{{"error":"{reason}","code":"inferenceMaintenance"}}"#);
+        *f.core.admission_reply.lock().unwrap() = Some((
+            503,
+            refusal,
+            Some("11".into()),
+            Some("engineHeld".into()),
+            chunked,
+        ));
+        let (res, _) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await;
+        assert_eq!(res.status(), 503, "chunked {chunked}");
+        assert_eq!(res.headers()["retry-after"], "11");
+        let got: serde_json::Value = serde_json::from_str(&text(res).await).unwrap();
+        assert_eq!(
+            got["error"],
+            "Model configuration is being applied. Try again shortly."
+        );
+        assert_eq!(got["code"], "engineHeld");
+        assert_eq!(got["retryable"], true);
+        assert_eq!(got["retryAfter"], 11);
+        assert!(f
+            .core
+            .seen
+            .lock()
+            .unwrap()
+            .hits
+            .iter()
+            .all(|h| !h.contains("/internal/chat/turn")));
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_over_one_mib_non_refusal_fails_closed() {
+    for chunked in [false, true] {
+        let f = front().await;
+        *f.core.admission_reply.lock().unwrap() =
+            Some((200, " ".repeat(1024 * 1024 + 1), None, None, chunked));
+        let (res, _) = call(&f, "POST", "/api/chat", &[], TURN.to_vec(), true).await;
+        assert_eq!(res.status(), 502, "chunked {chunked}");
+        assert!(f
+            .core
+            .seen
+            .lock()
+            .unwrap()
+            .hits
+            .iter()
+            .all(|h| !h.contains("/internal/chat/turn")));
+    }
 }

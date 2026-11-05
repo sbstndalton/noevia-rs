@@ -82,8 +82,13 @@ pub fn refusal(gate: Gate, refused: &Refused, log: &mut dyn FnMut(&str)) -> Resp
             .as_deref()
             .filter(|c| !c.is_empty())
             .unwrap_or(MAINTENANCE);
+        let retry_after = refused
+            .retry_after
+            .as_deref()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(3);
         format!(
-            r#"{{"error":{},"code":{},"retryable":true,"retryAfter":3}}"#,
+            r#"{{"error":{},"code":{},"retryable":true,"retryAfter":{retry_after}}}"#,
             quote(&refused.message),
             quote(code)
         )
@@ -94,7 +99,13 @@ pub fn refusal(gate: Gate, refused: &Refused, log: &mut dyn FnMut(&str)) -> Resp
     *res.status_mut() = status;
     let h = res.headers_mut();
     h.insert("x-noevia-api", HeaderValue::from_static("1"));
-    if chat {
+    if let Some(wait) = refused
+        .retry_after
+        .as_deref()
+        .and_then(|v| HeaderValue::from_str(v).ok())
+    {
+        h.insert(header::RETRY_AFTER, wait);
+    } else if chat {
         h.insert(header::RETRY_AFTER, HeaderValue::from_static("3"));
     }
     h.insert(
@@ -116,6 +127,7 @@ pub fn lost_answer(gate: Gate) -> Response<Body> {
         status: 503,
         message: LOST.into(),
         code: None,
+        retry_after: None,
     };
     refusal(gate, &refused, &mut |l| {
         eprintln!("{l}");
@@ -280,6 +292,7 @@ mod tests {
             status: 503,
             message: "Chat is paused while noevia calibrates m.".into(),
             code: Some("inferenceMaintenance".into()),
+            retry_after: None,
         };
         let res = refusal(Gate::Chat, &refused, &mut |l| lines.push(l.to_owned()));
         assert_eq!(res.status(), 503);
@@ -323,6 +336,7 @@ mod tests {
             status: 503,
             message: "A model is being tuned.".into(),
             code: Some("inferenceMaintenance".into()),
+            retry_after: None,
         };
         let res = refusal(Gate::Diary, &refused, &mut |l| lines.push(l.to_owned()));
         assert_eq!(res.status(), 503);

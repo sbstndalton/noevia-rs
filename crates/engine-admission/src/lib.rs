@@ -37,27 +37,37 @@ use tokio::time::Instant;
 const PATH: &str = "/internal/inference-admission/lease";
 const TOKEN_HEADER: &str = "x-noevia-store-token";
 const CALL_TIMEOUT: Duration = Duration::from_secs(5);
-/// The most of an admission answer read (S8 re-review P2-4): far above anything Node writes (a lease, or
-/// a refusal's words); over it the answer is no answer, and admission fails closed.
-pub const MAX_ANSWER_BYTES: usize = 64 * 1024;
+/// Maximum buffered admission body. Larger refusals retain their status and retry metadata.
+pub const MAX_ANSWER_BYTES: usize = 1024 * 1024;
+pub const MAINTENANCE_MESSAGE: &str = "Model configuration is being applied. Try again shortly.";
+/// A bounded, content-free refusal code, when supplied by the admission authority.
+pub const REFUSAL_CODE_HEADER: &str = "x-noevia-admission-code";
 
-/// `response`'s body, at most [`MAX_ANSWER_BYTES`] of it whatever it declares (chunked bodies too);
-/// `None` when it is longer or breaks.
-async fn capped(mut response: reqwest::Response) -> Option<Vec<u8>> {
+#[derive(Debug)]
+enum AnswerError {
+    TooLarge,
+    Unreadable,
+}
+
+async fn capped(mut response: reqwest::Response) -> Result<Vec<u8>, AnswerError> {
     if response
         .content_length()
         .is_some_and(|n| n > MAX_ANSWER_BYTES as u64)
     {
-        return None;
+        return Err(AnswerError::TooLarge);
     }
     let mut out = Vec::new();
-    while let Some(chunk) = response.chunk().await.ok()? {
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| AnswerError::Unreadable)?
+    {
         if chunk.len() > MAX_ANSWER_BYTES.saturating_sub(out.len()) {
-            return None;
+            return Err(AnswerError::TooLarge);
         }
         out.extend_from_slice(&chunk);
     }
-    Some(out)
+    Ok(out)
 }
 /// Node's own queue limit is under this (`max_wait_ms`), so a queued wait ends with Node's answer.
 pub const ENTER_TIMEOUT: Duration = Duration::from_secs(150);
@@ -123,14 +133,33 @@ pub struct Refused {
     pub status: u16,
     pub message: String,
     pub code: Option<String>,
+    /// Retry-After supplied by Node, including HTTP-date values.
+    pub retry_after: Option<String>,
 }
 
 impl Refused {
+    fn oversized(status: u16, headers: &reqwest::header::HeaderMap) -> Option<Self> {
+        (status == 503 || status == 409).then(|| Self {
+            status,
+            message: MAINTENANCE_MESSAGE.into(),
+            code: headers
+                .get(REFUSAL_CODE_HEADER)
+                .and_then(|v| v.to_str().ok())
+                .filter(|s| !s.is_empty() && s.len() <= 128)
+                .map(str::to_owned),
+            retry_after: headers
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_owned),
+        })
+    }
+
     fn unavailable() -> Refused {
         Refused {
             status: 503,
             message: "The model is busy. Try again shortly.".into(),
             code: None,
+            retry_after: None,
         }
     }
 }
@@ -213,10 +242,20 @@ impl Admission {
         let response = answer.map_err(|_| Refused::unavailable())?;
         let confirmed = Instant::now();
         let status = response.status().as_u16();
+        let metadata = Refused::oversized(status, response.headers());
+        let retry_after = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
         let reading = capped(response);
         let bytes = tokio::select! {
             () = cancel.cancelled() => return Err(cancelled()),
-            b = reading => b.ok_or_else(Refused::unavailable)?,
+            b = reading => match b {
+                Ok(bytes) => bytes,
+                Err(AnswerError::TooLarge) => return Err(metadata.unwrap_or_else(Refused::unavailable)),
+                Err(AnswerError::Unreadable) => return Err(Refused::unavailable()),
+            },
         };
         let parsed: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
         if status != 201 {
@@ -227,6 +266,7 @@ impl Admission {
                 (_, Some(m)) => Refused {
                     status,
                     message: m.to_owned(),
+                    retry_after,
                     code: parsed
                         .get("code")
                         .and_then(Value::as_str)
@@ -312,7 +352,21 @@ impl Admission {
         };
         let confirmed = Instant::now();
         let status = response.status().as_u16();
-        let bytes = capped(response).await.ok_or(GateRefusal::NoAnswer)?;
+        let metadata = Refused::oversized(status, response.headers());
+        let retry_after = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+        let bytes = match capped(response).await {
+            Ok(bytes) => bytes,
+            Err(AnswerError::TooLarge) if metadata.is_some() => {
+                return Err(metadata
+                    .map(GateRefusal::Refused)
+                    .unwrap_or(GateRefusal::NoAnswer));
+            }
+            Err(_) => return Err(GateRefusal::NoAnswer),
+        };
         let parsed: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
         if status == 201 {
             return self.grant(&parsed, confirmed).ok_or(GateRefusal::NoAnswer);
@@ -324,6 +378,7 @@ impl Admission {
             (503, Some(m)) => Err(GateRefusal::Refused(Refused {
                 status,
                 message: m.to_owned(),
+                retry_after,
                 code: parsed
                     .get("code")
                     .and_then(Value::as_str)
@@ -360,6 +415,7 @@ fn cancelled() -> Refused {
         status: 499,
         message: "Cancelled.".into(),
         code: None,
+        retry_after: None,
     }
 }
 
@@ -765,6 +821,7 @@ mod tests {
                 status: 503,
                 message: "Chat is paused while noevia calibrates m.".into(),
                 code: Some("inferenceMaintenance".into()),
+                retry_after: None,
             })
         );
         // Node's words whole, however long (index.cjs keeps err.message).
@@ -956,7 +1013,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_answer_over_the_cap_is_no_answer_and_words_within_it_are_whole() {
+    async fn bounded_answers_fail_closed_for_grants_but_preserve_refusals() {
         let pad = "p".repeat(MAX_ANSWER_BYTES);
         let big = format!(
             r#"{{"lease":"0123456789abcdef0123456789abcdef","ttlMs":30000,"pad":"{pad}"}}"#
@@ -995,7 +1052,12 @@ mod tests {
             let over = raw_node(503, format!("{body} "), chunked).await;
             assert_eq!(
                 admission(&over).enter_gate(Gate::Chat).await.err(),
-                Some(GateRefusal::NoAnswer),
+                Some(GateRefusal::Refused(Refused {
+                    status: 503,
+                    message: MAINTENANCE_MESSAGE.into(),
+                    code: None,
+                    retry_after: None,
+                })),
                 "one byte over, chunked {chunked}"
             );
         }
