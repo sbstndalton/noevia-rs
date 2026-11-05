@@ -10,8 +10,8 @@
 //! - [`notes`]: the system notes a turn adds or removes (`withSystemNote`, `withoutSystemNote`).
 pub mod notes;
 pub mod replay;
-pub mod validate;
 mod text;
+pub mod validate;
 
 /// A JavaScript `TypeError` the Node code would have thrown here (a value whose `String()`
 /// coercion throws, or a property read on `null`): the turn fails as Node's did.

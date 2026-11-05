@@ -67,9 +67,17 @@ pub fn inner(body: &JValue, a: Account) -> Result<Early, Thrown> {
             return Ok(Early::Refuse(400, "Enable diary extras first"));
         }
         let session = get(&body, "sessionId");
-        let session = if truthy(session) { string(session)? } else { String::new() };
+        let session = if truthy(session) {
+            string(session)?
+        } else {
+            String::new()
+        };
         let mut next = spread(&body);
-        set(&mut next, "projectId", JValue::Str(DIARY_EXTRAS_PROJECT_ID.into()));
+        set(
+            &mut next,
+            "projectId",
+            JValue::Str(DIARY_EXTRAS_PROJECT_ID.into()),
+        );
         set(
             &mut next,
             "chatId",
@@ -103,14 +111,28 @@ mod tests {
     #[test]
     fn a_diary_extras_turn_is_rebound_to_its_project_and_a_chat_of_its_session() {
         let body = wtf16::parse(r#"{"spaceId":"diary-extras","extrasEnabled":true,"message":"hi","sessionId":"s-1","projectId":"other"}"#).unwrap();
-        let a = Account { diary_enabled: true, extras_project: true };
-        let Early::Continue(next) = inner(&body, a).unwrap() else { panic!() };
+        let a = Account {
+            diary_enabled: true,
+            extras_project: true,
+        };
+        let Early::Continue(next) = inner(&body, a).unwrap() else {
+            panic!()
+        };
         assert_eq!(
             wtf16::stringify(&next).unwrap(),
             r#"{"spaceId":"diary-extras","extrasEnabled":true,"message":"hi","sessionId":"s-1","projectId":"cowork-diary-extras","chatId":"diary-extra-s-1"}"#
         );
-        let long = wtf16::parse(&format!(r#"{{"spaceId":"diary-extras","extrasEnabled":true,"message":"hi","sessionId":"{}"}}"#, "x".repeat(90))).unwrap();
-        let Early::Continue(next) = inner(&long, a).unwrap() else { panic!() };
-        assert_eq!(wtf16::len(next.get("chatId").as_str().unwrap()), "diary-extra-".len() + 80);
+        let long = wtf16::parse(&format!(
+            r#"{{"spaceId":"diary-extras","extrasEnabled":true,"message":"hi","sessionId":"{}"}}"#,
+            "x".repeat(90)
+        ))
+        .unwrap();
+        let Early::Continue(next) = inner(&long, a).unwrap() else {
+            panic!()
+        };
+        assert_eq!(
+            wtf16::len(next.get("chatId").as_str().unwrap()),
+            "diary-extra-".len() + 80
+        );
     }
 }

@@ -123,9 +123,21 @@ fn validation_matches_node() {
             (Ok(Early::Continue(_)), JValue::Str(s)) if s == "continue" => {}
             (Ok(Early::StartPreparation), JValue::Str(s)) if s == "prepare" => {}
             (Ok(Early::Refuse(status, error)), w) => {
-                assert_eq!(f64::from(status), w.get("status").as_num().unwrap(), "{what}");
-                assert_eq!(Some(error), w.get("payload").get("error").as_str(), "{what}");
-                assert_eq!(wtf16::stringify(w.get("payload")).unwrap().len(), error.len() + 12, "{what}");
+                assert_eq!(
+                    f64::from(status),
+                    w.get("status").as_num().unwrap(),
+                    "{what}"
+                );
+                assert_eq!(
+                    Some(error),
+                    w.get("payload").get("error").as_str(),
+                    "{what}"
+                );
+                assert_eq!(
+                    wtf16::stringify(w.get("payload")).unwrap().len(),
+                    error.len() + 12,
+                    "{what}"
+                );
             }
             (Err(Thrown), w) if w.get("throws").as_str().is_some() => {}
             (got, _) => panic!("{what}: got {got:?}"),
