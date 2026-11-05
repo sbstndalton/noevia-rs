@@ -506,10 +506,7 @@ pub fn log_exchange(
     let document = corpus::document_path(l, day);
     let time = chrono::NaiveTime::from_hms_opt(hour, minute, 0).ok_or(())?;
     let rendered = cw::render_subsection_header(time, py::strip(title));
-    let sub_header = rendered
-        .strip_prefix("### ")
-        .map(str::to_owned)
-        .ok_or(())?;
+    let sub_header = rendered.strip_prefix("### ").map(str::to_owned).ok_or(())?;
     let body = cw::render_exchange(text, "", xid);
     let scaffold = match (c.journal.has_exchange(), corpus::list_months(c.reader, l)) {
         (Ok(has), Ok(months)) => !has && months.is_empty(),

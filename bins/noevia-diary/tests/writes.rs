@@ -805,7 +805,11 @@ async fn external_import_logs_one_exchange_like_python() {
     managed_tenant(dir.path(), &[]);
     let src = dir.path().join("src");
     std::fs::create_dir_all(src.join("sub")).unwrap();
-    std::fs::write(src.join("sub/2026-09-06 trip.md"), "Walked.\n\n# not a heading here\n").unwrap();
+    std::fs::write(
+        src.join("sub/2026-09-06 trip.md"),
+        "Walked.\n\n# not a heading here\n",
+    )
+    .unwrap();
     std::fs::write(src.join("blank.txt"), "  \n").unwrap();
     std::fs::write(src.join("bad.txt"), [0xff, 0xfe]).unwrap();
     std::fs::write(src.join("image.png"), "x").unwrap();
@@ -818,7 +822,9 @@ async fn external_import_logs_one_exchange_like_python() {
         let h = writer();
         async move { send(addr, "POST", "/api/external-sources/import", &h, &body).await }
     };
-    let (s, d, body) = post(serde_json::json!({"source_path": source, "rel_path": "sub/2026-09-06 trip.md"})).await;
+    let (s, d, body) =
+        post(serde_json::json!({"source_path": source, "rel_path": "sub/2026-09-06 trip.md"}))
+            .await;
     assert_eq!((s, d), (200, false), "{body}");
     let v: serde_json::Value = serde_json::from_str(&body).unwrap();
     assert_eq!(v["imported"], true);
@@ -829,31 +835,84 @@ async fn external_import_logs_one_exchange_like_python() {
     assert_eq!(xid.as_bytes()[14], b'4');
     let (doc, _) = file_row(dir.path(), "Entries/2026/September/September 6, 2026.md").unwrap();
     let doc = String::from_utf8(doc).unwrap();
-    assert!(doc.contains("### 12:00 \u{2014} Imported: 2026-09-06 trip.md"), "{doc}");
+    assert!(
+        doc.contains("### 12:00 \u{2014} Imported: 2026-09-06 trip.md"),
+        "{doc}"
+    );
     assert!(doc.contains("**Me:** Walked."), "{doc}");
     assert!(doc.contains(&format!("<!-- xid:{xid} -->")), "{doc}");
     // refusals, in app.py's order
     let cases = [
-        (serde_json::json!({"source_path": "/elsewhere", "rel_path": "x.md"}), 400, "source path is not configured"),
-        (serde_json::json!({"source_path": source, "rel_path": "missing.md"}), 404, "file not found in source"),
-        (serde_json::json!({"source_path": source, "rel_path": "../outside.md"}), 404, "file not found in source"),
-        (serde_json::json!({"source_path": source, "rel_path": "/etc/passwd"}), 404, "file not found in source"),
-        (serde_json::json!({"source_path": source, "rel_path": "image.png"}), 404, "file not found in source"),
-        (serde_json::json!({"source_path": source, "rel_path": "escape.md"}), 404, "file not found in source"),
-        (serde_json::json!({"source_path": source, "rel_path": "blank.txt"}), 400, "file is empty"),
-        (serde_json::json!({"source_path": source, "rel_path": "bad.txt"}), 400, "file unreadable (not UTF-8 text or not accessible)"),
+        (
+            serde_json::json!({"source_path": "/elsewhere", "rel_path": "x.md"}),
+            400,
+            "source path is not configured",
+        ),
+        (
+            serde_json::json!({"source_path": source, "rel_path": "missing.md"}),
+            404,
+            "file not found in source",
+        ),
+        (
+            serde_json::json!({"source_path": source, "rel_path": "../outside.md"}),
+            404,
+            "file not found in source",
+        ),
+        (
+            serde_json::json!({"source_path": source, "rel_path": "/etc/passwd"}),
+            404,
+            "file not found in source",
+        ),
+        (
+            serde_json::json!({"source_path": source, "rel_path": "image.png"}),
+            404,
+            "file not found in source",
+        ),
+        (
+            serde_json::json!({"source_path": source, "rel_path": "escape.md"}),
+            404,
+            "file not found in source",
+        ),
+        (
+            serde_json::json!({"source_path": source, "rel_path": "blank.txt"}),
+            400,
+            "file is empty",
+        ),
+        (
+            serde_json::json!({"source_path": source, "rel_path": "bad.txt"}),
+            400,
+            "file unreadable (not UTF-8 text or not accessible)",
+        ),
     ];
     for (b, status, text) in cases {
         let (s, d, body) = post(b.clone()).await;
-        assert_eq!((s, d, body.as_str()), (status, false, format!(r#"{{"detail":"{text}"}}"#).as_str()), "{b}");
+        assert_eq!(
+            (s, d, body.as_str()),
+            (status, false, format!(r#"{{"detail":"{text}"}}"#).as_str()),
+            "{b}"
+        );
     }
     // a body FastAPI answers 422 to is Python's
     let (s, d, _) = post(serde_json::json!({"source_path": source})).await;
     assert_eq!((s, d), (421, true));
     // not the tenant's writer, or the transforms Python itself does not use: declined
-    let (s, d, _) = send(addr, "POST", "/api/external-sources/import", &without(writer(), "x-noevia-diary-writer"), &serde_json::json!({"source_path": source, "rel_path": "blank.txt"})).await;
+    let (s, d, _) = send(
+        addr,
+        "POST",
+        "/api/external-sources/import",
+        &without(writer(), "x-noevia-diary-writer"),
+        &serde_json::json!({"source_path": source, "rel_path": "blank.txt"}),
+    )
+    .await;
     assert_eq!((s, d), (421, true));
     let addr = start_with(dir.path(), "python", Some(vec![source.clone()])).await;
-    let (s, d, _) = send(addr, "POST", "/api/external-sources/import", &writer(), &serde_json::json!({"source_path": source, "rel_path": "blank.txt"})).await;
+    let (s, d, _) = send(
+        addr,
+        "POST",
+        "/api/external-sources/import",
+        &writer(),
+        &serde_json::json!({"source_path": source, "rel_path": "blank.txt"}),
+    )
+    .await;
     assert_eq!((s, d), (421, true));
 }

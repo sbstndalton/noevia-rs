@@ -211,11 +211,7 @@ impl Route {
     pub fn write(self) -> bool {
         matches!(
             self,
-            Route::PutFile
-                | Route::Directory
-                | Route::Append
-                | Route::Edit
-                | Route::ExternalImport
+            Route::PutFile | Route::Directory | Route::Append | Route::Edit | Route::ExternalImport
         )
     }
 }

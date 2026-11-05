@@ -355,12 +355,20 @@ fn resolve_target(source: &str, rel: &str) -> Result<Option<PathBuf>, ()> {
     if rel.starts_with('/') {
         return Ok(None);
     }
-    let parts: Vec<&str> = rel.split('/').filter(|p| !p.is_empty() && *p != ".").collect();
+    let parts: Vec<&str> = rel
+        .split('/')
+        .filter(|p| !p.is_empty() && *p != ".")
+        .collect();
     if parts.contains(&"..") {
         return Ok(None);
     }
     let root = Path::new(source);
-    let root_real = fs::canonicalize(root).map_err(|_| ())?;
+    let root_real = match fs::canonicalize(root) {
+        Ok(p) => p,
+        // an absent source: Python's resolve() keeps the path, and nothing under it is a file
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(()),
+    };
     let joined = parts.iter().fold(root.to_path_buf(), |acc, p| acc.join(p));
     let full = match fs::canonicalize(&joined) {
         Ok(p) => p,
@@ -378,7 +386,10 @@ fn resolve_target(source: &str, rel: &str) -> Result<Option<PathBuf>, ()> {
 fn uuid4() -> Option<String> {
     use std::io::Read;
     let mut b = [0u8; 16];
-    fs::File::open("/dev/urandom").ok()?.read_exact(&mut b).ok()?;
+    fs::File::open("/dev/urandom")
+        .ok()?
+        .read_exact(&mut b)
+        .ok()?;
     b[6] = (b[6] & 0x0f) | 0x40;
     b[8] = (b[8] & 0x3f) | 0x80;
     let hex: String = b.iter().map(|x| format!("{x:02x}")).collect();
@@ -439,7 +450,11 @@ pub fn import(c: &crate::writes::Ctx<'_>, configured: &[String], req: &ImportReq
     if crate::py::strip(&text).is_empty() {
         return detail(400, "file is empty");
     }
-    let Some(name) = target.file_name().and_then(|n| n.to_str()).map(str::to_string) else {
+    let Some(name) = target
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(str::to_string)
+    else {
         return Reply::Decline;
     };
     if name.chars().any(|ch| !ch.is_ascii() && ch.is_numeric()) {
@@ -517,6 +532,33 @@ mod tests {
         assert!(!allowed_suffix("a.md."));
         assert!(!allowed_suffix("md"));
         assert!(!allowed_suffix("a.mdx"));
+    }
+
+    #[test]
+    fn import_target_stays_inside_the_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src");
+        std::fs::create_dir_all(src.join("sub")).unwrap();
+        std::fs::write(src.join("sub/a.md"), "a").unwrap();
+        std::fs::write(src.join("b.png"), "b").unwrap();
+        std::fs::write(dir.path().join("out.md"), "o").unwrap();
+        std::os::unix::fs::symlink(dir.path().join("out.md"), src.join("esc.md")).unwrap();
+        let s = src.to_str().unwrap();
+        let ok = |rel: &str| resolve_target(s, rel).unwrap();
+        assert!(ok("sub/a.md").is_some());
+        assert!(ok("./sub//a.md").is_some());
+        assert!(ok("").is_none());
+        assert!(ok("/sub/a.md").is_none());
+        assert!(ok("../out.md").is_none());
+        assert!(ok("sub/../sub/a.md").is_none()); // any ".." component
+        assert!(ok("b.png").is_none());
+        assert!(ok("esc.md").is_none());
+        assert!(ok("sub").is_none());
+        assert!(ok("nope.md").is_none());
+        assert!(resolve_target(s, "a\0.md").is_err());
+        assert!(resolve_target("/definitely/not/here", "a.md")
+            .unwrap()
+            .is_none());
     }
 
     #[test]
