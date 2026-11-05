@@ -6,11 +6,10 @@ use axum::{
     response::IntoResponse,
 };
 use js_json::{wtf16, JValue};
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 pub const PATH: &str = "/api/models/autotune/cancel";
-const FACTS: &str = "/internal/autotune-cancel/facts";
-const ABORT: &str = "/internal/autotune-cancel/abort";
-const MAX_FACTS: usize = 8 * 1024 * 1024;
+const FACTS: &str = "cancel/facts";
+const ABORT: &str = "cancel/abort";
 fn error(status: u16, message: &str) -> Response<Body> {
     reply::error(
         StatusCode::from_u16(status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
@@ -22,18 +21,7 @@ fn unavailable() -> Response<Body> {
     error(503, "Auto-tune state is unavailable. Try again shortly.")
 }
 async fn call(app: &App, path: &str, body: &serde_json::Value) -> Option<(u16, JValue)> {
-    let (status, bytes) = app
-        .config
-        .research
-        .node_call(path, body, Duration::from_secs(5))
-        .await?;
-    if bytes.len() > MAX_FACTS {
-        return None;
-    }
-    Some((
-        status,
-        wtf16::parse(std::str::from_utf8(&bytes).ok()?).ok()?,
-    ))
+    app.config.autotune.call(path, body).await
 }
 fn opaque<'a>(facts: &'a JValue, key: &str) -> Option<&'a str> {
     facts.get(key).as_str().filter(|t| {

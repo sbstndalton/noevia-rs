@@ -83,6 +83,9 @@ pub struct Config {
     /// The model maintenance routes (sbstndalton/noevia#2210, model_maint): the gate client, the
     /// router, the models.ini store and the state files, as Core's index.cjs reads them.
     pub maint: std::sync::Arc<crate::model_maint::Maint>,
+    /// The auto-tune state owner (autotune_state.rs): the job, history and settings file, whose only
+    /// writer is this front; the Node tune actor attaches to it over the store channel.
+    pub autotune: std::sync::Arc<crate::autotune_state::Autotune>,
     /// GET /api/export/conversations (M4, sbstndalton/noevia#1315), read from the user's files on
     /// disk: always on (#1071), since free-chats.json on disk is the list (Rust is its only writer,
     /// the owner's 2026-10-12 condition).
@@ -348,16 +351,22 @@ impl Config {
             *slot = server_features::parse_env(get(server_features::spec(feature).env).as_deref())
                 .map_err(str::to_owned)?;
         }
+        let research = std::sync::Arc::new(crate::research_routes::Research::new(
+            crate::research_routes::Settings::from_lookup(
+                &get,
+                format!("http://{}", upstream.authority()),
+            )?,
+        )?);
+        let autotune = std::sync::Arc::new(crate::autotune_state::Autotune::new(
+            std::path::Path::new(&get("UI_DATA_DIR").unwrap_or_default()),
+            std::sync::Arc::clone(&research),
+        ));
         Ok(Config {
             host,
             port,
             trust_proxy: get("TRUST_PROXY").as_deref() == Some("true"),
-            research: std::sync::Arc::new(crate::research_routes::Research::new(
-                crate::research_routes::Settings::from_lookup(
-                    &get,
-                    format!("http://{}", upstream.authority()),
-                )?,
-            )?),
+            research,
+            autotune,
             upstream,
             dist: get("NOEVIA_WEB_DIST")
                 .filter(|d| !d.is_empty())

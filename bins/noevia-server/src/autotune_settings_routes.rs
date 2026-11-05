@@ -11,12 +11,10 @@ use js_json::{wtf16, JValue};
 use server_projects::autotune_settings::{self as policy, Fault};
 use std::{sync::Arc, time::Duration};
 pub const PATH: &str = "/api/models/autotune/settings";
-const FACTS: &str = "/internal/autotune-settings/facts";
-const COMMIT: &str = "/internal/autotune-settings/commit";
-const DEADLINE: Duration = Duration::from_secs(5);
+const FACTS: &str = "settings/facts";
+const COMMIT: &str = "settings/commit";
 const BODY_DEADLINE: Duration = Duration::from_secs(120);
 const MAX_BODY: usize = 1024 * 1024;
-const MAX_FACTS: usize = 8 * 1024 * 1024;
 fn error(status: u16, message: &str) -> Response<Body> {
     reply::error(
         StatusCode::from_u16(status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
@@ -33,12 +31,7 @@ fn no_store(mut res: Response<Body>) -> Response<Body> {
     res
 }
 async fn call(app: &App, path: &str, body: &serde_json::Value) -> Option<(u16, JValue)> {
-    let (status, bytes) = app.config.research.node_call(path, body, DEADLINE).await?;
-    if bytes.len() > MAX_FACTS {
-        return None;
-    }
-    let parsed = wtf16::parse(std::str::from_utf8(&bytes).ok()?).ok()?;
-    Some((status, parsed))
+    app.config.autotune.call(path, body).await
 }
 fn available(answer: &JValue, settings: bool) -> Result<(), Box<Response<Body>>> {
     match answer.get("available").as_bool() {

@@ -645,6 +645,8 @@ pub fn router_with_app(
         store.clone(),
         app.as_ref().map(|a| a.config.maint.guard.clone()),
     ));
+    // The auto-tune state owner's actor channel (autotune_state.rs `store_op`).
+    router = router.merge(autotune_state_routes(store.clone(), app.clone()));
     // sbstndalton/noevia#2190 round 6: the provider keys' re-seal (provider_reseal.rs).
     let reseal_store = store.clone();
     router = router.route(
@@ -699,6 +701,46 @@ pub fn router_with_app(
         );
     }
     router
+}
+
+/// The Node tune actor's bodies carry the whole job and history: far above the store's own limit.
+pub const AUTOTUNE_STATE_LIMIT: usize = 64 * 1024 * 1024;
+
+/// `POST /v1/autotune-state/{attach,commit,start,sync}`: the tune actor's channel to the auto-tune
+/// state owner (autotune_state.rs); `None` app: 503.
+pub fn autotune_state_routes(store: Store, app: Option<Arc<crate::App>>) -> Router {
+    let mut router = Router::new();
+    for op in ["attach", "commit", "start", "sync"] {
+        let (store, app) = (store.clone(), app.clone());
+        router = router.route(
+            &format!("/v1/autotune-state/{op}"),
+            post(move |headers: HeaderMap, raw: Bytes| {
+                let (store, app) = (store.clone(), app.clone());
+                async move {
+                    if !authorised(&store, &headers) {
+                        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+                    }
+                    let Some(app) = app else {
+                        return error(
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            "auto-tune state unavailable",
+                        );
+                    };
+                    let (status, body) = crate::autotune_state::store_op(
+                        Arc::clone(&app.config.autotune),
+                        op,
+                        raw.to_vec(),
+                    )
+                    .await;
+                    reply_js(
+                        StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                        body,
+                    )
+                }
+            }),
+        );
+    }
+    router.layer(DefaultBodyLimit::max(AUTOTUNE_STATE_LIMIT))
 }
 
 /// The bodies of the preset baseline bridge: two preset texts and the router's rows.

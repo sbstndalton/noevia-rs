@@ -238,6 +238,15 @@ impl Research {
         body: &Value,
         timeout: Duration,
     ) -> Option<reqwest::RequestBuilder> {
+        self.bridge_post_text(path, body.to_string(), timeout)
+    }
+
+    fn bridge_post_text(
+        &self,
+        path: &str,
+        body: String,
+        timeout: Duration,
+    ) -> Option<reqwest::RequestBuilder> {
         let token = self.settings.token.as_deref()?;
         let mut value = reqwest::header::HeaderValue::from_str(token).ok()?;
         value.set_sensitive(true);
@@ -250,8 +259,32 @@ impl Research {
                 .header(TOKEN_HEADER, value)
                 .header("content-type", "application/json")
                 .timeout(timeout)
-                .body(body.to_string()),
+                .body(body),
         )
+    }
+
+    /// [`Research::node_call`] with the JSON body as text, for a body that carries a lone surrogate
+    /// (a model name Node wrote) that a `serde_json::Value` cannot hold.
+    pub(crate) async fn node_call_text(
+        &self,
+        path: &str,
+        body: String,
+        timeout: Duration,
+    ) -> Option<(u16, Vec<u8>)> {
+        let mut res = self
+            .bridge_post_text(path, body, timeout)?
+            .send()
+            .await
+            .ok()?;
+        let status = res.status().as_u16();
+        let mut bytes = Vec::new();
+        while let Some(chunk) = res.chunk().await.ok()? {
+            bytes.extend_from_slice(&chunk);
+            if bytes.len() > MAX_BRIDGE_BYTES {
+                return None;
+            }
+        }
+        Some((status, bytes))
     }
 
     /// The bridge call itself, its reply unread, for a module that must read a reply core never capped

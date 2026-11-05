@@ -5,11 +5,11 @@ use axum::{
     http::{header, HeaderValue, Method, Request, Response, StatusCode},
     response::IntoResponse,
 };
-use js_json::{wtf16, JValue};
-use std::{sync::Arc, time::Duration};
+use js_json::JValue;
+use std::sync::Arc;
 pub const PATH: &str = "/api/models/autotune/clear";
-const FACTS: &str = "/internal/autotune-clear/facts";
-const CLEAR: &str = "/internal/autotune-clear/clear";
+const FACTS: &str = "clear/facts";
+const CLEAR: &str = "clear/clear";
 fn error(status: u16, message: &str) -> Response<Body> {
     reply::error(
         StatusCode::from_u16(status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
@@ -21,18 +21,7 @@ fn unavailable() -> Response<Body> {
     error(503, "Auto-tune state is unavailable. Try again shortly.")
 }
 async fn call(app: &App, path: &str, body: &serde_json::Value) -> Option<(u16, JValue)> {
-    let (status, bytes) = app
-        .config
-        .research
-        .node_call(path, body, Duration::from_secs(5))
-        .await?;
-    if bytes.len() > 8192 {
-        return None;
-    }
-    Some((
-        status,
-        wtf16::parse(std::str::from_utf8(&bytes).ok()?).ok()?,
-    ))
+    app.config.autotune.call(path, body).await
 }
 fn token(facts: &JValue) -> Option<&str> {
     facts.get("token").as_str().filter(|t| {
@@ -137,6 +126,7 @@ pub async fn serve(
 #[allow(clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
+    use js_json::wtf16;
     #[test]
     fn guard_order_matches_immutable_actual_node_clear_oracle() {
         let cases = wtf16::parse(include_str!("../tests/fixtures/autotune-clear-node.json"))

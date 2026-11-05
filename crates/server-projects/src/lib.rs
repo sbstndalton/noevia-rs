@@ -61,6 +61,7 @@
 
 pub mod assets;
 pub mod autotune_settings;
+pub mod autotune_state;
 pub mod chat_delete;
 pub mod chat_download;
 pub mod chat_move;

@@ -10,10 +10,9 @@ use js_json::{wtf16, JValue};
 use server_projects::autotune_resume::{self as policy, Fault};
 use std::{sync::Arc, time::Duration};
 pub const PATH: &str = "/api/models/autotune/resume";
-const FACTS: &str = "/internal/autotune-resume/facts";
-const PREPARE: &str = "/internal/autotune-resume/prepare";
-const COMMIT: &str = "/internal/autotune-resume/commit";
-const MAX: usize = 8 * 1024 * 1024;
+const FACTS: &str = "resume/facts";
+const PREPARE: &str = "resume/prepare";
+const COMMIT: &str = "resume/commit";
 fn error(status: u16, message: &str) -> Response<Body> {
     reply::error(
         StatusCode::from_u16(status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
@@ -35,19 +34,7 @@ fn opaque<'a>(facts: &'a JValue, key: &str) -> Option<&'a str> {
     })
 }
 async fn call(app: &App, path: &str, body: &serde_json::Value) -> Option<(u16, JValue)> {
-    let timeout = if path == PREPARE { 125 } else { 5 };
-    let (status, bytes) = app
-        .config
-        .research
-        .node_call(path, body, Duration::from_secs(timeout))
-        .await?;
-    if bytes.len() > MAX {
-        return None;
-    }
-    Some((
-        status,
-        wtf16::parse(std::str::from_utf8(&bytes).ok()?).ok()?,
-    ))
+    app.config.autotune.call(path, body).await
 }
 fn bridge_json(v: &JValue) -> Option<serde_json::Value> {
     serde_json::from_str(&wtf16::stringify(v)?).ok()

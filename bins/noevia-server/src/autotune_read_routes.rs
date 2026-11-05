@@ -7,9 +7,9 @@ use axum::{
 };
 use js_json::wtf16;
 use server_projects::autotune_read as policy;
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 pub const PATH: &str = "/api/models/autotune";
-const FACTS: &str = "/internal/autotune-read/facts";
+const FACTS: &str = "read/facts";
 fn unavailable() -> Response<Body> {
     reply::error(
         StatusCode::SERVICE_UNAVAILABLE,
@@ -46,27 +46,17 @@ pub async fn serve(
         );
     }
     let model = crate::model_sizing::model_param(&parts.uri).unwrap_or_default();
-    let Some((status, bytes)) = app
+    let Some((status, facts)) = app
         .config
-        .research
-        .node_call(
-            FACTS,
-            &serde_json::json!({"keys":policy::keys(&model)}),
-            Duration::from_secs(5),
-        )
+        .autotune
+        .call(FACTS, &serde_json::json!({"keys":policy::keys(&model)}))
         .await
     else {
         return unavailable();
     };
-    if status != 200 || bytes.len() > 8 * 1024 * 1024 {
+    if status != 200 {
         return unavailable();
     }
-    let Some(facts) = std::str::from_utf8(&bytes)
-        .ok()
-        .and_then(|s| wtf16::parse(s).ok())
-    else {
-        return unavailable();
-    };
     match facts.get("available").as_bool() {
         Some(false) => {
             return reply::error(StatusCode::NOT_FOUND, "Auto-tune is unavailable", true)
