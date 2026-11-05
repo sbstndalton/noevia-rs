@@ -289,6 +289,49 @@ async fn ended_or_unreachable_activity_refuses_before_any_engine_mutation() {
         503
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_unreachable_engine_preserves_public_errors_without_cleanup() {
+    let up = upstream().await;
+    up.set(|r| state(r).unwrap_or_else(|| panic!("unexpected owner call {}", r.path)));
+    let closed = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let engine = format!("http://{}", closed.local_addr().unwrap());
+    drop(closed);
+    let d = tempfile::tempdir().unwrap();
+    seed(d.path());
+    let f = front_env(
+        d.path(),
+        true,
+        &[
+            ("NOEVIA_LEGACY_UPSTREAM", up.base()),
+            ("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()),
+            ("MODEL_MANAGER_KIND", "llamacpp".into()),
+            ("MODEL_MANAGER_BASE_URL", engine),
+        ],
+    )
+    .await;
+    let (status, body) = write(
+        f.addr,
+        "POST",
+        PULL,
+        ADMIN,
+        r#"{"checkpoint":"synthetic/repo"}"#,
+    )
+    .await;
+    assert_eq!(status, 500);
+    assert_eq!(body, json!({"error":"Internal error"}));
+    let (status, body) = write(f.addr, "POST", DELETE, ADMIN, r#"{"name":"synthetic"}"#).await;
+    assert_eq!(status, 409);
+    assert_eq!(
+        body,
+        json!({"error":"Could not confirm this is not a system model. Try again."})
+    );
+    assert!(!up
+        .seen()
+        .iter()
+        .any(|r| r.method == "DELETE" || r.path.ends_with("/commit")));
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn aborting_acquire_at_its_await_sends_leave_without_reacquiring() {
     use noevia_server::model_maint::activity::{MaintenanceActivity, NodeActivity};
