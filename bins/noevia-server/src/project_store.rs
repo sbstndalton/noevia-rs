@@ -645,6 +645,8 @@ pub fn router_with_app(
         store.clone(),
         app.as_ref().map(|a| a.config.maint.guard.clone()),
     ));
+    // Port contract row H: Node's session with the inference admission lease authority.
+    router = router.merge(inference_admission_routes(store.clone()));
     // sbstndalton/noevia#2190 round 6: the provider keys' re-seal (provider_reseal.rs).
     let reseal_store = store.clone();
     router = router.route(
@@ -704,6 +706,33 @@ pub fn router_with_app(
 /// The bodies of the preset baseline bridge: two preset texts and the router's rows.
 pub const PRESET_BASELINE_LIMIT: usize =
     2 * preset_reload::MAX_INPUT_BYTES + 16 * 1024 * 1024 + 64 * 1024;
+
+/// `POST /v1/inference-admission/session` (engine_admission::authority): a Node process start
+/// registers with this process's one inference admission authority and is issued its incarnation.
+pub fn inference_admission_routes(store: Store) -> Router {
+    use engine_admission::authority;
+    Router::new()
+        .route(
+            authority::SESSION_ROUTE,
+            post(move |headers: HeaderMap, raw: Bytes| {
+                let store = store.clone();
+                async move {
+                    if !authorised(&store, &headers) {
+                        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+                    }
+                    let Ok(body @ Value::Object(_)) = serde_json::from_slice::<Value>(&raw) else {
+                        return error(StatusCode::BAD_REQUEST, "invalid JSON");
+                    };
+                    let (status, answer) = authority::global().answer_session(&body);
+                    reply(
+                        StatusCode::from_u16(status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
+                        &answer,
+                    )
+                }
+            }),
+        )
+        .layer(DefaultBodyLimit::max(authority::BODY_LIMIT))
+}
 
 /// `POST /v1/preset-baseline/{op}` (see the header), answered by `guard` (`None`: 503).
 pub fn preset_baseline_routes(
