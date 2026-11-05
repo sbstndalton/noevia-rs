@@ -2,6 +2,7 @@
 //! the execution guard is dropped after sidecar teardown. Approval waits own their registration.
 pub mod account;
 pub mod acp;
+pub mod context;
 pub mod egress;
 pub mod facts;
 pub mod files;

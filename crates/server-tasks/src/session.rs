@@ -16,6 +16,7 @@ use std::{
 use tokio::sync::watch;
 pub type Answer = Pin<Box<dyn Future<Output = Decision> + Send + 'static>>;
 pub trait Context: Send + Sync {
+    fn active(&self) -> Result<(), RpcError>;
     fn event(&self, kind: &str, data: JValue) -> Result<(), RpcError>;
     /// Register before returning the future, in ACP receive order.
     fn approval(&self, request: JValue) -> Answer;
@@ -337,6 +338,7 @@ impl Session {
         })
     }
     fn file(&self, method: &str, params: &JValue) -> Result<JValue, RpcError> {
+        self.context.active()?;
         let target = params.get("path").as_str().ok_or_else(|| RpcError {
             code: -32602,
             message: "Outside this task’s workspace".into(),
@@ -708,6 +710,9 @@ mod tests {
         cards: Mutex<Vec<JValue>>,
     }
     impl Context for Fake {
+        fn active(&self) -> Result<(), RpcError> {
+            Ok(())
+        }
         fn event(&self, kind: &str, data: JValue) -> Result<(), RpcError> {
             if kind.starts_with("approval.") {
                 self.events
