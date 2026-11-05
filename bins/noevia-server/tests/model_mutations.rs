@@ -433,11 +433,22 @@ async fn public_delete_replays_node_validation_errors_and_result_projection() {
         let body = js_json::wtf16::stringify(c.get("error"))
             .filter(|s| s != "null")
             .unwrap_or("{}".into());
-        up.set(move|r|{if let Some(v)=state(r){return v;}match(r.method.as_str(),r.path.as_str()){
-   ("GET","/models")=>reply("200 OK",r#"{"data":[{"id":"synthetic","status":{"value":"loaded"}},{"id":"synthetic-system","status":{"value":"unloaded"}}]}"#),
-   ("POST","/models/unload")=>reply(if ok{"200 OK"}else{"409 Refused"},"{}"),
-   ("DELETE",_)=>reply(&format!("{status} Synthetic"),&body),_=>panic!("unexpected {} {}",r.method,r.path),
-  }});
+        let listing = js_json::wtf16::stringify(c.get("listing"))
+            .filter(|s| s != "null")
+            .unwrap_or(r#"[{"id":"synthetic","status":{"value":"loaded"}},{"id":"synthetic-system","status":{"value":"unloaded"}}]"#.into());
+        up.set(move |r| {
+            if let Some(v) = state(r) {
+                return v;
+            }
+            match (r.method.as_str(), r.path.as_str()) {
+                ("GET", "/models") => reply("200 OK", &format!("{{\"data\":{listing}}}")),
+                ("POST", "/models/unload") => {
+                    reply(if ok { "200 OK" } else { "409 Refused" }, "{}")
+                }
+                ("DELETE", _) => reply(&format!("{status} Synthetic"), &body),
+                _ => panic!("unexpected {} {}", r.method, r.path),
+            }
+        });
         let d = tempfile::tempdir().unwrap();
         seed(d.path());
         std::fs::write(

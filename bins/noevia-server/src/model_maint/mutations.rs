@@ -305,13 +305,27 @@ async fn delete(app: &Arc<App>, raw: &str, user: &str) -> Response<Body> {
             "Could not confirm this is not a system model. Try again.",
         );
     };
-    if rows.iter().any(Value::is_null) {
-        return error(500, "Internal error");
+    let mut matched = None;
+    for row in rows {
+        // Core's find() short-circuits: only a null encountered before the match throws.
+        if row.is_null() {
+            return error(500, "Internal error");
+        }
+        let same = match &name_value {
+            W::Str(units) => row
+                .get("id")
+                .and_then(Value::as_str)
+                .is_some_and(|id| id.encode_utf16().eq(units.iter().copied())),
+            W::Num(n) => row.get("id").and_then(Value::as_f64) == Some(*n),
+            W::Bool(b) => row.get("id").and_then(Value::as_bool) == Some(*b),
+            _ => false,
+        };
+        if same {
+            matched = Some(row);
+            break;
+        }
     }
-    if let Some(row) = rows
-        .iter()
-        .find(|r| r.get("id").and_then(Value::as_str) == Some(&name))
-    {
+    if let Some(row) = matched {
         let args = row.pointer("/status/args").and_then(Value::as_array);
         let file = args
             .and_then(|a| {

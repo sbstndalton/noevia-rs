@@ -19,6 +19,57 @@
     }
   },
   {
+    "name": "matched-before-null",
+    "raw": "{\"name\":\"synthetic\"}",
+    "known": true,
+    "ok": true,
+    "status": 200,
+    "unloaded": true,
+    "listing": [
+      {
+        "id": "synthetic",
+        "status": {
+          "args": []
+        }
+      },
+      null
+    ],
+    "expected": {
+      "status": 200,
+      "body": {
+        "ok": true,
+        "unloaded": true,
+        "rolesCleared": [
+          "fast"
+        ],
+        "presetRemoved": false
+      }
+    }
+  },
+  {
+    "name": "null-before-match",
+    "raw": "{\"name\":\"synthetic\"}",
+    "known": true,
+    "ok": true,
+    "status": 200,
+    "unloaded": true,
+    "listing": [
+      null,
+      {
+        "id": "synthetic",
+        "status": {
+          "args": []
+        }
+      }
+    ],
+    "expected": {
+      "status": 500,
+      "body": {
+        "error": "Internal error"
+      }
+    }
+  },
+  {
     "name": "unknown",
     "raw": "{\"name\":\"unknown\"}",
     "known": true,
