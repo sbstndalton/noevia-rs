@@ -25,21 +25,24 @@
 //! stream at once. An event line that does not fit streams as it comes (`data: `, its bytes, then its
 //! end).
 //!
-//! Every whole event line is checked before any of it goes out: it must be one JSON object in UTF-8
-//! (what the web client's `JSON.parse` reads), checked in place, on the read's own bytes or on the held
-//! buffer and the line's end, never on a copy. A relayed frame's string is decoded (and so checked) the
-//! same way. The turn is complete once a `done` or `error` event has gone out, as an object line or as
-//! the first `data: ` line of a relayed frame (the web client's completion rule, api.ts); what follows
-//! (`title` after `done`, contract §1.3) still goes out.
+//! Every event line is checked before any of it goes out: it must be one JSON object in UTF-8 that the
+//! web client's `JSON.parse` reads, with no raw control character in any string, key or value. The check
+//! reads the bytes where they are (the read's own, or the held buffer and the line's end) a byte at a
+//! time with fixed state: it allocates nothing, so it needs no part of the budget. A relayed frame's
+//! string is decoded into its reserved copy, which checks it. The turn is complete once a `done` or
+//! `error` event has gone out: an object line, or the first `data: ` line of a relayed frame (the web
+//! client's completion rule, api.ts), whose own `type` member (wherever it stands; the last one counts)
+//! is `"done"` or `"error"`. What follows (`title` after `done`, contract §1.3) still goes out.
 //!
 //! When Core's stream breaks, sends what is not a line of this wire (a malformed event included), or ends
 //! before the turn is complete (an empty body too), the unfinished line is dropped, Core's socket is
 //! closed, and [`FAILED_FRAME`] (index.cjs's error for a handler that throws once the headers are out)
 //! ends the stream: the client reads that error, never half a frame or a silent end. Only an event
-//! already streaming past the hold ends without it (its start is out; the client never parses an
-//! unfinished frame and reports that the connection ended). Such an event cannot be checked before it
-//! goes out; whether it completes the turn is read from its start, which Core's `JSON.stringify` writes
-//! as `{"type":"<type>"`.
+//! already streaming past the hold ends without it, when Core breaks inside it or its next bytes are not
+//! its JSON: its start is out, so its frame is never ended (what is not its JSON never goes out), the
+//! client never parses it and reports that the connection ended. Such an event is checked as it
+//! streams, with the same fixed state, so whether it completes the turn is known when it ends,
+//! whatever its key order.
 use axum::{
     body::Body,
     http::{header, HeaderMap, HeaderValue, Response},
@@ -47,7 +50,6 @@ use axum::{
 use bytes::Bytes;
 use http_body::{Body as HttpBody, Frame};
 use std::collections::VecDeque;
-use std::io::Read;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -146,14 +148,6 @@ impl Reservation {
         }
         self.bytes = bytes;
         true
-    }
-
-    /// Gives back all but `bytes`; never grows.
-    fn shrink(&mut self, bytes: usize) {
-        if bytes < self.bytes {
-            self.budget.add_permits(self.bytes - bytes);
-            self.bytes = bytes;
-        }
     }
 
     fn none(&self) -> Reservation {
@@ -295,193 +289,648 @@ impl Held {
     }
 }
 
-/// A relayed frame: the JSON string `line` (read from `bytes`), decoded into a buffer that
-/// `reservation` covers; `None` when it is not a whole frame or the budget cannot cover its copy.
-fn relayed_frame(bytes: impl Read, len: usize, mut reservation: Reservation) -> Option<Bytes> {
-    // The decoded frame is at most as long as its line: covered before it is allocated.
+/// A relayed frame: the JSON string line `pieces` (`len` bytes in all), decoded into one buffer that
+/// `reservation` covers before it is allocated; `None` when it is not a whole frame or the budget
+/// cannot cover it. The decoded frame is never longer than its line (an escape is at least as long as
+/// what it stands for), so the buffer is allocated once, at the line's length, and never grows: the
+/// decoding has no other copy and no scratch.
+fn relayed_frame(pieces: &[&[u8]], len: usize, reservation: Reservation) -> Option<Bytes> {
+    let (buf, reservation) = decode_relayed(pieces, len, reservation)?;
+    Some(reserved(buf, reservation))
+}
+
+/// [`relayed_frame`]'s decoded buffer and the reservation that covers exactly its capacity.
+fn decode_relayed(
+    pieces: &[&[u8]],
+    len: usize,
+    mut reservation: Reservation,
+) -> Option<(Vec<u8>, Reservation)> {
     if !reservation.cover(len) {
         return None;
     }
-    let raw: String = serde_json::from_reader(bytes).ok()?;
-    // A whole frame: it ends with its only blank line.
-    if !raw.find("\n\n").is_some_and(|i| i + 2 == raw.len()) {
+    let mut buf = Vec::with_capacity(len);
+    if !reservation.cover(buf.capacity()) {
         return None;
     }
-    let mut buf = raw.into_bytes();
-    buf.shrink_to_fit();
-    reservation.shrink(buf.capacity().max(buf.len()));
-    reservation
-        .cover(buf.capacity())
-        .then(|| reserved(buf, reservation))
+    let mut decode = Decode::default();
+    if !pieces.iter().all(|p| decode.feed(p, &mut buf)) || !decode.finish() {
+        return None;
+    }
+    // A whole frame: it ends with its only blank line.
+    if !buf
+        .windows(2)
+        .position(|w| w == b"\n\n")
+        .is_some_and(|i| i + 2 == buf.len())
+    {
+        return None;
+    }
+    Some((buf, reservation))
 }
 
-/// Whether the pieces (one line, in order) are UTF-8, checked in place across their boundaries.
-fn utf8(pieces: &[&[u8]]) -> bool {
-    // A character split between pieces: its bytes so far (at most four).
-    let mut carry: Vec<u8> = Vec::new();
-    for piece in pieces {
-        let mut p = *piece;
-        if let Some(&lead) = carry.first() {
-            let width: usize = match lead {
-                0xC2..=0xDF => 2,
-                0xE0..=0xEF => 3,
-                _ => 4,
+/// The UTF-8 lead byte `b`: how many continuation bytes follow, and the range the first must fall in.
+fn utf8_lead(b: u8) -> Option<(u8, u8, u8)> {
+    Some(match b {
+        0xC2..=0xDF => (1, 0x80, 0xBF),
+        0xE0 => (2, 0xA0, 0xBF),
+        0xE1..=0xEC | 0xEE..=0xEF => (2, 0x80, 0xBF),
+        0xED => (2, 0x80, 0x9F),
+        0xF0 => (3, 0x90, 0xBF),
+        0xF1..=0xF3 => (3, 0x80, 0xBF),
+        0xF4 => (3, 0x80, 0x8F),
+        _ => return None,
+    })
+}
+
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+enum DecSt {
+    #[default]
+    Before,
+    In,
+    Esc,
+    Hex(u8),
+    After,
+    Bad,
+}
+
+/// One JSON string (a relayed frame's line, Core's `JSON.stringify` of it) decoded a byte at a time
+/// into the bytes Node would have written for it: UTF-8, a lone surrogate escape as U+FFFD (what
+/// Node's UTF-8 write makes of one). Raw control characters and invalid UTF-8 are refused, as
+/// `JSON.parse` and [`Json`] refuse them. Writes only within the buffer's capacity, so it never
+/// allocates.
+#[derive(Default)]
+struct Decode {
+    st: DecSt,
+    hex: u32,
+    /// A high surrogate escape waiting for its low half.
+    high: Option<u32>,
+    need: u8,
+    lo: u8,
+    hi: u8,
+}
+
+impl Decode {
+    fn put(out: &mut Vec<u8>, bytes: &[u8]) -> bool {
+        if out.capacity() - out.len() < bytes.len() {
+            return false;
+        }
+        out.extend_from_slice(bytes);
+        true
+    }
+
+    fn put_char(out: &mut Vec<u8>, c: char) -> bool {
+        let mut b = [0u8; 4];
+        Self::put(out, c.encode_utf8(&mut b).as_bytes())
+    }
+
+    /// A waiting high surrogate that no low half followed.
+    fn flush(&mut self, out: &mut Vec<u8>) -> bool {
+        self.high.take().is_none() || Self::put_char(out, char::REPLACEMENT_CHARACTER)
+    }
+
+    fn unit(&mut self, u: u32, out: &mut Vec<u8>) -> bool {
+        if let Some(h) = self.high {
+            if (0xDC00..=0xDFFF).contains(&u) {
+                self.high = None;
+                let c = 0x10000 + ((h - 0xD800) << 10) + (u - 0xDC00);
+                return Self::put_char(
+                    out,
+                    char::from_u32(c).unwrap_or(char::REPLACEMENT_CHARACTER),
+                );
+            }
+            if !self.flush(out) {
+                return false;
+            }
+        }
+        if (0xD800..=0xDBFF).contains(&u) {
+            self.high = Some(u);
+            return true;
+        }
+        Self::put_char(
+            out,
+            char::from_u32(u).unwrap_or(char::REPLACEMENT_CHARACTER),
+        )
+    }
+
+    fn feed(&mut self, bytes: &[u8], out: &mut Vec<u8>) -> bool {
+        for &b in bytes {
+            let ok = match self.st {
+                DecSt::Bad => false,
+                DecSt::Before | DecSt::After if matches!(b, b' ' | b'\t' | b'\r' | b'\n') => true,
+                DecSt::Before if b == b'"' => {
+                    self.st = DecSt::In;
+                    true
+                }
+                DecSt::Before | DecSt::After => false,
+                DecSt::In if self.need > 0 => {
+                    if (self.lo..=self.hi).contains(&b) {
+                        self.need -= 1;
+                        self.lo = 0x80;
+                        self.hi = 0xBF;
+                        Self::put(out, &[b])
+                    } else {
+                        false
+                    }
+                }
+                DecSt::In => match b {
+                    b'"' => {
+                        self.st = DecSt::After;
+                        self.flush(out)
+                    }
+                    b'\\' => {
+                        self.st = DecSt::Esc;
+                        true
+                    }
+                    0x00..=0x1F => false,
+                    0x20..=0x7F => self.flush(out) && Self::put(out, &[b]),
+                    _ => match utf8_lead(b) {
+                        Some((need, lo, hi)) => {
+                            (self.need, self.lo, self.hi) = (need, lo, hi);
+                            self.flush(out) && Self::put(out, &[b])
+                        }
+                        None => false,
+                    },
+                },
+                DecSt::Esc => {
+                    self.st = DecSt::In;
+                    match b {
+                        b'"' | b'\\' | b'/' => self.unit(u32::from(b), out),
+                        b'b' => self.unit(0x08, out),
+                        b'f' => self.unit(0x0C, out),
+                        b'n' => self.unit(0x0A, out),
+                        b'r' => self.unit(0x0D, out),
+                        b't' => self.unit(0x09, out),
+                        b'u' => {
+                            self.hex = 0;
+                            self.st = DecSt::Hex(0);
+                            true
+                        }
+                        _ => false,
+                    }
+                }
+                DecSt::Hex(n) => match char::from(b).to_digit(16) {
+                    Some(d) => {
+                        self.hex = self.hex * 16 + d;
+                        if n == 3 {
+                            self.st = DecSt::In;
+                            self.unit(self.hex, out)
+                        } else {
+                            self.st = DecSt::Hex(n + 1);
+                            true
+                        }
+                    }
+                    None => false,
+                },
             };
-            let (head, rest) = p.split_at(width.saturating_sub(carry.len()).min(p.len()));
-            carry.extend_from_slice(head);
-            p = rest;
-            if carry.len() < width {
-                continue;
-            }
-            if std::str::from_utf8(&carry).is_err() {
+            if !ok {
+                self.st = DecSt::Bad;
                 return false;
             }
-            carry.clear();
         }
-        if let Err(e) = std::str::from_utf8(p) {
-            // Only an unfinished last character may continue in the next piece.
-            if e.error_len().is_some() {
+        true
+    }
+
+    /// The whole line has been read: whether it was one string.
+    fn finish(&self) -> bool {
+        self.st == DecSt::After
+    }
+}
+
+/// Nesting the checker keeps without allocating: one bit per level in [`Json::inline`].
+const INLINE_DEPTH: usize = 4 * 64;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum St {
+    /// Before the line's object.
+    Start,
+    /// A value is next.
+    Value,
+    /// After `[`: a value or `]`.
+    ArrFirst,
+    /// After `{`: a key or `}`.
+    ObjFirst,
+    /// After `,` in an object: a key.
+    Key,
+    /// After a key: `:`.
+    Colon,
+    /// After a value: `,` or the container's end.
+    After,
+    Str,
+    Esc,
+    /// `\u` and the hex digits read so far.
+    Hex(u8),
+    Minus,
+    Zero,
+    Int,
+    Dot,
+    Frac,
+    Exp,
+    ExpSign,
+    ExpInt,
+    /// `true`, `false` or `null`: the rest of the word, and how much of it has come.
+    Lit(&'static [u8], u8),
+    /// The line's object has ended: only whitespace may follow.
+    End,
+    Bad,
+}
+
+/// One event line's JSON, checked a byte at a time with bounded state (the held buffer and the read's
+/// own bytes are the only copies of the line): the grammar `JSON.parse`
+/// accepts, a single object, strings (keys and values alike) in UTF-8 without raw control characters,
+/// escapes as JSON writes them (a lone surrogate escape too, as `JSON.parse` reads it). It also reads
+/// the object's own `type` member wherever it stands (the last one counts, as with `JSON.parse`): the
+/// line completes the turn when that is `"done"` or `"error"`. An event that streams through past the
+/// hold is checked the same way as it goes (module docs), so it needs no assumption about key order.
+///
+/// Nesting has no fixed limit. Which kind each open container is takes one bit per level: the first
+/// [`INLINE_DEPTH`] levels inline, deeper ones in [`Json::spill`], whose capacity is reserved on the
+/// shared budget before it grows (doubling, else exactly what is needed). Each level takes at least
+/// one byte of the line, so that is at most an eighth of the line. When the budget cannot cover it the
+/// line is over the budget: refused like any line this wire cannot carry (the failure frame; for an
+/// event already streaming, the end without its frame's end), never taken as complete.
+struct Json {
+    st: St,
+    /// One bit per open container: set for an object.
+    inline: [u64; INLINE_DEPTH / 64],
+    spill: Vec<u64>,
+    /// Covers [`Self::spill`]'s capacity.
+    reservation: Reservation,
+    /// The spill could not grow within the budget: the line is over the budget, not malformed.
+    over_budget: bool,
+    depth: usize,
+    /// The string being read is a key.
+    key: bool,
+    /// How much of `type` a top-level key has matched so far (`None`: not `type`).
+    key_match: Option<u8>,
+    /// The key just read is the top-level `type`.
+    type_key: bool,
+    /// The value about to start is the top-level `type`'s.
+    type_next: bool,
+    /// The string being read is the top-level `type`'s value; how much of `done` / `error` it matches.
+    type_value: bool,
+    done_match: Option<u8>,
+    error_match: Option<u8>,
+    /// The last top-level `type` is `done` or `error`.
+    completes: bool,
+    /// A `\u` escape's value so far.
+    hex: u32,
+    /// UTF-8: continuation bytes still due, and the range the next one must fall in.
+    need: u8,
+    lo: u8,
+    hi: u8,
+}
+
+/// The next step of matching `word` against a string, one decoded code unit at a time.
+fn matched(m: Option<u8>, word: &[u8], unit: u32) -> Option<u8> {
+    let i = m?;
+    (word.get(usize::from(i)).map(|&c| u32::from(c)) == Some(unit)).then_some(i + 1)
+}
+
+impl Json {
+    fn new(reservation: Reservation) -> Self {
+        Json {
+            st: St::Start,
+            inline: [0; INLINE_DEPTH / 64],
+            spill: Vec::new(),
+            reservation,
+            over_budget: false,
+            depth: 0,
+            key: false,
+            key_match: None,
+            type_key: false,
+            type_next: false,
+            type_value: false,
+            done_match: None,
+            error_match: None,
+            completes: false,
+            hex: 0,
+            need: 0,
+            lo: 0,
+            hi: 0,
+        }
+    }
+
+    /// Reads `bytes`, the next of the line; false once it is not JSON this wire carries.
+    fn feed(&mut self, bytes: &[u8]) -> bool {
+        for &b in bytes {
+            self.byte(b);
+            if self.st == St::Bad {
                 return false;
             }
-            carry.extend_from_slice(p.get(e.valid_up_to()..).unwrap_or_default());
+        }
+        true
+    }
+
+    /// The whole line has been read: `None` unless it was one object, else whether it completes the
+    /// turn.
+    fn finish(&self) -> Option<bool> {
+        (self.st == St::End).then_some(self.completes)
+    }
+
+    fn word(&self, i: usize) -> Option<&u64> {
+        match i.checked_sub(self.inline.len()) {
+            None => self.inline.get(i),
+            Some(j) => self.spill.get(j),
         }
     }
-    carry.is_empty()
-}
 
-/// Reads one event object's keys and its `type`, skipping every other value without keeping it; the
-/// last `type` counts, as with `JSON.parse`. Its value: whether the event completes the turn.
-struct EventHead;
-
-/// A key: whether it is `type` (read as raw bytes, so a key is never decoded into a copy).
-struct IsType;
-
-/// The `type` value: whether it is `done` or `error`.
-struct Completes;
-
-impl<'de> serde::de::Visitor<'de> for EventHead {
-    type Value = bool;
-    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str("an event object")
+    fn in_object(&self) -> bool {
+        let Some(i) = self.depth.checked_sub(1) else {
+            return false;
+        };
+        self.word(i / 64)
+            .is_some_and(|w| w & (1u64 << (i % 64)) != 0)
     }
-    fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<bool, A::Error> {
-        let mut completes = false;
-        while let Some(is_type) = map.next_key_seed(IsType)? {
-            if is_type {
-                completes = map.next_value_seed(Completes)?;
-            } else {
-                map.next_value::<serde::de::IgnoredAny>()?;
+
+    /// The word for level `i`, the spill grown to hold it within the budget first.
+    fn word_mut(&mut self, i: usize) -> Option<&mut u64> {
+        let Some(j) = i.checked_sub(self.inline.len()) else {
+            return self.inline.get_mut(i);
+        };
+        if j >= self.spill.len() {
+            let need = j + 1;
+            if need > self.spill.capacity() {
+                let doubled = need.max(self.spill.capacity().saturating_mul(2));
+                let bytes = |words: usize| words.saturating_mul(std::mem::size_of::<u64>());
+                let words = [doubled, need]
+                    .into_iter()
+                    .find(|w| self.reservation.cover(bytes(*w)))?;
+                self.spill.reserve_exact(words - self.spill.len());
+                // Vec may round up; what it reports is what is charged.
+                if !self.reservation.cover(bytes(self.spill.capacity())) {
+                    return None;
+                }
             }
+            self.spill.resize(need, 0);
         }
-        Ok(completes)
+        self.spill.get_mut(j)
+    }
+
+    fn push(&mut self, object: bool) -> St {
+        let i = self.depth;
+        let Some(w) = self.word_mut(i / 64) else {
+            self.over_budget = true;
+            return St::Bad;
+        };
+        if object {
+            *w |= 1u64 << (i % 64);
+        } else {
+            *w &= !(1u64 << (i % 64));
+        }
+        self.depth += 1;
+        if object {
+            St::ObjFirst
+        } else {
+            St::ArrFirst
+        }
+    }
+
+    /// A container closed: what follows it.
+    fn pop(&mut self) -> St {
+        self.depth = self.depth.saturating_sub(1);
+        self.after_value()
+    }
+
+    fn after_value(&self) -> St {
+        if self.depth == 0 {
+            St::End
+        } else {
+            St::After
+        }
+    }
+
+    fn start_key(&mut self) -> St {
+        self.key = true;
+        self.key_match = (self.depth == 1).then_some(0);
+        St::Str
+    }
+
+    /// One decoded code unit of the string being read.
+    fn unit(&mut self, u: u32) {
+        if self.key {
+            self.key_match = matched(self.key_match, b"type", u);
+        } else if self.type_value {
+            self.done_match = matched(self.done_match, b"done", u);
+            self.error_match = matched(self.error_match, b"error", u);
+        }
+    }
+
+    fn end_string(&mut self) -> St {
+        if self.need > 0 {
+            return St::Bad;
+        }
+        if self.key {
+            self.key = false;
+            self.type_key = self.key_match == Some(4);
+            return St::Colon;
+        }
+        if self.type_value {
+            self.type_value = false;
+            self.completes = self.done_match == Some(4) || self.error_match == Some(5);
+        }
+        self.after_value()
+    }
+
+    fn begin_value(&mut self, b: u8) -> St {
+        if std::mem::take(&mut self.type_next) {
+            self.type_value = b == b'"';
+            self.done_match = Some(0);
+            self.error_match = Some(0);
+            // A `type` that is not a string completes nothing.
+            self.completes = false;
+        }
+        match b {
+            b'{' => self.push(true),
+            b'[' => self.push(false),
+            b'"' => {
+                self.key = false;
+                St::Str
+            }
+            b'-' => St::Minus,
+            b'0' => St::Zero,
+            b'1'..=b'9' => St::Int,
+            b't' => St::Lit(b"rue", 0),
+            b'f' => St::Lit(b"alse", 0),
+            b'n' => St::Lit(b"ull", 0),
+            _ => St::Bad,
+        }
+    }
+
+    fn byte(&mut self, b: u8) {
+        let ws = matches!(b, b' ' | b'\t' | b'\n' | b'\r');
+        self.st = match self.st {
+            St::Bad => St::Bad,
+            St::Start | St::End if ws => self.st,
+            St::Start if b == b'{' => self.push(true),
+            St::Start | St::End => St::Bad,
+            St::Value | St::ArrFirst | St::ObjFirst | St::Key | St::Colon | St::After if ws => {
+                self.st
+            }
+            St::Value => self.begin_value(b),
+            St::ArrFirst if b == b']' => self.pop(),
+            St::ArrFirst => self.begin_value(b),
+            St::ObjFirst if b == b'}' => self.pop(),
+            St::ObjFirst | St::Key if b == b'"' => self.start_key(),
+            St::ObjFirst | St::Key => St::Bad,
+            St::Colon if b == b':' => {
+                self.type_next = std::mem::take(&mut self.type_key);
+                St::Value
+            }
+            St::Colon => St::Bad,
+            St::After => match b {
+                b',' if self.in_object() => St::Key,
+                b',' => St::Value,
+                b'}' if self.in_object() => self.pop(),
+                b']' if !self.in_object() => self.pop(),
+                _ => St::Bad,
+            },
+            St::Str if self.need > 0 => {
+                if (self.lo..=self.hi).contains(&b) {
+                    self.need -= 1;
+                    self.lo = 0x80;
+                    self.hi = 0xBF;
+                    St::Str
+                } else {
+                    St::Bad
+                }
+            }
+            St::Str => match b {
+                b'"' => self.end_string(),
+                b'\\' => St::Esc,
+                0x00..=0x1F => St::Bad,
+                0x20..=0x7F => {
+                    self.unit(u32::from(b));
+                    St::Str
+                }
+                _ => {
+                    let Some((need, lo, hi)) = utf8_lead(b) else {
+                        return self.st = St::Bad;
+                    };
+                    (self.need, self.lo, self.hi) = (need, lo, hi);
+                    // Not ASCII: matches neither `type` nor `done` nor `error`.
+                    self.unit(0x80);
+                    St::Str
+                }
+            },
+            St::Esc => {
+                let unit = match b {
+                    b'"' | b'\\' | b'/' => u32::from(b),
+                    b'b' => 0x08,
+                    b'f' => 0x0C,
+                    b'n' => 0x0A,
+                    b'r' => 0x0D,
+                    b't' => 0x09,
+                    b'u' => {
+                        self.hex = 0;
+                        return self.st = St::Hex(0);
+                    }
+                    _ => return self.st = St::Bad,
+                };
+                self.unit(unit);
+                St::Str
+            }
+            St::Hex(n) => {
+                let Some(d) = char::from(b).to_digit(16) else {
+                    return self.st = St::Bad;
+                };
+                self.hex = self.hex * 16 + d;
+                if n == 3 {
+                    self.unit(self.hex);
+                    St::Str
+                } else {
+                    St::Hex(n + 1)
+                }
+            }
+            St::Minus => match b {
+                b'0' => St::Zero,
+                b'1'..=b'9' => St::Int,
+                _ => St::Bad,
+            },
+            St::Dot => match b {
+                b'0'..=b'9' => St::Frac,
+                _ => St::Bad,
+            },
+            St::Exp => match b {
+                b'+' | b'-' => St::ExpSign,
+                b'0'..=b'9' => St::ExpInt,
+                _ => St::Bad,
+            },
+            St::ExpSign => match b {
+                b'0'..=b'9' => St::ExpInt,
+                _ => St::Bad,
+            },
+            St::Zero | St::Int | St::Frac | St::ExpInt => match (self.st, b) {
+                (St::Int, b'0'..=b'9') => St::Int,
+                (St::Frac, b'0'..=b'9') => St::Frac,
+                (St::ExpInt, b'0'..=b'9') => St::ExpInt,
+                (St::Zero | St::Int, b'.') => St::Dot,
+                (St::Zero | St::Int | St::Frac, b'e' | b'E') => St::Exp,
+                _ => {
+                    // The number has ended: this byte is what follows it.
+                    self.st = St::After;
+                    return self.byte(b);
+                }
+            },
+            St::Lit(word, i) => match word.get(usize::from(i)) {
+                Some(&c) if c == b => {
+                    if usize::from(i) + 1 == word.len() {
+                        self.after_value()
+                    } else {
+                        St::Lit(word, i + 1)
+                    }
+                }
+                _ => St::Bad,
+            },
+        };
     }
 }
 
-impl<'de> serde::de::DeserializeSeed<'de> for IsType {
-    type Value = bool;
-    fn deserialize<D: serde::Deserializer<'de>>(self, d: D) -> Result<bool, D::Error> {
-        d.deserialize_bytes(self)
-    }
+/// What checking one whole line found.
+#[derive(Debug, PartialEq, Eq)]
+enum Checked {
+    /// One JSON object; whether it completes the turn.
+    Event(bool),
+    /// Not one JSON object in UTF-8.
+    Malformed,
+    /// Its nesting needs more of the budget than is left (`reservation` draws on it): it cannot be
+    /// told whether it is an event, so it is never taken as one that is not.
+    OverBudget,
 }
 
-impl<'de> serde::de::Visitor<'de> for IsType {
-    type Value = bool;
-    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str("a key")
-    }
-    fn visit_bytes<E>(self, v: &[u8]) -> Result<bool, E> {
-        Ok(v == b"type")
-    }
-    fn visit_str<E>(self, v: &str) -> Result<bool, E> {
-        Ok(v == "type")
-    }
-}
-
-impl<'de> serde::de::DeserializeSeed<'de> for Completes {
-    type Value = bool;
-    fn deserialize<D: serde::Deserializer<'de>>(self, d: D) -> Result<bool, D::Error> {
-        d.deserialize_any(self)
-    }
-}
-
-impl<'de> serde::de::Visitor<'de> for Completes {
-    type Value = bool;
-    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str("a value")
-    }
-    fn visit_str<E>(self, v: &str) -> Result<bool, E> {
-        Ok(v == "done" || v == "error")
-    }
-    fn visit_bool<E>(self, _: bool) -> Result<bool, E> {
-        Ok(false)
-    }
-    fn visit_i64<E>(self, _: i64) -> Result<bool, E> {
-        Ok(false)
-    }
-    fn visit_u64<E>(self, _: u64) -> Result<bool, E> {
-        Ok(false)
-    }
-    fn visit_f64<E>(self, _: f64) -> Result<bool, E> {
-        Ok(false)
-    }
-    fn visit_unit<E>(self) -> Result<bool, E> {
-        Ok(false)
-    }
-    fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<bool, A::Error> {
-        while seq.next_element::<serde::de::IgnoredAny>()?.is_some() {}
-        Ok(false)
-    }
-    fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<bool, A::Error> {
-        while map
-            .next_entry::<serde::de::IgnoredAny, serde::de::IgnoredAny>()?
-            .is_some()
-        {}
-        Ok(false)
+fn check_line(pieces: &[&[u8]], reservation: Reservation) -> Checked {
+    let mut json = Json::new(reservation);
+    let read = pieces.iter().all(|p| json.feed(p));
+    match (read, json.finish()) {
+        _ if json.over_budget => Checked::OverBudget,
+        (true, Some(completes)) => Checked::Event(completes),
+        _ => Checked::Malformed,
     }
 }
 
 /// One whole event line (its pieces in order, nothing copied): `None` when it is not one JSON object
-/// in UTF-8, else whether the event completes the turn.
-fn event_line(pieces: &[&[u8]]) -> Option<bool> {
-    use serde::Deserializer as _;
-    if !utf8(pieces) {
-        return None;
-    }
-    fn whole<'de, R: serde_json::de::Read<'de>>(
-        mut de: serde_json::Deserializer<R>,
-    ) -> Option<bool> {
-        let completes = (&mut de).deserialize_map(EventHead).ok()?;
-        de.end().ok()?;
-        Some(completes)
-    }
-    match pieces {
-        [one] => whole(serde_json::Deserializer::from_slice(one)),
-        [a, b] => whole(serde_json::Deserializer::from_reader(a.chain(*b))),
-        _ => None,
+/// in UTF-8 or its nesting is over the budget, else whether the event completes the turn.
+fn event_line(pieces: &[&[u8]], reservation: Reservation) -> Option<bool> {
+    match check_line(pieces, reservation) {
+        Checked::Event(completes) => Some(completes),
+        Checked::Malformed | Checked::OverBudget => None,
     }
 }
 
 /// Whether a relayed frame completes the turn: its first `data: ` line is a `done` or `error` event
-/// (api.ts reads that line alone).
-fn frame_completes(frame: &[u8]) -> bool {
-    frame
+/// (api.ts reads that line alone; a data line that is not JSON completes nothing). `None` when that
+/// line's nesting is over the budget: then whether it completes the turn is unknown, and the frame
+/// must not go out as one that does not (the caller fails the stream before it is sent).
+fn frame_completes(frame: &[u8], reservation: Reservation) -> Option<bool> {
+    let Some(data) = frame
         .split(|&b| b == b'\n')
         .find_map(|l| l.strip_prefix(b"data: "))
-        .map(|d| d.trim_ascii())
-        .is_some_and(|d| d.first() == Some(&b'{') && event_line(&[d]) == Some(true))
-}
-
-/// The start of an event that streams through, as Core's `JSON.stringify` writes it: whether it is a
-/// `done` or `error` event. Enough of it is kept to tell: [`HEAD`] bytes.
-const HEAD: usize = 16;
-
-fn head_completes(head: &[u8]) -> bool {
-    [&b"{\"type\":\"done\""[..], b"{\"type\":\"error\""]
-        .iter()
-        .any(|t| {
-            head.strip_prefix(*t)
-                .is_some_and(|r| matches!(r.first(), Some(b',' | b'}')))
-        })
+    else {
+        return Some(false);
+    };
+    match check_line(&[data], reservation) {
+        Checked::Event(completes) => Some(completes),
+        Checked::Malformed => Some(false),
+        Checked::OverBudget => None,
+    }
 }
 
 /// Core's NDJSON turned into the event stream the client reads (module docs).
@@ -499,8 +948,8 @@ pub struct EventWire {
     beat_due: bool,
     /// A `done` or `error` event has gone out: the turn is complete (module docs).
     complete: bool,
-    /// The start of the event streaming through, up to [`HEAD`] bytes.
-    head: Vec<u8>,
+    /// The event streaming through, checked as it goes.
+    json: Json,
     done: bool,
 }
 
@@ -512,14 +961,17 @@ impl EventWire {
     fn with(inner: Body, budget: Arc<Semaphore>, period: Duration) -> Self {
         EventWire {
             inner,
-            held: Held::new(budget),
+            held: Held::new(Arc::clone(&budget)),
             pending: VecDeque::new(),
             overflow: false,
             period,
             beat: None,
             beat_due: false,
             complete: false,
-            head: Vec::new(),
+            json: Json::new(Reservation {
+                budget: Arc::clone(&budget),
+                bytes: 0,
+            }),
             done: false,
         }
     }
@@ -554,7 +1006,7 @@ impl EventWire {
         match line.first() {
             None => true,
             Some(b'{') => {
-                let Some(completes) = event_line(&[&line]) else {
+                let Some(completes) = event_line(&[&line], self.held.reservation.none()) else {
                     return false;
                 };
                 self.complete |= completes;
@@ -579,12 +1031,15 @@ impl EventWire {
             }
             Some(b'"') => {
                 let reservation = self.held.reservation.none();
-                match relayed_frame(line.as_ref(), line.len(), reservation) {
-                    Some(frame) => {
-                        self.complete |= frame_completes(&frame);
-                        self.send(frame);
-                        true
-                    }
+                match relayed_frame(&[&line], line.len(), reservation) {
+                    Some(frame) => match frame_completes(&frame, self.held.reservation.none()) {
+                        Some(completes) => {
+                            self.complete |= completes;
+                            self.send(frame);
+                            true
+                        }
+                        None => false,
+                    },
                     None => false,
                 }
             }
@@ -606,7 +1061,7 @@ impl EventWire {
                     };
                     let Some(completes) = frame
                         .get(6..frame.len().saturating_sub(2))
-                        .and_then(|l| event_line(&[l]))
+                        .and_then(|l| event_line(&[l], self.held.reservation.none()))
                     else {
                         return false;
                     };
@@ -615,11 +1070,10 @@ impl EventWire {
                     return true;
                 }
                 // The held start and the line's end, checked where they are.
-                let Some(completes) = self
-                    .held
-                    .buf
-                    .get(6..)
-                    .and_then(|start| event_line(&[start, &part]))
+                let Some(completes) =
+                    self.held.buf.get(6..).and_then(|start| {
+                        event_line(&[start, &part], self.held.reservation.none())
+                    })
                 else {
                     return false;
                 };
@@ -636,14 +1090,17 @@ impl EventWire {
                 let len = buf.len() + part.len();
                 // The held buffer stays reserved until the decoded copy has its own reservation.
                 let copy = reservation.none();
-                let decoded = relayed_frame(buf.as_slice().chain(part.as_ref()), len, copy);
+                let decoded = relayed_frame(&[&buf, &part], len, copy);
                 drop((buf, reservation));
                 match decoded {
-                    Some(frame) => {
-                        self.complete |= frame_completes(&frame);
-                        self.send(frame);
-                        true
-                    }
+                    Some(frame) => match frame_completes(&frame, self.held.reservation.none()) {
+                        Some(completes) => {
+                            self.complete |= completes;
+                            self.send(frame);
+                            true
+                        }
+                        None => false,
+                    },
                     None => false,
                 }
             }
@@ -651,32 +1108,29 @@ impl EventWire {
         }
     }
 
-    /// Keeps the start of the event streaming through, up to [`HEAD`] bytes.
-    fn sniff(&mut self, bytes: &[u8]) {
-        let room = HEAD.saturating_sub(self.head.len());
-        self.head.extend(bytes.iter().take(room));
-    }
-
     /// One read of Core's NDJSON: what of it goes out now, in [`Self::pending`].
     fn take(&mut self, mut data: Bytes) {
         if self.overflow {
             let Some(end) = data.iter().position(|&b| b == b'\n') else {
-                if data.contains(&b'\r') {
+                // Checked before it goes out: what is not this event's JSON never does, and the
+                // event's frame is never ended (the client never parses it).
+                if data.contains(&b'\r') || !self.json.feed(&data) {
                     return self.fail();
                 }
-                self.sniff(&data);
                 return self.send(data);
             };
             let head = data.split_to(end);
             data = data.slice(1..);
-            if head.contains(&b'\r') {
+            if head.contains(&b'\r') || !self.json.feed(&head) {
                 return self.fail();
             }
-            self.sniff(&head);
+            let Some(completes) = self.json.finish() else {
+                return self.fail();
+            };
             self.send(head);
             self.send(Bytes::from_static(b"\n\n"));
             self.overflow = false;
-            self.complete |= head_completes(&self.head);
+            self.complete |= completes;
             if std::mem::take(&mut self.beat_due) {
                 self.send(Bytes::from_static(KEEP_ALIVE));
             }
@@ -710,15 +1164,16 @@ impl EventWire {
         if kind != Some(b'{') {
             return self.fail();
         }
-        self.head.clear();
+        // Checked from its start before any of it goes out, then as it streams.
+        self.json = Json::new(self.held.reservation.none());
+        let start = self.held.buf.get(6..).unwrap_or_default();
+        if !self.json.feed(start) || !self.json.feed(&data) {
+            return self.fail();
+        }
         match self.held.take() {
-            Some(start) => {
-                self.sniff(start.get(6..).unwrap_or_default());
-                self.send(start);
-            }
+            Some(start) => self.send(start),
             None => self.send(Bytes::from_static(b"data: ")),
         }
-        self.sniff(&data);
         self.send(data);
         self.overflow = true;
     }
@@ -1127,7 +1582,7 @@ mod tests {
         // Near the budget the buffer grows by exactly what is needed, still charged by capacity.
         let tight = Arc::new(Semaphore::new(10_000));
         let mut w = wire(&tight);
-        w.take(Bytes::from([&b"{"[..], &[b'a'; 5999]].concat()));
+        w.take(Bytes::from([&b"{\"t\":\""[..], &[b'a'; 5994]].concat()));
         w.take(Bytes::copy_from_slice(&[b'b'; 3000]));
         assert_eq!(w.held.buf.capacity(), 9006);
         assert_eq!(tight.available_permits(), 994);
@@ -1450,7 +1905,353 @@ mod tests {
         let mut w = wire(&budget);
         read(&mut w, b"{\"type\":\"delta\",\"type\":\"done\"}\n");
         assert!(w.complete, "the last type counts");
-        assert!(utf8(&[b"\xf0\x9f", b"\x98", b"\x80"]) && !utf8(&[b"\xf0\x9f", b"\x98"]));
         assert_eq!(budget.available_permits(), HOLDBACK_BUDGET);
+    }
+
+    /// S7 re-review P2-1 (6ed3633b): a key is a string like any other: a raw control character in one
+    /// (at any depth) is not JSON the client can parse, whole, split at every point, or past the budget.
+    #[test]
+    fn a_raw_control_character_in_a_key_never_goes_out() {
+        let budget = Arc::new(Semaphore::new(HOLDBACK_BUDGET));
+        let meta: &[u8] = b"{\"type\":\"meta\"}\n";
+        let framed = [
+            &b"data: {\"type\":\"meta\"}\n\n"[..],
+            FAILED_FRAME.as_bytes(),
+        ]
+        .concat();
+        let bad: [&[u8]; 4] = [
+            b"{\"type\":\"delta\",\"bad\tkey\":1}\n",
+            b"{\"type\":\"delta\",\"nul\x00\":1}\n",
+            b"{\"type\":\"tool\",\"args\":{\"inner\x01\":2}}\n",
+            b"{\"\x1f\":1,\"type\":\"done\"}\n",
+        ];
+        for line in bad {
+            let name = String::from_utf8_lossy(line).to_string();
+            let mut w = wire(&budget);
+            assert_eq!(read(&mut w, &[meta, line].concat()), framed, "{name}");
+            for at in 1..line.len() - 1 {
+                let mut w = wire(&budget);
+                let mut out = read(&mut w, meta);
+                out.extend(read(&mut w, &line[..at]));
+                out.extend(read(&mut w, &line[at..]));
+                assert_eq!(out, framed, "{name} split at {at}");
+            }
+            // Held, then the rest of the budget spent: the start and the end are checked apart.
+            let tight = Arc::new(Semaphore::new(256));
+            let mut w = wire(&tight);
+            assert!(read(&mut w, &line[..4]).is_empty());
+            let rest = tight.available_permits();
+            let spent = tight
+                .try_acquire_many(u32::try_from(rest).unwrap())
+                .unwrap();
+            assert_eq!(read(&mut w, &line[4..]), FAILED_FRAME.as_bytes(), "{name}");
+            drop((spent, w));
+            assert_eq!(tight.available_permits(), 256);
+        }
+        // Escaped, the same characters are fine in keys, as in values.
+        let mut w = wire(&budget);
+        let ok = b"{\"type\":\"delta\",\"tab\\tkey\\u0000\":\"v\\u0001\"}\n";
+        assert_eq!(
+            read(&mut w, ok),
+            [&b"data: "[..], &ok[..ok.len() - 1], b"\n\n"].concat()
+        );
+        assert_eq!(budget.available_permits(), HOLDBACK_BUDGET);
+    }
+
+    /// S7 re-review P2-3 (6ed3633b): an event that streams through (the budget spent, or past the hold)
+    /// completes the turn by its own `type` member wherever it stands and the last one counting (Core's
+    /// Diary relay keeps the companion's key order), and a malformed one never has its frame ended.
+    #[tokio::test]
+    async fn an_event_streaming_through_is_read_by_its_own_type_member() {
+        let none = Arc::new(Semaphore::new(0));
+        let ends = |reads: &[&[u8]]| {
+            let reads: Vec<Vec<u8>> = reads.iter().map(|r| r.to_vec()).collect();
+            through(reads, false, Arc::clone(&none))
+        };
+        // diary-stream.cjs's reworded error in the companion's order: complete, no failure frame.
+        assert_eq!(
+            ends(&[b"{\"text\":\"failure\",", b"\"type\":\"error\"}\n"]).await,
+            Bytes::from("data: {\"text\":\"failure\",\"type\":\"error\"}\n\n")
+        );
+        // The last type counts: a done that a later type replaces does not complete it.
+        assert_eq!(
+            ends(&[b"{\"type\":\"done\",\"x\":1,", b"\"type\":\"delta\"}\n"]).await,
+            Bytes::from(format!(
+                "data: {{\"type\":\"done\",\"x\":1,\"type\":\"delta\"}}\n\n{FAILED_FRAME}"
+            ))
+        );
+        // `type` only as the object's own member, not inside another value.
+        assert!(
+            ends(&[b"{\"x\":{\"type\":", b"\"done\"},\"type\":\"delta\"}\n"])
+                .await
+                .ends_with(FAILED_FRAME.as_bytes())
+        );
+        // A malformed event streaming through: nothing from its bad bytes on goes out and its frame is
+        // never ended, so the client never parses it.
+        assert_eq!(
+            ends(&[b"{\"type\":\"delta\",", b"\"bad\tkey\":1}\n"]).await,
+            Bytes::from_static(b"data: {\"type\":\"delta\",")
+        );
+        assert_eq!(
+            ends(&[b"{\"type\":\"delta\",", b"\"t\":1}x\n"]).await,
+            Bytes::from_static(b"data: {\"type\":\"delta\",")
+        );
+        // Past the hold with the budget there: a long error whose type comes last completes it.
+        let budget = Arc::new(Semaphore::new(HOLDBACK_BUDGET));
+        let mut big = b"{\"text\":\"".to_vec();
+        big.resize(HOLDBACK + 16, b'x');
+        let out = through(
+            vec![big, b"\",\"type\":\"error\"}\n".to_vec()],
+            false,
+            Arc::clone(&budget),
+        )
+        .await;
+        assert!(out.ends_with(b"x\",\"type\":\"error\"}\n\n"));
+        assert_eq!(budget.available_permits(), HOLDBACK_BUDGET);
+    }
+
+    /// S7 re-review P2-1 (990797fc): nesting has no fixed limit. The reviewer's relayed frame (an
+    /// object holding 16,384 nested arrays) completes the turn, as does a far deeper event, whole or
+    /// split; the stack that tracks the levels draws on the shared budget, and when the budget cannot
+    /// cover it the line takes the over-budget path (the failure frame, or for an event already
+    /// streaming the end without its frame's end), never a false end.
+    #[tokio::test]
+    async fn nesting_has_no_fixed_limit_and_its_stack_is_charged_to_the_budget() {
+        let nested = |depth: usize| format!("{}{}", "[".repeat(depth), "]".repeat(depth));
+        let budget = Arc::new(Semaphore::new(HOLDBACK_BUDGET));
+        // The reviewer's case: a relayed frame whose event is done and 16,384 arrays deep inside.
+        let frame = format!(
+            "data: {{\"type\":\"done\",\"x\":{}}}\n\n",
+            nested(16 * 1024)
+        );
+        let line = format!("{}\n", serde_json::to_string(&frame).unwrap());
+        let out = through(vec![line.into_bytes()], false, Arc::clone(&budget)).await;
+        assert_eq!(out, Bytes::from(frame));
+        // A million levels: whole in one read, and split (held, then finished).
+        let event = format!("{{\"type\":\"done\",\"x\":{}}}", nested(1_000_000));
+        let framed = Bytes::from(format!("data: {event}\n\n"));
+        let line = format!("{event}\n").into_bytes();
+        let out = through(vec![line.clone()], false, Arc::clone(&budget)).await;
+        assert_eq!(out, framed);
+        let (a, b) = line.split_at(line.len() / 2);
+        let out = through(vec![a.to_vec(), b.to_vec()], false, Arc::clone(&budget)).await;
+        assert_eq!(out, framed);
+        assert_eq!(budget.available_permits(), HOLDBACK_BUDGET);
+        // The budget cannot cover the stack (a million levels need 125,000 bytes of it): the line is
+        // over the budget. Whole, or with nothing of it out yet, it is refused with the failure frame
+        // alone; already streaming (its first 1,000 bytes could not be held but could be checked, so
+        // they went out) it ends without its frame's end.
+        let tight = Arc::new(Semaphore::new(512));
+        let out = through(vec![line.clone()], false, Arc::clone(&tight)).await;
+        assert_eq!(out, Bytes::from(FAILED_FRAME));
+        let out = through(vec![a.to_vec(), b.to_vec()], false, Arc::clone(&tight)).await;
+        assert_eq!(out, Bytes::from(FAILED_FRAME));
+        let (a, b) = line.split_at(1000);
+        let out = through(vec![a.to_vec(), b.to_vec()], false, Arc::clone(&tight)).await;
+        assert_eq!(out, Bytes::from([&b"data: "[..], a].concat()));
+        assert_eq!(tight.available_permits(), 512);
+    }
+
+    /// S7 re-review P2-2 (990797fc): a relayed frame is decoded by this module into its reserved
+    /// buffer: escapes, surrogate pairs and raw UTF-8 as Node writes them (a lone surrogate escape as
+    /// U+FFFD, what Node's UTF-8 write makes of it), whole or split anywhere; what is not one JSON string
+    /// is refused.
+    #[test]
+    fn a_relayed_frame_is_decoded_into_its_reservation() {
+        let budget = Arc::new(Semaphore::new(HOLDBACK_BUDGET));
+        let line: &[u8] = b"\"data: {\\\"t\\\":\\\"\\u00e9 \xc3\xa9 \\ud83d\\ude00 \\ud800 x \\udfff \\\\ \\/ \\t\\\"}\\n\\n\"\n";
+        let want = "data: {\"t\":\"\u{e9} \u{e9} \u{1F600} \u{FFFD} x \u{FFFD} \\ / \t\"}\n\n";
+        for at in 0..line.len() {
+            let mut w = wire(&budget);
+            let mut out = read(&mut w, &line[..at]);
+            out.extend(read(&mut w, &line[at..]));
+            assert_eq!(out, want.as_bytes(), "split at {at}");
+            assert!(!w.done);
+        }
+        for bad in [
+            &b"\"data: x\\n\\n\" \"\"\n"[..],
+            b"\"data: \x01\\n\\n\"\n",
+            b"\"data: \xc3\x28\\n\\n\"\n",
+            b"\"data: \\x\\n\\n\"\n",
+            b"\"data: \\u12g4\\n\\n\"\n",
+        ] {
+            let mut w = wire(&budget);
+            assert_eq!(
+                read(&mut w, bad),
+                FAILED_FRAME.as_bytes(),
+                "{}",
+                String::from_utf8_lossy(bad)
+            );
+        }
+        assert_eq!(budget.available_permits(), HOLDBACK_BUDGET);
+    }
+
+    /// S7 re-review P2 (b0689c27): a relayed frame whose decoded copy takes what is left of the budget
+    /// leaves none for the nesting of its data line. Whether it completes the turn is then unknown, so
+    /// it must not go out as a frame that does not: the stream fails before it is sent (whole, and held
+    /// then finished), and with eight permits more the same frame completes the turn.
+    #[tokio::test]
+    async fn a_decoded_frame_that_spends_the_budget_never_goes_out_unfinished() {
+        let frame = format!(
+            "data: {{\"type\":\"done\",\"x\":{}{}}}\n\n",
+            "[".repeat(256),
+            "]".repeat(256)
+        );
+        let line = serde_json::to_string(&frame).unwrap();
+        let whole = format!("{line}\n").into_bytes();
+        // Exactly the decoded copy's reservation (the line's length) and nothing more.
+        let budget = Arc::new(Semaphore::new(line.len()));
+        let out = through(vec![whole.clone()], false, Arc::clone(&budget)).await;
+        assert_eq!(out, Bytes::from(FAILED_FRAME));
+        assert_eq!(budget.available_permits(), line.len());
+        // Four bytes held first (their four permits come back after decoding: still too few).
+        let budget = Arc::new(Semaphore::new(4 + line.len()));
+        let (a, b) = whole.split_at(4);
+        let out = through(vec![a.to_vec(), b.to_vec()], false, Arc::clone(&budget)).await;
+        assert_eq!(out, Bytes::from(FAILED_FRAME));
+        assert_eq!(budget.available_permits(), 4 + line.len());
+        // One spill word more: the stack fits, the frame goes out and completes the turn.
+        let budget = Arc::new(Semaphore::new(line.len() + 8));
+        let out = through(vec![whole], false, Arc::clone(&budget)).await;
+        assert_eq!(out, Bytes::from(frame));
+        assert_eq!(budget.available_permits(), line.len() + 8);
+    }
+}
+
+/// S7 re-review P3 (b0689c27): the memory this module allocates for a line is accounted on the
+/// budget itself, deterministically (the workspace forbids the unsafe code a counting allocator
+/// needs): a relayed frame's buffer is exactly its reservation and never moves or grows; the nesting
+/// stack is charged by its capacity at every growth; refusals take nothing; every permit comes back.
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod accounting_tests {
+    use super::*;
+
+    fn reservation(budget: &Arc<Semaphore>) -> Reservation {
+        Reservation {
+            budget: Arc::clone(budget),
+            bytes: 0,
+        }
+    }
+
+    fn in_use(budget: &Semaphore, total: usize) -> usize {
+        total - budget.available_permits()
+    }
+
+    #[test]
+    fn a_relayed_frames_buffer_is_exactly_its_reservation() {
+        const TOTAL: usize = 4096;
+        let budget = Arc::new(Semaphore::new(TOTAL));
+        let line: &[u8] = br#""data: {\"t\":\"\u00e9 \ud83d\ude00 \ud800 x \\ \/\"}\n\n""#;
+        let len = line.len();
+        // Decoding writes into the buffer as allocated: the same pointer and capacity throughout,
+        // split anywhere.
+        for at in 0..=len {
+            let mut buf = Vec::with_capacity(len);
+            let (ptr, cap) = (buf.as_ptr(), buf.capacity());
+            let mut d = Decode::default();
+            assert!(d.feed(&line[..at], &mut buf) && d.feed(&line[at..], &mut buf) && d.finish());
+            assert_eq!((buf.as_ptr(), buf.capacity()), (ptr, cap), "split at {at}");
+            assert!(buf.len() <= cap);
+        }
+        // Its capacity is its reservation, which is the line's length, all of it charged.
+        let (buf, r) = decode_relayed(&[line], len, reservation(&budget)).unwrap();
+        assert_eq!(buf.capacity(), r.bytes);
+        assert_eq!(r.bytes, len);
+        assert_eq!(in_use(&budget, TOTAL), len);
+        // The permits come back only when the last owner of the frame drops it.
+        let frame = reserved(buf, r);
+        let copy = frame.clone();
+        drop(frame);
+        assert_eq!(in_use(&budget, TOTAL), len);
+        drop(copy);
+        assert_eq!(in_use(&budget, TOTAL), 0);
+        // Too few permits: refused before anything is allocated, nothing taken.
+        let short = Arc::new(Semaphore::new(len - 1));
+        assert!(decode_relayed(&[line], len, reservation(&short)).is_none());
+        assert_eq!(short.available_permits(), len - 1);
+        // Malformed, or not one whole frame: refused, and every permit back.
+        for bad in [
+            &br#""data: x""#[..],
+            br#""data: \x\n\n""#,
+            b"\"data: \x01\\n\\n\"",
+            br#""a\n\nb\n\n""#,
+            br#""data: x\n\n" ""#,
+        ] {
+            assert!(decode_relayed(&[bad], bad.len(), reservation(&budget)).is_none());
+            assert_eq!(
+                in_use(&budget, TOTAL),
+                0,
+                "{}",
+                String::from_utf8_lossy(bad)
+            );
+        }
+        // The decoder never writes past the capacity it was given (it would rather refuse).
+        let mut tiny = Vec::with_capacity(2);
+        let cap = tiny.capacity();
+        assert!(!Decode::default().feed(b"\"abcdefgh\"", &mut tiny));
+        assert_eq!(tiny.capacity(), cap);
+    }
+
+    #[test]
+    fn the_nesting_stack_is_charged_by_its_capacity() {
+        const TOTAL: usize = 1024;
+        let budget = Arc::new(Semaphore::new(TOTAL));
+        let mut json = Json::new(reservation(&budget));
+        assert!(json.feed(b"{\"type\":\"done\",\"x\":"));
+        // The first INLINE_DEPTH levels cost nothing.
+        assert!(json.feed(&[b'['; INLINE_DEPTH - 1]));
+        assert_eq!(json.depth, INLINE_DEPTH);
+        assert_eq!((json.spill.capacity(), json.reservation.bytes), (0, 0));
+        assert_eq!(in_use(&budget, TOTAL), 0);
+        // Past them the spill grows by doubling, each capacity charged before it is allocated.
+        let mut capacities = Vec::new();
+        for _ in 0..1024 {
+            assert!(json.feed(b"["));
+            assert_eq!(json.reservation.bytes, json.spill.capacity() * 8);
+            assert_eq!(in_use(&budget, TOTAL), json.reservation.bytes);
+            if capacities.last() != Some(&json.spill.capacity()) {
+                capacities.push(json.spill.capacity());
+            }
+        }
+        assert_eq!(capacities, [1, 2, 4, 8, 16]);
+        assert!(json.feed(&[b']'; 1024 + INLINE_DEPTH - 1]) && json.feed(b"}"));
+        assert_eq!(json.finish(), Some(true));
+        drop(json);
+        assert_eq!(in_use(&budget, TOTAL), 0, "back when the checker drops");
+        // A growth the budget cannot cover (32 bytes doubled, 24 exact, 20 left): refused as over the
+        // budget, the charged capacity unchanged, and all of it back on drop.
+        let tight = Arc::new(Semaphore::new(20));
+        let mut json = Json::new(reservation(&tight));
+        assert!(json.feed(b"{\"x\":"));
+        // Levels 1 to 383 fit (inline, then spill words 1 and 2); level 384 needs a third word.
+        assert!(!json.feed(&[b'['; INLINE_DEPTH + 2 * 64]));
+        assert!(json.over_budget);
+        assert_eq!(json.depth, INLINE_DEPTH + 2 * 64);
+        assert_eq!((json.spill.capacity(), json.reservation.bytes), (2, 16));
+        assert_eq!(in_use(&tight, 20), 16);
+        drop(json);
+        assert_eq!(in_use(&tight, 20), 0);
+        // The same, through a line: over the budget is its own outcome, not "not an event".
+        let deep = [
+            &b"{\"type\":\"done\",\"x\":"[..],
+            &[b'['; 400],
+            &[b']'; 400],
+            b"}",
+        ]
+        .concat();
+        assert_eq!(
+            check_line(&[&deep], reservation(&tight)),
+            Checked::OverBudget
+        );
+        assert_eq!(
+            check_line(&[&deep], reservation(&budget)),
+            Checked::Event(true)
+        );
+        assert_eq!(
+            check_line(&[b"{x}"], reservation(&budget)),
+            Checked::Malformed
+        );
+        assert_eq!((in_use(&tight, 20), in_use(&budget, TOTAL)), (0, 0));
     }
 }
