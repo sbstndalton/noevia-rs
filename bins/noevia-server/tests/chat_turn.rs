@@ -1663,3 +1663,37 @@ async fn an_over_one_mib_non_refusal_fails_closed() {
             .all(|h| !h.contains("/internal/chat/turn")));
     }
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_lease_lost_while_the_client_stalls_its_upload_is_the_gates_503_at_once() {
+    // Review P2 (S5–S9): a body that stops arriving part-way is read under the lease's loss too.
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let f = losing_front().await;
+    let mut s = TcpStream::connect(f.addr).await.unwrap();
+    let head = format!(
+        "POST /api/chat HTTP/1.1\r\nhost: front.test\r\norigin: {ORIGIN}\r\ncontent-type: application/json\r\ncookie: {}\r\nx-csrf-token: {}\r\ncontent-length: {}\r\n\r\n",
+        f.jar,
+        f.csrf,
+        TURN.len() + 64
+    );
+    s.write_all(head.as_bytes()).await.unwrap();
+    s.write_all(&TURN[..TURN.len() / 2]).await.unwrap();
+    // ... and the rest never comes.
+    let mut got = Vec::new();
+    let mut buf = [0u8; 1024];
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !got.windows(4).any(|w| w == b"\r\n\r\n") {
+            let n = s.read(&mut buf).await.unwrap();
+            assert!(n > 0, "the front closed without answering");
+            got.extend_from_slice(&buf[..n]);
+        }
+    })
+    .await
+    .expect("a stalled upload kept the request alive after its lease was lost");
+    let head = String::from_utf8_lossy(&got);
+    assert!(head.starts_with("HTTP/1.1 503"), "{head}");
+    assert!(
+        !f.core.seen.lock().unwrap().hits.iter().any(|h| h.contains("/internal/chat/")),
+        "a turn reached Core"
+    );
+}
