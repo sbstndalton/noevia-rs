@@ -27,7 +27,7 @@ use std::convert::Infallible;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
@@ -74,6 +74,7 @@ struct Activity {
     start: Instant,
     in_flight: AtomicUsize,
     last_ms: AtomicU64,
+    waiting_keepalive: AtomicBool,
 }
 
 impl Activity {
@@ -93,6 +94,7 @@ struct InFlight(Arc<Activity>);
 impl Drop for InFlight {
     fn drop(&mut self) {
         self.0.touch();
+        self.0.waiting_keepalive.store(true, Ordering::Relaxed);
         self.0.in_flight.fetch_sub(1, Ordering::Relaxed);
     }
 }
@@ -119,7 +121,7 @@ impl HttpBody for TrackedBody {
     }
 }
 
-/// The socket, noting every read that returns bytes.
+/// The socket, noting successful reads and writes for the inactivity deadline.
 struct TrackedIo {
     inner: TcpStream,
     activity: Arc<Activity>,
@@ -135,6 +137,9 @@ impl AsyncRead for TrackedIo {
         let r = Pin::new(&mut self.inner).poll_read(cx, buf);
         if buf.filled().len() > before {
             self.activity.touch();
+            self.activity
+                .waiting_keepalive
+                .store(false, Ordering::Relaxed);
         }
         r
     }
@@ -146,7 +151,11 @@ impl AsyncWrite for TrackedIo {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<std::io::Result<usize>> {
-        Pin::new(&mut self.inner).poll_write(cx, buf)
+        let result = Pin::new(&mut self.inner).poll_write(cx, buf);
+        if matches!(result,Poll::Ready(Ok(n)) if n>0) {
+            self.activity.touch();
+        }
+        result
     }
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         Pin::new(&mut self.inner).poll_flush(cx)
@@ -159,7 +168,11 @@ impl AsyncWrite for TrackedIo {
         cx: &mut Context<'_>,
         bufs: &[std::io::IoSlice<'_>],
     ) -> Poll<std::io::Result<usize>> {
-        Pin::new(&mut self.inner).poll_write_vectored(cx, bufs)
+        let result = Pin::new(&mut self.inner).poll_write_vectored(cx, bufs);
+        if matches!(result,Poll::Ready(Ok(n)) if n>0) {
+            self.activity.touch();
+        }
+        result
     }
     fn is_write_vectored(&self) -> bool {
         self.inner.is_write_vectored()
@@ -273,6 +286,7 @@ async fn serve_connection(
         start: Instant::now(),
         in_flight: AtomicUsize::new(0),
         last_ms: AtomicU64::new(0),
+        waiting_keepalive: AtomicBool::new(false),
     });
     let io = TrackedIo {
         inner: stream,
@@ -310,7 +324,7 @@ async fn serve_connection(
             _ = connection.as_mut() => return,
             _ = tokio::time::sleep(tick) => {
                 if socket_timeout.is_some_and(|bound| activity.idle_for() >= bound) { return; }
-                if !closing && activity.in_flight.load(Ordering::Relaxed) == 0
+                if !closing && (socket_timeout.is_none() || activity.waiting_keepalive.load(Ordering::Relaxed)) && activity.in_flight.load(Ordering::Relaxed) == 0
                     && activity.idle_for() >= limits.keep_alive_idle
                 {
                     closing = true;

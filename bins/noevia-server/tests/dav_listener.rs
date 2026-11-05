@@ -416,3 +416,42 @@ async fn dedicated_socket_deadline_closes_an_active_partial_request() {
         .unwrap()
         .unwrap();
 }
+
+#[tokio::test]
+async fn first_partial_headers_use_header_deadline_not_keepalive_idle() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let router = Router::new().fallback(|| async { Response::new(Body::empty()) });
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    let task = tokio::spawn(noevia_server::serve::serve_router_with_socket_timeout(
+        listener,
+        router,
+        noevia_server::serve::Limits {
+            header_read: Duration::from_millis(150),
+            keep_alive_idle: Duration::from_millis(20),
+            max_connections: 4,
+        },
+        Some(Duration::from_secs(1)),
+        async move {
+            let _ = rx.await;
+        },
+    ));
+    let mut socket = tokio::net::TcpStream::connect(addr).await.unwrap();
+    socket.write_all(b"GET / HTTP/1.1\r\nHost: ").await.unwrap();
+    let mut byte = [0u8; 1];
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), socket.read(&mut byte))
+            .await
+            .is_err()
+    );
+    let mut response = Vec::new();
+    let _ = tokio::time::timeout(Duration::from_secs(2), socket.read_to_end(&mut response))
+        .await
+        .unwrap();
+    let _ = tx.send(());
+    tokio::time::timeout(Duration::from_secs(2), task)
+        .await
+        .unwrap()
+        .unwrap();
+}
