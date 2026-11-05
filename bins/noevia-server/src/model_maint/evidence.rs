@@ -15,10 +15,10 @@
 
 use js_json::{parse, stringify, JValue};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 pub const CATEGORIES: [&str; 4] = ["context_capacity", "vision", "mtp_acceptance", "throughput"];
 
@@ -213,9 +213,49 @@ pub fn credential_shaped(text: &str) -> bool {
     false
 }
 
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
+struct RunLedger {
+    models: BTreeMap<String, RunEpoch>,
+}
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct RunEpoch {
+    id: String,
+    generation: u64,
+    tombstoned: bool,
+}
+
+type RunRegistry = Mutex<Option<RunLedger>>;
+// All store handles in the single-writer front observe the same admitted generation, including
+// readers opened before a successor. A new process hydrates this registry from the durable file.
+fn shared_runs(dir: &Path) -> Arc<RunRegistry> {
+    static REGISTRIES: OnceLock<Mutex<HashMap<PathBuf, Weak<RunRegistry>>>> = OnceLock::new();
+    let cache = REGISTRIES.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut cache = cache.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(existing) = cache.get(dir).and_then(Weak::upgrade) {
+        return existing;
+    }
+    cache.retain(|_, registry| registry.strong_count() > 0);
+    let registry = Arc::new(Mutex::new(load_runs(dir)));
+    cache.insert(dir.to_owned(), Arc::downgrade(&registry));
+    registry
+}
+
+// Independent of the evidence append lock: an append stuck after its last permit check must
+// not prevent finalization from durably withdrawing its generation from every consumer.
+fn load_runs(dir: &Path) -> Option<RunLedger> {
+    match std::fs::read(dir.join("run-state.json")) {
+        Ok(bytes) => serde_json::from_slice(&bytes).ok(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(RunLedger::default()),
+        Err(_) => None, // unreadable/corrupt publication state is fail-closed
+    }
+}
+
 pub struct Store {
     dir: PathBuf,
     caps: Caps,
+    runs: Arc<RunRegistry>,
+    #[cfg(test)]
+    append_stall: Mutex<Option<(std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>)>>,
     /// The only writer: appends and compactions of this process do not interleave.
     write: Mutex<Option<usize>>,
     /// Held across "read the newest, then append": a drain and an HTTP import cannot both decide to add.
@@ -251,8 +291,12 @@ fn same_value(a: &JValue, b: &JValue) -> bool {
 
 impl Store {
     pub fn new(dir: PathBuf) -> Store {
+        let runs = shared_runs(&dir);
         Store {
             dir,
+            runs,
+            #[cfg(test)]
+            append_stall: Mutex::new(None),
             caps: Caps::default(),
             write: Mutex::new(None),
             decide: Mutex::new(()),
@@ -260,11 +304,207 @@ impl Store {
     }
 
     pub fn with_caps(dir: PathBuf, caps: Caps) -> Store {
+        let runs = shared_runs(&dir);
         Store {
             dir,
+            runs,
+            #[cfg(test)]
+            append_stall: Mutex::new(None),
             caps,
             write: Mutex::new(None),
             decide: Mutex::new(()),
+        }
+    }
+
+    fn persist_runs(&self, ledger: &RunLedger) -> Result<(), StoreError> {
+        use std::os::unix::fs::OpenOptionsExt;
+        create_private_dir(&self.dir).map_err(|_| StoreError::Io)?;
+        let tmp = self.dir.join("run-state.json.tmp");
+        let result = (|| -> Result<(), StoreError> {
+            let bytes = serde_json::to_vec(ledger).map_err(|_| StoreError::Io)?;
+            let mut file = std::fs::OpenOptions::new()
+                .create(true)
+                .truncate(true)
+                .write(true)
+                .mode(0o600)
+                .open(&tmp)
+                .map_err(|_| StoreError::Io)?;
+            file.write_all(&bytes)
+                .and_then(|()| file.sync_all())
+                .map_err(|_| StoreError::Io)?;
+            std::fs::rename(&tmp, self.dir.join("run-state.json")).map_err(|_| StoreError::Io)?;
+            std::fs::File::open(&self.dir)
+                .and_then(|d| d.sync_all())
+                .map_err(|_| StoreError::Io)
+        })();
+        if result.is_err() {
+            let _ = std::fs::remove_file(tmp);
+        }
+        result
+    }
+
+    /// Durably admit the next generation before the run can produce evidence. Older generations
+    /// need no retained per-run tombstones once this stronger fence is durable.
+    pub(super) fn admit_run(&self, model: &str, id: &str) -> Result<u64, StoreError> {
+        let mut locked = self.runs.lock().map_err(|_| StoreError::Io)?;
+        let mut ledger = locked.as_ref().ok_or(StoreError::Io)?.clone();
+        let generation = ledger
+            .models
+            .get(model)
+            .map_or(0, |e| e.generation)
+            .checked_add(1)
+            .ok_or(StoreError::Io)?;
+        ledger.models.insert(
+            model.to_owned(),
+            RunEpoch {
+                id: id.to_owned(),
+                generation,
+                tombstoned: false,
+            },
+        );
+        self.persist_runs(&ledger)?;
+        *locked = Some(ledger);
+        Ok(generation)
+    }
+
+    /// Persist the tombstone before a failed run publishes completion and releases admission.
+    /// The independent control file remains small: one current epoch per model; newer admission
+    /// permanently hides every older epoch, including appends that physically finish later.
+    pub(super) fn tombstone(
+        &self,
+        model: &str,
+        id: &str,
+        generation: u64,
+    ) -> Result<(), StoreError> {
+        let mut locked = self.runs.lock().map_err(|_| StoreError::Io)?;
+        let mut ledger = locked.as_ref().ok_or(StoreError::Io)?.clone();
+        if ledger.models.get(model).is_some_and(|e| {
+            e.generation > generation || (e.generation == generation && e.id == id && e.tombstoned)
+        }) {
+            return Ok(());
+        }
+        ledger.models.insert(
+            model.to_owned(),
+            RunEpoch {
+                id: id.to_owned(),
+                generation,
+                tombstoned: true,
+            },
+        );
+        self.persist_runs(&ledger)?;
+        *locked = Some(ledger);
+        Ok(())
+    }
+
+    pub(super) fn generation_for(&self, model: &str, id: &str) -> Option<u64> {
+        self.runs.lock().ok().and_then(|r| {
+            r.as_ref().and_then(|r| {
+                r.models
+                    .get(model)
+                    .filter(|e| e.id == id)
+                    .map(|e| e.generation)
+            })
+        })
+    }
+
+    pub(super) fn visible(&self, model: &str, record: &JValue) -> bool {
+        let Ok(locked) = self.runs.lock() else {
+            return false;
+        };
+        let Some(ledger) = locked.as_ref() else {
+            return false;
+        };
+        let generation = match record.get("runGeneration") {
+            JValue::Undefined => 0,
+            JValue::Str(g) => match g.parse::<u64>() {
+                Ok(g) => g,
+                Err(_) => return false,
+            },
+            _ => return false,
+        };
+        let current = ledger.models.get(model);
+        generation == current.map_or(0, |e| e.generation)
+            && !current.is_some_and(|e| {
+                e.tombstoned && record.get("runId").as_str() == Some(e.id.as_str())
+            })
+    }
+
+    /// All newly written records carry provenance, including non-calibration producers. Legacy
+    /// untagged lines remain generation zero and become stale on the first admitted generation.
+    pub(super) fn tag_record(&self, entry: &mut JValue) -> Result<(), StoreError> {
+        let model = entry
+            .get("model")
+            .as_str()
+            .ok_or(StoreError::Invalid)?
+            .to_owned();
+        let locked = self.runs.lock().map_err(|_| StoreError::Io)?;
+        let ledger = locked.as_ref().ok_or(StoreError::Io)?;
+        let generation = ledger.models.get(&model).map_or(0, |e| e.generation);
+        let id = if let Some(id) = entry.get("id").as_str().filter(|s| !s.is_empty()) {
+            id.to_owned()
+        } else {
+            use rand_core::RngCore;
+            let mut nonce = [0u8; 16];
+            rand_core::OsRng
+                .try_fill_bytes(&mut nonce)
+                .map_err(|_| StoreError::Io)?;
+            nonce.iter().map(|b| format!("{b:02x}")).collect()
+        };
+        if let JValue::Obj(fields) = entry {
+            if !fields.iter().any(|(k, _)| k == "runId") {
+                fields.push(("runId".into(), JValue::Str(id)));
+            }
+            if !fields.iter().any(|(k, _)| k == "runGeneration") {
+                fields.push(("runGeneration".into(), JValue::Str(generation.to_string())));
+            }
+        }
+        if entry.get("runId").as_str().is_none_or(str::is_empty)
+            || entry
+                .get("runGeneration")
+                .as_str()
+                .and_then(|g| g.parse::<u64>().ok())
+                .is_none()
+        {
+            return Err(StoreError::Invalid);
+        }
+        Ok(())
+    }
+
+    pub(super) fn filter_history(&self, history: JValue) -> JValue {
+        match history {
+            JValue::Obj(models) => JValue::Obj(
+                models
+                    .into_iter()
+                    .map(|(model, entries)| {
+                        let entries = match entries {
+                            JValue::Arr(entries) => JValue::Arr(
+                                entries
+                                    .into_iter()
+                                    .filter(|e| self.visible(&model, e))
+                                    .collect(),
+                            ),
+                            other => other,
+                        };
+                        (model, entries)
+                    })
+                    .collect(),
+            ),
+            other => other,
+        }
+    }
+
+    pub fn count(&self) -> usize {
+        self.list().len()
+    }
+
+    #[cfg(test)]
+    pub(super) fn stall_next_append(
+        &self,
+        entered: std::sync::mpsc::Sender<()>,
+        release: std::sync::mpsc::Receiver<()>,
+    ) {
+        if let Ok(mut stall) = self.append_stall.lock() {
+            *stall = Some((entered, release));
         }
     }
 
@@ -280,6 +520,7 @@ impl Store {
         text.split('\n')
             .filter(|l| !l.is_empty())
             .filter_map(|l| parse(l).ok())
+            .filter(|r| self.visible(get_str(r, "model").unwrap_or(""), r))
             .collect()
     }
 
@@ -333,7 +574,8 @@ impl Store {
                 None => entry.push((k.clone(), v.clone())),
             }
         }
-        let entry = JValue::Obj(entry);
+        let mut entry = JValue::Obj(entry);
+        self.tag_record(&mut entry)?;
         let valid = get_str(&entry, "category").is_some_and(|c| !c.is_empty())
             && get_str(&entry, "model").is_some_and(|m| !m.is_empty())
             && matches!(
@@ -365,23 +607,32 @@ impl Store {
             if !allowed() {
                 return Err(StoreError::Io);
             }
+            // The deterministic hook is AFTER the last permit check, at the write boundary.
+            // A late physical write is harmless because all consumers apply the durable ledger.
+            #[cfg(test)]
+            if let Some((entered, release)) =
+                self.append_stall.lock().ok().and_then(|mut s| s.take())
+            {
+                let _ = entered.send(());
+                let _ = release.recv();
+            }
             f.write_all(format!("{line}\n").as_bytes())
                 .map_err(|_| StoreError::Io)?;
         }
         // Counted once per process and kept up to date by append and compact.
-        let count = match *lines {
-            Some(n) => n + 1,
-            None => self.list().len(),
-        };
+        let count = self.count();
         *lines = Some(count);
         let size = std::fs::metadata(self.file()).map(|m| m.len()).unwrap_or(0);
         if count > self.caps.max_records + self.caps.max_records.div_ceil(4)
             || size > self.caps.max_bytes
         {
             // Best-effort: a failed compaction never fails the append.
-            if let Ok(n) = self.compact() {
+            if let Ok(n) = self.compact_locked() {
                 *lines = Some(n);
             }
+        }
+        if !self.visible(get_str(&entry, "model").unwrap_or(""), &entry) {
+            return Err(StoreError::Io);
         }
         Ok(entry)
     }
@@ -452,7 +703,15 @@ impl Store {
     /// Rewrites the log keeping the newest `keep_per_key` records for each model/category/identity,
     /// then at most `max_keys` identities, `max_records` records and three quarters of `max_bytes`
     /// (#796); the newest identity is never dropped. Returns the records kept.
-    fn compact(&self) -> Result<usize, ()> {
+    pub fn compact(&self) -> Result<usize, StoreError> {
+        let _writing = self.write.lock().map_err(|_| StoreError::Io)?;
+        self.compact_locked().map_err(|()| StoreError::Io)
+    }
+
+    fn compact_locked(&self) -> Result<usize, ()> {
+        if !self.runs.lock().ok().is_some_and(|r| r.is_some()) {
+            return Err(());
+        }
         let records = self.list();
         let key_of = |r: &JValue| {
             format!(
@@ -541,7 +800,8 @@ impl Store {
         write().map_err(|_| {
             let _ = std::fs::remove_file(&tmp);
         })?;
-        Ok(kept)
+        let _ = kept;
+        Ok(self.count())
     }
 }
 

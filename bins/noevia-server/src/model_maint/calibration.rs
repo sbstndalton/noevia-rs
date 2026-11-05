@@ -272,13 +272,31 @@ impl Maint {
         let Ok(mut state) = tokio::task::spawn_blocking(move || loader.load()).await else {
             return Recovery::Nothing;
         };
-        if state.job().get("status").as_str() != Some("running") {
+        let running = state.job().get("status").as_str() == Some("running");
+        let pending = match (
+            state
+                .job()
+                .get("pendingRestore")
+                .get("baseRevision")
+                .as_str(),
+            state.job().get("pendingRestore").get("text").as_str(),
+        ) {
+            (Some(base), Some(text)) => Some((base.to_owned(), text.to_owned())),
+            _ => None,
+        };
+        if !running && pending.is_none() {
             return Recovery::Nothing;
         }
         let Some(job) = state.job_mut() else {
             return Recovery::Nothing;
         };
-        let restored = match interrupt(job, now_ms()) {
+        let interrupted = if running {
+            interrupt(job, now_ms())
+        } else {
+            None
+        };
+        let restore = pending.map(Some).or(interrupted);
+        let restored = match restore {
             None => None,
             Some(None) => Some(false),
             Some(Some((base_revision, text))) => {
@@ -287,22 +305,40 @@ impl Maint {
                     text,
                     before: String::new(),
                 };
-                Some(match ini.commit_reconciled(&c, true).await {
-                    Ok(()) => {
-                        // The raw reload Node sends. Like Node's recover(), the preset-reload guard's
-                        // baseline is neither recorded nor forgotten here (reload.rs records or
-                        // forgets its own reloads; this path matches the calibrator it replaces).
-                        if let Some(router) = self.router.as_ref() {
-                            let _ = router.get("/models?reload=1", None, RELOAD_TIMEOUT).await;
-                        }
-                        true
+                let restored = ini.settle_restore(&c, Duration::from_secs(1)).await;
+                if restored {
+                    if let Some(router) = self.router.as_ref() {
+                        let _ = router.get("/models?reload=1", None, RELOAD_TIMEOUT).await;
                     }
-                    Err(_) => false,
-                })
+                }
+                Some(restored)
             }
         };
         if let Some(job) = state.job_mut() {
-            settle_interrupted(job, restored);
+            if running {
+                settle_interrupted(job, restored);
+            } else if let Some(restored) = restored {
+                wtf16::set(job, "restored", JValue::Bool(restored));
+            }
+            job.retain(|(k, _)| k != "pendingRestore");
+        }
+        if let Some(store) = self.evidence.clone() {
+            let model = state.job().get("model").as_str().unwrap_or("").to_owned();
+            let id = state.job().get("id").as_str().unwrap_or("").to_owned();
+            let generation = store.generation_for(&model, &id).unwrap_or(0);
+            let mut wait = Duration::from_secs(1);
+            loop {
+                let (store, model, id) = (std::sync::Arc::clone(&store), model.clone(), id.clone());
+                if matches!(
+                    tokio::task::spawn_blocking(move || store.tombstone(&model, &id, generation))
+                        .await,
+                    Ok(Ok(()))
+                ) {
+                    break;
+                }
+                tokio::time::sleep(wait).await;
+                wait = (wait * 2).min(Duration::from_secs(60));
+            }
         }
         let saving = state.clone();
         let saved = tokio::task::spawn_blocking(move || file.save(&saving)).await;
