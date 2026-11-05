@@ -917,3 +917,52 @@ fn rereview_2_a_million_levels_are_rewritten_in_linear_time() {
         eprintln!("{name}: {size} bytes forwarded in {took:?}");
     }
 }
+
+#[tokio::test]
+async fn tls_failure_is_internal_unstreamed_and_interrupted_streamed() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let task = tokio::spawn(async move {
+        loop {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut hello = [0; 4096];
+            let _ = socket.read(&mut hello).await;
+            let _ = socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                .await;
+        }
+    });
+    let d = server_diary::Diary::new(server_diary::DiaryConfig::new(
+        format!("https://{address}"),
+        BEARER,
+        TENANT_KEY,
+        String::new,
+    ))
+    .unwrap();
+    let w = World::new(&[]);
+    let reply = d
+        .local_exchange(
+            w.ctx(MEMBER, true),
+            post(),
+            Full::new(Bytes::new()),
+            Probe::new().admit(),
+        )
+        .await;
+    assert_eq!(
+        (reply.status, text_of(reply.body).await),
+        (500, r#"{"error":"Internal error"}"#.to_owned())
+    );
+    let reply = d
+        .local_exchange(
+            w.ctx(MEMBER, true),
+            post(),
+            Full::new(Bytes::from_static(br#"{"stream":true}"#)),
+            Probe::new().admit(),
+        )
+        .await;
+    assert_eq!(reply.status, 200);
+    assert_eq!(text_of(reply.body).await, format!("{CONNECT_FRAME}data: {{\"type\":\"error\",\"text\":\"The diary connection was interrupted. The entry may still be saving; check the saved diary before sending again.\"}}\n\n"));
+    task.abort();
+    let _ = task.await;
+}

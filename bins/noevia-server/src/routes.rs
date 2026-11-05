@@ -132,6 +132,8 @@ pub enum Native {
     ToolApprovals,
     /// GET /api/toolboxes and every other method's 405 (#2281).
     ToolboxPicker,
+    /// Every method of exactly /api/chat-framing/suggest (chat port S4): chat_framing_suggest.rs.
+    ChatFramingSuggest,
 }
 
 /// The routes [`Native::McpDirectory`] implements (every method; routes.toml).
@@ -186,6 +188,13 @@ const CHATGPT_OAUTH: &[&str] = &[
 /// routes.toml answer only those; the rest answer every method and give their own 405 after the
 /// add-on gate, as core does.
 pub(crate) const DIARY_ROUTES: &[&str] = &[
+    "/api/diary/files",
+    "/api/diary/file",
+    "/api/diary/workspace-trash",
+    "/api/diary/history",
+    "/api/diary/external-sources",
+    "/api/diary/external-sources/import",
+    "/api/diary/entries/edit",
     "/api/diary/source",
     "/api/diary/today",
     "/api/diary/storage-import",
@@ -500,6 +509,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
         "/api/models/autotune/settings" if auth => return Some(Native::AutotuneSettings),
         server_account::tool_approvals::ROUTE if auth => return Some(Native::ToolApprovals),
         "/api/toolboxes" if auth => return Some(Native::ToolboxPicker),
+        crate::chat_framing_suggest::PATH if auth => return Some(Native::ChatFramingSuggest),
         TOOLBOXES_PERMITTED if auth => return Some(Native::ToolboxesPermitted),
         "/api/instance"
         | "/.well-known/webauthn"
@@ -623,6 +633,7 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
     let route = route_for(path)?;
     // This owner is exact-path only; the shared matcher tolerates trailing slashes.
     if (route.path == "/api/chat-framing/preferences"
+        || route.path == crate::chat_framing_suggest::PATH
         || route.path == server_account::vault_mirror::PATH
         || route.path == crate::model_manager_scan::PATH
         || route.path == crate::model_downloads_read::PATH
@@ -698,7 +709,6 @@ mod tests {
             );
         }
         for path in [
-            "/api/chat-framing/suggest",
             "/api/chat-framing/preferences/",
             "/api/chat-framing/preferences/x",
         ] {
@@ -707,6 +717,30 @@ mod tests {
                 assert_eq!(dispatch(method, path), None, "{method} {path}");
             }
         }
+    }
+
+    /// Chat port S4: the suggestion is the front's for every method of exactly its path (Node
+    /// answered every method there: 405 for all but POST); siblings and other spellings stay Node's.
+    #[test]
+    fn framing_suggest_is_native_for_all_methods_of_exactly_its_path() {
+        assert!(!is_account_path("/api/chat-framing/suggest"));
+        for method in ["GET", "PUT", "POST", "DELETE", "HEAD", "OPTIONS", "PATCH"] {
+            assert_eq!(
+                dispatch(method, "/api/chat-framing/suggest"),
+                Some(Native::ChatFramingSuggest),
+                "{method}"
+            );
+            for path in [
+                "/api/chat-framing/suggest/",
+                "/api/chat-framing/suggest/x",
+                "/api/chat-framing/suggestx",
+                "/api/chat-framing",
+            ] {
+                assert_eq!(dispatch(method, path), None, "{method} {path}");
+            }
+        }
+        assert!(crate::FEATURES.contains(&"rust-chat-framing-suggest"));
+        assert!(crate::FEATURES.contains(&"chat-activity"));
     }
 
     #[test]
@@ -1247,6 +1281,11 @@ mod tests {
         // Every method: the proxies, `/api/diary` itself, the storage status and the connector
         // endpoint (which answers its own 405 before authentication).
         for p in [
+            "/api/diary/files",
+            "/api/diary/file",
+            "/api/diary/workspace-trash",
+            "/api/diary/history",
+            "/api/diary/external-sources",
             "/api/diary/source",
             "/api/diary/today",
             "/api/diary/storage-import",
@@ -1264,6 +1303,8 @@ mod tests {
         }
         // The methods core mounted and no more: another method is Node's (its unknown-path answer).
         for (p, methods) in [
+            ("/api/diary/entries/edit", &["POST"][..]),
+            ("/api/diary/external-sources/import", &["POST"][..]),
             ("/api/diary/context", &["GET", "POST"][..]),
             ("/api/diary/exchanges", &["GET", "POST"][..]),
             ("/api/profile/diary-connectors", &["GET", "POST"][..]),
@@ -1283,12 +1324,6 @@ mod tests {
         // What the web client never names is not in the route table at all.
         for p in [
             "/api/diary/local-exchangex",
-            "/api/diary/history",
-            "/api/diary/files",
-            "/api/diary/file",
-            "/api/diary/workspace-trash",
-            "/api/diary/entries/edit",
-            "/api/diary/external-sources",
             "/api/diary/sourcex",
             "/api/diary/source/x",
         ] {
