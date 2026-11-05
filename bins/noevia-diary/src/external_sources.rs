@@ -235,11 +235,16 @@ fn walk(root: &Path) -> Walk {
         stack.extend(subdirs);
     }
     files.sort_by(|a, b| {
-        (a.date.is_none(), a.date.as_deref().unwrap_or(""), &a.rel_path).cmp(&(
-            b.date.is_none(),
-            b.date.as_deref().unwrap_or(""),
-            &b.rel_path,
-        ))
+        (
+            a.date.is_none(),
+            a.date.as_deref().unwrap_or(""),
+            &a.rel_path,
+        )
+            .cmp(&(
+                b.date.is_none(),
+                b.date.as_deref().unwrap_or(""),
+                &b.rel_path,
+            ))
     });
     Walk::Done(files)
 }

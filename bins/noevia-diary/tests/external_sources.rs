@@ -70,11 +70,7 @@ async fn start(root: &std::path::Path, sources: Option<Vec<String>>) -> std::net
     addr
 }
 
-async fn get(
-    addr: std::net::SocketAddr,
-    token: &str,
-    uid: &str,
-) -> (u16, Option<String>, String) {
+async fn get(addr: std::net::SocketAddr, token: &str, uid: &str) -> (u16, Option<String>, String) {
     let resp = reqwest::Client::new()
         .get(format!("http://{addr}/api/external-sources"))
         .header("authorization", format!("Bearer {token}"))
