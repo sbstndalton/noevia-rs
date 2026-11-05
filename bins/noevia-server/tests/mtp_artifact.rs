@@ -306,6 +306,93 @@ async fn every_scenario_answers_as_node() {
     assert_eq!(checked, scenarios.len());
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_cancelled_inspection_cannot_overwrite_a_newer_answer_or_exceed_two_executions() {
+    const REV2: &str = "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd";
+    let sources: Sources = Arc::new(Mutex::new(HashMap::new()));
+    add_repo(&sources, "synthetic/race", Duration::ZERO);
+    for r in ["synthetic/c", "synthetic/d"] {
+        add_repo(&sources, r, Duration::from_millis(400));
+    }
+    let (port, seen) = source_server(Arc::clone(&sources)).await;
+    let maint = maint_for("llamacpp", port);
+    let uri = uri_for("synthetic/race");
+    // A reaches publication and is held there, inside a poll an abort cannot stop.
+    let (reached, release) = maint.mtp_pause_before_publish("synthetic/race");
+    let a = {
+        let (maint, uri) = (Arc::clone(&maint), uri.clone());
+        tokio::spawn(async move { mtp_artifact::serve(&maint, &uri).await })
+    };
+    tokio::task::spawn_blocking(move || reached.recv_timeout(Duration::from_secs(10)))
+        .await
+        .unwrap()
+        .expect("A reached publication");
+    // A's only caller leaves: the generation is cancelled, its task still executes.
+    a.abort();
+    let _ = a.await;
+    assert_eq!(maint.mtp_running(), 0, "A is no longer joinable");
+    assert_eq!(maint.mtp_executing(), 1, "A still holds its permit");
+    // The source moves on; B for the same key runs on the one free permit and publishes.
+    {
+        let mut s = sources.lock().unwrap();
+        s.get_mut("/api/models/synthetic/race").unwrap().body =
+            format!("{{\"sha\":\"{REV2}\"}}").into_bytes();
+        let file = s[&format!("/synthetic/race/resolve/{REV}/m-Q8_0.gguf")]
+            .body
+            .clone();
+        s.insert(
+            format!("/synthetic/race/resolve/{REV2}/m-Q8_0.gguf"),
+            Source {
+                status: 200,
+                headers: Vec::new(),
+                body: file,
+                fail: false,
+                delay: Duration::ZERO,
+            },
+        );
+    }
+    let b = body_of(mtp_artifact::serve(&maint, &uri).await).await;
+    assert!(b.contains(REV2), "B answered the newer revision: {b}");
+    // Two further checks are admitted while A holds a permit; they share the other one.
+    let (uc, ud) = (uri_for("synthetic/c"), uri_for("synthetic/d"));
+    let (c, d) = tokio::join!(
+        mtp_artifact::serve(&maint, &uc),
+        mtp_artifact::serve(&maint, &ud)
+    );
+    for res in [c, d] {
+        let body = body_of(res).await;
+        assert!(body.starts_with("{\"status\":\"present\""), "{body}");
+    }
+    assert!(
+        maint.mtp_peak_executing() <= 2,
+        "peak {}",
+        maint.mtp_peak_executing()
+    );
+    // A is released and finishes; its stale answer is dropped.
+    release.send(()).unwrap();
+    for _ in 0..100 {
+        if maint.mtp_executing() == 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert_eq!(maint.mtp_executing(), 0);
+    let metas = requests_to(&seen, "/api/models/synthetic/race");
+    let again = body_of(mtp_artifact::serve(&maint, &uri).await).await;
+    assert_eq!(again, b, "the cache still holds B's answer");
+    assert!(!again.contains(&format!("\"{REV}\"")), "{again}");
+    assert_eq!(
+        requests_to(&seen, "/api/models/synthetic/race"),
+        metas + 1,
+        "only the list was read again: the cache answered"
+    );
+    assert!(
+        maint.mtp_peak_executing() <= 2,
+        "peak {}",
+        maint.mtp_peak_executing()
+    );
+}
+
 fn present_file() -> Vec<u8> {
     let oracle: Value = serde_json::from_str(ORACLE).unwrap();
     let case = oracle["inspect"]
@@ -655,8 +742,17 @@ async fn the_last_waiter_leaving_cancels_the_inspection_and_frees_its_slot() {
         gone.is_err(),
         "the caller left while the revision was pending"
     );
-    assert_eq!(maint.mtp_running(), 0, "the slot is freed at once");
+    assert_eq!(
+        maint.mtp_running(),
+        0,
+        "a newcomer starts a new generation at once"
+    );
     tokio::time::sleep(Duration::from_millis(1200)).await;
+    assert_eq!(
+        maint.mtp_executing(),
+        0,
+        "the aborted task released its permit"
+    );
     assert_eq!(
         requests_to(&seen, "/api/models/synthetic/left"),
         2,

@@ -1324,6 +1324,128 @@
    }
   },
   {
+   "name": "non-string revision: own-tostring",
+   "query": "?repo=synthetic%2Fsha-own-tostring&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/sha-own-tostring?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/sha-own-tostring": {
+     "status": 200,
+     "json": {
+      "sha": {
+       "toString": null
+      }
+     }
+    },
+    "/synthetic/sha-own-tostring/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-184/185"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzBAAAAAEAAAAaAAAAAAAAAGJsay4xLm5leHRuLmVoX3Byb2oud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Cannot convert object to primitive value\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "non-string revision: array-own-tostring",
+   "query": "?repo=synthetic%2Fsha-array-own-tostring&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/sha-array-own-tostring?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/sha-array-own-tostring": {
+     "status": 200,
+     "json": {
+      "sha": [
+       {
+        "toString": 0
+       }
+      ]
+     }
+    },
+    "/synthetic/sha-array-own-tostring/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-184/185"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzBAAAAAEAAAAaAAAAAAAAAGJsay4xLm5leHRuLmVoX3Byb2oud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Cannot convert object to primitive value\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
+   "name": "non-string revision: valueof",
+   "query": "?repo=synthetic%2Fsha-valueof&variant=Q8_0",
+   "sources": {
+    "/api/models/synthetic/sha-valueof?blobs=true": {
+     "status": 200,
+     "json": {
+      "siblings": [
+       {
+        "rfilename": "m-Q8_0.gguf",
+        "lfs": {
+         "size": 100
+        }
+       }
+      ]
+     }
+    },
+    "/api/models/synthetic/sha-valueof": {
+     "status": 200,
+     "json": {
+      "sha": {
+       "valueOf": 0
+      }
+     }
+    },
+    "/synthetic/sha-valueof/resolve/abababababababababababababababababababab/m-Q8_0.gguf": {
+     "status": 206,
+     "headers": {
+      "content-range": "bytes 0-184/185"
+     },
+     "base64": "R0dVRgMAAAABAAAAAAAAAAIAAAAAAAAAFAAAAAAAAABnZW5lcmFsLmFyY2hpdGVjdHVyZQgAAAAJAAAAAAAAAHN5bnRoZXRpYx4AAAAAAAAAc3ludGhldGljLm5leHRuX3ByZWRpY3RfbGF5ZXJzBAAAAAEAAAAaAAAAAAAAAGJsay4xLm5leHRuLmVoX3Byb2oud2VpZ2h0AgAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+   },
+   "kind": "llamacpp",
+   "role": "member",
+   "answer": {
+    "status": 200,
+    "bodyText": "{\"status\":\"unknown\",\"reason\":\"Immutable repository revision unavailable.\",\"files\":[\"m-Q8_0.gguf\"],\"checkedAt\":\"X\"}"
+   }
+  },
+  {
    "name": "revision reply null",
    "query": "?repo=synthetic%2Fmeta-null&variant=Q8_0",
    "sources": {

@@ -20,9 +20,14 @@
 //! `JSON.stringify`.
 //!
 //! Lifetime: the variant list is read on the request's own future, so a caller that leaves cancels
-//! it. A coalesced inspection runs on its own task with a count of the callers waiting for it; when
-//! the last one leaves, the task is aborted, and its running slot is released by a guard inside the
-//! task (on completion, abort or panic).
+//! it. A coalesced inspection runs on its own task with a count of the callers waiting for it.
+//! Joining and execution are separate: `pending` holds the joinable generation of each key (Node's
+//! admission of at most two), and a task executes only while it owns one of two permits, released
+//! when its future completes or is dropped. When the last caller leaves, the generation is removed
+//! from `pending` (a newcomer starts a new one, which waits for a permit) and its abort is requested.
+//! An aborted task that is still inside a poll may finish it, so publication is fenced: under the
+//! same lock waiter departure takes, a task caches its answer only while its generation is still the
+//! current one for the key. No lock is held across an await.
 //!
 //! The source is `https://huggingface.co`, or the QA source (`NOEVIA_QA_MODEL_CARD_SOURCE`) in
 //! synthetic runs.
@@ -32,7 +37,7 @@ use axum::body::Body;
 use axum::http::{HeaderValue, Response, StatusCode};
 use js_json::JValue;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
@@ -102,6 +107,39 @@ pub struct Mtp {
     cache: Mutex<Vec<(String, Instant, Arc<Answer>)>>,
     pending: Arc<Mutex<Pending>>,
     next_gen: AtomicU64,
+    /// Execution permits: at most two inspections run, cancelled ones included.
+    permits: Arc<tokio::sync::Semaphore>,
+    executing: Arc<AtomicUsize>,
+    peak: Arc<AtomicUsize>,
+    /// Test hook: block the inspection of one repository synchronously just before publication.
+    pause: Mutex<Option<Pause>>,
+}
+
+type Pause = (
+    String,
+    std::sync::mpsc::Sender<()>,
+    std::sync::mpsc::Receiver<()>,
+);
+
+/// One executing inspection (counted while the task owns a permit).
+struct Executing {
+    counter: Arc<AtomicUsize>,
+}
+
+impl Executing {
+    fn start(counter: &Arc<AtomicUsize>, peak: &AtomicUsize) -> Executing {
+        let now = counter.fetch_add(1, Ordering::AcqRel) + 1;
+        peak.fetch_max(now, Ordering::AcqRel);
+        Executing {
+            counter: Arc::clone(counter),
+        }
+    }
+}
+
+impl Drop for Executing {
+    fn drop(&mut self) {
+        self.counter.fetch_sub(1, Ordering::AcqRel);
+    }
 }
 
 impl std::fmt::Debug for Mtp {
@@ -136,10 +174,14 @@ impl Mtp {
             cache: Mutex::new(Vec::new()),
             pending: Arc::new(Mutex::new(HashMap::new())),
             next_gen: AtomicU64::new(1),
+            permits: Arc::new(tokio::sync::Semaphore::new(RUNNING_MAX)),
+            executing: Arc::new(AtomicUsize::new(0)),
+            peak: Arc::new(AtomicUsize::new(0)),
+            pause: Mutex::new(None),
         })
     }
 
-    /// How many inspections hold a running slot (for tests and diagnostics).
+    /// How many generations can be joined (Node's `pending.size`).
     pub fn running(&self) -> usize {
         self.pending.lock().map_or(0, |p| p.len())
     }
@@ -327,9 +369,35 @@ impl Drop for Release {
 }
 
 impl Maint {
-    /// How many MTP artifact inspections hold a running slot (at most two).
+    /// How many MTP artifact inspections can be joined (at most two).
     pub fn mtp_running(&self) -> usize {
         self.mtp.running()
+    }
+
+    /// How many inspections are executing now (permit holders, cancelled ones included).
+    pub fn mtp_executing(&self) -> usize {
+        self.mtp.executing.load(Ordering::Acquire)
+    }
+
+    /// The most inspections ever executing at once.
+    pub fn mtp_peak_executing(&self) -> usize {
+        self.mtp.peak.load(Ordering::Acquire)
+    }
+
+    /// Test hook: the next inspection of `repo` signals the first channel just before it publishes
+    /// its answer and then blocks its worker thread (an executing poll an abort cannot stop) until
+    /// the second channel is signalled.
+    #[doc(hidden)]
+    pub fn mtp_pause_before_publish(
+        &self,
+        repo: &str,
+    ) -> (std::sync::mpsc::Receiver<()>, std::sync::mpsc::Sender<()>) {
+        let (reached_tx, reached_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        if let Ok(mut p) = self.mtp.pause.lock() {
+            *p = Some((repo.to_owned(), reached_tx, release_rx));
+        }
+        (reached_rx, release_tx)
     }
 
     /// `modelManager.variants(repo)`: the `variants` of a successful answer (`Ok(None)` for any
@@ -413,9 +481,15 @@ impl Maint {
                     gen,
                 };
                 let (repo, run_files, run_key) = (repo.to_owned(), Arc::clone(&files), key.clone());
+                let permits = Arc::clone(&self.mtp.permits);
                 let task = tokio::spawn(async move {
                     let _release = release;
-                    let result = me.mtp_run(&repo, run_files, &run_key).await;
+                    // Owned by this future: released when it completes or is dropped.
+                    let Ok(_permit) = permits.acquire_owned().await else {
+                        return;
+                    };
+                    let _executing = Executing::start(&me.mtp.executing, &me.mtp.peak);
+                    let result = me.mtp_run(&repo, run_files, &run_key, gen).await;
                     let _ = tx.send(Some(result));
                 });
                 pending.insert(
@@ -442,7 +516,7 @@ impl Maint {
         }
     }
 
-    async fn mtp_run(&self, repo: &str, files: Arc<W>, key: &str) -> Arc<Answer> {
+    async fn mtp_run(&self, repo: &str, files: Arc<W>, key: &str, gen: u64) -> Arc<Answer> {
         let names: Vec<Vec<u16>> = match &*files {
             W::Arr(items) => items
                 .iter()
@@ -455,19 +529,42 @@ impl Maint {
             Err(reason) => Arc::new(unknown(reason, files)),
             Ok((revision, evidence)) => {
                 let result = Arc::new(verdict(files, revision, evidence));
-                if let Ok(mut cache) = self.mtp.cache.lock() {
-                    if cache.len() >= CACHE_MAX {
-                        cache.remove(0);
-                    }
-                    if let Some(slot) = cache.iter_mut().find(|(k, _, _)| k == key) {
-                        slot.1 = Instant::now();
-                        slot.2 = Arc::clone(&result);
-                    } else {
-                        cache.push((key.to_owned(), Instant::now(), Arc::clone(&result)));
+                self.pause_before_publish(repo);
+                // The fence: publish only while this generation is still the current one for the
+                // key, decided under the lock waiter departure takes (a cancelled or superseded
+                // generation drops its answer).
+                if let Ok(pending) = self.mtp.pending.lock() {
+                    if pending.get(key).is_some_and(|e| e.gen == gen) {
+                        if let Ok(mut cache) = self.mtp.cache.lock() {
+                            if cache.len() >= CACHE_MAX {
+                                cache.remove(0);
+                            }
+                            if let Some(slot) = cache.iter_mut().find(|(k, _, _)| k == key) {
+                                slot.1 = Instant::now();
+                                slot.2 = Arc::clone(&result);
+                            } else {
+                                cache.push((key.to_owned(), Instant::now(), Arc::clone(&result)));
+                            }
+                        }
                     }
                 }
                 result
             }
+        }
+    }
+
+    /// The test hook ([`Maint::mtp_pause_before_publish`]); a no-op unless a test armed it.
+    fn pause_before_publish(&self, repo: &str) {
+        let armed = self.mtp.pause.lock().ok().and_then(|mut p| {
+            if p.as_ref().is_some_and(|(r, _, _)| r == repo) {
+                p.take()
+            } else {
+                None
+            }
+        });
+        if let Some((_, reached, release)) = armed {
+            let _ = reached.send(());
+            let _ = release.recv();
         }
     }
 

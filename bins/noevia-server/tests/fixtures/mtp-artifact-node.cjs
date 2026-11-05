@@ -106,7 +106,7 @@ for (const [k, text] of [['text', 'hello'], ['html', '<!DOCTYPE html><html><body
   scenario(`revision reply not JSON: ${k}`, `?repo=${encodeURIComponent(repo)}&variant=Q8_0`, { ...blobs(repo, sib('m-Q8_0.gguf')), [`/api/models/${repo}`]: { status: 200, text } });
 }
 // A revision that is not a string: the hex test coerces it (String(value)), the answer keeps it.
-for (const [k, sha] of [['array', [REV]], ['nested', [[REV]]], ['two', [REV, REV]], ['number', 1234], ['object', { a: REV }], ['true', true], ['zero', 0], ['empty', '']]) {
+for (const [k, sha] of [['array', [REV]], ['nested', [[REV]]], ['two', [REV, REV]], ['number', 1234], ['object', { a: REV }], ['true', true], ['zero', 0], ['empty', ''], ['own-tostring', { toString: null }], ['array-own-tostring', [{ toString: 0 }]], ['valueof', { valueOf: 0 }]]) {
   const repo = `synthetic/sha-${k}`;
   scenario(`non-string revision: ${k}`, `?repo=${encodeURIComponent(repo)}&variant=Q8_0`, { ...blobs(repo, sib('m-Q8_0.gguf')), ...meta(repo, { sha }), [res(repo, 'm-Q8_0.gguf')]: file(present) });
 }

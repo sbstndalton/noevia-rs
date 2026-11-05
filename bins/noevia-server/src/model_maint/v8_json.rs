@@ -571,37 +571,59 @@ pub fn stringify(w: &W, out: &mut String) {
 }
 
 /// `String(value)` as `Array.prototype.join` and `${}` coerce it: `null`/`undefined` elements are
-/// empty, nested arrays are joined, objects are `[object Object]`. `Err` when the nesting is deeper
-/// than a JS engine's stack would allow (V8 throws a `RangeError` there; the depth is engine-bound).
+/// empty, nested arrays are joined. A JSON object's ToPrimitive (OrdinaryToPrimitive, hint string):
+/// an own `toString` (never callable in JSON) shadows the inherited one, and `valueOf` (own or
+/// inherited) gives no primitive, so it throws `Cannot convert object to primitive value`; without
+/// an own `toString` it is `[object Object]`. Iterative; `Err` with V8's RangeError text when arrays
+/// nest deeper than [`JOIN_DEPTH`] (V8's own limit depends on its stack; Node 22 fails between 2000
+/// and 3000 there).
 pub fn to_js_string(w: &W) -> Result<Vec<u16>, String> {
-    fn go(w: &W, depth: usize, out: &mut Vec<u16>) -> Result<(), String> {
-        if depth > 4096 {
-            return Err("Maximum call stack size exceeded".into());
-        }
+    fn primitive(w: &W, out: &mut Vec<u16>) -> Result<(), String> {
         match w {
             W::Undefined => out.extend(units("undefined")),
             W::Null => out.extend(units("null")),
             W::Bool(b) => out.extend(units(if *b { "true" } else { "false" })),
             W::Num(n) => out.extend(units(&js_json::number_to_string(*n))),
             W::Str(s) => out.extend_from_slice(s),
-            W::Obj(_) => out.extend(units("[object Object]")),
-            W::Arr(items) => {
-                for (n, x) in items.iter().enumerate() {
-                    if n > 0 {
-                        out.push(0x2c);
-                    }
-                    if !x.is_nullish() {
-                        go(x, depth + 1, out)?;
-                    }
+            W::Obj(items) => {
+                let own = units("toString");
+                if items.iter().any(|(k, _)| *k == own) {
+                    return Err("Cannot convert object to primitive value".into());
                 }
+                out.extend(units("[object Object]"));
             }
+            W::Arr(_) => {}
         }
         Ok(())
     }
     let mut out = Vec::new();
-    go(w, 0, &mut out)?;
+    let W::Arr(top) = w else {
+        primitive(w, &mut out)?;
+        return Ok(out);
+    };
+    let mut stack: Vec<(&[W], usize)> = vec![(top.as_slice(), 0)];
+    while let Some((items, at)) = stack.pop() {
+        let Some(x) = items.get(at) else { continue };
+        if at > 0 {
+            out.push(0x2c);
+        }
+        stack.push((items, at + 1));
+        match x {
+            W::Undefined | W::Null => {}
+            W::Arr(inner) => {
+                if stack.len() > JOIN_DEPTH {
+                    return Err("Maximum call stack size exceeded".into());
+                }
+                stack.push((inner.as_slice(), 0));
+            }
+            other => primitive(other, &mut out)?,
+        }
+    }
     Ok(out)
 }
+
+/// The array nesting [`to_js_string`] joins before it gives V8's stack-overflow error.
+pub const JOIN_DEPTH: usize = 4096;
 
 /// ECMAScript `ToNumber` of a string (StringToNumber): JS white space and line terminators trimmed,
 /// empty is 0, `Infinity` with an optional sign, unsigned `0x`/`0o`/`0b` integers, the decimal
