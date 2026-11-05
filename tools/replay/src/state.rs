@@ -111,7 +111,7 @@ fn walk(root: &Path, dir: &Path, ignore: &[String], b: &Bindings, out: &mut Vec<
             continue;
         };
         let rel = rel.to_string_lossy().replace('\\', "/");
-        if ignore.iter().any(|i| {
+        if ignore.iter().filter(|i| !i.ends_with('/')).any(|i| {
             rel == *i
                 || rel.starts_with(&format!("{i}/"))
                 || (i.starts_with('*') && rel.ends_with(i.trim_start_matches('*')))
@@ -119,11 +119,20 @@ fn walk(root: &Path, dir: &Path, ignore: &[String], b: &Bindings, out: &mut Vec<
             continue;
         }
         let is_dir = path.is_dir();
-        out.push(format!(
-            "{}{}",
-            b.unbind(&rel),
-            if is_dir { "/" } else { "" }
-        ));
+        // A pattern ending in `/` drops only a directory's own entry: whether that directory
+        // exists is not compared, but everything inside it still is.
+        let entry_only = is_dir
+            && ignore.iter().filter(|i| i.ends_with('/')).any(|i| {
+                let dir = format!("{rel}/");
+                dir == *i || (i.starts_with('*') && dir.ends_with(i.trim_start_matches('*')))
+            });
+        if !entry_only {
+            out.push(format!(
+                "{}{}",
+                b.unbind(&rel),
+                if is_dir { "/" } else { "" }
+            ));
+        }
         if is_dir {
             walk(root, &path, ignore, b, out);
         }
@@ -277,6 +286,23 @@ mod tests {
             ])
         );
         assert_eq!(at(&s, "db"), &Value::Null);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_trailing_slash_ignore_drops_only_the_directory_entry() {
+        let dir = std::env::temp_dir().join(format!("replay-state-dir-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("users/u/rag")).unwrap();
+        std::fs::create_dir_all(dir.join("users/v/rag")).unwrap();
+        std::fs::write(dir.join("users/v/rag/p.db"), "x").unwrap();
+        let b = Bindings::new("");
+        let s = snapshot(&dir, "cowork.db", &["*/rag/".to_string()], &b);
+        // Both rag directories' own entries are dropped, but a file inside one is still listed.
+        assert_eq!(
+            at(&s, "files"),
+            &json!(["users/", "users/u/", "users/v/", "users/v/rag/p.db"])
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
