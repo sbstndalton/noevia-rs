@@ -185,7 +185,8 @@ impl Research {
         })
     }
 
-    /// The front's one client of Node's inference admission (also the Diary local exchange's).
+    /// The front's one client of Node's inference admission: research's model steps, the chat
+    /// admission (chat_admission.rs) and the Diary local exchange take the same leases.
     pub fn admission(&self) -> Arc<Admission> {
         Arc::clone(&self.admission)
     }
@@ -236,12 +237,6 @@ impl Research {
     /// module that makes its own call (chat_turn.rs).
     pub(crate) fn front_token(&self) -> Option<&str> {
         self.settings.token.as_deref()
-    }
-
-    /// The client of Node's admission leases (crates/engine-admission), for the chat admission
-    /// (chat_admission.rs), which takes the same leases as research's model steps.
-    pub(crate) fn admission(&self) -> &Arc<Admission> {
-        &self.admission
     }
 
     fn bridge_post(
