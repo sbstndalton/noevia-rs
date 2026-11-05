@@ -21,6 +21,8 @@
 //! every kind, deep research's included; it now shows only where its first line says it belongs,
 //! and only a journal with no readable first line is still shown everywhere. A journal is read up
 //! to [`MAX_JOURNAL_BYTES`]; a larger one is unreadable rather than loaded.
+pub mod writer;
+
 use crate::store;
 use js_json::{to_js_string, wtf16, JValue};
 use prompt_framing::json as lifecycle_json;
