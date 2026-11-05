@@ -2435,6 +2435,11 @@ mod tests {
             .iter()
             .all(|s| matches!(s.get("status").as_str(), Some("passed" | "failed"))));
         released(&seen, "DELETE /gate/v1/maintenance/").await;
+        assert!(seen
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|r| r == "DELETE /gate/v1/maintenance/0123456789abcdef0123456789abcdef"));
         // A new worker reads the same file (restart/rollback): the job and history are there.
         let again = worker(d.path(), port);
         assert_eq!(again.job().get("id"), job.get("id"));
