@@ -438,8 +438,9 @@ pub const FEATURES: &[&str] = &[
     "rust-model-sizing",
     "rust-model-maintenance",
     "rust-preset-baseline",
-    // Port contract row J: the maintenance lease authority (noevia assemble-release pairs it with core).
-    model_maint::lease::AUTHORITY_MARKER,
+    // Port contract row J: the maintenance lease authority (model_maint/lease.rs AUTHORITY_MARKER; the
+    // release assembly reads this exact literal and pairs it with core's lease client).
+    "noevia-maintenance-lease-authority/1",
     "rust-autotune-cancel",
     "rust-calibration-cancel",
     "rust-calibration-routes",
