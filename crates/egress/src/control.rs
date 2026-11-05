@@ -102,6 +102,10 @@ impl FileKey {
     pub fn fingerprint(&self) -> String {
         digest(&self.0)
     }
+    /// The key bytes, for the one issuer that publishes and persists them (never log or echo).
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
 }
 
 #[derive(Clone)]
