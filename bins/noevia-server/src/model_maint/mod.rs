@@ -3,8 +3,9 @@
 //!
 //! - [`gate`]: the inference gate's maintenance hold, the one exclusion every client of the router
 //!   (Node's chat, Diary, this front) respects. A hold has a deadline and is given back on failure.
-//! - [`node_lease`]: with no gate, a lease on Node's own maintenance gate, so the reload is still
-//!   exclusive with Node's chat and tune.
+//! - [`lease`]: with no gate, the maintenance lease authority: one exclusive, fenced, expiring lease
+//!   shared by this front's reload and calibration and Node's chat, tune, delete and prune.
+//! - [`node_lease`]: the hold of Node's local chat admission that backs a lease this front holds.
 //! - [`router`]: the router's HTTP API as the maintenance work uses it.
 //! - [`ini`]: the models.ini store (read, parse, commit through the model-loader or the web writer).
 //! - [`evidence_recheck`]: one image-input request under normal inference admission, with carried identity.
@@ -27,6 +28,8 @@ pub mod evidence_live;
 pub mod evidence_recheck;
 pub mod gate;
 pub mod ini;
+// Port contract row J: the one maintenance lease authority (replaces core model-maintenance-lease.cjs).
+pub mod lease;
 pub mod node_lease;
 pub mod reload;
 pub mod router;
@@ -118,6 +121,8 @@ pub struct Maint {
     pub(crate) source_client: reqwest::Client,
     /// Node's own maintenance gate: the arbiter when the inference gate gives no hold.
     node: Arc<node_lease::NodeLeases>,
+    /// The maintenance lease authority (row J): the one table of who holds the engine.
+    pub authority: lease::Authority,
     /// The inbox entries that failed or could not be removed, by file name.
     pub(crate) drain: std::sync::Mutex<evidence_live::DrainState>,
     /// A job of this process is running: one at a time.
@@ -276,6 +281,7 @@ impl Maint {
             card_base,
             source_client,
             node,
+            authority: lease::Authority::new(),
             drain: std::sync::Mutex::new(evidence_live::DrainState::default()),
             local: Arc::new(AtomicBool::new(false)),
             data_dir,
@@ -381,8 +387,18 @@ impl Maint {
                 if lease_for.is_some_and(|d| d > node_lease::MAX_LEASE) {
                     return Err(HoldRefusal::OverLimit);
                 }
+                // The authority first: a lease Node's gate or another job of this front holds is a 409
+                // before Node is asked anything.
+                let Ok(own) = self
+                    .authority
+                    .try_acquire(lease::Origin::Front, lease_for, reason)
+                else {
+                    return Err(HoldRefusal::Busy);
+                };
+                let give_back = || self.authority.release(&own.id, Some(own.generation));
                 match self.node.acquire_capped(lease_for).await {
                     Ok(grant) if lease_for.is_some_and(|d| grant.hard < d) => {
+                        give_back();
                         self.node.release(&grant.id).await;
                         Err(HoldRefusal::ShortLease)
                     }
@@ -390,11 +406,18 @@ impl Maint {
                         Arc::clone(&self.local),
                         Arc::clone(&self.node),
                         grant,
+                        Some((self.authority.clone(), own)),
                         reason,
                         deadline_after(max),
                     )),
-                    Err(node_lease::LeaseFault::Busy) => Err(HoldRefusal::Busy),
-                    Err(node_lease::LeaseFault::Unavailable) => Err(HoldRefusal::NodeUnavailable),
+                    Err(node_lease::LeaseFault::Busy) => {
+                        give_back();
+                        Err(HoldRefusal::Busy)
+                    }
+                    Err(node_lease::LeaseFault::Unavailable) => {
+                        give_back();
+                        Err(HoldRefusal::NodeUnavailable)
+                    }
                 }
             }
             Err(f) if f.busy() => Err(HoldRefusal::Busy),
