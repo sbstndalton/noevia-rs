@@ -562,6 +562,13 @@ async fn freshness_and_expired_grants_refuse_before_engine_mutation() {
         s[flag] = json!(true);
         let w = World::new(&s).await;
         assert_eq!(
+            w.post("/api/models/load", r#"{"name":"m"}"#, MEMBER)
+                .await
+                .0,
+            403
+        );
+        assert_eq!(w.post("/api/models/load", "{", ADMIN).await.0, 400);
+        assert_eq!(
             w.post("/api/models/load", r#"{"name":"m"}"#, ADMIN).await.0,
             503,
             "{flag}"

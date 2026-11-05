@@ -14,15 +14,15 @@
 //! ([`EngineEntry::mutate`], `Ask::Embedding`: `enterInference` and nothing else). Everything after that is
 //! here: the sleeping check, the router's `POST /models/load` with the gate's lease header, the
 //! already-running case, the gate's refusals, the readiness wait, the plain and the forced unload.
-//! Row H moves the lease authority to the front; [`EngineEntry`] is the narrow seam it switches.
+//! Row H owns lease lifetime in the front; Node retains the admission decisions described above.
 //!
 //! **Cancellation.** A caller who leaves while the load waits in the queue starts no switch: the request's
 //! future is dropped, which gives back its pending ticket. Once admitted, a detached task owns
 //! the lease and settles the launched mutation. The inference gate independently fences engine work.
 //!
 //! **Reads.** As Node's handler did around itself, the shared model reads Node keeps (the installed list and
-//! the folder scan) are dropped before and after every request, over `/internal/models/invalidate`. Best
-//! decisions await acknowledgement; unavailable invalidation refuses the operation.
+//! the folder scan) are invalidated over `/internal/models/invalidate`. Decisions await the initial
+//! acknowledgement; unavailable invalidation refuses the operation. The final drop is advisory.
 //!
 //! Deviations (recorded in the row A checkpoint): a truthy `name` that is not a string is `name required`;
 //! a refusal status outside Core's lease statuses (400, 409, 429, 503) arrives as 503; Node unreachable for
@@ -261,9 +261,6 @@ pub async fn serve(app: &Arc<App>, conn: crate::serve::Conn, req: Request<Body>)
         Err(_) => return identity::Rejection::Unavailable.into_response(),
     };
     // routes/models.cjs: every non-GET model write drops the shared reads first, and again once settled.
-    if !Fence::fresh(app).await {
-        return internal(503);
-    }
     let _fence = Fence(Arc::clone(app));
     if id.user.role != Role::Admin {
         return error(403, "administrator required");
@@ -311,6 +308,10 @@ pub async fn serve(app: &Arc<App>, conn: crate::serve::Conn, req: Request<Body>)
         Some(true) => return error(409, SIDECAR_MODEL_LOAD_REASON),
         Some(false) => {}
         None => return internal(503),
+    }
+    // Freshness is required for model decisions, after the existing permission/body gates.
+    if !Fence::fresh(app).await {
+        return internal(503);
     }
     let entry = ArcEntry(Arc::clone(&maint.recheck.admission));
     if path == LOAD {
