@@ -205,7 +205,12 @@ impl StateFile {
                     "state write ended",
                 ));
             }
-            std::fs::rename(&temp, path)
+            std::fs::rename(&temp, path)?;
+            let parent = path
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or_else(|| std::path::Path::new("."));
+            std::fs::File::open(parent)?.sync_all()
         })();
         if written.is_err() {
             let _ = std::fs::remove_file(&temp);
@@ -264,6 +269,14 @@ impl Maint {
     /// A failed save of the interrupted state is [`Recovery::Unsaved`], never "nothing to recover":
     /// the profile may already be back, and the caller must keep the interrupted job.
     pub async fn recover_calibration(&self) -> Recovery {
+        self.recover_calibration_with_wake(None, None).await
+    }
+
+    pub(super) async fn recover_calibration_with_wake(
+        &self,
+        wake: Option<std::sync::Arc<tokio::sync::Notify>>,
+        allowed: Option<super::ini::WriteAllowed>,
+    ) -> Recovery {
         let Some(ini) = self.ini.clone() else {
             return Recovery::Nothing;
         };
@@ -272,6 +285,43 @@ impl Maint {
         let Ok(mut state) = tokio::task::spawn_blocking(move || loader.load()).await else {
             return Recovery::Nothing;
         };
+        let decided = matches!(
+            state.job().get("terminalDecision").as_str(),
+            Some("passed" | "fenced")
+        );
+        if state.job().get("terminalDecision").as_str() == Some("passed") {
+            if let Some(job) = state.job_mut() {
+                job.retain(|(k, _)| k != "terminalDecision" && k != "pendingTombstone");
+            }
+            let mut wait = Duration::from_secs(1);
+            loop {
+                let (file, saving) = (file.clone(), state.clone());
+                let allowed = allowed.clone();
+                match tokio::task::spawn_blocking(move || {
+                    file.save_if(&saving, || allowed.as_ref().is_none_or(|a| a()))
+                })
+                .await
+                {
+                    Ok(Ok(())) => {
+                        return Recovery::Saved {
+                            restored: None,
+                            state,
+                        }
+                    }
+                    Ok(Err(e)) => eprintln!(
+                        "[models] calibration terminal persistence failed: {:?}",
+                        e.kind()
+                    ),
+                    Err(_) => eprintln!("[models] calibration terminal persistence failed: Other"),
+                }
+                if let Some(wake) = &wake {
+                    tokio::select! { () = tokio::time::sleep(wait) => {}, () = wake.notified() => {} }
+                } else {
+                    tokio::time::sleep(wait).await;
+                }
+                wait = (wait * 2).min(Duration::from_secs(60));
+            }
+        }
         let running = state.job().get("status").as_str() == Some("running");
         let pending_fence = state.job().get("pendingTombstone").truthy();
         let pending = match (
@@ -291,20 +341,21 @@ impl Maint {
         if let Some(store) = self.evidence.clone() {
             let model = state.job().get("model").as_str().unwrap_or("").to_owned();
             let id = state.job().get("id").as_str().unwrap_or("").to_owned();
-            let generation = store.generation_for(&model, &id).unwrap_or(0);
             let mut wait = Duration::from_secs(1);
             loop {
                 let (store, model, id) = (std::sync::Arc::clone(&store), model.clone(), id.clone());
-                match tokio::task::spawn_blocking(move || store.tombstone(&model, &id, generation))
-                    .await
-                {
+                match tokio::task::spawn_blocking(move || store.tombstone(&model, &id)).await {
                     Ok(Ok(())) => break,
                     Ok(Err(e)) => {
                         eprintln!("[models] calibration fence recovery failed: {:?}", e.kind())
                     }
                     Err(_) => eprintln!("[models] calibration fence recovery failed: Other"),
                 }
-                tokio::time::sleep(wait).await;
+                if let Some(wake) = &wake {
+                    tokio::select! { () = tokio::time::sleep(wait) => {}, () = wake.notified() => {} }
+                } else {
+                    tokio::time::sleep(wait).await;
+                }
                 wait = (wait * 2).min(Duration::from_secs(60));
             }
         }
@@ -341,7 +392,7 @@ impl Maint {
             } else if let Some(restored) = restored {
                 wtf16::set(job, "restored", JValue::Bool(restored));
             }
-            if pending_fence {
+            if pending_fence && !decided {
                 wtf16::set(job, "status", JValue::Str("failed".into()));
                 wtf16::set(job, "phase", JValue::Str("Failed".into()));
                 wtf16::set(
@@ -351,14 +402,32 @@ impl Maint {
                 );
                 wtf16::set(job, "finishedAt", JValue::Num(now_ms()));
             }
-            job.retain(|(k, _)| k != "pendingRestore" && k != "pendingTombstone");
+            job.retain(|(k, _)| {
+                k != "pendingRestore" && k != "pendingTombstone" && k != "terminalDecision"
+            });
         }
-        let saving = state.clone();
-        let saved = tokio::task::spawn_blocking(move || file.save(&saving)).await;
-        if matches!(saved, Ok(Ok(()))) {
-            Recovery::Saved { restored, state }
-        } else {
-            Recovery::Unsaved { restored, state }
+        let mut wait = Duration::from_secs(1);
+        loop {
+            let (saving, file, allowed) = (state.clone(), file.clone(), allowed.clone());
+            let saved = tokio::task::spawn_blocking(move || {
+                file.save_if(&saving, || allowed.as_ref().is_none_or(|a| a()))
+            })
+            .await;
+            match saved {
+                Ok(Ok(())) => return Recovery::Saved { restored, state },
+                _ if !decided => return Recovery::Unsaved { restored, state },
+                Ok(Err(e)) => eprintln!(
+                    "[models] calibration terminal persistence failed: {:?}",
+                    e.kind()
+                ),
+                Err(_) => eprintln!("[models] calibration terminal persistence failed: Other"),
+            }
+            if let Some(wake) = &wake {
+                tokio::select! { () = tokio::time::sleep(wait) => {}, () = wake.notified() => {} }
+            } else {
+                tokio::time::sleep(wait).await;
+            }
+            wait = (wait * 2).min(Duration::from_secs(60));
         }
     }
 }
