@@ -63,9 +63,11 @@ async fn not_provably_current_facts_are_not_ready_never_stale() {
     let (d, f, _up) = rig().await;
     assert_eq!(get(f.addr, PATH, ADMIN).await.0, 200);
     let file = d.path().join("toolbox-chat-facts.json");
-    let stale = std::fs::read_to_string(&file)
-        .unwrap()
-        .replacen("\"writtenAt\":", "\"writtenAt\":1,\"was\":", 1);
+    let stale = std::fs::read_to_string(&file).unwrap().replacen(
+        "\"writtenAt\":",
+        "\"writtenAt\":1,\"was\":",
+        1,
+    );
     std::fs::write(&file, stale).unwrap();
     let (s, _) = get(f.addr, PATH, ADMIN).await;
     assert_eq!(s, 503);
