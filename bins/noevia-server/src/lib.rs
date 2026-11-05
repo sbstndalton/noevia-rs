@@ -356,6 +356,13 @@ use std::sync::Arc;
 /// file carries the start that runs it, so a restart's leftovers read as interrupted).
 ///
 /// `legacy-root-claim`: this binary exposes the filesystem-only legacy claim helper before server startup.
+/// `rust-budget-watch-v3`: this build runs the #697 memory watchdog (src/model_maint/budget_watch.rs, Core's
+/// `inference-budget-watch.cjs` moved): the sampling, the strikes, the idle baseline, the cooldown and the
+/// emergency unload through the inference gate. Core then does not start its own and answers only the
+/// maintenance state and the quarantine on `/internal/budget-watch` (core rust-budget-watch.cjs
+/// `BUDGET_WATCH_OWNER`), so the web supervisor and the release assembly pair them in both directions: a
+/// mixed pair would run two watchdogs, or none.
+///
 /// `rust-task-reads`: this build answers `/api/code/active` and the GETs of a project's Code and Browser
 /// state and task (task_routes.rs); Core refuses them (rust-task-reads.cjs) and offers the facts only it
 /// holds on the loopback bridge (rust-task-facts.cjs). The supervisor pairs them.
@@ -462,6 +469,7 @@ pub const FEATURES: &[&str] = &[
     "rust-model-assignments",
     "rust-model-downloads-read",
     "rust-autotune-resume",
+    "rust-budget-watch-v3",
     #[cfg(feature = "rust-storage-reads")]
     "rust-connectors",
     // An account's deletion forgets the MCP sign-ins (rust-storage-reads) and the ChatGPT tokens

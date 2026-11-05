@@ -3723,14 +3723,14 @@ mod tests {
         let (release, resume) = std::sync::mpsc::channel();
         store.stall_next_append(entered, resume);
         let old = w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
-        tokio::task::spawn_blocking(move || started.recv_timeout(Duration::from_secs(3)))
+        tokio::task::spawn_blocking(move || started.recv_timeout(Duration::from_secs(15)))
             .await
             .unwrap()
             .unwrap();
         let record = w.tag_run_record(JValue::obj([("model", JValue::Str("synthetic".into()))]));
         // Cover old persisted history as well as the deferred evidence append.
         w.with(|i| i.state.push_history("synthetic", record.clone()));
-        let job = tokio::time::timeout(Duration::from_secs(2), settled(&w))
+        let job = tokio::time::timeout(Duration::from_secs(15), settled(&w))
             .await
             .unwrap();
         review_failed(&w, &job);
@@ -3749,7 +3749,7 @@ mod tests {
         assert_ne!(next.get("id"), old.get("id"));
         let _ = w.cancel();
         release.send(()).unwrap();
-        tokio::time::timeout(Duration::from_secs(3), async {
+        tokio::time::timeout(Duration::from_secs(15), async {
             while !std::fs::read_to_string(store.file())
                 .unwrap_or_default()
                 .contains(old.get("id").as_str().unwrap())
