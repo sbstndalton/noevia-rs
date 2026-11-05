@@ -62,7 +62,7 @@ fn core_untouched(up: &Upstream) {
 async fn settled(f: &Front) -> Value {
     for _ in 0..300 {
         let (_, v) = get(f.addr, PATH, ADMIN).await;
-        // A run sets its status before its last reads; it is over once it has finishedAt.
+        // Terminal status and finishedAt are published together after bounded cleanup.
         if v["job"]["status"] != "running" && v["job"].get("finishedAt").is_some() {
             return v["job"].clone();
         }
@@ -153,9 +153,22 @@ async fn a_launch_runs_in_the_front_under_the_gate_and_its_state_is_private() {
     assert_eq!(v["job"]["status"], "running");
     assert_eq!(v["history"], json!([]));
     assert!(v["job"].get("originalText").is_none());
-    let file: Value =
-        serde_json::from_str(&std::fs::read_to_string(cal::state_file(d.path(), &e)).unwrap())
+    // Preparing is saved before the async unload and original-profile capture, as in Node.
+    // Wait for that capture before examining the private running record.
+    let file: Value = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let file: Value = serde_json::from_str(
+                &std::fs::read_to_string(cal::state_file(d.path(), &e)).unwrap(),
+            )
             .unwrap();
+            if file["job"]["originalText"].is_string() {
+                break file;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("running profile snapshot captured");
     assert!(file["job"]["originalText"].is_string());
     // Cancelled through the native cancel route; the profile goes back.
     let (s, _) = write(f.addr, "POST", "/api/models/calibration/cancel", ADMIN, "").await;
