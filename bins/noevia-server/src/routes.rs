@@ -618,6 +618,9 @@ pub fn dispatch(method: &str, path: &str) -> Option<Native> {
 
 /// [`dispatch`] under the deployment switches that are on.
 pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Native> {
+    if crate::model_manager_read::owned(method, path) {
+        return Some(Native::Models);
+    }
     if let Some(decision) = storage_browse(method, path) {
         return decision;
     }

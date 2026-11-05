@@ -122,6 +122,9 @@ pub async fn serve(
     req: Request<Body>,
     path: String,
 ) -> Response<Body> {
+    if crate::model_manager_read::owned(req.method().as_str(), &path) {
+        return crate::model_manager_read::serve(app, conn, req, path).await;
+    }
     if path == crate::idle_unload_read::PATH {
         return crate::idle_unload_read::serve(app, conn, req, path).await;
     }

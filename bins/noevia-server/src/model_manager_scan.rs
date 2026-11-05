@@ -54,7 +54,7 @@ impl Loader {
             .await
     }
 
-    async fn get_bounded(
+    pub(crate) async fn get_bounded(
         &self,
         path: &str,
         query: &str,
@@ -109,7 +109,7 @@ fn unavailable() -> Response<Body> {
         "Model scan cache is unavailable. Try again shortly.",
     )
 }
-fn answer(status: StatusCode, body: &JValue, cached: bool) -> Response<Body> {
+pub(crate) fn answer(status: StatusCode, body: &JValue, cached: bool) -> Response<Body> {
     let Some(text) = wtf16::stringify(body) else {
         return unavailable();
     };
@@ -140,7 +140,7 @@ async fn cache(app: &App, op: &str, body: &serde_json::Value) -> Option<JValue> 
     }
     wtf16::parse(std::str::from_utf8(&bytes).ok()?).ok()
 }
-fn detail(body: JValue) -> JValue {
+pub(crate) fn detail(body: JValue) -> JValue {
     if matches!(body, JValue::Obj(_) | JValue::Arr(_)) {
         body
     } else {

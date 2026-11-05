@@ -517,6 +517,9 @@ path = "/api/mcp-oauth/{id}/connect"
 owner = "rust"
 methods = ["POST"]
 
+# Row C PARTIAL: model_manager_read::owned dispatches ordinary descendant GETs natively
+# before this table. Exact root keeps its fallback; models GET has G3 ownership below.
+# Autoconfig/evidence-bearing reads and all mutations retain their explicit Core policy.
 [[route]]
 path = "/api/model-manager"
 owner = "node"
