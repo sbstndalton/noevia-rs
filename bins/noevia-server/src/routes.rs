@@ -781,10 +781,13 @@ mod tests {
     fn the_chat_turn_is_marked_transitional_until_the_front_owns_its_execution() {
         // Review S5–S9 P1: the turn's pipeline still runs in Node (/internal/chat/turn), so the
         // route is not counted as ported; every other rust route has no Node executor.
-        let r = route_for("/api/chat").unwrap();
-        assert_eq!(r.owner, Owner::Rust);
-        assert!(r.node_executor);
-        let marked: Vec<_> = ROUTES.iter().filter(|r| r.node_executor).map(|r| r.path).collect();
+        let r = route_for("/api/chat");
+        assert_eq!(r.map(|r| (r.owner, r.node_executor)), Some((Owner::Rust, true)));
+        let marked: Vec<_> = ROUTES
+            .iter()
+            .filter(|r| r.node_executor)
+            .map(|r| r.path)
+            .collect();
         assert_eq!(marked, ["/api/chat"]);
     }
 
