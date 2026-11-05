@@ -118,3 +118,91 @@ pub(crate) fn spread(v: &JValue) -> JValue {
         _ => JValue::Obj(Vec::new()),
     }
 }
+
+/// `Number(v)` (ECMAScript ToNumber over a JSON value; the same as crates/server-diary local_exchange.rs).
+pub(crate) fn js_number(value: &JValue) -> f64 {
+    match value {
+        JValue::Num(n) => *n,
+        JValue::Null => 0.0,
+        JValue::Bool(b) => {
+            if *b {
+                1.0
+            } else {
+                0.0
+            }
+        }
+        JValue::Undefined | JValue::Obj(_) => f64::NAN,
+        other => match js_json::to_js_string(other) {
+            Ok(s) => string_to_number(&s),
+            Err(_) => f64::NAN,
+        },
+    }
+}
+
+/// `Number(s)` for a string (ECMAScript StringToNumber): JavaScript's white space and line
+/// terminators trimmed ([`js_space`]), then the StringNumericLiteral grammar: `0x`/`0o`/`0b` digits
+/// (no sign), or a decimal literal with an optional sign, or `Infinity` with one; anything else is
+/// `NaN`, and nothing at all is 0.
+pub(crate) fn string_to_number(s: &str) -> f64 {
+    let s = trim(s);
+    if s.is_empty() {
+        return 0.0;
+    }
+    for (prefix, radix) in [("0x", 16), ("0o", 8), ("0b", 2)] {
+        let lower = s.get(..2).map(str::to_ascii_lowercase);
+        if lower.as_deref() == Some(prefix) {
+            let digits = s.get(2..).unwrap_or_default();
+            if digits.is_empty() {
+                return f64::NAN;
+            }
+            return digits
+                .chars()
+                .try_fold(0.0, |n, c| {
+                    c.to_digit(radix)
+                        .map(|d| n * f64::from(radix) + f64::from(d))
+                })
+                .unwrap_or(f64::NAN);
+        }
+    }
+    let (sign, unsigned) = match s.strip_prefix('-') {
+        Some(rest) => (-1.0, rest),
+        None => (1.0, s.strip_prefix('+').unwrap_or(s)),
+    };
+    if unsigned == "Infinity" {
+        return sign * f64::INFINITY;
+    }
+    // digits [. digits] | . digits, at least one digit, then [e|E [+|-] digits].
+    let b = unsigned.as_bytes();
+    let digits_from = |mut i: usize| {
+        while b.get(i).is_some_and(u8::is_ascii_digit) {
+            i += 1;
+        }
+        i
+    };
+    let whole = digits_from(0);
+    let mut i = whole;
+    let mut fraction = 0;
+    if b.get(i) == Some(&b'.') {
+        let end = digits_from(i + 1);
+        fraction = end - i - 1;
+        i = end;
+    }
+    if whole + fraction == 0 {
+        return f64::NAN;
+    }
+    if matches!(b.get(i), Some(b'e' | b'E')) {
+        i += 1;
+        if matches!(b.get(i), Some(b'+' | b'-')) {
+            i += 1;
+        }
+        let end = digits_from(i);
+        if end == i {
+            return f64::NAN;
+        }
+        i = end;
+    }
+    if i != b.len() {
+        return f64::NAN;
+    }
+    unsigned.parse::<f64>().map_or(f64::NAN, |n| sign * n)
+}

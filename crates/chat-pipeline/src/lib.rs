@@ -11,6 +11,7 @@
 //! - [`stream`]: one round's engine stream turned into the chat events the turn sends.
 //! - [`search`]: a search tool's query without the request wrapper (#1523).
 //! - [`title`]: the chat's generated title (#1785).
+//! - [`usage`]: the exchange's usage and first-token telemetry across tool rounds.
 //! - [`validate`]: what a turn refuses before anything is read or written.
 //! - [`failure`]: the words a failed engine reply shows.
 //! - [`writes`]: the writes already done in a chat (#658 repeat flag).
@@ -26,6 +27,7 @@ pub mod sources;
 pub mod stream;
 mod text;
 pub mod title;
+pub mod usage;
 pub mod validate;
 pub mod writes;
 

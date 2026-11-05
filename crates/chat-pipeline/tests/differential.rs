@@ -532,3 +532,49 @@ fn round_streams_match_node() {
     }
     assert!(sends > 2000, "{sends}");
 }
+
+#[test]
+fn usage_reports_match_node() {
+    use chat_pipeline::usage::Exchange;
+    let c = wtf16::parse(include_str!("fixtures/usage-cases.json")).unwrap();
+    let s = |x: &str| JValue::Str(x.into());
+    let model = s("m-synthetic");
+    for k in arr(c.get("cases")) {
+        let local = k.get("local") == &JValue::Bool(true);
+        let mut x = Exchange::new(model.clone(), k.get("started").as_num().unwrap());
+        let mut log = Vec::new();
+        for (i, op) in arr(k.get("ops")).iter().enumerate() {
+            let o = arr(op);
+            let now = o[1].as_num().unwrap();
+            match o[0].as_str().unwrap() {
+                "round" => x.round(now),
+                "first" => {
+                    if let Some(e) = x.first_output(now) {
+                        log.push(JValue::Arr(vec![s("send"), e]));
+                    }
+                }
+                _ => {
+                    if let Some(r) = x.report(&o[2], &o[3]) {
+                        if let Some(rec) = r.record_usage {
+                            log.push(JValue::Arr(vec![s("record"), model.clone(), rec]));
+                        }
+                        if let (true, Some(v)) = (local, r.mtp_value) {
+                            log.push(JValue::Arr(vec![s("evidence"), model.clone(), v]));
+                        }
+                        if let Some((p, ms)) = r.prefill_sample {
+                            log.push(JValue::Arr(vec![s("prefill"), model.clone(), JValue::Num(p), JValue::Num(ms)]));
+                        }
+                        log.push(JValue::Arr(vec![s("send"), r.event]));
+                    }
+                }
+            }
+            log.push(JValue::Arr(vec![s("op"), JValue::Num(i as f64)]));
+        }
+        assert_eq!(
+            wtf16::stringify(&JValue::Arr(log)).unwrap(),
+            wtf16::stringify(k.get("log")).unwrap(),
+            "{}",
+            wtf16::stringify(k.get("ops")).unwrap()
+        );
+    }
+}
