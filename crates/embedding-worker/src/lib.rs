@@ -1,6 +1,10 @@
 //! Native embedding-service refresh, migration and durable source outbox execution.
 //! Server lifecycle is gated by paired ownership proof. Adapters enforce the
 //! storage fences documented by [`Host`].
+// Reuse the integration fixtures in the private executor's unit tests.
+#[cfg(test)]
+extern crate self as embedding_worker;
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     future::Future,

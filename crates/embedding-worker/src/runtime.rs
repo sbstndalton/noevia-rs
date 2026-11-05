@@ -479,10 +479,10 @@ impl NativeHost {
             deferred: false,
         };
         let result:Result<(),Error>=async {
-            // Match Node: notify before text eligibility/preparation, including
-            // missing text blobs on the final attempt. Scheduling errors are
-            // warning-only; the media owner retains its own backfill retries.
-            if row.kind=="index" {
+            // Match Node: require an active workspace and a current tenant-local
+            // source, then notify before fallible text eligibility/preparation.
+            // Scheduling errors stay outside text retries and diagnostics.
+            if row.kind=="index" && self.store.index_source_member(user,row).map_err(|e|Error::new(row,Op::Prepare,&e))? {
                 if let Err(error)=self.http.source_changed(&self.core,&self.token,&self.start,user,&row.project).await {
                     eprintln!("{}",Error::new(row,Op::Notify,&error).warning());
                 }
@@ -659,3 +659,7 @@ mod rag_completion_tests {
         assert!(outbox::jobs(dir.path()).unwrap().is_empty());
     }
 }
+
+#[cfg(test)]
+#[path = "runtime_membership_tests.rs"]
+mod membership_tests;

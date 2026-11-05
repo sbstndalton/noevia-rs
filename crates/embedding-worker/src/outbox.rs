@@ -160,6 +160,58 @@ pub(crate) fn current_source_version(
 }
 
 impl SqlStore {
+    /// Node's active-workspace and tenant-local membership checks, before its
+    /// media scheduling hook. This reads metadata only: missing text must not
+    /// suppress media. Release the auth/projects/outbox locks before HTTP.
+    pub(crate) fn index_source_member(&self, user: &str, row: &IndexClaim) -> Result<bool, String> {
+        let dir = server_projects::store::user_dir(&self.root, user).map_err(|_| fault())?;
+        let writer = server_store::Writer::open(&self.root, server_store::RustAuth::owned())
+            .map_err(|_| fault())?;
+        writer
+            .write(|auth| {
+                if auth
+                    .reader()
+                    .row("SELECT id FROM users WHERE id=?", [user], |r| {
+                        r.get::<_, String>(0)
+                    })?
+                    .is_none()
+                {
+                    return Ok(Ok(false));
+                }
+                Ok((|| {
+                    if !dir.is_dir() || !server_projects::outbox::path(&dir).exists() {
+                        return Ok(false);
+                    }
+                    let _projects = server_projects::lock::acquire(&dir.join("projects.json"))
+                        .map_err(|_| fault())?;
+                    let mut db =
+                        crate::sqlite::open_existing(&server_projects::outbox::path(&dir))?;
+                    let fence = db
+                        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+                        .map_err(|_| fault())?;
+                    // A claim from another tenant cannot authorize a notification,
+                    // even when both tenants use the same project and file names.
+                    if !server_projects::outbox::index_current(&fence, row).map_err(|_| fault())? {
+                        return Ok(false);
+                    }
+                    let projects = server_projects::store::read(&dir).map_err(|_| fault())?;
+                    let Some(project) = server_projects::store::find(&projects, &row.project)
+                    else {
+                        return Ok(false);
+                    };
+                    let Some(name) = row.file.as_deref() else {
+                        return Ok(false);
+                    };
+                    Ok(match project.get("files") {
+                        js_json::JValue::Arr(files) => files
+                            .iter()
+                            .any(|file| file.get("name").as_str() == Some(name)),
+                        _ => false,
+                    })
+                })())
+            })
+            .map_err(|_| fault())?
+    }
     /// Update only the still-current source's document status under the shared
     /// projects lock. Account removal is fenced by the auth writer as in vector publication.
     pub fn mark_index_source(
