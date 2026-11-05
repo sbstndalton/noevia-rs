@@ -400,20 +400,38 @@ fn sources_match_node() {
     let show = |v: Vec<JValue>| wtf16::stringify(&JValue::Arr(v)).unwrap();
     for k in arr(c.get("build")) {
         assert_eq!(
-            show(sources::build_sources(arr(k.get("entries")), k.get("files"))),
+            show(sources::build_sources(
+                arr(k.get("entries")),
+                k.get("files")
+            )),
             wtf16::stringify(k.get("out")).unwrap(),
             "{}",
             wtf16::stringify(k).unwrap()
         );
     }
     for k in arr(c.get("files")) {
-        assert_eq!(!sources::is_unreadable(k.get("f")), k.get("readable") == &JValue::Bool(true), "{:?}", k.get("f"));
+        assert_eq!(
+            !sources::is_unreadable(k.get("f")),
+            k.get("readable") == &JValue::Bool(true),
+            "{:?}",
+            k.get("f")
+        );
     }
     let mut hits = 0;
     for k in arr(c.get("used")) {
-        let got = sources::used_injected(k.get("injected"), k.get("placed"), k.get("answer"), k.get("question"));
+        let got = sources::used_injected(
+            k.get("injected"),
+            k.get("placed"),
+            k.get("answer"),
+            k.get("question"),
+        );
         hits += usize::from(!got.is_empty());
-        assert_eq!(show(got), wtf16::stringify(k.get("out")).unwrap(), "{}", wtf16::stringify(k).unwrap());
+        assert_eq!(
+            show(got),
+            wtf16::stringify(k.get("out")).unwrap(),
+            "{}",
+            wtf16::stringify(k).unwrap()
+        );
     }
     assert!(hits > 20, "{hits}");
 }

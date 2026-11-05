@@ -14,7 +14,17 @@ const PAGE_MAX: f64 = 100_000.0;
 const ATTRIBUTE_MAX: usize = 24_000;
 
 fn js_space(c: char) -> bool {
-    matches!(c, '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}')
+    matches!(
+        c,
+        '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
+    )
 }
 
 /// `String(v || '')`.
@@ -38,7 +48,10 @@ pub fn is_unreadable(file: &JValue) -> bool {
     }
     let a = get(file, "attachment");
     let d = get(file, "document");
-    if a.truthy() && as_str(get(a, "state")) == Some("stored") && matches!(as_str(get(a, "group")), Some("Text" | "Documents")) {
+    if a.truthy()
+        && as_str(get(a, "state")) == Some("stored")
+        && matches!(as_str(get(a, "group")), Some("Text" | "Documents"))
+    {
         return true;
     }
     let blank = trim(&text_of(get(file, "content"))).is_empty();
@@ -47,8 +60,14 @@ pub fn is_unreadable(file: &JValue) -> bool {
 
 /// source-readability.cjs `isWaiting(file)`.
 pub fn is_waiting(file: &JValue) -> bool {
-    let d = if matches!(file, JValue::Obj(_) | JValue::Arr(_)) { get(file, "document") } else { &JValue::Null };
-    d.truthy() && as_str(get(d, "state")) == Some("queued") && trim(&text_of(get(file, "content"))).is_empty()
+    let d = if matches!(file, JValue::Obj(_) | JValue::Arr(_)) {
+        get(file, "document")
+    } else {
+        &JValue::Null
+    };
+    d.truthy()
+        && as_str(get(d, "state")) == Some("queued")
+        && trim(&text_of(get(file, "content"))).is_empty()
 }
 
 fn snippet_of(text: &JValue) -> String {
@@ -105,14 +124,31 @@ fn js_round(x: f64) -> f64 {
     }
 }
 
-fn shape(id: &JValue, file: &JValue, body: &JValue, kind: &JValue, score: &JValue, page: Option<f64>) -> JValue {
-    let id = if id.truthy() { string(id) } else { string(file) };
+fn shape(
+    id: &JValue,
+    file: &JValue,
+    body: &JValue,
+    kind: &JValue,
+    score: &JValue,
+    page: Option<f64>,
+) -> JValue {
+    let id = if id.truthy() {
+        string(id)
+    } else {
+        string(file)
+    };
     let excerpt = as_str(kind) == Some("excerpt");
     let mut item = vec![
         ("id".to_owned(), JValue::Str(wtf16::slice(&id, NAME_MAX))),
-        ("file".to_owned(), JValue::Str(wtf16::slice(&string(file), NAME_MAX))),
+        (
+            "file".to_owned(),
+            JValue::Str(wtf16::slice(&string(file), NAME_MAX)),
+        ),
         ("snippet".to_owned(), JValue::Str(snippet_of(body))),
-        ("kind".to_owned(), JValue::Str(if excerpt { "excerpt" } else { "file" }.into())),
+        (
+            "kind".to_owned(),
+            JValue::Str(if excerpt { "excerpt" } else { "file" }.into()),
+        ),
     ];
     if let Some(p) = page.filter(|_| excerpt).and_then(valid_page) {
         item.push(("page".into(), JValue::Num(p)));
@@ -148,21 +184,41 @@ pub fn build_sources(entries: &[JValue], files: &JValue) -> Vec<JValue> {
         if out.len() >= MAX_SOURCES {
             break;
         }
-        let Some(f) = (if e.truthy() { as_str(get(e, "file")).and_then(|n| by_name.get(n)) } else { None }) else {
+        let Some(f) = (if e.truthy() {
+            as_str(get(e, "file")).and_then(|n| by_name.get(n))
+        } else {
+            None
+        }) else {
             continue;
         };
         let a = get(f, "attachment");
-        let id = if a.truthy() { get(a, "id").clone() } else { a.clone() };
+        let id = if a.truthy() {
+            get(a, "id").clone()
+        } else {
+            a.clone()
+        };
         let kind = get(e, "kind");
-        let page = if as_str(kind) == Some("excerpt") { page_of(get(e, "body")) } else { None };
-        out.push(shape(&id, get(f, "name"), get(e, "body"), kind, get(e, "score"), page));
+        let page = if as_str(kind) == Some("excerpt") {
+            page_of(get(e, "body"))
+        } else {
+            None
+        };
+        out.push(shape(
+            &id,
+            get(f, "name"),
+            get(e, "body"),
+            kind,
+            get(e, "score"),
+            page,
+        ));
     }
     out
 }
 
 fn words_re() -> Option<&'static Regex> {
     static R: OnceLock<Option<Regex>> = OnceLock::new();
-    R.get_or_init(|| Regex::new(r"[\p{L}\p{N}]+(?:[\-.][\p{L}\p{N}]+)*").ok()).as_ref()
+    R.get_or_init(|| Regex::new(r"[\p{L}\p{N}]+(?:[\-.][\p{L}\p{N}]+)*").ok())
+        .as_ref()
 }
 
 fn letter_re() -> Option<&'static Regex> {
@@ -185,7 +241,9 @@ struct Marks {
 
 fn marks(text: &JValue) -> Marks {
     let lower = wtf16::slice(&text_of(text), ATTRIBUTE_MAX).to_lowercase();
-    let words: Vec<&str> = words_re().map(|r| r.find_iter(&lower).map(|m| m.as_str()).collect()).unwrap_or_default();
+    let words: Vec<&str> = words_re()
+        .map(|r| r.find_iter(&lower).map(|m| m.as_str()).collect())
+        .unwrap_or_default();
     let mut tokens = Vec::new();
     let mut token_set = HashSet::new();
     for w in &words {
@@ -204,7 +262,12 @@ fn marks(text: &JValue) -> Marks {
             runs.push(r);
         }
     }
-    Marks { tokens, token_set, runs, run_set }
+    Marks {
+        tokens,
+        token_set,
+        runs,
+        run_set,
+    }
 }
 
 /// A `Set` key with SameValueZero equality: primitives by value; an object only equals itself, and
@@ -221,13 +284,24 @@ fn set_key(v: &JValue) -> Option<String> {
 /// chat-sources.cjs `usedInjected(injected, placed, answer, question)` (#1793): the whole files put in
 /// the prompt (and not already placed) that the answer drew on, in prompt order: it carries a
 /// distinctive token (one with a digit) or a four-word run of theirs that the question did not.
-pub fn used_injected(injected: &JValue, placed: &JValue, answer: &JValue, question: &JValue) -> Vec<JValue> {
+pub fn used_injected(
+    injected: &JValue,
+    placed: &JValue,
+    answer: &JValue,
+    question: &JValue,
+) -> Vec<JValue> {
     if trim(&text_of(answer)).is_empty() {
         return Vec::new();
     }
     let mut already: HashSet<String> = list(placed)
         .iter()
-        .filter_map(|e| if e.truthy() { set_key(get(e, "file")) } else { set_key(&JValue::Undefined) })
+        .filter_map(|e| {
+            if e.truthy() {
+                set_key(get(e, "file"))
+            } else {
+                set_key(&JValue::Undefined)
+            }
+        })
         .collect();
     let said = marks(answer);
     let asked = marks(question);
@@ -241,8 +315,14 @@ pub fn used_injected(injected: &JValue, placed: &JValue, answer: &JValue, questi
             continue;
         }
         let from = marks(get(e, "body"));
-        let hit = from.tokens.iter().any(|t| said.token_set.contains(t) && !asked.token_set.contains(t))
-            || from.runs.iter().any(|r| said.run_set.contains(r) && !asked.run_set.contains(r));
+        let hit = from
+            .tokens
+            .iter()
+            .any(|t| said.token_set.contains(t) && !asked.token_set.contains(t))
+            || from
+                .runs
+                .iter()
+                .any(|r| said.run_set.contains(r) && !asked.run_set.contains(r));
         if hit {
             out.push(e.clone());
             if let Some(k) = key {
