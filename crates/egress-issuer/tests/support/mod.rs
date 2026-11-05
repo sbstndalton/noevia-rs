@@ -118,4 +118,5 @@ impl Transport for ScriptedTransport {
     }
 }
 
+#[allow(unused_imports)]
 pub use egress_issuer::testing::{FakeProxy, ProxyTransport, BOOT};

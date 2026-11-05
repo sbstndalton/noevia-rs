@@ -86,17 +86,15 @@ async fn serve_proxy(proxy: Arc<FakeProxy>) -> u16 {
                         timeout_ms: 5000.0,
                     })
                     .await;
-                match reply {
-                    Ok(r) => {
-                        let mut out = format!("HTTP/1.1 {} X\r\n", r.status);
-                        for (n, v) in &r.raw_headers {
-                            out.push_str(&format!("{n}: {v}\r\n"));
-                        }
-                        out.push_str("\r\n");
-                        let _ = sock.write_all(out.as_bytes()).await;
-                        let _ = sock.write_all(&r.body).await;
+                // A transport failure hangs up.
+                if let Ok(r) = reply {
+                    let mut out = format!("HTTP/1.1 {} X\r\n", r.status);
+                    for (n, v) in &r.raw_headers {
+                        out.push_str(&format!("{n}: {v}\r\n"));
                     }
-                    Err(_) => {} // hang up: a transport failure
+                    out.push_str("\r\n");
+                    let _ = sock.write_all(out.as_bytes()).await;
+                    let _ = sock.write_all(&r.body).await;
                 }
             });
         }
@@ -259,7 +257,6 @@ async fn every_route_needs_the_store_secret_and_an_unconfigured_deployment_is_un
 
 #[tokio::test]
 async fn grants_are_issued_revoked_and_forgotten_through_the_front_only() {
-    let proxy_state;
     let Some(r) = rig(Some(1)) else { return };
     let proxy = FakeProxy::new(r.key_file.clone());
     let port = serve_proxy(Arc::clone(&proxy)).await;
@@ -367,8 +364,8 @@ async fn grants_are_issued_revoked_and_forgotten_through_the_front_only() {
     }
     let (st, _) = call(&router, "grant", Some(TOKEN), json!({ "taskId": 7 })).await;
     assert_eq!(st, StatusCode::BAD_REQUEST);
-    proxy_state = proxy.state.lock().unwrap().ready_modes.clone();
-    assert_eq!(proxy_state, ["initial"]);
+    let ready_modes = proxy.state.lock().unwrap().ready_modes.clone();
+    assert_eq!(ready_modes, ["initial"]);
 }
 
 #[tokio::test]
