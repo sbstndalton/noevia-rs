@@ -117,7 +117,7 @@ pub enum Native {
     /// GET /api/health (sbstndalton/noevia#2190 close-out, `rust-health`): health_routes.rs.
     Health,
     /// GET /api/auto-roles (sbstndalton/noevia#2190 close-out, `rust-auto-roles`):
-    /// auto_roles_routes.rs. The PUT stays Node's.
+    /// auto_roles_routes.rs. GET and PUT share the native user fence.
     AutoRoles,
     /// /api/mcp-keys/* and /api/mcp-oauth/* (sbstndalton/noevia#2202): mcp_routes.rs.
     McpCredentials,
@@ -882,7 +882,8 @@ mod tests {
         assert_eq!(dispatch("GET", "/api/health"), Some(Native::Health));
         assert_eq!(dispatch("POST", "/api/health"), None);
         assert_eq!(dispatch("GET", "/api/auto-roles"), Some(Native::AutoRoles));
-        for m in ["PUT", "POST", "DELETE", "HEAD"] {
+        assert_eq!(dispatch("PUT", "/api/auto-roles"), Some(Native::AutoRoles));
+        for m in ["POST", "DELETE", "HEAD"] {
             assert_eq!(dispatch(m, "/api/auto-roles"), None, "{m}");
         }
         assert_eq!(dispatch("GET", "/api/workspace"), Some(Native::Projects));

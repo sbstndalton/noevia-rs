@@ -230,8 +230,8 @@ use std::sync::Arc;
 /// `rust-health`: this build answers `GET /api/health` (health_routes.rs, sbstndalton/noevia#2190
 /// close-out): the default provider and the Diary sidecar it probes itself, retrieval from the
 /// `rag-status.json` snapshot Node publishes. `rust-auto-roles`: `GET /api/auto-roles`
-/// (auto_roles_routes.rs; the PUT stays Node's) from `auto-roles.json` and the
-/// `auto-roles-snapshot.json` Node publishes. `rust-workspace`: `GET /api/workspace`
+/// (auto_roles_routes.rs; persistence is native) from `auto-roles.json` and the
+/// `auto-roles-snapshot.json` Node publishes. `rust-auto-roles-write` adds PUT and native deletion cleanup. `rust-workspace`: `GET /api/workspace`
 /// (sbstndalton/noevia#2191 close-out), with the delete-old-chats sweep and the orphan chat-context
 /// cleanup it runs. The paired core refuses each (rust-health.cjs `RUST_HEALTH_OWNED`,
 /// rust-auto-roles.cjs `RUST_AUTO_ROLES_OWNED`, rust-workspace.cjs `RUST_WORKSPACE_OWNED`) and
@@ -462,6 +462,7 @@ pub const FEATURES: &[&str] = &[
     "rust-vault-mirror-preferences",
     "rust-health",
     "rust-auto-roles",
+    "rust-auto-roles-write",
     "rust-workspace",
     // GET /api/chats/search (#1450) and GET /api/chats/{chatId}/export (#1471): core rust-chat-search.cjs
     // `RUST_CHAT_SEARCH_OWNED` and rust-chat-export.cjs `RUST_CHAT_EXPORT_OWNED` refuse them.

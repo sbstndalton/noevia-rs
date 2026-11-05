@@ -338,7 +338,11 @@ async fn the_first_request_of_an_account_makes_its_directory_and_only_the_get_is
     assert_eq!(r.text, r#"{"configured":false,"roles":null,"missing":[]}"#);
     assert!(dir.path().join("users").join(B).is_dir());
     // The save (the PUT, which warms the roles in the engine), and every other method, are Node's: dead here.
-    for method in ["PUT", "POST", "DELETE"] {
+    assert_eq!(
+        call(addr, "PUT", "/api/auto-roles", COOKIE_A).await.status,
+        400
+    );
+    for method in ["POST", "DELETE"] {
         assert_eq!(
             call(addr, method, "/api/auto-roles", COOKIE_A).await.status,
             502,
@@ -420,4 +424,348 @@ async fn a_signed_in_read_asks_node_to_publish_and_waits_for_it_only_after_idle(
         "{:?}",
         started.elapsed()
     );
+}
+
+const SECRET: &str = "synthetic-auto-roles-secret-00000000000";
+
+async fn write_front(dir: &std::path::Path, node: std::net::SocketAddr) -> std::net::SocketAddr {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let env = HashMap::from([
+        ("NOEVIA_LEGACY_UPSTREAM", format!("http://{node}")),
+        ("NOEVIA_PROJECT_STORE_TOKEN", SECRET.to_owned()),
+        ("UI_DATA_DIR", dir.display().to_string()),
+        ("PUBLIC_ORIGIN", format!("http://{addr}")),
+    ]);
+    let app = App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
+    tokio::spawn(serve(
+        listener,
+        app,
+        Limits::default(),
+        std::future::pending(),
+    ));
+    addr
+}
+async fn put_roles(addr: std::net::SocketAddr, text: &str, cookie: &str) -> Answer {
+    let mut s = TcpStream::connect(addr).await.unwrap();
+    s.write_all(format!("PUT /api/auto-roles HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\nCookie: {cookie}\r\nOrigin: http://{addr}\r\nX-CSRF-Token: csrf\r\nContent-Length: {}\r\n\r\n{text}",text.len()).as_bytes()).await.unwrap();
+    let mut bytes = Vec::new();
+    tokio::time::timeout(Duration::from_secs(40), s.read_to_end(&mut bytes))
+        .await
+        .unwrap()
+        .unwrap();
+    let text = String::from_utf8(bytes).unwrap();
+    let (h, b) = text.split_once("\r\n\r\n").unwrap();
+    Answer {
+        status: h.split_whitespace().nth(1).unwrap().parse().unwrap(),
+        headers: HashMap::new(),
+        text: b.to_owned(),
+    }
+}
+struct EngineStub {
+    addr: std::net::SocketAddr,
+    calls: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    catalogue: std::sync::Arc<std::sync::Mutex<serde_json::Value>>,
+    pause: std::sync::Arc<tokio::sync::Notify>,
+    entered: std::sync::Arc<tokio::sync::Notify>,
+    pause_once: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    task: tokio::task::JoinHandle<()>,
+}
+impl Drop for EngineStub {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+async fn engine() -> EngineStub {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let catalogue = std::sync::Arc::new(std::sync::Mutex::new(serde_json::json!([
+        {"name":"alpha"},{"name":"beta"},{"name":"creative"},{"name":"vectors","labels":["embedding"]}
+    ])));
+    let pause = std::sync::Arc::new(tokio::sync::Notify::new());
+    let entered = std::sync::Arc::new(tokio::sync::Notify::new());
+    let pause_once = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (c, k, p, e, once) = (
+        calls.clone(),
+        catalogue.clone(),
+        pause.clone(),
+        entered.clone(),
+        pause_once.clone(),
+    );
+    let task = tokio::spawn(async move {
+        loop {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let (c, k, p, e, once) = (c.clone(), k.clone(), p.clone(), e.clone(), once.clone());
+            tokio::spawn(async move {
+                let mut buf = Vec::new();
+                let mut part = [0; 4096];
+                loop {
+                    let n = stream.read(&mut part).await.unwrap();
+                    if n == 0 {
+                        return;
+                    }
+                    buf.extend_from_slice(&part[..n]);
+                    if let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                        let h = String::from_utf8_lossy(&buf[..i]);
+                        let len = h
+                            .lines()
+                            .find_map(|l| {
+                                l.to_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .and_then(|x| x.trim().parse::<usize>().ok())
+                            })
+                            .unwrap_or(0);
+                        if buf.len() >= i + 4 + len {
+                            break;
+                        }
+                    }
+                }
+                let text = String::from_utf8_lossy(&buf);
+                assert!(text.contains(SECRET));
+                let path = text.split_whitespace().nth(1).unwrap().to_owned();
+                c.lock().unwrap().push(path.clone());
+                if path.ends_with("/invalidate")
+                    && once.swap(false, std::sync::atomic::Ordering::SeqCst)
+                {
+                    e.notify_one();
+                    p.notified().await;
+                }
+                let body = if path.ends_with("/facts") {
+                    serde_json::json!({"catalogue":k.lock().unwrap().clone()}).to_string()
+                } else {
+                    "{\"ok\":true}".into()
+                };
+                stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",body.len()).as_bytes()).await.unwrap();
+            });
+        }
+    });
+    EngineStub {
+        addr,
+        calls,
+        catalogue,
+        pause,
+        entered,
+        pause_once,
+        task,
+    }
+}
+
+#[tokio::test]
+async fn put_is_native_per_user_and_byte_compatible_retaining_omitted_creative() {
+    let dir = data();
+    let node = engine().await;
+    let addr = write_front(dir.path(), node.addr).await;
+    let saved = put_roles(
+        addr,
+        r#"{"smart":" beta ","fast":"\ufeffalpha ","creative":"creative","ignored":1e400}"#,
+        COOKIE_A,
+    )
+    .await;
+    assert_eq!(
+        (saved.status, saved.text.as_str()),
+        (
+            200,
+            r#"{"configured":true,"roles":{"fast":"alpha","smart":"beta","creative":"creative"}}"#
+        )
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("users").join(A).join(A_DIR_FILE)).unwrap(),
+        "{\n  \"fast\": \"alpha\",\n  \"smart\": \"beta\",\n  \"creative\": \"creative\"\n}"
+    );
+    assert!(!dir.path().join("users").join(B).join(A_DIR_FILE).exists());
+    assert_eq!(
+        put_roles(addr, r#"{"fast":"alpha","smart":"beta"}"#, COOKIE_A)
+            .await
+            .text,
+        saved.text
+    );
+    let r = put_roles(
+        addr,
+        r#"{"fast":"alpha","smart":"beta","creative":null}"#,
+        COOKIE_A,
+    )
+    .await;
+    assert_eq!(
+        r.text,
+        r#"{"configured":true,"roles":{"fast":"alpha","smart":"beta"}}"#
+    );
+}
+
+#[tokio::test]
+async fn put_uses_nodes_exact_validation_status_and_body_order() {
+    let dir = data();
+    let node = engine().await;
+    let addr = write_front(dir.path(), node.addr).await;
+    for (body,error) in [
+        ("{","invalid JSON"),("null","request body must be a JSON object"),("[]","request body must be a JSON object"),
+        ("{}","both fast and smart model names are required"),
+        (r#"{"fast":"gone","smart":"missing"}"#,"unknown model(s): gone, missing"),
+        (r#"{"fast":"alpha","smart":"beta","creative":"vectors"}"#,"The creative role needs a chat model; vectors is an embedding, reranking or routing model."),
+    ] { let r=put_roles(addr,body,COOKIE_A).await;assert_eq!(r.status,400,"{body}: {}",r.text);assert_eq!(serde_json::from_str::<serde_json::Value>(&r.text).unwrap()["error"],error); }
+    assert!(!dir.path().join("users").join(A).join(A_DIR_FILE).exists());
+    *node.catalogue.lock().unwrap() = serde_json::Value::Null;
+    assert_eq!(
+        put_roles(addr, r#"{"fast":"unknown","smart":"another"}"#, COOKIE_A)
+            .await
+            .status,
+        200
+    );
+    *node.catalogue.lock().unwrap() = serde_json::json!([]);
+    assert_eq!(
+        put_roles(addr, r#"{"fast":"unknown","smart":"another"}"#, COOKIE_A)
+            .await
+            .status,
+        400
+    );
+}
+
+#[tokio::test]
+async fn only_admin_save_triggers_the_existing_warmer() {
+    let dir = data();
+    let node = engine().await;
+    let addr = write_front(dir.path(), node.addr).await;
+    assert_eq!(
+        put_roles(addr, r#"{"fast":"alpha","smart":"beta"}"#, COOKIE_B)
+            .await
+            .status,
+        200
+    );
+    assert!(!node
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|p| p.ends_with("/warm")));
+    let db = Connection::open(server_store::db_path(dir.path())).unwrap();
+    db.execute("UPDATE users SET role='admin' WHERE id=?1", [A])
+        .unwrap();
+    assert_eq!(
+        put_roles(addr, r#"{"fast":"alpha","smart":"beta"}"#, COOKIE_A)
+            .await
+            .status,
+        200
+    );
+    assert_eq!(
+        node.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|p| p.ends_with("/warm"))
+            .count(),
+        1
+    );
+    assert_eq!(
+        node.calls.lock().unwrap().last().unwrap(),
+        "/internal/auto-roles/invalidate"
+    );
+}
+
+#[tokio::test]
+async fn a_read_during_a_write_waits_for_the_user_fence_and_observes_saved_roles() {
+    let dir = data();
+    fresh(dir.path(), CATALOGUE);
+    roles_file(dir.path(), A, r#"{"fast":"old","smart":"old"}"#);
+    let node = engine().await;
+    let addr = write_front(dir.path(), node.addr).await;
+    node.pause_once
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let write = tokio::spawn(put_roles(
+        addr,
+        r#"{"fast":"alpha","smart":"beta"}"#,
+        COOKIE_A,
+    ));
+    node.entered.notified().await;
+    let read = tokio::spawn(call(addr, "GET", "/api/auto-roles", COOKIE_A));
+    tokio::time::sleep(Duration::from_millis(80)).await;
+    assert!(!read.is_finished());
+    // Another tenant has a distinct lock and can still read.
+    assert_eq!(
+        call(addr, "GET", "/api/auto-roles", COOKIE_B).await.status,
+        200
+    );
+    node.pause.notify_one();
+    assert_eq!(write.await.unwrap().status, 200);
+    assert_eq!(
+        read.await.unwrap().text,
+        r#"{"configured":true,"roles":{"fast":"alpha","smart":"beta"},"missing":[]}"#
+    );
+}
+
+#[tokio::test]
+async fn private_cleanup_and_boot_proof_are_authenticated_and_share_the_native_writer() {
+    let dir = data();
+    let node = engine().await;
+    roles_file(
+        dir.path(),
+        A,
+        r#"{"fast":"alpha","smart":"beta","creative":"gone"}"#,
+    );
+    roles_file(dir.path(), B, r#"{"fast":"gone","smart":"gone"}"#);
+    let env = HashMap::from([
+        ("NOEVIA_LEGACY_UPSTREAM", format!("http://{}", node.addr)),
+        ("UI_DATA_DIR", dir.path().display().to_string()),
+        ("NOEVIA_PROJECT_STORE_TOKEN", SECRET.to_owned()),
+    ]);
+    let app = App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
+    let store = noevia_server::project_store::Store {
+        data_dir: dir.path().to_owned(),
+        token: std::sync::Arc::from(SECRET),
+        switch: server_store::RustProjects::owned(),
+        start_id: std::sync::Arc::from("synthetic-start"),
+    };
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let router = noevia_server::auto_roles_routes::store_route(store, Some(app));
+    let task = tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    let client = reqwest::Client::new();
+    let base = format!("http://{addr}/v1/auto-roles");
+    assert_eq!(
+        client
+            .post(format!("{base}/clear"))
+            .header("content-type", "application/json")
+            .body(serde_json::json!({"user":A,"name":"gone"}).to_string())
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        401
+    );
+    let proof = client
+        .post(format!("{base}/proof"))
+        .header("x-noevia-store-token", SECRET)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&proof.text().await.unwrap()).unwrap(),
+        serde_json::json!({"capability":"rust-auto-roles-write"})
+    );
+    let cleared = client
+        .post(format!("{base}/clear"))
+        .header("x-noevia-store-token", SECRET)
+        .header("content-type", "application/json")
+        .body(serde_json::json!({"user":A,"name":"gone"}).to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(cleared.status(), 200);
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&cleared.text().await.unwrap()).unwrap(),
+        serde_json::json!({"cleared":["creative"]})
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("users").join(B).join(A_DIR_FILE)).unwrap(),
+        "null"
+    );
+    assert_eq!(
+        node.calls.lock().unwrap().as_slice(),
+        [
+            "/internal/auto-roles/invalidate",
+            "/internal/auto-roles/invalidate"
+        ]
+    );
+    task.abort();
 }

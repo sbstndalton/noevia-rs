@@ -272,6 +272,11 @@ pub fn write_shared_projects(
     write_text_atomic(&dir.join(name), text, Parent::MustExist)
 }
 
+/// Per-user roles, under the caller's user lock. Never recreate a removed account.
+pub fn write_auto_roles(dir: &Path, text: &str) -> Result<(), JsonError> {
+    write_text_atomic(&dir.join("auto-roles.json"), text, Parent::MustExist)
+}
+
 /// Writes [`crate::ROOT_PROVIDER_FILE`] in `data_dir` (which must exist) atomically with text the
 /// caller serialised; the caller holds the file's shared lock (crates/server-projects).
 pub fn write_root_shared_providers(
