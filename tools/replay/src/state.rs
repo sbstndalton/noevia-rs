@@ -47,28 +47,47 @@ pub fn compare(expected: &Value, actual: &Value) -> Vec<crate::diff::Diff> {
     diffs
 }
 
+/// Whether an entry-only ignore (a pattern ending in `/`) matches a raw directory path written with
+/// its trailing `/`: exactly, or as a `*suffix`. walk() and drop_dir_entries() share this predicate.
+fn entry_only_matches(dir: &str, pattern: &str) -> bool {
+    dir == pattern || (pattern.starts_with('*') && dir.ends_with(pattern.trim_start_matches('*')))
+}
+
+/// A normalized snapshot path written back with this replay's bound values, or None when it holds a
+/// placeholder that cannot be reconstructed (unbound, or a masked `<ts>`-like value).
+fn raw_path(path: &str, b: &Bindings) -> Option<String> {
+    let mut out = String::new();
+    for tok in crate::bind::tokens(path) {
+        match tok {
+            crate::bind::Tok::Lit(s) => out.push_str(&s),
+            crate::bind::Tok::Var(v) => out.push_str(b.get(&v)?),
+            crate::bind::Tok::Origin => out.push_str(b.origin()),
+            crate::bind::Tok::Any => return None,
+        }
+    }
+    Some(out)
+}
+
 /// Applies the directory-entry-only ignores (patterns ending in `/`) to a snapshot read from a file,
 /// so an `--expect-state` reference recorded without them is projected the same way as the live
-/// snapshot. Only directory entries are dropped; every path inside them stays. The reference holds
-/// normalized paths (`<id:1>`), while walk() matches raw ones, so each pattern is normalized with
-/// the same bindings first.
+/// snapshot. Each reference directory entry is written back in raw form with this replay's bindings
+/// and tested with walk()'s own predicate, so both sides match raw paths; an entry that cannot be
+/// reconstructed is kept. Only directory entries are dropped; every path inside them stays.
 pub fn drop_dir_entries(snapshot: &mut Value, ignore: &[String], b: &Bindings) {
-    let entry_only: Vec<String> = ignore
-        .iter()
-        .filter(|i| i.ends_with('/'))
-        .map(|i| b.unbind(i))
-        .collect();
+    let entry_only: Vec<&String> = ignore.iter().filter(|i| i.ends_with('/')).collect();
     if entry_only.is_empty() {
         return;
     }
     if let Some(Value::Array(files)) = snapshot.get_mut("files") {
         files.retain(|f| {
             let Some(path) = f.as_str() else { return true };
-            !(path.ends_with('/')
-                && entry_only.iter().any(|i| {
-                    path == i.as_str()
-                        || (i.starts_with('*') && path.ends_with(i.trim_start_matches('*')))
-                }))
+            if !path.ends_with('/') {
+                return true;
+            }
+            let Some(raw) = raw_path(path, b) else {
+                return true;
+            };
+            !entry_only.iter().any(|i| entry_only_matches(&raw, i))
         });
     }
 }
@@ -152,11 +171,13 @@ fn walk(root: &Path, dir: &Path, ignore: &[String], b: &Bindings, out: &mut Vec<
         let is_dir = path.is_dir();
         // A pattern ending in `/` drops only a directory's own entry: whether that directory
         // exists is not compared, but everything inside it still is.
-        let entry_only = is_dir
-            && ignore.iter().filter(|i| i.ends_with('/')).any(|i| {
-                let dir = format!("{rel}/");
-                dir == *i || (i.starts_with('*') && dir.ends_with(i.trim_start_matches('*')))
-            });
+        let entry_only = is_dir && {
+            let dir = format!("{rel}/");
+            ignore
+                .iter()
+                .filter(|i| i.ends_with('/'))
+                .any(|i| entry_only_matches(&dir, i))
+        };
         if !entry_only {
             out.push(format!(
                 "{}{}",
@@ -334,7 +355,9 @@ mod tests {
     fn a_reference_without_the_directory_ignore_is_projected_the_same_way() {
         let ignore = vec!["*/rag/".to_string()];
         let mut expected = json!({"files": ["users/", "users/<id:1>/", "users/<id:1>/rag/"]});
-        let none = Bindings::new("");
+        // The replay bound <id:1> (the live snapshot's own placeholder comes from the same bindings).
+        let mut none = Bindings::new("");
+        none.bind("<id:1>", "alice");
         drop_dir_entries(&mut expected, &ignore, &none);
         assert!(compare(&expected, &json!({"files": ["users/", "users/alice/"]})).is_empty());
         // A database inside the directory is still compared: missing it on either side fails.
@@ -345,16 +368,36 @@ mod tests {
             json!({"files": ["users/", "users/<id:1>/", "users/<id:1>/rag/p.db"]})
         );
         assert!(!compare(&with_db, &json!({"files": ["users/", "users/alice/"]})).is_empty());
-        // An exact pattern names a concrete directory; the reference holds it normalized.
+        // Exact, short and overlapping bound values: the reference is matched in raw form.
         let mut bound = Bindings::new("");
-        bound.bind("<id:1>", "alice");
-        let exact = vec!["users/alice/rag/".to_string()];
-        let mut reference = json!({"files": ["users/", "users/<id:1>/", "users/<id:1>/rag/", "users/<id:1>/rag/p.db", "users/<id:2>/rag/"]});
-        drop_dir_entries(&mut reference, &exact, &bound);
+        bound.bind("<id:1>", "bob");
+        let mut reference =
+            json!({"files": ["users/<id:1>/rag/", "users/<id:1>/rag/p.db", "users/<id:2>/rag/"]});
+        drop_dir_entries(&mut reference, &["users/bob/rag/".to_string()], &bound);
         assert_eq!(
             reference,
-            json!({"files": ["users/", "users/<id:1>/", "users/<id:1>/rag/p.db", "users/<id:2>/rag/"]})
+            json!({"files": ["users/<id:1>/rag/p.db", "users/<id:2>/rag/"]})
         );
+        let mut overlap = Bindings::new("");
+        overlap.bind("<id:1>", "alice");
+        overlap.bind("<id:2>", "alice/rag");
+        let mut reference =
+            json!({"files": ["users/<id:1>/", "users/<id:2>/", "users/<id:2>/p.db"]});
+        drop_dir_entries(&mut reference, &ignore, &overlap);
+        assert_eq!(
+            reference,
+            json!({"files": ["users/<id:1>/", "users/<id:2>/p.db"]})
+        );
+        // A placeholder written in a pattern is literal: it matches no raw path on either side.
+        let mut alice = Bindings::new("");
+        alice.bind("<id:1>", "alice");
+        let mut reference = json!({"files": ["users/<id:1>/rag/"]});
+        // An unbound placeholder cannot be written back, so its entry is kept (fail closed).
+        let mut unbound = json!({"files": ["users/<id:9>/rag/"]});
+        drop_dir_entries(&mut unbound, &ignore, &alice);
+        assert_eq!(unbound, json!({"files": ["users/<id:9>/rag/"]}));
+        drop_dir_entries(&mut reference, &["users/<id:1>/rag/".to_string()], &alice);
+        assert_eq!(reference, json!({"files": ["users/<id:1>/rag/"]}));
     }
 
     #[test]
@@ -370,6 +413,21 @@ mod tests {
         assert_eq!(
             at(&s, "files"),
             &json!(["users/", "users/u/", "users/v/", "users/v/rag/p.db"])
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_placeholder_pattern_keeps_the_live_entry_too() {
+        let dir = std::env::temp_dir().join(format!("replay-state-ph-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("users/alice/rag")).unwrap();
+        let mut b = Bindings::new("");
+        b.bind("<id:1>", "alice");
+        let s = snapshot(&dir, "cowork.db", &["users/<id:1>/rag/".to_string()], &b);
+        assert_eq!(
+            at(&s, "files"),
+            &json!(["users/", "users/<id:1>/", "users/<id:1>/rag/"])
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
