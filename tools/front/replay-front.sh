@@ -104,9 +104,13 @@ node_pid=$!
 # sbstndalton/noevia#2190: the plugin directory is the front's. Like Node under the corpus net
 # guard, it must never reach the Internet here: both directory sources point at a closed loopback
 # port, which is the recorded "could not be reached" 502.
-PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" NOEVIA_QA_MCP_REGISTRY="http://127.0.0.1:9" NOEVIA_QA_SKILLS_DIRECTORY="http://127.0.0.1:9/skills" NOEVIA_PROJECT_STORE_PORT="$store_port" NOEVIA_PROJECT_STORE_TOKEN="$store_token" NOEVIA_START_ID="$start_id" "$front" &
+# Match corpus-launcher's synthetic 8 GiB host for the native budget owner, too.
+# Keep the fixture outside UI_DATA_DIR so it cannot alter the compared file tree.
+meminfo=$(mktemp)
+printf 'MemTotal:        8388608 kB\n' > "$meminfo"
+NOEVIA_TEST_MEMINFO_PATH="$meminfo" PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" NOEVIA_QA_MCP_REGISTRY="http://127.0.0.1:9" NOEVIA_QA_SKILLS_DIRECTORY="http://127.0.0.1:9/skills" NOEVIA_PROJECT_STORE_PORT="$store_port" NOEVIA_PROJECT_STORE_TOKEN="$store_token" NOEVIA_START_ID="$start_id" "$front" &
 front_pid=$!
-trap 'kill "$node_pid" "$front_pid" 2>/dev/null || true' INT TERM EXIT
+trap 'kill "$node_pid" "$front_pid" 2>/dev/null || true; rm -f "$meminfo"' INT TERM EXIT
 # Either one exiting ends the run (the replayer then sees the server go away).
 while kill -0 "$node_pid" 2>/dev/null && kill -0 "$front_pid" 2>/dev/null; do
   sleep 1

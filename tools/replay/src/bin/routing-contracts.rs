@@ -86,6 +86,9 @@ fn replay(core: &Path, corpus: &Path, out: &Path, name: &str, front: bool) -> Re
             "*embedding-worker-status.json",
             "--state-ignore",
             "*embedding-worker.lock",
+            // G1's legitimate new private snapshot is process coordination state.
+            "--state-ignore",
+            "*model-facts.json",
         ])
         .arg("--seed")
         .arg(out.join("seed"))
