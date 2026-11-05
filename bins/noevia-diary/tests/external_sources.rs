@@ -136,6 +136,54 @@ async fn lists_a_synthetic_folder_like_python() {
     );
 }
 
+/// Epoch seconds of 00:00 local time on a calendar day, in whatever zone the test runs in.
+fn local_midnight(y: i32, m: u32, d: u32) -> u64 {
+    use chrono::TimeZone;
+    u64::try_from(
+        chrono::Local
+            .with_ymd_and_hms(y, m, d, 0, 0, 0)
+            .single()
+            .unwrap()
+            .timestamp(),
+    )
+    .unwrap()
+}
+
+fn set_mtime(path: &std::path::Path, secs: u64, nanos: u32) {
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(path)
+        .unwrap()
+        .set_modified(std::time::UNIX_EPOCH + std::time::Duration::new(secs, nanos))
+        .unwrap();
+}
+
+#[tokio::test]
+async fn an_undated_file_just_before_midnight_is_listed_on_the_day_python_rounds_to() {
+    // Python's datetime.fromtimestamp rounds the mtime to the microsecond: 200 ns before local midnight
+    // is the NEXT day for it (flooring the nanoseconds said the previous day); 600 ns before is not.
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path());
+    let src = dir.path().join("src");
+    write(&src.join("rounds-up.md"), "a");
+    write(&src.join("stays.md"), "b");
+    let midnight = local_midnight(2025, 11, 6);
+    set_mtime(&src.join("rounds-up.md"), midnight - 1, 999_999_800);
+    set_mtime(&src.join("stays.md"), midnight - 1, 999_999_400);
+    let addr = start(dir.path(), Some(vec![src.to_str().unwrap().to_string()])).await;
+    let (s, d, body) = get(addr, TOKEN, UID).await;
+    assert_eq!((s, d), (200, None), "{body}");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let files = v["sources"][0]["files"].as_array().unwrap();
+    let date_of = |name: &str| {
+        let f = files.iter().find(|f| f["name"] == name).unwrap();
+        assert_eq!(f["date_source"], "mtime");
+        f["date"].as_str().unwrap().to_string()
+    };
+    assert_eq!(date_of("rounds-up.md"), "2025-11-06");
+    assert_eq!(date_of("stays.md"), "2025-11-05");
+}
+
 #[tokio::test]
 async fn declines_when_python_did_not_name_the_folders() {
     let dir = tempfile::tempdir().unwrap();
@@ -209,7 +257,7 @@ async fn workspace_trash_lists_capsules_like_python() {
     }
     db.execute(
         "INSERT INTO files VALUES ('.noevia-trash/00000000-0000-4000-8000-000000000003.json',?,'v',1.0)",
-        rusqlite::params![b"{not json".to_vec()],
+        rusqlite::params![br#"{"format":"other"}"#.to_vec()],
     )
     .unwrap();
     let addr = start(dir.path(), None).await;
@@ -250,6 +298,29 @@ async fn workspace_trash_lists_capsules_like_python() {
             r#"{"detail":"A valid recovery operation ID is required"}"#
         )
     );
+    // A capsule serde_json cannot parse is never answered here: Python's json.loads reads some of them
+    // (a lone surrogate escape in an unused field is a valid record to it), so the page declines.
+    let page = |q: &'static str| get_path(addr, q, TOKEN);
+    for (name, data) in [
+        ("malformed", b"{not json".to_vec()),
+        (
+            "unused lone surrogate",
+            capsule("00000000-0000-4000-8000-000000000003", b"hello")
+                .iter()
+                .copied()
+                .take_while(|b| *b != b'}')
+                .chain(br#","unused":"\ud800"}"#.iter().copied())
+                .collect(),
+        ),
+    ] {
+        db.execute(
+            "UPDATE files SET data=? WHERE path='.noevia-trash/00000000-0000-4000-8000-000000000003.json'",
+            rusqlite::params![data],
+        )
+        .unwrap();
+        let (s, d, _, _) = page("/api/workspace-trash").await;
+        assert_eq!((s, d.as_deref()), (421, Some("1")), "{name}");
+    }
     // HTTPException(401), like the D4b routes
     let (s, _, _, body) = get_path(addr, "/api/workspace-trash", "wrong").await;
     assert_eq!((s, body.as_str()), (401, r#"{"detail":"unauthorized"}"#));

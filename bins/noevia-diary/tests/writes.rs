@@ -800,6 +800,65 @@ async fn body_shape_refusals_precede_auth_on_every_write_route() {
 }
 
 #[tokio::test]
+async fn external_import_of_an_undated_file_uses_pythons_rounded_mtime_day() {
+    use chrono::TimeZone;
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[]);
+    let src = dir.path().join("src");
+    std::fs::create_dir_all(&src).unwrap();
+    let midnight = u64::try_from(
+        chrono::Local
+            .with_ymd_and_hms(2025, 11, 6, 0, 0, 0)
+            .single()
+            .unwrap()
+            .timestamp(),
+    )
+    .unwrap();
+    for (name, nanos) in [("rounds-up.md", 999_999_800), ("stays.md", 999_999_400)] {
+        std::fs::write(src.join(name), format!("Body of {name}.\n")).unwrap();
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(src.join(name))
+            .unwrap()
+            .set_modified(std::time::UNIX_EPOCH + std::time::Duration::new(midnight - 1, nanos))
+            .unwrap();
+    }
+    let source = src.to_str().unwrap().to_string();
+    let addr = start_with(dir.path(), "rust", Some(vec![source.clone()])).await;
+    for (name, day, doc) in [
+        (
+            "rounds-up.md",
+            "2025-11-06",
+            "Entries/2025/November/November 6, 2025.md",
+        ),
+        (
+            "stays.md",
+            "2025-11-05",
+            "Entries/2025/November/November 5, 2025.md",
+        ),
+    ] {
+        let (s, d, body) = send(
+            addr,
+            "POST",
+            "/api/external-sources/import",
+            &writer(),
+            &serde_json::json!({"source_path": source, "rel_path": name}),
+        )
+        .await;
+        assert_eq!((s, d), (200, false), "{body}");
+        let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            (v["day"].as_str(), v["date_source"].as_str()),
+            (Some(day), Some("mtime"))
+        );
+        let (text, _) = file_row(dir.path(), doc).unwrap_or_else(|| panic!("{name}: no {doc}"));
+        assert!(String::from_utf8(text)
+            .unwrap()
+            .contains(&format!("Imported: {name}")));
+    }
+}
+
+#[tokio::test]
 async fn external_import_logs_one_exchange_like_python() {
     let dir = tempfile::tempdir().unwrap();
     managed_tenant(dir.path(), &[]);

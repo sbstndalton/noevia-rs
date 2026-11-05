@@ -142,16 +142,34 @@ fn ignored(e: &std::io::Error) -> bool {
     matches!(e.raw_os_error(), Some(2 | 9 | 20 | 40))
 }
 
+/// The whole second Python's `datetime.fromtimestamp(path.stat().st_mtime)` lands on. `st_mtime` is
+/// the double `sec + nsec * 1e-9`; `fromtimestamp` splits it into seconds and microseconds, rounding
+/// the microseconds half to even, and a rounding up to a whole million carries into the second. A
+/// timestamp within the last half microsecond of a second therefore belongs to the NEXT second
+/// (and, at midnight, to the next day): flooring the nanoseconds would list and import it a day early.
+fn python_timestamp_second(secs: u64, nanos: u32) -> Option<i64> {
+    let t = secs as f64 + f64::from(nanos) * 1e-9;
+    let whole = t.trunc();
+    let micros = ((t - whole) * 1e6).round_ties_even();
+    let whole = if micros >= 1e6 { whole + 1.0 } else { whole };
+    (whole < 9.0e15).then_some(whole as i64)
+}
+
 /// None: decline.
 fn mtime_date(meta: &fs::Metadata) -> Option<(Option<NaiveDate>, &'static str)> {
     let Ok(modified) = meta.modified() else {
         return Some((None, "unavailable"));
     };
-    let secs = match modified.duration_since(UNIX_EPOCH) {
-        Ok(d) => i64::try_from(d.as_secs()).ok()?,
+    let since_epoch = match modified.duration_since(UNIX_EPOCH) {
+        Ok(d) => d,
         Err(_) => return None,
     };
+    let secs = python_timestamp_second(since_epoch.as_secs(), since_epoch.subsec_nanos())?;
     let local = chrono::Local.timestamp_opt(secs, 0).single()?;
+    // Python's datetime cannot hold a year outside 1..=9999 (its ValueError is a 500): decline.
+    if !(1..=9999).contains(&local.year()) {
+        return None;
+    }
     Some((Some(local.date_naive()), "mtime"))
 }
 
@@ -520,6 +538,38 @@ mod tests {
         // first match only: a bad first dashed date does not try a later dashed one
         assert_eq!(d("2026-02-30 2026-03-04.md"), None);
         assert_eq!(d("2026-02-30 notes.md"), None);
+    }
+
+    #[test]
+    fn mtime_second_is_pythons_fromtimestamp_not_the_floor() {
+        // (seconds, nanoseconds, the second `datetime.fromtimestamp(sec + nsec * 1e-9)` lands on),
+        // recorded from CPython 3 (UTC). The first rows are the review case: the last fractions of a
+        // microsecond before a whole second round UP into it (so before local midnight, into the next day).
+        for (secs, nanos, want) in [
+            (1_762_387_199_u64, 999_999_800_u32, 1_762_387_200_i64),
+            (1_762_387_199, 999_999_700, 1_762_387_200),
+            (1_762_387_199, 999_999_500, 1_762_387_200),
+            // 1762387199.999999499 is not representable: the double is already past the half microsecond
+            (1_762_387_199, 999_999_499, 1_762_387_200),
+            (1_762_387_199, 999_999_250, 1_762_387_199),
+            (1_762_387_199, 999_999_999, 1_762_387_200),
+            (1_762_387_198, 999_999_999, 1_762_387_199),
+            (1_762_387_199, 500_000_000, 1_762_387_199),
+            (1_730_000_000, 500_000_000, 1_730_000_000),
+            (1_730_000_000, 0, 1_730_000_000),
+            (1_762_387_200, 0, 1_762_387_200),
+            (4_102_444_799, 999_999_999, 4_102_444_800),
+            (1, 999_999_999, 2),
+            (0, 999_999_600, 1),
+            (0, 999_999_400, 0),
+            (0, 0, 0),
+        ] {
+            assert_eq!(
+                python_timestamp_second(secs, nanos),
+                Some(want),
+                "{secs}.{nanos:09}"
+            );
+        }
     }
 
     #[test]

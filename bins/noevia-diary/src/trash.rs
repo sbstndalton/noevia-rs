@@ -154,22 +154,13 @@ fn plain_number(n: &serde_json::Number) -> bool {
 
 /// `decode()` then `summary()` for one capsule.
 fn decode(data: &[u8], operation: &str) -> Decoded {
-    let text = String::from_utf8_lossy(data);
-    // Python's json.loads also takes NaN/Infinity, a BOM, UTF-16/32 and nesting this parser
-    // refuses: when the strict parse fails and any of that could be in play, decline.
-    let lenient = data.contains(&0)
-        || data.starts_with(&[0xef, 0xbb, 0xbf])
-        || text.contains("NaN")
-        || text.contains("Infinity");
+    // Python's json.loads is not this parser: it takes NaN/Infinity, a BOM, UTF-16/32, nesting this
+    // parser refuses and lone surrogate escapes (even in a field `decode` never reads), so a capsule
+    // serde_json rejects may be a perfectly valid record to Python. Whatever the reason, a parse
+    // failure here is never proof that Python also fails: decline and let Python judge.
     let record: Value = match serde_json::from_slice(data) {
         Ok(v) => v,
-        Err(e) => {
-            return if lenient || e.to_string().contains("recursion limit") {
-                Decoded::Decline
-            } else {
-                Decoded::Invalid
-            };
-        }
+        Err(_) => return Decoded::Decline,
     };
     let Value::Object(map) = &record else {
         return Decoded::Invalid;
@@ -325,6 +316,64 @@ mod tests {
         assert!(matches!(
             identity("{0b5f6c1e3a2d4c8e9f101a2b3c4d5e6f}"),
             Ident::Unsure
+        ));
+    }
+
+    const OP: &str = "00000000-0000-4000-8000-000000000001";
+    const HELLO_SHA: &str = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
+
+    fn capsule(extra: &str) -> Vec<u8> {
+        format!(
+            r#"{{"data":"aGVsbG8=","format":"noevia-trash-v1","id":"{OP}","path":"Notes/a.md","state":"trashed","trashedAt":1730000000.5,"version":"{HELLO_SHA}"{extra}}}"#
+        )
+        .into_bytes()
+    }
+
+    #[test]
+    fn a_parse_failure_always_declines_because_python_may_read_the_capsule() {
+        assert!(matches!(decode(&capsule(""), OP), Decoded::Summary(_)));
+        // Python's json.loads takes a lone surrogate escape in a field decode() never reads
+        // (review P2): serde_json rejects it, so only Python can answer.
+        let lone_surrogate = capsule(r#","unused":"\ud800""#);
+        assert!(String::from_utf8_lossy(&lone_surrogate).contains(r"\ud800"));
+        assert!(matches!(decode(&lone_surrogate, OP), Decoded::Decline));
+        let mut bom = vec![0xef, 0xbb, 0xbf];
+        bom.extend(capsule(""));
+        let mut utf16 = vec![0xff, 0xfe];
+        utf16.extend(
+            String::from_utf8(capsule(""))
+                .unwrap()
+                .encode_utf16()
+                .flat_map(u16::to_le_bytes),
+        );
+        let deep = format!("{}1{}", "[".repeat(200), "]".repeat(200));
+        for (name, data) in [
+            ("malformed", b"{not json".to_vec()),
+            ("truncated", capsule("")[..40].to_vec()),
+            ("empty", Vec::new()),
+            (
+                "invalid utf-8",
+                [&b"{\"a\":\""[..], &[0xff, 0xfe][..], &b"\"}"[..]].concat(),
+            ),
+            ("nan", capsule(r#","unused":NaN"#)),
+            ("infinity", capsule(r#","unused":-Infinity"#)),
+            ("bom", bom),
+            ("utf-16", utf16),
+            ("deep nesting", capsule(&format!(r#","unused":{deep}"#))),
+            ("trailing comma", capsule(",")),
+            ("lone low surrogate", capsule(r#","unused":"\udc00""#)),
+            (
+                "lone surrogate in a read field",
+                capsule(r#","path":"\ud800""#),
+            ),
+        ] {
+            assert!(matches!(decode(&data, OP), Decoded::Decline), "{name}");
+        }
+        // A capsule both parsers read, but that decode() itself refuses, is still the record Python flags.
+        assert!(matches!(decode(b"[]", OP), Decoded::Invalid));
+        assert!(matches!(
+            decode(&capsule(r#","state":"gone""#), OP),
+            Decoded::Invalid
         ));
     }
 
