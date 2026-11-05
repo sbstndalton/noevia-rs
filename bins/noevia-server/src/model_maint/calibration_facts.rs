@@ -550,12 +550,18 @@ impl Worker {
     pub fn compare_and_abort(&self, token: &str) -> JValue {
         // During the boot recovery the job is the file's, with no run to stop: not applied (the route
         // retries, then answers unavailable), never a false success.
-        if token != self.cancel_token() || self.with(|i| i.recovering || i.state.job().is_nullish())
-        {
+        if token != self.cancel_token() || self.with(|i| i.state.job().is_nullish()) {
             return obj(vec![("applied", JValue::Bool(false))]);
         }
         let generation = self.cancel_generation();
         let job = self.with(|i| {
+            if i.recovering
+                || i.decided
+                || (!i.active && i.state.job().get("status").as_str() != Some("running"))
+            {
+                self.interrupt_fence_wait();
+                return None;
+            }
             let job = visible_job(i);
             if i.state.job().get("phase").as_str() == Some("Finalizing") {
                 self.interrupt_fence_wait();
@@ -564,8 +570,11 @@ impl Worker {
             if let Some(a) = &i.inflight {
                 a.abort();
             }
-            job
+            Some(job)
         });
+        let Some(job) = job else {
+            return obj(vec![("applied", JValue::Bool(false))]);
+        };
         obj(vec![
             ("applied", JValue::Bool(true)),
             ("job", job),
