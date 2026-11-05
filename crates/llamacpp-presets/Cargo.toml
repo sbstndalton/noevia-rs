@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 prompt-framing = { path = "../prompt-framing" }
+sha2 = "=0.10.9"
 
 [dev-dependencies]
 proptest = "1"

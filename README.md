@@ -185,6 +185,12 @@ one slice at a time.
   `0x`/`0o`/`0b` number wider than 53 bits are undecided (refused). In `dav-parse.wasm` as
   `llamacpp_presets`. Table from noevia-core (`node tools/gen-llamacpp-presets-fixtures.cjs`),
   copied byte-for-byte to `crates/llamacpp-presets/tests/fixtures/llamacpp-presets.v1.json`.
+  `read` (ops 5 and 6, noevia#2387) is the one models.ini parser, editor limit, revision and facts
+  (`get(model)`: options, defaults, field names): the front answers GET `/api/models/preset` and
+  checks its conditional writes with it (`model_maint::ini::Store::load`), and Core's preset store
+  reads through the same wasm ops, so neither asks the other for facts and a stale write cannot
+  look current. A missing file, an unusable one and a valid empty one stay three outcomes
+  (`model_sizing::ReadFault`).
 - `crates/project-edit-target`: noevia-core's project-edit-target.cjs `planEdit`: which stored
   file a project edit tool (`project_append_file`, `project_replace_text`) may change, the plain
   name the write path gets and the stored path it writes (the approval card's pinned target,

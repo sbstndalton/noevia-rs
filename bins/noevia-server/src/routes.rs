@@ -1381,6 +1381,7 @@ mod tests {
         }
         assert!(crate::FEATURES.contains(&"rust-model-downloads-read"));
         assert!(crate::FEATURES.contains(&"rust-preset-read"));
+        assert!(crate::FEATURES.contains(&"rust-preset-facts"));
         // All native model routes appear in the contract with exactly their owned methods.
         let rust: Vec<_> = ROUTES
             .iter()

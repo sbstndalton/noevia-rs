@@ -1686,6 +1686,7 @@ version = "0.1.0"
 dependencies = [
  "prompt-framing",
  "proptest",
+ "sha2",
 ]
 
 [[package]]

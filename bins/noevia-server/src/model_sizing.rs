@@ -291,36 +291,11 @@ impl Sizing {
 
 // ── models.ini (llamacpp-presets.cjs, read only) ─────────────────────────────────────────────
 
-/// llamacpp-presets.cjs `fields`: canonical names and aliases, in their order.
-const FIELDS: &[(&str, &[&str])] = &[
-    ("ctx-size", &["c", "LLAMA_ARG_CTX_SIZE"]),
-    ("parallel", &["np", "LLAMA_ARG_N_PARALLEL"]),
-    (
-        "n-gpu-layers",
-        &["ngl", "gpu-layers", "LLAMA_ARG_N_GPU_LAYERS"],
-    ),
-    ("cache-type-k", &["ctk", "LLAMA_ARG_CACHE_TYPE_K"]),
-    ("cache-type-v", &["ctv", "LLAMA_ARG_CACHE_TYPE_V"]),
-    ("flash-attn", &["fa", "LLAMA_ARG_FLASH_ATTN"]),
-    ("batch-size", &["b", "LLAMA_ARG_BATCH"]),
-    ("ubatch-size", &["ub", "LLAMA_ARG_UBATCH"]),
-    ("cache-ram", &["cram", "LLAMA_ARG_CACHE_RAM"]),
-    ("image-max-tokens", &["LLAMA_ARG_IMAGE_MAX_TOKENS"]),
-    ("spec-type", &["LLAMA_ARG_SPEC_TYPE"]),
-    ("spec-draft-n-max", &["LLAMA_ARG_SPEC_DRAFT_N_MAX"]),
-    ("spec-draft-p-min", &["LLAMA_ARG_SPEC_DRAFT_P_MIN"]),
-    ("temp", &[]),
-    ("top-p", &[]),
-    ("top-k", &["LLAMA_ARG_TOP_K"]),
-    ("min-p", &[]),
-    ("repeat-penalty", &[]),
-];
-
+/// llamacpp-presets.cjs `canonical(key)`: the field table is the `llamacpp-presets` crate's, the one
+/// the wasm module and the parse share.
 pub(crate) fn canonical(key: &str) -> Option<&'static str> {
-    FIELDS
-        .iter()
-        .find(|(k, aliases)| *k == key || aliases.contains(&key))
-        .map(|(k, _)| *k)
+    let units: Vec<u16> = key.encode_utf16().collect();
+    llamacpp_presets::canonical(&units).map(|f| f.name)
 }
 
 /// ECMAScript `\s`.
@@ -337,34 +312,6 @@ fn line_terminator(c: char) -> bool {
 fn trimmed_value(rest: &str) -> Option<&str> {
     let v = rest.trim_start_matches(js_space).trim_end_matches(js_space);
     (!v.contains(line_terminator)).then_some(v)
-}
-
-/// `/^\s*\[([^\]\r\n]+)\]\s*(?:[;#].*)?$/`: the section name.
-fn header_of(line: &str) -> Option<&str> {
-    let rest = line.trim_start_matches(js_space).strip_prefix('[')?;
-    let end = rest.find([']', '\r', '\n'])?;
-    if end == 0 || !rest[end..].starts_with(']') {
-        return None;
-    }
-    let name = &rest[..end];
-    let after = rest[end + 1..].trim_start_matches(js_space);
-    if after.is_empty() {
-        return Some(name);
-    }
-    let comment = after.strip_prefix([';', '#'])?;
-    (!comment.contains(line_terminator)).then_some(name)
-}
-
-/// `/^\s*([^=\s]+)\s*=\s*(.*?)\s*$/`: the key and the value.
-fn option_of(line: &str) -> Option<(&str, &str)> {
-    let rest = line.trim_start_matches(js_space);
-    let end = rest.find(|c: char| c == '=' || js_space(c))?;
-    if end == 0 {
-        return None;
-    }
-    let key = &rest[..end];
-    let after = rest[end..].trim_start_matches(js_space).strip_prefix('=')?;
-    Some((key, trimmed_value(after)?))
 }
 
 /// `/^\s*(model|mmproj|m)\s*=\s*(.*?)\s*$/`: the file kind and the value.
@@ -426,65 +373,92 @@ fn put(options: &mut Vec<(&'static str, String)>, key: &'static str, value: Stri
     }
 }
 
-/// llamacpp-presets.cjs `read()` and `parse()`.
-pub fn read_presets(file: &Path) -> Result<Presets, Thrown> {
-    let meta = std::fs::symlink_metadata(file).map_err(|e| Thrown::plain(e.to_string()))?;
+/// Why models.ini could not be read. A missing file, one that is not a usable file, and a valid
+/// file with nothing in it (`Ok` with no sections) are three different answers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReadFault {
+    /// Nothing at the path (ENOENT).
+    Missing(String),
+    /// The path or its content could not be read (permissions, I/O, a path through a file).
+    Unreadable(String),
+    /// The path is not a regular file, or is a symlink: 409.
+    NonRegular,
+    /// A section name twice: 409.
+    Duplicate,
+    /// Over the editor limit: 413.
+    Oversized,
+}
+
+impl ReadFault {
+    /// The error core's `read()` / `parse()` throws for it.
+    pub fn thrown(self) -> Thrown {
+        let (status, message) = match self {
+            ReadFault::Missing(m) | ReadFault::Unreadable(m) => (None, m),
+            ReadFault::NonRegular => (Some(409), "Preset path must be a regular file".to_owned()),
+            ReadFault::Duplicate => (
+                Some(409),
+                "Duplicate preset sections require operator repair".to_owned(),
+            ),
+            ReadFault::Oversized => (Some(413), "Preset file exceeds the editor limit".to_owned()),
+        };
+        Thrown { status, message }
+    }
+}
+
+fn io_fault(e: &std::io::Error) -> ReadFault {
+    if e.kind() == std::io::ErrorKind::NotFound {
+        ReadFault::Missing(e.to_string())
+    } else {
+        ReadFault::Unreadable(e.to_string())
+    }
+}
+
+/// llamacpp-presets.cjs `read()` and `parse()`, keeping the three read outcomes apart. The parse,
+/// the editor limit and the revision are the `llamacpp-presets` crate's, the one Node's wasm module
+/// runs too.
+pub fn load_presets(file: &Path) -> Result<Presets, ReadFault> {
+    let meta = std::fs::symlink_metadata(file).map_err(|e| io_fault(&e))?;
     if !meta.is_file() || meta.file_type().is_symlink() {
-        return Err(Thrown {
-            status: Some(409),
-            message: "Preset path must be a regular file".into(),
-        });
+        return Err(ReadFault::NonRegular);
     }
-    let bytes = std::fs::read(file).map_err(|e| Thrown::plain(e.to_string()))?;
-    let text = String::from_utf8_lossy(&bytes).into_owned();
-    if text.len() > 1024 * 1024 {
-        return Err(Thrown {
-            status: Some(413),
-            message: "Preset file exceeds the editor limit".into(),
-        });
-    }
-    let revision = hex(&text);
+    let bytes = std::fs::read(file).map_err(|e| io_fault(&e))?;
+    presets_of(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// The presets in `text` (UTF-8, lossy-decoded as `readFileSync(file, 'utf8')` does).
+pub fn presets_of(text: String) -> Result<Presets, ReadFault> {
+    use llamacpp_presets::read::{self, Fault};
+    let units: Vec<u16> = text.encode_utf16().collect();
+    let parsed = read::parse(&units).map_err(|f| match f {
+        Fault::Oversized => ReadFault::Oversized,
+        Fault::Duplicate => ReadFault::Duplicate,
+    })?;
     let lines: Vec<String> = text.split('\n').map(str::to_owned).collect();
-    let mut sections: Vec<Section> = Vec::new();
-    for (index, line) in lines.iter().enumerate() {
-        if let Some(name) = header_of(line) {
-            if sections.iter().any(|s| s.name == name) {
-                return Err(Thrown {
-                    status: Some(409),
-                    message: "Duplicate preset sections require operator repair".into(),
-                });
-            }
-            if let Some(previous) = sections.last_mut() {
-                previous.end = index;
-            }
-            sections.push(Section {
-                name: name.to_owned(),
-                start: index,
-                end: lines.len(),
-                options: Vec::new(),
-            });
-        } else if let Some(current) = sections.last_mut() {
-            if let Some((key, value)) = option_of(line) {
-                if let Some(key) = canonical(key) {
-                    put(&mut current.options, key, value.to_owned());
-                }
-            }
-        }
-    }
+    let sections = parsed
+        .sections
+        .into_iter()
+        .map(|s| Section {
+            name: String::from_utf16_lossy(&s.name),
+            start: s.start,
+            end: s.end,
+            options: s
+                .options
+                .into_iter()
+                .map(|(k, v)| (k, String::from_utf16_lossy(&v)))
+                .collect(),
+        })
+        .collect();
     Ok(Presets {
-        revision,
+        revision: parsed.revision,
         text,
         lines,
         sections,
     })
 }
 
-fn hex(text: &str) -> String {
-    use sha2::{Digest, Sha256};
-    Sha256::digest(text.as_bytes())
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+/// [`load_presets`] with core's thrown errors.
+pub fn read_presets(file: &Path) -> Result<Presets, Thrown> {
+    load_presets(file).map_err(ReadFault::thrown)
 }
 
 impl Presets {
@@ -505,7 +479,7 @@ impl Presets {
 
     /// `get(model).fields`: every editable field name, in `fields` order.
     pub fn field_names() -> Vec<&'static str> {
-        FIELDS.iter().map(|(k, _)| *k).collect()
+        llamacpp_presets::read::field_names().collect()
     }
 
     /// `{...profile.defaults, ...profile.options}` of `get(model)`.
@@ -1185,19 +1159,6 @@ mod tests {
 
     #[test]
     fn ini_lines_follow_the_javascript_regexes() {
-        assert_eq!(header_of("[a]"), Some("a"));
-        assert_eq!(header_of("  [a b] ; note"), Some("a b"));
-        assert_eq!(header_of("[a]\r"), Some("a"), "\\s takes the CR");
-        assert_eq!(header_of("[a] ;c\r"), None, ". does not take the CR");
-        assert_eq!(header_of("[]"), None);
-        assert_eq!(header_of("[a] x"), None);
-        assert_eq!(header_of("\u{feff}[a]"), Some("a"), "the BOM is \\s");
-        assert_eq!(option_of(" model   =  /m/x  "), Some(("model", "/m/x")));
-        assert_eq!(option_of("c=\u{2028}8192"), Some(("c", "8192")));
-        assert_eq!(option_of("c = 81\u{2028}92"), None);
-        assert_eq!(option_of("k ="), Some(("k", "")));
-        assert_eq!(option_of("= v"), None);
-        assert_eq!(option_of("a b = c"), None);
         assert_eq!(file_of("mmproj = /p"), Some(("mmproj", "/p")));
         assert_eq!(file_of("m=/q"), Some(("model", "/q")));
         assert_eq!(file_of("models = /q"), None);

@@ -13,6 +13,8 @@
 //! - [`micro_batch_exceeds`]: `Number(ubatch) > Number(batch)`, the micro-batch check, with
 //!   ECMAScript `Number()` string conversion ([`to_number`]).
 //! - [`model_name_ok`]: the model name pattern, `[\w./:-]` 1 to 200 times.
+//! - [`read`]: the models.ini parse, revision and facts (`read()`, `parse()`, `get()`), ops 5
+//!   and 6: the one parser the Rust front's reads and conditional writes and Node share.
 //!
 //! Deliberately stricter than the JS (the host then refuses the option; see the fixture table's
 //! `strict` rows): a cache-ram clamp whose hard maximum is not a safe non-negative integer, a
@@ -27,6 +29,8 @@
 
 use prompt_framing::json::{self, Value};
 use std::cmp::Ordering;
+
+pub mod read;
 
 /// The largest request [`call`] accepts (the op byte and the JSON).
 pub const MAX_INPUT_BYTES: usize = 4 * 1024 * 1024 + 1;
@@ -621,9 +625,96 @@ fn run(op: u8, args: &[Value], work: &mut Work) -> R<Vec<u8>> {
                 b"{\"ok\":false}"
             });
         }
+        5 | 6 => {
+            let (text, model) = match (op, args) {
+                (5, [t]) => (string(t)?, None),
+                (6, [t, m]) => (string(t)?, Some(string(m)?)),
+                _ => return Err(Refusal::Input),
+            };
+            work.charge(text.len().saturating_mul(4))?;
+            read_reply(&mut out, text, model);
+        }
         _ => return Err(Refusal::Input),
     }
     Ok(out)
+}
+
+fn push_options(out: &mut Vec<u8>, options: &[(&'static str, Vec<u16>)]) {
+    out.push(b'[');
+    for (i, (k, v)) in options.iter().enumerate() {
+        if i > 0 {
+            out.push(b',');
+        }
+        out.push(b'[');
+        json::push_ascii(out, k);
+        out.push(b',');
+        json::push_str(out, v);
+        out.push(b']');
+    }
+    out.push(b']');
+}
+
+/// Ops 5 and 6: the parse of `text` (sections), or with a `model` its facts.
+fn read_reply(out: &mut Vec<u8>, text: &[u16], model: Option<&[u16]>) {
+    let parsed = match read::parse(text) {
+        Ok(p) => p,
+        Err(fault) => {
+            out.extend_from_slice(b"{\"fault\":\"");
+            out.extend_from_slice(fault.word().as_bytes());
+            out.extend_from_slice(b"\"}");
+            return;
+        }
+    };
+    out.extend_from_slice(b"{\"revision\":\"");
+    out.extend_from_slice(parsed.revision.as_bytes());
+    out.push(b'"');
+    match model {
+        None => {
+            out.extend_from_slice(b",\"lines\":");
+            out.extend_from_slice(parsed.line_count.to_string().as_bytes());
+            out.extend_from_slice(b",\"sections\":[");
+            for (i, s) in parsed.sections.iter().enumerate() {
+                if i > 0 {
+                    out.push(b',');
+                }
+                out.extend_from_slice(b"{\"name\":");
+                json::push_str(out, &s.name);
+                out.extend_from_slice(
+                    format!(",\"start\":{},\"end\":{},\"options\":", s.start, s.end).as_bytes(),
+                );
+                push_options(out, &s.options);
+                out.extend_from_slice(b",\"assignments\":[");
+                for (j, (line, field)) in s.assignments.iter().enumerate() {
+                    if j > 0 {
+                        out.push(b',');
+                    }
+                    out.extend_from_slice(format!("[{line},").as_bytes());
+                    json::push_ascii(out, field);
+                    out.push(b']');
+                }
+                out.extend_from_slice(b"]}");
+            }
+            out.push(b']');
+        }
+        Some(model) => {
+            let facts = parsed.facts(model);
+            out.extend_from_slice(b",\"exists\":");
+            out.extend_from_slice(if facts.exists { b"true" } else { b"false" });
+            out.extend_from_slice(b",\"options\":");
+            push_options(out, facts.options);
+            out.extend_from_slice(b",\"defaults\":");
+            push_options(out, facts.defaults);
+            out.extend_from_slice(b",\"fields\":[");
+            for (i, name) in read::field_names().enumerate() {
+                if i > 0 {
+                    out.push(b',');
+                }
+                json::push_ascii(out, name);
+            }
+            out.push(b']');
+        }
+    }
+    out.push(b'}');
 }
 
 /// One request: `u8(op)` and a UTF-8 JSON array of arguments.
@@ -633,7 +724,11 @@ fn run(op: u8, args: &[Value], work: &mut Work) -> R<Vec<u8>> {
 /// - op 2 `[[[key, value|null]...]]` → `{"options":[[field|null, trimmed|null]...]}`
 ///   (canonicalOptions per entry; the host keeps the later of equal fields);
 /// - op 3 `[ubatch|null, batch|null]` → `{"exceeds":true|false|null}` (`null`: undecided);
-/// - op 4 `[model]` → `{"ok":bool}`.
+/// - op 4 `[model]` → `{"ok":bool}`;
+/// - op 5 `[text]` → `{"revision","lines","sections":[{"name","start","end","options":[[field,
+///   value]...],"assignments":[[line,field]...]}...]}` (`read::parse`), or `{"fault":"oversized"|"duplicate"}`;
+/// - op 6 `[text, model]` → `{"revision","exists","options","defaults","fields"}` (`get(model)`
+///   over the same parse), or the same fault;
 ///
 /// Status 0 and the reply, or status 1 and `{"error":"input"|"too_large"}`.
 pub fn call(input: &[u8]) -> (u32, Vec<u8>) {
@@ -745,6 +840,32 @@ mod tests {
         let mut input = vec![4u8];
         input.extend(br#"[7]"#);
         assert_eq!(call(&input).0, 1);
+    }
+
+    #[test]
+    fn read_ops() {
+        let text = "[*]\\nparallel=2\\n[m]\\nc=4096\\nmodel=/x.gguf\\n";
+        let parsed = reply(5, &format!(r#"["{text}"]"#));
+        assert!(parsed.starts_with(r#"{"revision":""#), "{parsed}");
+        assert!(parsed.contains(r#""lines":6,"sections":[{"name":"*","start":0,"end":2,"options":[["parallel","2"]],"assignments":[[1,"parallel"]]},{"name":"m","start":2,"end":6,"options":[["ctx-size","4096"]],"assignments":[[3,"ctx-size"]]}]"#), "{parsed}");
+        let facts = reply(6, &format!(r#"["{text}","m"]"#));
+        assert!(facts.contains(r#","exists":true,"options":[["ctx-size","4096"]],"defaults":[["parallel","2"]],"fields":["ctx-size","parallel","n-gpu-layers""#), "{facts}");
+        assert!(facts.ends_with(r#""repeat-penalty"]}"#), "{facts}");
+        // The same revision from both ops.
+        let rev = |s: &str| s[13..77].to_owned();
+        assert_eq!(rev(&parsed), rev(&facts));
+        assert_eq!(
+            reply(6, r#"["","m"]"#).replace(&rev(&reply(6, r#"["","m"]"#)), "R"),
+            r#"{"revision":"R","exists":false,"options":[],"defaults":[],"fields":["ctx-size","parallel","n-gpu-layers","cache-type-k","cache-type-v","flash-attn","batch-size","ubatch-size","cache-ram","image-max-tokens","spec-type","spec-draft-n-max","spec-draft-p-min","temp","top-p","top-k","min-p","repeat-penalty"]}"#
+        );
+        assert_eq!(reply(5, r#"["[a]\n[a]"]"#), r#"{"fault":"duplicate"}"#);
+        let big = format!(r#"["{}"]"#, "x".repeat(read::MAX_TEXT_BYTES + 1));
+        assert_eq!(reply(5, &big), r#"{"fault":"oversized"}"#);
+        assert_eq!(call(&[5, b'[', b']']).0, 1);
+        assert_eq!(call(b"\x066").0, 1);
+        let mut wrong = vec![6u8];
+        wrong.extend(br#"[1,"m"]"#);
+        assert_eq!(call(&wrong).0, 1);
     }
 
     #[test]

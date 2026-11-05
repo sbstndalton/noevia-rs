@@ -191,9 +191,10 @@
 //!      with status 1 and `{"error":"input"|"too_large"}` (toolboxes-permitted crate).
 //!    - `llamacpp_presets()`: input `u8(op)` and UTF-8 JSON (at most
 //!      `llamacpp_presets::MAX_INPUT_BYTES`): llamacpp-presets.cjs prepare's option check with the
-//!      cache-ram clamp (1), canonicalOptions (2), the micro-batch check (3) and the model name
-//!      check (4). Refuses with status 1 and `{"error":"input"|"too_large"}` (llamacpp-presets
-//!      crate).
+//!      cache-ram clamp (1), canonicalOptions (2), the micro-batch check (3), the model name
+//!      check (4), and the models.ini parse (5) and facts (6): the one reader the Rust front's
+//!      GET `/api/models/preset` and its conditional writes share with Core (noevia#2387).
+//!      Refuses with status 1 and `{"error":"input"|"too_large"}` (llamacpp-presets crate).
 //!    - `project_edit_target()`: input `u8(1)` and UTF-8 JSON (at most
 //!      `project_edit_target::MAX_INPUT_BYTES`): project-edit-target.cjs planEdit for a resolved
 //!      file, reply `{"plan":{"write","target","adopt"}}` or `{"refused":"<code>"}`. Refuses with

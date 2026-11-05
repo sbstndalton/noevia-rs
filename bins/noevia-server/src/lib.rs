@@ -465,6 +465,11 @@ pub const FEATURES: &[&str] = &[
     "rust-autotune-clear",
     "rust-autotune-read",
     "rust-preset-read",
+    // The preset facts (snapshot, revision, defaults, field semantics) are this build's own parse of
+    // models.ini, the one the conditional writes check; it never asks Node (preset_read_routes.rs).
+    // Core parses through the same wasm op and has no facts bridge; a Core that still serves
+    // /internal/preset-read/facts is not its pair.
+    "rust-preset-facts",
     "rust-idle-unload-read",
     "rust-model-assignments",
     "rust-model-downloads-read",

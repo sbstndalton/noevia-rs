@@ -16,7 +16,7 @@
 //! remaining writers (the preset editor, the folder sync, auto-tune) write through the model-loader
 //! too, whose compare-and-swap is the arbiter between them.
 
-use crate::model_sizing::{read_presets, Presets, Thrown};
+use crate::model_sizing::{load_presets, read_presets, Presets, ReadFault, Thrown};
 use reqwest::header::{HeaderName, HeaderValue};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -199,9 +199,16 @@ impl Store {
         &self.file
     }
 
-    /// Blocking: `read()`.
+    /// Blocking: `read()` with the read outcomes kept apart (missing, unusable, valid and empty).
+    /// The one reader: the commit's revision check, the snapshots and GET /api/models/preset all
+    /// use it, so a revision that reads current to one is current to all.
+    pub fn load(&self) -> Result<Presets, ReadFault> {
+        load_presets(&self.file)
+    }
+
+    /// Blocking: `read()` with core's thrown errors.
     pub fn read(&self) -> Result<Presets, Thrown> {
-        read_presets(&self.file)
+        self.load().map_err(ReadFault::thrown)
     }
 
     /// Blocking: `snapshot()`, the text and revision, or the read error.
