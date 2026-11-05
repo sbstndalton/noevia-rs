@@ -8,9 +8,12 @@ use crate::{
 };
 use js_json::JValue;
 use std::{
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+pub trait Permit: Send + Sync {
+    fn valid(&self) -> bool;
+}
 pub trait Clock: Send + Sync {
     fn now(&self) -> i64;
 }
@@ -28,6 +31,7 @@ pub struct JournalContext {
     guard: ExecutionGuard,
     clock: Arc<dyn Clock>,
     timeout: Duration,
+    permit: Mutex<Option<Arc<dyn Permit>>>,
 }
 fn unavailable() -> RpcError {
     RpcError {
@@ -64,7 +68,16 @@ impl JournalContext {
             guard,
             clock,
             timeout,
+            permit: Mutex::new(None),
         })
+    }
+    pub(crate) fn bind_permit(&self, permit: Arc<dyn Permit>) -> Result<(), RpcError> {
+        let mut held = self.permit.lock().map_err(|_| unavailable())?;
+        if held.is_some() || !permit.valid() {
+            return Err(unavailable());
+        }
+        *held = Some(permit);
+        Ok(())
     }
     pub(crate) fn account(&self) -> &Arc<Account> {
         &self.account
@@ -87,6 +100,16 @@ impl JournalContext {
 impl Context for JournalContext {
     fn active(&self) -> Result<(), RpcError> {
         self.account.fence().map_err(|_| unavailable())?;
+        if self
+            .permit
+            .lock()
+            .map_err(|_| unavailable())?
+            .as_ref()
+            .is_some_and(|permit| !permit.valid())
+        {
+            let _ = self.account.control.cancel(self.scope(), self.task());
+            return Err(unavailable());
+        }
         if *self.guard.execution.cancel.borrow() {
             return Err(RpcError {
                 code: -32603,

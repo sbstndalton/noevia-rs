@@ -17,6 +17,9 @@ pub trait Handlers: Send + Sync {
     fn request(self: Arc<Self>, method: &str, params: JValue) -> HandlerFuture<'static>;
     fn update(&self, update: JValue);
     fn end(&self) {}
+    fn authorized(&self) -> bool {
+        true
+    }
     fn halted(&self) -> bool {
         false
     }
@@ -261,6 +264,10 @@ impl Client {
         result
     }
     async fn request_inner(&mut self, method: &str, params: JValue) -> Result<JValue, Error> {
+        if !self.handlers.authorized() {
+            self.was_cancelled = true;
+            return Err(Error::Cancelled);
+        }
         let id = self.next;
         self.next = id.checked_add(1).ok_or(Error::Protocol)?;
         self.send(obj(vec![
@@ -276,6 +283,7 @@ impl Client {
                 reply = self.callbacks.join_next(), if !self.callbacks.is_empty() => {
                     if let Some(reply) = reply {
                         let (id, result) = reply.map_err(|_| Error::Protocol)?;
+                        if !self.handlers.authorized(){self.was_cancelled=true;return Err(Error::Cancelled);}
                         self.answer(id, true, result).await?;
                         if self.callbacks.is_empty()&&self.handlers.halted(){self.was_cancelled=true;return Err(Error::Cancelled);}
                     }

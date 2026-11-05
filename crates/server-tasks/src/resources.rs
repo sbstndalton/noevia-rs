@@ -30,6 +30,7 @@ pub struct Resources {
     account: Arc<Account>,
     egress: Option<Arc<dyn Egress>>,
     grant: Option<Grant>,
+    issuance_started: bool,
     revoked: Option<egress::Cleanup>,
     network: Option<JValue>,
     reported: bool,
@@ -61,6 +62,20 @@ impl Resources {
         resume: bool,
         cancelled: &AtomicBool,
     ) -> Result<Self, Error> {
+        let mut handle = Self::claim_workspace(context, request, egress, resume, cancelled)?;
+        if let Err(error) = handle.issue_grant(request).await {
+            handle.release().await;
+            return Err(error);
+        }
+        Ok(handle)
+    }
+    pub fn claim_workspace(
+        context: Arc<JournalContext>,
+        request: &Request,
+        egress: Option<Arc<dyn Egress>>,
+        resume: bool,
+        cancelled: &AtomicBool,
+    ) -> Result<Self, Error> {
         context.active().map_err(|_| Error::Cancelled)?;
         let account = context.account().clone();
         let runtime = tokio::runtime::Handle::try_current().map_err(|_| Error::Unavailable)?;
@@ -82,12 +97,13 @@ impl Resources {
             )
         }
         .map_err(Error::Workspace)?;
-        let mut handle = Self {
+        let handle = Self {
             workspace,
             context,
             account,
             egress,
             grant: None,
+            issuance_started: false,
             revoked: None,
             network: None,
             reported: false,
@@ -96,34 +112,34 @@ impl Resources {
             armed: true,
             runtime,
         };
+        Ok(handle)
+    }
+    pub async fn issue_grant(&mut self, request: &Request) -> Result<(), Error> {
+        if self.issuance_started || self.released.is_some() {
+            return Err(Error::Unavailable);
+        }
+        self.issuance_started = true;
         let wants_network = request
             .capabilities
             .iter()
             .any(|c| c == "network" || c == "install_dependency")
             && !request.domains.is_empty();
         if wants_network {
-            if let Some(issuer) = handle.egress.clone() {
-                let mut cancel = handle.context.cancellation();
+            if let Some(issuer) = self.egress.clone() {
+                let mut cancel = self.context.cancellation();
                 let already_cancelled = *cancel.borrow();
                 let result = if already_cancelled {
                     Err(Error::Cancelled)
                 } else {
-                    tokio::select! {biased;_ = cancel.changed()=>Err(Error::Cancelled),result=issuer.grant(handle.context.task(),&request.domains)=>result.map_err(Error::Grant)}
+                    tokio::select! {biased;_ = cancel.changed()=>Err(Error::Cancelled),result=issuer.grant(self.context.task(),&request.domains)=>result.map_err(Error::Grant)}
                 };
-                match result {
-                    Ok(grant) => handle.grant = Some(grant),
-                    Err(error) => {
-                        handle.release().await;
-                        return Err(error);
-                    }
-                }
+                self.grant = Some(result?);
             }
         }
-        if handle.context.active().is_err() {
-            handle.release().await;
+        if self.context.active().is_err() {
             return Err(Error::Cancelled);
         }
-        Ok(handle)
+        Ok(())
     }
     pub fn grant(&self) -> Option<&Grant> {
         self.grant.as_ref()
@@ -225,6 +241,7 @@ impl Drop for Resources {
             account: self.account.clone(),
             egress: self.egress.clone(),
             grant: self.grant.take(),
+            issuance_started: self.issuance_started,
             revoked: self.revoked.take(),
             network: self.network.take(),
             reported: self.reported,

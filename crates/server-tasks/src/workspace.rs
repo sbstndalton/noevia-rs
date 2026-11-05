@@ -776,7 +776,7 @@ fn integer(value: &JValue) -> Option<u32> {
     }
     None
 }
-fn error_text(error: &Error) -> String {
+pub(crate) fn error_text(error: &Error) -> String {
     match error {
         Error::Refused { message, .. } | Error::Coded { message, .. } => message.clone(),
         Error::Io(e) => e.to_string(),

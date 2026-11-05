@@ -234,6 +234,7 @@ impl Session {
                         {
                             state.blanket.push(action.into());
                         }
+                        self.context.active()?;
                         state.allowed += 1;
                         return Ok(policy::pick(&options, "allow_once"));
                     }
@@ -245,6 +246,7 @@ impl Session {
         }
     }
     fn prepare_permission(&self, params: &JValue) -> Result<Prepared, RpcError> {
+        self.context.active()?;
         let stated = match params.get("toolCall") {
             JValue::Undefined => object(vec![]),
             v => v.clone(),
@@ -737,6 +739,9 @@ impl Handlers for Session {
     }
     fn end(&self) {
         Session::end(self);
+    }
+    fn authorized(&self) -> bool {
+        self.context.active().is_ok()
     }
     fn drain_on_end(&self) -> bool {
         true
