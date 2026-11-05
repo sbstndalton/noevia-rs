@@ -78,6 +78,7 @@ async fn rig(spec: Value, prune: bool, delay: bool) -> Rig {
         if r.path=="/api/v1/sections" { return at("sections",&l_spec,reply("200 OK",&json!({"revision":"synthetic-revision","sections":l_spec["sections"]}).to_string())); }
         if r.path.starts_with("/api/v1/sections/")&&r.method=="DELETE" {
             if l_spec["oldLoader"]==true {return reply("404 Not Found","{}");}
+            if l_spec["deleteUnavailable"]==true {return reply("503 Unavailable","{}");}
             assert!(r.path.ends_with("?baseRevision=synthetic-revision"));
             let mut result=reply("200 OK","{}");if delay{result.0=Duration::from_millis(250);}return at("delete",&l_spec,result);
         }
@@ -356,7 +357,7 @@ async fn disconnect_at_external_awaits_finishes_and_releases_the_same_job() {
         ("facts", "owner", "/internal/models/facts"),
         ("acquire", "owner", LEASE),
         ("sections", "loader", "/api/v1/sections"),
-        ("delete", "loader", "/api/v1/sections/gone/missing?"),
+        ("delete", "loader", "/api/v1/sections/gone/missing-fenced?"),
         ("reload", "engine", "/models?reload=1"),
         ("removed", "owner", "/internal/model-writes/effects"),
     ] {
@@ -467,7 +468,9 @@ async fn concurrent_prunes_never_execute_deletes_together() {
     let r = rig(spec, true, true).await;
     let addr = r.f.addr;
     let first = tokio::spawn(async move { raw(addr, "POST", PRUNE, ADMIN, CSRF, b"{}").await });
-    r.loader.wait_for("/api/v1/sections/gone/missing?", 1).await;
+    r.loader
+        .wait_for("/api/v1/sections/gone/missing-fenced?", 1)
+        .await;
     let (status, body) = raw(addr, "POST", PRUNE, ADMIN, CSRF, b"{}").await;
     assert_eq!(status, 409, "{body}");
     assert_eq!(body["code"], "maintenance_held");
@@ -572,5 +575,28 @@ async fn old_loader_never_falls_back_to_unconditional_deletion() {
         .filter(|r| r.method == "DELETE")
         .collect::<Vec<_>>();
     assert_eq!(deletes.len(), 1);
-    assert!(deletes[0].path.contains("/missing?"));
+    assert!(deletes[0].path.contains("/missing-fenced?"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn refused_authority_never_reports_uncertain_deletion_as_kept() {
+    let r = rig(json!({"deleteUnavailable":true,"delayStage":"delete","installed":[{"name":"gone","missingFile":true},{"name":"ok"}],"sections":[{"name":"gone","hasFile":false}]}), true, false).await;
+    let addr = r.f.addr;
+    let request = tokio::spawn(async move { raw(addr, "POST", PRUNE, ADMIN, CSRF, b"{}").await });
+    r.loader.wait_for("/api/v1/sections/gone/", 1).await;
+    assert_eq!(
+        r.owner.count(&format!("{LEASE}/")),
+        0,
+        "exclusion retained while authority pending"
+    );
+    r.resume.as_ref().unwrap().add_permits(1);
+    let (status, body) = request.await.unwrap();
+    assert_eq!(status, 503, "{body}");
+    assert!(body.get("kept").is_none());
+    assert_eq!(r.engine.count("/models?reload=1"), 0);
+    assert!(!r
+        .owner
+        .seen()
+        .iter()
+        .any(|c| c.path == "/internal/model-writes/effects" && j(&c.body)["op"] == "removed"));
 }

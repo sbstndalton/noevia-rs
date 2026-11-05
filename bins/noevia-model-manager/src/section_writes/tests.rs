@@ -426,3 +426,69 @@ fn prune_cas_retains_restored_file_and_roles() {
         "{\"chat\":\"gone\"}"
     );
 }
+
+// A request deadline cannot cancel an admitted blocking authority job. Exercise the
+// actual reader/writer after the authority observes absence, before it may commit.
+#[tokio::test]
+async fn prune_retains_after_timeout_and_external_restore_after_authority_scan() {
+    use crate::sections::Read;
+    struct BarrierReader {
+        files: crate::sections::Files,
+        observed: std::sync::mpsc::SyncSender<()>,
+        resume: std::sync::Mutex<std::sync::mpsc::Receiver<()>>,
+    }
+    impl Read for BarrierReader {
+        fn response(
+            &self,
+            name: Option<&str>,
+            fresh: bool,
+        ) -> Result<Vec<u8>, crate::sections::Error> {
+            let snapshot = self.files.response(name, fresh)?;
+            self.observed.send(()).unwrap();
+            self.resume.lock().unwrap().recv().unwrap();
+            Ok(snapshot)
+        }
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let ini = dir.path().join("models.ini");
+    let roles = dir.path().join("models.roles.json");
+    let original = "[gone]\nmodel = gone.gguf\n";
+    std::fs::write(&ini, original).unwrap();
+    std::fs::write(&roles, "{\"chat\":\"gone\"}").unwrap();
+    let files = crate::sections::Files::new(dir.path(), &ini).unwrap();
+    let scan: serde_json::Value =
+        serde_json::from_slice(&files.response(None, false).unwrap()).unwrap();
+    assert_eq!(scan["sections"][0]["hasFile"], false);
+    let revision = scan["revision"].as_str().unwrap().to_owned();
+    let (observed, seen) = std::sync::mpsc::sync_channel(1);
+    let (resume, resumed) = std::sync::mpsc::sync_channel(1);
+    let reader = BarrierReader {
+        files,
+        observed,
+        resume: std::sync::Mutex::new(resumed),
+    };
+    let writes = SectionWrites::new(&ini, (0, 0));
+    let mut job =
+        tokio::task::spawn_blocking(move || writes.delete_missing("gone", &revision, &reader));
+    seen.recv_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(10), &mut job)
+            .await
+            .is_err()
+    );
+    // Restore only after the real authority's snapshot, while its response is stalled.
+    std::fs::write(dir.path().join("gone.gguf"), b"synthetic restore").unwrap();
+    resume.send(()).unwrap();
+    assert!(matches!(job.await.unwrap(), Outcome::Json(503, _)));
+    assert_eq!(std::fs::read_to_string(&ini).unwrap(), original);
+    assert_eq!(
+        std::fs::read_to_string(roles).unwrap(),
+        "{\"chat\":\"gone\"}"
+    );
+    assert_eq!(
+        std::fs::read_dir(dir.path()).unwrap().count(),
+        3,
+        "no backups or temporary mutations"
+    );
+}

@@ -249,7 +249,7 @@ fn section_path(name: &str, revision: &JValue) -> Option<String> {
     } else {
         String::new()
     };
-    Some(format!("/api/v1/sections/{name}/missing{query}"))
+    Some(format!("/api/v1/sections/{name}/missing-fenced{query}"))
 }
 async fn prune(app: Arc<App>, actor: String) -> Response<Body> {
     let loader = &app.config.model_manager_scan;
@@ -319,10 +319,24 @@ async fn prune(app: Arc<App>, actor: String) -> Response<Body> {
                 .map(|s| s.get("revision"))
                 .unwrap_or(&JValue::Undefined);
             match section_path(&name, revision) {
-                Some(path) => loader
+                // A new path prevents older authorities from admitting an unfenced
+                // delete. This authority refuses writes until publication is fenced;
+                // its 503 (or a transport failure) is never a successful "kept" result.
+                Some(path) => match loader
                     .write_call(reqwest::Method::DELETE, &path, None)
                     .await
-                    .is_some_and(|(s, _)| s.is_success()),
+                {
+                    Some((status, _)) if status.is_success() => true,
+                    Some((status, _)) if status.is_server_error() => {
+                        lost = true;
+                        break;
+                    }
+                    None => {
+                        lost = true;
+                        break;
+                    }
+                    _ => false,
+                },
                 None => false,
             }
         } else {
@@ -445,11 +459,11 @@ mod tests {
 
         assert_eq!(
             section_path("a!(x)~", &JValue::Num(3.0)).as_deref(),
-            Some("/api/v1/sections/a!(x)~/missing?baseRevision=3")
+            Some("/api/v1/sections/a!(x)~/missing-fenced?baseRevision=3")
         );
         assert_eq!(
             section_path("a", &JValue::Bool(false)).as_deref(),
-            Some("/api/v1/sections/a/missing")
+            Some("/api/v1/sections/a/missing-fenced")
         );
         assert!(section_path("a", &JValue::obj([("toString", JValue::Num(1.0))])).is_none());
         let lone = wtf16::lone_char(0xD800)

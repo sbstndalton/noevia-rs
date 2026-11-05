@@ -694,7 +694,9 @@ pub fn section_write_route(method: &Method, path: &str) -> Option<SectionWrite> 
     match (method, tail) {
         (&Method::PUT, None) => Some(SectionWrite::Save(name)),
         (&Method::DELETE, None) => Some(SectionWrite::Delete(name)),
-        (&Method::DELETE, Some("missing")) => Some(SectionWrite::DeleteMissing(name)),
+        (&Method::DELETE, Some("missing" | "missing-fenced")) => {
+            Some(SectionWrite::DeleteMissing(name))
+        }
         (&Method::POST, Some("rename")) => Some(SectionWrite::Rename(name)),
         (&Method::POST, Some("safe-defaults")) => Some(SectionWrite::SafeDefaults(name)),
         _ => None,

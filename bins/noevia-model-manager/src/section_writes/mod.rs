@@ -838,9 +838,10 @@ impl SectionWrites {
         }
     }
 
-    /// Automatic prune only: repeat the authoritative file scan inside the writer CAS.
-    /// The caller owns the writer lock throughout this synchronous check and commit.
-    /// Unknown scans, restored files and concurrent INI changes retain the preset and roles.
+    /// Automatic prune only: validate the snapshot, then fail closed. The INI writer
+    /// lock and download reservation cannot fence external filesystem restoration,
+    /// nor can a disconnected HTTP client cancel an admitted blocking write. Until
+    /// those boundaries are enforceable, this operation must have no write phase.
     pub fn delete_missing(
         &self,
         name: &str,
@@ -866,7 +867,7 @@ impl SectionWrites {
         if !absent {
             return detail(409, "section file absence could not be confirmed");
         }
-        self.delete(name, base)
+        detail(503, "automatic pruning requires fenced model publication")
     }
 
     /// `DELETE /api/v1/sections/{name}?baseRevision=` (the caller holds the lock).
