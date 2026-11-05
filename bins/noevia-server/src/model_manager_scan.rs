@@ -54,11 +54,38 @@ impl Loader {
             .await
     }
 
+    pub(crate) async fn write_call(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<String>,
+    ) -> Option<(StatusCode, Option<JValue>)> {
+        let seconds = if path == "/api/v1/idle-unload" {
+            30
+        } else {
+            15
+        };
+        self.call_bounded(method, path, "", Duration::from_secs(seconds), body)
+            .await
+    }
+
     async fn get_bounded(
         &self,
         path: &str,
         query: &str,
         timeout: Duration,
+    ) -> Option<(StatusCode, Option<JValue>)> {
+        self.call_bounded(reqwest::Method::GET, path, query, timeout, None)
+            .await
+    }
+
+    async fn call_bounded(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        query: &str,
+        timeout: Duration,
+        body: Option<String>,
     ) -> Option<(StatusCode, Option<JValue>)> {
         let base = self.base.as_ref()?;
         let endpoint = if query.is_empty() {
@@ -73,13 +100,16 @@ impl Loader {
         }
         let mut request = self
             .client
-            .get(url)
+            .request(method, url)
             .header(header::CONTENT_TYPE, "application/json")
             .timeout(timeout);
         if let Some(token) = &self.token {
             let mut value = HeaderValue::from_str(token).ok()?;
             value.set_sensitive(true);
             request = request.header("x-model-loader-token", value);
+        }
+        if let Some(body) = body {
+            request = request.body(body);
         }
         let mut res = request.send().await.ok()?;
         let status = res.status();

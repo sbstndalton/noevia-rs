@@ -1,0 +1,977 @@
+{
+  "idle": [
+    {
+      "spec": {
+        "name": "invalid-0",
+        "body": {}
+      },
+      "status": 400,
+      "body": {
+        "error": "Choose Never or a time from 5 minutes to 24 hours.",
+        "errorId": "idleUnloadInvalid",
+        "minSeconds": 300,
+        "maxSeconds": 86400
+      },
+      "calls": []
+    },
+    {
+      "spec": {
+        "name": "invalid-1",
+        "body": null
+      },
+      "status": 400,
+      "body": {
+        "error": "Choose Never or a time from 5 minutes to 24 hours.",
+        "errorId": "idleUnloadInvalid",
+        "minSeconds": 300,
+        "maxSeconds": 86400
+      },
+      "calls": []
+    },
+    {
+      "spec": {
+        "name": "invalid-2",
+        "body": []
+      },
+      "status": 400,
+      "body": {
+        "error": "Choose Never or a time from 5 minutes to 24 hours.",
+        "errorId": "idleUnloadInvalid",
+        "minSeconds": 300,
+        "maxSeconds": 86400
+      },
+      "calls": []
+    },
+    {
+      "spec": {
+        "name": "invalid-3",
+        "body": {
+          "seconds": true
+        }
+      },
+      "status": 400,
+      "body": {
+        "error": "Choose Never or a time from 5 minutes to 24 hours.",
+        "errorId": "idleUnloadInvalid",
+        "minSeconds": 300,
+        "maxSeconds": 86400
+      },
+      "calls": []
+    },
+    {
+      "spec": {
+        "name": "invalid-4",
+        "body": {
+          "seconds": "300"
+        }
+      },
+      "status": 400,
+      "body": {
+        "error": "Choose Never or a time from 5 minutes to 24 hours.",
+        "errorId": "idleUnloadInvalid",
+        "minSeconds": 300,
+        "maxSeconds": 86400
+      },
+      "calls": []
+    },
+    {
+      "spec": {
+        "name": "invalid-5",
+        "body": {
+          "seconds": 299
+        }
+      },
+      "status": 400,
+      "body": {
+        "error": "Choose Never or a time from 5 minutes to 24 hours.",
+        "errorId": "idleUnloadInvalid",
+        "minSeconds": 300,
+        "maxSeconds": 86400
+      },
+      "calls": []
+    },
+    {
+      "spec": {
+        "name": "invalid-6",
+        "body": {
+          "seconds": 86401
+        }
+      },
+      "status": 400,
+      "body": {
+        "error": "Choose Never or a time from 5 minutes to 24 hours.",
+        "errorId": "idleUnloadInvalid",
+        "minSeconds": 300,
+        "maxSeconds": 86400
+      },
+      "calls": []
+    },
+    {
+      "spec": {
+        "name": "invalid-7",
+        "body": {
+          "seconds": 1.5
+        }
+      },
+      "status": 400,
+      "body": {
+        "error": "Choose Never or a time from 5 minutes to 24 hours.",
+        "errorId": "idleUnloadInvalid",
+        "minSeconds": 300,
+        "maxSeconds": 86400
+      },
+      "calls": []
+    },
+    {
+      "spec": {
+        "name": "valid-0",
+        "body": {
+          "seconds": 0
+        }
+      },
+      "status": 200,
+      "body": {
+        "seconds": 0,
+        "source": "setting",
+        "fallbackSeconds": 1800,
+        "fallbackSource": "default",
+        "defaultSeconds": 1800,
+        "minSeconds": 300,
+        "maxSeconds": 86400,
+        "apply": {
+          "state": "applied"
+        },
+        "applied": true
+      },
+      "calls": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "spec": {
+        "name": "valid-300",
+        "body": {
+          "seconds": 300
+        }
+      },
+      "status": 200,
+      "body": {
+        "seconds": 300,
+        "source": "setting",
+        "fallbackSeconds": 1800,
+        "fallbackSource": "default",
+        "defaultSeconds": 1800,
+        "minSeconds": 300,
+        "maxSeconds": 86400,
+        "apply": {
+          "state": "applied"
+        },
+        "applied": true
+      },
+      "calls": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "spec": {
+        "name": "valid-86400",
+        "body": {
+          "seconds": 86400
+        }
+      },
+      "status": 200,
+      "body": {
+        "seconds": 86400,
+        "source": "setting",
+        "fallbackSeconds": 1800,
+        "fallbackSource": "default",
+        "defaultSeconds": 1800,
+        "minSeconds": 300,
+        "maxSeconds": 86400,
+        "apply": {
+          "state": "applied"
+        },
+        "applied": true
+      },
+      "calls": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "spec": {
+        "name": "valid-null",
+        "body": {
+          "seconds": null
+        }
+      },
+      "status": 200,
+      "body": {
+        "seconds": 1800,
+        "source": "default",
+        "fallbackSeconds": 1800,
+        "fallbackSource": "default",
+        "defaultSeconds": 1800,
+        "minSeconds": 300,
+        "maxSeconds": 86400,
+        "apply": {
+          "state": "applied"
+        },
+        "applied": true
+      },
+      "calls": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "spec": {
+        "name": "loader-404",
+        "body": {
+          "seconds": 900
+        },
+        "status": 404
+      },
+      "status": 404,
+      "body": {
+        "error": "This model manager cannot change the idle unload time yet.",
+        "errorId": "idleUnloadUnavailable"
+      },
+      "calls": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "spec": {
+        "name": "loader-405",
+        "body": {
+          "seconds": 900
+        },
+        "status": 405
+      },
+      "status": 404,
+      "body": {
+        "error": "This model manager cannot change the idle unload time yet.",
+        "errorId": "idleUnloadUnavailable"
+      },
+      "calls": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "spec": {
+        "name": "loader-400",
+        "body": {
+          "seconds": 900
+        },
+        "status": 400
+      },
+      "status": 400,
+      "body": {
+        "error": "Choose Never or a time from 5 minutes to 24 hours.",
+        "errorId": "idleUnloadInvalid"
+      },
+      "calls": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "spec": {
+        "name": "loader-503",
+        "body": {
+          "seconds": 900
+        },
+        "status": 503
+      },
+      "status": 503,
+      "body": {
+        "error": "The model manager has no place to keep this setting.",
+        "errorId": "idleUnloadUnavailable"
+      },
+      "calls": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "spec": {
+        "name": "loader-500",
+        "body": {
+          "seconds": 900
+        },
+        "status": 500
+      },
+      "status": 502,
+      "body": {
+        "error": "The model manager did not answer. Try again in a moment.",
+        "errorId": "idleUnloadEngine"
+      },
+      "calls": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "spec": {
+        "name": "unreachable",
+        "body": {
+          "seconds": 900
+        },
+        "status": 0
+      },
+      "status": 502,
+      "body": {
+        "error": "The model manager did not answer. Try again in a moment.",
+        "errorId": "idleUnloadEngine"
+      },
+      "calls": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "spec": {
+        "name": "unexpected",
+        "body": {
+          "seconds": 900
+        },
+        "unexpected": true
+      },
+      "status": 502,
+      "body": {
+        "error": "The model manager gave an unexpected answer.",
+        "errorId": "idleUnloadEngine"
+      },
+      "calls": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "spec": {
+        "name": "busy",
+        "body": {
+          "seconds": 900
+        },
+        "busy": true
+      },
+      "status": 409,
+      "body": {
+        "error": "Models are busy, so the idle unload time was not changed. Try again shortly.",
+        "errorId": "idleUnloadBusy"
+      },
+      "calls": [
+        "GET"
+      ]
+    },
+    {
+      "spec": {
+        "name": "preset-failed",
+        "body": {
+          "seconds": 900
+        },
+        "preset": "failed"
+      },
+      "status": 200,
+      "body": {
+        "seconds": 900,
+        "source": "setting",
+        "fallbackSeconds": 1800,
+        "fallbackSource": "default",
+        "defaultSeconds": 1800,
+        "minSeconds": 300,
+        "maxSeconds": 86400,
+        "apply": {
+          "state": "failed"
+        },
+        "applied": false
+      },
+      "calls": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "spec": {
+        "name": "pending",
+        "body": {
+          "seconds": 900
+        },
+        "pending": true
+      },
+      "status": 200,
+      "body": {
+        "seconds": 900,
+        "source": "setting",
+        "fallbackSeconds": 1800,
+        "fallbackSource": "default",
+        "defaultSeconds": 1800,
+        "minSeconds": 300,
+        "maxSeconds": 86400,
+        "apply": {
+          "state": "pending",
+          "loaded": [
+            "active"
+          ]
+        },
+        "applied": false
+      },
+      "calls": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "spec": {
+        "name": "applied-mismatch",
+        "body": {
+          "seconds": 900
+        },
+        "mismatch": true
+      },
+      "status": 200,
+      "body": {
+        "seconds": 900,
+        "source": "setting",
+        "fallbackSeconds": 1800,
+        "fallbackSource": "default",
+        "defaultSeconds": 1800,
+        "minSeconds": 300,
+        "maxSeconds": 86400,
+        "apply": {
+          "state": "applied"
+        },
+        "applied": false
+      },
+      "calls": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "spec": {
+        "name": "ignored-deep",
+        "rawBody": "{\"seconds\":900,\"ignored\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}"
+      },
+      "status": 200,
+      "body": {
+        "seconds": 900,
+        "source": "setting",
+        "fallbackSeconds": 1800,
+        "fallbackSource": "default",
+        "defaultSeconds": 1800,
+        "minSeconds": 300,
+        "maxSeconds": 86400,
+        "apply": {
+          "state": "applied"
+        },
+        "applied": true
+      },
+      "calls": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "spec": {
+        "name": "ignored-overflow",
+        "rawBody": "{\"seconds\":900,\"ignored\":1e400}"
+      },
+      "status": 200,
+      "body": {
+        "seconds": 900,
+        "source": "setting",
+        "fallbackSeconds": 1800,
+        "fallbackSource": "default",
+        "defaultSeconds": 1800,
+        "minSeconds": 300,
+        "maxSeconds": 86400,
+        "apply": {
+          "state": "applied"
+        },
+        "applied": true
+      },
+      "calls": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "spec": {
+        "name": "ignored-surrogate",
+        "rawBody": "{\"seconds\":900,\"ignored\":\"\\ud800\"}"
+      },
+      "status": 200,
+      "body": {
+        "seconds": 900,
+        "source": "setting",
+        "fallbackSeconds": 1800,
+        "fallbackSource": "default",
+        "defaultSeconds": 1800,
+        "minSeconds": 300,
+        "maxSeconds": 86400,
+        "apply": {
+          "state": "applied"
+        },
+        "applied": true
+      },
+      "calls": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "spec": {
+        "name": "ignored-private-use",
+        "rawBody": "{\"seconds\":900,\"ignored\":\"􀀀\"}"
+      },
+      "status": 200,
+      "body": {
+        "seconds": 900,
+        "source": "setting",
+        "fallbackSeconds": 1800,
+        "fallbackSource": "default",
+        "defaultSeconds": 1800,
+        "minSeconds": 300,
+        "maxSeconds": 86400,
+        "apply": {
+          "state": "applied"
+        },
+        "applied": true
+      },
+      "calls": [
+        "GET",
+        "PUT"
+      ]
+    }
+  ],
+  "prune": [
+    {
+      "spec": {
+        "name": "engine-unreachable",
+        "unreachable": true,
+        "installed": [
+          {
+            "name": "ok"
+          }
+        ],
+        "sections": []
+      },
+      "status": 502,
+      "body": {
+        "error": "Could not list installed models."
+      }
+    },
+    {
+      "spec": {
+        "name": "scan-failure",
+        "scanFailure": true,
+        "installed": [
+          {
+            "name": "ok"
+          }
+        ],
+        "sections": []
+      },
+      "status": 409,
+      "body": {
+        "error": "The model folder looks unavailable, so nothing was removed.",
+        "code": "scanUntrusted"
+      }
+    },
+    {
+      "spec": {
+        "name": "none",
+        "installed": [
+          {
+            "name": "ok"
+          }
+        ],
+        "sections": [
+          {
+            "name": "ok",
+            "hasFile": true
+          }
+        ]
+      },
+      "status": 200,
+      "body": {
+        "removed": [],
+        "kept": [],
+        "reloaded": false
+      }
+    },
+    {
+      "spec": {
+        "name": "empty",
+        "installed": [
+          {
+            "name": "gone",
+            "missingFile": true
+          }
+        ],
+        "sections": [
+          {
+            "name": "gone",
+            "hasFile": false
+          }
+        ],
+        "scan": []
+      },
+      "status": 409,
+      "body": {
+        "error": "The model folder looks unavailable, so nothing was removed.",
+        "code": "scanUntrusted"
+      }
+    },
+    {
+      "spec": {
+        "name": "majority",
+        "installed": [
+          {
+            "name": "gone",
+            "missingFile": true
+          },
+          {
+            "name": "gone2",
+            "missingFile": true
+          },
+          {
+            "name": "ok"
+          }
+        ],
+        "sections": []
+      },
+      "status": 409,
+      "body": {
+        "error": "The model folder looks unavailable, so nothing was removed.",
+        "code": "scanUntrusted"
+      }
+    },
+    {
+      "spec": {
+        "name": "success",
+        "installed": [
+          {
+            "name": "gone",
+            "missingFile": true
+          },
+          {
+            "name": "ok"
+          }
+        ],
+        "sections": [
+          {
+            "name": "gone",
+            "hasFile": false
+          },
+          {
+            "name": "ok",
+            "hasFile": true
+          }
+        ]
+      },
+      "status": 200,
+      "body": {
+        "removed": [
+          "gone"
+        ],
+        "kept": [],
+        "reloaded": true
+      }
+    },
+    {
+      "spec": {
+        "name": "kept",
+        "installed": [
+          {
+            "name": "gone",
+            "missingFile": true
+          },
+          {
+            "name": "ok"
+          }
+        ],
+        "sections": [
+          {
+            "name": "gone",
+            "hasFile": true
+          },
+          {
+            "name": "ok",
+            "hasFile": true
+          }
+        ]
+      },
+      "status": 200,
+      "body": {
+        "removed": [],
+        "kept": [
+          "gone"
+        ],
+        "reloaded": false
+      }
+    },
+    {
+      "spec": {
+        "name": "busy",
+        "installed": [
+          {
+            "name": "gone",
+            "missingFile": true
+          },
+          {
+            "name": "ok"
+          }
+        ],
+        "sections": [
+          {
+            "name": "gone",
+            "hasFile": false
+          },
+          {
+            "name": "ok",
+            "hasFile": true
+          }
+        ],
+        "busy": true
+      },
+      "status": 409,
+      "body": {
+        "error": "Models are busy, so nothing was changed. Try again shortly.",
+        "code": "maintenance_held",
+        "retryable": true
+      }
+    },
+    {
+      "spec": {
+        "name": "pending",
+        "installed": [
+          {
+            "name": "gone",
+            "missingFile": true
+          },
+          {
+            "name": "ok"
+          }
+        ],
+        "sections": [
+          {
+            "name": "gone",
+            "hasFile": false
+          },
+          {
+            "name": "ok",
+            "hasFile": true
+          }
+        ],
+        "pending": true
+      },
+      "status": 200,
+      "body": {
+        "removed": [
+          "gone"
+        ],
+        "kept": [],
+        "reloaded": false
+      }
+    },
+    {
+      "spec": {
+        "name": "protected",
+        "installed": [
+          {
+            "name": "laya",
+            "missingFile": true,
+            "system": true
+          },
+          {
+            "name": "elsewhere",
+            "servedElsewhere": true,
+            "missingFile": true
+          },
+          {
+            "name": "other",
+            "source": "remote",
+            "missingFile": true
+          },
+          {
+            "name": "ok"
+          }
+        ],
+        "sections": []
+      },
+      "status": 200,
+      "body": {
+        "removed": [],
+        "kept": [],
+        "reloaded": false
+      }
+    }
+  ],
+  "gates": [
+    {
+      "method": "PUT",
+      "path": "/api/models/idle-unload",
+      "spec": {
+        "role": "none",
+        "csrf": true
+      },
+      "status": 401,
+      "body": {
+        "error": "unauthorized"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/models/idle-unload",
+      "spec": {
+        "role": "member",
+        "csrf": true
+      },
+      "status": 403,
+      "body": {
+        "error": "administrator required"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/models/idle-unload",
+      "spec": {
+        "role": "admin",
+        "csrf": false
+      },
+      "status": 403,
+      "body": {
+        "error": "invalid CSRF token"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/models/idle-unload",
+      "spec": {
+        "role": "admin",
+        "csrf": true,
+        "origin": "http://wrong.invalid"
+      },
+      "status": 403,
+      "body": {
+        "error": "invalid CSRF token"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/models/prune-missing",
+      "spec": {
+        "role": "none",
+        "csrf": true
+      },
+      "status": 401,
+      "body": {
+        "error": "unauthorized"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/models/prune-missing",
+      "spec": {
+        "role": "member",
+        "csrf": true
+      },
+      "status": 403,
+      "body": {
+        "error": "administrator required"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/models/prune-missing",
+      "spec": {
+        "role": "admin",
+        "csrf": false
+      },
+      "status": 403,
+      "body": {
+        "error": "invalid CSRF token"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/models/prune-missing",
+      "spec": {
+        "role": "admin",
+        "csrf": true,
+        "origin": "http://wrong.invalid"
+      },
+      "status": 403,
+      "body": {
+        "error": "invalid CSRF token"
+      }
+    }
+  ],
+  "malformed": [
+    {
+      "method": "PUT",
+      "path": "/api/models/idle-unload",
+      "rawText": "{",
+      "status": 400,
+      "body": {
+        "error": "invalid JSON"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/models/idle-unload",
+      "rawText": "",
+      "status": 200,
+      "body": {}
+    },
+    {
+      "method": "PUT",
+      "path": "/api/models/idle-unload",
+      "rawText": " ",
+      "status": 400,
+      "body": {
+        "error": "invalid JSON"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/models/prune-missing",
+      "rawText": "{",
+      "status": 200,
+      "body": {
+        "removed": [],
+        "kept": [],
+        "reloaded": false
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/models/prune-missing",
+      "rawText": "",
+      "status": 200,
+      "body": {
+        "removed": [],
+        "kept": [],
+        "reloaded": false
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/models/prune-missing",
+      "rawText": " ",
+      "status": 200,
+      "body": {
+        "removed": [],
+        "kept": [],
+        "reloaded": false
+      }
+    }
+  ]
+}

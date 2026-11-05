@@ -69,13 +69,10 @@ async fn authorization_and_only_exact_get_precede_any_loader_read() {
     assert_eq!(get(f.addr, PATH, MEMBER).await.0, 403);
     assert!(owner.seen().is_empty());
     owner.set(|_| reply("418 I'm a teapot", "{}"));
-    for (method, path) in [
-        ("HEAD", PATH),
-        ("PUT", PATH),
-        ("GET", "/api/models/idle-unload/"),
-    ] {
+    for (method, path) in [("HEAD", PATH), ("GET", "/api/models/idle-unload/")] {
         assert_eq!(write(f.addr, method, path, ADMIN, "").await.0, 418);
     }
+    assert_eq!(write(f.addr, "PUT", PATH, ADMIN, "").await.0, 400);
     assert_eq!(owner.count(FACTS), 0);
     assert!(loader.seen().is_empty());
 }

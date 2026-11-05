@@ -466,6 +466,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
         "/api/usage" | "/api/usage/aggregate" if auth => return Some(Native::Usage),
         EXPORT if auth => return Some(Native::Export),
         p if auth && DIARY_ROUTES.contains(&p) => return Some(Native::Diary),
+        p if auth && p == crate::model_writes_d::PRUNE => return Some(Native::Models),
         p if auth && p == crate::model_manager_scan::PATH => return Some(Native::Models),
         p if auth
             && (crate::model_routes::ROUTES.contains(&p)
@@ -626,7 +627,9 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
         || route.path == server_account::vault_mirror::PATH
         || route.path == crate::model_manager_scan::PATH
         || route.path == crate::model_downloads_read::PATH
-        || route.path == crate::preset_read_routes::PATH)
+        || route.path == crate::preset_read_routes::PATH
+        || route.path == crate::model_writes_d::PRUNE
+        || route.path == crate::idle_unload_read::PATH)
         && path != route.path
     {
         return None;
@@ -1411,7 +1414,7 @@ mod tests {
                 (crate::model_maint::evidence_recheck::PATH, &["POST"][..]),
                 (crate::model_routes::HARDWARE, &["GET"][..]),
                 (crate::model_state_routes::BUDGET, &["GET"][..]),
-                (crate::idle_unload_read::PATH, &["GET"][..]),
+                (crate::idle_unload_read::PATH, &["GET", "PUT"][..]),
                 (crate::model_state_routes::INSTALLED, &["GET"][..]),
                 (crate::preset_read_routes::PATH, &["GET"][..]),
                 (crate::model_sizing::SUGGEST, &["GET"][..]),

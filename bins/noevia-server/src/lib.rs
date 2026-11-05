@@ -51,6 +51,7 @@ pub mod model_downloads_read;
 pub mod model_kind;
 pub mod model_maint;
 pub mod model_manager_scan;
+pub mod model_writes_d;
 pub mod model_routes;
 pub mod model_sizing;
 pub mod model_state_routes;
@@ -449,6 +450,7 @@ pub const FEATURES: &[&str] = &[
     "rust-autotune-read",
     "rust-preset-read",
     "rust-idle-unload-read",
+    "rust-model-writes-d-v1",
     "rust-model-assignments",
     "rust-model-downloads-read",
     "rust-autotune-resume",

@@ -626,7 +626,7 @@ methods = ["GET"]
 [[route]]
 path = "/api/models/idle-unload"
 owner = "rust"
-methods = ["GET"]
+methods = ["GET", "PUT"]
 
 [[route]]
 path = "/api/models/installed"
@@ -654,7 +654,8 @@ methods = ["GET"]
 
 [[route]]
 path = "/api/models/prune-missing"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/models/reranker"
