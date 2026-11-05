@@ -14,7 +14,7 @@ use noevia_server::{
 };
 use serde_json::{json, Value};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     path::Path,
     process::{Child, Command, Stdio},
     sync::Arc,
@@ -88,6 +88,21 @@ fn variants(template: &str) -> Vec<String> {
     }
     paths
 }
+// Each row holds one manifest route/method/path and five Node statuses for each feature state.
+// The fixture was recorded from the pinned real Core with a live-session probe before every
+// authenticated outcome. It is independent of the sessions exercised by this replay.
+type StatusKey = (String, String, String);
+type StatusRow = (String, String, String, [u16; 5], [u16; 5]);
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SavedNodeStatuses {
+    core_ref: String,
+    cases: usize,
+    states: [String; 5],
+    features: [String; 2],
+    outcomes: Vec<StatusRow>,
+}
+
 struct Oracle(Child);
 impl Drop for Oracle {
     fn drop(&mut self) {
@@ -234,7 +249,6 @@ async fn manifest_rejection_grid_matches_pinned_core() {
         .timeout(Duration::from_secs(20))
         .build()
         .unwrap();
-    let mut protected_405s: BTreeMap<&str, usize> = BTreeMap::new();
     let mut compared = 0;
     let mut differences = Vec::new();
     let mut status_counts = BTreeMap::new();
@@ -246,7 +260,37 @@ async fn manifest_rejection_grid_matches_pinned_core() {
         "bad-CSRF-admin",
         "bad-CSRF-member",
     ];
-    for flag in ["1", "0"] {
+    let fixture: SavedNodeStatuses =
+        serde_json::from_str(include_str!("fixtures/rejection-status-node.json")).unwrap();
+    assert_eq!(
+        fixture.core_ref,
+        include_str!("../../../contracts/http/front-core.ref").trim()
+    );
+    assert_eq!(fixture.cases, EXPECTED_CASES);
+    assert_eq!(fixture.states, states.map(str::to_owned));
+    assert_eq!(fixture.features, ["1".to_owned(), "0".to_owned()]);
+    assert_eq!(fixture.outcomes.len(), EXPECTED_PATH_METHODS);
+    let mut saved_node: BTreeMap<StatusKey, [[u16; 5]; 2]> = BTreeMap::new();
+    for (route, method, path, on, off) in fixture.outcomes {
+        assert!(
+            saved_node
+                .insert((route, method, path), [on, off])
+                .is_none(),
+            "duplicate saved Node case"
+        );
+    }
+    let generated_keys: BTreeSet<_> = wire_cases
+        .iter()
+        .map(|(route, method, path)| (route.to_string(), method.to_string(), path.clone()))
+        .collect();
+    assert_eq!(generated_keys.len(), EXPECTED_PATH_METHODS);
+    assert_eq!(
+        saved_node.keys().cloned().collect::<BTreeSet<_>>(),
+        generated_keys,
+        "saved Node outcomes must cover exactly the generated cases"
+    );
+    let mut status_outcomes = Vec::new();
+    for (feature_index, flag) in ["1", "0"].into_iter().enumerate() {
         let data = tempfile::tempdir().unwrap();
         let ready_file = data.path().join("oracle-ready.json");
         let log = std::fs::File::create(data.path().join("oracle.log")).unwrap();
@@ -283,6 +327,9 @@ async fn manifest_rejection_grid_matches_pinned_core() {
         let accounts = ready["accounts"].as_array().unwrap();
         // On every entry: admin, member, signed-out, bad-CSRF admin and bad-CSRF member.
         for (template, method, path) in &wire_cases {
+            let saved_statuses = saved_node
+                .get(&(template.to_string(), method.to_string(), path.clone()))
+                .unwrap();
             for (state, &state_name) in states.iter().enumerate() {
                 let account = match state {
                     0 | 3 => Some(&accounts[0]),
@@ -297,10 +344,21 @@ async fn manifest_rejection_grid_matches_pinned_core() {
                     .or_default()
                     .entry(expected.status)
                     .or_default() += 1;
-                // Count a protected exact path: public endpoints can return 405 even signed out.
-                if path == "/api/account/retention" && state < 2 && expected.status == 405 {
-                    *protected_405s.entry(state_name).or_default() += 1;
-                }
+                let saved_status = saved_statuses[feature_index][state];
+                // Individual assertions prevent a shared session failure from making a live
+                // Node/native pair trivially equal. Keep Node's 403/404/405 distinctions.
+                assert_eq!(expected.status, saved_status, "saved Node status guard (Node): {template} | {method} {path} | {state_name} | feature={flag}");
+                assert_eq!(actual.status, saved_status, "saved Node status guard (native): {template} | {method} {path} | {state_name} | feature={flag}");
+                status_outcomes.push(json!([
+                    template,
+                    method,
+                    path,
+                    state_name,
+                    flag,
+                    saved_status,
+                    expected.status,
+                    actual.status
+                ]));
                 compared += 1;
                 let equal = actual.status == expected.status
                     && actual.headers == expected.headers
@@ -315,22 +373,7 @@ async fn manifest_rejection_grid_matches_pinned_core() {
     assert_eq!(compared, EXPECTED_CASES, "silent coverage shrink");
     eprintln!("asserted rejection case count: {compared}; restricted entries: {}; method pairs: {}; Node statuses: {status_counts:?}; differences: {}", routes.len(), methods.len(), differences.len());
     if let Ok(report) = std::env::var("NOEVIA_REJECTION_REPORT") {
-        std::fs::write(report, serde_json::to_vec_pretty(&json!({"cases":compared,"entries":routes.len(),"methods":methods.len(),"pathMethods":wire_cases.len(),"coreRef":include_str!("../../../contracts/http/front-core.ref").trim(),"headers":HEADERS,"states":states,"statusCounts":status_counts,"sessionStatusCounts":session_statuses,"protected405Counts":protected_405s,"differences":differences})).unwrap()).unwrap();
-    }
-    for role in ["admin", "member"] {
-        assert!(
-            protected_405s.get(role).copied().unwrap_or_default() > 0,
-            "{role} must reach protected method rejection with a live session"
-        );
-        assert!(
-            session_statuses
-                .get(role)
-                .and_then(|counts| counts.get(&405))
-                .copied()
-                .unwrap_or_default()
-                > 0,
-            "{role} must see 405s; a dead session must not reduce the grid to 401s"
-        );
+        std::fs::write(report, serde_json::to_vec_pretty(&json!({"cases":compared,"entries":routes.len(),"methods":methods.len(),"pathMethods":wire_cases.len(),"coreRef":include_str!("../../../contracts/http/front-core.ref").trim(),"headers":HEADERS,"states":states,"statusCounts":status_counts,"sessionStatusCounts":session_statuses,"statusOutcomes":status_outcomes,"differences":differences})).unwrap()).unwrap();
     }
     assert!(
         differences.is_empty(),

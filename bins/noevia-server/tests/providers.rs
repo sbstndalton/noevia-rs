@@ -1861,6 +1861,15 @@ async fn disconnect_order_and_partial_failures_match_real_core_handler() {
         )
         .unwrap();
         store_tokens(&db, A, "connected");
+        let projects_before = std::fs::read(&projects).unwrap();
+        store_tokens(&db, B, "connected");
+        let other_tokens_before: (String, String, i64) = db
+            .query_row(
+                "SELECT state,data_enc,updated_at FROM chatgpt_oauth_tokens WHERE user_id=?1",
+                [B],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
         let failure = case["failure"].as_str().unwrap();
         // A directory in place of the lock file refuses the precise writer immediately,
         // preserving its input bytes. Synthetic I/O failures only; no engine or upstream.
@@ -1889,6 +1898,24 @@ async fn disconnect_order_and_partial_failures_match_real_core_handler() {
             case["row"].as_bool().unwrap(),
             "{failure}"
         );
+        let other_tokens_after: (String, String, i64) = db
+            .query_row(
+                "SELECT state,data_enc,updated_at FROM chatgpt_oauth_tokens WHERE user_id=?1",
+                [B],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            other_tokens_after, other_tokens_before,
+            "{failure}: another tenant's token is preserved"
+        );
+        if failure == "row" {
+            assert_eq!(
+                std::fs::read(&projects).unwrap(),
+                projects_before,
+                "row failure must preserve the exact projects bytes"
+            );
+        }
         let saved = j(&std::fs::read_to_string(&projects).unwrap());
         assert_eq!(
             saved["projects"][0].get("provider").is_some(),
