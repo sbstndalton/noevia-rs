@@ -40,6 +40,7 @@ pub const HARDWARE: &str = "/api/models/hardware";
 /// (#2187), the two sizing reads (#2189, model_sizing.rs) and the two state reads (#2262,
 /// model_state_routes.rs).
 pub const ROUTES: &[&str] = &[
+    crate::inference_machines::PATH,
     CAPABILITIES,
     HARDWARE,
     crate::model_sizing::ESTIMATE,
@@ -122,6 +123,9 @@ pub async fn serve(
     req: Request<Body>,
     path: String,
 ) -> Response<Body> {
+    if path == crate::inference_machines::PATH {
+        return crate::machine_service::serve(app, conn, req, path).await;
+    }
     if path == crate::idle_unload_read::PATH {
         return crate::idle_unload_read::serve(app, conn, req, path).await;
     }

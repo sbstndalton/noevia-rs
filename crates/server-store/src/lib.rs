@@ -211,6 +211,15 @@ impl RustDecisionSettings {
     }
 }
 
+/// Native machine registry and synthetic measurement results, fixed keys only.
+#[derive(Debug, Clone, Copy)]
+pub struct RustInferenceMachines(());
+impl RustInferenceMachines {
+    pub const fn owned() -> Self {
+        Self(())
+    }
+}
+
 /// Settings -> Diary & storage, the Nextcloud sign-in and the storage test/folder routes
 /// (sbstndalton/noevia#2190): a completed sign-in saves the account's `storage_connections` row
 /// through [`WriteTx::save_storage_connection`], Node's exact upsert. Since round 4 the Settings save
@@ -1185,6 +1194,28 @@ impl WriteTx<'_> {
         Ok(self.conn.execute(
             "INSERT OR REPLACE INTO settings(key,value) VALUES('decision:configuration',?1)",
             [value],
+        )?)
+    }
+
+    /// The machine registry's sole writer; no arbitrary settings capability.
+    pub fn set_inference_machines(
+        &self,
+        _owner: RustInferenceMachines,
+        tune: bool,
+        value: &str,
+    ) -> Result<usize, StoreError> {
+        self.settings_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.settings_open);
+        Ok(self.conn.execute(
+            "INSERT OR REPLACE INTO settings(key,value) VALUES(?1,?2)",
+            [
+                if tune {
+                    "inference:machineTune"
+                } else {
+                    "inference:machines"
+                },
+                value,
+            ],
         )?)
     }
 

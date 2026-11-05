@@ -1303,6 +1303,9 @@ mod tests {
     fn model_reads_are_rusts_for_get_only_and_the_other_model_routes_stay_nodes() {
         let on = Switches::default();
         for p in crate::model_routes::ROUTES {
+            if *p == crate::inference_machines::PATH {
+                continue;
+            }
             assert_eq!(
                 dispatch_under("GET", p, on),
                 Some(Native::Models),
@@ -1366,7 +1369,6 @@ mod tests {
             "/api/model-manager",
             "/api/models/delete",
             "/api/models/load",
-            "/api/models/machines",
             "/api/models/preset/",
             "/api/models/downloads/",
             "/api/models/capabilitiesx",

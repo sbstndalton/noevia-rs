@@ -31,7 +31,9 @@ pub mod health;
 pub mod health_routes;
 pub mod identity;
 pub mod idle_unload_read;
+pub mod inference_machines;
 pub mod legacy_proxy;
+pub mod machine_service;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_broker;
 #[cfg(feature = "rust-storage-reads")]
@@ -373,7 +375,7 @@ pub const FEATURES: &[&str] = &[
     "rust-research",
     "rust-task-reads",
     "rust-tool-approvals",
-    server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER,
+    "noevia-research-jobs-store/1",
     "rust-auth",
     "rust-diary",
     "rust-diary-routes",
@@ -450,6 +452,7 @@ pub const FEATURES: &[&str] = &[
     "rust-preset-read",
     "rust-idle-unload-read",
     "rust-model-assignments",
+    "rust-inference-machines",
     "rust-model-downloads-read",
     "rust-autotune-resume",
     #[cfg(feature = "rust-storage-reads")]
@@ -500,6 +503,7 @@ pub(crate) fn account_row_exists(writes: &upkeep::WriterLayer, id: &str) -> bool
 }
 
 pub struct App {
+    pub machines: Arc<machine_service::Service>,
     /// The demand marker and the wait for Node's published snapshots (snapshot.rs).
     pub demand: Arc<snapshot::Demand>,
     /// Google Drive's token authority (sbstndalton/noevia#2190 round 7); `None` without UI_DATA_DIR.
@@ -616,6 +620,7 @@ impl App {
             _ => None,
         };
         Arc::new(App {
+            machines: Arc::new(machine_service::Service::default()),
             demand: Arc::new(snapshot::Demand::default()),
             drive,
             offsite,
