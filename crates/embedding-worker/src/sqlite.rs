@@ -71,12 +71,12 @@ fn table(name: &str, prefix: &str) -> bool {
     })
 }
 #[derive(Clone)]
-struct Slot {
-    table: String,
-    map: Option<String>,
-    dim: usize,
+pub(crate) struct Slot {
+    pub(crate) table: String,
+    pub(crate) map: Option<String>,
+    pub(crate) dim: usize,
 }
-fn find(conn: &Connection, target: &Target) -> Result<Option<Slot>, String> {
+pub(crate) fn find(conn: &Connection, target: &Target) -> Result<Option<Slot>, String> {
     let raw: Option<String> = conn
         .query_row(
             "SELECT value FROM vec_meta WHERE key=?",
@@ -169,7 +169,7 @@ fn legacy_claimed(conn: &Connection) -> Result<bool, String> {
     }
     Ok(false)
 }
-fn ensure(conn: &Connection, target: &Target, dim: usize) -> Result<Slot, String> {
+pub(crate) fn ensure(conn: &Connection, target: &Target, dim: usize) -> Result<Slot, String> {
     if let Some(slot) = find(conn, target)? {
         return Ok(slot);
     }
@@ -215,7 +215,7 @@ impl SqlStore {
             .read(|r| r.rows("SELECT id FROM users", [], |r| r.get(0)))
             .map_err(|_| fault())
     }
-    fn dir(&self, index: &Index) -> Result<PathBuf, String> {
+    pub(crate) fn dir(&self, index: &Index) -> Result<PathBuf, String> {
         if !safe_id(&index.project) {
             return Err(fault());
         }
@@ -419,7 +419,7 @@ impl SqlStore {
     }
     /// Only publication takes cowork.db's IMMEDIATE account-deletion fence.
     /// Selection/coverage use deferred, read-only connections and recheck liveness.
-    fn fenced<T>(
+    pub(crate) fn fenced<T>(
         &self,
         index: &Index,
         publish: bool,
