@@ -804,3 +804,50 @@ fn tool_result_reduction_matches_node() {
     }
     assert!(reduced > 300, "{reduced}");
 }
+
+#[test]
+fn original_noncharacters_beside_kelvin_and_long_s_are_kept_as_node_keeps_them() {
+    // Review S5–S9 P2: U+FFFF/U+FFFE are ordinary input, not sentinels (fixtures/record-unicode.cjs).
+    use chat_pipeline::{rounds, search, title};
+    let c = wtf16::parse(include_str!("fixtures/unicode-cases.json")).unwrap();
+    let t = |k: &JValue| k.get("t").as_str().unwrap().to_owned();
+    for k in arr(c.get("queries")) {
+        assert_eq!(search::clean_search_query(&t(k)), k.get("out").as_str().unwrap(), "{:?}", t(k));
+        let raw = JValue::Str(
+            wtf16::stringify(&JValue::Obj(vec![
+                ("query".into(), JValue::Str(t(k))),
+                ("n".into(), JValue::Num(1.0)),
+            ]))
+            .unwrap(),
+        );
+        assert_eq!(
+            search::clean_search_args(&JValue::Str("web_search".into()), &raw),
+            *k.get("args"),
+            "{:?}",
+            t(k)
+        );
+    }
+    for k in arr(c.get("announced")) {
+        assert_eq!(
+            rounds::announces_tool_action(&t(k)),
+            k.get("out") == &JValue::Bool(true),
+            "{:?}",
+            t(k)
+        );
+    }
+    for k in arr(c.get("links")) {
+        let want: Vec<String> = arr(k.get("out"))
+            .iter()
+            .map(|u| u.as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(rounds::source_links(&t(k)), want, "{:?}", t(k));
+    }
+    for k in arr(c.get("titles")) {
+        assert_eq!(
+            title::clean_title(k.get("t")).as_deref(),
+            k.get("out").as_str(),
+            "{:?}",
+            t(k)
+        );
+    }
+}

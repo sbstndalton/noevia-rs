@@ -1,6 +1,6 @@
 //! A search tool's query without the request wrapper a model copied into it (core search-query.cjs,
 //! #1523). JavaScript's non-unicode `/i`, `\s` and `\b` are kept (see [`crate::rounds`]).
-use crate::text::{as_str, get, set, spread, trim};
+use crate::text::{as_str, get, js_fold, set, spread, trim};
 use js_json::{wtf16, JValue};
 use regex::Regex;
 use std::sync::OnceLock;
@@ -23,34 +23,23 @@ fn res() -> Option<&'static Res> {
         let b = r"(?-u:\b)";
         Some(Res {
             leading: Regex::new(&format!(r#"\A[{S}:;,.\-–—"'`“”‘’]+"#)).ok()?,
-            wrapper: Regex::new(&format!(
+            wrapper: Regex::new(&js_fold(&format!(
                 r"(?i)\A(?:(?:please{s}+)?(?:search|look{s}*up|google){s}+(?:the{s}+)?(?:web|internet|online)(?:{s}+(?:for|about))?{s}*[:,\-]?|(?:web|internet){s}+search{s}*[:,\-]){s}*"
-            ))
+            )))
             .ok()?,
-            cite_lead: Regex::new(&format!(
+            cite_lead: Regex::new(&js_fold(&format!(
                 r"(?i)\Acite{s}+(?:the{s}+|your{s}+|a{s}+|any{s}+)?(?:sources?|links?|citations?|urls?|references?){s}*[:,\-]?{s}*"
-            ))
+            )))
             .ok()?,
-            cite_tail: Regex::new(&format!(
+            cite_tail: Regex::new(&js_fold(&format!(
                 r"(?i)[{S}.?!;,\-]*(?:{b}and{s}+)?(?:{b}please{s}+)?{b}cite{s}+(?:the{s}+|your{s}+|a{s}+|any{s}+|all{s}+)?(?:sources?|links?|citations?|urls?|references?){b}(?:{s}+(?:for|with|in|from|to){b}[^.?!]*)?[{S}.?!;,]*\z"
-            ))
+            )))
             .ok()?,
             trailing: Regex::new(&format!(r"[{S}.?!;,:]+\z")).ok()?,
-            search: Regex::new(r"(?i)search").ok()?,
+            search: Regex::new(&js_fold(r"(?i)search")).ok()?,
         })
     })
     .as_ref()
-}
-
-/// Rust's Unicode folding matches U+212A for `k` and U+017F for `s`; JavaScript's `/i` does not.
-fn guard(s: &str) -> String {
-    s.replace('\u{212A}', "\u{FFFF}")
-        .replace('\u{17F}', "\u{FFFE}")
-}
-
-fn unguard(s: &str) -> String {
-    s.replace('\u{FFFF}', "\u{212A}")
-        .replace('\u{FFFE}', "\u{17F}")
 }
 
 /// search-query.cjs `cleanSearchQuery(query)`.
@@ -58,7 +47,7 @@ pub fn clean_search_query(query: &str) -> String {
     let Some(r) = res() else {
         return query.to_owned();
     };
-    let mut text = guard(trim(query));
+    let mut text = trim(query).to_owned();
     loop {
         let previous = text.clone();
         let t = r.leading.replace(&text, "").into_owned();
@@ -71,7 +60,7 @@ pub fn clean_search_query(query: &str) -> String {
     }
     let t = r.cite_tail.replace(&text, "").into_owned();
     let t = r.trailing.replace(&t, "").into_owned();
-    let text = unguard(trim(&t));
+    let text = trim(&t).to_owned();
     if wtf16::len(&text) >= 3 {
         text
     } else {
@@ -88,7 +77,7 @@ pub fn clean_search_args(name: &JValue, raw: &JValue) -> JValue {
     let Some(r) = res() else {
         return raw.clone();
     };
-    if !r.search.is_match(&guard(n)) || text.is_empty() {
+    if !r.search.is_match(n) || text.is_empty() {
         return raw.clone();
     }
     let Ok(args) = wtf16::parse(text) else {

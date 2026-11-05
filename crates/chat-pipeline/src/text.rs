@@ -206,3 +206,78 @@ pub(crate) fn string_to_number(s: &str) -> f64 {
     }
     unsigned.parse::<f64>().map_or(f64::NAN, |n| sign * n)
 }
+
+/// A regex source whose literal `k`/`s` (either case) fold ASCII only, as JavaScript's non-unicode
+/// `/i` does: Rust's Unicode folding would also match the Kelvin sign (U+212A) and the long s
+/// (U+017F). Each such literal outside a class becomes `(?-u:x)`, which keeps the enclosing `i`.
+/// No input character is rewritten (review S5–S9 P2: in-band sentinels collided with U+FFFF/U+FFFE).
+pub(crate) fn js_fold(src: &str) -> String {
+    let c: Vec<char> = src.chars().collect();
+    let mut out = String::with_capacity(src.len() + 16);
+    let mut i = 0;
+    let copy_to = |out: &mut String, i: &mut usize, end: char| {
+        while *i < c.len() {
+            let ch = c[*i];
+            out.push(ch);
+            *i += 1;
+            if ch == '\\' && *i < c.len() {
+                out.push(c[*i]);
+                *i += 1;
+            } else if ch == end {
+                break;
+            }
+        }
+    };
+    while i < c.len() {
+        match c[i] {
+            '\\' => {
+                out.push('\\');
+                i += 1;
+                if i < c.len() {
+                    let e = c[i];
+                    out.push(e);
+                    i += 1;
+                    if matches!(e, 'x' | 'u' | 'p' | 'P') && i < c.len() && c[i] == '{' {
+                        copy_to(&mut out, &mut i, '}');
+                    }
+                }
+            }
+            '[' => {
+                out.push('[');
+                i += 1;
+                if i < c.len() && c[i] == '^' {
+                    out.push('^');
+                    i += 1;
+                }
+                if i < c.len() && c[i] == ']' {
+                    out.push(']');
+                    i += 1;
+                }
+                copy_to(&mut out, &mut i, ']');
+            }
+            '(' if c.get(i + 1) == Some(&'?') => {
+                // A group's flags (`(?i)`, `(?is)`, `(?-u:`) are not literals.
+                while i < c.len() {
+                    let ch = c[i];
+                    out.push(ch);
+                    i += 1;
+                    if ch == ':' || ch == ')' {
+                        break;
+                    }
+                }
+            }
+            '{' => copy_to(&mut out, &mut i, '}'),
+            ch @ ('k' | 'K' | 's' | 'S') => {
+                out.push_str("(?-u:");
+                out.push(ch);
+                out.push(')');
+                i += 1;
+            }
+            ch => {
+                out.push(ch);
+                i += 1;
+            }
+        }
+    }
+    out
+}

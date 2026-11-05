@@ -42,7 +42,7 @@ fn announce() -> &'static Regex {
         let src = format!(
             r"(?i)(?:^|[{S}.!?:;(])(?:I{s}*(?:will|'ll|’ll|am{s}+going{s}+to|'m{s}+going{s}+to|’m{s}+going{s}+to|need{s}+to|have{s}+to|should)|let{s}+me|let's|(?:first|then|next),?{s}+I(?:{s}*'ll|{s}*’ll|{s}+will)?){s}+(?:now{s}+|first{s}+|quickly{s}+|carefully{s}+|go{s}+(?:and{s}+)?)?(?:{verbs})(?-u:\b)"
         );
-        Regex::new(&src).unwrap_or_else(|_| Regex::new("$^").unwrap_or_else(|_| unreachable!()))
+        Regex::new(&crate::text::js_fold(&src)).unwrap_or_else(|_| Regex::new("$^").unwrap_or_else(|_| unreachable!()))
     })
 }
 
@@ -50,17 +50,8 @@ fn url_re() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
     R.get_or_init(|| {
         let src = format!(r#"(?i)(?-u:\b)https?://[^{S}<>"'`)\]}}]+"#);
-        Regex::new(&src).unwrap_or_else(|_| Regex::new("$^").unwrap_or_else(|_| unreachable!()))
+        Regex::new(&crate::text::js_fold(&src)).unwrap_or_else(|_| Regex::new("$^").unwrap_or_else(|_| unreachable!()))
     })
-}
-
-/// JS `i` without `u` folds an ASCII letter only to ASCII (ES Canonicalize keeps a character >= 128
-/// whose upper case is ASCII); Rust's Unicode folding also matches the Kelvin sign (U+212A) for `k`
-/// and the long s (U+017F) for `s`. Neither is a word character in either engine, so each is held as
-/// a noncharacter while matching.
-fn js_fold_guard(s: &str) -> String {
-    s.replace('\u{212A}', "\u{FFFF}")
-        .replace('\u{17F}', "\u{FFFE}")
 }
 
 /// `s.slice(-n)` over UTF-16 units: a surrogate pair cut in half leaves its low half, held here as
@@ -121,7 +112,7 @@ pub fn announces_tool_action(text: &str) -> bool {
     if tail.is_empty() {
         return false;
     }
-    announce().is_match(&js_fold_guard(last_sentence(&tail)))
+    announce().is_match(last_sentence(&tail))
 }
 
 /// final-answer.cjs `needsFinalPass({round, toolCalls, hasContent})`.
@@ -134,15 +125,10 @@ pub fn needs_final_pass(round: u32, tool_calls: usize, has_content: bool) -> boo
 
 /// final-answer.cjs `sourceLinks(text)`: the distinct http(s) links of one tool result, in order.
 pub fn source_links(text: &str) -> Vec<String> {
-    let guarded = js_fold_guard(text);
     let mut out: Vec<String> = Vec::new();
-    for m in url_re().find_iter(&guarded) {
-        // The guard only ever replaced a character the class could include; put it back.
-        let raw = m
+    for m in url_re().find_iter(text) {
+        let url = m
             .as_str()
-            .replace('\u{FFFF}', "\u{212A}")
-            .replace('\u{FFFE}', "\u{17F}");
-        let url = raw
             .trim_end_matches(['.', ',', ';', ':', '!', '?'])
             .to_owned();
         if wtf16::len(&url) > 400 || out.contains(&url) {

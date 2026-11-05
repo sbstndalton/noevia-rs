@@ -146,13 +146,13 @@ fn res() -> Option<&'static Res> {
     static R: OnceLock<Option<Res>> = OnceLock::new();
     R.get_or_init(|| {
         Some(Res {
-            // `/<think>[\s\S]*?(<\/think>|$)/gi`: ASCII letters fold ASCII only (the Kelvin sign is guarded).
-            think: Regex::new(r"(?is)<think>.*?(?:</think>|\z)").ok()?,
+            // `/<think>[\s\S]*?(<\/think>|$)/gi`: ASCII letters fold ASCII only (text::js_fold).
+            think: Regex::new(&crate::text::js_fold(r"(?is)<think>.*?(?:</think>|\z)")).ok()?,
             special: Regex::new(r"<\|[^|>]*\|>").ok()?,
             pictographic: Regex::new(r"[\p{Extended_Pictographic}\u{200d}\u{fe0f}]").ok()?,
             hashes: Regex::new(&format!(r"\A#+[{S}]*")).ok()?,
             stars: Regex::new(r"\A\*{1,2}|\*{1,2}\z").ok()?,
-            prefix: Regex::new(&format!(r"(?i)\A(?:chat[{S}]+)?title[{S}]*[:\-–][{S}]*")).ok()?,
+            prefix: Regex::new(&crate::text::js_fold(&format!(r"(?i)\A(?:chat[{S}]+)?title[{S}]*[:\-–][{S}]*"))).ok()?,
             quotes: Regex::new(r#"\A["'“”‘’`«»]+|["'“”‘’`«»]+\z"#).ok()?,
             tail: Regex::new(&format!(r"[{S}.,;:!?…]+\z")).ok()?,
             spaces: Regex::new(&format!(r"[{S}]+")).ok()?,
@@ -167,12 +167,7 @@ fn res() -> Option<&'static Res> {
 pub fn clean_title(raw: &JValue) -> Option<String> {
     let raw = as_str(raw)?;
     let r = res()?;
-    // Rust folds U+212A (Kelvin) to `k`; JavaScript's non-unicode `i` does not.
-    let guarded = raw.replace('\u{212A}', "\u{FFFF}");
-    let text = r
-        .think
-        .replace_all(&guarded, "")
-        .replace('\u{FFFF}', "\u{212A}");
+    let text = r.think.replace_all(raw, "");
     let text = r.special.replace_all(&text, " ");
     let line = text
         .split('\n')
