@@ -259,6 +259,12 @@ pub struct Worker {
     #[cfg(test)]
     terminal_error: AtomicBool,
     #[cfg(test)]
+    terminal_attempts: std::sync::atomic::AtomicUsize,
+    #[cfg(test)]
+    post_expiry: Notify,
+    #[cfg(test)]
+    finalize_gate: Mutex<Option<Arc<tests::TestGate>>>,
+    #[cfg(test)]
     run_abort: Mutex<Option<tokio::task::AbortHandle>>,
     #[cfg(test)]
     panic_on_run: AtomicBool,
@@ -588,6 +594,12 @@ impl Worker {
             #[cfg(test)]
             terminal_error: AtomicBool::new(false),
             #[cfg(test)]
+            terminal_attempts: std::sync::atomic::AtomicUsize::new(0),
+            #[cfg(test)]
+            post_expiry: Notify::new(),
+            #[cfg(test)]
+            finalize_gate: Mutex::new(None),
+            #[cfg(test)]
             run_abort: Mutex::new(None),
             #[cfg(test)]
             panic_on_run: AtomicBool::new(false),
@@ -695,6 +707,10 @@ impl Worker {
             }
         };
         #[cfg(test)]
+        if terminal && marker_free {
+            self.terminal_attempts.fetch_add(1, Ordering::AcqRel);
+        }
+        #[cfg(test)]
         if terminal && marker_free && self.terminal_error.load(Ordering::Acquire) {
             return Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
         }
@@ -706,7 +722,7 @@ impl Worker {
             #[cfg(test)]
             if let Some((_, entered, release)) = stall {
                 let _ = entered.send(());
-                let _ = release.recv_timeout(Duration::from_secs(10));
+                let _ = release.recv_timeout(Duration::from_secs(120));
             }
             let _writer = writes.lock().unwrap_or_else(|p| p.into_inner());
             // Reject queued/revoked generations before hydration, serialization or disk I/O.
@@ -2321,11 +2337,18 @@ impl Worker {
                     .is_ok_and(|i| i.active && i.job_object == object)
         });
         let revoke = WritePermit(permit);
-        let timed_out =
-            tokio::time::timeout_at(until.into(), self.post_outcome(&hold, outcome, allowed))
-                .await
-                .is_err();
+        let post =
+            tokio::time::timeout_at(until.into(), self.post_outcome(&hold, outcome, allowed));
+        #[cfg(not(test))]
+        let timed_out = post.await.is_err();
+        #[cfg(test)]
+        let timed_out = tokio::select! {
+            result = post => result.is_err(),
+            () = self.post_expiry.notified() => true,
+        };
         drop(revoke);
+        #[cfg(test)]
+        let until = if timed_out { Instant::now() } else { until };
         self.finalize(hold, until, timed_out).await;
     }
 
@@ -2478,6 +2501,16 @@ impl Worker {
     }
 
     async fn finalize(self: &Arc<Self>, mut hold: Hold, until: Instant, post_failed: bool) {
+        #[cfg(test)]
+        let until = {
+            let gate = self.finalize_gate.lock().unwrap().clone();
+            if let Some(gate) = gate {
+                gate.wait().await;
+                Instant::now()
+            } else {
+                until
+            }
+        };
         let (mut state, object) = self.with(|i| {
             // Cancellation already handled by run's outcome must not turn cancelled into failed.
             if matches!(
@@ -2887,6 +2920,63 @@ fn hold_facts(e: &HoldRefusal) -> JValue {
 mod tests {
     use super::*;
 
+    // Timeouts are deadlock watchdogs only; progress is observed through the rig's
+    // atomics/channels or gates, never inferred from elapsed scheduler time.
+    const WATCHDOG: Duration = Duration::from_secs(120);
+
+    #[derive(Default)]
+    struct RequestLog {
+        rows: Mutex<Vec<String>>,
+        changed: Notify,
+    }
+    struct RequestRows<'a> {
+        rows: std::sync::MutexGuard<'a, Vec<String>>,
+        changed: &'a Notify,
+        dirty: bool,
+    }
+    impl std::ops::Deref for RequestRows<'_> {
+        type Target = Vec<String>;
+        fn deref(&self) -> &Self::Target {
+            &self.rows
+        }
+    }
+    impl std::ops::DerefMut for RequestRows<'_> {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            self.dirty = true;
+            &mut self.rows
+        }
+    }
+    impl Drop for RequestRows<'_> {
+        fn drop(&mut self) {
+            if self.dirty {
+                self.changed.notify_waiters();
+            }
+        }
+    }
+    impl RequestLog {
+        fn lock(&self) -> Result<RequestRows<'_>, &'static str> {
+            Ok(RequestRows {
+                rows: self.rows.lock().map_err(|_| "poisoned request log")?,
+                changed: &self.changed,
+                dirty: false,
+            })
+        }
+    }
+
+    #[derive(Default)]
+    pub(super) struct TestGate {
+        entered: AtomicBool,
+        release: Notify,
+    }
+    impl TestGate {
+        pub(super) async fn wait(&self) {
+            self.entered.store(true, Ordering::Release);
+            tokio::time::timeout(WATCHDOG, self.release.notified())
+                .await
+                .unwrap();
+        }
+    }
+
     #[test]
     fn uuid_has_the_v4_shape() {
         let u = uuid();
@@ -2913,22 +3003,17 @@ mod tests {
         let waiter = tokio::spawn(async move { b.wait().await });
         tokio::task::yield_now().await;
         a.abort();
-        tokio::time::timeout(Duration::from_secs(5), waiter)
+        tokio::time::timeout(WATCHDOG, waiter)
             .await
             .unwrap()
             .unwrap();
         assert!(a.aborted());
-        tokio::time::timeout(Duration::from_secs(5), a.wait())
-            .await
-            .unwrap();
+        tokio::time::timeout(WATCHDOG, a.wait()).await.unwrap();
     }
 
     /// A synthetic llama.cpp router and inference gate: loads pass up to 16K, long prompts up to
     /// 8K (an error event above), `stall` makes the long prompt hang until the client goes away.
-    async fn synthetic_engine(
-        ini: std::path::PathBuf,
-        stall: bool,
-    ) -> (u16, Arc<Mutex<Vec<String>>>) {
+    async fn synthetic_engine(ini: std::path::PathBuf, stall: bool) -> (u16, Arc<RequestLog>) {
         synthetic_engine_with(
             ini,
             Synth {
@@ -2942,12 +3027,13 @@ mod tests {
     /// What the synthetic engine does besides passing loads to 16K and long prompts to 8K.
     #[derive(Default, Clone)]
     struct Synth {
-        /// The long prompt answers only after 60 s (until the client goes away).
+        /// The long prompt never answers (until the client goes away).
         stall: bool,
         /// The first `GET /props` sets it and answers late (a lease that ends after the pass).
-        props: Option<Arc<AtomicBool>>,
+        props: Option<Arc<TestGate>>,
         /// The long prompt answers 200 at once, then sends nothing, ever.
         silent: bool,
+        silent_poll: Option<Arc<Notify>>,
         /// Other models live besides the one under test (`extra-<n>`, each until it is unloaded).
         live: Option<Arc<std::sync::atomic::AtomicUsize>>,
         /// Node's load decision (this engine also stands in for Node's loopback listener): given the
@@ -2969,14 +3055,19 @@ mod tests {
     }
 
     /// A body that never sends anything and never ends.
-    struct Silent;
+    struct Silent {
+        polled: Option<Arc<Notify>>,
+    }
     impl http_body::Body for Silent {
         type Data = bytes::Bytes;
         type Error = std::convert::Infallible;
         fn poll_frame(
-            self: std::pin::Pin<&mut Self>,
+            mut self: std::pin::Pin<&mut Self>,
             _: &mut std::task::Context<'_>,
         ) -> std::task::Poll<Option<Result<http_body::Frame<bytes::Bytes>, Self::Error>>> {
+            if let Some(polled) = self.polled.take() {
+                polled.notify_one();
+            }
             std::task::Poll::Pending
         }
     }
@@ -2984,7 +3075,7 @@ mod tests {
     async fn synthetic_engine_with(
         ini: std::path::PathBuf,
         synth: Synth,
-    ) -> (u16, Arc<Mutex<Vec<String>>>) {
+    ) -> (u16, Arc<RequestLog>) {
         use axum::body::Body;
         use axum::http::{Request, Response};
         use http_body_util::BodyExt;
@@ -2992,12 +3083,13 @@ mod tests {
             stall,
             props,
             silent,
+            silent_poll,
             live,
             node,
         } = synth;
         let asks = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let status = Arc::new(Mutex::new("unloaded".to_owned()));
-        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen = Arc::new(RequestLog::default());
         let log = Arc::clone(&seen);
         let ctx_of = move || -> f64 {
             std::fs::read_to_string(&ini)
@@ -3018,6 +3110,7 @@ mod tests {
                 node.clone(),
                 Arc::clone(&asks),
             );
+            let silent_poll = silent_poll.clone();
             async move {
                 let (parts, body) = req.into_parts();
                 let path = parts.uri.path().to_owned();
@@ -3062,8 +3155,8 @@ mod tests {
                     ("POST", "/tokenize") => json(200, json!({"tokens": vec![1; 650]})),
                     ("GET", "/props") => {
                         if let Some(p) = &props {
-                            if !p.swap(true, Ordering::AcqRel) {
-                                tokio::time::sleep(Duration::from_millis(300)).await;
+                            if !p.entered.load(Ordering::Acquire) {
+                                p.wait().await;
                             }
                         }
                         json(200, json!({"build_info": "b-synthetic"}))
@@ -3077,10 +3170,10 @@ mod tests {
                             .take_while(|c| *c != '.')
                             .collect();
                         if stall {
-                            tokio::time::sleep(Duration::from_secs(60)).await;
+                            tokio::time::timeout(WATCHDOG, std::future::pending::<()>()).await.unwrap();
                         }
                         if silent {
-                            return Response::builder().status(200).header("content-type", "text/event-stream").body(Body::new(Silent)).unwrap();
+                            return Response::builder().status(200).header("content-type", "text/event-stream").body(Body::new(Silent { polled: silent_poll })).unwrap();
                         }
                         let events = if ctx_of() <= 8192.0 {
                             format!("data: {}\n\ndata: [DONE]\n\n", json!({"choices": [{"delta": {"content": marker}}]}))
@@ -3162,7 +3255,8 @@ mod tests {
     }
 
     async fn settled(w: &Worker) -> JValue {
-        for _ in 0..600 {
+        let deadline = Instant::now() + WATCHDOG;
+        while Instant::now() < deadline {
             let job = w.job();
             // finishedAt is published only after persistence and local admission release.
             if job.get("status").as_str() != Some("running")
@@ -3170,20 +3264,25 @@ mod tests {
             {
                 return job;
             }
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            tokio::task::yield_now().await;
         }
         panic!("the synthetic run did not finish: {:?}", w.job());
     }
 
-    async fn released(log: &Mutex<Vec<String>>, prefix: &str) {
-        // Bounded at 30 s: a run's state saves on the way here can wait out a slow fsync.
-        for _ in 0..3000 {
-            if log.lock().unwrap().iter().any(|r| r.starts_with(prefix)) {
-                return;
+    async fn released(log: &RequestLog, prefix: &str) {
+        tokio::time::timeout(WATCHDOG, async {
+            loop {
+                let changed = log.changed.notified();
+                tokio::pin!(changed);
+                changed.as_mut().enable();
+                if log.lock().unwrap().iter().any(|r| r.starts_with(prefix)) {
+                    return;
+                }
+                changed.await;
             }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        panic!("remote release was not observed: {prefix}");
+        })
+        .await
+        .expect("synthetic request acknowledgement");
     }
 
     const INI: &str =
@@ -3191,20 +3290,20 @@ mod tests {
 
     // REVIEW_REGRESSIONS_BEGIN
     async fn review_wait_outcome(w: &Worker) {
-        tokio::time::timeout(Duration::from_secs(3), async {
-            while w.with(|i| i.state.job().get("status").as_str() == Some("running")) {
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
-        })
-        .await
-        .unwrap();
+        let gate = w.finalize_gate.lock().unwrap().clone();
+        if let Some(gate) = gate {
+            delta_wait(|| gate.entered.load(Ordering::Acquire)).await;
+        } else {
+            delta_wait(|| w.with(|i| i.state.job().get("status").as_str() != Some("running")))
+                .await;
+        }
     }
 
     async fn review_blocked_save() -> (tempfile::TempDir, Arc<Worker>, std::path::PathBuf) {
         let d = tempfile::tempdir().unwrap();
         let ini = d.path().join("models.ini");
         std::fs::write(&ini, INI).unwrap();
-        let props = Arc::new(AtomicBool::new(false));
+        let props = Arc::new(TestGate::default());
         let (port, _) = synthetic_engine_with(
             ini,
             Synth {
@@ -3217,23 +3316,19 @@ mod tests {
         let w = with_limits(
             &w,
             Limits {
-                finalize: Duration::from_millis(300),
+                finalize: WATCHDOG,
                 save_retry: Duration::from_millis(5),
                 ..w.limits
             },
         );
         w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
-        tokio::time::timeout(Duration::from_secs(3), async {
-            while !props.load(Ordering::Acquire) {
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
-        })
-        .await
-        .unwrap();
+        delta_wait(|| props.entered.load(Ordering::Acquire)).await;
+        *w.finalize_gate.lock().unwrap() = Some(Arc::new(TestGate::default()));
         let path = w.file.path.clone().unwrap();
         let backup = path.with_extension("review-backup");
         std::fs::rename(&path, &backup).unwrap();
         std::fs::create_dir(&path).unwrap();
+        props.release.notify_one();
         (d, w, backup)
     }
 
@@ -3249,6 +3344,14 @@ mod tests {
     }
 
     async fn review_repair_decided_save(w: &Worker, backup: &std::path::Path) {
+        review_wait_outcome(w).await;
+        w.finalize_gate
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .release
+            .notify_one();
         delta_wait(|| w.with(|i| i.decided)).await;
         assert_eq!(w.job().get("status").as_str(), Some("running"));
         assert_eq!(w.job().get("phase").as_str(), Some("Finalizing"));
@@ -3265,9 +3368,7 @@ mod tests {
     async fn review_persistent_final_save_failure_retains_admission_until_durable() {
         let (_d, w, backup) = review_blocked_save().await;
         review_repair_decided_save(&w, &backup).await;
-        let job = tokio::time::timeout(Duration::from_secs(3), settled(&w))
-            .await
-            .unwrap();
+        let job = tokio::time::timeout(WATCHDOG, settled(&w)).await.unwrap();
         review_failed(&w, &job);
         assert_eq!(w.file.load().job().get("status").as_str(), Some("failed"));
     }
@@ -3282,9 +3383,7 @@ mod tests {
             "pre-decision finalization is cancellable"
         );
         review_repair_decided_save(&w, &backup).await;
-        let job = tokio::time::timeout(Duration::from_secs(3), settled(&w))
-            .await
-            .unwrap();
+        let job = tokio::time::timeout(WATCHDOG, settled(&w)).await.unwrap();
         review_failed(&w, &job);
     }
 
@@ -3294,9 +3393,7 @@ mod tests {
         review_wait_outcome(&w).await;
         w.lose_exclusion();
         review_repair_decided_save(&w, &backup).await;
-        let job = tokio::time::timeout(Duration::from_secs(3), settled(&w))
-            .await
-            .unwrap();
+        let job = tokio::time::timeout(WATCHDOG, settled(&w)).await.unwrap();
         review_failed(&w, &job);
     }
 
@@ -3316,13 +3413,13 @@ mod tests {
         );
         w.panic_on_run.store(true, Ordering::Release);
         w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
-        let job = tokio::time::timeout(Duration::from_secs(2), settled(&w))
+        let job = tokio::time::timeout(WATCHDOG, settled(&w))
             .await
             .expect("panic reconciled");
         review_failed(&w, &job);
-        tokio::time::timeout(Duration::from_secs(3), async {
+        tokio::time::timeout(WATCHDOG, async {
             while w.unsaved() {
-                tokio::time::sleep(Duration::from_millis(10)).await;
+                tokio::task::yield_now().await;
             }
         })
         .await
@@ -3362,18 +3459,18 @@ mod tests {
         let w = with_limits(
             &w,
             Limits {
-                finalize: Duration::from_millis(300),
+                finalize: WATCHDOG,
                 ..w.limits
             },
         );
         w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
-        let job = tokio::time::timeout(Duration::from_secs(2), settled(&w))
+        let job = tokio::time::timeout(WATCHDOG, settled(&w))
             .await
             .expect("bounded DELETE");
         review_failed(&w, &job);
-        tokio::time::timeout(Duration::from_secs(3), async {
+        tokio::time::timeout(WATCHDOG, async {
             while w.unsaved() {
-                tokio::time::sleep(Duration::from_millis(5)).await;
+                tokio::task::yield_now().await;
             }
         })
         .await
@@ -3391,7 +3488,7 @@ mod tests {
         let w = with_limits(
             &w,
             Limits {
-                finalize: Duration::from_millis(300),
+                finalize: WATCHDOG,
                 ..w.limits
             },
         );
@@ -3399,11 +3496,12 @@ mod tests {
         let (entered, started) = std::sync::mpsc::channel();
         let (release, resume) = std::sync::mpsc::channel();
         let blocked = std::thread::spawn(move || store.stall_writes(entered, resume));
-        started.recv_timeout(Duration::from_secs(1)).unwrap();
+        started.recv_timeout(WATCHDOG).unwrap();
         w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
         review_wait_outcome(&w).await;
+        w.post_expiry.notify_one();
         // Evidence is waiting on the actual store mutex after the successful search.
-        let result = tokio::time::timeout(Duration::from_secs(2), settled(&w)).await;
+        let result = tokio::time::timeout(WATCHDOG, settled(&w)).await;
         if let Ok(job) = &result {
             review_failed(&w, job);
             assert!(!w.with(|i| i.active));
@@ -3459,7 +3557,7 @@ mod tests {
         Arc<Worker>,
         Arc<AtomicBool>,
         Arc<std::sync::atomic::AtomicUsize>,
-        Arc<Mutex<Vec<String>>>,
+        Arc<RequestLog>,
     ) {
         use axum::{
             body::Body,
@@ -3542,15 +3640,15 @@ mod tests {
         (d, w, available, calls, seen)
     }
     async fn wait_restoration(w: &Worker) {
-        tokio::time::timeout(Duration::from_secs(15), async {
+        tokio::time::timeout(WATCHDOG, async {
             while w.restoring.load(Ordering::Acquire) {
-                tokio::time::sleep(Duration::from_millis(5)).await;
+                tokio::task::yield_now().await;
             }
         })
         .await
         .expect("owned restoration settles and readmits");
     }
-    async fn begin_restore_run(w: &Arc<Worker>, seen: &Mutex<Vec<String>>) {
+    async fn begin_restore_run(w: &Arc<Worker>, seen: &RequestLog) {
         w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
         released(seen, "POST /v1/chat/completions").await;
         w.cancel().unwrap();
@@ -3602,9 +3700,9 @@ mod tests {
     async fn an_unreachable_restore_refuses_calibration_but_keeps_inference_admitted() {
         let (_d, w, available, calls, seen) = restore_rig("down").await;
         begin_restore_run(&w, &seen).await;
-        tokio::time::timeout(Duration::from_secs(15), async {
+        tokio::time::timeout(WATCHDOG, async {
             while calls.load(Ordering::Acquire) == 0 {
-                tokio::time::sleep(Duration::from_millis(5)).await;
+                tokio::task::yield_now().await;
             }
         })
         .await
@@ -3677,9 +3775,9 @@ mod tests {
         w.file.save(&state).unwrap();
         let worker = Arc::clone(&w);
         let recovery = tokio::spawn(async move { worker.recover().await });
-        tokio::time::timeout(Duration::from_secs(15), async {
+        tokio::time::timeout(WATCHDOG, async {
             while calls.load(Ordering::Acquire) < 2 {
-                tokio::time::sleep(Duration::from_millis(5)).await;
+                tokio::task::yield_now().await;
             }
         })
         .await
@@ -3687,7 +3785,7 @@ mod tests {
         available.store(true, Ordering::Release);
         assert_eq!(
             // Recovery's own CAS retry backs off 1 s, 2 s, ...: allow several rounds.
-            tokio::time::timeout(Duration::from_secs(15), recovery)
+            tokio::time::timeout(WATCHDOG, recovery)
                 .await
                 .unwrap()
                 .unwrap(),
@@ -3714,7 +3812,7 @@ mod tests {
         let w = with_limits(
             &w,
             Limits {
-                finalize: Duration::from_millis(150),
+                finalize: WATCHDOG,
                 ..w.limits
             },
         );
@@ -3723,16 +3821,15 @@ mod tests {
         let (release, resume) = std::sync::mpsc::channel();
         store.stall_next_append(entered, resume);
         let old = w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
-        tokio::task::spawn_blocking(move || started.recv_timeout(Duration::from_secs(3)))
+        tokio::task::spawn_blocking(move || started.recv_timeout(WATCHDOG))
             .await
             .unwrap()
             .unwrap();
         let record = w.tag_run_record(JValue::obj([("model", JValue::Str("synthetic".into()))]));
         // Cover old persisted history as well as the deferred evidence append.
         w.with(|i| i.state.push_history("synthetic", record.clone()));
-        let job = tokio::time::timeout(Duration::from_secs(2), settled(&w))
-            .await
-            .unwrap();
+        w.post_expiry.notify_one();
+        let job = tokio::time::timeout(WATCHDOG, settled(&w)).await.unwrap();
         review_failed(&w, &job);
         let withdrawn_before_next = !store.visible("synthetic", &record);
         let reopened =
@@ -3749,12 +3846,12 @@ mod tests {
         assert_ne!(next.get("id"), old.get("id"));
         let _ = w.cancel();
         release.send(()).unwrap();
-        tokio::time::timeout(Duration::from_secs(3), async {
+        tokio::time::timeout(WATCHDOG, async {
             while !std::fs::read_to_string(store.file())
                 .unwrap_or_default()
                 .contains(old.get("id").as_str().unwrap())
             {
-                tokio::time::sleep(Duration::from_millis(5)).await;
+                tokio::task::yield_now().await;
             }
         })
         .await
@@ -3819,9 +3916,9 @@ mod tests {
         released(&seen, "POST /v1/chat/completions").await;
         store.inject_run_write_error(true);
         w.cancel().unwrap();
-        tokio::time::timeout(Duration::from_secs(4), async {
+        tokio::time::timeout(WATCHDOG, async {
             while store.run_write_failures().len() < 2 {
-                tokio::time::sleep(Duration::from_millis(5)).await;
+                tokio::task::yield_now().await;
             }
         })
         .await
@@ -3844,9 +3941,9 @@ mod tests {
         // Cancellation interrupts the wait without releasing the retained local admission.
         let attempts = store.run_write_failures().len();
         w.cancel().unwrap();
-        tokio::time::timeout(Duration::from_secs(1), async {
+        tokio::time::timeout(WATCHDOG, async {
             while store.run_write_failures().len() == attempts {
-                tokio::time::sleep(Duration::from_millis(5)).await;
+                tokio::task::yield_now().await;
             }
         })
         .await
@@ -3854,9 +3951,9 @@ mod tests {
         assert!(w.maint.local_held());
         // Task cancellation/shutdown drops Hold, but the worker still owns the local fence.
         w.run_abort.lock().unwrap().as_ref().unwrap().abort();
-        tokio::time::timeout(Duration::from_secs(1), async {
+        tokio::time::timeout(WATCHDOG, async {
             while !w.run_abort.lock().unwrap().as_ref().unwrap().is_finished() {
-                tokio::time::sleep(Duration::from_millis(5)).await;
+                tokio::task::yield_now().await;
             }
         })
         .await
@@ -3865,13 +3962,11 @@ mod tests {
         assert_eq!(w.job().get("phase").as_str(), Some("Finalizing"));
         assert!(w.job().get("finishedAt").is_nullish());
         store.inject_run_write_error(false);
-        let job = tokio::time::timeout(Duration::from_secs(4), settled(&w))
-            .await
-            .unwrap();
+        let job = tokio::time::timeout(WATCHDOG, settled(&w)).await.unwrap();
         review_failed(&w, &job);
-        tokio::time::timeout(Duration::from_secs(3), async {
+        tokio::time::timeout(WATCHDOG, async {
             while w.unsaved() {
-                tokio::time::sleep(Duration::from_millis(5)).await;
+                tokio::task::yield_now().await;
             }
         })
         .await
@@ -3904,9 +3999,9 @@ mod tests {
         let restarted = with_limits(&w, w.limits);
         store.inject_run_write_error(true);
         let recovery = restarted.spawn_recover().unwrap();
-        tokio::time::timeout(Duration::from_secs(2), async {
+        tokio::time::timeout(WATCHDOG, async {
             while store.run_write_failures().is_empty() {
-                tokio::time::sleep(Duration::from_millis(5)).await;
+                tokio::task::yield_now().await;
             }
         })
         .await
@@ -3916,7 +4011,7 @@ mod tests {
         assert_eq!(restarted.job().get("phase").as_str(), Some("Finalizing"));
         assert!(restarted.job().get("finishedAt").is_nullish());
         store.inject_run_write_error(false);
-        tokio::time::timeout(Duration::from_secs(3), recovery)
+        tokio::time::timeout(WATCHDOG, recovery)
             .await
             .unwrap()
             .unwrap();
@@ -3949,9 +4044,9 @@ mod tests {
         // run future has never been polled. Its local fence must already have been transferred.
         store.inject_run_write_error(true);
         w.run_abort.lock().unwrap().as_ref().unwrap().abort();
-        tokio::time::timeout(Duration::from_secs(2), async {
+        tokio::time::timeout(WATCHDOG, async {
             while store.run_write_failures().is_empty() {
-                tokio::time::sleep(Duration::from_millis(5)).await;
+                tokio::task::yield_now().await;
             }
         })
         .await
@@ -3963,17 +4058,15 @@ mod tests {
         assert_eq!(w.job().get("phase").as_str(), Some("Finalizing"));
         assert!(w.job().get("finishedAt").is_nullish());
         store.inject_run_write_error(false);
-        let job = tokio::time::timeout(Duration::from_secs(3), settled(&w))
-            .await
-            .unwrap();
+        let job = tokio::time::timeout(WATCHDOG, settled(&w)).await.unwrap();
         review_failed(&w, &job);
     }
 
     // SETTLEMENT_DELTA_REGRESSIONS_BEGIN
     async fn delta_wait(mut ready: impl FnMut() -> bool) {
-        tokio::time::timeout(Duration::from_secs(4), async {
+        tokio::time::timeout(WATCHDOG, async {
             while !ready() {
-                tokio::time::sleep(Duration::from_millis(5)).await;
+                tokio::task::yield_now().await;
             }
         })
         .await
@@ -4113,7 +4206,7 @@ mod tests {
         assert!(restarted.job().get("finishedAt").is_nullish());
         assert!(restarted.maint.local_held());
         store.inject_run_write_error(false);
-        tokio::time::timeout(Duration::from_secs(4), recovery)
+        tokio::time::timeout(WATCHDOG, recovery)
             .await
             .unwrap()
             .unwrap();
@@ -4143,11 +4236,13 @@ mod tests {
         let (_copy, restarted) = delta_restart(&w, port, true).await;
         restarted.terminal_error.store(true, Ordering::Release);
         let recovery = restarted.spawn_recover().unwrap();
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        delta_wait(|| restarted.terminal_attempts.load(Ordering::Acquire) > 0).await;
         assert!(restarted.maint.local_held());
         assert_eq!(restarted.job().get("status").as_str(), Some("running"));
         restarted.terminal_error.store(false, Ordering::Release);
-        tokio::time::sleep(Duration::from_millis(1100)).await;
+        let attempts = restarted.terminal_attempts.load(Ordering::Acquire);
+        restarted.interrupt_fence_wait();
+        delta_wait(|| restarted.terminal_attempts.load(Ordering::Acquire) > attempts).await;
         assert!(
             restarted.maint.local_held(),
             "a passed decision waits for ledger hydration without erasing history"
@@ -4167,7 +4262,7 @@ mod tests {
             std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
         }
         restarted.interrupt_fence_wait();
-        tokio::time::timeout(Duration::from_secs(4), recovery)
+        tokio::time::timeout(WATCHDOG, recovery)
             .await
             .unwrap()
             .unwrap();
@@ -4217,12 +4312,12 @@ mod tests {
         );
         let w = worker(d.path(), port);
         let recovery = w.spawn_recover().unwrap();
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        delta_wait(|| w.with(|i| i.decided)).await;
         assert!(w.maint.local_held());
         assert!(w.launch("synthetic", plan(32768.0, 120.0)).await.is_err());
         std::fs::set_permissions(&ledger, std::fs::Permissions::from_mode(0o600)).unwrap();
         w.interrupt_fence_wait();
-        tokio::time::timeout(Duration::from_secs(4), recovery)
+        tokio::time::timeout(WATCHDOG, recovery)
             .await
             .expect("repaired read hydrates the same registry")
             .unwrap();
@@ -4255,7 +4350,7 @@ mod tests {
         assert!(w.launch("synthetic", plan(32768.0, 120.0)).await.is_err());
         store.inject_run_write_error(false);
         assert!(
-            tokio::time::timeout(Duration::from_secs(4), w.recover())
+            tokio::time::timeout(WATCHDOG, w.recover())
                 .await
                 .unwrap()
                 .is_some(),
@@ -4297,15 +4392,14 @@ mod tests {
         first.abort();
         assert!(first.await.unwrap_err().is_cancelled());
         let mut retry = w.spawn_recover().expect("the recovery slot is retryable");
-        let overtook = tokio::time::timeout(Duration::from_millis(100), &mut retry)
-            .await
-            .is_ok();
+        delta_wait(|| w.pending_write.try_lock().is_err() || retry.is_finished()).await;
+        let overtook = retry.is_finished();
         let mut release = Some(release);
         if !overtook {
             assert!(w.maint.local_held());
             assert!(w.launch("synthetic", plan(32768.0, 120.0)).await.is_err());
             release.take().unwrap().send(()).unwrap();
-            tokio::time::timeout(Duration::from_secs(4), &mut retry)
+            tokio::time::timeout(WATCHDOG, &mut retry)
                 .await
                 .unwrap()
                 .unwrap();
@@ -4320,7 +4414,7 @@ mod tests {
         let checkpoint_block = tokio::task::spawn_blocking(move || {
             let _writer = writes.lock().unwrap();
             entered.send(()).unwrap();
-            let _ = wait.recv_timeout(Duration::from_secs(10));
+            let _ = wait.recv_timeout(WATCHDOG);
         });
         delta_wait(|| locked.try_recv().is_ok()).await;
         if let Some(release) = release {
@@ -4404,10 +4498,7 @@ mod tests {
             let _ = task.await;
             delta_wait(|| w.save_counts.outstanding.load(Ordering::Acquire) == 0).await;
         } else {
-            tokio::time::timeout(Duration::from_secs(4), task)
-                .await
-                .unwrap()
-                .unwrap();
+            tokio::time::timeout(WATCHDOG, task).await.unwrap().unwrap();
         }
         assert_eq!(
             outstanding, 1,
@@ -4498,7 +4589,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let ini = d.path().join("models.ini");
         std::fs::write(&ini, INI).unwrap();
-        let (port, _) = synthetic_engine(ini.clone(), true).await;
+        let (port, seen) = synthetic_engine(ini.clone(), true).await;
         let w = worker(d.path(), port);
         let plan = Plan {
             prompt_budget_seconds: 120.0,
@@ -4506,17 +4597,7 @@ mod tests {
             base: Vec::new(),
         };
         w.launch("synthetic", plan).await.unwrap();
-        for _ in 0..600 {
-            if w.job()
-                .get("phase")
-                .as_str()
-                .is_some_and(|p| p.starts_with("Long-prompt"))
-            {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        released(&seen, "POST /v1/chat/completions").await;
         let snapshot = w.cancel().unwrap();
         assert_eq!(snapshot.get("status").as_str(), Some("running"));
         let job = settled(&w).await;
@@ -4530,7 +4611,7 @@ mod tests {
     async fn native_running_state(d: &std::path::Path) -> (String, String) {
         let ini = d.join("models.ini");
         std::fs::write(&ini, INI).unwrap();
-        let (port, _) = synthetic_engine(ini.clone(), true).await;
+        let (port, seen) = synthetic_engine(ini.clone(), true).await;
         let w = worker(d, port);
         let plan = Plan {
             prompt_budget_seconds: 120.0,
@@ -4538,17 +4619,7 @@ mod tests {
             base: Vec::new(),
         };
         w.launch("synthetic", plan).await.unwrap();
-        for _ in 0..600 {
-            if w.job()
-                .get("phase")
-                .as_str()
-                .is_some_and(|p| p.starts_with("Long-prompt"))
-            {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        released(&seen, "POST /v1/chat/completions").await;
         let file = d.join(format!("native-calibration-{}.json", w.maint.suffix));
         let state = std::fs::read_to_string(&file).unwrap();
         let profile = std::fs::read_to_string(&ini).unwrap();
@@ -4653,7 +4724,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let ini = d.path().join("models.ini");
         std::fs::write(&ini, INI).unwrap();
-        let (port, _) = synthetic_engine(ini.clone(), true).await;
+        let (port, seen) = synthetic_engine(ini.clone(), true).await;
         let w = worker(d.path(), port);
         let plan = json!({"promptBudgetSeconds": 120, "native": 16384, "base": {}});
         let plan = wtf16::parse(&plan.to_string()).unwrap();
@@ -4703,7 +4774,8 @@ mod tests {
             .unwrap();
         assert_eq!(late.get("reason").as_str(), Some("stale"));
         let mut facts = w.cancellation_facts();
-        for _ in 0..200 {
+        let deadline = Instant::now() + WATCHDOG;
+        while Instant::now() < deadline {
             let applied = w.compare_and_abort(facts.get("token").as_str().unwrap());
             if applied.get("applied") == &JValue::Bool(true) {
                 assert_eq!(applied.get("generation"), first.get("generation"));
@@ -4718,17 +4790,23 @@ mod tests {
 
     /// Node's lease route (model-maintenance-lease.cjs): grants `hard` (None: the cap asked for, as
     /// the new Core does), renews until `ended` is set, then answers 404. Logs requests and bodies.
-    async fn lease_stub(
+    async fn lease_stub(hard: Option<u64>, ended: Arc<AtomicBool>) -> (u16, Arc<RequestLog>) {
+        lease_stub_with_release(hard, ended, None).await
+    }
+
+    async fn lease_stub_with_release(
         hard: Option<u64>,
         ended: Arc<AtomicBool>,
-    ) -> (u16, Arc<Mutex<Vec<String>>>) {
+        release: Option<Arc<TestGate>>,
+    ) -> (u16, Arc<RequestLog>) {
         use axum::body::Body;
         use axum::http::{Request, Response};
         use http_body_util::BodyExt;
-        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen = Arc::new(RequestLog::default());
         let log = Arc::clone(&seen);
         let held = Arc::new(AtomicBool::new(false));
         let app = axum::Router::new().fallback(move |req: Request<Body>| {
+            let release = release.clone();
             let (log, ended, held) = (Arc::clone(&log), Arc::clone(&ended), Arc::clone(&held));
             async move {
                 let (parts, body) = req.into_parts();
@@ -4756,7 +4834,7 @@ mod tests {
                         }
                     }
                     ("DELETE", _) => {
-                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        if let Some(release) = &release { release.wait().await; }
                         held.store(false, Ordering::Release);
                         (204, json!({}))
                     },
@@ -4837,9 +4915,18 @@ mod tests {
         let ini = d.path().join("models.ini");
         std::fs::write(&ini, INI).unwrap();
         let (port, _) = synthetic_engine(ini, false).await;
-        let (lease, _) = lease_stub(None, Arc::new(AtomicBool::new(false))).await;
+        let release = Arc::new(TestGate::default());
+        let (lease, _) = lease_stub_with_release(
+            None,
+            Arc::new(AtomicBool::new(false)),
+            Some(Arc::clone(&release)),
+        )
+        .await;
         let w = worker_with(d.path(), port, Some(lease));
         w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        delta_wait(|| release.entered.load(Ordering::Acquire)).await;
+        assert!(w.job().get("finishedAt").is_nullish());
+        release.release.notify_one();
         let job = settled(&w).await;
         let saved = w.file.load();
         assert_eq!(saved.job().get("finishedAt"), job.get("finishedAt"));
@@ -4847,6 +4934,7 @@ mod tests {
         // No event wait or private local-held observation: public completion must suffice.
         let next = w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
         assert_ne!(next.get("id"), job.get("id"));
+        release.release.notify_one();
         let _ = w.cancel();
         settled(&w).await;
     }
@@ -4880,21 +4968,12 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let ini = d.path().join("models.ini");
         std::fs::write(&ini, INI).unwrap();
-        let (port, _) = synthetic_engine(ini.clone(), true).await;
+        let (port, seen) = synthetic_engine(ini.clone(), true).await;
         let ended = Arc::new(AtomicBool::new(false));
         let (lease, _) = lease_stub(None, Arc::clone(&ended)).await;
         let w = worker_with(d.path(), port, Some(lease));
         w.launch("synthetic", plan(16_384.0, 120.0)).await.unwrap();
-        for _ in 0..600 {
-            if w.job()
-                .get("phase")
-                .as_str()
-                .is_some_and(|p| p.starts_with("Long-prompt"))
-            {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
+        released(&seen, "POST /v1/chat/completions").await;
         ended.store(true, Ordering::Release);
         let job = settled(&w).await;
         assert_eq!(job.get("status").as_str(), Some("interrupted"), "{job:?}");
@@ -5015,28 +5094,44 @@ mod tests {
     /// P3-1: a long prompt the engine accepts and then never answers ends at its 1.5x deadline as
     /// a failed long test (Node's over-budget stop), not at `limits.long`; the run then fails as
     /// one in which no size passed.
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test(flavor = "current_thread")]
     async fn a_silent_long_prompt_ends_at_its_deadline_as_a_failed_long_test() {
         let d = tempfile::tempdir().unwrap();
         let ini = d.path().join("models.ini");
         std::fs::write(&ini, INI).unwrap();
+        let polled = Arc::new(Notify::new());
         let (port, _) = synthetic_engine_with(
             ini.clone(),
             Synth {
                 silent: true,
+                silent_poll: Some(Arc::clone(&polled)),
                 ..Synth::default()
             },
         )
         .await;
         let w = worker(d.path(), port);
-        let began = std::time::Instant::now();
+        // Advance only after the response body is polled, while the long timer is armed.
+        // Keep disk/network setup on the real clock so paused-time auto-advance cannot
+        // race spawn_blocking persistence. Count virtual elapsed time for the same bound.
+        let elapsed = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let clock = Arc::clone(&elapsed);
+        let driver = tokio::spawn(async move {
+            loop {
+                tokio::time::timeout(WATCHDOG, polled.notified())
+                    .await
+                    .unwrap();
+                tokio::time::pause();
+                tokio::time::advance(Duration::from_secs(2)).await;
+                tokio::time::resume();
+                clock.fetch_add(2, Ordering::AcqRel);
+            }
+        });
         w.launch("synthetic", plan(16_384.0, 1.0)).await.unwrap();
         let job = settled(&w).await;
-        assert!(
-            began.elapsed() < Duration::from_secs(25),
-            "{:?}",
-            began.elapsed()
-        );
+        driver.abort();
+        assert!(driver.await.unwrap_err().is_cancelled());
+        let elapsed = Duration::from_secs(elapsed.load(Ordering::Acquire));
+        assert!(elapsed < Duration::from_secs(25), "{elapsed:?}");
         assert_eq!(job.get("status").as_str(), Some("failed"), "{job:?}");
         assert!(job
             .get("error")
@@ -5096,7 +5191,7 @@ mod tests {
         assert_eq!(live.load(Ordering::Acquire), 0);
     }
 
-    fn engine_loads(seen: &Mutex<Vec<String>>) -> usize {
+    fn engine_loads(seen: &RequestLog) -> usize {
         seen.lock()
             .unwrap()
             .iter()
@@ -5104,7 +5199,7 @@ mod tests {
             .count()
     }
 
-    fn load_asks(seen: &Mutex<Vec<String>>) -> usize {
+    fn load_asks(seen: &RequestLog) -> usize {
         seen.lock()
             .unwrap()
             .iter()
@@ -5300,10 +5395,11 @@ mod tests {
         std::fs::write(&ini, INI).unwrap();
         std::fs::write(d.path().join("synthetic.gguf"), b"GGUF synthetic").unwrap();
         let ended = Arc::new(AtomicBool::new(false));
+        let props = Arc::new(TestGate::default());
         let (port, _) = synthetic_engine_with(
             ini.clone(),
             Synth {
-                props: Some(Arc::clone(&ended)),
+                props: Some(Arc::clone(&props)),
                 ..Synth::default()
             },
         )
@@ -5311,6 +5407,10 @@ mod tests {
         let (lease, _) = lease_stub(None, Arc::clone(&ended)).await;
         let w = worker_with(d.path(), port, Some(lease));
         w.launch("synthetic", plan(16_384.0, 120.0)).await.unwrap();
+        delta_wait(|| props.entered.load(Ordering::Acquire)).await;
+        ended.store(true, Ordering::Release);
+        delta_wait(|| w.lease_lost()).await;
+        props.release.notify_one();
         let job = settled(&w).await;
         assert!(
             ended.load(Ordering::Acquire),

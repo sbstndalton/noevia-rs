@@ -679,7 +679,7 @@ impl Store {
                 self.append_stall.lock().ok().and_then(|mut s| s.take())
             {
                 let _ = entered.send(());
-                let _ = release.recv();
+                let _ = release.recv_timeout(std::time::Duration::from_secs(120));
             }
             f.write_all(format!("{line}\n").as_bytes())
                 .map_err(|_| StoreError::Io)?;
@@ -742,7 +742,9 @@ impl Store {
     ) {
         let _lock = self.decide.lock().unwrap();
         entered.send(()).unwrap();
-        release.recv().unwrap();
+        release
+            .recv_timeout(std::time::Duration::from_secs(120))
+            .unwrap();
     }
 
     /// Reported rates drift a little on every reply; one record per meaningful change or per day.
