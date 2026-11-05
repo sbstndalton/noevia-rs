@@ -50,8 +50,17 @@ pub const MAX_WAIT: Duration = Duration::from_secs(30);
 pub enum Origin {
     /// This front's own work.
     Front,
-    /// Node's maintenance gate, for the Node process start `boot`.
-    Node { boot: String },
+    /// Node's maintenance gate, for the Node incarnation this authority issued at its session.
+    Node { incarnation: u64 },
+}
+
+/// The answer to a Node process start's session ([`Authority::node_session`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Session {
+    /// The server-issued, strictly growing incarnation: every later operation carries it.
+    pub incarnation: u64,
+    /// A lease this front holds exists: the new Node must keep chat closed until it ends.
+    pub front_held: bool,
 }
 
 /// A lease granted.
@@ -69,6 +78,8 @@ pub struct Grant {
 pub enum Refusal {
     /// Another holder has it: 409.
     Busy,
+    /// The caller's Node incarnation is not the active one (a newer Node registered): 410.
+    Retired,
 }
 
 struct Entry {
@@ -78,12 +89,25 @@ struct Entry {
     renewed_until: Instant,
     hard_at: Instant,
     reason: String,
+    /// A front lease: the Node incarnation whose chat latch backs it.
+    bound_node: Option<u64>,
+    /// A front lease whose Node restarted: it still excludes (until released or expired) but covers
+    /// nothing, so no further step starts on it.
+    fenced: bool,
+}
+
+/// The active Node process start: its incarnation and the (start time, boot) it registered with.
+struct NodeStart {
+    incarnation: u64,
+    started: u64,
+    boot: String,
 }
 
 struct State {
     holder: Option<Entry>,
     generation: u64,
-    node_boot: Option<String>,
+    node: Option<NodeStart>,
+    incarnations: u64,
 }
 
 struct Inner {
@@ -140,7 +164,8 @@ impl Authority {
                 state: Mutex::new(State {
                     holder: None,
                     generation: 0,
-                    node_boot: None,
+                    node: None,
+                    incarnations: 0,
                 }),
                 epoch: random_hex(),
                 changed: tokio::sync::Notify::new(),
@@ -194,39 +219,76 @@ impl Authority {
         gone
     }
 
-    /// A Node process start: a different boot than the last one drops the leases earlier boots held.
-    fn note_boot(state: &mut State, origin: &Origin) -> bool {
-        let Origin::Node { boot } = origin else {
-            return false;
+    /// Registers a Node process start (`boot`, started at `started` ms since the epoch on the shared
+    /// host clock). The same start gets its incarnation again. A later start is issued the next
+    /// incarnation: the leases of earlier Node incarnations end, and a front lease backed by an earlier
+    /// incarnation's chat latch is fenced (it keeps excluding until released or expired, so the new Node
+    /// keeps chat closed, but no further step may start on it). An earlier or ambiguous start (older, or
+    /// the same start time with another boot) is retired and changes nothing.
+    pub fn node_session(&self, boot: &str, started: u64) -> Result<Session, Refusal> {
+        let now = Instant::now();
+        let mut state = self.lock();
+        Self::expire(&mut state, now);
+        let issued = state
+            .node
+            .as_ref()
+            .is_none_or(|n| n.boot != boot && started > n.started);
+        let incarnation = match state.node.as_ref() {
+            Some(n) if n.boot == boot => n.incarnation,
+            Some(n) if started <= n.started => return Err(Refusal::Retired),
+            _ => {
+                state.incarnations += 1;
+                let incarnation = state.incarnations;
+                state.node = Some(NodeStart {
+                    incarnation,
+                    started,
+                    boot: boot.to_owned(),
+                });
+                let mut freed = false;
+                if let Some(e) = state.holder.as_mut() {
+                    match e.origin {
+                        Origin::Node { incarnation: i } if i != incarnation => freed = true,
+                        Origin::Front if e.bound_node != Some(incarnation) && !e.fenced => {
+                            e.fenced = true;
+                            eprintln!("[models] Node restarted while this front held the maintenance lease; its work stops before its next step");
+                        }
+                        _ => {}
+                    }
+                }
+                if freed {
+                    state.holder = None;
+                    eprintln!("[models] Node restarted; the maintenance lease its previous start held has ended");
+                    drop(state);
+                    self.inner.changed.notify_waiters();
+                    return Ok(Session {
+                        incarnation,
+                        front_held: false,
+                    });
+                }
+                incarnation
+            }
         };
-        if state.node_boot.as_deref() == Some(boot.as_str()) {
-            return false;
-        }
-        state.node_boot = Some(boot.clone());
-        let stale = state
+        let front_held = state
             .holder
             .as_ref()
-            .is_some_and(|e| matches!(&e.origin, Origin::Node { boot: b } if b != boot));
-        if stale {
-            state.holder = None;
-            eprintln!(
-                "[models] Node restarted; the maintenance lease its previous start held has ended"
-            );
-        }
-        stale
-    }
-
-    /// Announces Node's process start (see [`Self::note_boot`]).
-    pub fn node_session(&self, boot: &str) {
-        let freed = Self::note_boot(
-            &mut self.lock(),
-            &Origin::Node {
-                boot: boot.to_owned(),
-            },
-        );
-        if freed {
+            .is_some_and(|e| e.origin == Origin::Front);
+        drop(state);
+        if issued {
+            // Waiting acquires of retired incarnations end now.
             self.inner.changed.notify_waiters();
         }
+        Ok(Session {
+            incarnation,
+            front_held,
+        })
+    }
+
+    /// Whether `incarnation` is the active Node start.
+    pub fn node_active(&self, incarnation: u64) -> bool {
+        self.lock()
+            .node
+            .as_ref()
+            .is_some_and(|n| n.incarnation == incarnation)
     }
 
     /// Takes the lease now, or refuses with [`Refusal::Busy`]. Check and set in one step.
@@ -239,19 +301,31 @@ impl Authority {
         let now = Instant::now();
         let cap = cap_for(requested, self.inner.hard, self.inner.max);
         let mut state = self.lock();
-        Self::note_boot(&mut state, &origin);
+        // An acquire never changes the active Node start; a retired incarnation gets nothing.
+        if let Origin::Node { incarnation } = origin {
+            if state
+                .node
+                .as_ref()
+                .is_none_or(|n| n.incarnation != incarnation)
+            {
+                return Err(Refusal::Retired);
+            }
+        }
         Self::expire(&mut state, now);
         if state.holder.is_some() {
             return Err(Refusal::Busy);
         }
+        let bound_node = state.node.as_ref().map(|n| n.incarnation);
         state.generation += 1;
         let entry = Entry {
             id: random_hex(),
             generation: state.generation,
-            origin,
+            origin: origin.clone(),
             renewed_until: now + self.inner.ttl,
             hard_at: now + cap,
             reason: reason.chars().take(300).collect(),
+            bound_node: (origin == Origin::Front).then_some(bound_node).flatten(),
+            fenced: false,
         };
         let grant = Grant {
             id: entry.id.clone(),
@@ -281,6 +355,7 @@ impl Authority {
             notified.as_mut().enable();
             match self.try_acquire(origin.clone(), requested, reason) {
                 Ok(g) => return Ok(g),
+                Err(Refusal::Retired) => return Err(Refusal::Retired),
                 Err(r) => {
                     let now = Instant::now();
                     if now >= deadline {
@@ -330,6 +405,27 @@ impl Authority {
         ok
     }
 
+    fn owned_by(state: &State, origin: &Origin, id: &str, generation: Option<u64>) -> bool {
+        Self::matches(state, id, generation)
+            && state.holder.as_ref().is_some_and(|e| &e.origin == origin)
+    }
+
+    /// [`Self::renew`], only for a lease `origin` holds (a Node incarnation renews only its own).
+    pub fn renew_as(&self, origin: &Origin, id: &str, generation: Option<u64>) -> bool {
+        if !Self::owned_by(&self.lock(), origin, id, generation) {
+            return false;
+        }
+        self.renew(id, generation)
+    }
+
+    /// [`Self::release`], only for a lease `origin` holds.
+    pub fn release_as(&self, origin: &Origin, id: &str, generation: Option<u64>) -> bool {
+        if !Self::owned_by(&self.lock(), origin, id, generation) {
+            return false;
+        }
+        self.release(id, generation)
+    }
+
     /// Updates the reason the lease shows (`setReason`); false when it has ended.
     pub fn set_reason(&self, id: &str, reason: &str) -> bool {
         let mut state = self.lock();
@@ -363,6 +459,7 @@ impl Authority {
         state.holder.as_ref().is_some_and(|e| {
             e.id == id
                 && e.generation == generation
+                && !e.fenced
                 && now + step < e.renewed_until
                 && now + step < e.hard_at
         })
@@ -442,23 +539,27 @@ fn millis(body: &serde_json::Value, key: &str) -> Result<Option<i64>, ()> {
     }
 }
 
+fn retired() -> axum::http::Response<axum::body::Body> {
+    answer(
+        410,
+        &serde_json::json!({
+            "error": "This Node start was replaced by a newer one.",
+            "code": "incarnation_retired",
+        }),
+    )
+}
+
 /// Answers one Node operation. `body` is the already-authorised request's JSON.
+///
+/// `session {boot, startedAt}` registers the process start and returns `{epoch, incarnation,
+/// frontHeld}`; every other operation carries that `incarnation`, and one that is not the active
+/// incarnation is a 410 (`incarnation_retired`) that changes nothing.
 pub async fn answer_node(
     authority: &Authority,
     op: &str,
     body: &serde_json::Value,
 ) -> axum::http::Response<axum::body::Body> {
     use serde_json::json;
-    let Some(boot) = body
-        .get("boot")
-        .and_then(serde_json::Value::as_str)
-        .filter(|b| !b.is_empty() && b.len() <= 64)
-    else {
-        return bad("boot required");
-    };
-    let origin = Origin::Node {
-        boot: boot.to_owned(),
-    };
     let reason = body
         .get("reason")
         .and_then(serde_json::Value::as_str)
@@ -468,11 +569,37 @@ pub async fn answer_node(
             .and_then(serde_json::Value::as_str)
             .filter(|l| is_hex32(l))
     };
+    if op == "session" {
+        let Some(boot) = body
+            .get("boot")
+            .and_then(serde_json::Value::as_str)
+            .filter(|b| !b.is_empty() && b.len() <= 64)
+        else {
+            return bad("boot required");
+        };
+        let Some(started) = millis(body, "startedAt")
+            .ok()
+            .flatten()
+            .and_then(|m| u64::try_from(m).ok())
+        else {
+            return bad("startedAt required");
+        };
+        return match authority.node_session(boot, started) {
+            Ok(s) => answer(
+                200,
+                &json!({ "epoch": authority.epoch(), "incarnation": s.incarnation, "frontHeld": s.front_held }),
+            ),
+            Err(_) => retired(),
+        };
+    }
+    let Some(incarnation) = body.get("incarnation").and_then(serde_json::Value::as_u64) else {
+        return bad("incarnation required");
+    };
+    if !authority.node_active(incarnation) {
+        return retired();
+    }
+    let origin = Origin::Node { incarnation };
     match op {
-        "session" => {
-            authority.node_session(boot);
-            answer(200, &json!({ "epoch": authority.epoch() }))
-        }
         "acquire" => {
             let (Ok(max), Ok(wait)) = (millis(body, "maxMs"), millis(body, "waitMs")) else {
                 return bad("maxMs must be a whole number of milliseconds.");
@@ -499,6 +626,7 @@ pub async fn answer_node(
                         "chatActive": false,
                     }),
                 ),
+                Err(Refusal::Retired) => retired(),
             }
         }
         "renew" => {
@@ -506,7 +634,7 @@ pub async fn answer_node(
                 return answer(404, &json!({ "error": "Not found" }));
             };
             let generation = body.get("generation").and_then(serde_json::Value::as_u64);
-            if !authority.renew(id, generation) {
+            if !authority.renew_as(&origin, id, generation) {
                 return answer(404, &json!({ "error": "Not found" }));
             }
             if !reason.is_empty() {
@@ -517,7 +645,7 @@ pub async fn answer_node(
         "release" => {
             if let Some(id) = id() {
                 let generation = body.get("generation").and_then(serde_json::Value::as_u64);
-                authority.release(id, generation);
+                authority.release_as(&origin, id, generation);
             }
             let mut res = axum::http::Response::new(axum::body::Body::empty());
             *res.status_mut() = axum::http::StatusCode::NO_CONTENT;
@@ -536,22 +664,26 @@ pub async fn answer_node(
 mod tests {
     use super::*;
 
-    fn node(boot: &str) -> Origin {
-        Origin::Node { boot: boot.into() }
+    /// Registers Node start `boot` at `started` and returns its origin.
+    fn node(a: &Authority, boot: &str, started: u64) -> Origin {
+        Origin::Node {
+            incarnation: a.node_session(boot, started).unwrap().incarnation,
+        }
     }
 
     #[tokio::test(start_paused = true)]
     async fn exclusive_hold_and_busy() {
         let a = Authority::new();
+        let n = node(&a, "n1", 1);
         let g = a.try_acquire(Origin::Front, None, "reload").unwrap();
         assert_eq!(g.id.len(), 32);
         assert_eq!(g.ttl, TTL);
         assert_eq!(g.renew_every, RENEW);
         assert_eq!(g.hard, HARD);
-        assert_eq!(a.try_acquire(node("n1"), None, "tune"), Err(Refusal::Busy));
+        assert_eq!(a.try_acquire(n.clone(), None, "tune"), Err(Refusal::Busy));
         assert_eq!(a.try_acquire(Origin::Front, None, "x"), Err(Refusal::Busy));
         assert!(a.release(&g.id, Some(g.generation)));
-        let g2 = a.try_acquire(node("n1"), None, "tune").unwrap();
+        let g2 = a.try_acquire(n, None, "tune").unwrap();
         assert!(g2.generation > g.generation);
         assert_ne!(g2.id, g.id);
     }
@@ -582,6 +714,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn renewal_keeps_it_and_missing_renewal_ends_it() {
         let a = Authority::new();
+        let n = node(&a, "n", 1);
         let g = a.try_acquire(Origin::Front, None, "r").unwrap();
         for _ in 0..5 {
             tokio::time::advance(Duration::from_secs(170)).await;
@@ -593,7 +726,7 @@ mod tests {
             !a.renew(&g.id, Some(g.generation)),
             "an expired lease is not renewed"
         );
-        assert!(a.try_acquire(node("n"), None, "t").is_ok());
+        assert!(a.try_acquire(n, None, "t").is_ok());
     }
 
     #[tokio::test(start_paused = true)]
@@ -615,12 +748,10 @@ mod tests {
         let a = Authority::new();
         let g = a.try_acquire(Origin::Front, None, "r").unwrap();
         assert!(a.covers(&g.id, g.generation, Duration::from_secs(120)));
-        // A step longer than what the last renewal covers may not start.
         tokio::time::advance(Duration::from_secs(70)).await;
         assert!(!a.covers(&g.id, g.generation, Duration::from_secs(120)));
         tokio::time::advance(TTL).await;
         assert!(!a.covers(&g.id, g.generation, Duration::ZERO));
-        // A newer lease with the same holder kind does not revive the old one's fence.
         let g2 = a.try_acquire(Origin::Front, None, "r").unwrap();
         assert!(!a.covers(&g.id, g.generation, Duration::ZERO));
         assert!(!a.renew(&g.id, Some(g.generation)));
@@ -647,7 +778,8 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn restart_grants_no_stale_lease() {
         let before = Authority::new();
-        let g = before.try_acquire(node("boot-a"), None, "t").unwrap();
+        let n = node(&before, "boot-a", 1);
+        let g = before.try_acquire(n, None, "t").unwrap();
         let after = Authority::new();
         assert_ne!(before.epoch(), after.epoch());
         assert!(!after.held());
@@ -657,30 +789,102 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn a_node_restart_drops_its_previous_boots_lease() {
+    async fn a_node_restart_drops_its_previous_starts_lease() {
         let a = Authority::new();
-        let g = a.try_acquire(node("boot-a"), None, "t").unwrap();
-        a.node_session("boot-a");
-        assert!(a.held(), "same boot keeps it");
-        a.node_session("boot-b");
+        let old = node(&a, "boot-a", 10);
+        let g = a.try_acquire(old.clone(), None, "t").unwrap();
+        assert_eq!(
+            a.node_session("boot-a", 10).unwrap().incarnation,
+            1,
+            "same start, same incarnation"
+        );
+        assert!(a.held());
+        let new = node(&a, "boot-b", 20);
+        assert_eq!(new, Origin::Node { incarnation: 2 });
         assert!(!a.held());
-        assert!(!a.renew(&g.id, None));
-        // A front lease is not Node's to drop.
-        let f = a.try_acquire(Origin::Front, None, "r").unwrap();
-        a.node_session("boot-c");
+        assert!(!a.renew_as(&old, &g.id, None));
+        assert_eq!(a.try_acquire(old, None, "t"), Err(Refusal::Retired));
+    }
+
+    // Review P2: an old start's delayed session or waiting acquire never supersedes a newer start.
+    #[tokio::test(start_paused = true)]
+    async fn an_old_starts_session_and_waiting_acquire_cannot_revoke_a_newer_starts_lease() {
+        let a = Authority::new();
+        let old = node(&a, "boot-a", 10);
+        let front = a.try_acquire(Origin::Front, None, "reload").unwrap();
+        // A waits behind the front lease.
+        let waiting = {
+            let (a, old) = (a.clone(), old.clone());
+            tokio::spawn(async move { a.acquire(old, None, "t", Duration::from_secs(30)).await })
+        };
+        tokio::time::advance(Duration::from_millis(10)).await;
+        // B starts, and gets the lease once the front releases.
+        let new = node(&a, "boot-b", 20);
+        a.release(&front.id, Some(front.generation));
+        let b = a.try_acquire(new.clone(), None, "delete").unwrap();
+        assert_eq!(
+            waiting.await.unwrap(),
+            Err(Refusal::Retired),
+            "A's wait ends retired"
+        );
+        // A's delayed session (older start, or same start time with another boot) is retired.
+        assert_eq!(a.node_session("boot-a", 10), Err(Refusal::Retired));
+        assert_eq!(a.node_session("boot-z", 20), Err(Refusal::Retired));
+        assert!(
+            a.covers(&b.id, b.generation, Duration::ZERO),
+            "B's lease is untouched"
+        );
+        assert!(a.node_active(2) && !a.node_active(1));
+        let _ = new;
+    }
+
+    // Review P1: a Node restart while the front holds fences the front lease but keeps it excluding.
+    #[tokio::test(start_paused = true)]
+    async fn a_node_restart_fences_a_front_lease_but_keeps_exclusion_until_release() {
+        let a = Authority::new();
+        let _ = node(&a, "boot-a", 10);
+        let f = a.try_acquire(Origin::Front, None, "reload").unwrap();
+        assert!(a.covers(&f.id, f.generation, Duration::ZERO));
+        let s = a.node_session("boot-b", 20).unwrap();
+        assert!(s.front_held, "the new Node is told to keep chat closed");
+        assert!(
+            !a.covers(&f.id, f.generation, Duration::ZERO),
+            "no further front step"
+        );
+        assert!(
+            a.held_by_front(),
+            "still excluding while its in-flight step settles"
+        );
+        assert!(
+            a.renew(&f.id, Some(f.generation)),
+            "a live holder keeps it excluding"
+        );
+        let new = Origin::Node {
+            incarnation: s.incarnation,
+        };
+        assert_eq!(a.try_acquire(new.clone(), None, "t"), Err(Refusal::Busy));
+        a.release(&f.id, Some(f.generation));
+        assert!(!a.node_session("boot-b", 20).unwrap().front_held);
+        assert!(a.try_acquire(new, None, "t").is_ok());
+        // A front lease taken under the current start is not fenced by the same start again.
+        let a = Authority::new();
+        let _ = node(&a, "boot-c", 5);
+        let f = a.try_acquire(Origin::Front, None, "reload").unwrap();
+        let _ = a.node_session("boot-c", 5).unwrap();
         assert!(a.covers(&f.id, f.generation, Duration::ZERO));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn concurrent_acquires_grant_exactly_one() {
         let a = Authority::new();
+        let n = node(&a, "n", 1);
         let start = Arc::new(tokio::sync::Barrier::new(64));
         let mut tasks = Vec::new();
         for i in 0..64 {
-            let (a, start) = (a.clone(), Arc::clone(&start));
+            let (a, start, n) = (a.clone(), Arc::clone(&start), n.clone());
             tasks.push(tokio::spawn(async move {
                 start.wait().await;
-                let origin = if i % 2 == 0 { Origin::Front } else { node("n") };
+                let origin = if i % 2 == 0 { Origin::Front } else { n };
                 a.try_acquire(origin, None, "race").is_ok()
             }));
         }
@@ -694,33 +898,25 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn a_waiter_gets_it_on_release_and_cancellation_takes_nothing() {
         let a = Authority::new();
+        let n = node(&a, "n", 1);
         let g = a.try_acquire(Origin::Front, None, "r").unwrap();
-        // Cancelled while waiting: nothing is taken, the holder is unchanged.
         let waiting = {
-            let a = a.clone();
-            tokio::spawn(async move {
-                a.acquire(node("n"), None, "t", Duration::from_secs(30))
-                    .await
-            })
+            let (a, n) = (a.clone(), n.clone());
+            tokio::spawn(async move { a.acquire(n, None, "t", Duration::from_secs(30)).await })
         };
         tokio::time::advance(Duration::from_secs(1)).await;
         waiting.abort();
         assert!(waiting.await.unwrap_err().is_cancelled());
         assert!(a.covers(&g.id, g.generation, Duration::ZERO));
-        // A waiter is woken by the release.
         let waiter = {
-            let a = a.clone();
-            tokio::spawn(async move {
-                a.acquire(node("n"), None, "t", Duration::from_secs(30))
-                    .await
-            })
+            let (a, n) = (a.clone(), n.clone());
+            tokio::spawn(async move { a.acquire(n, None, "t", Duration::from_secs(30)).await })
         };
         tokio::time::advance(Duration::from_secs(2)).await;
         assert!(!waiter.is_finished());
         a.release(&g.id, Some(g.generation));
         let got = waiter.await.unwrap().unwrap();
         assert!(got.generation > g.generation);
-        // Bounded: a wait that outlasts nothing answers busy.
         let busy = a
             .acquire(Origin::Front, None, "r", Duration::from_secs(5))
             .await;
@@ -730,10 +926,9 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn a_waiter_is_woken_by_expiry() {
         let a = Authority::with_timing(Duration::from_secs(3), HARD, MAX);
+        let n = node(&a, "n", 1);
         let _g = a.try_acquire(Origin::Front, None, "r").unwrap();
-        let got = a
-            .acquire(node("n"), None, "t", Duration::from_secs(10))
-            .await;
+        let got = a.acquire(n, None, "t", Duration::from_secs(10)).await;
         assert!(got.is_ok());
     }
 }

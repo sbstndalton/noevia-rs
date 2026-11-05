@@ -75,20 +75,40 @@ fn the_build_advertises_the_authority_marker_the_release_pairs_with_core() {
     assert!(noevia_server::FEATURES.contains(&lease::AUTHORITY_MARKER));
 }
 
+/// Registers Node start `boot` (started at `started`) and returns its incarnation.
+async fn session(app: &axum::Router, boot: &str, started: u64) -> u64 {
+    let (s, b) = op(
+        app,
+        "session",
+        Some(SECRET),
+        json!({"boot": boot, "startedAt": started}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{b}");
+    b["incarnation"].as_u64().unwrap()
+}
+
 #[tokio::test]
 async fn node_routes_need_the_secret_and_fail_closed_without_an_authority() {
     let d = tempfile::tempdir().unwrap();
     let authority = Authority::new();
     let app = maintenance_lease_routes(store(d.path()), Some(authority.clone()));
     for name in lease::OPS {
-        let (s, _) = op(&app, name, None, json!({"boot": "b"})).await;
+        let body = json!({"boot": "b", "startedAt": 1, "incarnation": 1});
+        let (s, _) = op(&app, name, None, body.clone()).await;
         assert_eq!(s, StatusCode::UNAUTHORIZED, "{name}");
-        let (s, _) = op(&app, name, Some("wrong"), json!({"boot": "b"})).await;
+        let (s, _) = op(&app, name, Some("wrong"), body).await;
         assert_eq!(s, StatusCode::UNAUTHORIZED, "{name}");
     }
     assert!(!authority.held(), "nothing was taken without the secret");
     let none = maintenance_lease_routes(store(d.path()), None);
-    let (s, _) = op(&none, "acquire", Some(SECRET), json!({"boot": "b"})).await;
+    let (s, _) = op(
+        &none,
+        "session",
+        Some(SECRET),
+        json!({"boot": "b", "startedAt": 1}),
+    )
+    .await;
     assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE);
 }
 
@@ -97,11 +117,12 @@ async fn node_acquire_renew_release_and_busy_409() {
     let d = tempfile::tempdir().unwrap();
     let authority = Authority::new();
     let app = maintenance_lease_routes(store(d.path()), Some(authority.clone()));
+    let inc = session(&app, "b1", 100).await;
     let (s, g) = op(
         &app,
         "acquire",
         Some(SECRET),
-        json!({"boot": "b1", "reason": "tune"}),
+        json!({"incarnation": inc, "reason": "tune"}),
     )
     .await;
     assert_eq!(s, StatusCode::CREATED);
@@ -111,17 +132,15 @@ async fn node_acquire_renew_release_and_busy_409() {
     assert_eq!(g["epoch"], authority.epoch());
     let id = g["lease"].as_str().unwrap().to_owned();
     let generation = g["generation"].as_u64().unwrap();
-    // Busy: Core's 409 body, chatActive false (the holder is a lease, not this process's chat).
-    let (s, b) = op(&app, "acquire", Some(SECRET), json!({"boot": "b1"})).await;
+    let (s, b) = op(&app, "acquire", Some(SECRET), json!({"incarnation": inc})).await;
     assert_eq!(s, StatusCode::CONFLICT);
     assert_eq!(b["chatActive"], false);
     assert_eq!(b["code"], "maintenance_held");
-    // The front's own work is refused too: one table.
     assert_eq!(
         authority.try_acquire(lease::Origin::Front, None, "reload"),
         Err(lease::Refusal::Busy)
     );
-    let (s, h) = op(&app, "held", Some(SECRET), json!({"boot": "b1"})).await;
+    let (s, h) = op(&app, "held", Some(SECRET), json!({"incarnation": inc})).await;
     assert_eq!(
         (s, h["held"].clone(), h["front"].clone()),
         (StatusCode::OK, json!(true), json!(false))
@@ -130,7 +149,7 @@ async fn node_acquire_renew_release_and_busy_409() {
         &app,
         "renew",
         Some(SECRET),
-        json!({"boot": "b1", "lease": id, "generation": generation}),
+        json!({"incarnation": inc, "lease": id, "generation": generation}),
     )
     .await;
     assert_eq!(s, StatusCode::OK);
@@ -138,7 +157,7 @@ async fn node_acquire_renew_release_and_busy_409() {
         &app,
         "renew",
         Some(SECRET),
-        json!({"boot": "b1", "lease": id, "generation": generation + 1}),
+        json!({"incarnation": inc, "lease": id, "generation": generation + 1}),
     )
     .await;
     assert_eq!(
@@ -150,7 +169,7 @@ async fn node_acquire_renew_release_and_busy_409() {
         &app,
         "release",
         Some(SECRET),
-        json!({"boot": "b1", "lease": id}),
+        json!({"incarnation": inc, "lease": id}),
     )
     .await;
     assert_eq!(s, StatusCode::NO_CONTENT);
@@ -158,7 +177,7 @@ async fn node_acquire_renew_release_and_busy_409() {
         &app,
         "release",
         Some(SECRET),
-        json!({"boot": "b1", "lease": id}),
+        json!({"incarnation": inc, "lease": id}),
     )
     .await;
     assert_eq!(s, StatusCode::NO_CONTENT, "release is idempotent");
@@ -166,7 +185,7 @@ async fn node_acquire_renew_release_and_busy_409() {
         &app,
         "renew",
         Some(SECRET),
-        json!({"boot": "b1", "lease": id}),
+        json!({"incarnation": inc, "lease": id}),
     )
     .await;
     assert_eq!(s, StatusCode::NOT_FOUND, "an ended lease is not renewed");
@@ -181,20 +200,28 @@ async fn node_bad_bodies_are_400_and_hold_nothing() {
     for body in [
         json!({}),
         json!({"boot": ""}),
-        json!({"boot": "b", "maxMs": "7200000"}),
-        json!({"boot": "b", "maxMs": 1.5}),
-        json!({"boot": "b", "waitMs": true}),
+        json!({"boot": "b"}),
+        json!({"boot": "b", "startedAt": "1"}),
+    ] {
+        let (s, _) = op(&app, "session", Some(SECRET), body.clone()).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST, "{body}");
+    }
+    let inc = session(&app, "b", 1).await;
+    for body in [
+        json!({}),
+        json!({"incarnation": inc, "maxMs": "7200000"}),
+        json!({"incarnation": inc, "maxMs": 1.5}),
+        json!({"incarnation": inc, "waitMs": true}),
     ] {
         let (s, _) = op(&app, "acquire", Some(SECRET), body.clone()).await;
         assert_eq!(s, StatusCode::BAD_REQUEST, "{body}");
     }
     assert!(!authority.held());
-    // maxMs is clamped to [60 min, 24 h] exactly as Core's capFor.
     let (_, g) = op(
         &app,
         "acquire",
         Some(SECRET),
-        json!({"boot": "b", "maxMs": 1}),
+        json!({"incarnation": inc, "maxMs": 1}),
     )
     .await;
     assert_eq!(g["hardMs"], 3_600_000);
@@ -203,43 +230,115 @@ async fn node_bad_bodies_are_400_and_hold_nothing() {
         &app,
         "acquire",
         Some(SECRET),
-        json!({"boot": "b", "maxMs": 100_000_000_i64}),
+        json!({"incarnation": inc, "maxMs": 100_000_000_i64}),
     )
     .await;
     assert_eq!(g["hardMs"], 86_400_000);
 }
 
 #[tokio::test]
-async fn node_restart_frees_the_previous_boots_lease_and_a_front_restart_grants_nothing_stale() {
+async fn node_restart_frees_the_previous_starts_lease_and_a_front_restart_grants_nothing_stale() {
     let d = tempfile::tempdir().unwrap();
     let authority = Authority::new();
     let app = maintenance_lease_routes(store(d.path()), Some(authority.clone()));
-    let (_, g) = op(&app, "acquire", Some(SECRET), json!({"boot": "old"})).await;
-    let (s, _) = op(&app, "session", Some(SECRET), json!({"boot": "new"})).await;
-    assert_eq!(s, StatusCode::OK);
+    let old = session(&app, "old", 10).await;
+    let (_, g) = op(&app, "acquire", Some(SECRET), json!({"incarnation": old})).await;
+    let new = session(&app, "new", 20).await;
+    assert!(new > old);
     assert!(
         !authority.held(),
-        "the crashed Node's lease ended with its boot"
+        "the crashed Node's lease ended with its start"
+    );
+    for name in ["renew", "release", "acquire", "held"] {
+        let (s, b) = op(
+            &app,
+            name,
+            Some(SECRET),
+            json!({"incarnation": old, "lease": g["lease"]}),
+        )
+        .await;
+        assert_eq!(s, StatusCode::GONE, "{name}");
+        assert_eq!(b["code"], "incarnation_retired");
+    }
+    let (_, g) = op(&app, "acquire", Some(SECRET), json!({"incarnation": new})).await;
+    let restarted = Authority::new();
+    let app2 = maintenance_lease_routes(store(d.path()), Some(restarted.clone()));
+    let again = session(&app2, "new", 20).await;
+    let (s, _) = op(
+        &app2,
+        "renew",
+        Some(SECRET),
+        json!({"incarnation": again, "lease": g["lease"]}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+}
+
+// Review P2: ordered, server-issued incarnations.
+#[tokio::test]
+async fn an_old_waiting_acquire_or_old_session_after_a_new_starts_grant_changes_nothing() {
+    let d = tempfile::tempdir().unwrap();
+    let authority = Authority::new();
+    let app = maintenance_lease_routes(store(d.path()), Some(authority.clone()));
+    let a = session(&app, "boot-a", 10).await;
+    let front = authority
+        .try_acquire(lease::Origin::Front, None, "reload")
+        .unwrap();
+    let waiting = {
+        let app = app.clone();
+        tokio::spawn(async move {
+            op(
+                &app,
+                "acquire",
+                Some(SECRET),
+                json!({"incarnation": a, "waitMs": 5000}),
+            )
+            .await
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let b = session(&app, "boot-b", 20).await;
+    authority.release(&front.id, Some(front.generation));
+    let (s, g) = op(&app, "acquire", Some(SECRET), json!({"incarnation": b})).await;
+    assert_eq!(s, StatusCode::CREATED);
+    let (s, w) = tokio::time::timeout(Duration::from_secs(2), waiting)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        (s, w["code"].clone()),
+        (StatusCode::GONE, json!("incarnation_retired"))
     );
     let (s, _) = op(
         &app,
-        "renew",
+        "session",
         Some(SECRET),
-        json!({"boot": "old", "lease": g["lease"]}),
+        json!({"boot": "boot-a", "startedAt": 10}),
     )
     .await;
-    assert_eq!(s, StatusCode::NOT_FOUND);
-    // A restarted front: an empty table, a new epoch; the old lease is unknown.
-    let (_, g) = op(&app, "acquire", Some(SECRET), json!({"boot": "new"})).await;
-    let restarted = maintenance_lease_routes(store(d.path()), Some(Authority::new()));
+    assert_eq!(
+        s,
+        StatusCode::GONE,
+        "an old start's delayed session is retired"
+    );
     let (s, _) = op(
-        &restarted,
-        "renew",
+        &app,
+        "session",
         Some(SECRET),
-        json!({"boot": "new", "lease": g["lease"]}),
+        json!({"boot": "boot-x", "startedAt": 20}),
     )
     .await;
-    assert_eq!(s, StatusCode::NOT_FOUND);
+    assert_eq!(s, StatusCode::GONE, "an ambiguous start is retired too");
+    assert!(authority.covers(
+        g["lease"].as_str().unwrap(),
+        g["generation"].as_u64().unwrap(),
+        Duration::ZERO
+    ));
+    assert_eq!(
+        session(&app, "boot-b", 20).await,
+        b,
+        "the active start keeps its incarnation"
+    );
 }
 
 #[tokio::test]
@@ -247,15 +346,15 @@ async fn node_waiting_acquire_gets_it_on_release_and_a_cancelled_wait_takes_noth
     let d = tempfile::tempdir().unwrap();
     let authority = Authority::new();
     let app = maintenance_lease_routes(store(d.path()), Some(authority.clone()));
+    let inc = session(&app, "b", 1).await;
     let front = authority
         .try_acquire(lease::Origin::Front, None, "reload")
         .unwrap();
-    // Cancelled (the client went away): the request future is dropped while waiting.
     let wait = op(
         &app,
         "acquire",
         Some(SECRET),
-        json!({"boot": "b", "waitMs": 5000}),
+        json!({"incarnation": inc, "waitMs": 5000}),
     );
     assert!(tokio::time::timeout(Duration::from_millis(100), wait)
         .await
@@ -268,7 +367,7 @@ async fn node_waiting_acquire_gets_it_on_release_and_a_cancelled_wait_takes_noth
                 &app,
                 "acquire",
                 Some(SECRET),
-                json!({"boot": "b", "waitMs": 5000}),
+                json!({"incarnation": inc, "waitMs": 5000}),
             )
             .await
         })
@@ -289,6 +388,7 @@ async fn concurrent_node_and_front_acquires_grant_exactly_one() {
     let d = tempfile::tempdir().unwrap();
     let authority = Authority::new();
     let app = maintenance_lease_routes(store(d.path()), Some(authority.clone()));
+    let inc = session(&app, "b", 1).await;
     let barrier = Arc::new(tokio::sync::Barrier::new(32));
     let mut tasks = Vec::new();
     for i in 0..32 {
@@ -296,7 +396,7 @@ async fn concurrent_node_and_front_acquires_grant_exactly_one() {
         tasks.push(tokio::spawn(async move {
             barrier.wait().await;
             if i % 2 == 0 {
-                op(&app, "acquire", Some(SECRET), json!({"boot": "b"}))
+                op(&app, "acquire", Some(SECRET), json!({"incarnation": inc}))
                     .await
                     .0
                     == StatusCode::CREATED
@@ -366,10 +466,114 @@ async fn maint(node_port: u16) -> (Arc<Maint>, tempfile::TempDir) {
         Arc::clone(&engine),
         &get,
     ));
-    (
-        Arc::new(Maint::from_lookup(engine.kind(), &engine, sizing, &get).unwrap()),
-        d,
-    )
+    let m = Maint::from_lookup(engine.kind(), &engine, sizing, &get).unwrap();
+    // Node has registered its start, as at boot.
+    m.authority.node_session("b", 1).unwrap();
+    (Arc::new(m), d)
+}
+
+/// The active Node start's origin.
+fn node_origin(a: &Authority) -> lease::Origin {
+    lease::Origin::Node {
+        incarnation: a.node_session("b", 1).unwrap().incarnation,
+    }
+}
+
+// Review P1: a Node restart while a front job holds the lease fences the job before its next step,
+// and the lease keeps excluding (the new Node keeps chat closed) until the job releases it.
+#[tokio::test]
+async fn a_node_restart_under_a_front_hold_fences_its_next_step_and_keeps_exclusion() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let (node_port, _) = engine(latch(Arc::clone(&calls), GRANT, 201)).await;
+    let (m, _d) = maint(node_port).await;
+    let hold = m
+        .acquire("synthetic reload", Duration::from_secs(300), false)
+        .await
+        .unwrap();
+    assert!(hold.may_start(Duration::from_secs(60)));
+    let restarted = m.authority.node_session("b-restarted", 2).unwrap();
+    assert!(restarted.front_held, "the new Node must keep chat closed");
+    assert!(
+        !hold.may_start(Duration::ZERO),
+        "no step starts on the dead Node's confirmation"
+    );
+    assert!(!hold.excluded());
+    assert!(
+        m.authority.held_by_front(),
+        "exclusion stays while the in-flight step settles"
+    );
+    let new = lease::Origin::Node {
+        incarnation: restarted.incarnation,
+    };
+    assert_eq!(
+        m.authority.try_acquire(new.clone(), None, "t"),
+        Err(lease::Refusal::Busy)
+    );
+    hold.release().await;
+    assert!(
+        !m.authority
+            .node_session("b-restarted", 2)
+            .unwrap()
+            .front_held
+    );
+    assert!(m.authority.try_acquire(new, None, "t").is_ok());
+}
+
+// Review P2: aborting the acquisition while Node's latch answer is outstanding leaks nothing: the
+// local job flag and the authority are free at once, and the latch is given back by its ticket.
+#[tokio::test]
+async fn an_acquisition_aborted_during_the_latch_call_frees_everything_at_once() {
+    let deletes = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let seen = Arc::clone(&deletes);
+    let (node_port, _) = engine(Arc::new(move |req: &Req| {
+        if req.method == "POST" && req.target == LATCH {
+            assert!(
+                req.body.contains("\"ticket\""),
+                "the latch is asked for by ticket"
+            );
+            return Answer::After(Duration::from_secs(30), 201, GRANT.into());
+        }
+        if req.method == "DELETE" {
+            seen.lock().unwrap().push(req.target.clone());
+        }
+        Answer::Reply(204, String::new())
+    }))
+    .await;
+    let (m, _d) = maint(node_port).await;
+    let task = {
+        let m = Arc::clone(&m);
+        tokio::spawn(async move {
+            m.acquire("synthetic reload", Duration::from_secs(300), false)
+                .await
+                .map(|_| ())
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(
+        m.local_held() && m.authority.held_by_front(),
+        "blocked inside the latch call"
+    );
+    task.abort();
+    let _ = task.await;
+    assert!(!m.local_held(), "the local reservation is free at once");
+    assert!(!m.authority.held(), "the authority grant is free at once");
+    for _ in 0..50 {
+        if !deletes.lock().unwrap().is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let deletes = deletes.lock().unwrap().clone();
+    assert_eq!(deletes.len(), 1, "{deletes:?}");
+    assert!(
+        deletes[0].starts_with(&format!("{LATCH}/ticket/")),
+        "{deletes:?}"
+    );
+    // The next job may run at once.
+    assert!(m
+        .authority
+        .try_acquire(node_origin(&m.authority), None, "t")
+        .is_ok());
 }
 
 #[tokio::test]
@@ -388,14 +592,14 @@ async fn a_front_hold_takes_the_authority_and_the_latch_and_excludes_node() {
     // Node's gate asks the same table: busy.
     assert_eq!(
         m.authority
-            .try_acquire(lease::Origin::Node { boot: "b".into() }, None, "tune"),
+            .try_acquire(node_origin(&m.authority), None, "tune"),
         Err(lease::Refusal::Busy)
     );
     hold.release().await;
     assert!(!m.authority.held(), "released with the hold");
     assert!(m
         .authority
-        .try_acquire(lease::Origin::Node { boot: "b".into() }, None, "tune")
+        .try_acquire(node_origin(&m.authority), None, "tune")
         .is_ok());
 }
 
@@ -406,7 +610,7 @@ async fn a_node_held_lease_refuses_the_front_before_node_is_asked() {
     let (m, _d) = maint(node_port).await;
     let node = m
         .authority
-        .try_acquire(lease::Origin::Node { boot: "b".into() }, None, "delete")
+        .try_acquire(node_origin(&m.authority), None, "delete")
         .unwrap();
     assert_eq!(
         m.acquire("r", Duration::from_secs(300), false)
@@ -489,7 +693,7 @@ async fn a_hold_whose_authority_lease_ended_is_fenced_out() {
     assert!(!hold.may_start(Duration::ZERO));
     let other = m
         .authority
-        .try_acquire(lease::Origin::Node { boot: "b".into() }, None, "tune")
+        .try_acquire(node_origin(&m.authority), None, "tune")
         .unwrap();
     // The old hold's release does not end the newer lease (fencing by id and generation).
     hold.release().await;

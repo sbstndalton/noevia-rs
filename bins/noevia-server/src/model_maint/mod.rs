@@ -101,6 +101,66 @@ pub enum HoldRefusal {
     ShortLease,
 }
 
+/// The local job flag, owned by the acquisition until [`Self::transfer`] hands it to a Hold.
+struct Reservation {
+    flag: Arc<AtomicBool>,
+    armed: bool,
+}
+
+impl Reservation {
+    fn take(flag: &Arc<AtomicBool>) -> Option<Self> {
+        flag.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .ok()?;
+        Some(Reservation {
+            flag: Arc::clone(flag),
+            armed: true,
+        })
+    }
+    fn transfer(mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for Reservation {
+    fn drop(&mut self) {
+        if self.armed {
+            self.flag.store(false, Ordering::Release);
+        }
+    }
+}
+
+/// An authority grant and the Node latch asked for it, before the Hold exists.
+struct PendingLease {
+    authority: lease::Authority,
+    grant: Option<lease::Grant>,
+    node: Arc<node_lease::NodeLeases>,
+    ticket: Option<String>,
+}
+
+impl PendingLease {
+    /// The Hold takes over both.
+    fn complete(mut self) -> Option<lease::Grant> {
+        self.ticket = None;
+        self.grant.take()
+    }
+}
+
+impl Drop for PendingLease {
+    fn drop(&mut self) {
+        if let Some(g) = self.grant.take() {
+            self.authority.release(&g.id, Some(g.generation));
+        }
+        if let Some(ticket) = self.ticket.take() {
+            if let Ok(rt) = tokio::runtime::Handle::try_current() {
+                let node = Arc::clone(&self.node);
+                rt.spawn(async move {
+                    let _ = node.release_ticket(&ticket).await;
+                });
+            }
+        }
+    }
+}
+
 /// What the maintenance routes need from the environment, as Core's index.cjs reads it.
 pub struct Maint {
     pub kind: server_stats::Kind,
@@ -303,18 +363,14 @@ impl Maint {
         max: Duration,
         need_gate: bool,
     ) -> Result<Hold, HoldError> {
-        if self
-            .local
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
+        // Review P2: the reservation is owned from the moment it is taken, so a dropped acquisition
+        // (or any error) clears it; only a completed Hold takes it over.
+        let Some(reserved) = Reservation::take(&self.local) else {
             return Err(HoldError::Busy);
-        }
-        let taken = self.acquire_locally_held(reason, max, need_gate).await;
-        if taken.is_err() {
-            self.local.store(false, Ordering::Release);
-        }
-        taken
+        };
+        let hold = self.acquire_locally_held(reason, max, need_gate).await?;
+        reserved.transfer();
+        Ok(hold)
     }
 
     async fn acquire_locally_held(
@@ -346,20 +402,14 @@ impl Maint {
         reason: &str,
         lease_for: Duration,
     ) -> Result<Hold, HoldRefusal> {
-        if self
-            .local
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
+        let Some(reserved) = Reservation::take(&self.local) else {
             return Err(HoldRefusal::Busy);
-        }
-        let taken = self
+        };
+        let hold = self
             .acquire_inner(reason, Duration::MAX, false, Some(lease_for))
-            .await;
-        if taken.is_err() {
-            self.local.store(false, Ordering::Release);
-        }
-        taken
+            .await?;
+        reserved.transfer();
+        Ok(hold)
     }
 
     async fn acquire_inner(
@@ -395,29 +445,37 @@ impl Maint {
                 else {
                     return Err(HoldRefusal::Busy);
                 };
-                let give_back = || self.authority.release(&own.id, Some(own.generation));
-                match self.node.acquire_capped(lease_for).await {
+                // Review P2: the authority grant and the latch it asks Node for are owned from here; a
+                // drop before the Hold exists gives both back (the latch by its ticket, in case Node
+                // granted it but the answer was lost).
+                let mut pending = PendingLease {
+                    authority: self.authority.clone(),
+                    grant: Some(own),
+                    node: Arc::clone(&self.node),
+                    ticket: None,
+                };
+                let ticket = pending.grant.as_ref().map(|g| g.id.clone());
+                pending.ticket.clone_from(&ticket);
+                match self.node.acquire_capped(lease_for, ticket.as_deref()).await {
                     Ok(grant) if lease_for.is_some_and(|d| grant.hard < d) => {
-                        give_back();
+                        drop(pending);
                         self.node.release(&grant.id).await;
                         Err(HoldRefusal::ShortLease)
                     }
-                    Ok(grant) => Ok(Hold::leased(
-                        Arc::clone(&self.local),
-                        Arc::clone(&self.node),
-                        grant,
-                        Some((self.authority.clone(), own)),
-                        reason,
-                        deadline_after(max),
-                    )),
-                    Err(node_lease::LeaseFault::Busy) => {
-                        give_back();
-                        Err(HoldRefusal::Busy)
+                    Ok(grant) => {
+                        let own = pending.complete();
+                        Ok(Hold::leased(
+                            Arc::clone(&self.local),
+                            Arc::clone(&self.node),
+                            grant,
+                            own.map(|g| (self.authority.clone(), g)),
+                            reason,
+                            deadline_after(max),
+                        ))
                     }
-                    Err(node_lease::LeaseFault::Unavailable) => {
-                        give_back();
-                        Err(HoldRefusal::NodeUnavailable)
-                    }
+                    // Refused: Node holds no latch for it, but the guard's ticket release is harmless.
+                    Err(node_lease::LeaseFault::Busy) => Err(HoldRefusal::Busy),
+                    Err(node_lease::LeaseFault::Unavailable) => Err(HoldRefusal::NodeUnavailable),
                 }
             }
             Err(f) if f.busy() => Err(HoldRefusal::Busy),

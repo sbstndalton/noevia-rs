@@ -110,21 +110,33 @@ impl NodeLeases {
     }
 
     pub async fn acquire(&self) -> Result<LeaseGrant, LeaseFault> {
-        self.acquire_capped(None).await
+        self.acquire_capped(None, None).await
     }
 
-    /// A lease asking for hard cap `max` (`{maxMs}`; Node clamps it to [60 min, 24 h]); `None` asks
-    /// for nothing and sends no body, as before.
-    pub async fn acquire_capped(&self, max: Option<Duration>) -> Result<LeaseGrant, LeaseFault> {
+    /// A latch asking for hard cap `max` (`{maxMs}`; Node clamps it to [60 min, 24 h]). `ticket`
+    /// (the authority lease's id) names the latch, so one whose answer is lost (a cancelled or failed
+    /// call) can still be given back with [`Self::release_ticket`]. Neither: no body, as before.
+    pub async fn acquire_capped(
+        &self,
+        max: Option<Duration>,
+        ticket: Option<&str>,
+    ) -> Result<LeaseGrant, LeaseFault> {
         let asked = Instant::now();
         let mut req = self
             .request(reqwest::Method::POST, PATH)
             .ok_or(LeaseFault::Unavailable)?;
+        let mut ask = serde_json::Map::new();
         if let Some(max) = max {
             let ms = u64::try_from(max.min(MAX_LEASE).as_millis()).unwrap_or(0);
+            ask.insert("maxMs".into(), ms.into());
+        }
+        if let Some(t) = ticket.filter(|t| is_lease_id(t)) {
+            ask.insert("ticket".into(), t.into());
+        }
+        if !ask.is_empty() {
             req = req
                 .header(reqwest::header::CONTENT_TYPE, "application/json")
-                .body(serde_json::json!({ "maxMs": ms }).to_string());
+                .body(Value::Object(ask).to_string());
         }
         let res = req.send().await.map_err(|_| LeaseFault::Unavailable)?;
         match res.status().as_u16() {
@@ -209,6 +221,19 @@ impl NodeLeases {
     /// Core's idempotent DELETE acknowledges that its local admission is clear.
     pub(super) async fn release_confirmed(&self, id: &str) -> bool {
         let Some(req) = self.request(reqwest::Method::DELETE, &format!("{PATH}/{id}")) else {
+            return false;
+        };
+        req.send().await.is_ok_and(|r| r.status().as_u16() == 204)
+    }
+
+    /// Gives back the latch named `ticket`, whether or not its grant reached this front (204 also
+    /// when there is none). Best effort: an unreleased latch ends by itself.
+    pub async fn release_ticket(&self, ticket: &str) -> bool {
+        if !is_lease_id(ticket) {
+            return false;
+        }
+        let Some(req) = self.request(reqwest::Method::DELETE, &format!("{PATH}/ticket/{ticket}"))
+        else {
             return false;
         };
         req.send().await.is_ok_and(|r| r.status().as_u16() == 204)
