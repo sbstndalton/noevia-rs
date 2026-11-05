@@ -375,6 +375,9 @@ pub const FEATURES: &[&str] = &[
     // Port contract 2026-11-04 S9: the pending approvals and chat grants are the front's
     // (approval_registry.rs); Node's turn asks through the store's /v1/approvals/*.
     "rust-approval-registry",
+    // Re-reviews 1ed3a14/689d17a: single-use grant tickets redeemed at dispatch, revocations that
+    // drain redeemed writes; Core names it (approval_registry.rs PROTOCOL).
+    "registry-redeem-v2",
     server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER,
     "rust-auth",
     "rust-diary",

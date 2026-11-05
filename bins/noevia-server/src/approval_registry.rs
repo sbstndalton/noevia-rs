@@ -50,6 +50,18 @@ pub const TICKET_TTL: Duration = Duration::from_secs(5 * 60);
 pub const MAX_TICKETS: usize = 4096;
 /// The longest question id accepted (Node's are `ap-<uuid>` or a bare uuid).
 pub const MAX_ID: usize = 128;
+/// The redeem protocol (capability `registry-redeem-v2`). Node names it on every grant check and
+/// redeem; a check without it (a Core from before tickets, which would read a ticketed answer as
+/// plain approval) is answered "no grant".
+pub const PROTOCOL: &str = "registry-redeem-v2";
+/// D (re-review 689d17a P1-1): how long after Node SENT a redeem it may still dispatch the write
+/// that redeem allowed. Node dispatches only while its own monotonic clock reads less than its send
+/// time plus `min(its D, this)` (it is told this in the answer), checked in the same synchronous
+/// step as the dispatch. A redeem is recorded here when it succeeds, later than Node sent it, so
+/// once this clock passes that record plus D, Node can no longer dispatch for it.
+pub const DISPATCH_WINDOW: Duration = Duration::from_secs(2);
+/// A revocation's drain waits at most [`DISPATCH_WINDOW`] plus this.
+pub const DRAIN_MARGIN: Duration = Duration::from_millis(250);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -247,6 +259,13 @@ struct Ticket {
     until: Instant,
 }
 
+/// A redeemed ticket whose write Node may still be about to dispatch.
+struct Redeemed {
+    key: (String, String),
+    holder: Holder,
+    at: Instant,
+}
+
 #[derive(Default)]
 struct State {
     pending: HashMap<String, Pending>,
@@ -258,17 +277,28 @@ struct State {
     /// Each chat's revocation epoch: the sequence of its latest revocation, and when (kept for
     /// TICKET_TTL, after which every ticket issued before it has expired anyway; monotonic clock).
     revoked: HashMap<(String, String), (u64, Instant)>,
+    /// Redeemed tickets Node has not yet reported settled (dispatched or abandoned), by ticket.
+    redeemed: HashMap<String, Redeemed>,
+    /// A counter would have overflowed: no grant is given or honoured again (fail closed).
+    exhausted: bool,
 }
 
 impl State {
     /// Advances `key`'s revocation epoch and drops its grant.
     fn revoke(&mut self, key: (String, String)) -> bool {
         let now = Instant::now();
-        self.revocations += 1;
+        let removed = self.grants.remove(&key).is_some();
+        let Some(seq) = self.revocations.checked_add(1) else {
+            // No later epoch can be told apart: refuse every grant and ticket from now on.
+            self.exhausted = true;
+            self.grants.clear();
+            self.tickets.clear();
+            return removed;
+        };
+        self.revocations = seq;
         self.revoked
             .retain(|_, (_, at)| now.saturating_duration_since(*at) < TICKET_TTL);
-        let removed = self.grants.remove(&key).is_some();
-        self.revoked.insert(key, (self.revocations, now));
+        self.revoked.insert(key, (seq, now));
         removed
     }
     fn revoked_since(&self, key: &(String, String), issued: u64) -> bool {
@@ -284,6 +314,12 @@ pub struct Registry {
     state: Mutex<State>,
     timeout: Duration,
     ttl: Duration,
+    /// [`DISPATCH_WINDOW`], shorter in tests.
+    window: Duration,
+    /// [`TICKET_TTL`], shorter in tests (never longer: the revocation epochs are kept that long).
+    ticket_ttl: Duration,
+    /// Woken when Node reports a redeemed ticket settled.
+    settled: tokio::sync::Notify,
     live: Option<Live>,
     /// Tests only: runs between a grant check's live-context read and its recheck.
     #[cfg(test)]
@@ -327,10 +363,25 @@ impl Registry {
             state: Mutex::new(State::default()),
             timeout,
             ttl,
+            window: DISPATCH_WINDOW,
+            ticket_ttl: TICKET_TTL,
+            settled: tokio::sync::Notify::new(),
             live,
             #[cfg(test)]
             after_context_read: Mutex::new(None),
         }
+    }
+
+    /// Tests: a shorter dispatch window.
+    #[must_use]
+    pub fn with_window(mut self, window: Duration) -> Self {
+        self.window = window;
+        self
+    }
+
+    /// The dispatch window Node is told in a redeem's answer.
+    pub fn window(&self) -> Duration {
+        self.window
     }
 
     fn sweep(s: &mut State, now: Instant) {
@@ -429,10 +480,13 @@ impl Registry {
         };
         if let Some((key, scope, binding)) = grant {
             Self::sweep(&mut s, now);
-            if s.grants.len() < MAX_GRANTS || s.grants.contains_key(&key) {
+            // A full table, or a serial that would overflow, approves this one call only.
+            let serial = s.serials.checked_add(1).filter(|_| !s.exhausted);
+            if let Some(serial) =
+                serial.filter(|_| s.grants.len() < MAX_GRANTS || s.grants.contains_key(&key))
+            {
                 let until = now + self.ttl;
-                s.serials += 1;
-                let serial = s.serials;
+                s.serials = serial;
                 s.grants.insert(
                     key,
                     Grant {
@@ -563,7 +617,7 @@ impl Registry {
                     binding: b.clone(),
                     serial,
                     issued,
-                    until: now + TICKET_TTL,
+                    until: now + self.ticket_ttl,
                 },
             );
             Some(id)
@@ -596,11 +650,104 @@ impl Registry {
         if t.key != key || t.scope != scope || Instant::now() >= t.until {
             return false;
         }
+        let window = self.window;
         self.checked(user, chat, scope, binding, |s, _key, serial, b| {
-            (serial == t.serial && *b == t.binding && !s.revoked_since(&t.key, t.issued))
-                .then_some(())
+            let now = Instant::now();
+            // Re-review 689d17a P2-3: the ticket's own expiry, again in the final section.
+            if serial != t.serial
+                || *b != t.binding
+                || s.revoked_since(&t.key, t.issued)
+                || now >= t.until
+            {
+                return None;
+            }
+            // Re-review 689d17a P1-1: Node may dispatch for this redeem until DISPATCH_WINDOW after
+            // it sent it; every revocation of this chat drains it first ([`Registry::drain`]).
+            s.redeemed.retain(|_, r| now < r.at + window);
+            if s.redeemed.len() >= MAX_TICKETS {
+                return None;
+            }
+            s.redeemed.insert(
+                ticket.to_owned(),
+                Redeemed {
+                    key: t.key.clone(),
+                    holder: t.binding.context.holder.clone(),
+                    at: now,
+                },
+            );
+            Some(())
         })
         .is_some()
+    }
+
+    /// Node's report that a redeemed ticket's write was dispatched (or will never be): a drain no
+    /// longer waits for it. Only the ticket's own user can report it.
+    pub fn settle(&self, user: &str, ticket: &str) -> bool {
+        let settled = self.state.lock().is_ok_and(|mut s| {
+            if s.redeemed.get(ticket).is_some_and(|r| r.key.0 == user) {
+                s.redeemed.remove(ticket);
+                true
+            } else {
+                false
+            }
+        });
+        if settled {
+            self.settled.notify_waiters();
+        }
+        settled
+    }
+
+    /// Re-review 689d17a P1-1: waits until no write redeemed for a matching chat can still be
+    /// dispatched: until each such redeem is DISPATCH_WINDOW old or Node has reported it settled.
+    /// A revocation runs this before it reports completion, so after a revoke returns, no write
+    /// starts for any ticket issued before it. Bounded by DISPATCH_WINDOW + DRAIN_MARGIN: every
+    /// matching redeem it can see was recorded before it started (a later one is refused by the
+    /// revocation's epoch, or belongs to a fresh grant made after it).
+    async fn drain(&self, matches: impl Fn(&Redeemed) -> bool) {
+        let window = self.window;
+        let bound = Instant::now() + window + DRAIN_MARGIN;
+        loop {
+            let notified = self.settled.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            let until = match self.state.lock() {
+                Ok(mut s) => {
+                    let now = Instant::now();
+                    s.redeemed.retain(|_, r| now < r.at + window);
+                    s.redeemed
+                        .values()
+                        .filter(|r| matches(r))
+                        .map(|r| r.at + window)
+                        .max()
+                }
+                // Cannot see the records: wait the whole window (fail closed).
+                Err(_) => Some(bound),
+            };
+            let Some(until) = until else { return };
+            if Instant::now() >= bound {
+                return;
+            }
+            tokio::select! {
+                () = tokio::time::sleep_until(until.min(bound)) => {}
+                () = &mut notified => {}
+            }
+        }
+    }
+
+    /// [`Registry::revoke`], completed only once its chat is drained ([`Registry::drain`]).
+    pub async fn revoke_drained(&self, user: &str, chat: &str) -> bool {
+        let revoked = self.revoke(user, chat);
+        let key = (user.to_owned(), safe_id(chat));
+        self.drain(|r| r.key == key).await;
+        revoked
+    }
+
+    /// [`Registry::revoke_project`], completed only once that project's chats are drained.
+    pub async fn revoke_project_drained(&self, user: &str, project: &str) -> usize {
+        let revoked = self.revoke_project(user, project);
+        self.drain(|r| r.key.0 == user && matches!(&r.holder, Holder::Project(id) if id == project))
+            .await;
+        revoked
     }
 
     /// The grant check: the grant read, the live context read outside the lock (the store's file
@@ -623,6 +770,9 @@ impl Registry {
         let key = (user.to_owned(), canonical.clone());
         let (gscope, gbinding, serial) = {
             let mut s = self.state.lock().ok()?;
+            if s.exhausted {
+                return None;
+            }
             let now = Instant::now();
             match s.grants.get(&key) {
                 None => return None,
@@ -649,10 +799,10 @@ impl Registry {
         let mut s = self.state.lock().ok()?;
         // The grant read before must still be the one held now, unexpired: a revoke (or a revoke
         // and a new grant) during the read answers no.
-        let same = s
-            .grants
-            .get(&key)
-            .is_some_and(|g| g.serial == serial && Instant::now() < g.until);
+        let same = !s.exhausted
+            && s.grants
+                .get(&key)
+                .is_some_and(|g| g.serial == serial && Instant::now() < g.until);
         if same && now_live.as_ref() == Some(&gbinding.context) {
             return then(&mut s, &key, serial, &gbinding);
         }
@@ -1245,6 +1395,102 @@ mod tests {
         r.revoke(OWNER, "c1");
         granted_with_ticket(&r, "w6", &b);
         assert!(!r.redeem(OWNER, "c1", "space:free", Some(&b), &t));
+    }
+
+    /// Re-review 689d17a P1-1: a revocation does not complete while a write redeemed before it
+    /// may still be dispatched: it waits until Node reports it started, or the dispatch window
+    /// after the redeem has passed (Node no longer dispatches after its own window). Bounded.
+    #[tokio::test]
+    async fn a_revoke_drains_redeemed_writes_until_started_or_the_window() {
+        let (_d, live) = store();
+        let window = Duration::from_millis(400);
+        let r = Arc::new(Registry::new(Some(live)).with_window(window));
+        let b = binding(OWNER, "c1", "space:free", json!({"kind":"free"}), "0");
+        // Nothing redeemed: a revoke completes at once.
+        let started = Instant::now();
+        r.revoke_drained(OWNER, "c1").await;
+        assert!(started.elapsed() < window / 2);
+        // Redeemed, never reported: the revoke waits out the window, and no longer.
+        let t = granted_with_ticket(&r, "w1", &b);
+        let redeemed_at = Instant::now();
+        assert!(r.redeem(OWNER, "c1", "space:free", Some(&b), &t));
+        r.revoke_drained(OWNER, "c1").await;
+        assert!(redeemed_at.elapsed() >= window, "drained the whole window");
+        assert!(redeemed_at.elapsed() < window + DRAIN_MARGIN + window);
+        // Redeemed, then reported started: the revoke completes when the report arrives.
+        let t = granted_with_ticket(&r, "w2", &b);
+        assert!(r.redeem(OWNER, "c1", "space:free", Some(&b), &t));
+        let started = Instant::now();
+        let revoking = {
+            let r = Arc::clone(&r);
+            tokio::spawn(async move { r.revoke_drained(OWNER, "c1").await })
+        };
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(!revoking.is_finished(), "still draining");
+        assert!(!r.settle(OTHER, &t), "only its user reports it");
+        assert!(r.settle(OWNER, &t));
+        revoking.await.unwrap();
+        assert!(started.elapsed() < window, "{:?}", started.elapsed());
+        // Another chat's redeemed write does not hold this chat's revoke.
+        let b2 = binding(OWNER, "c2", "space:free", json!({"kind":"free"}), "0");
+        r.open(write_q("w3", OWNER, Some("c2"), Some("space:free"), Some(b2.clone())))
+            .unwrap();
+        let lc = r.grant_context(OWNER, "w3");
+        r.decide(OWNER, "w3", "approve_all", false, lc.as_ref())
+            .unwrap();
+        let t = r.grant_ticket(OWNER, "c2", "space:free", Some(&b2)).unwrap();
+        assert!(r.redeem(OWNER, "c2", "space:free", Some(&b2), &t));
+        let started = Instant::now();
+        r.revoke_drained(OWNER, "c1").await;
+        assert!(started.elapsed() < window / 2);
+        // A project delete drains its chats' writes (c2's holder is free: not this project's).
+        let started = Instant::now();
+        r.revoke_project_drained(OWNER, "qa-p").await;
+        assert!(started.elapsed() < window / 2);
+    }
+
+    /// Re-review 689d17a P2-3: a ticket that expires during the redeem's context read is refused
+    /// in the final section.
+    #[tokio::test]
+    async fn a_ticket_expiring_during_the_redeem_is_refused() {
+        let (_d, live) = store();
+        let mut r = Registry::new(Some(live));
+        r.ticket_ttl = Duration::from_millis(300);
+        let b = binding(OWNER, "c1", "space:free", json!({"kind":"free"}), "0");
+        let t = granted_with_ticket(&r, "w1", &b);
+        *r.after_context_read.lock().unwrap() = Some(Box::new(|_: &Registry| {
+            std::thread::sleep(std::time::Duration::from_millis(450));
+        }));
+        assert!(!r.redeem(OWNER, "c1", "space:free", Some(&b), &t));
+        // Control: in time, it redeems.
+        let t = granted_with_ticket(&r, "w2", &b);
+        assert!(r.redeem(OWNER, "c1", "space:free", Some(&b), &t));
+    }
+
+    /// Counters that would overflow fail closed: no grant is given or honoured.
+    #[tokio::test]
+    async fn counter_overflow_fails_closed() {
+        let (_d, live) = store();
+        let r = Registry::new(Some(live));
+        let b = binding(OWNER, "c1", "space:free", json!({"kind":"free"}), "0");
+        r.state.lock().unwrap().serials = u64::MAX;
+        r.open(write_q("w1", OWNER, Some("c1"), Some("space:free"), Some(b.clone())))
+            .unwrap();
+        let lc = r.grant_context(OWNER, "w1");
+        r.decide(OWNER, "w1", "approve_all", false, lc.as_ref())
+            .unwrap();
+        assert!(!r.granted(OWNER, "c1", "space:free", Some(&b)), "approved once only");
+        r.state.lock().unwrap().serials = 0;
+        let t = granted_with_ticket(&r, "w2", &b);
+        r.state.lock().unwrap().revocations = u64::MAX;
+        r.revoke(OWNER, "c2");
+        assert!(!r.redeem(OWNER, "c1", "space:free", Some(&b), &t));
+        r.open(write_q("w3", OWNER, Some("c1"), Some("space:free"), Some(b.clone())))
+            .unwrap();
+        let lc = r.grant_context(OWNER, "w3");
+        r.decide(OWNER, "w3", "approve_all", false, lc.as_ref())
+            .unwrap();
+        assert!(!r.granted(OWNER, "c1", "space:free", Some(&b)), "exhausted");
     }
 
     #[tokio::test]

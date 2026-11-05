@@ -26,6 +26,7 @@ const ORIGIN: &str = "http://127.0.0.1:18021";
 const STORE_TOKEN: &str = "synthetic-store-token-0123456789abcdef";
 const START: &str = "0123456789abcdef0123456789abcdef";
 const STRANGER: &str = "99999999-2222-4333-8444-555555555555";
+const PROTOCOL: &str = "registry-redeem-v2";
 
 struct Front {
     _dir: tempfile::TempDir,
@@ -201,7 +202,7 @@ impl Front {
         let (status, body) = self
             .op(
                 "approvals/granted",
-                json!({"user":self.user,"chat":chat,"scope":scope,"binding":binding}),
+                json!({"user":self.user,"chat":chat,"scope":scope,"binding":binding,"protocol":PROTOCOL}),
             )
             .await;
         assert_eq!(status, 200);
@@ -475,7 +476,7 @@ impl Front {
         let (status, body) = self
             .op(
                 "approvals/granted",
-                json!({"user":self.user,"chat":chat,"scope":"space:free","binding":b}),
+                json!({"user":self.user,"chat":chat,"scope":"space:free","binding":b,"protocol":PROTOCOL}),
             )
             .await;
         assert_eq!(status, 200);
@@ -486,10 +487,12 @@ impl Front {
         let (status, body) = self
             .op(
                 "approvals/redeem",
-                json!({"user":self.user,"chat":chat,"scope":"space:free","binding":binding,"ticket":ticket}),
+                json!({"user":self.user,"chat":chat,"scope":"space:free","binding":binding,"ticket":ticket,"protocol":PROTOCOL}),
             )
             .await;
         assert_eq!(status, 200, "{body}");
+        assert_eq!(body["protocol"], json!(PROTOCOL), "{body}");
+        assert_eq!(body["window_ms"], json!(2000), "{body}");
         body["redeemed"] == json!(true)
     }
     async fn public(&self, method: &str, path: &str, body: &str) -> u16 {
@@ -566,8 +569,81 @@ async fn redeem_needs_a_ticket() {
     let (status, _) = f
         .op(
             "approvals/redeem",
-            json!({"user":f.user,"chat":"qa-one","scope":"space:free","binding":b}),
+            json!({"user":f.user,"chat":"qa-one","scope":"space:free","binding":b,"protocol":PROTOCOL}),
         )
         .await;
     assert_eq!(status, 400);
+}
+
+/// Re-review 689d17a P1-2: a grant check that does not name the redeem protocol (a Core from before
+/// tickets, which would read `{granted:true, ticket}` as plain approval) is answered "no grant".
+#[tokio::test]
+async fn a_grant_check_without_the_redeem_protocol_gets_no_grant() {
+    let f = front().await;
+    let (b, _) = f.ticket("ap-1", "qa-one").await;
+    for protocol in [Value::Null, json!("rust-approval-registry"), json!(1)] {
+        let mut body = json!({"user":f.user,"chat":"qa-one","scope":"space:free","binding":b});
+        if !protocol.is_null() {
+            body["protocol"] = protocol;
+        }
+        let (status, answer) = f.op("approvals/granted", body).await;
+        assert_eq!(status, 200);
+        assert_eq!(answer["granted"], json!(false), "{answer}");
+        assert!(answer.get("ticket").is_none(), "{answer}");
+        assert_eq!(answer["code"], json!("APPROVAL_PROTOCOL"));
+    }
+    assert!(f.granted("qa-one", "space:free", &b).await, "the grant stands");
+}
+
+/// Re-review 689d17a P1-1 (Astra's schedule, front side): a ticket is redeemed (Node will
+/// dispatch on that answer), and a revocation then starts. It does not complete until Node
+/// reports the write started, or the dispatch window after the redeem has passed, after which Node
+/// no longer dispatches. So once a revoke has returned, no write redeemed before it can start.
+#[tokio::test]
+async fn a_revoke_completes_only_after_a_redeemed_write_started_or_its_window() {
+    let window = Duration::from_millis(2000);
+    let f = front().await;
+    // Node's revoke, Node reporting the write started 300 ms in: completes then.
+    let (b, t) = f.ticket("ap-1", "qa-one").await;
+    assert!(f.redeem("qa-one", &b, &t).await);
+    let begun = std::time::Instant::now();
+    let report = async {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        f.op("approvals/started", json!({"user":f.user,"ticket":t}))
+            .await
+    };
+    let (revoked, started) = tokio::join!(
+        f.op("approvals/revoke", json!({"user":f.user,"chat":"qa-one"})),
+        report
+    );
+    assert_eq!(revoked.0, 200);
+    assert_eq!(started, (200, json!({"settled":true})));
+    let took = begun.elapsed();
+    assert!(took >= Duration::from_millis(300) && took < window, "{took:?}");
+    // A failed public move with a redeemed write never reported: waits out the window.
+    let (b, t) = f.ticket("ap-2", "qa-two").await;
+    assert!(f.redeem("qa-two", &b, &t).await);
+    let redeemed = std::time::Instant::now();
+    assert_eq!(f.public("POST", "/api/chats/qa-two/move", "{}").await, 400);
+    assert!(redeemed.elapsed() >= window, "{:?}", redeemed.elapsed());
+    // Node's store delete, the same.
+    let (b, t) = f.ticket("ap-3", "qa-one").await;
+    assert!(f.redeem("qa-one", &b, &t).await);
+    let redeemed = std::time::Instant::now();
+    let (status, _) = f
+        .op(
+            "chat/delete",
+            json!({"user":f.user,"chat":"qa-one","kind":"free"}),
+        )
+        .await;
+    assert_eq!(status, 200);
+    let took = redeemed.elapsed();
+    assert!(took >= window && took < window * 2 + Duration::from_millis(500), "{took:?}");
+    // Nothing redeemed: a revoke answers at once.
+    let begun = std::time::Instant::now();
+    let (status, _) = f
+        .op("approvals/revoke", json!({"user":f.user,"chat":"qa-two"}))
+        .await;
+    assert_eq!(status, 200);
+    assert!(begun.elapsed() < Duration::from_millis(500));
 }

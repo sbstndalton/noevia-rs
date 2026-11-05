@@ -1527,6 +1527,7 @@ mod tests {
         assert_eq!(dispatch("POST", "/api/tool-approvals/a/extra"), None);
         assert!(crate::FEATURES.contains(&"rust-tool-approvals"));
         assert!(crate::FEATURES.contains(&"rust-approval-registry"));
+        assert!(crate::FEATURES.contains(&crate::approval_registry::PROTOCOL));
     }
 
     /// sbstndalton/noevia#2191 round 9: a project's configuration, its instruction skills and a

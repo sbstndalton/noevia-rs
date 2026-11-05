@@ -1854,6 +1854,18 @@ and Node together under a new start id. Core's marker is `server/rust-approval-r
 from `index.cjs`. Assembly and startup refuse mixed pairs, and old/old remains a valid rollback.
 This supersedes the earlier sections calling the public approval endpoint chat-bound; the pending state still is.
 
+`registry-redeem-v2` (re-reviews 1ed3a14 and 689d17a) is the grant protocol on top of it. A grant check
+(`granted`) answers with a single-use ticket that authorises nothing by itself; Node redeems it
+(`redeem`) just before dispatch, and the registry's lock orders that redeem against every revocation
+of the chat (Node's revoke, a public or store move or delete before and after the change, a failed
+move, a project delete). Node dispatches only within `window_ms` (2 s) of sending the redeem, by its
+own monotonic clock in the same synchronous step as the dispatch, and then reports `started`. A
+revocation completes only once every write redeemed in its chat before it was dispatched: settled, or
+`window_ms` past its redeem, which is later than Node's send. So once a revoke returns, no write
+starts for a ticket issued before it. A grant check or redeem that does not name the protocol gets no
+grant, and Core's marker is `REGISTRY_PROTOCOL = 'registry-redeem-v2'` in
+`server/rust-approval-registry.cjs`; assembly and startup refuse a pair where only one side has it.
+
 
 GET only of `/api/models/autotune` belongs to `autotune_read_routes.rs`
 (`rust-autotune-read`). The contract's `methods = ["GET"]` deliberately leaves POST start,
