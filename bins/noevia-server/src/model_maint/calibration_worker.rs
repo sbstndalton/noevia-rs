@@ -2647,7 +2647,12 @@ impl Worker {
 
     /// Persists the restore a lost run owes (the same `pendingRestore` marker boot recovery settles) and
     /// arms the recovery: local admission stays closed until it has run.
-    async fn require_recovery(&self, revision: &str, text: &str, allowed: &super::ini::WriteAllowed) {
+    async fn require_recovery(
+        &self,
+        revision: &str,
+        text: &str,
+        allowed: &super::ini::WriteAllowed,
+    ) {
         if !allowed() {
             return;
         }
@@ -5054,8 +5059,16 @@ mod tests {
         let job = settled_or_recovering(&w).await;
         assert_eq!(job.get("status").as_str(), Some("interrupted"), "{job:?}");
         assert_eq!(job.get("phase").as_str(), Some("Interrupted"));
-        assert!(job.get("error").as_str().is_some_and(|e| e.starts_with(LEASE_LOST)), "{job:?}");
-        assert!(w.maint.local_held(), "admission stays closed until the recovery has run");
+        assert!(
+            job.get("error")
+                .as_str()
+                .is_some_and(|e| e.starts_with(LEASE_LOST)),
+            "{job:?}"
+        );
+        assert!(
+            w.maint.local_held(),
+            "admission stays closed until the recovery has run"
+        );
         let acquired = |seen: &Mutex<Vec<String>>| {
             seen.lock()
                 .unwrap()
@@ -5064,8 +5077,15 @@ mod tests {
                 .count()
         };
         tokio::time::sleep(Duration::from_millis(200)).await;
-        assert!(w.maint.local_held(), "still closed while no fresh lease can be had");
-        assert_ne!(std::fs::read_to_string(&ini).unwrap(), INI, "nothing restored on the lost hold");
+        assert!(
+            w.maint.local_held(),
+            "still closed while no fresh lease can be had"
+        );
+        assert_ne!(
+            std::fs::read_to_string(&ini).unwrap(),
+            INI,
+            "nothing restored on the lost hold"
+        );
         // The authority answers again: the recovery takes its own lease and restores.
         ended.store(false, Ordering::Release);
         for _ in 0..500 {
@@ -5074,7 +5094,10 @@ mod tests {
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
-        assert!(!w.maint.local_held(), "admission opens once the recovery settled");
+        assert!(
+            !w.maint.local_held(),
+            "admission opens once the recovery settled"
+        );
         assert!(acquired(&seen) >= 2, "the recovery took a fresh lease");
         assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI);
         assert_eq!(w.job().get("restored"), &JValue::Bool(true));
@@ -5104,12 +5127,21 @@ mod tests {
         let (port, engine) = synthetic_engine(ini.clone(), false).await;
         let ended = Arc::new(AtomicBool::new(false));
         let decision = Arc::new((Notify::new(), Notify::new()));
-        let (lease, _) = lease_stub_gated(None, Arc::clone(&ended), Some(Arc::clone(&decision))).await;
+        let (lease, _) =
+            lease_stub_gated(None, Arc::clone(&ended), Some(Arc::clone(&decision))).await;
         let w = worker_with(d.path(), port, Some(lease));
         w.maint.authority.node_session("boot-a", 1).unwrap();
         w.launch("synthetic", plan(16_384.0, 120.0)).await.unwrap();
-        tokio::time::timeout(Duration::from_secs(10), decision.0.notified()).await.unwrap();
-        let loads = |e: &Mutex<Vec<String>>| e.lock().unwrap().iter().filter(|l| l.contains("/models/load")).count();
+        tokio::time::timeout(Duration::from_secs(10), decision.0.notified())
+            .await
+            .unwrap();
+        let loads = |e: &Mutex<Vec<String>>| {
+            e.lock()
+                .unwrap()
+                .iter()
+                .filter(|l| l.contains("/models/load"))
+                .count()
+        };
         let before = loads(&engine);
         // Node restarts while its load decision is out: the front's lease is fenced.
         w.maint.authority.node_session("boot-b", 2).unwrap();
@@ -5124,7 +5156,11 @@ mod tests {
         });
         let job = settled_or_recovering(&w).await;
         assert_eq!(job.get("status").as_str(), Some("interrupted"), "{job:?}");
-        assert_eq!(loads(&engine), before, "no load reached the engine on the fenced hold");
+        assert_eq!(
+            loads(&engine),
+            before,
+            "no load reached the engine on the fenced hold"
+        );
         for _ in 0..500 {
             if !w.maint.local_held() {
                 break;
@@ -5149,7 +5185,11 @@ mod tests {
         let w = worker_with(d.path(), port, Some(lease));
         w.launch("synthetic", plan(16_384.0, 120.0)).await.unwrap();
         for _ in 0..600 {
-            if w.job().get("phase").as_str().is_some_and(|p| p.starts_with("Long-prompt")) {
+            if w.job()
+                .get("phase")
+                .as_str()
+                .is_some_and(|p| p.starts_with("Long-prompt"))
+            {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
@@ -5158,7 +5198,11 @@ mod tests {
         settled_or_recovering(&w).await;
         // Recovery attempts keep being refused a lease for a while: each is retried, none opens.
         let asks = |seen: &Mutex<Vec<String>>| {
-            seen.lock().unwrap().iter().filter(|l| l.starts_with("POST /internal/model-maintenance/lease ")).count()
+            seen.lock()
+                .unwrap()
+                .iter()
+                .filter(|l| l.starts_with("POST /internal/model-maintenance/lease "))
+                .count()
         };
         for _ in 0..500 {
             if asks(&seen) >= 3 {
