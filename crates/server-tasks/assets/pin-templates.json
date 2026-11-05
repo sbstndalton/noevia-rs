@@ -1,0 +1,138 @@
+{
+  "opencode": {
+    "ok": true,
+    "value": {
+      "harness": "opencode",
+      "files": [
+        {
+          "base": "cwd",
+          "path": "opencode.json",
+          "content": "{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"autoupdate\": false,\n  \"share\": \"disabled\",\n  \"provider\": {\n    \"local\": {\n      \"npm\": \"@ai-sdk/openai-compatible\",\n      \"name\": \"noevia engine\",\n      \"options\": {\n        \"baseURL\": \"http://engine-placeholder.invalid\",\n        \"apiKey\": \"__TASK_KEY__\"\n      },\n      \"models\": {\n        \"__TASK_MODEL__\": {\n          \"name\": \"__TASK_MODEL__\",\n          \"tool_call\": true,\n          \"limit\": {\n            \"context\": 32768,\n            \"output\": 4096\n          }\n        }\n      }\n    }\n  },\n  \"model\": \"local/__TASK_MODEL__\",\n  \"small_model\": \"local/__TASK_MODEL__\",\n  \"permission\": {\n    \"edit\": \"ask\",\n    \"bash\": \"ask\",\n    \"webfetch\": \"ask\"\n  }\n}\n"
+        }
+      ],
+      "permission": {
+        "edit": "ask",
+        "bash": "ask",
+        "webfetch": "ask"
+      },
+      "model": "local/__TASK_MODEL__",
+      "endpoint": "http://engine-placeholder.invalid"
+    },
+    "cwdPins": [
+      "opencode.json"
+    ]
+  },
+  "claude-code": {
+    "ok": true,
+    "value": {
+      "harness": "claude-code",
+      "files": [
+        {
+          "base": "cwd",
+          "path": ".claude/settings.local.json",
+          "content": "{\n  \"permissions\": {\n    \"defaultMode\": \"default\",\n    \"disableBypassPermissionsMode\": \"disable\",\n    \"disableAutoMode\": \"disable\",\n    \"blockReadsOutsideWorkingDirectories\": true,\n    \"allow\": [],\n    \"deny\": [\n      \"mcp__*\"\n    ],\n    \"ask\": [\n      \"Edit\",\n      \"Write\",\n      \"NotebookEdit\",\n      \"Bash\",\n      \"WebFetch\",\n      \"WebSearch\"\n    ]\n  },\n  \"sandbox\": {\n    \"autoAllowBashIfSandboxed\": false\n  },\n  \"disableAllHooks\": true,\n  \"disableClaudeAiConnectors\": true,\n  \"syncClaudeAiSkills\": false,\n  \"syncClaudeAiPlugins\": false,\n  \"env\": {\n    \"ANTHROPIC_BASE_URL\": \"http://engine-placeholder.invalid\",\n    \"ANTHROPIC_API_KEY\": \"__TASK_KEY__\",\n    \"ANTHROPIC_MODEL\": \"__TASK_MODEL__\",\n    \"DISABLE_AUTOUPDATER\": \"1\",\n    \"DISABLE_UPDATES\": \"1\",\n    \"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC\": \"1\",\n    \"DISABLE_TELEMETRY\": \"1\"\n  }\n}\n"
+        },
+        {
+          "base": "home",
+          "path": ".claude/settings.json",
+          "content": "{\n  \"permissions\": {\n    \"defaultMode\": \"default\",\n    \"disableBypassPermissionsMode\": \"disable\",\n    \"disableAutoMode\": \"disable\",\n    \"blockReadsOutsideWorkingDirectories\": true,\n    \"allow\": [],\n    \"deny\": [\n      \"mcp__*\"\n    ],\n    \"ask\": [\n      \"Edit\",\n      \"Write\",\n      \"NotebookEdit\",\n      \"Bash\",\n      \"WebFetch\",\n      \"WebSearch\"\n    ]\n  },\n  \"sandbox\": {\n    \"autoAllowBashIfSandboxed\": false\n  },\n  \"disableAllHooks\": true,\n  \"disableClaudeAiConnectors\": true,\n  \"syncClaudeAiSkills\": false,\n  \"syncClaudeAiPlugins\": false,\n  \"env\": {\n    \"ANTHROPIC_BASE_URL\": \"http://engine-placeholder.invalid\",\n    \"ANTHROPIC_API_KEY\": \"__TASK_KEY__\",\n    \"ANTHROPIC_MODEL\": \"__TASK_MODEL__\",\n    \"DISABLE_AUTOUPDATER\": \"1\",\n    \"DISABLE_UPDATES\": \"1\",\n    \"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC\": \"1\",\n    \"DISABLE_TELEMETRY\": \"1\"\n  }\n}\n"
+        }
+      ],
+      "permission": {
+        "edit": "ask",
+        "bash": "ask",
+        "webfetch": "ask"
+      },
+      "model": "__TASK_MODEL__",
+      "endpoint": "http://engine-placeholder.invalid/v1"
+    },
+    "cwdPins": [
+      ".claude/settings.local.json"
+    ]
+  },
+  "qwen-code": {
+    "ok": true,
+    "value": {
+      "harness": "qwen-code",
+      "files": [
+        {
+          "base": "cwd",
+          "path": ".qwen/settings.json",
+          "content": "{\n  \"tools\": {\n    \"approvalMode\": \"default\"\n  },\n  \"security\": {\n    \"auth\": {\n      \"selectedType\": \"openai\"\n    }\n  },\n  \"model\": {\n    \"name\": \"__TASK_MODEL__\",\n    \"generationConfig\": {\n      \"contextWindowSize\": 32768\n    }\n  },\n  \"modelProviders\": {\n    \"openai\": [\n      {\n        \"id\": \"__TASK_MODEL__\",\n        \"name\": \"__TASK_MODEL__\",\n        \"baseUrl\": \"http://engine-placeholder.invalid/v1\",\n        \"envKey\": \"NOEVIA_ENGINE_KEY\"\n      }\n    ]\n  },\n  \"env\": {\n    \"NOEVIA_ENGINE_KEY\": \"__TASK_KEY__\"\n  },\n  \"general\": {\n    \"enableAutoUpdate\": false\n  },\n  \"privacy\": {\n    \"usageStatisticsEnabled\": false\n  }\n}\n"
+        },
+        {
+          "base": "home",
+          "path": ".qwen/settings.json",
+          "content": "{\n  \"tools\": {\n    \"approvalMode\": \"default\"\n  },\n  \"security\": {\n    \"auth\": {\n      \"selectedType\": \"openai\"\n    }\n  },\n  \"model\": {\n    \"name\": \"__TASK_MODEL__\",\n    \"generationConfig\": {\n      \"contextWindowSize\": 32768\n    }\n  },\n  \"modelProviders\": {\n    \"openai\": [\n      {\n        \"id\": \"__TASK_MODEL__\",\n        \"name\": \"__TASK_MODEL__\",\n        \"baseUrl\": \"http://engine-placeholder.invalid/v1\",\n        \"envKey\": \"NOEVIA_ENGINE_KEY\"\n      }\n    ]\n  },\n  \"env\": {\n    \"NOEVIA_ENGINE_KEY\": \"__TASK_KEY__\"\n  },\n  \"general\": {\n    \"enableAutoUpdate\": false\n  },\n  \"privacy\": {\n    \"usageStatisticsEnabled\": false\n  }\n}\n"
+        }
+      ],
+      "permission": {
+        "edit": "ask",
+        "bash": "ask",
+        "webfetch": "ask"
+      },
+      "model": "__TASK_MODEL__",
+      "endpoint": "http://engine-placeholder.invalid/v1"
+    },
+    "cwdPins": [
+      ".qwen/settings.json"
+    ]
+  },
+  "pi": {
+    "ok": true,
+    "value": {
+      "harness": "pi",
+      "files": [
+        {
+          "base": "home",
+          "path": ".pi/agent/models.json",
+          "content": "{\n  \"providers\": {\n    \"noevia\": {\n      \"baseUrl\": \"http://engine-placeholder.invalid/v1\",\n      \"api\": \"openai-completions\",\n      \"apiKey\": \"__TASK_KEY__\",\n      \"models\": [\n        {\n          \"id\": \"__TASK_MODEL__\",\n          \"name\": \"__TASK_MODEL__\",\n          \"contextWindow\": 32768,\n          \"maxTokens\": 4096,\n          \"reasoning\": false,\n          \"input\": [\n            \"text\"\n          ]\n        }\n      ]\n    }\n  }\n}\n"
+        },
+        {
+          "base": "home",
+          "path": ".pi/agent/settings.json",
+          "content": "{\n  \"defaultProvider\": \"noevia\",\n  \"defaultModel\": \"__TASK_MODEL__\",\n  \"defaultProjectTrust\": \"never\",\n  \"enableInstallTelemetry\": false\n}\n"
+        },
+        {
+          "base": "home",
+          "path": ".pi/agent/extensions/noevia-gate.js",
+          "content": "@engine/pi-gate.js"
+        }
+      ],
+      "permission": {
+        "edit": "ask",
+        "bash": "ask",
+        "webfetch": "ask"
+      },
+      "model": "__TASK_MODEL__",
+      "endpoint": "http://engine-placeholder.invalid/v1"
+    },
+    "cwdPins": []
+  },
+  "deepseek": {
+    "ok": true,
+    "value": {
+      "harness": "deepseek",
+      "files": [
+        {
+          "base": "home",
+          "path": ".dsh/profiles/acp/cordis.patch.yml",
+          "content": "# Written by noevia for this task. Replaces nothing but the entries it names.\n- id: llm-pi-ai\n  config:\n    providers:\n      noevia:\n        displayName: \"noevia engine\"\n        api: openai-completions\n        baseURL: \"http://engine-placeholder.invalid/v1\"\n        headers:\n          Authorization: \"Bearer __TASK_KEY__\"\n        models:\n          - id: \"__TASK_MODEL__\"\n            name: \"__TASK_MODEL__\"\n            contextWindow: 32768\n            maxTokens: 4096\n            reasoningEfforts: false\n- id: agent-default-model\n  config:\n    provider: noevia\n    model: \"__TASK_MODEL__\"\n- id: acp\n  config:\n    provider: noevia\n    model: \"__TASK_MODEL__\"\n- id: approval\n  config:\n    policy: ask\n- id: sandbox-policy\n  config:\n    mode: workspace-write\n    workspaceRoot: !!js process.cwd()\n- id: session-telemetry-otel\n  disabled: true\n- id: session-log-deepseek\n  disabled: true\n- id: web-search-deepseek\n  disabled: true\n- id: llm-deepseek\n  disabled: true\n- id: deepseek-account\n  disabled: true\n- id: plugin-manager\n  disabled: true\n- id: config-editor\n  disabled: true\n- id: settings\n  disabled: true\n- id: agent-instructions\n  disabled: true\n- id: skill-filesystem\n  disabled: true\n- id: tool-skill\n  disabled: true\n- id: skill\n  disabled: true\n- insert:\n    - id: noevia-gate\n      name: ./noevia-gate.mjs\n"
+        },
+        {
+          "base": "home",
+          "path": ".dsh/profiles/acp/noevia-gate.mjs",
+          "content": "@engine/dsh-gate.mjs"
+        }
+      ],
+      "permission": {
+        "edit": "ask",
+        "bash": "ask",
+        "webfetch": "ask"
+      },
+      "model": "__TASK_MODEL__",
+      "endpoint": "http://engine-placeholder.invalid/v1"
+    },
+    "cwdPins": []
+  }
+}

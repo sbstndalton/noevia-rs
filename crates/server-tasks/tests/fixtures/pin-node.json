@@ -1,0 +1,806 @@
+{
+  "cases": [
+    {
+      "input": {
+        "harness": "opencode",
+        "model": "synthetic/model",
+        "engine": "http://synthetic-engine.invalid/v1/",
+        "apiKey": "synthetic-key",
+        "contextTokens": 16384,
+        "outputTokens": 2048
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "harness": "opencode",
+          "files": [
+            {
+              "base": "cwd",
+              "path": "opencode.json",
+              "content": "{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"autoupdate\": false,\n  \"share\": \"disabled\",\n  \"provider\": {\n    \"local\": {\n      \"npm\": \"@ai-sdk/openai-compatible\",\n      \"name\": \"noevia engine\",\n      \"options\": {\n        \"baseURL\": \"http://synthetic-engine.invalid/v1/\",\n        \"apiKey\": \"synthetic-key\"\n      },\n      \"models\": {\n        \"synthetic/model\": {\n          \"name\": \"synthetic/model\",\n          \"tool_call\": true,\n          \"limit\": {\n            \"context\": 16384,\n            \"output\": 2048\n          }\n        }\n      }\n    }\n  },\n  \"model\": \"local/synthetic/model\",\n  \"small_model\": \"local/synthetic/model\",\n  \"permission\": {\n    \"edit\": \"ask\",\n    \"bash\": \"ask\",\n    \"webfetch\": \"ask\"\n  }\n}\n"
+            }
+          ],
+          "permission": {
+            "edit": "ask",
+            "bash": "ask",
+            "webfetch": "ask"
+          },
+          "model": "local/synthetic/model",
+          "endpoint": "http://synthetic-engine.invalid/v1/"
+        },
+        "cwdPins": [
+          "opencode.json"
+        ]
+      }
+    },
+    {
+      "input": {
+        "harness": "opencode",
+        "model": " m ",
+        "engine": " http://synthetic-engine.invalid ",
+        "apiKey": null
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "harness": "opencode",
+          "files": [
+            {
+              "base": "cwd",
+              "path": "opencode.json",
+              "content": "{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"autoupdate\": false,\n  \"share\": \"disabled\",\n  \"provider\": {\n    \"local\": {\n      \"npm\": \"@ai-sdk/openai-compatible\",\n      \"name\": \"noevia engine\",\n      \"options\": {\n        \"baseURL\": \"http://synthetic-engine.invalid\",\n        \"apiKey\": \"none\"\n      },\n      \"models\": {\n        \"m\": {\n          \"name\": \"m\",\n          \"tool_call\": true,\n          \"limit\": {\n            \"context\": 32768,\n            \"output\": 4096\n          }\n        }\n      }\n    }\n  },\n  \"model\": \"local/m\",\n  \"small_model\": \"local/m\",\n  \"permission\": {\n    \"edit\": \"ask\",\n    \"bash\": \"ask\",\n    \"webfetch\": \"ask\"\n  }\n}\n"
+            }
+          ],
+          "permission": {
+            "edit": "ask",
+            "bash": "ask",
+            "webfetch": "ask"
+          },
+          "model": "local/m",
+          "endpoint": "http://synthetic-engine.invalid"
+        },
+        "cwdPins": [
+          "opencode.json"
+        ]
+      }
+    },
+    {
+      "input": {
+        "harness": "opencode",
+        "model": "",
+        "engine": "http://synthetic-engine.invalid"
+      },
+      "expected": {
+        "ok": false,
+        "status": 409,
+        "error": "A coding task needs a model; none is loaded or chosen."
+      }
+    },
+    {
+      "input": {
+        "harness": "opencode",
+        "model": "m",
+        "engine": "invalid"
+      },
+      "expected": {
+        "ok": false,
+        "status": 409,
+        "error": "This server has no model endpoint for coding tasks."
+      }
+    },
+    {
+      "input": {
+        "harness": "opencode",
+        "model": "__proto__",
+        "engine": "https://synthetic-engine.invalid/v1",
+        "apiKey": "",
+        "contextTokens": -1,
+        "outputTokens": 2.5
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "harness": "opencode",
+          "files": [
+            {
+              "base": "cwd",
+              "path": "opencode.json",
+              "content": "{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"autoupdate\": false,\n  \"share\": \"disabled\",\n  \"provider\": {\n    \"local\": {\n      \"npm\": \"@ai-sdk/openai-compatible\",\n      \"name\": \"noevia engine\",\n      \"options\": {\n        \"baseURL\": \"https://synthetic-engine.invalid/v1\",\n        \"apiKey\": \"none\"\n      },\n      \"models\": {\n        \"__proto__\": {\n          \"name\": \"__proto__\",\n          \"tool_call\": true,\n          \"limit\": {\n            \"context\": -1,\n            \"output\": 2.5\n          }\n        }\n      }\n    }\n  },\n  \"model\": \"local/__proto__\",\n  \"small_model\": \"local/__proto__\",\n  \"permission\": {\n    \"edit\": \"ask\",\n    \"bash\": \"ask\",\n    \"webfetch\": \"ask\"\n  }\n}\n"
+            }
+          ],
+          "permission": {
+            "edit": "ask",
+            "bash": "ask",
+            "webfetch": "ask"
+          },
+          "model": "local/__proto__",
+          "endpoint": "https://synthetic-engine.invalid/v1"
+        },
+        "cwdPins": [
+          "opencode.json"
+        ]
+      }
+    },
+    {
+      "input": {
+        "harness": "claude-code",
+        "model": "synthetic/model",
+        "engine": "http://synthetic-engine.invalid/v1/",
+        "apiKey": "synthetic-key",
+        "contextTokens": 16384,
+        "outputTokens": 2048
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "harness": "claude-code",
+          "files": [
+            {
+              "base": "cwd",
+              "path": ".claude/settings.local.json",
+              "content": "{\n  \"permissions\": {\n    \"defaultMode\": \"default\",\n    \"disableBypassPermissionsMode\": \"disable\",\n    \"disableAutoMode\": \"disable\",\n    \"blockReadsOutsideWorkingDirectories\": true,\n    \"allow\": [],\n    \"deny\": [\n      \"mcp__*\"\n    ],\n    \"ask\": [\n      \"Edit\",\n      \"Write\",\n      \"NotebookEdit\",\n      \"Bash\",\n      \"WebFetch\",\n      \"WebSearch\"\n    ]\n  },\n  \"sandbox\": {\n    \"autoAllowBashIfSandboxed\": false\n  },\n  \"disableAllHooks\": true,\n  \"disableClaudeAiConnectors\": true,\n  \"syncClaudeAiSkills\": false,\n  \"syncClaudeAiPlugins\": false,\n  \"env\": {\n    \"ANTHROPIC_BASE_URL\": \"http://synthetic-engine.invalid\",\n    \"ANTHROPIC_API_KEY\": \"synthetic-key\",\n    \"ANTHROPIC_MODEL\": \"synthetic/model\",\n    \"DISABLE_AUTOUPDATER\": \"1\",\n    \"DISABLE_UPDATES\": \"1\",\n    \"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC\": \"1\",\n    \"DISABLE_TELEMETRY\": \"1\"\n  }\n}\n"
+            },
+            {
+              "base": "home",
+              "path": ".claude/settings.json",
+              "content": "{\n  \"permissions\": {\n    \"defaultMode\": \"default\",\n    \"disableBypassPermissionsMode\": \"disable\",\n    \"disableAutoMode\": \"disable\",\n    \"blockReadsOutsideWorkingDirectories\": true,\n    \"allow\": [],\n    \"deny\": [\n      \"mcp__*\"\n    ],\n    \"ask\": [\n      \"Edit\",\n      \"Write\",\n      \"NotebookEdit\",\n      \"Bash\",\n      \"WebFetch\",\n      \"WebSearch\"\n    ]\n  },\n  \"sandbox\": {\n    \"autoAllowBashIfSandboxed\": false\n  },\n  \"disableAllHooks\": true,\n  \"disableClaudeAiConnectors\": true,\n  \"syncClaudeAiSkills\": false,\n  \"syncClaudeAiPlugins\": false,\n  \"env\": {\n    \"ANTHROPIC_BASE_URL\": \"http://synthetic-engine.invalid\",\n    \"ANTHROPIC_API_KEY\": \"synthetic-key\",\n    \"ANTHROPIC_MODEL\": \"synthetic/model\",\n    \"DISABLE_AUTOUPDATER\": \"1\",\n    \"DISABLE_UPDATES\": \"1\",\n    \"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC\": \"1\",\n    \"DISABLE_TELEMETRY\": \"1\"\n  }\n}\n"
+            }
+          ],
+          "permission": {
+            "edit": "ask",
+            "bash": "ask",
+            "webfetch": "ask"
+          },
+          "model": "synthetic/model",
+          "endpoint": "http://synthetic-engine.invalid/v1"
+        },
+        "cwdPins": [
+          ".claude/settings.local.json"
+        ]
+      }
+    },
+    {
+      "input": {
+        "harness": "claude-code",
+        "model": " m ",
+        "engine": " http://synthetic-engine.invalid ",
+        "apiKey": null
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "harness": "claude-code",
+          "files": [
+            {
+              "base": "cwd",
+              "path": ".claude/settings.local.json",
+              "content": "{\n  \"permissions\": {\n    \"defaultMode\": \"default\",\n    \"disableBypassPermissionsMode\": \"disable\",\n    \"disableAutoMode\": \"disable\",\n    \"blockReadsOutsideWorkingDirectories\": true,\n    \"allow\": [],\n    \"deny\": [\n      \"mcp__*\"\n    ],\n    \"ask\": [\n      \"Edit\",\n      \"Write\",\n      \"NotebookEdit\",\n      \"Bash\",\n      \"WebFetch\",\n      \"WebSearch\"\n    ]\n  },\n  \"sandbox\": {\n    \"autoAllowBashIfSandboxed\": false\n  },\n  \"disableAllHooks\": true,\n  \"disableClaudeAiConnectors\": true,\n  \"syncClaudeAiSkills\": false,\n  \"syncClaudeAiPlugins\": false,\n  \"env\": {\n    \"ANTHROPIC_BASE_URL\": \"http://synthetic-engine.invalid\",\n    \"ANTHROPIC_API_KEY\": \"none\",\n    \"ANTHROPIC_MODEL\": \"m\",\n    \"DISABLE_AUTOUPDATER\": \"1\",\n    \"DISABLE_UPDATES\": \"1\",\n    \"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC\": \"1\",\n    \"DISABLE_TELEMETRY\": \"1\"\n  }\n}\n"
+            },
+            {
+              "base": "home",
+              "path": ".claude/settings.json",
+              "content": "{\n  \"permissions\": {\n    \"defaultMode\": \"default\",\n    \"disableBypassPermissionsMode\": \"disable\",\n    \"disableAutoMode\": \"disable\",\n    \"blockReadsOutsideWorkingDirectories\": true,\n    \"allow\": [],\n    \"deny\": [\n      \"mcp__*\"\n    ],\n    \"ask\": [\n      \"Edit\",\n      \"Write\",\n      \"NotebookEdit\",\n      \"Bash\",\n      \"WebFetch\",\n      \"WebSearch\"\n    ]\n  },\n  \"sandbox\": {\n    \"autoAllowBashIfSandboxed\": false\n  },\n  \"disableAllHooks\": true,\n  \"disableClaudeAiConnectors\": true,\n  \"syncClaudeAiSkills\": false,\n  \"syncClaudeAiPlugins\": false,\n  \"env\": {\n    \"ANTHROPIC_BASE_URL\": \"http://synthetic-engine.invalid\",\n    \"ANTHROPIC_API_KEY\": \"none\",\n    \"ANTHROPIC_MODEL\": \"m\",\n    \"DISABLE_AUTOUPDATER\": \"1\",\n    \"DISABLE_UPDATES\": \"1\",\n    \"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC\": \"1\",\n    \"DISABLE_TELEMETRY\": \"1\"\n  }\n}\n"
+            }
+          ],
+          "permission": {
+            "edit": "ask",
+            "bash": "ask",
+            "webfetch": "ask"
+          },
+          "model": "m",
+          "endpoint": "http://synthetic-engine.invalid/v1"
+        },
+        "cwdPins": [
+          ".claude/settings.local.json"
+        ]
+      }
+    },
+    {
+      "input": {
+        "harness": "claude-code",
+        "model": "",
+        "engine": "http://synthetic-engine.invalid"
+      },
+      "expected": {
+        "ok": false,
+        "status": 409,
+        "error": "A coding task needs a model; none is loaded or chosen."
+      }
+    },
+    {
+      "input": {
+        "harness": "claude-code",
+        "model": "m",
+        "engine": "invalid"
+      },
+      "expected": {
+        "ok": false,
+        "status": 409,
+        "error": "This server has no model endpoint for coding tasks."
+      }
+    },
+    {
+      "input": {
+        "harness": "claude-code",
+        "model": "__proto__",
+        "engine": "https://synthetic-engine.invalid/v1",
+        "apiKey": "",
+        "contextTokens": -1,
+        "outputTokens": 2.5
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "harness": "claude-code",
+          "files": [
+            {
+              "base": "cwd",
+              "path": ".claude/settings.local.json",
+              "content": "{\n  \"permissions\": {\n    \"defaultMode\": \"default\",\n    \"disableBypassPermissionsMode\": \"disable\",\n    \"disableAutoMode\": \"disable\",\n    \"blockReadsOutsideWorkingDirectories\": true,\n    \"allow\": [],\n    \"deny\": [\n      \"mcp__*\"\n    ],\n    \"ask\": [\n      \"Edit\",\n      \"Write\",\n      \"NotebookEdit\",\n      \"Bash\",\n      \"WebFetch\",\n      \"WebSearch\"\n    ]\n  },\n  \"sandbox\": {\n    \"autoAllowBashIfSandboxed\": false\n  },\n  \"disableAllHooks\": true,\n  \"disableClaudeAiConnectors\": true,\n  \"syncClaudeAiSkills\": false,\n  \"syncClaudeAiPlugins\": false,\n  \"env\": {\n    \"ANTHROPIC_BASE_URL\": \"https://synthetic-engine.invalid\",\n    \"ANTHROPIC_API_KEY\": \"none\",\n    \"ANTHROPIC_MODEL\": \"__proto__\",\n    \"DISABLE_AUTOUPDATER\": \"1\",\n    \"DISABLE_UPDATES\": \"1\",\n    \"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC\": \"1\",\n    \"DISABLE_TELEMETRY\": \"1\"\n  }\n}\n"
+            },
+            {
+              "base": "home",
+              "path": ".claude/settings.json",
+              "content": "{\n  \"permissions\": {\n    \"defaultMode\": \"default\",\n    \"disableBypassPermissionsMode\": \"disable\",\n    \"disableAutoMode\": \"disable\",\n    \"blockReadsOutsideWorkingDirectories\": true,\n    \"allow\": [],\n    \"deny\": [\n      \"mcp__*\"\n    ],\n    \"ask\": [\n      \"Edit\",\n      \"Write\",\n      \"NotebookEdit\",\n      \"Bash\",\n      \"WebFetch\",\n      \"WebSearch\"\n    ]\n  },\n  \"sandbox\": {\n    \"autoAllowBashIfSandboxed\": false\n  },\n  \"disableAllHooks\": true,\n  \"disableClaudeAiConnectors\": true,\n  \"syncClaudeAiSkills\": false,\n  \"syncClaudeAiPlugins\": false,\n  \"env\": {\n    \"ANTHROPIC_BASE_URL\": \"https://synthetic-engine.invalid\",\n    \"ANTHROPIC_API_KEY\": \"none\",\n    \"ANTHROPIC_MODEL\": \"__proto__\",\n    \"DISABLE_AUTOUPDATER\": \"1\",\n    \"DISABLE_UPDATES\": \"1\",\n    \"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC\": \"1\",\n    \"DISABLE_TELEMETRY\": \"1\"\n  }\n}\n"
+            }
+          ],
+          "permission": {
+            "edit": "ask",
+            "bash": "ask",
+            "webfetch": "ask"
+          },
+          "model": "__proto__",
+          "endpoint": "https://synthetic-engine.invalid/v1"
+        },
+        "cwdPins": [
+          ".claude/settings.local.json"
+        ]
+      }
+    },
+    {
+      "input": {
+        "harness": "codex",
+        "model": "synthetic/model",
+        "engine": "http://synthetic-engine.invalid/v1/",
+        "apiKey": "synthetic-key",
+        "contextTokens": 16384,
+        "outputTokens": 2048
+      },
+      "expected": {
+        "ok": false,
+        "status": 409,
+        "error": "noevia cannot pin the permissions of the codex harness (its commands run without asking inside its own sandbox), so it will not run it."
+      }
+    },
+    {
+      "input": {
+        "harness": "codex",
+        "model": " m ",
+        "engine": " http://synthetic-engine.invalid ",
+        "apiKey": null
+      },
+      "expected": {
+        "ok": false,
+        "status": 409,
+        "error": "noevia cannot pin the permissions of the codex harness (its commands run without asking inside its own sandbox), so it will not run it."
+      }
+    },
+    {
+      "input": {
+        "harness": "codex",
+        "model": "",
+        "engine": "http://synthetic-engine.invalid"
+      },
+      "expected": {
+        "ok": false,
+        "status": 409,
+        "error": "noevia cannot pin the permissions of the codex harness (its commands run without asking inside its own sandbox), so it will not run it."
+      }
+    },
+    {
+      "input": {
+        "harness": "codex",
+        "model": "m",
+        "engine": "invalid"
+      },
+      "expected": {
+        "ok": false,
+        "status": 409,
+        "error": "noevia cannot pin the permissions of the codex harness (its commands run without asking inside its own sandbox), so it will not run it."
+      }
+    },
+    {
+      "input": {
+        "harness": "codex",
+        "model": "__proto__",
+        "engine": "https://synthetic-engine.invalid/v1",
+        "apiKey": "",
+        "contextTokens": -1,
+        "outputTokens": 2.5
+      },
+      "expected": {
+        "ok": false,
+        "status": 409,
+        "error": "noevia cannot pin the permissions of the codex harness (its commands run without asking inside its own sandbox), so it will not run it."
+      }
+    },
+    {
+      "input": {
+        "harness": "qwen-code",
+        "model": "synthetic/model",
+        "engine": "http://synthetic-engine.invalid/v1/",
+        "apiKey": "synthetic-key",
+        "contextTokens": 16384,
+        "outputTokens": 2048
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "harness": "qwen-code",
+          "files": [
+            {
+              "base": "cwd",
+              "path": ".qwen/settings.json",
+              "content": "{\n  \"tools\": {\n    \"approvalMode\": \"default\"\n  },\n  \"security\": {\n    \"auth\": {\n      \"selectedType\": \"openai\"\n    }\n  },\n  \"model\": {\n    \"name\": \"synthetic/model\",\n    \"generationConfig\": {\n      \"contextWindowSize\": 16384\n    }\n  },\n  \"modelProviders\": {\n    \"openai\": [\n      {\n        \"id\": \"synthetic/model\",\n        \"name\": \"synthetic/model\",\n        \"baseUrl\": \"http://synthetic-engine.invalid/v1\",\n        \"envKey\": \"NOEVIA_ENGINE_KEY\"\n      }\n    ]\n  },\n  \"env\": {\n    \"NOEVIA_ENGINE_KEY\": \"synthetic-key\"\n  },\n  \"general\": {\n    \"enableAutoUpdate\": false\n  },\n  \"privacy\": {\n    \"usageStatisticsEnabled\": false\n  }\n}\n"
+            },
+            {
+              "base": "home",
+              "path": ".qwen/settings.json",
+              "content": "{\n  \"tools\": {\n    \"approvalMode\": \"default\"\n  },\n  \"security\": {\n    \"auth\": {\n      \"selectedType\": \"openai\"\n    }\n  },\n  \"model\": {\n    \"name\": \"synthetic/model\",\n    \"generationConfig\": {\n      \"contextWindowSize\": 16384\n    }\n  },\n  \"modelProviders\": {\n    \"openai\": [\n      {\n        \"id\": \"synthetic/model\",\n        \"name\": \"synthetic/model\",\n        \"baseUrl\": \"http://synthetic-engine.invalid/v1\",\n        \"envKey\": \"NOEVIA_ENGINE_KEY\"\n      }\n    ]\n  },\n  \"env\": {\n    \"NOEVIA_ENGINE_KEY\": \"synthetic-key\"\n  },\n  \"general\": {\n    \"enableAutoUpdate\": false\n  },\n  \"privacy\": {\n    \"usageStatisticsEnabled\": false\n  }\n}\n"
+            }
+          ],
+          "permission": {
+            "edit": "ask",
+            "bash": "ask",
+            "webfetch": "ask"
+          },
+          "model": "synthetic/model",
+          "endpoint": "http://synthetic-engine.invalid/v1"
+        },
+        "cwdPins": [
+          ".qwen/settings.json"
+        ]
+      }
+    },
+    {
+      "input": {
+        "harness": "qwen-code",
+        "model": " m ",
+        "engine": " http://synthetic-engine.invalid ",
+        "apiKey": null
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "harness": "qwen-code",
+          "files": [
+            {
+              "base": "cwd",
+              "path": ".qwen/settings.json",
+              "content": "{\n  \"tools\": {\n    \"approvalMode\": \"default\"\n  },\n  \"security\": {\n    \"auth\": {\n      \"selectedType\": \"openai\"\n    }\n  },\n  \"model\": {\n    \"name\": \"m\",\n    \"generationConfig\": {\n      \"contextWindowSize\": 32768\n    }\n  },\n  \"modelProviders\": {\n    \"openai\": [\n      {\n        \"id\": \"m\",\n        \"name\": \"m\",\n        \"baseUrl\": \"http://synthetic-engine.invalid/v1\",\n        \"envKey\": \"NOEVIA_ENGINE_KEY\"\n      }\n    ]\n  },\n  \"env\": {\n    \"NOEVIA_ENGINE_KEY\": \"none\"\n  },\n  \"general\": {\n    \"enableAutoUpdate\": false\n  },\n  \"privacy\": {\n    \"usageStatisticsEnabled\": false\n  }\n}\n"
+            },
+            {
+              "base": "home",
+              "path": ".qwen/settings.json",
+              "content": "{\n  \"tools\": {\n    \"approvalMode\": \"default\"\n  },\n  \"security\": {\n    \"auth\": {\n      \"selectedType\": \"openai\"\n    }\n  },\n  \"model\": {\n    \"name\": \"m\",\n    \"generationConfig\": {\n      \"contextWindowSize\": 32768\n    }\n  },\n  \"modelProviders\": {\n    \"openai\": [\n      {\n        \"id\": \"m\",\n        \"name\": \"m\",\n        \"baseUrl\": \"http://synthetic-engine.invalid/v1\",\n        \"envKey\": \"NOEVIA_ENGINE_KEY\"\n      }\n    ]\n  },\n  \"env\": {\n    \"NOEVIA_ENGINE_KEY\": \"none\"\n  },\n  \"general\": {\n    \"enableAutoUpdate\": false\n  },\n  \"privacy\": {\n    \"usageStatisticsEnabled\": false\n  }\n}\n"
+            }
+          ],
+          "permission": {
+            "edit": "ask",
+            "bash": "ask",
+            "webfetch": "ask"
+          },
+          "model": "m",
+          "endpoint": "http://synthetic-engine.invalid/v1"
+        },
+        "cwdPins": [
+          ".qwen/settings.json"
+        ]
+      }
+    },
+    {
+      "input": {
+        "harness": "qwen-code",
+        "model": "",
+        "engine": "http://synthetic-engine.invalid"
+      },
+      "expected": {
+        "ok": false,
+        "status": 409,
+        "error": "A coding task needs a model; none is loaded or chosen."
+      }
+    },
+    {
+      "input": {
+        "harness": "qwen-code",
+        "model": "m",
+        "engine": "invalid"
+      },
+      "expected": {
+        "ok": false,
+        "status": 409,
+        "error": "This server has no model endpoint for coding tasks."
+      }
+    },
+    {
+      "input": {
+        "harness": "qwen-code",
+        "model": "__proto__",
+        "engine": "https://synthetic-engine.invalid/v1",
+        "apiKey": "",
+        "contextTokens": -1,
+        "outputTokens": 2.5
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "harness": "qwen-code",
+          "files": [
+            {
+              "base": "cwd",
+              "path": ".qwen/settings.json",
+              "content": "{\n  \"tools\": {\n    \"approvalMode\": \"default\"\n  },\n  \"security\": {\n    \"auth\": {\n      \"selectedType\": \"openai\"\n    }\n  },\n  \"model\": {\n    \"name\": \"__proto__\",\n    \"generationConfig\": {\n      \"contextWindowSize\": -1\n    }\n  },\n  \"modelProviders\": {\n    \"openai\": [\n      {\n        \"id\": \"__proto__\",\n        \"name\": \"__proto__\",\n        \"baseUrl\": \"https://synthetic-engine.invalid/v1\",\n        \"envKey\": \"NOEVIA_ENGINE_KEY\"\n      }\n    ]\n  },\n  \"env\": {\n    \"NOEVIA_ENGINE_KEY\": \"none\"\n  },\n  \"general\": {\n    \"enableAutoUpdate\": false\n  },\n  \"privacy\": {\n    \"usageStatisticsEnabled\": false\n  }\n}\n"
+            },
+            {
+              "base": "home",
+              "path": ".qwen/settings.json",
+              "content": "{\n  \"tools\": {\n    \"approvalMode\": \"default\"\n  },\n  \"security\": {\n    \"auth\": {\n      \"selectedType\": \"openai\"\n    }\n  },\n  \"model\": {\n    \"name\": \"__proto__\",\n    \"generationConfig\": {\n      \"contextWindowSize\": -1\n    }\n  },\n  \"modelProviders\": {\n    \"openai\": [\n      {\n        \"id\": \"__proto__\",\n        \"name\": \"__proto__\",\n        \"baseUrl\": \"https://synthetic-engine.invalid/v1\",\n        \"envKey\": \"NOEVIA_ENGINE_KEY\"\n      }\n    ]\n  },\n  \"env\": {\n    \"NOEVIA_ENGINE_KEY\": \"none\"\n  },\n  \"general\": {\n    \"enableAutoUpdate\": false\n  },\n  \"privacy\": {\n    \"usageStatisticsEnabled\": false\n  }\n}\n"
+            }
+          ],
+          "permission": {
+            "edit": "ask",
+            "bash": "ask",
+            "webfetch": "ask"
+          },
+          "model": "__proto__",
+          "endpoint": "https://synthetic-engine.invalid/v1"
+        },
+        "cwdPins": [
+          ".qwen/settings.json"
+        ]
+      }
+    },
+    {
+      "input": {
+        "harness": "pi",
+        "model": "synthetic/model",
+        "engine": "http://synthetic-engine.invalid/v1/",
+        "apiKey": "synthetic-key",
+        "contextTokens": 16384,
+        "outputTokens": 2048
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "harness": "pi",
+          "files": [
+            {
+              "base": "home",
+              "path": ".pi/agent/models.json",
+              "content": "{\n  \"providers\": {\n    \"noevia\": {\n      \"baseUrl\": \"http://synthetic-engine.invalid/v1\",\n      \"api\": \"openai-completions\",\n      \"apiKey\": \"synthetic-key\",\n      \"models\": [\n        {\n          \"id\": \"synthetic/model\",\n          \"name\": \"synthetic/model\",\n          \"contextWindow\": 16384,\n          \"maxTokens\": 2048,\n          \"reasoning\": false,\n          \"input\": [\n            \"text\"\n          ]\n        }\n      ]\n    }\n  }\n}\n"
+            },
+            {
+              "base": "home",
+              "path": ".pi/agent/settings.json",
+              "content": "{\n  \"defaultProvider\": \"noevia\",\n  \"defaultModel\": \"synthetic/model\",\n  \"defaultProjectTrust\": \"never\",\n  \"enableInstallTelemetry\": false\n}\n"
+            },
+            {
+              "base": "home",
+              "path": ".pi/agent/extensions/noevia-gate.js",
+              "content": "// Written by noevia for this task: every tool that is not a plain read asks, with its full\n// input, and is blocked when nothing can ask. Unknown and future tools ask too. A read is only\n// plain inside the task's working directory: one that names a path outside it (absolute, `..`,\n// `~`, or a symlink out) asks like any other tool, since pi has no read confinement of its own.\nimport fs from 'node:fs';\nimport path from 'node:path';\nconst READ = new Set([\"read\",\"grep\",\"find\",\"ls\"]);\nconst ROOT = (() => { try { return fs.realpathSync(process.cwd()); } catch { return null; } })();\nfunction realish(target) {\n  let probe = target, rest = '';\n  for (let i = 0; i < 128; i++) {\n    try { return path.join(fs.realpathSync(probe), rest); }\n    catch { const parent = path.dirname(probe); if (parent === probe) return null; rest = path.join(path.basename(probe), rest); probe = parent; }\n  }\n  return null;\n}\nfunction inside(value) {\n  if (value === undefined || value === null || value === '') return true;\n  if (typeof value !== 'string' || !ROOT) return false;\n  if (/^~/.test(value)) return false;\n  const resolved = realish(path.resolve(ROOT, value));\n  if (!resolved) return false;\n  const rel = path.relative(ROOT, resolved);\n  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));\n}\nfunction patternInside(value) {\n  if (value === undefined || value === null || value === '') return true;\n  if (typeof value !== 'string') return false;\n  return !/^[\\/~]/.test(value) && !value.split(/[\\/]/).includes('..');\n}\nexport function readConfined(input) {\n  const i = input && typeof input === 'object' ? input : {};\n  return inside(i.path) && inside(i.file_path) && inside(i.cwd) && patternInside(i.pattern) && patternInside(i.glob);\n}\nexport default function (pi) {\n  pi.on('tool_call', async (event, ctx) => {\n    const outside = READ.has(event.toolName) && !readConfined(event.input);\n    if (READ.has(event.toolName) && !outside) return undefined;\n    if (!ctx.hasUI) return { block: true, reason: 'noevia has no approval channel for this call, so it is blocked.' };\n    let ok = false;\n    // The message is machine-readable on purpose: noevia's pi bridge (services/code-sandbox/\n    // pi-acp-bridge.cjs) turns it into an ACP permission request with the real tool and input.\n    const payload = JSON.stringify({ noevia: 'tool_call', toolCallId: event.toolCallId ?? null, toolName: event.toolName, input: event.input ?? {},\n      ...(outside ? { outsideWorkspace: true } : {}) });\n    try { ok = await ctx.ui.confirm('Allow ' + event.toolName + '?', payload, { timeout: 300000 }); } catch { ok = false; }\n    if (ok === true) return undefined;\n    // Why it was refused, when noevia said (a malformed call, #704): asked for once, briefly, on the\n    // same channel. A bridge that has no reason, or predates this, answers nothing and the generic\n    // reason stands. It can only change the words of a refusal, never turn one into an allow.\n    let reason = 'Declined in noevia.';\n    try {\n      const said = await ctx.ui.input('noevia refusal reason', JSON.stringify({ noevia: 'refusal_reason', toolCallId: event.toolCallId ?? null, toolName: event.toolName }), { timeout: 5000 });\n      if (typeof said === 'string' && said.trim()) reason = said.slice(0, 4000);\n    } catch { /* the generic reason stands */ }\n    return { block: true, reason };\n  });\n}\n"
+            }
+          ],
+          "permission": {
+            "edit": "ask",
+            "bash": "ask",
+            "webfetch": "ask"
+          },
+          "model": "synthetic/model",
+          "endpoint": "http://synthetic-engine.invalid/v1"
+        },
+        "cwdPins": []
+      }
+    },
+    {
+      "input": {
+        "harness": "pi",
+        "model": " m ",
+        "engine": " http://synthetic-engine.invalid ",
+        "apiKey": null
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "harness": "pi",
+          "files": [
+            {
+              "base": "home",
+              "path": ".pi/agent/models.json",
+              "content": "{\n  \"providers\": {\n    \"noevia\": {\n      \"baseUrl\": \"http://synthetic-engine.invalid/v1\",\n      \"api\": \"openai-completions\",\n      \"apiKey\": \"none\",\n      \"models\": [\n        {\n          \"id\": \"m\",\n          \"name\": \"m\",\n          \"contextWindow\": 32768,\n          \"maxTokens\": 4096,\n          \"reasoning\": false,\n          \"input\": [\n            \"text\"\n          ]\n        }\n      ]\n    }\n  }\n}\n"
+            },
+            {
+              "base": "home",
+              "path": ".pi/agent/settings.json",
+              "content": "{\n  \"defaultProvider\": \"noevia\",\n  \"defaultModel\": \"m\",\n  \"defaultProjectTrust\": \"never\",\n  \"enableInstallTelemetry\": false\n}\n"
+            },
+            {
+              "base": "home",
+              "path": ".pi/agent/extensions/noevia-gate.js",
+              "content": "// Written by noevia for this task: every tool that is not a plain read asks, with its full\n// input, and is blocked when nothing can ask. Unknown and future tools ask too. A read is only\n// plain inside the task's working directory: one that names a path outside it (absolute, `..`,\n// `~`, or a symlink out) asks like any other tool, since pi has no read confinement of its own.\nimport fs from 'node:fs';\nimport path from 'node:path';\nconst READ = new Set([\"read\",\"grep\",\"find\",\"ls\"]);\nconst ROOT = (() => { try { return fs.realpathSync(process.cwd()); } catch { return null; } })();\nfunction realish(target) {\n  let probe = target, rest = '';\n  for (let i = 0; i < 128; i++) {\n    try { return path.join(fs.realpathSync(probe), rest); }\n    catch { const parent = path.dirname(probe); if (parent === probe) return null; rest = path.join(path.basename(probe), rest); probe = parent; }\n  }\n  return null;\n}\nfunction inside(value) {\n  if (value === undefined || value === null || value === '') return true;\n  if (typeof value !== 'string' || !ROOT) return false;\n  if (/^~/.test(value)) return false;\n  const resolved = realish(path.resolve(ROOT, value));\n  if (!resolved) return false;\n  const rel = path.relative(ROOT, resolved);\n  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));\n}\nfunction patternInside(value) {\n  if (value === undefined || value === null || value === '') return true;\n  if (typeof value !== 'string') return false;\n  return !/^[\\/~]/.test(value) && !value.split(/[\\/]/).includes('..');\n}\nexport function readConfined(input) {\n  const i = input && typeof input === 'object' ? input : {};\n  return inside(i.path) && inside(i.file_path) && inside(i.cwd) && patternInside(i.pattern) && patternInside(i.glob);\n}\nexport default function (pi) {\n  pi.on('tool_call', async (event, ctx) => {\n    const outside = READ.has(event.toolName) && !readConfined(event.input);\n    if (READ.has(event.toolName) && !outside) return undefined;\n    if (!ctx.hasUI) return { block: true, reason: 'noevia has no approval channel for this call, so it is blocked.' };\n    let ok = false;\n    // The message is machine-readable on purpose: noevia's pi bridge (services/code-sandbox/\n    // pi-acp-bridge.cjs) turns it into an ACP permission request with the real tool and input.\n    const payload = JSON.stringify({ noevia: 'tool_call', toolCallId: event.toolCallId ?? null, toolName: event.toolName, input: event.input ?? {},\n      ...(outside ? { outsideWorkspace: true } : {}) });\n    try { ok = await ctx.ui.confirm('Allow ' + event.toolName + '?', payload, { timeout: 300000 }); } catch { ok = false; }\n    if (ok === true) return undefined;\n    // Why it was refused, when noevia said (a malformed call, #704): asked for once, briefly, on the\n    // same channel. A bridge that has no reason, or predates this, answers nothing and the generic\n    // reason stands. It can only change the words of a refusal, never turn one into an allow.\n    let reason = 'Declined in noevia.';\n    try {\n      const said = await ctx.ui.input('noevia refusal reason', JSON.stringify({ noevia: 'refusal_reason', toolCallId: event.toolCallId ?? null, toolName: event.toolName }), { timeout: 5000 });\n      if (typeof said === 'string' && said.trim()) reason = said.slice(0, 4000);\n    } catch { /* the generic reason stands */ }\n    return { block: true, reason };\n  });\n}\n"
+            }
+          ],
+          "permission": {
+            "edit": "ask",
+            "bash": "ask",
+            "webfetch": "ask"
+          },
+          "model": "m",
+          "endpoint": "http://synthetic-engine.invalid/v1"
+        },
+        "cwdPins": []
+      }
+    },
+    {
+      "input": {
+        "harness": "pi",
+        "model": "",
+        "engine": "http://synthetic-engine.invalid"
+      },
+      "expected": {
+        "ok": false,
+        "status": 409,
+        "error": "A coding task needs a model; none is loaded or chosen."
+      }
+    },
+    {
+      "input": {
+        "harness": "pi",
+        "model": "m",
+        "engine": "invalid"
+      },
+      "expected": {
+        "ok": false,
+        "status": 409,
+        "error": "This server has no model endpoint for coding tasks."
+      }
+    },
+    {
+      "input": {
+        "harness": "pi",
+        "model": "__proto__",
+        "engine": "https://synthetic-engine.invalid/v1",
+        "apiKey": "",
+        "contextTokens": -1,
+        "outputTokens": 2.5
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "harness": "pi",
+          "files": [
+            {
+              "base": "home",
+              "path": ".pi/agent/models.json",
+              "content": "{\n  \"providers\": {\n    \"noevia\": {\n      \"baseUrl\": \"https://synthetic-engine.invalid/v1\",\n      \"api\": \"openai-completions\",\n      \"apiKey\": \"none\",\n      \"models\": [\n        {\n          \"id\": \"__proto__\",\n          \"name\": \"__proto__\",\n          \"contextWindow\": -1,\n          \"maxTokens\": 2.5,\n          \"reasoning\": false,\n          \"input\": [\n            \"text\"\n          ]\n        }\n      ]\n    }\n  }\n}\n"
+            },
+            {
+              "base": "home",
+              "path": ".pi/agent/settings.json",
+              "content": "{\n  \"defaultProvider\": \"noevia\",\n  \"defaultModel\": \"__proto__\",\n  \"defaultProjectTrust\": \"never\",\n  \"enableInstallTelemetry\": false\n}\n"
+            },
+            {
+              "base": "home",
+              "path": ".pi/agent/extensions/noevia-gate.js",
+              "content": "// Written by noevia for this task: every tool that is not a plain read asks, with its full\n// input, and is blocked when nothing can ask. Unknown and future tools ask too. A read is only\n// plain inside the task's working directory: one that names a path outside it (absolute, `..`,\n// `~`, or a symlink out) asks like any other tool, since pi has no read confinement of its own.\nimport fs from 'node:fs';\nimport path from 'node:path';\nconst READ = new Set([\"read\",\"grep\",\"find\",\"ls\"]);\nconst ROOT = (() => { try { return fs.realpathSync(process.cwd()); } catch { return null; } })();\nfunction realish(target) {\n  let probe = target, rest = '';\n  for (let i = 0; i < 128; i++) {\n    try { return path.join(fs.realpathSync(probe), rest); }\n    catch { const parent = path.dirname(probe); if (parent === probe) return null; rest = path.join(path.basename(probe), rest); probe = parent; }\n  }\n  return null;\n}\nfunction inside(value) {\n  if (value === undefined || value === null || value === '') return true;\n  if (typeof value !== 'string' || !ROOT) return false;\n  if (/^~/.test(value)) return false;\n  const resolved = realish(path.resolve(ROOT, value));\n  if (!resolved) return false;\n  const rel = path.relative(ROOT, resolved);\n  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));\n}\nfunction patternInside(value) {\n  if (value === undefined || value === null || value === '') return true;\n  if (typeof value !== 'string') return false;\n  return !/^[\\/~]/.test(value) && !value.split(/[\\/]/).includes('..');\n}\nexport function readConfined(input) {\n  const i = input && typeof input === 'object' ? input : {};\n  return inside(i.path) && inside(i.file_path) && inside(i.cwd) && patternInside(i.pattern) && patternInside(i.glob);\n}\nexport default function (pi) {\n  pi.on('tool_call', async (event, ctx) => {\n    const outside = READ.has(event.toolName) && !readConfined(event.input);\n    if (READ.has(event.toolName) && !outside) return undefined;\n    if (!ctx.hasUI) return { block: true, reason: 'noevia has no approval channel for this call, so it is blocked.' };\n    let ok = false;\n    // The message is machine-readable on purpose: noevia's pi bridge (services/code-sandbox/\n    // pi-acp-bridge.cjs) turns it into an ACP permission request with the real tool and input.\n    const payload = JSON.stringify({ noevia: 'tool_call', toolCallId: event.toolCallId ?? null, toolName: event.toolName, input: event.input ?? {},\n      ...(outside ? { outsideWorkspace: true } : {}) });\n    try { ok = await ctx.ui.confirm('Allow ' + event.toolName + '?', payload, { timeout: 300000 }); } catch { ok = false; }\n    if (ok === true) return undefined;\n    // Why it was refused, when noevia said (a malformed call, #704): asked for once, briefly, on the\n    // same channel. A bridge that has no reason, or predates this, answers nothing and the generic\n    // reason stands. It can only change the words of a refusal, never turn one into an allow.\n    let reason = 'Declined in noevia.';\n    try {\n      const said = await ctx.ui.input('noevia refusal reason', JSON.stringify({ noevia: 'refusal_reason', toolCallId: event.toolCallId ?? null, toolName: event.toolName }), { timeout: 5000 });\n      if (typeof said === 'string' && said.trim()) reason = said.slice(0, 4000);\n    } catch { /* the generic reason stands */ }\n    return { block: true, reason };\n  });\n}\n"
+            }
+          ],
+          "permission": {
+            "edit": "ask",
+            "bash": "ask",
+            "webfetch": "ask"
+          },
+          "model": "__proto__",
+          "endpoint": "https://synthetic-engine.invalid/v1"
+        },
+        "cwdPins": []
+      }
+    },
+    {
+      "input": {
+        "harness": "deepseek",
+        "model": "synthetic/model",
+        "engine": "http://synthetic-engine.invalid/v1/",
+        "apiKey": "synthetic-key",
+        "contextTokens": 16384,
+        "outputTokens": 2048
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "harness": "deepseek",
+          "files": [
+            {
+              "base": "home",
+              "path": ".dsh/profiles/acp/cordis.patch.yml",
+              "content": "# Written by noevia for this task. Replaces nothing but the entries it names.\n- id: llm-pi-ai\n  config:\n    providers:\n      noevia:\n        displayName: \"noevia engine\"\n        api: openai-completions\n        baseURL: \"http://synthetic-engine.invalid/v1\"\n        headers:\n          Authorization: \"Bearer synthetic-key\"\n        models:\n          - id: \"synthetic/model\"\n            name: \"synthetic/model\"\n            contextWindow: 16384\n            maxTokens: 2048\n            reasoningEfforts: false\n- id: agent-default-model\n  config:\n    provider: noevia\n    model: \"synthetic/model\"\n- id: acp\n  config:\n    provider: noevia\n    model: \"synthetic/model\"\n- id: approval\n  config:\n    policy: ask\n- id: sandbox-policy\n  config:\n    mode: workspace-write\n    workspaceRoot: !!js process.cwd()\n- id: session-telemetry-otel\n  disabled: true\n- id: session-log-deepseek\n  disabled: true\n- id: web-search-deepseek\n  disabled: true\n- id: llm-deepseek\n  disabled: true\n- id: deepseek-account\n  disabled: true\n- id: plugin-manager\n  disabled: true\n- id: config-editor\n  disabled: true\n- id: settings\n  disabled: true\n- id: agent-instructions\n  disabled: true\n- id: skill-filesystem\n  disabled: true\n- id: tool-skill\n  disabled: true\n- id: skill\n  disabled: true\n- insert:\n    - id: noevia-gate\n      name: ./noevia-gate.mjs\n"
+            },
+            {
+              "base": "home",
+              "path": ".dsh/profiles/acp/noevia-gate.mjs",
+              "content": "// Written by noevia for this task: every DeepSeek Harness tool that is not a plain read asks\n// through the harness's fail-closed approval seam (no answer, an error or anything but\n// \"allowed-once\" refuses). Unknown and future tools ask too.\nconst NO_ASK = new Set([\"read\",\"read_image\",\"glob\",\"grep\",\"todo_write\",\"get_goal\"]);\nexport const name = 'noevia-gate';\nexport function apply(ctx) {\n  ctx.on('tools/pre-execute', async (exec, next) => {\n    if (NO_ASK.has(exec.name)) return next();\n    return { kind: 'ask', reason: 'noevia asks before every tool that is not a plain read.' };\n  }, { prepend: true });\n}\n"
+            }
+          ],
+          "permission": {
+            "edit": "ask",
+            "bash": "ask",
+            "webfetch": "ask"
+          },
+          "model": "synthetic/model",
+          "endpoint": "http://synthetic-engine.invalid/v1"
+        },
+        "cwdPins": []
+      }
+    },
+    {
+      "input": {
+        "harness": "deepseek",
+        "model": " m ",
+        "engine": " http://synthetic-engine.invalid ",
+        "apiKey": null
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "harness": "deepseek",
+          "files": [
+            {
+              "base": "home",
+              "path": ".dsh/profiles/acp/cordis.patch.yml",
+              "content": "# Written by noevia for this task. Replaces nothing but the entries it names.\n- id: llm-pi-ai\n  config:\n    providers:\n      noevia:\n        displayName: \"noevia engine\"\n        api: openai-completions\n        baseURL: \"http://synthetic-engine.invalid/v1\"\n        models:\n          - id: \"m\"\n            name: \"m\"\n            contextWindow: 32768\n            maxTokens: 4096\n            reasoningEfforts: false\n- id: agent-default-model\n  config:\n    provider: noevia\n    model: \"m\"\n- id: acp\n  config:\n    provider: noevia\n    model: \"m\"\n- id: approval\n  config:\n    policy: ask\n- id: sandbox-policy\n  config:\n    mode: workspace-write\n    workspaceRoot: !!js process.cwd()\n- id: session-telemetry-otel\n  disabled: true\n- id: session-log-deepseek\n  disabled: true\n- id: web-search-deepseek\n  disabled: true\n- id: llm-deepseek\n  disabled: true\n- id: deepseek-account\n  disabled: true\n- id: plugin-manager\n  disabled: true\n- id: config-editor\n  disabled: true\n- id: settings\n  disabled: true\n- id: agent-instructions\n  disabled: true\n- id: skill-filesystem\n  disabled: true\n- id: tool-skill\n  disabled: true\n- id: skill\n  disabled: true\n- insert:\n    - id: noevia-gate\n      name: ./noevia-gate.mjs\n"
+            },
+            {
+              "base": "home",
+              "path": ".dsh/profiles/acp/noevia-gate.mjs",
+              "content": "// Written by noevia for this task: every DeepSeek Harness tool that is not a plain read asks\n// through the harness's fail-closed approval seam (no answer, an error or anything but\n// \"allowed-once\" refuses). Unknown and future tools ask too.\nconst NO_ASK = new Set([\"read\",\"read_image\",\"glob\",\"grep\",\"todo_write\",\"get_goal\"]);\nexport const name = 'noevia-gate';\nexport function apply(ctx) {\n  ctx.on('tools/pre-execute', async (exec, next) => {\n    if (NO_ASK.has(exec.name)) return next();\n    return { kind: 'ask', reason: 'noevia asks before every tool that is not a plain read.' };\n  }, { prepend: true });\n}\n"
+            }
+          ],
+          "permission": {
+            "edit": "ask",
+            "bash": "ask",
+            "webfetch": "ask"
+          },
+          "model": "m",
+          "endpoint": "http://synthetic-engine.invalid/v1"
+        },
+        "cwdPins": []
+      }
+    },
+    {
+      "input": {
+        "harness": "deepseek",
+        "model": "",
+        "engine": "http://synthetic-engine.invalid"
+      },
+      "expected": {
+        "ok": false,
+        "status": 409,
+        "error": "A coding task needs a model; none is loaded or chosen."
+      }
+    },
+    {
+      "input": {
+        "harness": "deepseek",
+        "model": "m",
+        "engine": "invalid"
+      },
+      "expected": {
+        "ok": false,
+        "status": 409,
+        "error": "This server has no model endpoint for coding tasks."
+      }
+    },
+    {
+      "input": {
+        "harness": "deepseek",
+        "model": "__proto__",
+        "engine": "https://synthetic-engine.invalid/v1",
+        "apiKey": "",
+        "contextTokens": -1,
+        "outputTokens": 2.5
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "harness": "deepseek",
+          "files": [
+            {
+              "base": "home",
+              "path": ".dsh/profiles/acp/cordis.patch.yml",
+              "content": "# Written by noevia for this task. Replaces nothing but the entries it names.\n- id: llm-pi-ai\n  config:\n    providers:\n      noevia:\n        displayName: \"noevia engine\"\n        api: openai-completions\n        baseURL: \"https://synthetic-engine.invalid/v1\"\n        models:\n          - id: \"__proto__\"\n            name: \"__proto__\"\n            contextWindow: -1\n            maxTokens: 2\n            reasoningEfforts: false\n- id: agent-default-model\n  config:\n    provider: noevia\n    model: \"__proto__\"\n- id: acp\n  config:\n    provider: noevia\n    model: \"__proto__\"\n- id: approval\n  config:\n    policy: ask\n- id: sandbox-policy\n  config:\n    mode: workspace-write\n    workspaceRoot: !!js process.cwd()\n- id: session-telemetry-otel\n  disabled: true\n- id: session-log-deepseek\n  disabled: true\n- id: web-search-deepseek\n  disabled: true\n- id: llm-deepseek\n  disabled: true\n- id: deepseek-account\n  disabled: true\n- id: plugin-manager\n  disabled: true\n- id: config-editor\n  disabled: true\n- id: settings\n  disabled: true\n- id: agent-instructions\n  disabled: true\n- id: skill-filesystem\n  disabled: true\n- id: tool-skill\n  disabled: true\n- id: skill\n  disabled: true\n- insert:\n    - id: noevia-gate\n      name: ./noevia-gate.mjs\n"
+            },
+            {
+              "base": "home",
+              "path": ".dsh/profiles/acp/noevia-gate.mjs",
+              "content": "// Written by noevia for this task: every DeepSeek Harness tool that is not a plain read asks\n// through the harness's fail-closed approval seam (no answer, an error or anything but\n// \"allowed-once\" refuses). Unknown and future tools ask too.\nconst NO_ASK = new Set([\"read\",\"read_image\",\"glob\",\"grep\",\"todo_write\",\"get_goal\"]);\nexport const name = 'noevia-gate';\nexport function apply(ctx) {\n  ctx.on('tools/pre-execute', async (exec, next) => {\n    if (NO_ASK.has(exec.name)) return next();\n    return { kind: 'ask', reason: 'noevia asks before every tool that is not a plain read.' };\n  }, { prepend: true });\n}\n"
+            }
+          ],
+          "permission": {
+            "edit": "ask",
+            "bash": "ask",
+            "webfetch": "ask"
+          },
+          "model": "__proto__",
+          "endpoint": "https://synthetic-engine.invalid/v1"
+        },
+        "cwdPins": []
+      }
+    },
+    {
+      "input": {
+        "harness": "unknown",
+        "model": "synthetic/model",
+        "engine": "http://synthetic-engine.invalid/v1/",
+        "apiKey": "synthetic-key",
+        "contextTokens": 16384,
+        "outputTokens": 2048
+      },
+      "expected": {
+        "ok": false,
+        "status": 409,
+        "error": "noevia cannot pin the permissions of the unknown harness, so it will not run it."
+      }
+    },
+    {
+      "input": {
+        "harness": "unknown",
+        "model": " m ",
+        "engine": " http://synthetic-engine.invalid ",
+        "apiKey": null
+      },
+      "expected": {
+        "ok": false,
+        "status": 409,
+        "error": "noevia cannot pin the permissions of the unknown harness, so it will not run it."
+      }
+    },
+    {
+      "input": {
+        "harness": "unknown",
+        "model": "",
+        "engine": "http://synthetic-engine.invalid"
+      },
+      "expected": {
+        "ok": false,
+        "status": 409,
+        "error": "noevia cannot pin the permissions of the unknown harness, so it will not run it."
+      }
+    },
+    {
+      "input": {
+        "harness": "unknown",
+        "model": "m",
+        "engine": "invalid"
+      },
+      "expected": {
+        "ok": false,
+        "status": 409,
+        "error": "noevia cannot pin the permissions of the unknown harness, so it will not run it."
+      }
+    },
+    {
+      "input": {
+        "harness": "unknown",
+        "model": "__proto__",
+        "engine": "https://synthetic-engine.invalid/v1",
+        "apiKey": "",
+        "contextTokens": -1,
+        "outputTokens": 2.5
+      },
+      "expected": {
+        "ok": false,
+        "status": 409,
+        "error": "noevia cannot pin the permissions of the unknown harness, so it will not run it."
+      }
+    }
+  ]
+}

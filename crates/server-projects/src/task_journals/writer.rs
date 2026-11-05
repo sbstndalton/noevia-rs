@@ -1,6 +1,9 @@
 //! Native append/recovery primitive. Call from blocking task work only. The task runtime must
 //! acquire sole ownership from the legacy writer before opening this store.
-use super::{derive, parse_rows, valid_id, Job, Parsed, Surface, MAX_JOURNAL_BYTES};
+use super::{
+    bound_code_plan, bound_review, clip_utf8, derive, parse_rows, valid_id, Job, Parsed, Surface,
+    MAX_JOURNAL_BYTES,
+};
 use crate::store;
 use js_json::{wtf16, JValue};
 use sha2::{Digest, Sha256};
@@ -28,6 +31,13 @@ impl From<std::io::Error> for Error {
 }
 
 /// Synchronous journal transactions use one directory lock; no async work runs under it.
+struct Held(fs::File);
+impl Drop for Held {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
+}
+
 pub struct Store {
     root: PathBuf,
     surface: Surface,
@@ -59,7 +69,7 @@ impl Store {
         }
         Ok(Self { root, surface })
     }
-    fn hold(&self) -> Result<fs::File, Error> {
+    fn hold(&self) -> Result<Held, Error> {
         if !fs::symlink_metadata(&self.root)?.file_type().is_dir() {
             return Err(Error::Unreadable);
         }
@@ -80,7 +90,7 @@ impl Store {
             fs::TryLockError::WouldBlock => Error::Busy,
             fs::TryLockError::Error(e) => Error::Io(e),
         })?;
-        Ok(file)
+        Ok(Held(file))
     }
     fn path(&self, id: &str) -> Result<PathBuf, Error> {
         if !valid_id(id) {
@@ -98,6 +108,7 @@ impl Store {
     ) -> Result<Job, Error> {
         let _held = self.hold()?;
         let path = self.path(id)?;
+        self.prune_locked(now)?;
         let mut options = fs::OpenOptions::new();
         options.write(true).create_new(true);
         #[cfg(unix)]
@@ -113,8 +124,7 @@ impl Store {
             ("capabilities", JValue::Arr(capabilities)),
         ]);
         let event = event(id, 1, "job.created", data, now);
-        write_event(&mut file, &event)?;
-        fs::File::open(&self.root)?.sync_all()?;
+        write_event(&mut file, &event, false)?;
         Ok(derive(&[event]))
     }
     /// Only ordinary executor events are accepted. Planner authority needs its own validated API.
@@ -136,6 +146,13 @@ impl Store {
                 | "job.failed"
                 | "job.cancelled"
                 | "job.interrupted"
+                | "plan.proposed"
+                | "plan.edited"
+                | "plan.skipped"
+                | "assistant.output"
+                | "review.requested"
+                | "review.completed"
+                | "review.failed"
         ) {
             return Err(Error::InvalidEvent);
         }
@@ -157,8 +174,10 @@ impl Store {
         {
             return Err(Error::Finished);
         }
+        let data = bound_data(&rows, self.surface, kind, data)?;
         let mut next = event(id, rows.len() + 1, kind, data, now);
-        if rows.first().is_some_and(|r| r.get("hash").truthy()) {
+        let durable = rows.first().is_some_and(|r| r.get("hash").truthy());
+        if durable {
             let JValue::Obj(fields) = &mut next else {
                 return Err(Error::Unreadable);
             };
@@ -179,7 +198,10 @@ impl Store {
         }
         file.set_len(end)?;
         file.seek(SeekFrom::Start(end))?;
-        write_event(&mut file, &next)?;
+        write_event(&mut file, &next, durable)?;
+        if durable {
+            fs::File::open(&self.root)?.sync_all()?;
+        }
         rows.push(next);
         Ok(derive(&rows))
     }
@@ -196,6 +218,65 @@ impl Store {
             return Err(Error::Unreadable);
         }
         Ok(file)
+    }
+    fn prune_locked(&self, now: i64) -> Result<(), Error> {
+        let retain = match self.surface {
+            Surface::Code => 14.0,
+            Surface::Browser => 7.0,
+        } * 86_400_000.0;
+        let mut done = Vec::new();
+        for entry in fs::read_dir(&self.root)? {
+            let entry = entry?;
+            let name = entry.file_name();
+            let Some(id) = name
+                .to_str()
+                .and_then(|s| s.strip_suffix(".jsonl"))
+                .filter(|id| valid_id(id))
+            else {
+                continue;
+            };
+            let Ok(mut file) = self.open_file(id) else {
+                continue;
+            };
+            let Ok((rows, _)) = read(&mut file, id) else {
+                continue;
+            };
+            if rows.is_empty() {
+                continue;
+            }
+            let job = derive(&rows);
+            if job.kind.as_str() != Some(self.surface.kind()) || !terminal(&job) {
+                continue;
+            }
+            // An unknown clock is not a reason to delete uncertain legacy state.
+            if let Some(at) = job.updated_at.as_num().filter(|n| n.is_finite()) {
+                done.push((id.to_owned(), at));
+            }
+        }
+        done.sort_by(|a, b| b.1.total_cmp(&a.1));
+        for (index, (id, at)) in done.into_iter().enumerate() {
+            if now as f64 - at > retain || index >= 50 {
+                fs::remove_file(self.path(&id)?)?;
+            }
+        }
+        Ok(())
+    }
+    /// Explicit durable receipt for a cleanup report before acknowledging native retention.
+    /// Ordinary plain journals otherwise follow Node's write-only policy; inherited chains sync.
+    pub fn sync(&self, id: &str) -> Result<(), Error> {
+        let _held = self.hold()?;
+        let mut file = self.open_file(id)?;
+        let (rows, _) = read(&mut file, id)?;
+        let job = derive(&rows);
+        if rows.is_empty() {
+            return Err(Error::Missing);
+        }
+        if job.kind.as_str() != Some(self.surface.kind()) {
+            return Err(Error::WrongSurface);
+        }
+        file.sync_all()?;
+        fs::File::open(&self.root)?.sync_all()?;
+        Ok(())
     }
     /// Once per actor incarnation, before any new task is admitted. Never resumes approvals.
     pub fn recover(&self, now: i64) -> Result<usize, Error> {
@@ -279,13 +360,104 @@ fn read(file: &mut fs::File, id: &str) -> Result<(Vec<JValue>, u64), Error> {
     // In particular a terminal tail must never be discarded before the finished-state check.
     Ok((rows, end as u64))
 }
-fn write_event(file: &mut fs::File, event: &JValue) -> Result<(), Error> {
+fn write_event(file: &mut fs::File, event: &JValue, durable: bool) -> Result<(), Error> {
     let mut encoded = wtf16::stringify(event).ok_or(Error::Unreadable)?;
     encoded.push('\n');
     if file.metadata()?.len().saturating_add(encoded.len() as u64) > MAX_JOURNAL_BYTES {
         return Err(Error::Unreadable);
     }
     file.write_all(encoded.as_bytes())?;
-    file.sync_all()?;
+    if durable {
+        file.sync_all()?;
+    }
     Ok(())
+}
+
+fn bound_data(
+    rows: &[JValue],
+    surface: Surface,
+    kind: &str,
+    data: JValue,
+) -> Result<JValue, Error> {
+    if kind == "assistant.output" {
+        if surface != Surface::Code {
+            return Err(Error::WrongSurface);
+        }
+        if rows
+            .iter()
+            .filter(|row| row.get("type").as_str() == Some(kind))
+            .count()
+            >= 64
+        {
+            return Err(Error::InvalidEvent);
+        }
+        let incoming = data.get("text").as_str().unwrap_or("");
+        let (text, cut) = clip_utf8(incoming, 1024);
+        return Ok(object(vec![
+            ("text", JValue::Str(text)),
+            (
+                "truncated",
+                JValue::Bool(data.get("truncated") == &JValue::Bool(true) || cut),
+            ),
+        ]));
+    }
+    if matches!(kind, "plan.proposed" | "plan.edited" | "plan.skipped") {
+        if surface != Surface::Code {
+            return Err(Error::WrongSurface);
+        }
+        let empty = JValue::Null;
+        let data = if kind == "plan.skipped" {
+            &empty
+        } else {
+            &data
+        };
+        if let JValue::Arr(entries) = data.get("subQuestions") {
+            for entry in entries.iter().take(20).filter(|e| !e.is_nullish()) {
+                js_json::to_js_string(entry).map_err(|_| Error::InvalidEvent)?;
+            }
+        }
+        let mut bounded = bound_code_plan("", data);
+        if let JValue::Obj(fields) = &mut bounded {
+            fields.retain(|(key, _)| key != "status");
+        }
+        return Ok(bounded);
+    }
+    if matches!(
+        kind,
+        "review.requested" | "review.completed" | "review.failed"
+    ) {
+        if surface != Surface::Code {
+            return Err(Error::WrongSurface);
+        }
+        return Ok(bound_review(kind, &data));
+    }
+    Ok(data)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod lock_tests {
+    use super::*;
+    #[test]
+    fn transaction_drop_unlocks_even_while_a_duplicate_descriptor_survives() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("lock");
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .unwrap();
+        file.try_lock().unwrap();
+        let held = Held(file);
+        let duplicate = held.0.try_clone().unwrap();
+        drop(held);
+        let successor = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(path)
+            .unwrap();
+        successor.try_lock().unwrap();
+        drop(duplicate);
+    }
 }

@@ -123,7 +123,6 @@ fn authority_events_cannot_be_injected_through_executor_append() {
         "task.stage",
         "task.revision",
         "job.created",
-        "review.completed",
         "unknown",
     ] {
         assert!(matches!(

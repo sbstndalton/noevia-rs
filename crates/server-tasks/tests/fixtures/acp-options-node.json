@@ -1,0 +1,301 @@
+{
+  "cases": [
+    {
+      "input": {
+        "cwd": "/repo",
+        "home": "/private",
+        "env": {},
+        "proxy": null
+      },
+      "output": {
+        "HOME": "/private",
+        "CURL_HOME": "/nonexistent",
+        "WGETRC": "/dev/null"
+      }
+    },
+    {
+      "input": {
+        "cwd": "/repo",
+        "home": "/private",
+        "env": {},
+        "proxy": {
+          "url": "http://synthetic.invalid:3128"
+        }
+      },
+      "output": {
+        "HOME": "/private",
+        "HTTP_PROXY": "http://synthetic.invalid:3128",
+        "HTTPS_PROXY": "http://synthetic.invalid:3128",
+        "http_proxy": "http://synthetic.invalid:3128",
+        "https_proxy": "http://synthetic.invalid:3128",
+        "NO_PROXY": "",
+        "CURL_HOME": "/nonexistent",
+        "WGETRC": "/dev/null"
+      }
+    },
+    {
+      "input": {
+        "cwd": "/repo",
+        "home": "/private",
+        "env": {},
+        "proxy": {
+          "url": "http://synthetic.invalid:3128",
+          "noProxy": "localhost"
+        }
+      },
+      "output": {
+        "HOME": "/private",
+        "HTTP_PROXY": "http://synthetic.invalid:3128",
+        "HTTPS_PROXY": "http://synthetic.invalid:3128",
+        "http_proxy": "http://synthetic.invalid:3128",
+        "https_proxy": "http://synthetic.invalid:3128",
+        "NO_PROXY": "localhost",
+        "CURL_HOME": "/nonexistent",
+        "WGETRC": "/dev/null"
+      }
+    },
+    {
+      "input": {
+        "cwd": "/repo",
+        "home": "/private",
+        "env": {
+          "HOME": "/override",
+          "CURL_HOME": "/hostile",
+          "WGETRC": "/hostile",
+          "CUSTOM": "synthetic"
+        },
+        "proxy": null
+      },
+      "output": {
+        "HOME": "/override",
+        "CURL_HOME": "/nonexistent",
+        "WGETRC": "/dev/null",
+        "CUSTOM": "synthetic"
+      }
+    },
+    {
+      "input": {
+        "cwd": "/repo",
+        "home": "/private",
+        "env": {
+          "HOME": "/override",
+          "CURL_HOME": "/hostile",
+          "WGETRC": "/hostile",
+          "CUSTOM": "synthetic"
+        },
+        "proxy": {
+          "url": "http://synthetic.invalid:3128"
+        }
+      },
+      "output": {
+        "HOME": "/override",
+        "HTTP_PROXY": "http://synthetic.invalid:3128",
+        "HTTPS_PROXY": "http://synthetic.invalid:3128",
+        "http_proxy": "http://synthetic.invalid:3128",
+        "https_proxy": "http://synthetic.invalid:3128",
+        "NO_PROXY": "",
+        "CURL_HOME": "/nonexistent",
+        "WGETRC": "/dev/null",
+        "CUSTOM": "synthetic"
+      }
+    },
+    {
+      "input": {
+        "cwd": "/repo",
+        "home": "/private",
+        "env": {
+          "HOME": "/override",
+          "CURL_HOME": "/hostile",
+          "WGETRC": "/hostile",
+          "CUSTOM": "synthetic"
+        },
+        "proxy": {
+          "url": "http://synthetic.invalid:3128",
+          "noProxy": "localhost"
+        }
+      },
+      "output": {
+        "HOME": "/override",
+        "HTTP_PROXY": "http://synthetic.invalid:3128",
+        "HTTPS_PROXY": "http://synthetic.invalid:3128",
+        "http_proxy": "http://synthetic.invalid:3128",
+        "https_proxy": "http://synthetic.invalid:3128",
+        "NO_PROXY": "localhost",
+        "CURL_HOME": "/nonexistent",
+        "WGETRC": "/dev/null",
+        "CUSTOM": "synthetic"
+      }
+    }
+  ],
+  "sessions": [
+    {
+      "input": {
+        "permission": null,
+        "harness": null,
+        "settings": {
+          "permissions": {
+            "defaultMode": "default"
+          }
+        }
+      },
+      "output": null
+    },
+    {
+      "input": {
+        "permission": null,
+        "harness": "opencode",
+        "settings": {
+          "permissions": {
+            "defaultMode": "default"
+          }
+        }
+      },
+      "output": null
+    },
+    {
+      "input": {
+        "permission": null,
+        "harness": "claude-code",
+        "settings": {
+          "permissions": {
+            "defaultMode": "default"
+          }
+        }
+      },
+      "output": {
+        "claudeCode": {
+          "options": {
+            "settingSources": [],
+            "strictMcpConfig": true,
+            "allowDangerouslySkipPermissions": false,
+            "plugins": [],
+            "tools": [
+              "Read",
+              "Edit",
+              "Write",
+              "NotebookEdit",
+              "Bash",
+              "Glob",
+              "Grep",
+              "WebFetch",
+              "WebSearch"
+            ],
+            "extraArgs": {
+              "disable-slash-commands": null
+            },
+            "settings": {
+              "permissions": {
+                "defaultMode": "default"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "input": {
+        "permission": {
+          "mode": "approve",
+          "capabilities": [
+            "read"
+          ]
+        },
+        "harness": null,
+        "settings": {
+          "permissions": {
+            "defaultMode": "default"
+          }
+        }
+      },
+      "output": {
+        "noevia": {
+          "permission": {
+            "mode": "approve",
+            "capabilities": [
+              "read"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "input": {
+        "permission": {
+          "mode": "approve",
+          "capabilities": [
+            "read"
+          ]
+        },
+        "harness": "opencode",
+        "settings": {
+          "permissions": {
+            "defaultMode": "default"
+          }
+        }
+      },
+      "output": {
+        "noevia": {
+          "permission": {
+            "mode": "approve",
+            "capabilities": [
+              "read"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "input": {
+        "permission": {
+          "mode": "approve",
+          "capabilities": [
+            "read"
+          ]
+        },
+        "harness": "claude-code",
+        "settings": {
+          "permissions": {
+            "defaultMode": "default"
+          }
+        }
+      },
+      "output": {
+        "noevia": {
+          "permission": {
+            "mode": "approve",
+            "capabilities": [
+              "read"
+            ]
+          }
+        },
+        "claudeCode": {
+          "options": {
+            "settingSources": [],
+            "strictMcpConfig": true,
+            "allowDangerouslySkipPermissions": false,
+            "plugins": [],
+            "tools": [
+              "Read",
+              "Edit",
+              "Write",
+              "NotebookEdit",
+              "Bash",
+              "Glob",
+              "Grep",
+              "WebFetch",
+              "WebSearch"
+            ],
+            "extraArgs": {
+              "disable-slash-commands": null
+            },
+            "settings": {
+              "permissions": {
+                "defaultMode": "default"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

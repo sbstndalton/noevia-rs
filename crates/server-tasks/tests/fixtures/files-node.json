@@ -1,0 +1,19 @@
+{
+  "refusals": [
+    {
+      "name": "alias",
+      "code": -32602,
+      "message": "Refusing to follow a symlink"
+    },
+    {
+      "name": "hard",
+      "code": -32602,
+      "message": "Refusing a file with more than one hard link"
+    }
+  ],
+  "nested": "hello",
+  "tooLarge": {
+    "code": -32602,
+    "message": "File too large"
+  }
+}

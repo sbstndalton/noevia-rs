@@ -13,7 +13,8 @@ use tokio::{
 const MAX_UNITS: usize = 16 * 1024 * 1024;
 pub type HandlerFuture<'a> = Pin<Box<dyn Future<Output = Result<JValue, RpcError>> + Send + 'a>>;
 pub trait Handlers: Send + Sync {
-    fn request<'a>(&'a self, method: &'a str, params: JValue) -> HandlerFuture<'a>;
+    // Prepare synchronously in receive order; only the returned wait may run concurrently.
+    fn request(self: Arc<Self>, method: &str, params: JValue) -> HandlerFuture<'static>;
     fn update(&self, update: JValue);
 }
 #[derive(Debug)]
@@ -38,12 +39,16 @@ pub struct Options {
     pub model: Option<String>,
     pub handshake_timeout: Duration,
 }
+type CallbackReply = (JValue, Result<JValue, RpcError>);
 pub struct Client {
     reader: BufReader<OwnedReadHalf>,
+    line_bytes: Vec<u8>,
+    callbacks: tokio::task::JoinSet<CallbackReply>,
     writer: OwnedWriteHalf,
     handlers: Arc<dyn Handlers>,
     cancel: watch::Receiver<bool>,
     next: u64,
+    was_cancelled: bool,
     session: JValue,
     model: Option<String>,
     pub agent: JValue,
@@ -125,10 +130,13 @@ impl Client {
         let (read, write) = stream.into_split();
         let mut client = Self {
             reader: BufReader::new(read),
+            line_bytes: Vec::new(),
+            callbacks: tokio::task::JoinSet::new(),
             writer: write,
             handlers,
             cancel,
             next: 1,
+            was_cancelled: false,
             session: JValue::Null,
             model: options.model,
             agent: JValue::Null,
@@ -212,13 +220,18 @@ impl Client {
     async fn request(&mut self, method: &str, params: JValue) -> Result<JValue, Error> {
         let mut cancel = self.cancel.clone();
         if *cancel.borrow() {
+            self.was_cancelled = true;
             return Err(Error::Cancelled);
         }
-        tokio::select! {
+        let result = tokio::select! {
             biased;
             _ = cancel.changed() => Err(Error::Cancelled),
             result = self.request_inner(method,params) => result,
+        };
+        if matches!(result, Err(Error::Cancelled)) {
+            self.was_cancelled = true;
         }
+        result
     }
     async fn request_inner(&mut self, method: &str, params: JValue) -> Result<JValue, Error> {
         let id = self.next;
@@ -231,7 +244,17 @@ impl Client {
         ]))
         .await?;
         loop {
-            let line = self.line().await?;
+            let line = tokio::select! {
+                biased;
+                reply = self.callbacks.join_next(), if !self.callbacks.is_empty() => {
+                    if let Some(reply) = reply {
+                        let (id, result) = reply.map_err(|_| Error::Protocol)?;
+                        self.answer(id, true, result).await?;
+                    }
+                    continue;
+                },
+                line = Self::line(&mut self.reader, &mut self.line_bytes) => line?,
+            };
             let Ok(message) = wtf16::parse(&line) else {
                 // The legacy line reader discards malformed JSON and continues.
                 continue;
@@ -269,75 +292,91 @@ impl Client {
             if message.get("id") == &JValue::Undefined {
                 continue;
             }
-            let supported = matches!(
+            let id = message.get("id").clone();
+            if matches!(
                 incoming_method,
                 "session/request_permission" | "fs/read_text_file" | "fs/write_text_file"
-            );
-            let result = match incoming_method {
-                "session/request_permission" => self
-                    .handlers
-                    .request(incoming_method, message.get("params").clone())
-                    .await
-                    .map(|outcome| obj(vec![("outcome", outcome)])),
-                "fs/read_text_file" | "fs/write_text_file" => {
-                    self.handlers
-                        .request(incoming_method, message.get("params").clone())
-                        .await
-                }
-                _ => Err(RpcError {
+            ) {
+                let params = message.get("params");
+                let params = if params.truthy() {
+                    params.clone()
+                } else {
+                    obj(vec![])
+                };
+                let future = self.handlers.clone().request(incoming_method, params);
+                let permission = incoming_method == "session/request_permission";
+                let _ = self.callbacks.spawn(async move {
+                    let result = future.await;
+                    (
+                        id,
+                        if permission {
+                            result.map(|outcome| obj(vec![("outcome", outcome)]))
+                        } else {
+                            result
+                        },
+                    )
+                });
+                continue;
+            }
+            self.answer(
+                id,
+                false,
+                Err(RpcError {
                     code: -32601,
                     message: "Method not supported by this client".into(),
                     data: None,
                 }),
-            };
-            let payload = match result {
-                Ok(value) => (
-                    "result",
-                    if value == JValue::Undefined {
-                        JValue::Null
-                    } else {
-                        value
-                    },
-                ),
-                Err(error) => {
-                    let code = if !supported {
-                        -32601
-                    } else if error.code == -32602 {
-                        -32602
-                    } else {
-                        -32603
-                    };
-                    let mut fields = vec![
-                        ("code", JValue::Num(code as f64)),
-                        ("message", text(&error.message)),
-                    ];
-                    if code == -32602 {
-                        if let Some(data) = error
-                            .data
-                            .filter(|d| matches!(d, JValue::Obj(_) | JValue::Arr(_)))
-                        {
-                            fields.push(("data", data));
-                        }
-                    }
-                    ("error", obj(fields))
-                }
-            };
-            self.send(obj(vec![
-                ("jsonrpc", text("2.0")),
-                ("id", message.get("id").clone()),
-                payload,
-            ]))
+            )
             .await?;
         }
     }
-    async fn line(&mut self) -> Result<String, Error> {
-        let mut bytes = Vec::new();
+    async fn answer(
+        &mut self,
+        id: JValue,
+        supported: bool,
+        result: Result<JValue, RpcError>,
+    ) -> Result<(), Error> {
+        let payload = match result {
+            Ok(value) => (
+                "result",
+                if value == JValue::Undefined {
+                    JValue::Null
+                } else {
+                    value
+                },
+            ),
+            Err(error) => {
+                let code = if !supported {
+                    -32601
+                } else if error.code == -32602 {
+                    -32602
+                } else {
+                    -32603
+                };
+                let mut fields = vec![
+                    ("code", JValue::Num(code as f64)),
+                    ("message", text(&error.message)),
+                ];
+                if code == -32602 {
+                    if let Some(data) = error
+                        .data
+                        .filter(|d| matches!(d, JValue::Obj(_) | JValue::Arr(_)))
+                    {
+                        fields.push(("data", data));
+                    }
+                }
+                ("error", obj(fields))
+            }
+        };
+        self.send(obj(vec![("jsonrpc", text("2.0")), ("id", id), payload]))
+            .await
+    }
+    async fn line<R: tokio::io::AsyncRead + Unpin>(
+        reader: &mut BufReader<R>,
+        bytes: &mut Vec<u8>,
+    ) -> Result<String, Error> {
         loop {
-            let chunk = self
-                .reader
-                .fill_buf()
-                .await
-                .map_err(|_| Error::Unavailable)?;
+            let chunk = reader.fill_buf().await.map_err(|_| Error::Unavailable)?;
             if chunk.is_empty() {
                 return Err(Error::Unavailable);
             }
@@ -347,18 +386,36 @@ impl Client {
                 return Err(Error::Protocol);
             }
             bytes.extend_from_slice(chunk.get(..used).ok_or(Error::Protocol)?);
-            self.reader.consume(used);
+            reader.consume(used);
             if newline.is_some() {
                 let line =
-                    server_account::util::js_trim(&String::from_utf8_lossy(&bytes)).to_owned();
+                    server_account::util::js_trim(&String::from_utf8_lossy(bytes)).to_owned();
                 if line.is_empty() {
                     bytes.clear();
                     continue;
                 }
+                bytes.clear();
                 if line.encode_utf16().count() > MAX_UNITS {
                     return Err(Error::Protocol);
                 }
                 return Ok(line);
+            }
+        }
+    }
+}
+
+impl Drop for Client {
+    fn drop(&mut self) {
+        if (self.was_cancelled || *self.cancel.borrow()) && self.session.truthy() {
+            let message = obj(vec![
+                ("jsonrpc", text("2.0")),
+                ("method", text("session/cancel")),
+                ("params", obj(vec![("sessionId", self.session.clone())])),
+            ]);
+            if let Some(mut line) = wtf16::stringify(&message) {
+                line.push('\n');
+                // EOF remains authoritative if the best-effort notification is backpressured.
+                let _ = self.writer.try_write(line.as_bytes());
             }
         }
     }
@@ -374,7 +431,7 @@ mod tests {
         updates: std::sync::Mutex<Vec<JValue>>,
     }
     impl Handlers for Handler {
-        fn request<'a>(&'a self, _: &'a str, _: JValue) -> HandlerFuture<'a> {
+        fn request(self: Arc<Self>, _: &str, _: JValue) -> HandlerFuture<'static> {
             Box::pin(async move {
                 self.entered.notify_one();
                 if self.hang {
@@ -459,6 +516,16 @@ mod tests {
         }
         async fn closed(&mut self) {
             let mut s = String::new();
+            let first = tokio::time::timeout(Duration::from_secs(2), self.read.read_line(&mut s))
+                .await
+                .unwrap()
+                .unwrap();
+            if first == 0 {
+                return;
+            }
+            let cancel = wtf16::parse(&s).unwrap();
+            assert_eq!(cancel.get("method").as_str(), Some("session/cancel"));
+            s.clear();
             assert_eq!(
                 tokio::time::timeout(Duration::from_secs(2), self.read.read_line(&mut s))
                     .await
@@ -653,6 +720,188 @@ mod tests {
                 .as_str(),
             Some("end_turn")
         );
+        server.await.unwrap();
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
+mod concurrency_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::net::TcpListener;
+    #[tokio::test]
+    async fn partial_frames_survive_a_completed_callback_interrupting_the_read_wait() {
+        let (mut writer, reader) = tokio::io::duplex(1);
+        let (ack, written) = tokio::sync::oneshot::channel();
+        let (release, proceed) = tokio::sync::oneshot::channel();
+        let writing = tokio::spawn(async move {
+            writer.write_all(b"{\"jsonrpc\":\"2.0\",").await.unwrap();
+            ack.send(()).unwrap();
+            proceed.await.unwrap();
+            writer.write_all(b"\"result\":true}\n").await.unwrap();
+        });
+        let mut reader = BufReader::new(reader);
+        let mut bytes = Vec::new();
+        let mut partial = Box::pin(Client::line(&mut reader, &mut bytes));
+        tokio::select! {
+            _ = written => {},
+            _ = &mut partial => panic!("a partial frame must still be waiting"),
+        }
+        drop(partial);
+        assert!(
+            !bytes.is_empty(),
+            "prove bytes were consumed before the read future was interrupted"
+        );
+        release.send(()).unwrap();
+        assert_eq!(
+            Client::line(&mut reader, &mut bytes).await.unwrap(),
+            r#"{"jsonrpc":"2.0","result":true}"#
+        );
+        writing.await.unwrap();
+    }
+    struct Concurrent {
+        requests: AtomicUsize,
+        updates: AtomicUsize,
+        changed: tokio::sync::Notify,
+    }
+    impl Handlers for Concurrent {
+        fn request(self: Arc<Self>, _: &str, _: JValue) -> HandlerFuture<'static> {
+            Box::pin(async move {
+                self.requests.fetch_add(1, Ordering::SeqCst);
+                self.changed.notify_one();
+                std::future::pending::<Result<JValue, RpcError>>().await
+            })
+        }
+        fn update(&self, _: JValue) {
+            self.updates.fetch_add(1, Ordering::SeqCst);
+            self.changed.notify_one();
+        }
+    }
+    async fn read(reader: &mut BufReader<OwnedReadHalf>) -> JValue {
+        let mut line = String::new();
+        assert!(reader.read_line(&mut line).await.unwrap() > 0);
+        wtf16::parse(&line).unwrap()
+    }
+    async fn reply(writer: &mut OwnedWriteHalf, id: JValue, result: JValue) {
+        let row = obj(vec![
+            ("jsonrpc", text("2.0")),
+            ("id", id),
+            ("result", result),
+        ]);
+        writer
+            .write_all((wtf16::stringify(&row).unwrap() + "\n").as_bytes())
+            .await
+            .unwrap();
+    }
+    #[tokio::test]
+    async fn approval_waits_do_not_block_updates_or_other_permission_callbacks() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = listener.local_addr().unwrap().to_string();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let (reader, mut writer) = stream.into_split();
+            let mut reader = BufReader::new(reader);
+            read(&mut reader).await;
+            let init = read(&mut reader).await;
+            reply(
+                &mut writer,
+                init.get("id").clone(),
+                obj(vec![("protocolVersion", JValue::Num(1.0))]),
+            )
+            .await;
+            let new = read(&mut reader).await;
+            reply(
+                &mut writer,
+                new.get("id").clone(),
+                obj(vec![("sessionId", text("session"))]),
+            )
+            .await;
+            read(&mut reader).await;
+            for row in [
+                obj(vec![
+                    ("jsonrpc", text("2.0")),
+                    ("id", JValue::Num(11.0)),
+                    ("method", text("session/request_permission")),
+                    ("params", obj(vec![])),
+                ]),
+                obj(vec![
+                    ("jsonrpc", text("2.0")),
+                    ("method", text("session/update")),
+                    (
+                        "params",
+                        obj(vec![(
+                            "update",
+                            obj(vec![("sessionUpdate", text("usage_update"))]),
+                        )]),
+                    ),
+                ]),
+                obj(vec![
+                    ("jsonrpc", text("2.0")),
+                    ("id", JValue::Num(12.0)),
+                    ("method", text("session/request_permission")),
+                    ("params", obj(vec![])),
+                ]),
+            ] {
+                writer
+                    .write_all((wtf16::stringify(&row).unwrap() + "\n").as_bytes())
+                    .await
+                    .unwrap();
+            }
+            let cancel = read(&mut reader).await;
+            assert_eq!(cancel.get("method").as_str(), Some("session/cancel"));
+            let mut line = String::new();
+            assert_eq!(
+                tokio::time::timeout(Duration::from_secs(5), reader.read_line(&mut line))
+                    .await
+                    .unwrap()
+                    .unwrap(),
+                0
+            );
+        });
+        let handler = Arc::new(Concurrent {
+            requests: AtomicUsize::new(0),
+            updates: AtomicUsize::new(0),
+            changed: tokio::sync::Notify::new(),
+        });
+        let (cancel, receiver) = watch::channel(false);
+        let options = Options {
+            endpoint,
+            cwd: "/synthetic/tree".into(),
+            env: obj(vec![]),
+            session_meta: None,
+            model: None,
+            handshake_timeout: Duration::from_secs(5),
+        };
+        let client = Client::connect(options, handler.clone(), receiver)
+            .await
+            .unwrap();
+        let running = tokio::spawn(async move { client.prompt("synthetic").await });
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let notified = handler.changed.notified();
+                if handler.requests.load(Ordering::SeqCst) == 2
+                    && handler.updates.load(Ordering::SeqCst) == 1
+                {
+                    break;
+                }
+                notified.await;
+            }
+        })
+        .await
+        .unwrap();
+        let expected =
+            wtf16::parse(include_str!("../tests/fixtures/acp-concurrent-node.json")).unwrap();
+        assert_eq!(
+            JValue::Num(handler.requests.load(Ordering::SeqCst) as f64),
+            *expected.get("active")
+        );
+        assert_eq!(
+            JValue::Num(handler.updates.load(Ordering::SeqCst) as f64),
+            *expected.get("updates")
+        );
+        cancel.send_replace(true);
+        assert!(matches!(running.await.unwrap(), Err(Error::Cancelled)));
         server.await.unwrap();
     }
 }

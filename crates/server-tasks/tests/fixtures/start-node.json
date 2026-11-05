@@ -1,0 +1,1316 @@
+{
+  "cases": [
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": false,
+        "body": {}
+      },
+      "expected": {
+        "status": 400,
+        "error": "Choose a repository the operator registered on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": false,
+        "body": {
+          "repository": "repo"
+        }
+      },
+      "expected": {
+        "status": 400,
+        "error": "Describe the task."
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": false,
+        "body": {
+          "repository": "repo",
+          "prompt": "  task  "
+        }
+      },
+      "expected": {
+        "status": 202,
+        "result": {
+          "taskId": "synthetic-task",
+          "branch": "synthetic-branch",
+          "workspace": "/synthetic/tree",
+          "repository": "repo",
+          "capabilities": [
+            "read_repository",
+            "edit_file",
+            "execute_command"
+          ],
+          "domains": [],
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "sharedContext": true
+        },
+        "execution": {
+          "projectId": "project",
+          "repoPath": "/synthetic/repo",
+          "prompt": "task",
+          "capabilities": [
+            "read_repository",
+            "edit_file",
+            "execute_command"
+          ],
+          "domains": [],
+          "model": null,
+          "sandboxKind": "sandbox",
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "context": "",
+          "tenantId": "synthetic-user"
+        }
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": false,
+        "body": {
+          "repository": "repo",
+          "prompt": "task",
+          "harness": "other"
+        }
+      },
+      "expected": {
+        "status": 400,
+        "error": "That coding harness is not configured on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": false,
+        "body": {
+          "repository": "repo",
+          "prompt": "task",
+          "promptPreparation": "other"
+        }
+      },
+      "expected": {
+        "status": 400,
+        "error": "Unknown prompt preparation."
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": false,
+        "body": {
+          "repository": "repo",
+          "prompt": "task",
+          "promptPreparation": "local"
+        }
+      },
+      "expected": {
+        "status": 409,
+        "error": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": false,
+        "body": {
+          "repository": "repo",
+          "prompt": "task",
+          "promptPreparation": "planner",
+          "approvePlan": true
+        }
+      },
+      "expected": {
+        "status": 400,
+        "error": "Unknown prompt preparation."
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": false,
+        "body": {
+          "repository": "repo",
+          "prompt": "task",
+          "capabilities": [
+            "network",
+            "install_dependency",
+            "edit_file",
+            "edit_file",
+            "other"
+          ],
+          "domains": [
+            " Example.COM ",
+            "bad",
+            ".com",
+            "a..com",
+            "a.x",
+            "a.co",
+            42,
+            null
+          ]
+        }
+      },
+      "expected": {
+        "status": 202,
+        "result": {
+          "taskId": "synthetic-task",
+          "branch": "synthetic-branch",
+          "workspace": "/synthetic/tree",
+          "repository": "repo",
+          "capabilities": [
+            "edit_file"
+          ],
+          "domains": [
+            "example.com",
+            "a..com",
+            "a.co"
+          ],
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "sharedContext": true
+        },
+        "execution": {
+          "projectId": "project",
+          "repoPath": "/synthetic/repo",
+          "prompt": "task",
+          "capabilities": [
+            "edit_file"
+          ],
+          "domains": [
+            "example.com",
+            "a..com",
+            "a.co"
+          ],
+          "model": null,
+          "sandboxKind": "sandbox",
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "context": "",
+          "tenantId": "synthetic-user"
+        }
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": false,
+        "body": {
+          "repository": "repo",
+          "prompt": [
+            "task",
+            "data"
+          ],
+          "capabilities": [],
+          "model": 42
+        }
+      },
+      "expected": {
+        "status": 202,
+        "result": {
+          "taskId": "synthetic-task",
+          "branch": "synthetic-branch",
+          "workspace": "/synthetic/tree",
+          "repository": "repo",
+          "capabilities": [],
+          "domains": [],
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "sharedContext": true
+        },
+        "execution": {
+          "projectId": "project",
+          "repoPath": "/synthetic/repo",
+          "prompt": "task,data",
+          "capabilities": [],
+          "domains": [],
+          "model": "42",
+          "sandboxKind": "sandbox",
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "context": "",
+          "tenantId": "synthetic-user"
+        }
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": false,
+        "body": {
+          "repository": "repo",
+          "prompt": {
+            "toString": 42
+          }
+        }
+      },
+      "expected": {
+        "status": 500,
+        "error": "Code request failed"
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": false,
+        "body": null
+      },
+      "expected": {
+        "status": 500,
+        "error": "Code request failed"
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": false,
+        "body": false
+      },
+      "expected": {
+        "status": 400,
+        "error": "Choose a repository the operator registered on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": false,
+        "body": 42
+      },
+      "expected": {
+        "status": 400,
+        "error": "Choose a repository the operator registered on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": false,
+        "body": "task"
+      },
+      "expected": {
+        "status": 400,
+        "error": "Choose a repository the operator registered on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": false,
+        "body": []
+      },
+      "expected": {
+        "status": 400,
+        "error": "Choose a repository the operator registered on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": true,
+        "body": {}
+      },
+      "expected": {
+        "status": 400,
+        "error": "Choose a repository the operator registered on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": true,
+        "body": {
+          "repository": "repo"
+        }
+      },
+      "expected": {
+        "status": 400,
+        "error": "Describe the task."
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": true,
+        "body": {
+          "repository": "repo",
+          "prompt": "  task  "
+        }
+      },
+      "expected": {
+        "status": 202,
+        "result": {
+          "taskId": "synthetic-task",
+          "branch": "synthetic-branch",
+          "workspace": "/synthetic/tree",
+          "repository": "repo",
+          "capabilities": [
+            "read_repository",
+            "edit_file",
+            "execute_command"
+          ],
+          "domains": [],
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "sharedContext": true
+        },
+        "execution": {
+          "projectId": "project",
+          "repoPath": "/synthetic/repo",
+          "prompt": "task",
+          "capabilities": [
+            "read_repository",
+            "edit_file",
+            "execute_command"
+          ],
+          "domains": [],
+          "model": null,
+          "sandboxKind": "sandbox",
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "context": "",
+          "tenantId": "synthetic-user"
+        }
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": true,
+        "body": {
+          "repository": "repo",
+          "prompt": "task",
+          "harness": "other"
+        }
+      },
+      "expected": {
+        "status": 400,
+        "error": "That coding harness is not configured on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": true,
+        "body": {
+          "repository": "repo",
+          "prompt": "task",
+          "promptPreparation": "other"
+        }
+      },
+      "expected": {
+        "status": 400,
+        "error": "Unknown prompt preparation."
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": true,
+        "body": {
+          "repository": "repo",
+          "prompt": "task",
+          "promptPreparation": "local"
+        }
+      },
+      "expected": {
+        "status": 409,
+        "error": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": true,
+        "body": {
+          "repository": "repo",
+          "prompt": "task",
+          "promptPreparation": "planner",
+          "approvePlan": true
+        }
+      },
+      "expected": {
+        "status": 202,
+        "result": {
+          "taskId": "synthetic-task",
+          "branch": "synthetic-branch",
+          "workspace": "/synthetic/tree",
+          "repository": "repo",
+          "capabilities": [
+            "read_repository",
+            "edit_file",
+            "execute_command"
+          ],
+          "domains": [],
+          "harness": "opencode",
+          "promptPreparation": "planner",
+          "sharedContext": true
+        },
+        "execution": {
+          "projectId": "project",
+          "repo": {
+            "id": "repo",
+            "path": "/synthetic/repo"
+          },
+          "prompt": "task",
+          "capabilities": [
+            "read_repository",
+            "edit_file",
+            "execute_command"
+          ],
+          "domains": [],
+          "model": null,
+          "sandboxKind": "sandbox",
+          "harness": "opencode",
+          "context": "",
+          "approvePlan": true,
+          "tenantId": "synthetic-user"
+        }
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": true,
+        "body": {
+          "repository": "repo",
+          "prompt": "task",
+          "capabilities": [
+            "network",
+            "install_dependency",
+            "edit_file",
+            "edit_file",
+            "other"
+          ],
+          "domains": [
+            " Example.COM ",
+            "bad",
+            ".com",
+            "a..com",
+            "a.x",
+            "a.co",
+            42,
+            null
+          ]
+        }
+      },
+      "expected": {
+        "status": 202,
+        "result": {
+          "taskId": "synthetic-task",
+          "branch": "synthetic-branch",
+          "workspace": "/synthetic/tree",
+          "repository": "repo",
+          "capabilities": [
+            "edit_file"
+          ],
+          "domains": [
+            "example.com",
+            "a..com",
+            "a.co"
+          ],
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "sharedContext": true
+        },
+        "execution": {
+          "projectId": "project",
+          "repoPath": "/synthetic/repo",
+          "prompt": "task",
+          "capabilities": [
+            "edit_file"
+          ],
+          "domains": [
+            "example.com",
+            "a..com",
+            "a.co"
+          ],
+          "model": null,
+          "sandboxKind": "sandbox",
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "context": "",
+          "tenantId": "synthetic-user"
+        }
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": true,
+        "body": {
+          "repository": "repo",
+          "prompt": [
+            "task",
+            "data"
+          ],
+          "capabilities": [],
+          "model": 42
+        }
+      },
+      "expected": {
+        "status": 202,
+        "result": {
+          "taskId": "synthetic-task",
+          "branch": "synthetic-branch",
+          "workspace": "/synthetic/tree",
+          "repository": "repo",
+          "capabilities": [],
+          "domains": [],
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "sharedContext": true
+        },
+        "execution": {
+          "projectId": "project",
+          "repoPath": "/synthetic/repo",
+          "prompt": "task,data",
+          "capabilities": [],
+          "domains": [],
+          "model": "42",
+          "sandboxKind": "sandbox",
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "context": "",
+          "tenantId": "synthetic-user"
+        }
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": true,
+        "body": {
+          "repository": "repo",
+          "prompt": {
+            "toString": 42
+          }
+        }
+      },
+      "expected": {
+        "status": 500,
+        "error": "Code request failed"
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": true,
+        "body": null
+      },
+      "expected": {
+        "status": 500,
+        "error": "Code request failed"
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": true,
+        "body": false
+      },
+      "expected": {
+        "status": 400,
+        "error": "Choose a repository the operator registered on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": true,
+        "body": 42
+      },
+      "expected": {
+        "status": 400,
+        "error": "Choose a repository the operator registered on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": true,
+        "body": "task"
+      },
+      "expected": {
+        "status": 400,
+        "error": "Choose a repository the operator registered on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "unconfigured",
+        "pipeline": true,
+        "body": []
+      },
+      "expected": {
+        "status": 400,
+        "error": "Choose a repository the operator registered on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": false,
+        "body": {}
+      },
+      "expected": {
+        "status": 400,
+        "error": "Choose a repository the operator registered on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": false,
+        "body": {
+          "repository": "repo"
+        }
+      },
+      "expected": {
+        "status": 400,
+        "error": "Describe the task."
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": false,
+        "body": {
+          "repository": "repo",
+          "prompt": "  task  "
+        }
+      },
+      "expected": {
+        "status": 202,
+        "result": {
+          "taskId": "synthetic-task",
+          "branch": "synthetic-branch",
+          "workspace": "/synthetic/tree",
+          "repository": "repo",
+          "capabilities": [
+            "read_repository",
+            "edit_file",
+            "execute_command"
+          ],
+          "domains": [],
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "sharedContext": true
+        },
+        "execution": {
+          "projectId": "project",
+          "repoPath": "/synthetic/repo",
+          "prompt": "task",
+          "capabilities": [
+            "read_repository",
+            "edit_file",
+            "execute_command"
+          ],
+          "domains": [],
+          "model": null,
+          "sandboxKind": "sandbox",
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "context": "",
+          "tenantId": "synthetic-user"
+        }
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": false,
+        "body": {
+          "repository": "repo",
+          "prompt": "task",
+          "harness": "other"
+        }
+      },
+      "expected": {
+        "status": 400,
+        "error": "That coding harness is not configured on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": false,
+        "body": {
+          "repository": "repo",
+          "prompt": "task",
+          "promptPreparation": "other"
+        }
+      },
+      "expected": {
+        "status": 400,
+        "error": "Unknown prompt preparation."
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": false,
+        "body": {
+          "repository": "repo",
+          "prompt": "task",
+          "promptPreparation": "local"
+        }
+      },
+      "expected": {
+        "status": 409,
+        "error": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": false,
+        "body": {
+          "repository": "repo",
+          "prompt": "task",
+          "promptPreparation": "planner",
+          "approvePlan": true
+        }
+      },
+      "expected": {
+        "status": 400,
+        "error": "Unknown prompt preparation."
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": false,
+        "body": {
+          "repository": "repo",
+          "prompt": "task",
+          "capabilities": [
+            "network",
+            "install_dependency",
+            "edit_file",
+            "edit_file",
+            "other"
+          ],
+          "domains": [
+            " Example.COM ",
+            "bad",
+            ".com",
+            "a..com",
+            "a.x",
+            "a.co",
+            42,
+            null
+          ]
+        }
+      },
+      "expected": {
+        "status": 202,
+        "result": {
+          "taskId": "synthetic-task",
+          "branch": "synthetic-branch",
+          "workspace": "/synthetic/tree",
+          "repository": "repo",
+          "capabilities": [
+            "edit_file",
+            "install_dependency",
+            "network"
+          ],
+          "domains": [
+            "example.com",
+            "a..com",
+            "a.co"
+          ],
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "sharedContext": true
+        },
+        "execution": {
+          "projectId": "project",
+          "repoPath": "/synthetic/repo",
+          "prompt": "task",
+          "capabilities": [
+            "edit_file",
+            "install_dependency",
+            "network"
+          ],
+          "domains": [
+            "example.com",
+            "a..com",
+            "a.co"
+          ],
+          "model": null,
+          "sandboxKind": "sandbox",
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "context": "",
+          "tenantId": "synthetic-user"
+        }
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": false,
+        "body": {
+          "repository": "repo",
+          "prompt": [
+            "task",
+            "data"
+          ],
+          "capabilities": [],
+          "model": 42
+        }
+      },
+      "expected": {
+        "status": 202,
+        "result": {
+          "taskId": "synthetic-task",
+          "branch": "synthetic-branch",
+          "workspace": "/synthetic/tree",
+          "repository": "repo",
+          "capabilities": [],
+          "domains": [],
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "sharedContext": true
+        },
+        "execution": {
+          "projectId": "project",
+          "repoPath": "/synthetic/repo",
+          "prompt": "task,data",
+          "capabilities": [],
+          "domains": [],
+          "model": "42",
+          "sandboxKind": "sandbox",
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "context": "",
+          "tenantId": "synthetic-user"
+        }
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": false,
+        "body": {
+          "repository": "repo",
+          "prompt": {
+            "toString": 42
+          }
+        }
+      },
+      "expected": {
+        "status": 500,
+        "error": "Code request failed"
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": false,
+        "body": null
+      },
+      "expected": {
+        "status": 500,
+        "error": "Code request failed"
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": false,
+        "body": false
+      },
+      "expected": {
+        "status": 400,
+        "error": "Choose a repository the operator registered on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": false,
+        "body": 42
+      },
+      "expected": {
+        "status": 400,
+        "error": "Choose a repository the operator registered on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": false,
+        "body": "task"
+      },
+      "expected": {
+        "status": 400,
+        "error": "Choose a repository the operator registered on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": false,
+        "body": []
+      },
+      "expected": {
+        "status": 400,
+        "error": "Choose a repository the operator registered on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": true,
+        "body": {}
+      },
+      "expected": {
+        "status": 400,
+        "error": "Choose a repository the operator registered on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": true,
+        "body": {
+          "repository": "repo"
+        }
+      },
+      "expected": {
+        "status": 400,
+        "error": "Describe the task."
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": true,
+        "body": {
+          "repository": "repo",
+          "prompt": "  task  "
+        }
+      },
+      "expected": {
+        "status": 202,
+        "result": {
+          "taskId": "synthetic-task",
+          "branch": "synthetic-branch",
+          "workspace": "/synthetic/tree",
+          "repository": "repo",
+          "capabilities": [
+            "read_repository",
+            "edit_file",
+            "execute_command"
+          ],
+          "domains": [],
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "sharedContext": true
+        },
+        "execution": {
+          "projectId": "project",
+          "repoPath": "/synthetic/repo",
+          "prompt": "task",
+          "capabilities": [
+            "read_repository",
+            "edit_file",
+            "execute_command"
+          ],
+          "domains": [],
+          "model": null,
+          "sandboxKind": "sandbox",
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "context": "",
+          "tenantId": "synthetic-user"
+        }
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": true,
+        "body": {
+          "repository": "repo",
+          "prompt": "task",
+          "harness": "other"
+        }
+      },
+      "expected": {
+        "status": 400,
+        "error": "That coding harness is not configured on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": true,
+        "body": {
+          "repository": "repo",
+          "prompt": "task",
+          "promptPreparation": "other"
+        }
+      },
+      "expected": {
+        "status": 400,
+        "error": "Unknown prompt preparation."
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": true,
+        "body": {
+          "repository": "repo",
+          "prompt": "task",
+          "promptPreparation": "local"
+        }
+      },
+      "expected": {
+        "status": 409,
+        "error": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": true,
+        "body": {
+          "repository": "repo",
+          "prompt": "task",
+          "promptPreparation": "planner",
+          "approvePlan": true
+        }
+      },
+      "expected": {
+        "status": 202,
+        "result": {
+          "taskId": "synthetic-task",
+          "branch": "synthetic-branch",
+          "workspace": "/synthetic/tree",
+          "repository": "repo",
+          "capabilities": [
+            "read_repository",
+            "edit_file",
+            "execute_command"
+          ],
+          "domains": [],
+          "harness": "opencode",
+          "promptPreparation": "planner",
+          "sharedContext": true
+        },
+        "execution": {
+          "projectId": "project",
+          "repo": {
+            "id": "repo",
+            "path": "/synthetic/repo"
+          },
+          "prompt": "task",
+          "capabilities": [
+            "read_repository",
+            "edit_file",
+            "execute_command"
+          ],
+          "domains": [],
+          "model": null,
+          "sandboxKind": "sandbox",
+          "harness": "opencode",
+          "context": "",
+          "approvePlan": true,
+          "tenantId": "synthetic-user"
+        }
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": true,
+        "body": {
+          "repository": "repo",
+          "prompt": "task",
+          "capabilities": [
+            "network",
+            "install_dependency",
+            "edit_file",
+            "edit_file",
+            "other"
+          ],
+          "domains": [
+            " Example.COM ",
+            "bad",
+            ".com",
+            "a..com",
+            "a.x",
+            "a.co",
+            42,
+            null
+          ]
+        }
+      },
+      "expected": {
+        "status": 202,
+        "result": {
+          "taskId": "synthetic-task",
+          "branch": "synthetic-branch",
+          "workspace": "/synthetic/tree",
+          "repository": "repo",
+          "capabilities": [
+            "edit_file",
+            "install_dependency",
+            "network"
+          ],
+          "domains": [
+            "example.com",
+            "a..com",
+            "a.co"
+          ],
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "sharedContext": true
+        },
+        "execution": {
+          "projectId": "project",
+          "repoPath": "/synthetic/repo",
+          "prompt": "task",
+          "capabilities": [
+            "edit_file",
+            "install_dependency",
+            "network"
+          ],
+          "domains": [
+            "example.com",
+            "a..com",
+            "a.co"
+          ],
+          "model": null,
+          "sandboxKind": "sandbox",
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "context": "",
+          "tenantId": "synthetic-user"
+        }
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": true,
+        "body": {
+          "repository": "repo",
+          "prompt": [
+            "task",
+            "data"
+          ],
+          "capabilities": [],
+          "model": 42
+        }
+      },
+      "expected": {
+        "status": 202,
+        "result": {
+          "taskId": "synthetic-task",
+          "branch": "synthetic-branch",
+          "workspace": "/synthetic/tree",
+          "repository": "repo",
+          "capabilities": [],
+          "domains": [],
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "sharedContext": true
+        },
+        "execution": {
+          "projectId": "project",
+          "repoPath": "/synthetic/repo",
+          "prompt": "task,data",
+          "capabilities": [],
+          "domains": [],
+          "model": "42",
+          "sandboxKind": "sandbox",
+          "harness": "opencode",
+          "promptPreparation": "direct",
+          "context": "",
+          "tenantId": "synthetic-user"
+        }
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": true,
+        "body": {
+          "repository": "repo",
+          "prompt": {
+            "toString": 42
+          }
+        }
+      },
+      "expected": {
+        "status": 500,
+        "error": "Code request failed"
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": true,
+        "body": null
+      },
+      "expected": {
+        "status": 500,
+        "error": "Code request failed"
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": true,
+        "body": false
+      },
+      "expected": {
+        "status": 400,
+        "error": "Choose a repository the operator registered on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": true,
+        "body": 42
+      },
+      "expected": {
+        "status": 400,
+        "error": "Choose a repository the operator registered on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": true,
+        "body": "task"
+      },
+      "expected": {
+        "status": 400,
+        "error": "Choose a repository the operator registered on this server."
+      }
+    },
+    {
+      "input": {
+        "network": "ready",
+        "pipeline": true,
+        "body": []
+      },
+      "expected": {
+        "status": 400,
+        "error": "Choose a repository the operator registered on this server."
+      }
+    }
+  ]
+}

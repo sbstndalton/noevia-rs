@@ -3275,9 +3275,12 @@ name = "server-tasks"
 version = "0.1.0"
 dependencies = [
  "js-json",
+ "libc",
  "rand_core 0.6.4",
+ "rustix",
  "server-account",
  "server-projects",
+ "tempfile",
  "tokio",
  "zeroize",
 ]

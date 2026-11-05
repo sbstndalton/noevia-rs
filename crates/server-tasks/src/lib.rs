@@ -1,7 +1,17 @@
 //! Native task control primitives. A cancelled execution keeps its reservation until
 //! the execution guard is dropped after sidecar teardown. Approval waits own their registration.
+pub mod account;
 pub mod acp;
 pub mod egress;
+pub mod facts;
+pub mod files;
+pub mod git;
+pub mod launch;
+pub mod meta;
+pub mod output;
+pub mod pin;
+pub mod start;
+pub mod workspace;
 
 use js_json::JValue;
 use rand_core::{OsRng, RngCore};
@@ -83,8 +93,7 @@ impl Control {
     pub fn begin(&self, scope: Scope, task: String) -> Result<ExecutionGuard, Error> {
         let mut state = self.state.lock().map_err(|_| Error::Unavailable)?;
         if state.executions.contains_key(&task)
-            || (scope.surface == Surface::Browser
-                && state.executions.values().any(|e| e.scope == scope))
+            || state.executions.values().any(|e| e.scope == scope)
         {
             return Err(Error::Busy);
         }
@@ -447,11 +456,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn code_tasks_can_share_a_project_but_cancellation_is_per_task() {
+    async fn code_tasks_reserve_a_project_and_cancellation_is_per_task() {
         let c = Control::default();
         let s = scope(Surface::Code);
         let first = c.begin(s.clone(), "first".into()).unwrap();
-        let second = c.begin(s.clone(), "second".into()).unwrap();
+        assert!(matches!(
+            c.begin(s.clone(), "second".into()),
+            Err(Error::Busy)
+        ));
+        let mut other = s.clone();
+        other.project = "other-project".into();
+        let second = c.begin(other, "second".into()).unwrap();
         assert!(matches!(
             c.begin(s.clone(), "first".into()),
             Err(Error::Busy)
@@ -461,3 +476,7 @@ mod tests {
         assert!(!*second.cancellation().borrow());
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod journal_tests;

@@ -1,0 +1,1075 @@
+{
+  "cases": [
+    {
+      "input": {
+        "sandboxed": false,
+        "pipeline": false,
+        "network": "unconfigured",
+        "env": {},
+        "repositories": [
+          {
+            "id": "repo",
+            "path": "/synthetic/repository"
+          }
+        ]
+      },
+      "expected": {
+        "repositories": [
+          {
+            "id": "repo"
+          }
+        ],
+        "capabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command",
+          "install_dependency",
+          "network",
+          "delete",
+          "git_push"
+        ],
+        "defaultCapabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command"
+        ],
+        "harnesses": [
+          {
+            "id": "opencode",
+            "label": "OpenCode",
+            "version": null
+          }
+        ],
+        "promptPreparation": [
+          {
+            "id": "direct",
+            "label": "Direct",
+            "available": true,
+            "reason": "Your request goes to the model as you wrote it."
+          },
+          {
+            "id": "local",
+            "label": "Local architect",
+            "available": false,
+            "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+          },
+          {
+            "id": "frontier",
+            "label": "Frontier architect",
+            "available": false,
+            "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+          }
+        ],
+        "sandboxed": false,
+        "network": false,
+        "networkState": "unconfigured",
+        "approvals": {}
+      }
+    },
+    {
+      "input": {
+        "sandboxed": false,
+        "pipeline": false,
+        "network": "unavailable",
+        "env": {},
+        "repositories": [
+          {
+            "id": "repo",
+            "path": "/synthetic/repository"
+          }
+        ]
+      },
+      "expected": {
+        "repositories": [
+          {
+            "id": "repo"
+          }
+        ],
+        "capabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command",
+          "install_dependency",
+          "network",
+          "delete",
+          "git_push"
+        ],
+        "defaultCapabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command"
+        ],
+        "harnesses": [
+          {
+            "id": "opencode",
+            "label": "OpenCode",
+            "version": null
+          }
+        ],
+        "promptPreparation": [
+          {
+            "id": "direct",
+            "label": "Direct",
+            "available": true,
+            "reason": "Your request goes to the model as you wrote it."
+          },
+          {
+            "id": "local",
+            "label": "Local architect",
+            "available": false,
+            "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+          },
+          {
+            "id": "frontier",
+            "label": "Frontier architect",
+            "available": false,
+            "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+          }
+        ],
+        "sandboxed": false,
+        "network": false,
+        "networkState": "unavailable",
+        "approvals": {}
+      }
+    },
+    {
+      "input": {
+        "sandboxed": false,
+        "pipeline": false,
+        "network": "ready",
+        "env": {},
+        "repositories": [
+          {
+            "id": "repo",
+            "path": "/synthetic/repository"
+          }
+        ]
+      },
+      "expected": {
+        "repositories": [
+          {
+            "id": "repo"
+          }
+        ],
+        "capabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command",
+          "install_dependency",
+          "network",
+          "delete",
+          "git_push"
+        ],
+        "defaultCapabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command"
+        ],
+        "harnesses": [
+          {
+            "id": "opencode",
+            "label": "OpenCode",
+            "version": null
+          }
+        ],
+        "promptPreparation": [
+          {
+            "id": "direct",
+            "label": "Direct",
+            "available": true,
+            "reason": "Your request goes to the model as you wrote it."
+          },
+          {
+            "id": "local",
+            "label": "Local architect",
+            "available": false,
+            "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+          },
+          {
+            "id": "frontier",
+            "label": "Frontier architect",
+            "available": false,
+            "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+          }
+        ],
+        "sandboxed": false,
+        "network": true,
+        "networkState": "ready",
+        "approvals": {}
+      }
+    },
+    {
+      "input": {
+        "sandboxed": false,
+        "pipeline": true,
+        "network": "unconfigured",
+        "env": {},
+        "repositories": [
+          {
+            "id": "repo",
+            "path": "/synthetic/repository"
+          }
+        ]
+      },
+      "expected": {
+        "repositories": [
+          {
+            "id": "repo"
+          }
+        ],
+        "capabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command",
+          "install_dependency",
+          "network",
+          "delete",
+          "git_push"
+        ],
+        "defaultCapabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command"
+        ],
+        "harnesses": [
+          {
+            "id": "opencode",
+            "label": "OpenCode",
+            "version": null
+          }
+        ],
+        "promptPreparation": [
+          {
+            "id": "direct",
+            "label": "Direct",
+            "available": true,
+            "reason": "Your request goes to the model as you wrote it."
+          },
+          {
+            "id": "local",
+            "label": "Local architect",
+            "available": false,
+            "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+          },
+          {
+            "id": "frontier",
+            "label": "Frontier architect",
+            "available": false,
+            "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+          }
+        ],
+        "sandboxed": false,
+        "network": false,
+        "networkState": "unconfigured",
+        "approvals": {}
+      }
+    },
+    {
+      "input": {
+        "sandboxed": false,
+        "pipeline": true,
+        "network": "unavailable",
+        "env": {},
+        "repositories": [
+          {
+            "id": "repo",
+            "path": "/synthetic/repository"
+          }
+        ]
+      },
+      "expected": {
+        "repositories": [
+          {
+            "id": "repo"
+          }
+        ],
+        "capabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command",
+          "install_dependency",
+          "network",
+          "delete",
+          "git_push"
+        ],
+        "defaultCapabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command"
+        ],
+        "harnesses": [
+          {
+            "id": "opencode",
+            "label": "OpenCode",
+            "version": null
+          }
+        ],
+        "promptPreparation": [
+          {
+            "id": "direct",
+            "label": "Direct",
+            "available": true,
+            "reason": "Your request goes to the model as you wrote it."
+          },
+          {
+            "id": "local",
+            "label": "Local architect",
+            "available": false,
+            "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+          },
+          {
+            "id": "frontier",
+            "label": "Frontier architect",
+            "available": false,
+            "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+          }
+        ],
+        "sandboxed": false,
+        "network": false,
+        "networkState": "unavailable",
+        "approvals": {}
+      }
+    },
+    {
+      "input": {
+        "sandboxed": false,
+        "pipeline": true,
+        "network": "ready",
+        "env": {},
+        "repositories": [
+          {
+            "id": "repo",
+            "path": "/synthetic/repository"
+          }
+        ]
+      },
+      "expected": {
+        "repositories": [
+          {
+            "id": "repo"
+          }
+        ],
+        "capabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command",
+          "install_dependency",
+          "network",
+          "delete",
+          "git_push"
+        ],
+        "defaultCapabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command"
+        ],
+        "harnesses": [
+          {
+            "id": "opencode",
+            "label": "OpenCode",
+            "version": null
+          }
+        ],
+        "promptPreparation": [
+          {
+            "id": "direct",
+            "label": "Direct",
+            "available": true,
+            "reason": "Your request goes to the model as you wrote it."
+          },
+          {
+            "id": "local",
+            "label": "Local architect",
+            "available": false,
+            "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+          },
+          {
+            "id": "frontier",
+            "label": "Frontier architect",
+            "available": false,
+            "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+          }
+        ],
+        "sandboxed": false,
+        "network": true,
+        "networkState": "ready",
+        "approvals": {}
+      }
+    },
+    {
+      "input": {
+        "sandboxed": true,
+        "pipeline": false,
+        "network": "unconfigured",
+        "env": {},
+        "repositories": [
+          {
+            "id": "repo",
+            "path": "/synthetic/repository"
+          }
+        ]
+      },
+      "expected": {
+        "repositories": [
+          {
+            "id": "repo"
+          }
+        ],
+        "capabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command",
+          "install_dependency",
+          "network",
+          "delete",
+          "git_push"
+        ],
+        "defaultCapabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command"
+        ],
+        "harnesses": [
+          {
+            "id": "opencode",
+            "label": "OpenCode",
+            "version": null
+          }
+        ],
+        "promptPreparation": [
+          {
+            "id": "direct",
+            "label": "Direct",
+            "available": true,
+            "reason": "Your request goes to the model as you wrote it."
+          },
+          {
+            "id": "local",
+            "label": "Local architect",
+            "available": false,
+            "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+          },
+          {
+            "id": "frontier",
+            "label": "Frontier architect",
+            "available": false,
+            "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+          }
+        ],
+        "sandboxed": true,
+        "network": false,
+        "networkState": "unconfigured",
+        "approvals": {}
+      }
+    },
+    {
+      "input": {
+        "sandboxed": true,
+        "pipeline": false,
+        "network": "unavailable",
+        "env": {},
+        "repositories": [
+          {
+            "id": "repo",
+            "path": "/synthetic/repository"
+          }
+        ]
+      },
+      "expected": {
+        "repositories": [
+          {
+            "id": "repo"
+          }
+        ],
+        "capabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command",
+          "install_dependency",
+          "network",
+          "delete",
+          "git_push"
+        ],
+        "defaultCapabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command"
+        ],
+        "harnesses": [
+          {
+            "id": "opencode",
+            "label": "OpenCode",
+            "version": null
+          }
+        ],
+        "promptPreparation": [
+          {
+            "id": "direct",
+            "label": "Direct",
+            "available": true,
+            "reason": "Your request goes to the model as you wrote it."
+          },
+          {
+            "id": "local",
+            "label": "Local architect",
+            "available": false,
+            "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+          },
+          {
+            "id": "frontier",
+            "label": "Frontier architect",
+            "available": false,
+            "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+          }
+        ],
+        "sandboxed": true,
+        "network": false,
+        "networkState": "unavailable",
+        "approvals": {}
+      }
+    },
+    {
+      "input": {
+        "sandboxed": true,
+        "pipeline": false,
+        "network": "ready",
+        "env": {},
+        "repositories": [
+          {
+            "id": "repo",
+            "path": "/synthetic/repository"
+          }
+        ]
+      },
+      "expected": {
+        "repositories": [
+          {
+            "id": "repo"
+          }
+        ],
+        "capabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command",
+          "install_dependency",
+          "network",
+          "delete",
+          "git_push"
+        ],
+        "defaultCapabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command"
+        ],
+        "harnesses": [
+          {
+            "id": "opencode",
+            "label": "OpenCode",
+            "version": null
+          }
+        ],
+        "promptPreparation": [
+          {
+            "id": "direct",
+            "label": "Direct",
+            "available": true,
+            "reason": "Your request goes to the model as you wrote it."
+          },
+          {
+            "id": "local",
+            "label": "Local architect",
+            "available": false,
+            "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+          },
+          {
+            "id": "frontier",
+            "label": "Frontier architect",
+            "available": false,
+            "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+          }
+        ],
+        "sandboxed": true,
+        "network": true,
+        "networkState": "ready",
+        "approvals": {}
+      }
+    },
+    {
+      "input": {
+        "sandboxed": true,
+        "pipeline": true,
+        "network": "unconfigured",
+        "env": {},
+        "repositories": [
+          {
+            "id": "repo",
+            "path": "/synthetic/repository"
+          }
+        ]
+      },
+      "expected": {
+        "repositories": [
+          {
+            "id": "repo"
+          }
+        ],
+        "capabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command",
+          "install_dependency",
+          "network",
+          "delete",
+          "git_push"
+        ],
+        "defaultCapabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command"
+        ],
+        "harnesses": [
+          {
+            "id": "opencode",
+            "label": "OpenCode",
+            "version": null
+          }
+        ],
+        "promptPreparation": [
+          {
+            "id": "direct",
+            "label": "Direct",
+            "available": true,
+            "reason": "Your request goes to the model as you wrote it."
+          },
+          {
+            "id": "local",
+            "label": "Local architect",
+            "available": false,
+            "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+          },
+          {
+            "id": "frontier",
+            "label": "Frontier architect",
+            "available": false,
+            "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+          },
+          {
+            "id": "planner",
+            "label": "Planner",
+            "available": true,
+            "reason": "The Planner plans the task, the coding agent carries it out, the operator’s tests verify it and the Planner reviews it, at most twice more, before you accept."
+          }
+        ],
+        "sandboxed": true,
+        "network": false,
+        "networkState": "unconfigured",
+        "approvals": {}
+      }
+    },
+    {
+      "input": {
+        "sandboxed": true,
+        "pipeline": true,
+        "network": "unavailable",
+        "env": {},
+        "repositories": [
+          {
+            "id": "repo",
+            "path": "/synthetic/repository"
+          }
+        ]
+      },
+      "expected": {
+        "repositories": [
+          {
+            "id": "repo"
+          }
+        ],
+        "capabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command",
+          "install_dependency",
+          "network",
+          "delete",
+          "git_push"
+        ],
+        "defaultCapabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command"
+        ],
+        "harnesses": [
+          {
+            "id": "opencode",
+            "label": "OpenCode",
+            "version": null
+          }
+        ],
+        "promptPreparation": [
+          {
+            "id": "direct",
+            "label": "Direct",
+            "available": true,
+            "reason": "Your request goes to the model as you wrote it."
+          },
+          {
+            "id": "local",
+            "label": "Local architect",
+            "available": false,
+            "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+          },
+          {
+            "id": "frontier",
+            "label": "Frontier architect",
+            "available": false,
+            "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+          },
+          {
+            "id": "planner",
+            "label": "Planner",
+            "available": true,
+            "reason": "The Planner plans the task, the coding agent carries it out, the operator’s tests verify it and the Planner reviews it, at most twice more, before you accept."
+          }
+        ],
+        "sandboxed": true,
+        "network": false,
+        "networkState": "unavailable",
+        "approvals": {}
+      }
+    },
+    {
+      "input": {
+        "sandboxed": true,
+        "pipeline": true,
+        "network": "ready",
+        "env": {},
+        "repositories": [
+          {
+            "id": "repo",
+            "path": "/synthetic/repository"
+          }
+        ]
+      },
+      "expected": {
+        "repositories": [
+          {
+            "id": "repo"
+          }
+        ],
+        "capabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command",
+          "install_dependency",
+          "network",
+          "delete",
+          "git_push"
+        ],
+        "defaultCapabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command"
+        ],
+        "harnesses": [
+          {
+            "id": "opencode",
+            "label": "OpenCode",
+            "version": null
+          }
+        ],
+        "promptPreparation": [
+          {
+            "id": "direct",
+            "label": "Direct",
+            "available": true,
+            "reason": "Your request goes to the model as you wrote it."
+          },
+          {
+            "id": "local",
+            "label": "Local architect",
+            "available": false,
+            "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+          },
+          {
+            "id": "frontier",
+            "label": "Frontier architect",
+            "available": false,
+            "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+          },
+          {
+            "id": "planner",
+            "label": "Planner",
+            "available": true,
+            "reason": "The Planner plans the task, the coding agent carries it out, the operator’s tests verify it and the Planner reviews it, at most twice more, before you accept."
+          }
+        ],
+        "sandboxed": true,
+        "network": true,
+        "networkState": "ready",
+        "approvals": {}
+      }
+    },
+    {
+      "input": {
+        "sandboxed": true,
+        "pipeline": true,
+        "network": "ready",
+        "env": {
+          "CODE_HARNESS_NAME": "custom",
+          "CODE_HARNESS_VERSION": " 2 "
+        },
+        "repositories": []
+      },
+      "expected": {
+        "repositories": [],
+        "capabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command",
+          "install_dependency",
+          "network",
+          "delete",
+          "git_push"
+        ],
+        "defaultCapabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command"
+        ],
+        "harnesses": [
+          {
+            "id": "custom",
+            "label": "custom",
+            "version": " 2 "
+          }
+        ],
+        "promptPreparation": [
+          {
+            "id": "direct",
+            "label": "Direct",
+            "available": true,
+            "reason": "Your request goes to the model as you wrote it."
+          },
+          {
+            "id": "local",
+            "label": "Local architect",
+            "available": false,
+            "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+          },
+          {
+            "id": "frontier",
+            "label": "Frontier architect",
+            "available": false,
+            "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+          },
+          {
+            "id": "planner",
+            "label": "Planner",
+            "available": true,
+            "reason": "The Planner plans the task, the coding agent carries it out, the operator’s tests verify it and the Planner reviews it, at most twice more, before you accept."
+          }
+        ],
+        "sandboxed": true,
+        "network": true,
+        "networkState": "ready",
+        "approvals": {}
+      }
+    },
+    {
+      "input": {
+        "sandboxed": true,
+        "pipeline": true,
+        "network": "ready",
+        "env": {
+          "CODE_HARNESS_NAME": "   ",
+          "CODE_HARNESS_VERSION": ""
+        },
+        "repositories": []
+      },
+      "expected": {
+        "repositories": [],
+        "capabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command",
+          "install_dependency",
+          "network",
+          "delete",
+          "git_push"
+        ],
+        "defaultCapabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command"
+        ],
+        "harnesses": [
+          {
+            "id": "opencode",
+            "label": "OpenCode",
+            "version": null
+          }
+        ],
+        "promptPreparation": [
+          {
+            "id": "direct",
+            "label": "Direct",
+            "available": true,
+            "reason": "Your request goes to the model as you wrote it."
+          },
+          {
+            "id": "local",
+            "label": "Local architect",
+            "available": false,
+            "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+          },
+          {
+            "id": "frontier",
+            "label": "Frontier architect",
+            "available": false,
+            "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+          },
+          {
+            "id": "planner",
+            "label": "Planner",
+            "available": true,
+            "reason": "The Planner plans the task, the coding agent carries it out, the operator’s tests verify it and the Planner reviews it, at most twice more, before you accept."
+          }
+        ],
+        "sandboxed": true,
+        "network": true,
+        "networkState": "ready",
+        "approvals": {}
+      }
+    },
+    {
+      "input": {
+        "sandboxed": true,
+        "pipeline": true,
+        "network": "ready",
+        "env": {
+          "CODE_HARNESS_NAME": "__proto__"
+        },
+        "repositories": []
+      },
+      "expected": {
+        "repositories": [],
+        "capabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command",
+          "install_dependency",
+          "network",
+          "delete",
+          "git_push"
+        ],
+        "defaultCapabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command"
+        ],
+        "harnesses": [
+          {
+            "id": "__proto__",
+            "label": {},
+            "version": null
+          }
+        ],
+        "promptPreparation": [
+          {
+            "id": "direct",
+            "label": "Direct",
+            "available": true,
+            "reason": "Your request goes to the model as you wrote it."
+          },
+          {
+            "id": "local",
+            "label": "Local architect",
+            "available": false,
+            "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+          },
+          {
+            "id": "frontier",
+            "label": "Frontier architect",
+            "available": false,
+            "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+          },
+          {
+            "id": "planner",
+            "label": "Planner",
+            "available": true,
+            "reason": "The Planner plans the task, the coding agent carries it out, the operator’s tests verify it and the Planner reviews it, at most twice more, before you accept."
+          }
+        ],
+        "sandboxed": true,
+        "network": true,
+        "networkState": "ready",
+        "approvals": {}
+      }
+    },
+    {
+      "input": {
+        "sandboxed": true,
+        "pipeline": true,
+        "network": "ready",
+        "env": {
+          "CODE_HARNESS_NAME": "constructor"
+        },
+        "repositories": []
+      },
+      "expected": {
+        "repositories": [],
+        "capabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command",
+          "install_dependency",
+          "network",
+          "delete",
+          "git_push"
+        ],
+        "defaultCapabilities": [
+          "read_repository",
+          "edit_file",
+          "execute_command"
+        ],
+        "harnesses": [
+          {
+            "id": "constructor",
+            "version": null
+          }
+        ],
+        "promptPreparation": [
+          {
+            "id": "direct",
+            "label": "Direct",
+            "available": true,
+            "reason": "Your request goes to the model as you wrote it."
+          },
+          {
+            "id": "local",
+            "label": "Local architect",
+            "available": false,
+            "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+          },
+          {
+            "id": "frontier",
+            "label": "Frontier architect",
+            "available": false,
+            "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+          },
+          {
+            "id": "planner",
+            "label": "Planner",
+            "available": true,
+            "reason": "The Planner plans the task, the coding agent carries it out, the operator’s tests verify it and the Planner reviews it, at most twice more, before you accept."
+          }
+        ],
+        "sandboxed": true,
+        "network": true,
+        "networkState": "ready",
+        "approvals": {}
+      }
+    }
+  ]
+}

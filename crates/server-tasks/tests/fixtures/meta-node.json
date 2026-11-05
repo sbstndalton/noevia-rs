@@ -1,0 +1,638 @@
+{
+  "cases": [
+    {
+      "input": null,
+      "usage": null,
+      "context": null,
+      "exit": null
+    },
+    {
+      "input": false,
+      "usage": null,
+      "context": null,
+      "exit": null
+    },
+    {
+      "input": "",
+      "usage": null,
+      "context": null,
+      "exit": null
+    },
+    {
+      "input": {},
+      "usage": null,
+      "context": null,
+      "exit": null
+    },
+    {
+      "input": [],
+      "usage": null,
+      "context": null,
+      "exit": null
+    },
+    {
+      "input": {
+        "inputTokens": null,
+        "outputTokens": ""
+      },
+      "usage": {
+        "input": 0,
+        "output": 0,
+        "total": 0
+      },
+      "context": null,
+      "exit": null
+    },
+    {
+      "input": {
+        "input": 3,
+        "output": 4
+      },
+      "usage": {
+        "input": 3,
+        "output": 4,
+        "total": 7
+      },
+      "context": null,
+      "exit": null
+    },
+    {
+      "input": {
+        "usage": {
+          "input_tokens": "5",
+          "output_tokens": true
+        }
+      },
+      "usage": {
+        "input": 5,
+        "output": 1,
+        "total": 6
+      },
+      "context": null,
+      "exit": null
+    },
+    {
+      "input": {
+        "tokenUsage": {
+          "input": -1,
+          "output": 8
+        }
+      },
+      "usage": {
+        "input": null,
+        "output": 8,
+        "total": null
+      },
+      "context": null,
+      "exit": null
+    },
+    {
+      "input": {
+        "noevia": {
+          "usage": {
+            "prompt": 9,
+            "completion": 2,
+            "total": 25
+          }
+        }
+      },
+      "usage": {
+        "input": 9,
+        "output": 2,
+        "total": 25
+      },
+      "context": null,
+      "exit": null
+    },
+    {
+      "input": {
+        "used": 8012,
+        "size": 24576
+      },
+      "usage": null,
+      "context": {
+        "used": 8012,
+        "size": 24576,
+        "percent": 33
+      },
+      "exit": null
+    },
+    {
+      "input": {
+        "used": 10,
+        "size": 3
+      },
+      "usage": null,
+      "context": {
+        "used": 10,
+        "size": 3,
+        "percent": 333
+      },
+      "exit": null
+    },
+    {
+      "input": {
+        "context": {
+          "used": null,
+          "window": 10
+        }
+      },
+      "usage": null,
+      "context": {
+        "used": 0,
+        "size": 10,
+        "percent": 0
+      },
+      "exit": null
+    },
+    {
+      "input": {
+        "_meta": {
+          "exitCode": null,
+          "noevia": {
+            "code": 8
+          }
+        }
+      },
+      "usage": null,
+      "context": null,
+      "exit": 0
+    },
+    {
+      "input": {
+        "rawOutput": {
+          "exit_code": "2"
+        }
+      },
+      "usage": null,
+      "context": null,
+      "exit": 2
+    },
+    {
+      "input": {
+        "meta": {
+          "code": false
+        }
+      },
+      "usage": null,
+      "context": null,
+      "exit": 0
+    },
+    {
+      "input": {
+        "exitCode": 1.5,
+        "code": -2
+      },
+      "usage": null,
+      "context": null,
+      "exit": -2
+    },
+    {
+      "input": {
+        "usage": {
+          "input": [],
+          "output": [
+            4
+          ]
+        }
+      },
+      "usage": {
+        "input": 0,
+        "output": 4,
+        "total": 4
+      },
+      "context": null,
+      "exit": null
+    }
+  ],
+  "summaries": [
+    {
+      "input": null,
+      "output": {
+        "harness": null,
+        "harnessVersion": null,
+        "protocolVersion": null,
+        "usage": null,
+        "context": null,
+        "commands": 0,
+        "failedCommands": 0,
+        "exitCodes": [],
+        "messageChunks": 0,
+        "limitations": [
+          "The harness did not report its version, so this cannot be scoped to one.",
+          "The harness did not report token usage.",
+          "No command exit codes were reported."
+        ]
+      }
+    },
+    {
+      "input": {},
+      "output": {
+        "harness": null,
+        "harnessVersion": null,
+        "protocolVersion": null,
+        "usage": null,
+        "context": null,
+        "commands": 0,
+        "failedCommands": 0,
+        "exitCodes": [],
+        "messageChunks": 0,
+        "limitations": [
+          "The harness did not report its version, so this cannot be scoped to one.",
+          "The harness did not report token usage.",
+          "No command exit codes were reported."
+        ]
+      }
+    },
+    {
+      "input": {
+        "agent": {
+          "name": "synthetic",
+          "version": "1",
+          "protocolVersion": 1
+        },
+        "usage": {
+          "total": 10
+        },
+        "exits": [
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 2
+          },
+          null
+        ],
+        "messageChunks": 3
+      },
+      "output": {
+        "harness": "synthetic",
+        "harnessVersion": "1",
+        "protocolVersion": 1,
+        "usage": {
+          "total": 10
+        },
+        "context": null,
+        "commands": 2,
+        "failedCommands": 1,
+        "exitCodes": [
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 2
+          }
+        ],
+        "messageChunks": 3,
+        "limitations": []
+      }
+    },
+    {
+      "input": {
+        "usage": {
+          "input": 4
+        },
+        "context": {
+          "used": 8,
+          "size": 16
+        },
+        "exits": [
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          }
+        ]
+      },
+      "output": {
+        "harness": null,
+        "harnessVersion": null,
+        "protocolVersion": null,
+        "usage": null,
+        "context": {
+          "used": 8,
+          "size": 16
+        },
+        "commands": 55,
+        "failedCommands": 27,
+        "exitCodes": [
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          },
+          {
+            "exitCode": 0
+          },
+          {
+            "exitCode": 1
+          }
+        ],
+        "messageChunks": 0,
+        "limitations": [
+          "The harness did not report its version, so this cannot be scoped to one.",
+          "The harness did not report token usage."
+        ]
+      }
+    }
+  ]
+}
