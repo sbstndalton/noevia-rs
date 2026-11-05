@@ -525,7 +525,7 @@ async fn save(
 
 /// Deletion cleanup, using the same per-user CAS fence as PUT. Scan disk so dormant
 /// accounts are included; return only the requesting user's cleared roles.
-fn clear_all(writer: &Writer, data_dir: &Path, user: &str, name: &str) -> Result<Vec<String>, ()> {
+pub(crate) fn clear_all(writer: &Writer, data_dir: &Path, user: &str, name: &str) -> Result<Vec<String>, ()> {
     let mut cleared = Vec::new();
     for entry in std::fs::read_dir(data_dir.join("users")).map_err(|_| ())? {
         let entry = entry.map_err(|_| ())?;
