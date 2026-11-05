@@ -1415,6 +1415,7 @@ mod tests {
                 (crate::model_state_routes::BUDGET, &["GET"][..]),
                 (crate::idle_unload_read::PATH, &["GET"][..]),
                 (crate::model_state_routes::INSTALLED, &["GET"][..]),
+                (crate::inference_machines::PATH, &[][..]),
                 (crate::preset_read_routes::PATH, &["GET"][..]),
                 (crate::model_sizing::SUGGEST, &["GET"][..]),
                 (crate::model_maint::RELOAD, &["POST"][..]),
