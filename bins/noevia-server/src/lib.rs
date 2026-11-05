@@ -41,7 +41,13 @@ pub mod mcp_directory_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_discovery;
 #[cfg(feature = "rust-storage-reads")]
+pub mod mcp_discovery_actor;
+#[cfg(feature = "rust-storage-reads")]
+pub mod mcp_discovery_backend;
+#[cfg(feature = "rust-storage-reads")]
 pub mod mcp_egress;
+#[cfg(feature = "rust-storage-reads")]
+pub mod mcp_manifest;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_routes;
 #[cfg(feature = "rust-storage-reads")]
@@ -358,12 +364,19 @@ use std::sync::Arc;
 /// (model_state_routes.rs); Core refuses them (rust-model-state-reads.cjs) and offers the facts only it holds on the
 /// loopback bridge (rust-model-facts.cjs). The supervisor pairs them.
 ///
+/// `rust-mcp-discovery`: this build discovers MCP tools itself (mcp_discovery_actor.rs: connect, list, convert,
+/// bind the curated boxes, cadence, backoff) and answers `POST /v1/mcp/discovery` on the internal store; core
+/// (mcp-native-discovery.cjs) is its fail-closed client and publishes only toolbox-chat-facts.json. A core that
+/// still discovers beside this front would offer different tools than the front's own pages, and a front without
+/// it beside a core that asks would leave every chat with no MCP tools, so the release pairs them.
+///
 /// `client-address-header`: the front drops any `X-Noevia-Client-Ip` a client sends and stamps its
 /// own value on what it forwards (#1245). The web supervisor confirms it to Node
 /// (NOEVIA_FRONT_CLIENT_IP=1), and Node believes that header only then, so a core release paired
 /// with a front that predates the strip cannot be handed a client-chosen address (#1578).
 pub const FEATURES: &[&str] = &[
     "rust-embedding-background-v1",
+    "rust-mcp-discovery",
     "client-address-header",
     "code-net-guard",
     "header-read-timeout",
@@ -516,6 +529,9 @@ pub struct App {
     /// The MCP credential broker (sbstndalton/noevia#2202): OAuth sign-ins and per-account keys.
     #[cfg(feature = "rust-storage-reads")]
     pub mcp: Option<Arc<mcp_broker::Mcp>>,
+    /// MCP tool discovery (sbstndalton/noevia row T): made on first use, `None` inside when it cannot run.
+    #[cfg(feature = "rust-storage-reads")]
+    pub mcp_discovery: std::sync::OnceLock<Option<Arc<mcp_discovery_backend::Handle>>>,
     /// GET /api/providers/{id}/models: the per-account list cache (sbstndalton/noevia#2190 round 5).
     #[cfg(feature = "rust-storage-reads")]
     pub provider_models: provider_models_routes::Lists,
@@ -626,6 +642,8 @@ impl App {
                 .map(Arc::new),
             #[cfg(feature = "rust-storage-reads")]
             mcp: mcp_broker::Mcp::new(&config).map(Arc::new),
+            #[cfg(feature = "rust-storage-reads")]
+            mcp_discovery: std::sync::OnceLock::new(),
             #[cfg(feature = "rust-storage-reads")]
             provider_models: provider_models_routes::Lists::default(),
             #[cfg(feature = "rust-storage-reads")]

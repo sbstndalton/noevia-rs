@@ -688,6 +688,7 @@ pub fn router_with_app(
         "forget",
         "key-set",
         "reseal",
+        "discovery",
     ] {
         let (store, app) = (store.clone(), app.clone());
         router = router.route(
