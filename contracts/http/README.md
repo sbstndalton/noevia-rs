@@ -1859,3 +1859,5 @@ Each stage compares the exact job/run/config snapshot; preparation uses the exis
 only within its own call and returns its token after releasing it. Rust owns confirmation,
 resumability/restoration checks, protected-queue filtering, identity decisions, phase/step reset
 instructions and public projection. No cross-request reservation or replacement-job retry is used.
+
+G1 excludes `model-facts.json` from replay file comparison: it is G1's legitimate new private snapshot; budget settings in `cowork.db` remain compared.

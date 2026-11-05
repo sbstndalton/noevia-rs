@@ -374,7 +374,14 @@ pub async fn serve(app: &Arc<App>, req: Request<Body>, path: String) -> Response
             let Ok(store) = layer.store_blocking() else {
                 return unavailable(api);
             };
-            match path.as_str() {
+            // sbstndalton/noevia#2411: like the other native routes the shared matcher hands a
+            // trailing slash to, /api/instance/ answers as the canonical /api/instance.
+            let route = if path == "/api/instance/" {
+                "/api/instance"
+            } else {
+                path.as_str()
+            };
+            match route {
                 "/api/instance" => {
                     let Ok(Some(id)) = store.read(|reader| setting(reader, "instance_id")) else {
                         return unavailable(api);

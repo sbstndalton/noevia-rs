@@ -694,6 +694,41 @@ fn native_budget_authority(dir: &Path, start: &str) -> noevia_server::model_fact
 }
 
 #[test]
+fn missing_store_is_never_created_by_budget_startup_or_save() {
+    let d = tempfile::tempdir().unwrap();
+    let authority = native_budget_authority(d.path(), "synthetic-start");
+    let store = d.path().join("cowork.db");
+    assert!(!store.exists(), "budget startup must not create cowork.db");
+    authority.publish().unwrap();
+    assert_eq!(authority.budget().unwrap()["budgetGib"], 6.0);
+    assert_eq!(authority.budget().unwrap()["source"], "deployment");
+    // Validation precedes storage availability, even before Node initializes it.
+    let invalid = authority.save(&json!({"budgetGib":1})).unwrap_err();
+    assert_eq!(invalid.0, 400);
+    assert_eq!(invalid.1["errorId"], "invalidBudget");
+    let unavailable = (
+        503,
+        json!({"error":"The inference memory budget is unavailable right now. Try again shortly."}),
+    );
+    assert_eq!(
+        authority.save(&json!({"budgetGib":9})).unwrap_err(),
+        unavailable
+    );
+    assert!(!store.exists(), "budget save must not create cowork.db");
+    // An existing database with no settings table is unusable, too.
+    let db = Connection::open(&store).unwrap();
+    assert_eq!(
+        authority.save(&json!({"budgetGib":9})).unwrap_err(),
+        unavailable
+    );
+    let restarted = native_budget_authority(d.path(), "synthetic-restart");
+    restarted.publish().unwrap();
+    assert_eq!(restarted.budget().unwrap()["budgetGib"], 6.0);
+    assert_eq!(restarted.budget().unwrap()["source"], "deployment");
+    drop(db);
+}
+
+#[test]
 fn readers_never_observe_a_budget_rejected_at_commit() {
     let d = tempfile::tempdir().unwrap();
     let db = seed(d.path(), Some(r#"{"budgetGib":7}"#));

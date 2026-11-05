@@ -5,8 +5,8 @@
 //!
 //! The job is the same object Node keeps in `native-calibration-<hash>.json` (see
 //! [`super::calibration`]), with the same keys in the same order, so either owner reads the other's
-//! jobs and history. The original profile text is kept in the file only while the job runs (for
-//! [`Maint::recover_calibration`]) and never leaves this module.
+//! jobs and history. Original profile text is private: it remains while a run or an unsettled
+//! restoration needs restart recovery and is never included in public job views.
 
 use super::calibration::{
     bound_load, grouped, ladder, over_budget_reason, verify_long, Applied, Feed, Kind, LongOutcome,
@@ -17,7 +17,7 @@ use js_json::{wtf16, JValue};
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::Notify;
 
 const PAD: &str = "This is synthetic padding for a context allocation validation.\n";
@@ -40,6 +40,7 @@ pub const OVER_LIMIT: &str = "This calibration could take longer than the 24-hou
 pub const UNSAVED: &str =
     " The interrupted state could not be saved yet; noevia keeps trying to save it.";
 /// The longest wait between those retries (they start at [`Limits::save_retry`] and double).
+pub const FINALIZATION_FAILED: &str = "Calibration finalization failed.";
 const SAVE_RETRY_MAX: Duration = Duration::from_secs(60);
 /// The reply a load gets when Node cannot decide it (never sent to the engine, never shown).
 const LOAD_UNCHECKED: &str = "The load could not be checked against the inference memory budget.";
@@ -63,6 +64,9 @@ pub struct Limits {
     pub exclusion_poll: Duration,
     /// The first wait before saving a recovered job again after its save failed.
     pub save_retry: Duration,
+    /// Normal finalization deadline. A failed run's durable tombstone is mandatory: persistent
+    /// control-storage errors retain local admission beyond this limit until recovery.
+    pub finalize: Duration,
 }
 
 impl Default for Limits {
@@ -79,6 +83,7 @@ impl Default for Limits {
             memory_settle: Duration::from_millis(1000),
             exclusion_poll: Duration::from_millis(1000),
             save_retry: Duration::from_millis(1000),
+            finalize: Duration::from_secs(30),
         }
     }
 }
@@ -170,6 +175,10 @@ pub(super) struct Inner {
     pub(super) cancel_requested: bool,
     pub(super) inflight: Option<Arc<Abort>>,
     pub(super) launching: bool,
+    /// A live run, including its final persistence and admission release.
+    pub(super) active: bool,
+    /// Sealed under the worker mutex before durable terminal intent or marker-free saves.
+    pub(super) decided: bool,
     /// Node's `objectId(state.job)`: changes whenever the job object is replaced (launch, reload).
     pub(super) job_object: u64,
     /// Node's `objectId(inflight)`: 0 when no step controller is live.
@@ -188,11 +197,73 @@ pub(super) struct Inner {
     pub(super) unsaved: bool,
 }
 
+#[cfg(test)]
+type TerminalStall = (
+    bool,
+    std::sync::mpsc::Sender<()>,
+    std::sync::mpsc::Receiver<()>,
+);
+
+#[cfg(test)]
+#[derive(Default)]
+struct SaveCounts {
+    outstanding: std::sync::atomic::AtomicUsize,
+    snapshots: std::sync::atomic::AtomicUsize,
+    peak: std::sync::atomic::AtomicUsize,
+    dispatched: std::sync::atomic::AtomicUsize,
+}
+#[cfg(test)]
+struct SaveCount(std::sync::Arc<SaveCounts>);
+#[cfg(test)]
+impl SaveCount {
+    fn new(counts: std::sync::Arc<SaveCounts>) -> Self {
+        let n = counts.outstanding.fetch_add(1, Ordering::AcqRel) + 1;
+        counts.snapshots.fetch_add(1, Ordering::AcqRel);
+        counts.peak.fetch_max(n, Ordering::AcqRel);
+        counts.dispatched.fetch_add(1, Ordering::AcqRel);
+        Self(counts)
+    }
+}
+#[cfg(test)]
+impl Drop for SaveCount {
+    fn drop(&mut self) {
+        self.0.outstanding.fetch_sub(1, Ordering::AcqRel);
+        self.0.snapshots.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+/// Owned by the Worker even when an observing async future is cancelled. Exactly one
+/// blocking write can exist; a retry drains this handle before dispatching any replacement.
+struct PendingWrite {
+    task: tokio::task::JoinHandle<std::io::Result<()>>,
+    permit: Arc<AtomicBool>,
+}
+
 /// The native worker: one per process, owning its state file, controller and job.
 pub struct Worker {
     pub(super) maint: Arc<Maint>,
     file: StateFile,
-    inner: Mutex<Inner>,
+    inner: Arc<Mutex<Inner>>,
+    writes: Arc<Mutex<()>>,
+    pending_write: tokio::sync::Mutex<Option<PendingWrite>>,
+    // An owned restoration can outlive the cleanup deadline. Do not admit another run until
+    // its write has a definitive result; cancellation cannot revoke a remote CAS already sent.
+    restoring: Arc<AtomicBool>,
+    local_fence: Mutex<Option<super::gate::AdmissionFence>>,
+    fence_wake: Mutex<Arc<Notify>>,
+    fence_interrupted: AtomicBool,
+    #[cfg(test)]
+    save_counts: Arc<SaveCounts>,
+    #[cfg(test)]
+    terminal_stall: Mutex<Option<TerminalStall>>,
+    #[cfg(test)]
+    terminal_error: AtomicBool,
+    #[cfg(test)]
+    run_abort: Mutex<Option<tokio::task::AbortHandle>>,
+    #[cfg(test)]
+    panic_on_run: AtomicBool,
+    #[cfg(test)]
+    panic_on_restore: Arc<AtomicBool>,
     memory: Arc<dyn Fn() -> Option<f64> + Send + Sync>,
     floor_gib: f64,
     limits: Limits,
@@ -340,6 +411,156 @@ impl std::fmt::Debug for Worker {
     }
 }
 
+fn state_status_passed(job: &[(String, JValue)]) -> bool {
+    job.iter()
+        .any(|(k, v)| k == "status" && v.as_str() == Some("passed"))
+}
+
+fn finish_snapshot(state: &mut State, failed: bool) {
+    if let Some(job) = state.job_mut() {
+        if failed {
+            wtf16::set(job, "status", JValue::Str("failed".into()));
+            wtf16::set(job, "phase", JValue::Str("Failed".into()));
+            wtf16::set(job, "error", JValue::Str(FINALIZATION_FAILED.into()));
+        }
+        wtf16::set(job, "finishedAt", JValue::Num(now_ms()));
+        job.retain(|(key, _)| key != "originalText");
+    }
+}
+
+pub(super) fn visible_job(i: &Inner) -> JValue {
+    let mut job = public(i.state.job());
+    if i.active || i.recovering || i.state.job().get("pendingTombstone").truthy() {
+        if let JValue::Obj(fields) = &mut job {
+            if i.recovering
+                || i.state.job().get("status").as_str() != Some("running")
+                || i.state.job().get("pendingTombstone").truthy()
+            {
+                wtf16::set(fields, "phase", JValue::Str("Finalizing".into()));
+            }
+            wtf16::set(fields, "status", JValue::Str("running".into()));
+            fields.retain(|(key, _)| key != "finishedAt");
+        }
+    }
+    job
+}
+
+/// Revokes a blocking writer's commit on timeout, cancellation or unwind.
+struct WritePermit(Arc<AtomicBool>);
+impl Drop for WritePermit {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
+
+/// Reconciles unwind without leaking panic payloads. The Worker retains its admission fence
+/// until the sealed outcome is durable. Also captured by never-polled tasks.
+struct RunGuard {
+    worker: Arc<Worker>,
+    object: u64,
+}
+impl Drop for RunGuard {
+    fn drop(&mut self) {
+        let live = self
+            .worker
+            .with(|i| i.active && i.job_object == self.object);
+        if !live {
+            return;
+        }
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            let worker = Arc::clone(&self.worker);
+            let object = self.object;
+            runtime.spawn(async move {
+                // A sealed decision is retried, never changed to failure. Shutdown retains
+                // the local fence and durable recovery intent for the next process.
+                let state = worker.with(|i| {
+                    if !i.active || i.job_object != object {
+                        return None;
+                    }
+                    if !i.decided {
+                        finish_snapshot(&mut i.state, true);
+                        if let Some(job) = i.state.job_mut() {
+                            wtf16::set(job, "pendingTombstone", JValue::Bool(true));
+                            wtf16::set(job, "terminalDecision", JValue::Str("fenced".into()));
+                            if !worker.restoring.load(Ordering::Acquire) {
+                                job.retain(|(k, _)| k != "pendingRestore");
+                            }
+                        }
+                        i.decided = true;
+                    }
+                    Some(i.state.clone())
+                });
+                if let Some(state) = state {
+                    worker.complete_decision(state, object).await;
+                }
+            });
+        }
+    }
+}
+
+/// Cancellation of a recovery future gives its launch slot back for an explicit retry on
+/// this Worker. The local fence deliberately survives unwind, including a never-polled task.
+struct RecoveryGuard {
+    worker: Arc<Worker>,
+    object: u64,
+}
+impl Drop for RecoveryGuard {
+    fn drop(&mut self) {
+        self.worker.with(|i| {
+            if i.recovering && i.job_object == self.object {
+                i.launching = false;
+                i.recovering = false;
+            }
+        });
+    }
+}
+
+/// Dropping a panicked/cancelled restoration schedules the same idempotent settlement again.
+/// The reservation remains held until that resolver reaches a definitive success or conflict.
+struct RestoreResolver {
+    ini: super::ini::Store,
+    candidate: super::ini::Candidate,
+    pending: Arc<AtomicBool>,
+    retry: Duration,
+    #[cfg(test)]
+    panic_once: Arc<AtomicBool>,
+}
+struct RestoreGuard {
+    resolver: Arc<RestoreResolver>,
+    armed: bool,
+}
+impl Drop for RestoreGuard {
+    fn drop(&mut self) {
+        if self.armed && tokio::runtime::Handle::try_current().is_ok() {
+            // Schedule first; never silently clear a reservation on unwind.
+            self.resolver.spawn();
+        }
+    }
+}
+impl RestoreResolver {
+    fn spawn(self: &Arc<Self>) -> tokio::task::JoinHandle<bool> {
+        let resolver = Arc::clone(self);
+        tokio::spawn(async move {
+            let mut guard = RestoreGuard {
+                resolver: Arc::clone(&resolver),
+                armed: true,
+            };
+            #[cfg(test)]
+            #[allow(clippy::panic)]
+            if resolver.panic_once.swap(false, Ordering::AcqRel) {
+                panic!("synthetic restore panic");
+            }
+            let restored = resolver
+                .ini
+                .settle_restore(&resolver.candidate, resolver.retry)
+                .await;
+            resolver.pending.store(false, Ordering::Release);
+            guard.armed = false;
+            restored
+        })
+    }
+}
+
 impl Worker {
     /// `createCalibrator(...)` + `load()`: the worker of `maint`, with the job and history its state
     /// file holds.
@@ -354,11 +575,31 @@ impl Worker {
         Arc::new(Worker {
             maint,
             file,
-            inner: Mutex::new(Inner {
+            writes: Arc::new(Mutex::new(())),
+            pending_write: tokio::sync::Mutex::new(None),
+            restoring: Arc::new(AtomicBool::new(false)),
+            local_fence: Mutex::new(None),
+            fence_wake: Mutex::new(Arc::new(Notify::new())),
+            fence_interrupted: AtomicBool::new(false),
+            #[cfg(test)]
+            save_counts: Arc::new(SaveCounts::default()),
+            #[cfg(test)]
+            terminal_stall: Mutex::new(None),
+            #[cfg(test)]
+            terminal_error: AtomicBool::new(false),
+            #[cfg(test)]
+            run_abort: Mutex::new(None),
+            #[cfg(test)]
+            panic_on_run: AtomicBool::new(false),
+            #[cfg(test)]
+            panic_on_restore: Arc::new(AtomicBool::new(false)),
+            inner: Arc::new(Mutex::new(Inner {
                 state,
                 cancel_requested: false,
                 inflight: None,
                 launching: false,
+                active: false,
+                decided: false,
                 job_object: 1,
                 controller: 0,
                 next_object: 2,
@@ -366,7 +607,7 @@ impl Worker {
                 recovering: false,
                 first_unload: 1,
                 unsaved: false,
-            }),
+            })),
             salt: random_hex(32),
             memory,
             floor_gib,
@@ -382,13 +623,142 @@ impl Worker {
         f(&mut guard)
     }
 
-    /// `save()`: the whole state through a temp file and a rename.
-    async fn save(&self) -> std::io::Result<()> {
-        let state = self.with(|i| i.state.clone());
+    /// Serial writes retain their blocking owner across cancellation/timeout. The async
+    /// slot bounds dispatched work; the blocking mutex covers checks, rename and fsync.
+    async fn drain_writes(&self) {
+        let mut slot = self.pending_write.lock().await;
+        if let Some(pending) = slot.as_mut() {
+            pending.permit.store(false, Ordering::Release);
+            let _ = (&mut pending.task).await;
+            *slot = None;
+        }
+    }
+
+    async fn write_state(
+        &self,
+        mut state: State,
+        object: u64,
+        until: Option<Instant>,
+    ) -> std::io::Result<()> {
+        let timed_out = || std::io::Error::new(std::io::ErrorKind::TimedOut, "state write ended");
+        let mut slot = match until {
+            Some(end) => tokio::time::timeout_at(end.into(), self.pending_write.lock())
+                .await
+                .map_err(|_| timed_out())?,
+            None => self.pending_write.lock().await,
+        };
+        if let Some(pending) = slot.as_mut() {
+            pending.permit.store(false, Ordering::Release);
+            match until {
+                Some(end) => {
+                    let _ = tokio::time::timeout_at(end.into(), &mut pending.task)
+                        .await
+                        .map_err(|_| timed_out())?;
+                }
+                None => {
+                    let _ = (&mut pending.task).await;
+                }
+            }
+            *slot = None;
+        }
+        if until.is_some_and(|end| Instant::now() >= end) {
+            return Err(timed_out());
+        }
+        let evidence = self.maint.evidence.clone();
+        if self.file.path.is_none() {
+            return Err(std::io::Error::other("calibration state unavailable"));
+        }
         let file = self.file.clone();
-        tokio::task::spawn_blocking(move || file.save(&state))
+        let inner = Arc::clone(&self.inner);
+        let writes = Arc::clone(&self.writes);
+        let permit = Arc::new(AtomicBool::new(true));
+        let _permit_guard = WritePermit(Arc::clone(&permit));
+        let allowed = Arc::clone(&permit);
+        #[cfg(test)]
+        let terminal = !state.job().get("finishedAt").is_nullish();
+        #[cfg(test)]
+        let marker_free = !state.job().get("pendingTombstone").truthy();
+        #[cfg(test)]
+        let stall = {
+            let mut hook = self
+                .terminal_stall
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            if terminal
+                && hook
+                    .as_ref()
+                    .is_some_and(|(free, _, _)| *free == marker_free)
+            {
+                hook.take()
+            } else {
+                None
+            }
+        };
+        #[cfg(test)]
+        if terminal && marker_free && self.terminal_error.load(Ordering::Acquire) {
+            return Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
+        }
+        #[cfg(test)]
+        let counted = SaveCount::new(Arc::clone(&self.save_counts));
+        let task = tokio::task::spawn_blocking(move || {
+            #[cfg(test)]
+            let _counted = counted;
+            #[cfg(test)]
+            if let Some((_, entered, release)) = stall {
+                let _ = entered.send(());
+                let _ = release.recv_timeout(Duration::from_secs(10));
+            }
+            let _writer = writes.lock().unwrap_or_else(|p| p.into_inner());
+            // Reject queued/revoked generations before hydration, serialization or disk I/O.
+            if !allowed.load(Ordering::Acquire)
+                || until.is_some_and(|end| Instant::now() >= end)
+                || inner.lock().unwrap_or_else(|p| p.into_inner()).job_object != object
+            {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Interrupted,
+                    "state write ended",
+                ));
+            }
+            // Unknown validity hides consumers, but must never destructively erase history.
+            // Hydration and filtering are inside the bounded, generation-fenced write task.
+            if let Some(store) = evidence {
+                store
+                    .hydrate()
+                    .map_err(|e| std::io::Error::from(e.kind()))?;
+                let history = store.filter_history(state.get("history").clone());
+                wtf16::set(&mut state.0, "history", history);
+            }
+            file.save_if(&state, || {
+                allowed.load(Ordering::Acquire)
+                    && until.is_none_or(|end| Instant::now() < end)
+                    && inner.lock().unwrap_or_else(|p| p.into_inner()).job_object == object
+            })
+        });
+        *slot = Some(PendingWrite {
+            task,
+            permit: Arc::clone(&permit),
+        });
+        let pending = slot
+            .as_mut()
+            .ok_or_else(|| std::io::Error::other("state write task"))?;
+        let result = match until {
+            Some(end) => match tokio::time::timeout_at(end.into(), &mut pending.task).await {
+                Ok(result) => result,
+                Err(_) => {
+                    permit.store(false, Ordering::Release);
+                    return Err(timed_out());
+                }
+            },
+            None => (&mut pending.task).await,
+        };
+        *slot = None;
+        result.map_err(|_| std::io::Error::other("state write task"))?
+    }
+
+    async fn save(&self) -> std::io::Result<()> {
+        let (state, object) = self.with(|i| (i.state.clone(), i.job_object));
+        self.write_state(state, object, Some(Instant::now() + self.limits.finalize))
             .await
-            .map_err(|_| std::io::Error::other("save task"))?
     }
 
     fn job_get(&self, key: &str) -> JValue {
@@ -399,14 +769,6 @@ impl Worker {
         self.with(|i| {
             if let Some(job) = i.state.job_mut() {
                 wtf16::set(job, key, value);
-            }
-        });
-    }
-
-    fn job_remove(&self, key: &str) {
-        self.with(|i| {
-            if let Some(job) = i.state.job_mut() {
-                job.retain(|(k, _)| k != key);
             }
         });
     }
@@ -434,15 +796,98 @@ impl Worker {
 
     /// The public job (`cancellationFacts().job`): known keys only, never the original text.
     pub fn job(&self) -> JValue {
-        self.with(|i| public(i.state.job()))
+        self.with(|i| visible_job(i))
     }
 
     /// `state.history[model]`, or an empty list.
     pub fn history(&self, model: &str) -> JValue {
-        self.with(|i| match i.state.get("history").get(model) {
+        let history = self.filtered_history(self.with(|i| i.state.get("history").clone()));
+        match history.get(model) {
             v if v.truthy() => v.clone(),
             _ => JValue::Arr(Vec::new()),
-        })
+        }
+    }
+
+    pub(super) fn filtered_history(&self, history: JValue) -> JValue {
+        self.maint.evidence.as_ref().map_or_else(
+            || history.clone(),
+            |store| store.filter_history(history.clone()),
+        )
+    }
+
+    fn tag_run_record(&self, mut record: JValue) -> JValue {
+        if let JValue::Obj(fields) = &mut record {
+            let id = self.job_get("id");
+            let model = self.job_get("model");
+            let generation = self
+                .maint
+                .evidence
+                .as_ref()
+                .and_then(|store| {
+                    store.generation_for(model.as_str().unwrap_or(""), id.as_str().unwrap_or(""))
+                })
+                .unwrap_or(0);
+            wtf16::set(fields, "runId", id);
+            wtf16::set(fields, "runGeneration", JValue::Str(generation.to_string()));
+        }
+        record
+    }
+
+    fn release_local_fence(&self) {
+        let fence = self
+            .local_fence
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .take();
+        if let Some(fence) = fence {
+            fence.release();
+        }
+    }
+
+    pub(super) fn interrupt_fence_wait(&self) {
+        if !self.fence_interrupted.swap(true, Ordering::AcqRel) {
+            self.fence_wake
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .notify_one();
+        }
+    }
+
+    /// Storage publication is fail-closed: a failed run cannot release calibration admission
+    /// until its small tombstone is durable. This does not take the evidence append mutex.
+    async fn tombstone_job(&self, job: &JValue) {
+        let Some(store) = self.maint.evidence.clone() else {
+            return;
+        };
+        let model = job.get("model").as_str().unwrap_or("").to_owned();
+        let id = job.get("id").as_str().unwrap_or("").to_owned();
+        self.with(|i| {
+            if i.state.job().get("id").as_str() == Some(id.as_str()) {
+                if let Some(job) = i.state.job_mut() {
+                    if !i.decided {
+                        wtf16::set(job, "phase", JValue::Str("Finalizing".into()));
+                    }
+                    wtf16::set(job, "pendingTombstone", JValue::Bool(true));
+                }
+            }
+        });
+        let wake = Arc::clone(&self.fence_wake.lock().unwrap_or_else(|p| p.into_inner()));
+        let mut wait = Duration::from_secs(1);
+        loop {
+            let (store, model, id) = (Arc::clone(&store), model.clone(), id.clone());
+            let result = tokio::task::spawn_blocking(move || store.tombstone(&model, &id)).await;
+            match result {
+                Ok(Ok(())) => return,
+                Ok(Err(e)) => eprintln!(
+                    "[models] calibration fence persistence failed: {:?}",
+                    e.kind()
+                ),
+                Err(_) => eprintln!("[models] calibration fence persistence failed: Other"),
+            }
+            // Cancellation wakes a single wait; it never releases the retained local fence.
+            tokio::select! { () = tokio::time::sleep(wait) => {}, () = wake.notified() => {} }
+            wait = (wait * 2).min(Duration::from_secs(60));
+        }
     }
 
     /// Whether a launch is starting.
@@ -459,7 +904,14 @@ impl Worker {
             return None;
         }
         let worker = Arc::clone(self);
-        Some(tokio::spawn(async move { worker.recover_held().await }))
+        let guard = RecoveryGuard {
+            worker: Arc::clone(&worker),
+            object: worker.with(|i| i.job_object),
+        };
+        Some(tokio::spawn(async move {
+            let _guard = guard;
+            worker.recover_held().await
+        }))
     }
 
     /// `recover()`: a job a restart left running becomes interrupted (its profile restored if
@@ -468,14 +920,33 @@ impl Worker {
         if !self.begin_recovery() {
             return None;
         }
+        let _guard = RecoveryGuard {
+            worker: Arc::clone(self),
+            object: self.with(|i| i.job_object),
+        };
         self.recover_held().await
     }
 
     fn begin_recovery(&self) -> bool {
         self.with(|i| {
-            if i.launching {
+            if i.launching || i.active {
                 return false;
             }
+            // Reserve synchronously when the cached job already identifies recovery work,
+            // before the spawned recovery can yield to another maintenance request.
+            if i.state.job().get("status").as_str() == Some("running")
+                || i.state.job().get("pendingRestore").truthy()
+                || i.state.job().get("pendingTombstone").truthy()
+            {
+                let mut fence = self.local_fence.lock().unwrap_or_else(|p| p.into_inner());
+                if fence.is_none() {
+                    *fence = super::gate::AdmissionFence::reserve(Arc::clone(&self.maint.local));
+                }
+            }
+            *self.fence_wake.lock().unwrap_or_else(|p| p.into_inner()) = Arc::new(Notify::new());
+            self.fence_interrupted.store(false, Ordering::Release);
+            i.job_object = i.next_object;
+            i.next_object += 1;
             i.launching = true;
             i.recovering = true;
             true
@@ -487,25 +958,115 @@ impl Worker {
     /// memory still has it (with [`UNSAVED`] on its error) and the save is retried: the job is not
     /// running, so launches are allowed, each saving it first ([`Worker::take_hold`]).
     async fn recover_held(self: &Arc<Self>) -> Option<Option<bool>> {
-        let outcome = self.maint.recover_calibration().await;
-        let restored = outcome.restored();
-        let unsaved = matches!(outcome, Recovery::Unsaved { .. });
-        if let Recovery::Saved { state, .. } | Recovery::Unsaved { state, .. } = outcome {
-            let mut state = state;
-            if unsaved {
-                if let Some(job) = state.job_mut() {
-                    let error = job_error(job);
-                    wtf16::set(job, "error", JValue::Str(format!("{error}{UNSAVED}")));
+        self.drain_writes().await;
+        let file = self.file.clone();
+        let loaded = tokio::task::spawn_blocking(move || file.load()).await.ok();
+        let cached = self.with(|i| i.state.job().clone());
+        if let Some(state) = loaded.filter(|state| {
+            // An aborted recovery's last save may already have landed. Adopt that same job's
+            // durable terminal record rather than retaining the stale pending marker in memory.
+            (state.job().get("id") == cached.get("id")
+                && !state.job().get("finishedAt").is_nullish()
+                && (cached.get("pendingTombstone").truthy()
+                    || cached.get("pendingRestore").truthy()))
+                || state.job().get("status").as_str() == Some("running")
+                || state.job().get("pendingRestore").truthy()
+                || state.job().get("pendingTombstone").truthy()
+        }) {
+            loop {
+                if self
+                    .local_fence
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .is_some()
+                {
+                    break;
+                }
+                if let Some(fence) =
+                    super::gate::AdmissionFence::reserve(Arc::clone(&self.maint.local))
+                {
+                    *self.local_fence.lock().unwrap_or_else(|p| p.into_inner()) = Some(fence);
+                    break;
+                }
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+            self.with(|i| i.state = state);
+        }
+        let decided = self.with(|i| {
+            i.decided = matches!(
+                i.state.job().get("terminalDecision").as_str(),
+                Some("passed" | "fenced")
+            );
+            if i.state.job().get("terminalDecision").as_str() == Some("passed") {
+                Some((i.state.clone(), i.job_object))
+            } else {
+                None
+            }
+        });
+        if let Some((state, object)) = decided {
+            let restored = match state.job().get("restored") {
+                JValue::Bool(v) => Some(*v),
+                _ => None,
+            };
+            self.complete_decision(state, object).await;
+            return Some(restored);
+        }
+        let wake = Arc::clone(&self.fence_wake.lock().unwrap_or_else(|p| p.into_inner()));
+        let object = self.with(|i| i.job_object);
+        let outcome = match self.maint.prepare_calibration_recovery(Some(wake)).await {
+            None => Recovery::Nothing,
+            Some(prepared) => {
+                let saved = if prepared.decided {
+                    self.save_decision(&prepared.state, object).await;
+                    true
+                } else {
+                    self.write_state(
+                        prepared.state.clone(),
+                        object,
+                        Some(Instant::now() + self.limits.finalize),
+                    )
+                    .await
+                    .is_ok()
+                };
+                if saved {
+                    Recovery::Saved {
+                        restored: prepared.restored,
+                        state: prepared.state,
+                    }
+                } else {
+                    Recovery::Unsaved {
+                        restored: prepared.restored,
+                        state: prepared.state,
+                    }
                 }
             }
-            self.with(|i| {
+        };
+        // Even a bounded legacy save may have an unresolved blocking owner after timeout.
+        // Resolve/discard it before publishing or releasing the recovery's admission fence.
+        self.drain_writes().await;
+        let restored = outcome.restored();
+        let unsaved = matches!(outcome, Recovery::Unsaved { .. });
+        let replacement =
+            if let Recovery::Saved { state, .. } | Recovery::Unsaved { state, .. } = outcome {
+                let mut state = state;
+                if unsaved {
+                    if let Some(job) = state.job_mut() {
+                        let error = job_error(job);
+                        wtf16::set(job, "error", JValue::Str(format!("{error}{UNSAVED}")));
+                    }
+                }
+                Some(state)
+            } else {
+                None
+            };
+        self.with(|i| {
+            if let Some(state) = replacement {
                 i.state = state;
                 i.job_object = i.next_object;
                 i.next_object += 1;
                 i.unsaved = unsaved;
-            });
-        }
-        self.with(|i| {
+            }
+            self.release_local_fence();
             i.launching = false;
             i.recovering = false;
         });
@@ -522,21 +1083,22 @@ impl Worker {
 
     /// Writes the recovered job the file is missing (without [`UNSAVED`]), then drops the note from
     /// memory. The caller holds the launch slot, so no launch's save can land in between.
-    async fn save_recovered(&self) -> std::io::Result<()> {
+    async fn save_recovered(&self, release_launch: bool) -> std::io::Result<()> {
         let (object, mut state) = self.with(|i| (i.job_object, i.state.clone()));
         if let Some(job) = state.job_mut() {
             strip_unsaved(job);
         }
-        let file = self.file.clone();
-        tokio::task::spawn_blocking(move || file.save(&state))
-            .await
-            .map_err(|_| std::io::Error::other("save task"))??;
+        self.write_state(state, object, Some(Instant::now() + self.limits.finalize))
+            .await?;
         self.with(|i| {
             if i.job_object == object {
                 if let Some(job) = i.state.job_mut() {
                     strip_unsaved(job);
                 }
                 i.unsaved = false;
+                if release_launch {
+                    i.launching = false;
+                }
             }
         });
         Ok(())
@@ -565,8 +1127,10 @@ impl Worker {
                     None => return,
                     Some(false) => {}
                     Some(true) => {
-                        let saved = worker.save_recovered().await;
-                        worker.with(|i| i.launching = false);
+                        let saved = worker.save_recovered(true).await;
+                        if saved.is_err() {
+                            worker.with(|i| i.launching = false);
+                        }
                         if saved.is_ok() {
                             return;
                         }
@@ -586,10 +1150,17 @@ impl Worker {
     /// controller is aborted. `None` when no job is running.
     pub fn cancel(&self) -> Option<JValue> {
         self.with(|i| {
-            if i.recovering || i.state.job().get("status").as_str() != Some("running") {
+            if i.recovering || i.decided {
+                self.interrupt_fence_wait();
                 return None;
             }
-            let job = public(i.state.job());
+            if !i.active && i.state.job().get("status").as_str() != Some("running") {
+                return None;
+            }
+            let job = visible_job(i);
+            if i.state.job().get("phase").as_str() == Some("Finalizing") {
+                self.interrupt_fence_wait();
+            }
             i.cancel_requested = true;
             if let Some(a) = &i.inflight {
                 a.abort();
@@ -1462,7 +2033,8 @@ impl Worker {
     /// The public job, or why nothing started.
     pub async fn launch(self: &Arc<Self>, model: &str, plan: Plan) -> Result<JValue, Refusal> {
         let busy = self.with(|i| {
-            let busy = i.launching || i.state.job().get("status").as_str() == Some("running");
+            let busy =
+                i.launching || i.active || i.state.job().get("status").as_str() == Some("running");
             if !busy {
                 i.launching = true;
             }
@@ -1483,10 +2055,14 @@ impl Worker {
     /// A recovered job the state file does not have yet is saved first: a launch that cannot save
     /// it is refused before any hold (its own first save would fail the same way).
     pub(super) async fn take_hold(&self, model: &str, plan: &Plan) -> Result<Hold, Refusal> {
-        if self.maint.router.is_none() || self.maint.ini.is_none() {
+        if self.restoring.load(Ordering::Acquire)
+            || self.with(|i| i.state.job().get("pendingTombstone").truthy())
+            || self.maint.router.is_none()
+            || self.maint.ini.is_none()
+        {
             return Err(Refusal::Unavailable);
         }
-        if self.unsaved() && self.save_recovered().await.is_err() {
+        if self.unsaved() && self.save_recovered(false).await.is_err() {
             return Err(Refusal::Unavailable);
         }
         let reason = format!("Chat is paused while noevia calibrates {model}. It will be available again when calibration finishes or is cancelled.");
@@ -1599,6 +2175,9 @@ impl Worker {
     /// The hold stopped excluding other clients: stop as a cancel does, and remember why.
     fn lose_exclusion(&self) {
         self.with(|i| {
+            if i.decided {
+                return;
+            }
             i.lease_lost = true;
             i.cancel_requested = true;
             if let Some(a) = &i.inflight {
@@ -1610,7 +2189,7 @@ impl Worker {
     /// The job created and saved under `hold`, and its run spawned; the public job.
     pub(super) async fn start(
         self: &Arc<Self>,
-        hold: Hold,
+        mut hold: Hold,
         model: &str,
         plan: Plan,
     ) -> Result<JValue, Refusal> {
@@ -1619,8 +2198,21 @@ impl Worker {
         } else {
             "active"
         };
+        *self.fence_wake.lock().unwrap_or_else(|p| p.into_inner()) = Arc::new(Notify::new());
+        self.fence_interrupted.store(false, Ordering::Release);
+        let id = uuid();
+        if let Some(store) = self.maint.evidence.clone() {
+            let (model, id) = (model.to_owned(), id.clone());
+            match tokio::task::spawn_blocking(move || store.admit_run(&model, &id)).await {
+                Ok(Ok(_)) => {}
+                _ => {
+                    hold.release().await;
+                    return Err(Refusal::Unavailable);
+                }
+            }
+        }
         let job = JValue::obj([
-            ("id", JValue::Str(uuid())),
+            ("id", JValue::Str(id)),
             ("model", JValue::Str(model.to_owned())),
             (
                 "promptBudgetSeconds",
@@ -1638,6 +2230,7 @@ impl Worker {
         let previous = self.with(|i| {
             let p = (i.state.job().clone(), i.cancel_requested, i.job_object);
             i.cancel_requested = false;
+            i.decided = false;
             i.state.set_job(job);
             i.job_object = i.next_object;
             i.next_object += 1;
@@ -1645,6 +2238,8 @@ impl Worker {
         });
         let (previous, previous_cancel, previous_object) = (previous.0, previous.1, previous.2);
         if self.save().await.is_err() {
+            let job = self.with(|i| i.state.job().clone());
+            self.tombstone_job(&job).await;
             self.with(|i| {
                 i.state.set_job(previous);
                 i.cancel_requested = previous_cancel;
@@ -1653,15 +2248,42 @@ impl Worker {
             hold.release().await;
             return Err(Refusal::Unavailable);
         }
+        // Transfer local admission before spawning: even an unpolled task cannot drop it
+        // before its durable failure fence. The run guard resolves that fence on cancellation.
+        *self.local_fence.lock().unwrap_or_else(|p| p.into_inner()) =
+            Some(hold.defer_local_release());
         // The file now has this job: nothing recovered is left to save.
-        self.with(|i| i.unsaved = false);
+        self.with(|i| {
+            i.unsaved = false;
+            i.active = true;
+        });
         let worker = Arc::clone(self);
-        tokio::spawn(async move { worker.run(hold).await });
+        let object = self.with(|i| i.job_object);
+        // Capture the armed guard before spawning, so even a never-polled task is reconciled.
+        let guard = RunGuard {
+            worker: Arc::clone(&worker),
+            object,
+        };
+        let task = tokio::spawn(async move {
+            let _guard = guard;
+            worker.run(hold).await;
+        });
+        #[cfg(test)]
+        {
+            *self.run_abort.lock().unwrap_or_else(|p| p.into_inner()) = Some(task.abort_handle());
+        }
+        #[cfg(not(test))]
+        drop(task);
         Ok(self.job())
     }
 
     /// `run(job, release)`.
     async fn run(self: Arc<Self>, hold: Hold) {
+        #[cfg(test)]
+        #[allow(clippy::panic)]
+        if self.panic_on_run.swap(false, Ordering::AcqRel) {
+            panic!("synthetic run panic");
+        }
         self.with(|i| i.lease_lost = false);
         let outcome = {
             // The run never goes on without its exclusion: a lost hold stops it as a cancel would.
@@ -1684,6 +2306,35 @@ impl Worker {
                 }
             }
         };
+        self.job_set("pendingTombstone", JValue::Bool(true));
+        // One deadline covers every post-outcome await, including blocking-store work.
+        let until = Instant::now() + self.limits.finalize;
+        let object = self.with(|i| i.job_object);
+        let permit = Arc::new(AtomicBool::new(true));
+        let inner = Arc::clone(&self.inner);
+        let live = Arc::clone(&permit);
+        let allowed: super::ini::WriteAllowed = Arc::new(move || {
+            live.load(Ordering::Acquire)
+                && Instant::now() < until
+                && inner
+                    .lock()
+                    .is_ok_and(|i| i.active && i.job_object == object)
+        });
+        let revoke = WritePermit(permit);
+        let timed_out =
+            tokio::time::timeout_at(until.into(), self.post_outcome(&hold, outcome, allowed))
+                .await
+                .is_err();
+        drop(revoke);
+        self.finalize(hold, until, timed_out).await;
+    }
+
+    async fn post_outcome(
+        self: &Arc<Self>,
+        hold: &Hold,
+        outcome: Result<Option<JValue>, Thrown>,
+        allowed: super::ini::WriteAllowed,
+    ) {
         // A step can see the loss first (its reload refused under the ended lease) and fail before
         // the watch notices: however the run ended, a hold that no longer excludes is a lost one.
         if !hold.excluded() {
@@ -1745,7 +2396,7 @@ impl Worker {
                     (Some(text), Some(rev))
                         if self.current_revision().await.as_deref() == Some(rev) =>
                     {
-                        self.restore(&hold, rev, text).await
+                        self.restore(hold, rev, text, Arc::clone(&allowed)).await
                     }
                     _ => false,
                 };
@@ -1777,12 +2428,15 @@ impl Worker {
                     ("source", JValue::Str("calibration".into())),
                     ("limitations", JValue::Arr(vec![JValue::Str(limitation)])),
                 ]);
-                let _ = self.maint.record_evidence(&model, &record).await;
+                let record = self.tag_run_record(record);
+                let _ = self
+                    .maint
+                    .record_evidence_if(&model, &record, Arc::clone(&allowed))
+                    .await;
             }
         } else if let Some(entry) = outcome.ok().flatten() {
             // After the lease check: a run whose hold ended after it passed was restored above and
             // must not leave a verified size in the history that the profile no longer has.
-            self.with(|i| i.state.push_history(&model, entry.clone()));
             let ctx = entry.get("verifiedCtx").clone();
             let record = JValue::obj([
                 ("category", JValue::Str("context_capacity".into())),
@@ -1811,16 +2465,145 @@ impl Worker {
                     ))]),
                 ),
             ]);
-            let _ = self.maint.record_evidence(&model, &record).await;
+            let record = self.tag_run_record(record);
+            let _ = self
+                .maint
+                .record_evidence_if(&model, &record, Arc::clone(&allowed))
+                .await;
+            if allowed() {
+                let entry = self.tag_run_record(entry);
+                self.with(|i| i.state.push_history(&model, entry));
+            }
         }
-        self.job_set("finishedAt", JValue::Num(now_ms()));
-        self.job_remove("originalText");
+    }
+
+    async fn finalize(self: &Arc<Self>, mut hold: Hold, until: Instant, post_failed: bool) {
+        let (mut state, object) = self.with(|i| {
+            // Cancellation already handled by run's outcome must not turn cancelled into failed.
+            if matches!(
+                i.state.job().get("status").as_str(),
+                Some("cancelled" | "interrupted")
+            ) {
+                i.cancel_requested = false;
+            }
+            (i.state.clone(), i.job_object)
+        });
+        if !self.restoring.load(Ordering::Acquire) {
+            if let Some(job) = state.job_mut() {
+                job.retain(|(k, _)| k != "pendingRestore");
+            }
+        }
+        finish_snapshot(&mut state, post_failed);
+        if state.job().get("status").as_str() != Some("passed") {
+            self.tombstone_job(state.job()).await;
+        }
+        let mut saved = false;
+        let mut wait = self.limits.save_retry.max(Duration::from_millis(1));
+        loop {
+            let interrupted = self.cancelled() || hold.lost() || !hold.excluded();
+            if Instant::now() >= until
+                || (interrupted && state.job().get("status").as_str() == Some("passed"))
+            {
+                break;
+            }
+            if self
+                .write_state(state.clone(), object, Some(until))
+                .await
+                .is_ok()
+            {
+                saved = true;
+                break;
+            }
+            tokio::time::sleep(wait.min(until.saturating_duration_since(Instant::now()))).await;
+            wait = (wait * 2).min(Duration::from_secs(1));
+        }
+        let released = tokio::time::timeout_at(until.into(), hold.release_node_lease())
+            .await
+            .is_ok()
+            && hold.node_release_confirmed();
+        // Cancellation and this choice serialize on the same mutex. Once sealed, neither
+        // cancellation nor unwind can change the outcome, even during an uncertain save.
+        let decided = self.with(|i| {
+            let failed = post_failed
+                || !saved
+                || !released
+                || i.cancel_requested
+                || (hold.lost() && state.job().get("status").as_str() == Some("passed"));
+            if failed {
+                finish_snapshot(&mut state, true);
+            }
+            if let Some(job) = state.job_mut() {
+                wtf16::set(job, "pendingTombstone", JValue::Bool(true));
+                let decision = if state_status_passed(job) {
+                    "passed"
+                } else {
+                    "fenced"
+                };
+                wtf16::set(job, "terminalDecision", JValue::Str(decision.into()));
+            }
+            i.decided = true;
+            i.state = state.clone();
+            state
+        });
+        self.complete_decision(decided, object).await;
+        drop(hold);
+    }
+
+    /// Timeouts observe the SAME pending operation, never queue a replacement. Only a
+    /// completed failure gets the shared interruptible 1s..60s retry backoff.
+    async fn save_decision(&self, state: &State, object: u64) {
+        let wake = Arc::clone(&self.fence_wake.lock().unwrap_or_else(|p| p.into_inner()));
+        let mut wait = Duration::from_secs(1);
+        loop {
+            let attempt = self.write_state(state.clone(), object, None);
+            tokio::pin!(attempt);
+            let result = loop {
+                tokio::select! {
+                    result = tokio::time::timeout(self.limits.finalize, &mut attempt) => match result {
+                        Ok(result) => break result,
+                        Err(_) => eprintln!("[models] calibration terminal persistence failed: TimedOut"),
+                    },
+                    () = wake.notified() => {},
+                }
+            };
+            match result {
+                Ok(()) => return,
+                Err(e) => eprintln!(
+                    "[models] calibration terminal persistence failed: {:?}",
+                    e.kind()
+                ),
+            }
+            tokio::select! { () = tokio::time::sleep(wait) => {}, () = wake.notified() => {} }
+            wait = (wait * 2).min(SAVE_RETRY_MAX);
+        }
+    }
+
+    async fn complete_decision(self: &Arc<Self>, mut state: State, object: u64) {
+        // Persist the decision WITH its recovery marker before any marker-free terminal record
+        // can exist. This also makes a timed-out/lost-response save idempotent on restart.
+        self.save_decision(&state, object).await;
+        if state.job().get("terminalDecision").as_str() != Some("passed") {
+            self.tombstone_job(state.job()).await;
+        }
+        if let Some(job) = state.job_mut() {
+            job.retain(|(k, _)| k != "pendingTombstone" && k != "terminalDecision");
+        }
+        self.save_decision(&state, object).await;
         self.with(|i| {
+            if i.job_object != object {
+                return;
+            }
+            i.state = state;
             i.cancel_requested = false;
             i.lease_lost = false;
+            i.active = false;
+            i.unsaved = false;
+            if i.recovering {
+                i.recovering = false;
+                i.launching = false;
+            }
+            self.release_local_fence();
         });
-        let _ = self.save().await;
-        hold.release().await;
     }
 
     /// Put `text` back if models.ini is still at `revision`, then reload the router.
@@ -1830,7 +2613,13 @@ impl Worker {
     /// another writer saved is overwritten. Only the raw reload is unexcluded: once Node has ended
     /// the lease it can admit a chat, which that reload may interrupt. Leaving a half-tested profile
     /// live would be worse, so the trade-off is kept.
-    async fn restore(&self, hold: &Hold, revision: &str, text: &str) -> bool {
+    async fn restore(
+        &self,
+        hold: &Hold,
+        revision: &str,
+        text: &str,
+        allowed: super::ini::WriteAllowed,
+    ) -> bool {
         let Some(ini) = self.maint.ini.clone() else {
             return false;
         };
@@ -1839,21 +2628,53 @@ impl Worker {
             text: text.to_owned(),
             before: String::new(),
         };
-        if ini.commit_reconciled(&c, true).await.is_err() {
+        if !allowed() {
             return false;
         }
-        let _ = self
-            .request(
-                hold,
-                reqwest::Method::GET,
-                "/models?reload=1",
-                None,
-                RELOAD,
-                None,
-            )
-            .await;
-        // The raw reload Node sends (no reload-guard record or forget, as in Node's run()).
-        true
+        // Persist the exact idempotent CAS before dispatch. A terminal failed job can still have
+        // this private marker when its resolver outlives finalization; boot recovery must settle it.
+        self.job_set(
+            "pendingRestore",
+            JValue::obj([
+                ("baseRevision", JValue::Str(c.base_revision.clone())),
+                ("text", JValue::Str(c.text.clone())),
+            ]),
+        );
+        let (mut state, object) = self.with(|i| (i.state.clone(), i.job_object));
+        if let Some(job) = state.job_mut() {
+            wtf16::set(job, "status", JValue::Str("running".into()));
+            job.retain(|(k, _)| k != "finishedAt");
+        }
+        if self
+            .write_state(state, object, Some(Instant::now() + self.limits.finalize))
+            .await
+            .is_err()
+        {
+            return false;
+        }
+        self.restoring.store(true, Ordering::Release);
+        let resolver = Arc::new(RestoreResolver {
+            ini,
+            candidate: c,
+            pending: Arc::clone(&self.restoring),
+            retry: self.limits.save_retry,
+            #[cfg(test)]
+            panic_once: Arc::clone(&self.panic_on_restore),
+        });
+        let restored = resolver.spawn().await.unwrap_or(false);
+        if restored && allowed() {
+            let _ = self
+                .request(
+                    hold,
+                    reqwest::Method::GET,
+                    "/models?reload=1",
+                    None,
+                    RELOAD,
+                    None,
+                )
+                .await;
+        }
+        restored
     }
 
     /// The search and the final write; the history entry on a pass.
@@ -2343,7 +3164,7 @@ mod tests {
     async fn settled(w: &Worker) -> JValue {
         for _ in 0..600 {
             let job = w.job();
-            // A run sets its status before its last reads; it is over once it has finishedAt.
+            // finishedAt is published only after persistence and local admission release.
             if job.get("status").as_str() != Some("running")
                 && !matches!(job.get("finishedAt"), JValue::Undefined)
             {
@@ -2354,8 +3175,1266 @@ mod tests {
         panic!("the synthetic run did not finish: {:?}", w.job());
     }
 
+    async fn released(log: &Mutex<Vec<String>>, prefix: &str) {
+        // Bounded at 30 s: a run's state saves on the way here can wait out a slow fsync.
+        for _ in 0..3000 {
+            if log.lock().unwrap().iter().any(|r| r.starts_with(prefix)) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        panic!("remote release was not observed: {prefix}");
+    }
+
     const INI: &str =
         "[*]\nn-gpu-layers = 99\n\n[synthetic]\nmodel = /models/synthetic.gguf\nctx-size = 4096\n";
+
+    // REVIEW_REGRESSIONS_BEGIN
+    async fn review_wait_outcome(w: &Worker) {
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while w.with(|i| i.state.job().get("status").as_str() == Some("running")) {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+
+    async fn review_blocked_save() -> (tempfile::TempDir, Arc<Worker>, std::path::PathBuf) {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let props = Arc::new(AtomicBool::new(false));
+        let (port, _) = synthetic_engine_with(
+            ini,
+            Synth {
+                props: Some(Arc::clone(&props)),
+                ..Synth::default()
+            },
+        )
+        .await;
+        let w = worker(d.path(), port);
+        let w = with_limits(
+            &w,
+            Limits {
+                finalize: Duration::from_millis(300),
+                save_retry: Duration::from_millis(5),
+                ..w.limits
+            },
+        );
+        w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while !props.load(Ordering::Acquire) {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let path = w.file.path.clone().unwrap();
+        let backup = path.with_extension("review-backup");
+        std::fs::rename(&path, &backup).unwrap();
+        std::fs::create_dir(&path).unwrap();
+        (d, w, backup)
+    }
+
+    fn review_failed(w: &Worker, job: &JValue) {
+        assert_eq!(job.get("status").as_str(), Some("failed"), "{job:?}");
+        assert_eq!(
+            job.get("error").as_str(),
+            Some("Calibration finalization failed.")
+        );
+        assert!(!matches!(job.get("finishedAt"), JValue::Undefined));
+        assert!(!w.with(|i| i.active));
+        assert!(!w.maint.local_held());
+    }
+
+    async fn review_repair_decided_save(w: &Worker, backup: &std::path::Path) {
+        delta_wait(|| w.with(|i| i.decided)).await;
+        assert_eq!(w.job().get("status").as_str(), Some("running"));
+        assert_eq!(w.job().get("phase").as_str(), Some("Finalizing"));
+        assert!(w.job().get("finishedAt").is_nullish());
+        assert!(w.maint.local_held());
+        assert!(w.with(|i| i.active));
+        let path = w.file.path.as_ref().unwrap();
+        std::fs::remove_dir(path).unwrap();
+        std::fs::rename(backup, path).unwrap();
+        w.interrupt_fence_wait();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn review_persistent_final_save_failure_retains_admission_until_durable() {
+        let (_d, w, backup) = review_blocked_save().await;
+        review_repair_decided_save(&w, &backup).await;
+        let job = tokio::time::timeout(Duration::from_secs(3), settled(&w))
+            .await
+            .unwrap();
+        review_failed(&w, &job);
+        assert_eq!(w.file.load().job().get("status").as_str(), Some("failed"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn review_cancel_during_finalization_is_terminal() {
+        let (_d, w, backup) = review_blocked_save().await;
+        review_wait_outcome(&w).await;
+        assert_eq!(w.job().get("status").as_str(), Some("running"));
+        assert!(
+            w.cancel().is_some(),
+            "pre-decision finalization is cancellable"
+        );
+        review_repair_decided_save(&w, &backup).await;
+        let job = tokio::time::timeout(Duration::from_secs(3), settled(&w))
+            .await
+            .unwrap();
+        review_failed(&w, &job);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn review_lease_loss_during_finalization_is_terminal() {
+        let (_d, w, backup) = review_blocked_save().await;
+        review_wait_outcome(&w).await;
+        w.lose_exclusion();
+        review_repair_decided_save(&w, &backup).await;
+        let job = tokio::time::timeout(Duration::from_secs(3), settled(&w))
+            .await
+            .unwrap();
+        review_failed(&w, &job);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn review_panic_reconciles_and_allows_restart() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (port, _) = synthetic_engine(ini, false).await;
+        let w = worker(d.path(), port);
+        let w = with_limits(
+            &w,
+            Limits {
+                save_retry: Duration::from_millis(5),
+                ..w.limits
+            },
+        );
+        w.panic_on_run.store(true, Ordering::Release);
+        w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        let job = tokio::time::timeout(Duration::from_secs(2), settled(&w))
+            .await
+            .expect("panic reconciled");
+        review_failed(&w, &job);
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while w.unsaved() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(w.file.load().job().get("status").as_str(), Some("failed"));
+        w.launch("synthetic", plan(32768.0, 120.0))
+            .await
+            .expect("restart after panic");
+        let _ = w.cancel();
+        settled(&w).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn review_unavailable_delete_does_not_retain_admission() {
+        use axum::{
+            body::Body,
+            http::{Request, Response},
+        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let app = axum::Router::new().fallback(|r: Request<Body>| async move {
+            let (code, body) = if r.method() == "DELETE" {
+                (503, json!({"error":"private synthetic transport detail"}))
+            } else if r.uri().path().ends_with("/lease") {
+                (201, json!({"lease":"fedcba9876543210fedcba9876543210","ttlMs":180000,"renewMs":20,"hardMs":86400000}))
+            } else { (200, json!({"refusal":null})) };
+            Response::builder().status(code).body(Body::from(body.to_string())).unwrap()
+        });
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (engine, _) = synthetic_engine(ini, false).await;
+        let w = worker_with(d.path(), engine, Some(port));
+        let w = with_limits(
+            &w,
+            Limits {
+                finalize: Duration::from_millis(300),
+                ..w.limits
+            },
+        );
+        w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        let job = tokio::time::timeout(Duration::from_secs(2), settled(&w))
+            .await
+            .expect("bounded DELETE");
+        review_failed(&w, &job);
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while w.unsaved() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("failed record retry persisted");
+        assert_eq!(w.file.load().job().get("status").as_str(), Some("failed"));
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn stalled_post_outcome_evidence_is_bounded_and_cannot_write_into_a_new_run() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        std::fs::write(d.path().join("synthetic.gguf"), b"GGUF synthetic").unwrap();
+        let (port, _) = synthetic_engine(ini, false).await;
+        let w = worker(d.path(), port);
+        let w = with_limits(
+            &w,
+            Limits {
+                finalize: Duration::from_millis(300),
+                ..w.limits
+            },
+        );
+        let store = Arc::clone(w.maint.evidence.as_ref().unwrap());
+        let (entered, started) = std::sync::mpsc::channel();
+        let (release, resume) = std::sync::mpsc::channel();
+        let blocked = std::thread::spawn(move || store.stall_writes(entered, resume));
+        started.recv_timeout(Duration::from_secs(1)).unwrap();
+        w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        review_wait_outcome(&w).await;
+        // Evidence is waiting on the actual store mutex after the successful search.
+        let result = tokio::time::timeout(Duration::from_secs(2), settled(&w)).await;
+        if let Ok(job) = &result {
+            review_failed(&w, job);
+            assert!(!w.with(|i| i.active));
+            let h = w
+                .maint
+                .acquire_for_run("synthetic admission after timeout", Duration::from_secs(1))
+                .await;
+            assert!(h.is_ok(), "local maintenance admission released");
+            drop(h);
+            w.launch("synthetic", plan(32768.0, 120.0))
+                .await
+                .expect("new run after timeout");
+            let _ = w.cancel();
+        }
+        release.send(()).unwrap();
+        blocked.join().unwrap();
+        result.expect("post-outcome evidence deadline must publish failure");
+        settled(&w).await;
+        assert_eq!(
+            evidence_count(&w).await,
+            0,
+            "expired evidence must never append later"
+        );
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn recovery_save_publishes_unsaved_and_launch_release_together() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("models.ini"), INI).unwrap();
+        let (port, _) = synthetic_engine(d.path().join("models.ini"), true).await;
+        let w = worker(d.path(), port);
+        w.with(|i| {
+            i.state = State::empty();
+            i.state
+                .set_job(wtf16::parse(r#"{"id":"recovered","status":"interrupted"}"#).unwrap());
+            i.unsaved = true;
+            i.launching = true;
+        });
+        // The background retry publishes the recovered record before it returns to its caller.
+        // A reader observing unsaved=false must also observe the released launch reservation.
+        w.save_recovered(true).await.unwrap();
+        assert_eq!(w.with(|i| (i.unsaved, i.launching)), (false, false));
+        w.launch("synthetic", plan(32768.0, 120.0))
+            .await
+            .expect("immediate restart after recovery publication");
+        let _ = w.cancel();
+        settled(&w).await;
+    }
+    // SETTLEMENT_REGRESSIONS_BEGIN
+    async fn restore_rig(
+        mode: &'static str,
+    ) -> (
+        tempfile::TempDir,
+        Arc<Worker>,
+        Arc<AtomicBool>,
+        Arc<std::sync::atomic::AtomicUsize>,
+        Arc<Mutex<Vec<String>>>,
+    ) {
+        use axum::{
+            body::Body,
+            http::{Request, Response},
+        };
+        use http_body_util::BodyExt;
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (engine, seen) = synthetic_engine(ini.clone(), true).await;
+        let available = Arc::new(AtomicBool::new(mode != "down"));
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (ready, attempts, file) = (Arc::clone(&available), Arc::clone(&calls), ini.clone());
+        let app = axum::Router::new().fallback(move |r: Request<Body>| {
+            let (ready, attempts, file) = (Arc::clone(&ready), Arc::clone(&attempts), file.clone());
+            async move {
+                let bytes = r.into_body().collect().await.unwrap().to_bytes();
+                let body: Value = serde_json::from_slice(&bytes).unwrap();
+                let current = std::fs::read_to_string(&file).unwrap();
+                let text = body["text"].as_str().unwrap();
+                let (code, reply) = if body["baseRevision"].as_str()
+                    != Some(super::super::ini::sha(&current).as_str())
+                {
+                    (409, json!({"detail":"changed"}))
+                } else if text == INI {
+                    let attempt = attempts.fetch_add(1, Ordering::AcqRel);
+                    match mode {
+                        "lost" if attempt == 0 => {
+                            std::fs::write(&file, text).unwrap();
+                            (503, json!({"error":"synthetic lost reply"}))
+                        }
+                        "moved" if attempt == 0 => {
+                            std::fs::write(&file, format!("{INI}# later edit\n")).unwrap();
+                            (503, json!({"error":"synthetic lost reply"}))
+                        }
+                        _ if !ready.load(Ordering::Acquire) => {
+                            (503, json!({"error":"synthetic unavailable"}))
+                        }
+                        _ => {
+                            std::fs::write(&file, text).unwrap();
+                            (200, json!({"ok":true}))
+                        }
+                    }
+                } else {
+                    std::fs::write(&file, text).unwrap();
+                    (200, json!({"ok":true}))
+                };
+                Response::builder()
+                    .status(code)
+                    .body(Body::from(reply.to_string()))
+                    .unwrap()
+            }
+        });
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let mut w = worker(d.path(), engine);
+        let maint = Arc::get_mut(&mut Arc::get_mut(&mut w).unwrap().maint).unwrap();
+        maint.ini = Some(super::super::ini::Store::new(
+            ini,
+            Some(
+                super::super::ini::LoaderWriter::new(&format!("http://127.0.0.1:{port}"), None)
+                    .unwrap(),
+            ),
+        ));
+        // `finalize` also bounds every launch, restore-intent and recovery state save, each of
+        // which refuses fail-closed when it lapses (an unsaved launch is Unavailable). A loaded
+        // shared runner's fsync can take seconds, so these tests must not race it: they wait on
+        // published state, and only the unreachable-restore case waits out this deadline.
+        let w = with_limits(
+            &w,
+            Limits {
+                finalize: Duration::from_secs(10),
+                save_retry: Duration::from_millis(20),
+                ..w.limits
+            },
+        );
+        (d, w, available, calls, seen)
+    }
+    async fn wait_restoration(w: &Worker) {
+        tokio::time::timeout(Duration::from_secs(15), async {
+            while w.restoring.load(Ordering::Acquire) {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("owned restoration settles and readmits");
+    }
+    async fn begin_restore_run(w: &Arc<Worker>, seen: &Mutex<Vec<String>>) {
+        w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        released(seen, "POST /v1/chat/completions").await;
+        w.cancel().unwrap();
+    }
+    async fn assert_restore_readmits(w: &Arc<Worker>) {
+        wait_restoration(w).await;
+        settled(w).await;
+        w.launch("synthetic", plan(32768.0, 120.0))
+            .await
+            .expect("settled CAS readmits a successor");
+        let _ = w.cancel();
+        settled(w).await;
+        wait_restoration(w).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_lost_restore_response_settles_by_readback_and_readmits() {
+        let (d, w, _, calls, seen) = restore_rig("lost").await;
+        begin_restore_run(&w, &seen).await;
+        settled(&w).await;
+        wait_restoration(&w).await;
+        assert_eq!(
+            std::fs::read_to_string(d.path().join("models.ini")).unwrap(),
+            INI
+        );
+        assert_eq!(
+            calls.load(Ordering::Acquire),
+            1,
+            "readback settles without another write"
+        );
+        assert_restore_readmits(&w).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_moved_restore_cas_settles_without_overwriting_the_new_revision() {
+        let (d, w, _, calls, seen) = restore_rig("moved").await;
+        begin_restore_run(&w, &seen).await;
+        settled(&w).await;
+        wait_restoration(&w).await;
+        assert_eq!(calls.load(Ordering::Acquire), 1);
+        assert_eq!(
+            std::fs::read_to_string(d.path().join("models.ini")).unwrap(),
+            format!("{INI}# later edit\n")
+        );
+        assert_restore_readmits(&w).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_unreachable_restore_refuses_calibration_but_keeps_inference_admitted() {
+        let (_d, w, available, calls, seen) = restore_rig("down").await;
+        begin_restore_run(&w, &seen).await;
+        tokio::time::timeout(Duration::from_secs(15), async {
+            while calls.load(Ordering::Acquire) == 0 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        settled(&w).await;
+        assert!(w.restoring.load(Ordering::Acquire));
+        assert_eq!(
+            w.launch("synthetic", plan(32768.0, 120.0)).await,
+            Err(Refusal::Unavailable)
+        );
+        assert!(!w.maint.local_held());
+        let reply = w
+            .maint
+            .router
+            .as_ref()
+            .unwrap()
+            .request(
+                reqwest::Method::POST,
+                "/v1/chat/completions",
+                Some(&json!({"messages":[],"stream":false})),
+                None,
+                Duration::from_secs(1),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            reply.status, 200,
+            "ordinary inference remains admitted while only calibration waits"
+        );
+        available.store(true, Ordering::Release);
+        assert_restore_readmits(&w).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_panicked_restore_is_rescheduled_until_settled() {
+        let (d, w, _, _, seen) = restore_rig("normal").await;
+        w.panic_on_restore.store(true, Ordering::Release);
+        begin_restore_run(&w, &seen).await;
+        settled(&w).await;
+        wait_restoration(&w).await;
+        assert_eq!(
+            std::fs::read_to_string(d.path().join("models.ini")).unwrap(),
+            INI
+        );
+        assert_restore_readmits(&w).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn boot_recovery_retries_the_same_restore_until_it_settles() {
+        let (d, w, available, calls, _) = restore_rig("down").await;
+        let modified = INI.replace("4096", "8192");
+        std::fs::write(d.path().join("models.ini"), &modified).unwrap();
+        let mut state = State::empty();
+        state.set_job(JValue::obj([
+            ("id", JValue::Str("boot-restore".into())),
+            ("model", JValue::Str("synthetic".into())),
+            ("status", JValue::Str("failed".into())),
+            ("finishedAt", JValue::Num(100.0)),
+            (
+                "pendingRestore",
+                JValue::obj([
+                    (
+                        "baseRevision",
+                        JValue::Str(super::super::ini::sha(&modified)),
+                    ),
+                    ("text", JValue::Str(INI.into())),
+                ]),
+            ),
+        ]));
+        w.file.save(&state).unwrap();
+        let worker = Arc::clone(&w);
+        let recovery = tokio::spawn(async move { worker.recover().await });
+        tokio::time::timeout(Duration::from_secs(15), async {
+            while calls.load(Ordering::Acquire) < 2 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("boot recovery retains and retries the unsettled CAS");
+        available.store(true, Ordering::Release);
+        assert_eq!(
+            // Recovery's own CAS retry backs off 1 s, 2 s, ...: allow several rounds.
+            tokio::time::timeout(Duration::from_secs(15), recovery)
+                .await
+                .unwrap()
+                .unwrap(),
+            Some(Some(true))
+        );
+        assert_eq!(
+            std::fs::read_to_string(d.path().join("models.ini")).unwrap(),
+            INI
+        );
+        assert_eq!(w.job().get("status").as_str(), Some("failed"));
+        assert_eq!(w.job().get("finishedAt").as_num(), Some(100.0));
+        assert!(w.file.load().job().get("pendingRestore").is_nullish());
+        assert_restore_readmits(&w).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_append_stalled_after_its_permit_is_never_visible_after_expiry() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        std::fs::write(d.path().join("synthetic.gguf"), b"GGUF synthetic").unwrap();
+        let (port, _) = synthetic_engine(ini, false).await;
+        let w = worker(d.path(), port);
+        let w = with_limits(
+            &w,
+            Limits {
+                finalize: Duration::from_millis(150),
+                ..w.limits
+            },
+        );
+        let store = Arc::clone(w.maint.evidence.as_ref().unwrap());
+        let (entered, started) = std::sync::mpsc::channel();
+        let (release, resume) = std::sync::mpsc::channel();
+        store.stall_next_append(entered, resume);
+        let old = w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        tokio::task::spawn_blocking(move || started.recv_timeout(Duration::from_secs(15)))
+            .await
+            .unwrap()
+            .unwrap();
+        let record = w.tag_run_record(JValue::obj([("model", JValue::Str("synthetic".into()))]));
+        // Cover old persisted history as well as the deferred evidence append.
+        w.with(|i| i.state.push_history("synthetic", record.clone()));
+        let job = tokio::time::timeout(Duration::from_secs(15), settled(&w))
+            .await
+            .unwrap();
+        review_failed(&w, &job);
+        let withdrawn_before_next = !store.visible("synthetic", &record);
+        let reopened =
+            super::super::evidence::Store::new(store.file().parent().unwrap().to_owned());
+        let durable_before_next =
+            std::fs::read(store.file().parent().unwrap().join("run-state.json"))
+                .ok()
+                .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+                .is_some_and(|ledger| {
+                    ledger["models"]["synthetic"]["id"].as_str() == old.get("id").as_str()
+                        && ledger["models"]["synthetic"]["tombstoned"] == true
+                });
+        let next = w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        assert_ne!(next.get("id"), old.get("id"));
+        let _ = w.cancel();
+        release.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(15), async {
+            while !std::fs::read_to_string(store.file())
+                .unwrap_or_default()
+                .contains(old.get("id").as_str().unwrap())
+            {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("old physical append really completed after successor admission");
+        assert!(
+            store.list().is_empty(),
+            "late physical evidence is invisible"
+        );
+        assert!(
+            withdrawn_before_next,
+            "tombstone was effective before successor admission"
+        );
+        assert!(
+            durable_before_next,
+            "tombstone was durable before successor admission"
+        );
+        assert_eq!(
+            w.state_facts().get("history").get("synthetic"),
+            &JValue::Arr(vec![])
+        );
+        assert_eq!(store.count(), 0);
+        assert!(reopened.list().is_empty());
+        let body = w.maint.evidence_body("synthetic").await.unwrap();
+        assert!(!body.contains(old.get("id").as_str().unwrap()));
+        assert_eq!(w.history("synthetic"), JValue::Arr(vec![]));
+        assert_eq!(store.compact().unwrap(), 0);
+        assert!(
+            !std::fs::read_to_string(store.file())
+                .unwrap()
+                .contains(old.get("id").as_str().unwrap()),
+            "compaction physically drops the expired record"
+        );
+        settled(&w).await;
+        // A reader opened before the successor must see valid new-generation records too;
+        // suppression cannot be implemented by making every consumer permanently empty.
+        store
+            .append(
+                &JValue::obj([
+                    ("model", JValue::Str("synthetic".into())),
+                    ("category", JValue::Str("vision".into())),
+                    ("result", JValue::Str("passed".into())),
+                ]),
+                1,
+            )
+            .unwrap();
+        assert_eq!(store.count(), 1);
+        assert_eq!(reopened.count(), 1);
+        assert!(reopened
+            .list()
+            .iter()
+            .all(|r| r.get("runId") != old.get("id")));
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn persistent_tombstone_errors_keep_admission_through_cancel_and_task_abort() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (port, seen) = synthetic_engine(ini, true).await;
+        let w = worker(d.path(), port);
+        let store = Arc::clone(w.maint.evidence.as_ref().unwrap());
+        w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        released(&seen, "POST /v1/chat/completions").await;
+        store.inject_run_write_error(true);
+        w.cancel().unwrap();
+        tokio::time::timeout(Duration::from_secs(4), async {
+            while store.run_write_failures().len() < 2 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let failures = store.run_write_failures();
+        assert!(
+            failures[1].duration_since(failures[0]) >= Duration::from_secs(1),
+            "backoff never spins"
+        );
+        let job = w.job();
+        assert_eq!(job.get("status").as_str(), Some("running"));
+        assert_eq!(job.get("phase").as_str(), Some("Finalizing"));
+        assert!(job.get("finishedAt").is_nullish());
+        assert!(w.maint.local_held());
+        assert!(w
+            .maint
+            .acquire_for_run("synthetic fence check", Duration::from_secs(1))
+            .await
+            .is_err());
+        // Cancellation interrupts the wait without releasing the retained local admission.
+        let attempts = store.run_write_failures().len();
+        w.cancel().unwrap();
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while store.run_write_failures().len() == attempts {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("cancellation interrupts the retry wait");
+        assert!(w.maint.local_held());
+        // Task cancellation/shutdown drops Hold, but the worker still owns the local fence.
+        w.run_abort.lock().unwrap().as_ref().unwrap().abort();
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while !w.run_abort.lock().unwrap().as_ref().unwrap().is_finished() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(w.maint.local_held());
+        assert_eq!(w.job().get("phase").as_str(), Some("Finalizing"));
+        assert!(w.job().get("finishedAt").is_nullish());
+        store.inject_run_write_error(false);
+        let job = tokio::time::timeout(Duration::from_secs(4), settled(&w))
+            .await
+            .unwrap();
+        review_failed(&w, &job);
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while w.unsaved() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(w.file.load().job().get("status").as_str(), Some("failed"));
+        assert!(!w.maint.local_held());
+        w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        let _ = w.cancel();
+        settled(&w).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn restart_recovers_a_pending_tombstone_before_releasing_admission() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (port, _) = synthetic_engine(ini, false).await;
+        let w = worker(d.path(), port);
+        let store = Arc::clone(w.maint.evidence.as_ref().unwrap());
+        store.admit_run("synthetic", "unfinished-fence").unwrap();
+        let mut state = State::empty();
+        state.set_job(JValue::obj([
+            ("id", JValue::Str("unfinished-fence".into())),
+            ("model", JValue::Str("synthetic".into())),
+            ("status", JValue::Str("passed".into())),
+            ("finishedAt", JValue::Num(100.0)),
+            ("pendingTombstone", JValue::Bool(true)),
+        ]));
+        w.file.save(&state).unwrap();
+        let restarted = with_limits(&w, w.limits);
+        store.inject_run_write_error(true);
+        let recovery = restarted.spawn_recover().unwrap();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while store.run_write_failures().is_empty() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("recovery retries the pending fence first");
+        assert!(restarted.maint.local_held());
+        assert_eq!(restarted.job().get("status").as_str(), Some("running"));
+        assert_eq!(restarted.job().get("phase").as_str(), Some("Finalizing"));
+        assert!(restarted.job().get("finishedAt").is_nullish());
+        store.inject_run_write_error(false);
+        tokio::time::timeout(Duration::from_secs(3), recovery)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!restarted.maint.local_held());
+        assert_eq!(restarted.job().get("status").as_str(), Some("failed"));
+        assert!(!restarted.job().get("finishedAt").is_nullish());
+        assert!(restarted
+            .file
+            .load()
+            .job()
+            .get("pendingTombstone")
+            .is_nullish());
+        restarted
+            .launch("synthetic", plan(32768.0, 120.0))
+            .await
+            .unwrap();
+        let _ = restarted.cancel();
+        settled(&restarted).await;
+    }
+    #[tokio::test(flavor = "current_thread")]
+    async fn an_unpolled_run_keeps_its_local_fence_until_the_tombstone_is_durable() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (port, _) = synthetic_engine(ini, false).await;
+        let w = worker(d.path(), port);
+        let store = Arc::clone(w.maint.evidence.as_ref().unwrap());
+        w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        // On this single-threaded runtime there is no await between spawn and abort, so the
+        // run future has never been polled. Its local fence must already have been transferred.
+        store.inject_run_write_error(true);
+        w.run_abort.lock().unwrap().as_ref().unwrap().abort();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while store.run_write_failures().is_empty() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(
+            w.maint.local_held(),
+            "unpolled task drop cannot release an unpersisted fence"
+        );
+        assert_eq!(w.job().get("phase").as_str(), Some("Finalizing"));
+        assert!(w.job().get("finishedAt").is_nullish());
+        store.inject_run_write_error(false);
+        let job = tokio::time::timeout(Duration::from_secs(3), settled(&w))
+            .await
+            .unwrap();
+        review_failed(&w, &job);
+    }
+
+    // SETTLEMENT_DELTA_REGRESSIONS_BEGIN
+    async fn delta_wait(mut ready: impl FnMut() -> bool) {
+        tokio::time::timeout(Duration::from_secs(4), async {
+            while !ready() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("synthetic transition completed");
+    }
+    fn delta_pending(w: &Worker, id: &str) {
+        let store = w.maint.evidence.as_ref().unwrap();
+        store.admit_run("synthetic", "earlier").unwrap();
+        assert_eq!(store.admit_run("synthetic", id).unwrap(), 2);
+        let mut state = State::empty();
+        state.set_job(JValue::obj([
+            ("id", JValue::Str(id.into())),
+            ("model", JValue::Str("synthetic".into())),
+            ("status", JValue::Str("failed".into())),
+            ("finishedAt", JValue::Num(100.0)),
+            ("pendingTombstone", JValue::Bool(true)),
+        ]));
+        w.file.save(&state).unwrap();
+    }
+    fn delta_stall(
+        w: &Worker,
+        marker_free: bool,
+    ) -> (std::sync::mpsc::Receiver<()>, std::sync::mpsc::Sender<()>) {
+        let (entered, ready) = std::sync::mpsc::channel();
+        let (release, wait) = std::sync::mpsc::channel();
+        *w.terminal_stall.lock().unwrap() = Some((marker_free, entered, wait));
+        (ready, release)
+    }
+    async fn delta_restart(
+        source: &Worker,
+        port: u16,
+        deny_ledger: bool,
+    ) -> (tempfile::TempDir, Arc<Worker>) {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("models.ini"), INI).unwrap();
+        let restarted = worker(d.path(), port);
+        let old = source.maint.evidence.as_ref().unwrap().file();
+        let new = restarted.maint.evidence.as_ref().unwrap().file();
+        std::fs::create_dir_all(new.parent().unwrap()).unwrap();
+        std::fs::copy(
+            old.parent().unwrap().join("run-state.json"),
+            new.parent().unwrap().join("run-state.json"),
+        )
+        .unwrap();
+        std::fs::copy(
+            source.file.path.as_ref().unwrap(),
+            restarted.file.path.as_ref().unwrap(),
+        )
+        .unwrap();
+        drop(restarted);
+        if deny_ledger {
+            use std::os::unix::fs::PermissionsExt;
+            let path = new.parent().unwrap().join("run-state.json");
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o0)).unwrap();
+            assert_eq!(
+                std::fs::read(path).unwrap_err().kind(),
+                std::io::ErrorKind::PermissionDenied
+            );
+        }
+        let reopened = worker(d.path(), port);
+        (d, reopened)
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cancellation_at_terminal_save_preserves_the_durable_decision() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("models.ini"), INI).unwrap();
+        let (port, _) = synthetic_engine(d.path().join("models.ini"), false).await;
+        let w = worker(d.path(), port);
+        let (ready, release) = delta_stall(&w, true);
+        w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        delta_wait(|| ready.try_recv().is_ok()).await;
+        let token = w
+            .cancellation_facts()
+            .get("token")
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let cancelled = w.cancel().is_some();
+        let applied = w.compare_and_abort(&token).get("applied").truthy();
+        w.maint
+            .evidence
+            .as_ref()
+            .unwrap()
+            .inject_run_write_error(true);
+        w.run_abort.lock().unwrap().as_ref().unwrap().abort();
+        release.send(()).unwrap();
+        delta_wait(|| w.run_abort.lock().unwrap().as_ref().unwrap().is_finished()).await;
+        // An abort after the decision cannot convert it into an unpersisted failure fence.
+        let (_copy, restarted) = delta_restart(&w, port, false).await;
+        restarted.recover().await;
+        assert!(
+            !cancelled && !applied,
+            "the terminal decision refuses cancellation"
+        );
+        assert_eq!(restarted.job().get("status").as_str(), Some("passed"));
+        assert!(!restarted.maint.local_held());
+        w.maint
+            .evidence
+            .as_ref()
+            .unwrap()
+            .inject_run_write_error(false);
+        delta_wait(|| !w.maint.local_held()).await;
+        assert_eq!(
+            w.job().get("status").as_str(),
+            Some("passed"),
+            "abort cleanup preserves the original decision too"
+        );
+
+        // Cancellation before the decision stays fenced across a failed control write/restart.
+        let w = worker(d.path(), port);
+        let (ready, release) = delta_stall(&w, false);
+        w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        delta_wait(|| ready.try_recv().is_ok()).await;
+        w.maint
+            .evidence
+            .as_ref()
+            .unwrap()
+            .inject_run_write_error(true);
+        assert!(w.cancel().is_some());
+        release.send(()).unwrap();
+        delta_wait(|| {
+            !w.maint
+                .evidence
+                .as_ref()
+                .unwrap()
+                .run_write_failures()
+                .is_empty()
+        })
+        .await;
+        assert!(w.file.load().job().get("pendingTombstone").truthy());
+        let (_copy, restarted) = delta_restart(&w, port, false).await;
+        let store = restarted.maint.evidence.as_ref().unwrap();
+        store.inject_run_write_error(true);
+        let recovery = restarted.spawn_recover().unwrap();
+        delta_wait(|| !store.run_write_failures().is_empty()).await;
+        assert_eq!(restarted.job().get("phase").as_str(), Some("Finalizing"));
+        assert!(restarted.job().get("finishedAt").is_nullish());
+        assert!(restarted.maint.local_held());
+        store.inject_run_write_error(false);
+        tokio::time::timeout(Duration::from_secs(4), recovery)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(restarted.job().get("status").as_str(), Some("failed"));
+        assert!(!restarted.maint.local_held());
+        w.maint
+            .evidence
+            .as_ref()
+            .unwrap()
+            .inject_run_write_error(false);
+        delta_wait(|| !w.maint.local_held()).await;
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_decided_save_failure_recovers_the_same_passed_outcome() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("models.ini"), INI).unwrap();
+        let (port, _) = synthetic_engine(d.path().join("models.ini"), false).await;
+        let w = worker(d.path(), port);
+        w.terminal_error.store(true, Ordering::Release);
+        w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        delta_wait(|| w.file.load().job().get("terminalDecision").as_str() == Some("passed")).await;
+        assert_eq!(w.job().get("phase").as_str(), Some("Finalizing"));
+        assert!(w.job().get("finishedAt").is_nullish());
+        assert!(w.maint.local_held());
+        assert!(w.cancel().is_none());
+        assert!(w.launch("synthetic", plan(32768.0, 120.0)).await.is_err());
+        let (_copy, restarted) = delta_restart(&w, port, true).await;
+        restarted.terminal_error.store(true, Ordering::Release);
+        let recovery = restarted.spawn_recover().unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(restarted.maint.local_held());
+        assert_eq!(restarted.job().get("status").as_str(), Some("running"));
+        restarted.terminal_error.store(false, Ordering::Release);
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+        assert!(
+            restarted.maint.local_held(),
+            "a passed decision waits for ledger hydration without erasing history"
+        );
+        assert_eq!(restarted.job().get("phase").as_str(), Some("Finalizing"));
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let path = restarted
+                .maint
+                .evidence
+                .as_ref()
+                .unwrap()
+                .file()
+                .parent()
+                .unwrap()
+                .join("run-state.json");
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        restarted.interrupt_fence_wait();
+        tokio::time::timeout(Duration::from_secs(4), recovery)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(restarted.job().get("status").as_str(), Some("passed"));
+        assert_eq!(
+            restarted.file.load().job().get("status").as_str(),
+            Some("passed")
+        );
+        assert!(restarted
+            .file
+            .load()
+            .job()
+            .get("pendingTombstone")
+            .is_nullish());
+        assert!(!restarted.maint.local_held());
+        assert!(
+            matches!(restarted.history("synthetic"), JValue::Arr(h) if !h.is_empty()),
+            "valid passed history survives the read denial"
+        );
+        w.terminal_error.store(false, Ordering::Release);
+        w.interrupt_fence_wait();
+        delta_wait(|| !w.maint.local_held()).await;
+        assert_eq!(w.job().get("status").as_str(), Some("passed"));
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_transient_ledger_read_denial_rehydrates_without_recreating_the_worker() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("models.ini"), INI).unwrap();
+        let (port, _) = synthetic_engine(d.path().join("models.ini"), false).await;
+        let w = worker(d.path(), port);
+        delta_pending(&w, "denied-read");
+        let ledger = w
+            .maint
+            .evidence
+            .as_ref()
+            .unwrap()
+            .file()
+            .parent()
+            .unwrap()
+            .join("run-state.json");
+        drop(w);
+        std::fs::set_permissions(&ledger, std::fs::Permissions::from_mode(0o0)).unwrap();
+        assert_eq!(
+            std::fs::read(&ledger).unwrap_err().kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
+        let w = worker(d.path(), port);
+        let recovery = w.spawn_recover().unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(w.maint.local_held());
+        assert!(w.launch("synthetic", plan(32768.0, 120.0)).await.is_err());
+        std::fs::set_permissions(&ledger, std::fs::Permissions::from_mode(0o600)).unwrap();
+        w.interrupt_fence_wait();
+        tokio::time::timeout(Duration::from_secs(4), recovery)
+            .await
+            .expect("repaired read hydrates the same registry")
+            .unwrap();
+        let saved: Value = serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
+        assert_eq!(saved["models"]["synthetic"]["generation"], 2);
+        assert_eq!(saved["models"]["synthetic"]["tombstoned"], true);
+        assert!(!w.maint.local_held());
+        w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        w.cancel();
+        settled(&w).await;
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_aborted_recovery_can_retry_on_the_same_worker_without_releasing_early() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("models.ini"), INI).unwrap();
+        let (port, _) = synthetic_engine(d.path().join("models.ini"), false).await;
+        let w = worker(d.path(), port);
+        delta_pending(&w, "aborted-recovery");
+        let w = with_limits(&w, w.limits);
+        let store = w.maint.evidence.as_ref().unwrap();
+        store.inject_run_write_error(true);
+        let recovery = w.spawn_recover().unwrap();
+        delta_wait(|| !store.run_write_failures().is_empty()).await;
+        let attempts = store.run_write_failures().len();
+        assert!(w.cancel().is_none());
+        delta_wait(|| store.run_write_failures().len() > attempts).await;
+        recovery.abort();
+        assert!(recovery.await.unwrap_err().is_cancelled());
+        assert!(w.maint.local_held());
+        assert!(w.launch("synthetic", plan(32768.0, 120.0)).await.is_err());
+        store.inject_run_write_error(false);
+        assert!(
+            tokio::time::timeout(Duration::from_secs(4), w.recover())
+                .await
+                .unwrap()
+                .is_some(),
+            "aborted recovery releases its launch slot for retry"
+        );
+        assert!(!w.maint.local_held());
+        assert_eq!(w.job().get("status").as_str(), Some("failed"));
+        w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        w.cancel();
+        settled(&w).await;
+    }
+
+    // SERIAL_WRITER_REGRESSIONS_BEGIN
+    fn pause_commit(
+        w: &Worker,
+    ) -> (
+        std::sync::mpsc::Receiver<()>,
+        std::sync::mpsc::Sender<()>,
+        std::sync::mpsc::Receiver<()>,
+    ) {
+        let (entered, ready) = std::sync::mpsc::channel();
+        let (release, wait) = std::sync::mpsc::channel();
+        let (done, finished) = std::sync::mpsc::channel();
+        *w.file.commit_pause.lock().unwrap() = Some((entered, wait, done));
+        (ready, release, finished)
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_aborted_recovery_commit_cannot_overwrite_a_new_run() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("models.ini"), INI).unwrap();
+        let (port, seen) = synthetic_engine(d.path().join("models.ini"), true).await;
+        let w = worker(d.path(), port);
+        delta_pending(&w, "stalled-old-recovery");
+        let w = with_limits(&w, w.limits);
+        let (ready, release, done) = pause_commit(&w);
+        let first = w.spawn_recover().unwrap();
+        delta_wait(|| ready.try_recv().is_ok()).await;
+        // The old writer has passed its permission check and written/fsynced its temporary file.
+        first.abort();
+        assert!(first.await.unwrap_err().is_cancelled());
+        let mut retry = w.spawn_recover().expect("the recovery slot is retryable");
+        let overtook = tokio::time::timeout(Duration::from_millis(100), &mut retry)
+            .await
+            .is_ok();
+        let mut release = Some(release);
+        if !overtook {
+            assert!(w.maint.local_held());
+            assert!(w.launch("synthetic", plan(32768.0, 120.0)).await.is_err());
+            release.take().unwrap().send(()).unwrap();
+            tokio::time::timeout(Duration::from_secs(4), &mut retry)
+                .await
+                .unwrap()
+                .unwrap();
+        }
+        let next = w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        released(&seen, "POST /v1/chat/completions").await;
+        // Freeze normal checkpoints after the successor is durable. The broken recovery writer
+        // bypasses this lock; its stale rename must be observed before another checkpoint hides it.
+        let writes = Arc::clone(&w.writes);
+        let (entered, locked) = std::sync::mpsc::channel();
+        let (unlock, wait) = std::sync::mpsc::channel();
+        let checkpoint_block = tokio::task::spawn_blocking(move || {
+            let _writer = writes.lock().unwrap();
+            entered.send(()).unwrap();
+            let _ = wait.recv_timeout(Duration::from_secs(10));
+        });
+        delta_wait(|| locked.try_recv().is_ok()).await;
+        if let Some(release) = release {
+            release.send(()).unwrap();
+        }
+        delta_wait(|| done.try_recv().is_ok()).await;
+        let latest = w.file.load().job().get("id").clone();
+        let (_copy, restarted) = delta_restart(&w, port, false).await;
+        unlock.send(()).unwrap();
+        checkpoint_block.await.unwrap();
+        w.cancel();
+        settled(&w).await;
+        assert_eq!(
+            latest,
+            *next.get("id"),
+            "an old permitted recovery cannot overwrite the newest job"
+        );
+        assert!(!overtook, "retry waits for the unresolved blocking writer");
+        restarted.recover().await;
+        assert_eq!(restarted.job().get("id"), next.get("id"));
+        assert_eq!(restarted.job().get("status").as_str(), Some("interrupted"));
+    }
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_slow_decided_save_retains_exactly_one_blocking_operation_and_snapshot() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("models.ini"), INI).unwrap();
+        let w = worker(d.path(), 9);
+        let w = with_limits(
+            &w,
+            Limits {
+                finalize: Duration::from_millis(10),
+                ..w.limits
+            },
+        );
+        w.maint
+            .evidence
+            .as_ref()
+            .unwrap()
+            .admit_run("synthetic", "slow-decision")
+            .unwrap();
+        let mut state = State::empty();
+        state.set_job(JValue::obj([
+            ("id", JValue::Str("slow-decision".into())),
+            ("model", JValue::Str("synthetic".into())),
+            ("status", JValue::Str("passed".into())),
+            ("finishedAt", JValue::Num(100.0)),
+            ("pendingTombstone", JValue::Bool(true)),
+            ("terminalDecision", JValue::Str("passed".into())),
+        ]));
+        w.file.save(&state).unwrap();
+        let object = w.with(|i| {
+            i.state = state.clone();
+            i.active = true;
+            i.decided = true;
+            i.job_object
+        });
+        *w.local_fence.lock().unwrap() =
+            super::super::gate::AdmissionFence::reserve(Arc::clone(&w.maint.local));
+        let (ready, release, done) = pause_commit(&w);
+        let worker = Arc::clone(&w);
+        let task = tokio::spawn(async move { worker.complete_decision(state, object).await });
+        delta_wait(|| ready.try_recv().is_ok()).await;
+        tokio::time::pause();
+        for _ in 0..32 {
+            tokio::time::advance(Duration::from_secs(120)).await;
+            for _ in 0..4 {
+                tokio::task::yield_now().await;
+            }
+        }
+        let outstanding = w.save_counts.outstanding.load(Ordering::Acquire);
+        let snapshots = w.save_counts.snapshots.load(Ordering::Acquire);
+        let peak = w.save_counts.peak.load(Ordering::Acquire);
+        let dispatched = w.save_counts.dispatched.load(Ordering::Acquire);
+        let held = w.maint.local_held();
+        let status = w.job();
+        tokio::time::resume();
+        release.send(()).unwrap();
+        delta_wait(|| done.try_recv().is_ok()).await;
+        if outstanding != 1 || snapshots != 1 || peak != 1 || dispatched != 1 {
+            task.abort();
+            let _ = task.await;
+            delta_wait(|| w.save_counts.outstanding.load(Ordering::Acquire) == 0).await;
+        } else {
+            tokio::time::timeout(Duration::from_secs(4), task)
+                .await
+                .unwrap()
+                .unwrap();
+        }
+        assert_eq!(
+            outstanding, 1,
+            "only one blocking operation survives repeated deadline observations"
+        );
+        assert_eq!(snapshots, 1, "only one blocking snapshot is retained");
+        assert_eq!(peak, 1);
+        assert_eq!(dispatched, 1);
+        assert!(held);
+        assert_eq!(status.get("phase").as_str(), Some("Finalizing"));
+        assert!(status.get("finishedAt").is_nullish());
+        assert_eq!(w.job().get("status").as_str(), Some("passed"));
+        assert!(!w.maint.local_held());
+        assert_eq!(w.file.load().job().get("status").as_str(), Some("passed"));
+        assert_eq!(
+            w.save_counts.dispatched.load(Ordering::Acquire),
+            2,
+            "one intent commit and one final commit"
+        );
+        assert_eq!(w.save_counts.snapshots.load(Ordering::Acquire), 0);
+    }
+    // SERIAL_WRITER_REGRESSIONS_END
+
+    // SETTLEMENT_DELTA_REGRESSIONS_END
+
+    // SETTLEMENT_REGRESSIONS_END
+    // REVIEW_REGRESSIONS_END
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_synthetic_run_searches_writes_the_verified_size_and_records_history() {
@@ -2402,6 +4481,7 @@ mod tests {
         assert!(steps
             .iter()
             .all(|s| matches!(s.get("status").as_str(), Some("passed" | "failed"))));
+        released(&seen, "DELETE /gate/v1/maintenance/").await;
         assert!(seen
             .lock()
             .unwrap()
@@ -2647,8 +4727,9 @@ mod tests {
         use http_body_util::BodyExt;
         let seen = Arc::new(Mutex::new(Vec::new()));
         let log = Arc::clone(&seen);
+        let held = Arc::new(AtomicBool::new(false));
         let app = axum::Router::new().fallback(move |req: Request<Body>| {
-            let (log, ended) = (Arc::clone(&log), Arc::clone(&ended));
+            let (log, ended, held) = (Arc::clone(&log), Arc::clone(&ended), Arc::clone(&held));
             async move {
                 let (parts, body) = req.into_parts();
                 let body = body.collect().await.map(|b| b.to_bytes()).unwrap_or_default();
@@ -2658,6 +4739,9 @@ mod tests {
                     .ok()
                     .and_then(|v| v["maxMs"].as_u64());
                 let (code, out) = match (parts.method.as_str(), parts.uri.path()) {
+                    ("POST", "/internal/model-maintenance/lease") if held.swap(true, Ordering::AcqRel) => (
+                        409, json!({"error": "Busy"}),
+                    ),
                     ("POST", "/internal/model-maintenance/lease") => (
                         201,
                         json!({"lease": "fedcba9876543210fedcba9876543210", "ttlMs": 180000, "renewMs": 20,
@@ -2665,12 +4749,17 @@ mod tests {
                     ),
                     ("POST", p) if p.ends_with("/renew") => {
                         if ended.load(Ordering::Acquire) {
+                            held.store(false, Ordering::Release);
                             (404, json!({"error": "Not found"}))
                         } else {
                             (200, json!({}))
                         }
                     }
-                    ("DELETE", _) => (204, json!({})),
+                    ("DELETE", _) => {
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        held.store(false, Ordering::Release);
+                        (204, json!({}))
+                    },
                     ("POST", "/internal/model-maintenance/load-refusal") => (200, json!({"refusal": null})),
                     _ => (404, json!({"error": "Not found"})),
                 };
@@ -2731,6 +4820,7 @@ mod tests {
         w.launch("synthetic", p).await.unwrap();
         let job = settled(&w).await;
         assert_eq!(job.get("status").as_str(), Some("passed"), "{job:?}");
+        released(&seen, "DELETE /internal/model-maintenance/lease/").await;
         let log = seen.lock().unwrap().clone();
         assert_eq!(
             log[0],
@@ -2739,6 +4829,26 @@ mod tests {
         assert!(log
             .iter()
             .any(|l| l.starts_with("DELETE /internal/model-maintenance/lease/")));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_finished_job_restarts_without_busy_while_core_lease_release_is_delayed() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (port, _) = synthetic_engine(ini, false).await;
+        let (lease, _) = lease_stub(None, Arc::new(AtomicBool::new(false))).await;
+        let w = worker_with(d.path(), port, Some(lease));
+        w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        let job = settled(&w).await;
+        let saved = w.file.load();
+        assert_eq!(saved.job().get("finishedAt"), job.get("finishedAt"));
+        assert!(matches!(saved.job().get("originalText"), JValue::Undefined));
+        // No event wait or private local-held observation: public completion must suffice.
+        let next = w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        assert_ne!(next.get("id"), job.get("id"));
+        let _ = w.cancel();
+        settled(&w).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -2867,7 +4977,8 @@ mod tests {
         let more = w.worst_case(&p, 6);
         assert_eq!(more - at, base.unload * 2);
         assert_eq!(w.worst_case(&p, 0), w.worst_case(&p, 1));
-        // The fixed request timeouts and the margin, with every limit at zero.
+        // The fixed request timeouts and margin, with every step limit at zero.
+        // Finalization keeps its separate bounded cleanup budget.
         let zero = Limits {
             load: Duration::ZERO,
             smoke: Duration::ZERO,
@@ -2880,6 +4991,7 @@ mod tests {
             memory_settle: Duration::ZERO,
             exclusion_poll: Duration::ZERO,
             save_retry: Duration::ZERO,
+            finalize: base.finalize,
         };
         let listing = super::super::router::DEFAULT_TIMEOUT;
         let step_fixed = listing * 3 + RELOAD + LOAD_CHECK + LOAD_REQUEST + listing * 2;

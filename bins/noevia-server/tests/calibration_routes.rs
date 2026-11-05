@@ -62,13 +62,69 @@ fn core_untouched(up: &Upstream) {
 async fn settled(f: &Front) -> Value {
     for _ in 0..300 {
         let (_, v) = get(f.addr, PATH, ADMIN).await;
-        // A run sets its status before its last reads; it is over once it has finishedAt.
+        // Terminal status and finishedAt are published together after bounded cleanup.
         if v["job"]["status"] != "running" && v["job"].get("finishedAt").is_some() {
             return v["job"].clone();
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     panic!("the job never settled")
+}
+
+/// Completion is a public persistence/admission boundary, including when the last save fails.
+/// A directory at the state-file destination deterministically refuses the final atomic rename.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn finished_status_has_a_final_saved_record_and_admits_the_next_start() {
+    let (d, f, _up, e) = rig().await;
+    assert_eq!(write(f.addr, "POST", PATH, ADMIN, ASK).await.0, 202);
+    let path = cal::state_file(d.path(), &e);
+    tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            let saved: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+            if saved["job"]["originalText"].is_string() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let backup = path.with_extension("blocked-save-backup");
+    std::fs::rename(&path, &backup).unwrap();
+    std::fs::create_dir(&path).unwrap();
+    assert_eq!(
+        write(f.addr, "POST", "/api/models/calibration/cancel", ADMIN, "")
+            .await
+            .0,
+        202
+    );
+    // The raw outcome may be cancelled, but clients must see no terminal status until the
+    // final saved record and admission release are published together.
+    let until = tokio::time::Instant::now() + Duration::from_secs(1);
+    while tokio::time::Instant::now() < until {
+        let (_, v) = get(f.addr, PATH, ADMIN).await;
+        assert_eq!(v["job"]["status"], "running", "{v}");
+        assert!(v["job"].get("finishedAt").is_none(), "{v}");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    std::fs::remove_dir(&path).unwrap();
+    std::fs::rename(&backup, &path).unwrap();
+    let job = settled(&f).await;
+    let saved: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert_eq!(saved["job"]["id"], job["id"]);
+    assert_eq!(saved["job"]["finishedAt"], job["finishedAt"]);
+    assert!(saved["job"].get("originalText").is_none());
+    // No sleep, task counter or private admission observation between status and public start.
+    let (status, next) = write(f.addr, "POST", PATH, ADMIN, ASK).await;
+    assert_eq!(status, 202, "{next}");
+    assert_ne!(next["id"], job["id"]);
+    assert_eq!(
+        write(f.addr, "POST", "/api/models/calibration/cancel", ADMIN, "")
+            .await
+            .0,
+        202
+    );
+    settled(&f).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -97,9 +153,22 @@ async fn a_launch_runs_in_the_front_under_the_gate_and_its_state_is_private() {
     assert_eq!(v["job"]["status"], "running");
     assert_eq!(v["history"], json!([]));
     assert!(v["job"].get("originalText").is_none());
-    let file: Value =
-        serde_json::from_str(&std::fs::read_to_string(cal::state_file(d.path(), &e)).unwrap())
+    // Preparing is saved before the async unload and original-profile capture, as in Node.
+    // Wait for that capture before examining the private running record.
+    let file: Value = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let file: Value = serde_json::from_str(
+                &std::fs::read_to_string(cal::state_file(d.path(), &e)).unwrap(),
+            )
             .unwrap();
+            if file["job"]["originalText"].is_string() {
+                break file;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
     assert!(file["job"]["originalText"].is_string());
     // Cancelled through the native cancel route; the profile goes back.
     let (s, _) = write(f.addr, "POST", "/api/models/calibration/cancel", ADMIN, "").await;
@@ -476,6 +545,12 @@ async fn boot_recovery_whose_save_fails_keeps_the_interrupted_job_and_saves_it_o
     env.push(("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()));
     let f = front_env(d.path(), true, &env).await;
     let worker = f.app.config.calibration.clone().unwrap();
+    // This fixture fails calibration-state writes, while the mandatory evidence fence remains
+    // writable in its independent child directory (as the preset file already does).
+    let evidence_file = f.app.config.maint.evidence.as_ref().unwrap().file();
+    let evidence_dir = evidence_file.parent().unwrap();
+    std::fs::create_dir_all(evidence_dir).unwrap();
+    std::fs::set_permissions(evidence_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
     // Storage fails: the data directory takes no new file (the save's temp file).
     let mode = Mode(d.path().to_path_buf());
     std::fs::set_permissions(d.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
@@ -532,6 +607,18 @@ async fn boot_recovery_whose_save_fails_keeps_the_interrupted_job_and_saves_it_o
     // And a launch runs.
     let (s, v) = write(f.addr, "POST", PATH, ADMIN, ASK).await;
     assert_eq!(s, 202, "{v}");
+    // Cancellation's bounded compare-and-abort retries legitimately refuse a constantly
+    // changing start snapshot. Wait for the fixture's pending long request, not a fixed delay.
+    assert!(
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while !e.stream_started.load(Ordering::Acquire) {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .is_ok(),
+        "the recovered worker starts the successor's long request"
+    );
     let (s, _) = write(f.addr, "POST", "/api/models/calibration/cancel", ADMIN, "").await;
     assert_eq!(s, 202);
     let job = settled(&f).await;

@@ -18,7 +18,8 @@ const ALLOWLIST: &[(&str, [usize; 5])] = &[
     ("crates/mem-return/src/lib.rs", [1, 0, 1, 1, 0]),
     ("crates/gguf-memtest/tests/hostile.rs", [2, 3, 5, 1, 0]),
     ("crates/sqlite-vec-loader/src/lib.rs", [2, 0, 4, 1, 0]),
-    ("bins/dav-parse-wasm/src/lib.rs", [0, 0, 0, 49, 50]),
+    // 50 exports, each one `#[allow(unsafe_code)]` + `#[no_mangle]`; main #2295 added `autotune_scan`.
+    ("bins/dav-parse-wasm/src/lib.rs", [0, 0, 0, 50, 50]),
     ("bins/sandbox-bridge-wasm/src/lib.rs", [0, 0, 0, 10, 10]),
 ];
 #[derive(Default)]

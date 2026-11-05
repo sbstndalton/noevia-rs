@@ -6,7 +6,7 @@
 //! issued for (Node's per-process HMAC), so a launch or an abort applies only to the exact job,
 //! controller, listing row and prepared profile the route checked.
 
-use super::calibration_worker::{id_of, public, Plan, Refusal, Worker};
+use super::calibration_worker::{id_of, visible_job, Plan, Refusal, Worker};
 use super::evidence as ev;
 use js_json::{wtf16, JValue};
 use serde_json::Value;
@@ -158,11 +158,11 @@ impl Worker {
     /// `stateFacts()`: `{ token, starting, job, history }`.
     pub fn state_facts(&self) -> JValue {
         let token = self.launch_token();
-        self.with(|i| {
+        let mut facts = self.with(|i| {
             obj(vec![
                 ("token", JValue::Str(token)),
                 ("starting", JValue::Bool(i.launching)),
-                ("job", public(i.state.job())),
+                ("job", visible_job(i)),
                 (
                     "history",
                     match i.state.get("history") {
@@ -171,7 +171,12 @@ impl Worker {
                     },
                 ),
             ])
-        })
+        });
+        let history = self.filtered_history(facts.get("history").clone());
+        if let JValue::Obj(fields) = &mut facts {
+            wtf16::set(fields, "history", history);
+        }
+        facts
     }
 
     /// `listingFacts(model, token)`: `{ stale }`, `{ backend: false }`, or the row, whether it is a
@@ -434,8 +439,9 @@ impl Worker {
                 ("reason", JValue::Str(reason.into())),
             ])
         };
-        let busy =
-            self.with(|i| i.launching || i.state.job().get("status").as_str() == Some("running"));
+        let busy = self.with(|i| {
+            i.launching || i.active || i.state.job().get("status").as_str() == Some("running")
+        });
         if busy || token != self.launch_token() {
             return Ok(refused("stale"));
         }
@@ -544,19 +550,31 @@ impl Worker {
     pub fn compare_and_abort(&self, token: &str) -> JValue {
         // During the boot recovery the job is the file's, with no run to stop: not applied (the route
         // retries, then answers unavailable), never a false success.
-        if token != self.cancel_token() || self.with(|i| i.recovering || i.state.job().is_nullish())
-        {
+        if token != self.cancel_token() || self.with(|i| i.state.job().is_nullish()) {
             return obj(vec![("applied", JValue::Bool(false))]);
         }
         let generation = self.cancel_generation();
         let job = self.with(|i| {
-            let job = public(i.state.job());
+            if i.recovering
+                || i.decided
+                || (!i.active && i.state.job().get("status").as_str() != Some("running"))
+            {
+                self.interrupt_fence_wait();
+                return None;
+            }
+            let job = visible_job(i);
+            if i.state.job().get("phase").as_str() == Some("Finalizing") {
+                self.interrupt_fence_wait();
+            }
             i.cancel_requested = true;
             if let Some(a) = &i.inflight {
                 a.abort();
             }
-            job
+            Some(job)
         });
+        let Some(job) = job else {
+            return obj(vec![("applied", JValue::Bool(false))]);
+        };
         obj(vec![
             ("applied", JValue::Bool(true)),
             ("job", job),
