@@ -250,3 +250,19 @@ fn deleted_account_after_open_is_not_recreated() {
     assert!(s.create(ID, "p", vec![], 1).is_err());
     assert!(!dir.path().join("users").join(USER).exists());
 }
+#[test]
+fn valid_terminal_json_without_a_newline_still_refuses_an_append() {
+    let (dir, s) = setup(Surface::Code);
+    s.create(ID, "p", vec![], 1).unwrap();
+    s.append(ID, "job.completed", empty(), 2).unwrap();
+    let mut bytes = fs::read(path(dir.path())).unwrap();
+    assert_eq!(bytes.pop(), Some(b'\n'));
+    fs::write(path(dir.path()), &bytes).unwrap();
+    assert!(matches!(
+        s.append(ID, "job.started", empty(), 3),
+        Err(Error::Finished)
+    ));
+    assert_eq!(fs::read(path(dir.path())).unwrap(), bytes);
+    assert_eq!(s.recover(4).unwrap(), 0);
+    assert_eq!(fs::read(path(dir.path())).unwrap(), bytes);
+}

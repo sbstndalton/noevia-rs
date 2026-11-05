@@ -274,10 +274,9 @@ fn read(file: &mut fs::File, id: &str) -> Result<(Vec<JValue>, u64), Error> {
     if end != bytes.len() && rows.first().is_some_and(|r| r.get("hash").truthy()) {
         return Err(Error::Unreadable);
     }
-    let complete = bytes.get(..end).ok_or(Error::Unreadable)?;
-    let Parsed::Rows(rows) = parse_rows(id, complete) else {
-        return Err(Error::Unreadable);
-    };
+    // Node checks state and computes the next sequence from every valid parsed row, even a
+    // complete final JSON value with no newline. Only the physical append truncates that tail.
+    // In particular a terminal tail must never be discarded before the finished-state check.
     Ok((rows, end as u64))
 }
 fn write_event(file: &mut fs::File, event: &JValue) -> Result<(), Error> {
