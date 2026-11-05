@@ -198,6 +198,10 @@ pub struct Worker {
     limits: Limits,
     /// The per-process salt of the facts tokens (Node's `launchSalt` / `cancelSalt`).
     pub(super) salt: String,
+    /// Runs whose task has not returned yet: a run publishes `finishedAt`, then saves the state
+    /// file and gives its hold back, so a test waits for this to reach 0 before reading either.
+    #[cfg(test)]
+    runs: std::sync::atomic::AtomicUsize,
 }
 
 /// The job keys the bridge and the public routes may show (`cancellationFacts`).
@@ -368,6 +372,8 @@ impl Worker {
                 unsaved: false,
             }),
             salt: random_hex(32),
+            #[cfg(test)]
+            runs: std::sync::atomic::AtomicUsize::new(0),
             memory,
             floor_gib,
             limits,
@@ -1656,7 +1662,13 @@ impl Worker {
         // The file now has this job: nothing recovered is left to save.
         self.with(|i| i.unsaved = false);
         let worker = Arc::clone(self);
-        tokio::spawn(async move { worker.run(hold).await });
+        #[cfg(test)]
+        worker.runs.fetch_add(1, Ordering::AcqRel);
+        tokio::spawn(async move {
+            worker.run(hold).await;
+            #[cfg(test)]
+            worker.runs.fetch_sub(1, Ordering::AcqRel);
+        });
         Ok(self.job())
     }
 
@@ -2343,9 +2355,11 @@ mod tests {
     async fn settled(w: &Worker) -> JValue {
         for _ in 0..600 {
             let job = w.job();
-            // A run sets its status before its last reads; it is over once it has finishedAt.
+            // A run sets its status before its last reads; it is over once it has finishedAt and
+            // its task has returned (after the final save and the hold's release).
             if job.get("status").as_str() != Some("running")
                 && !matches!(job.get("finishedAt"), JValue::Undefined)
+                && w.runs.load(Ordering::Acquire) == 0
             {
                 return job;
             }
