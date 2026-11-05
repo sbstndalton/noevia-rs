@@ -62,7 +62,7 @@ const MIGRATE = {
   // A null in files makes the reconcile throw unless the load dropped it first.
   'mig-files-null-skill': S({ projects: [bare('fs', { modes: ['chat'], files: [null, { name: 'x/SKILL.md', textRef: 'a'.repeat(64), chars: 40, skillHeader: true }] }), bare('ok', { modes: ['chat'] })] }),
   // #1806: text kept inline moves to its own file, with a backup of projects.json first.
-  'mig-inline': S({ projects: [bare('inl', { modes: ['chat'], files: [{ name: 'a.txt', content: 'hello' }, { name: 's/SKILL.md', content: '---\nname: x\ndescription: d\n---\nBody' }, { name: 'e.txt', content: '' }, { name: 'n.txt', content: 5 }, { name: 'u.txt', content: 'café 😀 \ud800' }] }), bare('other', { modes: ['chat'] })] }),
+  'mig-inline': S({ projects: [bare('inl', { modes: ['chat'], files: [{ name: 'a.txt', content: 'hello', textRef: 'c'.repeat(64), chars: 99, skillHeader: true }, { name: 's/SKILL.md', content: '---\nname: x\ndescription: d\n---\nBody' }, { name: 'e.txt', content: '' }, { name: 'n.txt', content: 5 }, { name: 'u.txt', content: 'café 😀 \ud800' }] }), bare('other', { modes: ['chat'] })] }),
   'mig-everything': S({ projects: [bare('all', { modes: ['code'], provider: 'lemonade', files: [null, { name: 'a.txt', content: 'hi' }] }), HEAL('cowork-chat-context-h2')] }),
   // project-modes.cjs migrate() accepts any object, an array included (it sets a property JSON never carries).
   'mig-before-reconcile-error': S({ projects: [bare('bad-files', { modes: ['code'], files: {} })] }),

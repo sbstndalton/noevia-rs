@@ -180,13 +180,16 @@ fn externalize_all(dir: &Path, projects: &mut [JValue]) -> std::io::Result<()> {
             let reference = lifecycle::sha_hex_bytes(bytes.as_bytes());
             lifecycle::write_text(dir, &id, &reference, &bytes)?;
             if let JValue::Obj(items) = f {
-                items.retain(|(k, _)| k != "content" && k != "skillHeader");
-                items.push(("textRef".into(), JValue::Str(reference)));
-                #[allow(clippy::cast_precision_loss)]
-                items.push(("chars".into(), JValue::Num(wtf16::len(&text) as f64)));
-                if lifecycle::header_names_skill(&text) {
-                    items.push(("skillHeader".into(), JValue::Bool(true)));
-                }
+                items.retain(|(k, _)| k != "content");
+            }
+            store::set(f, "textRef", JValue::Str(reference));
+            #[allow(clippy::cast_precision_loss)]
+            let chars = JValue::Num(wtf16::len(&text) as f64);
+            store::set(f, "chars", chars);
+            if lifecycle::header_names_skill(&text) {
+                store::set(f, "skillHeader", JValue::Bool(true));
+            } else if let JValue::Obj(items) = f {
+                items.retain(|(k, _)| k != "skillHeader");
             }
         }
     }
