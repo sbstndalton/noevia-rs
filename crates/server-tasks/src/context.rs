@@ -122,6 +122,12 @@ impl Context for JournalContext {
     fn now(&self) -> i64 {
         self.clock.now()
     }
+    fn end_approvals(&self) {
+        let _ = self
+            .account
+            .control
+            .end_approvals(self.scope(), self.task());
+    }
 }
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::panic)]
@@ -201,5 +207,180 @@ mod tests {
             .control
             .begin(scope, "33333333-3333-4333-8333-333333333333".into())
             .is_ok());
+    }
+    #[tokio::test]
+    async fn engine_stop_then_checkpoint_then_approval_drain_precedes_the_terminal_event() {
+        use tokio::{
+            io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+            net::{
+                tcp::{OwnedReadHalf, OwnedWriteHalf},
+                TcpListener,
+            },
+        };
+        async fn read(reader: &mut BufReader<OwnedReadHalf>) -> JValue {
+            let mut line = String::new();
+            assert!(reader.read_line(&mut line).await.unwrap() > 0);
+            js_json::wtf16::parse(&line).unwrap()
+        }
+        async fn send(writer: &mut OwnedWriteHalf, value: JValue) {
+            writer
+                .write_all((js_json::wtf16::stringify(&value).unwrap() + "\n").as_bytes())
+                .await
+                .unwrap();
+        }
+        fn object(rows: Vec<(&str, JValue)>) -> JValue {
+            JValue::Obj(rows.into_iter().map(|(k, v)| (k.into(), v)).collect())
+        }
+        fn reply(request: &JValue, result: JValue) -> JValue {
+            object(vec![
+                ("jsonrpc", text("2.0")),
+                ("id", request.get("id").clone()),
+                ("result", result),
+            ])
+        }
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("users").join(USER)).unwrap();
+        let account = Arc::new(
+            Account::open(
+                root.path(),
+                USER,
+                &CodeConfig::from_env(|_| None),
+                "epoch".into(),
+                1,
+            )
+            .unwrap(),
+        );
+        let scope = Scope {
+            user: USER.into(),
+            project: "project".into(),
+            surface: Surface::Code,
+        };
+        let guard = account.control.begin(scope.clone(), TASK.into()).unwrap();
+        account
+            .create(Surface::Code, TASK, "project", vec![text("edit_file")], 1)
+            .unwrap();
+        let context = Arc::new(
+            JournalContext::new(
+                account.clone(),
+                guard,
+                Arc::new(SystemClock),
+                Duration::from_secs(30),
+            )
+            .unwrap(),
+        );
+        context.event("job.started", object(vec![])).unwrap();
+        let session = Arc::new(Session::new(
+            TASK.into(),
+            root.path().into(),
+            vec!["edit_file".into()],
+            vec![],
+            context.clone(),
+        ));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = listener.local_addr().unwrap().to_string();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let (read_half, mut writer) = stream.into_split();
+            let mut reader = BufReader::new(read_half);
+            assert_eq!(
+                read(&mut reader).await.get("noevia").as_str(),
+                Some("start")
+            );
+            let init = read(&mut reader).await;
+            send(
+                &mut writer,
+                reply(&init, object(vec![("protocolVersion", JValue::Num(1.0))])),
+            )
+            .await;
+            let new = read(&mut reader).await;
+            send(
+                &mut writer,
+                reply(&new, object(vec![("sessionId", text("session"))])),
+            )
+            .await;
+            let prompt = read(&mut reader).await;
+            let permission=js_json::wtf16::parse(r#"{"jsonrpc":"2.0","id":99,"method":"session/request_permission","params":{"toolCall":{"kind":"edit","rawInput":{"path":"source.txt"},"locations":[{"path":"source.txt"}]},"options":[{"optionId":"allow","kind":"allow_once"},{"optionId":"reject","kind":"reject_once"}]}}"#).unwrap();
+            send(&mut writer, permission).await;
+            send(
+                &mut writer,
+                reply(&prompt, object(vec![("stopReason", text("end_turn"))])),
+            )
+            .await;
+            let mut line = String::new();
+            assert_eq!(
+                tokio::time::timeout(Duration::from_secs(5), reader.read_line(&mut line))
+                    .await
+                    .unwrap()
+                    .unwrap(),
+                0
+            );
+        });
+        let mut client = crate::acp::Client::connect(
+            crate::acp::Options {
+                endpoint,
+                cwd: root.path().to_string_lossy().into_owned(),
+                env: object(vec![]),
+                session_meta: None,
+                model: None,
+                handshake_timeout: Duration::from_secs(5),
+            },
+            session.clone(),
+            context.cancellation(),
+        )
+        .await
+        .unwrap();
+        client.turn("synthetic").await.unwrap();
+        assert_eq!(account.control.cards(&scope).unwrap().len(), 1);
+        context
+            .event(
+                "checkpoint.created",
+                object(vec![("task", text("synthetic"))]),
+            )
+            .unwrap();
+        client.close().await;
+        assert!(account.control.cards(&scope).unwrap().is_empty());
+        context
+            .event("job.completed", object(vec![("result", JValue::Null)]))
+            .unwrap();
+        let rows = std::fs::read_to_string(
+            root.path()
+                .join("users")
+                .join(USER)
+                .join("jobs")
+                .join(format!("{TASK}.jsonl")),
+        )
+        .unwrap()
+        .lines()
+        .map(|line| js_json::wtf16::parse(line).unwrap())
+        .collect::<Vec<_>>();
+        let types = rows
+            .iter()
+            .map(|row| row.get("type").as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            types,
+            vec![
+                "job.created",
+                "job.started",
+                "approval.requested",
+                "checkpoint.created",
+                "approval.decided",
+                "job.completed"
+            ]
+        );
+        assert_eq!(
+            rows.iter()
+                .find(|row| row.get("type").as_str() == Some("approval.decided"))
+                .unwrap()
+                .get("data")
+                .get("decision")
+                .as_str(),
+            Some("aborted")
+        );
+        assert_eq!(
+            session.summary().unwrap().get("refused").as_num(),
+            Some(1.0)
+        );
+        server.await.unwrap();
     }
 }

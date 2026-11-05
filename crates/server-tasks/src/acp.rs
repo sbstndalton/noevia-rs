@@ -16,6 +16,13 @@ pub trait Handlers: Send + Sync {
     // Prepare synchronously in receive order; only the returned wait may run concurrently.
     fn request(self: Arc<Self>, method: &str, params: JValue) -> HandlerFuture<'static>;
     fn update(&self, update: JValue);
+    fn end(&self) {}
+    fn halted(&self) -> bool {
+        false
+    }
+    fn drain_on_end(&self) -> bool {
+        false
+    }
 }
 #[derive(Debug)]
 pub struct RpcError {
@@ -49,6 +56,7 @@ pub struct Client {
     cancel: watch::Receiver<bool>,
     next: u64,
     was_cancelled: bool,
+    stopped: bool,
     session: JValue,
     model: Option<String>,
     pub agent: JValue,
@@ -109,24 +117,18 @@ impl Client {
         handlers: Arc<dyn Handlers>,
         cancel: watch::Receiver<bool>,
     ) -> Result<Self, Error> {
+        let deadline = tokio::time::Instant::now()
+            .checked_add(options.handshake_timeout)
+            .ok_or(Error::Protocol)?;
         let mut cancelled = cancel.clone();
         if *cancelled.borrow() {
             return Err(Error::Cancelled);
         }
-        tokio::select! {
-            biased;
-            _ = cancelled.changed() => Err(Error::Cancelled),
-            result = tokio::time::timeout(options.handshake_timeout, Self::handshake(options, handlers, cancel)) => result.map_err(|_|Error::HandshakeTimeout)?,
-        }
-    }
-    async fn handshake(
-        options: Options,
-        handlers: Arc<dyn Handlers>,
-        cancel: watch::Receiver<bool>,
-    ) -> Result<Self, Error> {
-        let stream = TcpStream::connect(&options.endpoint)
-            .await
-            .map_err(|_| Error::Unavailable)?;
+        let stream = tokio::select! {biased;
+            _=cancelled.changed()=>return Err(Error::Cancelled),
+            _=tokio::time::sleep_until(deadline)=>return Err(Error::HandshakeTimeout),
+            stream=TcpStream::connect(&options.endpoint)=>stream.map_err(|_|Error::Unavailable)?,
+        };
         let (read, write) = stream.into_split();
         let mut client = Self {
             reader: BufReader::new(read),
@@ -137,19 +139,32 @@ impl Client {
             cancel,
             next: 1,
             was_cancelled: false,
+            stopped: false,
             session: JValue::Null,
-            model: options.model,
+            model: options.model.clone(),
             agent: JValue::Null,
         };
+        let result = tokio::select! {biased;
+            _=cancelled.changed()=>Err(Error::Cancelled),
+            _=tokio::time::sleep_until(deadline)=>Err(Error::HandshakeTimeout),
+            result=client.handshake(options)=>result,
+        };
+        if let Err(error) = result {
+            client.was_cancelled = matches!(error, Error::Cancelled);
+            client.close().await;
+            return Err(error);
+        }
+        Ok(client)
+    }
+    async fn handshake(&mut self, options: Options) -> Result<(), Error> {
         // Must precede initialize: this is the existing supervisor's launch contract.
-        client
-            .send(obj(vec![
-                ("noevia", text("start")),
-                ("cwd", text(&options.cwd)),
-                ("env", options.env),
-            ]))
-            .await?;
-        client.agent = client
+        self.send(obj(vec![
+            ("noevia", text("start")),
+            ("cwd", text(&options.cwd)),
+            ("env", options.env),
+        ]))
+        .await?;
+        self.agent = self
             .request(
                 "initialize",
                 obj(vec![
@@ -174,7 +189,7 @@ impl Client {
                 ]),
             )
             .await?;
-        client.agent = read_agent(&client.agent)?;
+        self.agent = read_agent(&self.agent)?;
         let mut params = vec![
             ("cwd", text(&options.cwd)),
             ("mcpServers", JValue::Arr(vec![])),
@@ -182,15 +197,25 @@ impl Client {
         if let Some(meta) = options.session_meta {
             params.push(("_meta", meta));
         }
-        let session = client.request("session/new", obj(params)).await?;
-        client.session = session.get("sessionId").clone();
-        if !client.session.truthy() {
+        let session = self.request("session/new", obj(params)).await?;
+        self.session = session.get("sessionId").clone();
+        if !self.session.truthy() {
             return Err(Error::Protocol);
         }
-        Ok(client)
+        Ok(())
     }
     /// Consumes the connection, ensuring completion, error and cancellation all close the sandbox.
     pub async fn prompt(mut self, prompt: &str) -> Result<JValue, Error> {
+        let result = self.turn(prompt).await;
+        self.close().await;
+        result
+    }
+    /// One turn stops the engine, retaining callbacks until the actor has recorded its
+    /// checkpoint and calls close from finally, in the legacy journal order.
+    pub async fn turn(&mut self, prompt: &str) -> Result<JValue, Error> {
+        if self.stopped {
+            return Err(Error::Unavailable);
+        }
         let mut params = vec![
             ("sessionId", self.session.clone()),
             (
@@ -207,7 +232,9 @@ impl Client {
                 obj(vec![("noevia", obj(vec![("model", text(model))]))]),
             ));
         }
-        self.request("session/prompt", obj(params)).await
+        let result = self.request("session/prompt", obj(params)).await;
+        self.stop().await;
+        result
     }
     async fn send(&mut self, message: JValue) -> Result<(), Error> {
         let mut line = wtf16::stringify(&message).ok_or(Error::Protocol)?;
@@ -250,6 +277,7 @@ impl Client {
                     if let Some(reply) = reply {
                         let (id, result) = reply.map_err(|_| Error::Protocol)?;
                         self.answer(id, true, result).await?;
+                        if self.callbacks.is_empty()&&self.handlers.halted(){self.was_cancelled=true;return Err(Error::Cancelled);}
                     }
                     continue;
                 },
@@ -404,9 +432,9 @@ impl Client {
     }
 }
 
-impl Drop for Client {
-    fn drop(&mut self) {
-        if (self.was_cancelled || *self.cancel.borrow()) && self.session.truthy() {
+impl Client {
+    fn cancel_notice(&mut self) {
+        if !self.stopped && (self.was_cancelled || *self.cancel.borrow()) && self.session.truthy() {
             let message = obj(vec![
                 ("jsonrpc", text("2.0")),
                 ("method", text("session/cancel")),
@@ -418,6 +446,31 @@ impl Drop for Client {
                 let _ = self.writer.try_write(line.as_bytes());
             }
         }
+    }
+    /// Call from the actor's finally path, before its terminal journal event. Stop the sidecar
+    /// first, then let every aborted approval callback finish recording its decision.
+    pub async fn stop(&mut self) {
+        if self.stopped {
+            return;
+        }
+        self.cancel_notice();
+        let _ = self.writer.shutdown().await;
+        self.stopped = true;
+    }
+    pub async fn close(&mut self) {
+        self.stop().await;
+        self.handlers.end();
+        if self.handlers.drain_on_end() {
+            while self.callbacks.join_next().await.is_some() {}
+        } else {
+            self.callbacks.abort_all();
+        }
+    }
+}
+impl Drop for Client {
+    fn drop(&mut self) {
+        self.cancel_notice();
+        self.handlers.end();
     }
 }
 #[cfg(test)]

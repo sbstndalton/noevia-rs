@@ -1,0 +1,240 @@
+{
+  "calls": [
+    null,
+    {
+      "kind": "execute"
+    },
+    {
+      "kind": "edit"
+    },
+    {
+      "kind": "think"
+    }
+  ],
+  "answers": [
+    {
+      "outcome": "selected",
+      "optionId": "reject",
+      "_meta": {
+        "noevia": {
+          "reason": "noevia refused this malformed tool call (violation 1 of 3). Correct the arguments and call the tool again. Type mismatch at $: expected object. Use one of the ACP tool kinds: read, edit, delete, move, search, execute, think, fetch, switch_mode, other.",
+          "violation": {
+            "type": "schema_violation_correction",
+            "violation": {
+              "message": "Type mismatch at $: expected object",
+              "path": "$"
+            },
+            "tool": "session/request_permission",
+            "kind": null,
+            "hint": "Use one of the ACP tool kinds: read, edit, delete, move, search, execute, think, fetch, switch_mode, other.",
+            "count": 1,
+            "limit": 3,
+            "blocked": false
+          }
+        }
+      }
+    },
+    {
+      "outcome": "selected",
+      "optionId": "reject",
+      "_meta": {
+        "noevia": {
+          "reason": "noevia refused this malformed tool call (violation 2 of 3). Correct the arguments and call the tool again. Missing command at $.rawInput.command. Send the shell command as one non-empty string in rawInput.command.",
+          "violation": {
+            "type": "schema_violation_correction",
+            "violation": {
+              "message": "Missing command at $.rawInput.command",
+              "path": "$.rawInput.command"
+            },
+            "tool": "session/request_permission",
+            "kind": "execute",
+            "hint": "Send the shell command as one non-empty string in rawInput.command.",
+            "count": 2,
+            "limit": 3,
+            "blocked": false
+          }
+        }
+      }
+    },
+    {
+      "outcome": "selected",
+      "optionId": "reject",
+      "_meta": {
+        "noevia": {
+          "reason": "noevia refused this malformed tool call and stopped the task (violation 3 of 3). A edit names no file: missing $.locations[].path. Name the file to change as a non-empty string in locations[].path (or rawInput.path).",
+          "violation": {
+            "type": "schema_violation_correction",
+            "violation": {
+              "message": "A edit names no file: missing $.locations[].path",
+              "path": "$.locations"
+            },
+            "tool": "session/request_permission",
+            "kind": "edit",
+            "hint": "Name the file to change as a non-empty string in locations[].path (or rawInput.path).",
+            "count": 3,
+            "limit": 3,
+            "blocked": true
+          }
+        }
+      }
+    },
+    {
+      "outcome": "selected",
+      "optionId": "reject",
+      "_meta": {
+        "noevia": {
+          "reason": "noevia refused this malformed tool call and stopped the task (violation 3 of 3). A edit names no file: missing $.locations[].path. Name the file to change as a non-empty string in locations[].path (or rawInput.path).",
+          "violation": {
+            "type": "schema_violation_correction",
+            "violation": {
+              "message": "A edit names no file: missing $.locations[].path",
+              "path": "$.locations"
+            },
+            "tool": "session/request_permission",
+            "kind": "edit",
+            "hint": "Name the file to change as a non-empty string in locations[].path (or rawInput.path).",
+            "count": 3,
+            "limit": 3,
+            "blocked": true
+          }
+        }
+      }
+    }
+  ],
+  "events": [
+    {
+      "type": "approval.decided",
+      "data": {
+        "decision": "denied",
+        "action": "external_account",
+        "automatic": true,
+        "reason": "noevia refused this malformed tool call (violation 1 of 3). Correct the arguments and call the tool again. Type mismatch at $: expected object. Use one of the ACP tool kinds: read, edit, delete, move, search, execute, think, fetch, switch_mode, other.",
+        "violation": {
+          "type": "schema_violation_correction",
+          "violation": {
+            "message": "Type mismatch at $: expected object",
+            "path": "$"
+          },
+          "tool": "session/request_permission",
+          "kind": null,
+          "hint": "Use one of the ACP tool kinds: read, edit, delete, move, search, execute, think, fetch, switch_mode, other.",
+          "count": 1,
+          "limit": 3,
+          "blocked": false
+        }
+      }
+    },
+    {
+      "type": "approval.decided",
+      "data": {
+        "decision": "denied",
+        "action": "execute_command",
+        "automatic": true,
+        "reason": "noevia refused this malformed tool call (violation 2 of 3). Correct the arguments and call the tool again. Missing command at $.rawInput.command. Send the shell command as one non-empty string in rawInput.command.",
+        "violation": {
+          "type": "schema_violation_correction",
+          "violation": {
+            "message": "Missing command at $.rawInput.command",
+            "path": "$.rawInput.command"
+          },
+          "tool": "session/request_permission",
+          "kind": "execute",
+          "hint": "Send the shell command as one non-empty string in rawInput.command.",
+          "count": 2,
+          "limit": 3,
+          "blocked": false
+        }
+      }
+    },
+    {
+      "type": "approval.decided",
+      "data": {
+        "decision": "denied",
+        "action": "edit_file",
+        "automatic": true,
+        "reason": "noevia refused this malformed tool call and stopped the task (violation 3 of 3). A edit names no file: missing $.locations[].path. Name the file to change as a non-empty string in locations[].path (or rawInput.path).",
+        "violation": {
+          "type": "schema_violation_correction",
+          "violation": {
+            "message": "A edit names no file: missing $.locations[].path",
+            "path": "$.locations"
+          },
+          "tool": "session/request_permission",
+          "kind": "edit",
+          "hint": "Name the file to change as a non-empty string in locations[].path (or rawInput.path).",
+          "count": 3,
+          "limit": 3,
+          "blocked": true
+        }
+      }
+    },
+    {
+      "type": "step.started",
+      "data": {
+        "id": "executor.guard",
+        "title": "Tool-call guard"
+      }
+    },
+    {
+      "type": "step.completed",
+      "data": {
+        "id": "executor.guard",
+        "failed": true,
+        "blocked": true,
+        "violations": 3,
+        "error": "Stopped after 3 malformed tool calls."
+      }
+    },
+    {
+      "type": "approval.decided",
+      "data": {
+        "decision": "denied",
+        "action": "none",
+        "automatic": true,
+        "reason": "noevia refused this malformed tool call and stopped the task (violation 3 of 3). A edit names no file: missing $.locations[].path. Name the file to change as a non-empty string in locations[].path (or rawInput.path).",
+        "violation": {
+          "type": "schema_violation_correction",
+          "violation": {
+            "message": "A edit names no file: missing $.locations[].path",
+            "path": "$.locations"
+          },
+          "tool": "session/request_permission",
+          "kind": "edit",
+          "hint": "Name the file to change as a non-empty string in locations[].path (or rawInput.path).",
+          "count": 3,
+          "limit": 3,
+          "blocked": true
+        }
+      }
+    }
+  ],
+  "error": {
+    "message": "Blocked: the coding agent sent 3 malformed tool calls, so the task was stopped.",
+    "code": "blocked",
+    "publicMessage": "Blocked: the coding agent sent 3 malformed tool calls, so the task was stopped.",
+    "result": {
+      "blocked": true,
+      "reason": "executor_guard",
+      "violations": [
+        {
+          "tool": "session/request_permission",
+          "kind": null,
+          "path": "$",
+          "message": "Type mismatch at $: expected object"
+        },
+        {
+          "tool": "session/request_permission",
+          "kind": "execute",
+          "path": "$.rawInput.command",
+          "message": "Missing command at $.rawInput.command"
+        },
+        {
+          "tool": "session/request_permission",
+          "kind": "edit",
+          "path": "$.locations",
+          "message": "A edit names no file: missing $.locations[].path"
+        }
+      ]
+    }
+  }
+}

@@ -21,6 +21,7 @@ pub trait Context: Send + Sync {
     /// Register before returning the future, in ACP receive order.
     fn approval(&self, request: JValue) -> Answer;
     fn now(&self) -> i64;
+    fn end_approvals(&self) {}
 }
 fn object(rows: Vec<(&str, JValue)>) -> JValue {
     JValue::Obj(rows.into_iter().map(|(k, v)| (k.into(), v)).collect())
@@ -125,6 +126,7 @@ pub struct Session {
     domains: Vec<String>,
     context: Arc<dyn Context>,
     state: Mutex<State>,
+    guard: Mutex<Option<crate::guard::Guard>>,
     ended: watch::Sender<bool>,
 }
 impl Session {
@@ -135,6 +137,25 @@ impl Session {
         domains: Vec<String>,
         context: Arc<dyn Context>,
     ) -> Self {
+        Self::build(task, root, capabilities, domains, context, false)
+    }
+    pub fn new_guarded(
+        task: String,
+        root: PathBuf,
+        capabilities: Vec<String>,
+        domains: Vec<String>,
+        context: Arc<dyn Context>,
+    ) -> Self {
+        Self::build(task, root, capabilities, domains, context, true)
+    }
+    fn build(
+        task: String,
+        root: PathBuf,
+        capabilities: Vec<String>,
+        domains: Vec<String>,
+        context: Arc<dyn Context>,
+        guarded: bool,
+    ) -> Self {
         let (ended, _) = watch::channel(false);
         Self {
             task,
@@ -143,11 +164,21 @@ impl Session {
             domains,
             context,
             state: Mutex::new(State::default()),
+            guard: Mutex::new(guarded.then(|| crate::guard::Guard::new(files::MAX_FILE_BYTES))),
             ended,
         }
     }
     pub fn end(&self) {
         self.ended.send_replace(true);
+        self.context.end_approvals();
+    }
+    pub fn blocked_error(&self) -> Result<Option<JValue>, RpcError> {
+        Ok(self
+            .guard
+            .lock()
+            .map_err(|_| failure("Task status is unavailable."))?
+            .as_ref()
+            .and_then(crate::guard::Guard::blocked_error))
     }
     fn known(state: &mut State, update: &JValue) {
         let id = update.get("toolCallId");
@@ -235,6 +266,30 @@ impl Session {
             .as_ref()
             .map_or_else(|| stated.clone(), |base| merge(base, &stated, false));
         let mut classified = policy::classify(&tool);
+        {
+            let mut guard = self
+                .guard
+                .lock()
+                .map_err(|_| failure("Task status is unavailable."))?;
+            if let Some(guard) = guard.as_mut() {
+                let malformed = guard.permission(
+                    &tool,
+                    classified.get("action").clone(),
+                    &mut |kind, data| self.context.event(kind, data),
+                )?;
+                if guard.blocked() {
+                    self.end();
+                }
+                if let Some(violation) = malformed {
+                    state.approvals += 1;
+                    state.denied += 1;
+                    return Ok(Prepared::Ready(crate::guard::reject(
+                        policy::pick(&options, "reject_once"),
+                        violation,
+                    )));
+                }
+            }
+        }
         if announced.is_some() && classified.get("approval").as_str() == Some("never") {
             let own = policy::classify(&stated);
             if own.get("unverified") == &JValue::Bool(true) {
@@ -339,6 +394,21 @@ impl Session {
     }
     fn file(&self, method: &str, params: &JValue) -> Result<JValue, RpcError> {
         self.context.active()?;
+        {
+            let mut guard = self
+                .guard
+                .lock()
+                .map_err(|_| failure("Task status is unavailable."))?;
+            if let Some(guard) = guard.as_mut() {
+                let checked = guard.file(method, params, &mut |kind, data| {
+                    self.context.event(kind, data)
+                });
+                if guard.blocked() {
+                    self.end();
+                }
+                checked?;
+            }
+        }
         let target = params.get("path").as_str().ok_or_else(|| RpcError {
             code: -32602,
             message: "Outside this task’s workspace".into(),
@@ -604,14 +674,27 @@ impl Session {
             .state
             .lock()
             .map_err(|_| failure("Task status is unavailable."))?;
-        Ok(object(vec![
+        let mut summary = object(vec![
             ("tools", JValue::Num(state.tools as f64)),
             ("approvals", JValue::Num(state.approvals as f64)),
             ("allowed", JValue::Num(state.allowed as f64)),
             ("refused", JValue::Num(state.refused as f64)),
             ("denied", JValue::Num(state.denied as f64)),
             ("workspace", text(&self.root.to_string_lossy())),
-        ]))
+        ]);
+        if let Some(guard) = self
+            .guard
+            .lock()
+            .map_err(|_| failure("Task status is unavailable."))?
+            .as_ref()
+        {
+            set(
+                &mut summary,
+                "violations",
+                JValue::Num(guard.count() as f64),
+            );
+        }
+        Ok(summary)
     }
     pub fn metadata(&self, agent: JValue, usage: JValue) -> Result<JValue, RpcError> {
         let state = self
@@ -648,10 +731,21 @@ impl Handlers for Session {
     fn update(&self, update: JValue) {
         let _ = self.update_inner(update);
     }
+    fn end(&self) {
+        Session::end(self);
+    }
+    fn drain_on_end(&self) -> bool {
+        true
+    }
+    fn halted(&self) -> bool {
+        self.guard.lock().map_or(true, |guard| {
+            guard.as_ref().is_some_and(crate::guard::Guard::blocked)
+        })
+    }
 }
 impl Drop for Session {
     fn drop(&mut self) {
-        self.ended.send_replace(true);
+        self.end();
     }
 }
 enum Prepared {
@@ -706,6 +800,7 @@ mod tests {
     use super::*;
     struct Fake {
         answer: Decision,
+        guard_events: bool,
         events: Mutex<Vec<JValue>>,
         cards: Mutex<Vec<JValue>>,
     }
@@ -714,7 +809,9 @@ mod tests {
             Ok(())
         }
         fn event(&self, kind: &str, data: JValue) -> Result<(), RpcError> {
-            if kind.starts_with("approval.") {
+            if kind.starts_with("approval.")
+                || (self.guard_events && data.get("id").as_str() == Some("executor.guard"))
+            {
                 self.events
                     .lock()
                     .unwrap()
@@ -750,6 +847,7 @@ mod tests {
             };
             let context = Arc::new(Fake {
                 answer,
+                guard_events: false,
                 events: Mutex::new(vec![]),
                 cards: Mutex::new(vec![]),
             });
@@ -809,5 +907,59 @@ mod tests {
             ]);
             assert_eq!(output, *case.get("output"), "case {index}");
         }
+    }
+    #[tokio::test]
+    async fn guarded_session_matches_node_executor_blocked_outcome() {
+        let fixture =
+            wtf16::parse(include_str!("../tests/fixtures/guard-session-node.json")).unwrap();
+        let context = Arc::new(Fake {
+            answer: Decision::Deny,
+            guard_events: true,
+            events: Mutex::new(vec![]),
+            cards: Mutex::new(vec![]),
+        });
+        let root = tempfile::tempdir().unwrap();
+        let session = Arc::new(Session::new_guarded(
+            "11111111-1111-4111-8111-111111111111".into(),
+            root.path().into(),
+            vec!["edit_file".into(), "execute_command".into()],
+            vec![],
+            context.clone(),
+        ));
+        let options=wtf16::parse(r#"[{"optionId":"allow","kind":"allow_once"},{"optionId":"reject","kind":"reject_once"}]"#).unwrap();
+        let JValue::Arr(calls) = fixture.get("calls") else {
+            panic!()
+        };
+        let mut answers = vec![];
+        for call in calls {
+            answers.push(
+                session
+                    .clone()
+                    .request(
+                        "session/request_permission",
+                        object(vec![
+                            ("toolCall", call.clone()),
+                            ("options", options.clone()),
+                        ]),
+                    )
+                    .await
+                    .unwrap(),
+            );
+        }
+        assert_eq!(JValue::Arr(answers), *fixture.get("answers"));
+        assert_eq!(
+            JValue::Arr(context.events.lock().unwrap().clone()),
+            *fixture.get("events")
+        );
+        assert_eq!(
+            session.blocked_error().unwrap().unwrap(),
+            *fixture.get("error")
+        );
+        assert!(context.cards.lock().unwrap().is_empty());
+        assert!(session.halted());
+        assert_eq!(
+            session.summary().unwrap().get("violations").as_num(),
+            Some(3.0)
+        );
     }
 }

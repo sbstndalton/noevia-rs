@@ -122,6 +122,11 @@ impl Control {
         abort_approvals(&mut state, scope, task);
         Ok(())
     }
+    pub fn end_approvals(&self, scope: &Scope, task: &str) -> Result<(), Error> {
+        let mut state = self.state.lock().map_err(|_| Error::Unavailable)?;
+        abort_approvals(&mut state, scope, task);
+        Ok(())
+    }
     pub fn ask(
         &self,
         scope: &Scope,
