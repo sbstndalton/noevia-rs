@@ -1,0 +1,309 @@
+{
+  "core": "99ebd9c951b16cb6beeeae8bd79722cf4f3368bb",
+  "requests": [
+    {
+      "method": "GET",
+      "role": null,
+      "input": null,
+      "status": 401,
+      "body": {
+        "error": "Sign in required"
+      }
+    },
+    {
+      "method": "GET",
+      "role": "member",
+      "input": null,
+      "status": 403,
+      "body": {
+        "error": "Administrator required"
+      }
+    },
+    {
+      "method": "PUT",
+      "role": "admin",
+      "input": {},
+      "status": 405,
+      "body": {
+        "error": "Method not allowed"
+      }
+    },
+    {
+      "method": "POST",
+      "role": "admin",
+      "input": "malformed",
+      "status": 400,
+      "body": {
+        "error": "invalid JSON"
+      }
+    },
+    {
+      "method": "POST",
+      "role": "admin",
+      "input": null,
+      "status": 400,
+      "body": {
+        "error": "A JSON object is required"
+      }
+    },
+    {
+      "method": "POST",
+      "role": "admin",
+      "input": [],
+      "status": 400,
+      "body": {
+        "error": "A JSON object is required"
+      }
+    },
+    {
+      "method": "POST",
+      "role": "admin",
+      "input": {},
+      "status": 400,
+      "body": {
+        "error": "action must be one of set-next, clear-next, switch, rollback, finish, service-switch, service-off"
+      }
+    },
+    {
+      "method": "POST",
+      "role": "admin",
+      "input": {
+        "action": "unknown"
+      },
+      "status": 400,
+      "body": {
+        "error": "action must be one of set-next, clear-next, switch, rollback, finish, service-switch, service-off"
+      }
+    },
+    {
+      "method": "POST",
+      "role": "admin",
+      "input": {
+        "action": "set-next"
+      },
+      "status": 400,
+      "body": {
+        "error": "set-next needs a target { baseUrl, model, profile }"
+      }
+    },
+    {
+      "method": "POST",
+      "role": "admin",
+      "input": {
+        "action": "clear-next",
+        "scope": "bad"
+      },
+      "status": 400,
+      "body": {
+        "error": "scope must be all, projects or diary"
+      }
+    },
+    {
+      "method": "POST",
+      "role": "admin",
+      "input": {
+        "action": "service-off"
+      },
+      "status": 409,
+      "body": {
+        "error": "The embedding service is not managed by noevia on this server (see docs/deployment.md, #1668).",
+        "code": "notManaged"
+      }
+    },
+    {
+      "method": "POST",
+      "role": "admin",
+      "input": {
+        "action": "service-switch"
+      },
+      "status": 409,
+      "body": {
+        "error": "The embedding service is not managed by noevia on this server (see docs/deployment.md, #1668).",
+        "code": "notManaged"
+      }
+    },
+    {
+      "method": "POST",
+      "role": "admin",
+      "input": {
+        "action": "set-next",
+        "target": {
+          "model": "fixture-next"
+        }
+      },
+      "status": 409,
+      "body": {
+        "error": "Name the Diary's embeddings server so noevia can check it serves this model.",
+        "code": "diaryEndpointRequired"
+      }
+    },
+    {
+      "method": "POST",
+      "role": "admin",
+      "input": {
+        "action": "set-next",
+        "scope": "projects",
+        "target": {
+          "model": "not-served"
+        }
+      },
+      "status": 409,
+      "body": {
+        "error": "The embeddings server does not serve not-served.",
+        "code": "modelNotServed",
+        "served": [
+          "fixture-next"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "role": "admin",
+      "input": {
+        "action": "clear-next",
+        "scope": "projects"
+      },
+      "status": 200,
+      "body": {
+        "projects": {
+          "fixture": true
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "role": "admin",
+      "input": null,
+      "status": 200,
+      "body": {
+        "projects": {
+          "fixture": true
+        },
+        "diary": {
+          "error": "The Diary sidecar is not configured.",
+          "code": "notConfigured"
+        }
+      }
+    }
+  ],
+  "states": [
+    {
+      "action": "switchToNext",
+      "input": null,
+      "error": {
+        "status": 409,
+        "code": "noNext",
+        "message": "No re-index is under way."
+      }
+    },
+    {
+      "action": "rollback",
+      "input": null,
+      "error": {
+        "status": 409,
+        "code": "noPrevious",
+        "message": "There is no previous embedding model to return to."
+      }
+    },
+    {
+      "action": "finish",
+      "input": null,
+      "error": {
+        "status": 409,
+        "code": "noPrevious",
+        "message": "There is no previous embedding model to remove."
+      }
+    },
+    {
+      "action": "setNext",
+      "input": {
+        "model": "fixture-active"
+      },
+      "error": {
+        "status": 409,
+        "code": "alreadyActive",
+        "message": "That model, profile and address are already active."
+      }
+    },
+    {
+      "action": "setNext",
+      "input": {
+        "model": "fixture-next",
+        "baseUrl": " http://127.0.0.1:1234/v1/// "
+      },
+      "state": {
+        "active": {
+          "baseUrl": null,
+          "model": "fixture-active",
+          "profile": "nomic-v1"
+        },
+        "next": {
+          "baseUrl": "http://127.0.0.1:1234/v1",
+          "model": "fixture-next",
+          "profile": "nomic-v1"
+        },
+        "previous": null
+      }
+    },
+    {
+      "action": "switchToNext",
+      "input": null,
+      "state": {
+        "active": {
+          "baseUrl": "http://127.0.0.1:1234/v1",
+          "model": "fixture-next",
+          "profile": "nomic-v1"
+        },
+        "next": null,
+        "previous": {
+          "baseUrl": null,
+          "model": "fixture-active",
+          "profile": "nomic-v1"
+        }
+      }
+    },
+    {
+      "action": "rollback",
+      "input": null,
+      "state": {
+        "active": {
+          "baseUrl": null,
+          "model": "fixture-active",
+          "profile": "nomic-v1"
+        },
+        "next": null,
+        "previous": {
+          "baseUrl": "http://127.0.0.1:1234/v1",
+          "model": "fixture-next",
+          "profile": "nomic-v1"
+        }
+      }
+    },
+    {
+      "action": "finish",
+      "input": null,
+      "state": {
+        "active": {
+          "baseUrl": null,
+          "model": "fixture-active",
+          "profile": "nomic-v1"
+        },
+        "next": null,
+        "previous": null
+      }
+    },
+    {
+      "action": "clearNext",
+      "input": null,
+      "state": {
+        "active": {
+          "baseUrl": null,
+          "model": "fixture-active",
+          "profile": "nomic-v1"
+        },
+        "next": null,
+        "previous": null
+      }
+    }
+  ]
+}
