@@ -1,0 +1,1491 @@
+{
+ "generatedBy": "v22.23.3",
+ "grammar": [
+  {
+   "text": "0",
+   "accept": true
+  },
+  {
+   "text": "-0",
+   "accept": true
+  },
+  {
+   "text": "1.5e+3",
+   "accept": true
+  },
+  {
+   "text": "1E5",
+   "accept": true
+  },
+  {
+   "text": "\"a\"",
+   "accept": true
+  },
+  {
+   "text": "[]",
+   "accept": true
+  },
+  {
+   "text": "{}",
+   "accept": true
+  },
+  {
+   "text": "[1,2]",
+   "accept": true
+  },
+  {
+   "text": "{\"a\":1}",
+   "accept": true
+  },
+  {
+   "text": " [ 1 , 2 ] ",
+   "accept": true
+  },
+  {
+   "text": "\t\n\r[]",
+   "accept": true
+  },
+  {
+   "text": "\"\\u00e9\"",
+   "accept": true
+  },
+  {
+   "text": "\"\\ud83d\\ude00\"",
+   "accept": true
+  },
+  {
+   "text": "\"\\ud800\"",
+   "accept": true
+  },
+  {
+   "text": "\"\\udc00\\ud800\"",
+   "accept": true
+  },
+  {
+   "text": "\"\\/\"",
+   "accept": true
+  },
+  {
+   "text": "1e400",
+   "accept": true
+  },
+  {
+   "text": "-1e400",
+   "accept": true
+  },
+  {
+   "text": "{\"a\":1,\"a\":2}",
+   "accept": true
+  },
+  {
+   "text": "{\"__proto__\":1}",
+   "accept": true
+  },
+  {
+   "text": "[[[[]]]]",
+   "accept": true
+  },
+  {
+   "text": "\" \"",
+   "accept": true
+  },
+  {
+   "text": "\"\"",
+   "accept": true
+  },
+  {
+   "text": "",
+   "accept": false
+  },
+  {
+   "text": " ",
+   "accept": false
+  },
+  {
+   "text": "01",
+   "accept": false
+  },
+  {
+   "text": "1.",
+   "accept": false
+  },
+  {
+   "text": ".5",
+   "accept": false
+  },
+  {
+   "text": "-",
+   "accept": false
+  },
+  {
+   "text": "+1",
+   "accept": false
+  },
+  {
+   "text": "1e",
+   "accept": false
+  },
+  {
+   "text": "1e+",
+   "accept": false
+  },
+  {
+   "text": "0x10",
+   "accept": false
+  },
+  {
+   "text": "NaN",
+   "accept": false
+  },
+  {
+   "text": "Infinity",
+   "accept": false
+  },
+  {
+   "text": "-Infinity",
+   "accept": false
+  },
+  {
+   "text": "undefined",
+   "accept": false
+  },
+  {
+   "text": "nul",
+   "accept": false
+  },
+  {
+   "text": "nulll",
+   "accept": false
+  },
+  {
+   "text": "tru",
+   "accept": false
+  },
+  {
+   "text": "[1,]",
+   "accept": false
+  },
+  {
+   "text": "[,1]",
+   "accept": false
+  },
+  {
+   "text": "{\"a\":1,}",
+   "accept": false
+  },
+  {
+   "text": "{,}",
+   "accept": false
+  },
+  {
+   "text": "{\"a\"}",
+   "accept": false
+  },
+  {
+   "text": "{\"a\":}",
+   "accept": false
+  },
+  {
+   "text": "{a:1}",
+   "accept": false
+  },
+  {
+   "text": "{'a':1}",
+   "accept": false
+  },
+  {
+   "text": "\"a",
+   "accept": false
+  },
+  {
+   "text": "a\"",
+   "accept": false
+  },
+  {
+   "text": "\"\\x\"",
+   "accept": false
+  },
+  {
+   "text": "\"\\u12\"",
+   "accept": false
+  },
+  {
+   "text": "\"\\u12g4\"",
+   "accept": false
+  },
+  {
+   "text": "\"\n\"",
+   "accept": false
+  },
+  {
+   "text": "\"\t\"",
+   "accept": false
+  },
+  {
+   "text": "[1 2]",
+   "accept": false
+  },
+  {
+   "text": "{\"a\":1 \"b\":2}",
+   "accept": false
+  },
+  {
+   "text": "[]]",
+   "accept": false
+  },
+  {
+   "text": "[[]",
+   "accept": false
+  },
+  {
+   "text": "{}}",
+   "accept": false
+  },
+  {
+   "text": "// c\n1",
+   "accept": false
+  },
+  {
+   "text": "/* */1",
+   "accept": false
+  },
+  {
+   "text": "﻿1",
+   "accept": false
+  },
+  {
+   "text": " 1",
+   "accept": false
+  },
+  {
+   "text": "\u000b1",
+   "accept": false
+  },
+  {
+   "text": "1 2",
+   "accept": false
+  },
+  {
+   "text": "\"\\\"",
+   "accept": false
+  },
+  {
+   "text": "[1]x",
+   "accept": false
+  },
+  {
+   "text": "-01",
+   "accept": false
+  },
+  {
+   "text": "1.5.5",
+   "accept": false
+  },
+  {
+   "text": "[1,2",
+   "accept": false
+  },
+  {
+   "text": "{\"a\":1",
+   "accept": false
+  },
+  {
+   "text": "{\"a\":1}}",
+   "accept": false
+  }
+ ],
+ "cases": [
+  {
+   "input": {
+    "raw": "{\"toString\":1}"
+   },
+   "coerce": {
+    "throws": "TypeError"
+   },
+   "add": {
+    "throws": "TypeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "raw": "[{\"toString\":null}]"
+   },
+   "coerce": {
+    "throws": "TypeError"
+   },
+   "add": {
+    "throws": "TypeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "raw": "{\"toStrin\\u0067\":\"x\"}"
+   },
+   "coerce": {
+    "throws": "TypeError"
+   },
+   "add": {
+    "throws": "TypeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "raw": "[\"a\",[\"b\",{\"toString\":1}]]"
+   },
+   "coerce": {
+    "throws": "TypeError"
+   },
+   "add": {
+    "throws": "TypeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "raw": "{\"valueOf\":1}"
+   },
+   "coerce": {
+    "text": "[object Object]"
+   },
+   "add": {
+    "ok": "[object Object]"
+   }
+  },
+  {
+   "input": {
+    "raw": "{\"toString\":1,\"toString\":2}"
+   },
+   "coerce": {
+    "throws": "TypeError"
+   },
+   "add": {
+    "throws": "TypeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "raw": "{}"
+   },
+   "coerce": {
+    "text": "[object Object]"
+   },
+   "add": {
+    "ok": "[object Object]"
+   }
+  },
+  {
+   "input": {
+    "raw": "{\"a\":{\"toString\":1}}"
+   },
+   "coerce": {
+    "text": "[object Object]"
+   },
+   "add": {
+    "ok": "[object Object]"
+   }
+  },
+  {
+   "input": {
+    "raw": "[1,[2,[null,{\"x\":{\"toString\":1}}]]]"
+   },
+   "coerce": {
+    "text": "1,2,,[object Object]"
+   },
+   "add": {
+    "ok": "1,2,,[object Object]"
+   }
+  },
+  {
+   "input": {
+    "raw": "null"
+   },
+   "coerce": {
+    "text": "null"
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "raw": "[null,[],[null]]"
+   },
+   "coerce": {
+    "text": ",,"
+   },
+   "add": {
+    "ok": ",,"
+   }
+  },
+  {
+   "input": {
+    "raw": "\"x\""
+   },
+   "coerce": {
+    "text": "x"
+   },
+   "add": {
+    "ok": "x"
+   }
+  },
+  {
+   "input": {
+    "raw": "12"
+   },
+   "coerce": {
+    "text": "12"
+   },
+   "add": {
+    "ok": "12"
+   }
+  },
+  {
+   "input": {
+    "raw": "true"
+   },
+   "coerce": {
+    "text": "true"
+   },
+   "add": {
+    "ok": "true"
+   }
+  },
+  {
+   "input": {
+    "raw": "1e400"
+   },
+   "coerce": {
+    "text": "Infinity"
+   },
+   "add": {
+    "ok": "Infinity"
+   }
+  },
+  {
+   "input": {
+    "raw": "-1e400"
+   },
+   "coerce": {
+    "text": "-Infinity"
+   },
+   "add": {
+    "ok": "-Infinity"
+   }
+  },
+  {
+   "input": {
+    "raw": "-0"
+   },
+   "coerce": {
+    "text": "0"
+   },
+   "add": {
+    "ok": "0"
+   }
+  },
+  {
+   "input": {
+    "raw": "1e21"
+   },
+   "coerce": {
+    "text": "1e+21"
+   },
+   "add": {
+    "ok": "1e+21"
+   }
+  },
+  {
+   "input": {
+    "raw": "0.000001"
+   },
+   "coerce": {
+    "text": "0.000001"
+   },
+   "add": {
+    "ok": "0.000001"
+   }
+  },
+  {
+   "input": {
+    "raw": "1e-7"
+   },
+   "coerce": {
+    "text": "1e-7"
+   },
+   "add": {
+    "ok": "1e-7"
+   }
+  },
+  {
+   "input": {
+    "raw": "[1e400,\"a\"]"
+   },
+   "coerce": {
+    "text": "Infinity,a"
+   },
+   "add": {
+    "ok": "Infinity,a"
+   }
+  },
+  {
+   "input": {
+    "raw": "[true,false,1.5]"
+   },
+   "coerce": {
+    "text": "true,false,1.5"
+   },
+   "add": {
+    "ok": "true,false,1.5"
+   }
+  },
+  {
+   "input": {
+    "raw": "[\"\\ud83d\\ude00\"]"
+   },
+   "coerce": {
+    "text": "😀"
+   },
+   "add": {
+    "ok": "😀"
+   }
+  },
+  {
+   "input": {
+    "raw": "[[{\"toString\":1}]]"
+   },
+   "coerce": {
+    "throws": "TypeError"
+   },
+   "add": {
+    "throws": "TypeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     1,
+     "\"x\""
+    ]
+   },
+   "coerce": {
+    "text": "x"
+   },
+   "add": {
+    "ok": "x"
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     1,
+     "null"
+    ]
+   },
+   "coerce": {
+    "text": ""
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     1,
+     ""
+    ]
+   },
+   "coerce": {
+    "text": ""
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     31,
+     "\"x\""
+    ]
+   },
+   "coerce": {
+    "text": "x"
+   },
+   "add": {
+    "ok": "x"
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     31,
+     "null"
+    ]
+   },
+   "coerce": {
+    "text": ""
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     31,
+     ""
+    ]
+   },
+   "coerce": {
+    "text": ""
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     32,
+     "\"x\""
+    ]
+   },
+   "coerce": {
+    "text": "x"
+   },
+   "add": {
+    "ok": "x"
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     32,
+     "null"
+    ]
+   },
+   "coerce": {
+    "text": ""
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     32,
+     ""
+    ]
+   },
+   "coerce": {
+    "text": ""
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     33,
+     "\"x\""
+    ]
+   },
+   "coerce": {
+    "text": "x"
+   },
+   "add": {
+    "ok": "x"
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     33,
+     "null"
+    ]
+   },
+   "coerce": {
+    "text": ""
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     33,
+     ""
+    ]
+   },
+   "coerce": {
+    "text": ""
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     34,
+     "\"x\""
+    ]
+   },
+   "coerce": {
+    "text": "x"
+   },
+   "add": {
+    "ok": "x"
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     34,
+     "null"
+    ]
+   },
+   "coerce": {
+    "text": ""
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     34,
+     ""
+    ]
+   },
+   "coerce": {
+    "text": ""
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     100,
+     "\"x\""
+    ]
+   },
+   "coerce": {
+    "text": "x"
+   },
+   "add": {
+    "ok": "x"
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     100,
+     "null"
+    ]
+   },
+   "coerce": {
+    "text": ""
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     100,
+     ""
+    ]
+   },
+   "coerce": {
+    "text": ""
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     1000,
+     "\"x\""
+    ]
+   },
+   "coerce": {
+    "text": "x"
+   },
+   "add": {
+    "ok": "x"
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     1000,
+     "null"
+    ]
+   },
+   "coerce": {
+    "text": ""
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     1000,
+     ""
+    ]
+   },
+   "coerce": {
+    "text": ""
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     2000,
+     "\"x\""
+    ]
+   },
+   "coerce": {
+    "text": "x"
+   },
+   "add": {
+    "ok": "x"
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     2000,
+     "null"
+    ]
+   },
+   "coerce": {
+    "text": ""
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     2000,
+     ""
+    ]
+   },
+   "coerce": {
+    "text": ""
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     2500,
+     "\"x\""
+    ]
+   },
+   "coerce": {
+    "text": "x"
+   },
+   "add": {
+    "ok": "x"
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     2500,
+     "null"
+    ]
+   },
+   "coerce": {
+    "text": ""
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     2500,
+     ""
+    ]
+   },
+   "coerce": {
+    "text": ""
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     5000,
+     "\"x\""
+    ]
+   },
+   "coerce": {
+    "throws": "RangeError"
+   },
+   "add": {
+    "throws": "RangeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     5000,
+     "null"
+    ]
+   },
+   "coerce": {
+    "throws": "RangeError"
+   },
+   "add": {
+    "throws": "RangeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     5000,
+     ""
+    ]
+   },
+   "coerce": {
+    "throws": "RangeError"
+   },
+   "add": {
+    "throws": "RangeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     100000,
+     "\"x\""
+    ]
+   },
+   "coerce": {
+    "throws": "RangeError"
+   },
+   "add": {
+    "throws": "RangeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     100000,
+     "null"
+    ]
+   },
+   "coerce": {
+    "throws": "RangeError"
+   },
+   "add": {
+    "throws": "RangeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     100000,
+     ""
+    ]
+   },
+   "coerce": {
+    "throws": "RangeError"
+   },
+   "add": {
+    "throws": "RangeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     400000,
+     "\"x\""
+    ]
+   },
+   "coerce": {
+    "throws": "RangeError"
+   },
+   "add": {
+    "throws": "RangeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     400000,
+     "null"
+    ]
+   },
+   "coerce": {
+    "throws": "RangeError"
+   },
+   "add": {
+    "throws": "RangeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     400000,
+     ""
+    ]
+   },
+   "coerce": {
+    "throws": "RangeError"
+   },
+   "add": {
+    "throws": "RangeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     1,
+     "{\"toString\":1}"
+    ]
+   },
+   "coerce": {
+    "throws": "TypeError"
+   },
+   "add": {
+    "throws": "TypeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     1,
+     "{}"
+    ]
+   },
+   "coerce": {
+    "text": "[object Object]"
+   },
+   "add": {
+    "ok": "[object Object]"
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     1,
+     "{\"toString\":{\"toString\":1}}"
+    ]
+   },
+   "coerce": {
+    "throws": "TypeError"
+   },
+   "add": {
+    "throws": "TypeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     31,
+     "{\"toString\":1}"
+    ]
+   },
+   "coerce": {
+    "throws": "TypeError"
+   },
+   "add": {
+    "throws": "TypeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     31,
+     "{}"
+    ]
+   },
+   "coerce": {
+    "text": "[object Object]"
+   },
+   "add": {
+    "ok": "[object Object]"
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     31,
+     "{\"toString\":{\"toString\":1}}"
+    ]
+   },
+   "coerce": {
+    "throws": "TypeError"
+   },
+   "add": {
+    "throws": "TypeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     33,
+     "{\"toString\":1}"
+    ]
+   },
+   "coerce": {
+    "throws": "TypeError"
+   },
+   "add": {
+    "throws": "TypeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     33,
+     "{}"
+    ]
+   },
+   "coerce": {
+    "text": "[object Object]"
+   },
+   "add": {
+    "ok": "[object Object]"
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     33,
+     "{\"toString\":{\"toString\":1}}"
+    ]
+   },
+   "coerce": {
+    "throws": "TypeError"
+   },
+   "add": {
+    "throws": "TypeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     100,
+     "{\"toString\":1}"
+    ]
+   },
+   "coerce": {
+    "throws": "TypeError"
+   },
+   "add": {
+    "throws": "TypeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     100,
+     "{}"
+    ]
+   },
+   "coerce": {
+    "text": "[object Object]"
+   },
+   "add": {
+    "ok": "[object Object]"
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     100,
+     "{\"toString\":{\"toString\":1}}"
+    ]
+   },
+   "coerce": {
+    "throws": "TypeError"
+   },
+   "add": {
+    "throws": "TypeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     5000,
+     "{\"toString\":1}"
+    ]
+   },
+   "coerce": {
+    "throws": "RangeError"
+   },
+   "add": {
+    "throws": "RangeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     5000,
+     "{}"
+    ]
+   },
+   "coerce": {
+    "throws": "RangeError"
+   },
+   "add": {
+    "throws": "RangeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     5000,
+     "{\"toString\":{\"toString\":1}}"
+    ]
+   },
+   "coerce": {
+    "throws": "RangeError"
+   },
+   "add": {
+    "throws": "RangeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     100000,
+     "{\"toString\":1}"
+    ]
+   },
+   "coerce": {
+    "throws": "RangeError"
+   },
+   "add": {
+    "throws": "RangeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     100000,
+     "{}"
+    ]
+   },
+   "coerce": {
+    "throws": "RangeError"
+   },
+   "add": {
+    "throws": "RangeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     100000,
+     "{\"toString\":{\"toString\":1}}"
+    ]
+   },
+   "coerce": {
+    "throws": "RangeError"
+   },
+   "add": {
+    "throws": "RangeError",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "comma": 3
+   },
+   "coerce": {
+    "text": "p,p,p,x,q,q,q"
+   },
+   "add": {
+    "ok": "p,p,p,x,q,q,q"
+   }
+  },
+  {
+   "input": {
+    "comma": 40
+   },
+   "coerce": {
+    "text": "p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,x,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q"
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "comma": 100
+   },
+   "coerce": {
+    "len": 401,
+    "head": "p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,",
+    "tail": ",q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q"
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "comma": 2000
+   },
+   "coerce": {
+    "len": 8001,
+    "head": "p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,",
+    "tail": ",q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q,q"
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "wide": 100000
+   },
+   "coerce": {
+    "len": 199999,
+    "head": "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,",
+    "tail": ",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     5,
+     "{\"k\":\"y\"}"
+    ]
+   },
+   "coerce": {
+    "text": "[object Object]"
+   },
+   "add": {
+    "ok": "[object Object]"
+   }
+  },
+  {
+   "input": {
+    "inObject": 100000
+   },
+   "coerce": {
+    "text": "a,[object Object]"
+   },
+   "add": {
+    "ok": "a,[object Object]"
+   }
+  },
+  {
+   "input": {
+    "inObject": 3
+   },
+   "coerce": {
+    "text": "a,[object Object]"
+   },
+   "add": {
+    "ok": "a,[object Object]"
+   }
+  }
+ ]
+}

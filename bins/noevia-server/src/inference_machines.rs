@@ -115,6 +115,11 @@ pub fn text(v: &Value) -> String {
         }
         .into();
     }
+    match crate::machine_json::stand_in(v) {
+        Some(crate::machine_json::StandIn::Array { text, .. }) => return text.into(),
+        Some(crate::machine_json::StandIn::Object { .. }) => return "[object Object]".into(),
+        None => (),
+    }
     match v {
         Value::Null => String::new(),
         Value::String(s) => s.clone(),
@@ -539,7 +544,22 @@ pub fn parse_json(text: &str) -> Option<Value> {
 pub fn encode_json(value: &Value) -> String {
     crate::machine_json::encode(value)
 }
-pub(crate) fn coerce(v: &Value) -> Result<String, Refusal> {
+/// `String(value)` for a decoded request or saved field, with JavaScript's failures: an object
+/// with an own (non-callable) `toString` has no primitive form (TypeError), and V8 gives up on
+/// arrays nested more than `NODE_ARRAY_NESTING` deep (RangeError). Both are a 500 refusal, as the
+/// route's catch-all gives them. Recursion only follows the built part of the tree (a few dozen
+/// levels); deeper subtrees were reduced to their coercion result when the JSON was read.
+pub fn coerce(v: &Value) -> Result<String, Refusal> {
+    coerce_level(v, 1)
+}
+fn coerce_level(v: &Value, level: usize) -> Result<String, Refusal> {
+    use crate::machine_json::{stand_in, StandIn, NODE_ARRAY_NESTING};
+    let refused = || {
+        Refusal(
+            500,
+            json!({"error":"The inference machines could not be changed."}),
+        )
+    };
     if let Some(n) = crate::machine_json::infinity(v) {
         return Ok(if n.is_sign_negative() {
             "-Infinity"
@@ -548,15 +568,41 @@ pub(crate) fn coerce(v: &Value) -> Result<String, Refusal> {
         }
         .into());
     }
+    match stand_in(v) {
+        Some(StandIn::Array {
+            text,
+            height,
+            throws,
+        }) => {
+            return if throws || level - 1 + height > NODE_ARRAY_NESTING {
+                Err(refused())
+            } else {
+                Ok(text.into())
+            };
+        }
+        Some(StandIn::Object { throws }) => {
+            return if throws {
+                Err(refused())
+            } else {
+                Ok("[object Object]".into())
+            };
+        }
+        None => (),
+    }
     Ok(match v {
         Value::Null => String::new(),
         Value::String(s) => s.clone(),
         Value::Number(n) => js_json::number_to_string(n.as_f64().unwrap_or_default()),
         Value::Bool(b) => b.to_string(),
+        Value::Object(o) if o.contains_key("toString") => return Err(refused()),
         Value::Object(_) => "[object Object]".into(),
+        Value::Array(_) if level > crate::machine_json::NODE_ARRAY_NESTING => return Err(refused()),
         Value::Array(a) => a
             .iter()
-            .map(coerce)
+            .map(|item| match item {
+                Value::Null => Ok(String::new()),
+                item => coerce_level(item, level + 1),
+            })
             .collect::<Result<Vec<_>, _>>()?
             .join(","),
     })
