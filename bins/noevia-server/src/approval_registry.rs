@@ -1491,7 +1491,7 @@ mod tests {
                 dir.path(),
                 OWNER,
                 "c1",
-                Holder::Project("p1".into()),
+                Holder::Project("qa-p".into()),
                 None,
                 START,
             )
