@@ -211,6 +211,15 @@ impl RustDecisionSettings {
     }
 }
 
+/// Exclusive capability for the reranker configuration row.
+#[derive(Debug, Clone, Copy)]
+pub struct RustRerankerSettings(());
+impl RustRerankerSettings {
+    pub const fn owned() -> Self {
+        Self(())
+    }
+}
+
 /// Settings -> Diary & storage, the Nextcloud sign-in and the storage test/folder routes
 /// (sbstndalton/noevia#2190): a completed sign-in saves the account's `storage_connections` row
 /// through [`WriteTx::save_storage_connection`], Node's exact upsert. Since round 4 the Settings save
@@ -1171,6 +1180,24 @@ impl WriteTx<'_> {
             "INSERT OR REPLACE INTO settings(key,value) VALUES('reasoning_effort_default',?1)",
             [value],
         )?)
+    }
+
+    pub fn set_reranker_configuration(
+        &self,
+        _owner: RustRerankerSettings,
+        value: Option<&str>,
+    ) -> Result<usize, StoreError> {
+        self.settings_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.settings_open);
+        Ok(match value {
+            Some(value) => self.conn.execute(
+                "INSERT OR REPLACE INTO settings(key,value) VALUES('rerank:configuration',?1)",
+                [value],
+            )?,
+            None => self
+                .conn
+                .execute("DELETE FROM settings WHERE key='rerank:configuration'", [])?,
+        })
     }
 
     /// Exactly Node's decision-settings save statement (core feature-setting-source.cjs WRITE_SQL

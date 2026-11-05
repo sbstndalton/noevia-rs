@@ -80,6 +80,8 @@ pub mod provider_test_routes;
 pub mod public_pages;
 pub mod reasoning_settings_routes;
 pub mod reply;
+pub mod reranker_routes;
+pub mod reranker_settings;
 pub mod research_routes;
 pub mod routes;
 pub mod routing_default_routes;
@@ -363,6 +365,7 @@ use std::sync::Arc;
 /// (NOEVIA_FRONT_CLIENT_IP=1), and Node believes that header only then, so a core release paired
 /// with a front that predates the strip cannot be handed a client-chosen address (#1578).
 pub const FEATURES: &[&str] = &[
+    "reranker-settings-v1",
     "rust-embedding-background-v1",
     "client-address-header",
     "code-net-guard",
@@ -373,7 +376,7 @@ pub const FEATURES: &[&str] = &[
     "rust-research",
     "rust-task-reads",
     "rust-tool-approvals",
-    server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER,
+    "noevia-research-jobs-store/1",
     "rust-auth",
     "rust-diary",
     "rust-diary-routes",
@@ -547,6 +550,7 @@ pub struct App {
     pub accounts: Arc<account_routes::AccountLayer>,
     /// The ONE context controller for this native App and its existing private store.
     pub feature_context: Option<Arc<feature_context::Layer>>,
+    pub reranker: reranker_routes::State,
     pub usage: Arc<usage_routes::UsageLayer>,
     /// The Diary sidecar client (sbstndalton/noevia#2185); `None` only if its HTTP client could
     /// not be built, when its routes answer 503.
@@ -644,6 +648,7 @@ impl App {
             writes,
             accounts,
             feature_context,
+            reranker: reranker_routes::State::default(),
             usage: Arc::new(usage_routes::UsageLayer::default()),
             diary: server_diary::Diary::new(config.diary.clone())
                 .ok()

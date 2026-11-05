@@ -658,7 +658,7 @@ owner = "node"
 
 [[route]]
 path = "/api/models/reranker"
-owner = "node"
+owner = "rust"
 
 # sbstndalton/noevia#2210: the preset reload, the front's (bins/noevia-server model_maint/reload.rs);
 # Node's core server/rust-model-maintenance.cjs refuses its POST. Other methods stay Node's (403/405).

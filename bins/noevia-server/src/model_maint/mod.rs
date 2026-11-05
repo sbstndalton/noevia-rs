@@ -27,6 +27,7 @@ pub mod ini;
 pub mod node_lease;
 pub mod reload;
 pub mod router;
+pub mod v8_json;
 
 use crate::{identity, reply, App};
 use axum::body::Body;

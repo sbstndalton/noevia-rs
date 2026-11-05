@@ -1212,3 +1212,47 @@ fn the_directory_rows_take_only_the_directory_statements_and_the_shared_key_is_a
     let raw = w.write(|tx| tx.execute("DELETE FROM directory_mcp_servers", []));
     assert!(matches!(raw, Err(StoreError::NotOwned(_))), "{raw:?}");
 }
+
+#[test]
+fn reranker_configuration_requires_its_capability_and_rolls_back() {
+    let (dir, node) = node_db();
+    let writer = Writer::open(dir.path(), RustAuth::for_tests()).unwrap();
+    assert!(writer
+        .write(|tx| tx.set_setting("rerank:configuration", "null"))
+        .is_err());
+    writer
+        .write(|tx| {
+            tx.set_reranker_configuration(
+                RustRerankerSettings::owned(),
+                Some("{\"enabled\":false,\"choice\":null}"),
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    let failed: Result<(), StoreError> = writer.write(|tx| {
+        tx.set_reranker_configuration(RustRerankerSettings::owned(), None)?;
+        Err(StoreError::NotOwned("synthetic rollback".into()))
+    });
+    assert!(failed.is_err());
+    assert_eq!(
+        node.query_row(
+            "SELECT value FROM settings WHERE key='rerank:configuration'",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        "{\"enabled\":false,\"choice\":null}"
+    );
+    writer
+        .write(|tx| tx.set_reranker_configuration(RustRerankerSettings::owned(), None))
+        .unwrap();
+    assert_eq!(
+        node.query_row(
+            "SELECT count(*) FROM settings WHERE key='rerank:configuration'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        0
+    );
+}
