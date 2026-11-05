@@ -2,9 +2,9 @@
 //! /api/account/retention`, with the reads it makes (chat-retention.cjs `read` and `expired`, the
 //! workspace's free chats and its projects without the Diary-internal ones, index.cjs
 //! `retentionLists`), answer for answer. Moved from Node for sbstndalton/noevia#1071; a read
-//! only, so it takes no lock and writes nothing. `PUT` (which deletes the chats that are due) stays
-//! Node's: it recounts what is due itself and refuses (409) when that is more than the person
-//! confirmed (`confirmDeletes`), so a preview read here never becomes a delete on its own.
+//! only, so it takes no lock and writes nothing. Native `PUT` recounts what is due and refuses
+//! (409) when that is more than the person confirmed (`confirmDeletes`). Settings are persisted
+//! before bounded tombstoned deletion; partial failures retain the saved days and completed count.
 //!
 //! - `days`: `chat-retention.json`'s `days` when it is one of [`PERIODS`], else `0` (also for a
 //!   missing file, invalid JSON or a value that is not an object).
@@ -190,7 +190,7 @@ pub fn get(ctx: Ctx<'_>) -> Reply {
 }
 
 /// Persist this owner's retention setting without recreating an account removed meanwhile.
-fn save_setting(dir: &Path, days: u32, last_sweep: i64) -> Result<(), store::StoreError> {
+fn save_setting(dir: &Path, days: u32, last_sweep: f64) -> Result<(), store::StoreError> {
     use rustix::fs::{open, openat, renameat, unlinkat, AtFlags, Mode, OFlags};
     use std::io::Write;
     let parent = std::fs::File::from(
@@ -209,6 +209,8 @@ fn save_setting(dir: &Path, days: u32, last_sweep: i64) -> Result<(), store::Sto
             OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
             Mode::from_raw_mode(0o600),
         )?);
+        // V8's shortest round-trip digits, including exponent sign and tie behavior.
+        let last_sweep = ryu_js::Buffer::new().format(last_sweep).to_owned();
         write!(file, "{{\"days\":{days},\"lastSweep\":{last_sweep}}}")?;
         file.sync_all()?;
         renameat(&parent, temp.as_str(), &parent, FILE)?;
@@ -219,11 +221,11 @@ fn save_setting(dir: &Path, days: u32, last_sweep: i64) -> Result<(), store::Sto
     }
     result.map_err(store::StoreError::from)
 }
-fn last_sweep(dir: &Path) -> Result<i64, store::StoreError> {
+fn last_sweep(dir: &Path) -> Result<f64, store::StoreError> {
     Ok(store::read_json(&dir.join(FILE))?
         .and_then(|v| v.get("lastSweep").as_num())
         .filter(|n| n.is_finite())
-        .unwrap_or(0.0) as i64)
+        .unwrap_or(0.0))
 }
 fn remove_due(ctx: Ctx<'_>, due: &[Due]) -> Result<usize, Reply> {
     let start = std::time::Instant::now();
@@ -265,17 +267,49 @@ fn remove_due(ctx: Ctx<'_>, due: &[Due]) -> Result<usize, Reply> {
 }
 /// PUT contract: recompute before confirmation, persist the choice, then use native tombstoned deletion.
 pub fn put(ctx: Ctx<'_>, body: &[u8]) -> Reply {
-    let input = match wtf16::parse(&String::from_utf8_lossy(body)) {
-        Ok(v) => v,
-        Err(_) => return Reply::error(400, "invalid JSON"),
-    };
-    let Some(days) = input
-        .get("days")
-        .as_num()
-        .and_then(|n| [0, 30, 90, 365].into_iter().find(|d| f64::from(*d) == n))
-    else {
-        return Reply::error(400, "Choose off, or 30, 90 or 365 days.");
-    };
+    put_collected(ctx, body, false)
+}
+/// Body failure is applied after the preview, matching Core's route evaluation order.
+pub fn put_collected(ctx: Ctx<'_>, body: &[u8], failed: bool) -> Reply {
+    let start = std::time::Instant::now();
+    put_with(
+        ctx,
+        body,
+        failed,
+        || start.elapsed().as_millis(),
+        |chat| {
+            let id = chat.id.as_str().ok_or(500u16)?;
+            let kind = match chat.project_id.as_str() {
+                Some(project) => crate::chat_delete::Kind::Project(project),
+                None if chat.project_id == JValue::Null => crate::chat_delete::Kind::Free,
+                None => return Err(500),
+            };
+            crate::chat_delete::delete(
+                ctx.data_dir,
+                ctx.user_id,
+                id,
+                kind,
+                crate::journal::Origin::Remove,
+                ctx.switch,
+            )
+            .map_err(|_| 503)
+            .and_then(|r| {
+                if r.leftovers == 0 {
+                    Ok(r.deleted)
+                } else {
+                    Err(503)
+                }
+            })
+        },
+    )
+}
+fn put_with(
+    ctx: Ctx<'_>,
+    body: &[u8],
+    failed: bool,
+    mut clock: impl FnMut() -> u128,
+    mut remove: impl FnMut(&Due) -> Result<bool, u16>,
+) -> Reply {
     let dir = match store::user_dir(ctx.data_dir, ctx.user_id) {
         Ok(v) => v,
         Err(e) => return chats::store_failure(&e),
@@ -288,24 +322,37 @@ pub fn put(ctx: Ctx<'_>, body: &[u8]) -> Reply {
         Ok(v) => v,
         Err(v) => return v,
     };
+    // Core builds the preview before reading/parsing the request body.
+    let mut preview = Vec::new();
+    for period in PERIODS {
+        let n = match expired(&free, &projects, period, ctx.now_ms as f64) {
+            Ok(v) => v.len(),
+            Err(_) => return Reply::internal(),
+        };
+        preview.push((period.to_string(), JValue::Num(n as f64)));
+    }
+    if failed {
+        return Reply::error(400, "invalid JSON");
+    }
+    let input = match crate::retention_input::parse(body) {
+        Some(v) => v,
+        None => return Reply::error(400, "invalid JSON"),
+    };
+    let Some(days) = input
+        .days
+        .and_then(|n| [0, 30, 90, 365].into_iter().find(|d| f64::from(*d) == n))
+    else {
+        return Reply::error(400, "Choose off, or 30, 90 or 365 days.");
+    };
     let due = match expired(&free, &projects, days, ctx.now_ms as f64) {
         Ok(v) => v,
         Err(_) => return Reply::internal(),
     };
     let confirmed = input
-        .get("confirmDeletes")
-        .as_num()
+        .confirmed
         .filter(|n| n.is_finite() && n.fract() == 0.0)
         .unwrap_or(0.0);
     if days != 0 && due.len() as f64 > confirmed {
-        let mut preview = Vec::new();
-        for period in PERIODS {
-            let n = match expired(&free, &projects, period, ctx.now_ms as f64) {
-                Ok(v) => v.len(),
-                Err(_) => return Reply::internal(),
-            };
-            preview.push((period.to_string(), JValue::Num(n as f64)));
-        }
         let message = format!(
             "{} chat{} would be deleted now. Confirm to continue.",
             due.len(),
@@ -327,11 +374,35 @@ pub fn put(ctx: Ctx<'_>, body: &[u8]) -> Reply {
     if save_setting(&dir, days, prior).is_err() {
         return Reply::error(500, "Could not save");
     }
-    let deleted = match remove_due(ctx, &due) {
-        Ok(v) => v,
-        Err(v) => return v,
-    };
-    if days != 0 && save_setting(&dir, days, ctx.now_ms).is_err() {
+    let (mut deleted, mut skipped, mut failure) = (0usize, 0usize, None);
+    let started = clock();
+    for chat in &due {
+        if clock().saturating_sub(started) > 30_000 {
+            failure = failure.or(Some(503));
+            break;
+        }
+        match remove(chat) {
+            Ok(true) => deleted += 1,
+            Ok(false) => skipped += 1,
+            Err(status) => {
+                failure = failure.or(Some(status));
+                if matches!(status, 429 | 503) {
+                    break;
+                }
+            }
+        }
+    }
+    if let Some(status) = failure {
+        let status = if matches!(status, 429 | 503) {
+            status
+        } else {
+            500
+        };
+        return Reply::json(status, format!(
+            "{{\"error\":\"Some chats could not be deleted. Try again shortly.\",\"days\":{days},\"deleted\":{deleted}}}"
+        ));
+    }
+    if days != 0 && skipped == 0 && save_setting(&dir, days, ctx.now_ms as f64).is_err() {
         return Reply::error(500, "Could not save");
     }
     Reply::json(200, format!("{{\"days\":{days},\"deleted\":{deleted}}}"))
@@ -343,17 +414,14 @@ pub fn sweep(ctx: Ctx<'_>) -> Result<(), Reply> {
         .map_err(|_| Reply::error(503, "Retention settings are busy"))?;
     let days = stored_days(&dir).map_err(|_| Reply::internal())?;
     if days == 0
-        || ctx
-            .now_ms
-            .saturating_sub(last_sweep(&dir).map_err(|_| Reply::internal())?)
-            < 3600000
+        || ctx.now_ms as f64 - last_sweep(&dir).map_err(|_| Reply::internal())? < 3_600_000.0
     {
         return Ok(());
     }
     let (free, projects) = lists(&dir)?;
     let due = expired(&free, &projects, days, ctx.now_ms as f64).map_err(|_| Reply::internal())?;
     remove_due(ctx, &due)?;
-    save_setting(&dir, days, ctx.now_ms).map_err(|_| Reply::internal())
+    save_setting(&dir, days, ctx.now_ms as f64).map_err(|_| Reply::internal())
 }
 
 #[cfg(test)]
@@ -439,6 +507,67 @@ mod tests {
 
     fn age(days: i64) -> i64 {
         NOW - days * DAY - 1
+    }
+
+    #[test]
+    fn put_matches_real_core_handler_including_partial_failures() {
+        let cases: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/fixtures/retention-put-node.json"))
+                .unwrap();
+        for case in cases.as_array().unwrap() {
+            let (root, dir) = setup();
+            write(&dir, FILE, case["initial"].as_str().unwrap());
+            write(
+                &dir,
+                FREE_CHATS_FILE,
+                r#"[{"id":"a","updatedAt":1},{"id":"b","updatedAt":1},{"id":"c","updatedAt":1}]"#,
+            );
+            let (mut index, mut tick) = (0usize, 0usize);
+            let mut calls = Vec::new();
+            let ctx = Ctx {
+                data_dir: root.path(),
+                user_id: USER,
+                switch: server_store::RustProjects::owned(),
+                now_ms: NOW,
+            };
+            let reply = put_with(
+                ctx,
+                case["raw"].as_str().unwrap().as_bytes(),
+                false,
+                || {
+                    let value = case["ticks"]
+                        .get(tick)
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0) as u128;
+                    tick += 1;
+                    value
+                },
+                |chat| {
+                    calls.push(chat.id.as_str().unwrap().to_owned());
+                    let value = case["results"].get(index).unwrap();
+                    index += 1;
+                    match value.as_u64() {
+                        Some(status) => Err(status as u16),
+                        None => Ok(value.as_bool().unwrap()),
+                    }
+                },
+            );
+            assert_eq!(
+                reply.status,
+                case["status"].as_u64().unwrap() as u16,
+                "{}",
+                case["name"]
+            );
+            let actual: serde_json::Value = serde_json::from_str(&body(&reply)).unwrap();
+            assert_eq!(actual, case["body"], "{}", case["name"]);
+            assert_eq!(serde_json::json!(calls), case["calls"], "{}", case["name"]);
+            assert_eq!(
+                std::fs::read_to_string(dir.join(FILE)).unwrap(),
+                case["file"].as_str().unwrap(),
+                "{}",
+                case["name"]
+            );
+        }
     }
 
     #[test]

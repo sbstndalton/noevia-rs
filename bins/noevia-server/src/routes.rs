@@ -76,8 +76,8 @@ pub enum Native {
     Export,
     /// GET /api/providers/chatgpt (M6, NOEVIA_RUST_CHATGPT_STATUS): crates/server-chatgpt-status.
     ChatgptStatus,
-    /// The Diary routes that are only a proxy and a policy (sbstndalton/noevia#2185):
-    /// crates/server-diary. The others stay Node's (contracts/http/README.md).
+    /// The Diary routes the web client names (sbstndalton/noevia#2185, #2206, and the local
+    /// exchange): crates/server-diary. The others stay Node's (contracts/http/README.md).
     Diary,
     /// GET /api/models/capabilities and GET /api/models/hardware (sbstndalton/noevia#2187), and GET
     /// /api/models/estimate and GET /api/models/preset/suggest (#2189): model_routes.rs and
@@ -181,8 +181,8 @@ const CHATGPT_OAUTH: &[&str] = &[
 
 /// The routes [`Native::Diary`] implements (diary_routes.rs). `/api/diary/history`, which core's
 /// handler shares with `today`, is not a route the web client names and stays Node's, as do `files`,
-/// `file`, `workspace-trash`, `external-sources` and `entries/edit`, and
-/// `POST /api/diary/local-exchange` (contracts/http/README.md says why). Paths marked `methods` in
+/// `file`, `workspace-trash`, `external-sources` and `entries/edit`. `/api/diary/local-exchange` is
+/// the front's; the throttle and gate it holds are Node's, by lease (contracts/http/README.md). Paths marked `methods` in
 /// routes.toml answer only those; the rest answer every method and give their own 405 after the
 /// add-on gate, as core does.
 pub(crate) const DIARY_ROUTES: &[&str] = &[
@@ -199,6 +199,8 @@ pub(crate) const DIARY_ROUTES: &[&str] = &[
     "/api/diary/storage-status",
     "/api/profile/diary-connectors",
     "/api/profile/diary-connectors/{*}",
+    // The local exchange (capability rust-diary-local-exchange):
+    "/api/diary/local-exchange",
 ];
 
 /// The route [`Native::RoutingDefault`] implements (GET only; routes.toml).
@@ -262,6 +264,8 @@ const PROJECT_ROUTES: &[&str] = &[
     PROJECT_BROWSER_TASK,
     server_projects::import::ROUTE,
     WORKSPACE,
+    CHAT_SEARCH,
+    CHAT_EXPORT,
 ];
 
 /// Deep research (every method; routes.toml), the front's under `rust-research` (sbstndalton/noevia#2218);
@@ -284,6 +288,12 @@ pub(crate) const PROJECT_BROWSER_TASK: &str = "/api/projects/{projectId}/browser
 /// (sbstndalton/noevia#2191 close-out); Node refuses the GET (core rust-workspace.cjs
 /// `RUST_WORKSPACE_OWNED`). It runs the delete-old-chats sweep and the orphan-context cleanup too.
 pub(crate) const WORKSPACE: &str = "/api/workspace";
+
+/// The transcript search (#1450) and one chat's Markdown download (#1471), GET only (routes.toml), the
+/// front's under `rust-chat-search` and `rust-chat-export`; Node refuses both GETs (core
+/// rust-chat-search.cjs, rust-chat-export.cjs). Other methods and spellings stay Node's (its 404).
+pub(crate) const CHAT_SEARCH: &str = "/api/chats/search";
+pub(crate) const CHAT_EXPORT: &str = "/api/chats/{chatId}/export";
 
 /// A project upload, folder sync and folder-import plan (POST only; routes.toml), the front's under
 /// `rust-project-source-work` (sbstndalton/noevia#2191 round 8), and a source job's status (GET only),
@@ -334,8 +344,8 @@ pub(crate) const PROJECT_DOCUMENT_PAGES: &str = "/api/projects/{id}/documents/pa
 pub(crate) const PROJECT_ORIGINAL: &str = "/api/projects/{id}/{*}/original";
 
 /// Settings → Data → Delete old chats, its preview (GET only; routes.toml): a read of the chat
-/// lists, answered by crates/server-projects `retention` (sbstndalton/noevia#1071). `PUT`, which
-/// deletes chats, is Node's.
+/// lists, answered by crates/server-projects `retention`. PUT persists the setting and awaits
+/// bounded tombstoned deletion under the same retention lock as the hourly sweep.
 const ACCOUNT_RETENTION: &str = "/api/account/retention";
 
 /// A chat's last context meter (GET only; routes.toml): a read, always answered here
@@ -987,7 +997,6 @@ mod tests {
         for (m, p) in [
             ("HEAD", "/api/admin/web-address"),
             ("POST", "/api/profile/sharing"),
-            ("PUT", "/api/account/retention"),
             ("HEAD", "/api/auth/session"),
             ("GET", "/api/auth/login/password"),
             ("GET", "/api/profile/features"),
@@ -1161,13 +1170,18 @@ mod tests {
     }
 
     #[test]
-    fn the_retention_preview_is_rusts_for_get_only() {
+    fn the_retention_setting_is_rusts_for_get_and_put() {
         let off = Switches::default();
-        assert_eq!(
-            dispatch_under("GET", "/api/account/retention", off),
-            Some(Native::Projects)
-        );
-        for m in ["PUT", "POST", "DELETE"] {
+        // GET previews and PUT persists the setting natively (the settings-writers move); Node keeps
+        // every other method.
+        for m in ["GET", "PUT"] {
+            assert_eq!(
+                dispatch_under(m, "/api/account/retention", off),
+                Some(Native::Projects),
+                "{m}"
+            );
+        }
+        for m in ["POST", "DELETE"] {
             assert_eq!(
                 dispatch_under(m, "/api/account/retention", off),
                 None,
@@ -1240,6 +1254,7 @@ mod tests {
             "/api/diary",
             "/api/diary-connector",
             "/api/diary/storage-status",
+            "/api/diary/local-exchange",
         ] {
             assert!(DIARY_ROUTES.contains(&p), "{p}");
             for m in EVERY {
@@ -1263,10 +1278,10 @@ mod tests {
         }
         assert!(crate::FEATURES.contains(&"rust-diary"));
         assert!(crate::FEATURES.contains(&"rust-diary-routes"));
-        // Node keeps the local exchange (the model throttle chat shares and the inference gate, both
-        // Node memory), and what the web client never names is not in the route table at all.
+        assert!(crate::FEATURES.contains(&"rust-diary-local-exchange"));
+        // What the web client never names is not in the route table at all.
         for p in [
-            "/api/diary/local-exchange",
+            "/api/diary/local-exchangex",
             "/api/diary/history",
             "/api/diary/files",
             "/api/diary/file",

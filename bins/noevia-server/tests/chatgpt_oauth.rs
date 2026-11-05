@@ -1133,9 +1133,12 @@ async fn races_are_won_by_the_disconnect_and_the_cancel() {
         post(f.addr, POLL, MEMBER, &first).await,
         (200, j(r#"{"state":"expired"}"#))
     );
-    assert_eq!(
-        post(f.addr, POLL, MEMBER, &second).await.1["state"],
-        "pending"
+    // The second sign-in is kept. The synthetic upstream approves every poll, so once its 1 s interval
+    // has passed (a slow runner) the poll completes it; either live state proves it was not dropped.
+    let kept = post(f.addr, POLL, MEMBER, &second).await.1["state"].clone();
+    assert!(
+        kept == "pending" || kept == "connected",
+        "the second sign-in survives the cap: {kept}"
     );
 }
 
