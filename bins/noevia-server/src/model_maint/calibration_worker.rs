@@ -1665,9 +1665,11 @@ impl Worker {
         #[cfg(test)]
         worker.runs.fetch_add(1, Ordering::AcqRel);
         tokio::spawn(async move {
+            #[cfg(test)]
+            let completion = Arc::clone(&worker);
             worker.run(hold).await;
             #[cfg(test)]
-            worker.runs.fetch_sub(1, Ordering::AcqRel);
+            completion.runs.fetch_sub(1, Ordering::AcqRel);
         });
         Ok(self.job())
     }
