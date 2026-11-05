@@ -310,11 +310,17 @@ async fn local_exchange(app: &Arc<App>, req: Request<Body>, path: String) -> Res
                 // Chat port S6: the `llm:` budget chat shares is this front's (chat_edge.rs); Node's lease
                 // charges nothing for it. Node's order stays: counted once the gate let the call in, and a
                 // call over the budget gives the gate back (the lease drops) before its 429.
-                if chat_edge::charge(&budget, &user) == Some(true) {
+                // A budget that cannot be read refuses (fail closed), as chat_turn.rs does.
+                let over = match chat_edge::charge(&budget, &user) {
+                    Some(false) => None,
+                    Some(true) => Some((429, chat_edge::DIARY_TOO_MANY)),
+                    None => Some((502, crate::chat_turn::UNAVAILABLE)),
+                };
+                if let Some((status, message)) = over {
                     drop(lease);
                     return Err(server_diary::ExchangeRefusal {
-                        status: 429,
-                        message: chat_edge::DIARY_TOO_MANY.into(),
+                        status,
+                        message: message.into(),
                     });
                 }
                 let lost = lease.lost().clone();
