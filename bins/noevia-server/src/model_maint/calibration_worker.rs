@@ -2589,10 +2589,15 @@ impl Worker {
             tokio::time::sleep(wait.min(until.saturating_duration_since(Instant::now()))).await;
             wait = (wait * 2).min(Duration::from_secs(1));
         }
-        let released = tokio::time::timeout_at(until.into(), hold.release_node_lease())
-            .await
-            .is_ok()
-            && hold.node_release_confirmed();
+        let release = tokio::time::timeout_at(until.into(), hold.release_node_lease());
+        #[cfg(not(test))]
+        let release_in_time = release.await.is_ok();
+        #[cfg(test)]
+        let release_in_time = tokio::select! {
+            result = release => result.is_ok(),
+            () = self.post_expiry.notified() => false,
+        };
+        let released = release_in_time && hold.node_release_confirmed();
         // Cancellation and this choice serialize on the same mutex. Once sealed, neither
         // cancellation nor unwind can change the outcome, even during an uncertain save.
         let decided = self.with(|i| {
@@ -3457,13 +3462,19 @@ mod tests {
         };
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
-        let app = axum::Router::new().fallback(|r: Request<Body>| async move {
+        let deleted = Arc::new(Notify::new());
+        let delete_seen = Arc::clone(&deleted);
+        let app = axum::Router::new().fallback(move |r: Request<Body>| {
+            let delete_seen = Arc::clone(&delete_seen);
+            async move {
             let (code, body) = if r.method() == "DELETE" {
+                delete_seen.notify_one();
                 (503, json!({"error":"private synthetic transport detail"}))
             } else if r.uri().path().ends_with("/lease") {
                 (201, json!({"lease":"fedcba9876543210fedcba9876543210","ttlMs":180000,"renewMs":20,"hardMs":86400000}))
             } else { (200, json!({"refusal":null})) };
             Response::builder().status(code).body(Body::from(body.to_string())).unwrap()
+            }
         });
         tokio::spawn(async move {
             let _ = axum::serve(listener, app).await;
@@ -3481,6 +3492,11 @@ mod tests {
             },
         );
         w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        tokio::time::timeout(WATCHDOG, deleted.notified())
+            .await
+            .unwrap();
+        // Expire only once the release request is in flight, not during launch/fsync.
+        w.post_expiry.notify_one();
         let job = tokio::time::timeout(WATCHDOG, settled(&w))
             .await
             .expect("bounded DELETE");
@@ -3719,6 +3735,8 @@ mod tests {
         })
         .await
         .unwrap();
+        // The owned CAS has reached the unavailable writer; expire its enclosing await.
+        w.post_expiry.notify_one();
         settled(&w).await;
         assert!(w.restoring.load(Ordering::Acquire));
         assert_eq!(
