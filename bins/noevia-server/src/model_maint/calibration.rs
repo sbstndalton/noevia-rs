@@ -273,6 +273,7 @@ impl Maint {
             return Recovery::Nothing;
         };
         let running = state.job().get("status").as_str() == Some("running");
+        let pending_fence = state.job().get("pendingTombstone").truthy();
         let pending = match (
             state
                 .job()
@@ -284,8 +285,28 @@ impl Maint {
             (Some(base), Some(text)) => Some((base.to_owned(), text.to_owned())),
             _ => None,
         };
-        if !running && pending.is_none() {
+        if !running && pending.is_none() && !pending_fence {
             return Recovery::Nothing;
+        }
+        if let Some(store) = self.evidence.clone() {
+            let model = state.job().get("model").as_str().unwrap_or("").to_owned();
+            let id = state.job().get("id").as_str().unwrap_or("").to_owned();
+            let generation = store.generation_for(&model, &id).unwrap_or(0);
+            let mut wait = Duration::from_secs(1);
+            loop {
+                let (store, model, id) = (std::sync::Arc::clone(&store), model.clone(), id.clone());
+                match tokio::task::spawn_blocking(move || store.tombstone(&model, &id, generation))
+                    .await
+                {
+                    Ok(Ok(())) => break,
+                    Ok(Err(e)) => {
+                        eprintln!("[models] calibration fence recovery failed: {:?}", e.kind())
+                    }
+                    Err(_) => eprintln!("[models] calibration fence recovery failed: Other"),
+                }
+                tokio::time::sleep(wait).await;
+                wait = (wait * 2).min(Duration::from_secs(60));
+            }
         }
         let Some(job) = state.job_mut() else {
             return Recovery::Nothing;
@@ -320,25 +341,17 @@ impl Maint {
             } else if let Some(restored) = restored {
                 wtf16::set(job, "restored", JValue::Bool(restored));
             }
-            job.retain(|(k, _)| k != "pendingRestore");
-        }
-        if let Some(store) = self.evidence.clone() {
-            let model = state.job().get("model").as_str().unwrap_or("").to_owned();
-            let id = state.job().get("id").as_str().unwrap_or("").to_owned();
-            let generation = store.generation_for(&model, &id).unwrap_or(0);
-            let mut wait = Duration::from_secs(1);
-            loop {
-                let (store, model, id) = (std::sync::Arc::clone(&store), model.clone(), id.clone());
-                if matches!(
-                    tokio::task::spawn_blocking(move || store.tombstone(&model, &id, generation))
-                        .await,
-                    Ok(Ok(()))
-                ) {
-                    break;
-                }
-                tokio::time::sleep(wait).await;
-                wait = (wait * 2).min(Duration::from_secs(60));
+            if pending_fence {
+                wtf16::set(job, "status", JValue::Str("failed".into()));
+                wtf16::set(job, "phase", JValue::Str("Failed".into()));
+                wtf16::set(
+                    job,
+                    "error",
+                    JValue::Str("Calibration finalization failed.".into()),
+                );
+                wtf16::set(job, "finishedAt", JValue::Num(now_ms()));
             }
+            job.retain(|(k, _)| k != "pendingRestore" && k != "pendingTombstone");
         }
         let saving = state.clone();
         let saved = tokio::task::spawn_blocking(move || file.save(&saving)).await;
