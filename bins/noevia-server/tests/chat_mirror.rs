@@ -1,7 +1,7 @@
 //! The chat mirror and brain schedule (capability `rust-chat-mirror-v1`, src/chat_mirror.rs) end to
 //! end: the real internal store writes transcripts and their journal, the consumer reads it in
-//! process, and the work executors reach a stub of Node's two private endpoints over the loopback
-//! bridge with the per-start secret. Synthetic, QA-named data only.
+//! process, and the schedule hands its work to a recording executor (the native executors are
+//! tested in chat_mirror_work.rs and crates/chat-mirror-exec). Synthetic, QA-named data only.
 #![cfg(target_os = "linux")]
 #![allow(
     clippy::unwrap_used,
@@ -10,13 +10,9 @@
     clippy::indexing_slicing
 )]
 
-use axum::body::Bytes;
-use axum::http::{HeaderMap, Uri};
-use axum::routing::any;
-use axum::Router;
+use chat_mirror_sched::{BoxFut, BrainExecutor, MirrorExecutor, MirrorOutcome};
 use noevia_server::chat_mirror::{ChatMirror, Options};
 use noevia_server::project_store::{serve_with_context, Store, TOKEN_HEADER};
-use noevia_server::research_routes::{Research, Settings};
 use serde_json::{json, Value};
 use std::net::SocketAddr;
 use std::path::Path;
@@ -32,87 +28,77 @@ const START: &str = "0123456789abcdef0123456789abcdef";
 
 type Calls = Arc<Mutex<Vec<(String, Value)>>>;
 
+/// Records what the schedule asks of its executors, in the shape of the old bridge calls.
+#[derive(Clone)]
 struct Node {
-    addr: SocketAddr,
     calls: Calls,
     fail_syncs: Arc<AtomicUsize>,
     brain_reason: Arc<Mutex<String>>,
+    down: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Node {
     fn syncs(&self) -> Vec<Value> {
-        self.calls
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|(p, _)| p == "/internal/chat-mirror/sync")
-            .map(|(_, b)| b.clone())
-            .collect()
+        self.of("sync")
     }
     fn brains(&self) -> Vec<Value> {
+        self.of("brain")
+    }
+    fn of(&self, kind: &str) -> Vec<Value> {
         self.calls
             .lock()
             .unwrap()
             .iter()
-            .filter(|(p, _)| p == "/internal/chat-mirror/brain")
+            .filter(|(p, _)| p == kind)
             .map(|(_, b)| b.clone())
             .collect()
     }
 }
 
-/// A stub of Node's two private endpoints, behind the per-start secret.
+impl MirrorExecutor for Node {
+    fn sync(&self, user: &str, dirty: Vec<String>) -> BoxFut<MirrorOutcome> {
+        let me = self.clone();
+        let body = json!({"user": user, "chats": dirty});
+        Box::pin(async move {
+            if me.down.load(Ordering::SeqCst) {
+                return MirrorOutcome::Failed;
+            }
+            me.calls.lock().unwrap().push(("sync".into(), body));
+            if me.fail_syncs.load(Ordering::SeqCst) > 0 {
+                me.fail_syncs.fetch_sub(1, Ordering::SeqCst);
+                return MirrorOutcome::Failed;
+            }
+            MirrorOutcome::Done
+        })
+    }
+}
+
+impl BrainExecutor for Node {
+    fn run(&self, user: &str, chat: &str) -> BoxFut<String> {
+        let me = self.clone();
+        let body = json!({"user": user, "chatId": chat});
+        Box::pin(async move {
+            me.calls.lock().unwrap().push(("brain".into(), body));
+            let reason = me.brain_reason.lock().unwrap().clone();
+            reason
+        })
+    }
+}
+
 async fn node() -> Node {
-    let calls: Calls = Arc::default();
-    let fail_syncs = Arc::new(AtomicUsize::new(0));
-    let brain_reason = Arc::new(Mutex::new("built".to_string()));
-    let (c, f, b) = (calls.clone(), fail_syncs.clone(), brain_reason.clone());
-    let app = Router::new().fallback(any(move |uri: Uri, headers: HeaderMap, body: Bytes| {
-        let (c, f, b) = (c.clone(), f.clone(), b.clone());
-        async move {
-            let ok = headers
-                .get(TOKEN_HEADER)
-                .is_some_and(|v| v.as_bytes() == TOKEN.as_bytes());
-            if !ok {
-                return (axum::http::StatusCode::NOT_FOUND, "{}".to_string());
-            }
-            let body: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
-            c.lock().unwrap().push((uri.path().to_string(), body));
-            match uri.path() {
-                "/internal/chat-mirror/sync" => {
-                    if f.load(Ordering::SeqCst) > 0 {
-                        f.fetch_sub(1, Ordering::SeqCst);
-                        return (
-                            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                            "{}".to_string(),
-                        );
-                    }
-                    (
-                        axum::http::StatusCode::OK,
-                        json!({"outcome": "done"}).to_string(),
-                    )
-                }
-                "/internal/chat-mirror/brain" => (
-                    axum::http::StatusCode::OK,
-                    json!({"reason": b.lock().unwrap().clone()}).to_string(),
-                ),
-                _ => (axum::http::StatusCode::NOT_FOUND, "{}".to_string()),
-            }
-        }
-    }));
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     Node {
-        addr,
-        calls,
-        fail_syncs,
-        brain_reason,
+        calls: Arc::default(),
+        fail_syncs: Arc::new(AtomicUsize::new(0)),
+        brain_reason: Arc::new(Mutex::new("built".to_string())),
+        down: Arc::default(),
     }
 }
 
 #[test]
 fn the_capability_and_the_scheduler_marker_are_compiled_in() {
     assert!(noevia_server::FEATURES.contains(&"rust-chat-mirror-v1"));
+    assert!(noevia_server::FEATURES.contains(&"rust-chat-mirror-exec-v1"));
+    assert_eq!(chat_mirror_exec::MARKER, "noevia-chat-mirror-exec/1");
     assert_eq!(chat_mirror_sched::MARKER, "noevia-chat-mirror-scheduler/1");
 }
 
@@ -133,15 +119,8 @@ fn quick() -> Options {
     }
 }
 
-fn research(node: &Node) -> Arc<Research> {
-    Arc::new(
-        Research::new(Settings {
-            upstream: format!("http://{}", node.addr),
-            token: Some(TOKEN.to_string()),
-            ..Settings::default()
-        })
-        .unwrap(),
-    )
+fn research(node: &Node) -> Arc<Node> {
+    Arc::new(node.clone())
 }
 
 async fn store(root: &Path) -> SocketAddr {
@@ -298,19 +277,11 @@ async fn a_failed_pass_keeps_its_chats_and_is_retried_on_the_backoff() {
 }
 
 #[tokio::test]
-async fn an_unreachable_node_is_a_failed_pass_never_a_success() {
+async fn a_failing_executor_is_a_failed_pass_never_a_success() {
     let root = data_dir();
     let store_addr = store(root.path()).await;
-    // A bridge to a port nothing listens on.
-    let dead = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = dead.local_addr().unwrap();
-    drop(dead);
-    let stub = Node {
-        addr,
-        calls: Arc::default(),
-        fail_syncs: Arc::default(),
-        brain_reason: Arc::default(),
-    };
+    let stub = node().await;
+    stub.down.store(true, Ordering::SeqCst);
     let mirror =
         ChatMirror::start_with(research(&stub), Some(root.path().to_path_buf()), quick()).unwrap();
     save(
@@ -321,29 +292,11 @@ async fn an_unreachable_node_is_a_failed_pass_never_a_success() {
     .await;
     mirror.touch(USER);
     tokio::time::sleep(Duration::from_millis(500)).await;
-    // Now Node comes up on the same address: the retained dirty chat is delivered.
-    let listener = TcpListener::bind(addr).await.unwrap();
-    let calls: Calls = Arc::default();
-    let c = calls.clone();
-    let app = Router::new().fallback(any(move |uri: Uri, body: Bytes| {
-        let c = c.clone();
-        async move {
-            c.lock().unwrap().push((
-                uri.path().to_string(),
-                serde_json::from_slice(&body).unwrap_or(Value::Null),
-            ));
-            (
-                axum::http::StatusCode::OK,
-                json!({"outcome": "done"}).to_string(),
-            )
-        }
-    }));
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    until("delivery after Node came up", || {
-        !calls.lock().unwrap().is_empty()
-    })
-    .await;
-    assert_eq!(chats_of(&calls.lock().unwrap()[0].1), vec!["qa-c3"]);
+    assert!(stub.syncs().is_empty());
+    // The work succeeds again: the retained dirty chat is delivered.
+    stub.down.store(false, Ordering::SeqCst);
+    until("delivery after recovery", || !stub.syncs().is_empty()).await;
+    assert_eq!(chats_of(&stub.syncs()[0]), vec!["qa-c3"]);
 }
 
 #[tokio::test]

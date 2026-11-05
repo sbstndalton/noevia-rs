@@ -14,6 +14,7 @@ pub mod autotune_untuned_routes;
 pub mod calibration_cancel_routes;
 pub mod calibration_routes;
 pub mod chat_mirror;
+pub mod chat_mirror_work;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_oauth_routes;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -191,6 +192,13 @@ use std::sync::Arc;
 /// core keeps only their two work executors and nudges the schedule over the project store (core
 /// rust-chat-mirror.cjs `RUST_CHAT_MIRROR_OWNED`). Both processes must carry it: a front without it
 /// beside this core leaves the journal unread, a core without it beside this front runs a second schedule.
+/// `rust-chat-mirror-exec-v1`: this build also does the mirror's and the brains' work natively
+/// (chat_mirror_work.rs, crate chat-mirror-exec): the Diary writes, the notes, the index, the trash
+/// pass, the brain store and the reasoner call. The paired core has no executor bridge left and
+/// answers only the engine seam `POST /internal/chat-mirror/engine` (core rust-chat-mirror.cjs
+/// `RUST_CHAT_MIRROR_EXEC_OWNED`). Both or neither: an older core beside this front would still
+/// run nothing (its bridge is never called), but an older front beside this core calls a bridge
+/// that is gone, and every pass fails.
 /// `rust-storage-integrations`: this build answers `POST /api/integrations/storage/folder`,
 /// `/test` and `/nextcloud/{start,poll,cancel}` (sbstndalton/noevia#2190): it owns the pending
 /// Nextcloud sign-ins (`nextcloud-login-flows.json`), saves a completed sign-in's storage row and
@@ -381,6 +389,7 @@ use std::sync::Arc;
 pub const FEATURES: &[&str] = &[
     "rust-embedding-background-v1",
     "rust-chat-mirror-v1",
+    "rust-chat-mirror-exec-v1",
     "client-address-header",
     "code-net-guard",
     "header-read-timeout",

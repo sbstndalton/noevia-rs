@@ -1,0 +1,496 @@
+//! The chat mirror's work, native (sbstndalton/noevia#741, #742, #2153; crate `chat-mirror-exec`):
+//! one Diary mirror pass for one account and one chat's brain build. They replace Node's executors
+//! (core `chat-vault-mirror.cjs` sync and `chat-brain.cjs` createBrainRunner/createBrainBuilder),
+//! with core's output byte for byte (crates/chat-mirror-exec/tests/oracle.rs).
+//!
+//! What a pass reads is the account's own: its lists (`projects.json` without the internal
+//! projects, `free-chats.json`), its tombstones (`deleted-chats.json`), its transcripts (the
+//! store), its brains and its index (`users/<id>/`). Its Diary calls go through the Diary client
+//! as that account (`server_diary::Diary::call_file_within`, core `diaryFiles`, 15 s). The gates
+//! are core's (`server_account::vault_mirror::exec_gates`), read when the pass or the build starts
+//! and, for a build, again after the model call; an unreadable gate fails closed.
+//!
+//! The reasoner role goes through [`EngineSeam`], the trait the engine's admission sits behind
+//! (as row A's `EngineEntry`). Its implementation today is [`NodeEngine`]: the answer model, the
+//! `admitReasoner` decision (keep-alongside list and load budget) and the call on the default
+//! provider are still Node's, reached on loopback at `POST /internal/chat-mirror/engine`
+//! (`{op: loaded|admit|complete}`). SWITCH LATER: when the front owns the engine admission (row H,
+//! move/inference-admission-h) and the provider registry, implement `EngineSeam` over those and
+//! delete core's seam. The prompt, the schema, the parameters and the deadline are this crate's
+//! data; core only forwards the call.
+use crate::research_routes::Research;
+use chat_mirror_exec::brain::{self, Reasoner};
+use chat_mirror_exec::{BoxFut, BrainSource, Completion, Diary, FileError, Lists, MirrorSource};
+use chat_mirror_sched::{BrainExecutor, MirrorExecutor, MirrorOutcome};
+use js_json::{wtf16, JValue};
+use server_account::vault_mirror::{exec_gates, ExecGates};
+use server_projects::chats::{FREE_CHATS_FILE, TOMBSTONES_FILE};
+use server_projects::store;
+use server_store::Store;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Duration;
+
+pub const ENGINE_PATH: &str = "/internal/chat-mirror/engine";
+/// core diaryFileCall's deadline.
+const DIARY_CALL: Duration = Duration::from_secs(15);
+const ENGINE_FACTS: Duration = Duration::from_secs(10);
+/// The reasoner's own deadline is 30 s (brain::DEFAULT_DEADLINE); the bridge allows a little more.
+const ENGINE_CALL: Duration = Duration::from_secs(40);
+
+/// What the executors need from the process; each is resolved per use, so a store or a Diary
+/// that is not ready yet fails that one pass (retried), never the schedule.
+pub trait Host: Send + Sync + 'static {
+    fn data_dir(&self) -> &Path;
+    /// Blocking: the account's gates. `None`: not readable (fail closed).
+    fn gates(&self, user: &str) -> Option<ExecGates>;
+    /// Blocking: the Diary file API as the account. `None`: no Diary configured or no store.
+    fn files(&self) -> Option<Arc<dyn Diary>>;
+    fn engine(&self) -> Arc<dyn EngineSeam>;
+    fn log(&self, line: &str) {
+        eprintln!("noevia-server: {line}");
+    }
+}
+
+/// The engine's admission and the call (see the module notes for what implements it).
+pub trait EngineSeam: Send + Sync + 'static {
+    fn loaded(&self) -> BoxFut<Result<Option<String>, ()>>;
+    fn admit(
+        &self,
+        model: String,
+        answer_model: Option<String>,
+    ) -> BoxFut<Result<Option<String>, ()>>;
+    fn complete(&self, call: Completion) -> BoxFut<Result<String, String>>;
+}
+
+/// The production host: the App's own layers.
+pub struct AppHost {
+    pub data_dir: PathBuf,
+    pub identity: Arc<crate::identity::IdentityLayer>,
+    pub feature_context: Option<Arc<crate::feature_context::Layer>>,
+    pub diary: Option<Arc<server_diary::Diary>>,
+    pub engine: Arc<dyn EngineSeam>,
+}
+
+impl Host for AppHost {
+    fn data_dir(&self) -> &Path {
+        &self.data_dir
+    }
+    fn gates(&self, user: &str) -> Option<ExecGates> {
+        let store = self.identity.store_blocking().ok()?;
+        let controller = self.feature_context.as_ref()?.controller();
+        store
+            .read(|r| exec_gates(&controller, r, &self.data_dir, user))
+            .ok()
+    }
+    fn files(&self) -> Option<Arc<dyn Diary>> {
+        let diary = self.diary.clone()?;
+        let store = self.identity.store_blocking().ok()?;
+        Some(Arc::new(DiaryAs {
+            diary,
+            store,
+            data_dir: self.data_dir.clone(),
+        }))
+    }
+    fn engine(&self) -> Arc<dyn EngineSeam> {
+        Arc::clone(&self.engine)
+    }
+}
+
+/// The executors behind the schedule.
+pub struct NativeWork<H: Host> {
+    host: Arc<H>,
+}
+
+impl<H: Host> NativeWork<H> {
+    pub fn new(host: Arc<H>) -> Arc<Self> {
+        Arc::new(NativeWork { host })
+    }
+}
+
+async fn gates_async<H: Host>(host: &Arc<H>, user: &str) -> Option<ExecGates> {
+    let (h, u) = (Arc::clone(host), user.to_owned());
+    tokio::task::spawn_blocking(move || h.gates(&u))
+        .await
+        .ok()
+        .flatten()
+}
+
+impl<H: Host> MirrorExecutor for NativeWork<H> {
+    fn sync(&self, user: &str, dirty: Vec<String>) -> BoxFut<MirrorOutcome> {
+        let host = Arc::clone(&self.host);
+        let user = user.to_owned();
+        Box::pin(async move {
+            // Checked when it runs, not when it was asked for: switching off stops writes at once.
+            let Some(g) = gates_async(&host, &user).await else {
+                host.log("chat-vault-mirror: sync failed: the feature gates are not readable");
+                return MirrorOutcome::Failed;
+            };
+            if !(g.available && g.opted_in) {
+                return MirrorOutcome::Off;
+            }
+            let h = Arc::clone(&host);
+            let Some(files) = tokio::task::spawn_blocking(move || h.files())
+                .await
+                .ok()
+                .flatten()
+            else {
+                host.log("chat-vault-mirror: sync failed: the Diary is not configured");
+                return MirrorOutcome::Failed;
+            };
+            let source = Workspace {
+                host: Arc::clone(&host),
+            };
+            let dirty: HashSet<String> = dirty.into_iter().collect();
+            match chat_mirror_exec::sync::sync(&user, &dirty, &source, &*files).await {
+                Ok(true) => MirrorOutcome::Done,
+                Ok(false) => MirrorOutcome::Failed,
+                Err(e) => {
+                    host.log(&format!("chat-vault-mirror: sync failed {e}"));
+                    MirrorOutcome::Failed
+                }
+            }
+        })
+    }
+}
+
+impl<H: Host> BrainExecutor for NativeWork<H> {
+    fn run(&self, user: &str, chat: &str) -> BoxFut<String> {
+        let host = Arc::clone(&self.host);
+        let (user, chat) = (user.to_owned(), chat.to_owned());
+        Box::pin(async move {
+            let Some(g) = gates_async(&host, &user).await else {
+                host.log("chat-brain: build failed: the feature gates are not readable");
+                return "error".to_owned();
+            };
+            let source = Brains {
+                host: Arc::clone(&host),
+                first: std::sync::Mutex::new(Some(g.clone())),
+            };
+            let reasoner = EngineReasoner {
+                gates: g,
+                engine: host.engine(),
+            };
+            chat_mirror_exec::run_brain(&user, &chat, &source, &reasoner).await
+        })
+    }
+}
+
+// ── The account's workspace ─────────────────────────────────────────────────────────────────
+
+fn user_dir(data_dir: &Path, user: &str) -> Result<PathBuf, String> {
+    store::user_dir(data_dir, user).map_err(|e| format!("{e:?}"))
+}
+
+fn lists(data_dir: &Path, user: &str) -> Result<Lists, String> {
+    let dir = user_dir(data_dir, user)?;
+    let free_chats =
+        match store::read_json(&dir.join(FREE_CHATS_FILE)).map_err(|e| format!("{e:?}"))? {
+            Some(JValue::Arr(items)) => items,
+            _ => Vec::new(),
+        };
+    let projects = store::read(&dir)
+        .map_err(|e| format!("{e:?}"))?
+        .into_iter()
+        .filter(|p| !server_projects::source_reply::internal_project(p))
+        .collect();
+    Ok(Lists {
+        free_chats,
+        projects,
+    })
+}
+
+/// chat-lists.cjs `readTombstones(dir)`: the strings of the list; nothing on any failure.
+fn tombstones(data_dir: &Path, user: &str) -> Result<HashSet<String>, String> {
+    let dir = user_dir(data_dir, user)?;
+    Ok(match store::read_json(&dir.join(TOMBSTONES_FILE)) {
+        Ok(Some(JValue::Arr(ids))) => ids
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_owned))
+            .collect(),
+        _ => HashSet::new(),
+    })
+}
+
+fn history(data_dir: &Path, user: &str, chat: &str) -> Result<Vec<JValue>, String> {
+    let current =
+        server_projects::transcript::read(data_dir, user, chat).map_err(|e| format!("{e:?}"))?;
+    Ok(match current.history {
+        JValue::Arr(items) => items,
+        _ => Vec::new(),
+    })
+}
+
+struct Workspace<H: Host> {
+    host: Arc<H>,
+}
+
+impl<H: Host> MirrorSource for Workspace<H> {
+    fn lists(&self, user: &str) -> Result<Lists, String> {
+        lists(self.host.data_dir(), user)
+    }
+    fn deleted(&self, user: &str) -> Result<HashSet<String>, String> {
+        tombstones(self.host.data_dir(), user)
+    }
+    fn history(&self, user: &str, chat: &str) -> Result<Vec<JValue>, String> {
+        history(self.host.data_dir(), user, chat)
+    }
+    fn brain(&self, user: &str, chat: &str) -> Option<JValue> {
+        brain::read(&user_dir(self.host.data_dir(), user).ok()?, chat).map(|r| r.brain)
+    }
+    fn read_index(&self, user: &str) -> JValue {
+        match user_dir(self.host.data_dir(), user) {
+            Ok(dir) => chat_mirror_exec::read_index(&dir),
+            Err(_) => JValue::Obj(Vec::new()),
+        }
+    }
+    fn write_index(&self, user: &str, state: &JValue) -> Result<(), String> {
+        chat_mirror_exec::write_index(&user_dir(self.host.data_dir(), user)?, state)
+    }
+    fn log(&self, line: &str) {
+        self.host.log(line);
+    }
+}
+
+struct Brains<H: Host> {
+    host: Arc<H>,
+    /// The gates read when the build started (core read them on the first `enabled` call); later
+    /// calls read them again.
+    first: std::sync::Mutex<Option<ExecGates>>,
+}
+
+impl<H: Host> BrainSource for Brains<H> {
+    fn enabled(&self, user: &str) -> bool {
+        let first = match self.first.lock() {
+            Ok(mut f) => f.take(),
+            Err(p) => p.into_inner().take(),
+        };
+        // A re-check after the model call reads the files and the store again (blocking, brief).
+        let g = first.or_else(|| self.host.gates(user));
+        g.is_some_and(|g| g.reasoner && g.available && g.opted_in)
+    }
+    fn chat(&self, user: &str, chat: &str) -> Result<Option<JValue>, String> {
+        let l = lists(self.host.data_dir(), user)?;
+        let mut all = l.free_chats.into_iter();
+        if let Some(c) = all.find(|c| c.truthy() && c.get("id").as_str() == Some(chat)) {
+            return Ok(Some(c));
+        }
+        for p in l.projects {
+            match p.get("chats") {
+                JValue::Arr(items) => {
+                    if let Some(c) = items
+                        .iter()
+                        .find(|c| c.truthy() && c.get("id").as_str() == Some(chat))
+                    {
+                        return Ok(Some(c.clone()));
+                    }
+                }
+                // flatMap keeps a non-array value as one element.
+                c if c.truthy() && c.get("id").as_str() == Some(chat) => {
+                    return Ok(Some(c.clone()))
+                }
+                _ => {}
+            }
+        }
+        Ok(None)
+    }
+    fn history(&self, user: &str, chat: &str) -> Result<Vec<JValue>, String> {
+        history(self.host.data_dir(), user, chat)
+    }
+    fn deleted(&self, user: &str) -> Result<HashSet<String>, String> {
+        tombstones(self.host.data_dir(), user)
+    }
+    fn read(&self, user: &str, chat: &str) -> Option<brain::Record> {
+        brain::read(&user_dir(self.host.data_dir(), user).ok()?, chat)
+    }
+    fn write(
+        &self,
+        user: &str,
+        chat: &str,
+        b: &JValue,
+        source_updated_at: f64,
+        built_at: f64,
+    ) -> Result<(), String> {
+        brain::write(
+            &user_dir(self.host.data_dir(), user)?,
+            chat,
+            b,
+            source_updated_at,
+            built_at,
+        )
+        .map(|_| ())
+    }
+    fn remove(&self, user: &str, chat: &str) {
+        if let Ok(dir) = user_dir(self.host.data_dir(), user) {
+            brain::remove(&dir, chat);
+        }
+    }
+    #[allow(clippy::cast_precision_loss)]
+    fn now_ms(&self) -> f64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0.0, |d| d.as_millis() as f64)
+    }
+    fn log(&self, line: &str) {
+        self.host.log(line);
+    }
+}
+
+struct EngineReasoner {
+    gates: ExecGates,
+    engine: Arc<dyn EngineSeam>,
+}
+
+impl Reasoner for EngineReasoner {
+    fn enabled(&self) -> bool {
+        self.gates.reasoner && self.gates.framing
+    }
+    fn model(&self) -> String {
+        self.gates.reasoner_model.clone()
+    }
+    fn loaded_model(&self) -> BoxFut<Result<Option<String>, ()>> {
+        self.engine.loaded()
+    }
+    fn admit(
+        &self,
+        model: String,
+        answer_model: Option<String>,
+    ) -> BoxFut<Result<Option<String>, ()>> {
+        self.engine.admit(model, answer_model)
+    }
+    fn complete(&self, call: Completion) -> BoxFut<Result<String, String>> {
+        self.engine.complete(call)
+    }
+}
+
+// ── The Diary as the account ────────────────────────────────────────────────────────────────
+
+struct DiaryAs {
+    diary: Arc<server_diary::Diary>,
+    store: Arc<Store>,
+    data_dir: PathBuf,
+}
+
+impl DiaryAs {
+    fn call(
+        &self,
+        user: &str,
+        method: reqwest::Method,
+        endpoint: &'static str,
+        body: JValue,
+    ) -> BoxFut<Result<JValue, FileError>> {
+        let (diary, store, data_dir, user) = (
+            Arc::clone(&self.diary),
+            Arc::clone(&self.store),
+            self.data_dir.clone(),
+            user.to_owned(),
+        );
+        Box::pin(async move {
+            let text = wtf16::stringify(&body);
+            diary
+                .call_file_within(&store, &data_dir, &user, method, endpoint, text, DIARY_CALL)
+                .await
+                .map_err(|f| FileError {
+                    status: Some(f.status),
+                    message: f.message,
+                })
+        })
+    }
+}
+
+impl Diary for DiaryAs {
+    fn read(&self, user: &str, path: &str) -> BoxFut<Result<JValue, FileError>> {
+        self.call(
+            user,
+            reqwest::Method::POST,
+            "/file",
+            JValue::obj([("path", JValue::from(path))]),
+        )
+    }
+    fn write(&self, user: &str, body: JValue) -> BoxFut<Result<JValue, FileError>> {
+        self.call(user, reqwest::Method::PUT, "/file", body)
+    }
+    fn mkdir(&self, user: &str, path: &str) -> BoxFut<Result<JValue, FileError>> {
+        self.call(
+            user,
+            reqwest::Method::POST,
+            "/directory",
+            JValue::obj([("path", JValue::from(path))]),
+        )
+    }
+    fn ops(&self, user: &str, body: JValue) -> BoxFut<Result<JValue, FileError>> {
+        self.call(user, reqwest::Method::POST, "/workspace-ops", body)
+    }
+}
+
+// ── The engine seam, Node's for now ─────────────────────────────────────────────────────────
+
+/// [`EngineSeam`] over core's loopback seam (see the module notes).
+pub struct NodeEngine {
+    pub research: Arc<Research>,
+}
+
+impl NodeEngine {
+    fn ask(&self, body: JValue, deadline: Duration) -> BoxFut<Option<JValue>> {
+        let research = Arc::clone(&self.research);
+        Box::pin(async move {
+            let text = wtf16::stringify(&body)?;
+            let (status, bytes) = research.node_call_text(ENGINE_PATH, text, deadline).await?;
+            if status != 200 {
+                return None;
+            }
+            wtf16::parse(&String::from_utf8_lossy(&bytes)).ok()
+        })
+    }
+}
+
+fn opt_str(v: &JValue) -> Result<Option<String>, ()> {
+    match v {
+        JValue::Null => Ok(None),
+        JValue::Str(s) => Ok(Some(s.clone())),
+        _ => Err(()),
+    }
+}
+
+impl EngineSeam for NodeEngine {
+    fn loaded(&self) -> BoxFut<Result<Option<String>, ()>> {
+        let ask = self.ask(JValue::obj([("op", JValue::from("loaded"))]), ENGINE_FACTS);
+        Box::pin(async move { ask.await.ok_or(()).and_then(|v| opt_str(v.get("model"))) })
+    }
+    fn admit(
+        &self,
+        model: String,
+        answer_model: Option<String>,
+    ) -> BoxFut<Result<Option<String>, ()>> {
+        let body = JValue::obj([
+            ("op", JValue::from("admit")),
+            ("model", JValue::Str(model)),
+            (
+                "answerModel",
+                answer_model.map_or(JValue::Null, JValue::Str),
+            ),
+        ]);
+        let ask = self.ask(body, ENGINE_FACTS);
+        Box::pin(async move { ask.await.ok_or(()).and_then(|v| opt_str(v.get("refusal"))) })
+    }
+    fn complete(&self, call: Completion) -> BoxFut<Result<String, String>> {
+        let body = JValue::obj([
+            ("op", JValue::from("complete")),
+            ("model", JValue::Str(call.model)),
+            ("schema", call.schema),
+            ("messages", call.messages),
+        ]);
+        let ask = self.ask(body, ENGINE_CALL);
+        Box::pin(async move {
+            match ask.await {
+                Some(v) => v
+                    .get("content")
+                    .as_str()
+                    .map(str::to_owned)
+                    .ok_or_else(|| "no content".to_owned()),
+                None => Err("the engine did not answer".to_owned()),
+            }
+        })
+    }
+}

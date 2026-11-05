@@ -1,19 +1,15 @@
-//! The chat change-journal consumer and the Diary mirror / chat brain schedules
+//! The chat change-journal consumer and the Diary mirror / chat brain schedules and their work
 //! (sbstndalton/noevia#2153, #741, #742), moved from noevia-core `chat-change-journal.cjs`,
-//! `chat-vault-mirror.cjs` and `chat-brain.cjs`; capability `rust-chat-mirror-v1`.
+//! `chat-vault-mirror.cjs` and `chat-brain.cjs`; capability `rust-chat-mirror-v1`, executors
+//! `rust-chat-mirror-exec-v1`.
 //!
-//! This process now decides *when*: it reads each active account's journal in-process
+//! This process decides *when*: it reads each active account's journal in-process
 //! ([`server_projects::journal`]), debounces and coalesces the mirror passes, times the per-chat
-//! idle builds of the brains, and retries with backoff (crate `chat-mirror-sched`). What a mirror
-//! pass or a brain build *does* is still Node's — the Diary file writes, the note rendering, the
-//! reasoner call and its admission — and is reached over the loopback bridge with the per-start
-//! secret, exactly as the research module reaches Node:
-//!
-//!   POST /internal/chat-mirror/sync  {user, chats: [id...]}   -> 200 {outcome: done|off|failed}
-//!   POST /internal/chat-mirror/brain {user, chatId}           -> 200 {reason}
-//!
-//! An unreachable or unhappy Node is a failed pass (retried on the backoff) and writes nothing;
-//! it is never taken for success. REMAINING: those two executors.
+//! idle builds of the brains, and retries with backoff (crate `chat-mirror-sched`). It also does
+//! the work natively (crate `chat-mirror-exec`, wired in [`crate::chat_mirror_work`]): the Diary
+//! file writes, the note rendering, the per-user index, the tombstone trash pass, the brain store
+//! and the reasoner call. Only the engine admission and the provider call of the reasoner are still
+//! Node's, behind the [`crate::chat_mirror_work::EngineSeam`] trait (see there).
 //!
 //! Node's own triggers (a project change, an import, its request starts) reach this schedule on
 //! the project store's loopback listener with the same secret:
@@ -22,14 +18,13 @@
 //!
 //! The front's activity record (`UI_DATA_DIR/chat-activity.json`, written by the front when it
 //! answers chat routes itself) is merged on every tick, as before.
-use crate::research_routes::Research;
 use chat_mirror_sched::brain::{self, Brains};
 use chat_mirror_sched::journal::{
     self, Activity, Change, ChangeSink, Consumer, JournalRead, JournalSource, ReadError,
 };
 use chat_mirror_sched::mirror::{self, Mirror};
-use chat_mirror_sched::{BoxFut, BrainExecutor, Log, MirrorExecutor, MirrorOutcome, StderrLog};
-use serde_json::{json, Value};
+use chat_mirror_sched::{BoxFut, BrainExecutor, Log, MirrorExecutor, StderrLog};
+use serde_json::Value;
 use server_projects::journal as store_journal;
 use server_projects::store::StoreError;
 use std::collections::HashMap;
@@ -37,12 +32,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
-pub const SYNC_PATH: &str = "/internal/chat-mirror/sync";
-pub const BRAIN_PATH: &str = "/internal/chat-mirror/brain";
-/// A mirror pass walks every chat of an account and writes to the Diary: it may take a while.
-const SYNC_DEADLINE: Duration = Duration::from_secs(15 * 60);
-/// A brain build is one reasoner call (30 s) plus admission.
-const BRAIN_DEADLINE: Duration = Duration::from_secs(5 * 60);
 /// The front's record of authenticated requests.
 pub const ACTIVITY_FILE: &str = "chat-activity.json";
 
@@ -74,19 +63,34 @@ pub struct ChatMirror {
 }
 
 impl ChatMirror {
-    /// Builds the schedule and starts its timer. `None` without a data directory.
-    pub fn start(research: Arc<Research>, data_dir: Option<PathBuf>) -> Option<Arc<ChatMirror>> {
-        Self::start_with(research, data_dir, Options::default())
+    /// Builds the schedule over the native executors and starts its timer. `None` without a data
+    /// directory.
+    pub fn start(app: &crate::App) -> Option<Arc<ChatMirror>> {
+        let data_dir = app.config.data_dir.clone()?;
+        let host = Arc::new(crate::chat_mirror_work::AppHost {
+            data_dir: data_dir.clone(),
+            identity: Arc::clone(&app.identity),
+            feature_context: app.feature_context.clone(),
+            diary: app.diary.clone(),
+            engine: Arc::new(crate::chat_mirror_work::NodeEngine {
+                research: Arc::clone(&app.config.research),
+            }),
+        });
+        Self::start_with(
+            crate::chat_mirror_work::NativeWork::new(host),
+            Some(data_dir),
+            Options::default(),
+        )
     }
 
-    pub fn start_with(
-        research: Arc<Research>,
+    /// The schedule over `work` (tests give a recording one).
+    pub fn start_with<W: MirrorExecutor + BrainExecutor>(
+        work: Arc<W>,
         data_dir: Option<PathBuf>,
         options: Options,
     ) -> Option<Arc<ChatMirror>> {
         let data_dir = data_dir?;
         let log: Arc<dyn Log> = Arc::new(StderrLog);
-        let work = Arc::new(NodeWork { research });
         let mirror = Mirror::new(work.clone(), Arc::clone(&log), options.mirror);
         let built_mirror = mirror.clone();
         let brains = Brains::new(
@@ -276,51 +280,6 @@ fn parse_activity(file: &Path) -> Result<HashMap<String, f64>, ()> {
         }
     }
     Ok(out)
-}
-
-/// The work executors: Node's, over the loopback bridge.
-struct NodeWork {
-    research: Arc<Research>,
-}
-
-impl MirrorExecutor for NodeWork {
-    fn sync(&self, user: &str, dirty: Vec<String>) -> BoxFut<MirrorOutcome> {
-        let research = Arc::clone(&self.research);
-        let body = json!({"user": user, "chats": dirty});
-        Box::pin(async move {
-            let Some((200, bytes)) = research.node_call(SYNC_PATH, &body, SYNC_DEADLINE).await
-            else {
-                return MirrorOutcome::Failed;
-            };
-            match serde_json::from_slice::<Value>(&bytes)
-                .ok()
-                .and_then(|v| v.get("outcome").and_then(Value::as_str).map(str::to_string))
-                .as_deref()
-            {
-                Some("done") => MirrorOutcome::Done,
-                Some("off") => MirrorOutcome::Off,
-                _ => MirrorOutcome::Failed,
-            }
-        })
-    }
-}
-
-impl BrainExecutor for NodeWork {
-    fn run(&self, user: &str, chat: &str) -> BoxFut<String> {
-        let research = Arc::clone(&self.research);
-        let body = json!({"user": user, "chatId": chat});
-        Box::pin(async move {
-            let Some((200, bytes)) = research.node_call(BRAIN_PATH, &body, BRAIN_DEADLINE).await
-            else {
-                return "error".to_string();
-            };
-            serde_json::from_slice::<Value>(&bytes)
-                .ok()
-                .and_then(|v| v.get("reason").and_then(Value::as_str).map(str::to_string))
-                .filter(|r| !r.is_empty() && r.len() <= 64)
-                .unwrap_or_else(|| "error".to_string())
-        })
-    }
 }
 
 #[cfg(test)]

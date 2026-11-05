@@ -55,6 +55,7 @@ rust-project-writes = []
 [dependencies]
 autotune-plan = { path = "../../crates/autotune-plan" }
 chat-mirror-sched = { path = "../../crates/chat-mirror-sched" }
+chat-mirror-exec = { path = "../../crates/chat-mirror-exec" }
 embedding-worker = { path = "../../crates/embedding-worker" }
 context-fit = { path = "../../crates/context-fit" }
 engine-admission = { path = "../../crates/engine-admission" }
