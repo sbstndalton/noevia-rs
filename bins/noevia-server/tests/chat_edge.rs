@@ -33,7 +33,6 @@ const ORIGIN: &str = "http://127.0.0.1:18021";
 const STORE_TOKEN: &str = "synthetic-store-token-0123456789abcdef";
 const START: &str = "0123456789abcdef0123456789abcdef";
 const BUSY: &str = r#"{"error":"Inference is paused for maintenance.","code":"inferenceMaintenance","retryable":true,"retryAfter":3}"#;
-const DIARY_BUSY: &str = r#"{"error":"Inference is paused for maintenance."}"#;
 /// Chat port S8: the admission lease a covered call carries (core rust-chat-admission.cjs).
 const LEASE: &str = "x-noevia-admission-lease";
 const CAP: usize = 32 * 1024 * 1024;
