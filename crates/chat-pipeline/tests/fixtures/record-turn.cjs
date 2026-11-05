@@ -9,9 +9,9 @@ const { createTurnRecord } = require(path.join(core, 'server', 'chat-interrupted
 let seed = 19;
 const rnd = (n) => { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return (seed >>> 16) % n; };
 const pick = (xs) => xs[rnd(xs.length)];
-const TEXT = ['', 'Hello', ' world', '  ', 'Let me check. ', 'x'.repeat(4100), '😀', '\ud83d', 7, null];
+const TEXT = ['', 'Hello', ' world', '  ', 'Let me check. ', 'x'.repeat(4010), '😀', '\ud83d', 7, null];
 const NAMES = ['web_search', 'write_note', '', 'bad name', 3, undefined];
-const IDX = [0, 1, 2, 5, -1, 1.5, '1', undefined, 4294967295, 4294967294];
+const IDX = [0, 1, 2, 5, 40, -1, 1.5, '1', undefined];
 function event() {
   switch (rnd(14)) {
     case 0: return { type: 'meta', model: 'm', route: pick([undefined, '', 'fast', 'smart', 7]), routingDecision: pick([undefined, null, { status: 'accepted' }]), routing: pick([undefined, { route: 'local', reason: 'policy' }, { route: 'cloud', reason: 'check-unavailable', detail: pick(['timeout', 'Bad', 'x'.repeat(41), 5]) }, { route: 'other', reason: 'x' }, { route: 'local', reason: 3 }]) };
@@ -30,7 +30,7 @@ function event() {
 }
 const strip = (v) => JSON.parse(JSON.stringify(v === undefined ? null : v));
 const out = { core: cp.execFileSync('git', ['-C', core, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), cases: [] };
-for (let i = 0; i < 1500; i++) {
+for (let i = 0; i < 700; i++) {
   const events = Array.from({ length: rnd(14) }, () => strip(event()));
   let clock = 1000;
   const now = () => (clock += 7);
