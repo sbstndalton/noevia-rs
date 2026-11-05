@@ -771,3 +771,29 @@ fn round_fallback_and_call_preparation_match_node() {
         );
     }
 }
+
+#[test]
+fn tool_result_reduction_matches_node() {
+    use chat_pipeline::reduce::reduce_tool_result;
+    let c = wtf16::parse(include_str!("fixtures/reduce-cases.json")).unwrap();
+    let texts = arr(c.get("texts"));
+    let mut reduced = 0;
+    for k in arr(c.get("cases")) {
+        let text = texts[k.get("t").as_num().unwrap() as usize].as_str().unwrap();
+        let r = reduce_tool_result(
+            text,
+            k.get("maxChars").as_num().unwrap() as usize,
+            k.get("maxValueChars").as_num().unwrap() as usize,
+        );
+        let what = format!("t={} max={} mv={}", k.get("t").as_num().unwrap(), k.get("maxChars").as_num().unwrap(), k.get("maxValueChars").as_num().unwrap());
+        assert_eq!(JValue::Bool(r.reduced), *k.get("reduced"), "{what}");
+        assert_eq!(Some(r.note.as_str()), k.get("note").as_str(), "{what}");
+        if r.reduced {
+            reduced += 1;
+            assert_eq!(Some(r.text.as_str()), k.get("text").as_str(), "{what}");
+        } else {
+            assert_eq!(r.text, text);
+        }
+    }
+    assert!(reduced > 300, "{reduced}");
+}

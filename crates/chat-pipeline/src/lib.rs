@@ -17,11 +17,13 @@
 //! - [`failure`]: the words a failed engine reply shows.
 //! - [`writes`]: the writes already done in a chat (#658 repeat flag).
 //! - [`record`]: the reply a turn keeps when its client went away (#679, #1507).
+//! - [`reduce`]: what a tool result becomes before the model reads it.
 //! - [`notes`]: the system notes a turn adds or removes (`withSystemNote`, `withoutSystemNote`).
 pub mod end;
 pub mod failure;
 pub mod notes;
 pub mod record;
+pub mod reduce;
 pub mod replay;
 pub mod rounds;
 pub mod search;
