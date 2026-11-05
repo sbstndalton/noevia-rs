@@ -508,7 +508,7 @@ async fn provider_model_lists_follow_core() {
         post(addr, "/api/providers/chatgpt/models", ADMIN, "{}")
             .await
             .0,
-        404
+        405
     );
     assert_eq!(
         get(addr, "/api/providers/mine/models/x", ADMIN).await.0,
