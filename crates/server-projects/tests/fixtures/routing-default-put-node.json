@@ -354,6 +354,18 @@
      "status": 200,
      "body": {
       "routing": "auto",
+      "updated": 4
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"auto\"\n}",
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"a\",\n      \"name\": \"a\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 1800000000000,\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"b\",\n      \"name\": \"b\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"c\",\n      \"name\": \"c\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 1800000000000,\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"d\",\n      \"name\": \"d\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 1800000000000,\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"cowork-diary-extras\",\n      \"name\": \"cowork-diary-extras\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"e\",\n      \"name\": \"e\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 1800000000000,\n      \"routing\": \"auto\",\n      \"note\": \"kept\"\n    }\n  ]\n}",
+    "deviation": "#2388"
+   },
+   "node": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "auto",
       "updated": 5
      }
     },
@@ -543,6 +555,18 @@
      "status": 200,
      "body": {
       "routing": "auto",
+      "updated": 4
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"auto\"\n}",
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"a\",\n      \"name\": \"a\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 1800000000000,\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"b\",\n      \"name\": \"b\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"c\",\n      \"name\": \"c\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 1800000000000,\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"d\",\n      \"name\": \"d\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 1800000000000,\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"cowork-diary-extras\",\n      \"name\": \"cowork-diary-extras\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"e\",\n      \"name\": \"e\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 1800000000000,\n      \"routing\": \"auto\",\n      \"note\": \"kept\"\n    }\n  ]\n}",
+    "deviation": "#2388"
+   },
+   "node": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "auto",
       "updated": 5
      }
     },
@@ -590,6 +614,105 @@
     },
     "preferences": "{\n  \"defaultRouting\": \"manual\"\n}",
     "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"a\",\n      \"name\": \"a\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"b\",\n      \"name\": \"b\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"c\",\n      \"name\": \"c\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6\n    },\n    {\n      \"id\": \"d\",\n      \"name\": \"d\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": 5\n    },\n    {\n      \"id\": \"cowork-diary-extras\",\n      \"name\": \"cowork-diary-extras\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"e\",\n      \"name\": \"e\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 1,\n      \"routing\": \"manual\",\n      \"note\": \"kept\"\n    }\n  ]\n}"
+   }
+  },
+  {
+   "name": "apply-internal-only",
+   "initial": {
+    "preferences": null,
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"cowork-diary-extras\",\n      \"name\": \"cowork-diary-extras\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"cowork-chat-context-abc\",\n      \"name\": \"cowork-chat-context-abc\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": \"manual\"\n    }\n  ]\n}"
+   },
+   "body": {
+    "text": "{\"routing\":\"auto\",\"applyToExisting\":true}"
+   },
+   "expected": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "auto",
+      "updated": 0
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"auto\"\n}",
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"cowork-diary-extras\",\n      \"name\": \"cowork-diary-extras\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"cowork-chat-context-abc\",\n      \"name\": \"cowork-chat-context-abc\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": \"manual\"\n    }\n  ]\n}",
+    "deviation": "#2388"
+   },
+   "node": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "auto",
+      "updated": 2
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"auto\"\n}",
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"cowork-diary-extras\",\n      \"name\": \"cowork-diary-extras\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 1800000000000,\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"cowork-chat-context-abc\",\n      \"name\": \"cowork-chat-context-abc\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 1800000000000,\n      \"routing\": \"auto\"\n    }\n  ]\n}"
+   }
+  },
+  {
+   "name": "apply-internal-lookalikes",
+   "initial": {
+    "preferences": null,
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"cowork-diary-extras-2\",\n      \"name\": \"cowork-diary-extras-2\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"cowork-chat-contextual\",\n      \"name\": \"cowork-chat-contextual\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"cowork-chat-context-\",\n      \"name\": \"cowork-chat-context-\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"my-cowork-diary-extras\",\n      \"name\": \"my-cowork-diary-extras\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": \"manual\"\n    }\n  ]\n}"
+   },
+   "body": {
+    "text": "{\"routing\":\"auto\",\"applyToExisting\":true}"
+   },
+   "expected": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "auto",
+      "updated": 3
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"auto\"\n}",
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"cowork-diary-extras-2\",\n      \"name\": \"cowork-diary-extras-2\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 1800000000000,\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"cowork-chat-contextual\",\n      \"name\": \"cowork-chat-contextual\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 1800000000000,\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"cowork-chat-context-\",\n      \"name\": \"cowork-chat-context-\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"my-cowork-diary-extras\",\n      \"name\": \"my-cowork-diary-extras\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 1800000000000,\n      \"routing\": \"auto\"\n    }\n  ]\n}",
+    "deviation": "#2388"
+   },
+   "node": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "auto",
+      "updated": 4
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"auto\"\n}",
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"cowork-diary-extras-2\",\n      \"name\": \"cowork-diary-extras-2\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 1800000000000,\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"cowork-chat-contextual\",\n      \"name\": \"cowork-chat-contextual\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 1800000000000,\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"cowork-chat-context-\",\n      \"name\": \"cowork-chat-context-\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 1800000000000,\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"my-cowork-diary-extras\",\n      \"name\": \"my-cowork-diary-extras\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 1800000000000,\n      \"routing\": \"auto\"\n    }\n  ]\n}"
+   }
+  },
+  {
+   "name": "apply-internal-and-user",
+   "initial": {
+    "preferences": null,
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"a\",\n      \"name\": \"a\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"cowork-chat-context-x\",\n      \"name\": \"cowork-chat-context-x\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"b\",\n      \"name\": \"b\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"cowork-diary-extras\",\n      \"name\": \"cowork-diary-extras\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6\n    }\n  ]\n}"
+   },
+   "body": {
+    "text": "{\"routing\":\"auto\",\"applyToExisting\":true}"
+   },
+   "expected": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "auto",
+      "updated": 1
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"auto\"\n}",
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"a\",\n      \"name\": \"a\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 1800000000000,\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"cowork-chat-context-x\",\n      \"name\": \"cowork-chat-context-x\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": \"manual\"\n    },\n    {\n      \"id\": \"b\",\n      \"name\": \"b\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"cowork-diary-extras\",\n      \"name\": \"cowork-diary-extras\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6\n    }\n  ]\n}",
+    "deviation": "#2388"
+   },
+   "node": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "auto",
+      "updated": 3
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"auto\"\n}",
+    "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"a\",\n      \"name\": \"a\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 1800000000000,\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"cowork-chat-context-x\",\n      \"name\": \"cowork-chat-context-x\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 1800000000000,\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"b\",\n      \"name\": \"b\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 6,\n      \"routing\": \"auto\"\n    },\n    {\n      \"id\": \"cowork-diary-extras\",\n      \"name\": \"cowork-diary-extras\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"createdAt\": 5,\n      \"updatedAt\": 1800000000000,\n      \"routing\": \"auto\"\n    }\n  ]\n}"
    }
   },
   {

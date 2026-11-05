@@ -13,6 +13,11 @@
 //! here. Projects are changed under the shared projects.json lock on what is on disk now (Node merged its view
 //! against the same file), only `routing` and `updatedAt`; nothing else in them is rewritten.
 //!
+//! Deliberate deviation from the real Core route (sbstndalton/noevia#2388, item 1): `applyToExisting` leaves the internal
+//! projects (the Diary extras project and every `cowork-chat-context-*` shadow project, core diary-extras.cjs
+//! `internalProject`) alone and out of `updated`. Node switched, stamped and counted them, changing them from a
+//! user-facing default. The differential fixture records the corrected expectation (its oracle names both).
+//!
 //! Differences, all stricter or documented: a `preferences.json` holding a non-empty string (which Node would spread
 //! into character keys) is a 500; `updatedAt` is the one instant of the request, where Node read the clock per
 //! project; and the Node cache of `preferences` is gone (core workspace.cjs re-reads the file).
@@ -25,6 +30,17 @@ use crate::{Ctx, Reply};
 use js_json::wtf16;
 use js_json::JValue;
 use std::path::Path;
+
+const DIARY_EXTRAS: &str = "cowork-diary-extras";
+const CHAT_CONTEXT_PREFIX: &str = "cowork-chat-context-";
+
+/// core diary-extras.cjs `internalProject`: not a project the person made or can see.
+fn internal(project: &JValue) -> bool {
+    project
+        .get("id")
+        .as_str()
+        .is_some_and(|id| id == DIARY_EXTRAS || id.starts_with(CHAT_CONTEXT_PREFIX))
+}
 
 /// The per-user file core's workspace loads as `preferences`.
 pub const FILE: &str = "preferences.json";
@@ -127,7 +143,7 @@ pub fn put(ctx: Ctx<'_>, body: &[u8], failed: bool) -> Reply {
         let now = JValue::Num(ctx.now_ms as f64);
         let changed = store::update(&dir, ctx.switch, |projects| {
             for project in projects.iter_mut() {
-                if project.get("routing").as_str() != Some(routing.as_str()) {
+                if !internal(project) && project.get("routing").as_str() != Some(routing.as_str()) {
                     store::set(project, "routing", JValue::Str(routing.clone()));
                     store::set(project, "updatedAt", now.clone());
                     updated += 1;
@@ -268,6 +284,58 @@ mod tests {
                     & 0o777;
                 assert_eq!(mode, 0o600, "{name}");
             }
+        }
+    }
+
+    /// sbstndalton/noevia#2388 (item 1): applyToExisting leaves the internal projects alone and out of the count.
+    #[test]
+    fn apply_to_existing_skips_the_diary_and_chat_context_projects() {
+        let user = "11111111-2222-4333-8444-555555555555";
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("users").join(user);
+        std::fs::create_dir_all(&dir).unwrap();
+        let project = |id: &str| serde_json::json!({"id": id, "routing": "manual", "updatedAt": 1, "modes": ["chat"]});
+        let ids = [
+            "mine",
+            "cowork-diary-extras",
+            "cowork-chat-context-abc",
+            "cowork-chat-contextual",
+        ];
+        let initial = serde_json::json!({"projects": ids.map(project)});
+        std::fs::write(
+            dir.join("projects.json"),
+            serde_json::to_string_pretty(&initial).unwrap(),
+        )
+        .unwrap();
+        let ctx = Ctx {
+            data_dir: root.path(),
+            user_id: user,
+            switch: server_store::RustProjects::owned(),
+            now_ms: 99,
+        };
+        let reply = put(ctx, br#"{"routing":"auto","applyToExisting":true}"#, false);
+        assert_eq!(body_text(&reply), r#"{"routing":"auto","updated":2}"#);
+        let after: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("projects.json")).unwrap())
+                .unwrap();
+        let by_id = |id: &str| {
+            after["projects"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|p| p["id"] == id)
+                .unwrap()
+                .clone()
+        };
+        for id in ["mine", "cowork-chat-contextual"] {
+            assert_eq!(
+                (by_id(id)["routing"].clone(), by_id(id)["updatedAt"].clone()),
+                (serde_json::json!("auto"), serde_json::json!(99)),
+                "{id}"
+            );
+        }
+        for id in ["cowork-diary-extras", "cowork-chat-context-abc"] {
+            assert_eq!(by_id(id), project(id), "{id} is untouched");
         }
     }
 

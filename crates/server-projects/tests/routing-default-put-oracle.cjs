@@ -16,6 +16,25 @@ const realNow = Date.now;
 const proj = (id, routing, extra = {}) => ({ id, name: id, goal: '', instructions: '', files: [], modes: ['chat'], chats: [], createdAt: 5, updatedAt: 6, ...(routing === undefined ? {} : { routing }), ...extra });
 const MIXED = [proj('a', 'manual'), proj('b', 'auto'), proj('c'), proj('d', 5), proj('cowork-diary-extras', 'manual'), proj('e', 'manual', { updatedAt: 1, note: 'kept' })];
 const S = (v) => JSON.stringify(v, null, 2);
+// DELIBERATE DEVIATION from the real route, sbstndalton/noevia#2388 (item 1): Node's applyToExisting also switched, stamped and
+// counted the internal projects (the Diary extras project and the cowork-chat-context-* shadow projects), which changes
+// them from a user-facing default. The native handler leaves them alone and out of `updated`. `expected` below is Node's
+// answer corrected that way (the real route's own output, with the internal projects restored to their initial value and
+// taken out of the count); `node` keeps what the real route did.
+const internal = (p) => p && (p.id === 'cowork-diary-extras' || String(p.id).startsWith('cowork-chat-context-'));
+function corrected(reply, initialProjects, finalText) {
+  if (!initialProjects || !reply || reply.status !== 200 || finalText === null) return null;
+  const before = JSON.parse(initialProjects).projects, after = JSON.parse(finalText).projects;
+  let changedInternal = 0;
+  const fixed = after.map((p, i) => {
+    if (!internal(p)) return p;
+    if (JSON.stringify(p) !== JSON.stringify(before[i])) changedInternal++;
+    return before[i];
+  });
+  if (!changedInternal) return null;
+  const updated = reply.body.updated - changedInternal;
+  return { reply: { status: 200, body: { ...reply.body, updated } }, projects: updated > 0 ? S({ projects: fixed }) : initialProjects };
+}
 (async () => {
   const cases = [];
   // [name, prefs (raw text or null = no file), projects (list or null = no file), body (string | {hex}), role?]
@@ -48,6 +67,9 @@ const S = (v) => JSON.stringify(v, null, 2);
     ['apply-duplicate-last-true', null, MIXED, '{"applyToExisting":false,"routing":"auto","applyToExisting":true}'],
     ['apply-duplicate-last-false', null, MIXED, '{"applyToExisting":true,"routing":"auto","applyToExisting":false}'],
     ['default-alone-leaves-projects', null, MIXED, '{"routing":"manual"}'],
+    ['apply-internal-only', null, [proj('cowork-diary-extras', 'manual'), proj('cowork-chat-context-abc', 'manual')], '{"routing":"auto","applyToExisting":true}'],
+    ['apply-internal-lookalikes', null, [proj('cowork-diary-extras-2', 'manual'), proj('cowork-chat-contextual', 'manual'), proj('cowork-chat-context-', 'manual'), proj('my-cowork-diary-extras', 'manual')], '{"routing":"auto","applyToExisting":true}'],
+    ['apply-internal-and-user', null, [proj('a', 'manual'), proj('cowork-chat-context-x', 'manual'), proj('b', 'auto'), proj('cowork-diary-extras')], '{"routing":"auto","applyToExisting":true}'],
     ['empty-body', null, [], ''],
     ['whitespace-body', null, [], '  \n'],
     ['truncated', null, [], '{'],
@@ -107,8 +129,10 @@ const S = (v) => JSON.stringify(v, null, 2);
       await Promise.all(saves);
     } catch (e) { sent.push({ thrown: String(e && e.message || e) }); }
     const read = (f) => { try { return fs.readFileSync(path.join(dir, f), 'utf8'); } catch { return null; } };
+    const node = { reply: sent[0], preferences: read('preferences.json'), projects: read('projects.json') };
+    const fix = corrected(node.reply, initialProjects, node.projects);
     cases.push({ name, initial: { preferences: prefs, projects: initialProjects }, body: body && body.hex !== undefined ? { hex: body.hex } : body && body.pad !== undefined ? { pad: body.pad, routing: body.routing } : { text: body },
-      expected: { reply: sent[0], preferences: read('preferences.json'), projects: read('projects.json') } });
+      expected: fix ? { ...node, ...fix, deviation: '#2388' } : node, ...(fix ? { node } : {}) });
     fs.rmSync(root, { recursive: true, force: true });
   }
   Date.now = realNow;
