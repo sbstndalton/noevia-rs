@@ -2,13 +2,10 @@
 //! durable queue of the RAG and storage work a project write leaves to do, and the tombstones of
 //! deleted projects' RAG indexes.
 //!
-//! The Rust front owns the project writes that cause this work (create, delete). The work itself
-//! runs where its engine is: the vector store is sqlite-vec's `vec0` tables, which only noevia-core
-//! loads (rag.cjs). So the front records *what* is to be done, in the same request that changed
-//! projects.json, and core's executor (`server/rust-index-outbox.cjs`) drains the `index` jobs.
-//! The `sweep` jobs (the empty-folder sweep in remote storage) are the front's own since round 3,
-//! which has a storage write client ([`drain_kind`], [`crate::project_storage`]); each side claims
-//! and recovers only its own kinds.
+//! The native front owns project writes and drains `index` / `unindex` through
+//! embedding-worker's source executor. Storage `sweep` jobs retain their separate
+//! native owner ([`drain_kind`], [`crate::project_storage`]). Core retains only
+//! read-only generation/tombstone checks for its remaining request-time RAG calls.
 //!
 //! - A job's key is its identity (`["index",<project>,<file>]`, `["sweep",<project>]`): enqueueing a key
 //!   already pending replaces it with a new generation, so the same work is never queued twice.
@@ -382,6 +379,121 @@ pub fn drain_kind(
     Ok((done, failed))
 }
 
+// Native claims/acknowledgements never create or initialize a database: account
+// removal may unlink it between the existence check and open.
+fn open_claims(dir: &Path) -> Result<Connection, OutboxError> {
+    let conn = Connection::open_with_flags(
+        path(dir),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+    conn.busy_timeout(Duration::from_secs(5))?;
+    Ok(conn)
+}
+
+/// A single RAG claim. The worker holds its lifetime owner lock before recovery.
+/// Selecting just one row bounds synchronous work per tenant; network I/O happens
+/// after this connection is dropped. Persistence is the original outbox schema.
+#[derive(Debug, Clone)]
+pub struct IndexClaim {
+    pub kind: String,
+    pub key: String,
+    pub project: String,
+    pub file: Option<String>,
+    pub generation: i64,
+    pub attempts: i64,
+}
+
+pub fn claim_index(
+    dir: &Path,
+    recover: bool,
+    now_ms: i64,
+) -> Result<Option<IndexClaim>, OutboxError> {
+    for row in pending_rag(dir, recover)? {
+        if claim_rag(dir, &row, now_ms)? {
+            return Ok(Some(row));
+        }
+    }
+    Ok(None)
+}
+
+/// A drain snapshots pending work once, like Node: each generation is attempted
+/// at most once in a pass. New work and failures wait until the next two-second
+/// pass, without throttling a backlog to one file per tenant per tick.
+pub fn pending_rag(dir: &Path, recover: bool) -> Result<Vec<IndexClaim>, OutboxError> {
+    if !path(dir).exists() {
+        return Ok(Vec::new());
+    }
+    let conn = open_claims(dir)?;
+    if recover {
+        // The older row-U contract said index-only recovery. Current Node owns
+        // both index and unindex; recover both now-owned kinds to avoid stranding
+        // a file removal interrupted by restart. Storage sweep recovery stays separate.
+        conn.execute("UPDATE jobs SET state='pending',claimed_at=NULL WHERE kind IN ('index','unindex') AND state='running'",[])?;
+    }
+    let mut stmt=conn.prepare("SELECT key,project,file,generation,attempts,kind FROM jobs WHERE kind IN ('index','unindex') AND state='pending' ORDER BY generation,key")?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(IndexClaim {
+                key: r.get(0)?,
+                project: r.get(1)?,
+                file: r.get(2)?,
+                generation: r.get(3)?,
+                attempts: r.get(4)?,
+                kind: r.get(5)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// Compare-and-claim a snapshotted generation immediately before execution.
+pub fn claim_rag(dir: &Path, row: &IndexClaim, now_ms: i64) -> Result<bool, OutboxError> {
+    if !path(dir).exists() {
+        return Ok(false);
+    }
+    let conn = open_claims(dir)?;
+    Ok(conn.execute("UPDATE jobs SET state='running',claimed_at=?1,attempts=attempts+1 WHERE key=?2 AND generation=?3 AND state='pending' AND kind IN ('index','unindex')",params![now_ms,row.key,row.generation])?>0)
+}
+
+/// True only while this exact generation remains claimed and its project has
+/// no tombstone. Publication must hold this transaction until its index commit.
+pub fn index_current(conn: &Connection, row: &IndexClaim) -> Result<bool, OutboxError> {
+    Ok(conn.query_row("SELECT EXISTS(SELECT 1 FROM jobs WHERE key=?1 AND generation=?2 AND state='running') AND NOT EXISTS(SELECT 1 FROM tombstones WHERE project=?3)", params![row.key,row.generation,row.project], |r|r.get(0))?)
+}
+
+/// Yield to foreground/ownership loss without charging a failed execution.
+pub fn defer_index(dir: &Path, row: &IndexClaim) -> Result<(), OutboxError> {
+    if !path(dir).exists() {
+        return Ok(());
+    }
+    let conn = open_claims(dir)?;
+    conn.execute("UPDATE jobs SET state='pending',claimed_at=NULL,attempts=MAX(0,attempts-1) WHERE key=?1 AND generation=?2 AND state='running'",params![row.key,row.generation])?;
+    Ok(())
+}
+
+/// Acknowledge only the generation that actually ran. Retries retain Node's
+/// two-second scheduling backoff and five-attempt give-up state.
+pub fn finish_index(dir: &Path, row: &IndexClaim, success: bool) -> Result<(), OutboxError> {
+    if !path(dir).exists() {
+        return Ok(());
+    }
+    let conn = open_claims(dir)?;
+    if success {
+        conn.execute(
+            "DELETE FROM jobs WHERE key=?1 AND generation=?2 AND state='running'",
+            params![row.key, row.generation],
+        )?;
+    } else {
+        let state = if row.attempts.saturating_add(1) >= MAX_ATTEMPTS {
+            "failed"
+        } else {
+            "pending"
+        };
+        conn.execute("UPDATE jobs SET state=?1,claimed_at=NULL WHERE key=?2 AND generation=?3 AND state='running'",params![state,row.key,row.generation])?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
@@ -394,6 +506,123 @@ mod tests {
             file: Some(file),
             payload: None,
         }
+    }
+
+    #[test]
+    fn native_rag_recovery_includes_running_unindex_and_is_tenant_isolated() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        for d in [a.path(), b.path()] {
+            enqueue(
+                d,
+                &[
+                    index("p", "a.md"),
+                    Job {
+                        kind: "sweep",
+                        project: "p",
+                        file: None,
+                        payload: None,
+                    },
+                    Job {
+                        kind: "unindex",
+                        project: "q",
+                        file: Some("x"),
+                        payload: None,
+                    },
+                ],
+                1,
+            )
+            .unwrap();
+            open(d)
+                .unwrap()
+                .execute(
+                    "UPDATE jobs SET state='running',claimed_at=1,attempts=1",
+                    [],
+                )
+                .unwrap();
+        }
+        let claim = claim_index(a.path(), true, 2).unwrap().unwrap();
+        assert_eq!(claim.attempts, 1);
+        let rows = jobs(a.path()).unwrap();
+        assert!(rows
+            .iter()
+            .any(|r| r.kind == "sweep" && r.state == "running"));
+        assert!(rows
+            .iter()
+            .any(|r| r.kind == "unindex" && r.state == "pending"));
+        finish_index(a.path(), &claim, true).unwrap();
+        assert_eq!(jobs(a.path()).unwrap().len(), 2);
+        assert_eq!(jobs(b.path()).unwrap().len(), 3);
+        let removal = claim_index(a.path(), false, 3).unwrap().unwrap();
+        assert_eq!(removal.kind, "unindex");
+        assert_eq!(removal.attempts, 1);
+        finish_index(a.path(), &removal, true).unwrap();
+        assert!(claim_index(a.path(), false, 4).unwrap().is_none());
+        assert_eq!(jobs(a.path()).unwrap()[0].kind, "sweep");
+    }
+    #[test]
+    fn each_pending_generation_is_attempted_once_per_drain_snapshot() {
+        let d = tempfile::tempdir().unwrap();
+        enqueue(d.path(), &[index("p", "a"), index("p", "b")], 1).unwrap();
+        let pass = pending_rag(d.path(), false).unwrap();
+        assert_eq!(pass.len(), 2);
+        for row in &pass {
+            assert!(claim_rag(d.path(), row, 2).unwrap());
+            finish_index(d.path(), row, false).unwrap();
+        }
+        let next = pending_rag(d.path(), false).unwrap();
+        assert_eq!(next.len(), 2);
+        assert!(next.iter().all(|r| r.attempts == 1));
+        enqueue(d.path(), &[index("p", "a")], 3).unwrap();
+        let stale = pass
+            .iter()
+            .find(|r| r.file.as_deref() == Some("a"))
+            .unwrap();
+        assert!(!claim_rag(d.path(), stale, 4).unwrap());
+    }
+    #[test]
+    fn native_acknowledgement_never_recreates_an_unlinked_outbox() {
+        let d = tempfile::tempdir().unwrap();
+        enqueue(d.path(), &[index("p", "a")], 1).unwrap();
+        let row = claim_index(d.path(), false, 2).unwrap().unwrap();
+        std::fs::remove_file(path(d.path())).unwrap();
+        finish_index(d.path(), &row, false).unwrap();
+        defer_index(d.path(), &row).unwrap();
+        assert!(!path(d.path()).exists());
+    }
+    #[test]
+    fn yielding_does_not_exhaust_the_retry_budget_or_ack_a_newer_generation() {
+        let d = tempfile::tempdir().unwrap();
+        enqueue(d.path(), &[index("p", "a")], 1).unwrap();
+        for _ in 0..MAX_ATTEMPTS + 2 {
+            let row = claim_index(d.path(), false, 2).unwrap().unwrap();
+            assert_eq!(row.attempts, 0);
+            defer_index(d.path(), &row).unwrap();
+        }
+        assert_eq!(jobs(d.path()).unwrap()[0].state, "pending");
+    }
+    #[test]
+    fn native_index_claim_retry_bound_and_new_generation_survives_ack() {
+        let d = tempfile::tempdir().unwrap();
+        enqueue(d.path(), &[index("p", "a")], 1).unwrap();
+        for n in 0..MAX_ATTEMPTS {
+            let row = claim_index(d.path(), false, n).unwrap().unwrap();
+            assert_eq!(row.attempts, n);
+            finish_index(d.path(), &row, false).unwrap();
+        }
+        assert!(claim_index(d.path(), false, 10).unwrap().is_none());
+        assert_eq!(jobs(d.path()).unwrap()[0].state, "failed");
+        enqueue(d.path(), &[index("p", "a")], 11).unwrap();
+        let old = claim_index(d.path(), false, 12).unwrap().unwrap();
+        enqueue(d.path(), &[index("p", "a")], 13).unwrap();
+        assert!(!index_current(&open(d.path()).unwrap(), &old).unwrap());
+        finish_index(d.path(), &old, true).unwrap();
+        let newer = claim_index(d.path(), false, 14).unwrap().unwrap();
+        assert!(newer.generation > old.generation);
+        tombstone(d.path(), "p", None, 15).unwrap();
+        assert!(!index_current(&open(d.path()).unwrap(), &newer).unwrap());
+        finish_index(d.path(), &newer, false).unwrap();
+        assert!(jobs(d.path()).unwrap().is_empty());
     }
 
     #[test]

@@ -325,6 +325,69 @@ pub fn start(
                     update_snapshot(&host.store.root,&state,serde_json::json!({"service":service.status(now()),"serviceAt":service.observed_at_ms()}));
                 }
             };
+            let mut outbox_rx=rx.clone();
+            let outbox=async {
+                let mut recovered=BTreeSet::new();
+                loop {
+                    if *outbox_rx.borrow() {break;}
+                    if host.http.outbox_ready(&core,&token,&start).await.unwrap_or(false) {
+                        for user in host.store.users().unwrap_or_default() {
+                            if *outbox_rx.borrow() {break;}
+                            let Ok(dir)=server_projects::store::user_dir(&host.store.root,&user) else {continue;};
+                            let recover=!recovered.contains(&user);
+                            if let Ok(rows)=server_projects::outbox::pending_rag(&dir,recover) {
+                                    // A missing database may appear later. Do not mark it recovered yet.
+                                    if server_projects::outbox::path(&dir).exists() {recovered.insert(user.clone());}
+                                    for row in rows {
+                                        if *outbox_rx.borrow() || !host.http.outbox_ready(&core,&token,&start).await.unwrap_or(false) {break;}
+                                        if !server_projects::outbox::claim_rag(&dir,&row,now() as i64).unwrap_or(false) {continue;}
+                                        let ctl=Control::default();
+                                        let result=match crate::fill::Embed::authorize(&host.http,&ctl).await {
+                                            Ok(())=>host.store.index_source(&user,&row,&ctl),
+                                            Err(e)=>Err(e),
+                                        };
+                                        let prepared=result.is_ok();
+                                        let ok=match result {
+                                            Ok(Some(index))=> {
+                                                if let Ok(config)=host.store.config() {
+                                                    if host.off(&config.active) {true} else {
+                                                    // Bounded batches and a pause let foreground admission win.
+                                                    let mut success=true;
+                                                    loop {
+                                                        if !host.http.outbox_ready(&core,&token,&start).await.unwrap_or(false) {success=false;break;}
+                                                        let excluded=BTreeSet::new();
+                                                        let filler=Filler{store:crate::sqlite::SourceStore{store:&host.store,row:&row},embedder:host.http.clone()};
+                                                        let batch=tokio::select! {
+                                                            r=filler.fill(&index,&config.active,4,&excluded,config.version,&ctl)=>r,
+                                                            _=outbox_rx.changed()=>{ctl.stop();Err("source indexing stopped".into())}
+                                                        };
+                                                        match batch {
+                                                            Ok(Some(batch)) if batch.remaining>0 && batch.embedded>0 => {},
+                                                            Ok(Some(batch))=>{success=batch.remaining==0;break;},
+                                                            Ok(None)=>break,
+                                                            Err(_)=>{success=false;break;}
+                                                        }
+                                                        tokio::select! {_=tokio::time::sleep(Duration::from_millis(50))=>{},_=outbox_rx.changed()=>{success=false;break;}}
+                                                    }
+                                                    success
+                                                    }
+                                                } else {false}
+                                            },
+                                            Ok(None)=>true,
+                                            Err(_)=>false,
+                                        };
+                                        if !*outbox_rx.borrow() {let _=host.store.mark_index_source(&user,&row,ok,prepared);}
+                                        if !ok && !host.http.outbox_ready(&core,&token,&start).await.unwrap_or(false) {
+                                            let _=server_projects::outbox::defer_index(&dir,&row);
+                                        } else {let _=server_projects::outbox::finish_index(&dir,&row,ok);}
+                                    }
+                            }
+                            tokio::task::yield_now().await;
+                        }
+                    }
+                    tokio::select! {_=tokio::time::sleep(Duration::from_secs(2))=>{},_=outbox_rx.changed()=>{break;}}
+                }
+            };
             let migrate=async {
                 let begun=tokio::time::Instant::now();let mut initial=false;
                 let mut seen=None;let mut config_version=None;let mut request_stamp=0;
@@ -355,7 +418,7 @@ pub fn start(
                 }
                 control.stop();
             };
-            tokio::join!(refresh,migrate);
+            tokio::join!(refresh,migrate,outbox);
             let _=heartbeat.await;
         });
     });

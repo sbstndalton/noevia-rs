@@ -613,3 +613,231 @@ fn node_coverage_excludes_dot_names_and_includes_symlinked_indexes() {
         assert_eq!(store.remaining(&alias, &target("next")).unwrap(), 0);
     }
 }
+
+#[test]
+fn native_outbox_publishes_source_and_refuses_deleted_or_superseded_generations() {
+    let (_tmp, store, index) = setup();
+    let dir = store.root.join("users").join(USER);
+    std::fs::write(dir.join("projects.json"),json!({"projects":[{"id":"p","files":[{"name":"synthetic.md","content":"synthetic text"}]}]}).to_string()).unwrap();
+    let job = server_projects::outbox::Job {
+        kind: "index",
+        project: "p",
+        file: Some("synthetic.md"),
+        payload: None,
+    };
+    server_projects::outbox::enqueue(&dir, &[job], 1).unwrap();
+    let row = server_projects::outbox::claim_index(&dir, false, 2)
+        .unwrap()
+        .unwrap();
+    let control = Control::default();
+    store.index_source(USER, &row, &control).unwrap().unwrap();
+    let db = Connection::open(store.index_path(&index).unwrap()).unwrap();
+    let (body, direct): (String, i64) = db
+        .query_row(
+            "SELECT body,direct FROM chunks WHERE file='synthetic.md'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(body, "synthetic text");
+    assert_eq!(direct, 1);
+    server_projects::outbox::enqueue(
+        &dir,
+        &[server_projects::outbox::Job {
+            kind: "index",
+            project: "p",
+            file: Some("synthetic.md"),
+            payload: None,
+        }],
+        3,
+    )
+    .unwrap();
+    assert!(store.index_source(USER, &row, &control).unwrap().is_none());
+    let new = server_projects::outbox::claim_index(&dir, false, 4)
+        .unwrap()
+        .unwrap();
+    server_projects::outbox::tombstone(&dir, "p", None, 5).unwrap();
+    assert!(store.index_source(USER, &new, &control).unwrap().is_none());
+}
+
+#[test]
+fn native_chunk_boundaries_and_page_markers_match_source_contract() {
+    use embedding_worker::outbox::chunks;
+    assert_eq!(chunks("  synthetic\r\ntext  "), vec!["synthetic\ntext"]);
+    assert_eq!(
+        chunks("[Page 1]\nFirst\n[Page 2]\nSecond"),
+        vec!["[Page 1]\nFirst", "[Page 2]\nSecond"]
+    );
+    let pieces = chunks(&"x".repeat(2401));
+    assert_eq!(
+        pieces.iter().map(String::len).collect::<Vec<_>>(),
+        vec![1200, 1200, 301]
+    );
+}
+
+#[test]
+fn native_outbox_same_project_and_filename_stay_in_separate_tenant_indexes() {
+    let (_tmp, store, index) = setup();
+    let other = "22222222-2222-4222-8222-222222222222";
+    let auth = Connection::open(store.root.join("cowork.db")).unwrap();
+    auth.execute("INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES(?,'second','second','Synthetic','member','synthetic','second',0,0)",[other]).unwrap();
+    for (user, text) in [
+        (USER, "first synthetic tenant"),
+        (other, "second synthetic tenant"),
+    ] {
+        let dir = store.root.join("users").join(user);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("projects.json"),
+            json!({"projects":[{"id":"p","files":[{"name":"shared.md","content":text}]}]})
+                .to_string(),
+        )
+        .unwrap();
+        server_projects::outbox::enqueue(
+            &dir,
+            &[server_projects::outbox::Job {
+                kind: "index",
+                project: "p",
+                file: Some("shared.md"),
+                payload: None,
+            }],
+            1,
+        )
+        .unwrap();
+        let row = server_projects::outbox::claim_index(&dir, false, 2)
+            .unwrap()
+            .unwrap();
+        store
+            .index_source(user, &row, &Control::default())
+            .unwrap()
+            .unwrap();
+    }
+    for (user, text) in [
+        (USER, "first synthetic tenant"),
+        (other, "second synthetic tenant"),
+    ] {
+        let mut tenant = index.clone();
+        tenant.user = Some(user.into());
+        let db = Connection::open(store.index_path(&tenant).unwrap()).unwrap();
+        assert_eq!(
+            db.query_row("SELECT body FROM chunks WHERE file='shared.md'", [], |r| {
+                r.get::<_, String>(0)
+            })
+            .unwrap(),
+            text
+        );
+    }
+}
+
+#[test]
+fn outbox_fill_only_selects_claimed_source_and_fences_superseded_vectors() {
+    let (_tmp, store, index) = setup();
+    let dir = store.root.join("users").join(USER);
+    server_projects::outbox::enqueue(
+        &dir,
+        &[server_projects::outbox::Job {
+            kind: "index",
+            project: "p",
+            file: Some("f1"),
+            payload: None,
+        }],
+        1,
+    )
+    .unwrap();
+    let row = server_projects::outbox::claim_index(&dir, false, 2)
+        .unwrap()
+        .unwrap();
+    let source = SourceStore {
+        store: &store,
+        row: &row,
+    };
+    let rows = source
+        .missing(&index, &target("active"), 4, &Default::default())
+        .unwrap()
+        .unwrap();
+    assert_eq!(rows.iter().map(|r| r.id).collect::<Vec<_>>(), vec![1]);
+    assert_eq!(source.remaining(&index, &target("active")).unwrap(), 1);
+    server_projects::outbox::enqueue(
+        &dir,
+        &[server_projects::outbox::Job {
+            kind: "index",
+            project: "p",
+            file: Some("f1"),
+            payload: None,
+        }],
+        3,
+    )
+    .unwrap();
+    assert!(source
+        .publish(
+            &index,
+            &target("active"),
+            &rows,
+            &[vec![1.0, 0.0]],
+            0,
+            &Control::default()
+        )
+        .is_err());
+    assert_eq!(source.remaining(&index, &target("active")).unwrap(), 1);
+}
+
+#[test]
+fn native_unindex_preserves_reuploads_and_removes_rows_only_after_source_is_absent() {
+    let (_tmp, store, index) = setup();
+    let dir = store.root.join("users").join(USER);
+    std::fs::write(
+        dir.join("projects.json"),
+        r#"{"projects":[{"id":"p","files":[{"name":"f1","content":"reuploaded"}]}]}"#,
+    )
+    .unwrap();
+    server_projects::outbox::enqueue(
+        &dir,
+        &[server_projects::outbox::Job {
+            kind: "unindex",
+            project: "p",
+            file: Some("f1"),
+            payload: None,
+        }],
+        1,
+    )
+    .unwrap();
+    let outbox = Connection::open(dir.join("index-outbox.db")).unwrap();
+    outbox
+        .execute(
+            "UPDATE jobs SET state='running',claimed_at=1,attempts=1 WHERE kind='unindex'",
+            [],
+        )
+        .unwrap();
+    let row = server_projects::outbox::claim_index(&dir, true, 2)
+        .unwrap()
+        .unwrap();
+    assert_eq!(row.kind, "unindex");
+    assert!(store
+        .index_source(USER, &row, &Control::default())
+        .unwrap()
+        .is_none());
+    let db = Connection::open(store.index_path(&index).unwrap()).unwrap();
+    assert_eq!(
+        db.query_row("SELECT COUNT(*) FROM chunks WHERE file='f1'", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+    std::fs::write(dir.join("projects.json"), r#"{"projects":[{"id":"p"}]}"#).unwrap();
+    assert!(store
+        .index_source(USER, &row, &Control::default())
+        .unwrap()
+        .is_none());
+    assert_eq!(
+        db.query_row("SELECT COUNT(*) FROM chunks WHERE file='f1'", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        db.query_row("SELECT COUNT(*) FROM chunks WHERE file='f2'", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+}

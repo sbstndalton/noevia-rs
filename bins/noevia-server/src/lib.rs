@@ -364,6 +364,7 @@ use std::sync::Arc;
 /// with a front that predates the strip cannot be handed a client-chosen address (#1578).
 pub const FEATURES: &[&str] = &[
     "rust-embedding-background-v1",
+    "rust-index-outbox-v1",
     "client-address-header",
     "code-net-guard",
     "header-read-timeout",

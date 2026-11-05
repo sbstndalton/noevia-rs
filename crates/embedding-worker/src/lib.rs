@@ -1,4 +1,4 @@
-//! Native orchestration of Core's embedding-service refresh and background migration.
+//! Native embedding-service refresh, migration and durable source outbox execution.
 //! Server lifecycle is gated by paired ownership proof. Adapters enforce the
 //! storage fences documented by [`Host`].
 use std::{
@@ -12,6 +12,7 @@ use std::{
 };
 pub mod fill;
 pub mod http;
+pub mod outbox;
 pub mod runtime;
 pub mod service;
 pub mod sqlite;

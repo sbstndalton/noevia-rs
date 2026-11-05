@@ -1,5 +1,6 @@
-//! Existing Node RAG schema only: never CREATE an index. Apply only Node's
-//! four historical additive chunk columns before using an older index.
+//! Compatible RAG schema and slots. Refresh/migration only open existing indexes;
+//! outbox.rs owns source initialization. Older indexes gain only the four
+//! historical additive chunk columns.
 //! Account reads use server-store's checked cowork.db reader. Publication holds
 //! its IMMEDIATE writer transaction (without changing auth rows), projects.json
 //! flock, existing outbox IMMEDIATE transaction and RAG IMMEDIATE transaction.
@@ -365,7 +366,7 @@ impl SqlStore {
         }
         Ok(None)
     }
-    fn prepare(&self, db: &Connection) -> Result<(), String> {
+    pub(crate) fn prepare(&self, db: &Connection) -> Result<(), String> {
         let mut columns = BTreeSet::new();
         {
             let mut statement = db
@@ -424,6 +425,15 @@ impl SqlStore {
         publish: bool,
         run: impl FnOnce(&Connection) -> Result<T, String>,
     ) -> Result<T, String> {
+        self.fenced_expected(index, publish, None, run)
+    }
+    fn fenced_expected<T>(
+        &self,
+        index: &Index,
+        publish: bool,
+        expected: Option<&server_projects::outbox::IndexClaim>,
+        run: impl FnOnce(&Connection) -> Result<T, String>,
+    ) -> Result<T, String> {
         let _config = server_projects::lock::acquire(&self.root.join("embedding-config.json"))
             .map_err(|_| fault())?;
         let operation = || {
@@ -450,7 +460,15 @@ impl SqlStore {
                     if dead {
                         return Err(fault());
                     }
+                    if let Some(row) = expected {
+                        if !server_projects::outbox::index_current(&tx, row).map_err(|_| fault())? {
+                            return Err("source indexing superseded".into());
+                        }
+                    }
                     Some(tx)
+                }
+                None if expected.is_some() => {
+                    return Err("source indexing claim disappeared".into())
                 }
                 None => None,
             };
@@ -484,6 +502,51 @@ impl SqlStore {
             self.live(index)?;
             operation()
         }
+    }
+    pub(crate) fn drop_chunks(&self, db: &Connection, ids: &[i64]) -> Result<(), String> {
+        let targets = {
+            let mut stmt = db
+                .prepare("SELECT value FROM vec_meta WHERE key LIKE 'slot:%'")
+                .map_err(|_| fault())?;
+            let collected = stmt
+                .query_map([], |r| r.get::<_, String>(0))
+                .map_err(|_| fault())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|_| fault())?;
+            collected
+        };
+        for raw in targets {
+            let v: Value = serde_json::from_str(&raw).map_err(|_| fault())?;
+            let name = v.get("table").and_then(Value::as_str).ok_or_else(fault)?;
+            if name != "vec_items" && !table(name, "vec_") {
+                return Err(fault());
+            }
+            for id in ids {
+                db.execute(&format!("DELETE FROM {name} WHERE chunk_id=?"), [id])
+                    .map_err(|_| fault())?;
+            }
+            if let Some(map) = v.get("map").and_then(Value::as_str) {
+                if !table(map, "vecmap_") {
+                    return Err(fault());
+                }
+                for id in ids {
+                    db.execute(&format!("DELETE FROM {map} WHERE chunk_id=?"), [id])
+                        .map_err(|_| fault())?;
+                }
+            }
+        }
+        // Unadopted legacy vectors must also be removed before row IDs are reused.
+        if exists(db, "vec_items")? {
+            for id in ids {
+                db.execute("DELETE FROM vec_items WHERE chunk_id=?", [id])
+                    .map_err(|_| fault())?;
+            }
+        }
+        for id in ids {
+            db.execute("DELETE FROM chunks WHERE id=?", [id])
+                .map_err(|_| fault())?;
+        }
+        Ok(())
     }
     pub fn drop_slot(&self, index: &Index, target: &Target) -> Result<(), String> {
         self.fenced(index, false, |db| {
@@ -562,7 +625,22 @@ impl FillStore for SqlStore {
         version: u64,
         control: &Control,
     ) -> Result<usize, String> {
-        self.fenced(index, true, |db| {
+        self.publish_rows(index, target, rows, vectors, version, (control, None))
+    }
+}
+
+impl SqlStore {
+    fn publish_rows(
+        &self,
+        index: &Index,
+        target: &Target,
+        rows: &[Row],
+        vectors: &[Vec<f32>],
+        version: u64,
+        context: (&Control, Option<&server_projects::outbox::IndexClaim>),
+    ) -> Result<usize, String> {
+        let (control, expected) = context;
+        self.fenced_expected(index, true, expected, |db| {
             control.renew_publication_proof()?;
             if !control.ownership_fresh() {
                 control.suspend();
@@ -620,5 +698,67 @@ impl FillStore for SqlStore {
             }
             Ok(written)
         })
+    }
+}
+
+/// Active-slot fill restricted to the source claimed by the outbox. It never
+/// participates in refresh or migration of another source or target.
+pub struct SourceStore<'a> {
+    pub store: &'a SqlStore,
+    pub row: &'a server_projects::outbox::IndexClaim,
+}
+impl FillStore for SourceStore<'_> {
+    fn missing(
+        &self,
+        index: &Index,
+        target: &Target,
+        limit: usize,
+        exclude: &BTreeSet<i64>,
+    ) -> Result<Option<Vec<Row>>, String> {
+        self.store.read_index(index,|db| {
+            let slot=self.store.read_slot(db,target)?;
+            let mut stmt=db.prepare(&format!("SELECT c.id,c.content_hash,c.body FROM chunks c WHERE c.id IN ({}) AND c.file=? ORDER BY c.id",read_missing_sql(db,slot.as_ref())?)).map_err(|_|fault())?;
+            let rows=stmt.query_map([self.row.file.as_deref().unwrap_or_default()],|r|Ok(Row{id:r.get(0)?,hash:r.get(1)?,text:r.get::<_,String>(2)?.encode_utf16().collect()})).map_err(|_|fault())?;
+            let mut out=Vec::new();
+            for row in rows {let row=row.map_err(|_|fault())?; if !exclude.contains(&row.id) {out.push(row);}
+            if out.len()>=limit.min(16) {break;}}
+            Ok(Some(out))
+        })
+    }
+    fn remaining(&self, index: &Index, target: &Target) -> Result<usize, String> {
+        self.store.read_index(index, |db| {
+            let slot = self.store.read_slot(db, target)?;
+            db.query_row(
+                &format!(
+                    "SELECT COUNT(*) FROM chunks c WHERE c.id IN ({}) AND c.file=?",
+                    read_missing_sql(db, slot.as_ref())?
+                ),
+                [self.row.file.as_deref().unwrap_or_default()],
+                |r| r.get::<_, i64>(0),
+            )
+            .map_err(|_| fault())
+            .and_then(|n| usize::try_from(n).map_err(|_| fault()))
+        })
+    }
+    fn current(&self, version: u64, control: &Control) -> bool {
+        self.store.current(version, control)
+    }
+    fn publish(
+        &self,
+        index: &Index,
+        target: &Target,
+        rows: &[Row],
+        vectors: &[Vec<f32>],
+        version: u64,
+        control: &Control,
+    ) -> Result<usize, String> {
+        self.store.publish_rows(
+            index,
+            target,
+            rows,
+            vectors,
+            version,
+            (control, Some(self.row)),
+        )
     }
 }
