@@ -70,7 +70,12 @@ impl World {
         let reaches_engine = s["path"] == "/api/models/load";
         if reaches_engine {
             if let Some(f) = first {
-                script.entry("GET /models".into()).or_default().insert(0, f);
+                let q = script.entry("GET /models".into()).or_default();
+                if q.is_empty() {
+                    // The last entry repeats: keep the default listing after a one-off failure.
+                    q.push(json!({"rows": "loaded"}));
+                }
+                q.insert(0, f);
             }
         }
         let script: Script = Arc::new(Mutex::new(script));
@@ -100,7 +105,14 @@ impl World {
             }
         }))
         .await;
-        let lease = s.get("lease").cloned();
+        // Core's lease route at this branch also carries the gate's `retryable: true` (rust-model-load.test.cjs);
+        // the oracle recorded the route before that one-line change.
+        let mut lease = s.get("lease").cloned();
+        if s["acquire"]["gate"]["retryable"] == Value::Bool(true) {
+            if let Some(l) = lease.as_mut() {
+                l["body"]["retryable"] = Value::Bool(true);
+            }
+        }
         let (node_port, node) = engine(Arc::new(move |req: &Req| {
             if req.headers.get("x-noevia-store-token").map(String::as_str) != Some(SECRET) {
                 return Answer::Reply(404, "{}".into());
