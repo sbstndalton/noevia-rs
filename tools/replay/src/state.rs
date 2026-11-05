@@ -19,6 +19,26 @@ pub fn compare(expected: &Value, actual: &Value) -> Vec<crate::diff::Diff> {
         &mut Bindings::new("<origin>"),
         &mut diffs,
     );
+    // A length mismatch in the file tree says nothing about which path differs; name them.
+    if let (Some(Value::Array(want)), Some(Value::Array(got))) =
+        (expected.get("files"), actual.get("files"))
+    {
+        let names = |v: &[Value]| -> std::collections::BTreeSet<String> {
+            v.iter()
+                .filter_map(|f| f.as_str().map(str::to_owned))
+                .collect()
+        };
+        let (want, got) = (names(want), names(got));
+        let missing: Vec<&String> = want.difference(&got).collect();
+        let extra: Vec<&String> = got.difference(&want).collect();
+        if !missing.is_empty() || !extra.is_empty() {
+            diffs.push(crate::diff::Diff {
+                at: "state/files (paths)".to_owned(),
+                expected: format!("missing {missing:?}"),
+                actual: format!("extra {extra:?}"),
+            });
+        }
+    }
     diffs
 }
 
