@@ -185,6 +185,11 @@ impl Research {
         })
     }
 
+    /// The front's one client of Node's inference admission (also the Diary local exchange's).
+    pub fn admission(&self) -> Arc<Admission> {
+        Arc::clone(&self.admission)
+    }
+
     fn state(&self) -> std::sync::MutexGuard<'_, State> {
         match self.state.lock() {
             Ok(g) => g,

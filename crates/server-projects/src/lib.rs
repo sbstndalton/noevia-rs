@@ -62,6 +62,7 @@
 pub mod assets;
 pub mod autotune_settings;
 pub mod chat_delete;
+pub mod chat_download;
 pub mod chat_move;
 pub mod chats;
 pub mod config;
@@ -184,3 +185,5 @@ pub struct Ctx<'a> {
 
 pub mod autotune_read;
 pub mod autotune_resume;
+
+mod retention_input;

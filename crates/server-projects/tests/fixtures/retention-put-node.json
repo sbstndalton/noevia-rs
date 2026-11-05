@@ -1,0 +1,321 @@
+[
+  {
+    "name": "invalid",
+    "raw": "{",
+    "results": [],
+    "ticks": [],
+    "initial": "{\"days\":90,\"lastSweep\":123}",
+    "status": 400,
+    "body": {
+      "error": "invalid JSON"
+    },
+    "calls": [],
+    "file": "{\"days\":90,\"lastSweep\":123}"
+  },
+  {
+    "name": "invalid-days",
+    "raw": "{\"days\":7}",
+    "results": [],
+    "ticks": [],
+    "initial": "{\"days\":90,\"lastSweep\":123}",
+    "status": 400,
+    "body": {
+      "error": "Choose off, or 30, 90 or 365 days."
+    },
+    "calls": [],
+    "file": "{\"days\":90,\"lastSweep\":123}"
+  },
+  {
+    "name": "confirmation",
+    "raw": "{\"days\":30}",
+    "results": [],
+    "ticks": [],
+    "initial": "{\"days\":90,\"lastSweep\":123}",
+    "status": 409,
+    "body": {
+      "error": "3 chats would be deleted now. Confirm to continue.",
+      "preview": {
+        "30": 3,
+        "90": 3,
+        "365": 3
+      }
+    },
+    "calls": [],
+    "file": "{\"days\":90,\"lastSweep\":123}"
+  },
+  {
+    "name": "success",
+    "raw": "{\"days\":30,\"confirmDeletes\":3}",
+    "results": [
+      true,
+      true,
+      true
+    ],
+    "ticks": [],
+    "initial": "{\"days\":90,\"lastSweep\":123}",
+    "status": 200,
+    "body": {
+      "days": 30,
+      "deleted": 3
+    },
+    "calls": [
+      "a",
+      "b",
+      "c"
+    ],
+    "file": "{\"days\":30,\"lastSweep\":1700000000000}"
+  },
+  {
+    "name": "skipped",
+    "raw": "{\"days\":30,\"confirmDeletes\":3}",
+    "results": [
+      true,
+      false,
+      true
+    ],
+    "ticks": [],
+    "initial": "{\"days\":90,\"lastSweep\":123}",
+    "status": 200,
+    "body": {
+      "days": 30,
+      "deleted": 2
+    },
+    "calls": [
+      "a",
+      "b",
+      "c"
+    ],
+    "file": "{\"days\":30,\"lastSweep\":123}"
+  },
+  {
+    "name": "partial-busy",
+    "raw": "{\"days\":30,\"confirmDeletes\":3}",
+    "results": [
+      true,
+      503,
+      true
+    ],
+    "ticks": [],
+    "initial": "{\"days\":90,\"lastSweep\":123}",
+    "status": 503,
+    "body": {
+      "error": "Some chats could not be deleted. Try again shortly.",
+      "days": 30,
+      "deleted": 1
+    },
+    "calls": [
+      "a",
+      "b"
+    ],
+    "file": "{\"days\":30,\"lastSweep\":123}"
+  },
+  {
+    "name": "partial-error",
+    "raw": "{\"days\":30,\"confirmDeletes\":3}",
+    "results": [
+      500,
+      true,
+      true
+    ],
+    "ticks": [],
+    "initial": "{\"days\":90,\"lastSweep\":123}",
+    "status": 500,
+    "body": {
+      "error": "Some chats could not be deleted. Try again shortly.",
+      "days": 30,
+      "deleted": 2
+    },
+    "calls": [
+      "a",
+      "b",
+      "c"
+    ],
+    "file": "{\"days\":30,\"lastSweep\":123}"
+  },
+  {
+    "name": "first-error-wins",
+    "raw": "{\"days\":30,\"confirmDeletes\":3}",
+    "results": [
+      500,
+      429,
+      true
+    ],
+    "ticks": [],
+    "initial": "{\"days\":90,\"lastSweep\":123}",
+    "status": 500,
+    "body": {
+      "error": "Some chats could not be deleted. Try again shortly.",
+      "days": 30,
+      "deleted": 0
+    },
+    "calls": [
+      "a",
+      "b"
+    ],
+    "file": "{\"days\":30,\"lastSweep\":123}"
+  },
+  {
+    "name": "deadline",
+    "raw": "{\"days\":30,\"confirmDeletes\":3}",
+    "results": [
+      true,
+      true,
+      true
+    ],
+    "ticks": [
+      0,
+      0,
+      30001
+    ],
+    "initial": "{\"days\":90,\"lastSweep\":123}",
+    "status": 503,
+    "body": {
+      "error": "Some chats could not be deleted. Try again shortly.",
+      "days": 30,
+      "deleted": 1
+    },
+    "calls": [
+      "a"
+    ],
+    "file": "{\"days\":30,\"lastSweep\":123}"
+  },
+  {
+    "name": "empty",
+    "raw": "",
+    "results": [],
+    "ticks": [],
+    "initial": "{\"days\":90,\"lastSweep\":123}",
+    "status": 400,
+    "body": {
+      "error": "Choose off, or 30, 90 or 365 days."
+    },
+    "calls": [],
+    "file": "{\"days\":90,\"lastSweep\":123}"
+  },
+  {
+    "name": "overflow",
+    "raw": "{\"days\":0,\"extra\":1e400}",
+    "results": [],
+    "ticks": [],
+    "initial": "{\"days\":90,\"lastSweep\":123}",
+    "status": 200,
+    "body": {
+      "days": 0,
+      "deleted": 0
+    },
+    "calls": [],
+    "file": "{\"days\":0,\"lastSweep\":123}"
+  },
+  {
+    "name": "reserved-plane",
+    "raw": "{\"days\":0,\"extra\":\"􏠀\"}",
+    "results": [],
+    "ticks": [],
+    "initial": "{\"days\":90,\"lastSweep\":123}",
+    "status": 200,
+    "body": {
+      "days": 0,
+      "deleted": 0
+    },
+    "calls": [],
+    "file": "{\"days\":0,\"lastSweep\":123}"
+  },
+  {
+    "name": "deep",
+    "raw": "{\"days\":0,\"extra\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
+    "results": [],
+    "ticks": [],
+    "initial": "{\"days\":90,\"lastSweep\":123}",
+    "status": 200,
+    "body": {
+      "days": 0,
+      "deleted": 0
+    },
+    "calls": [],
+    "file": "{\"days\":0,\"lastSweep\":123}"
+  },
+  {
+    "name": "fractional-prior",
+    "raw": "{\"days\":0}",
+    "results": [],
+    "ticks": [],
+    "initial": "{\"days\":90,\"lastSweep\":123.125}",
+    "status": 200,
+    "body": {
+      "days": 0,
+      "deleted": 0
+    },
+    "calls": [],
+    "file": "{\"days\":0,\"lastSweep\":123.125}"
+  },
+  {
+    "name": "exponent-threshold",
+    "raw": "{\"days\":0}",
+    "results": [],
+    "ticks": [],
+    "initial": "{\"days\":90,\"lastSweep\":1e+21}",
+    "status": 200,
+    "body": {
+      "days": 0,
+      "deleted": 0
+    },
+    "calls": [],
+    "file": "{\"days\":0,\"lastSweep\":1e+21}"
+  },
+  {
+    "name": "fixed-large",
+    "raw": "{\"days\":0}",
+    "results": [],
+    "ticks": [],
+    "initial": "{\"days\":90,\"lastSweep\":1000000000000000100}",
+    "status": 200,
+    "body": {
+      "days": 0,
+      "deleted": 0
+    },
+    "calls": [],
+    "file": "{\"days\":0,\"lastSweep\":1000000000000000100}"
+  },
+  {
+    "name": "small-prior",
+    "raw": "{\"days\":0}",
+    "results": [],
+    "ticks": [],
+    "initial": "{\"days\":90,\"lastSweep\":1e-7}",
+    "status": 200,
+    "body": {
+      "days": 0,
+      "deleted": 0
+    },
+    "calls": [],
+    "file": "{\"days\":0,\"lastSweep\":1e-7}"
+  },
+  {
+    "name": "large-prior",
+    "raw": "{\"days\":0}",
+    "results": [],
+    "ticks": [],
+    "initial": "{\"days\":90,\"lastSweep\":1e+30}",
+    "status": 200,
+    "body": {
+      "days": 0,
+      "deleted": 0
+    },
+    "calls": [],
+    "file": "{\"days\":0,\"lastSweep\":1e+30}"
+  },
+  {
+    "name": "off",
+    "raw": "{\"days\":0}",
+    "results": [],
+    "ticks": [],
+    "initial": "{\"days\":90,\"lastSweep\":123}",
+    "status": 200,
+    "body": {
+      "days": 0,
+      "deleted": 0
+    },
+    "calls": [],
+    "file": "{\"days\":0,\"lastSweep\":123}"
+  }
+]

@@ -83,6 +83,9 @@ pub struct Config {
     /// The model maintenance routes (sbstndalton/noevia#2210, model_maint): the gate client, the
     /// router, the models.ini store and the state files, as Core's index.cjs reads them.
     pub maint: std::sync::Arc<crate::model_maint::Maint>,
+    /// The public calibration worker (`GET`/`POST /api/models/calibration`, `.../cancel`):
+    /// llama.cpp with a preset file only, as Core's manager made `createCalibrator` (#2303).
+    pub calibration: Option<std::sync::Arc<crate::model_maint::calibration_worker::Worker>>,
     /// GET /api/export/conversations (M4, sbstndalton/noevia#1315), read from the user's files on
     /// disk: always on (#1071), since free-chats.json on disk is the list (Rust is its only writer,
     /// the owner's 2026-10-12 condition).
@@ -225,6 +228,17 @@ impl std::fmt::Debug for ProjectStoreConfig {
 }
 
 impl Config {
+    /// The boot recovery of a calibration a restart interrupted (#2303; Core's boot `recover()` is
+    /// off): it takes the worker's launch slot before this returns, so call it before the routes
+    /// serve. `None` without a worker, or when the slot is already taken.
+    pub fn spawn_calibration_recovery(
+        &self,
+    ) -> Option<tokio::task::JoinHandle<Option<Option<bool>>>> {
+        self.calibration.as_ref()?.spawn_recover()
+    }
+}
+
+impl Config {
     /// The deployment switches that are on.
     pub fn switches(&self) -> crate::routes::Switches {
         crate::routes::Switches::default()
@@ -278,6 +292,25 @@ impl Config {
             )
             .map_err(|e| format!("model maintenance: {e}"))?,
         );
+        let calibration = (maint.kind == server_stats::Kind::LlamaCpp
+            && maint.ini.is_some()
+            && maint.router.is_some())
+        .then(|| {
+            // index.cjs: `Number(LLAMACPP_CALIBRATION_MEMORY_FLOOR_GIB) || 2`.
+            let floor = get("LLAMACPP_CALIBRATION_MEMORY_FLOOR_GIB")
+                .map(|v| {
+                    llamacpp_autoconfig::string_to_number(&v.encode_utf16().collect::<Vec<_>>())
+                        .unwrap_or(f64::NAN)
+                })
+                .filter(|n| *n != 0.0 && !n.is_nan())
+                .unwrap_or(2.0);
+            crate::model_maint::calibration_worker::Worker::new(
+                std::sync::Arc::clone(&maint),
+                std::sync::Arc::new(crate::model_maint::calibration_worker::read_mem_available_gib),
+                floor,
+                crate::model_maint::calibration_worker::Limits::default(),
+            )
+        });
         let rust_stats = Some(engine);
         // GET /api/export/conversations reads the free-chat list from disk, which Rust alone
         // writes (the owner's 2026-10-12 condition): always the front's (#1071).
@@ -400,6 +433,7 @@ impl Config {
             sizing,
             model_manager_scan: crate::model_manager_scan::Loader::from_lookup(&get)?,
             maint,
+            calibration,
             rust_export,
             project_store,
             start_id,

@@ -1,8 +1,8 @@
-//! Shared copy of noevia-rs crates/server-diary js_raw.rs (move/diary-local-exchange @ a936a3a8),
-//! public here for the other ports that need `JSON.parse` acceptance without a tree's limits (chat
-//! port S4, bins/noevia-server chat_framing_suggest.rs). Changes from that file: `pub` visibility,
-//! `valid` through `IgnoredAny`, and [`slice_string`]. The Diary port can switch to this module once
-//! both are on main.
+//! The one lossless `JSON.parse`/`JSON.stringify` reader, shared by the Diary ports (server-diary
+//! `js_raw` re-exports it for the local exchange and the proxy) and the chat port S4
+//! (bins/noevia-server chat_framing_suggest.rs). From server-diary js_raw.rs at a936a3a8, with `pub`
+//! visibility, `valid` through `IgnoredAny`, [`slice_string`], and the Diary proxy's
+//! [`Field::source`] lexeme and public [`string_end`]/[`scalar_end`] scanners.
 //!
 //! `JSON.stringify(JSON.parse(text))` without the limits of a parsed tree, in time and memory linear
 //! in the text (keys are hashed, at expected constant cost each): no nesting limit, every number
@@ -49,6 +49,8 @@ pub struct Field {
     pub key: String,
     /// The value, as `JSON.stringify` writes it.
     pub value: String,
+    /// Original lexeme for coercions before stringify (nested Infinity must not become null first).
+    pub source: String,
     /// The number the value is, when it is one, as JavaScript holds it: `1e400` is `Infinity`,
     /// which is written `null` but is truthy, not nullish, and no finite number.
     pub number: Option<f64>,
@@ -293,7 +295,7 @@ fn array_index(written: &str) -> Option<u32> {
 
 // ── first pass: which objects are reordered ─────────────────────────────────────────────────────
 
-fn string_end(b: &[u8], start: usize) -> Option<usize> {
+pub fn string_end(b: &[u8], start: usize) -> Option<usize> {
     let mut j = start + 1;
     loop {
         match *b.get(j)? {
@@ -304,7 +306,7 @@ fn string_end(b: &[u8], start: usize) -> Option<usize> {
     }
 }
 
-fn scalar_end(b: &[u8], start: usize) -> usize {
+pub fn scalar_end(b: &[u8], start: usize) -> usize {
     let mut j = start;
     while let Some(c) = b.get(j) {
         if matches!(c, b',' | b'}' | b']' | b' ' | b'\t' | b'\n' | b'\r') {
@@ -624,6 +626,7 @@ pub fn read(text: &str) -> Option<Top> {
             let mut value = String::new();
             write(text, &plan, entry.value.0, entry.value.1, &mut value)?;
             out.push(Field {
+                source: text.get(entry.value.0..entry.value.1)?.to_owned(),
                 key: entry.key.text(text).to_owned(),
                 value,
                 number: number_of(text.get(entry.value.0..entry.value.1)?),

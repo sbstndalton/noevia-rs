@@ -1,5 +1,6 @@
 {
  "v": 1,
+ "bridgeBodyLimit": 3211264,
  "cases": [
   {
    "id": "method-GET",
@@ -891,6 +892,88 @@
      "method": "POST",
      "body": {
       "big": 1048563
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6IkludmFsaWQgcmVxdWVzdCJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "one-mebibyte-chat-id",
+   "steps": [
+    {
+     "method": "POST",
+     "body": {
+      "chatId": 1048549,
+      "byte": "63"
+     },
+     "node": {
+      "status": 200,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "bodySha256": "61db23653c328021c269ecfa7785c5346a24c3c3c9a200de06c12484917e5ee6",
+      "bodyLength": 1048615
+     }
+    }
+   ]
+  },
+  {
+   "id": "over-one-mebibyte-chat-id",
+   "steps": [
+    {
+     "method": "POST",
+     "body": {
+      "chatId": 1048550,
+      "byte": "63"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6IkludmFsaWQgcmVxdWVzdCJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "one-mebibyte-invalid-utf8-chat-id",
+   "steps": [
+    {
+     "method": "POST",
+     "body": {
+      "chatId": 1048549,
+      "byte": "ff"
+     },
+     "node": {
+      "status": 200,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "bodySha256": "274a680e09aa02963956d62dab9cad0fac736a8e9600ec5e606bbf76069cfb3d",
+      "bodyLength": 3145713
+     }
+    }
+   ]
+  },
+  {
+   "id": "over-one-mebibyte-invalid-utf8-chat-id",
+   "steps": [
+    {
+     "method": "POST",
+     "body": {
+      "chatId": 1048550,
+      "byte": "ff"
      },
      "node": {
       "status": 400,

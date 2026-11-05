@@ -7,6 +7,7 @@
 //!   exclusive with Node's chat and tune.
 //! - [`router`]: the router's HTTP API as the maintenance work uses it.
 //! - [`ini`]: the models.ini store (read, parse, commit through the model-loader or the web writer).
+//! - [`evidence_recheck`]: one image-input request under normal inference admission, with carried identity.
 //! - [`reload`]: `POST /api/models/presets/reload` and the reload-guard state file
 //!   (`native-preset-reload-<hash>.json`).
 //!
@@ -18,13 +19,19 @@
 //! a client that goes away strands neither the work nor its hold (a [`gate::Hold`] is released by the
 //! task, has a deadline, and is given back from `Drop` if the task dies).
 
+pub mod calibration;
+pub mod calibration_facts;
+pub mod calibration_worker;
 pub mod evidence;
 pub mod evidence_live;
+pub mod evidence_recheck;
 pub mod gate;
 pub mod ini;
 pub mod node_lease;
 pub mod reload;
 pub mod router;
+// #697 the memory watchdog (Core inference-budget-watch.cjs; `rust-budget-watch`).
+pub mod budget_watch;
 
 use crate::{identity, reply, App};
 use axum::body::Body;
@@ -46,14 +53,14 @@ pub const EVIDENCE: &str = "/api/models/evidence";
 pub const EVIDENCE_IMPORT: &str = "/api/models/evidence/import";
 
 /// The maintenance routes this front answers.
-pub const ROUTES: &[&str] = &[RELOAD, EVIDENCE, EVIDENCE_IMPORT];
+pub const ROUTES: &[&str] = &[RELOAD, EVIDENCE, EVIDENCE_IMPORT, evidence_recheck::PATH];
 
 const MISSING_TOKEN_WARNING: &str = "[inference-gate] INFERENCE_GATE_ADMIN_TOKEN is not set: the memory watchdog cannot unload a model that is answering a request, and \"unload anyway\" on the Models page is unavailable. Set it to the admin token of the gate.";
 
 /// The methods the front answers on each (routes.toml); every other method stays Node's.
 pub fn owned(method: &Method, path: &str) -> bool {
     match path {
-        RELOAD | EVIDENCE_IMPORT => method == Method::POST,
+        RELOAD | EVIDENCE_IMPORT | evidence_recheck::PATH => method == Method::POST,
         EVIDENCE => method == Method::GET,
         _ => false,
     }
@@ -71,6 +78,24 @@ pub enum HoldError {
     NeedsGate,
     /// No gate, and Node's own maintenance gate gave no answer: nothing was changed.
     NodeUnavailable,
+}
+
+/// Why a run's hold ([`Maint::acquire_for_run`]) could not be taken.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HoldRefusal {
+    Busy,
+    /// The gate's own refusal: its status, code and text.
+    Gate {
+        status: u16,
+        code: String,
+        message: String,
+    },
+    NeedsGate,
+    NodeUnavailable,
+    /// No gate hold, and the run could outlast the longest lease Node grants.
+    OverLimit,
+    /// Node granted a lease shorter than the run could take (and it was given back).
+    ShortLease,
 }
 
 /// What the maintenance routes need from the environment, as Core's index.cjs reads it.
@@ -100,6 +125,7 @@ pub struct Maint {
     /// `UI_DATA_DIR` and the 16-digit suffix of the state files.
     pub data_dir: Option<PathBuf>,
     pub suffix: String,
+    pub(crate) recheck: evidence_recheck::Recheck,
 }
 
 impl std::fmt::Debug for Maint {
@@ -111,6 +137,14 @@ impl std::fmt::Debug for Maint {
             .field("ini", &self.ini)
             .finish_non_exhaustive()
     }
+}
+
+/// `now + max`, or the furthest representable deadline (a hold with no limit of its own).
+fn deadline_after(max: Duration) -> Instant {
+    let now = Instant::now();
+    now.checked_add(max)
+        .or_else(|| now.checked_add(Duration::from_secs(u64::from(u32::MAX))))
+        .unwrap_or(now)
 }
 
 fn first(get: &impl Fn(&str) -> Option<String>, keys: &[&str]) -> Option<String> {
@@ -154,7 +188,18 @@ impl Maint {
         );
         let llama = kind == server_stats::Kind::LlamaCpp;
         let router = if llama {
-            Some(router::Router::new(engine.base(), key.as_deref())?)
+            Some(
+                router::Router::new(engine.base(), key.as_deref())?.with_budget_fence(
+                    data_dir
+                        .as_ref()
+                        .map(|d| d.join(format!("budget-watch-{suffix}"))),
+                    first(get, &["LLAMACPP_PRESET_PATH"]).map(PathBuf::from),
+                    budget_watch::NodeBridge::new(
+                        first(get, &["NOEVIA_LEGACY_UPSTREAM"]).as_deref(),
+                        get("NOEVIA_PROJECT_STORE_TOKEN").as_deref(),
+                    )?,
+                ),
+            )
         } else {
             None
         };
@@ -219,7 +264,11 @@ impl Maint {
             router,
             gate,
             ini,
-            guard: reload::Guard::new(state("native-preset-reload")),
+            guard: reload::Guard::with(
+                state("native-preset-reload"),
+                &get("NOEVIA_START_ID").unwrap_or_default(),
+                reload::Timing::default(),
+            ),
             sizing,
             evidence,
             inbox_dir,
@@ -231,6 +280,7 @@ impl Maint {
             local: Arc::new(AtomicBool::new(false)),
             data_dir,
             suffix,
+            recheck: evidence_recheck::Recheck::new(get)?,
         })
     }
 
@@ -267,8 +317,54 @@ impl Maint {
         max: Duration,
         need_gate: bool,
     ) -> Result<Hold, HoldError> {
+        self.acquire_inner(reason, max, need_gate, None)
+            .await
+            .map_err(|r| match r {
+                HoldRefusal::Busy => HoldError::Busy,
+                HoldRefusal::Gate {
+                    status, message, ..
+                } => HoldError::Gate { status, message },
+                HoldRefusal::NeedsGate => HoldError::NeedsGate,
+                HoldRefusal::NodeUnavailable | HoldRefusal::OverLimit | HoldRefusal::ShortLease => {
+                    HoldError::NodeUnavailable
+                }
+            })
+    }
+
+    /// A hold for a run that may last `lease_for` (calibration): the gate's hold with no limit of its
+    /// own, as today; otherwise a lease on Node's gate asking for that hard cap. A run longer than
+    /// [`node_lease::MAX_LEASE`] is refused before any lease is taken, and a lease granted shorter than
+    /// asked (an older Node) is given back: such a run would outlive its exclusion.
+    pub async fn acquire_for_run(
+        &self,
+        reason: &str,
+        lease_for: Duration,
+    ) -> Result<Hold, HoldRefusal> {
+        if self
+            .local
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return Err(HoldRefusal::Busy);
+        }
+        let taken = self
+            .acquire_inner(reason, Duration::MAX, false, Some(lease_for))
+            .await;
+        if taken.is_err() {
+            self.local.store(false, Ordering::Release);
+        }
+        taken
+    }
+
+    async fn acquire_inner(
+        &self,
+        reason: &str,
+        max: Duration,
+        need_gate: bool,
+        lease_for: Option<Duration>,
+    ) -> Result<Hold, HoldRefusal> {
         let Some(gate) = self.gate.as_ref() else {
-            return Err(HoldError::NeedsGate);
+            return Err(HoldRefusal::NeedsGate);
         };
         match gate.hold(reason, Duration::ZERO).await {
             Ok(Some(grant)) => Ok(Hold::gated(
@@ -276,27 +372,35 @@ impl Maint {
                 Arc::clone(gate),
                 grant,
                 reason,
-                Instant::now() + max,
+                deadline_after(max),
             )),
             Ok(None) => {
                 if need_gate && !gate.has_admin() && gate.held().await.is_some() {
-                    return Err(HoldError::NeedsGate);
+                    return Err(HoldRefusal::NeedsGate);
                 }
-                match self.node.acquire().await {
+                if lease_for.is_some_and(|d| d > node_lease::MAX_LEASE) {
+                    return Err(HoldRefusal::OverLimit);
+                }
+                match self.node.acquire_capped(lease_for).await {
+                    Ok(grant) if lease_for.is_some_and(|d| grant.hard < d) => {
+                        self.node.release(&grant.id).await;
+                        Err(HoldRefusal::ShortLease)
+                    }
                     Ok(grant) => Ok(Hold::leased(
                         Arc::clone(&self.local),
                         Arc::clone(&self.node),
                         grant,
                         reason,
-                        Instant::now() + max,
+                        deadline_after(max),
                     )),
-                    Err(node_lease::LeaseFault::Busy) => Err(HoldError::Busy),
-                    Err(node_lease::LeaseFault::Unavailable) => Err(HoldError::NodeUnavailable),
+                    Err(node_lease::LeaseFault::Busy) => Err(HoldRefusal::Busy),
+                    Err(node_lease::LeaseFault::Unavailable) => Err(HoldRefusal::NodeUnavailable),
                 }
             }
-            Err(f) if f.busy() => Err(HoldError::Busy),
-            Err(f) => Err(HoldError::Gate {
+            Err(f) if f.busy() => Err(HoldRefusal::Busy),
+            Err(f) => Err(HoldRefusal::Gate {
                 status: f.status(),
+                code: f.code(),
                 message: f.message(),
             }),
         }
@@ -356,6 +460,9 @@ pub async fn serve(
 ) -> Response<Body> {
     if !owned(req.method(), &path) {
         return app.proxy.forward(conn.peer, req).await;
+    }
+    if path == evidence_recheck::PATH {
+        return evidence_recheck::serve(app, req).await;
     }
     let (parts, body) = req.into_parts();
     let creds = identity::creds_of(&parts);
