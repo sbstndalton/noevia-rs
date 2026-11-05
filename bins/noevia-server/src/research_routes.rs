@@ -232,7 +232,7 @@ impl Research {
         tasks.len()
     }
 
-    pub(crate) fn bridge_post(
+    fn bridge_post(
         &self,
         path: &str,
         body: &Value,
