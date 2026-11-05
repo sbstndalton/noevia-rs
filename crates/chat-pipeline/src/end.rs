@@ -38,7 +38,10 @@ pub fn declined_pause(applied: usize, declined: &[String]) -> JValue {
     let names = unique(declined);
     let joined = names.join(", ");
     let text = if applied > 0 {
-        format!("{} saved. You declined {joined}, so nothing else was changed.", saved(applied))
+        format!(
+            "{} saved. You declined {joined}, so nothing else was changed.",
+            saved(applied)
+        )
     } else {
         format!("No change was made: you declined {joined}.")
     };
@@ -46,7 +49,10 @@ pub fn declined_pause(applied: usize, declined: &[String]) -> JValue {
         ("type", s("paused")),
         ("reason", s("declined")),
         ("applied", JValue::Num(applied as f64)),
-        ("declined", JValue::Arr(names.into_iter().map(JValue::Str).collect())),
+        (
+            "declined",
+            JValue::Arr(names.into_iter().map(JValue::Str).collect()),
+        ),
         ("text", JValue::Str(text)),
     ])
 }
@@ -54,7 +60,10 @@ pub fn declined_pause(applied: usize, declined: &[String]) -> JValue {
 /// #658: step checks paused the reply after a tool round whose writes are real.
 pub fn supervision_pause(applied: usize) -> JValue {
     let text = if applied > 0 {
-        format!("{} saved. Step checks paused this reply before any further steps.", saved(applied))
+        format!(
+            "{} saved. Step checks paused this reply before any further steps.",
+            saved(applied)
+        )
     } else {
         "Step checks paused this reply before any further steps. Nothing was changed.".into()
     };
@@ -107,19 +116,33 @@ pub fn ending(e: &Ending<'_>) -> (Vec<JValue>, Option<Vec<JValue>>) {
     };
     if !e.compact_only && e.round_has_content && injected_len > 0 {
         let placed = JValue::Arr(e.placed.to_vec());
-        let used = sources::used_injected(e.injected, &placed, &JValue::Str(e.round_content.into()), e.message);
+        let used = sources::used_injected(
+            e.injected,
+            &placed,
+            &JValue::Str(e.round_content.into()),
+            e.message,
+        );
         if !used.is_empty() {
             let mut all = e.placed.to_vec();
             all.extend(used);
             let list = sources::build_sources(&all, e.readable_files);
             if list.len() > e.reply_sources {
-                out.push(obj(vec![("type", s("sources")), ("sources", JValue::Arr(list.clone()))]));
+                out.push(obj(vec![
+                    ("type", s("sources")),
+                    ("sources", JValue::Arr(list.clone())),
+                ]));
                 replaced = Some(list);
             }
         }
     }
     if !e.paused && !e.round_has_content && e.final_pass {
-        out.push(obj(vec![("type", s("delta")), ("text", JValue::Str(rounds::fallback_text(e.gathered_sources)))]));
+        out.push(obj(vec![
+            ("type", s("delta")),
+            (
+                "text",
+                JValue::Str(rounds::fallback_text(e.gathered_sources)),
+            ),
+        ]));
     } else if !e.paused && !e.round_has_content && !trim(e.round_reasoning).is_empty() {
         out.push(obj(vec![
             ("type", s("delta")),
@@ -130,7 +153,11 @@ pub fn ending(e: &Ending<'_>) -> (Vec<JValue>, Option<Vec<JValue>>) {
         ("type", s("telemetry")),
         ("phase", s("complete")),
         ("model", e.model.clone()),
-        ("timeToFirstToken", e.first_token_ms.map_or(JValue::Null, |ms| JValue::Num(ms / 1000.0))),
+        (
+            "timeToFirstToken",
+            e.first_token_ms
+                .map_or(JValue::Null, |ms| JValue::Num(ms / 1000.0)),
+        ),
     ]));
     (out, replaced)
 }
