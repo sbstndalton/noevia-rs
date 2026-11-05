@@ -22,6 +22,10 @@ struct Entry {
     catch_all: bool,
     #[serde(default = "yes")]
     client: bool,
+    /// A transitional owner = "rust" route whose front still hands the work to a Node executor
+    /// (`executor = "node"`): the front answers it, but it is not a completed port.
+    #[serde(default)]
+    executor: Option<String>,
     /// Retained only to reject stale deployment ownership switches explicitly (#1071).
     #[serde(default)]
     switch: Option<String>,
@@ -64,6 +68,17 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
         let _ = r.client;
+        let node_executor = match r.executor.as_deref() {
+            None => false,
+            Some("node") if r.owner == "rust" && !r.methods.is_empty() && !r.catch_all => true,
+            Some(other) => {
+                return Err(format!(
+                    "routes.toml {}: executor {other:?} (only \"node\", on an owner = \"rust\" route with methods)",
+                    r.path
+                )
+                .into())
+            }
+        };
         let switch = match r.switch.as_deref() {
             None => "None".to_string(),
             Some(sw) if SWITCHES.contains(&sw) => {
@@ -82,7 +97,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         };
         writeln!(
             out,
-            "    Route {{ path: {:?}, owner: {owner}, methods: &{:?}, catch_all: {}, switch: {switch} }},",
+            "    Route {{ path: {:?}, owner: {owner}, methods: &{:?}, catch_all: {}, switch: {switch}, node_executor: {node_executor} }},",
             r.path, r.methods, r.catch_all
         )?;
     }

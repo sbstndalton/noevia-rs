@@ -71,6 +71,24 @@ class RoutesCheck(unittest.TestCase):
         (d / "routes.toml").write_text('[[route]]\npath = "/api/profile"\n')
         self.assertEqual(self.run_check(d).returncode, 1)
 
+    def test_a_node_executor_route_is_reported_transitional_not_ported(self):
+        d = self.tree(["/api/projects/{id}/files", "/api/integrations/storage/files{*?}"])
+        with open(d / "routes.toml", "a") as f:
+            f.write('[[route]]\npath = "/api/profile"\nowner = "rust"\nmethods = ["POST"]\nexecutor = "node"\n')
+        r = self.run_check(d)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("0 ported, 1 transitional (Node executor: /api/profile)", r.stdout)
+
+    def test_refuses_an_executor_on_a_node_route(self):
+        d = self.tree([])
+        (d / "routes.toml").write_text('[[route]]\npath = "/api/profile"\nowner = "node"\nexecutor = "node"\n')
+        self.assertEqual(self.run_check(d).returncode, 1)
+
+    def test_the_real_table_marks_only_the_chat_turn_transitional(self):
+        import tomllib
+        doc = tomllib.loads((pathlib.Path(__file__).parents[2] / "contracts/http/routes.toml").read_text())
+        self.assertEqual([r["path"] for r in doc["route"] if r.get("executor") == "node"], ["/api/chat"])
+
 
 if __name__ == "__main__":
     unittest.main()
