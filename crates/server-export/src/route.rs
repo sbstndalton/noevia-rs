@@ -83,16 +83,6 @@ pub enum Outcome {
     Internal,
 }
 
-impl Outcome {
-    /// The ZIP's bytes in one buffer (tests).
-    pub fn zip_bytes(&self) -> Option<Vec<u8>> {
-        match self {
-            Outcome::Zip { chunks, .. } => Some(chunks.concat()),
-            _ => None,
-        }
-    }
-}
-
 #[derive(Debug)]
 enum HistoryFault {
     TooLarge,
