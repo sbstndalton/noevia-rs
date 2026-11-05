@@ -666,10 +666,9 @@ async fn a_grant_check_without_the_redeem_protocol_gets_no_grant() {
 }
 
 /// Revocation success requires Node's epoch acknowledgement, in either redeem/revoke order.
-#[tokio::test]
-async fn revocation_waits_for_node_and_orders_with_redeem() {
+async fn check_revoke_order(redeem_first: bool) {
     use std::sync::atomic::Ordering::SeqCst;
-    for redeem_first in [true, false] {
+    {
         let f = front().await;
         let (b, ticket) = f.ticket("ap-order", "qa-one").await;
         if redeem_first {
@@ -686,6 +685,14 @@ async fn revocation_waits_for_node_and_orders_with_redeem() {
         f.node.release.notify_one();
         assert_eq!(revoking.await.0, 200);
     }
+}
+#[tokio::test]
+async fn redeem_before_revoke_still_requires_node_acknowledgement() {
+    check_revoke_order(true).await;
+}
+#[tokio::test]
+async fn revoke_before_redeem_requires_node_acknowledgement_and_refuses_ticket() {
+    check_revoke_order(false).await;
 }
 #[tokio::test]
 async fn unreachable_node_never_reports_success_and_retry_can_confirm() {

@@ -50,8 +50,10 @@ impl Revoker {
                     HeaderName::from_static("x-noevia-store-token"),
                     token.clone(),
                 )
-                .json(
-                    &json!({"user":user,"chat":chat,"protocol":crate::approval_registry::PROTOCOL}),
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .body(
+                    json!({"user":user,"chat":chat,"protocol":crate::approval_registry::PROTOCOL})
+                        .to_string(),
                 )
                 .send()
                 .await
