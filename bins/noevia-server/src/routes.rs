@@ -1301,9 +1301,9 @@ mod tests {
     }
 
     /// sbstndalton/noevia#2187: the two configuration-only model reads are the front's, GET only, and
-    /// (#2189) the two sizing reads; every other method and every other model route stays Node's.
+    /// (#2189) the two sizing reads; idle timer PUT is now an explicit native writer.
     #[test]
-    fn model_reads_are_rusts_for_get_only_and_the_other_model_routes_stay_nodes() {
+    fn model_reads_and_explicit_model_writers_are_native() {
         let on = Switches::default();
         for p in crate::model_routes::ROUTES {
             assert_eq!(
@@ -1312,7 +1312,9 @@ mod tests {
                 "GET {p}"
             );
             for m in ["HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] {
-                assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
+                let expected =
+                    (*p == crate::model_writes_d::IDLE && m == "PUT").then_some(Native::Models);
+                assert_eq!(dispatch_under(m, p, on), expected, "{m} {p}");
             }
         }
         for method in ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] {

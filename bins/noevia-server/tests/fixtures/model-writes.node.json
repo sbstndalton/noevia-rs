@@ -928,8 +928,13 @@
       "method": "PUT",
       "path": "/api/models/idle-unload",
       "rawText": "",
-      "status": 200,
-      "body": {}
+      "status": 400,
+      "body": {
+        "error": "Choose Never or a time from 5 minutes to 24 hours.",
+        "errorId": "idleUnloadInvalid",
+        "minSeconds": 300,
+        "maxSeconds": 86400
+      }
     },
     {
       "method": "PUT",
