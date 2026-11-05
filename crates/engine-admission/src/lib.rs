@@ -15,6 +15,10 @@
 //!   dropped at any await, gives it back from `Drop`; if even that cannot run, Node ends it after the TTL.
 //! - No Node session, no answer from Node or an unreadable one is a refusal: admission fails closed.
 //!
+//! Partial port (row H): this authority owns lease *lifetime*. The admission *decisions* (maintenance
+//! permit, budget/quarantine, machine assignment/readiness, the Diary throttle) are still made by Node's
+//! latch and trusted here, until their owners (maintenance, budget, machines, chat) move them.
+//!
 //! [`machines`]: which machine serves a chat role, read from the settings row Node owns.
 pub mod authority;
 pub mod machines;
@@ -171,11 +175,15 @@ impl Admission {
             admission: Arc::clone(self),
             ticket,
             released: AtomicBool::new(false),
+            confirmed_until: std::sync::Mutex::new(tokio::time::Instant::now()),
         });
         let mut pending = Pending(Some(Arc::clone(&guard)));
         let Some(req) = self.request(reqwest::Method::PUT, &guard.ticket, "") else {
             return Err(Refused::unavailable());
         };
+        // Node arms its latch's TTL no earlier than it receives this request, so the grant is proven to
+        // hold only until `sent + ttl`: an answer that took longer is not a lease (row H review P1).
+        let sent = tokio::time::Instant::now();
         let send = req
             .header("content-type", "application/json")
             .timeout(ENTER_TIMEOUT)
@@ -236,9 +244,14 @@ impl Admission {
             })
             .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_owned())))
             .collect();
+        let until = sent + ttl;
+        if tokio::time::Instant::now() >= until {
+            return Err(Refused::unavailable());
+        }
+        guard.confirm(until);
         let inner = pending.0.take().ok_or_else(Refused::unavailable)?;
         let lost = Cancel::new();
-        let renewing = tokio::spawn(renew(Arc::clone(&inner), ttl, lost.clone()));
+        let renewing = tokio::spawn(renew(Arc::clone(&inner), ttl, lost.clone(), sent));
         Ok(Lease {
             inner,
             headers,
@@ -280,9 +293,35 @@ struct Held {
     admission: Arc<Admission>,
     ticket: Ticket,
     released: AtomicBool,
+    /// Until when Node's latch is proven held: the send time of the last confirmed call plus the TTL.
+    confirmed_until: std::sync::Mutex<tokio::time::Instant>,
 }
 
 impl Held {
+    fn confirm(&self, until: tokio::time::Instant) {
+        let mut c = match self.confirmed_until.lock() {
+            Ok(c) => c,
+            Err(p) => p.into_inner(),
+        };
+        if until > *c {
+            *c = until;
+        }
+    }
+
+    fn confirmed_until(&self) -> tokio::time::Instant {
+        match self.confirmed_until.lock() {
+            Ok(c) => *c,
+            Err(p) => *p.into_inner(),
+        }
+    }
+
+    /// Covered now: the authority's entry holds and Node's latch is proven held.
+    fn covered(&self) -> bool {
+        !self.released.load(Ordering::SeqCst)
+            && self.admission.authority.covers(&self.ticket.id)
+            && tokio::time::Instant::now() < self.confirmed_until()
+    }
+
     /// Ends the lease here and asks Node to give its latch back (once). The authority's entry ends at
     /// once, so nothing is covered from then on whether or not Node answers.
     fn give_back(self: &Arc<Self>) -> Option<impl std::future::Future<Output = ()>> {
@@ -315,62 +354,64 @@ impl Drop for Pending {
     }
 }
 
-async fn renew(held: Arc<Held>, ttl: Duration, lost: Cancel) {
+/// Renews the latch on an absolute schedule (`sent + every`, then each confirmed call's send time plus
+/// `every`) that no notification resets, and ends the lease at the first of: a newer Node start or an
+/// ended entry (checked at every authority change, also while a renewal is in flight), the hard cap, or
+/// the absolute deadline until which Node's latch is proven held (`confirmed_until`), whatever the HTTP
+/// calls in flight are doing.
+async fn renew(held: Arc<Held>, ttl: Duration, lost: Cancel, sent: tokio::time::Instant) {
+    use tokio::time::{sleep_until, Instant};
     let authority = held.admission.authority.clone();
     let every = (ttl / 3).max(Duration::from_millis(50));
-    let mut unconfirmed = Duration::ZERO;
     let hard_at = authority.hard_at(&held.ticket.id);
+    let mut next = sent + every;
+    let end = |held: &Arc<Held>| {
+        lost.cancel();
+        held.give_back_detached();
+    };
     loop {
+        if held.released.load(Ordering::SeqCst) {
+            return;
+        }
         let changed = authority.changed();
         tokio::pin!(changed);
         changed.as_mut().enable();
-        if held.released.load(Ordering::SeqCst) {
-            return;
+        if !held.covered() {
+            return end(&held);
         }
-        if !authority.covers(&held.ticket.id) {
-            lost.cancel();
-            held.give_back_detached();
-            return;
+        let deadline = hard_at.map_or(held.confirmed_until(), |h| h.min(held.confirmed_until()));
+        tokio::select! {
+            () = sleep_until(next) => {}
+            () = &mut changed => continue,
+            () = sleep_until(deadline) => continue,
         }
-        let tick = tokio::time::sleep(every);
-        let hard = async {
-            match hard_at {
-                Some(at) => tokio::time::sleep_until(at).await,
-                None => std::future::pending().await,
+        // A renewal: raced against every way coverage can end while it is in flight.
+        let started = Instant::now();
+        let call = held.admission.renew_once(&held.ticket);
+        tokio::pin!(call);
+        let answer = loop {
+            let changed = authority.changed();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            if !held.covered() {
+                return end(&held);
+            }
+            let deadline =
+                hard_at.map_or(held.confirmed_until(), |h| h.min(held.confirmed_until()));
+            tokio::select! {
+                a = &mut call => break a,
+                () = &mut changed => {}
+                () = sleep_until(deadline) => {}
             }
         };
-        let ticked = tokio::select! {
-            () = tick => true,
-            () = &mut changed => false,
-            () = hard => false,
-        };
-        if held.released.load(Ordering::SeqCst) {
-            return;
-        }
-        // Lost coverage (a newer Node start, the hard cap, an ended lease) is checked before anything.
-        if !authority.covers(&held.ticket.id) {
-            lost.cancel();
-            held.give_back_detached();
-            return;
-        }
-        if !ticked {
-            continue;
-        }
-        match held.admission.renew_once(&held.ticket).await {
-            Some(true) => unconfirmed = Duration::ZERO,
-            Some(false) => {
-                lost.cancel();
-                held.give_back_detached();
-                return;
+        match answer {
+            Some(true) => {
+                held.confirm(started + ttl);
+                next = started + every;
             }
-            None => {
-                unconfirmed += every;
-                if unconfirmed + every >= ttl {
-                    lost.cancel();
-                    held.give_back_detached();
-                    return;
-                }
-            }
+            Some(false) => return end(&held),
+            // No answer: try again on the schedule; the proven deadline is not extended.
+            None => next = Instant::now() + every,
         }
     }
 }
@@ -401,7 +442,7 @@ impl Lease {
 
     /// Whether the lease still holds, checked synchronously before a step.
     pub fn covered(&self) -> bool {
-        !self.lost.is_cancelled() && self.inner.admission.authority.covers(&self.inner.ticket.id)
+        !self.lost.is_cancelled() && self.inner.covered()
     }
 
     /// Gives the lease back and waits for Node's answer (bounded).
