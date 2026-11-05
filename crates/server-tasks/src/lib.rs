@@ -7,6 +7,7 @@ pub mod egress;
 pub mod facts;
 pub mod files;
 pub mod git;
+pub mod guard;
 pub mod launch;
 pub mod meta;
 pub mod output;

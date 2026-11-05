@@ -1,0 +1,904 @@
+{
+  "tool": {
+    "read": {
+      "type": "object",
+      "properties": {
+        "toolCallId": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "read",
+            "edit",
+            "delete",
+            "move",
+            "search",
+            "execute",
+            "think",
+            "fetch",
+            "switch_mode",
+            "other"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "status": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "locations": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "required": [
+              "path"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "maxLength": 4096
+              },
+              "line": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "rawInput": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "file_path": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "filePath": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "filepath": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          }
+        },
+        "content": {
+          "type": "array"
+        }
+      }
+    },
+    "edit": {
+      "type": "object",
+      "properties": {
+        "toolCallId": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "read",
+            "edit",
+            "delete",
+            "move",
+            "search",
+            "execute",
+            "think",
+            "fetch",
+            "switch_mode",
+            "other"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "status": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "locations": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "required": [
+              "path"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "maxLength": 4096
+              },
+              "line": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "rawInput": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "file_path": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "filePath": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "filepath": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          }
+        },
+        "content": {
+          "type": "array"
+        }
+      }
+    },
+    "delete": {
+      "type": "object",
+      "properties": {
+        "toolCallId": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "read",
+            "edit",
+            "delete",
+            "move",
+            "search",
+            "execute",
+            "think",
+            "fetch",
+            "switch_mode",
+            "other"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "status": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "locations": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "required": [
+              "path"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "maxLength": 4096
+              },
+              "line": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "rawInput": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "file_path": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "filePath": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "filepath": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          }
+        },
+        "content": {
+          "type": "array"
+        }
+      }
+    },
+    "move": {
+      "type": "object",
+      "properties": {
+        "toolCallId": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "read",
+            "edit",
+            "delete",
+            "move",
+            "search",
+            "execute",
+            "think",
+            "fetch",
+            "switch_mode",
+            "other"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "status": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "locations": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "required": [
+              "path"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "maxLength": 4096
+              },
+              "line": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "rawInput": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "file_path": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "filePath": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "filepath": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          }
+        },
+        "content": {
+          "type": "array"
+        }
+      }
+    },
+    "search": {
+      "type": "object",
+      "properties": {
+        "toolCallId": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "read",
+            "edit",
+            "delete",
+            "move",
+            "search",
+            "execute",
+            "think",
+            "fetch",
+            "switch_mode",
+            "other"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "status": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "locations": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "required": [
+              "path"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "maxLength": 4096
+              },
+              "line": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "rawInput": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "file_path": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "filePath": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "filepath": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          }
+        },
+        "content": {
+          "type": "array"
+        }
+      }
+    },
+    "execute": {
+      "type": "object",
+      "properties": {
+        "toolCallId": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "read",
+            "edit",
+            "delete",
+            "move",
+            "search",
+            "execute",
+            "think",
+            "fetch",
+            "switch_mode",
+            "other"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "status": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "locations": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "required": [
+              "path"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "maxLength": 4096
+              },
+              "line": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "rawInput": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "type": [
+                "string",
+                "array"
+              ],
+              "maxLength": 65536,
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "maxLength": 65536
+              }
+            },
+            "cmd": {
+              "type": [
+                "string",
+                "array"
+              ],
+              "maxLength": 65536,
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "maxLength": 65536
+              }
+            },
+            "script": {
+              "type": [
+                "string",
+                "array"
+              ],
+              "maxLength": 65536,
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "maxLength": 65536
+              }
+            },
+            "shell": {
+              "type": [
+                "string",
+                "array"
+              ],
+              "maxLength": 65536,
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "maxLength": 65536
+              }
+            },
+            "commandLine": {
+              "type": [
+                "string",
+                "array"
+              ],
+              "maxLength": 65536,
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "maxLength": 65536
+              }
+            },
+            "args": {
+              "type": [
+                "string",
+                "array"
+              ],
+              "maxLength": 65536,
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "maxLength": 65536
+              }
+            },
+            "cwd": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          }
+        },
+        "content": {
+          "type": "array"
+        }
+      }
+    },
+    "think": {
+      "type": "object",
+      "properties": {
+        "toolCallId": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "read",
+            "edit",
+            "delete",
+            "move",
+            "search",
+            "execute",
+            "think",
+            "fetch",
+            "switch_mode",
+            "other"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "status": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "locations": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "required": [
+              "path"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "maxLength": 4096
+              },
+              "line": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "rawInput": {
+          "type": "object"
+        },
+        "content": {
+          "type": "array"
+        }
+      }
+    },
+    "fetch": {
+      "type": "object",
+      "properties": {
+        "toolCallId": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "read",
+            "edit",
+            "delete",
+            "move",
+            "search",
+            "execute",
+            "think",
+            "fetch",
+            "switch_mode",
+            "other"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "status": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "locations": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "required": [
+              "path"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "maxLength": 4096
+              },
+              "line": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "rawInput": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "command": {
+              "type": [
+                "string",
+                "array"
+              ],
+              "maxLength": 65536,
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "maxLength": 65536
+              }
+            },
+            "cmd": {
+              "type": [
+                "string",
+                "array"
+              ],
+              "maxLength": 65536,
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "maxLength": 65536
+              }
+            },
+            "script": {
+              "type": [
+                "string",
+                "array"
+              ],
+              "maxLength": 65536,
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "maxLength": 65536
+              }
+            },
+            "shell": {
+              "type": [
+                "string",
+                "array"
+              ],
+              "maxLength": 65536,
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "maxLength": 65536
+              }
+            },
+            "commandLine": {
+              "type": [
+                "string",
+                "array"
+              ],
+              "maxLength": 65536,
+              "maxItems": 4096,
+              "items": {
+                "type": "string",
+                "maxLength": 65536
+              }
+            }
+          }
+        },
+        "content": {
+          "type": "array"
+        }
+      }
+    },
+    "switch_mode": {
+      "type": "object",
+      "properties": {
+        "toolCallId": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "read",
+            "edit",
+            "delete",
+            "move",
+            "search",
+            "execute",
+            "think",
+            "fetch",
+            "switch_mode",
+            "other"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "status": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "locations": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "required": [
+              "path"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "maxLength": 4096
+              },
+              "line": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "rawInput": {
+          "type": "object"
+        },
+        "content": {
+          "type": "array"
+        }
+      }
+    },
+    "other": {
+      "type": "object",
+      "properties": {
+        "toolCallId": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "read",
+            "edit",
+            "delete",
+            "move",
+            "search",
+            "execute",
+            "think",
+            "fetch",
+            "switch_mode",
+            "other"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "status": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "locations": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "required": [
+              "path"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "maxLength": 4096
+              },
+              "line": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "rawInput": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "file_path": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "filePath": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "filepath": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          }
+        },
+        "content": {
+          "type": "array"
+        }
+      }
+    }
+  },
+  "files": {
+    "fs/read_text_file": {
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "line": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "limit": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      }
+    },
+    "fs/write_text_file": {
+      "type": "object",
+      "required": [
+        "path",
+        "content"
+      ],
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "content": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

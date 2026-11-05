@@ -1,0 +1,664 @@
+{
+  "calls": [
+    {
+      "input": null,
+      "output": {
+        "message": "Type mismatch at $: expected object",
+        "path": "$",
+        "kind": null,
+        "hint": "Use one of the ACP tool kinds: read, edit, delete, move, search, execute, think, fetch, switch_mode, other."
+      }
+    },
+    {
+      "input": {},
+      "output": null
+    },
+    {
+      "input": {
+        "kind": "unknown"
+      },
+      "output": {
+        "message": "Unknown tool kind \"unknown\" at $.kind",
+        "path": "$.kind",
+        "kind": null,
+        "hint": "Use one of the ACP tool kinds: read, edit, delete, move, search, execute, think, fetch, switch_mode, other."
+      }
+    },
+    {
+      "input": {
+        "kind": true
+      },
+      "output": {
+        "message": "Unknown tool kind \"true\" at $.kind",
+        "path": "$.kind",
+        "kind": null,
+        "hint": "Use one of the ACP tool kinds: read, edit, delete, move, search, execute, think, fetch, switch_mode, other."
+      }
+    },
+    {
+      "input": {
+        "kind": "execute"
+      },
+      "output": {
+        "message": "Missing command at $.rawInput.command",
+        "path": "$.rawInput.command",
+        "kind": "execute",
+        "hint": "Send the shell command as one non-empty string in rawInput.command."
+      }
+    },
+    {
+      "input": {
+        "kind": "execute",
+        "rawInput": {}
+      },
+      "output": {
+        "message": "Missing command at $.rawInput.command",
+        "path": "$.rawInput.command",
+        "kind": "execute",
+        "hint": "Send the shell command as one non-empty string in rawInput.command."
+      }
+    },
+    {
+      "input": {
+        "kind": "execute",
+        "rawInput": {
+          "command": ""
+        }
+      },
+      "output": {
+        "message": "Missing command at $.rawInput.command",
+        "path": "$.rawInput.command",
+        "kind": "execute",
+        "hint": "Send the shell command as one non-empty string in rawInput.command."
+      }
+    },
+    {
+      "input": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "printf synthetic"
+        }
+      },
+      "output": null
+    },
+    {
+      "input": {
+        "kind": "execute",
+        "rawInput": {
+          "command": "printf\u0000synthetic"
+        }
+      },
+      "output": {
+        "message": "Command at $.rawInput.command contains a NUL byte",
+        "path": "$.rawInput.command",
+        "kind": "execute",
+        "hint": "Send the shell command as one non-empty string in rawInput.command."
+      }
+    },
+    {
+      "input": {
+        "kind": "edit",
+        "rawInput": {}
+      },
+      "output": {
+        "message": "A edit names no file: missing $.locations[].path",
+        "path": "$.locations",
+        "kind": "edit",
+        "hint": "Name the file to change as a non-empty string in locations[].path (or rawInput.path)."
+      }
+    },
+    {
+      "input": {
+        "kind": "edit",
+        "locations": [
+          {
+            "path": ""
+          }
+        ]
+      },
+      "output": {
+        "message": "Empty path at $.locations[0].path",
+        "path": "$.locations[0].path",
+        "kind": "edit",
+        "hint": "Name the file to change as a non-empty string in locations[].path (or rawInput.path)."
+      }
+    },
+    {
+      "input": {
+        "kind": "edit",
+        "locations": [
+          {
+            "path": "a\u0000b"
+          }
+        ]
+      },
+      "output": {
+        "message": "Path at $.locations[0].path contains a NUL or control character",
+        "path": "$.locations[0].path",
+        "kind": "edit",
+        "hint": "Name the file to change as a non-empty string in locations[].path (or rawInput.path)."
+      }
+    },
+    {
+      "input": {
+        "kind": "edit",
+        "rawInput": {
+          "path": "a"
+        }
+      },
+      "output": null
+    },
+    {
+      "input": {
+        "kind": "read",
+        "locations": [
+          {
+            "path": "a",
+            "line": 1.5
+          }
+        ]
+      },
+      "output": {
+        "message": "Expected an integer at $.locations[0].line, got 1.5",
+        "path": "$.locations[0].line",
+        "kind": "read",
+        "hint": "Send each path as a plain non-empty string."
+      }
+    },
+    {
+      "input": {
+        "kind": "fetch",
+        "rawInput": {}
+      },
+      "output": {
+        "message": "Missing URL at $.rawInput.url",
+        "path": "$.rawInput.url",
+        "kind": "fetch",
+        "hint": "Send the address as a string in rawInput.url."
+      }
+    },
+    {
+      "input": {
+        "kind": "fetch",
+        "rawInput": {
+          "url": "https://synthetic.invalid/"
+        }
+      },
+      "output": null
+    },
+    {
+      "input": {
+        "kind": "think",
+        "rawInput": {}
+      },
+      "output": null
+    },
+    {
+      "input": {
+        "kind": "read",
+        "content": "wrong"
+      },
+      "output": {
+        "message": "Type mismatch at $.content: expected array, got string",
+        "path": "$.content",
+        "kind": "read",
+        "hint": "Send each path as a plain non-empty string."
+      }
+    },
+    {
+      "input": {
+        "kind": "read",
+        "rawInput": []
+      },
+      "output": {
+        "message": "Type mismatch at $.rawInput: expected object, got array",
+        "path": "$.rawInput",
+        "kind": "read",
+        "hint": "Send each path as a plain non-empty string."
+      }
+    },
+    {
+      "input": {
+        "kind": "move",
+        "rawInput": {
+          "path": "  "
+        }
+      },
+      "output": {
+        "message": "Empty path at $.rawInput.path",
+        "path": "$.rawInput.path",
+        "kind": "move",
+        "hint": "Name the file to move as a non-empty string in locations[].path (or rawInput.path)."
+      }
+    },
+    {
+      "input": {
+        "kind": "execute",
+        "rawInput": {
+          "command": [
+            "printf",
+            "synthetic"
+          ],
+          "cwd": "ab"
+        }
+      },
+      "output": {
+        "message": "Path at $.rawInput.cwd contains a NUL or control character",
+        "path": "$.rawInput.cwd",
+        "kind": "execute",
+        "hint": "Send the shell command as one non-empty string in rawInput.command."
+      }
+    }
+  ],
+  "fsCalls": [
+    {
+      "method": "fs/read_text_file",
+      "params": null,
+      "maxBytes": 8,
+      "output": {
+        "message": "Type mismatch at $: expected object, got null",
+        "path": "$",
+        "kind": "fs/read_text_file",
+        "hint": "Send { path } as a plain non-empty string; line and limit, when given, are whole numbers from 1."
+      }
+    },
+    {
+      "method": "fs/read_text_file",
+      "params": {},
+      "maxBytes": 8,
+      "output": {
+        "message": "Missing required property path at $",
+        "path": "$",
+        "kind": "fs/read_text_file",
+        "hint": "Send { path } as a plain non-empty string; line and limit, when given, are whole numbers from 1."
+      }
+    },
+    {
+      "method": "fs/read_text_file",
+      "params": {
+        "path": ""
+      },
+      "maxBytes": 8,
+      "output": {
+        "message": "Empty path at $.path",
+        "path": "$.path",
+        "kind": "fs/read_text_file",
+        "hint": "Send { path } as a plain non-empty string; line and limit, when given, are whole numbers from 1."
+      }
+    },
+    {
+      "method": "fs/read_text_file",
+      "params": {
+        "path": "a\u0000b"
+      },
+      "maxBytes": 8,
+      "output": {
+        "message": "Path at $.path contains a NUL or control character",
+        "path": "$.path",
+        "kind": "fs/read_text_file",
+        "hint": "Send { path } as a plain non-empty string; line and limit, when given, are whole numbers from 1."
+      }
+    },
+    {
+      "method": "fs/read_text_file",
+      "params": {
+        "path": "a",
+        "line": 0,
+        "content": "x"
+      },
+      "maxBytes": 8,
+      "output": {
+        "message": "line at $.line must be 1 or more",
+        "path": "$.line",
+        "kind": "fs/read_text_file",
+        "hint": "Send { path } as a plain non-empty string; line and limit, when given, are whole numbers from 1."
+      }
+    },
+    {
+      "method": "fs/read_text_file",
+      "params": {
+        "path": "a",
+        "line": 1.5,
+        "content": "x"
+      },
+      "maxBytes": 8,
+      "output": {
+        "message": "Expected an integer at $.line, got 1.5",
+        "path": "$.line",
+        "kind": "fs/read_text_file",
+        "hint": "Send { path } as a plain non-empty string; line and limit, when given, are whole numbers from 1."
+      }
+    },
+    {
+      "method": "fs/read_text_file",
+      "params": {
+        "path": "a",
+        "content": "synthetic"
+      },
+      "maxBytes": 8,
+      "output": null
+    },
+    {
+      "method": "fs/read_text_file",
+      "params": {
+        "path": "a",
+        "content": 4
+      },
+      "maxBytes": 8,
+      "output": null
+    },
+    {
+      "method": "fs/read_text_file",
+      "params": {
+        "path": "a",
+        "limit": 1,
+        "content": "x"
+      },
+      "maxBytes": 8,
+      "output": null
+    },
+    {
+      "method": "fs/write_text_file",
+      "params": null,
+      "maxBytes": 8,
+      "output": {
+        "message": "Type mismatch at $: expected object, got null",
+        "path": "$",
+        "kind": "fs/write_text_file",
+        "hint": "Send { path, content } with a plain non-empty path and the whole file as a string."
+      }
+    },
+    {
+      "method": "fs/write_text_file",
+      "params": {},
+      "maxBytes": 8,
+      "output": {
+        "message": "Missing required properties path, content at $",
+        "path": "$",
+        "kind": "fs/write_text_file",
+        "hint": "Send { path, content } with a plain non-empty path and the whole file as a string."
+      }
+    },
+    {
+      "method": "fs/write_text_file",
+      "params": {
+        "path": ""
+      },
+      "maxBytes": 8,
+      "output": {
+        "message": "Missing required property content at $",
+        "path": "$",
+        "kind": "fs/write_text_file",
+        "hint": "Send { path, content } with a plain non-empty path and the whole file as a string."
+      }
+    },
+    {
+      "method": "fs/write_text_file",
+      "params": {
+        "path": "a\u0000b"
+      },
+      "maxBytes": 8,
+      "output": {
+        "message": "Missing required property content at $",
+        "path": "$",
+        "kind": "fs/write_text_file",
+        "hint": "Send { path, content } with a plain non-empty path and the whole file as a string."
+      }
+    },
+    {
+      "method": "fs/write_text_file",
+      "params": {
+        "path": "a",
+        "line": 0,
+        "content": "x"
+      },
+      "maxBytes": 8,
+      "output": {
+        "message": "line at $.line must be 1 or more",
+        "path": "$.line",
+        "kind": "fs/write_text_file",
+        "hint": "Send { path, content } with a plain non-empty path and the whole file as a string."
+      }
+    },
+    {
+      "method": "fs/write_text_file",
+      "params": {
+        "path": "a",
+        "line": 1.5,
+        "content": "x"
+      },
+      "maxBytes": 8,
+      "output": null
+    },
+    {
+      "method": "fs/write_text_file",
+      "params": {
+        "path": "a",
+        "content": "synthetic"
+      },
+      "maxBytes": 8,
+      "output": {
+        "message": "Content at $.content is larger than 8 bytes",
+        "path": "$.content",
+        "kind": "fs/write_text_file",
+        "hint": "Send { path, content } with a plain non-empty path and the whole file as a string."
+      }
+    },
+    {
+      "method": "fs/write_text_file",
+      "params": {
+        "path": "a",
+        "content": 4
+      },
+      "maxBytes": 8,
+      "output": {
+        "message": "Type mismatch at $.content: expected string, got number",
+        "path": "$.content",
+        "kind": "fs/write_text_file",
+        "hint": "Send { path, content } with a plain non-empty path and the whole file as a string."
+      }
+    },
+    {
+      "method": "fs/write_text_file",
+      "params": {
+        "path": "a",
+        "limit": 1,
+        "content": "x"
+      },
+      "maxBytes": 8,
+      "output": null
+    }
+  ],
+  "strikes": {
+    "refusals": [
+      {
+        "type": "schema_violation_correction",
+        "violation": {
+          "message": "Type mismatch at $: expected object",
+          "path": "$"
+        },
+        "tool": "session/request_permission",
+        "kind": null,
+        "hint": "Use one of the ACP tool kinds: read, edit, delete, move, search, execute, think, fetch, switch_mode, other.",
+        "count": 1,
+        "limit": 3,
+        "blocked": false
+      },
+      {
+        "type": "schema_violation_correction",
+        "violation": {
+          "message": "Missing command at $.rawInput.command",
+          "path": "$.rawInput.command"
+        },
+        "tool": "session/request_permission",
+        "kind": "execute",
+        "hint": "Send the shell command as one non-empty string in rawInput.command.",
+        "count": 2,
+        "limit": 3,
+        "blocked": false
+      },
+      {
+        "type": "schema_violation_correction",
+        "violation": {
+          "message": "A edit names no file: missing $.locations[].path",
+          "path": "$.locations"
+        },
+        "tool": "session/request_permission",
+        "kind": "edit",
+        "hint": "Name the file to change as a non-empty string in locations[].path (or rawInput.path).",
+        "count": 3,
+        "limit": 3,
+        "blocked": true
+      },
+      {
+        "type": "schema_violation_correction",
+        "violation": {
+          "message": "A edit names no file: missing $.locations[].path",
+          "path": "$.locations"
+        },
+        "tool": "session/request_permission",
+        "kind": "edit",
+        "hint": "Name the file to change as a non-empty string in locations[].path (or rawInput.path).",
+        "count": 3,
+        "limit": 3,
+        "blocked": true
+      }
+    ],
+    "events": [
+      {
+        "type": "approval.decided",
+        "data": {
+          "decision": "denied",
+          "action": "execute_command",
+          "automatic": true,
+          "reason": "noevia refused this malformed tool call (violation 1 of 3). Correct the arguments and call the tool again. Type mismatch at $: expected object. Use one of the ACP tool kinds: read, edit, delete, move, search, execute, think, fetch, switch_mode, other.",
+          "violation": {
+            "type": "schema_violation_correction",
+            "violation": {
+              "message": "Type mismatch at $: expected object",
+              "path": "$"
+            },
+            "tool": "session/request_permission",
+            "kind": null,
+            "hint": "Use one of the ACP tool kinds: read, edit, delete, move, search, execute, think, fetch, switch_mode, other.",
+            "count": 1,
+            "limit": 3,
+            "blocked": false
+          }
+        }
+      },
+      {
+        "type": "approval.decided",
+        "data": {
+          "decision": "denied",
+          "action": "execute_command",
+          "automatic": true,
+          "reason": "noevia refused this malformed tool call (violation 2 of 3). Correct the arguments and call the tool again. Missing command at $.rawInput.command. Send the shell command as one non-empty string in rawInput.command.",
+          "violation": {
+            "type": "schema_violation_correction",
+            "violation": {
+              "message": "Missing command at $.rawInput.command",
+              "path": "$.rawInput.command"
+            },
+            "tool": "session/request_permission",
+            "kind": "execute",
+            "hint": "Send the shell command as one non-empty string in rawInput.command.",
+            "count": 2,
+            "limit": 3,
+            "blocked": false
+          }
+        }
+      },
+      {
+        "type": "approval.decided",
+        "data": {
+          "decision": "denied",
+          "action": "execute_command",
+          "automatic": true,
+          "reason": "noevia refused this malformed tool call and stopped the task (violation 3 of 3). A edit names no file: missing $.locations[].path. Name the file to change as a non-empty string in locations[].path (or rawInput.path).",
+          "violation": {
+            "type": "schema_violation_correction",
+            "violation": {
+              "message": "A edit names no file: missing $.locations[].path",
+              "path": "$.locations"
+            },
+            "tool": "session/request_permission",
+            "kind": "edit",
+            "hint": "Name the file to change as a non-empty string in locations[].path (or rawInput.path).",
+            "count": 3,
+            "limit": 3,
+            "blocked": true
+          }
+        }
+      },
+      {
+        "type": "step.started",
+        "data": {
+          "id": "executor.guard",
+          "title": "Tool-call guard"
+        }
+      },
+      {
+        "type": "step.completed",
+        "data": {
+          "id": "executor.guard",
+          "failed": true,
+          "blocked": true,
+          "violations": 3,
+          "error": "Stopped after 3 malformed tool calls."
+        }
+      },
+      {
+        "type": "approval.decided",
+        "data": {
+          "decision": "denied",
+          "action": "execute_command",
+          "automatic": true,
+          "reason": "noevia refused this malformed tool call and stopped the task (violation 3 of 3). A edit names no file: missing $.locations[].path. Name the file to change as a non-empty string in locations[].path (or rawInput.path).",
+          "violation": {
+            "type": "schema_violation_correction",
+            "violation": {
+              "message": "A edit names no file: missing $.locations[].path",
+              "path": "$.locations"
+            },
+            "tool": "session/request_permission",
+            "kind": "edit",
+            "hint": "Name the file to change as a non-empty string in locations[].path (or rawInput.path).",
+            "count": 3,
+            "limit": 3,
+            "blocked": true
+          }
+        }
+      }
+    ],
+    "error": {
+      "message": "Blocked: the coding agent sent 3 malformed tool calls, so the task was stopped.",
+      "code": "blocked",
+      "publicMessage": "Blocked: the coding agent sent 3 malformed tool calls, so the task was stopped.",
+      "result": {
+        "blocked": true,
+        "reason": "executor_guard",
+        "violations": [
+          {
+            "tool": "session/request_permission",
+            "kind": null,
+            "path": "$",
+            "message": "Type mismatch at $: expected object"
+          },
+          {
+            "tool": "session/request_permission",
+            "kind": "execute",
+            "path": "$.rawInput.command",
+            "message": "Missing command at $.rawInput.command"
+          },
+          {
+            "tool": "session/request_permission",
+            "kind": "edit",
+            "path": "$.locations",
+            "message": "A edit names no file: missing $.locations[].path"
+          }
+        ]
+      }
+    }
+  }
+}

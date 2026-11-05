@@ -11,6 +11,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+stream-guard = { path = "../stream-guard" }
 code-actions = { path = "../code-actions" }
 js-json = { path = "../js-json" }
 server-projects = { path = "../server-projects" }

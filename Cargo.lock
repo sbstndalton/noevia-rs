@@ -3281,6 +3281,7 @@ dependencies = [
  "rustix",
  "server-account",
  "server-projects",
+ "stream-guard",
  "tempfile",
  "tokio",
  "zeroize",
