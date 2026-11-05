@@ -13,6 +13,7 @@ pub mod autotune_settings_routes;
 pub mod autotune_untuned_routes;
 pub mod calibration_cancel_routes;
 pub mod calibration_routes;
+pub mod chat_mirror;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_oauth_routes;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -182,8 +183,14 @@ use std::sync::Arc;
 /// rust-decision-settings.cjs `RUST_DECISION_SETTINGS_OWNED`), so the supervisor pairs them.
 ///
 /// `rust-vault-mirror-preferences`: this build answers `GET|PUT /api/chat-vault-mirror/preferences`
-/// natively (server-account vault_mirror) and writes the mirror nudges core polls; the paired core
-/// refuses that path (rust-vault-mirror-preferences.cjs `RUST_VAULT_MIRROR_PREFERENCES_OWNED`).
+/// natively (server-account vault_mirror) and nudges its own mirror schedule when a save turns the
+/// mirror on; the paired core refuses that path (rust-vault-mirror-preferences.cjs
+/// `RUST_VAULT_MIRROR_PREFERENCES_OWNED`).
+/// `rust-chat-mirror-v1`: this build reads every active account's chat change journal in process and
+/// owns the Diary mirror and chat brain schedules (chat_mirror.rs, crate chat-mirror-sched); the paired
+/// core keeps only their two work executors and nudges the schedule over the project store (core
+/// rust-chat-mirror.cjs `RUST_CHAT_MIRROR_OWNED`). Both processes must carry it: a front without it
+/// beside this core leaves the journal unread, a core without it beside this front runs a second schedule.
 /// `rust-storage-integrations`: this build answers `POST /api/integrations/storage/folder`,
 /// `/test` and `/nextcloud/{start,poll,cancel}` (sbstndalton/noevia#2190): it owns the pending
 /// Nextcloud sign-ins (`nextcloud-login-flows.json`), saves a completed sign-in's storage row and
@@ -373,6 +380,7 @@ use std::sync::Arc;
 /// with a front that predates the strip cannot be handed a client-chosen address (#1578).
 pub const FEATURES: &[&str] = &[
     "rust-embedding-background-v1",
+    "rust-chat-mirror-v1",
     "client-address-header",
     "code-net-guard",
     "header-read-timeout",
@@ -564,6 +572,9 @@ pub struct App {
     /// `connectorRate` of the Diary connector endpoint (core routes/diary.cjs): fixed windows, one
     /// per bucket key, in this process's memory like core's.
     diary_connector_rate: std::sync::Mutex<server_account::rate::RateLimiter>,
+    /// The chat mirror and brain schedule, set once the server runs (`rust-chat-mirror-v1`);
+    /// Node's triggers reach it over the project store.
+    pub chat_mirror: std::sync::OnceLock<Arc<chat_mirror::ChatMirror>>,
     pub reasoning_settings: Arc<tokio::sync::Semaphore>,
     pub sampling_settings: Arc<tokio::sync::Semaphore>,
     pub routing_mode: Arc<tokio::sync::Semaphore>,
@@ -658,6 +669,7 @@ impl App {
             diary: server_diary::Diary::new(config.diary.clone())
                 .ok()
                 .map(Arc::new),
+            chat_mirror: std::sync::OnceLock::new(),
             diary_connector_rate: std::sync::Mutex::new(server_account::rate::RateLimiter::new(
                 identity::now_ms(),
             )),

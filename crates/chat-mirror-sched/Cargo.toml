@@ -1,0 +1,18 @@
+[package]
+name = "chat-mirror-sched"
+version = "0.1.0"
+description = "The chat change-journal consumer and the per-user Diary mirror and per-chat brain schedulers, ported from noevia-core chat-change-journal.cjs, chat-vault-mirror.cjs and chat-brain.cjs"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde_json = "1"
+tokio = { version = "1", features = ["time", "sync", "rt", "macros"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["time", "sync", "rt", "macros", "test-util"] }

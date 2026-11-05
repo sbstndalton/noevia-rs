@@ -268,6 +268,16 @@ async fn server_main() -> ExitCode {
                 None
             }
         };
+    // `rust-chat-mirror-v1`: the change-journal consumer and the mirror and brain schedules.
+    if let Some(mirror) = noevia_server::chat_mirror::ChatMirror::start(
+        std::sync::Arc::clone(&app.config.research),
+        app.config.data_dir.clone(),
+    ) {
+        mirror.install_nudge_hook();
+        let _ = app.chat_mirror.set(mirror);
+    } else {
+        eprintln!("noevia-server: chat mirror schedule idle (no data directory)");
+    }
     let server = serve::serve(listener, app, serve::Limits::default(), async move {
         let mut rx = stop_rx;
         let _ = rx.wait_for(|s| *s).await;
