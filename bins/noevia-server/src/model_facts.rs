@@ -148,18 +148,34 @@ impl Authority {
         let max = field(&r, "maxGib").as_f64().unwrap_or(1024.0);
         let n = body.get("budgetGib").and_then(Value::as_f64).filter(|n|n.is_finite() && round1(*n)==*n && *n>=2.0 && *n<=max).ok_or_else(||(400,json!({"error":format!("Enter a budget from 2 to {max} GiB, in steps of 0.1."),"errorId":"invalidBudget","minGib":2,"maxGib":max})))?;
         let root = self.root.as_ref().ok_or_else(unavailable)?;
-        let c = Connection::open(root.join("cowork.db")).map_err(|_| unavailable())?;
+        let mut c = Connection::open(root.join("cowork.db")).map_err(|_| unavailable())?;
         c.busy_timeout(std::time::Duration::from_secs(2))
             .map_err(|_| unavailable())?;
-        c.execute("INSERT INTO settings(key,value) VALUES('inference:memory-budget',?1) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[json!({"budgetGib":n}).to_string()]).map_err(|_|unavailable())?;
         let old_saved = state.saved;
         let old_generation = state.generation;
         let next_generation = state.generation.checked_add(1).ok_or_else(unavailable)?;
+        // Reserve a later generation for compensation if COMMIT fails after publication.
+        // Readers may already have observed next_generation and must never see it regress.
+        let rollback_generation = next_generation.checked_add(1).ok_or_else(unavailable)?;
+        let tx = c.transaction().map_err(|_| unavailable())?;
+        tx.execute("INSERT INTO settings(key,value) VALUES('inference:memory-budget',?1) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[json!({"budgetGib":n}).to_string()]).map_err(|_|unavailable())?;
         state.saved = Some(n);
         state.generation = next_generation;
         if self.publish_locked(&state).is_err() {
             state.saved = old_saved;
             state.generation = old_generation;
+            // Dropping the uncommitted transaction preserves the exact prior row,
+            // including its absence. Restart cannot adopt this rejected value.
+            return Err(unavailable());
+        }
+        if tx.commit().is_err() {
+            state.saved = old_saved;
+            state.generation = rollback_generation;
+            if self.publish_locked(&state).is_err() {
+                // The candidate is not durable. Never leave it available for admission
+                // if the compensating publication also fails; the publisher retries.
+                let _ = std::fs::remove_file(root.join(FILE));
+            }
             return Err(unavailable());
         }
         Ok(self.figure(&state))
@@ -236,8 +252,14 @@ pub async fn sidecars(
                 .trim_end_matches("/v1")
                 .to_owned()
         };
+        let has_service_address = field(embed, "baseUrl")
+            .as_str()
+            .is_some_and(|s| !s.is_empty());
+        let service_address = norm(field(embed, "baseUrl"));
         for v in a {
-            if norm(field(v, "baseUrl")) != norm(field(embed, "baseUrl")) {
+            // Node's isAt requires a service address: two absent addresses do not
+            // establish that the managed service serves an inference-engine target.
+            if !has_service_address || norm(field(v, "baseUrl")) != service_address {
                 add(&mut names, field(v, "model"));
             }
         }

@@ -589,6 +589,126 @@ async fn stale_generation_scan_is_not_published_and_loading_stays_loading() {
     assert_eq!(rows[0]["shape"], Value::Null);
 }
 
+#[test]
+fn rejected_budget_publication_preserves_the_row_and_budget_after_restart() {
+    for row in [None, Some(r#"{"budgetGib":7}"#)] {
+        let d = tempfile::tempdir().unwrap();
+        let db = seed(d.path(), row);
+        std::fs::write(d.path().join("meminfo"), "MemTotal:       67108864 kB\n").unwrap();
+        let env = HashMap::from([
+            ("UI_DATA_DIR", d.path().display().to_string()),
+            (
+                "NOEVIA_TEST_MEMINFO_PATH",
+                d.path().join("meminfo").display().to_string(),
+            ),
+            ("NOEVIA_START_ID", "synthetic-first-start".to_owned()),
+            ("INFERENCE_MEMORY_BUDGET_GIB", "6".to_owned()),
+        ]);
+        let boot = |start: &str| {
+            noevia_server::model_facts::Authority::from_lookup(&|k| {
+                if k == "NOEVIA_START_ID" {
+                    Some(start.to_owned())
+                } else {
+                    env.get(k).cloned()
+                }
+            })
+        };
+        let authority = boot("synthetic-first-start");
+        authority.publish().unwrap();
+        let old = authority.budget().unwrap();
+        // A directory at the temporary file path makes publication fail even as root,
+        // while keeping the last complete snapshot readable.
+        let obstruction = d.path().join("model-facts.json.tmp");
+        std::fs::create_dir(&obstruction).unwrap();
+        assert_eq!(authority.save(&json!({"budgetGib":9})).unwrap_err().0, 503);
+        assert_eq!(authority.budget().unwrap(), old);
+        drop(authority);
+        std::fs::remove_dir(obstruction).unwrap();
+        let restarted = boot("synthetic-second-start");
+        restarted.publish().unwrap();
+        assert_eq!(restarted.budget().unwrap(), old);
+        let stored: Vec<String> = db
+            .prepare("SELECT value FROM settings WHERE key='inference:memory-budget'")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(
+            stored,
+            row.into_iter().map(str::to_owned).collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn rejected_budget_commit_restores_the_snapshot_without_regressing_generation() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path(), Some(r#"{"budgetGib":7}"#));
+    db.pragma_update(None, "journal_mode", "DELETE").unwrap();
+    std::fs::write(d.path().join("meminfo"), "MemTotal:       67108864 kB\n").unwrap();
+    let env = HashMap::from([
+        ("UI_DATA_DIR", d.path().display().to_string()),
+        (
+            "NOEVIA_TEST_MEMINFO_PATH",
+            d.path().join("meminfo").display().to_string(),
+        ),
+        ("NOEVIA_START_ID", "synthetic-start".to_owned()),
+    ]);
+    let authority = noevia_server::model_facts::Authority::from_lookup(&|k| env.get(k).cloned());
+    authority.publish().unwrap();
+    let old = authority.budget().unwrap();
+    // A concurrent reader allows the row update, but prevents its commit.
+    db.execute_batch("BEGIN; SELECT value FROM settings;")
+        .unwrap();
+    assert_eq!(authority.save(&json!({"budgetGib":9})).unwrap_err().0, 503);
+    db.execute_batch("ROLLBACK;").unwrap();
+    assert_eq!(authority.budget().unwrap(), old);
+    let snapshot = noevia_server::model_facts::snapshot(d.path(), "synthetic-start").unwrap();
+    assert_eq!(snapshot["generation"], 2);
+    assert_eq!(
+        db.query_row(
+            "SELECT value FROM settings WHERE key='inference:memory-budget'",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        r#"{"budgetGib":7}"#
+    );
+}
+
+#[tokio::test]
+async fn null_address_targets_keep_protection_when_the_managed_service_has_no_address() {
+    for address in [Value::Null, json!("")] {
+        let raw = json!({
+            "embedding":{"baseUrl":address,"status":{"stale":false,"enabled":true,"running":{"loaded":[]}},"protected":["synthetic-running"]},
+            "config":{"names":["synthetic-active","synthetic-next","synthetic-previous"],"targets":[
+                {"model":"synthetic-active","baseUrl":null},
+                {"model":"synthetic-next","baseUrl":null},
+                {"model":"synthetic-previous","baseUrl":null}
+            ]},"revision":"synthetic-revision"
+        });
+        let (np, _) = stub((200, raw.to_string()), |_, current| current.clone()).await;
+        let env = HashMap::from([
+            ("NOEVIA_LEGACY_UPSTREAM", format!("http://127.0.0.1:{np}")),
+            ("NOEVIA_PROJECT_STORE_TOKEN", SECRET.to_owned()),
+        ]);
+        let app = App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
+        let (names, _, _) = noevia_server::model_facts::sidecars(&app, None)
+            .await
+            .unwrap();
+        assert_eq!(
+            names,
+            [
+                "synthetic-active",
+                "synthetic-next",
+                "synthetic-previous",
+                "synthetic-running"
+            ]
+        );
+    }
+}
+
 #[tokio::test]
 async fn concurrent_cold_facts_share_one_bounded_scan() {
     let d = tempfile::tempdir().unwrap();
