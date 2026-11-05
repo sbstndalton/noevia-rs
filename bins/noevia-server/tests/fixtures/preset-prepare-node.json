@@ -1,0 +1,312 @@
+{
+ "source": "noevia-core server/llamacpp-presets.cjs prepare (b91b3f0), limits capMib 1024 hardMaxMib 2048; the scratch run used an earlier dav-parse.wasm (aebb50e1) whose presets policy is unchanged since #1071",
+ "cases": [
+  {
+   "name": "cap added, alias lines replaced",
+   "ini": "[*]\nn-gpu-layers = 99\n\n[synthetic-a]\nmodel = /models/a.gguf\nc = 4096\nnp = 2\nflash-attn = on\n\n[synthetic-b]\nmodel = /models/b.gguf\ncache-ram = 99999\n\n\n",
+   "model": "synthetic-a",
+   "options": [
+    [
+     "ctx-size",
+     "8192"
+    ],
+    [
+     "parallel",
+     "1"
+    ]
+   ],
+   "stale": false,
+   "result": {
+    "text": "[*]\nn-gpu-layers = 99\n\n[synthetic-a]\nmodel = /models/a.gguf\nflash-attn = on\n\nctx-size = 8192\nparallel = 1\ncache-ram = 1024\n[synthetic-b]\nmodel = /models/b.gguf\ncache-ram = 99999\n",
+    "baseRevision": "215f243cf21138bb51d39cdfc9d44b2ff04987ba3245789885973076359a8df3"
+   }
+  },
+  {
+   "name": "over hard max clamped",
+   "ini": "[*]\nn-gpu-layers = 99\n\n[synthetic-a]\nmodel = /models/a.gguf\nc = 4096\nnp = 2\nflash-attn = on\n\n[synthetic-b]\nmodel = /models/b.gguf\ncache-ram = 99999\n\n\n",
+   "model": "synthetic-b",
+   "options": [
+    [
+     "ctx-size",
+     "16384"
+    ]
+   ],
+   "stale": false,
+   "result": {
+    "text": "[*]\nn-gpu-layers = 99\n\n[synthetic-a]\nmodel = /models/a.gguf\nc = 4096\nnp = 2\nflash-attn = on\n\n[synthetic-b]\nmodel = /models/b.gguf\n\n\n\nctx-size = 16384\ncache-ram = 2048\n",
+    "baseRevision": "215f243cf21138bb51d39cdfc9d44b2ff04987ba3245789885973076359a8df3"
+   }
+  },
+  {
+   "name": "embedding name gets zero",
+   "ini": "[*]\nn-gpu-layers = 99\n\n[synthetic-a]\nmodel = /models/a.gguf\nc = 4096\nnp = 2\nflash-attn = on\n\n[synthetic-b]\nmodel = /models/b.gguf\ncache-ram = 99999\n\n\n[my-embed-model]\nmodel = /models/e.gguf\n",
+   "model": "my-embed-model",
+   "options": [
+    [
+     "ctx-size",
+     "8192"
+    ]
+   ],
+   "stale": false,
+   "result": {
+    "text": "[*]\nn-gpu-layers = 99\n\n[synthetic-a]\nmodel = /models/a.gguf\nc = 4096\nnp = 2\nflash-attn = on\n\n[synthetic-b]\nmodel = /models/b.gguf\ncache-ram = 99999\n\n\n[my-embed-model]\nmodel = /models/e.gguf\n\nctx-size = 8192\ncache-ram = 0\n",
+    "baseRevision": "06caf302a5a8c6b64ba3a2003541523cc17434dcfca3d04c5370c01de67b2b08"
+   }
+  },
+  {
+   "name": "flag line gets zero",
+   "ini": "[x]\nmodel = /m/x.gguf\n  --Reranking = ON  \n",
+   "model": "x",
+   "options": [
+    [
+     "ctx-size",
+     "8192"
+    ]
+   ],
+   "stale": false,
+   "result": {
+    "text": "[x]\nmodel = /m/x.gguf\n  --Reranking = ON  \n\nctx-size = 8192\ncache-ram = 0\n",
+    "baseRevision": "24aafef74f9ba39e825a3ab5b720be613c0c6cdf80ec6be119745add44a70fe1"
+   }
+  },
+  {
+   "name": "new section inherits defaults cache",
+   "ini": "[*]\ncache-ram = 512\n",
+   "model": "fresh",
+   "options": [
+    [
+     "ctx-size",
+     "4096"
+    ],
+    [
+     "parallel",
+     "1"
+    ]
+   ],
+   "stale": false,
+   "result": {
+    "text": "[*]\ncache-ram = 512\n\n\n[fresh]\nctx-size = 4096\nparallel = 1\n",
+    "baseRevision": "0d7334370acdd28e1cdde5660a2629005cea5a910fd33c7489d1cf83117cac7b"
+   }
+  },
+  {
+   "name": "empty value removes line",
+   "ini": "[*]\nn-gpu-layers = 99\n\n[synthetic-a]\nmodel = /models/a.gguf\nc = 4096\nnp = 2\nflash-attn = on\n\n[synthetic-b]\nmodel = /models/b.gguf\ncache-ram = 99999\n\n\n",
+   "model": "synthetic-a",
+   "options": [
+    [
+     "parallel",
+     ""
+    ],
+    [
+     "ctx-size",
+     "8192"
+    ]
+   ],
+   "stale": false,
+   "result": {
+    "text": "[*]\nn-gpu-layers = 99\n\n[synthetic-a]\nmodel = /models/a.gguf\nflash-attn = on\n\nctx-size = 8192\ncache-ram = 1024\n[synthetic-b]\nmodel = /models/b.gguf\ncache-ram = 99999\n",
+    "baseRevision": "215f243cf21138bb51d39cdfc9d44b2ff04987ba3245789885973076359a8df3"
+   }
+  },
+  {
+   "name": "ubatch over batch",
+   "ini": "[u]\nbatch-size = 256\n",
+   "model": "u",
+   "options": [
+    [
+     "ubatch-size",
+     "512"
+    ]
+   ],
+   "stale": false,
+   "result": {
+    "status": 400,
+    "error": "Micro batch cannot exceed batch size"
+   }
+  },
+  {
+   "name": "ubatch over default batch",
+   "ini": "[u]\n",
+   "model": "u",
+   "options": [
+    [
+     "ubatch-size",
+     "4096"
+    ]
+   ],
+   "stale": false,
+   "result": {
+    "status": 400,
+    "error": "Micro batch cannot exceed batch size"
+   }
+  },
+  {
+   "name": "stale revision",
+   "ini": "[*]\nn-gpu-layers = 99\n\n[synthetic-a]\nmodel = /models/a.gguf\nc = 4096\nnp = 2\nflash-attn = on\n\n[synthetic-b]\nmodel = /models/b.gguf\ncache-ram = 99999\n\n\n",
+   "model": "synthetic-a",
+   "options": [
+    [
+     "ctx-size",
+     "8192"
+    ]
+   ],
+   "stale": true,
+   "result": {
+    "status": 409,
+    "error": "Presets changed. Reload the profile before saving; your draft is retained."
+   }
+  },
+  {
+   "name": "invalid value",
+   "ini": "[*]\nn-gpu-layers = 99\n\n[synthetic-a]\nmodel = /models/a.gguf\nc = 4096\nnp = 2\nflash-attn = on\n\n[synthetic-b]\nmodel = /models/b.gguf\ncache-ram = 99999\n\n\n",
+   "model": "synthetic-a",
+   "options": [
+    [
+     "ctx-size",
+     "lots"
+    ]
+   ],
+   "stale": false,
+   "result": {
+    "status": 400,
+    "error": "Invalid preset option: ctx-size"
+   }
+  },
+  {
+   "name": "unknown key",
+   "ini": "[*]\nn-gpu-layers = 99\n\n[synthetic-a]\nmodel = /models/a.gguf\nc = 4096\nnp = 2\nflash-attn = on\n\n[synthetic-b]\nmodel = /models/b.gguf\ncache-ram = 99999\n\n\n",
+   "model": "synthetic-a",
+   "options": [
+    [
+     "mlock",
+     "true"
+    ]
+   ],
+   "stale": false,
+   "result": {
+    "status": 400,
+    "error": "Invalid preset option: mlock"
+   }
+  },
+  {
+   "name": "non-string value",
+   "ini": "[*]\nn-gpu-layers = 99\n\n[synthetic-a]\nmodel = /models/a.gguf\nc = 4096\nnp = 2\nflash-attn = on\n\n[synthetic-b]\nmodel = /models/b.gguf\ncache-ram = 99999\n\n\n",
+   "model": "synthetic-a",
+   "options": [
+    [
+     "ctx-size",
+     null
+    ]
+   ],
+   "stale": false,
+   "result": {
+    "status": 400,
+    "error": "Invalid preset option: ctx-size"
+   }
+  },
+  {
+   "name": "bad model name",
+   "ini": "[*]\nn-gpu-layers = 99\n\n[synthetic-a]\nmodel = /models/a.gguf\nc = 4096\nnp = 2\nflash-attn = on\n\n[synthetic-b]\nmodel = /models/b.gguf\ncache-ram = 99999\n\n\n",
+   "model": "bad model",
+   "options": [
+    [
+     "ctx-size",
+     "8192"
+    ]
+   ],
+   "stale": false,
+   "result": {
+    "status": 400,
+    "error": "Invalid preset model name"
+   }
+  },
+  {
+   "name": "no options",
+   "ini": "[*]\nn-gpu-layers = 99\n\n[synthetic-a]\nmodel = /models/a.gguf\nc = 4096\nnp = 2\nflash-attn = on\n\n[synthetic-b]\nmodel = /models/b.gguf\ncache-ram = 99999\n\n\n",
+   "model": "synthetic-a",
+   "options": [],
+   "stale": false,
+   "result": {
+    "status": 400,
+    "error": "No preset changes supplied"
+   }
+  },
+  {
+   "name": "own empty cache inherits and keeps",
+   "ini": "[*]\ncache-ram = 300\n[k]\ncache-ram =\n",
+   "model": "k",
+   "options": [
+    [
+     "ctx-size",
+     "8192"
+    ]
+   ],
+   "stale": false,
+   "result": {
+    "text": "[*]\ncache-ram = 300\n[k]\ncache-ram =\n\nctx-size = 8192\n",
+    "baseRevision": "31cd24e4cf0d125f85220c306090df8f9e53e7a2a3f82ec59a2b81205cfe21e9"
+   }
+  },
+  {
+   "name": "cache-ram option clamp negative",
+   "ini": "[*]\nn-gpu-layers = 99\n\n[synthetic-a]\nmodel = /models/a.gguf\nc = 4096\nnp = 2\nflash-attn = on\n\n[synthetic-b]\nmodel = /models/b.gguf\ncache-ram = 99999\n\n\n",
+   "model": "synthetic-a",
+   "options": [
+    [
+     "cache-ram",
+     "-1"
+    ],
+    [
+     "ctx-size",
+     "8192"
+    ]
+   ],
+   "stale": false,
+   "result": {
+    "text": "[*]\nn-gpu-layers = 99\n\n[synthetic-a]\nmodel = /models/a.gguf\nnp = 2\nflash-attn = on\n\ncache-ram = 2048\nctx-size = 8192\n[synthetic-b]\nmodel = /models/b.gguf\ncache-ram = 99999\n",
+    "baseRevision": "215f243cf21138bb51d39cdfc9d44b2ff04987ba3245789885973076359a8df3"
+   }
+  },
+  {
+   "name": "leading zeros normalised",
+   "ini": "[z]\ncache-ram = 0100\n",
+   "model": "z",
+   "options": [
+    [
+     "ctx-size",
+     "8192"
+    ]
+   ],
+   "stale": false,
+   "result": {
+    "text": "[z]\n\nctx-size = 8192\ncache-ram = 100\n",
+    "baseRevision": "a161d5d4ce1376d3ad04ceee074cec5decfba9c00bb4c6ea882058d6d2796c10"
+   }
+  },
+  {
+   "name": "duplicate key last wins in place",
+   "ini": "[*]\nn-gpu-layers = 99\n\n[synthetic-a]\nmodel = /models/a.gguf\nc = 4096\nnp = 2\nflash-attn = on\n\n[synthetic-b]\nmodel = /models/b.gguf\ncache-ram = 99999\n\n\n",
+   "model": "synthetic-a",
+   "options": [
+    [
+     "ctx-size",
+     "8192"
+    ],
+    [
+     "parallel",
+     "2"
+    ],
+    [
+     "ctx-size",
+     "16384"
+    ]
+   ],
+   "stale": false,
+   "result": {
+    "text": "[*]\nn-gpu-layers = 99\n\n[synthetic-a]\nmodel = /models/a.gguf\nflash-attn = on\n\nctx-size = 16384\nparallel = 2\ncache-ram = 1024\n[synthetic-b]\nmodel = /models/b.gguf\ncache-ram = 99999\n",
+    "baseRevision": "215f243cf21138bb51d39cdfc9d44b2ff04987ba3245789885973076359a8df3"
+   }
+  }
+ ]
+}

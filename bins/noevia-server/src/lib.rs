@@ -22,6 +22,7 @@ pub mod config;
 pub mod connector_routes;
 pub mod decision_settings_routes;
 pub mod diary_routes;
+pub mod embedding_background;
 pub mod export_routes;
 pub mod extraction;
 pub mod feature_context;
@@ -277,6 +278,15 @@ use std::sync::Arc;
 /// the same lock file, so the web supervisor and the release assembly pair this capability with that
 /// Core in both directions.
 ///
+/// `rust-calibration-worker-v2`: this build runs the calibration job itself (sbstndalton/noevia#2303,
+/// src/model_maint/calibration_worker.rs): its launch under the maintenance hold, the run, its
+/// cancellation and evidence, `native-calibration-<hash>.json` and the boot recovery of a job a
+/// restart interrupted. Core then builds no public calibrator and does not recover the job at boot
+/// (core rust-calibration-routes.cjs `CALIBRATION_WORKER_OWNER`), so the web supervisor and the
+/// release assembly pair them in both directions. Generation 2: every load the job asks for is first
+/// decided by Core's own load refusal (`POST /internal/model-maintenance/load-refusal`, core
+/// model-load-refusal.cjs), so it pairs only with `noevia-calibration-worker-rust/2`.
+///
 /// `rust-preset-baseline`: this build is the preset reload baseline's one in-memory authority
 /// (port contract 2026-11-04 RS-1, model_maint/reload.rs `Guard`) and answers `POST
 /// /v1/preset-baseline/{session,begin,settle,invalidate,verdict,router-text}` on the project-store
@@ -346,6 +356,13 @@ use std::sync::Arc;
 /// file carries the start that runs it, so a restart's leftovers read as interrupted).
 ///
 /// `legacy-root-claim`: this binary exposes the filesystem-only legacy claim helper before server startup.
+/// `rust-budget-watch-v3`: this build runs the #697 memory watchdog (src/model_maint/budget_watch.rs, Core's
+/// `inference-budget-watch.cjs` moved): the sampling, the strikes, the idle baseline, the cooldown and the
+/// emergency unload through the inference gate. Core then does not start its own and answers only the
+/// maintenance state and the quarantine on `/internal/budget-watch` (core rust-budget-watch.cjs
+/// `BUDGET_WATCH_OWNER`), so the web supervisor and the release assembly pair them in both directions: a
+/// mixed pair would run two watchdogs, or none.
+///
 /// `rust-task-reads`: this build answers `/api/code/active` and the GETs of a project's Code and Browser
 /// state and task (task_routes.rs); Core refuses them (rust-task-reads.cjs) and offers the facts only it
 /// holds on the loopback bridge (rust-task-facts.cjs). The supervisor pairs them.
@@ -362,6 +379,7 @@ use std::sync::Arc;
 /// (NOEVIA_FRONT_CLIENT_IP=1), and Node believes that header only then, so a core release paired
 /// with a front that predates the strip cannot be handed a client-chosen address (#1578).
 pub const FEATURES: &[&str] = &[
+    "rust-embedding-background-v1",
     "client-address-header",
     "code-net-guard",
     "header-read-timeout",
@@ -403,6 +421,7 @@ pub const FEATURES: &[&str] = &[
     "rust-autotune-cancel",
     "rust-calibration-cancel",
     "rust-calibration-routes",
+    "rust-calibration-worker-v2",
     "rust-model-manager-scan",
     "rust-model-evidence-recheck",
     "rust-web-address-read",
@@ -451,6 +470,7 @@ pub const FEATURES: &[&str] = &[
     "rust-model-assignments",
     "rust-model-downloads-read",
     "rust-autotune-resume",
+    "rust-budget-watch-v3",
     #[cfg(feature = "rust-storage-reads")]
     "rust-connectors",
     // An account's deletion forgets the MCP sign-ins (rust-storage-reads) and the ChatGPT tokens
