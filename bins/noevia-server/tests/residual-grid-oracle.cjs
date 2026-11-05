@@ -442,7 +442,7 @@ async function fallbackRecord(core, toml, fixture, out) {
     m._compile(source(file), m.filename); return m.exports;
   };
   const { json, unauthorized } = load('server/http.cjs');
-  const modelRoutes = load('server/routes/models.cjs').createModelRoutes({ json, env: {}, modelManager: { enabled: false }, service: { modelScanCache: { clear() {} } }, currentWorkspace: () => ({}) });
+  const modelRoutes = load('server/routes/models.cjs').createModelRoutes({ json, env: {}, modelManager: { enabled: false }, rerankSettings: new Proxy({}, { get() { throw new Error('unsupported method accessed settings'); } }), service: { modelScanCache: { clear() {} } }, currentWorkspace: () => ({}) });
   const authRoutes = load('server/routes/auth.cjs').createAuthRoutes({ json, readJson: async () => ({}) });
   const providerRoutes = load('server/routes/providers.cjs').createProviderRoutes({ json });
   const serveStatic = load('server/spa-routes.cjs').createStaticFallback({ json, staticFiles: { resolve: () => null } });
@@ -469,7 +469,7 @@ async function fallbackRecord(core, toml, fixture, out) {
     return !!r && (p !== r.path || (r.methods.length && !r.methods.includes(m)));
   };
   const rows = [];
-  const extras = ['/api/models/pull', '/api/models/delete', '/api/models/load', '/api/models/unload', '/api/models/grid-unmatched/deep', '/api/connectors/grid-unmatched/deep', '/api/integrations/storage/grid-unmatched', '/api/toolboxes/grid-unmatched', '/api/providers/grid-unmatched/deep', '/api/providers/chatgpt/grid-unmatched'].flatMap((p) => METHODS.filter((m) => m !== 'POST' || !['/api/models/pull', '/api/models/delete', '/api/models/load', '/api/models/unload'].includes(p)).flatMap((method) => ROLES.filter((who) => !who.endsWith('-nocsrf') || UNSAFE.includes(method)).map((who) => ({ id: `${method} ${p} ${who}`, family: familyOf(p), route: p, shape: 'unmatched', method, path: p, who }))));
+  const extras = ['/api/models/prune-missing', '/api/models/reranker', '/api/models/pull', '/api/models/delete', '/api/models/load', '/api/models/unload', '/api/models/grid-unmatched/deep', '/api/connectors/grid-unmatched/deep', '/api/integrations/storage/grid-unmatched', '/api/toolboxes/grid-unmatched', '/api/providers/grid-unmatched/deep', '/api/providers/chatgpt/grid-unmatched'].flatMap((p) => METHODS.filter((m) => p === '/api/models/reranker' ? !['GET', 'PUT', 'DELETE'].includes(m) : m !== 'POST' || !['/api/models/prune-missing', '/api/models/pull', '/api/models/delete', '/api/models/load', '/api/models/unload'].includes(p)).flatMap((method) => ROLES.filter((who) => !who.endsWith('-nocsrf') || UNSAFE.includes(method)).map((who) => ({ id: `${method} ${p} ${who}`, family: familyOf(p), route: p, shape: 'unmatched', method, path: p, who }))));
   for (const c of [...doc.cases.filter(selected), ...extras]) {
     const authn = c.who === 'anon' ? null : { user: { id: 'synthetic-grid-user', role: c.who.startsWith('admin') ? 'admin' : 'member' } };
     const noop = async () => false;
