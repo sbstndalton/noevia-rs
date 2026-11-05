@@ -151,7 +151,9 @@ impl CodeNetGuard {
     }
 
     /// The 403 with no body (core deny()), logged at most once a minute.
-    pub fn deny(&self) -> Response<Body> { self.deny_listener("ui") }
+    pub fn deny(&self) -> Response<Body> {
+        self.deny_listener("ui")
+    }
 
     pub fn deny_listener(&self, listener: &str) -> Response<Body> {
         let n = self.refused.fetch_add(1, Ordering::Relaxed) + 1;

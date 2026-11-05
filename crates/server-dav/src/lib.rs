@@ -130,7 +130,11 @@ pub struct Capabilities {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Fault {
-    Remote { status: u16, message: String, retry_after: Option<u64> },
+    Remote {
+        status: u16,
+        message: String,
+        retry_after: Option<u64>,
+    },
     NotFound,
     Forbidden,
     Conflict,
@@ -138,6 +142,7 @@ pub enum Fault {
     MissingParent,
     Busy,
     Unavailable,
+    AuthorityUnavailable,
     Ambiguous,
     TooMany,
 }
@@ -152,7 +157,12 @@ pub enum Fault {
 /// must route through Diary's guarded workspace operations. The adapter must
 /// refuse symlink traversal; this crate never opens a filesystem path.
 pub trait Backend: Send + Sync + 'static {
-    fn audit<'a>(&'a self, _identity: &'a Identity, _action: &'a str, _detail: serde_json::Value) -> BackendFuture<'a, Result<(), Fault>> {
+    fn audit<'a>(
+        &'a self,
+        _identity: &'a Identity,
+        _action: &'a str,
+        _detail: serde_json::Value,
+    ) -> BackendFuture<'a, Result<(), Fault>> {
         Box::pin(async { Ok(()) })
     }
 
@@ -247,22 +257,42 @@ impl Backend for DenyAll {
 }
 
 #[derive(Default)]
-struct RateBudget { entries: HashMap<IpAddr, (u64, Instant, u64)>, sequence: u64, swept: Option<Instant> }
+struct RateBudget {
+    entries: HashMap<IpAddr, (u64, Instant, u64)>,
+    sequence: u64,
+    swept: Option<Instant>,
+}
 impl RateBudget {
     fn charge(&mut self, peer: IpAddr, now: Instant) -> bool {
-        if self.swept.is_none_or(|last| now.duration_since(last) >= Duration::from_secs(60)) {
+        if self
+            .swept
+            .is_none_or(|last| now.duration_since(last) >= Duration::from_secs(60))
+        {
             self.entries.retain(|_, (_, reset, _)| *reset > now);
             self.swept = Some(now);
         }
         if !self.entries.contains_key(&peer) && self.entries.len() >= 10_000 {
             self.entries.retain(|_, (_, reset, _)| *reset > now);
             if self.entries.len() >= 10_000 {
-                if let Some(oldest) = self.entries.iter().min_by_key(|(_, v)| v.2).map(|(k,_)| *k) { self.entries.remove(&oldest); }
+                if let Some(oldest) = self
+                    .entries
+                    .iter()
+                    .min_by_key(|(_, v)| v.2)
+                    .map(|(k, _)| *k)
+                {
+                    self.entries.remove(&oldest);
+                }
             }
         }
         self.sequence += 1;
-        let entry=self.entries.entry(peer).or_insert((0, now + Duration::from_secs(60), self.sequence));
-        if entry.1 <= now { entry.0=0; entry.1=now + Duration::from_secs(60); }
+        let entry =
+            self.entries
+                .entry(peer)
+                .or_insert((0, now + Duration::from_secs(60), self.sequence));
+        if entry.1 <= now {
+            entry.0 = 0;
+            entry.1 = now + Duration::from_secs(60);
+        }
         entry.0 += 1;
         entry.0 > 120
     }
@@ -350,11 +380,17 @@ impl<B: Backend> DavService<B> {
                     } else if status == StatusCode::URI_TOO_LONG {
                         "Path too long"
                     } else if raw[5..].split('/').any(|part| {
-                        let b=part.as_bytes();
-                        b.iter().enumerate().any(|(i,c)| *c==b'%' && (b.get(i+1).is_none_or(|c|!c.is_ascii_hexdigit())||b.get(i+2).is_none_or(|c|!c.is_ascii_hexdigit()))) || percent_decode_str(part).decode_utf8().is_err()
+                        let b = part.as_bytes();
+                        b.iter().enumerate().any(|(i, c)| {
+                            *c == b'%'
+                                && (b.get(i + 1).is_none_or(|c| !c.is_ascii_hexdigit())
+                                    || b.get(i + 2).is_none_or(|c| !c.is_ascii_hexdigit()))
+                        }) || percent_decode_str(part).decode_utf8().is_err()
                     }) {
                         "Invalid path encoding"
-                    } else { "Invalid path" },
+                    } else {
+                        "Invalid path"
+                    },
                     false,
                 )
             }
@@ -384,30 +420,31 @@ impl<B: Backend> DavService<B> {
             Ok(Err(f)) => return fault_reply(f, false),
             Err(_) => return fault_reply(Fault::Unavailable, false),
         };
-        if !self.is_allowed(&identity).await {
+        match self.is_allowed(&identity).await {
+            Ok(true)=>(),
+            Ok(false)=>{
             return reply(
                 StatusCode::FORBIDDEN,
                 "Sharing is off for this account or storage",
                 false,
             );
+        },
+            Err(f)=>return fault_reply(f,false),
         }
         self.dispatch(req, &identity, &username, &path).await
     }
 
     fn rate_limited(&self, peer: IpAddr) -> bool {
-        self.rate.lock().map(|mut rate| rate.charge(peer, Instant::now())).unwrap_or(true)
+        self.rate
+            .lock()
+            .map(|mut rate| rate.charge(peer, Instant::now()))
+            .unwrap_or(true)
     }
 
-    async fn is_allowed(&self, identity: &Identity) -> bool {
-        matches!(
-            tokio::time::timeout(
-                self.config.deadline,
-                self.backend.allowed(identity, self.config.scope)
-            )
-            .await,
-            Ok(Ok(true))
-        )
+    async fn is_allowed(&self, identity: &Identity) -> Result<bool, Fault> {
+        tokio::time::timeout(self.config.deadline,self.backend.allowed(identity,self.config.scope)).await.map_err(|_|Fault::AuthorityUnavailable)?
     }
+
 }
 
 fn duplicate_security_header(headers: &HeaderMap) -> bool {
@@ -437,8 +474,10 @@ fn basic(headers: &HeaderMap) -> Option<(String, String)> {
     {
         return None;
     }
-    let decoded = base64::engine::general_purpose::STANDARD.decode(encoded)
-        .or_else(|_|base64::engine::general_purpose::STANDARD_NO_PAD.decode(encoded)).ok()?;
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .or_else(|_| base64::engine::general_purpose::STANDARD_NO_PAD.decode(encoded))
+        .ok()?;
     let text = String::from_utf8_lossy(&decoded);
     let (user, password) = text.split_once(':')?;
     if user.is_empty() {
@@ -460,8 +499,15 @@ fn parse_path(raw: &str) -> Result<(String, String), StatusCode> {
     }
     let mut segments = Vec::new();
     for (index, raw_part) in raw[5..].split('/').enumerate() {
-        let bytes=raw_part.as_bytes();
-        for i in 0..bytes.len() { if bytes[i]==b'%' && (bytes.get(i+1).is_none_or(|b|!b.is_ascii_hexdigit()) || bytes.get(i+2).is_none_or(|b|!b.is_ascii_hexdigit())) {return Err(StatusCode::BAD_REQUEST);} }
+        let bytes = raw_part.as_bytes();
+        for i in 0..bytes.len() {
+            if bytes[i] == b'%'
+                && (bytes.get(i + 1).is_none_or(|b| !b.is_ascii_hexdigit())
+                    || bytes.get(i + 2).is_none_or(|b| !b.is_ascii_hexdigit()))
+            {
+                return Err(StatusCode::BAD_REQUEST);
+            }
+        }
         let part = percent_decode_str(raw_part)
             .decode_utf8()
             .map_err(|_| StatusCode::BAD_REQUEST)?;
@@ -469,10 +515,11 @@ fn parse_path(raw: &str) -> Result<(String, String), StatusCode> {
             segments.push(String::new());
             continue;
         }
-        if index > 0 && (part.starts_with('.')
-            || part
-                .chars()
-                .any(|c| c == '/' || c == '\\' || c == '%' || c.is_control() || c == '\u{7f}'))
+        if index > 0
+            && (part.starts_with('.')
+                || part
+                    .chars()
+                    .any(|c| c == '/' || c == '\\' || c == '%' || c.is_control() || c == '\u{7f}'))
         {
             return Err(StatusCode::BAD_REQUEST);
         }
@@ -529,10 +576,23 @@ fn challenge() -> Response<Body> {
     response
 }
 fn fault_reply(fault: Fault, write: bool) -> Response<Body> {
-    if let Fault::Remote { status, ref message, retry_after } = fault {
-        let status=if write && status==409 {412} else {status};
-        let mut response=reply(StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),message,false);
-        if let Some(seconds)=retry_after { if let Ok(value)=HeaderValue::from_str(&seconds.to_string()) {response.headers_mut().insert(header::RETRY_AFTER,value);} }
+    if let Fault::Remote {
+        status,
+        ref message,
+        retry_after,
+    } = fault
+    {
+        let status = if write && status == 409 { 412 } else { status };
+        let mut response = reply(
+            StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
+            message,
+            false,
+        );
+        if let Some(seconds) = retry_after {
+            if let Ok(value) = HeaderValue::from_str(&seconds.to_string()) {
+                response.headers_mut().insert(header::RETRY_AFTER, value);
+            }
+        }
         return response;
     }
     let (status, message) = match fault {
@@ -551,6 +611,7 @@ fn fault_reply(fault: Fault, write: bool) -> Response<Body> {
             StatusCode::PAYLOAD_TOO_LARGE,
             "Folder exceeds the sharing limit",
         ),
+        Fault::AuthorityUnavailable => (StatusCode::SERVICE_UNAVAILABLE, "Sharing authority is unavailable"),
         Fault::Unavailable => (StatusCode::BAD_GATEWAY, "Diary storage is unavailable"),
     };
     let mut response = reply(status, message, false);
@@ -626,7 +687,11 @@ impl<B: Backend> DavService<B> {
             return response;
         }
         let allow = if self.backend.workspace_enabled() {
-            if cap.mkdir { "OPTIONS, HEAD, GET, PROPFIND, PUT, MKCOL, DELETE, MOVE, COPY" } else { "OPTIONS, HEAD, GET, PROPFIND, PUT, DELETE, MOVE, COPY" }
+            if cap.mkdir {
+                "OPTIONS, HEAD, GET, PROPFIND, PUT, MKCOL, DELETE, MOVE, COPY"
+            } else {
+                "OPTIONS, HEAD, GET, PROPFIND, PUT, DELETE, MOVE, COPY"
+            }
         } else if cap.mkdir {
             "OPTIONS, HEAD, GET, PROPFIND, PUT, MKCOL"
         } else {
@@ -816,13 +881,17 @@ impl<B: Backend> DavService<B> {
                     false,
                 );
             }
-            if !self.is_allowed(identity).await {
+            match self.is_allowed(identity).await {
+            Ok(true)=>(),
+            Ok(false)=>{
                 return reply(
                     StatusCode::FORBIDDEN,
                     "Sharing was disabled or credential revoked",
                     false,
                 );
-            }
+            },
+            Err(f)=>return fault_reply(f,false),
+        }
             let wants = |name: &str| {
                 selection
                     .as_ref()
@@ -847,10 +916,25 @@ impl<B: Backend> DavService<B> {
                     },
                 ),
             ];
-            if entry.is_dir && !entry.path.is_empty() && wants("getetag") && self.backend.workspace_enabled() {
-                if let Ok((status, value))=self.call(self.backend.workspace(identity,serde_json::json!({"op":"stat","path":entry.path}))).await {
+            if entry.is_dir
+                && !entry.path.is_empty()
+                && wants("getetag")
+                && self.backend.workspace_enabled()
+            {
+                if let Ok((status, value)) = self
+                    .call(
+                        self.backend.workspace(
+                            identity,
+                            serde_json::json!({"op":"stat","path":entry.path}),
+                        ),
+                    )
+                    .await
+                {
                     if (200..300).contains(&status) {
-                        if let Some(tag)=value.get("version").and_then(serde_json::Value::as_str) {values.push(("getetag",xml::escape(&format!("\"{tag}\""))));}
+                        if let Some(tag) = value.get("version").and_then(serde_json::Value::as_str)
+                        {
+                            values.push(("getetag", xml::escape(&format!("\"{tag}\""))));
+                        }
                     }
                 }
             }
@@ -1005,11 +1089,15 @@ impl<B: Backend> DavService<B> {
             Ok(s) => s,
             Err(_) => return reply(StatusCode::BAD_REQUEST, "UTF-8 text required", false),
         };
-        if !self.is_allowed(identity).await {
+        match self.is_allowed(identity).await {
+            Ok(true)=>(),
+            Ok(false)=>{
             return reply(StatusCode::FORBIDDEN, "Sharing was disabled", false);
+        },
+            Err(f)=>return fault_reply(f,false),
         }
-        let unconditional=condition.is_none();
-        let mut preserved=serde_json::Value::Null;
+        let unconditional = condition.is_none();
+        let mut preserved = serde_json::Value::Null;
         let condition = if let Some(condition) = condition {
             condition
         } else {
@@ -1037,7 +1125,10 @@ impl<B: Backend> DavService<B> {
                 .await;
                 match preserved {
                     Ok(Ok((200, body)))
-                        if body.get("trash").is_some_and(serde_json::Value::is_string) => {preserved=body["trash"].clone();}
+                        if body.get("trash").is_some_and(serde_json::Value::is_string) =>
+                    {
+                        preserved = body["trash"].clone();
+                    }
                     Ok(Ok((status, _))) if (400..600).contains(&status) => {
                         return reply(
                             StatusCode::from_u16(status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
@@ -1065,9 +1156,16 @@ impl<B: Backend> DavService<B> {
             Ok(Err(f)) => return fault_reply(f, true),
             Err(_) => return fault_reply(Fault::Ambiguous, true),
         };
-        let mut detail=serde_json::json!({"path":path,"bytes":content.len()});
-        if unconditional { if let Some(fields)=detail.as_object_mut() { fields.insert("unconditional".into(),serde_json::json!(true));fields.insert("preserved".into(),preserved); } }
-        if let Err(f)=self.backend.audit(identity,"dav.write",detail).await {return fault_reply(f,false);}
+        let mut detail = serde_json::json!({"path":path,"bytes":content.len()});
+        if unconditional {
+            if let Some(fields) = detail.as_object_mut() {
+                fields.insert("unconditional".into(), serde_json::json!(true));
+                fields.insert("preserved".into(), preserved);
+            }
+        }
+        if let Err(f) = self.backend.audit(identity, "dav.write", detail).await {
+            return fault_reply(f, false);
+        }
         let mut response = reply(
             if created {
                 StatusCode::CREATED
@@ -1122,7 +1220,9 @@ impl<B: Backend> DavService<B> {
             Ok(Err(_)) => return reply(StatusCode::PAYLOAD_TOO_LARGE, "Request too large", false),
             Err(_) => return reply(StatusCode::REQUEST_TIMEOUT, "Request timed out", false),
         };
-        if std::str::from_utf8(&bytes).is_err() {return reply(StatusCode::BAD_REQUEST,"UTF-8 text required",false);}
+        if std::str::from_utf8(&bytes).is_err() {
+            return reply(StatusCode::BAD_REQUEST, "UTF-8 text required", false);
+        }
         if !bytes.is_empty() {
             return reply(
                 StatusCode::UNSUPPORTED_MEDIA_TYPE,
@@ -1130,14 +1230,24 @@ impl<B: Backend> DavService<B> {
                 false,
             );
         }
-        if !self.is_allowed(identity).await {
+        match self.is_allowed(identity).await {
+            Ok(true)=>(),
+            Ok(false)=>{
             return reply(StatusCode::FORBIDDEN, "Sharing was disabled", false);
+        },
+            Err(f)=>return fault_reply(f,false),
         }
         match tokio::time::timeout(self.config.deadline, self.backend.mkdir(identity, path)).await {
             Ok(Ok(())) => {
-                if let Err(f)=self.backend.audit(identity,"dav.mkdir",serde_json::json!({"path":path})).await {return fault_reply(f,false);}
+                if let Err(f) = self
+                    .backend
+                    .audit(identity, "dav.mkdir", serde_json::json!({"path":path}))
+                    .await
+                {
+                    return fault_reply(f, false);
+                }
                 reply(StatusCode::CREATED, "", false)
-            },
+            }
             Ok(Err(f)) => fault_reply(f, false),
             Err(_) => fault_reply(Fault::Ambiguous, true),
         }
@@ -1239,17 +1349,22 @@ mod tests {
         }
         let newcomer = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1));
         assert!(!service.rate_limited(newcomer));
-        assert_eq!(service.rate.lock().map_err(|_| "rate lock")?.entries.len(), 1);
+        assert_eq!(
+            service.rate.lock().map_err(|_| "rate lock")?.entries.len(),
+            1
+        );
         Ok(())
     }
     #[test]
     fn fixed_window_resets_from_first_request_not_a_sliding_history() {
-        let mut rate=RateBudget::default();
-        let peer=IpAddr::V4(Ipv4Addr::new(192,0,2,9));let start=Instant::now();
-        assert!(!rate.charge(peer,start));
-        for _ in 1..120 {assert!(!rate.charge(peer,start+Duration::from_secs(59)));}
-        assert!(rate.charge(peer,start+Duration::from_secs(59)));
-        assert!(!rate.charge(peer,start+Duration::from_secs(60)));
+        let mut rate = RateBudget::default();
+        let peer = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 9));
+        let start = Instant::now();
+        assert!(!rate.charge(peer, start));
+        for _ in 1..120 {
+            assert!(!rate.charge(peer, start + Duration::from_secs(59)));
+        }
+        assert!(rate.charge(peer, start + Duration::from_secs(59)));
+        assert!(!rate.charge(peer, start + Duration::from_secs(60)));
     }
-
 }

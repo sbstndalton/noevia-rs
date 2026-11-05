@@ -34,13 +34,9 @@ fn destination_tag(raw: &str, destination: &Url) -> Option<String> {
     // Accept only tagged strong entity conditions. Other DAV If expressions do not
     // become a guessed precondition; the actual current target is statted below.
     for part in raw.split('<').skip(1) {
-        let (uri, rest) = part.split_once('>')?;
-        let rest = rest
-            .trim_start()
-            .strip_prefix('(')?
-            .trim_start()
-            .strip_prefix('[')?;
-        let (etag, end) = rest.split_once(']')?;
+        let Some((uri, rest)) = part.split_once('>') else {continue};
+        let Some(rest) = rest.trim_start().strip_prefix('(').map(str::trim_start).and_then(|r|r.strip_prefix('[')) else {continue};
+        let Some((etag,end)) = rest.split_once(']') else {continue};
         if !end.trim_start().starts_with(')') {
             continue;
         }
@@ -130,7 +126,10 @@ impl<B: Backend> DavService<B> {
         }
         let depth = header("depth")?;
         if depth.is_some_and(|d| d != "infinity" && !(method == "COPY" && d == "0")) {
-            return Err(bad(StatusCode::BAD_REQUEST, "Folder operations apply to the whole folder (Depth: infinity)"));
+            return Err(bad(
+                StatusCode::BAD_REQUEST,
+                "Folder operations apply to the whole folder (Depth: infinity)",
+            ));
         }
         let mut version = header("if-match")?
             .map(|v| {
@@ -138,10 +137,12 @@ impl<B: Backend> DavService<B> {
                     .ok_or_else(|| bad(StatusCode::BAD_REQUEST, "A single strong ETag is required"))
             })
             .transpose()?;
-        if !self.is_allowed(identity).await {
-            return Err(bad(StatusCode::FORBIDDEN, "Sharing was disabled"));
+        match self.is_allowed(identity).await {
+            Ok(true)=>(),
+            Ok(false)=>return Err(bad(StatusCode::FORBIDDEN,"Sharing was disabled")),
+            Err(f)=>return Err(Box::new(fault_reply(f,false))),
         }
-        let unconditional=version.is_none() && method!="COPY";
+        let unconditional = version.is_none() && method != "COPY";
         if unconditional {
             let stat = self
                 .operation(identity, json!({"op":"stat","path":path}))
@@ -154,13 +155,24 @@ impl<B: Backend> DavService<B> {
             );
         }
         if method == "DELETE" {
-            let result=self.operation(
-                identity,
-                json!({"op":"delete","path":path,"version":version}),
-            )
-            .await?;
-            let trashed=result.get("trash").and_then(Value::as_array).map_or(0,Vec::len);
-            self.backend.audit(identity,"dav.delete",json!({"path":path,"trashed":trashed,"unconditional":unconditional})).await.map_err(|f|Box::new(fault_reply(f,false)))?;
+            let result = self
+                .operation(
+                    identity,
+                    json!({"op":"delete","path":path,"version":version}),
+                )
+                .await?;
+            let trashed = result
+                .get("trash")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len);
+            self.backend
+                .audit(
+                    identity,
+                    "dav.delete",
+                    json!({"path":path,"trashed":trashed,"unconditional":unconditional}),
+                )
+                .await
+                .map_err(|f| Box::new(fault_reply(f, false)))?;
             return Ok(*bad(StatusCode::NO_CONTENT, ""));
         }
         let (target, url) = destination(

@@ -271,9 +271,12 @@ async fn server_main() -> ExitCode {
                 None
             }
         };
-    let dav = match noevia_server::dav::start(&app,stop_rx.clone()).await {
-        Ok(worker)=>worker,
-        Err(error)=>{eprintln!("noevia-server: {error}");return ExitCode::from(1);}
+    let dav = match noevia_server::dav::start(&app, stop_rx.clone()).await {
+        Ok(worker) => worker,
+        Err(error) => {
+            eprintln!("noevia-server: {error}");
+            return ExitCode::from(1);
+        }
     };
     let server = serve::serve(listener, app, serve::Limits::default(), async move {
         let mut rx = stop_rx;
@@ -291,7 +294,10 @@ async fn server_main() -> ExitCode {
         () = server => ExitCode::SUCCESS,
         _ = drained => ExitCode::SUCCESS,
     };
-    if let Some(worker) = dav { worker.abort(); let _ = worker.await; }
+    if let Some(worker) = dav {
+        worker.abort();
+        let _ = worker.await;
+    }
     if let Some(worker) = embedding_background {
         worker.shutdown().await;
     }

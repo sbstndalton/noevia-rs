@@ -122,7 +122,9 @@ fn verify_inner(
                 "UPDATE app_passwords SET last_used_at=?1 WHERE id=?2 AND password_hash=?3 AND EXISTS (SELECT 1 FROM users WHERE id=app_passwords.user_id AND disabled_at IS NULL)",
                 server_store::rusqlite::params![now, cred, hash],
             ))?;
-            if updated == 0 { return Ok(None); }
+            if updated == 0 {
+                return Ok(None);
+            }
         }
     }
     Ok(still.map(|_| DavIdentity {

@@ -184,13 +184,16 @@ pub async fn serve_router(
     limits: Limits,
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) {
-    serve_router_with_socket_timeout(listener,router,limits,None,shutdown).await;
+    serve_router_with_socket_timeout(listener, router, limits, None, shutdown).await;
 }
 
 /// A dedicated listener may enforce inactivity even while a request is active.
 pub async fn serve_router_with_socket_timeout(
-    listener: TcpListener, router: Router, limits: Limits, socket_timeout: Option<Duration>,
-    shutdown: impl Future<Output=()> + Send + 'static,
+    listener: TcpListener,
+    router: Router,
+    limits: Limits,
+    socket_timeout: Option<Duration>,
+    shutdown: impl Future<Output = ()> + Send + 'static,
 ) {
     let max = limits
         .max_connections
@@ -202,7 +205,16 @@ pub async fn serve_router_with_socket_timeout(
         let _ = stop_tx.send(true);
     });
     let mut stop = stop_rx.clone();
-    accept_loop(&listener, &permits, &router, limits, &stop_rx, &mut stop, socket_timeout).await;
+    accept_loop(
+        &listener,
+        &permits,
+        &router,
+        limits,
+        &stop_rx,
+        &mut stop,
+        socket_timeout,
+    )
+    .await;
     drop(listener);
     // Every connection holds a permit until it closes: wait for all of them.
     let _ = permits
