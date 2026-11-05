@@ -459,7 +459,11 @@ fn round_streams_match_node() {
                     Step::Usage { usage, timings } => JValue::Arr(vec![
                         JValue::Str("usage".into()),
                         usage,
-                        if timings.is_nullish() { JValue::Null } else { timings },
+                        if timings.is_nullish() {
+                            JValue::Null
+                        } else {
+                            timings
+                        },
                     ]),
                     Step::End => JValue::Arr(vec![JValue::Str("end".into())]),
                 });
@@ -467,13 +471,33 @@ fn round_streams_match_node() {
         }
         sends += calls.len();
         let what = wtf16::stringify(k.get("chunks")).unwrap();
-        assert_eq!(wtf16::stringify(&JValue::Arr(calls)).unwrap(), wtf16::stringify(k.get("calls")).unwrap(), "{what}");
+        assert_eq!(
+            wtf16::stringify(&JValue::Arr(calls)).unwrap(),
+            wtf16::stringify(k.get("calls")).unwrap(),
+            "{what}"
+        );
         let st = k.get("state");
-        assert_eq!(JValue::Bool(r.saw_anything), *st.get("sawAnything"), "{what}");
-        assert_eq!(Some(r.round_reasoning.as_str()), st.get("roundReasoning").as_str(), "{what}");
-        assert_eq!(JValue::Bool(r.round_has_content), *st.get("roundHasContent"), "{what}");
+        assert_eq!(
+            JValue::Bool(r.saw_anything),
+            *st.get("sawAnything"),
+            "{what}"
+        );
+        assert_eq!(
+            Some(r.round_reasoning.as_str()),
+            st.get("roundReasoning").as_str(),
+            "{what}"
+        );
+        assert_eq!(
+            JValue::Bool(r.round_has_content),
+            *st.get("roundHasContent"),
+            "{what}"
+        );
         assert_eq!(JValue::Bool(r.shown_text), *st.get("shownText"), "{what}");
-        assert_eq!(Some(r.round_content.as_str()), st.get("roundContent").as_str(), "{what}");
+        assert_eq!(
+            Some(r.round_content.as_str()),
+            st.get("roundContent").as_str(),
+            "{what}"
+        );
         let tools: Vec<JValue> = r
             .tool_calls
             .iter()
@@ -490,10 +514,21 @@ fn round_streams_match_node() {
                 if s.name_cut {
                     o.push(("nameCut".into(), JValue::Bool(true)));
                 }
-                JValue::Arr(vec![if i.is_nan() { JValue::Null } else { JValue::Num(*i) }, JValue::Obj(o)])
+                JValue::Arr(vec![
+                    if i.is_nan() {
+                        JValue::Null
+                    } else {
+                        JValue::Num(*i)
+                    },
+                    JValue::Obj(o),
+                ])
             })
             .collect();
-        assert_eq!(wtf16::stringify(&JValue::Arr(tools)).unwrap(), wtf16::stringify(st.get("tools")).unwrap(), "{what}");
+        assert_eq!(
+            wtf16::stringify(&JValue::Arr(tools)).unwrap(),
+            wtf16::stringify(st.get("tools")).unwrap(),
+            "{what}"
+        );
     }
     assert!(sends > 2000, "{sends}");
 }

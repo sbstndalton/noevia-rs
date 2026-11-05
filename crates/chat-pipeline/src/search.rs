@@ -44,11 +44,13 @@ fn res() -> Option<&'static Res> {
 
 /// Rust's Unicode folding matches U+212A for `k` and U+017F for `s`; JavaScript's `/i` does not.
 fn guard(s: &str) -> String {
-    s.replace('\u{212A}', "\u{FFFF}").replace('\u{17F}', "\u{FFFE}")
+    s.replace('\u{212A}', "\u{FFFF}")
+        .replace('\u{17F}', "\u{FFFE}")
 }
 
 fn unguard(s: &str) -> String {
-    s.replace('\u{FFFF}', "\u{212A}").replace('\u{FFFE}', "\u{17F}")
+    s.replace('\u{FFFF}', "\u{212A}")
+        .replace('\u{FFFE}', "\u{17F}")
 }
 
 /// search-query.cjs `cleanSearchQuery(query)`.

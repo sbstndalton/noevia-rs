@@ -158,25 +158,42 @@ impl Round {
         }
         let choice0 = match get(evt, "choices") {
             JValue::Arr(a) => a.first().cloned().unwrap_or(JValue::Undefined),
-            JValue::Obj(o) => o.iter().find(|(k, _)| k == "0").map_or(JValue::Undefined, |(_, v)| v.clone()),
+            JValue::Obj(o) => o
+                .iter()
+                .find(|(k, _)| k == "0")
+                .map_or(JValue::Undefined, |(_, v)| v.clone()),
             _ => JValue::Undefined,
         };
         if as_str(get(&choice0, "finish_reason")) == Some("length") {
-            steps.push(Step::Send(obj(vec![("type", s("warning")), ("text", s(LENGTH_WARNING))])));
+            steps.push(Step::Send(obj(vec![
+                ("type", s("warning")),
+                ("text", s(LENGTH_WARNING)),
+            ])));
         }
         let error = get(evt, "error");
         if error.truthy() {
             let text = match get(error, "message") {
-                JValue::Str(m) if self.chatgpt_provider && as_str(get(error, "source")) == Some("chatgpt") => wtf16::slice(m, 300),
+                JValue::Str(m)
+                    if self.chatgpt_provider && as_str(get(error, "source")) == Some("chatgpt") =>
+                {
+                    wtf16::slice(m, 300)
+                }
                 _ => failure::provider_error(error, None, self.shown_text),
             };
-            steps.push(Step::Send(obj(vec![("type", s("error")), ("text", JValue::Str(text))])));
+            steps.push(Step::Send(obj(vec![
+                ("type", s("error")),
+                ("text", JValue::Str(text)),
+            ])));
             steps.push(Step::End);
             self.ended = true;
             return Ok(());
         }
         let d = get(&choice0, "delta");
-        let delta = if d.truthy() { d.clone() } else { JValue::Obj(Vec::new()) };
+        let delta = if d.truthy() {
+            d.clone()
+        } else {
+            JValue::Obj(Vec::new())
+        };
         let tool_calls = match get(&delta, "tool_calls") {
             JValue::Arr(a) => Some(a.clone()),
             _ => None,
@@ -187,7 +204,11 @@ impl Round {
                 get(tc, "id").truthy() || get(f, "name").truthy() || get(f, "arguments").truthy()
             })
         });
-        if get(&delta, "content").truthy() || get(&delta, "reasoning_content").truthy() || get(&delta, "reasoning").truthy() || meaningful {
+        if get(&delta, "content").truthy()
+            || get(&delta, "reasoning_content").truthy()
+            || get(&delta, "reasoning").truthy()
+            || meaningful
+        {
             steps.push(Step::FirstOutput);
         }
         let timings = get(evt, "timings");
@@ -202,14 +223,20 @@ impl Round {
         }
         let usage = get(evt, "usage");
         if usage.truthy() {
-            steps.push(Step::Usage { usage: usage.clone(), timings: self.round_timings.clone() });
+            steps.push(Step::Usage {
+                usage: usage.clone(),
+                timings: self.round_timings.clone(),
+            });
         }
         for key in ["reasoning_content", "reasoning"] {
             let r = get(&delta, key);
             if r.truthy() {
                 self.saw_anything = true;
                 self.round_reasoning.push_str(&plus(r));
-                steps.push(Step::Send(obj(vec![("type", s("reasoning")), ("text", r.clone())])));
+                steps.push(Step::Send(obj(vec![
+                    ("type", s("reasoning")),
+                    ("text", r.clone()),
+                ])));
             }
         }
         let c = get(&delta, "content");
@@ -218,7 +245,10 @@ impl Round {
             self.round_has_content = true;
             self.shown_text = true;
             self.round_content.push_str(&plus(c));
-            steps.push(Step::Send(obj(vec![("type", s("delta")), ("text", c.clone())])));
+            steps.push(Step::Send(obj(vec![
+                ("type", s("delta")),
+                ("text", c.clone()),
+            ])));
         }
         if let Some(tcs) = tool_calls {
             self.saw_anything = true;
@@ -278,9 +308,14 @@ impl Round {
                 }
                 match self.tool_calls.iter_mut().find(|(k, _)| same_key(*k, i)) {
                     Some(entry) => entry.1 = slot.clone(),
-                    None => self.tool_calls.push((if i == 0.0 { 0.0 } else { i }, slot.clone())),
+                    None => self
+                        .tool_calls
+                        .push((if i == 0.0 { 0.0 } else { i }, slot.clone())),
                 }
-                let args = clean_search_args(&JValue::Str(slot.name.clone()), &JValue::Str(slot.args.clone()));
+                let args = clean_search_args(
+                    &JValue::Str(slot.name.clone()),
+                    &JValue::Str(slot.args.clone()),
+                );
                 steps.push(Step::Send(obj(vec![
                     ("type", s("tool")),
                     ("index", JValue::Num(self.tool_offset + i)),

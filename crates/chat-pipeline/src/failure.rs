@@ -95,7 +95,10 @@ pub fn provider_error(value: &JValue, status: Option<i64>, partial: bool) -> Str
         JValue::Str(s) => s.clone(),
         other => wtf16::stringify(other).unwrap_or_default(),
     };
-    let code = status.map(|s| s as f64).or_else(|| integer(value.get("code"))).unwrap_or(500.0);
+    let code = status
+        .map(|s| s as f64)
+        .or_else(|| integer(value.get("code")))
+        .unwrap_or(500.0);
     failure_text(code, &text, partial)
 }
 
