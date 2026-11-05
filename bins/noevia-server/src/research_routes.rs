@@ -238,6 +238,17 @@ impl Research {
         body: &Value,
         timeout: Duration,
     ) -> Option<reqwest::RequestBuilder> {
+        self.bridge_post_text(path, body.to_string(), timeout)
+    }
+
+    /// [`Self::bridge_post`] with the JSON text already made, for a body `serde_json::Value` cannot hold (a lone
+    /// surrogate escape that Node's `JSON.parse` reads).
+    fn bridge_post_text(
+        &self,
+        path: &str,
+        body: String,
+        timeout: Duration,
+    ) -> Option<reqwest::RequestBuilder> {
         let token = self.settings.token.as_deref()?;
         let mut value = reqwest::header::HeaderValue::from_str(token).ok()?;
         value.set_sensitive(true);
@@ -250,7 +261,7 @@ impl Research {
                 .header(TOKEN_HEADER, value)
                 .header("content-type", "application/json")
                 .timeout(timeout)
-                .body(body.to_string()),
+                .body(body),
         )
     }
 
@@ -273,7 +284,21 @@ impl Research {
         body: &Value,
         timeout: Duration,
     ) -> Option<(u16, Vec<u8>)> {
-        let mut res = self.bridge_post(path, body, timeout)?.send().await.ok()?;
+        self.node_call_text(path, body.to_string(), timeout).await
+    }
+
+    /// [`Self::node_call`] with the request's JSON text made by the caller.
+    pub(crate) async fn node_call_text(
+        &self,
+        path: &str,
+        body: String,
+        timeout: Duration,
+    ) -> Option<(u16, Vec<u8>)> {
+        let mut res = self
+            .bridge_post_text(path, body, timeout)?
+            .send()
+            .await
+            .ok()?;
         let status = res.status().as_u16();
         let mut bytes = Vec::new();
         while let Some(chunk) = res.chunk().await.ok()? {

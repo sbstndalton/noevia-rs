@@ -24,7 +24,9 @@ const S = (v) => JSON.stringify(v, null, 2);
 const internal = (p) => p && (p.id === 'cowork-diary-extras' || String(p.id).startsWith('cowork-chat-context-'));
 function corrected(reply, initialProjects, finalText) {
   if (!initialProjects || !reply || reply.status !== 200 || finalText === null) return null;
-  const before = JSON.parse(initialProjects).projects, after = JSON.parse(finalText).projects;
+  let before, after;
+  try { before = JSON.parse(initialProjects).projects; after = JSON.parse(finalText).projects; } catch { return null; }
+  if (!Array.isArray(before) || !Array.isArray(after)) return null;
   let changedInternal = 0;
   const fixed = after.map((p, i) => {
     if (!internal(p)) return p;
@@ -52,6 +54,9 @@ function corrected(reply, initialProjects, finalText) {
     ['file-empty-string', '""', [], '{"routing":"manual"}'],
     ['file-array', '[1,"two",{"three":3}]', [], '{"routing":"manual"}'],
     ['file-string', '"ab"', [], '{"routing":"manual"}'],
+    ['file-string-astral', JSON.stringify('caf\u00e9 \ud83d\ude00'), [], '{"routing":"auto"}'],
+    ['file-string-lone-surrogate', '"x\\ud800y"', [], '{"routing":"auto"}'],
+    ['file-string-long', JSON.stringify('0123456789abcdef'), [], '{"routing":"manual"}'],
     ['file-invalid-json', '{ not json', [], '{"routing":"manual"}'],
     ['file-empty', '', [], '{"routing":"manual"}'],
     ['file-unicode', '{"n":"caf\\u00e9 \\ud83d\\ude00"}', [], '{"routing":"auto"}'],
@@ -60,6 +65,11 @@ function corrected(reply, initialProjects, finalText) {
     ['apply-none-differ', null, [proj('a', 'auto'), proj('b', 'auto')], '{"routing":"auto","applyToExisting":true}'],
     ['apply-no-projects', null, [], '{"routing":"auto","applyToExisting":true}'],
     ['apply-missing-projects-file', null, null, '{"routing":"manual","applyToExisting":true}'],
+    ['apply-projects-directory', null, 'DIR', '{"routing":"manual","applyToExisting":true}'],
+    ['apply-projects-not-json', null, '{ not json', '{"routing":"manual","applyToExisting":true}'],
+    ['apply-projects-not-a-list', null, '{"projects":5}', '{"routing":"manual","applyToExisting":true}'],
+    ['apply-projects-empty-file', null, '', '{"routing":"auto","applyToExisting":true}'],
+    ['default-projects-directory', null, 'DIR', '{"routing":"auto"}'],
     ['apply-false', null, MIXED, '{"routing":"auto","applyToExisting":false}'],
     ['apply-string-true', null, MIXED, '{"routing":"auto","applyToExisting":"true"}'],
     ['apply-one', null, MIXED, '{"routing":"auto","applyToExisting":1}'],
@@ -105,8 +115,10 @@ function corrected(reply, initialProjects, finalText) {
     const dir = path.join(root, 'users', USER);
     fs.mkdirSync(dir, { recursive: true });
     if (prefs !== null) fs.writeFileSync(path.join(dir, 'preferences.json'), prefs);
-    if (projects !== null) fs.writeFileSync(path.join(dir, 'projects.json'), S({ projects }));
-    const initialProjects = projects === null ? null : S({ projects });
+    if (projects === 'DIR') fs.mkdirSync(path.join(dir, 'projects.json'));
+    else if (typeof projects === 'string') fs.writeFileSync(path.join(dir, 'projects.json'), projects);
+    else if (projects !== null) fs.writeFileSync(path.join(dir, 'projects.json'), S({ projects }));
+    const initialProjects = projects === null || projects === 'DIR' ? null : typeof projects === 'string' ? projects : S({ projects });
     Date.now = () => NOW;
     const sent = [];
     try {
@@ -131,7 +143,7 @@ function corrected(reply, initialProjects, finalText) {
     const read = (f) => { try { return fs.readFileSync(path.join(dir, f), 'utf8'); } catch { return null; } };
     const node = { reply: sent[0], preferences: read('preferences.json'), projects: read('projects.json') };
     const fix = corrected(node.reply, initialProjects, node.projects);
-    cases.push({ name, initial: { preferences: prefs, projects: initialProjects }, body: body && body.hex !== undefined ? { hex: body.hex } : body && body.pad !== undefined ? { pad: body.pad, routing: body.routing } : { text: body },
+    cases.push({ name, initial: { preferences: prefs, projects: initialProjects, ...(projects === 'DIR' ? { projectsDirectory: true } : {}) }, body: body && body.hex !== undefined ? { hex: body.hex } : body && body.pad !== undefined ? { pad: body.pad, routing: body.routing } : { text: body },
       expected: fix ? { ...node, ...fix, deviation: '#2388' } : node, ...(fix ? { node } : {}) });
     fs.rmSync(root, { recursive: true, force: true });
   }

@@ -1,246 +1,16 @@
 {
  "node": "v22.23.3",
- "projects": [
-  {
-   "id": "plain",
-   "name": "plain",
-   "files": [],
-   "modes": [
-    "chat"
-   ],
-   "chats": []
-  },
-  {
-   "id": "hi",
-   "name": "hi",
-   "files": [],
-   "modes": [
-    "chat"
-   ],
-   "chats": [],
-   "reasoningEffort": "high"
-  },
-  {
-   "id": "lo",
-   "name": "lo",
-   "files": [],
-   "modes": [
-    "chat"
-   ],
-   "chats": [],
-   "reasoningEffort": "low",
-   "provider": "real",
-   "model": "any"
-  },
-  {
-   "id": "def",
-   "name": "def",
-   "files": [],
-   "modes": [
-    "chat"
-   ],
-   "chats": [],
-   "reasoningEffort": "default",
-   "provider": "real",
-   "model": "any"
-  },
-  {
-   "id": "bad",
-   "name": "bad",
-   "files": [],
-   "modes": [
-    "chat"
-   ],
-   "chats": [],
-   "reasoningEffort": "max",
-   "provider": "real",
-   "model": "any"
-  },
-  {
-   "id": "upper",
-   "name": "upper",
-   "files": [],
-   "modes": [
-    "chat"
-   ],
-   "chats": [],
-   "reasoningEffort": "HIGH"
-  },
-  {
-   "id": "null-effort",
-   "name": "null-effort",
-   "files": [],
-   "modes": [
-    "chat"
-   ],
-   "chats": [],
-   "reasoningEffort": null,
-   "provider": "scoped",
-   "model": "m-ok"
-  },
-  {
-   "id": "scoped-ok",
-   "name": "scoped-ok",
-   "files": [],
-   "modes": [
-    "chat"
-   ],
-   "chats": [],
-   "provider": "scoped",
-   "model": "m-ok"
-  },
-  {
-   "id": "scoped-other",
-   "name": "scoped-other",
-   "files": [],
-   "modes": [
-    "chat"
-   ],
-   "chats": [],
-   "provider": "scoped",
-   "model": "other"
-  },
-  {
-   "id": "ghost-provider",
-   "name": "ghost-provider",
-   "files": [],
-   "modes": [
-    "chat"
-   ],
-   "chats": [],
-   "provider": "ghost",
-   "model": "m-ok"
-  },
-  {
-   "id": "legacy-provider",
-   "name": "legacy-provider",
-   "files": [],
-   "modes": [
-    "chat"
-   ],
-   "chats": [],
-   "provider": "lemonade",
-   "model": "m"
-  },
-  {
-   "id": "empty-provider",
-   "name": "empty-provider",
-   "files": [],
-   "modes": [
-    "chat"
-   ],
-   "chats": [],
-   "provider": "",
-   "model": ""
-  },
-  {
-   "id": "number-provider",
-   "name": "number-provider",
-   "files": [],
-   "modes": [
-    "chat"
-   ],
-   "chats": [],
-   "provider": 5,
-   "model": 7
-  },
-  {
-   "id": "object-provider",
-   "name": "object-provider",
-   "files": [],
-   "modes": [
-    "chat"
-   ],
-   "chats": [],
-   "provider": {
-    "id": "real"
-   },
-   "model": [
-    "m"
-   ]
-  },
-  {
-   "id": "null-provider",
-   "name": "null-provider",
-   "files": [],
-   "modes": [
-    "chat"
-   ],
-   "chats": [],
-   "provider": null,
-   "model": null
-  },
-  {
-   "id": "qwen-local",
-   "name": "qwen-local",
-   "files": [],
-   "modes": [
-    "chat"
-   ],
-   "chats": [],
-   "provider": "default",
-   "model": "qwen3-8b"
-  },
-  {
-   "id": "dup",
-   "name": "dup",
-   "files": [],
-   "modes": [
-    "chat"
-   ],
-   "chats": [],
-   "reasoningEffort": "low"
-  },
-  {
-   "id": "dup",
-   "name": "dup",
-   "files": [],
-   "modes": [
-    "chat"
-   ],
-   "chats": [],
-   "reasoningEffort": "high"
-  },
-  {
-   "id": "café ☕",
-   "name": "café ☕",
-   "files": [],
-   "modes": [
-    "chat"
-   ],
-   "chats": []
-  },
-  {
-   "id": "a b",
-   "name": "a b",
-   "files": [],
-   "modes": [
-    "chat"
-   ],
-   "chats": []
-  },
-  {
-   "id": "a+b",
-   "name": "a+b",
-   "files": [],
-   "modes": [
-    "chat"
-   ],
-   "chats": []
-  },
-  {
-   "id": "50%",
-   "name": "50%",
-   "files": [],
-   "modes": [
-    "chat"
-   ],
-   "chats": []
-  }
- ],
+ "user": "11111111-2222-4333-8444-555555555555",
+ "sets": {
+  "main": "{\n  \"projects\": [\n    {\n      \"id\": \"plain\",\n      \"name\": \"plain\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": []\n    },\n    {\n      \"id\": \"hi\",\n      \"name\": \"hi\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"lo\",\n      \"name\": \"lo\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"low\",\n      \"provider\": \"real\",\n      \"model\": \"any\"\n    },\n    {\n      \"id\": \"def\",\n      \"name\": \"def\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"default\",\n      \"provider\": \"real\",\n      \"model\": \"any\"\n    },\n    {\n      \"id\": \"bad\",\n      \"name\": \"bad\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"max\",\n      \"provider\": \"real\",\n      \"model\": \"any\"\n    },\n    {\n      \"id\": \"upper\",\n      \"name\": \"upper\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"HIGH\"\n    },\n    {\n      \"id\": \"null-effort\",\n      \"name\": \"null-effort\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": null,\n      \"provider\": \"scoped\",\n      \"model\": \"m-ok\"\n    },\n    {\n      \"id\": \"scoped-ok\",\n      \"name\": \"scoped-ok\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"provider\": \"scoped\",\n      \"model\": \"m-ok\"\n    },\n    {\n      \"id\": \"scoped-other\",\n      \"name\": \"scoped-other\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"provider\": \"scoped\",\n      \"model\": \"other\"\n    },\n    {\n      \"id\": \"ghost-provider\",\n      \"name\": \"ghost-provider\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"provider\": \"ghost\",\n      \"model\": \"m-ok\"\n    },\n    {\n      \"id\": \"legacy-provider\",\n      \"name\": \"legacy-provider\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"provider\": \"lemonade\",\n      \"model\": \"m\"\n    },\n    {\n      \"id\": \"empty-provider\",\n      \"name\": \"empty-provider\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"provider\": \"\",\n      \"model\": \"\"\n    },\n    {\n      \"id\": \"number-provider\",\n      \"name\": \"number-provider\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"provider\": 5,\n      \"model\": 7\n    },\n    {\n      \"id\": \"object-provider\",\n      \"name\": \"object-provider\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"provider\": {\n        \"id\": \"real\"\n      },\n      \"model\": [\n        \"m\"\n      ]\n    },\n    {\n      \"id\": \"null-provider\",\n      \"name\": \"null-provider\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"provider\": null,\n      \"model\": null\n    },\n    {\n      \"id\": \"engine-local\",\n      \"name\": \"engine-local\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"provider\": \"default\",\n      \"model\": \"synthetic-8b\"\n    },\n    {\n      \"id\": \"surrogate\",\n      \"name\": \"surrogate\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"provider\": \"real\\ud800x\",\n      \"model\": \"m\\udc00\"\n    },\n    {\n      \"id\": \"dup\",\n      \"name\": \"dup\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"low\"\n    },\n    {\n      \"id\": \"dup\",\n      \"name\": \"dup\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"café ☕\",\n      \"name\": \"café ☕\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": []\n    },\n    {\n      \"id\": \"a b\",\n      \"name\": \"a b\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": []\n    },\n    {\n      \"id\": \"a+b\",\n      \"name\": \"a+b\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": []\n    },\n    {\n      \"id\": \"50%\",\n      \"name\": \"50%\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": []\n    }\n  ]\n}",
+  "repair": "{\n  \"projects\": [\n    {\n      \"id\": \"clean\",\n      \"name\": \"clean\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-heal\",\n      \"name\": \"cowork-chat-context-heal\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-chosen\",\n      \"name\": \"cowork-chat-context-chosen\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"routingChosen\": true,\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-auto\",\n      \"name\": \"cowork-chat-context-auto\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"auto\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"not-a-context\",\n      \"name\": \"not-a-context\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"skill\",\n      \"name\": \"skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"provider\": \"real\",\n      \"model\": \"any\"\n    },\n    {\n      \"id\": \"tracked-skill\",\n      \"name\": \"tracked-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {\n        \"x/SKILL.md\": {\n          \"enabled\": true,\n          \"reviewedHash\": \"h\"\n        }\n      },\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-both\",\n      \"name\": \"cowork-chat-context-both\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"low\"\n    },\n    {\n      \"id\": \"other-skill\",\n      \"name\": \"other-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    }\n  ]\n}",
+  "null-project": "{\n  \"projects\": [\n    {\n      \"id\": \"a\",\n      \"name\": \"a\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": []\n    },\n    null\n  ]\n}",
+  "missing": null
+ },
  "cases": [
   {
-   "name": "missing/none/member",
+   "name": "main/missing/none/member",
+   "set": "main",
    "settings": null,
    "search": "",
    "role": "member",
@@ -253,6 +23,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -262,7 +33,8 @@
    ]
   },
   {
-   "name": "missing/none/admin",
+   "name": "main/missing/none/admin",
+   "set": "main",
    "settings": null,
    "search": "",
    "role": "admin",
@@ -275,6 +47,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -284,7 +57,8 @@
    ]
   },
   {
-   "name": "missing/plain/member",
+   "name": "main/missing/plain/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=plain",
    "role": "member",
@@ -297,6 +71,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -306,7 +81,8 @@
    ]
   },
   {
-   "name": "missing/plain/admin",
+   "name": "main/missing/plain/admin",
+   "set": "main",
    "settings": null,
    "search": "?projectId=plain",
    "role": "admin",
@@ -319,6 +95,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -328,7 +105,8 @@
    ]
   },
   {
-   "name": "missing/hi/member",
+   "name": "main/missing/hi/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=hi",
    "role": "member",
@@ -341,6 +119,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -350,7 +129,8 @@
    ]
   },
   {
-   "name": "missing/hi/admin",
+   "name": "main/missing/hi/admin",
+   "set": "main",
    "settings": null,
    "search": "?projectId=hi",
    "role": "admin",
@@ -363,6 +143,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -372,7 +153,8 @@
    ]
   },
   {
-   "name": "missing/lo/member",
+   "name": "main/missing/lo/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=lo",
    "role": "member",
@@ -385,6 +167,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "real",
@@ -394,7 +177,8 @@
    ]
   },
   {
-   "name": "missing/def/member",
+   "name": "main/missing/def/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=def",
    "role": "member",
@@ -407,6 +191,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "real",
@@ -416,7 +201,8 @@
    ]
   },
   {
-   "name": "missing/bad/member",
+   "name": "main/missing/bad/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=bad",
    "role": "member",
@@ -429,6 +215,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "real",
@@ -438,7 +225,8 @@
    ]
   },
   {
-   "name": "missing/upper/member",
+   "name": "main/missing/upper/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=upper",
    "role": "member",
@@ -451,6 +239,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -460,7 +249,8 @@
    ]
   },
   {
-   "name": "missing/null-effort/member",
+   "name": "main/missing/null-effort/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=null-effort",
    "role": "member",
@@ -473,6 +263,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "scoped",
@@ -482,7 +273,8 @@
    ]
   },
   {
-   "name": "missing/scoped-ok/member",
+   "name": "main/missing/scoped-ok/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=scoped-ok",
    "role": "member",
@@ -495,6 +287,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "scoped",
@@ -504,7 +297,8 @@
    ]
   },
   {
-   "name": "missing/scoped-other/member",
+   "name": "main/missing/scoped-other/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=scoped-other",
    "role": "member",
@@ -517,6 +311,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "scoped",
@@ -526,7 +321,8 @@
    ]
   },
   {
-   "name": "missing/ghost-provider/member",
+   "name": "main/missing/ghost-provider/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=ghost-provider",
    "role": "member",
@@ -539,6 +335,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -548,7 +345,8 @@
    ]
   },
   {
-   "name": "missing/legacy-provider/member",
+   "name": "main/missing/legacy-provider/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=legacy-provider",
    "role": "member",
@@ -561,6 +359,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -570,7 +369,8 @@
    ]
   },
   {
-   "name": "missing/empty-provider/member",
+   "name": "main/missing/empty-provider/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=empty-provider",
    "role": "member",
@@ -583,6 +383,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -592,7 +393,8 @@
    ]
   },
   {
-   "name": "missing/number-provider/member",
+   "name": "main/missing/number-provider/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=number-provider",
    "role": "member",
@@ -605,6 +407,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -614,7 +417,8 @@
    ]
   },
   {
-   "name": "missing/object-provider/member",
+   "name": "main/missing/object-provider/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=object-provider",
    "role": "member",
@@ -627,6 +431,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -638,7 +443,8 @@
    ]
   },
   {
-   "name": "missing/null-provider/member",
+   "name": "main/missing/null-provider/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=null-provider",
    "role": "member",
@@ -651,6 +457,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -660,9 +467,10 @@
    ]
   },
   {
-   "name": "missing/qwen-local/member",
+   "name": "main/missing/engine-local/member",
+   "set": "main",
    "settings": null,
-   "search": "?projectId=qwen-local",
+   "search": "?projectId=engine-local",
    "role": "member",
    "reply": {
     "status": 200,
@@ -673,16 +481,42 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
-     "model": "qwen3-8b",
+     "model": "synthetic-8b",
      "effort": "default"
     }
    ]
   },
   {
-   "name": "missing/dup/member",
+   "name": "main/missing/surrogate/member",
+   "set": "main",
+   "settings": null,
+   "search": "?projectId=surrogate",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "m\udc00",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "main/missing/dup/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=dup",
    "role": "member",
@@ -695,6 +529,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -704,7 +539,8 @@
    ]
   },
   {
-   "name": "missing/unknown/member",
+   "name": "main/missing/unknown/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=ghost",
    "role": "member",
@@ -714,10 +550,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "missing/unknown/admin",
+   "name": "main/missing/unknown/admin",
+   "set": "main",
    "settings": null,
    "search": "?projectId=ghost",
    "role": "admin",
@@ -727,10 +565,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "missing/empty-id/member",
+   "name": "main/missing/empty-id/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=",
    "role": "member",
@@ -740,10 +580,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "missing/bare/member",
+   "name": "main/missing/bare/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId",
    "role": "member",
@@ -753,10 +595,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "missing/encoded/member",
+   "name": "main/missing/encoded/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=caf%C3%A9%20%E2%98%95",
    "role": "member",
@@ -769,6 +613,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -778,7 +623,8 @@
    ]
   },
   {
-   "name": "missing/plus-is-space/member",
+   "name": "main/missing/plus-is-space/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=a+b",
    "role": "member",
@@ -791,6 +637,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -800,7 +647,8 @@
    ]
   },
   {
-   "name": "missing/literal-plus/member",
+   "name": "main/missing/literal-plus/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=a%2Bb",
    "role": "member",
@@ -813,6 +661,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -822,7 +671,8 @@
    ]
   },
   {
-   "name": "missing/percent/member",
+   "name": "main/missing/percent/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=50%25",
    "role": "member",
@@ -835,6 +685,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -844,7 +695,8 @@
    ]
   },
   {
-   "name": "missing/first-wins/member",
+   "name": "main/missing/first-wins/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=hi&projectId=lo",
    "role": "member",
@@ -857,6 +709,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -866,7 +719,8 @@
    ]
   },
   {
-   "name": "missing/first-unknown/member",
+   "name": "main/missing/first-unknown/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=ghost&projectId=hi",
    "role": "member",
@@ -876,10 +730,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "missing/other-param/member",
+   "name": "main/missing/other-param/member",
+   "set": "main",
    "settings": null,
    "search": "?other=1",
    "role": "member",
@@ -892,6 +748,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -901,7 +758,8 @@
    ]
   },
   {
-   "name": "missing/case-sensitive/member",
+   "name": "main/missing/case-sensitive/member",
+   "set": "main",
    "settings": null,
    "search": "?projectid=hi",
    "role": "member",
@@ -914,6 +772,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -923,7 +782,8 @@
    ]
   },
   {
-   "name": "missing/trailing-amp/member",
+   "name": "main/missing/trailing-amp/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=hi&",
    "role": "member",
@@ -936,6 +796,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -945,7 +806,8 @@
    ]
   },
   {
-   "name": "missing/bad-percent/member",
+   "name": "main/missing/bad-percent/member",
+   "set": "main",
    "settings": null,
    "search": "?projectId=%ZZ",
    "role": "member",
@@ -955,10 +817,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "default/none/member",
+   "name": "main/default/none/member",
+   "set": "main",
    "settings": {
     "kind": "default",
     "value": "default"
@@ -974,6 +838,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -983,7 +848,8 @@
    ]
   },
   {
-   "name": "default/none/admin",
+   "name": "main/default/none/admin",
+   "set": "main",
    "settings": {
     "kind": "default",
     "value": "default"
@@ -999,6 +865,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1008,7 +875,8 @@
    ]
   },
   {
-   "name": "default/plain/member",
+   "name": "main/default/plain/member",
+   "set": "main",
    "settings": {
     "kind": "default",
     "value": "default"
@@ -1024,6 +892,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1033,7 +902,8 @@
    ]
   },
   {
-   "name": "default/plain/admin",
+   "name": "main/default/plain/admin",
+   "set": "main",
    "settings": {
     "kind": "default",
     "value": "default"
@@ -1049,6 +919,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1058,7 +929,8 @@
    ]
   },
   {
-   "name": "default/hi/member",
+   "name": "main/default/hi/member",
+   "set": "main",
    "settings": {
     "kind": "default",
     "value": "default"
@@ -1074,6 +946,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1083,7 +956,8 @@
    ]
   },
   {
-   "name": "default/hi/admin",
+   "name": "main/default/hi/admin",
+   "set": "main",
    "settings": {
     "kind": "default",
     "value": "default"
@@ -1099,6 +973,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1108,7 +983,8 @@
    ]
   },
   {
-   "name": "default/def/member",
+   "name": "main/default/def/member",
+   "set": "main",
    "settings": {
     "kind": "default",
     "value": "default"
@@ -1124,6 +1000,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "real",
@@ -1133,7 +1010,8 @@
    ]
   },
   {
-   "name": "default/bad/member",
+   "name": "main/default/bad/member",
+   "set": "main",
    "settings": {
     "kind": "default",
     "value": "default"
@@ -1149,6 +1027,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "real",
@@ -1158,7 +1037,8 @@
    ]
   },
   {
-   "name": "default/scoped-ok/member",
+   "name": "main/default/scoped-ok/member",
+   "set": "main",
    "settings": {
     "kind": "default",
     "value": "default"
@@ -1174,6 +1054,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "scoped",
@@ -1183,7 +1064,8 @@
    ]
   },
   {
-   "name": "default/dup/member",
+   "name": "main/default/dup/member",
+   "set": "main",
    "settings": {
     "kind": "default",
     "value": "default"
@@ -1199,6 +1081,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1208,7 +1091,8 @@
    ]
   },
   {
-   "name": "default/unknown/member",
+   "name": "main/default/unknown/member",
+   "set": "main",
    "settings": {
     "kind": "default",
     "value": "default"
@@ -1221,10 +1105,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "default/unknown/admin",
+   "name": "main/default/unknown/admin",
+   "set": "main",
    "settings": {
     "kind": "default",
     "value": "default"
@@ -1237,10 +1123,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "low/none/member",
+   "name": "main/low/none/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1256,6 +1144,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1265,7 +1154,8 @@
    ]
   },
   {
-   "name": "low/none/admin",
+   "name": "main/low/none/admin",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1281,6 +1171,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1290,7 +1181,8 @@
    ]
   },
   {
-   "name": "low/plain/member",
+   "name": "main/low/plain/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1306,6 +1198,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1315,7 +1208,8 @@
    ]
   },
   {
-   "name": "low/plain/admin",
+   "name": "main/low/plain/admin",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1331,6 +1225,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1340,7 +1235,8 @@
    ]
   },
   {
-   "name": "low/hi/member",
+   "name": "main/low/hi/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1356,6 +1252,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1365,7 +1262,8 @@
    ]
   },
   {
-   "name": "low/hi/admin",
+   "name": "main/low/hi/admin",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1381,6 +1279,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1390,7 +1289,8 @@
    ]
   },
   {
-   "name": "low/lo/member",
+   "name": "main/low/lo/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1406,6 +1306,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "real",
@@ -1415,7 +1316,8 @@
    ]
   },
   {
-   "name": "low/def/member",
+   "name": "main/low/def/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1431,6 +1333,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "real",
@@ -1440,7 +1343,8 @@
    ]
   },
   {
-   "name": "low/bad/member",
+   "name": "main/low/bad/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1456,6 +1360,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "real",
@@ -1465,7 +1370,8 @@
    ]
   },
   {
-   "name": "low/upper/member",
+   "name": "main/low/upper/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1481,6 +1387,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1490,7 +1397,8 @@
    ]
   },
   {
-   "name": "low/null-effort/member",
+   "name": "main/low/null-effort/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1506,6 +1414,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "scoped",
@@ -1515,7 +1424,8 @@
    ]
   },
   {
-   "name": "low/scoped-ok/member",
+   "name": "main/low/scoped-ok/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1531,6 +1441,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "scoped",
@@ -1540,7 +1451,8 @@
    ]
   },
   {
-   "name": "low/scoped-other/member",
+   "name": "main/low/scoped-other/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1556,6 +1468,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "scoped",
@@ -1565,7 +1478,8 @@
    ]
   },
   {
-   "name": "low/ghost-provider/member",
+   "name": "main/low/ghost-provider/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1581,6 +1495,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1590,7 +1505,8 @@
    ]
   },
   {
-   "name": "low/legacy-provider/member",
+   "name": "main/low/legacy-provider/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1606,6 +1522,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1615,7 +1532,8 @@
    ]
   },
   {
-   "name": "low/empty-provider/member",
+   "name": "main/low/empty-provider/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1631,6 +1549,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1640,7 +1559,8 @@
    ]
   },
   {
-   "name": "low/number-provider/member",
+   "name": "main/low/number-provider/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1656,6 +1576,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1665,7 +1586,8 @@
    ]
   },
   {
-   "name": "low/object-provider/member",
+   "name": "main/low/object-provider/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1681,6 +1603,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1692,7 +1615,8 @@
    ]
   },
   {
-   "name": "low/null-provider/member",
+   "name": "main/low/null-provider/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1708,6 +1632,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1717,12 +1642,13 @@
    ]
   },
   {
-   "name": "low/qwen-local/member",
+   "name": "main/low/engine-local/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
    },
-   "search": "?projectId=qwen-local",
+   "search": "?projectId=engine-local",
    "role": "member",
    "reply": {
     "status": 200,
@@ -1733,16 +1659,45 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
-     "model": "qwen3-8b",
+     "model": "synthetic-8b",
      "effort": "low"
     }
    ]
   },
   {
-   "name": "low/dup/member",
+   "name": "main/low/surrogate/member",
+   "set": "main",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=surrogate",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "m\udc00",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "main/low/dup/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1758,6 +1713,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1767,7 +1723,8 @@
    ]
   },
   {
-   "name": "low/unknown/member",
+   "name": "main/low/unknown/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1780,10 +1737,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "low/unknown/admin",
+   "name": "main/low/unknown/admin",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1796,10 +1755,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "low/empty-id/member",
+   "name": "main/low/empty-id/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1812,10 +1773,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "low/bare/member",
+   "name": "main/low/bare/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1828,10 +1791,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "low/encoded/member",
+   "name": "main/low/encoded/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1847,6 +1812,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1856,7 +1822,8 @@
    ]
   },
   {
-   "name": "low/plus-is-space/member",
+   "name": "main/low/plus-is-space/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1872,6 +1839,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1881,7 +1849,8 @@
    ]
   },
   {
-   "name": "low/literal-plus/member",
+   "name": "main/low/literal-plus/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1897,6 +1866,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1906,7 +1876,8 @@
    ]
   },
   {
-   "name": "low/percent/member",
+   "name": "main/low/percent/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1922,6 +1893,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1931,7 +1903,8 @@
    ]
   },
   {
-   "name": "low/first-wins/member",
+   "name": "main/low/first-wins/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1947,6 +1920,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1956,7 +1930,8 @@
    ]
   },
   {
-   "name": "low/first-unknown/member",
+   "name": "main/low/first-unknown/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1969,10 +1944,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "low/other-param/member",
+   "name": "main/low/other-param/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -1988,6 +1965,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -1997,7 +1975,8 @@
    ]
   },
   {
-   "name": "low/case-sensitive/member",
+   "name": "main/low/case-sensitive/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -2013,6 +1992,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2022,7 +2002,8 @@
    ]
   },
   {
-   "name": "low/trailing-amp/member",
+   "name": "main/low/trailing-amp/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -2038,6 +2019,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2047,7 +2029,8 @@
    ]
   },
   {
-   "name": "low/bad-percent/member",
+   "name": "main/low/bad-percent/member",
+   "set": "main",
    "settings": {
     "kind": "low",
     "value": "low"
@@ -2060,10 +2043,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "high/none/member",
+   "name": "main/high/none/member",
+   "set": "main",
    "settings": {
     "kind": "high",
     "value": "high"
@@ -2079,6 +2064,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2088,7 +2074,8 @@
    ]
   },
   {
-   "name": "high/none/admin",
+   "name": "main/high/none/admin",
+   "set": "main",
    "settings": {
     "kind": "high",
     "value": "high"
@@ -2104,6 +2091,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2113,7 +2101,8 @@
    ]
   },
   {
-   "name": "high/plain/member",
+   "name": "main/high/plain/member",
+   "set": "main",
    "settings": {
     "kind": "high",
     "value": "high"
@@ -2129,6 +2118,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2138,7 +2128,8 @@
    ]
   },
   {
-   "name": "high/plain/admin",
+   "name": "main/high/plain/admin",
+   "set": "main",
    "settings": {
     "kind": "high",
     "value": "high"
@@ -2154,6 +2145,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2163,7 +2155,8 @@
    ]
   },
   {
-   "name": "high/hi/member",
+   "name": "main/high/hi/member",
+   "set": "main",
    "settings": {
     "kind": "high",
     "value": "high"
@@ -2179,6 +2172,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2188,7 +2182,8 @@
    ]
   },
   {
-   "name": "high/hi/admin",
+   "name": "main/high/hi/admin",
+   "set": "main",
    "settings": {
     "kind": "high",
     "value": "high"
@@ -2204,6 +2199,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2213,7 +2209,8 @@
    ]
   },
   {
-   "name": "high/def/member",
+   "name": "main/high/def/member",
+   "set": "main",
    "settings": {
     "kind": "high",
     "value": "high"
@@ -2229,6 +2226,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "real",
@@ -2238,7 +2236,8 @@
    ]
   },
   {
-   "name": "high/bad/member",
+   "name": "main/high/bad/member",
+   "set": "main",
    "settings": {
     "kind": "high",
     "value": "high"
@@ -2254,6 +2253,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "real",
@@ -2263,7 +2263,8 @@
    ]
   },
   {
-   "name": "high/scoped-ok/member",
+   "name": "main/high/scoped-ok/member",
+   "set": "main",
    "settings": {
     "kind": "high",
     "value": "high"
@@ -2279,6 +2280,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "scoped",
@@ -2288,7 +2290,8 @@
    ]
   },
   {
-   "name": "high/dup/member",
+   "name": "main/high/dup/member",
+   "set": "main",
    "settings": {
     "kind": "high",
     "value": "high"
@@ -2304,6 +2307,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2313,7 +2317,8 @@
    ]
   },
   {
-   "name": "high/unknown/member",
+   "name": "main/high/unknown/member",
+   "set": "main",
    "settings": {
     "kind": "high",
     "value": "high"
@@ -2326,10 +2331,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "high/unknown/admin",
+   "name": "main/high/unknown/admin",
+   "set": "main",
    "settings": {
     "kind": "high",
     "value": "high"
@@ -2342,10 +2349,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "empty/none/member",
+   "name": "main/empty/none/member",
+   "set": "main",
    "settings": {
     "kind": "empty",
     "value": ""
@@ -2361,6 +2370,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2370,7 +2380,8 @@
    ]
   },
   {
-   "name": "empty/none/admin",
+   "name": "main/empty/none/admin",
+   "set": "main",
    "settings": {
     "kind": "empty",
     "value": ""
@@ -2386,6 +2397,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2395,7 +2407,8 @@
    ]
   },
   {
-   "name": "empty/plain/member",
+   "name": "main/empty/plain/member",
+   "set": "main",
    "settings": {
     "kind": "empty",
     "value": ""
@@ -2411,6 +2424,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2420,7 +2434,8 @@
    ]
   },
   {
-   "name": "empty/plain/admin",
+   "name": "main/empty/plain/admin",
+   "set": "main",
    "settings": {
     "kind": "empty",
     "value": ""
@@ -2436,6 +2451,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2445,7 +2461,8 @@
    ]
   },
   {
-   "name": "empty/hi/member",
+   "name": "main/empty/hi/member",
+   "set": "main",
    "settings": {
     "kind": "empty",
     "value": ""
@@ -2461,6 +2478,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2470,7 +2488,8 @@
    ]
   },
   {
-   "name": "empty/hi/admin",
+   "name": "main/empty/hi/admin",
+   "set": "main",
    "settings": {
     "kind": "empty",
     "value": ""
@@ -2486,6 +2505,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2495,7 +2515,8 @@
    ]
   },
   {
-   "name": "empty/def/member",
+   "name": "main/empty/def/member",
+   "set": "main",
    "settings": {
     "kind": "empty",
     "value": ""
@@ -2511,6 +2532,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "real",
@@ -2520,7 +2542,8 @@
    ]
   },
   {
-   "name": "empty/bad/member",
+   "name": "main/empty/bad/member",
+   "set": "main",
    "settings": {
     "kind": "empty",
     "value": ""
@@ -2536,6 +2559,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "real",
@@ -2545,7 +2569,8 @@
    ]
   },
   {
-   "name": "empty/scoped-ok/member",
+   "name": "main/empty/scoped-ok/member",
+   "set": "main",
    "settings": {
     "kind": "empty",
     "value": ""
@@ -2561,6 +2586,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "scoped",
@@ -2570,7 +2596,8 @@
    ]
   },
   {
-   "name": "empty/dup/member",
+   "name": "main/empty/dup/member",
+   "set": "main",
    "settings": {
     "kind": "empty",
     "value": ""
@@ -2586,6 +2613,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2595,7 +2623,8 @@
    ]
   },
   {
-   "name": "empty/unknown/member",
+   "name": "main/empty/unknown/member",
+   "set": "main",
    "settings": {
     "kind": "empty",
     "value": ""
@@ -2608,10 +2637,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "empty/unknown/admin",
+   "name": "main/empty/unknown/admin",
+   "set": "main",
    "settings": {
     "kind": "empty",
     "value": ""
@@ -2624,10 +2655,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "null/none/member",
+   "name": "main/null/none/member",
+   "set": "main",
    "settings": {
     "kind": "null",
     "value": null
@@ -2643,6 +2676,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2652,7 +2686,8 @@
    ]
   },
   {
-   "name": "null/none/admin",
+   "name": "main/null/none/admin",
+   "set": "main",
    "settings": {
     "kind": "null",
     "value": null
@@ -2668,6 +2703,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2677,7 +2713,8 @@
    ]
   },
   {
-   "name": "null/plain/member",
+   "name": "main/null/plain/member",
+   "set": "main",
    "settings": {
     "kind": "null",
     "value": null
@@ -2693,6 +2730,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2702,7 +2740,8 @@
    ]
   },
   {
-   "name": "null/plain/admin",
+   "name": "main/null/plain/admin",
+   "set": "main",
    "settings": {
     "kind": "null",
     "value": null
@@ -2718,6 +2757,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2727,7 +2767,8 @@
    ]
   },
   {
-   "name": "null/hi/member",
+   "name": "main/null/hi/member",
+   "set": "main",
    "settings": {
     "kind": "null",
     "value": null
@@ -2743,6 +2784,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2752,7 +2794,8 @@
    ]
   },
   {
-   "name": "null/hi/admin",
+   "name": "main/null/hi/admin",
+   "set": "main",
    "settings": {
     "kind": "null",
     "value": null
@@ -2768,6 +2811,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2777,7 +2821,8 @@
    ]
   },
   {
-   "name": "null/def/member",
+   "name": "main/null/def/member",
+   "set": "main",
    "settings": {
     "kind": "null",
     "value": null
@@ -2793,6 +2838,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "real",
@@ -2802,7 +2848,8 @@
    ]
   },
   {
-   "name": "null/bad/member",
+   "name": "main/null/bad/member",
+   "set": "main",
    "settings": {
     "kind": "null",
     "value": null
@@ -2818,6 +2865,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "real",
@@ -2827,7 +2875,8 @@
    ]
   },
   {
-   "name": "null/scoped-ok/member",
+   "name": "main/null/scoped-ok/member",
+   "set": "main",
    "settings": {
     "kind": "null",
     "value": null
@@ -2843,6 +2892,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "scoped",
@@ -2852,7 +2902,8 @@
    ]
   },
   {
-   "name": "null/dup/member",
+   "name": "main/null/dup/member",
+   "set": "main",
    "settings": {
     "kind": "null",
     "value": null
@@ -2868,6 +2919,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2877,7 +2929,8 @@
    ]
   },
   {
-   "name": "null/unknown/member",
+   "name": "main/null/unknown/member",
+   "set": "main",
    "settings": {
     "kind": "null",
     "value": null
@@ -2890,10 +2943,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "null/unknown/admin",
+   "name": "main/null/unknown/admin",
+   "set": "main",
    "settings": {
     "kind": "null",
     "value": null
@@ -2906,10 +2961,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "unknown/none/member",
+   "name": "main/unknown/none/member",
+   "set": "main",
    "settings": {
     "kind": "unknown",
     "value": "max"
@@ -2925,6 +2982,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2934,7 +2992,8 @@
    ]
   },
   {
-   "name": "unknown/none/admin",
+   "name": "main/unknown/none/admin",
+   "set": "main",
    "settings": {
     "kind": "unknown",
     "value": "max"
@@ -2950,6 +3009,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2959,7 +3019,8 @@
    ]
   },
   {
-   "name": "unknown/plain/member",
+   "name": "main/unknown/plain/member",
+   "set": "main",
    "settings": {
     "kind": "unknown",
     "value": "max"
@@ -2975,6 +3036,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -2984,7 +3046,8 @@
    ]
   },
   {
-   "name": "unknown/plain/admin",
+   "name": "main/unknown/plain/admin",
+   "set": "main",
    "settings": {
     "kind": "unknown",
     "value": "max"
@@ -3000,6 +3063,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -3009,7 +3073,8 @@
    ]
   },
   {
-   "name": "unknown/hi/member",
+   "name": "main/unknown/hi/member",
+   "set": "main",
    "settings": {
     "kind": "unknown",
     "value": "max"
@@ -3025,6 +3090,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -3034,7 +3100,8 @@
    ]
   },
   {
-   "name": "unknown/hi/admin",
+   "name": "main/unknown/hi/admin",
+   "set": "main",
    "settings": {
     "kind": "unknown",
     "value": "max"
@@ -3050,6 +3117,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -3059,7 +3127,8 @@
    ]
   },
   {
-   "name": "unknown/def/member",
+   "name": "main/unknown/def/member",
+   "set": "main",
    "settings": {
     "kind": "unknown",
     "value": "max"
@@ -3075,6 +3144,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "real",
@@ -3084,7 +3154,8 @@
    ]
   },
   {
-   "name": "unknown/bad/member",
+   "name": "main/unknown/bad/member",
+   "set": "main",
    "settings": {
     "kind": "unknown",
     "value": "max"
@@ -3100,6 +3171,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "real",
@@ -3109,7 +3181,8 @@
    ]
   },
   {
-   "name": "unknown/scoped-ok/member",
+   "name": "main/unknown/scoped-ok/member",
+   "set": "main",
    "settings": {
     "kind": "unknown",
     "value": "max"
@@ -3125,6 +3198,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "scoped",
@@ -3134,7 +3208,8 @@
    ]
   },
   {
-   "name": "unknown/dup/member",
+   "name": "main/unknown/dup/member",
+   "set": "main",
    "settings": {
     "kind": "unknown",
     "value": "max"
@@ -3150,6 +3225,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -3159,7 +3235,8 @@
    ]
   },
   {
-   "name": "unknown/unknown/member",
+   "name": "main/unknown/unknown/member",
+   "set": "main",
    "settings": {
     "kind": "unknown",
     "value": "max"
@@ -3172,10 +3249,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "unknown/unknown/admin",
+   "name": "main/unknown/unknown/admin",
+   "set": "main",
    "settings": {
     "kind": "unknown",
     "value": "max"
@@ -3188,10 +3267,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "upper/none/member",
+   "name": "main/upper/none/member",
+   "set": "main",
    "settings": {
     "kind": "upper",
     "value": "LOW"
@@ -3207,6 +3288,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -3216,7 +3298,8 @@
    ]
   },
   {
-   "name": "upper/none/admin",
+   "name": "main/upper/none/admin",
+   "set": "main",
    "settings": {
     "kind": "upper",
     "value": "LOW"
@@ -3232,6 +3315,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -3241,7 +3325,8 @@
    ]
   },
   {
-   "name": "upper/plain/member",
+   "name": "main/upper/plain/member",
+   "set": "main",
    "settings": {
     "kind": "upper",
     "value": "LOW"
@@ -3257,6 +3342,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -3266,7 +3352,8 @@
    ]
   },
   {
-   "name": "upper/plain/admin",
+   "name": "main/upper/plain/admin",
+   "set": "main",
    "settings": {
     "kind": "upper",
     "value": "LOW"
@@ -3282,6 +3369,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -3291,7 +3379,8 @@
    ]
   },
   {
-   "name": "upper/hi/member",
+   "name": "main/upper/hi/member",
+   "set": "main",
    "settings": {
     "kind": "upper",
     "value": "LOW"
@@ -3307,6 +3396,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -3316,7 +3406,8 @@
    ]
   },
   {
-   "name": "upper/hi/admin",
+   "name": "main/upper/hi/admin",
+   "set": "main",
    "settings": {
     "kind": "upper",
     "value": "LOW"
@@ -3332,6 +3423,7 @@
      "admin": true
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -3341,7 +3433,8 @@
    ]
   },
   {
-   "name": "upper/def/member",
+   "name": "main/upper/def/member",
+   "set": "main",
    "settings": {
     "kind": "upper",
     "value": "LOW"
@@ -3357,6 +3450,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "real",
@@ -3366,7 +3460,8 @@
    ]
   },
   {
-   "name": "upper/bad/member",
+   "name": "main/upper/bad/member",
+   "set": "main",
    "settings": {
     "kind": "upper",
     "value": "LOW"
@@ -3382,6 +3477,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "real",
@@ -3391,7 +3487,8 @@
    ]
   },
   {
-   "name": "upper/scoped-ok/member",
+   "name": "main/upper/scoped-ok/member",
+   "set": "main",
    "settings": {
     "kind": "upper",
     "value": "LOW"
@@ -3407,6 +3504,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "scoped",
@@ -3416,7 +3514,8 @@
    ]
   },
   {
-   "name": "upper/dup/member",
+   "name": "main/upper/dup/member",
+   "set": "main",
    "settings": {
     "kind": "upper",
     "value": "LOW"
@@ -3432,6 +3531,7 @@
      "admin": false
     }
    },
+   "loadThrew": false,
    "asked": [
     {
      "provider": "default",
@@ -3441,7 +3541,8 @@
    ]
   },
   {
-   "name": "upper/unknown/member",
+   "name": "main/upper/unknown/member",
+   "set": "main",
    "settings": {
     "kind": "upper",
     "value": "LOW"
@@ -3454,10 +3555,12 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
    "asked": []
   },
   {
-   "name": "upper/unknown/admin",
+   "name": "main/upper/unknown/admin",
+   "set": "main",
    "settings": {
     "kind": "upper",
     "value": "LOW"
@@ -3470,6 +3573,1801 @@
      "error": "no such project"
     }
    },
+   "loadThrew": false,
+   "asked": []
+  },
+  {
+   "name": "main/blob/none/member",
+   "set": "main",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": [
+       108,
+       111,
+       119
+      ]
+     },
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "main/blob/none/admin",
+   "set": "main",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": [
+       108,
+       111,
+       119
+      ]
+     },
+     "effort": "default",
+     "mode": "off",
+     "admin": true
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "main/blob/plain/member",
+   "set": "main",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "?projectId=plain",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": [
+       108,
+       111,
+       119
+      ]
+     },
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "main/blob/plain/admin",
+   "set": "main",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "?projectId=plain",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": [
+       108,
+       111,
+       119
+      ]
+     },
+     "effort": "default",
+     "mode": "off",
+     "admin": true
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "main/blob/hi/member",
+   "set": "main",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "?projectId=hi",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": [
+       108,
+       111,
+       119
+      ]
+     },
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "main/blob/hi/admin",
+   "set": "main",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "?projectId=hi",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": [
+       108,
+       111,
+       119
+      ]
+     },
+     "effort": "high",
+     "mode": "hint",
+     "admin": true
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "main/blob/def/member",
+   "set": "main",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "?projectId=def",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": [
+       108,
+       111,
+       119
+      ]
+     },
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "main/blob/bad/member",
+   "set": "main",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "?projectId=bad",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": [
+       108,
+       111,
+       119
+      ]
+     },
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "main/blob/scoped-ok/member",
+   "set": "main",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "?projectId=scoped-ok",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": [
+       108,
+       111,
+       119
+      ]
+     },
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "scoped",
+     "model": "m-ok",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "main/blob/dup/member",
+   "set": "main",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "?projectId=dup",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": [
+       108,
+       111,
+       119
+      ]
+     },
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "main/blob/unknown/member",
+   "set": "main",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "?projectId=ghost",
+   "role": "member",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "loadThrew": false,
+   "asked": []
+  },
+  {
+   "name": "main/blob/unknown/admin",
+   "set": "main",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "?projectId=ghost",
+   "role": "admin",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "loadThrew": false,
+   "asked": []
+  },
+  {
+   "name": "main/blob-empty/none/member",
+   "set": "main",
+   "settings": {
+    "kind": "blob-empty",
+    "value": {
+     "hex": ""
+    }
+   },
+   "search": "",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": []
+     },
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "main/blob-empty/none/admin",
+   "set": "main",
+   "settings": {
+    "kind": "blob-empty",
+    "value": {
+     "hex": ""
+    }
+   },
+   "search": "",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": []
+     },
+     "effort": "default",
+     "mode": "off",
+     "admin": true
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "main/blob-empty/plain/member",
+   "set": "main",
+   "settings": {
+    "kind": "blob-empty",
+    "value": {
+     "hex": ""
+    }
+   },
+   "search": "?projectId=plain",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": []
+     },
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "main/blob-empty/plain/admin",
+   "set": "main",
+   "settings": {
+    "kind": "blob-empty",
+    "value": {
+     "hex": ""
+    }
+   },
+   "search": "?projectId=plain",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": []
+     },
+     "effort": "default",
+     "mode": "off",
+     "admin": true
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "main/blob-empty/hi/member",
+   "set": "main",
+   "settings": {
+    "kind": "blob-empty",
+    "value": {
+     "hex": ""
+    }
+   },
+   "search": "?projectId=hi",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": []
+     },
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "main/blob-empty/hi/admin",
+   "set": "main",
+   "settings": {
+    "kind": "blob-empty",
+    "value": {
+     "hex": ""
+    }
+   },
+   "search": "?projectId=hi",
+   "role": "admin",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": []
+     },
+     "effort": "high",
+     "mode": "hint",
+     "admin": true
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "main/blob-empty/def/member",
+   "set": "main",
+   "settings": {
+    "kind": "blob-empty",
+    "value": {
+     "hex": ""
+    }
+   },
+   "search": "?projectId=def",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": []
+     },
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "main/blob-empty/bad/member",
+   "set": "main",
+   "settings": {
+    "kind": "blob-empty",
+    "value": {
+     "hex": ""
+    }
+   },
+   "search": "?projectId=bad",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": []
+     },
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "main/blob-empty/scoped-ok/member",
+   "set": "main",
+   "settings": {
+    "kind": "blob-empty",
+    "value": {
+     "hex": ""
+    }
+   },
+   "search": "?projectId=scoped-ok",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": []
+     },
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "scoped",
+     "model": "m-ok",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "main/blob-empty/dup/member",
+   "set": "main",
+   "settings": {
+    "kind": "blob-empty",
+    "value": {
+     "hex": ""
+    }
+   },
+   "search": "?projectId=dup",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": []
+     },
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "main/blob-empty/unknown/member",
+   "set": "main",
+   "settings": {
+    "kind": "blob-empty",
+    "value": {
+     "hex": ""
+    }
+   },
+   "search": "?projectId=ghost",
+   "role": "member",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "loadThrew": false,
+   "asked": []
+  },
+  {
+   "name": "main/blob-empty/unknown/admin",
+   "set": "main",
+   "settings": {
+    "kind": "blob-empty",
+    "value": {
+     "hex": ""
+    }
+   },
+   "search": "?projectId=ghost",
+   "role": "admin",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "loadThrew": false,
+   "asked": []
+  },
+  {
+   "name": "repair/missing/none/member",
+   "set": "repair",
+   "settings": null,
+   "search": "",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "repair/missing/clean/member",
+   "set": "repair",
+   "settings": null,
+   "search": "?projectId=clean",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "repair/missing/cowork-chat-context-heal/member",
+   "set": "repair",
+   "settings": null,
+   "search": "?projectId=cowork-chat-context-heal",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ],
+   "projectsAfter": "{\n  \"projects\": [\n    {\n      \"id\": \"clean\",\n      \"name\": \"clean\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-heal\",\n      \"name\": \"cowork-chat-context-heal\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"auto\",\n      \"reasoningEffort\": \"high\",\n      \"instructionSkills\": {}\n    },\n    {\n      \"id\": \"cowork-chat-context-chosen\",\n      \"name\": \"cowork-chat-context-chosen\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"routingChosen\": true,\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-auto\",\n      \"name\": \"cowork-chat-context-auto\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"auto\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"not-a-context\",\n      \"name\": \"not-a-context\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"skill\",\n      \"name\": \"skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"provider\": \"real\",\n      \"model\": \"any\"\n    },\n    {\n      \"id\": \"tracked-skill\",\n      \"name\": \"tracked-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {\n        \"x/SKILL.md\": {\n          \"enabled\": true,\n          \"reviewedHash\": \"h\"\n        }\n      },\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-both\",\n      \"name\": \"cowork-chat-context-both\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"low\"\n    },\n    {\n      \"id\": \"other-skill\",\n      \"name\": \"other-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    }\n  ]\n}"
+  },
+  {
+   "name": "repair/missing/cowork-chat-context-chosen/member",
+   "set": "repair",
+   "settings": null,
+   "search": "?projectId=cowork-chat-context-chosen",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "repair/missing/cowork-chat-context-auto/member",
+   "set": "repair",
+   "settings": null,
+   "search": "?projectId=cowork-chat-context-auto",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "repair/missing/not-a-context/member",
+   "set": "repair",
+   "settings": null,
+   "search": "?projectId=not-a-context",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "repair/missing/skill/member",
+   "set": "repair",
+   "settings": null,
+   "search": "?projectId=skill",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "high",
+     "mode": "real",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "high"
+    }
+   ],
+   "projectsAfter": "{\n  \"projects\": [\n    {\n      \"id\": \"clean\",\n      \"name\": \"clean\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-heal\",\n      \"name\": \"cowork-chat-context-heal\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-chosen\",\n      \"name\": \"cowork-chat-context-chosen\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"routingChosen\": true,\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-auto\",\n      \"name\": \"cowork-chat-context-auto\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"auto\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"not-a-context\",\n      \"name\": \"not-a-context\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"skill\",\n      \"name\": \"skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"provider\": \"real\",\n      \"model\": \"any\",\n      \"instructionSkills\": {\n        \"x/SKILL.md\": {\n          \"enabled\": false,\n          \"reviewedHash\": null\n        }\n      }\n    },\n    {\n      \"id\": \"tracked-skill\",\n      \"name\": \"tracked-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {\n        \"x/SKILL.md\": {\n          \"enabled\": true,\n          \"reviewedHash\": \"h\"\n        }\n      },\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-both\",\n      \"name\": \"cowork-chat-context-both\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"low\"\n    },\n    {\n      \"id\": \"other-skill\",\n      \"name\": \"other-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    }\n  ]\n}"
+  },
+  {
+   "name": "repair/missing/tracked-skill/member",
+   "set": "repair",
+   "settings": null,
+   "search": "?projectId=tracked-skill",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "repair/missing/cowork-chat-context-both/member",
+   "set": "repair",
+   "settings": null,
+   "search": "?projectId=cowork-chat-context-both",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ],
+   "projectsAfter": "{\n  \"projects\": [\n    {\n      \"id\": \"clean\",\n      \"name\": \"clean\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-heal\",\n      \"name\": \"cowork-chat-context-heal\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-chosen\",\n      \"name\": \"cowork-chat-context-chosen\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"routingChosen\": true,\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-auto\",\n      \"name\": \"cowork-chat-context-auto\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"auto\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"not-a-context\",\n      \"name\": \"not-a-context\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"skill\",\n      \"name\": \"skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"provider\": \"real\",\n      \"model\": \"any\"\n    },\n    {\n      \"id\": \"tracked-skill\",\n      \"name\": \"tracked-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {\n        \"x/SKILL.md\": {\n          \"enabled\": true,\n          \"reviewedHash\": \"h\"\n        }\n      },\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-both\",\n      \"name\": \"cowork-chat-context-both\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"auto\",\n      \"reasoningEffort\": \"low\",\n      \"instructionSkills\": {\n        \"x/SKILL.md\": {\n          \"enabled\": false,\n          \"reviewedHash\": null\n        }\n      }\n    },\n    {\n      \"id\": \"other-skill\",\n      \"name\": \"other-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    }\n  ]\n}"
+  },
+  {
+   "name": "repair/missing/other-skill/member",
+   "set": "repair",
+   "settings": null,
+   "search": "?projectId=other-skill",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "default",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ],
+   "projectsAfter": "{\n  \"projects\": [\n    {\n      \"id\": \"clean\",\n      \"name\": \"clean\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-heal\",\n      \"name\": \"cowork-chat-context-heal\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-chosen\",\n      \"name\": \"cowork-chat-context-chosen\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"routingChosen\": true,\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-auto\",\n      \"name\": \"cowork-chat-context-auto\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"auto\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"not-a-context\",\n      \"name\": \"not-a-context\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"skill\",\n      \"name\": \"skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"provider\": \"real\",\n      \"model\": \"any\"\n    },\n    {\n      \"id\": \"tracked-skill\",\n      \"name\": \"tracked-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {\n        \"x/SKILL.md\": {\n          \"enabled\": true,\n          \"reviewedHash\": \"h\"\n        }\n      },\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-both\",\n      \"name\": \"cowork-chat-context-both\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"low\"\n    },\n    {\n      \"id\": \"other-skill\",\n      \"name\": \"other-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"instructionSkills\": {\n        \"x/SKILL.md\": {\n          \"enabled\": false,\n          \"reviewedHash\": null\n        }\n      }\n    }\n  ]\n}"
+  },
+  {
+   "name": "repair/missing/unknown/member",
+   "set": "repair",
+   "settings": null,
+   "search": "?projectId=ghost",
+   "role": "member",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "loadThrew": false,
+   "asked": []
+  },
+  {
+   "name": "repair/low/none/member",
+   "set": "repair",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ]
+  },
+  {
+   "name": "repair/low/clean/member",
+   "set": "repair",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=clean",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "repair/low/cowork-chat-context-heal/member",
+   "set": "repair",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=cowork-chat-context-heal",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ],
+   "projectsAfter": "{\n  \"projects\": [\n    {\n      \"id\": \"clean\",\n      \"name\": \"clean\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-heal\",\n      \"name\": \"cowork-chat-context-heal\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"auto\",\n      \"reasoningEffort\": \"high\",\n      \"instructionSkills\": {}\n    },\n    {\n      \"id\": \"cowork-chat-context-chosen\",\n      \"name\": \"cowork-chat-context-chosen\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"routingChosen\": true,\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-auto\",\n      \"name\": \"cowork-chat-context-auto\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"auto\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"not-a-context\",\n      \"name\": \"not-a-context\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"skill\",\n      \"name\": \"skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"provider\": \"real\",\n      \"model\": \"any\"\n    },\n    {\n      \"id\": \"tracked-skill\",\n      \"name\": \"tracked-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {\n        \"x/SKILL.md\": {\n          \"enabled\": true,\n          \"reviewedHash\": \"h\"\n        }\n      },\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-both\",\n      \"name\": \"cowork-chat-context-both\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"low\"\n    },\n    {\n      \"id\": \"other-skill\",\n      \"name\": \"other-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    }\n  ]\n}"
+  },
+  {
+   "name": "repair/low/cowork-chat-context-chosen/member",
+   "set": "repair",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=cowork-chat-context-chosen",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "repair/low/cowork-chat-context-auto/member",
+   "set": "repair",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=cowork-chat-context-auto",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "repair/low/not-a-context/member",
+   "set": "repair",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=not-a-context",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "repair/low/skill/member",
+   "set": "repair",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=skill",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "high",
+     "mode": "real",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "high"
+    }
+   ],
+   "projectsAfter": "{\n  \"projects\": [\n    {\n      \"id\": \"clean\",\n      \"name\": \"clean\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-heal\",\n      \"name\": \"cowork-chat-context-heal\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-chosen\",\n      \"name\": \"cowork-chat-context-chosen\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"routingChosen\": true,\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-auto\",\n      \"name\": \"cowork-chat-context-auto\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"auto\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"not-a-context\",\n      \"name\": \"not-a-context\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"skill\",\n      \"name\": \"skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"provider\": \"real\",\n      \"model\": \"any\",\n      \"instructionSkills\": {\n        \"x/SKILL.md\": {\n          \"enabled\": false,\n          \"reviewedHash\": null\n        }\n      }\n    },\n    {\n      \"id\": \"tracked-skill\",\n      \"name\": \"tracked-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {\n        \"x/SKILL.md\": {\n          \"enabled\": true,\n          \"reviewedHash\": \"h\"\n        }\n      },\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-both\",\n      \"name\": \"cowork-chat-context-both\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"low\"\n    },\n    {\n      \"id\": \"other-skill\",\n      \"name\": \"other-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    }\n  ]\n}"
+  },
+  {
+   "name": "repair/low/tracked-skill/member",
+   "set": "repair",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=tracked-skill",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "repair/low/cowork-chat-context-both/member",
+   "set": "repair",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=cowork-chat-context-both",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ],
+   "projectsAfter": "{\n  \"projects\": [\n    {\n      \"id\": \"clean\",\n      \"name\": \"clean\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-heal\",\n      \"name\": \"cowork-chat-context-heal\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-chosen\",\n      \"name\": \"cowork-chat-context-chosen\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"routingChosen\": true,\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-auto\",\n      \"name\": \"cowork-chat-context-auto\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"auto\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"not-a-context\",\n      \"name\": \"not-a-context\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"skill\",\n      \"name\": \"skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"provider\": \"real\",\n      \"model\": \"any\"\n    },\n    {\n      \"id\": \"tracked-skill\",\n      \"name\": \"tracked-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {\n        \"x/SKILL.md\": {\n          \"enabled\": true,\n          \"reviewedHash\": \"h\"\n        }\n      },\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-both\",\n      \"name\": \"cowork-chat-context-both\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"auto\",\n      \"reasoningEffort\": \"low\",\n      \"instructionSkills\": {\n        \"x/SKILL.md\": {\n          \"enabled\": false,\n          \"reviewedHash\": null\n        }\n      }\n    },\n    {\n      \"id\": \"other-skill\",\n      \"name\": \"other-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    }\n  ]\n}"
+  },
+  {
+   "name": "repair/low/other-skill/member",
+   "set": "repair",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=other-skill",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "low",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ],
+   "projectsAfter": "{\n  \"projects\": [\n    {\n      \"id\": \"clean\",\n      \"name\": \"clean\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-heal\",\n      \"name\": \"cowork-chat-context-heal\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-chosen\",\n      \"name\": \"cowork-chat-context-chosen\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"routingChosen\": true,\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-auto\",\n      \"name\": \"cowork-chat-context-auto\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"auto\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"not-a-context\",\n      \"name\": \"not-a-context\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"skill\",\n      \"name\": \"skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"provider\": \"real\",\n      \"model\": \"any\"\n    },\n    {\n      \"id\": \"tracked-skill\",\n      \"name\": \"tracked-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {\n        \"x/SKILL.md\": {\n          \"enabled\": true,\n          \"reviewedHash\": \"h\"\n        }\n      },\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-both\",\n      \"name\": \"cowork-chat-context-both\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"low\"\n    },\n    {\n      \"id\": \"other-skill\",\n      \"name\": \"other-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"instructionSkills\": {\n        \"x/SKILL.md\": {\n          \"enabled\": false,\n          \"reviewedHash\": null\n        }\n      }\n    }\n  ]\n}"
+  },
+  {
+   "name": "repair/low/unknown/member",
+   "set": "repair",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=ghost",
+   "role": "member",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "loadThrew": false,
+   "asked": []
+  },
+  {
+   "name": "repair/blob/none/member",
+   "set": "repair",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": [
+       108,
+       111,
+       119
+      ]
+     },
+     "effort": "default",
+     "mode": "off",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "default"
+    }
+   ]
+  },
+  {
+   "name": "repair/blob/clean/member",
+   "set": "repair",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "?projectId=clean",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": [
+       108,
+       111,
+       119
+      ]
+     },
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "repair/blob/cowork-chat-context-heal/member",
+   "set": "repair",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "?projectId=cowork-chat-context-heal",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": [
+       108,
+       111,
+       119
+      ]
+     },
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ],
+   "projectsAfter": "{\n  \"projects\": [\n    {\n      \"id\": \"clean\",\n      \"name\": \"clean\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-heal\",\n      \"name\": \"cowork-chat-context-heal\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"auto\",\n      \"reasoningEffort\": \"high\",\n      \"instructionSkills\": {}\n    },\n    {\n      \"id\": \"cowork-chat-context-chosen\",\n      \"name\": \"cowork-chat-context-chosen\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"routingChosen\": true,\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-auto\",\n      \"name\": \"cowork-chat-context-auto\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"auto\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"not-a-context\",\n      \"name\": \"not-a-context\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"skill\",\n      \"name\": \"skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"provider\": \"real\",\n      \"model\": \"any\"\n    },\n    {\n      \"id\": \"tracked-skill\",\n      \"name\": \"tracked-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {\n        \"x/SKILL.md\": {\n          \"enabled\": true,\n          \"reviewedHash\": \"h\"\n        }\n      },\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-both\",\n      \"name\": \"cowork-chat-context-both\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"low\"\n    },\n    {\n      \"id\": \"other-skill\",\n      \"name\": \"other-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    }\n  ]\n}"
+  },
+  {
+   "name": "repair/blob/cowork-chat-context-chosen/member",
+   "set": "repair",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "?projectId=cowork-chat-context-chosen",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": [
+       108,
+       111,
+       119
+      ]
+     },
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "repair/blob/cowork-chat-context-auto/member",
+   "set": "repair",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "?projectId=cowork-chat-context-auto",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": [
+       108,
+       111,
+       119
+      ]
+     },
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "repair/blob/not-a-context/member",
+   "set": "repair",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "?projectId=not-a-context",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": [
+       108,
+       111,
+       119
+      ]
+     },
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "repair/blob/skill/member",
+   "set": "repair",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "?projectId=skill",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": [
+       108,
+       111,
+       119
+      ]
+     },
+     "effort": "high",
+     "mode": "real",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "real",
+     "model": "any",
+     "effort": "high"
+    }
+   ],
+   "projectsAfter": "{\n  \"projects\": [\n    {\n      \"id\": \"clean\",\n      \"name\": \"clean\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-heal\",\n      \"name\": \"cowork-chat-context-heal\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-chosen\",\n      \"name\": \"cowork-chat-context-chosen\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"routingChosen\": true,\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-auto\",\n      \"name\": \"cowork-chat-context-auto\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"auto\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"not-a-context\",\n      \"name\": \"not-a-context\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"skill\",\n      \"name\": \"skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"provider\": \"real\",\n      \"model\": \"any\",\n      \"instructionSkills\": {\n        \"x/SKILL.md\": {\n          \"enabled\": false,\n          \"reviewedHash\": null\n        }\n      }\n    },\n    {\n      \"id\": \"tracked-skill\",\n      \"name\": \"tracked-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {\n        \"x/SKILL.md\": {\n          \"enabled\": true,\n          \"reviewedHash\": \"h\"\n        }\n      },\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-both\",\n      \"name\": \"cowork-chat-context-both\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"low\"\n    },\n    {\n      \"id\": \"other-skill\",\n      \"name\": \"other-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    }\n  ]\n}"
+  },
+  {
+   "name": "repair/blob/tracked-skill/member",
+   "set": "repair",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "?projectId=tracked-skill",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": [
+       108,
+       111,
+       119
+      ]
+     },
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "repair/blob/cowork-chat-context-both/member",
+   "set": "repair",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "?projectId=cowork-chat-context-both",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": [
+       108,
+       111,
+       119
+      ]
+     },
+     "effort": "low",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "low"
+    }
+   ],
+   "projectsAfter": "{\n  \"projects\": [\n    {\n      \"id\": \"clean\",\n      \"name\": \"clean\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-heal\",\n      \"name\": \"cowork-chat-context-heal\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-chosen\",\n      \"name\": \"cowork-chat-context-chosen\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"routingChosen\": true,\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-auto\",\n      \"name\": \"cowork-chat-context-auto\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"auto\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"not-a-context\",\n      \"name\": \"not-a-context\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"skill\",\n      \"name\": \"skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"provider\": \"real\",\n      \"model\": \"any\"\n    },\n    {\n      \"id\": \"tracked-skill\",\n      \"name\": \"tracked-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {\n        \"x/SKILL.md\": {\n          \"enabled\": true,\n          \"reviewedHash\": \"h\"\n        }\n      },\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-both\",\n      \"name\": \"cowork-chat-context-both\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"auto\",\n      \"reasoningEffort\": \"low\",\n      \"instructionSkills\": {\n        \"x/SKILL.md\": {\n          \"enabled\": false,\n          \"reviewedHash\": null\n        }\n      }\n    },\n    {\n      \"id\": \"other-skill\",\n      \"name\": \"other-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    }\n  ]\n}"
+  },
+  {
+   "name": "repair/blob/other-skill/member",
+   "set": "repair",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "?projectId=other-skill",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": {
+      "type": "Buffer",
+      "data": [
+       108,
+       111,
+       119
+      ]
+     },
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ],
+   "projectsAfter": "{\n  \"projects\": [\n    {\n      \"id\": \"clean\",\n      \"name\": \"clean\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-heal\",\n      \"name\": \"cowork-chat-context-heal\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-chosen\",\n      \"name\": \"cowork-chat-context-chosen\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"routingChosen\": true,\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-auto\",\n      \"name\": \"cowork-chat-context-auto\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"auto\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"not-a-context\",\n      \"name\": \"not-a-context\",\n      \"files\": [],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"skill\",\n      \"name\": \"skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"provider\": \"real\",\n      \"model\": \"any\"\n    },\n    {\n      \"id\": \"tracked-skill\",\n      \"name\": \"tracked-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {\n        \"x/SKILL.md\": {\n          \"enabled\": true,\n          \"reviewedHash\": \"h\"\n        }\n      },\n      \"reasoningEffort\": \"high\"\n    },\n    {\n      \"id\": \"cowork-chat-context-both\",\n      \"name\": \"cowork-chat-context-both\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"routing\": \"manual\",\n      \"reasoningEffort\": \"low\"\n    },\n    {\n      \"id\": \"other-skill\",\n      \"name\": \"other-skill\",\n      \"files\": [\n        {\n          \"name\": \"x/SKILL.md\",\n          \"textRef\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n          \"chars\": 40,\n          \"skillHeader\": true\n        }\n      ],\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"reasoningEffort\": \"high\",\n      \"instructionSkills\": {\n        \"x/SKILL.md\": {\n          \"enabled\": false,\n          \"reviewedHash\": null\n        }\n      }\n    }\n  ]\n}"
+  },
+  {
+   "name": "repair/blob/unknown/member",
+   "set": "repair",
+   "settings": {
+    "kind": "blob",
+    "value": {
+     "hex": "6c6f77"
+    }
+   },
+   "search": "?projectId=ghost",
+   "role": "member",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "loadThrew": false,
+   "asked": []
+  },
+  {
+   "name": "null-project/low/none/member",
+   "set": "null-project",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "",
+   "role": "member",
+   "reply": {
+    "status": 500,
+    "body": {
+     "error": "Internal error"
+    }
+   },
+   "loadThrew": true,
+   "asked": []
+  },
+  {
+   "name": "null-project/low/a/member",
+   "set": "null-project",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=a",
+   "role": "member",
+   "reply": {
+    "status": 500,
+    "body": {
+     "error": "Internal error"
+    }
+   },
+   "loadThrew": true,
+   "asked": []
+  },
+  {
+   "name": "null-project/low/unknown/member",
+   "set": "null-project",
+   "settings": {
+    "kind": "low",
+    "value": "low"
+   },
+   "search": "?projectId=ghost",
+   "role": "member",
+   "reply": {
+    "status": 500,
+    "body": {
+     "error": "Internal error"
+    }
+   },
+   "loadThrew": true,
+   "asked": []
+  },
+  {
+   "name": "missing/high/none/member",
+   "set": "missing",
+   "settings": {
+    "kind": "high",
+    "value": "high"
+   },
+   "search": "",
+   "role": "member",
+   "reply": {
+    "status": 200,
+    "body": {
+     "default": "high",
+     "effort": "high",
+     "mode": "hint",
+     "admin": false
+    }
+   },
+   "loadThrew": false,
+   "asked": [
+    {
+     "provider": "default",
+     "model": "",
+     "effort": "high"
+    }
+   ]
+  },
+  {
+   "name": "missing/high/plain/member",
+   "set": "missing",
+   "settings": {
+    "kind": "high",
+    "value": "high"
+   },
+   "search": "?projectId=plain",
+   "role": "member",
+   "reply": {
+    "status": 404,
+    "body": {
+     "error": "no such project"
+    }
+   },
+   "loadThrew": false,
    "asked": []
   }
  ]

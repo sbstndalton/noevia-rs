@@ -6,6 +6,7 @@
 #![allow(clippy::indexing_slicing, clippy::unwrap_used)]
 #[path = "mcp_support/mod.rs"]
 mod support;
+use js_json::{wtf16, JValue};
 use serde_json::{json, Value};
 use support::*;
 
@@ -35,23 +36,30 @@ async fn rig() -> (
     (dir, f, owner, db)
 }
 
-fn put_setting(db: &server_store::rusqlite::Connection, kind: &str, value: &Value) {
+fn put_setting(db: &server_store::rusqlite::Connection, settings: &JValue) {
     db.execute(
         "DELETE FROM settings WHERE key='reasoning_effort_default'",
         [],
     )
     .unwrap();
-    match kind {
-        "missing" => {}
-        // The schema makes the value NOT NULL, so a stored null cannot exist: the row is simply absent.
-        "null" => {}
-        _ => {
-            db.execute(
-                "INSERT INTO settings(key,value) VALUES('reasoning_effort_default',?1)",
-                [value.as_str().unwrap()],
-            )
-            .unwrap();
-        }
+    let kind = settings.get("kind").as_str().unwrap_or("missing");
+    // The schema makes the value NOT NULL, so a stored null cannot exist: the row is simply absent.
+    if matches!(kind, "missing" | "null") {
+        return;
+    }
+    if kind.starts_with("blob") {
+        let hex = settings.get("value").get("hex").as_str().unwrap();
+        db.execute(
+            &format!("INSERT INTO settings(key,value) VALUES('reasoning_effort_default',X'{hex}')"),
+            [],
+        )
+        .unwrap();
+    } else {
+        db.execute(
+            "INSERT INTO settings(key,value) VALUES('reasoning_effort_default',?1)",
+            [settings.get("value").as_str().unwrap()],
+        )
+        .unwrap();
     }
 }
 
@@ -71,60 +79,64 @@ fn project_of(search: &str) -> Option<String> {
         .map(|(_, v)| v.into_owned())
 }
 
-/// The answer's text in the key order core's route built it.
-fn ordered(body: &Value) -> String {
-    format!(
-        "{{\"default\":{},\"effort\":{},\"mode\":{},\"admin\":{}}}",
-        body["default"], body["effort"], body["mode"], body["admin"]
-    )
+fn array(v: &JValue) -> &[JValue] {
+    match v {
+        JValue::Arr(items) => items,
+        _ => &[],
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_read_answers_like_the_real_core_route_and_asks_node_only_for_the_mode() {
     let (dir, f, owner, db) = rig().await;
-    let fixture: Value =
-        serde_json::from_str(include_str!("fixtures/reasoning-get-node.json")).unwrap();
-    write_projects(dir.path(), A, &fixture["projects"]);
-    write_projects(dir.path(), B, &fixture["projects"]);
-    let cases = fixture["cases"].as_array().unwrap();
-    assert!(cases.len() >= 140);
-    let mut asked = 0;
+    let fixture = wtf16::parse(include_str!("fixtures/reasoning-get-node.json")).unwrap();
+    let cases = array(fixture.get("cases"));
+    assert!(cases.len() >= 200, "{}", cases.len());
+    let (mut asked, mut healed) = (0, 0);
     for case in cases {
-        let name = case["name"].as_str().unwrap();
-        let settings = &case["settings"];
-        put_setting(
-            &db,
-            settings["kind"].as_str().unwrap_or("missing"),
-            &settings["value"],
-        );
-        let expected = &case["reply"];
-        let want_mode = expected["body"]["mode"].clone();
-        let search = case["search"].as_str().unwrap();
-        // What Node's route handed `modeFor` for the project: its provider id (or the default) and model.
+        let name = case.get("name").as_str().unwrap();
+        let set = case.get("set").as_str().unwrap();
+        let initial = fixture.get("sets").get(set).as_str();
+        let (user, cookie) = if case.get("role").as_str() == Some("admin") {
+            (A, ADMIN)
+        } else {
+            (B, MEMBER)
+        };
+        // The account's projects.json as the case's set holds it, byte for byte (the read may rewrite it).
+        let file = dir.path().join("users").join(user).join("projects.json");
+        match initial {
+            Some(text) => std::fs::write(&file, text).unwrap(),
+            None => {
+                let _ = std::fs::remove_file(&file);
+            }
+        }
+        put_setting(&db, case.get("settings"));
+        let expected = case.get("reply");
+        let status = expected.get("status").as_num().unwrap() as u16;
+        let want_body = wtf16::stringify(expected.get("body")).unwrap();
+        let search = case.get("search").as_str().unwrap();
+        // What Node's route handed `modeFor` for the project, from the project as stored.
         let project = project_of(search).and_then(|id| {
-            fixture["projects"]
-                .as_array()
-                .unwrap()
+            let list = wtf16::parse(initial?).ok()?;
+            array(list.get("projects"))
                 .iter()
-                .find(|p| p["id"] == id.as_str())
+                .find(|p| p.get("id").as_str() == Some(id.as_str()))
                 .cloned()
         });
-        let truthy =
-            |v: &Value| !(v.is_null() || v == &json!("") || v == &json!(0) || v == &json!(false));
-        let raw = |key: &str, empty: Value| match &project {
-            Some(p) if truthy(&p[key]) => p[key].clone(),
-            _ => empty,
+        let raw = |key: &str| match &project {
+            Some(p) if p.get(key).truthy() => p.get(key).clone(),
+            _ => JValue::Null,
         };
-        let effort = expected["body"]["effort"].clone();
+        let effort = expected.get("body").get("effort").clone();
         let before = owner.count(FACTS);
-        let mode = want_mode.clone();
+        let mode = expected
+            .get("body")
+            .get("mode")
+            .as_str()
+            .unwrap_or("off")
+            .to_owned();
         owner.set(move |_| reply("200 OK", &json!({ "mode": mode }).to_string()));
-        let cookie = if case["role"] == "admin" {
-            ADMIN
-        } else {
-            MEMBER
-        };
-        let (status, _, body) = raw_text(
+        let (got, _, body) = raw_text(
             f.addr,
             "GET",
             &format!("{REASONING}{search}"),
@@ -133,22 +145,16 @@ async fn the_read_answers_like_the_real_core_route_and_asks_node_only_for_the_mo
             b"",
         )
         .await;
-        assert_eq!(
-            status,
-            expected["status"].as_u64().unwrap() as u16,
-            "{name}"
-        );
-        assert_eq!(j(&body), expected["body"], "{name}");
-        if status == 200 {
-            assert_eq!(body, ordered(&expected["body"]), "{name}: key order");
-        }
+        assert_eq!(got, status, "{name}");
+        // The answer's text, in the order the route built it.
+        assert_eq!(body, want_body, "{name}");
         let calls = owner
             .seen()
             .into_iter()
             .filter(|s| s.path == FACTS)
             .skip(before)
             .collect::<Vec<_>>();
-        if status == 200 && effort != json!("default") {
+        if status == 200 && effort.as_str() != Some("default") {
             assert_eq!(calls.len(), 1, "{name}");
             let call = &calls[0];
             assert_eq!(call.method, "POST", "{name}");
@@ -157,32 +163,41 @@ async fn the_read_answers_like_the_real_core_route_and_asks_node_only_for_the_mo
                 Some(STORE_TOKEN),
                 "{name}"
             );
-            let ask = j(&call.body);
-            let user = if case["role"] == "admin" { A } else { B };
+            // Compared as JS reads them: a lone surrogate in a provider or model name arrives as it is stored.
+            let ask = wtf16::parse(&call.body).unwrap();
+            let want = JValue::obj([
+                ("user", JValue::Str(user.to_owned())),
+                ("provider", raw("provider")),
+                ("model", raw("model")),
+                ("effort", effort.clone()),
+            ]);
+            assert_eq!(ask, want, "{name}");
+            // Node's own record of what it asked `modeFor`, resolved on its side, agrees on the effort.
             assert_eq!(
-                ask,
-                json!({
-                    "user": user,
-                    "provider": raw("provider", Value::Null),
-                    "model": raw("model", Value::Null),
-                    "effort": effort,
-                }),
+                array(case.get("asked")).first().map(|a| a.get("effort")),
+                Some(&effort),
                 "{name}"
             );
-            // Node's own record of what it asked `modeFor`, resolved on its side.
-            assert_eq!(case["asked"][0]["effort"], effort, "{name}");
             asked += 1;
         } else {
             assert!(
                 calls.is_empty(),
                 "{name}: no bridge call without a hint or real mode to look up"
             );
-            if status == 200 {
-                assert_eq!(want_mode, json!("off"), "{name}");
-            }
+        }
+        // What the read saved (the routing repair, the reconcile), exactly as Node's workspace wrote it.
+        let after = std::fs::read_to_string(&file).ok();
+        let want_after = match case.get("projectsAfter").as_str() {
+            Some(text) => Some(text),
+            None => initial,
+        };
+        assert_eq!(after.as_deref(), want_after, "{name}: projects.json after");
+        if case.get("projectsAfter").as_str().is_some() {
+            healed += 1;
         }
     }
-    assert!(asked >= 40, "{asked}");
+    assert!(asked >= 60, "{asked}");
+    assert!(healed >= 8, "{healed}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -252,7 +267,7 @@ async fn a_bridge_that_cannot_answer_is_a_503_never_a_guessed_mode() {
     owner.set(|_| reply("500 Oops", ""));
     let (code, answer) = get(f.addr, REASONING, MEMBER).await;
     assert_eq!((code, answer["mode"].clone()), (200, json!("off")));
-    // A stored value this port will not echo (a blob, the one other class a TEXT column keeps) is refused, not guessed.
+    // A blob row is echoed as Node echoes a Buffer (fixture cases blob*), not refused.
     db.execute(
         "DELETE FROM settings WHERE key='reasoning_effort_default'",
         [],
@@ -265,8 +280,8 @@ async fn a_bridge_that_cannot_answer_is_a_503_never_a_guessed_mode() {
     .unwrap();
     let (code, answer) = get(f.addr, REASONING, MEMBER).await;
     assert_eq!(
-        (code, answer),
-        (503, json!({"error": "Reasoning settings unavailable"}))
+        (code, answer["default"].clone()),
+        (200, json!({"type": "Buffer", "data": [108, 111, 119]}))
     );
 }
 
@@ -476,4 +491,52 @@ async fn concurrent_routing_default_puts_leave_one_whole_document() {
         .filter(|n| n.ends_with(".tmp"))
         .collect();
     assert!(strays.is_empty(), "{strays:?}");
+}
+
+/// The default and the projects it switches are one section (review P2-1): applies that race end with the saved
+/// default and every project agreeing, round after round.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_applies_leave_the_default_and_the_projects_agreeing() {
+    let (dir, f, _owner, _db) = rig().await;
+    let mk = |id: &str, routing: &str| json!({"id": id, "routing": routing, "updatedAt": 1, "modes": ["chat"]});
+    for round in 0..6 {
+        write_projects(
+            dir.path(),
+            B,
+            &json!([
+                mk("a", "auto"),
+                mk("b", "manual"),
+                mk("c", "auto"),
+                mk("cowork-diary-extras", "manual")
+            ]),
+        );
+        let tasks = (0..10).map(|i| {
+            let addr = f.addr;
+            tokio::spawn(async move {
+                let body = if i % 2 == 0 {
+                    r#"{"routing":"manual","applyToExisting":true}"#
+                } else {
+                    r#"{"routing":"auto","applyToExisting":true}"#
+                };
+                write(addr, "PUT", ROUTING, MEMBER, body).await.0
+            })
+        });
+        for t in tasks {
+            assert_eq!(t.await.unwrap(), 200, "round {round}");
+        }
+        let default: Value = serde_json::from_str(&prefs(dir.path(), B).unwrap()).unwrap();
+        for p in projects_of(dir.path(), B).as_array().unwrap() {
+            if p["id"] == "cowork-diary-extras" {
+                assert_eq!(
+                    p["routing"], "manual",
+                    "the internal project is not the default's"
+                );
+            } else {
+                assert_eq!(
+                    p["routing"], default["defaultRouting"],
+                    "round {round}: {p}"
+                );
+            }
+        }
+    }
 }

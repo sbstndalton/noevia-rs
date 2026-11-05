@@ -278,6 +278,69 @@
    }
   },
   {
+   "name": "file-string-astral",
+   "initial": {
+    "preferences": "\"café 😀\"",
+    "projects": "{\n  \"projects\": []\n}"
+   },
+   "body": {
+    "text": "{\"routing\":\"auto\"}"
+   },
+   "expected": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "auto",
+      "updated": 0
+     }
+    },
+    "preferences": "{\n  \"0\": \"c\",\n  \"1\": \"a\",\n  \"2\": \"f\",\n  \"3\": \"é\",\n  \"4\": \" \",\n  \"5\": \"\\ud83d\",\n  \"6\": \"\\ude00\",\n  \"defaultRouting\": \"auto\"\n}",
+    "projects": "{\n  \"projects\": []\n}"
+   }
+  },
+  {
+   "name": "file-string-lone-surrogate",
+   "initial": {
+    "preferences": "\"x\\ud800y\"",
+    "projects": "{\n  \"projects\": []\n}"
+   },
+   "body": {
+    "text": "{\"routing\":\"auto\"}"
+   },
+   "expected": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "auto",
+      "updated": 0
+     }
+    },
+    "preferences": "{\n  \"0\": \"x\",\n  \"1\": \"\\ud800\",\n  \"2\": \"y\",\n  \"defaultRouting\": \"auto\"\n}",
+    "projects": "{\n  \"projects\": []\n}"
+   }
+  },
+  {
+   "name": "file-string-long",
+   "initial": {
+    "preferences": "\"0123456789abcdef\"",
+    "projects": "{\n  \"projects\": []\n}"
+   },
+   "body": {
+    "text": "{\"routing\":\"manual\"}"
+   },
+   "expected": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "manual",
+      "updated": 0
+     }
+    },
+    "preferences": "{\n  \"0\": \"0\",\n  \"1\": \"1\",\n  \"2\": \"2\",\n  \"3\": \"3\",\n  \"4\": \"4\",\n  \"5\": \"5\",\n  \"6\": \"6\",\n  \"7\": \"7\",\n  \"8\": \"8\",\n  \"9\": \"9\",\n  \"10\": \"a\",\n  \"11\": \"b\",\n  \"12\": \"c\",\n  \"13\": \"d\",\n  \"14\": \"e\",\n  \"15\": \"f\",\n  \"defaultRouting\": \"manual\"\n}",
+    "projects": "{\n  \"projects\": []\n}"
+   }
+  },
+  {
    "name": "file-invalid-json",
    "initial": {
     "preferences": "{ not json",
@@ -454,6 +517,113 @@
      }
     },
     "preferences": "{\n  \"defaultRouting\": \"manual\"\n}",
+    "projects": null
+   }
+  },
+  {
+   "name": "apply-projects-directory",
+   "initial": {
+    "preferences": null,
+    "projects": null,
+    "projectsDirectory": true
+   },
+   "body": {
+    "text": "{\"routing\":\"manual\",\"applyToExisting\":true}"
+   },
+   "expected": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "manual",
+      "updated": 0
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"manual\"\n}",
+    "projects": null
+   }
+  },
+  {
+   "name": "apply-projects-not-json",
+   "initial": {
+    "preferences": null,
+    "projects": "{ not json"
+   },
+   "body": {
+    "text": "{\"routing\":\"manual\",\"applyToExisting\":true}"
+   },
+   "expected": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "manual",
+      "updated": 0
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"manual\"\n}",
+    "projects": "{ not json"
+   }
+  },
+  {
+   "name": "apply-projects-not-a-list",
+   "initial": {
+    "preferences": null,
+    "projects": "{\"projects\":5}"
+   },
+   "body": {
+    "text": "{\"routing\":\"manual\",\"applyToExisting\":true}"
+   },
+   "expected": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "manual",
+      "updated": 0
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"manual\"\n}",
+    "projects": "{\"projects\":5}"
+   }
+  },
+  {
+   "name": "apply-projects-empty-file",
+   "initial": {
+    "preferences": null,
+    "projects": ""
+   },
+   "body": {
+    "text": "{\"routing\":\"auto\",\"applyToExisting\":true}"
+   },
+   "expected": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "auto",
+      "updated": 0
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"auto\"\n}",
+    "projects": ""
+   }
+  },
+  {
+   "name": "default-projects-directory",
+   "initial": {
+    "preferences": null,
+    "projects": null,
+    "projectsDirectory": true
+   },
+   "body": {
+    "text": "{\"routing\":\"auto\"}"
+   },
+   "expected": {
+    "reply": {
+     "status": 200,
+     "body": {
+      "routing": "auto",
+      "updated": 0
+     }
+    },
+    "preferences": "{\n  \"defaultRouting\": \"auto\"\n}",
     "projects": null
    }
   },

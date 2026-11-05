@@ -63,27 +63,69 @@ pub fn resolve_effort<'a>(project: Option<&'a str>, global_default: &'a str) -> 
     }
 }
 
-/// The route's `globalDefault()`: `settings.reasoning_effort_default || 'default'`. A row of another storage class than
-/// text (a number or a blob in a hand-edited database), which Node would have echoed as it came, is refused instead.
-pub fn stored_default(reader: &Reader<'_>) -> Result<Option<String>, StoreError> {
-    let row = reader.row(
-        "SELECT typeof(value), CASE WHEN typeof(value)='text' THEN value END FROM settings WHERE key=?1",
-        [KEY],
-        |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?)),
-    )?;
-    match row {
-        None => Ok(Some("default".into())),
-        Some((class, _)) if class == "null" => Ok(Some("default".into())),
-        Some((_, Some(text))) if text.is_empty() => Ok(Some("default".into())),
-        Some((_, Some(text))) => Ok(Some(text)),
-        Some(_) => Ok(None),
+/// The route's `globalDefault()` as the settings table holds it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Stored {
+    /// A text value (`''`, a missing row and a NULL are `"default"`, as `value || 'default'`).
+    Text(String),
+    /// A blob, which better-sqlite3 hands over as a Buffer: truthy, echoed as its JSON, never a valid effort.
+    Blob(Vec<u8>),
+}
+
+impl Stored {
+    /// What `resolveEffort` is given: a Buffer is none of the efforts.
+    pub fn for_effort(&self) -> &str {
+        match self {
+            Stored::Text(t) => t,
+            Stored::Blob(_) => "",
+        }
+    }
+
+    /// `JSON.stringify` of the value, as the `default` member of the answer.
+    pub fn json(&self) -> String {
+        match self {
+            Stored::Text(t) => {
+                let mut out = String::new();
+                quote(t, &mut out);
+                out
+            }
+            Stored::Blob(bytes) => {
+                let data: Vec<String> = bytes.iter().map(u8::to_string).collect();
+                format!("{{\"type\":\"Buffer\",\"data\":[{}]}}", data.join(","))
+            }
+        }
     }
 }
 
-/// The answer: `{ default, effort, mode, admin }`, in the order the route built it.
-pub fn answer(default: &str, effort: &str, mode: &str, admin: bool) -> String {
+/// The route's `globalDefault()`: `settings.reasoning_effort_default || 'default'`. A TEXT column keeps text or, for a
+/// blob, a blob (a number is stored as its text), so no other class is read; one that appears is a 503, not a guess.
+pub fn stored_default(reader: &Reader<'_>) -> Result<Option<Stored>, StoreError> {
+    use server_store::rusqlite::types::ValueRef;
+    let row = reader.row("SELECT value FROM settings WHERE key=?1", [KEY], |r| {
+        Ok(match r.get_ref(0)? {
+            ValueRef::Null => Some(Stored::Text("default".into())),
+            ValueRef::Text(t) => std::str::from_utf8(t).ok().map(|t| {
+                Stored::Text(if t.is_empty() {
+                    "default".into()
+                } else {
+                    t.into()
+                })
+            }),
+            ValueRef::Blob(b) => Some(Stored::Blob(b.to_vec())),
+            _ => None,
+        })
+    })?;
+    Ok(match row {
+        None => Some(Stored::Text("default".into())),
+        Some(v) => v,
+    })
+}
+
+/// The answer: `{ default, effort, mode, admin }`, in the order the route built it; `default_json` is the JSON of
+/// the stored value ([`Stored::json`]).
+pub fn answer(default_json: &str, effort: &str, mode: &str, admin: bool) -> String {
     let mut out = String::from("{\"default\":");
-    quote(default, &mut out);
+    out.push_str(default_json);
     out.push_str(",\"effort\":");
     quote(effort, &mut out);
     out.push_str(",\"mode\":");
@@ -117,13 +159,25 @@ mod read_tests {
     }
 
     #[test]
+    fn a_blob_is_echoed_as_node_echoes_a_buffer_and_is_no_effort() {
+        let blob = Stored::Blob(vec![108, 111, 119]);
+        assert_eq!(blob.json(), r#"{"type":"Buffer","data":[108,111,119]}"#);
+        assert_eq!(
+            Stored::Blob(vec![]).json(),
+            r#"{"type":"Buffer","data":[]}"#
+        );
+        assert_eq!(resolve_effort(None, blob.for_effort()), "default");
+        assert_eq!(resolve_effort(Some("high"), blob.for_effort()), "high");
+    }
+
+    #[test]
     fn the_answer_keeps_the_route_key_order_and_json_escapes() {
         assert_eq!(
-            answer("low", "high", "hint", true),
+            answer(&Stored::Text("low".into()).json(), "high", "hint", true),
             r#"{"default":"low","effort":"high","mode":"hint","admin":true}"#
         );
         assert_eq!(
-            answer("a\"\n\u{2028}", "default", "off", false),
+            answer(&Stored::Text("a\"\n\u{2028}".into()).json(), "default", "off", false),
             "{\"default\":\"a\\\"\\n\u{2028}\",\"effort\":\"default\",\"mode\":\"off\",\"admin\":false}"
         );
     }

@@ -46,14 +46,26 @@ fn unavailable() -> Response<Body> {
     )
 }
 
-/// A project field as the bridge takes it: `project?.provider || DEFAULT_PROVIDER_ID` and `project?.model || ''` are
-/// applied by Node, so a falsy value is sent as absent and anything else as it is stored. `None`: a value JSON
-/// text cannot carry (a lone surrogate), which no provider id or model name can be.
-fn bridge_value(v: &js_json::JValue) -> Option<serde_json::Value> {
+/// A project field as the bridge's JSON text carries it: `project?.provider || DEFAULT_PROVIDER_ID` and
+/// `project?.model || ''` are applied by Node, so a falsy value is sent as null and anything else as stored,
+/// written as `JSON.stringify` writes it (a lone surrogate stays an escape that Node's `JSON.parse` reads back).
+fn bridge_value(v: &js_json::JValue) -> Option<String> {
     if !v.truthy() {
-        return Some(serde_json::Value::Null);
+        return Some("null".into());
     }
-    serde_json::from_str(&js_json::wtf16::stringify(v)?).ok()
+    js_json::wtf16::stringify(v)
+}
+
+fn json_string(s: &str) -> String {
+    serde_json::to_string(s).unwrap_or_else(|_| "\"\"".into())
+}
+
+/// The failure a lookup answers: Node's status and body, as made.
+fn failure(reply: server_projects::Reply) -> (u16, String) {
+    match reply.body {
+        server_projects::Body::Json(text) => (reply.status, text),
+        server_projects::Body::Bytes { .. } => (500, "{\"error\":\"Internal error\"}".to_string()),
+    }
 }
 
 async fn get(
@@ -77,39 +89,38 @@ async fn get(
     let worker = Arc::clone(app);
     let read = tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        let store = worker.identity.store_blocking().ok()?;
-        let default = store
-            .read(server_reasoning_settings::stored_default)
-            .ok()
-            .flatten()?;
         let ctx = server_projects::Ctx {
             data_dir: &data_dir,
             user_id: &user,
             switch: worker.config.rust_projects,
             now_ms: now,
         };
-        // Err(reply): Node's 404 for an unknown project, or its 500 for a workspace that will not load.
-        let project = match wanted {
-            None => Ok(None),
-            Some(project_id) => match server_projects::reasoning_facts::project(ctx, &project_id) {
-                Ok(Some(facts)) => Ok(Some(facts)),
-                Ok(None) => Err((404u16, "{\"error\":\"no such project\"}".to_string())),
-                Err(reply) => match reply.body {
-                    server_projects::Body::Json(text) => Err((reply.status, text)),
-                    server_projects::Body::Bytes { .. } => {
-                        Err((500, "{\"error\":\"Internal error\"}".to_string()))
-                    }
-                },
-            },
+        // The workspace load and getProject come first (their 500s, their saves, the 404); the default is read after.
+        let project = match server_projects::reasoning_facts::project(ctx, wanted.as_deref()) {
+            Ok(server_projects::reasoning_facts::Lookup::None) => Ok(None),
+            Ok(server_projects::reasoning_facts::Lookup::Found(facts)) => Ok(Some(facts)),
+            Ok(server_projects::reasoning_facts::Lookup::Missing) => {
+                Err((404u16, "{\"error\":\"no such project\"}".to_string()))
+            }
+            Err(reply) => Err(failure(reply)),
         };
-        Some((default, project, user))
+        let project = match project {
+            Ok(p) => p,
+            Err(refusal) => return Some(Err(refusal)),
+        };
+        let store = worker.identity.store_blocking().ok()?;
+        let default = store
+            .read(server_reasoning_settings::stored_default)
+            .ok()
+            .flatten()?;
+        Some(Ok((default, project, user)))
     })
     .await;
-    let Ok(Some((default, project, user))) = read else {
+    let Ok(Some(read)) = read else {
         return unavailable();
     };
-    let project = match project {
-        Ok(p) => p,
+    let (default, project, user) = match read {
+        Ok(v) => v,
         Err((status, text)) => {
             return reply::json_text(
                 StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
@@ -120,23 +131,27 @@ async fn get(
     };
     let effort = server_reasoning_settings::resolve_effort(
         project.as_ref().and_then(|p| p.effort.as_str()),
-        &default,
+        default.for_effort(),
     );
     let mode = if effort == "default" {
         "off".to_string()
     } else {
         let (provider, model) = match project.as_ref() {
             Some(p) => (bridge_value(&p.provider), bridge_value(&p.model)),
-            None => (Some(serde_json::Value::Null), Some(serde_json::Value::Null)),
+            None => (Some("null".to_string()), Some("null".to_string())),
         };
         let (Some(provider), Some(model)) = (provider, model) else {
             return unavailable();
         };
-        let ask = serde_json::json!({"user": user, "provider": provider, "model": model, "effort": effort});
+        let ask = format!(
+            "{{\"user\":{},\"provider\":{provider},\"model\":{model},\"effort\":{}}}",
+            json_string(&user),
+            json_string(effort)
+        );
         let Some((200, bytes)) = app
             .config
             .research
-            .node_call(FACTS, &ask, FACTS_DEADLINE)
+            .node_call_text(FACTS, ask, FACTS_DEADLINE)
             .await
         else {
             return unavailable();
@@ -151,7 +166,7 @@ async fn get(
     };
     reply::json_text(
         StatusCode::OK,
-        server_reasoning_settings::answer(&default, effort, &mode, admin),
+        server_reasoning_settings::answer(&default.json(), effort, &mode, admin),
         true,
     )
 }

@@ -18,9 +18,11 @@
 //! `internalProject`) alone and out of `updated`. Node switched, stamped and counted them, changing them from a
 //! user-facing default. The differential fixture records the corrected expectation (its oracle names both).
 //!
-//! Differences, all stricter or documented: a `preferences.json` holding a non-empty string (which Node would spread
-//! into character keys) is a 500; `updatedAt` is the one instant of the request, where Node read the clock per
-//! project; and the Node cache of `preferences` is gone (core workspace.cjs re-reads the file).
+//! One serialization spans the preferences save and the projects apply (the preferences lock is held until the projects
+//! are written; no path takes the two in the other order), so concurrent applies end with the default and the projects
+//! agreeing. `updatedAt` is read from the clock as each project is changed, as Node did. A `projects.json` that cannot
+//! be read as a list (a directory, not JSON) is the empty list Node's workspace load makes of it: 200, nothing updated,
+//! nothing written. The Node cache of `preferences` is gone (core workspace.cjs re-reads the file).
 
 use crate::chats;
 use crate::free_chats;
@@ -47,6 +49,31 @@ pub const FILE: &str = "preferences.json";
 /// core readBody's default cap.
 pub const BODY_LIMIT: usize = 1024 * 1024;
 
+/// `{ ...'ab' }`: each UTF-16 code unit of the string under its index.
+fn spread_string(s: &str) -> Vec<(String, JValue)> {
+    let mut units: Vec<u16> = Vec::new();
+    for c in s.chars() {
+        match wtf16::lone_unit(c) {
+            Some(unit) => units.push(unit),
+            None => {
+                let mut buf = [0u16; 2];
+                units.extend_from_slice(c.encode_utf16(&mut buf));
+            }
+        }
+    }
+    units
+        .into_iter()
+        .enumerate()
+        .map(|(i, unit)| {
+            let held = wtf16::lone_char(unit).or_else(|| char::from_u32(u32::from(unit)));
+            (
+                i.to_string(),
+                JValue::Str(held.map(String::from).unwrap_or_default()),
+            )
+        })
+        .collect()
+}
+
 /// `readJson(file, {}) || {}` then `{ ...it, defaultRouting }`: the object written.
 fn with_default(stored: Option<JValue>, routing: &str) -> Option<JValue> {
     let mut items: Vec<(String, JValue)> = match stored {
@@ -57,8 +84,8 @@ fn with_default(stored: Option<JValue>, routing: &str) -> Option<JValue> {
             .enumerate()
             .map(|(i, v)| (i.to_string(), v))
             .collect(),
-        // Spread of a non-empty string is one key per UTF-16 unit: refused rather than imitated.
-        Some(JValue::Str(s)) if !s.is_empty() => return None,
+        // Spread of a string: one key per UTF-16 unit (a pair is two keys, each a lone surrogate).
+        Some(JValue::Str(s)) => spread_string(&s),
         // Missing, unreadable, null, false, 0, "", or any number or boolean: nothing to keep.
         _ => Vec::new(),
     };
@@ -101,9 +128,14 @@ fn save(dir: &Path, text: &str) -> Result<(), store::StoreError> {
     result.map_err(store::StoreError::from)
 }
 
-#[allow(clippy::cast_precision_loss)]
 /// PUT /api/routing-default. `failed`: the body could not be read (over the cap or the stream failed).
 pub fn put(ctx: Ctx<'_>, body: &[u8], failed: bool) -> Reply {
+    put_with(ctx, body, failed, &crate::wall_ms)
+}
+
+/// [`put`] with the clock supplied: `Date.now()` is read as each project is changed.
+#[allow(clippy::cast_precision_loss)]
+fn put_with(ctx: Ctx<'_>, body: &[u8], failed: bool, clock: &dyn Fn() -> i64) -> Reply {
     let dir = match store::user_dir(ctx.data_dir, ctx.user_id) {
         Ok(d) => d,
         Err(e) => return chats::store_failure(&e),
@@ -122,7 +154,8 @@ pub fn put(ctx: Ctx<'_>, body: &[u8], failed: bool) -> Reply {
         Some(r @ ("auto" | "manual")) => r.to_string(),
         _ => return Reply::error(400, "routing must be 'auto' or 'manual'"),
     };
-    let held = match crate::lock::acquire(&dir.join(FILE)) {
+    // Held to the end: the default and the projects it switches are one section.
+    let _held = match crate::lock::acquire(&dir.join(FILE)) {
         Ok(h) => h,
         Err(_) => return Reply::error(503, "Routing settings are busy"),
     };
@@ -137,22 +170,29 @@ pub fn put(ctx: Ctx<'_>, body: &[u8], failed: bool) -> Reply {
     if save(&dir, &next).is_err() {
         return Reply::internal();
     }
-    drop(held);
     let mut updated = 0usize;
     if parsed.apply {
-        let now = JValue::Num(ctx.now_ms as f64);
-        let changed = store::update(&dir, ctx.switch, |projects| {
-            for project in projects.iter_mut() {
-                if !internal(project) && project.get("routing").as_str() != Some(routing.as_str()) {
-                    store::set(project, "routing", JValue::Str(routing.clone()));
-                    store::set(project, "updatedAt", now.clone());
-                    updated += 1;
+        // The list as Node's workspace holds it: a file that cannot be read as one is the empty list.
+        let view = match free_chats::workspace_projects(&dir) {
+            Ok(v) => v,
+            Err(reply) => return reply,
+        };
+        let differs =
+            |p: &JValue| !internal(p) && p.get("routing").as_str() != Some(routing.as_str());
+        if view.iter().any(differs) {
+            let changed = store::update(&dir, ctx.switch, |projects| {
+                for project in projects.iter_mut() {
+                    if differs(project) {
+                        store::set(project, "routing", JValue::Str(routing.clone()));
+                        store::set(project, "updatedAt", JValue::Num(clock() as f64));
+                        updated += 1;
+                    }
                 }
+                ((), updated > 0)
+            });
+            if let Err(e) = changed {
+                return chats::store_failure(&e);
             }
-            ((), updated > 0)
-        });
-        if let Err(e) = changed {
-            return chats::store_failure(&e);
         }
     }
     let mut text = String::from("{\"routing\":");
@@ -182,6 +222,8 @@ mod tests {
         }
         if let Some(text) = case["initial"]["projects"].as_str() {
             std::fs::write(dir.join("projects.json"), text).unwrap();
+        } else if case["initial"]["projectsDirectory"] == true {
+            std::fs::create_dir(dir.join("projects.json")).unwrap();
         }
         (root, dir)
     }
@@ -206,10 +248,6 @@ mod tests {
         }
     }
 
-    /// Cases where this port is deliberately stricter than the real Core route (see the module header): the
-    /// reply is Node's 500 and nothing is written.
-    const REFUSED: [&str; 1] = ["file-string"];
-
     #[test]
     fn put_matches_real_core_route_and_workspace_store() {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
@@ -231,22 +269,9 @@ mod tests {
             };
             let bytes = request(case);
             // The route reads at most 1 MiB; a larger body is a failed read.
-            let reply = put(ctx, &bytes, bytes.len() > BODY_LIMIT);
+            let reply = put_with(ctx, &bytes, bytes.len() > BODY_LIMIT, &|| now);
             let prefs = std::fs::read_to_string(dir.join(FILE)).ok();
             let projects = std::fs::read_to_string(dir.join("projects.json")).ok();
-            if REFUSED.contains(&name) {
-                assert_eq!(
-                    (reply.status, body_text(&reply)),
-                    (500, "{\"error\":\"Internal error\"}".into()),
-                    "{name}"
-                );
-                assert_eq!(
-                    prefs.as_deref(),
-                    case["initial"]["preferences"].as_str(),
-                    "{name}"
-                );
-                continue;
-            }
             let expected = &case["expected"];
             assert_eq!(
                 reply.status,
@@ -313,7 +338,12 @@ mod tests {
             switch: server_store::RustProjects::owned(),
             now_ms: 99,
         };
-        let reply = put(ctx, br#"{"routing":"auto","applyToExisting":true}"#, false);
+        let reply = put_with(
+            ctx,
+            br#"{"routing":"auto","applyToExisting":true}"#,
+            false,
+            &|| 99,
+        );
         assert_eq!(body_text(&reply), r#"{"routing":"auto","updated":2}"#);
         let after: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(dir.join("projects.json")).unwrap())
@@ -380,29 +410,180 @@ mod tests {
         assert!(!root.path().join("users").join(user).exists());
     }
 
-    #[test]
-    fn a_projects_write_that_fails_leaves_the_saved_default_and_answers_the_store_s_failure() {
+    const USER: &str = "11111111-2222-4333-8444-555555555555";
+
+    fn account(projects: &[(&str, &str)]) -> (tempfile::TempDir, std::path::PathBuf) {
         let root = tempfile::tempdir().unwrap();
-        let user = "11111111-2222-4333-8444-555555555555";
-        let dir = root.path().join("users").join(user);
+        let dir = root.path().join("users").join(USER);
         std::fs::create_dir_all(&dir).unwrap();
-        // A projects.json that cannot be changed: a directory in its place makes the read-modify-write fail.
-        std::fs::create_dir(dir.join("projects.json")).unwrap();
-        let ctx = Ctx {
+        let list: Vec<_> = projects
+            .iter()
+            .map(|(id, routing)| serde_json::json!({"id": id, "routing": routing, "updatedAt": 1, "modes": ["chat"]}))
+            .collect();
+        std::fs::write(
+            dir.join("projects.json"),
+            serde_json::to_string_pretty(&serde_json::json!({ "projects": list })).unwrap(),
+        )
+        .unwrap();
+        (root, dir)
+    }
+
+    fn ctx_of(root: &tempfile::TempDir) -> Ctx<'_> {
+        Ctx {
             data_dir: root.path(),
-            user_id: user,
+            user_id: USER,
             switch: server_store::RustProjects::owned(),
             now_ms: 1,
-        };
+        }
+    }
+
+    /// Node's workspace load makes the empty list of a projects.json it cannot read as one: 200, nothing updated, no
+    /// projects write, and the default saved.
+    #[test]
+    fn an_unreadable_projects_file_is_an_empty_list_not_a_failure() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("users").join(USER);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir(dir.join("projects.json")).unwrap();
         let reply = put(
-            ctx,
+            ctx_of(&root),
             br#"{"routing":"manual","applyToExisting":true}"#,
             false,
         );
-        assert_ne!(reply.status, 200);
+        assert_eq!(
+            (reply.status, body_text(&reply)),
+            (200, r#"{"routing":"manual","updated":0}"#.into())
+        );
         assert_eq!(
             std::fs::read_to_string(dir.join(FILE)).unwrap(),
             "{\n  \"defaultRouting\": \"manual\"\n}"
         );
+        assert!(
+            dir.join("projects.json").is_dir(),
+            "nothing was written over it"
+        );
+    }
+
+    /// Each project is stamped when it is changed (`Date.now()` in the loop), not with the request's start.
+    #[test]
+    fn each_project_is_stamped_when_it_is_changed() {
+        let (root, dir) = account(&[
+            ("a", "manual"),
+            ("b", "auto"),
+            ("c", "manual"),
+            ("d", "manual"),
+        ]);
+        let tick = std::cell::Cell::new(100);
+        let reply = put_with(
+            ctx_of(&root),
+            br#"{"routing":"auto","applyToExisting":true}"#,
+            false,
+            &|| {
+                tick.set(tick.get() + 1);
+                tick.get()
+            },
+        );
+        assert_eq!(body_text(&reply), r#"{"routing":"auto","updated":3}"#);
+        let after: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("projects.json")).unwrap())
+                .unwrap();
+        let stamps: Vec<_> = after["projects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p["updatedAt"].clone())
+            .collect();
+        assert_eq!(
+            serde_json::Value::Array(stamps),
+            serde_json::json!([101, 1, 102, 103])
+        );
+    }
+
+    /// The default and the projects it switches are one section: while one apply waits for the projects lock, no
+    /// other can change the default under it.
+    #[test]
+    fn the_default_and_the_projects_are_one_section() {
+        let (root, dir) = account(&[("a", "manual"), ("b", "manual")]);
+        let gate = crate::lock::acquire(&dir.join("projects.json")).unwrap();
+        let first = std::thread::scope(|scope| {
+            let a = scope.spawn(|| {
+                put(
+                    ctx_of(&root),
+                    br#"{"routing":"auto","applyToExisting":true}"#,
+                    false,
+                )
+            });
+            let saved = |want: &str| {
+                std::fs::read_to_string(dir.join(FILE)).is_ok_and(|t| t.contains(want))
+            };
+            for _ in 0..500 {
+                if saved("auto") {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            assert!(
+                saved("auto"),
+                "the first apply saved its default and waits for the projects"
+            );
+            let b = scope.spawn(|| {
+                put(
+                    ctx_of(&root),
+                    br#"{"routing":"manual","applyToExisting":true}"#,
+                    false,
+                )
+            });
+            std::thread::sleep(std::time::Duration::from_millis(600));
+            assert!(saved("auto") && !saved("manual"), "the second apply must not change the default while the first still holds the section");
+            drop(gate);
+            (a.join().unwrap(), b.join().unwrap())
+        });
+        assert_eq!((first.0.status, first.1.status), (200, 200));
+        let default = std::fs::read_to_string(dir.join(FILE)).unwrap();
+        let after: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("projects.json")).unwrap())
+                .unwrap();
+        let routing = if default.contains("manual") {
+            "manual"
+        } else {
+            "auto"
+        };
+        for p in after["projects"].as_array().unwrap() {
+            assert_eq!(
+                p["routing"], routing,
+                "the projects follow the default that ended up saved"
+            );
+        }
+    }
+
+    /// Many applies at once: one whole document, and the projects agree with the default that is saved.
+    #[test]
+    fn concurrent_applies_end_consistent() {
+        let (root, dir) = account(&[("a", "auto"), ("b", "manual"), ("c", "auto")]);
+        let statuses: Vec<u16> = std::thread::scope(|scope| {
+            let all: Vec<_> = (0..12)
+                .map(|i| {
+                    let root = &root;
+                    scope.spawn(move || {
+                        let body: &[u8] = if i % 2 == 0 {
+                            br#"{"routing":"manual","applyToExisting":true}"#
+                        } else {
+                            br#"{"routing":"auto","applyToExisting":true}"#
+                        };
+                        put(ctx_of(root), body, false).status
+                    })
+                })
+                .collect();
+            all.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        assert!(statuses.iter().all(|s| *s == 200), "{statuses:?}");
+        let prefs: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join(FILE)).unwrap()).unwrap();
+        let after: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("projects.json")).unwrap())
+                .unwrap();
+        for p in after["projects"].as_array().unwrap() {
+            assert_eq!(p["routing"], prefs["defaultRouting"]);
+        }
     }
 }
