@@ -11,6 +11,7 @@ pub mod meta;
 pub mod output;
 pub mod pin;
 pub mod policy;
+pub mod session;
 pub mod start;
 pub mod workspace;
 

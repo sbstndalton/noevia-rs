@@ -1,0 +1,1022 @@
+{
+  "cases": [
+    {
+      "input": {
+        "call": {
+          "toolCallId": "r",
+          "kind": "read",
+          "rawInput": {
+            "path": "source.txt"
+          },
+          "locations": [
+            {
+              "path": "source.txt"
+            }
+          ]
+        },
+        "capabilities": [
+          "read_repository"
+        ],
+        "answer": "deny",
+        "repeat": 1
+      },
+      "output": {
+        "events": [],
+        "answers": [
+          {
+            "outcome": "selected",
+            "optionId": "allow"
+          }
+        ],
+        "cards": []
+      }
+    },
+    {
+      "input": {
+        "call": {
+          "toolCallId": "e",
+          "kind": "edit",
+          "title": "edit",
+          "rawInput": {
+            "path": "source.txt",
+            "content": "synthetic"
+          },
+          "locations": [
+            {
+              "path": "source.txt"
+            }
+          ]
+        },
+        "capabilities": [
+          "read_repository"
+        ],
+        "answer": "approve",
+        "repeat": 1
+      },
+      "output": {
+        "events": [
+          {
+            "type": "approval.decided",
+            "data": {
+              "decision": "denied",
+              "action": "edit_file",
+              "reason": "This task was not granted edit file.",
+              "automatic": true
+            }
+          }
+        ],
+        "answers": [
+          {
+            "outcome": "selected",
+            "optionId": "reject",
+            "_meta": {
+              "noevia": {
+                "reason": "This task was not granted edit file."
+              }
+            }
+          }
+        ],
+        "cards": []
+      }
+    },
+    {
+      "input": {
+        "call": {
+          "toolCallId": "e",
+          "kind": "edit",
+          "title": "edit",
+          "rawInput": {
+            "path": "source.txt",
+            "content": "synthetic"
+          },
+          "locations": [
+            {
+              "path": "source.txt"
+            }
+          ]
+        },
+        "capabilities": [
+          "edit_file"
+        ],
+        "answer": "approve",
+        "repeat": 2
+      },
+      "output": {
+        "events": [
+          {
+            "type": "approval.requested",
+            "data": {
+              "taskId": "11111111-1111-4111-8111-111111111111",
+              "action": "edit_file",
+              "title": "edit",
+              "kind": "edit",
+              "command": "",
+              "paths": [
+                "source.txt"
+              ],
+              "reason": "",
+              "arguments": {
+                "path": "source.txt",
+                "content": "synthetic"
+              },
+              "diff": null
+            }
+          },
+          {
+            "type": "approval.decided",
+            "data": {
+              "decision": "approve",
+              "action": "edit_file"
+            }
+          },
+          {
+            "type": "approval.requested",
+            "data": {
+              "taskId": "11111111-1111-4111-8111-111111111111",
+              "action": "edit_file",
+              "title": "edit",
+              "kind": "edit",
+              "command": "",
+              "paths": [
+                "source.txt"
+              ],
+              "reason": "",
+              "arguments": {
+                "path": "source.txt",
+                "content": "synthetic"
+              },
+              "diff": null
+            }
+          },
+          {
+            "type": "approval.decided",
+            "data": {
+              "decision": "approve",
+              "action": "edit_file"
+            }
+          }
+        ],
+        "answers": [
+          {
+            "outcome": "selected",
+            "optionId": "allow"
+          },
+          {
+            "outcome": "selected",
+            "optionId": "allow"
+          }
+        ],
+        "cards": [
+          {
+            "taskId": "11111111-1111-4111-8111-111111111111",
+            "action": "edit_file",
+            "title": "edit",
+            "kind": "edit",
+            "command": "",
+            "paths": [
+              "source.txt"
+            ],
+            "reason": "",
+            "arguments": {
+              "path": "source.txt",
+              "content": "synthetic"
+            },
+            "diff": null
+          },
+          {
+            "taskId": "11111111-1111-4111-8111-111111111111",
+            "action": "edit_file",
+            "title": "edit",
+            "kind": "edit",
+            "command": "",
+            "paths": [
+              "source.txt"
+            ],
+            "reason": "",
+            "arguments": {
+              "path": "source.txt",
+              "content": "synthetic"
+            },
+            "diff": null
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "call": {
+          "toolCallId": "e",
+          "kind": "edit",
+          "title": "edit",
+          "rawInput": {
+            "path": "source.txt",
+            "content": "synthetic"
+          },
+          "locations": [
+            {
+              "path": "source.txt"
+            }
+          ]
+        },
+        "capabilities": [
+          "edit_file"
+        ],
+        "answer": "approve_all",
+        "repeat": 2
+      },
+      "output": {
+        "events": [
+          {
+            "type": "approval.requested",
+            "data": {
+              "taskId": "11111111-1111-4111-8111-111111111111",
+              "action": "edit_file",
+              "title": "edit",
+              "kind": "edit",
+              "command": "",
+              "paths": [
+                "source.txt"
+              ],
+              "reason": "",
+              "arguments": {
+                "path": "source.txt",
+                "content": "synthetic"
+              },
+              "diff": null
+            }
+          },
+          {
+            "type": "approval.decided",
+            "data": {
+              "decision": "approve_all",
+              "action": "edit_file"
+            }
+          }
+        ],
+        "answers": [
+          {
+            "outcome": "selected",
+            "optionId": "allow"
+          },
+          {
+            "outcome": "selected",
+            "optionId": "allow"
+          }
+        ],
+        "cards": [
+          {
+            "taskId": "11111111-1111-4111-8111-111111111111",
+            "action": "edit_file",
+            "title": "edit",
+            "kind": "edit",
+            "command": "",
+            "paths": [
+              "source.txt"
+            ],
+            "reason": "",
+            "arguments": {
+              "path": "source.txt",
+              "content": "synthetic"
+            },
+            "diff": null
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "call": {
+          "toolCallId": "e",
+          "kind": "edit",
+          "title": "edit",
+          "rawInput": {
+            "path": "source.txt",
+            "content": "synthetic"
+          },
+          "locations": [
+            {
+              "path": "source.txt"
+            }
+          ]
+        },
+        "capabilities": [
+          "edit_file"
+        ],
+        "answer": "deny",
+        "repeat": 2
+      },
+      "output": {
+        "events": [
+          {
+            "type": "approval.requested",
+            "data": {
+              "taskId": "11111111-1111-4111-8111-111111111111",
+              "action": "edit_file",
+              "title": "edit",
+              "kind": "edit",
+              "command": "",
+              "paths": [
+                "source.txt"
+              ],
+              "reason": "",
+              "arguments": {
+                "path": "source.txt",
+                "content": "synthetic"
+              },
+              "diff": null
+            }
+          },
+          {
+            "type": "approval.decided",
+            "data": {
+              "decision": "deny",
+              "action": "edit_file"
+            }
+          },
+          {
+            "type": "approval.requested",
+            "data": {
+              "taskId": "11111111-1111-4111-8111-111111111111",
+              "action": "edit_file",
+              "title": "edit",
+              "kind": "edit",
+              "command": "",
+              "paths": [
+                "source.txt"
+              ],
+              "reason": "",
+              "arguments": {
+                "path": "source.txt",
+                "content": "synthetic"
+              },
+              "diff": null
+            }
+          },
+          {
+            "type": "approval.decided",
+            "data": {
+              "decision": "deny",
+              "action": "edit_file"
+            }
+          }
+        ],
+        "answers": [
+          {
+            "outcome": "selected",
+            "optionId": "reject",
+            "_meta": {
+              "noevia": {
+                "reason": "The person declined this action."
+              }
+            }
+          },
+          {
+            "outcome": "selected",
+            "optionId": "reject",
+            "_meta": {
+              "noevia": {
+                "reason": "The person declined this action."
+              }
+            }
+          }
+        ],
+        "cards": [
+          {
+            "taskId": "11111111-1111-4111-8111-111111111111",
+            "action": "edit_file",
+            "title": "edit",
+            "kind": "edit",
+            "command": "",
+            "paths": [
+              "source.txt"
+            ],
+            "reason": "",
+            "arguments": {
+              "path": "source.txt",
+              "content": "synthetic"
+            },
+            "diff": null
+          },
+          {
+            "taskId": "11111111-1111-4111-8111-111111111111",
+            "action": "edit_file",
+            "title": "edit",
+            "kind": "edit",
+            "command": "",
+            "paths": [
+              "source.txt"
+            ],
+            "reason": "",
+            "arguments": {
+              "path": "source.txt",
+              "content": "synthetic"
+            },
+            "diff": null
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "call": {
+          "toolCallId": "e",
+          "kind": "edit",
+          "title": "edit",
+          "rawInput": {
+            "path": "source.txt",
+            "content": "synthetic"
+          },
+          "locations": [
+            {
+              "path": "source.txt"
+            }
+          ]
+        },
+        "capabilities": [
+          "edit_file"
+        ],
+        "answer": "timeout",
+        "repeat": 2
+      },
+      "output": {
+        "events": [
+          {
+            "type": "approval.requested",
+            "data": {
+              "taskId": "11111111-1111-4111-8111-111111111111",
+              "action": "edit_file",
+              "title": "edit",
+              "kind": "edit",
+              "command": "",
+              "paths": [
+                "source.txt"
+              ],
+              "reason": "",
+              "arguments": {
+                "path": "source.txt",
+                "content": "synthetic"
+              },
+              "diff": null
+            }
+          },
+          {
+            "type": "approval.decided",
+            "data": {
+              "decision": "timeout",
+              "action": "edit_file"
+            }
+          },
+          {
+            "type": "approval.requested",
+            "data": {
+              "taskId": "11111111-1111-4111-8111-111111111111",
+              "action": "edit_file",
+              "title": "edit",
+              "kind": "edit",
+              "command": "",
+              "paths": [
+                "source.txt"
+              ],
+              "reason": "",
+              "arguments": {
+                "path": "source.txt",
+                "content": "synthetic"
+              },
+              "diff": null
+            }
+          },
+          {
+            "type": "approval.decided",
+            "data": {
+              "decision": "timeout",
+              "action": "edit_file"
+            }
+          }
+        ],
+        "answers": [
+          {
+            "outcome": "selected",
+            "optionId": "reject",
+            "_meta": {
+              "noevia": {
+                "reason": "Nobody answered the approval request in time, so the action was not run."
+              }
+            }
+          },
+          {
+            "outcome": "selected",
+            "optionId": "reject",
+            "_meta": {
+              "noevia": {
+                "reason": "Nobody answered the approval request in time, so the action was not run."
+              }
+            }
+          }
+        ],
+        "cards": [
+          {
+            "taskId": "11111111-1111-4111-8111-111111111111",
+            "action": "edit_file",
+            "title": "edit",
+            "kind": "edit",
+            "command": "",
+            "paths": [
+              "source.txt"
+            ],
+            "reason": "",
+            "arguments": {
+              "path": "source.txt",
+              "content": "synthetic"
+            },
+            "diff": null
+          },
+          {
+            "taskId": "11111111-1111-4111-8111-111111111111",
+            "action": "edit_file",
+            "title": "edit",
+            "kind": "edit",
+            "command": "",
+            "paths": [
+              "source.txt"
+            ],
+            "reason": "",
+            "arguments": {
+              "path": "source.txt",
+              "content": "synthetic"
+            },
+            "diff": null
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "call": {
+          "toolCallId": "e",
+          "kind": "edit",
+          "title": "edit",
+          "rawInput": {
+            "path": "source.txt",
+            "content": "synthetic"
+          },
+          "locations": [
+            {
+              "path": "source.txt"
+            }
+          ]
+        },
+        "capabilities": [
+          "edit_file"
+        ],
+        "answer": "aborted",
+        "repeat": 2
+      },
+      "output": {
+        "events": [
+          {
+            "type": "approval.requested",
+            "data": {
+              "taskId": "11111111-1111-4111-8111-111111111111",
+              "action": "edit_file",
+              "title": "edit",
+              "kind": "edit",
+              "command": "",
+              "paths": [
+                "source.txt"
+              ],
+              "reason": "",
+              "arguments": {
+                "path": "source.txt",
+                "content": "synthetic"
+              },
+              "diff": null
+            }
+          },
+          {
+            "type": "approval.decided",
+            "data": {
+              "decision": "aborted",
+              "action": "edit_file"
+            }
+          },
+          {
+            "type": "approval.requested",
+            "data": {
+              "taskId": "11111111-1111-4111-8111-111111111111",
+              "action": "edit_file",
+              "title": "edit",
+              "kind": "edit",
+              "command": "",
+              "paths": [
+                "source.txt"
+              ],
+              "reason": "",
+              "arguments": {
+                "path": "source.txt",
+                "content": "synthetic"
+              },
+              "diff": null
+            }
+          },
+          {
+            "type": "approval.decided",
+            "data": {
+              "decision": "aborted",
+              "action": "edit_file"
+            }
+          }
+        ],
+        "answers": [
+          {
+            "outcome": "selected",
+            "optionId": "reject",
+            "_meta": {
+              "noevia": {
+                "reason": "The task was stopped before this action was approved, so it was not run."
+              }
+            }
+          },
+          {
+            "outcome": "selected",
+            "optionId": "reject",
+            "_meta": {
+              "noevia": {
+                "reason": "The task was stopped before this action was approved, so it was not run."
+              }
+            }
+          }
+        ],
+        "cards": [
+          {
+            "taskId": "11111111-1111-4111-8111-111111111111",
+            "action": "edit_file",
+            "title": "edit",
+            "kind": "edit",
+            "command": "",
+            "paths": [
+              "source.txt"
+            ],
+            "reason": "",
+            "arguments": {
+              "path": "source.txt",
+              "content": "synthetic"
+            },
+            "diff": null
+          },
+          {
+            "taskId": "11111111-1111-4111-8111-111111111111",
+            "action": "edit_file",
+            "title": "edit",
+            "kind": "edit",
+            "command": "",
+            "paths": [
+              "source.txt"
+            ],
+            "reason": "",
+            "arguments": {
+              "path": "source.txt",
+              "content": "synthetic"
+            },
+            "diff": null
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "call": {
+          "toolCallId": "d",
+          "kind": "delete",
+          "rawInput": {
+            "path": "source.txt"
+          },
+          "locations": [
+            {
+              "path": "source.txt"
+            }
+          ]
+        },
+        "capabilities": [
+          "delete"
+        ],
+        "answer": "approve_all",
+        "repeat": 2
+      },
+      "output": {
+        "events": [
+          {
+            "type": "approval.requested",
+            "data": {
+              "taskId": "11111111-1111-4111-8111-111111111111",
+              "action": "delete",
+              "title": "",
+              "kind": "delete",
+              "command": "",
+              "paths": [
+                "source.txt"
+              ],
+              "reason": "",
+              "arguments": {
+                "path": "source.txt"
+              },
+              "diff": null
+            }
+          },
+          {
+            "type": "approval.decided",
+            "data": {
+              "decision": "approve_all",
+              "action": "delete"
+            }
+          },
+          {
+            "type": "approval.requested",
+            "data": {
+              "taskId": "11111111-1111-4111-8111-111111111111",
+              "action": "delete",
+              "title": "",
+              "kind": "delete",
+              "command": "",
+              "paths": [
+                "source.txt"
+              ],
+              "reason": "",
+              "arguments": {
+                "path": "source.txt"
+              },
+              "diff": null
+            }
+          },
+          {
+            "type": "approval.decided",
+            "data": {
+              "decision": "approve_all",
+              "action": "delete"
+            }
+          }
+        ],
+        "answers": [
+          {
+            "outcome": "selected",
+            "optionId": "allow"
+          },
+          {
+            "outcome": "selected",
+            "optionId": "allow"
+          }
+        ],
+        "cards": [
+          {
+            "taskId": "11111111-1111-4111-8111-111111111111",
+            "action": "delete",
+            "title": "",
+            "kind": "delete",
+            "command": "",
+            "paths": [
+              "source.txt"
+            ],
+            "reason": "",
+            "arguments": {
+              "path": "source.txt"
+            },
+            "diff": null
+          },
+          {
+            "taskId": "11111111-1111-4111-8111-111111111111",
+            "action": "delete",
+            "title": "",
+            "kind": "delete",
+            "command": "",
+            "paths": [
+              "source.txt"
+            ],
+            "reason": "",
+            "arguments": {
+              "path": "source.txt"
+            },
+            "diff": null
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "call": {
+          "toolCallId": "e",
+          "kind": "edit",
+          "title": "edit",
+          "rawInput": {
+            "path": "source.txt",
+            "content": "synthetic"
+          },
+          "locations": [
+            {
+              "path": "/outside"
+            }
+          ]
+        },
+        "capabilities": [
+          "edit_file"
+        ],
+        "answer": "approve",
+        "repeat": 1
+      },
+      "output": {
+        "events": [
+          {
+            "type": "approval.decided",
+            "data": {
+              "decision": "denied",
+              "action": "edit_file",
+              "reason": "The path is outside this task’s workspace.",
+              "automatic": true
+            }
+          }
+        ],
+        "answers": [
+          {
+            "outcome": "selected",
+            "optionId": "reject",
+            "_meta": {
+              "noevia": {
+                "reason": "The path is outside this task’s workspace."
+              }
+            }
+          }
+        ],
+        "cards": []
+      }
+    },
+    {
+      "input": {
+        "announced": {
+          "toolCallId": "e",
+          "kind": "edit",
+          "title": "edit",
+          "rawInput": {
+            "path": "source.txt",
+            "content": "synthetic"
+          },
+          "locations": [
+            {
+              "path": "source.txt"
+            }
+          ]
+        },
+        "call": {
+          "toolCallId": "e"
+        },
+        "capabilities": [
+          "edit_file"
+        ],
+        "answer": "deny",
+        "repeat": 1
+      },
+      "output": {
+        "events": [
+          {
+            "type": "approval.requested",
+            "data": {
+              "taskId": "11111111-1111-4111-8111-111111111111",
+              "action": "edit_file",
+              "title": "edit",
+              "kind": "edit",
+              "command": "",
+              "paths": [
+                "source.txt"
+              ],
+              "reason": "",
+              "arguments": {
+                "path": "source.txt",
+                "content": "synthetic"
+              },
+              "diff": null
+            }
+          },
+          {
+            "type": "approval.decided",
+            "data": {
+              "decision": "deny",
+              "action": "edit_file"
+            }
+          }
+        ],
+        "answers": [
+          {
+            "outcome": "selected",
+            "optionId": "reject",
+            "_meta": {
+              "noevia": {
+                "reason": "The person declined this action."
+              }
+            }
+          }
+        ],
+        "cards": [
+          {
+            "taskId": "11111111-1111-4111-8111-111111111111",
+            "action": "edit_file",
+            "title": "edit",
+            "kind": "edit",
+            "command": "",
+            "paths": [
+              "source.txt"
+            ],
+            "reason": "",
+            "arguments": {
+              "path": "source.txt",
+              "content": "synthetic"
+            },
+            "diff": null
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "announced": {
+          "toolCallId": "r",
+          "kind": "read",
+          "rawInput": {
+            "path": "source.txt"
+          },
+          "locations": [
+            {
+              "path": "source.txt"
+            }
+          ]
+        },
+        "call": {
+          "toolCallId": "r",
+          "kind": "execute",
+          "rawInput": {
+            "command": "printf synthetic"
+          }
+        },
+        "capabilities": [
+          "read_repository",
+          "execute_command"
+        ],
+        "answer": "deny",
+        "repeat": 1
+      },
+      "output": {
+        "events": [
+          {
+            "type": "approval.requested",
+            "data": {
+              "taskId": "11111111-1111-4111-8111-111111111111",
+              "action": "execute_command",
+              "title": "",
+              "kind": "execute",
+              "command": "printf synthetic",
+              "paths": [
+                "source.txt"
+              ],
+              "reason": "",
+              "arguments": {
+                "command": "printf synthetic"
+              },
+              "diff": null
+            }
+          },
+          {
+            "type": "approval.decided",
+            "data": {
+              "decision": "deny",
+              "action": "execute_command"
+            }
+          }
+        ],
+        "answers": [
+          {
+            "outcome": "selected",
+            "optionId": "reject",
+            "_meta": {
+              "noevia": {
+                "reason": "The person declined this action."
+              }
+            }
+          }
+        ],
+        "cards": [
+          {
+            "taskId": "11111111-1111-4111-8111-111111111111",
+            "action": "execute_command",
+            "title": "",
+            "kind": "execute",
+            "command": "printf synthetic",
+            "paths": [
+              "source.txt"
+            ],
+            "reason": "",
+            "arguments": {
+              "command": "printf synthetic"
+            },
+            "diff": null
+          }
+        ]
+      }
+    }
+  ]
+}
