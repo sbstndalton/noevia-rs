@@ -406,14 +406,6 @@ impl Worker {
         });
     }
 
-    fn job_remove(&self, key: &str) {
-        self.with(|i| {
-            if let Some(job) = i.state.job_mut() {
-                job.retain(|(k, _)| k != key);
-            }
-        });
-    }
-
     fn with_step<T>(
         &self,
         index: usize,
