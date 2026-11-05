@@ -102,4 +102,43 @@ async fn checking_a_line_allocates_nothing_outside_the_budget() {
         grew < SLACK,
         "checking the line took {grew} bytes beyond the budget"
     );
+    drop(body);
+
+    // 3. Re-review P2-2 (990797fc): a relayed frame (a Diary companion frame: a JSON string line) is
+    //    decoded into the one buffer its reservation covers, whole in one read, and held then
+    //    finished. That buffer is the line's length; the peak may grow by it and by nothing else.
+    const PREFIX: &[u8] = br#""data: {\"type\":\"done\",\"t\":\""#;
+    const SUFFIX: &[u8] = b"\\\"}\\n\\n\"\n";
+    for (size, split) in [(24usize, None), (16, Some(4 * 1024 * 1024))] {
+        let size = size * 1024 * 1024;
+        let mut line = Vec::with_capacity(size + 64);
+        line.extend_from_slice(PREFIX);
+        line.resize(size, b'r');
+        line.extend_from_slice(SUFFIX);
+        let reservation = line.len();
+        // The decoded frame: the eight `\"` and two `\n` one byte each, no quotes around it, no
+        // line end.
+        let frame_len = line.len() - 8 - 2 - 2 - 1;
+        let (mut tx, mut body) = stream();
+        let line = Bytes::from(line);
+        let rest = match split {
+            Some(at) => {
+                tx.send_data(line.slice(..at)).await.unwrap();
+                assert_eq!(drain(&mut body).await, (0, false), "held");
+                line.slice(at..)
+            }
+            None => line,
+        };
+        let base = reset_peak();
+        tx.send_data(rest).await.unwrap();
+        drop(tx);
+        let (len, ended) = drain(&mut body).await;
+        let grew = status("VmHWM:").saturating_sub(base);
+        assert!(ended, "a done frame: a clean end");
+        assert_eq!(len, frame_len, "{split:?}");
+        assert!(
+            grew < reservation + 2 * 1024 * 1024,
+            "decoding a {reservation}-byte relayed line took {grew} bytes ({split:?})"
+        );
+    }
 }
