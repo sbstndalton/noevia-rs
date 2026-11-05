@@ -280,6 +280,61 @@ impl SqlStore {
         out
     }
 
+    /// Request-time enumeration must distinguish missing directories from lost
+    /// authority/read failures; otherwise a switch can mistake failure for zero
+    /// indexes. Background best-effort enumeration is kept separately.
+    pub fn checked_indexes(&self) -> Result<Vec<Index>, String> {
+        let mut dirs = vec![(
+            None,
+            self.rag_dir
+                .clone()
+                .unwrap_or_else(|| self.root.join("rag")),
+        )];
+        for user in self.users()? {
+            let dir = server_projects::store::user_dir(&self.root, &user).map_err(|_| fault())?;
+            dirs.push((Some(user), dir.join("rag")));
+        }
+        let mut indexes = Vec::new();
+        for (user, dir) in dirs {
+            let entries = match std::fs::read_dir(dir) {
+                Ok(entries) => entries,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(_) => return Err(fault()),
+            };
+            for entry in entries {
+                let entry = entry.map_err(|_| fault())?;
+                if let Some(project) = entry
+                    .file_name()
+                    .to_str()
+                    .and_then(|n| n.strip_suffix(".db"))
+                    .filter(|n| safe_id(n))
+                {
+                    indexes.push(Index {
+                        user: user.clone(),
+                        project: project.into(),
+                    });
+                }
+            }
+        }
+        Ok(indexes)
+    }
+    /// Count only embeddable chunks with current hashes, matching vector-slots.
+    /// A single read transaction binds numerator and denominator together.
+    pub fn coverage(&self, index: &Index, target: &Target) -> Result<(usize, usize), String> {
+        self.read_index(index, |db| {
+            let count = |sql: String| -> Result<usize, String> {
+                db.query_row(&format!("SELECT COUNT(*) FROM ({sql})"), [], |r| {
+                    r.get::<_, i64>(0)
+                })
+                .map_err(|_| fault())
+                .and_then(|n| usize::try_from(n).map_err(|_| fault()))
+            };
+            let chunks = count(read_missing_sql(db, None)?)?;
+            let missing = count(read_missing_sql(db, self.read_slot(db, target)?.as_ref())?)?;
+            Ok((chunks, chunks.saturating_sub(missing)))
+        })
+    }
+
     fn live(&self, index: &Index) -> Result<(), String> {
         if let Some(user) = &index.user {
             let live = server_store::Store::open(&self.root)
@@ -551,11 +606,31 @@ impl SqlStore {
         }
         Ok(())
     }
+    /// Cleanup candidates carry no authority: a new request may have restored
+    /// this identity as next since retirement. Recheck under the same locks as
+    /// outbox publication, including the account deletion transaction.
+    pub fn drop_orphan(&self, index: &Index, target: &Target) -> Result<(), String> {
+        self.drop_slot_inner(index, target, true)
+    }
+    /// The background served-model gate intentionally invalidates a next slot.
     pub fn drop_slot(&self, index: &Index, target: &Target) -> Result<(), String> {
-        self.fenced(index, false, |db| {
+        self.drop_slot_inner(index, target, false)
+    }
+    fn drop_slot_inner(
+        &self,
+        index: &Index,
+        target: &Target,
+        orphan_only: bool,
+    ) -> Result<(), String> {
+        self.fenced(index, true, |db| {
             if let Some(slot) = find(db, target)? {
                 let config = self.config()?;
-                if target.same_identity(&config.active)
+                if (orphan_only
+                    && config
+                        .next
+                        .as_ref()
+                        .is_some_and(|n| target.same_identity(n)))
+                    || target.same_identity(&config.active)
                     || config
                         .previous
                         .as_ref()

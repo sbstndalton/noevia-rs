@@ -17,6 +17,7 @@ use std::{
 pub mod config;
 pub mod fill;
 pub mod http;
+pub mod migration;
 pub mod outbox;
 pub mod runtime;
 pub mod service;

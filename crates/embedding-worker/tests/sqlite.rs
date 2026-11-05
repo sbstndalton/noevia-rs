@@ -1115,3 +1115,226 @@ fn tracked_skill_remains_excluded_when_front_matter_is_removed() {
         0
     );
 }
+
+#[test]
+fn orphan_cleanup_preserves_reintroduced_next_identity() {
+    let (_tmp, store, index) = setup();
+    let rows = store
+        .missing(&index, &target("next"), 4, &Default::default())
+        .unwrap()
+        .unwrap();
+    store
+        .publish(
+            &index,
+            &target("next"),
+            &rows,
+            &[vec![1., 0.], vec![0., 1.]],
+            0,
+            &Control::default(),
+        )
+        .unwrap();
+    let before = store.config().unwrap();
+    let retired = embedding_worker::config::publish(
+        &store.root,
+        &store.seed,
+        &before,
+        embedding_worker::config::Change::ClearNext,
+    )
+    .unwrap();
+    assert_eq!(retired.retired, vec![target("next")]);
+    embedding_worker::config::publish(
+        &store.root,
+        &store.seed,
+        &retired.config,
+        embedding_worker::config::Change::SetNext(target("next")),
+    )
+    .unwrap();
+    // A delayed cleanup from the first request is now stale.
+    store.drop_orphan(&index, &retired.retired[0]).unwrap();
+    assert_eq!(store.remaining(&index, &target("next")).unwrap(), 0);
+}
+
+#[test]
+fn coverage_counts_current_hashes_and_refuses_deleted_tenants() {
+    let (_tmp, store, index) = setup();
+    assert_eq!(store.coverage(&index, &target("next")).unwrap(), (2, 0));
+    // Legacy vec_items has no hash map (Node's contract). Establish it as
+    // active first so next uses the hash-bound secondary slot under test.
+    let active = store
+        .missing(&index, &target("active"), 4, &Default::default())
+        .unwrap()
+        .unwrap();
+    store
+        .publish(
+            &index,
+            &target("active"),
+            &active,
+            &[vec![1., 0.], vec![0., 1.]],
+            0,
+            &Control::default(),
+        )
+        .unwrap();
+    let rows = store
+        .missing(&index, &target("next"), 4, &Default::default())
+        .unwrap()
+        .unwrap();
+    store
+        .publish(
+            &index,
+            &target("next"),
+            &rows,
+            &[vec![1., 0.], vec![0., 1.]],
+            0,
+            &Control::default(),
+        )
+        .unwrap();
+    assert_eq!(store.coverage(&index, &target("next")).unwrap(), (2, 2));
+    let db = Connection::open(store.index_path(&index).unwrap()).unwrap();
+    db.execute("UPDATE chunks SET content_hash='changed' WHERE id=1", [])
+        .unwrap();
+    assert_eq!(store.coverage(&index, &target("next")).unwrap(), (2, 1));
+    let auth = Connection::open(store.root.join("cowork.db")).unwrap();
+    auth.execute("DELETE FROM users WHERE id=?", [USER])
+        .unwrap();
+    assert!(store.coverage(&index, &target("next")).is_err());
+    assert!(store.drop_orphan(&index, &target("next")).is_err());
+}
+
+#[test]
+fn lost_enumeration_authority_cannot_approve_switch() {
+    let (_tmp, store, _index) = setup();
+    assert!(store.checked_indexes().is_ok());
+    std::fs::remove_file(store.root.join("cowork.db")).unwrap();
+    assert!(store.checked_indexes().is_err());
+    assert!(embedding_worker::migration::coverage(&store, &store.seed, &target("next")).is_err());
+}
+
+async fn served_stub(
+    model: &'static str,
+) -> (embedding_worker::http::Http, tokio::task::JoinHandle<()>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let task = tokio::spawn(async move {
+        let (mut stream, _) =
+            tokio::time::timeout(std::time::Duration::from_secs(5), listener.accept())
+                .await
+                .unwrap()
+                .unwrap();
+        let mut bytes = [0; 8192];
+        let n = stream.read(&mut bytes).await.unwrap();
+        assert!(String::from_utf8_lossy(&bytes[..n]).starts_with("GET /v1/models "));
+        let body = json!({"data":[{"id":model}]}).to_string();
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                )
+                .as_bytes(),
+            )
+            .await
+            .unwrap();
+    });
+    (
+        embedding_worker::http::Http::new("", None, &url, None).unwrap(),
+        task,
+    )
+}
+#[tokio::test]
+async fn native_switch_refuses_lost_coverage_and_force_never_bypasses_served() {
+    use embedding_worker::{config::Change, migration};
+    let (_tmp, store, index) = setup();
+    let rows = store
+        .missing(&index, &target("active"), 4, &Default::default())
+        .unwrap()
+        .unwrap();
+    store
+        .publish(
+            &index,
+            &target("active"),
+            &rows,
+            &[vec![1., 0.], vec![0., 1.]],
+            0,
+            &Control::default(),
+        )
+        .unwrap();
+    let (http, task) = served_stub("next").await;
+    let err = migration::apply(&store, &http, Change::Switch, false)
+        .await
+        .err()
+        .unwrap();
+    task.await.unwrap();
+    assert_eq!(err.body["code"], "notReady");
+    assert_eq!(err.body["coverage"]["vectors"], 0);
+    assert_eq!(store.config().unwrap().active, target("active"));
+    let (http, task) = served_stub("other").await;
+    let err = migration::apply(&store, &http, Change::Switch, true)
+        .await
+        .err()
+        .unwrap();
+    task.await.unwrap();
+    assert_eq!(err.body["code"], "modelNotServed");
+    let (http, task) = served_stub("next").await;
+    let published = migration::apply(&store, &http, Change::Switch, true)
+        .await
+        .unwrap();
+    task.await.unwrap();
+    assert_eq!(published.config.active, target("next"));
+    assert_eq!(published.config.previous, Some(target("active")));
+}
+#[tokio::test]
+async fn native_complete_switch_rollback_finish_and_cleanup() {
+    use embedding_worker::{config::Change, migration};
+    let (_tmp, store, index) = setup();
+    let rows = store
+        .missing(&index, &target("next"), 4, &Default::default())
+        .unwrap()
+        .unwrap();
+    store
+        .publish(
+            &index,
+            &target("next"),
+            &rows,
+            &[vec![1., 0.], vec![0., 1.]],
+            0,
+            &Control::default(),
+        )
+        .unwrap();
+    let (http, task) = served_stub("next").await;
+    let result = migration::apply(&store, &http, Change::Switch, false)
+        .await
+        .unwrap();
+    task.await.unwrap();
+    assert_eq!(result.config.active, target("next"));
+    let result = migration::apply(&store, &http, Change::Rollback, false)
+        .await
+        .unwrap();
+    assert_eq!(result.config.active, target("active"));
+    let result = migration::apply(&store, &http, Change::Finish, false)
+        .await
+        .unwrap();
+    assert_eq!(result.retired, vec![target("next")]);
+    // Native migration, rather than a caller/Node executor, retires the slot.
+    assert_eq!(store.coverage(&index, &target("next")).unwrap(), (2, 0));
+}
+
+#[test]
+fn native_status_uses_only_current_start_fresh_snapshot() {
+    use embedding_worker::{migration, Options};
+    let (_tmp, store, _index) = setup();
+    let path = store.root.join("embedding-worker-status.json");
+    let snap = json!({"protocol":"rust-embedding-worker-v1","start":"current","at":20000,"running":true,"configValid":true});
+    std::fs::write(&path, snap.to_string()).unwrap();
+    let status = migration::status(&store, "current", 20000, &Options::default()).unwrap();
+    assert_eq!(status["running"], true);
+    assert_eq!(status["source"], "environment");
+    assert_eq!(status["coverage"]["next"]["chunks"], 2);
+    assert_eq!(status["stale"], false);
+    for (start, at) in [("previous", 20000), ("current", 19999), ("current", 35001)] {
+        let status = migration::status(&store, start, at, &Options::default()).unwrap();
+        assert_eq!(status["stale"], true);
+        assert_eq!(status["running"], serde_json::Value::Null);
+    }
+}

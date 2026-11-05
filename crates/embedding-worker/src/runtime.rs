@@ -380,7 +380,7 @@ pub fn start(
                         if begun.elapsed()>=Duration::from_secs(30) && !initial {initial=true;if config.as_ref().is_ok_and(|c|c.next.is_some()) {control.kick();}}
                         if seen.as_ref().is_some_and(|s|s!=&stamp)&&config.as_ref().is_ok_and(|c|c.next.is_some()) {control.kick();}
                         seen=Some(stamp);
-                        if let Ok(c)=&config {if config_version.is_some_and(|v|v!=c.version)&&c.next.is_some() {control.kick();}config_version=Some(c.version);}
+                        if let Ok(c)=&config {if config_version.is_some_and(|v|v!=c.version) {control.kick();}config_version=Some(c.version);}
                         let request=std::fs::read(host.store.root.join("embedding-worker-request.json")).ok().filter(|b|b.len()<8192).and_then(|b|serde_json::from_slice::<Value>(&b).ok());
                         if let Some(r)=request.filter(|r|r.get("start").and_then(Value::as_str)==Some(&start)) {let sequence=r.get("sequence").and_then(Value::as_u64).unwrap_or(0);if sequence!=request_stamp {request_stamp=sequence;control.kick();}}
                         tokio::select! {_=worker.tick(&host)=>{},_=rx.changed()=>{control.stop();}}

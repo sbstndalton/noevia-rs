@@ -123,3 +123,27 @@ fn competing_checked_writers_publish_only_one_generation() {
         .to_string_lossy()
         .ends_with(".tmp")));
 }
+
+#[test]
+fn final_readiness_refusal_keeps_configuration_bytes_and_slots() {
+    let dir = tempfile::tempdir().unwrap();
+    let seed = runtime::seed(|_| None).unwrap();
+    let mut next = seed.active.clone();
+    next.model = "fixture-next".into();
+    let before = config::publish(dir.path(), &seed, &seed, Change::SetNext(next)).unwrap();
+    let bytes = std::fs::read(dir.path().join("embedding-config.json")).unwrap();
+    let error = config::publish_checked(dir.path(), &seed, &before.config, Change::Switch, || {
+        Err(config::Error {
+            status: 409,
+            code: "notReady",
+            message: "coverage lost at publication",
+        })
+    })
+    .err()
+    .unwrap();
+    assert_eq!(error.code, "notReady");
+    assert_eq!(
+        std::fs::read(dir.path().join("embedding-config.json")).unwrap(),
+        bytes
+    );
+}

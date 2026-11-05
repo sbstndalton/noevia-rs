@@ -72,6 +72,18 @@ pub fn publish(
     checked: &Config,
     change: Change,
 ) -> Result<Published, Error> {
+    publish_checked(root, seed, checked, change, || Ok(()))
+}
+/// Synchronous final validation while holding the configuration publication
+/// fence. Source outbox/index writers take this same fence, so coverage cannot
+/// become stale between the last check and the atomic configuration rename.
+pub fn publish_checked(
+    root: &Path,
+    seed: &Config,
+    checked: &Config,
+    change: Change,
+    validate: impl FnOnce() -> Result<(), Error>,
+) -> Result<Published, Error> {
     fs::create_dir_all(root).map_err(|_| unavailable())?;
     let file = root.join("embedding-config.json");
     let _hold = server_projects::lock::acquire(&file).map_err(|_| unavailable())?;
@@ -87,6 +99,7 @@ pub fn publish(
             "The re-index target changed while the switch was being checked. Nothing was switched.",
         ));
     }
+    validate()?;
     let mut retired = Vec::new();
     match change {
         Change::SetNext(target) => {

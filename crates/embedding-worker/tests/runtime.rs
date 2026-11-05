@@ -635,3 +635,60 @@ async fn native_config_publication_reaches_background_without_node_kick() {
     assert_eq!(verify.config().unwrap().next, Some(target("next")));
     worker.shutdown().await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn active_only_publication_kicks_backfill_without_node() {
+    let (dir, mut store) = seed();
+    store.seed.next = None;
+    let verify = store.clone();
+    let stub = server(|path, _| default_reply(path)).await;
+    let http = Http::new(&stub.base, None, &stub.base, None).unwrap();
+    let worker = runtime::start(
+        store,
+        http,
+        stub.base.clone(),
+        "synthetic-token".into(),
+        START.into(),
+        Options::default(),
+        None,
+    )
+    .unwrap();
+    wait_until(|| {
+        std::fs::read(dir.path().join("embedding-worker-status.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+            .is_some_and(|v| v.get("configValid") == Some(&serde_json::Value::Bool(true)))
+    })
+    .await;
+    let before = verify.config().unwrap();
+    embedding_worker::config::publish(
+        dir.path(),
+        &verify.seed,
+        &before,
+        embedding_worker::config::Change::SetNext(target("next")),
+    )
+    .unwrap();
+    let next = verify.config().unwrap();
+    embedding_worker::config::publish(
+        dir.path(),
+        &verify.seed,
+        &next,
+        embedding_worker::config::Change::Switch,
+    )
+    .unwrap();
+    wait_until(|| {
+        verify
+            .remaining(
+                &Index {
+                    user: None,
+                    project: "p".into(),
+                },
+                &target("next"),
+            )
+            .ok()
+            == Some(0)
+    })
+    .await;
+    assert_eq!(verify.config().unwrap().active, target("next"));
+    worker.shutdown().await;
+}

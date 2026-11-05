@@ -71,6 +71,12 @@ fn headers(token: Option<&str>, name: &str) -> Result<HeaderMap, String> {
     Ok(headers)
 }
 fn allowed(ip: IpAddr) -> bool {
+    // Metadata endpoints can sit inside otherwise allowed private/CGNAT ranges.
+    if ip == IpAddr::V4(std::net::Ipv4Addr::new(100, 100, 100, 200))
+        || ip == IpAddr::V6(std::net::Ipv6Addr::new(0xfd00, 0xec2, 0, 0, 0, 0, 0, 0x254))
+    {
+        return false;
+    }
     match ip {
         IpAddr::V4(ip) => {
             ip.is_loopback()
@@ -499,5 +505,38 @@ impl Embed for Http {
                 result
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod address_tests {
+    #[test]
+    fn metadata_and_mapped_metadata_are_never_private_endpoints() {
+        for address in [
+            "100.100.100.200",
+            "fd00:ec2::254",
+            "::ffff:100.100.100.200",
+            "169.254.169.254",
+            "0.0.0.0",
+            "::",
+            "8.8.8.8",
+            "fe80::1",
+        ] {
+            assert!(!super::allowed(address.parse().unwrap_or(
+                std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED)
+            )));
+        }
+        for address in [
+            "127.0.0.1",
+            "10.0.0.1",
+            "100.64.0.1",
+            "::1",
+            "fc00::1",
+            "::ffff:192.168.0.1",
+        ] {
+            assert!(super::allowed(address.parse().unwrap_or(
+                std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED)
+            )));
+        }
     }
 }
