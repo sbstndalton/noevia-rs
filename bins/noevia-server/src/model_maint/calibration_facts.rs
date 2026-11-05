@@ -557,6 +557,9 @@ impl Worker {
         let generation = self.cancel_generation();
         let job = self.with(|i| {
             let job = visible_job(i);
+            if i.state.job().get("phase").as_str() == Some("Finalizing") {
+                self.interrupt_fence_wait();
+            }
             i.cancel_requested = true;
             if let Some(a) = &i.inflight {
                 a.abort();

@@ -325,7 +325,7 @@ impl Maint {
         .map(Some)
         .map_err(|e| match e {
             // The record itself is unusable; trying again cannot help.
-            ev::StoreError::Io => Failure::internal(),
+            ev::StoreError::Io | ev::StoreError::RunStorage(_) => Failure::internal(),
             _ => Failure {
                 status: 400,
                 message: "Invalid evidence record".into(),

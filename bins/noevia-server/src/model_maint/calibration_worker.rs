@@ -5,8 +5,8 @@
 //!
 //! The job is the same object Node keeps in `native-calibration-<hash>.json` (see
 //! [`super::calibration`]), with the same keys in the same order, so either owner reads the other's
-//! jobs and history. The original profile text is kept in the file only while the job runs (for
-//! [`Maint::recover_calibration`]) and never leaves this module.
+//! jobs and history. Original profile text is private: it remains while a run or an unsettled
+//! restoration needs restart recovery and is never included in public job views.
 
 use super::calibration::{
     bound_load, grouped, ladder, over_budget_reason, verify_long, Applied, Feed, Kind, LongOutcome,
@@ -65,7 +65,8 @@ pub struct Limits {
     pub exclusion_poll: Duration,
     /// The first wait before saving a recovered job again after its save failed.
     pub save_retry: Duration,
-    /// Maximum time final persistence and admission cleanup can delay terminal publication.
+    /// Normal finalization deadline. A failed run's durable tombstone is mandatory: persistent
+    /// control-storage errors retain local admission beyond this limit until recovery.
     pub finalize: Duration,
 }
 
@@ -204,6 +205,11 @@ pub struct Worker {
     // An owned restoration can outlive the cleanup deadline. Do not admit another run until
     // its write has a definitive result; cancellation cannot revoke a remote CAS already sent.
     restoring: Arc<AtomicBool>,
+    local_fence: Mutex<Option<super::gate::AdmissionFence>>,
+    fence_wake: Mutex<Arc<Notify>>,
+    fence_interrupted: AtomicBool,
+    #[cfg(test)]
+    run_abort: Mutex<Option<tokio::task::AbortHandle>>,
     #[cfg(test)]
     panic_on_run: AtomicBool,
     #[cfg(test)]
@@ -369,9 +375,11 @@ fn finish_snapshot(state: &mut State, failed: bool) {
 
 pub(super) fn visible_job(i: &Inner) -> JValue {
     let mut job = public(i.state.job());
-    if i.active {
+    if i.active || i.state.job().get("pendingTombstone").truthy() {
         if let JValue::Obj(fields) = &mut job {
-            if i.state.job().get("status").as_str() != Some("running") {
+            if i.state.job().get("status").as_str() != Some("running")
+                || i.state.job().get("pendingTombstone").truthy()
+            {
                 wtf16::set(fields, "phase", JValue::Str("Finalizing".into()));
             }
             wtf16::set(fields, "status", JValue::Str("running".into()));
@@ -414,6 +422,14 @@ impl Drop for RunGuard {
                         return false;
                     }
                     finish_snapshot(&mut i.state, true);
+                    if let Some(job) = i.state.job_mut() {
+                        job.retain(|(k, _)| {
+                            k != "pendingTombstone"
+                                && (k != "pendingRestore"
+                                    || worker.restoring.load(Ordering::Acquire))
+                        });
+                    }
+                    worker.release_local_fence();
                     i.active = false;
                     i.cancel_requested = false;
                     i.lease_lost = false;
@@ -492,6 +508,11 @@ impl Worker {
             file,
             writes: Arc::new(Mutex::new(())),
             restoring: Arc::new(AtomicBool::new(false)),
+            local_fence: Mutex::new(None),
+            fence_wake: Mutex::new(Arc::new(Notify::new())),
+            fence_interrupted: AtomicBool::new(false),
+            #[cfg(test)]
+            run_abort: Mutex::new(None),
             #[cfg(test)]
             panic_on_run: AtomicBool::new(false),
             #[cfg(test)]
@@ -648,6 +669,26 @@ impl Worker {
         record
     }
 
+    fn release_local_fence(&self) {
+        let fence = self
+            .local_fence
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .take();
+        if let Some(fence) = fence {
+            fence.release();
+        }
+    }
+
+    pub(super) fn interrupt_fence_wait(&self) {
+        if !self.fence_interrupted.swap(true, Ordering::AcqRel) {
+            self.fence_wake
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .notify_one();
+        }
+    }
+
     /// Storage publication is fail-closed: a failed run cannot release calibration admission
     /// until its small tombstone is durable. This does not take the evidence append mutex.
     async fn tombstone_job(&self, job: &JValue) {
@@ -657,16 +698,30 @@ impl Worker {
         let model = job.get("model").as_str().unwrap_or("").to_owned();
         let id = job.get("id").as_str().unwrap_or("").to_owned();
         let generation = store.generation_for(&model, &id).unwrap_or(0);
-        let mut wait = self.limits.save_retry.max(Duration::from_millis(1));
+        self.with(|i| {
+            if i.state.job().get("id").as_str() == Some(id.as_str()) {
+                if let Some(job) = i.state.job_mut() {
+                    wtf16::set(job, "phase", JValue::Str("Finalizing".into()));
+                    wtf16::set(job, "pendingTombstone", JValue::Bool(true));
+                }
+            }
+        });
+        let wake = Arc::clone(&self.fence_wake.lock().unwrap_or_else(|p| p.into_inner()));
+        let mut wait = Duration::from_secs(1);
         loop {
             let (store, model, id) = (Arc::clone(&store), model.clone(), id.clone());
-            if matches!(
-                tokio::task::spawn_blocking(move || store.tombstone(&model, &id, generation)).await,
-                Ok(Ok(()))
-            ) {
-                return;
+            let result =
+                tokio::task::spawn_blocking(move || store.tombstone(&model, &id, generation)).await;
+            match result {
+                Ok(Ok(())) => return,
+                Ok(Err(e)) => eprintln!(
+                    "[models] calibration fence persistence failed: {:?}",
+                    e.kind()
+                ),
+                Err(_) => eprintln!("[models] calibration fence persistence failed: Other"),
             }
-            tokio::time::sleep(wait).await;
+            // Cancellation wakes a single wait; it never releases the retained local fence.
+            tokio::select! { () = tokio::time::sleep(wait) => {}, () = wake.notified() => {} }
             wait = (wait * 2).min(Duration::from_secs(60));
         }
     }
@@ -702,6 +757,17 @@ impl Worker {
             if i.launching || i.active {
                 return false;
             }
+            // Reserve synchronously when the cached job already identifies recovery work,
+            // before the spawned recovery can yield to another maintenance request.
+            if i.state.job().get("status").as_str() == Some("running")
+                || i.state.job().get("pendingRestore").truthy()
+                || i.state.job().get("pendingTombstone").truthy()
+            {
+                let mut fence = self.local_fence.lock().unwrap_or_else(|p| p.into_inner());
+                if fence.is_none() {
+                    *fence = super::gate::AdmissionFence::reserve(Arc::clone(&self.maint.local));
+                }
+            }
             i.launching = true;
             i.recovering = true;
             true
@@ -713,6 +779,32 @@ impl Worker {
     /// memory still has it (with [`UNSAVED`] on its error) and the save is retried: the job is not
     /// running, so launches are allowed, each saving it first ([`Worker::take_hold`]).
     async fn recover_held(self: &Arc<Self>) -> Option<Option<bool>> {
+        let file = self.file.clone();
+        let loaded = tokio::task::spawn_blocking(move || file.load()).await.ok();
+        if let Some(state) = loaded.filter(|state| {
+            state.job().get("status").as_str() == Some("running")
+                || state.job().get("pendingRestore").truthy()
+                || state.job().get("pendingTombstone").truthy()
+        }) {
+            loop {
+                if self
+                    .local_fence
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .is_some()
+                {
+                    break;
+                }
+                if let Some(fence) =
+                    super::gate::AdmissionFence::reserve(Arc::clone(&self.maint.local))
+                {
+                    *self.local_fence.lock().unwrap_or_else(|p| p.into_inner()) = Some(fence);
+                    break;
+                }
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+            self.with(|i| i.state = state);
+        }
         let outcome = self.maint.recover_calibration().await;
         let restored = outcome.restored();
         let unsaved = matches!(outcome, Recovery::Unsaved { .. });
@@ -732,6 +824,7 @@ impl Worker {
             });
         }
         self.with(|i| {
+            self.release_local_fence();
             i.launching = false;
             i.recovering = false;
         });
@@ -821,6 +914,9 @@ impl Worker {
                 return None;
             }
             let job = visible_job(i);
+            if i.state.job().get("phase").as_str() == Some("Finalizing") {
+                self.interrupt_fence_wait();
+            }
             i.cancel_requested = true;
             if let Some(a) = &i.inflight {
                 a.abort();
@@ -1716,6 +1812,7 @@ impl Worker {
     /// it is refused before any hold (its own first save would fail the same way).
     pub(super) async fn take_hold(&self, model: &str, plan: &Plan) -> Result<Hold, Refusal> {
         if self.restoring.load(Ordering::Acquire)
+            || self.with(|i| i.state.job().get("pendingTombstone").truthy())
             || self.maint.router.is_none()
             || self.maint.ini.is_none()
         {
@@ -1845,7 +1942,7 @@ impl Worker {
     /// The job created and saved under `hold`, and its run spawned; the public job.
     pub(super) async fn start(
         self: &Arc<Self>,
-        hold: Hold,
+        mut hold: Hold,
         model: &str,
         plan: Plan,
     ) -> Result<JValue, Refusal> {
@@ -1854,6 +1951,8 @@ impl Worker {
         } else {
             "active"
         };
+        *self.fence_wake.lock().unwrap_or_else(|p| p.into_inner()) = Arc::new(Notify::new());
+        self.fence_interrupted.store(false, Ordering::Release);
         let id = uuid();
         if let Some(store) = self.maint.evidence.clone() {
             let (model, id) = (model.to_owned(), id.clone());
@@ -1901,6 +2000,10 @@ impl Worker {
             hold.release().await;
             return Err(Refusal::Unavailable);
         }
+        // Transfer local admission before spawning: even an unpolled task cannot drop it
+        // before its durable failure fence. The run guard resolves that fence on cancellation.
+        *self.local_fence.lock().unwrap_or_else(|p| p.into_inner()) =
+            Some(hold.defer_local_release());
         // The file now has this job: nothing recovered is left to save.
         self.with(|i| {
             i.unsaved = false;
@@ -1913,10 +2016,16 @@ impl Worker {
             worker: Arc::clone(&worker),
             object,
         };
-        tokio::spawn(async move {
+        let task = tokio::spawn(async move {
             let _guard = guard;
             worker.run(hold).await;
         });
+        #[cfg(test)]
+        {
+            *self.run_abort.lock().unwrap_or_else(|p| p.into_inner()) = Some(task.abort_handle());
+        }
+        #[cfg(not(test))]
+        drop(task);
         Ok(self.job())
     }
 
@@ -1949,6 +2058,7 @@ impl Worker {
                 }
             }
         };
+        self.job_set("pendingTombstone", JValue::Bool(true));
         // One deadline covers every post-outcome await, including blocking-store work.
         let until = Instant::now() + self.limits.finalize;
         let object = self.with(|i| i.job_object);
@@ -2163,11 +2273,23 @@ impl Worker {
             .await
             .is_ok()
             && hold.node_release_confirmed();
-        let failed = post_failed
+        let mut failed = post_failed
             || !saved
             || !released
             || self.cancelled()
             || (hold.lost() && state.job().get("status").as_str() == Some("passed"));
+        if !failed {
+            if let Some(job) = state.job_mut() {
+                job.retain(|(k, _)| k != "pendingTombstone");
+            }
+            saved = self
+                .write_state(state.clone(), object, Some(until))
+                .await
+                .is_ok();
+            failed = !saved
+                || self.cancelled()
+                || (hold.lost() && state.job().get("status").as_str() == Some("passed"));
+        }
         if failed {
             if !self.restoring.load(Ordering::Acquire) {
                 if let Some(job) = state.job_mut() {
@@ -2176,6 +2298,9 @@ impl Worker {
             }
             finish_snapshot(&mut state, true);
             self.tombstone_job(state.job()).await;
+            if let Some(job) = state.job_mut() {
+                job.retain(|(k, _)| k != "pendingTombstone");
+            }
             saved = self
                 .write_state(
                     state.clone(),
@@ -2187,6 +2312,7 @@ impl Worker {
         }
         self.with(|i| {
             drop(hold);
+            self.release_local_fence();
             i.state = state;
             i.cancel_requested = false;
             i.lease_lost = false;
@@ -3382,6 +3508,167 @@ mod tests {
             .list()
             .iter()
             .all(|r| r.get("runId") != old.get("id")));
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn persistent_tombstone_errors_keep_admission_through_cancel_and_task_abort() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (port, seen) = synthetic_engine(ini, true).await;
+        let w = worker(d.path(), port);
+        let store = Arc::clone(w.maint.evidence.as_ref().unwrap());
+        w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        released(&seen, "POST /v1/chat/completions").await;
+        store.inject_run_write_error(true);
+        w.cancel().unwrap();
+        tokio::time::timeout(Duration::from_secs(4), async {
+            while store.run_write_failures().len() < 2 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let failures = store.run_write_failures();
+        assert!(
+            failures[1].duration_since(failures[0]) >= Duration::from_secs(1),
+            "backoff never spins"
+        );
+        let job = w.job();
+        assert_eq!(job.get("status").as_str(), Some("running"));
+        assert_eq!(job.get("phase").as_str(), Some("Finalizing"));
+        assert!(job.get("finishedAt").is_nullish());
+        assert!(w.maint.local_held());
+        assert!(w
+            .maint
+            .acquire_for_run("synthetic fence check", Duration::from_secs(1))
+            .await
+            .is_err());
+        // Cancellation interrupts the wait without releasing the retained local admission.
+        let attempts = store.run_write_failures().len();
+        w.cancel().unwrap();
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while store.run_write_failures().len() == attempts {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("cancellation interrupts the retry wait");
+        assert!(w.maint.local_held());
+        // Task cancellation/shutdown drops Hold, but the worker still owns the local fence.
+        w.run_abort.lock().unwrap().as_ref().unwrap().abort();
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while !w.run_abort.lock().unwrap().as_ref().unwrap().is_finished() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(w.maint.local_held());
+        assert_eq!(w.job().get("phase").as_str(), Some("Finalizing"));
+        assert!(w.job().get("finishedAt").is_nullish());
+        store.inject_run_write_error(false);
+        let job = tokio::time::timeout(Duration::from_secs(4), settled(&w))
+            .await
+            .unwrap();
+        review_failed(&w, &job);
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while w.unsaved() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(w.file.load().job().get("status").as_str(), Some("failed"));
+        assert!(!w.maint.local_held());
+        w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        let _ = w.cancel();
+        settled(&w).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn restart_recovers_a_pending_tombstone_before_releasing_admission() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (port, _) = synthetic_engine(ini, false).await;
+        let w = worker(d.path(), port);
+        let store = Arc::clone(w.maint.evidence.as_ref().unwrap());
+        store.admit_run("synthetic", "unfinished-fence").unwrap();
+        let mut state = State::empty();
+        state.set_job(JValue::obj([
+            ("id", JValue::Str("unfinished-fence".into())),
+            ("model", JValue::Str("synthetic".into())),
+            ("status", JValue::Str("passed".into())),
+            ("finishedAt", JValue::Num(100.0)),
+            ("pendingTombstone", JValue::Bool(true)),
+        ]));
+        w.file.save(&state).unwrap();
+        let restarted = with_limits(&w, w.limits);
+        store.inject_run_write_error(true);
+        let recovery = restarted.spawn_recover().unwrap();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while store.run_write_failures().is_empty() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("recovery retries the pending fence first");
+        assert!(restarted.maint.local_held());
+        assert_eq!(restarted.job().get("status").as_str(), Some("running"));
+        assert_eq!(restarted.job().get("phase").as_str(), Some("Finalizing"));
+        assert!(restarted.job().get("finishedAt").is_nullish());
+        store.inject_run_write_error(false);
+        tokio::time::timeout(Duration::from_secs(3), recovery)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!restarted.maint.local_held());
+        assert_eq!(restarted.job().get("status").as_str(), Some("failed"));
+        assert!(!restarted.job().get("finishedAt").is_nullish());
+        assert!(restarted
+            .file
+            .load()
+            .job()
+            .get("pendingTombstone")
+            .is_nullish());
+        restarted
+            .launch("synthetic", plan(32768.0, 120.0))
+            .await
+            .unwrap();
+        let _ = restarted.cancel();
+        settled(&restarted).await;
+    }
+    #[tokio::test(flavor = "current_thread")]
+    async fn an_unpolled_run_keeps_its_local_fence_until_the_tombstone_is_durable() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (port, _) = synthetic_engine(ini, false).await;
+        let w = worker(d.path(), port);
+        let store = Arc::clone(w.maint.evidence.as_ref().unwrap());
+        w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        // On this single-threaded runtime there is no await between spawn and abort, so the
+        // run future has never been polled. Its local fence must already have been transferred.
+        store.inject_run_write_error(true);
+        w.run_abort.lock().unwrap().as_ref().unwrap().abort();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while store.run_write_failures().is_empty() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(
+            w.maint.local_held(),
+            "unpolled task drop cannot release an unpersisted fence"
+        );
+        assert_eq!(w.job().get("phase").as_str(), Some("Finalizing"));
+        assert!(w.job().get("finishedAt").is_nullish());
+        store.inject_run_write_error(false);
+        let job = tokio::time::timeout(Duration::from_secs(3), settled(&w))
+            .await
+            .unwrap();
+        review_failed(&w, &job);
     }
     // SETTLEMENT_REGRESSIONS_END
     // REVIEW_REGRESSIONS_END
