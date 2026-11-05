@@ -1420,6 +1420,7 @@ mod tests {
                 (crate::model_state_routes::INSTALLED, &["GET"][..]),
                 (crate::preset_read_routes::PATH, &["GET"][..]),
                 (crate::model_sizing::SUGGEST, &["GET"][..]),
+                (crate::model_writes_d::PRUNE, &["POST"][..]),
                 (crate::model_maint::RELOAD, &["POST"][..]),
             ]
         );
