@@ -285,3 +285,53 @@ async fn native_safe_defaults_never_asks_child_for_a_plan() {
     let again = send(state, &step, "").await;
     assert_eq!(again.status, 409);
 }
+
+#[cfg(all(feature = "native-downloads", feature = "native-sections"))]
+#[tokio::test]
+async fn review_conditional_http_delete_rechecks_restored_file_and_releases_reservation() {
+    use noevia_model_manager::{downloads, sections};
+    use sections::Read;
+    let dir = tempfile::tempdir().unwrap();
+    let ini = dir.path().join("models.ini");
+    let original = "[gone]\nmodel = gone.gguf\n";
+    std::fs::write(&ini, original).unwrap();
+    let roles = dir.path().join("models.roles.json");
+    std::fs::write(&roles, "{\"gone\":\"chat\"}").unwrap();
+    let files = sections::Files::new(dir.path(), &ini).unwrap();
+    let before: Value = serde_json::from_slice(&files.response(None, false).unwrap()).unwrap();
+    let rev = before["revision"].as_str().unwrap();
+    let mut s = state(SectionWrites::new(&ini, (1024, 2048)), "http://127.0.0.1:9");
+    let table = downloads::Downloads::new(downloads::Config::production(
+        dir.path().display().to_string(),
+        dir.path().to_str().unwrap(),
+        1,
+    ))
+    .unwrap();
+    let mutable = Arc::get_mut(&mut s).unwrap();
+    mutable.downloads = Some(table.clone());
+    mutable.sections = Some(Arc::new(sections::Sections::new(Arc::new(files))));
+    std::fs::write(dir.path().join("gone.gguf"), b"synthetic").unwrap();
+    for (query, want) in [("/missing", 409), ("", 200)] {
+        let answer = noevia_model_manager::router(s.clone())
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/api/v1/sections/gone{query}?baseRevision={rev}"))
+                    .header("x-model-loader-token", TOKEN)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(answer.status().as_u16(), want);
+        assert_eq!(table.whole_reservations(), 0);
+        if want == 409 {
+            assert_eq!(std::fs::read_to_string(&ini).unwrap(), original);
+            assert_eq!(
+                std::fs::read_to_string(&roles).unwrap(),
+                "{\"gone\":\"chat\"}"
+            );
+        }
+    }
+    assert!(dir.path().join("gone.gguf").exists());
+}

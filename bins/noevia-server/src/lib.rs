@@ -1180,6 +1180,8 @@ pub fn router(app: Arc<App>) -> Router {
 mod feature_contract_tests {
     #[test]
     fn literal_research_marker_matches_its_owner() {
-        assert!(super::FEATURES.contains(&server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER));
+        assert!(
+            super::FEATURES.contains(&server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER)
+        );
     }
 }

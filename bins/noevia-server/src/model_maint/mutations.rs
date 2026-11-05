@@ -18,7 +18,6 @@ pub const DELETE: &str = "/api/models/delete";
 const SYSTEM: &str = "System routing model — not deleted";
 const SIDECAR: &str =
     "A running sidecar (embedding or reranking) depends on this model — not deleted";
-const BUSY: &str = "Models are busy, so nothing was changed. Try again shortly.";
 fn error(status: u16, message: &str) -> Response<Body> {
     reply::error(
         StatusCode::from_u16(status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
@@ -350,14 +349,13 @@ async fn delete(app: &Arc<App>, raw: &str, user: &str) -> Response<Body> {
         &app.config.sizing.listing().await,
     )
     .await;
-    let missing = match &installed {
+    match &installed {
         Ok(list) => {
-            let Some(entry) = list.iter().find(|m| m.get("name").as_str() == Some(&name)) else {
+            if !list.iter().any(|m| m.get("name").as_str() == Some(&name)) {
                 return error(404, &format!("model not found: {name}"));
-            };
-            entry.get("missingFile").as_bool() == Some(true)
+            }
         }
-        Err(crate::model_state_routes::ListFault::Engine) => false,
+        Err(crate::model_state_routes::ListFault::Engine) => (),
         Err(_) => return unavailable(),
     };
     let activity = match NodeActivity(Arc::clone(app)).enter().await {
@@ -384,44 +382,8 @@ async fn delete(app: &Arc<App>, raw: &str, user: &str) -> Response<Body> {
         Err(e) => return error(e.status, &e.message),
     };
     activity.leave().await;
-    let file_gone = removed.reply.ok || missing;
-    let mut preset_removed = false;
-    let mut reloaded = false;
-    let mut preset_busy = false;
-    if file_gone && app.config.models.model_loader {
-        match maint
-            .acquire("model-delete-presets", Duration::from_secs(300), false)
-            .await
-        {
-            Ok(hold) => {
-                if hold.excluded() && hold.may_start(Duration::from_secs(15)) {
-                    preset_removed = remove_section(app, &name, &hold).await;
-                    if preset_removed && hold.excluded() {
-                        let r = maint.reload_inner(router, &hold, false).await;
-                        reloaded = (200..300).contains(&r.status);
-                    }
-                } else {
-                    preset_busy = true;
-                }
-                hold.release().await;
-            }
-            Err(super::HoldError::Busy) => preset_busy = true,
-            Err(super::HoldError::Gate { status: 409, .. }) => preset_busy = true,
-            Err(_) => return unavailable(),
-        }
-    }
-    if preset_busy && !removed.reply.ok {
-        return ordered(
-            409,
-            vec![
-                ("error", W::str(BUSY)),
-                ("code", W::str("maintenance_held")),
-                ("retryable", W::Bool(true)),
-                ("unloaded", W::Bool(removed.unloaded)),
-            ],
-        );
-    }
-    if !(removed.reply.ok || (missing && preset_removed)) {
+    // Engine refusal is terminal. A stale missing-file read never overrides it.
+    if !removed.reply.ok {
         if let Some(r) = refusal(&removed.reply, removed.unloaded) {
             return r;
         }
@@ -429,6 +391,39 @@ async fn delete(app: &Arc<App>, raw: &str, user: &str) -> Response<Body> {
             502,
             json!({"error":format!("delete failed: {}",removed.reply.status),"unloaded":removed.unloaded}),
         );
+    }
+    let mut preset_removed = false;
+    let mut reloaded = false;
+    if app.config.models.model_loader {
+        let hold = match maint
+            .acquire("model-delete-presets", Duration::from_secs(300), false)
+            .await
+        {
+            Ok(hold) => hold,
+            Err(_) => return unavailable(),
+        };
+        let outcome = remove_section(app, &name, &hold).await;
+        let result = match outcome {
+            Some(removed) => {
+                preset_removed = removed;
+                if removed {
+                    let response = maint.reload_inner(router, &hold, false).await;
+                    if !hold.excluded() {
+                        None
+                    } else {
+                        reloaded = (200..300).contains(&response.status);
+                        Some(())
+                    }
+                } else {
+                    Some(())
+                }
+            }
+            None => None,
+        };
+        hold.release().await;
+        if result.is_none() {
+            return unavailable();
+        }
     }
     let Some(data_dir) = app.config.data_dir.clone() else {
         return unavailable();
@@ -459,19 +454,19 @@ async fn delete(app: &Arc<App>, raw: &str, user: &str) -> Response<Body> {
         ),
         ("presetRemoved", W::Bool(preset_removed)),
     ];
-    if preset_busy {
-        result.push(("presetBusy", W::Bool(true)));
-    }
     if preset_removed {
         result.push(("presetsReloaded", W::Bool(reloaded)));
     }
     ordered(200, result)
 }
-async fn remove_section(app: &App, name: &str, hold: &super::Hold) -> bool {
+async fn remove_section(app: &App, name: &str, hold: &super::Hold) -> Option<bool> {
     if matches!(name, "." | "..") {
-        return false;
+        return None;
     }
     let loader = &app.config.model_manager_scan;
+    if !hold.confirm(Duration::from_secs(15)).await {
+        return None;
+    }
     let Some((200, listing)) = loader
         .mutation_request(
             reqwest::Method::GET,
@@ -481,42 +476,38 @@ async fn remove_section(app: &App, name: &str, hold: &super::Hold) -> bool {
         )
         .await
     else {
-        return false;
+        return None;
     };
-    if !listing
-        .get("sections")
-        .and_then(Value::as_array)
-        .is_some_and(|s| {
-            s.iter().any(|v| {
-                v.as_str() == Some(name) || v.get("name").and_then(Value::as_str) == Some(name)
-            })
-        })
-    {
-        return false;
+    if !hold.confirm(Duration::from_secs(15)).await {
+        return None;
     }
-    if !hold.excluded() || !hold.may_start(Duration::from_secs(15)) {
-        return false;
+    let sections = listing.get("sections")?.as_array()?;
+    if !sections
+        .iter()
+        .any(|v| v.as_str() == Some(name) || v.get("name").and_then(Value::as_str) == Some(name))
+    {
+        return Some(false);
     }
     let mut path = format!(
-        "/api/v1/sections/{}",
+        "/api/v1/sections/{}/missing",
         crate::gdrive::encode_uri_component(name)
     );
     let revision = listing.get("revision").cloned().unwrap_or(Value::Null);
     let revision_text = revision.to_string();
     let Ok(revision) = v8_json::parse(&revision_text.encode_utf16().collect::<Vec<_>>()) else {
-        return false;
+        return None;
     };
     if revision.truthy() {
         let Ok(units) = v8_json::to_js_string(&revision) else {
-            return false;
+            return None;
         };
         let Ok(revision) = String::from_utf16(&units) else {
-            return false;
+            return None;
         };
         path.push_str("?baseRevision=");
         path.push_str(&crate::gdrive::encode_uri_component(&revision));
     }
-    loader
+    let deleted = loader
         .mutation_request(
             reqwest::Method::DELETE,
             &path,
@@ -524,7 +515,11 @@ async fn remove_section(app: &App, name: &str, hold: &super::Hold) -> bool {
             Duration::from_secs(15),
         )
         .await
-        .is_some_and(|(s, _)| (200..300).contains(&s))
+        .is_some_and(|(s, _)| (200..300).contains(&s));
+    if !deleted || !hold.excluded() {
+        return None;
+    }
+    Some(true)
 }
 fn refusal(r: &super::router::ExactReply, unloaded: bool) -> Option<Response<Body>> {
     let e = r.body.get("error");

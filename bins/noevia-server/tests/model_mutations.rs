@@ -575,12 +575,13 @@ async fn synthetic_files_and_presets_use_the_existing_owner_under_distinct_activ
     ("POST","/internal/model-mutations/leave")=>{a.store(false,Ordering::SeqCst);return reply("200 OK",r#"{"ok":true}"#);},
     ("POST","/internal/models/facts")=>{return reply("200 OK",&json!({"sidecarNames":[],"sidecarLoaded":[],"scan":[{"modelId":if missing{"other"}else{"synthetic"},"bytes":8}]}).to_string());},
     ("POST","/internal/model-maintenance/lease")=>{assert!(!a.load(Ordering::SeqCst));h.store(true,Ordering::SeqCst);return reply("201 Created",&json!({"lease":"a".repeat(32),"ttlMs":300000,"renewMs":10000,"hardMs":3600000}).to_string());},
+    ("POST",p)if p.starts_with("/internal/model-maintenance/lease/")&&p.ends_with("/renew")=>{assert!(h.load(Ordering::SeqCst));return reply("200 OK","{}");},
     ("DELETE",p)if p.starts_with("/internal/model-maintenance/lease/")=>{h.store(false,Ordering::SeqCst);return reply("204 No Content","");},
     ("GET","/models")=>return reply("200 OK",if s.load(Ordering::SeqCst){r#"{"data":[{"id":"synthetic","source":"preset","status":{"value":"unloaded"}}]}"#}else{r#"{"data":[]}"#}),
     ("POST","/models/unload")=>{assert!(a.load(Ordering::SeqCst));return reply(if missing{"404 Missing"}else{"200 OK"},"{}");},
     ("DELETE","/models?model=synthetic")=>{assert!(a.load(Ordering::SeqCst));assert!(!h.load(Ordering::SeqCst));if !missing{std::fs::remove_file(&owner_model).unwrap();}return reply(if missing{"404 Missing"}else{"200 OK"},"{}");},
     ("GET","/api/v1/sections")=>{assert!(h.load(Ordering::SeqCst));return reply("200 OK",r#"{"sections":[{"name":"synthetic","hasFile":false}],"revision":"base"}"#);},
-    ("DELETE","/api/v1/sections/synthetic?baseRevision=base")=>{assert!(h.load(Ordering::SeqCst));assert!(!owner_model.exists());std::fs::write(&owner_ini,"").unwrap();s.store(false,Ordering::SeqCst);return reply("204 No Content","");},
+    ("DELETE","/api/v1/sections/synthetic/missing?baseRevision=base")=>{assert!(h.load(Ordering::SeqCst));assert!(!owner_model.exists());std::fs::write(&owner_ini,"").unwrap();s.store(false,Ordering::SeqCst);return reply("204 No Content","");},
     ("GET","/models?reload=1")=>{assert!(h.load(Ordering::SeqCst));reloads_owner.fetch_add(1,Ordering::SeqCst);return reply("200 OK","{}");},
     _=>{}
    }
@@ -600,6 +601,20 @@ async fn synthetic_files_and_presets_use_the_existing_owner_under_distinct_activ
         )
         .await;
         let (status, body) = write(f.addr, "POST", DELETE, ADMIN, r#"{"name":"synthetic"}"#).await;
+        if missing {
+            assert_eq!(
+                status, 502,
+                "an engine refusal must retain a missing preset: {body}"
+            );
+            assert_eq!(
+                std::fs::read_to_string(&ini).unwrap(),
+                "[synthetic]\nmodel = synthetic.gguf\n"
+            );
+            assert_eq!(reloads.load(Ordering::SeqCst), 0);
+            assert!(!hold.load(Ordering::SeqCst));
+            assert!(!activity.load(Ordering::SeqCst));
+            continue;
+        }
         assert_eq!(status, 200, "missing={missing}: {body}");
         assert_eq!(body["presetRemoved"], true);
         assert_eq!(body["presetsReloaded"], true);
@@ -666,4 +681,212 @@ async fn concurrent_pull_and_delete_retain_owner_dedup_and_in_use_refusal() {
     assert_eq!(c.0, 409, "{}", c.1);
     assert_eq!(starts.load(Ordering::SeqCst), 1);
     assert!(!up.seen().iter().any(|r| r.path.ends_with("/commit")));
+}
+
+// Review regressions: the synthetic gate and file owner expose the two publication barriers.
+async fn review_cleanup_rig(mode: &'static str) -> (tempfile::TempDir, Front, Upstream) {
+    use std::sync::atomic::AtomicBool;
+    let dir = tempfile::tempdir().unwrap();
+    seed(dir.path());
+    std::fs::write(
+        dir.path().join("users").join(A).join("auto-roles.json"),
+        r#"{"fast":"synthetic","smart":"other"}"#,
+    )
+    .unwrap();
+    let ini = dir.path().join("models.ini");
+    let original = "[synthetic]\nmodel = synthetic.gguf\n";
+    std::fs::write(&ini, original).unwrap();
+    let model = dir.path().join("synthetic.gguf");
+    if mode != "engine-refusal" {
+        std::fs::write(&model, b"synthetic").unwrap();
+    }
+    let lost = Arc::new(AtomicBool::new(false));
+    let holds = Arc::new(AtomicUsize::new(0));
+    let up = upstream().await;
+    let file = model.clone();
+    let saved = ini.clone();
+    up.set(move |r| {
+        if r.path == "/internal/models/facts" {
+            return reply("200 OK", &json!({"sidecarNames":[],"sidecarLoaded":[],"scan":if mode == "engine-refusal" {json!([{"modelId":"other","bytes":9}])} else {json!([{"modelId":"synthetic","bytes":9}])}}).to_string());
+        }
+        if let Some(v) = state(r) { return v; }
+        match (r.method.as_str(), r.path.as_str()) {
+            ("POST", "/gate/v1/maintenance") => {
+                let previous = holds.fetch_add(1, Ordering::SeqCst);
+                if previous != 0 { lost.store(false, Ordering::SeqCst); }
+                reply("201 Created", &json!({"hold":if previous == 0 {"a".repeat(32)} else {"b".repeat(32)},"idle_ttl_ms":if mode == "retake-success" {3000} else {600000}}).to_string())
+            }
+            ("POST", p) if p.ends_with("/renew") => reply(if lost.load(Ordering::SeqCst) { if mode == "renew-outage" {"503 Unavailable"} else {"404 Lost"} } else {"200 OK"}, "{}"),
+            ("DELETE", p) if p.starts_with("/gate/v1/maintenance/") => reply("204 No Content", ""),
+            ("GET", "/models") => reply("200 OK", r#"{"data":[{"id":"synthetic","source":"preset","status":{"value":"unloaded"}}]}"#),
+            ("POST", "/models/unload") => reply("200 OK", "{}"),
+            ("DELETE", "/models?model=synthetic") => {
+                if mode == "engine-refusal" {
+                    // Publication after the installed scan, before the engine's refusal settles.
+                    std::fs::write(&file, b"restored synthetic").unwrap();
+                    reply("409 Conflict", r#"{"error":{"type":"gate_error","code":"model_in_use","message":"Busy","retryable":true}}"#)
+                } else { std::fs::remove_file(&file).unwrap(); reply("200 OK", "{}") }
+            }
+            ("GET", "/api/v1/sections") => {
+                if mode == "restored-before-cas" { std::fs::write(&file, b"restored synthetic").unwrap(); }
+                if ["renew-lost", "renew-outage", "retake-success"].contains(&mode) { lost.store(true, Ordering::SeqCst); }
+                let response = reply("200 OK", r#"{"revision":"base","sections":[{"name":"synthetic","hasFile":false}]}"#);
+                if mode == "retake-success" { (Duration::from_millis(2200), response.1) } else { response }
+            }
+            ("DELETE", p) if p.starts_with("/api/v1/sections/synthetic") => {
+                if p.contains("/missing?") && file.exists() { return reply("409 Conflict", r#"{"detail":"file present"}"#); }
+                std::fs::write(&saved, "").unwrap(); reply("200 OK", "{}")
+            }
+            ("GET", "/models?reload=1") => reply("200 OK", "{}"),
+            _ => panic!("unexpected {} {}", r.method, r.path),
+        }
+    });
+    let front = front_env(
+        dir.path(),
+        true,
+        &[
+            ("NOEVIA_LEGACY_UPSTREAM", up.base()),
+            ("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()),
+            ("MODEL_MANAGER_KIND", "llamacpp".into()),
+            ("MODEL_MANAGER_BASE_URL", up.base()),
+            ("INFERENCE_GATE_ADMIN_TOKEN", "synthetic-gate-admin".into()),
+            ("LLAMACPP_PRESET_PATH", ini.display().to_string()),
+            ("MODEL_LOADER_URL", up.base()),
+        ],
+    )
+    .await;
+    (dir, front, up)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn review_lost_cleanup_exclusion_never_retakes_or_deletes() {
+    for mode in ["renew-lost", "renew-outage", "retake-success"] {
+        let (dir, f, up) = review_cleanup_rig(mode).await;
+        let (status, body) = write(f.addr, "POST", DELETE, ADMIN, r#"{"name":"synthetic"}"#).await;
+        assert_eq!(
+            up.seen()
+                .iter()
+                .filter(|r| r.method == "DELETE" && r.path.starts_with("/api/v1/sections"))
+                .count(),
+            0,
+            "{mode}: {body}"
+        );
+        assert_eq!(
+            up.seen()
+                .iter()
+                .filter(|r| r.method == "POST" && r.path == "/gate/v1/maintenance")
+                .count(),
+            1,
+            "must not retake: {mode}"
+        );
+        assert_eq!(status, 503, "{mode}: {body}");
+        assert!(!f.app.config.maint.local_held());
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("models.ini")).unwrap(),
+            "[synthetic]\nmodel = synthetic.gguf\n"
+        );
+        assert!(!up.seen().iter().any(|r| r.path.ends_with("/commit")));
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn review_engine_refusal_wins_over_the_stale_missing_snapshot() {
+    let (dir, f, up) = review_cleanup_rig("engine-refusal").await;
+    let (code, installed) = get(f.addr, "/api/models/installed", ADMIN).await;
+    assert_eq!(code, 200);
+    assert_eq!(
+        installed[0]["missingFile"], true,
+        "barrier starts from an authoritative missing snapshot"
+    );
+    let (status, body) = write(f.addr, "POST", DELETE, ADMIN, r#"{"name":"synthetic"}"#).await;
+    assert_eq!(status, 409, "{body}");
+    assert_eq!(body["code"], "model_in_use");
+    assert!(!up
+        .seen()
+        .iter()
+        .any(|r| r.path.starts_with("/api/v1/sections") || r.path.ends_with("/commit")));
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("models.ini")).unwrap(),
+        "[synthetic]\nmodel = synthetic.gguf\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("users").join(A).join("auto-roles.json")).unwrap(),
+        r#"{"fast":"synthetic","smart":"other"}"#
+    );
+    assert_eq!(
+        std::fs::read(dir.path().join("synthetic.gguf")).unwrap(),
+        b"restored synthetic"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn review_restoration_before_cleanup_cas_keeps_preset_and_roles() {
+    let (dir, f, up) = review_cleanup_rig("restored-before-cas").await;
+    let (status, body) = write(f.addr, "POST", DELETE, ADMIN, r#"{"name":"synthetic"}"#).await;
+    assert_eq!(status, 503, "{body}");
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("models.ini")).unwrap(),
+        "[synthetic]\nmodel = synthetic.gguf\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("users").join(A).join("auto-roles.json")).unwrap(),
+        r#"{"fast":"synthetic","smart":"other"}"#
+    );
+    assert!(!up.seen().iter().any(|r| r.path.ends_with("/commit")));
+    assert!(up
+        .seen()
+        .iter()
+        .filter(|r| r.method == "DELETE" && r.path.starts_with("/api/v1/sections"))
+        .all(|r| r.path.contains("/missing?")));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn review_cancelled_cleanup_acquire_releases_the_late_grant() {
+    let up = upstream().await;
+    up.set(|r| match (r.method.as_str(), r.path.as_str()) {
+        ("POST", "/gate/v1/maintenance") => (
+            Duration::from_millis(300),
+            reply(
+                "201 Created",
+                &json!({"hold":"a".repeat(32),"idle_ttl_ms":600000}).to_string(),
+            )
+            .1,
+        ),
+        ("DELETE", p) if p.starts_with("/gate/v1/maintenance/") => reply("204 No Content", ""),
+        ("POST", p) if p.ends_with("/renew") => reply("200 OK", "{}"),
+        _ => state(r).unwrap_or_else(|| panic!("unexpected {} {}", r.method, r.path)),
+    });
+    let dir = tempfile::tempdir().unwrap();
+    seed(dir.path());
+    let f = front_env(
+        dir.path(),
+        true,
+        &[
+            ("NOEVIA_LEGACY_UPSTREAM", up.base()),
+            ("MODEL_MANAGER_KIND", "llamacpp".into()),
+            ("MODEL_MANAGER_BASE_URL", up.base()),
+            ("INFERENCE_GATE_ADMIN_TOKEN", "synthetic".into()),
+        ],
+    )
+    .await;
+    let maint = Arc::clone(&f.app.config.maint);
+    let waiting = Arc::clone(&maint);
+    let request = tokio::spawn(async move {
+        waiting
+            .acquire("synthetic", Duration::from_secs(300), false)
+            .await
+    });
+    up.wait_for("/gate/v1/maintenance", 1).await;
+    request.abort();
+    let _ = request.await;
+    up.wait_for(&format!("/gate/v1/maintenance/{}", "a".repeat(32)), 1)
+        .await;
+    assert!(!maint.local_held());
+    assert_eq!(
+        up.seen()
+            .iter()
+            .filter(|r| r.method == "POST" && r.path == "/gate/v1/maintenance")
+            .count(),
+        1
+    );
 }

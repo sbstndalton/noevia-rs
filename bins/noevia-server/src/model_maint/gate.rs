@@ -5,8 +5,8 @@
 //! included, and Node's chat, which goes through the gate, waits for its end.
 //!
 //! A [`Hold`] always has an absolute deadline. While it lasts a task renews the gate's hold every
-//! third of its idle limit (the gate ends a hold nobody renews), takes it again if the gate lost
-//! it, and gives it back at the deadline. A hold dropped without [`Hold::release`] (a panic, a
+//! third of its idle limit. Lost or unconfirmed exclusion permanently fences the job; it is
+//! never reacquired to continue old work. The hold is given back at its deadline. A hold dropped without [`Hold::release`] (a panic, a
 //! cancelled task) gives its token back from `Drop`; if even that cannot run, the gate ends the
 //! hold by itself after its idle limit. A dropped HTTP client never reaches this: the work runs on
 //! its own spawned task, which owns the hold.
@@ -29,8 +29,6 @@ const CLIENT_HEADER: &str = "x-noevia-client";
 const CALL_TIMEOUT: Duration = Duration::from_secs(5);
 /// A gate found without the hold API is asked again after this.
 const REPROBE: Duration = Duration::from_secs(5 * 60);
-/// How long a renewal that finds the hold gone waits for the engine when it takes the hold again.
-const RETAKE_WAIT: Duration = Duration::from_secs(10);
 const MAX_WAIT: Duration = Duration::from_secs(600);
 
 /// A hold the gate granted.
@@ -38,6 +36,7 @@ const MAX_WAIT: Duration = Duration::from_secs(600);
 pub struct Grant {
     pub token: String,
     pub idle_ttl: Duration,
+    pub asked: Instant,
 }
 
 /// Why the gate gave no hold.
@@ -213,6 +212,7 @@ impl Gate {
         }
         let wait = wait.min(MAX_WAIT);
         let wait_ms = u64::try_from(wait.as_millis()).unwrap_or(0);
+        let asked = Instant::now();
         let (status, body) = self
             .call(
                 reqwest::Method::POST,
@@ -240,6 +240,7 @@ impl Gate {
                 return Ok(Some(Grant {
                     token: token.to_owned(),
                     idle_ttl: Duration::from_millis(ttl),
+                    asked,
                 }));
             }
         }
@@ -519,14 +520,18 @@ impl Hold {
         reason: &str,
         deadline: Instant,
     ) -> Hold {
-        let shared = Shared::new(Some(grant.token), deadline, None, None, None);
+        let shared = Shared::new(
+            Some(grant.token),
+            deadline,
+            Some(grant.idle_ttl),
+            None,
+            None,
+        );
+        if let Ok(mut at) = shared.confirmed.lock() {
+            *at = grant.asked;
+        }
         let every = (grant.idle_ttl / 3).max(Duration::from_secs(1));
-        tokio::spawn(renew_loop(
-            Arc::clone(&shared),
-            Arc::clone(&gate),
-            every,
-            reason.to_owned(),
-        ));
+        tokio::spawn(renew_loop(Arc::clone(&shared), Arc::clone(&gate), every));
         Hold {
             shared,
             gate: Some(gate),
@@ -548,14 +553,15 @@ impl Hold {
 
     /// May a step of at most `limit` start? For Node's lease: only if it has not ended and is sure to
     /// outlast the step: Node's last confirmation and its hard limit both cover it, so the lease cannot
-    /// end under a call in flight, even if Node stops hearing renewals now. Always true for the gate's
-    /// hold, which goes on as it always did.
+    /// end under a call in flight, even if renewals stop. Gate grants use the same conservative clock.
     pub fn may_start(&self, limit: Duration) -> bool {
         let Some(ttl) = self.shared.lease_ttl else {
-            return true;
+            return false;
         };
         let covered = |until: Instant| Instant::now() + limit + STEP_MARGIN < until;
-        !self.shared.lost.load(Ordering::Acquire)
+        !self.shared.released.load(Ordering::Acquire)
+            && covered(self.shared.deadline())
+            && !self.shared.lost.load(Ordering::Acquire)
             && self
                 .shared
                 .confirmed
@@ -564,19 +570,37 @@ impl Hold {
             && self.shared.lease_end.is_none_or(covered)
     }
 
-    /// Whether the hold still excludes everyone else: not lost, and for Node's lease, Node's last
-    /// confirmation still covers now (an unconfirmed lease may already have ended at Node).
-    pub fn excluded(&self) -> bool {
-        if self.shared.lost.load(Ordering::Acquire) || self.shared.released.load(Ordering::Acquire)
-        {
+    /// Confirm the same grant immediately before a destructive call. A missing answer is
+    /// terminal, even if a later renewal would succeed. Never acquire a replacement grant.
+    pub async fn confirm(&self, limit: Duration) -> bool {
+        if !self.may_start(Duration::ZERO) {
+            self.shared.lost.store(true, Ordering::Release);
             return false;
         }
-        let Some(ttl) = self.shared.lease_ttl else {
-            return true;
+        let Some(token) = self.shared.token.lock().ok().and_then(|t| t.clone()) else {
+            return false;
         };
-        let now = Instant::now();
-        self.shared.confirmed.lock().is_ok_and(|at| now < *at + ttl)
-            && self.shared.lease_end.is_none_or(|end| now < end)
+        let asked = Instant::now();
+        let answer = if let Some(gate) = self.gate.as_ref() {
+            gate.renew(&token, None).await
+        } else if let Some(node) = self.node.as_ref() {
+            node.renew(&token).await
+        } else {
+            None
+        };
+        // A late successful reply cannot revive a job whose confirmed coverage already ended.
+        if answer != Some(true) || !self.excluded() {
+            self.shared.lost.store(true, Ordering::Release);
+            return false;
+        }
+        if let Ok(mut at) = self.shared.confirmed.lock() {
+            *at = (*at).max(asked);
+        }
+        let covered = self.may_start(limit);
+        if !covered {
+            self.shared.lost.store(true, Ordering::Release);
+        }
+        covered
     }
 
     /// Makes the deadline at least `needed` from now: the work has found out how long it may take.
@@ -594,7 +618,9 @@ impl Hold {
     /// Updates the reason the gate shows people.
     pub async fn set_reason(&self, reason: &str) {
         if let (Some(gate), Some(token)) = (self.gate.as_ref(), self.token()) {
-            let _ = gate.renew(&token, Some(reason)).await;
+            if gate.renew(&token, Some(reason)).await != Some(true) {
+                self.shared.lost.store(true, Ordering::Release);
+            }
         }
     }
 
@@ -652,12 +678,15 @@ impl Hold {
     /// Ends the hold: the gate's token is given back, the local flag cleared.
     pub async fn release(mut self) {
         self.finish();
-        let token = self.shared.token.lock().ok().and_then(|mut t| t.take());
+        let token = self.shared.token.lock().ok().and_then(|t| t.clone());
         if let (Some(gate), Some(token)) = (self.gate.as_ref(), token.as_ref()) {
             gate.release(token).await;
         }
         if self.node.is_some() {
             self.release_node_lease().await;
+        }
+        if let Ok(mut token) = self.shared.token.lock() {
+            token.take();
         }
     }
 
@@ -691,51 +720,41 @@ impl Drop for Hold {
     }
 }
 
-async fn renew_loop(shared: Arc<Shared>, gate: Arc<Gate>, every: Duration, reason: String) {
-    loop {
+async fn renew_loop(shared: Arc<Shared>, gate: Arc<Gate>, every: Duration) {
+    while shared.pause(every).await {
         if Instant::now() >= shared.deadline() {
-            break;
-        }
-        if !shared.pause(every).await {
+            shared.lost.store(true, Ordering::Release);
+            let token = shared.token.lock().ok().and_then(|mut t| t.take());
+            if let Some(token) = token {
+                gate.release(&token).await;
+            }
             return;
         }
-        // A later `cover` may have moved it.
-        if Instant::now() >= shared.deadline() {
-            break;
+        if shared.lost.load(Ordering::Acquire) {
+            return;
         }
         let Some(token) = shared.token.lock().ok().and_then(|t| t.clone()) else {
             return;
         };
-        if gate.renew(&token, None).await == Some(false) {
-            // The gate has forgotten the hold: take it again, briefly waiting for the engine.
-            match gate.hold(&reason, RETAKE_WAIT).await {
-                Ok(Some(g)) => {
-                    if shared.released.load(Ordering::Acquire) {
-                        gate.release(&g.token).await;
-                        return;
-                    }
-                    if let Ok(mut t) = shared.token.lock() {
-                        *t = Some(g.token);
-                    }
-                    eprintln!("[inference-gate] the gate had lost this process's maintenance hold; it was taken again");
-                }
-                _ => {
-                    if let Ok(mut t) = shared.token.lock() {
-                        *t = None;
-                    }
-                    shared.lost.store(true, Ordering::Release);
-                    eprintln!("[inference-gate] the gate lost this process's maintenance hold and it could not be taken again; this work goes on without it, so other clients may use the engine until it ends");
-                    return;
-                }
-            }
+        let asked = Instant::now();
+        let valid = shared
+            .confirmed
+            .lock()
+            .is_ok_and(|at| shared.lease_ttl.is_some_and(|ttl| asked < *at + ttl));
+        if !valid
+            || gate.renew(&token, None).await != Some(true)
+            || !shared.confirmed.lock().is_ok_and(|at| {
+                shared
+                    .lease_ttl
+                    .is_some_and(|ttl| Instant::now() < *at + ttl)
+            })
+        {
+            shared.lost.store(true, Ordering::Release);
+            return;
         }
-    }
-    // The deadline: the work is overdue. The hold is given back so it cannot outlive its work.
-    shared.lost.store(true, Ordering::Release);
-    let token = shared.token.lock().ok().and_then(|mut t| t.take());
-    if let Some(token) = token {
-        eprintln!("[inference-gate] a maintenance hold passed its deadline and was given back");
-        gate.release(&token).await;
+        if let Ok(mut at) = shared.confirmed.lock() {
+            *at = (*at).max(asked);
+        }
     }
 }
 
@@ -866,6 +885,31 @@ mod tests {
         assert!(!ack.load(Ordering::Acquire));
     }
     // REVIEW_RELEASE_TESTS_END
+
+    #[tokio::test]
+    async fn expired_or_lost_gate_coverage_is_terminal_and_drop_releases_local() {
+        let local = Arc::new(AtomicBool::new(true));
+        let gate = Arc::new(Gate::new("http://127.0.0.1:9", Some("synthetic")).unwrap());
+        let hold = Hold::gated(
+            local.clone(),
+            gate,
+            Grant {
+                token: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
+                idle_ttl: Duration::from_secs(600),
+                asked: Instant::now(),
+            },
+            "",
+            Instant::now() + Duration::from_secs(3600),
+        );
+        assert!(hold.may_start(Duration::from_secs(30)));
+        *hold.shared.confirmed.lock().unwrap() = Instant::now() - Duration::from_secs(601);
+        assert!(!hold.confirm(Duration::ZERO).await);
+        // A later good clock or peer cannot revive this job.
+        *hold.shared.confirmed.lock().unwrap() = Instant::now();
+        assert!(!hold.may_start(Duration::ZERO));
+        drop(hold);
+        assert!(!local.load(Ordering::Acquire));
+    }
 
     #[test]
     fn tokens_are_32_lowercase_hex() {
