@@ -770,7 +770,10 @@ mod tests {
         // Review S5–S9 P1: the turn's pipeline still runs in Node (/internal/chat/turn), so the
         // route is not counted as ported; every other rust route has no Node executor.
         let r = route_for("/api/chat");
-        assert_eq!(r.map(|r| (r.owner, r.node_executor)), Some((Owner::Rust, true)));
+        assert_eq!(
+            r.map(|r| (r.owner, r.node_executor)),
+            Some((Owner::Rust, true))
+        );
         let marked: Vec<_> = ROUTES
             .iter()
             .filter(|r| r.node_executor)
