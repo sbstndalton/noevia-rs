@@ -7,7 +7,9 @@
 //!   results, applied and declined writes are folded, and the role alternation strict chat
 //!   templates need (core `normalizeReplayHistory` and the history mapping of `createChatHandler`).
 //! - [`validate`]: what a turn refuses before anything is read or written.
+//! - [`failure`]: the words a failed engine reply shows.
 //! - [`notes`]: the system notes a turn adds or removes (`withSystemNote`, `withoutSystemNote`).
+pub mod failure;
 pub mod notes;
 pub mod replay;
 mod text;

@@ -146,3 +146,52 @@ fn validation_matches_node() {
     }
     assert!(seen.len() >= 8, "{seen:?}");
 }
+
+fn base64(s: &str) -> Vec<u8> {
+    let mut out = Vec::new();
+    let (mut acc, mut bits) = (0u32, 0u32);
+    for c in s.bytes() {
+        let v = match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => continue,
+        };
+        acc = (acc << 6) | u32::from(v);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+        }
+    }
+    out
+}
+
+#[test]
+fn provider_failure_text_matches_node() {
+    use chat_pipeline::failure::{capped_text, provider_failure_text, FailedReply, PROVIDER_ERROR_BODY_CAP};
+    let c = wtf16::parse(include_str!("fixtures/failure-cases.json")).unwrap();
+    let bodies: Vec<String> = arr(c.get("bodies"))
+        .iter()
+        .map(|b| capped_text(&base64(b.as_str().unwrap()), PROVIDER_ERROR_BODY_CAP))
+        .collect();
+    let cases = arr(c.get("cases"));
+    assert!(cases.len() > 2000);
+    for k in cases {
+        let detail = &bodies[k.get("body").as_num().unwrap() as usize];
+        let reply = FailedReply {
+            status: k.get("status").as_num().map(|n| n as i64),
+            detail,
+            gate_refusal: k.get("gate") == &JValue::Bool(true),
+            provider_message: k.get("providerMessage") == &JValue::Bool(true),
+        };
+        let got = provider_failure_text(
+            &reply,
+            k.get("chatgpt") == &JValue::Bool(true),
+            k.get("partial") == &JValue::Bool(true),
+        );
+        assert_eq!(Some(got.as_str()), k.get("text").as_str(), "{}", wtf16::stringify(k).unwrap());
+    }
+}
