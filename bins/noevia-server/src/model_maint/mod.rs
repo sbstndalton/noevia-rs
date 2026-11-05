@@ -19,17 +19,22 @@
 //! a client that goes away strands neither the work nor its hold (a [`gate::Hold`] is released by the
 //! task, has a deadline, and is given back from `Drop` if the task dies).
 
+pub mod activity;
 pub mod calibration;
 pub mod calibration_facts;
 pub mod calibration_worker;
+pub mod delete;
 pub mod evidence;
 pub mod evidence_live;
 pub mod evidence_recheck;
 pub mod gate;
 pub mod ini;
+pub mod mutations;
 pub mod node_lease;
+pub mod pull;
 pub mod reload;
 pub mod router;
+pub mod v8_json;
 
 use crate::{identity, reply, App};
 use axum::body::Body;

@@ -1,0 +1,292 @@
+[
+  {
+    "name": "success",
+    "raw": "{\"name\":\"synthetic\"}",
+    "known": true,
+    "ok": true,
+    "status": 200,
+    "unloaded": true,
+    "expected": {
+      "status": 200,
+      "body": {
+        "ok": true,
+        "unloaded": true,
+        "rolesCleared": [
+          "fast"
+        ],
+        "presetRemoved": false
+      }
+    }
+  },
+  {
+    "name": "unknown",
+    "raw": "{\"name\":\"unknown\"}",
+    "known": true,
+    "ok": true,
+    "status": 200,
+    "unloaded": true,
+    "expected": {
+      "status": 404,
+      "body": {
+        "error": "model not found: unknown"
+      }
+    }
+  },
+  {
+    "name": "traversal",
+    "raw": "{\"name\":\"../../outside\"}",
+    "known": true,
+    "ok": true,
+    "status": 200,
+    "unloaded": true,
+    "expected": {
+      "status": 404,
+      "body": {
+        "error": "model not found: ../../outside"
+      }
+    }
+  },
+  {
+    "name": "system",
+    "raw": "{\"name\":\"synthetic-system\"}",
+    "known": true,
+    "ok": true,
+    "status": 200,
+    "unloaded": true,
+    "expected": {
+      "status": 400,
+      "body": {
+        "error": "System routing model — not deleted",
+        "errorId": "systemModel",
+        "service": "decision"
+      }
+    }
+  },
+  {
+    "name": "system-confirmed",
+    "raw": "{\"name\":\"synthetic-system\",\"confirmSystem\":true}",
+    "known": true,
+    "ok": true,
+    "status": 200,
+    "unloaded": true,
+    "expected": {
+      "status": 200,
+      "body": {
+        "ok": true,
+        "unloaded": true,
+        "rolesCleared": [],
+        "presetRemoved": false
+      }
+    }
+  },
+  {
+    "name": "system-confirm-string",
+    "raw": "{\"name\":\"synthetic-system\",\"confirmSystem\":\"true\"}",
+    "known": true,
+    "ok": true,
+    "status": 200,
+    "unloaded": true,
+    "expected": {
+      "status": 400,
+      "body": {
+        "error": "System routing model — not deleted",
+        "errorId": "systemModel",
+        "service": "decision"
+      }
+    }
+  },
+  {
+    "name": "invalid-0",
+    "raw": "",
+    "known": true,
+    "ok": true,
+    "status": 200,
+    "unloaded": true,
+    "expected": {
+      "status": 400,
+      "body": {
+        "error": "invalid JSON"
+      }
+    }
+  },
+  {
+    "name": "invalid-1",
+    "raw": "{",
+    "known": true,
+    "ok": true,
+    "status": 200,
+    "unloaded": true,
+    "expected": {
+      "status": 400,
+      "body": {
+        "error": "invalid JSON"
+      }
+    }
+  },
+  {
+    "name": "invalid-2",
+    "raw": "null",
+    "known": true,
+    "ok": true,
+    "status": 200,
+    "unloaded": true,
+    "expected": {
+      "status": 500,
+      "body": {
+        "error": "Internal error"
+      }
+    }
+  },
+  {
+    "name": "invalid-3",
+    "raw": "false",
+    "known": true,
+    "ok": true,
+    "status": 200,
+    "unloaded": true,
+    "expected": {
+      "status": 400,
+      "body": {
+        "error": "name required"
+      }
+    }
+  },
+  {
+    "name": "invalid-4",
+    "raw": "[]",
+    "known": true,
+    "ok": true,
+    "status": 200,
+    "unloaded": true,
+    "expected": {
+      "status": 400,
+      "body": {
+        "error": "name required"
+      }
+    }
+  },
+  {
+    "name": "invalid-5",
+    "raw": "{}",
+    "known": true,
+    "ok": true,
+    "status": 200,
+    "unloaded": true,
+    "expected": {
+      "status": 400,
+      "body": {
+        "error": "name required"
+      }
+    }
+  },
+  {
+    "name": "invalid-6",
+    "raw": "{\"name\":\"\"}",
+    "known": true,
+    "ok": true,
+    "status": 200,
+    "unloaded": true,
+    "expected": {
+      "status": 400,
+      "body": {
+        "error": "name required"
+      }
+    }
+  },
+  {
+    "name": "invalid-7",
+    "raw": "{\"name\":false}",
+    "known": true,
+    "ok": true,
+    "status": 200,
+    "unloaded": true,
+    "expected": {
+      "status": 400,
+      "body": {
+        "error": "name required"
+      }
+    }
+  },
+  {
+    "name": "invalid-8",
+    "raw": "{\"name\":[]}",
+    "known": true,
+    "ok": true,
+    "status": 200,
+    "unloaded": true,
+    "expected": {
+      "status": 404,
+      "body": {
+        "error": "model not found: "
+      }
+    }
+  },
+  {
+    "name": "invalid-9",
+    "raw": "{\"name\":{}}",
+    "known": true,
+    "ok": true,
+    "status": 200,
+    "unloaded": true,
+    "expected": {
+      "status": 404,
+      "body": {
+        "error": "model not found: [object Object]"
+      }
+    }
+  },
+  {
+    "name": "invalid-10",
+    "raw": "{\"name\":\"\\ud800\"}",
+    "known": true,
+    "ok": true,
+    "status": 200,
+    "unloaded": true,
+    "expected": {
+      "status": 404,
+      "body": {
+        "error": "model not found: \ud800"
+      }
+    }
+  },
+  {
+    "name": "plain-failure",
+    "raw": "{\"name\":\"synthetic\"}",
+    "known": true,
+    "ok": false,
+    "status": 500,
+    "unloaded": false,
+    "expected": {
+      "status": 502,
+      "body": {
+        "error": "delete failed: 500",
+        "unloaded": false
+      }
+    }
+  },
+  {
+    "name": "in-use",
+    "raw": "{\"name\":\"synthetic\"}",
+    "known": true,
+    "ok": false,
+    "status": 409,
+    "unloaded": false,
+    "error": {
+      "error": {
+        "type": "gate_error",
+        "code": "model_in_use",
+        "message": "Busy",
+        "retryable": true
+      }
+    },
+    "expected": {
+      "status": 409,
+      "body": {
+        "error": "Busy",
+        "code": "model_in_use",
+        "retryable": true,
+        "unloaded": false
+      }
+    }
+  }
+]

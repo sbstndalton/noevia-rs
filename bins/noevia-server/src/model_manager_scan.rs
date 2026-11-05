@@ -279,3 +279,54 @@ mod tests {
         assert!(!diagnostic.contains("must-stay-private"));
     }
 }
+
+impl Loader {
+    /// Native public mutation policy uses the existing manager owner; no Node executor.
+    pub(crate) async fn mutation_request(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&serde_json::Value>,
+        within: Duration,
+    ) -> Option<(u16, serde_json::Value)> {
+        let url = reqwest::Url::parse(&format!("{}{path}", self.base.as_ref()?)).ok()?;
+        if !url.username().is_empty() || url.password().is_some() {
+            return None;
+        }
+        let mut request = self
+            .client
+            .request(method, url)
+            .timeout(within)
+            .header(header::CONTENT_TYPE, "application/json");
+        if let Some(token) = &self.token {
+            let mut value = HeaderValue::from_str(token).ok()?;
+            value.set_sensitive(true);
+            request = request.header("x-model-loader-token", value);
+        }
+        if let Some(body) = body {
+            request = request.body(body.to_string());
+        }
+        let mut response = request.send().await.ok()?;
+        let status = response.status().as_u16();
+        if matches!(status, 301 | 302 | 303 | 307 | 308) {
+            return None;
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await.ok()? {
+            if chunk.len() > CAP.saturating_sub(bytes.len()) {
+                return None;
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        Some((
+            status,
+            serde_json::from_slice(&bytes).unwrap_or_else(|_| {
+                if bytes.is_empty() {
+                    serde_json::Value::Null
+                } else {
+                    serde_json::Value::String(String::from_utf8_lossy(&bytes).into_owned())
+                }
+            }),
+        ))
+    }
+}

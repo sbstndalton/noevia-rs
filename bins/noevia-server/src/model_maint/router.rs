@@ -207,3 +207,34 @@ async fn read_capped(mut res: reqwest::Response) -> Result<Option<Vec<u8>>, ()> 
 pub fn rows(body: &Option<Value>) -> Option<&Vec<Value>> {
     body.as_ref()?.get("data")?.as_array()
 }
+
+impl Router {
+    pub(super) async fn pull_exact(
+        &self,
+        body: String,
+    ) -> Result<(bool, u16, super::v8_json::W), Fault> {
+        let mut request = self
+            .client
+            .post(format!("{}/models", self.base))
+            .header(CONTENT_TYPE, "application/json")
+            .timeout(Duration::from_secs(120))
+            .body(body);
+        if let Some(auth) = &self.authorization {
+            request = request.header(AUTHORIZATION, auth.clone());
+        }
+        let response = request.send().await.map_err(|_| Fault)?;
+        let status = response.status().as_u16();
+        let ok = response.status().is_success();
+        if matches!(status, 301 | 302 | 303 | 307 | 308) {
+            return Err(Fault);
+        }
+        let bytes = read_capped(response).await.map_err(|_| Fault)?;
+        let Some(bytes) = bytes else {
+            return Ok((false, status, super::v8_json::W::Undefined));
+        };
+        let text = String::from_utf8_lossy(&bytes);
+        let body = super::v8_json::parse(&text.encode_utf16().collect::<Vec<_>>())
+            .unwrap_or_else(|_| super::v8_json::W::str(&text));
+        Ok((ok, status, body))
+    }
+}

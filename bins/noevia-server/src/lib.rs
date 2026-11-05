@@ -461,6 +461,7 @@ pub const FEATURES: &[&str] = &[
     "rust-idle-unload-read",
     "rust-model-assignments",
     "rust-model-downloads-read",
+    "noevia-model-mutations/1",
     "rust-autotune-resume",
     #[cfg(feature = "rust-storage-reads")]
     "rust-connectors",

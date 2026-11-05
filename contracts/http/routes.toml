@@ -578,7 +578,13 @@ methods = ["GET"]
 
 [[route]]
 path = "/api/models/delete"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
+
+[[route]]
+path = "/api/models/pull"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/models/downloads"

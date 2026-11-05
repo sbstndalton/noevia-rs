@@ -122,6 +122,14 @@ pub async fn serve(
     req: Request<Body>,
     path: String,
 ) -> Response<Body> {
+    if [
+        crate::model_maint::mutations::PULL,
+        crate::model_maint::mutations::DELETE,
+    ]
+    .contains(&path.as_str())
+    {
+        return crate::model_maint::mutations::serve(app, conn, req, path).await;
+    }
     if path == crate::idle_unload_read::PATH {
         return crate::idle_unload_read::serve(app, conn, req, path).await;
     }

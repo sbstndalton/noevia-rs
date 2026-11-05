@@ -1,0 +1,255 @@
+[
+  {
+    "name": "success",
+    "steps": [
+      {
+        "method": "POST",
+        "status": 200,
+        "body": {
+          "syntheticStatus": 200
+        }
+      },
+      {
+        "method": "DELETE",
+        "status": 200,
+        "body": {
+          "syntheticStatus": 200
+        }
+      }
+    ],
+    "expected": {
+      "ok": true,
+      "status": 200,
+      "body": {
+        "syntheticStatus": 200
+      },
+      "unloaded": true
+    }
+  },
+  {
+    "name": "not-loaded",
+    "steps": [
+      {
+        "method": "POST",
+        "status": 404,
+        "body": {
+          "syntheticStatus": 404
+        }
+      },
+      {
+        "method": "DELETE",
+        "status": 200,
+        "body": {
+          "syntheticStatus": 200
+        }
+      }
+    ],
+    "expected": {
+      "ok": true,
+      "status": 200,
+      "body": {
+        "syntheticStatus": 200
+      },
+      "unloaded": false
+    }
+  },
+  {
+    "name": "retry-first-unload",
+    "steps": [
+      {
+        "method": "POST",
+        "status": 200,
+        "body": {
+          "syntheticStatus": 200
+        }
+      },
+      {
+        "method": "DELETE",
+        "status": 409,
+        "body": {
+          "syntheticStatus": 409
+        }
+      },
+      {
+        "method": "POST",
+        "status": 404,
+        "body": {
+          "syntheticStatus": 404
+        }
+      },
+      {
+        "method": "DELETE",
+        "status": 200,
+        "body": {
+          "syntheticStatus": 200
+        }
+      }
+    ],
+    "expected": {
+      "ok": true,
+      "status": 200,
+      "body": {
+        "syntheticStatus": 200
+      },
+      "unloaded": true
+    }
+  },
+  {
+    "name": "retry-second-unload",
+    "steps": [
+      {
+        "method": "POST",
+        "status": 404,
+        "body": {
+          "syntheticStatus": 404
+        }
+      },
+      {
+        "method": "DELETE",
+        "status": 404,
+        "body": {
+          "syntheticStatus": 404
+        }
+      },
+      {
+        "method": "POST",
+        "status": 200,
+        "body": {
+          "syntheticStatus": 200
+        }
+      },
+      {
+        "method": "DELETE",
+        "status": 200,
+        "body": {
+          "syntheticStatus": 200
+        }
+      }
+    ],
+    "expected": {
+      "ok": true,
+      "status": 200,
+      "body": {
+        "syntheticStatus": 200
+      },
+      "unloaded": true
+    }
+  },
+  {
+    "name": "still-refused",
+    "steps": [
+      {
+        "method": "POST",
+        "status": 404,
+        "body": {
+          "syntheticStatus": 404
+        }
+      },
+      {
+        "method": "DELETE",
+        "status": 500,
+        "body": {
+          "syntheticStatus": 500
+        }
+      },
+      {
+        "method": "POST",
+        "status": 404,
+        "body": {
+          "syntheticStatus": 404
+        }
+      },
+      {
+        "method": "DELETE",
+        "status": 409,
+        "body": {
+          "syntheticStatus": 409
+        }
+      }
+    ],
+    "expected": {
+      "ok": false,
+      "status": 409,
+      "body": {
+        "syntheticStatus": 409
+      },
+      "unloaded": false
+    }
+  },
+  {
+    "name": "unload-transport",
+    "steps": [
+      {
+        "method": "POST",
+        "transportError": true
+      },
+      {
+        "method": "DELETE",
+        "status": 200,
+        "body": {
+          "syntheticStatus": 200
+        }
+      }
+    ],
+    "expected": {
+      "ok": true,
+      "status": 200,
+      "body": {
+        "syntheticStatus": 200
+      },
+      "unloaded": false
+    }
+  },
+  {
+    "name": "delete-transport",
+    "steps": [
+      {
+        "method": "POST",
+        "status": 200,
+        "body": {
+          "syntheticStatus": 200
+        }
+      },
+      {
+        "method": "DELETE",
+        "transportError": true
+      }
+    ],
+    "expected": {
+      "error": true
+    }
+  },
+  {
+    "name": "retry-transport",
+    "steps": [
+      {
+        "method": "POST",
+        "status": 200,
+        "body": {
+          "syntheticStatus": 200
+        }
+      },
+      {
+        "method": "DELETE",
+        "status": 409,
+        "body": {
+          "syntheticStatus": 409
+        }
+      },
+      {
+        "method": "POST",
+        "status": 404,
+        "body": {
+          "syntheticStatus": 404
+        }
+      },
+      {
+        "method": "DELETE",
+        "transportError": true
+      }
+    ],
+    "expected": {
+      "error": true
+    }
+  }
+]

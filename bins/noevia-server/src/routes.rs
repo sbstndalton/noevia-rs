@@ -466,7 +466,16 @@ pub fn native_for(route: &Route) -> Option<Native> {
         "/api/usage" | "/api/usage/aggregate" if auth => return Some(Native::Usage),
         EXPORT if auth => return Some(Native::Export),
         p if auth && DIARY_ROUTES.contains(&p) => return Some(Native::Diary),
-        p if auth && p == crate::model_manager_scan::PATH => return Some(Native::Models),
+        p if auth
+            && (p == crate::model_manager_scan::PATH
+                || [
+                    crate::model_maint::mutations::PULL,
+                    crate::model_maint::mutations::DELETE,
+                ]
+                .contains(&p)) =>
+        {
+            return Some(Native::Models)
+        }
         p if auth
             && (crate::model_routes::ROUTES.contains(&p)
                 || crate::model_maint::ROUTES.contains(&p)
@@ -625,6 +634,8 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
     if (route.path == "/api/chat-framing/preferences"
         || route.path == server_account::vault_mirror::PATH
         || route.path == crate::model_manager_scan::PATH
+        || route.path == crate::model_maint::mutations::PULL
+        || route.path == crate::model_maint::mutations::DELETE
         || route.path == crate::model_downloads_read::PATH
         || route.path == crate::preset_read_routes::PATH)
         && path != route.path
@@ -1364,7 +1375,6 @@ mod tests {
         }
         for p in [
             "/api/model-manager",
-            "/api/models/delete",
             "/api/models/load",
             "/api/models/machines",
             "/api/models/preset/",

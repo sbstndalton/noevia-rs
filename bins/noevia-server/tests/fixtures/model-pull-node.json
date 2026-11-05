@@ -1,0 +1,788 @@
+[
+  {
+    "name": "empty",
+    "raw": "",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 400,
+      "body": {
+        "error": "invalid JSON"
+      }
+    }
+  },
+  {
+    "name": "malformed",
+    "raw": "{",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 400,
+      "body": {
+        "error": "invalid JSON"
+      }
+    }
+  },
+  {
+    "name": "null",
+    "raw": "null",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 500,
+      "body": {
+        "error": "Internal error"
+      }
+    }
+  },
+  {
+    "name": "false",
+    "raw": "false",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 400,
+      "body": {
+        "error": "checkpoint required"
+      }
+    }
+  },
+  {
+    "name": "array",
+    "raw": "[]",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 400,
+      "body": {
+        "error": "checkpoint required"
+      }
+    }
+  },
+  {
+    "name": "missing",
+    "raw": "{}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 400,
+      "body": {
+        "error": "checkpoint required"
+      }
+    }
+  },
+  {
+    "name": "type-0",
+    "raw": "{\"checkpoint\":null}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 400,
+      "body": {
+        "error": "checkpoint required"
+      }
+    }
+  },
+  {
+    "name": "type-1",
+    "raw": "{\"checkpoint\":false}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 400,
+      "body": {
+        "error": "checkpoint required"
+      }
+    }
+  },
+  {
+    "name": "type-2",
+    "raw": "{\"checkpoint\":0}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 400,
+      "body": {
+        "error": "checkpoint required"
+      }
+    }
+  },
+  {
+    "name": "type-3",
+    "raw": "{\"checkpoint\":\"\"}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 400,
+      "body": {
+        "error": "checkpoint required"
+      }
+    }
+  },
+  {
+    "name": "type-4",
+    "raw": "{\"checkpoint\":{}}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 502,
+      "body": {
+        "error": "Choose a Hugging Face repository and quantization"
+      }
+    }
+  },
+  {
+    "name": "type-5",
+    "raw": "{\"checkpoint\":[]}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 502,
+      "body": {
+        "error": "Choose a Hugging Face repository and quantization"
+      }
+    }
+  },
+  {
+    "name": "type-6",
+    "raw": "{\"checkpoint\":[\"synthetic/repo\"]}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 200,
+      "body": {
+        "jobId": [
+          "synthetic/repo"
+        ],
+        "modelName": [
+          "synthetic/repo"
+        ]
+      },
+      "request": {
+        "model": [
+          "synthetic/repo"
+        ]
+      }
+    }
+  },
+  {
+    "name": "type-7",
+    "raw": "{\"checkpoint\":[[\"synthetic/repo\"]]}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 200,
+      "body": {
+        "jobId": [
+          [
+            "synthetic/repo"
+          ]
+        ],
+        "modelName": [
+          [
+            "synthetic/repo"
+          ]
+        ]
+      },
+      "request": {
+        "model": [
+          [
+            "synthetic/repo"
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "name": "type-8",
+    "raw": "{\"checkpoint\":[\"synthetic/repo\",\"other\"]}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 502,
+      "body": {
+        "error": "Choose a Hugging Face repository and quantization"
+      }
+    }
+  },
+  {
+    "name": "name-0",
+    "raw": "{\"checkpoint\":\"synthetic/repo\"}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 200,
+      "body": {
+        "jobId": "synthetic/repo",
+        "modelName": "synthetic/repo"
+      },
+      "request": {
+        "model": "synthetic/repo"
+      }
+    }
+  },
+  {
+    "name": "name-1",
+    "raw": "{\"checkpoint\":\"synthetic/repo:Q4_0\"}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 200,
+      "body": {
+        "jobId": "synthetic/repo:Q4_0",
+        "modelName": "synthetic/repo:Q4_0"
+      },
+      "request": {
+        "model": "synthetic/repo:Q4_0"
+      }
+    }
+  },
+  {
+    "name": "name-2",
+    "raw": "{\"checkpoint\":\"../repo\"}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 200,
+      "body": {
+        "jobId": "../repo",
+        "modelName": "../repo"
+      },
+      "request": {
+        "model": "../repo"
+      }
+    }
+  },
+  {
+    "name": "name-3",
+    "raw": "{\"checkpoint\":\"owner/..\"}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 200,
+      "body": {
+        "jobId": "owner/..",
+        "modelName": "owner/.."
+      },
+      "request": {
+        "model": "owner/.."
+      }
+    }
+  },
+  {
+    "name": "name-4",
+    "raw": "{\"checkpoint\":\"a/b/c\"}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 502,
+      "body": {
+        "error": "Choose a Hugging Face repository and quantization"
+      }
+    }
+  },
+  {
+    "name": "name-5",
+    "raw": "{\"checkpoint\":\"a/b:\"}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 502,
+      "body": {
+        "error": "Choose a Hugging Face repository and quantization"
+      }
+    }
+  },
+  {
+    "name": "name-6",
+    "raw": "{\"checkpoint\":\"a/b:q:r\"}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 502,
+      "body": {
+        "error": "Choose a Hugging Face repository and quantization"
+      }
+    }
+  },
+  {
+    "name": "name-7",
+    "raw": "{\"checkpoint\":\"a/é\"}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 502,
+      "body": {
+        "error": "Choose a Hugging Face repository and quantization"
+      }
+    }
+  },
+  {
+    "name": "name-8",
+    "raw": "{\"checkpoint\":\"https://example.invalid/file\"}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 502,
+      "body": {
+        "error": "Choose a Hugging Face repository and quantization"
+      }
+    }
+  },
+  {
+    "name": "name-9",
+    "raw": "{\"checkpoint\":\"a/b\\n\"}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 502,
+      "body": {
+        "error": "Choose a Hugging Face repository and quantization"
+      }
+    }
+  },
+  {
+    "name": "name-10",
+    "raw": "{\"checkpoint\":\"a/b\\r\\n\"}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 502,
+      "body": {
+        "error": "Choose a Hugging Face repository and quantization"
+      }
+    }
+  },
+  {
+    "name": "name-11",
+    "raw": "{\"checkpoint\":\"a/b\\u0000\"}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 502,
+      "body": {
+        "error": "Choose a Hugging Face repository and quantization"
+      }
+    }
+  },
+  {
+    "name": "name-12",
+    "raw": "{\"checkpoint\":\"a/b\\ud800\"}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 502,
+      "body": {
+        "error": "Choose a Hugging Face repository and quantization"
+      }
+    }
+  },
+  {
+    "name": "ignored-options",
+    "raw": "{\"checkpoint\":\"synthetic/repo\",\"modelName\":{\"nested\":1},\"recipe\":[1]}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 200,
+      "body": {
+        "jobId": "synthetic/repo",
+        "modelName": "synthetic/repo"
+      },
+      "request": {
+        "model": "synthetic/repo"
+      }
+    }
+  },
+  {
+    "name": "shadowed-to-string",
+    "raw": "{\"checkpoint\":{\"toString\":null}}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 500,
+      "body": {
+        "error": "Internal error"
+      }
+    }
+  },
+  {
+    "name": "shadowed-to-string-named",
+    "raw": "{\"checkpoint\":{\"toString\":null},\"modelName\":\"synthetic\"}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 500,
+      "body": {
+        "error": "Internal error"
+      }
+    }
+  },
+  {
+    "name": "nested-shadowed-to-string",
+    "raw": "{\"checkpoint\":[{\"toString\":null}]}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 500,
+      "body": {
+        "error": "Internal error"
+      }
+    }
+  },
+  {
+    "name": "duplicate",
+    "raw": "{\"checkpoint\":\"bad\",\"checkpoint\":\"synthetic/repo:Q4\"}",
+    "enabled": true,
+    "ok": true,
+    "upstreamStatus": 202,
+    "upstream": {
+      "id": "ignored",
+      "modelName": "ignored"
+    },
+    "expected": {
+      "status": 200,
+      "body": {
+        "jobId": "synthetic/repo:Q4",
+        "modelName": "synthetic/repo:Q4"
+      },
+      "request": {
+        "model": "synthetic/repo:Q4"
+      }
+    }
+  },
+  {
+    "name": "upstream-33",
+    "raw": "{\"checkpoint\":\"synthetic/repo\"}",
+    "enabled": true,
+    "ok": false,
+    "upstreamStatus": 409,
+    "upstream": {
+      "error": "failed"
+    },
+    "expected": {
+      "status": 502,
+      "body": {
+        "error": "failed"
+      },
+      "request": {
+        "model": "synthetic/repo"
+      }
+    }
+  },
+  {
+    "name": "upstream-34",
+    "raw": "{\"checkpoint\":\"synthetic/repo\"}",
+    "enabled": true,
+    "ok": false,
+    "upstreamStatus": 409,
+    "upstream": {
+      "error": {
+        "message": "failure"
+      }
+    },
+    "expected": {
+      "status": 502,
+      "body": {
+        "error": {
+          "message": "failure"
+        }
+      },
+      "request": {
+        "model": "synthetic/repo"
+      }
+    }
+  },
+  {
+    "name": "upstream-35",
+    "raw": "{\"checkpoint\":\"synthetic/repo\"}",
+    "enabled": true,
+    "ok": false,
+    "upstreamStatus": 409,
+    "upstream": {
+      "error": []
+    },
+    "expected": {
+      "status": 502,
+      "body": {
+        "error": []
+      },
+      "request": {
+        "model": "synthetic/repo"
+      }
+    }
+  },
+  {
+    "name": "upstream-36",
+    "raw": "{\"checkpoint\":\"synthetic/repo\"}",
+    "enabled": true,
+    "ok": false,
+    "upstreamStatus": 409,
+    "upstream": {
+      "error": 0
+    },
+    "expected": {
+      "status": 502,
+      "body": {
+        "error": "pull failed: 409"
+      },
+      "request": {
+        "model": "synthetic/repo"
+      }
+    }
+  },
+  {
+    "name": "upstream-37",
+    "raw": "{\"checkpoint\":\"synthetic/repo\"}",
+    "enabled": true,
+    "ok": false,
+    "upstreamStatus": 409,
+    "upstream": {
+      "error": false
+    },
+    "expected": {
+      "status": 502,
+      "body": {
+        "error": "pull failed: 409"
+      },
+      "request": {
+        "model": "synthetic/repo"
+      }
+    }
+  },
+  {
+    "name": "upstream-38",
+    "raw": "{\"checkpoint\":\"synthetic/repo\"}",
+    "enabled": true,
+    "ok": false,
+    "upstreamStatus": 409,
+    "upstream": {},
+    "expected": {
+      "status": 502,
+      "body": {
+        "error": "pull failed: 409"
+      },
+      "request": {
+        "model": "synthetic/repo"
+      }
+    }
+  },
+  {
+    "name": "upstream-39",
+    "raw": "{\"checkpoint\":\"synthetic/repo\"}",
+    "enabled": true,
+    "ok": false,
+    "upstreamStatus": 409,
+    "upstream": null,
+    "expected": {
+      "status": 502,
+      "body": {
+        "error": "pull failed: 409"
+      },
+      "request": {
+        "model": "synthetic/repo"
+      }
+    }
+  },
+  {
+    "name": "disabled-40",
+    "raw": "{}",
+    "enabled": false,
+    "ok": true,
+    "upstreamStatus": 200,
+    "upstream": {},
+    "expected": {
+      "status": 400,
+      "body": {
+        "error": "checkpoint required"
+      }
+    }
+  },
+  {
+    "name": "disabled-41",
+    "raw": "{\"checkpoint\":\"bad\"}",
+    "enabled": false,
+    "ok": true,
+    "upstreamStatus": 200,
+    "upstream": {},
+    "expected": {
+      "status": 404,
+      "body": {
+        "error": "model management is disabled"
+      }
+    }
+  },
+  {
+    "name": "disabled-42",
+    "raw": "{\"checkpoint\":\"synthetic/repo\"}",
+    "enabled": false,
+    "ok": true,
+    "upstreamStatus": 200,
+    "upstream": {},
+    "expected": {
+      "status": 404,
+      "body": {
+        "error": "model management is disabled"
+      }
+    }
+  }
+]
