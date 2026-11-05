@@ -75,6 +75,9 @@ pub struct Catalogue {
     pub boxes: Vec<BoxInfo>,
     pub manifest: Vec<ManifestBox>,
     pub servers: Vec<ServerInfo>,
+    /// Every discovered tool name with the servers that offer it, in declaration order (core's
+    /// `mcpState.offers`). A publisher that does not write it publishes no offers.
+    pub offers: std::collections::HashMap<String, Vec<String>>,
 }
 
 impl Catalogue {
@@ -159,7 +162,23 @@ pub fn parse(body: &Value) -> Option<Catalogue> {
             .map(|v| v.as_str().map(str::to_owned))
             .collect()
     };
+    let offers = match body.get("offers") {
+        Some(Value::Object(map)) => map
+            .iter()
+            .map(|(name, servers)| {
+                let ids = servers
+                    .as_array()?
+                    .iter()
+                    .map(|v| v.as_str().map(str::to_owned))
+                    .collect::<Option<Vec<_>>>()?;
+                Some((name.clone(), ids))
+            })
+            .collect::<Option<_>>()?,
+        Some(Value::Null) | None => Default::default(),
+        _ => return None,
+    };
     Some(Catalogue {
+        offers,
         mcp_enabled: flag(body, "mcpEnabled")?,
         harness_enabled: flag(body, "harnessEnabled")?,
         has_repositories: flag(body, "hasRepositories")?,

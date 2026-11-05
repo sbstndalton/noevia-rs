@@ -812,6 +812,7 @@ mod differential {
             boxes,
             manifest,
             servers: Vec::new(),
+            offers: Default::default(),
         };
         let ready = i.get("ready");
         let facts = Facts {

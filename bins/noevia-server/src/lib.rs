@@ -43,6 +43,8 @@ pub mod mcp_discovery;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_egress;
 #[cfg(feature = "rust-storage-reads")]
+pub mod mcp_exec;
+#[cfg(feature = "rust-storage-reads")]
 pub mod mcp_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_tools;
@@ -371,6 +373,8 @@ pub const FEATURES: &[&str] = &[
     "legacy-root-claim",
     "project-store",
     "rust-research",
+    // sbstndalton/noevia#2218: the one executor of an MCP tool call (mcp_exec.rs), `POST /v1/mcp/call` on the store listener.
+    "rust-mcp-exec",
     "rust-task-reads",
     "rust-tool-approvals",
     server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER,
@@ -516,6 +520,9 @@ pub struct App {
     /// The MCP credential broker (sbstndalton/noevia#2202): OAuth sign-ins and per-account keys.
     #[cfg(feature = "rust-storage-reads")]
     pub mcp: Option<Arc<mcp_broker::Mcp>>,
+    /// The one executor of an MCP tool call (mcp_exec.rs): deep research in process, the chat's tool runtime over `/v1/mcp/call`.
+    #[cfg(feature = "rust-storage-reads")]
+    pub mcp_exec: Option<Arc<mcp_exec::Executor>>,
     /// GET /api/providers/{id}/models: the per-account list cache (sbstndalton/noevia#2190 round 5).
     #[cfg(feature = "rust-storage-reads")]
     pub provider_models: provider_models_routes::Lists,
@@ -615,6 +622,8 @@ impl App {
             (Some(o), Some(d)) => Some(Arc::new(offsite_routes::Service::new(o, Arc::clone(d)))),
             _ => None,
         };
+        #[cfg(feature = "rust-storage-reads")]
+        let mcp = mcp_broker::Mcp::new(&config).map(Arc::new);
         Arc::new(App {
             demand: Arc::new(snapshot::Demand::default()),
             drive,
@@ -625,7 +634,11 @@ impl App {
             chatgpt_oauth: chatgpt_oauth_routes::Broker::new(&config, version.as_deref())
                 .map(Arc::new),
             #[cfg(feature = "rust-storage-reads")]
-            mcp: mcp_broker::Mcp::new(&config).map(Arc::new),
+            mcp_exec: mcp
+                .as_ref()
+                .map(|m| Arc::new(mcp_exec::Executor::new(config.mcp_exec.clone(), m.egress()))),
+            #[cfg(feature = "rust-storage-reads")]
+            mcp,
             #[cfg(feature = "rust-storage-reads")]
             provider_models: provider_models_routes::Lists::default(),
             #[cfg(feature = "rust-storage-reads")]

@@ -26,7 +26,6 @@ const ORIGIN: &str = "http://127.0.0.1:18021";
 const STORE_TOKEN: &str = "synthetic-store-token-0123456789abcdef";
 const START: &str = "0123456789abcdef0123456789abcdef";
 const LEASE: &str = "0123456789abcdef0123456789abcdef";
-const UNREACHABLE: &str = "Research could not reach this server's search tools (the bridge to the web process did not answer). Try again shortly; if it keeps happening, ask an administrator to check the server.";
 
 #[derive(Clone)]
 enum Answer {
@@ -139,21 +138,49 @@ fn node_answer(path: &str, body: &str) -> Answer {
         return Answer::Now(204, String::new());
     }
     match path {
-        "/internal/research/availability" => {
-            ok(json!({"reason": null, "lastLoaded": "synthetic-model"}))
-        }
+        "/internal/research/facts" => ok(json!({"lastLoaded": "synthetic-model"})),
         "/internal/research/retrieve" => ok(json!({"hits": []})),
-        "/internal/research/tool" => {
-            if body.contains("tavily_search") {
-                ok(
-                    json!({"text": json!({"results":[{"url":"https://example.test/a","title":"A page"}]}).to_string()}),
-                )
-            } else {
-                ok(json!({"text": "The tower is 50 metres tall. It opened in 1999."}))
-            }
-        }
         _ => Answer::Now(404, "{}".into()),
     }
+}
+
+/// The operator's search server: MCP over plain http, the two search tools. Every request is logged by the stub.
+fn mcp_answer(_m: &str, _p: &str, body: &str) -> Answer {
+    let msg: Value = serde_json::from_str(body).unwrap_or(json!({}));
+    let id = msg.get("id").cloned().unwrap_or(Value::Null);
+    let reply = |result: Value| {
+        Answer::Now(
+            200,
+            json!({"jsonrpc":"2.0","id":id,"result":result}).to_string(),
+        )
+    };
+    match msg["method"].as_str().unwrap_or("") {
+        "initialize" => reply(
+            json!({"protocolVersion":"2025-06-18","capabilities":{},"serverInfo":{"name":"synthetic","version":"1"}}),
+        ),
+        "tools/call" => {
+            let text = if msg["params"]["name"] == "tavily_search" {
+                json!({"results":[{"url":"https://example.test/a","title":"A page"}]}).to_string()
+            } else {
+                "The tower is 50 metres tall. It opened in 1999.".to_owned()
+            };
+            reply(json!({"content":[{"type":"text","text":text}]}))
+        }
+        // The `initialized` notification and anything else: accepted, nothing to say.
+        _ => Answer::Now(202, String::new()),
+    }
+}
+
+/// What Node publishes (mcp-discovery.json): the operator's one server offers both search tools.
+fn publish_catalogue(dir: &std::path::Path, offers: Value) {
+    let doc = json!({
+        "version": 1, "kind": "mcp-discovery", "writtenAt": noevia_server::identity::now_ms(), "everyMs": 600000,
+        "mcpEnabled": true, "harnessEnabled": false, "hasRepositories": false,
+        "nextcloudConfigured": false, "nextcloudOrigins": [],
+        "defaults": ["core"], "connectorBoxes": [], "boxes": [], "manifest": [], "servers": [],
+        "offers": offers,
+    });
+    std::fs::write(dir.join("mcp-discovery.json"), doc.to_string()).unwrap();
 }
 
 fn lease_node() -> Responder {
@@ -173,11 +200,28 @@ struct Front {
     user: String,
     node: Stub,
     engine: Stub,
+    /// The operator's search server (MCP).
+    mcp: Stub,
     app: Arc<noevia_server::App>,
 }
 
 async fn front(flag: Option<&str>, node: Responder, engine: Responder) -> Front {
-    let (node, engine) = (Stub::start(node).await, Stub::start(engine).await);
+    front_with(flag, node, engine, Arc::new(mcp_answer), &[]).await
+}
+
+/// `env`: extra environment (ENABLED_TOOLBOXES, MCP_SERVERS to replace the default one).
+async fn front_with(
+    flag: Option<&str>,
+    node: Responder,
+    engine: Responder,
+    mcp: Responder,
+    env_extra: &[(&'static str, String)],
+) -> Front {
+    let (node, engine, mcp) = (
+        Stub::start(node).await,
+        Stub::start(engine).await,
+        Stub::start(mcp).await,
+    );
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().to_path_buf();
     let c = Connection::open(server_store::db_path(&data)).unwrap();
@@ -199,6 +243,13 @@ async fn front(flag: Option<&str>, node: Responder, engine: Responder) -> Front 
     env.insert("TRUST_PROXY", "true".into());
     env.insert("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into());
     env.insert("INFERENCE_BASE_URL", format!("http://{}", engine.addr));
+    env.insert(
+        "MCP_SERVERS",
+        format!("search|http://{}/mcp|none", mcp.addr),
+    );
+    for (k, v) in env_extra {
+        env.insert(k, v.clone());
+    }
     if let Some(v) = flag {
         env.insert(flag_name, v.into());
     }
@@ -248,9 +299,14 @@ async fn front(flag: Option<&str>, node: Responder, engine: Responder) -> Front 
         user,
         node,
         engine,
+        mcp,
         app: kept,
     };
     seed_project(&f.user_dir());
+    publish_catalogue(
+        &f.data,
+        json!({"tavily_search": ["search"], "tavily_extract": ["search"]}),
+    );
     f
 }
 
@@ -494,42 +550,77 @@ async fn method_and_shape_answers_are_nodes() {
     assert_eq!(v["jobs"], json!([]));
 }
 
+/// core index.cjs's availability, now the front's own: the toolbox is offered, both tools were discovered, the
+/// operator's one server offers each. Node's only part is the last loaded model.
 #[tokio::test]
-async fn availability_comes_from_node_and_a_missing_node_refuses() {
-    let words = "Web search is not configured on this server.";
-    let node: Responder = Arc::new(move |_m, p, b| {
-        if p == "/internal/research/availability" {
-            Answer::Now(
-                200,
-                json!({"reason": words, "lastLoaded": null}).to_string(),
-            )
-        } else {
-            node_answer(p, b)
-        }
-    });
-    let f = front(Some("true"), node, engine_saying("x")).await;
+async fn availability_is_the_published_catalogue_and_the_operators_one_search_server() {
+    let toolbox = "Deep research needs the web-search toolbox (tavily_search and tavily_extract) on this server.";
+    let not_configured = "Web search is not configured on this server.";
+    let preparing = "Research's search tools are being prepared. Try again in a moment.";
+    let f = front(Some("true"), lease_node(), engine_saying("x")).await;
     let (s, v) = f.call("GET", "/api/projects/p1/research", "").await;
-    assert_eq!(s, 200);
+    assert_eq!((s, &v["available"]), (200, &json!(true)), "{v}");
+
+    // A directory server offering the name does not make it ambiguous (#891); the operator's one still takes it.
+    publish_catalogue(
+        &f.data,
+        json!({"tavily_search": ["dir-x", "search"], "tavily_extract": ["search", "dir-x"]}),
+    );
+    let (_, v) = f.call("GET", "/api/projects/p1/research", "").await;
+    assert_eq!(v["available"], true, "{v}");
+    // ... and with no operator server among the offers there is no search (never a directory server's).
+    publish_catalogue(
+        &f.data,
+        json!({"tavily_search": ["dir-x"], "tavily_extract": ["dir-x"]}),
+    );
+    let (_, v) = f.call("GET", "/api/projects/p1/research", "").await;
     assert_eq!(
         (&v["available"], &v["reason"]),
-        (&json!(false), &json!(words))
+        (&json!(false), &json!(not_configured))
     );
     let (s, v) = f.plan().await;
-    assert_eq!((s, v), (409, json!({"error": words})));
+    assert_eq!((s, v), (409, json!({"error": not_configured})));
     assert_eq!(f.engine.seen().len(), 0, "no engine call");
-
-    let nothing: Responder = Arc::new(|_m, _p, _b| Answer::Now(500, "x".into()));
-    let f = front(Some("true"), nothing, engine_saying("x")).await;
+    // A tool nobody discovered: the toolbox words.
+    publish_catalogue(&f.data, json!({"tavily_search": ["search"]}));
     let (_, v) = f.call("GET", "/api/projects/p1/research", "").await;
-    assert_eq!(v["available"], false, "unknown is not available: {v}");
+    assert_eq!(v["reason"], toolbox, "{v}");
+    // A catalogue Node has not published (or let go stale) is not an answer: nothing is assumed, nothing runs.
+    std::fs::remove_file(f.data.join("mcp-discovery.json")).unwrap();
+    let (_, v) = f.call("GET", "/api/projects/p1/research", "").await;
     assert_eq!(
-        v["reason"], UNREACHABLE,
-        "a bridge that fails is not 'not configured': {v}"
+        (&v["available"], &v["reason"]),
+        (&json!(false), &json!(preparing)),
+        "{v}"
     );
-    // Tools there but no model anywhere: the pick-a-model words.
+
+    // The toolbox switched off by the operator (ENABLED_TOOLBOXES without web-search).
+    let f = front_with(
+        Some("true"),
+        lease_node(),
+        engine_saying("x"),
+        Arc::new(mcp_answer),
+        &[("ENABLED_TOOLBOXES", "files".into())],
+    )
+    .await;
+    let (_, v) = f.call("GET", "/api/projects/p1/research", "").await;
+    assert_eq!(v["reason"], toolbox, "{v}");
+    let f = front_with(
+        Some("true"),
+        lease_node(),
+        engine_saying("x"),
+        Arc::new(mcp_answer),
+        &[("ENABLED_TOOLBOXES", "files, web-search".into())],
+    )
+    .await;
+    let (_, v) = f.call("GET", "/api/projects/p1/research", "").await;
+    assert_eq!(v["available"], true, "{v}");
+
+    // Tools there but no model anywhere: the pick-a-model words. Node's fact is only the last loaded model, and an
+    // unreachable Node is no model, not a failed availability.
     let none: Responder = Arc::new(|_m, p, b| {
-        if p == "/internal/research/availability" {
-            Answer::Now(200, json!({"reason": null, "lastLoaded": null}).to_string())
+        if p == "/internal/research/facts" {
+            Answer::Now(200, json!({"lastLoaded": null}).to_string())
         } else {
             node_answer(p, b)
         }
@@ -539,6 +630,14 @@ async fn availability_comes_from_node_and_a_missing_node_refuses() {
     assert_eq!(
         v["reason"],
         "Pick a Smart model for Auto routing, or load a model, before starting research."
+    );
+    let nothing: Responder = Arc::new(|_m, _p, _b| Answer::Now(500, "x".into()));
+    let f = front(Some("true"), nothing, engine_saying("x")).await;
+    let (_, v) = f.call("GET", "/api/projects/p1/research", "").await;
+    assert_eq!(
+        v["reason"],
+        "Pick a Smart model for Auto routing, or load a model, before starting research.",
+        "{v}"
     );
 }
 
@@ -662,17 +761,31 @@ async fn a_job_runs_to_its_end_after_the_client_left_and_keeps_every_cap() {
     assert!(done.get("artifacts").is_some());
     // Excerpts are stored, never in the public view.
     assert!(!done.to_string().contains("excerpts"));
-    // One search, in research's shape, as this user; no other tool name.
-    for line in f
-        .node
+    // The searches went to the operator's server, in research's shape, and no other tool name; each session was closed.
+    let calls: Vec<Value> = f
+        .mcp
         .seen()
         .iter()
-        .filter(|l| l.starts_with("POST /internal/research/tool"))
-    {
-        let body: Value = serde_json::from_str(line.split_once("\n\n").unwrap().1).unwrap();
-        assert_eq!(body["user"], f.user.as_str());
-        assert!(["tavily_search", "tavily_extract"].contains(&body["name"].as_str().unwrap()));
+        .filter_map(|l| {
+            l.split_once("\n\n")
+                .and_then(|(_, b)| serde_json::from_str::<Value>(b).ok())
+        })
+        .filter(|m| m["method"] == "tools/call")
+        .collect();
+    assert!(!calls.is_empty());
+    for m in &calls {
+        let name = m["params"]["name"].as_str().unwrap();
+        assert!(["tavily_search", "tavily_extract"].contains(&name), "{m}");
+        if name == "tavily_search" {
+            assert_eq!(m["params"]["arguments"]["max_results"], 5);
+        }
     }
+    assert_eq!(f.mcp.count("POST /mcp"), 3 * calls.len());
+    assert_eq!(
+        f.node.count("POST /internal/research/tool"),
+        0,
+        "the tools are not Node\'s any more"
+    );
     // Every lease back.
     let f2 = &f;
     assert!(
@@ -928,35 +1041,19 @@ async fn the_local_engine_never_redirects_a_step() {
 }
 
 /// The failure that hid behind "Web search is not configured" (review H1, L2): Node answering the front's own calls
-/// with its 404 for an unknown path, as it did when it was built with an empty secret.
+/// with its 404 for an unknown path, as it did when it was built with an empty secret. What is Node's now is the
+/// project's retrieval (and the last loaded model): a bridge that refuses the front is "could not search the sources",
+/// never "no sources", and never a failed availability.
 #[tokio::test]
 async fn a_bridge_that_refuses_the_front_is_unreachable_not_unconfigured() {
-    let refuse: Responder = Arc::new(|_m, p, b| {
-        if p.starts_with("/internal/research/") {
+    let retrieve_refused: Responder = Arc::new(|_m, p, b| {
+        if p == "/internal/research/retrieve" {
             Answer::Now(404, json!({"error": "Not found"}).to_string())
         } else {
             node_answer(p, b)
         }
     });
-    let f = front(Some("true"), refuse, engine_saying("x")).await;
-    let (s, v) = f.call("GET", "/api/projects/p1/research", "").await;
-    assert_eq!(s, 200);
-    assert_eq!(
-        (&v["available"], &v["reason"]),
-        (&json!(false), &json!(UNREACHABLE))
-    );
-    let (s, v) = f.plan().await;
-    assert_eq!((s, v), (409, json!({"error": UNREACHABLE})));
-
-    // Availability fine, but the tool route refuses: the job says what happened, in the same words.
-    let tools_refused: Responder = Arc::new(|_m, p, b| {
-        if p == "/internal/research/tool" || p == "/internal/research/retrieve" {
-            Answer::Now(404, json!({"error": "Not found"}).to_string())
-        } else {
-            node_answer(p, b)
-        }
-    });
-    let f = front(Some("true"), tools_refused, engine_saying("x")).await;
+    let f = front(Some("true"), retrieve_refused, engine_saying("x")).await;
     let (s, v) = f
         .call(
             "POST",

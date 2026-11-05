@@ -156,6 +156,12 @@ impl Egress {
         self.qa_loopback
     }
 
+    /// The guarded client (no proxy, no redirect, a connect-time public-address resolver), for a
+    /// caller that sends its own requests after [`Egress::url_allowed`].
+    pub(crate) fn client(&self) -> &reqwest::Client {
+        &self.client
+    }
+
     /// `hostedUrlOk(url) && directoryUrlAllowed(url)`: an https public address (or the QA
     /// loopback stand-in). A name that does not resolve, or resolves to anything not public, is
     /// refused.
@@ -538,14 +544,27 @@ async fn rpc(
     let text = reply
         .text
         .ok_or_else(|| "MCP: response body exceeded the 8 MB limit".to_string())?;
+    rpc_result(id, reply.content_type.contains("text/event-stream"), &text)
+}
+
+/// The `result` of one JSON-RPC reply body (core mcp.cjs `rpc` after the status and size checks): the
+/// frame is judged by `mcp-frame`, a JSON-RPC `error` becomes `MCP error <code>: <message>`.
+pub(crate) fn rpc_result(id: i64, sse: bool, text: &str) -> Result<Option<JValue>, String> {
     let units: Vec<u16> = text.encode_utf16().collect();
-    let sse = reply.content_type.contains("text/event-stream");
     let outcome = mcp_frame::parse_rpc_body(sse, &units, &mcp_frame::Expected::Number(id as f64))
         .map_err(|_| "MCP: response body exceeded the 8 MB limit".to_string())?;
     let span = match outcome {
         mcp_frame::Outcome::Reply(r) => r,
-        mcp_frame::Outcome::Mismatch(_) => {
-            return Err(format!("MCP: reply id does not match request {id}"))
+        mcp_frame::Outcome::Mismatch(span) => {
+            // core: `MCP: reply id ${msg.id} does not match request ${expectedId}`.
+            let seen = units
+                .get(span)
+                .and_then(|s| js_json::parse(&String::from_utf16_lossy(s)).ok())
+                .and_then(|m| js_json::to_js_string(m.get("id")).ok())
+                .unwrap_or_default();
+            return Err(format!(
+                "MCP: reply id {seen} does not match request {id}"
+            ));
         }
         mcp_frame::Outcome::NoMessage => {
             return Err("MCP: no JSON-RPC message in event stream".into())

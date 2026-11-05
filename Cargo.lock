@@ -1995,6 +1995,7 @@ dependencies = [
  "llamacpp-autoconfig",
  "long-profile",
  "mcp-frame",
+ "mcp-servers",
  "model-stream",
  "offsite-backup-format",
  "policy-leaves",
