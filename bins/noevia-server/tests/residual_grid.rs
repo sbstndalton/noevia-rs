@@ -12,6 +12,10 @@
 //! only). A case that reaches the sentinel is a residual Node fallback: it is counted (and listed in
 //! the RESIDUAL_GRID_REPORT file when set), and the fixture holds the exact answer a native
 //! replacement must give. Synthetic accounts only.
+//!
+//! A case with an `intentional` field is a deliberate change from the Node-era answer (it names
+//! the issue; today only sbstndalton/noevia#2411, GET /api/instance/). Re-apply those after
+//! regenerating the fixture with the oracle.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
