@@ -71,6 +71,72 @@ async fn settled(f: &Front) -> Value {
     panic!("the job never settled")
 }
 
+/// Completion is a public persistence/admission boundary, including when the last save fails.
+/// A directory at the state-file destination deterministically refuses the final atomic rename.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn finished_status_has_a_final_saved_record_and_admits_the_next_start() {
+    let (d, f, _up, e) = rig().await;
+    assert_eq!(write(f.addr, "POST", PATH, ADMIN, ASK).await.0, 202);
+    let path = cal::state_file(d.path(), &e);
+    tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            let saved: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+            if saved["job"]["originalText"].is_string() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let backup = path.with_extension("blocked-save-backup");
+    std::fs::rename(&path, &backup).unwrap();
+    std::fs::create_dir(&path).unwrap();
+    assert_eq!(
+        write(f.addr, "POST", "/api/models/calibration/cancel", ADMIN, "")
+            .await
+            .0,
+        202
+    );
+    tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            let (_, v) = get(f.addr, PATH, ADMIN).await;
+            if v["job"]["status"] == "cancelled" {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    // A failed final save cannot be advertised as completion. The old worker publishes
+    // finishedAt before even attempting this rename, so this public status check fails there.
+    let until = tokio::time::Instant::now() + Duration::from_secs(1);
+    while tokio::time::Instant::now() < until {
+        let (_, v) = get(f.addr, PATH, ADMIN).await;
+        assert!(v["job"].get("finishedAt").is_none(), "{v}");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    std::fs::remove_dir(&path).unwrap();
+    std::fs::rename(&backup, &path).unwrap();
+    let job = settled(&f).await;
+    let saved: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert_eq!(saved["job"]["id"], job["id"]);
+    assert_eq!(saved["job"]["finishedAt"], job["finishedAt"]);
+    assert!(saved["job"].get("originalText").is_none());
+    // No sleep, task counter or private admission observation between status and public start.
+    let (status, next) = write(f.addr, "POST", PATH, ADMIN, ASK).await;
+    assert_eq!(status, 202, "{next}");
+    assert_ne!(next["id"], job["id"]);
+    assert_eq!(
+        write(f.addr, "POST", "/api/models/calibration/cancel", ADMIN, "")
+            .await
+            .0,
+        202
+    );
+    settled(&f).await;
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_launch_runs_in_the_front_under_the_gate_and_its_state_is_private() {
     let (d, f, up, e) = rig().await;
