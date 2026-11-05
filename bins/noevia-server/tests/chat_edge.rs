@@ -599,12 +599,21 @@ async fn the_llm_budget_is_nodes_sixty_a_minute_shared_with_the_diary_local_exch
     f.account(account_of(&case["account"]));
     // The Diary local exchange is native now (diary_routes.rs, tests/diary_local_exchange.rs counts it on this
     // same budget); here each of its calls stands in as a turn, which costs the shared budget the same one.
-    for (i, step) in case["steps"].as_array().unwrap().iter().enumerate() {
+    // A refused Diary call stands in as the turn's own 429 (the native exchange's refusal text is its own).
+    let steps = case["steps"].as_array().unwrap();
+    let turn_429 = steps
+        .iter()
+        .find(|s| s["route"] == "chat" && s["node"]["status"] == 429)
+        .unwrap()["node"]
+        .clone();
+    for (i, step) in steps.iter().enumerate() {
         let mut step = step.clone();
         if step["route"] == "diary" {
             step["route"] = "chat".into();
             if step["node"]["pass"] == "diary" {
                 step["node"]["pass"] = "turn".into();
+            } else {
+                step["node"] = turn_429.clone();
             }
         }
         replay_step(&f, &format!("budget step {}", i + 1), &step).await;
