@@ -49,6 +49,16 @@ impl JournalContext {
             return Err(unavailable());
         }
         account.fence().map_err(|_| unavailable())?;
+        if !matches!(
+            account.owned(
+                guard.execution.scope.surface,
+                &guard.execution.scope.project,
+                &guard.task
+            ),
+            Ok(server_projects::task_journals::Found::Task(_))
+        ) {
+            return Err(unavailable());
+        }
         Ok(Self {
             account,
             guard,
@@ -119,10 +129,26 @@ impl Context for JournalContext {
             }
         })
     }
+    fn request_approval(&self, request: JValue) -> Result<Answer, RpcError> {
+        let _held = self.account.mutation().map_err(|_| unavailable())?;
+        self.account
+            .append_unlocked(
+                self.scope().surface,
+                self.task(),
+                "approval.requested",
+                request.clone(),
+                self.clock.now(),
+            )
+            .map_err(|_| unavailable())?;
+        Ok(self.approval(request))
+    }
     fn now(&self) -> i64 {
         self.clock.now()
     }
     fn end_approvals(&self) {
+        let Ok(_held) = self.account.mutation() else {
+            return;
+        };
         let _ = self
             .account
             .control
@@ -191,7 +217,14 @@ mod tests {
             .clone()
             .request("session/request_permission", params);
         assert_eq!(account.control.cards(&scope).unwrap().len(), 1);
-        account.control.cancel(&scope, TASK).unwrap();
+        let server_projects::task_journals::Found::Task(snapshot) = account
+            .cancel_snapshot(Surface::Code, "project", TASK, true, 2)
+            .unwrap()
+        else {
+            panic!("task missing")
+        };
+        assert_eq!(snapshot.status.as_str(), Some("waiting_approval"));
+        assert!(account.control.cards(&scope).unwrap().is_empty());
         session.end();
         let outcome = pending.await.unwrap();
         assert_eq!(outcome.get("optionId").as_str(), Some("reject"));

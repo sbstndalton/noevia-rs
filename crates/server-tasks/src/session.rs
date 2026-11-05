@@ -20,6 +20,10 @@ pub trait Context: Send + Sync {
     fn event(&self, kind: &str, data: JValue) -> Result<(), RpcError>;
     /// Register before returning the future, in ACP receive order.
     fn approval(&self, request: JValue) -> Answer;
+    fn request_approval(&self, request: JValue) -> Result<Answer, RpcError> {
+        self.event("approval.requested", request.clone())?;
+        Ok(self.approval(request))
+    }
     fn now(&self) -> i64;
     fn end_approvals(&self) {}
 }
@@ -375,15 +379,15 @@ impl Session {
             ),
             ("diff", diff),
         ]);
-        self.context.event("approval.requested", card.clone())?;
         if no_standing {
             set(&mut classified, "standable", JValue::Bool(false));
         }
         let ended = self.ended.subscribe();
         let answer = if *ended.borrow() {
+            self.context.event("approval.requested", card)?;
             Box::pin(async { Decision::Aborted }) as Answer
         } else {
-            self.context.approval(card)
+            self.context.request_approval(card)?
         };
         Ok(Prepared::Waiting {
             classified,

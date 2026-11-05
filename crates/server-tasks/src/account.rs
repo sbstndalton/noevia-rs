@@ -5,6 +5,7 @@ use server_projects::{
     store,
     task_journals::{writer, Surface},
 };
+use std::sync::{Mutex, MutexGuard};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -24,6 +25,8 @@ impl From<std::io::Error> for Error {
 }
 pub struct Account {
     user: String,
+    data_dir: PathBuf,
+    mutation: Mutex<()>,
     root: PathBuf,
     lease: fs::File,
     identity: fs::Metadata,
@@ -75,6 +78,8 @@ impl Account {
             workspace::Store::open(data_dir, user, config, epoch).map_err(Error::Workspace)?;
         let account = Self {
             user: user.into(),
+            data_dir: data_dir.to_path_buf(),
+            mutation: Mutex::new(()),
             root,
             lease,
             identity,
@@ -88,6 +93,77 @@ impl Account {
         account.browser.recover(now).map_err(Error::Journal)?;
         account.workspaces.recover(now).map_err(Error::Workspace)?;
         Ok(account)
+    }
+    pub(crate) fn mutation(&self) -> Result<MutexGuard<'_, ()>, Error> {
+        self.mutation.lock().map_err(|_| Error::Unavailable)
+    }
+    fn owned_unlocked(
+        &self,
+        surface: Surface,
+        project: &str,
+        id: &str,
+    ) -> Result<server_projects::task_journals::Found, Error> {
+        self.fence()?;
+        server_projects::task_journals::get(&self.data_dir, &self.user, surface, project, id)
+            .map_err(|_| Error::Unavailable)
+    }
+    pub fn owned(
+        &self,
+        surface: Surface,
+        project: &str,
+        id: &str,
+    ) -> Result<server_projects::task_journals::Found, Error> {
+        let _held = self.mutation()?;
+        self.owned_unlocked(surface, project, id)
+    }
+    pub fn list(
+        &self,
+        surface: Surface,
+        project: Option<&str>,
+        active: bool,
+    ) -> Result<Vec<server_projects::task_journals::Job>, Error> {
+        let _held = self.mutation()?;
+        self.fence()?;
+        server_projects::task_journals::list(&self.data_dir, &self.user, surface, project, active)
+            .map_err(|_| Error::Unavailable)
+    }
+    pub fn cancel_snapshot(
+        &self,
+        surface: Surface,
+        project: &str,
+        id: &str,
+        started: bool,
+        now: i64,
+    ) -> Result<server_projects::task_journals::Found, Error> {
+        let _held = self.mutation()?;
+        let found = self.owned_unlocked(surface, project, id)?;
+        if let server_projects::task_journals::Found::Task(job) = &found {
+            let scope = crate::Scope {
+                user: self.user.clone(),
+                project: project.into(),
+                surface,
+            };
+            self.control
+                .end_approvals(&scope, id)
+                .map_err(|_| Error::Unavailable)?;
+            if matches!(
+                job.status.as_str(),
+                Some("completed" | "failed" | "cancelled" | "interrupted")
+            ) {
+                return Ok(found);
+            }
+            let cancelled = self.control.cancel(&scope, id);
+            if started && cancelled.is_err() {
+                return Err(Error::Unavailable);
+            }
+            if !started {
+                self.journal(surface)?
+                    .append(id, "job.cancelled", js_json::JValue::Obj(vec![]), now)
+                    .map_err(Error::Journal)?;
+            }
+            return self.owned_unlocked(surface, project, id);
+        }
+        Ok(found)
     }
     pub fn user(&self) -> &str {
         &self.user
@@ -132,6 +208,7 @@ impl Account {
         capabilities: Vec<js_json::JValue>,
         now: i64,
     ) -> Result<server_projects::task_journals::Job, Error> {
+        let _held = self.mutation()?;
         self.journal(surface)?
             .create(id, project, capabilities, now)
             .map_err(Error::Journal)
@@ -144,11 +221,23 @@ impl Account {
         data: js_json::JValue,
         now: i64,
     ) -> Result<server_projects::task_journals::Job, Error> {
+        let _held = self.mutation()?;
+        self.append_unlocked(surface, id, kind, data, now)
+    }
+    pub(crate) fn append_unlocked(
+        &self,
+        surface: Surface,
+        id: &str,
+        kind: &str,
+        data: js_json::JValue,
+        now: i64,
+    ) -> Result<server_projects::task_journals::Job, Error> {
         self.journal(surface)?
             .append(id, kind, data, now)
             .map_err(Error::Journal)
     }
     pub fn sync(&self, surface: Surface, id: &str) -> Result<(), Error> {
+        let _held = self.mutation()?;
         self.journal(surface)?.sync(id).map_err(Error::Journal)
     }
 }
@@ -188,5 +277,72 @@ mod tests {
         fs::write(lock, "").unwrap();
         assert!(recovered.fence().is_err());
         assert!(recovered.journal(Surface::Code).is_err());
+    }
+    #[test]
+    fn simultaneous_task_events_are_serialized_without_busy_or_lost_writes() {
+        use std::sync::{Arc, Barrier};
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("users").join(USER)).unwrap();
+        let account = Arc::new(
+            Account::open(
+                root.path(),
+                USER,
+                &CodeConfig::from_env(|_| None),
+                "epoch".into(),
+                1,
+            )
+            .unwrap(),
+        );
+        let task = "22222222-2222-4222-8222-222222222222";
+        account
+            .create(Surface::Code, task, "project", vec![], 1)
+            .unwrap();
+        let barrier = Arc::new(Barrier::new(12));
+        let mut workers = vec![];
+        for worker in 0..12 {
+            let account = account.clone();
+            let barrier = barrier.clone();
+            workers.push(std::thread::spawn(move || {
+                barrier.wait();
+                for n in 0..16 {
+                    account
+                        .append(
+                            Surface::Code,
+                            task,
+                            "progress",
+                            js_json::JValue::Obj(vec![(
+                                "stage".into(),
+                                js_json::JValue::Str(format!("{worker}:{n}")),
+                            )]),
+                            2,
+                        )
+                        .unwrap();
+                }
+            }));
+        }
+        for worker in workers {
+            worker.join().unwrap();
+        }
+        let rows = std::fs::read_to_string(
+            root.path()
+                .join("users")
+                .join(USER)
+                .join("jobs")
+                .join(format!("{task}.jsonl")),
+        )
+        .unwrap()
+        .lines()
+        .map(|line| js_json::wtf16::parse(line).unwrap())
+        .collect::<Vec<_>>();
+        assert_eq!(rows.len(), 193);
+        let observed = rows
+            .iter()
+            .skip(1)
+            .map(|row| row.get("data").get("stage").as_str().unwrap().to_owned())
+            .collect::<std::collections::HashSet<_>>();
+        assert_eq!(observed.len(), 192);
+        for (index, row) in rows.iter().enumerate() {
+            assert_eq!(row.get("seq").as_num(), Some((index + 1) as f64));
+        }
     }
 }
