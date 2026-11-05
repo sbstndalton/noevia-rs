@@ -27,6 +27,7 @@ struct Rig {
     owner: Upstream,
     loader: Upstream,
     engine: Upstream,
+    resume: Option<Arc<tokio::sync::Semaphore>>,
 }
 async fn rig(spec: Value, prune: bool, delay: bool) -> Rig {
     let dir = tempfile::tempdir().unwrap();
@@ -92,6 +93,42 @@ async fn rig(spec: Value, prune: bool, delay: bool) -> Rig {
         }
         reply("404 Not Found","{}")
     });
+    let stage = spec["delayStage"].as_str().unwrap_or(if delay {
+        if prune {
+            "delete"
+        } else {
+            "put"
+        }
+    } else {
+        ""
+    });
+    let point = match stage {
+        "invalidate" => Some((
+            &owner,
+            "POST",
+            "/internal/model-writes/effects",
+            "invalidate",
+        )),
+        "previous" => Some((&loader, "GET", "/api/v1/idle-unload", "")),
+        "acquire" => Some((&owner, "POST", LEASE, "")),
+        "put" => Some((&loader, "PUT", "/api/v1/idle-unload", "")),
+        "listing" => Some((&engine, "GET", "/models", "")),
+        "reload" => Some((&engine, "GET", "/models?reload=1", "")),
+        "effective" => Some((&owner, "POST", "/internal/idle-unload-read/facts", "")),
+        "scan" => Some((&loader, "GET", "/api/v1/models", "")),
+        "facts" => Some((&owner, "POST", "/internal/models/facts", "")),
+        "sections" => Some((&loader, "GET", "/api/v1/sections", "")),
+        "delete" => Some((&loader, "DELETE", "/api/v1/sections/", "")),
+        "removed" => Some((&owner, "POST", "/internal/model-writes/effects", "removed")),
+        _ => None,
+    };
+    let resume = point.map(|(peer, method, path, op)| {
+        peer.pause(move |r| {
+            r.method == method
+                && r.path.starts_with(path)
+                && (op.is_empty() || j(&r.body)["op"] == op)
+        })
+    });
     let loader_base = if spec["status"] == 0 {
         "http://127.0.0.1:9".to_owned()
     } else {
@@ -129,6 +166,7 @@ async fn rig(spec: Value, prune: bool, delay: bool) -> Rig {
         owner,
         loader,
         engine,
+        resume,
     }
 }
 fn same(actual: &Value, expected: &Value) {
@@ -247,6 +285,7 @@ async fn disconnect_hands_job_over_and_concurrent_write_refuses_until_release() 
         r.loader.seen().iter().filter(|c| c.method == "PUT").count(),
         1
     );
+    r.resume.as_ref().unwrap().add_permits(1);
     r.owner.wait_for(&format!("{LEASE}/"), 1).await;
     let (status, body) = raw(addr, "PUT", IDLE, ADMIN, CSRF, br#"{"seconds":300}"#).await;
     assert_eq!(status, 200, "{body}");
@@ -292,6 +331,7 @@ async fn disconnect_at_external_awaits_finishes_and_releases_the_same_job() {
             _ => r.engine.wait_for(path, count).await,
         };
         task.abort();
+        r.resume.as_ref().unwrap().add_permits(1);
         r.owner.wait_for(&format!("{LEASE}/"), 1).await;
         assert_eq!(
             r.loader.seen().iter().filter(|c| c.method == "PUT").count(),
@@ -318,6 +358,7 @@ async fn disconnect_at_external_awaits_finishes_and_releases_the_same_job() {
             _ => r.engine.wait_for(path, count).await,
         };
         task.abort();
+        r.resume.as_ref().unwrap().add_permits(1);
         r.owner.wait_for(&format!("{LEASE}/"), 1).await;
         assert_eq!(
             r.loader
@@ -426,6 +467,7 @@ async fn concurrent_prunes_never_execute_deletes_together() {
             .count(),
         1
     );
+    r.resume.as_ref().unwrap().add_permits(1);
     assert_eq!(first.await.unwrap().0, 200);
 }
 

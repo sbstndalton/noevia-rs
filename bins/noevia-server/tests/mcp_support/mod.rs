@@ -149,6 +149,10 @@ impl Seen {
 }
 
 pub type Handler = Arc<dyn Fn(&Seen) -> (Duration, String) + Send + Sync>;
+type ResponsePause = (
+    Arc<dyn Fn(&Seen) -> bool + Send + Sync>,
+    Arc<tokio::sync::Semaphore>,
+);
 
 #[derive(Clone)]
 pub struct Upstream {
@@ -156,9 +160,18 @@ pub struct Upstream {
     seen: Arc<Mutex<Vec<Seen>>>,
     handler: Arc<Mutex<Handler>>,
     hit: Arc<tokio::sync::Notify>,
+    pause: Arc<Mutex<Option<ResponsePause>>>,
 }
 
 impl Upstream {
+    pub fn pause(
+        &self,
+        matches: impl Fn(&Seen) -> bool + Send + Sync + 'static,
+    ) -> Arc<tokio::sync::Semaphore> {
+        let release = Arc::new(tokio::sync::Semaphore::new(0));
+        *self.pause.lock().unwrap() = Some((Arc::new(matches), Arc::clone(&release)));
+        release
+    }
     pub fn set(&self, f: impl Fn(&Seen) -> (Duration, String) + Send + Sync + 'static) {
         *self.handler.lock().unwrap() = Arc::new(f);
     }
@@ -211,18 +224,21 @@ pub async fn upstream() -> Upstream {
         seen: Arc::new(Mutex::new(Vec::new())),
         handler: Arc::new(Mutex::new(Arc::new(|_: &Seen| reply("500 Oops", "")))),
         hit: Arc::new(tokio::sync::Notify::new()),
+        pause: Arc::new(Mutex::new(None)),
     };
     let (seen, handler, hit) = (
         Arc::clone(&up.seen),
         Arc::clone(&up.handler),
         Arc::clone(&up.hit),
     );
+    let pause = Arc::clone(&up.pause);
     tokio::spawn(async move {
         loop {
             let Ok((mut s, _)) = l.accept().await else {
                 return;
             };
             let (seen, handler, hit) = (Arc::clone(&seen), Arc::clone(&handler), Arc::clone(&hit));
+            let pause = Arc::clone(&pause);
             tokio::spawn(async move {
                 let mut buf = Vec::new();
                 let mut chunk = [0u8; 4096];
@@ -267,6 +283,12 @@ pub async fn upstream() -> Upstream {
                 hit.notify_waiters();
                 let f = handler.lock().unwrap().clone();
                 let (delay, text) = f(&request);
+                let paused = pause.lock().unwrap().clone();
+                if let Some((matches, release)) = paused {
+                    if matches(&request) {
+                        let _permit = release.acquire().await.unwrap();
+                    }
+                }
                 tokio::time::sleep(delay).await;
                 let _ = s.write_all(text.as_bytes()).await;
                 let _ = s.shutdown().await;
@@ -329,6 +351,8 @@ pub const DDL: &str = "CREATE TABLE IF NOT EXISTS mcp_oauth_clients(server_id TE
 pub fn seed(dir: &std::path::Path) -> Connection {
     std::fs::write(dir.join("secrets.key"), KEY).unwrap();
     let db = Connection::open(dir.join("cowork.db")).unwrap();
+    // Seed the synthetic fixture atomically instead of fsyncing every schema statement.
+    db.execute_batch("PRAGMA journal_mode=WAL; BEGIN").unwrap();
     db.execute_batch(include_str!(
         "../../../../crates/server-store/tests/fixtures/node-schema.sql"
     ))
@@ -344,6 +368,7 @@ pub fn seed(dir: &std::path::Path) -> Connection {
         .unwrap();
         std::fs::create_dir_all(dir.join("users").join(uid)).unwrap();
     }
+    db.execute_batch("COMMIT").unwrap();
     db
 }
 
