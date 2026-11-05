@@ -15,8 +15,8 @@ pub mod failure;
 pub mod notes;
 pub mod replay;
 pub mod rounds;
-pub mod title;
 mod text;
+pub mod title;
 pub mod validate;
 
 /// A JavaScript `TypeError` the Node code would have thrown here (a value whose `String()`

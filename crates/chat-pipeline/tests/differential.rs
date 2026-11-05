@@ -280,7 +280,12 @@ fn titles_match_node() {
         }
     };
     for k in arr(c.get("derived")) {
-        assert_eq!(Some(title::derived_title(&s(k.get("m"))).as_str()), k.get("out").as_str(), "{:?}", k.get("m"));
+        assert_eq!(
+            Some(title::derived_title(&s(k.get("m"))).as_str()),
+            k.get("out").as_str(),
+            "{:?}",
+            k.get("m")
+        );
     }
     for k in arr(c.get("isDerived")) {
         let t = match k.get("title") {
@@ -304,10 +309,19 @@ fn titles_match_node() {
             k.get("message").as_str().unwrap(),
             k.get("reply").as_str().unwrap(),
         );
-        assert_eq!(body.as_deref(), k.get("body").as_str(), "{}", wtf16::stringify(k).unwrap());
+        assert_eq!(
+            body.as_deref(),
+            k.get("body").as_str(),
+            "{}",
+            wtf16::stringify(k).unwrap()
+        );
         if body.is_some() {
-            let reply = wtf16::parse(r#"{"choices":[{"message":{"content":"Train times"}}]}"#).unwrap();
-            assert_eq!(title::title_from_reply(&reply).as_deref(), k.get("out").as_str());
+            let reply =
+                wtf16::parse(r#"{"choices":[{"message":{"content":"Train times"}}]}"#).unwrap();
+            assert_eq!(
+                title::title_from_reply(&reply).as_deref(),
+                k.get("out").as_str()
+            );
         }
     }
     for k in arr(c.get("first")) {
@@ -315,8 +329,14 @@ fn titles_match_node() {
             JValue::Str(x) if x == "__undefined" => JValue::Undefined,
             v => v.clone(),
         };
-        assert_eq!(title::first_reply(k.get("h")), k.get("reply") == &JValue::Bool(true));
-        assert_eq!(Some(title::first_user_message(k.get("h"), &m).as_str()), k.get("user").as_str());
+        assert_eq!(
+            title::first_reply(k.get("h")),
+            k.get("reply") == &JValue::Bool(true)
+        );
+        assert_eq!(
+            Some(title::first_user_message(k.get("h"), &m).as_str()),
+            k.get("user").as_str()
+        );
     }
     assert_eq!(Some(title::TITLE_SYSTEM), c.get("system").as_str());
 }

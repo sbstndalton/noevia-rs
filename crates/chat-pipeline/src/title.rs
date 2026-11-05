@@ -27,7 +27,17 @@ pub const TITLE_SYSTEM: &str = "You name chat conversations. Reply with a short 
 
 /// ECMAScript `\s`.
 fn js_space(c: char) -> bool {
-    matches!(c, '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}')
+    matches!(
+        c,
+        '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
+    )
 }
 const S: &str = r"\t\n\x0B\x0C\r \u{a0}\u{1680}\u{2000}-\u{200a}\u{2028}\u{2029}\u{202f}\u{205f}\u{3000}\u{feff}";
 
@@ -58,7 +68,10 @@ pub fn derived_title(value: &str) -> String {
         .char_indices()
         .filter(|(_, c)| js_space(*c))
         .map(|(i, _)| i)
-        .find(|&i| head.get(i..).is_some_and(|rest| rest.chars().skip(1).all(|c| !js_space(c))));
+        .find(|&i| {
+            head.get(i..)
+                .is_some_and(|rest| rest.chars().skip(1).all(|c| !js_space(c)))
+        });
     if let Some(b) = boundary {
         if unit_index(&head, b) >= CHAT_TITLE_MAX / 2 {
             head.truncate(b);
@@ -91,14 +104,20 @@ fn history(v: &JValue) -> &[JValue] {
 
 /// chat-title.cjs `firstReply(history)`: the history holds no assistant message.
 pub fn first_reply(h: &JValue) -> bool {
-    !history(h).iter().any(|m| m.truthy() && as_str(get(m, "role")) == Some("assistant"))
+    !history(h)
+        .iter()
+        .any(|m| m.truthy() && as_str(get(m, "role")) == Some("assistant"))
 }
 
 /// chat-title.cjs `firstUserMessage(history, message)`.
 pub fn first_user_message(h: &JValue, message: &JValue) -> String {
     history(h)
         .iter()
-        .find(|m| m.truthy() && as_str(get(m, "role")) == Some("user") && as_str(get(m, "content")).is_some())
+        .find(|m| {
+            m.truthy()
+                && as_str(get(m, "role")) == Some("user")
+                && as_str(get(m, "content")).is_some()
+        })
         .and_then(|m| as_str(get(m, "content")).map(str::to_owned))
         .unwrap_or_else(|| {
             if message.is_nullish() {
@@ -150,7 +169,10 @@ pub fn clean_title(raw: &JValue) -> Option<String> {
     let r = res()?;
     // Rust folds U+212A (Kelvin) to `k`; JavaScript's non-unicode `i` does not.
     let guarded = raw.replace('\u{212A}', "\u{FFFF}");
-    let text = r.think.replace_all(&guarded, "").replace('\u{FFFF}', "\u{212A}");
+    let text = r
+        .think
+        .replace_all(&guarded, "")
+        .replace('\u{FFFF}', "\u{212A}");
     let text = r.special.replace_all(&text, " ");
     let line = text
         .split('\n')
@@ -255,13 +277,26 @@ pub struct AttemptCounter {
 
 impl AttemptCounter {
     pub fn new(max: u32, max_chats: usize) -> Self {
-        Self { max, max_chats, counts: Vec::new() }
+        Self {
+            max,
+            max_chats,
+            counts: Vec::new(),
+        }
     }
     pub fn allowed(&self, key: &str) -> bool {
-        self.counts.iter().find(|(k, _)| k == key).map_or(0, |(_, n)| *n) < self.max
+        self.counts
+            .iter()
+            .find(|(k, _)| k == key)
+            .map_or(0, |(_, n)| *n)
+            < self.max
     }
     pub fn record(&mut self, key: &str) -> u32 {
-        let n = self.counts.iter().position(|(k, _)| k == key).map_or(0, |i| self.counts.remove(i).1) + 1;
+        let n = self
+            .counts
+            .iter()
+            .position(|(k, _)| k == key)
+            .map_or(0, |i| self.counts.remove(i).1)
+            + 1;
         self.counts.push((key.to_owned(), n));
         while self.counts.len() > self.max_chats {
             self.counts.remove(0);
