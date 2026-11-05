@@ -17,7 +17,9 @@
 //!   --state-out FILE       write the data dir snapshot (tree + cowork.db) after the replay
 //!   --expect-state FILE    diff the snapshot against FILE (one written by --state-out)
 //!   --native-move-state    REQUIRED for managed Rust front state replay; validates authoritative move state
-//!   --state-ignore PATH    leave a path (or `*suffix`) out of the snapshot (repeatable)
+//!   --state-ignore PATH    leave a path (or `*suffix`) out of the snapshot (repeatable); a
+//!                          pattern ending in `/` drops only a directory's own entry, from both
+//!                          the snapshot and an --expect-state reference
 //!   --report FILE          write the outcomes as JSON
 //!   --stop-on-first        stop at the first exchange that differs
 //!   --allow-remote         accept a --base that is not loopback (the replay sends session
@@ -388,7 +390,9 @@ fn run(a: &Args) -> Result<bool, String> {
         }
         if let Some(p) = a.one("expect-state") {
             let text = std::fs::read_to_string(p).map_err(|e| format!("read {p}: {e}"))?;
-            let expected: Value = serde_json::from_str(&text).map_err(|e| format!("{p}: {e}"))?;
+            let mut expected: Value =
+                serde_json::from_str(&text).map_err(|e| format!("{p}: {e}"))?;
+            state::drop_dir_entries(&mut expected, &ignore, &b);
             let diffs = state::compare(&expected, projection.as_ref().unwrap_or(&snap));
             for d in &diffs {
                 println!("STATE {}: expected {} got {}", d.at, d.expected, d.actual);

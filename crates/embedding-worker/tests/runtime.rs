@@ -514,6 +514,80 @@ async fn cancellation_sleeps_until_notified_and_wakes_all_waiters() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn index_outbox_yields_to_slow_foreground_without_spending_attempts() {
+    let (_tmp, mut store) = seed();
+    store.seed.next = None;
+    let user = "11111111-1111-4111-8111-111111111111";
+    let auth = rusqlite::Connection::open(store.root.join("cowork.db")).unwrap();
+    auth.execute("INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES(?,'outbox','outbox','Synthetic','member','synthetic','outbox',0,0)",[user]).unwrap();
+    let dir = store.root.join("users").join(user);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("projects.json"),
+        r#"{"projects":[{"id":"p","files":[{"name":"a.md","content":"synthetic source"}]}]}"#,
+    )
+    .unwrap();
+    server_projects::outbox::enqueue(
+        &dir,
+        &[server_projects::outbox::Job {
+            kind: "index",
+            project: "p",
+            file: Some("a.md"),
+            payload: None,
+        }],
+        1,
+    )
+    .unwrap();
+    let foreground = Arc::new(AtomicBool::new(true));
+    let busy = foreground.clone();
+    let proofs = Arc::new(AtomicUsize::new(0));
+    let seen = proofs.clone();
+    let stub = server(move |path, _| {
+        if path == "/internal/embedding-worker-owner" {
+            seen.fetch_add(1, Ordering::SeqCst);
+            let mut proof: serde_json::Value = serde_json::from_str(PROOF).unwrap();
+            proof["indexOutboxStopped"] = true.into();
+            proof["foregroundBusy"] = busy.load(Ordering::SeqCst).into();
+            return (200, proof.to_string());
+        }
+        default_reply(path)
+    })
+    .await;
+    let http = Http::new("", None, &stub.base, None).unwrap();
+    let worker = runtime::start(
+        store,
+        http,
+        stub.base.clone(),
+        "synthetic-token".into(),
+        START.into(),
+        Options::default(),
+        None,
+    )
+    .unwrap();
+    wait_until(|| proofs.load(Ordering::SeqCst) > 0).await;
+    tokio::time::sleep(std::time::Duration::from_millis(2200)).await;
+    assert_eq!(
+        server_projects::outbox::jobs(&dir).unwrap()[0].state,
+        "pending"
+    );
+    let db = rusqlite::Connection::open(dir.join("index-outbox.db")).unwrap();
+    assert_eq!(
+        db.query_row("SELECT attempts FROM jobs", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+    foreground.store(false, Ordering::SeqCst);
+    wait_until(|| server_projects::outbox::jobs(&dir).unwrap().is_empty()).await;
+    worker.shutdown().await;
+    let db = rusqlite::Connection::open(dir.join("rag/p.db")).unwrap();
+    assert_eq!(
+        db.query_row("SELECT body FROM chunks", [], |r| r.get::<_, String>(0))
+            .unwrap(),
+        "synthetic source"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn native_config_publication_reaches_background_without_node_kick() {
     let (dir, mut store) = seed();
     store.seed.next = None;
