@@ -984,22 +984,29 @@ async fn approvals_op(
             let (check_user, check_chat) = (user.clone(), chat.clone());
             let answer = tokio::task::spawn_blocking(move || {
                 let approvals = registry;
-                let body = match ticket {
-                    Some(t) if op == "redeem" => json!({
-                        "redeemed": approvals.redeem(&user, &chat, &scope, binding.as_ref(), &t),
-                        "protocol": crate::approval_registry::PROTOCOL,
-                        "window_ms": u64::try_from(approvals.window().as_millis()).unwrap_or(u64::MAX),
-                    }),
-                    _ => match approvals.grant_ticket(&user, &chat, &scope, binding.as_ref()) {
-                        Some(t) => json!({"granted": true, "ticket": t}),
-                        None => json!({"granted": false}),
-                    },
+                let use_ticket = if op == "redeem" { ticket.as_deref() } else { None };
+                let answer = approvals.check(&user, &chat, &scope, binding.as_ref(), use_ticket);
+                let body = match answer {
+                    Ok(crate::approval_registry::GrantUse::Redeemed(redeemed)) => Some(json!({
+                        "redeemed":redeemed,"protocol":crate::approval_registry::PROTOCOL,
+                        "window_ms":u64::try_from(approvals.window().as_millis()).unwrap_or(u64::MAX),
+                    })),
+                    Ok(crate::approval_registry::GrantUse::Ticket(Some(t))) => Some(json!({"granted":true,"ticket":t})),
+                    Ok(crate::approval_registry::GrantUse::Ticket(None)) => Some(json!({"granted":false})),
+                    Err(_) => None,
                 };
                 (body, approvals.pending_invalidation(&user, &chat))
             })
             .await;
             match answer {
-                Ok((body, Ok(invalidated))) => {
+                Ok((None, _)) => {
+                    let _ = app.drain_approval_invalidations().await;
+                    error(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Approval revocation pending; retry",
+                    )
+                }
+                Ok((Some(body), Ok(invalidated))) => {
                     if app
                         .confirm_approval_invalidation(&check_user, &check_chat, invalidated)
                         .await

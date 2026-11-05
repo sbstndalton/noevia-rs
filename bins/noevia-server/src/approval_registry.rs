@@ -48,6 +48,20 @@ pub const MAX_GRANTS: usize = 4096;
 pub const TICKET_TTL: Duration = Duration::from_secs(5 * 60);
 /// Tickets held at once (expired ones are swept first); a full table issues none (no grant).
 pub const MAX_TICKETS: usize = 4096;
+/// Outstanding invalidations plus in-flight checks reserve at most this many distinct chats.
+/// Admission stops rather than losing a fence when Node cannot acknowledge it.
+pub const MAX_INVALIDATIONS: usize = 64;
+
+pub enum GrantUse {
+    Ticket(Option<String>),
+    Redeemed(bool),
+}
+
+pub struct CoveringFence {
+    pub through: u64,
+    pub chats: Vec<(String, String)>,
+}
+
 /// The longest question id accepted (Node's are `ap-<uuid>` or a bare uuid).
 pub const MAX_ID: usize = 128;
 /// The redeem protocol (capability `registry-executor-v3`). Node names it on every grant check and
@@ -268,6 +282,7 @@ struct State {
     /// Retained without a time limit: already-redeemed executors may still be paused, and a failed
     /// acknowledgement must remain retryable even after this check removed the grant.
     invalidated: HashMap<(String, String), u64>,
+    checks: HashMap<(String, String), usize>,
     /// A counter would have overflowed: no grant is given or honoured again (fail closed).
     exhausted: bool,
 }
@@ -292,6 +307,25 @@ impl State {
     }
     fn revoked_since(&self, key: &(String, String), issued: u64) -> bool {
         self.revoked.get(key).is_some_and(|(seq, _)| *seq > issued)
+    }
+}
+
+/// A reserved slot survives the blocking context read. Concurrent checks for the same chat
+/// share it; converting it into an invalidation never increases the occupied-key count.
+struct CheckReservation<'a> {
+    registry: &'a Registry,
+    key: (String, String),
+}
+impl Drop for CheckReservation<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut s) = self.registry.state.lock() {
+            if let Some(count) = s.checks.get_mut(&self.key) {
+                *count -= 1;
+                if *count == 0 {
+                    s.checks.remove(&self.key);
+                }
+            }
+        }
     }
 }
 
@@ -572,15 +606,91 @@ impl Registry {
     /// approvals.cjs `chatWideApproved(user, chat, scope, binding)`, then the live context
     /// (blocking): a grant whose chat moved, was deleted or outlived its start is revoked here.
     /// approvals.cjs `chatWideApproved`, as a boolean (tests and diagnostics; issues a ticket).
-    pub fn granted(&self, user: &str, chat: &str, scope: &str, binding: Option<&Value>) -> bool {
+    #[cfg(test)]
+    fn granted(&self, user: &str, chat: &str, scope: &str, binding: Option<&Value>) -> bool {
         self.grant_ticket(user, chat, scope, binding).is_some()
+    }
+
+    fn reserve_check(&self, user: &str, chat: &str) -> Result<CheckReservation<'_>, DecideError> {
+        let key = (user.to_owned(), safe_id(chat));
+        let mut s = self.state.lock().map_err(|_| DecideError::Unavailable)?;
+        let occupied = s.invalidated.len()
+            + s.checks
+                .keys()
+                .filter(|k| !s.invalidated.contains_key(*k))
+                .count();
+        if s.exhausted
+            || s.revocations == u64::MAX
+            || s.invalidated.len() >= MAX_INVALIDATIONS
+            || (!s.invalidated.contains_key(&key)
+                && !s.checks.contains_key(&key)
+                && occupied >= MAX_INVALIDATIONS)
+        {
+            return Err(DecideError::Unavailable);
+        }
+        let count = s.checks.entry(key.clone()).or_default();
+        *count = count.checked_add(1).ok_or(DecideError::Unavailable)?;
+        Ok(CheckReservation {
+            registry: self,
+            key,
+        })
+    }
+
+    /// The only production grant/redeem entry. The slot is held across the live-context read,
+    /// preventing concurrent checks from overshooting the hard invalidation limit.
+    pub fn check(
+        &self,
+        user: &str,
+        chat: &str,
+        scope: &str,
+        binding: Option<&Value>,
+        ticket: Option<&str>,
+    ) -> Result<GrantUse, DecideError> {
+        let _slot = self.reserve_check(user, chat)?;
+        let used = match ticket {
+            Some(t) => GrantUse::Redeemed(self.redeem_raw(user, chat, scope, binding, t)),
+            None => GrantUse::Ticket(self.grant_ticket_raw(user, chat, scope, binding)),
+        };
+        let s = self.state.lock().map_err(|_| DecideError::Unavailable)?;
+        if s.exhausted || s.revocations == u64::MAX {
+            return Err(DecideError::Unavailable);
+        }
+        Ok(used)
+    }
+
+    #[cfg(test)]
+    fn grant_ticket(
+        &self,
+        user: &str,
+        chat: &str,
+        scope: &str,
+        binding: Option<&Value>,
+    ) -> Option<String> {
+        match self.check(user, chat, scope, binding, None).ok()? {
+            GrantUse::Ticket(t) => t,
+            GrantUse::Redeemed(_) => None,
+        }
+    }
+    #[cfg(test)]
+    fn redeem(
+        &self,
+        user: &str,
+        chat: &str,
+        scope: &str,
+        binding: Option<&Value>,
+        ticket: &str,
+    ) -> bool {
+        matches!(
+            self.check(user, chat, scope, binding, Some(ticket)),
+            Ok(GrantUse::Redeemed(true))
+        )
     }
 
     /// approvals.cjs `chatWideApproved(user, chat, scope, binding)`, then the live context
     /// (blocking): a grant whose chat moved, was deleted or outlived its start is revoked here. A
-    /// grant answers with a single-use ticket, which Node redeems ([`Registry::redeem`]) just before
+    /// grant answers with a single-use ticket, which Node redeems through [`Registry::check`] just before
     /// it dispatches the write: the answer itself never authorises anything.
-    pub fn grant_ticket(
+    fn grant_ticket_raw(
         &self,
         user: &str,
         chat: &str,
@@ -615,7 +725,7 @@ impl Registry {
     /// delete, a failed move or anything else), and the live context still matches. The final test
     /// runs under the registry's lock, which every revocation also takes: that lock is the one
     /// point where a write's use of a grant and every revocation of it are ordered.
-    pub fn redeem(
+    fn redeem_raw(
         &self,
         user: &str,
         chat: &str,
@@ -701,6 +811,7 @@ impl Registry {
         // The grant read before must still be the one held now, unexpired: a revoke (or a revoke
         // and a new grant) during the read answers no.
         let same = !s.exhausted
+            && s.revocations != u64::MAX
             && s.grants
                 .get(&key)
                 .is_some_and(|g| g.serial == serial && Instant::now() < g.until);
@@ -725,19 +836,30 @@ impl Registry {
             .copied())
     }
 
-    /// A response covers only the generation sent before its await. A concurrent newer
-    /// invalidation remains pending and needs its own acknowledgement.
-    pub fn acknowledge_invalidation(
+    /// A covering fence snapshots every pending chat at one monotonic generation. Each scope
+    /// must be acknowledged; one chat's v3 ack cannot cover another chat's executor epoch.
+    pub fn covering_fence(&self) -> Result<CoveringFence, DecideError> {
+        let s = self.state.lock().map_err(|_| DecideError::Unavailable)?;
+        let mut chats: Vec<_> = s.invalidated.keys().cloned().collect();
+        chats.sort();
+        Ok(CoveringFence {
+            through: s.revocations,
+            chats,
+        })
+    }
+
+    /// Retire exactly the scope an authenticated Node acknowledgement covers. A user-wide ack
+    /// covers all that user's chats; a chat ack covers that chat only. Newer generations survive.
+    pub fn acknowledge_through(
         &self,
         user: &str,
-        chat: &str,
-        generation: u64,
+        chat: Option<&str>,
+        through: u64,
     ) -> Result<(), DecideError> {
         let mut s = self.state.lock().map_err(|_| DecideError::Unavailable)?;
-        let key = (user.to_owned(), safe_id(chat));
-        if s.invalidated.get(&key) == Some(&generation) {
-            s.invalidated.remove(&key);
-        }
+        s.invalidated.retain(|(u, c), generation| {
+            u != user || chat.is_some_and(|ch| ch != c) || *generation > through
+        });
         Ok(())
     }
 
@@ -1503,9 +1625,49 @@ mod tests {
         let first = generations.first().copied().unwrap();
         let second = generations.last().copied().unwrap();
         assert!(second > first);
-        r.acknowledge_invalidation(OWNER, "c1", first).unwrap();
+        r.acknowledge_through(OWNER, None, first).unwrap();
         assert_eq!(r.pending_invalidation(OWNER, "c1").unwrap(), Some(second));
-        r.acknowledge_invalidation(OWNER, "c1", second).unwrap();
+        r.acknowledge_through(OWNER, None, second).unwrap();
         assert_eq!(r.pending_invalidation(OWNER, "c1").unwrap(), None);
+    }
+    #[test]
+    fn concurrent_checks_reserve_bounded_marker_capacity_before_reading_context() {
+        let r = Registry::new(None);
+        let mut slots = Vec::new();
+        for i in 0..MAX_INVALIDATIONS {
+            slots.push(r.reserve_check(OWNER, &format!("chat-{i}")).unwrap());
+        }
+        assert!(r.reserve_check(OWNER, "overflow").is_err());
+        drop(slots.pop());
+        assert!(r.reserve_check(OWNER, "overflow").is_ok());
+        drop(slots);
+        assert!(r.state.lock().unwrap().checks.is_empty());
+    }
+    #[test]
+    fn a_covering_ack_never_retires_another_user_or_a_newer_generation() {
+        let r = Registry::new(None);
+        {
+            let mut s = r.state.lock().unwrap();
+            s.revocations = 3;
+            s.invalidated.insert((OWNER.into(), "old".into()), 1);
+            s.invalidated.insert((OWNER.into(), "new".into()), 3);
+            s.invalidated.insert((OTHER.into(), "other".into()), 2);
+        }
+        let cover = r.covering_fence().unwrap();
+        assert_eq!(cover.through, 3);
+        assert_eq!(cover.chats.len(), 3);
+        r.acknowledge_through(OWNER, Some("new"), 2).unwrap();
+        assert_eq!(r.pending_invalidation(OWNER, "old").unwrap(), Some(1));
+        assert_eq!(r.pending_invalidation(OWNER, "new").unwrap(), Some(3));
+        r.acknowledge_through(OWNER, None, 2).unwrap();
+        assert_eq!(r.pending_invalidation(OWNER, "old").unwrap(), None);
+        assert_eq!(r.pending_invalidation(OWNER, "new").unwrap(), Some(3));
+        assert_eq!(r.pending_invalidation(OTHER, "other").unwrap(), Some(2));
+    }
+    #[test]
+    fn saturated_revocation_generation_refuses_new_admission() {
+        let r = Registry::new(None);
+        r.state.lock().unwrap().revocations = u64::MAX;
+        assert!(r.reserve_check(OWNER, "new-chat").is_err());
     }
 }

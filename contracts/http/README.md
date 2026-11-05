@@ -1873,8 +1873,17 @@ Node unreachable, timed out, wrong protocol or refusing: 503 `Approval revocatio
 The front revocation stays recorded. A context-invalidating grant check or redeem also waits for
 this acknowledgement before its 200/false answer. An unconfirmed context invalidation remains
 pending after the grant/ticket is removed; subsequent checks retry it and keep returning 503 until
-it is confirmed. Confirmations name an internal generation so an older response cannot clear a
-newer invalidation. There is no time-based eviction of unconfirmed context invalidations. Node-originated revokes retain the existing pending-revoke
+it is confirmed. A covering fence snapshots the current generation and acknowledges every pending
+chat using the existing v3 callback. Explicit chat/project revokes and invalidation checks all
+retire the scopes their acknowledgements cover, at or below that generation. Only the existing
+project/user fence is user-wide. Partial progress is retained on failure; newer generations survive
+an older acknowledgement. There is no time-based eviction.
+
+Outstanding markers and in-flight checks reserve at most 64 distinct chat slots. Reservations span
+the blocking context read, so concurrent checks cannot exceed the cap. At capacity, new grant and
+redeem admission returns 503 without issuing or consuming a ticket. It attempts a covering drain;
+a retry can proceed once acknowledgements free capacity. Saturated revocation generations also
+refuse admission. No grant is evicted to make room and no paused executor's fence is discarded. Node-originated revokes retain the existing pending-revoke
 backoff; public/store mutation callers can retry. If the second acknowledgement fails, a mutation
 may already have applied but its response is 503; no successful revocation is claimed. This is a
 fail-closed API deviation. The retired `started` op and front time drain are removed.

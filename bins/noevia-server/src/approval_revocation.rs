@@ -77,8 +77,45 @@ impl Revoker {
     }
 }
 impl crate::App {
-    /// Context invalidation is discovered in a blocking check, but its completion barrier is
-    /// asynchronous. The persisted generation also covers retries after the grant was removed.
+    /// Snapshot pending generations, then acknowledge every covered chat using the existing
+    /// v3 API. Preserve scope: only an explicit project/user fence is user-wide. Partial progress
+    /// is retired after each ack so timeout/failure can be retried without retaining covered debt.
+    async fn covering_approval_fence(
+        &self,
+        target: Option<(&str, Option<&str>)>,
+    ) -> Result<(), Pending> {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            let cover = self.approvals.covering_fence().map_err(|_| Pending)?;
+            if let Some((user, chat)) = target {
+                self.config.approval_revocation.ack(user, chat).await?;
+                self.approvals
+                    .acknowledge_through(user, chat, cover.through)
+                    .map_err(|_| Pending)?;
+            }
+            for (user, chat) in cover.chats {
+                if target.is_some_and(|(u, c)| u == user && c.is_none_or(|ch| ch == chat)) {
+                    continue;
+                }
+                self.config
+                    .approval_revocation
+                    .ack(&user, Some(&chat))
+                    .await?;
+                self.approvals
+                    .acknowledge_through(&user, Some(&chat), cover.through)
+                    .map_err(|_| Pending)?;
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|_| Pending)?
+    }
+
+    /// Reconcile at-capacity admission without issuing or consuming a ticket. This request
+    /// remains 503; once an acknowledgement drains debt, a retry can be admitted normally.
+    pub async fn drain_approval_invalidations(&self) -> Result<(), Pending> {
+        self.covering_approval_fence(None).await
+    }
+
     pub async fn confirm_approval_invalidation(
         &self,
         user: &str,
@@ -86,14 +123,8 @@ impl crate::App {
         mut generation: Option<u64>,
     ) -> Result<(), Pending> {
         tokio::time::timeout(Duration::from_secs(2), async {
-            while let Some(covers) = generation {
-                self.config
-                    .approval_revocation
-                    .ack(user, Some(chat))
-                    .await?;
-                self.approvals
-                    .acknowledge_invalidation(user, chat, covers)
-                    .map_err(|_| Pending)?;
+            while generation.is_some() {
+                self.covering_approval_fence(None).await?;
                 generation = self
                     .approvals
                     .pending_invalidation(user, chat)
@@ -107,9 +138,7 @@ impl crate::App {
 
     pub async fn revoke_approvals(&self, user: &str, chat: &str) -> Result<bool, Pending> {
         let revoked = self.approvals.revoke(user, chat);
-        self.config
-            .approval_revocation
-            .ack(user, Some(chat))
+        self.covering_approval_fence(Some((user, Some(chat))))
             .await?;
         Ok(revoked)
     }
@@ -119,8 +148,7 @@ impl crate::App {
         project: &str,
     ) -> Result<usize, Pending> {
         let revoked = self.approvals.revoke_project(user, project);
-        // User-wide fence includes tickets whose grants were already removed or expired.
-        self.config.approval_revocation.ack(user, None).await?;
+        self.covering_approval_fence(Some((user, None))).await?;
         Ok(revoked)
     }
 }
