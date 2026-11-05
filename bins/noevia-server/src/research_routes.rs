@@ -232,10 +232,31 @@ impl Research {
         tasks.len()
     }
 
+    /// The per-start secret of the front's loopback calls to Node (`NOEVIA_PROJECT_STORE_TOKEN`), for a
+    /// module that makes its own call (chat_turn.rs).
+    pub(crate) fn front_token(&self) -> Option<&str> {
+        self.settings.token.as_deref()
+    }
+
+    /// The client of Node's admission leases (crates/engine-admission), for the chat admission
+    /// (chat_admission.rs), which takes the same leases as research's model steps.
+    pub(crate) fn admission(&self) -> &Arc<Admission> {
+        &self.admission
+    }
+
     fn bridge_post(
         &self,
         path: &str,
         body: &Value,
+        timeout: Duration,
+    ) -> Option<reqwest::RequestBuilder> {
+        self.bridge_post_text(path, body.to_string(), timeout)
+    }
+
+    fn bridge_post_text(
+        &self,
+        path: &str,
+        body: String,
         timeout: Duration,
     ) -> Option<reqwest::RequestBuilder> {
         let token = self.settings.token.as_deref()?;
@@ -250,7 +271,7 @@ impl Research {
                 .header(TOKEN_HEADER, value)
                 .header("content-type", "application/json")
                 .timeout(timeout)
-                .body(body.to_string()),
+                .body(body),
         )
     }
 
@@ -273,7 +294,22 @@ impl Research {
         body: &Value,
         timeout: Duration,
     ) -> Option<(u16, Vec<u8>)> {
-        let mut res = self.bridge_post(path, body, timeout)?.send().await.ok()?;
+        self.node_call_text(path, body.to_string(), timeout).await
+    }
+
+    /// [`Self::node_call`] with the JSON body already written, for a body serde_json cannot hold
+    /// (a JS string with a lone surrogate, js_json `wtf16`; chat_framing_suggest.rs).
+    pub(crate) async fn node_call_text(
+        &self,
+        path: &str,
+        body: String,
+        timeout: Duration,
+    ) -> Option<(u16, Vec<u8>)> {
+        let mut res = self
+            .bridge_post_text(path, body, timeout)?
+            .send()
+            .await
+            .ok()?;
         let status = res.status().as_u16();
         let mut bytes = Vec::new();
         while let Some(chunk) = res.chunk().await.ok()? {

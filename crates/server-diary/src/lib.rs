@@ -51,3 +51,7 @@ pub use config::DiaryConfig;
 pub use local_exchange::{ExchangeHold, ExchangeLimits, ExchangeRefusal};
 pub use routes::{Ctx, Diary, Held, Limits, Reply, ReplyBody, Request, Route, StorageLatch};
 pub use tenant::{StorageIdentity, Tenant, TenantError};
+
+pub mod backup;
+
+mod proxy_raw;

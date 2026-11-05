@@ -18,6 +18,11 @@
 //!   from `Drop`; if even that cannot run, Node ends it by itself after the TTL.
 //! - No answer from Node is a refusal: admission fails closed, nothing reaches the engine.
 //!
+//! - [`Admission::enter_gate`] (chat port S8): the inference gate alone, as a chat turn or the Diary local exchange
+//!   meets it (core rust-chat-admission.cjs). Node waits at most [`GATE_WAIT`] for a held gate and stops when
+//!   this caller goes away; the call the front then sends with [`Lease::id`] is covered by the lease and enters
+//!   nothing again, so the lease is that call's one gate count.
+//!
 //! [`machines`]: which machine serves a chat role, read from the settings row Node owns.
 pub mod machines;
 
@@ -27,16 +32,94 @@ use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::time::Instant;
 
 const PATH: &str = "/internal/inference-admission/lease";
 const TOKEN_HEADER: &str = "x-noevia-store-token";
 const CALL_TIMEOUT: Duration = Duration::from_secs(5);
+/// Maximum buffered admission body. Larger refusals retain their status and retry metadata.
+pub const MAX_ANSWER_BYTES: usize = 1024 * 1024;
+pub const MAINTENANCE_MESSAGE: &str = "Model configuration is being applied. Try again shortly.";
+/// A bounded, content-free refusal code, when supplied by the admission authority.
+pub const REFUSAL_CODE_HEADER: &str = "x-noevia-admission-code";
+
+#[derive(Debug)]
+enum AnswerError {
+    TooLarge,
+    Unreadable,
+}
+
+async fn capped(mut response: reqwest::Response) -> Result<Vec<u8>, AnswerError> {
+    if response
+        .content_length()
+        .is_some_and(|n| n > MAX_ANSWER_BYTES as u64)
+    {
+        return Err(AnswerError::TooLarge);
+    }
+    let mut out = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| AnswerError::Unreadable)?
+    {
+        if chunk.len() > MAX_ANSWER_BYTES.saturating_sub(out.len()) {
+            return Err(AnswerError::TooLarge);
+        }
+        out.extend_from_slice(&chunk);
+    }
+    Ok(out)
+}
 /// Node's own queue limit is under this (`max_wait_ms`), so a queued wait ends with Node's answer.
 pub const ENTER_TIMEOUT: Duration = Duration::from_secs(150);
+
+/// Core chat-admission.cjs `CHAT_GATE_WAIT_MS`: Node waits at most this for a held gate.
+pub const GATE_WAIT: Duration = Duration::from_secs(3);
+/// How long a gate ask may take in all: Node's wait and a margin for the loopback call.
+pub const GATE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Which call the inference gate is taken for (core rust-chat-admission.cjs `GATE_ROUTES`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Gate {
+    /// `POST /api/chat`: a chat turn or a Cowork start.
+    Chat,
+    /// `POST /api/diary/local-exchange`.
+    Diary,
+}
+
+impl Gate {
+    pub fn name(self) -> &'static str {
+        match self {
+            Gate::Chat => "chat",
+            Gate::Diary => "diary",
+        }
+    }
+}
+
+/// Why [`Admission::enter_gate`] gave no lease.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GateRefusal {
+    /// The gate's refusal, in Node's words: its status (503 while maintenance holds it), message and code.
+    Refused(Refused),
+    /// No answer from Node, or not one of this route's: the caller answers as for a Node that is down.
+    NoAnswer,
+}
+
+/// Cancels its [`Cancel`] when dropped: the caller of [`Admission::enter_gate`] went away.
+struct CancelOnDrop(Cancel);
+
+impl Drop for CancelOnDrop {
+    fn drop(&mut self) {
+        self.0.cancel();
+    }
+}
 
 /// What to hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ask<'a> {
+    /// Embeddings need the maintenance guard, never a text-model load or router queue.
+    /// PAIRED ONLY: callers MUST verify the boot-bound embedding-background-v1
+    /// ownership capability. Older Core treats this request as a text-engine load.
+    Embedding { model: &'a str },
     /// This machine's engine, for this model.
     Engine { model: &'a str },
     /// A chat role on another machine: nothing is admitted here, the machine counts a turn (#1880), and
@@ -59,14 +142,33 @@ pub struct Refused {
     pub status: u16,
     pub message: String,
     pub code: Option<String>,
+    /// Retry-After supplied by Node, including HTTP-date values.
+    pub retry_after: Option<String>,
 }
 
 impl Refused {
+    fn oversized(status: u16, headers: &reqwest::header::HeaderMap) -> Option<Self> {
+        (status == 503 || status == 409).then(|| Self {
+            status,
+            message: MAINTENANCE_MESSAGE.into(),
+            code: headers
+                .get(REFUSAL_CODE_HEADER)
+                .and_then(|v| v.to_str().ok())
+                .filter(|s| !s.is_empty() && s.len() <= 128)
+                .map(str::to_owned),
+            retry_after: headers
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_owned),
+        })
+    }
+
     fn unavailable() -> Refused {
         Refused {
             status: 503,
             message: "The model is busy. Try again shortly.".into(),
             code: None,
+            retry_after: None,
         }
     }
 }
@@ -127,6 +229,7 @@ impl Admission {
     /// Takes a lease, waiting as long as Node's queue does, or until `cancel`.
     pub async fn enter(self: &Arc<Self>, ask: Ask<'_>, cancel: &Cancel) -> Result<Lease, Refused> {
         let body = match ask {
+            Ask::Embedding { model } => json!({ "model": model, "embedding": true }),
             Ask::Engine { model } => json!({ "model": model }),
             Ask::Machine {
                 role,
@@ -148,11 +251,22 @@ impl Admission {
             r = send => r,
         };
         let response = answer.map_err(|_| Refused::unavailable())?;
+        let confirmed = Instant::now();
         let status = response.status().as_u16();
-        let reading = response.bytes();
+        let metadata = Refused::oversized(status, response.headers());
+        let retry_after = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+        let reading = capped(response);
         let bytes = tokio::select! {
             () = cancel.cancelled() => return Err(cancelled()),
-            b = reading => b.map_err(|_| Refused::unavailable())?,
+            b = reading => match b {
+                Ok(bytes) => bytes,
+                Err(AnswerError::TooLarge) => return Err(metadata.unwrap_or_else(Refused::unavailable)),
+                Err(AnswerError::Unreadable) => return Err(Refused::unavailable()),
+            },
         };
         let parsed: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
         if status != 201 {
@@ -162,7 +276,8 @@ impl Admission {
                 (404, _) | (_, None) => Refused::unavailable(),
                 (_, Some(m)) => Refused {
                     status,
-                    message: m.chars().take(500).collect(),
+                    message: m.to_owned(),
+                    retry_after,
                     code: parsed
                         .get("code")
                         .and_then(Value::as_str)
@@ -170,18 +285,24 @@ impl Admission {
                 },
             });
         }
+        self.grant(&parsed, confirmed)
+            .ok_or_else(Refused::unavailable)
+    }
+
+    /// The lease Node granted in `parsed` (its 201 body); `None` when it is not one. Start the clock
+    /// when its headers arrived, so reading the grant body does not postpone the first deadline.
+    /// Time waiting in Node's admission queue precedes the grant and is not part of its TTL.
+    fn grant(self: &Arc<Self>, parsed: &Value, confirmed: Instant) -> Option<Lease> {
         let id = parsed
             .get("lease")
             .and_then(Value::as_str)
-            .filter(|l| valid_id(l))
-            .ok_or_else(Refused::unavailable)?
+            .filter(|l| valid_id(l))?
             .to_owned();
         let ttl = parsed
             .get("ttlMs")
             .and_then(Value::as_u64)
             .filter(|t| *t > 0)
-            .map(Duration::from_millis)
-            .ok_or_else(Refused::unavailable)?;
+            .map(Duration::from_millis)?;
         // The gate's own lease header, when Node holds one for this: only that name, and a lease token.
         let headers = parsed
             .get("headers")
@@ -204,13 +325,78 @@ impl Admission {
             id,
             released: AtomicBool::new(false),
         });
-        let renewing = tokio::spawn(renew(Arc::clone(&inner), ttl, lost.clone()));
-        Ok(Lease {
+        let renewing = tokio::spawn(renew(Arc::clone(&inner), ttl, confirmed, lost.clone()));
+        Some(Lease {
             inner,
             headers,
             lost,
             renewing,
         })
+    }
+
+    /// Chat port S8: takes the inference gate for one `gate` call (core rust-chat-admission.cjs). Node waits at
+    /// most [`GATE_WAIT`]; the whole ask at most [`GATE_TIMEOUT`]. Dropping this future (the client left) ends
+    /// the ask, which ends Node's wait; a lease that was already on its way is given back, never kept.
+    pub async fn enter_gate(self: &Arc<Self>, gate: Gate) -> Result<Lease, GateRefusal> {
+        let gone = Cancel::new();
+        let _guard = CancelOnDrop(gone.clone());
+        let me = Arc::clone(self);
+        // Its own task, so that a grant that arrives as the caller leaves is still read and given back.
+        let asking = tokio::spawn(async move { me.gate_once(gate, &gone).await });
+        asking.await.unwrap_or(Err(GateRefusal::NoAnswer))
+    }
+
+    async fn gate_once(self: &Arc<Self>, gate: Gate, gone: &Cancel) -> Result<Lease, GateRefusal> {
+        let req = self
+            .request(reqwest::Method::POST, PATH)
+            .ok_or(GateRefusal::NoAnswer)?;
+        let send = req
+            .header("content-type", "application/json")
+            .timeout(GATE_TIMEOUT)
+            .body(json!({ "gate": gate.name() }).to_string())
+            .send();
+        // Before Node answers, leaving ends the ask (Node's wait ends with it). Once it has answered, the
+        // answer is read to its end: a lease in it is then dropped, which gives it back.
+        let response = tokio::select! {
+            () = gone.cancelled() => return Err(GateRefusal::NoAnswer),
+            r = send => r.map_err(|_| GateRefusal::NoAnswer)?,
+        };
+        let confirmed = Instant::now();
+        let status = response.status().as_u16();
+        let metadata = Refused::oversized(status, response.headers());
+        let retry_after = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+        let bytes = match capped(response).await {
+            Ok(bytes) => bytes,
+            Err(AnswerError::TooLarge) if metadata.is_some() => {
+                return Err(metadata
+                    .map(GateRefusal::Refused)
+                    .unwrap_or(GateRefusal::NoAnswer));
+            }
+            Err(_) => return Err(GateRefusal::NoAnswer),
+        };
+        let parsed: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+        if status == 201 {
+            return self.grant(&parsed, confirmed).ok_or(GateRefusal::NoAnswer);
+        }
+        // The gate refuses only with its 503; anything else is not this route's answer (a Core that is
+        // not this front's pair answers an ask it does not know with 400 or 404).
+        match (status, parsed.get("error").and_then(Value::as_str)) {
+            // The gate's words whole, as index.cjs sends them (refusalBody keeps err.message).
+            (503, Some(m)) => Err(GateRefusal::Refused(Refused {
+                status,
+                message: m.to_owned(),
+                retry_after,
+                code: parsed
+                    .get("code")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+            })),
+            _ => Err(GateRefusal::NoAnswer),
+        }
     }
 
     async fn renew_once(&self, id: &str) -> Option<bool> {
@@ -240,6 +426,7 @@ fn cancelled() -> Refused {
         status: 499,
         message: "Cancelled.".into(),
         code: None,
+        retry_after: None,
     }
 }
 
@@ -249,29 +436,47 @@ struct Held {
     released: AtomicBool,
 }
 
-async fn renew(held: Arc<Held>, ttl: Duration, lost: Cancel) {
-    let every = (ttl / 3).max(Duration::from_millis(50));
-    let mut unconfirmed = Duration::ZERO;
+/// Renews the lease every third of its TTL. Node ends a lease it has not renewed for a TTL, counted
+/// from when it last heard a renewal; this side counts from when it *sent* the last renewal Node
+/// confirmed (no later than Node heard it), on a monotonic clock, so the time a renewal takes and a
+/// renewal that never answers both count against the TTL (S8 re-review P2-3). [`Lease::lost`] is
+/// cancelled once less than one renewal period is left without a confirmation: before Node can have
+/// ended the lease.
+async fn renew(held: Arc<Held>, ttl: Duration, mut confirmed: Instant, lost: Cancel) {
+    let every = (ttl / 3).max(Duration::from_millis(1));
+    let mut next = confirmed + every;
     loop {
-        tokio::time::sleep(every).await;
+        // Leave a renewal period of margin for stopping the covered work before Node expires it.
+        let deadline = confirmed + ttl.saturating_sub(every);
+        tokio::select! {
+            biased;
+            () = tokio::time::sleep_until(deadline) => {
+                lost.cancel();
+                return;
+            }
+            () = tokio::time::sleep_until(next) => {}
+        }
         if held.released.load(Ordering::SeqCst) {
             return;
         }
-        match held.admission.renew_once(&held.id).await {
-            Some(true) => unconfirmed = Duration::ZERO,
+        let sent = Instant::now();
+        let answer = tokio::select! {
+            biased;
+            () = tokio::time::sleep_until(deadline) => {
+                lost.cancel();
+                return;
+            }
+            answer = held.admission.renew_once(&held.id) => answer,
+        };
+        match answer {
+            Some(true) => confirmed = sent,
             Some(false) => {
                 lost.cancel();
                 return;
             }
-            None => {
-                unconfirmed += every;
-                // By now Node has ended a lease it heard nothing about. Stop before it can matter.
-                if unconfirmed + every >= ttl {
-                    lost.cancel();
-                    return;
-                }
-            }
+            None => {}
         }
+        next = Instant::now() + every;
     }
 }
 
@@ -284,6 +489,10 @@ pub struct Lease {
 }
 
 impl Lease {
+    /// Node's id of this lease: what a covered call carries (core rust-chat-admission.cjs `LEASE_HEADER`).
+    pub fn id(&self) -> &str {
+        &self.inner.id
+    }
     /// Headers to send with the model request (the inference gate's lease, when there is a gate).
     pub fn headers(&self) -> &[(String, String)] {
         &self.headers
@@ -317,7 +526,12 @@ impl Drop for Lease {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
 mod tests {
     use super::*;
     use std::sync::Mutex;
@@ -328,6 +542,8 @@ mod tests {
     struct Node {
         seen: Mutex<Vec<String>>,
         renew_status: Mutex<u16>,
+        /// How long a renewal waits before its answer (`u64::MAX`: never answers).
+        renew_delay_ms: Mutex<u64>,
         /// The body of each lease request.
         asks: Mutex<Vec<String>>,
     }
@@ -339,6 +555,7 @@ mod tests {
         let state = Arc::new(Node {
             seen: Mutex::default(),
             renew_status: Mutex::new(200),
+            renew_delay_ms: Mutex::new(0),
             asks: Mutex::default(),
         });
         let st = Arc::clone(&state);
@@ -361,6 +578,11 @@ mod tests {
                         st.asks.lock().unwrap().push(body.to_owned());
                     }
                     let (status, body) = if first.starts_with("POST") && first.contains("/renew") {
+                        let delay = *st.renew_delay_ms.lock().unwrap();
+                        if delay == u64::MAX {
+                            std::future::pending::<()>().await;
+                        }
+                        tokio::time::sleep(Duration::from_millis(delay)).await;
                         (*st.renew_status.lock().unwrap(), "{}".to_owned())
                     } else if first.starts_with("POST") {
                         grant
@@ -585,5 +807,309 @@ mod tests {
         .err()
         .unwrap();
         assert_eq!(refused.status, 499);
+    }
+
+    // Chat port S8: the gate alone, for a chat call.
+
+    #[tokio::test]
+    async fn a_gate_lease_asks_for_its_route_and_carries_its_id() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let seen = Arc::new(Mutex::new(Vec::<String>::new()));
+        let log = Arc::clone(&seen);
+        tokio::spawn(async move {
+            loop {
+                let (mut s, _) = listener.accept().await.unwrap();
+                let log = Arc::clone(&log);
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 4096];
+                    let n = s.read(&mut buf).await.unwrap_or(0);
+                    let text = String::from_utf8_lossy(&buf[..n]).into_owned();
+                    log.lock().unwrap().push(text.clone());
+                    let body = if text.starts_with("POST /internal/inference-admission/lease ") {
+                        r#"{"lease":"0123456789abcdef0123456789abcdef","ttlMs":30000}"#
+                    } else {
+                        ""
+                    };
+                    let status = if body.is_empty() { 204 } else { 201 };
+                    let reply = format!("HTTP/1.1 {status} X\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len());
+                    let _ = s.write_all(reply.as_bytes()).await;
+                });
+            }
+        });
+        for (gate, name) in [(Gate::Chat, "chat"), (Gate::Diary, "diary")] {
+            let lease = admission(&base).enter_gate(gate).await.unwrap();
+            assert_eq!(lease.id(), "0123456789abcdef0123456789abcdef");
+            assert!(lease.headers().is_empty());
+            lease.release().await;
+            let seen = seen.lock().unwrap().clone();
+            let ask = seen
+                .iter()
+                .rev()
+                .find(|t| t.starts_with("POST /internal/inference-admission/lease "))
+                .unwrap();
+            assert!(
+                ask.to_ascii_lowercase()
+                    .contains("x-noevia-store-token: secret"),
+                "{ask}"
+            );
+            assert!(ask.ends_with(&format!(r#"{{"gate":"{name}"}}"#)), "{ask}");
+            assert!(seen
+                .iter()
+                .any(|t| t
+                    .starts_with("DELETE /internal/inference-admission/lease/0123456789abcdef")));
+        }
+    }
+
+    #[tokio::test]
+    async fn a_gate_refusal_keeps_nodes_words_and_anything_else_is_no_answer() {
+        let (base, _s) = node((503, r#"{"error":"Chat is paused while noevia calibrates m.","code":"inferenceMaintenance"}"#.into())).await;
+        let refused = admission(&base).enter_gate(Gate::Chat).await.err().unwrap();
+        assert_eq!(
+            refused,
+            GateRefusal::Refused(Refused {
+                status: 503,
+                message: "Chat is paused while noevia calibrates m.".into(),
+                code: Some("inferenceMaintenance".into()),
+                retry_after: None,
+            })
+        );
+        // Node's words whole, however long (index.cjs keeps err.message).
+        let long = "x".repeat(700);
+        let (base, _s) = node((
+            503,
+            format!(r#"{{"error":"{long}","code":"inferenceMaintenance"}}"#),
+        ))
+        .await;
+        match admission(&base).enter_gate(Gate::Chat).await.err().unwrap() {
+            GateRefusal::Refused(r) => assert_eq!(r.message, long),
+            other => panic!("{other:?}"),
+        }
+        for grant in [
+            (404, r#"{"error":"Not found"}"#.to_owned()),
+            (400, r#"{"error":"A model is required."}"#.to_owned()),
+            (503, "{}".to_owned()),
+            (201, r#"{"lease":"short","ttlMs":1}"#.to_owned()),
+            (500, "x".to_owned()),
+        ] {
+            let (base, _s) = node(grant).await;
+            assert_eq!(
+                admission(&base).enter_gate(Gate::Chat).await.err(),
+                Some(GateRefusal::NoAnswer)
+            );
+        }
+        assert_eq!(
+            admission("http://127.0.0.1:9")
+                .enter_gate(Gate::Chat)
+                .await
+                .err(),
+            Some(GateRefusal::NoAnswer)
+        );
+        let no_token = Arc::new(Admission::new("http://127.0.0.1:9", None).unwrap());
+        assert_eq!(
+            no_token.enter_gate(Gate::Diary).await.err(),
+            Some(GateRefusal::NoAnswer)
+        );
+    }
+
+    #[tokio::test]
+    async fn a_caller_that_leaves_during_the_wait_ends_the_ask_at_once() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let (closed_tx, closed_rx) = tokio::sync::oneshot::channel::<()>();
+        tokio::spawn(async move {
+            let (mut s, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let _ = s.read(&mut buf).await;
+            // Node waits for its gate: it answers nothing until the asker goes away.
+            let n = s.read(&mut buf).await.unwrap_or(0);
+            assert_eq!(n, 0, "the asker closed its socket");
+            let _ = closed_tx.send(());
+        });
+        let a = admission(&base);
+        let asking = tokio::spawn(async move { a.enter_gate(Gate::Chat).await.is_ok() });
+        settle().await;
+        asking.abort();
+        tokio::time::timeout(Duration::from_secs(1), closed_rx)
+            .await
+            .unwrap()
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_grant_already_on_its_way_when_the_caller_leaves_is_given_back() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let deleted = Arc::new(Mutex::new(Vec::<String>::new()));
+        let log = Arc::clone(&deleted);
+        let (headers_tx, headers_rx) = tokio::sync::oneshot::channel::<()>();
+        let headers_tx = Arc::new(Mutex::new(Some(headers_tx)));
+        tokio::spawn(async move {
+            loop {
+                let (mut s, _) = listener.accept().await.unwrap();
+                let log = Arc::clone(&log);
+                let headers_tx = Arc::clone(&headers_tx);
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 4096];
+                    let n = s.read(&mut buf).await.unwrap_or(0);
+                    let first = String::from_utf8_lossy(&buf[..n])
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .to_owned();
+                    if first.starts_with("DELETE") {
+                        log.lock().unwrap().push(first);
+                        let _ = s
+                            .write_all(
+                                b"HTTP/1.1 204 X\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
+                            )
+                            .await;
+                        return;
+                    }
+                    let body = r#"{"lease":"0123456789abcdef0123456789abcdef","ttlMs":30000}"#;
+                    let head = format!(
+                        "HTTP/1.1 201 X\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                        body.len()
+                    );
+                    let _ = s.write_all(head.as_bytes()).await;
+                    let _ = s.flush().await;
+                    if let Some(tx) = headers_tx.lock().unwrap().take() {
+                        let _ = tx.send(());
+                    }
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    let _ = s.write_all(body.as_bytes()).await;
+                });
+            }
+        });
+        let a = admission(&base);
+        let asking = tokio::spawn(async move { a.enter_gate(Gate::Chat).await.is_ok() });
+        headers_rx.await.unwrap();
+        settle().await;
+        asking.abort();
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert_eq!(
+            deleted.lock().unwrap().clone(),
+            ["DELETE /internal/inference-admission/lease/0123456789abcdef0123456789abcdef HTTP/1.1"]
+        );
+    }
+
+    // S8 re-review P2-3: the time a renewal takes counts against the TTL.
+
+    const SHORT: &str = r#"{"lease":"0123456789abcdef0123456789abcdef","ttlMs":600}"#;
+
+    #[tokio::test]
+    async fn renewals_that_never_answer_lose_the_lease_before_its_ttl() {
+        let (base, state) = node((201, SHORT.into())).await;
+        *state.renew_delay_ms.lock().unwrap() = u64::MAX;
+        let granted = tokio::time::Instant::now();
+        let lease = admission(&base).enter_gate(Gate::Chat).await.unwrap();
+        // Node ends it 600 ms after it armed it; loss must arrive with time left to stop the call.
+        tokio::time::timeout(Duration::from_millis(550), lease.lost().cancelled())
+            .await
+            .expect("still held when Node has ended it");
+        assert!(granted.elapsed() < Duration::from_millis(550));
+    }
+
+    #[tokio::test]
+    async fn prompt_acks_keep_the_lease_and_acks_too_late_to_prove_it_alive_lose_it() {
+        let (base, state) = node((201, SHORT.into())).await;
+        *state.renew_delay_ms.lock().unwrap() = 20;
+        let lease = admission(&base).enter_gate(Gate::Chat).await.unwrap();
+        // Prompt acks: held for several TTLs.
+        tokio::time::sleep(Duration::from_millis(1500)).await;
+        assert!(!lease.lost().is_cancelled());
+        // Acks that come back later than the TTL left: lost before Node can have ended it.
+        *state.renew_delay_ms.lock().unwrap() = 500;
+        tokio::time::timeout(Duration::from_millis(700), lease.lost().cancelled())
+            .await
+            .expect("late acks kept a lease Node may have ended");
+    }
+
+    // S8 re-review P2-4: an admission answer is read to at most MAX_ANSWER_BYTES.
+
+    /// A Node that answers every ask with `status` and `body`, chunked when `chunked`.
+    async fn raw_node(status: u16, body: String, chunked: bool) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            loop {
+                let (mut s, _) = listener.accept().await.unwrap();
+                let body = body.clone();
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 4096];
+                    let _ = s.read(&mut buf).await;
+                    let head = if chunked {
+                        format!("HTTP/1.1 {status} X\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n")
+                    } else {
+                        format!("HTTP/1.1 {status} X\r\ncontent-length: {}\r\nconnection: close\r\n\r\n", body.len())
+                    };
+                    let _ = s.write_all(head.as_bytes()).await;
+                    if chunked {
+                        for piece in body.as_bytes().chunks(8192) {
+                            let _ = s
+                                .write_all(format!("{:x}\r\n", piece.len()).as_bytes())
+                                .await;
+                            let _ = s.write_all(piece).await;
+                            let _ = s.write_all(b"\r\n").await;
+                        }
+                        let _ = s.write_all(b"0\r\n\r\n").await;
+                    } else {
+                        let _ = s.write_all(body.as_bytes()).await;
+                    }
+                });
+            }
+        });
+        base
+    }
+
+    #[tokio::test]
+    async fn bounded_answers_fail_closed_for_grants_but_preserve_refusals() {
+        let pad = "p".repeat(MAX_ANSWER_BYTES);
+        let big = format!(
+            r#"{{"lease":"0123456789abcdef0123456789abcdef","ttlMs":30000,"pad":"{pad}"}}"#
+        );
+        for chunked in [false, true] {
+            let base = raw_node(201, big.clone(), chunked).await;
+            assert_eq!(
+                admission(&base).enter_gate(Gate::Chat).await.err(),
+                Some(GateRefusal::NoAnswer),
+                "chunked {chunked}"
+            );
+            let refused = admission(&base)
+                .enter(Ask::Engine { model: "m" }, &Cancel::new())
+                .await
+                .err()
+                .unwrap();
+            assert_eq!(refused, Refused::unavailable(), "chunked {chunked}");
+        }
+        // Exactly at the cap, the words (including a final multibyte character) remain whole.
+        let overhead = r#"{"error":"","code":"inferenceMaintenance"}"#.len();
+        let long = format!("{}🧪", "w".repeat(MAX_ANSWER_BYTES - overhead - "🧪".len()));
+        let body = format!(r#"{{"error":"{long}","code":"inferenceMaintenance"}}"#);
+        assert_eq!(body.len(), MAX_ANSWER_BYTES);
+        for chunked in [false, true] {
+            let base = raw_node(503, body.clone(), chunked).await;
+            match admission(&base).enter_gate(Gate::Chat).await.err().unwrap() {
+                GateRefusal::Refused(r) => assert_eq!(r.message, long),
+                other => panic!("{other:?}"),
+            }
+            let refused = admission(&base)
+                .enter(Ask::Engine { model: "m" }, &Cancel::new())
+                .await
+                .err()
+                .unwrap();
+            assert_eq!(refused.message, long);
+            let over = raw_node(503, format!("{body} "), chunked).await;
+            assert_eq!(
+                admission(&over).enter_gate(Gate::Chat).await.err(),
+                Some(GateRefusal::Refused(Refused {
+                    status: 503,
+                    message: MAINTENANCE_MESSAGE.into(),
+                    code: None,
+                    retry_after: None,
+                })),
+                "one byte over, chunked {chunked}"
+            );
+        }
     }
 }

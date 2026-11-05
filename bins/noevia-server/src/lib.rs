@@ -15,6 +15,12 @@ pub mod autotune_settings_routes;
 pub mod autotune_untuned_routes;
 pub mod calibration_cancel_routes;
 pub mod calibration_routes;
+pub mod chat_activity;
+pub mod chat_admission;
+pub mod chat_edge;
+pub mod chat_framing_suggest;
+pub mod chat_turn;
+pub mod chat_wire;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_oauth_routes;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -23,7 +29,9 @@ pub mod code_net;
 pub mod config;
 pub mod connector_routes;
 pub mod decision_settings_routes;
+pub mod diary_backup;
 pub mod diary_routes;
+pub mod embedding_background;
 pub mod export_routes;
 pub mod extraction;
 pub mod feature_context;
@@ -150,8 +158,9 @@ use std::sync::Arc;
 /// rust-diary-routes.cjs `RUST_DIARY_ROUTES_OWNED`), so the web supervisor pairs them.
 ///
 /// `rust-diary-local-exchange`: this build answers `/api/diary/local-exchange` (every method; a POST
-/// relays the companion exchange, streamed or not). The model throttle chat shares and the inference
-/// maintenance gate it holds stay Node's: the front takes them with an inference-admission lease
+/// relays the companion exchange, streamed or not). The inference maintenance gate it holds stays
+/// Node's (the `llm:` budget chat shares is this front's since chat port S6, chat_edge.rs): the front
+/// takes the gate with an inference-admission lease
 /// (`{ diaryExchange: { user } }`) that only a Core with that ask grants. Node refuses the route (core
 /// rust-diary-local-exchange.cjs `RUST_DIARY_LOCAL_EXCHANGE_OWNED`), so the web supervisor pairs them.
 ///
@@ -279,6 +288,15 @@ use std::sync::Arc;
 /// the same lock file, so the web supervisor and the release assembly pair this capability with that
 /// Core in both directions.
 ///
+/// `rust-calibration-worker-v2`: this build runs the calibration job itself (sbstndalton/noevia#2303,
+/// src/model_maint/calibration_worker.rs): its launch under the maintenance hold, the run, its
+/// cancellation and evidence, `native-calibration-<hash>.json` and the boot recovery of a job a
+/// restart interrupted. Core then builds no public calibrator and does not recover the job at boot
+/// (core rust-calibration-routes.cjs `CALIBRATION_WORKER_OWNER`), so the web supervisor and the
+/// release assembly pair them in both directions. Generation 2: every load the job asks for is first
+/// decided by Core's own load refusal (`POST /internal/model-maintenance/load-refusal`, core
+/// model-load-refusal.cjs), so it pairs only with `noevia-calibration-worker-rust/2`.
+///
 /// `rust-preset-baseline`: this build is the preset reload baseline's one in-memory authority
 /// (port contract 2026-11-04 RS-1, model_maint/reload.rs `Guard`) and answers `POST
 /// /v1/preset-baseline/{session,begin,settle,invalidate,verdict,router-text}` on the project-store
@@ -348,6 +366,13 @@ use std::sync::Arc;
 /// file carries the start that runs it, so a restart's leftovers read as interrupted).
 ///
 /// `legacy-root-claim`: this binary exposes the filesystem-only legacy claim helper before server startup.
+/// `rust-budget-watch-v3`: this build runs the #697 memory watchdog (src/model_maint/budget_watch.rs, Core's
+/// `inference-budget-watch.cjs` moved): the sampling, the strikes, the idle baseline, the cooldown and the
+/// emergency unload through the inference gate. Core then does not start its own and answers only the
+/// maintenance state and the quarantine on `/internal/budget-watch` (core rust-budget-watch.cjs
+/// `BUDGET_WATCH_OWNER`), so the web supervisor and the release assembly pair them in both directions: a
+/// mixed pair would run two watchdogs, or none.
+///
 /// `rust-task-reads`: this build answers `/api/code/active` and the GETs of a project's Code and Browser
 /// state and task (task_routes.rs); Core refuses them (rust-task-reads.cjs) and offers the facts only it
 /// holds on the loopback bridge (rust-task-facts.cjs). The supervisor pairs them.
@@ -359,11 +384,47 @@ use std::sync::Arc;
 /// (model_state_routes.rs); Core refuses them (rust-model-state-reads.cjs) and offers the facts only it holds on the
 /// loopback bridge (rust-model-facts.cjs). The supervisor pairs them.
 ///
+/// `rust-chat-framing-suggest`: this build answers every method of `/api/chat-framing/suggest`
+/// (chat_framing_suggest.rs, chat port S4): the gate, 405, the 10-a-minute `chat-frame:` budget, the
+/// body and the cut to 4,000 UTF-16 units; Core refuses the POST (rust-chat-framing-suggest.cjs) and
+/// keeps only the user's lists and the decision behind `/internal/chat-framing/suggest`. The
+/// supervisor pairs them.
+///
+/// `rust-chat-turn`: this build answers `POST /api/chat` (chat_turn.rs, chat port S5) as a
+/// transparent relay: the session gate, then the request unread to Core's loopback
+/// `/internal/chat/turn`, whose unchanged pipeline answers byte for byte; Core refuses any other
+/// POST /api/chat (rust-chat-turn.cjs). The supervisor and assemble-release pair them.
+///
+/// `rust-chat-edge`: this build answers what routes/chat.cjs answered before a turn reached its loop
+/// (chat_edge.rs, chat port S6): the `llm:<user>` budget, which the Diary local exchange shares, the
+/// body cap, JSON, the request shape, the Cowork refusals and the Diary add-on gate, each after Core's
+/// inference gate. A Cowork start that passes goes to Core's `/internal/chat/cowork`. Core removes its
+/// own limiter (rust-chat-edge.cjs). The supervisor and assemble-release pair them.
+///
+/// `rust-chat-wire`: this build writes the chat turn's event stream itself (chat_wire.rs, chat port
+/// S7): it asks Core's relayed turn for NDJSON (`x-noevia-chat-wire: ndjson/1`) and writes the
+/// headers, one frame per event, the 5 s `: keep-alive` comment and the end; a Core that answers with
+/// its own event stream is refused (502). Core writes the relayed turn's events as NDJSON
+/// (rust-chat-wire.cjs). The supervisor and assemble-release pair them.
+///
+/// `rust-chat-admission`: this build takes Core's inference gate for a chat turn, a Cowork start and
+/// the Diary local exchange itself, with an admission lease (chat_admission.rs, chat port S8;
+/// crates/engine-admission): at most 3 s of waiting, ended when the client leaves, Node's 503 and its
+/// `[chat] 503` line answered here. The call carries the lease and Core does not enter the gate for it
+/// again (rust-chat-admission.cjs); the S6 gate hold and probe are gone. The supervisor and
+/// assemble-release pair them.
+///
+/// `chat-activity`: this build records each authenticated request's account in
+/// `UI_DATA_DIR/chat-activity.json` (chat_activity.rs, chat port S3), which core's change journal
+/// reader merges as request starts (chat-activity.cjs). Either side alone keeps today's behaviour.
+///
 /// `client-address-header`: the front drops any `X-Noevia-Client-Ip` a client sends and stamps its
 /// own value on what it forwards (#1245). The web supervisor confirms it to Node
 /// (NOEVIA_FRONT_CLIENT_IP=1), and Node believes that header only then, so a core release paired
 /// with a front that predates the strip cannot be handed a client-chosen address (#1578).
 pub const FEATURES: &[&str] = &[
+    "rust-diary-backup-worker",
+    "rust-embedding-background-v1",
     "client-address-header",
     "code-net-guard",
     "header-read-timeout",
@@ -411,6 +472,7 @@ pub const FEATURES: &[&str] = &[
     "rust-autotune-cancel",
     "rust-calibration-cancel",
     "rust-calibration-routes",
+    "rust-calibration-worker-v2",
     "rust-model-manager-scan",
     "rust-model-evidence-recheck",
     "rust-web-address-read",
@@ -458,6 +520,7 @@ pub const FEATURES: &[&str] = &[
     "rust-model-assignments",
     "rust-model-downloads-read",
     "rust-autotune-resume",
+    "rust-budget-watch-v3",
     #[cfg(feature = "rust-storage-reads")]
     "rust-connectors",
     // An account's deletion forgets the MCP sign-ins (rust-storage-reads) and the ChatGPT tokens
@@ -469,6 +532,12 @@ pub const FEATURES: &[&str] = &[
     "rust-health",
     "rust-auto-roles",
     "rust-workspace",
+    "rust-chat-framing-suggest",
+    "rust-chat-turn",
+    "rust-chat-edge",
+    "rust-chat-wire",
+    "rust-chat-admission",
+    "chat-activity",
     // GET /api/chats/search (#1450) and GET /api/chats/{chatId}/export (#1471): core rust-chat-search.cjs
     // `RUST_CHAT_SEARCH_OWNED` and rust-chat-export.cjs `RUST_CHAT_EXPORT_OWNED` refuse them.
     "rust-chat-search",
@@ -563,6 +632,12 @@ pub struct App {
     /// `connectorRate` of the Diary connector endpoint (core routes/diary.cjs): fixed windows, one
     /// per bucket key, in this process's memory like core's.
     diary_connector_rate: std::sync::Mutex<server_account::rate::RateLimiter>,
+    /// core index.cjs's `llmRateLimiter`, one map as in Node: the `chat-frame:<user>` buckets (chat
+    /// port S4) and the `llm:<user>` budget that the chat turn and the Diary local exchange share
+    /// (chat port S6, chat_edge.rs).
+    pub(crate) llm_rate: std::sync::Mutex<server_account::rate::RateLimiter>,
+    /// Who made an authenticated request, for Node's chat change journal reader (chat port S3).
+    pub activity: Arc<chat_activity::Activity>,
     pub reasoning_settings: Arc<tokio::sync::Semaphore>,
     pub sampling_settings: Arc<tokio::sync::Semaphore>,
     pub routing_mode: Arc<tokio::sync::Semaphore>,
@@ -671,6 +746,10 @@ impl App {
             diary_connector_rate: std::sync::Mutex::new(server_account::rate::RateLimiter::new(
                 identity::now_ms(),
             )),
+            llm_rate: std::sync::Mutex::new(server_account::rate::RateLimiter::new(
+                identity::now_ms(),
+            )),
+            activity: chat_activity::Activity::new(config.data_dir.clone()),
             reasoning_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             sampling_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             routing_mode: Arc::new(tokio::sync::Semaphore::new(4)),
@@ -757,6 +836,8 @@ async fn handle(
                     | routes::Native::ToolboxPicker
                     | routes::Native::ToolboxesPermitted
                     | routes::Native::ToolApprovals
+                    | routes::Native::ChatFramingSuggest
+                    | routes::Native::ChatTurn
             )
         ) {
             native = on_whatwg;
@@ -799,7 +880,9 @@ async fn handle(
             | routes::Native::AutotuneSettings
             | routes::Native::ToolboxPicker
             | routes::Native::ToolboxesPermitted
-            | routes::Native::ToolApprovals,
+            | routes::Native::ToolApprovals
+            | routes::Native::ChatFramingSuggest
+            | routes::Native::ChatTurn,
         )
         | None => false,
     };
@@ -817,8 +900,15 @@ async fn handle(
         );
         let (identity, writes) = (Arc::clone(&app.identity), Arc::clone(&app.writes));
         let now = identity::now_ms();
+        // Chat port S3: the account of an authenticated /api/ request, as Node's request gate saw it,
+        // for its change journal reader (chat_activity.rs).
+        let api = whatwg.as_deref().unwrap_or(&path).starts_with("/api/");
+        let activity = Arc::clone(&app.activity);
         let _ = tokio::task::spawn_blocking(move || {
-            writes.upkeep_blocking(identity.authenticator(), &creds, now)
+            let user = writes.upkeep_blocking(identity.authenticator(), &creds, now);
+            if let Some(user) = user.filter(|_| api) {
+                activity.record(&user, now);
+            }
         })
         .await;
     }
@@ -984,6 +1074,18 @@ async fn handle(
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };
             tool_approval_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::ChatFramingSuggest) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            chat_framing_suggest::serve(&app, req, p).await
+        }
+        Some(routes::Native::ChatTurn) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            chat_turn::serve(&app, conn, req, p).await
         }
         Some(routes::Native::ToolboxPicker) => {
             let Some(p) = whatwg else {
@@ -1172,7 +1274,8 @@ async fn handle(
                     reply::error(StatusCode::INTERNAL_SERVER_ERROR, "read error", false)
                 })
         }
-        _ => app.proxy.forward(conn.peer, req).await,
+        // Chat port S6: the Diary local exchange counts its call on the shared budget first.
+        _ => chat_edge::forward_node(&app, conn, req, whatwg.as_deref()).await,
     }
 }
 

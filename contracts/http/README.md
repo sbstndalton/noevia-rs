@@ -557,8 +557,8 @@ and `--features` lists `rust-model-reads`. The rest wait for batch M2 (the job r
 | `/api/models/autotune/resume` | rust | confirmation, queue/reset policy and response; conditional preparation/launch stay in the live actor (#2301) |
 | `/api/models/autotune/settings` | rust | public policy and response; conditional live-actor state write remains in Core (#2287) |
 | `/api/models/autotune/untuned` | node | reads the runner's tune history and identity state |
-| `/api/models/calibration` | node | GET is the calibration job's in-memory state; POST starts it (M2) |
-| `/api/models/calibration/cancel` | node | write to the running job (M2) |
+| `/api/models/calibration` | rust | the native worker (`model_maint::calibration_worker`) owns the job, its hold, `native-calibration-<hash>.json` and boot recovery; no gate admin token: Node's lease asked for the run's worst case (24 h at most, counting one unload per model live at launch; longer is refused 400); every load the job asks for is first decided by Core's `POST /internal/model-maintenance/load-refusal` (its `overBudget()`: size knobs, the watchdog's quarantine, the budget), a refusal or no answer failing that step without a load (generation 2: `rust-calibration-worker-v2` pairs with `noevia-calibration-worker-rust/2`) (#2303) |
+| `/api/models/calibration/cancel` | rust | cancels the native worker's running job by its opaque token; the profile goes back (#2292, #2303) |
 | `/api/models/delete` | node | write: unload, delete, roles, preset section (M2) |
 | `/api/models/estimate` (GET) | rust | moved in #2189 (below); other methods keep Node's admin check and 405 |
 | `/api/models/evidence` (GET) | rust | moved in #2210 (below); the front computes the identity and is the evidence store's only writer |

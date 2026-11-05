@@ -310,7 +310,10 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     // the preset reload's POST, the evidence read and the model-card import: 25; #2218 moved the research
     // paths, of which only the list was a listed Node route: 24; #2257 moved the active list and a project's
     // #2262 left 19 Node rows; #2281 toolbox, #2282 approval, #2287 settings,
-    // Calibration start/read leaves 10; evidence recheck leaves 9; untuned discovery leaves 8.
+    // #2292 calibration cancellation and #2293 clear leave 14; cancellation and resume leave 12.
+    // #2306 moves status GET (11); #2303 moves calibration start/read (10); chat ports S4 and S5 move the
+    // framing suggestion and the chat turn's POST (8).
+    // (stage S3/S4 base) Calibration start/read leaves 10; evidence recheck leaves 9; untuned discovery leaves 8.
     assert!(node_routes >= 8, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
@@ -481,9 +484,11 @@ async fn headers_cookies_and_forwarded_for() {
 
 #[tokio::test]
 async fn request_body_cap() {
+    // POST /api/chat is the front's relay since chat port S5 (its cap is Core's 413; tests/chat_turn.rs):
+    // any other Node route shows the proxy's default cap.
     check_request_body_cap(
         "default-cap",
-        "/api/chat",
+        "/api/models/load",
         "/api/import",
         noevia_server::legacy_proxy::BODY_CAP,
     )

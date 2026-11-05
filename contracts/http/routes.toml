@@ -38,7 +38,7 @@ owner = "rust"
 [[route]]
 path = "/api/account/retention"
 owner = "rust"
-methods = ["GET"]
+methods = ["GET", "PUT"]
 
 # sbstndalton/noevia#2190: Settings -> Models -> Decision service, every method (each answers its
 # own 405); Rust alone writes decision:configuration, Node re-reads it per decision and refuses the
@@ -257,17 +257,24 @@ path = "/api/auto-roles"
 owner = "rust"
 methods = ["GET"]
 
+# Chat port S5: the turn is the front's as a transparent relay (bins/noevia-server chat_turn.rs): the
+# session gate, then the request unread to core's loopback /internal/chat/turn, whose unchanged pipeline
+# answers. Core refuses any other POST /api/chat (rust-chat-turn.cjs). The other methods stay Node's.
 [[route]]
 path = "/api/chat"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/chat-framing/preferences"
 owner = "rust"
 
+# Chat port S4: every method of exactly this path is the front's (bins/noevia-server
+# chat_framing_suggest.rs); core refuses the POST (rust-chat-framing-suggest.cjs) and keeps only the
+# user's lists and the decision behind its loopback /internal/chat-framing/suggest.
 [[route]]
 path = "/api/chat-framing/suggest"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/chat-vault-mirror/preferences"
@@ -1088,3 +1095,35 @@ owner = "rust"
 methods = ["GET", "HEAD"]
 catch_all = true
 client = false
+
+# Remaining proxy surface; unmatched import/edit verbs retain Core fallback.
+
+[[route]]
+path = "/api/diary/files"
+owner = "rust"
+
+[[route]]
+path = "/api/diary/file"
+owner = "rust"
+
+[[route]]
+path = "/api/diary/workspace-trash"
+owner = "rust"
+
+[[route]]
+path = "/api/diary/history"
+owner = "rust"
+
+[[route]]
+path = "/api/diary/external-sources"
+owner = "rust"
+
+[[route]]
+path = "/api/diary/external-sources/import"
+owner = "rust"
+methods = ["POST"]
+
+[[route]]
+path = "/api/diary/entries/edit"
+owner = "rust"
+methods = ["POST"]

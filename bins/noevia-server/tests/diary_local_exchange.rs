@@ -127,7 +127,14 @@ fn seed(dir: &std::path::Path, diary: bool) {
 }
 
 fn app(dir: &std::path::Path, node: &str, sidecar: &str) -> Arc<App> {
+    app_with(dir, node, sidecar, &[])
+}
+
+fn app_with(dir: &std::path::Path, node: &str, sidecar: &str, extra: &[(&str, &str)]) -> Arc<App> {
     let mut vars = HashMap::<String, String>::new();
+    for (k, v) in extra {
+        vars.insert((*k).into(), (*v).into());
+    }
     vars.insert("NOEVIA_LEGACY_UPSTREAM".into(), node.into());
     vars.insert("NOEVIA_PROJECT_STORE_TOKEN".into(), STORE_TOKEN.into());
     vars.insert("UI_DATA_DIR".into(), dir.display().to_string());
@@ -316,4 +323,32 @@ async fn an_unstreamed_exchange_relays_the_reply_and_gives_the_lease_back() {
     assert_eq!(text(res).await, r#"{"reply":"ok"}"#);
     let release = format!("DELETE /internal/inference-admission/lease/{LEASE} ");
     assert!(settle(|| held.lock().unwrap().contains(&release)).await);
+}
+
+/// Chat port S6: the `llm:` budget the exchange shares with chat is the front's. Node's lease counts
+/// nothing; the front counts a call once the gate let it in, and a call over the budget gives the
+/// lease back before its 429 (core routes/diary.cjs's words) and never reaches the sidecar.
+#[tokio::test]
+async fn the_front_counts_the_shared_llm_budget_after_the_gate_and_gives_the_lease_back() {
+    let dir = tempfile::tempdir().unwrap();
+    seed(dir.path(), true);
+    let (node, held) = node((201, GRANT)).await;
+    let (sidecar, heard) = server(Arc::new(|_, _| (200, r#"{"reply":"ok"}"#.into(), "application/json"))).await;
+    let app = app_with(dir.path(), &node, &sidecar, &[("LLM_RATE_LIMIT", "1")]);
+    let first = call(&app, "POST", true, br#"{"message":"hi"}"#).await;
+    assert_eq!(first.status(), StatusCode::OK);
+    let _ = text(first).await;
+    let second = call(&app, "POST", true, br#"{"message":"hi"}"#).await;
+    assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        text(second).await,
+        r#"{"error":"Please wait before sending another message"}"#
+    );
+    let release = format!("DELETE /internal/inference-admission/lease/{LEASE} ");
+    assert!(
+        settle(|| held.lock().unwrap().iter().filter(|l| **l == release).count() == 2).await,
+        "{:?}",
+        held.lock().unwrap()
+    );
+    assert_eq!(heard.lock().unwrap().len(), 1, "only the first call reached the sidecar");
 }

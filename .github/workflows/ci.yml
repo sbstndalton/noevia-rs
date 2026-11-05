@@ -269,7 +269,31 @@ jobs:
       - uses: ./.github/actions/paired-core
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo build --locked -p replay -p noevia-server
+      # Chat port S5: tests/chat_turn.rs reads a broken chat stream with the web client's own reader
+      # (noevia-web src/api.ts at contracts/http/web.ref, run by tests/web-stream-chat.cjs).
+      - name: Read the pinned web ref
+        id: webref
+        run: |
+          set -euo pipefail
+          ref=$(tr -d ' \n' < contracts/http/web.ref)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::contracts/http/web.ref is not a 40-char SHA"; exit 1; }
+          echo "sha=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-web
+          ref: ${{ steps.webref.outputs.sha }}
+          path: web
+      # Chat port S7: tests/chat_turn.rs replays tests/fixtures/node-chat-wire.v1.json, the paired Core's own
+      # rust-chat-wire.cjs writing each recorded turn as its event stream and as the front's NDJSON. Regenerate it.
+      - name: The paired Core's chat wire reproduces the committed turns
+        run: |
+          set -euo pipefail
+          node bins/noevia-server/tests/chat-wire-oracle.cjs "$GITHUB_WORKSPACE/front-core" "$RUNNER_TEMP/node-chat-wire.json"
+          cmp "$RUNNER_TEMP/node-chat-wire.json" bins/noevia-server/tests/fixtures/node-chat-wire.v1.json
       - name: Front tests (SSE flush, client abort, forwarding, body cap, route ownership, code-net guard, timeouts)
+        env:
+          NOEVIA_WEB_API_TS: ${{ github.workspace }}/web/src/api.ts
+          NOEVIA_WEB_API_TS_REQUIRED: "1"
         run: cargo test --locked -p noevia-server
       - name: "Core refuses exactly the Diary methods routes.toml gives the front (#2206)"
         # tests/diary_core_pair.rs asks the paired Core's own rust-diary-routes.cjs and rust-diary.cjs
@@ -295,7 +319,7 @@ jobs:
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-front" \
             --native-move-state --server-cmd "exec sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/front-core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
             --report "$RUNNER_TEMP/replay-front-report.json" \
-            --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' --state-ignore '*chat-transcripts.lock' --state-ignore '*chat-changes.jsonl' --state-ignore '*chat-retention.json.lock' --state-ignore '*rag-status.json' --state-ignore '*auto-roles-snapshot.json' --state-ignore '*mcp-discovery.json' --state-ignore '*snapshot-demand' --expect-state "$RUNNER_TEMP/node-state.json"
+            --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' --state-ignore '*chat-transcripts.lock' --state-ignore '*chat-changes.jsonl' --state-ignore '*chat-retention.json.lock' --state-ignore '*rag-status.json' --state-ignore '*auto-roles-snapshot.json' --state-ignore '*mcp-discovery.json' --state-ignore '*snapshot-demand' --state-ignore '*embedding-worker-status.json' --state-ignore '*embedding-worker.lock' --state-ignore '*chat-activity.json' --expect-state "$RUNNER_TEMP/node-state.json"
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -381,7 +405,7 @@ jobs:
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-front" \
             --native-move-state --server-cmd "exec env NOEVIA_RUST_AUTH=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/front-core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
             --report "$RUNNER_TEMP/replay-front-report.json" --state-out "$RUNNER_TEMP/rust-auth-state.json" \
-            --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' --state-ignore '*chat-transcripts.lock' --state-ignore '*chat-changes.jsonl' --state-ignore '*chat-retention.json.lock' --state-ignore '*rag-status.json' --state-ignore '*auto-roles-snapshot.json' --state-ignore '*mcp-discovery.json' --state-ignore '*snapshot-demand' --expect-state "$RUNNER_TEMP/node-state.json"
+            --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' --state-ignore '*chat-transcripts.lock' --state-ignore '*chat-changes.jsonl' --state-ignore '*chat-retention.json.lock' --state-ignore '*rag-status.json' --state-ignore '*auto-roles-snapshot.json' --state-ignore '*mcp-discovery.json' --state-ignore '*snapshot-demand' --state-ignore '*embedding-worker-status.json' --state-ignore '*embedding-worker.lock' --state-ignore '*chat-activity.json' --expect-state "$RUNNER_TEMP/node-state.json"
       - name: "Negative control: Node alone with the switch on refuses the account writes"
         # Proves the guard engaged in the run above: without the front, sign-in and setup must fail
         # with 503 (core server/rust-auth.cjs), so the clean replay was the front's work. The
@@ -513,7 +537,7 @@ jobs:
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-front" \
             --native-move-state --server-cmd "exec sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/front-core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
             --report "$RUNNER_TEMP/replay-front-report.json" --state-out "$RUNNER_TEMP/rust-projects-state.json" \
-            --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' --state-ignore '*chat-transcripts.lock' --state-ignore '*chat-changes.jsonl' --state-ignore '*chat-retention.json.lock' --state-ignore '*rag-status.json' --state-ignore '*auto-roles-snapshot.json' --state-ignore '*mcp-discovery.json' --state-ignore '*snapshot-demand' \
+            --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' --state-ignore '*chat-transcripts.lock' --state-ignore '*chat-changes.jsonl' --state-ignore '*chat-retention.json.lock' --state-ignore '*rag-status.json' --state-ignore '*auto-roles-snapshot.json' --state-ignore '*mcp-discovery.json' --state-ignore '*snapshot-demand' --state-ignore '*embedding-worker-status.json' --state-ignore '*embedding-worker.lock' --state-ignore '*chat-activity.json' \
             --expect-state "$RUNNER_TEMP/node-state.json"
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

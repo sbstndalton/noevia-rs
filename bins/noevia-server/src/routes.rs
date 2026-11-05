@@ -133,6 +133,10 @@ pub enum Native {
     ToolApprovals,
     /// GET /api/toolboxes and every other method's 405 (#2281).
     ToolboxPicker,
+    /// Every method of exactly /api/chat-framing/suggest (chat port S4): chat_framing_suggest.rs.
+    ChatFramingSuggest,
+    /// POST exactly /api/chat (chat port S5): chat_turn.rs, the relay to Core's turn.
+    ChatTurn,
 }
 
 /// The routes [`Native::McpDirectory`] implements (every method; routes.toml).
@@ -187,6 +191,13 @@ const CHATGPT_OAUTH: &[&str] = &[
 /// routes.toml answer only those; the rest answer every method and give their own 405 after the
 /// add-on gate, as core does.
 pub(crate) const DIARY_ROUTES: &[&str] = &[
+    "/api/diary/files",
+    "/api/diary/file",
+    "/api/diary/workspace-trash",
+    "/api/diary/history",
+    "/api/diary/external-sources",
+    "/api/diary/external-sources/import",
+    "/api/diary/entries/edit",
     "/api/diary/source",
     "/api/diary/today",
     "/api/diary/storage-import",
@@ -345,8 +356,8 @@ pub(crate) const PROJECT_DOCUMENT_PAGES: &str = "/api/projects/{id}/documents/pa
 pub(crate) const PROJECT_ORIGINAL: &str = "/api/projects/{id}/{*}/original";
 
 /// Settings → Data → Delete old chats, its preview (GET only; routes.toml): a read of the chat
-/// lists, answered by crates/server-projects `retention` (sbstndalton/noevia#1071). `PUT`, which
-/// deletes chats, is Node's.
+/// lists, answered by crates/server-projects `retention`. PUT persists the setting and awaits
+/// bounded tombstoned deletion under the same retention lock as the hourly sweep.
 const ACCOUNT_RETENTION: &str = "/api/account/retention";
 
 /// A chat's last context meter (GET only; routes.toml): a read, always answered here
@@ -501,6 +512,8 @@ pub fn native_for(route: &Route) -> Option<Native> {
         "/api/models/autotune/settings" if auth => return Some(Native::AutotuneSettings),
         server_account::tool_approvals::ROUTE if auth => return Some(Native::ToolApprovals),
         "/api/toolboxes" if auth => return Some(Native::ToolboxPicker),
+        crate::chat_framing_suggest::PATH if auth => return Some(Native::ChatFramingSuggest),
+        crate::chat_turn::PATH if auth => return Some(Native::ChatTurn),
         TOOLBOXES_PERMITTED if auth => return Some(Native::ToolboxesPermitted),
         "/api/instance"
         | "/.well-known/webauthn"
@@ -624,6 +637,8 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
     let route = route_for(path)?;
     // This owner is exact-path only; the shared matcher tolerates trailing slashes.
     if (route.path == "/api/chat-framing/preferences"
+        || route.path == crate::chat_framing_suggest::PATH
+        || route.path == crate::chat_turn::PATH
         || route.path == server_account::vault_mirror::PATH
         || route.path == crate::model_manager_scan::PATH
         || route.path == crate::model_downloads_read::PATH
@@ -699,7 +714,6 @@ mod tests {
             );
         }
         for path in [
-            "/api/chat-framing/suggest",
             "/api/chat-framing/preferences/",
             "/api/chat-framing/preferences/x",
         ] {
@@ -708,6 +722,60 @@ mod tests {
                 assert_eq!(dispatch(method, path), None, "{method} {path}");
             }
         }
+    }
+
+    /// Chat port S4: the suggestion is the front's for every method of exactly its path (Node
+    /// answered every method there: 405 for all but POST); siblings and other spellings stay Node's.
+    #[test]
+    fn framing_suggest_is_native_for_all_methods_of_exactly_its_path() {
+        assert!(!is_account_path("/api/chat-framing/suggest"));
+        for method in ["GET", "PUT", "POST", "DELETE", "HEAD", "OPTIONS", "PATCH"] {
+            assert_eq!(
+                dispatch(method, "/api/chat-framing/suggest"),
+                Some(Native::ChatFramingSuggest),
+                "{method}"
+            );
+            for path in [
+                "/api/chat-framing/suggest/",
+                "/api/chat-framing/suggest/x",
+                "/api/chat-framing/suggestx",
+                "/api/chat-framing",
+            ] {
+                assert_eq!(dispatch(method, path), None, "{method} {path}");
+            }
+        }
+        assert!(crate::FEATURES.contains(&"rust-chat-framing-suggest"));
+        assert!(crate::FEATURES.contains(&"chat-activity"));
+    }
+
+    /// Chat port S5: the turn is the front's relay for POST to exactly /api/chat only; Node answered every
+    /// other method there (no gate for GET, its own 404s) and still does, as it does siblings and spellings.
+    #[test]
+    fn the_chat_turn_is_native_for_a_post_to_exactly_its_path() {
+        assert!(!is_account_path("/api/chat"));
+        assert_eq!(dispatch("POST", "/api/chat"), Some(Native::ChatTurn));
+        for method in ["GET", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH"] {
+            assert_eq!(dispatch(method, "/api/chat"), None, "{method}");
+        }
+        for path in ["/api/chat/", "/api/chat/x", "/api/chatx", "/api/chats"] {
+            assert_ne!(dispatch("POST", path), Some(Native::ChatTurn), "{path}");
+        }
+        assert!(crate::FEATURES.contains(&"rust-chat-turn"));
+    }
+
+    /// Chat port S6: the edge rides on the turn's route, and the Diary local exchange stays Node's (the
+    /// front only counts its call on the shared budget, chat_edge.rs `forward_node`).
+    #[test]
+    fn the_chat_edge_keeps_the_route_table_and_the_local_exchange_stays_nodes() {
+        assert!(crate::FEATURES.contains(&"rust-chat-edge"));
+        for method in ["GET", "POST", "PUT", "DELETE"] {
+            assert_eq!(
+                dispatch(method, "/api/diary/local-exchange"),
+                None,
+                "{method}"
+            );
+        }
+        assert_eq!(dispatch("POST", "/api/chat"), Some(Native::ChatTurn));
     }
 
     #[test]
@@ -998,7 +1066,6 @@ mod tests {
         for (m, p) in [
             ("HEAD", "/api/admin/web-address"),
             ("POST", "/api/profile/sharing"),
-            ("PUT", "/api/account/retention"),
             ("HEAD", "/api/auth/session"),
             ("GET", "/api/auth/login/password"),
             ("GET", "/api/profile/features"),
@@ -1172,13 +1239,18 @@ mod tests {
     }
 
     #[test]
-    fn the_retention_preview_is_rusts_for_get_only() {
+    fn the_retention_setting_is_rusts_for_get_and_put() {
         let off = Switches::default();
-        assert_eq!(
-            dispatch_under("GET", "/api/account/retention", off),
-            Some(Native::Projects)
-        );
-        for m in ["PUT", "POST", "DELETE"] {
+        // GET previews and PUT persists the setting natively (the settings-writers move); Node keeps
+        // every other method.
+        for m in ["GET", "PUT"] {
+            assert_eq!(
+                dispatch_under(m, "/api/account/retention", off),
+                Some(Native::Projects),
+                "{m}"
+            );
+        }
+        for m in ["POST", "DELETE"] {
             assert_eq!(
                 dispatch_under(m, "/api/account/retention", off),
                 None,
@@ -1243,6 +1315,11 @@ mod tests {
         // Every method: the proxies, `/api/diary` itself, the storage status and the connector
         // endpoint (which answers its own 405 before authentication).
         for p in [
+            "/api/diary/files",
+            "/api/diary/file",
+            "/api/diary/workspace-trash",
+            "/api/diary/history",
+            "/api/diary/external-sources",
             "/api/diary/source",
             "/api/diary/today",
             "/api/diary/storage-import",
@@ -1260,6 +1337,8 @@ mod tests {
         }
         // The methods core mounted and no more: another method is Node's (its unknown-path answer).
         for (p, methods) in [
+            ("/api/diary/entries/edit", &["POST"][..]),
+            ("/api/diary/external-sources/import", &["POST"][..]),
             ("/api/diary/context", &["GET", "POST"][..]),
             ("/api/diary/exchanges", &["GET", "POST"][..]),
             ("/api/profile/diary-connectors", &["GET", "POST"][..]),
@@ -1279,12 +1358,6 @@ mod tests {
         // What the web client never names is not in the route table at all.
         for p in [
             "/api/diary/local-exchangex",
-            "/api/diary/history",
-            "/api/diary/files",
-            "/api/diary/file",
-            "/api/diary/workspace-trash",
-            "/api/diary/entries/edit",
-            "/api/diary/external-sources",
             "/api/diary/sourcex",
             "/api/diary/source/x",
         ] {
