@@ -79,6 +79,25 @@ fn failure_text(code: i64, text: &str, partial: bool) -> String {
     }
 }
 
+/// `Number.isInteger(v)`.
+fn integer(v: &JValue) -> Option<f64> {
+    match v {
+        JValue::Num(n) if n.is_finite() && n.fract() == 0.0 => Some(*n),
+        _ => None,
+    }
+}
+
+/// chat-context.cjs `providerError(value, status, {partial})`: the words for an engine error that is
+/// a value (an in-stream `error` object, a message), not a response.
+pub fn provider_error(value: &JValue, status: Option<i64>, partial: bool) -> String {
+    let text = match value {
+        JValue::Str(s) => s.clone(),
+        other => wtf16::stringify(other).unwrap_or_default(),
+    };
+    let code = status.map(|s| s as f64).or_else(|| integer(value.get("code"))).unwrap_or(500.0);
+    failure_text(code, &text, partial)
+}
+
 /// What a failed reply carried.
 pub struct FailedReply<'a> {
     /// `response.status` when it is an integer.
@@ -106,7 +125,7 @@ pub fn provider_failure_text(
     chatgpt_provider: bool,
     partial: bool,
 ) -> String {
-    let code = reply.status.unwrap_or(500);
+    let code = reply.status.map_or(500.0, |s| s as f64);
     let mut msg = failure_text(code, reply.detail, partial);
     if reply.gate_refusal {
         if let Some(e) = parsed_error(reply.detail) {

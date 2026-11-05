@@ -435,3 +435,65 @@ fn sources_match_node() {
     }
     assert!(hits > 20, "{hits}");
 }
+
+#[test]
+fn round_streams_match_node() {
+    use chat_pipeline::stream::{Round, Step};
+    let c = wtf16::parse(include_str!("fixtures/stream-cases.json")).unwrap();
+    let mut sends = 0;
+    for k in arr(c.get("cases")) {
+        let mut r = Round::new(
+            k.get("chatgpt") == &JValue::Bool(true),
+            k.get("toolOffset").as_num().unwrap() as usize,
+            k.get("shownBefore") == &JValue::Bool(true),
+        );
+        let mut calls = Vec::new();
+        for chunk in arr(k.get("chunks")) {
+            if r.ended {
+                break;
+            }
+            for s in r.feed(&base64(chunk.as_str().unwrap())) {
+                calls.push(match s {
+                    Step::Send(e) => JValue::Arr(vec![JValue::Str("send".into()), e]),
+                    Step::FirstOutput => JValue::Arr(vec![JValue::Str("first".into())]),
+                    Step::Usage { usage, timings } => JValue::Arr(vec![
+                        JValue::Str("usage".into()),
+                        usage,
+                        if timings.is_nullish() { JValue::Null } else { timings },
+                    ]),
+                    Step::End => JValue::Arr(vec![JValue::Str("end".into())]),
+                });
+            }
+        }
+        sends += calls.len();
+        let what = wtf16::stringify(k.get("chunks")).unwrap();
+        assert_eq!(wtf16::stringify(&JValue::Arr(calls)).unwrap(), wtf16::stringify(k.get("calls")).unwrap(), "{what}");
+        let st = k.get("state");
+        assert_eq!(JValue::Bool(r.saw_anything), *st.get("sawAnything"), "{what}");
+        assert_eq!(Some(r.round_reasoning.as_str()), st.get("roundReasoning").as_str(), "{what}");
+        assert_eq!(JValue::Bool(r.round_has_content), *st.get("roundHasContent"), "{what}");
+        assert_eq!(JValue::Bool(r.shown_text), *st.get("shownText"), "{what}");
+        assert_eq!(Some(r.round_content.as_str()), st.get("roundContent").as_str(), "{what}");
+        let tools: Vec<JValue> = r
+            .tool_calls
+            .iter()
+            .map(|(i, s)| {
+                let mut o = vec![
+                    ("id".to_owned(), s.id.clone()),
+                    ("idMade".to_owned(), JValue::Bool(s.id_made)),
+                    ("name".to_owned(), JValue::Str(s.name.clone())),
+                    ("args".to_owned(), JValue::Str(s.args.clone())),
+                ];
+                if s.too_large {
+                    o.push(("tooLarge".into(), JValue::Bool(true)));
+                }
+                if s.name_cut {
+                    o.push(("nameCut".into(), JValue::Bool(true)));
+                }
+                JValue::Arr(vec![if i.is_nan() { JValue::Null } else { JValue::Num(*i) }, JValue::Obj(o)])
+            })
+            .collect();
+        assert_eq!(wtf16::stringify(&JValue::Arr(tools)).unwrap(), wtf16::stringify(st.get("tools")).unwrap(), "{what}");
+    }
+    assert!(sends > 2000, "{sends}");
+}
