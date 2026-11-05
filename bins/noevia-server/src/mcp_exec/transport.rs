@@ -393,3 +393,186 @@ impl Drop for CloseGuard {
         });
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::AtomicUsize;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    /// A synthetic MCP server on loopback: counts the `DELETE`s it reads; `hold` makes it answer a
+    /// `DELETE` late; `fail_initialized` answers the `initialized` notification with a 500.
+    struct Server {
+        url: String,
+        deletes: Arc<AtomicUsize>,
+    }
+
+    async fn server(hold: Duration, fail_initialized: bool) -> Server {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://127.0.0.1:{}/mcp", listener.local_addr().unwrap().port());
+        let deletes = Arc::new(AtomicUsize::new(0));
+        let count = Arc::clone(&deletes);
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let count = Arc::clone(&count);
+                tokio::spawn(async move {
+                    let mut buf = Vec::new();
+                    let mut chunk = [0u8; 4096];
+                    loop {
+                        let n = socket.read(&mut chunk).await.unwrap_or(0);
+                        if n == 0 {
+                            return;
+                        }
+                        buf.extend_from_slice(&chunk[..n]);
+                        let text = String::from_utf8_lossy(&buf).into_owned();
+                        if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                            let want = head
+                                .lines()
+                                .find_map(|l| {
+                                    l.to_ascii_lowercase()
+                                        .strip_prefix("content-length: ")
+                                        .and_then(|v| v.trim().parse::<usize>().ok())
+                                })
+                                .unwrap_or(0);
+                            if body.len() >= want {
+                                break;
+                            }
+                        }
+                    }
+                    let text = String::from_utf8_lossy(&buf).into_owned();
+                    let reply = if text.starts_with("DELETE") {
+                        count.fetch_add(1, Ordering::SeqCst);
+                        tokio::time::sleep(hold).await;
+                        "HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: close\r\n\r\n".to_owned()
+                    } else if text.contains("notifications/initialized") {
+                        let status = if fail_initialized { "500 X" } else { "202 X" };
+                        format!("HTTP/1.1 {status}\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
+                    } else {
+                        let id = text
+                            .split("\"id\":")
+                            .nth(1)
+                            .map(|r| r.chars().take_while(char::is_ascii_digit).collect::<String>())
+                            .unwrap_or_default();
+                        let body = format!("{{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{{}}}}");
+                        format!(
+                            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\nmcp-session-id: S-1\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                            body.len()
+                        )
+                    };
+                    let _ = socket.write_all(reply.as_bytes()).await;
+                });
+            }
+        });
+        Server { url, deletes }
+    }
+
+    fn gated() -> (Transport, Arc<tokio::sync::Semaphore>) {
+        let mut t = Transport::operator().unwrap();
+        let gate = Arc::new(tokio::sync::Semaphore::new(0));
+        t.lookup_gate = Some(Arc::clone(&gate));
+        (t, gate)
+    }
+
+    async fn until(what: impl Fn() -> bool) -> bool {
+        for _ in 0..200 {
+            if what() {
+                return true;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        false
+    }
+
+    /// The task a call runs in: the guard `call_once` holds, then `disconnect` (what the abort lands in).
+    fn closing(t: &Transport, url: &str, session: &SessionId, timeout: Duration) -> tokio::task::JoinHandle<bool> {
+        let (t, url, session) = (t.clone(), url.to_owned(), session.clone());
+        tokio::spawn(async move {
+            let _guard = CloseGuard::new(&t, &url, &[], &session);
+            t.disconnect(&url, &[], &session, timeout).await
+        })
+    }
+
+    /// Review P2: cancelled while the address of the session's server is being looked up, no `DELETE`
+    /// had been sent and the id was gone with the dropped future.
+    #[tokio::test]
+    async fn a_disconnect_dropped_during_the_address_lookup_still_closes_the_session_once() {
+        let s = server(Duration::ZERO, false).await;
+        let (t, gate) = gated();
+        let session = SessionId::default();
+        session.set("S-1");
+        let task = closing(&t, &s.url, &session, DISCONNECT_TIMEOUT);
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        assert_eq!(s.deletes.load(Ordering::SeqCst), 0, "the lookup has not answered yet");
+        gate.add_permits(1);
+        assert!(until(|| s.deletes.load(Ordering::SeqCst) == 1).await, "the session was never closed");
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert_eq!(s.deletes.load(Ordering::SeqCst), 1, "one close, no competing second");
+    }
+
+    /// A lookup that never answers does not hold the close open for ever: the whole close, address
+    /// check included, is bounded by the deadline it was given.
+    #[tokio::test]
+    async fn a_close_stalled_in_the_address_check_ends_at_its_deadline() {
+        let s = server(Duration::ZERO, false).await;
+        let (t, _gate) = gated();
+        let session = SessionId::default();
+        session.set("S-1");
+        let started = std::time::Instant::now();
+        let closed = tokio::time::timeout(
+            Duration::from_secs(3),
+            t.disconnect(&s.url, &[], &session, Duration::from_millis(300)),
+        )
+        .await
+        .expect("the close outlived its deadline");
+        assert!(!closed);
+        assert!(started.elapsed() < Duration::from_secs(3));
+        assert_eq!(s.deletes.load(Ordering::SeqCst), 0);
+        assert!(session.get().is_none(), "the id is spent, not left for a second close");
+    }
+
+    /// Cancelled while the `DELETE` is in flight: it is not sent a second time by the guard.
+    #[tokio::test]
+    async fn a_disconnect_dropped_during_the_delete_is_not_closed_twice() {
+        let s = server(Duration::from_secs(30), false).await;
+        let t = Transport::operator().unwrap();
+        let session = SessionId::default();
+        session.set("S-1");
+        let task = closing(&t, &s.url, &session, DISCONNECT_TIMEOUT);
+        assert!(until(|| s.deletes.load(Ordering::SeqCst) == 1).await);
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        assert_eq!(s.deletes.load(Ordering::SeqCst), 1, "no duplicate competing close");
+    }
+
+    /// The close after a failed `initialized` (connect's own disconnect) is covered the same way.
+    #[tokio::test]
+    async fn a_connect_dropped_while_it_closes_after_a_failed_initialized_still_closes() {
+        let s = server(Duration::ZERO, true).await;
+        let (t, gate) = gated();
+        let session = SessionId::default();
+        let ids = AtomicI64::new(0);
+        let task = tokio::spawn({
+            let (t, url, session) = (t.clone(), s.url.clone(), session.clone());
+            async move {
+                let _guard = CloseGuard::new(&t, &url, &[], &session);
+                t.connect(&url, &[], &session, &ids).await
+            }
+        });
+        // initialize answered (the session id was known) and `initialized` failed: connect is in its
+        // disconnect, which has taken the id and waits on the lookup.
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert!(session.get().is_none(), "connect never reached its disconnect");
+        assert_eq!(s.deletes.load(Ordering::SeqCst), 0);
+        task.abort();
+        let _ = task.await;
+        gate.add_permits(1);
+        assert!(until(|| s.deletes.load(Ordering::SeqCst) == 1).await, "the session was never closed");
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert_eq!(s.deletes.load(Ordering::SeqCst), 1);
+    }
+}

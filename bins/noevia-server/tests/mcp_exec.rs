@@ -434,6 +434,10 @@ fn call_of(c: &Value) -> Call {
 /// The scenarios whose failure text is the runtime's own (V8's JSON SyntaxError), not ours.
 const INEXACT: [(&str, &str); 1] = [("reply-is-not-json", "ERROR calling t1: ")];
 
+/// The deliberate departures from the Node oracle (sbstndalton/noevia#2218 review, credential leakage): a JSON-RPC
+/// error is its code and never the server's message, which can echo the credential the request carried.
+const FIXED: [(&str, &str); 1] = [("json-rpc-error", "ERROR calling t1: MCP error -32000")];
+
 #[tokio::test]
 async fn every_step_of_the_oracle_is_replayed() {
     let fake = Fake::start().await;
@@ -572,6 +576,10 @@ async fn every_step_of_the_oracle_is_replayed() {
                             "{at}: {g}"
                         );
                     } else {
+                        let want = FIXED
+                            .iter()
+                            .find(|(i, _)| *i == id)
+                            .map_or(want, |(_, t)| *t);
                         assert_eq!(normal(g), want, "{at}");
                     }
                 }
@@ -920,4 +928,209 @@ fn the_operators_servers_and_origins_are_read_as_core_reads_them() {
     });
     assert_eq!(single.servers.len(), 1);
     assert_eq!(single.servers[0].auth, Auth::Nextcloud);
+}
+
+// ── a server that repeats the credential it was sent (review: credential-bearing upstream errors) ──
+
+const BEARER: &str = "SYNTH-bearer-tok-4f7a91c2";
+const API_KEY: &str = "SYNTH-apikey-7d03be55";
+const CUSTOM: &str = "SYNTH-custom-hdr-92ac11e0";
+const OAUTH_ONE: &str = "SYNTH-oauth-first-31ab90";
+const OAUTH_TWO: &str = "SYNTH-oauth-retry-6be2d4";
+const NC_USER: &str = "synth-nc-user";
+const NC_SECRET: &str = "SYNTH-nc-secret-a81f3c";
+
+fn lines() -> (noevia_server::mcp_exec::LogSink, Arc<Mutex<Vec<String>>>) {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&seen);
+    (
+        Arc::new(move |l: &str| sink.lock().unwrap().push(l.to_owned())),
+        seen,
+    )
+}
+
+/// The behaviours of a server that echoes: the same hostile text in every place a server can put text.
+fn echo_behaviours(echo: &str) -> Vec<(&'static str, Value, Option<&'static str>)> {
+    vec![
+        (
+            "401 body",
+            json!({"call":[{"http":{"status":401,"body":echo}}]}),
+            Some("ERROR calling t1: tool call failed (HTTP 401)"),
+        ),
+        (
+            "500 body at initialize",
+            json!({"init":{"http":{"status":500,"body":echo}}}),
+            Some("ERROR calling t1: tool call failed (HTTP 500)"),
+        ),
+        (
+            "429 body",
+            json!({"call":[{"http":{"status":429,"body":echo,"retryAfter":"1"}}]}),
+            None,
+        ),
+        (
+            "JSON-RPC error message",
+            json!({"call":[{"rpcError":{"code":-32001,"message":echo}}]}),
+            Some("ERROR calling t1: MCP error -32001"),
+        ),
+        (
+            "JSON-RPC error with a text code",
+            json!({"call":[{"rpcError":{"code":echo,"message":echo}}]}),
+            Some("ERROR calling t1: MCP error"),
+        ),
+        (
+            "tool error result",
+            json!({"call":[{"result":{"isError":true,"content":[{"type":"text","text":echo}]}}]}),
+            None,
+        ),
+        (
+            "tool result",
+            json!({"call":[{"result":{"content":[{"type":"text","text":echo}]}}]}),
+            None,
+        ),
+        (
+            "structured result",
+            json!({"call":[{"result":{"structuredContent":{"note":echo}}}]}),
+            None,
+        ),
+        (
+            "content type name",
+            json!({"call":[{"result":{"content":[{"type":echo}]}}]}),
+            None,
+        ),
+    ]
+}
+
+fn assert_clean(at: &str, text: &str, logs: &Mutex<Vec<String>>, secrets: &[&str]) {
+    let log = logs.lock().unwrap().join("\n");
+    for secret in secrets {
+        assert!(!text.contains(secret), "{at}: the model text repeats {secret}: {text}");
+        assert!(!log.contains(secret), "{at}: a log line repeats {secret}: {log}");
+    }
+}
+
+#[tokio::test]
+async fn nothing_a_server_sends_back_repeats_a_credential_the_call_carried() {
+    let basic = base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        format!("{NC_USER}:{NC_SECRET}"),
+    );
+    let all = format!(
+        "Authorization: Bearer {BEARER} / Bearer {OAUTH_ONE} / Bearer {OAUTH_TWO} / Basic {basic} / x-api-key: {API_KEY} / x-custom-auth: {CUSTOM} / user {NC_USER} secret {NC_SECRET}"
+    );
+    std::env::set_var("SYNTH_ECHO_BEARER", BEARER);
+    for kind in ["bearer", "personal key", "oauth retry", "nextcloud"] {
+        for (what, behaviour, exact) in echo_behaviours(&all) {
+            let fake = Fake::start().await;
+            let mut behaviour = behaviour;
+            let mut operators = vec![];
+            let mut dir = vec![];
+            let mut offers = "s".to_owned();
+            let mut storage = json!({"kind":"local"});
+            let mut keys = Value::Null;
+            let mut oauth = Value::Null;
+            let mut secrets: Vec<&str> = vec![];
+            let mut origins = vec![];
+            match kind {
+                "bearer" => {
+                    operators.push(Operator {
+                        auth: Auth::Bearer,
+                        token_env: Some("SYNTH_ECHO_BEARER".into()),
+                        ..plain(&fake)
+                    });
+                    secrets.push(BEARER);
+                }
+                "personal key" => {
+                    offers = "dir-p".into();
+                    dir.push(DirServer {
+                        id: "dir-p".into(),
+                        url: fake.url.clone(),
+                        title: "Dir P".into(),
+                        oauth: false,
+                        personal: true,
+                        shared: vec![],
+                    });
+                    keys = json!({"X-Api-Key": API_KEY, "X-Custom-Auth": CUSTOM});
+                    secrets.extend([API_KEY, CUSTOM]);
+                }
+                "oauth retry" => {
+                    offers = "dir-o".into();
+                    dir.push(DirServer {
+                        id: "dir-o".into(),
+                        url: fake.url.clone(),
+                        title: "Dir O".into(),
+                        oauth: true,
+                        personal: false,
+                        shared: vec![],
+                    });
+                    oauth = json!([
+                        {"accessToken": OAUTH_ONE, "generation": "g1"},
+                        {"accessToken": OAUTH_TWO, "generation": "g2"}
+                    ]);
+                    // The first answer is the refusal that makes the call retry with the second token, and
+                    // it echoes both; the behaviour under test is what the retry gets.
+                    if let Some(list) = behaviour.get("call").and_then(Value::as_array).cloned() {
+                        let mut with = vec![json!({"http":{"status":401,"body":all}})];
+                        with.extend(list);
+                        behaviour["call"] = Value::Array(with);
+                    }
+                    secrets.extend([OAUTH_ONE, OAUTH_TWO]);
+                }
+                _ => {
+                    operators.push(Operator {
+                        auth: Auth::Nextcloud,
+                        ..plain(&fake)
+                    });
+                    origins.push(fake.origin.clone());
+                    storage = json!({"kind":"nextcloud","baseUrl":fake.origin,"username":NC_USER,"secret":NC_SECRET});
+                    secrets.extend([NC_SECRET, NC_USER, basic.as_str()]);
+                }
+            }
+            *fake.behaviour.lock().unwrap() = behaviour;
+            let (sink, logs) = lines();
+            let exec = Executor::new(
+                Settings {
+                    servers: operators,
+                    nextcloud_origins: origins,
+                    enabled_toolboxes: None,
+                },
+                &Egress::new(true).unwrap(),
+            )
+            .with_log(sink);
+            let creds = creds_for(storage, keys, oauth, dir);
+            let mut call = simple_call();
+            call.offers = vec![offers];
+            let text = exec.run(&*creds, call).await;
+            let at = format!("{kind} / {what}");
+            assert_clean(&at, &text, &logs, &secrets);
+            if let Some(exact) = exact {
+                assert_eq!(text, exact, "{at}");
+            }
+            // A result that is the tool's own words keeps them, minus the credential.
+            if what.starts_with("tool") && !text.contains("(the tool returned no output)") {
+                assert!(text.contains("[redacted]"), "{at}: {text}");
+                assert!(text.contains("Authorization:"), "{at}: the rest of the text is kept");
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn the_failure_log_line_is_the_status_and_nothing_the_server_said() {
+    let fake = Fake::start().await;
+    *fake.behaviour.lock().unwrap() =
+        json!({"call":[{"http":{"status":502,"body":"hostile-body-text Bearer SYNTH-unlisted-0001"}}]});
+    let (sink, logs) = lines();
+    let exec = Executor::new(
+        Settings {
+            servers: vec![plain(&fake)],
+            ..Settings::default()
+        },
+        &Egress::new(true).unwrap(),
+    )
+    .with_log(sink);
+    let creds = creds_for(json!({"kind":"local"}), Value::Null, Value::Null, vec![]);
+    let text = exec.run(&*creds, simple_call()).await;
+    assert_eq!(text, "ERROR calling t1: tool call failed (HTTP 502)");
+    let log = logs.lock().unwrap().clone();
+    assert_eq!(log, ["[mcp] t1 failed: HTTP 502"]);
 }
