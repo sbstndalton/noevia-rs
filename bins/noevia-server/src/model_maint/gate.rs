@@ -496,6 +496,24 @@ impl Hold {
         }
     }
 
+    /// A fallback lease owns Core's local admission too. Keep this front's local admission
+    /// until Core acknowledges its release; a gate's remote release may remain asynchronous.
+    pub(super) async fn release_node_lease(&mut self) {
+        let Some(node) = self.node.as_ref() else {
+            return;
+        };
+        self.shared.released.store(true, Ordering::Release);
+        self.shared.wake.notify_one();
+        let token = self.shared.token.lock().ok().and_then(|mut t| t.take());
+        if let Some(token) = token {
+            let mut wait = Duration::from_millis(100);
+            while !node.release_confirmed(&token).await {
+                tokio::time::sleep(wait).await;
+                wait = (wait * 2).min(Duration::from_secs(60));
+            }
+        }
+    }
+
     /// Ends the hold: the gate's token is given back, the local flag cleared.
     pub async fn release(mut self) {
         self.finish();
