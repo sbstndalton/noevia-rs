@@ -119,11 +119,9 @@ fn root_member(raw: &JValue, key: &str) -> JValue {
         if let Some((_, v)) = items.iter().find(|(k, _)| *k == own) {
             return decode_tree(v.clone());
         }
-        if let Some((_, proto)) = items.iter().find(|(k, _)| k == "^") {
-            if let JValue::Obj(p) = proto {
-                if let Some((_, v)) = p.iter().find(|(k, _)| *k == own) {
-                    return decode_tree(v.clone());
-                }
+        if let Some((_, JValue::Obj(p))) = items.iter().find(|(k, _)| k == "^") {
+            if let Some((_, v)) = p.iter().find(|(k, _)| *k == own) {
+                return decode_tree(v.clone());
             }
         }
     }

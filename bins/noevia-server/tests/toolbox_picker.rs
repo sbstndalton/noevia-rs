@@ -6,19 +6,21 @@ mod support;
 use serde_json::{json, Value};
 use support::*;
 const PATH: &str = "/api/toolboxes";
-const FACTS: &str = "/internal/toolbox-picker/facts";
+fn tool(name: &str) -> Value {
+    json!({"name": name, "description": "synthetic", "write": false})
+}
+/// The catalogue the front is given: the chat process's built-in boxes and the front's own discovery (mcp_support write_snapshot).
 fn facts() -> Value {
     json!({"connectorBoxes":["gdrive"],"boxes":[
-        {"id":"core","source":"builtin","tools":[]},
-        {"id":"gdrive","source":"builtin","tools":[{"type":"function","function":{"name":"drive_read"}}]},
-        {"id":"curated","source":"mcp","inApp":true,"tools":[]}
-    ], "prefill":{"targetMs":14000,"models":{"synthetic":{"rate":0.5}}},"mcp":{"enabled":false}})
+        {"id":"core","label":"core","description":"d","source":"builtin","tools":[]},
+        {"id":"gdrive","label":"gdrive","description":"d","source":"builtin","tools":[tool("drive_read")]},
+        {"id":"curated","label":"curated","description":"d","source":"mcp","inApp":true,"server":"nextcloud","tools":[]}
+    ], "prefill":{"targetMs":14000,"models":{"synthetic":{"rate":0.5}}},"mcpEnabled":false})
 }
 async fn rig() -> (tempfile::TempDir, Front, Upstream) {
     let d = tempfile::tempdir().unwrap();
     let _db = seed(d.path());
     let up = upstream().await;
-    up.set(|_| reply("200 OK", &facts().to_string()));
     let f = front_env(
         d.path(),
         true,
@@ -30,11 +32,12 @@ async fn rig() -> (tempfile::TempDir, Front, Upstream) {
         ],
     )
     .await;
+    write_snapshot(&f, d.path(), facts());
     (d, f, up)
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn owns_the_response_and_only_requests_trusted_raw_facts_without_account_inputs() {
-    let (_d, f, up) = rig().await;
+async fn owns_the_response_and_asks_node_for_nothing_no_matter_the_account_inputs() {
+    let (d, f, up) = rig().await;
     let (s, v) = get(
         f.addr,
         "/api/toolboxes?userId=other&connected=gdrive",
@@ -45,23 +48,29 @@ async fn owns_the_response_and_only_requests_trusted_raw_facts_without_account_i
     assert_eq!(
         v["toolboxes"],
         json!([
-            {"id":"core","source":"builtin","inApp":true,"toolCount":0,"estTokens":0},
-            {"id":"curated","source":"mcp","inApp":true,"toolCount":0,"estTokens":0}
+            {"id":"core","label":"core","description":"d","source":"builtin","inApp":true,"toolCount":0,"estTokens":0},
+            {"id":"curated","label":"curated","description":"d","source":"mcp","inApp":true,"toolCount":0,"estTokens":0}
         ])
     );
     assert_eq!(v["prefill"], facts()["prefill"]);
     assert_eq!(v["mcp"], json!({"configured":false}));
-    let calls = up.seen();
-    assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].path, FACTS);
-    assert_eq!(calls[0].method, "POST");
-    assert_eq!(j(&calls[0].body), json!({}));
-    assert_eq!(
-        calls[0].header("x-noevia-store-token").as_deref(),
-        Some(STORE_TOKEN)
-    );
-    assert_eq!(calls[0].header("cookie"), None);
-    assert_eq!(calls[0].header("x-noevia-client-ip"), None);
+    // Nothing is asked of Node per request (the facts bridge is gone); the front only asked it to publish.
+    assert!(up.seen().is_empty());
+    assert!(d.path().join("snapshot-demand").exists());
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn not_provably_current_facts_are_not_ready_never_stale() {
+    let (d, f, _up) = rig().await;
+    assert_eq!(get(f.addr, PATH, ADMIN).await.0, 200);
+    let file = d.path().join("toolbox-chat-facts.json");
+    let stale = std::fs::read_to_string(&file)
+        .unwrap()
+        .replacen("\"writtenAt\":", "\"writtenAt\":1,\"was\":", 1);
+    std::fs::write(&file, stale).unwrap();
+    let (s, _) = get(f.addr, PATH, ADMIN).await;
+    assert_eq!(s, 503);
+    std::fs::remove_file(&file).unwrap();
+    assert_eq!(get(f.addr, PATH, ADMIN).await.0, 503);
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn authentication_and_csrf_precede_method_refusal_and_never_call_node() {
@@ -120,14 +129,17 @@ async fn current_account_drive_connection_is_read_each_time_and_never_shared() {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn unavailable_or_malformed_facts_fail_closed_without_echoing_private_data() {
-    let (_d, f, up) = rig().await;
-    for (status, body) in [
-        ("503 Unavailable", "private-token"),
-        ("200 OK", "not JSON private-token"),
-        ("200 OK", "{}"),
-        ("200 OK", "null"),
+    let (d, f, _up) = rig().await;
+    let file = d.path().join("toolbox-chat-facts.json");
+    let good = std::fs::read_to_string(&file).unwrap();
+    let now = noevia_server::identity::now_ms();
+    for text in [
+        "{not json private-token".to_owned(),
+        "null".to_owned(),
+        json!({"version": 1, "kind": "toolbox-chat-facts", "writtenAt": now, "everyMs": 3000, "builtin": "private-token"}).to_string(),
+        good.replacen("\"connectorBoxes\":[\"gdrive\"]", "\"connectorBoxes\":[\"private-token\",5]", 1),
     ] {
-        up.set(move |_| reply(status, body));
+        std::fs::write(&file, text).unwrap();
         let (s, v) = get(f.addr, PATH, ADMIN).await;
         assert_eq!(s, 503, "{v}");
         assert!(!v.to_string().contains("private-token"));

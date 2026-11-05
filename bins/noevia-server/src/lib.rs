@@ -260,12 +260,12 @@ use std::sync::Arc;
 /// event-stream replies, public https only), is the only writer of `directory_mcp_servers` (the server
 /// rows and the administrators' shared key slot) and re-seals that slot for a secrets rotation. Node
 /// re-reads the table for its chat-time MCP client. The paired core refuses the routes
-/// (rust-mcp-directory.cjs `RUST_MCP_DIRECTORY_OWNED`), publishes the discovery snapshot
-/// (`mcp-discovery.json`) and writes nothing of the table.
+/// (rust-mcp-directory.cjs `RUST_MCP_DIRECTORY_OWNED`), asks this front for discovery
+/// (`POST /v1/mcp/discovery`) and writes nothing of the table.
 /// `rust-toolboxes-permitted`: `GET /api/toolboxes/permitted` (toolbox_routes.rs), computed here from
 /// the front's own state and that snapshot (core `RUST_TOOLBOXES_PERMITTED_OWNED`).
 /// `rust-toolbox-picker`: every method of `/api/toolboxes`; current account filtering and
-/// response composition in toolbox_picker.rs, selected live facts over trusted loopback.
+/// response composition in toolbox_picker.rs from the front's own MCP discovery and the chat process's published toolbox facts.
 /// `rust-connectors`: `GET /api/connectors` and `PUT /api/connectors/nextcloud/policy`
 /// (nextcloud_routes.rs; core `RUST_CONNECTORS_OWNED`).
 ///

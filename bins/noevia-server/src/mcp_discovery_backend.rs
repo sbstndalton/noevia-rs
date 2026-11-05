@@ -260,11 +260,15 @@ fn b64url(bytes: &[u8]) -> String {
 /// HMAC-SHA256 (RFC 2104).
 fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
     let mut block = [0u8; 64];
-    if key.len() > 64 {
-        let digest = Sha256::digest(key);
-        block[..32].copy_from_slice(&digest);
+    let digest;
+    let key = if key.len() > 64 {
+        digest = Sha256::digest(key);
+        digest.as_slice()
     } else {
-        block[..key.len()].copy_from_slice(key);
+        key
+    };
+    for (slot, byte) in block.iter_mut().zip(key) {
+        *slot = *byte;
     }
     let mut inner = Sha256::new();
     inner.update(block.map(|b| b ^ 0x36));

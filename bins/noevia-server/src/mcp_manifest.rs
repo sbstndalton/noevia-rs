@@ -194,6 +194,7 @@ pub fn directory_box(id: &str, title: &str, tool_names: &[String]) -> JValue {
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(clippy::panic)]
 mod tests {
     use super::*;
 

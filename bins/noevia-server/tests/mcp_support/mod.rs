@@ -766,7 +766,7 @@ pub fn write_snapshot(front: &Front, dir: &std::path::Path, body: serde_json::Va
         "version": 1, "kind": "toolbox-chat-facts", "writtenAt": noevia_server::identity::now_ms(), "everyMs": 600000,
         "builtin": facts_builtin, "defaults": doc["defaults"], "connectorBoxes": doc["connectorBoxes"],
         "harnessEnabled": doc["harnessEnabled"], "hasRepositories": doc["hasRepositories"],
-        "prefill": {"targetMs": 1250, "models": {}},
+        "prefill": if doc["prefill"].is_object() { doc["prefill"].clone() } else { serde_json::json!({"targetMs": 1250, "models": {}}) },
     });
     std::fs::write(dir.join("toolbox-chat-facts.json"), facts.to_string()).unwrap();
 

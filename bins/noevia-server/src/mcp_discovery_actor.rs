@@ -338,9 +338,9 @@ impl<B: Backend> Actor<B> {
             .filter(|s| s.auth == "oauth" || s.auth == "personal")
         {
             let user = sv.added_by.clone().unwrap_or_default();
-            if !ready.contains_key(&user) {
-                let r = self.backend.account_ready(&user).await;
-                ready.insert(user, r);
+            if let std::collections::hash_map::Entry::Vacant(slot) = ready.entry(user) {
+                let r = self.backend.account_ready(slot.key()).await;
+                slot.insert(r);
             }
         }
         servers
