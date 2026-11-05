@@ -36,7 +36,10 @@ fn offers(b: &JValue, name: &str) -> bool {
         JValue::Arr(a) => a,
         _ => &[],
     };
-    b.truthy() && list.iter().any(|t| is_str(get(get(t, "function"), "name"), name))
+    b.truthy()
+        && list
+            .iter()
+            .any(|t| is_str(get(get(t, "function"), "name"), name))
 }
 
 fn boxes(v: &JValue) -> &[JValue] {
@@ -58,7 +61,9 @@ pub fn is_public_tool_name(name: &JValue, toolboxes: &JValue) -> bool {
     let list = boxes(toolboxes);
     let id = |b: &JValue| as_str(get(b, "id")).map(str::to_owned);
     let private = |b: &JValue| !id(b).is_some_and(|i| CLOUD_SAFE_BOXES.contains(&i.as_str()));
-    !list.iter().any(|b| b.truthy() && private(b) && offers(b, name))
+    !list
+        .iter()
+        .any(|b| b.truthy() && private(b) && offers(b, name))
         && list.iter().any(|b| {
             b.truthy()
                 && id(b).is_some_and(|i| HEALTH_PUBLIC_BOXES.contains(&i.as_str()))
@@ -179,7 +184,8 @@ fn safe_name(entry: &JValue) -> String {
     match as_str(get(entry, "name")) {
         Some(n)
             if (1..=80).contains(&n.len())
-                && n.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.' || b == b'-') =>
+                && n.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.' || b == b'-') =>
         {
             n.to_owned()
         }
@@ -199,7 +205,11 @@ fn or_empty(v: &JValue) -> Result<String, Thrown> {
 fn fold_tool_message(entry: &JValue) -> Result<String, Thrown> {
     let text = string(get(entry, "content"))?;
     let label = as_str(get(entry, "name")).map_or(String::new(), |n| wtf16::slice(n, 80));
-    Ok(frame("tool result", &label, &clip(&text, REPLAY_TOOL_RESULT_MAX)))
+    Ok(frame(
+        "tool result",
+        &label,
+        &clip(&text, REPLAY_TOOL_RESULT_MAX),
+    ))
 }
 
 fn applied_tool_note(entry: &JValue) -> Result<String, Thrown> {
@@ -292,7 +302,9 @@ pub fn normalize_replay_history(
             return Err(Thrown);
         }
         let last_at = out.len().checked_sub(1);
-        let last_role = last_at.and_then(|i| out.get(i)).map(|l| get(l, "role").clone());
+        let last_role = last_at
+            .and_then(|i| out.get(i))
+            .map(|l| get(l, "role").clone());
         let last_assistant = last_role.as_ref().is_some_and(|r| is_str(r, "assistant"));
         if tool_role(entry) && get(entry, "applied") == &JValue::Bool(true) {
             let note = applied_note(entry)?;
@@ -368,7 +380,11 @@ pub fn normalize_replay_history(
         if let Some(first) = out.first_mut() {
             let was = string(get(first, "content"))?;
             let mut copy = spread(first);
-            set(&mut copy, "content", JValue::Str(format!("{}\n\n{was}", leading.join("\n\n"))));
+            set(
+                &mut copy,
+                "content",
+                JValue::Str(format!("{}\n\n{was}", leading.join("\n\n"))),
+            );
             *first = copy;
         }
     }
