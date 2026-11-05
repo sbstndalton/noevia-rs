@@ -13,6 +13,7 @@ pub(crate) enum Kind {
     #[cfg(feature = "rust-storage-reads")]
     CredentialBypass,
     Method,
+    SharedProfilesMethod,
     LowerMethod,
     Downloads,
     #[cfg(all(feature = "rust-chatgpt-status", feature = "rust-storage-reads"))]
@@ -24,13 +25,10 @@ pub(crate) fn classify(method: &str, path: &str) -> Option<Kind> {
     match path {
         "/api/models/installed" if method != "GET" => return Some(Kind::Method),
         "/api/models/downloads" if method != "GET" => return Some(Kind::Downloads),
-        "/api/models/capabilities"
-        | "/api/models/hardware"
-        | "/api/models/estimate"
-        | "/api/models/preset/suggest"
-            if method != "GET" =>
-        {
-            return Some(Kind::Missing)
+        "/api/models/capabilities" if method != "GET" => return Some(Kind::Missing),
+        "/api/models/hardware" if method != "GET" => return Some(Kind::Method),
+        "/api/models/estimate" | "/api/models/preset/suggest" if method != "GET" => {
+            return Some(Kind::SharedProfilesMethod)
         }
         _ => {}
     }
@@ -86,6 +84,12 @@ pub(crate) fn classify(method: &str, path: &str) -> Option<Kind> {
         && method != "GET"
     {
         return Some(Kind::Missing);
+    }
+    if (path == "/api/integrations/storage/files"
+        || path.starts_with("/api/integrations/storage/files/"))
+        && method == "GET"
+    {
+        return None;
     }
     // These families have no remaining public Node executor. A method excluded by the table,
     // or a trailing slash on a static exact mount, reaches the static JSON 404 in Node.
@@ -160,6 +164,17 @@ pub(crate) async fn serve(
         #[cfg(feature = "rust-storage-reads")]
         Kind::CredentialBypass => credential_bypass(),
         Kind::Missing => reply::error(StatusCode::NOT_FOUND, "not found", true),
+        Kind::SharedProfilesMethod => {
+            if id.user.role != Role::Admin {
+                reply::error(
+                    StatusCode::FORBIDDEN,
+                    "Administrator required for shared model profiles",
+                    true,
+                )
+            } else {
+                reply::error(StatusCode::METHOD_NOT_ALLOWED, "Method not allowed", true)
+            }
+        }
         Kind::Method => reply::error(StatusCode::METHOD_NOT_ALLOWED, "Method not allowed", true),
         Kind::LowerMethod => {
             reply::error(StatusCode::METHOD_NOT_ALLOWED, "method not allowed", true)

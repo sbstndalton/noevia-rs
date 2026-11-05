@@ -478,7 +478,20 @@ async fn nothing_is_written_and_signed_out_device_and_disabled_kinds_answer_like
         let (s, _, b) = call(addr, m, p, &csrf).await;
         let residual =
             p.starts_with("/api/models/estimate") || p.starts_with("/api/models/preset/suggest");
-        assert_eq!(s, if residual { 404 } else { 502 }, "{m} {p}: {b}");
+        let slash = p.split('?').next().unwrap_or(p).ends_with('/');
+        assert_eq!(
+            s,
+            if residual {
+                if slash {
+                    404
+                } else {
+                    405
+                }
+            } else {
+                502
+            },
+            "{m} {p}: {b}"
+        );
     }
     let _ = stop.send(());
 }

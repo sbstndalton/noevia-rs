@@ -373,6 +373,7 @@ use std::sync::Arc;
 /// (NOEVIA_FRONT_CLIENT_IP=1), and Node believes that header only then, so a core release paired
 /// with a front that predates the strip cannot be handed a client-chosen address (#1578).
 pub const FEATURES: &[&str] = &[
+    "rust-residual-fallbacks-v1",
     "rust-embedding-background-v1",
     "client-address-header",
     "code-net-guard",
@@ -814,7 +815,14 @@ async fn handle(
         .await;
     }
     if let Some(p) = whatwg.as_deref() {
-        if let Some(kind) = residual_fallback::classify(req.method().as_str(), p) {
+        let fallback = residual_fallback::classify(req.method().as_str(), p).or_else(|| {
+            (p != path
+                && p.starts_with("/api/")
+                && routes::dispatch_under(req.method().as_str(), p, switches).is_none()
+                && residual_fallback::classify(req.method().as_str(), &path).is_some())
+            .then_some(residual_fallback::Kind::Missing)
+        });
+        if let Some(kind) = fallback {
             return residual_fallback::serve(&app, req, p.to_string(), kind).await;
         }
     }

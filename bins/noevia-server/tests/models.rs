@@ -317,7 +317,23 @@ async fn residual_methods_are_native_and_substantive_routes_keep_their_owner() {
         ]
         .contains(&p.split('?').next().unwrap_or(p))
             || (p.starts_with("/api/models/") && p.ends_with('/'));
-        assert_eq!(s, if residual { 404 } else { 502 }, "{m} {p}: {b}");
+        let method_refusal = [
+            HARDWARE,
+            "/api/models/estimate",
+            "/api/models/preset/suggest",
+        ]
+        .contains(&p.split('?').next().unwrap_or(p));
+        assert_eq!(
+            s,
+            if method_refusal {
+                405
+            } else if residual {
+                404
+            } else {
+                502
+            },
+            "{m} {p}: {b}"
+        );
     }
     let _ = stop.send(());
 }
