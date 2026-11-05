@@ -68,7 +68,7 @@ const STALE: &str = "Presets changed. Reload the profile before saving; your dra
 const QUALIFICATION: &str =
     "unqualified; load and test this profile before relying on its capacity";
 const LEASE_LOST_BEFORE: &str = "The model service stopped confirming that chat is held back, so the preset was not applied and nothing was changed. Try again shortly.";
-const LEASE_LOST_UNRESTORED: &str = "The model service stopped confirming that chat is held back after the preset file was saved, so the engine was not asked to reload and the previous preset file was not put back: models.ini holds the new settings. Check the native presets, then reload them once chat is idle.";
+const LEASE_LOST_UNRESTORED: &str = "The model service stopped confirming that chat is held back after the preset file was saved, so the engine was not asked to reload and the previous preset file was not put back. The current models.ini settings could not be confirmed; inspect native presets, then reload them once chat is idle.";
 const LEASE_LOST_RELOAD_ONLY: &str = "Reload failed or timed out. The previous preset file was restored, but the model service stopped confirming that chat is held back, so the engine was not asked to reload again. Reload the presets once chat is idle.";
 const RESTORE_UNCERTAIN: &str = "Reload outcome is uncertain and the file changed again. Stop inference and inspect native presets before retrying.";
 const RESTORE_RETRYABLE: &str = "Reload failed or timed out, and the previous preset file could not be restored: models.ini still holds the new settings. Check router and Model Loader health before retrying.";
@@ -942,7 +942,14 @@ impl Maint {
         // start, and the state is reported as uncertain for a separately fenced recovery (D2 review P1).
         // A restore the hold covers is a compare-and-swap against the revision this job committed.
         if lease_lost || !hold.may_start(WRITE_LIMIT) {
-            return error(503, LEASE_LOST_UNRESTORED);
+            return error(
+                503,
+                if lease_lost {
+                    LEASE_LOST_UNRESTORED
+                } else {
+                    RESTORE_UNCONFIRMED
+                },
+            );
         }
         let revision = super::ini::sha(&candidate.text);
         let back = Candidate {

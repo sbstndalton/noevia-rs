@@ -904,9 +904,21 @@ async fn a_hold_the_gate_keeps_renewing_does_not_get_in_the_way() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_failed_reload_after_the_gate_forgot_the_hold_does_not_restore_unfenced() {
+    failed_reload_without_coverage(false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_failed_reload_with_competing_file_changes_reports_uncertainty() {
+    failed_reload_without_coverage(true).await;
+}
+
+async fn failed_reload_without_coverage(competing: bool) {
     // The reload takes 2.5 s and fails; the renewal at 1 s learns that the exclusion is gone. The restore is a
     // write, so it does not start: the new settings stay, the answer says so, no second recovery copy.
-    let case = gate_case(0, 2500, 500);
+    let mut case = gate_case(0, 2500, 500);
+    if competing {
+        case["router"]["iniOnReload"] = json!("[other]\nmodel = /models/other.gguf\n");
+    }
     let r = rig_with(
         &case,
         Arc::new(Mutex::new("ok")),
@@ -915,10 +927,13 @@ async fn a_failed_reload_after_the_gate_forgot_the_hold_does_not_restore_unfence
     .await;
     let (status, _, text) = put(r.addr, ADMIN, &good_body(&case)).await;
     assert_eq!(status, 503, "{text}");
-    assert!(text.contains("was not put back"), "{text}");
-    assert!(std::fs::read_to_string(&r.ini)
-        .unwrap()
-        .contains("ctx-size = 8192"));
+    assert_eq!(text, json!({"error": "Reload failed or timed out, and restoring the previous preset file could not be confirmed. Stop inference and inspect native presets before retrying."}).to_string());
+    let now = std::fs::read_to_string(&r.ini).unwrap();
+    if competing {
+        assert_eq!(now, case["router"]["iniOnReload"].as_str().unwrap());
+    } else {
+        assert!(now.contains("ctx-size = 8192"));
+    }
     let (router, _, _) = lines(&r.seen.lock().unwrap());
     assert_eq!(
         router.iter().filter(|l| l.contains("reload=1")).count(),
@@ -982,7 +997,7 @@ async fn a_lease_lost_after_the_commit_neither_reloads_nor_restores() {
         let (addr, stop) = start(d.path(), &env).await;
         let (status, _, text) = put(addr, ADMIN, &good_body(&case)).await;
         assert_eq!(status, 503, "{writer}: {text}");
-        assert!(text.contains("was not put back"), "{writer}: {text}");
+        assert_eq!(text, json!({"error": "The model service stopped confirming that chat is held back after the preset file was saved, so the engine was not asked to reload and the previous preset file was not put back. The current models.ini settings could not be confirmed; inspect native presets, then reload them once chat is idle."}).to_string(), "{writer}");
         let now = std::fs::read_to_string(&ini).unwrap();
         assert!(
             now.contains("ctx-size = 8192"),
