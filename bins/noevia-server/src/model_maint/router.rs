@@ -208,17 +208,27 @@ pub fn rows(body: &Option<Value>) -> Option<&Vec<Value>> {
     body.as_ref()?.get("data")?.as_array()
 }
 
+pub(crate) struct ExactReply {
+    pub ok: bool,
+    pub status: u16,
+    pub body: super::v8_json::W,
+}
 impl Router {
-    pub(super) async fn pull_exact(
+    pub(super) async fn mutation_exact(
         &self,
-        body: String,
-    ) -> Result<(bool, u16, super::v8_json::W), Fault> {
+        method: reqwest::Method,
+        path: &str,
+        body: Option<String>,
+        within: Duration,
+    ) -> Result<ExactReply, Fault> {
         let mut request = self
             .client
-            .post(format!("{}/models", self.base))
+            .request(method, format!("{}{path}", self.base))
             .header(CONTENT_TYPE, "application/json")
-            .timeout(Duration::from_secs(120))
-            .body(body);
+            .timeout(within);
+        if let Some(body) = body {
+            request = request.body(body);
+        }
         if let Some(auth) = &self.authorization {
             request = request.header(AUTHORIZATION, auth.clone());
         }
@@ -228,13 +238,30 @@ impl Router {
         if matches!(status, 301 | 302 | 303 | 307 | 308) {
             return Err(Fault);
         }
-        let bytes = read_capped(response).await.map_err(|_| Fault)?;
-        let Some(bytes) = bytes else {
-            return Ok((false, status, super::v8_json::W::Undefined));
+        let Some(bytes) = read_capped(response).await.map_err(|_| Fault)? else {
+            return Ok(ExactReply {
+                ok: false,
+                status,
+                body: super::v8_json::W::Undefined,
+            });
         };
         let text = String::from_utf8_lossy(&bytes);
         let body = super::v8_json::parse(&text.encode_utf16().collect::<Vec<_>>())
             .unwrap_or_else(|_| super::v8_json::W::str(&text));
-        Ok((ok, status, body))
+        Ok(ExactReply { ok, status, body })
+    }
+    pub(super) async fn pull_exact(
+        &self,
+        body: String,
+    ) -> Result<(bool, u16, super::v8_json::W), Fault> {
+        let reply = self
+            .mutation_exact(
+                reqwest::Method::POST,
+                "/models",
+                Some(body),
+                Duration::from_secs(120),
+            )
+            .await?;
+        Ok((reply.ok, reply.status, reply.body))
     }
 }

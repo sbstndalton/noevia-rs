@@ -1,6 +1,6 @@
 //! Core pull policy, used by the native public mutation lifecycle.
 //!
-//! This module does not claim the public route. The router owns transfer/deduplication;
+//! The public lifecycle calls this policy. The router owns transfer/deduplication;
 //! its shared progress tracker must be notified under the same active registration as
 //! the start. An exclusive Maint hold is not a substitute for that registration.
 use super::v8_json::{self, W};

@@ -265,6 +265,108 @@
     }
   },
   {
+    "name": "gate-message-0",
+    "raw": "{\"name\":\"synthetic\"}",
+    "known": true,
+    "ok": false,
+    "status": 409,
+    "unloaded": false,
+    "error": {
+      "error": {
+        "type": "gate_error",
+        "code": "model_in_use",
+        "message": true,
+        "retryable": true
+      }
+    },
+    "expected": {
+      "status": 409,
+      "body": {
+        "error": "true",
+        "code": "model_in_use",
+        "retryable": true,
+        "unloaded": false
+      }
+    }
+  },
+  {
+    "name": "gate-message-1",
+    "raw": "{\"name\":\"synthetic\"}",
+    "known": true,
+    "ok": false,
+    "status": 409,
+    "unloaded": false,
+    "error": {
+      "error": {
+        "type": "gate_error",
+        "code": "model_in_use",
+        "message": {
+          "reason": "busy"
+        },
+        "retryable": true
+      }
+    },
+    "expected": {
+      "status": 409,
+      "body": {
+        "error": "[object Object]",
+        "code": "model_in_use",
+        "retryable": true,
+        "unloaded": false
+      }
+    }
+  },
+  {
+    "name": "gate-message-2",
+    "raw": "{\"name\":\"synthetic\"}",
+    "known": true,
+    "ok": false,
+    "status": 409,
+    "unloaded": false,
+    "error": {
+      "error": {
+        "type": "gate_error",
+        "code": "model_in_use",
+        "message": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx😀tail",
+        "retryable": true
+      }
+    },
+    "expected": {
+      "status": 409,
+      "body": {
+        "error": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\ud83d",
+        "code": "model_in_use",
+        "retryable": true,
+        "unloaded": false
+      }
+    }
+  },
+  {
+    "name": "gate-message-3",
+    "raw": "{\"name\":\"synthetic\"}",
+    "known": true,
+    "ok": false,
+    "status": 409,
+    "unloaded": false,
+    "error": {
+      "error": {
+        "type": "gate_error",
+        "code": "model_in_use",
+        "message": "\ud800",
+        "retryable": true
+      }
+    },
+    "expected": {
+      "status": 409,
+      "body": {
+        "error": "\ud800",
+        "code": "model_in_use",
+        "retryable": true,
+        "unloaded": false
+      }
+    }
+  },
+  {
     "name": "in-use",
     "raw": "{\"name\":\"synthetic\"}",
     "known": true,

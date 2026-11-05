@@ -20,8 +20,7 @@ fn state(r: &Seen) -> Option<(Duration, String)> {
                 "200 OK",
                 r#"{"sidecarNames":[],"rerankerNames":[],"protectionUnknown":false}"#,
             ),
-            "/internal/model-mutations/commit" => reply("200 OK", r#"{"applied":true}"#),
-            "/internal/model-mutations/references" => reply("200 OK", &json!({"token":"a".repeat(64),"rows":[{"roles":{"fast":"synthetic","smart":"other"}}]}).to_string()),
+            "/internal/model-mutations/commit" => reply("200 OK", r#"{"ok":true}"#),
             _ => reply("200 OK", r#"{"ok":true}"#),
         });
     }
@@ -36,6 +35,16 @@ fn state(r: &Seen) -> Option<(Duration, String)> {
 async fn front_with(up: &Upstream, enabled: bool) -> (tempfile::TempDir, Front) {
     let d = tempfile::tempdir().unwrap();
     seed(d.path());
+    std::fs::write(
+        d.path().join("users").join(A).join("auto-roles.json"),
+        r#"{"fast":"synthetic","smart":"other"}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        d.path().join("users").join(B).join("auto-roles.json"),
+        r#"{"fast":"synthetic","smart":"synthetic"}"#,
+    )
+    .unwrap();
     let f = front_env(
         d.path(),
         true,
@@ -140,6 +149,20 @@ async fn delete_unloads_retries_and_commits_shared_references_only_after_success
         json!({"ok":true,"unloaded":true,"rolesCleared":["fast"],"presetRemoved":false})
     );
     assert_eq!(deletes.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        serde_json::from_str::<Value>(
+            &std::fs::read_to_string(_d.path().join("users").join(A).join("auto-roles.json"))
+                .unwrap()
+        )
+        .unwrap(),
+        json!({"fast":"other","smart":"other"})
+    );
+    assert_eq!(
+        std::fs::read_to_string(_d.path().join("users").join(B).join("auto-roles.json"))
+            .unwrap()
+            .trim(),
+        "null"
+    );
     let seen = up.seen();
     let engine: Vec<_> = seen
         .iter()
@@ -287,6 +310,94 @@ async fn aborting_acquire_at_its_await_sends_leave_without_reacquiring() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn deletion_stops_at_each_lost_registration_without_reacquiring() {
+    for lost_at in 1..=4 {
+        let up = upstream().await;
+        let touches = Arc::new(AtomicUsize::new(0));
+        let calls = Arc::clone(&touches);
+        up.set(move |r| {
+            if r.path.ends_with("/touch") && calls.fetch_add(1, Ordering::SeqCst) + 1 == lost_at {
+                return reply("503 Unavailable", r#"{"error":"Registration ended"}"#);
+            }
+            if let Some(v) = state(r) {
+                return v;
+            }
+            match (r.method.as_str(), r.path.as_str()) {
+                ("GET", "/models") => reply("200 OK", r#"{"data":[{"id":"synthetic"}]}"#),
+                ("POST", "/models/unload") => reply("200 OK", "{}"),
+                ("DELETE", _) => reply("409 Conflict", "{}"),
+                _ => panic!("unexpected {} {}", r.method, r.path),
+            }
+        });
+        let (_d, f) = front_with(&up, true).await;
+        let (status, body) = write(f.addr, "POST", DELETE, ADMIN, r#"{"name":"synthetic"}"#).await;
+        assert_eq!(status, 503, "lost_at={lost_at}: {body}");
+        let seen = up.seen();
+        assert_eq!(
+            seen.iter().filter(|r| r.path.ends_with("/enter")).count(),
+            1
+        );
+        assert_eq!(
+            seen.iter().filter(|r| r.path == "/models/unload").count(),
+            lost_at / 2
+        );
+        assert_eq!(
+            seen.iter().filter(|r| r.method == "DELETE").count(),
+            (lost_at - 1) / 2
+        );
+        assert!(!seen.iter().any(|r| r.path.ends_with("/commit")));
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn client_departure_keeps_activity_until_the_started_engine_call_settles() {
+    let up = upstream().await;
+    up.set(|r| {
+        if let Some(v) = state(r) {
+            return v;
+        }
+        assert_eq!((r.method.as_str(), r.path.as_str()), ("POST", "/models"));
+        (Duration::from_millis(200), reply("200 OK", "{}").1)
+    });
+    let (_d, f) = front_with(&up, true).await;
+    let addr = f.addr;
+    let caller = tokio::spawn(async move {
+        write(
+            addr,
+            "POST",
+            PULL,
+            ADMIN,
+            r#"{"checkpoint":"synthetic/repo"}"#,
+        )
+        .await
+    });
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !up.seen().iter().any(|r| r.path == "/models") {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    caller.abort();
+    let _ = caller.await;
+    assert!(!up.seen().iter().any(|r| r.path.ends_with("/leave")));
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !up.seen().iter().any(|r| r.path.ends_with("/leave")) {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        up.seen()
+            .iter()
+            .filter(|r| r.path.ends_with("/enter"))
+            .count(),
+        1
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn public_delete_replays_node_validation_errors_and_result_projection() {
     let cases =
         js_json::wtf16::parse(include_str!("fixtures/model-delete-route-node.json")).unwrap();
@@ -307,6 +418,11 @@ async fn public_delete_replays_node_validation_errors_and_result_projection() {
   }});
         let d = tempfile::tempdir().unwrap();
         seed(d.path());
+        std::fs::write(
+            d.path().join("users").join(A).join("auto-roles.json"),
+            r#"{"fast":"synthetic","smart":"other"}"#,
+        )
+        .unwrap();
         let ini = d.path().join("models.ini");
         std::fs::write(&ini, "").unwrap();
         std::fs::write(

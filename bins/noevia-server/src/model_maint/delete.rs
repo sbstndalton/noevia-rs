@@ -62,14 +62,19 @@ impl Router {
     }
 }
 
+pub(crate) struct RegisteredRemoved {
+    pub reply: super::router::ExactReply,
+    pub unloaded: bool,
+}
+
 /// Production caller retains the registration through every bounded engine step.
 /// An ended registration is never reacquired to continue the old operation.
 impl Router {
-    pub async fn remove_model_registered(
+    pub(crate) async fn remove_model_registered(
         &self,
         model: &str,
         activity: &super::activity::ActivityGuard,
-    ) -> Result<Removed, super::activity::ActivityError> {
+    ) -> Result<RegisteredRemoved, super::activity::ActivityError> {
         let fault = || super::activity::ActivityError {
             status: 500,
             message: "Internal error".into(),
@@ -81,11 +86,16 @@ impl Router {
             unloaded |= self.remove_unload(model, None).await.is_ok_and(|r| r.ok);
             activity.confirm(Duration::from_secs(60)).await?;
             let reply = self
-                .delete_model_path(&path, None)
+                .mutation_exact(
+                    reqwest::Method::DELETE,
+                    &path,
+                    None,
+                    Duration::from_secs(60),
+                )
                 .await
                 .map_err(|_| fault())?;
             if reply.ok || attempt == 1 {
-                return Ok(Removed { reply, unloaded });
+                return Ok(RegisteredRemoved { reply, unloaded });
             }
         }
         Err(fault())

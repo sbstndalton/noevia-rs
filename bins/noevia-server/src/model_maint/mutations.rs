@@ -1,5 +1,5 @@
-//! Native public pull/delete lifecycle. Only shared Node facts, journals, caches and workspace
-//! state remain behind a token-authenticated bridge; it never executes an engine mutation.
+//! Native public pull/delete lifecycle. Only shared Node facts, journals and caches remain
+//! behind a token-authenticated bridge; it never executes an engine mutation or role policy.
 use super::{
     activity::{MaintenanceActivity, NodeActivity},
     v8_json::{self, W},
@@ -33,6 +33,19 @@ fn answer(status: u16, body: Value) -> Response<Body> {
         true,
     )
 }
+fn ordered(status: u16, fields: Vec<(&str, W)>) -> Response<Body> {
+    let body = W::Obj(
+        fields
+            .into_iter()
+            .map(|(key, value)| (key.encode_utf16().collect(), value))
+            .collect(),
+    );
+    reply::json_text(
+        StatusCode::from_u16(status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
+        serialized(&body),
+        true,
+    )
+}
 fn unavailable() -> Response<Body> {
     error(503, "Model management is unavailable. Try again shortly.")
 }
@@ -55,8 +68,13 @@ fn serialized(w: &W) -> String {
     v8_json::stringify(w, &mut text);
     text
 }
+async fn bridge_ok(app: &App, op: &str, body: Value) -> bool {
+    bridge(app, op, body)
+        .await
+        .is_some_and(|v| v.get("ok").and_then(Value::as_bool) == Some(true))
+}
 async fn invalidate(app: &App) -> bool {
-    bridge(app, "invalidate", json!({})).await.is_some()
+    bridge_ok(app, "invalidate", json!({})).await
 }
 
 pub async fn serve(
@@ -72,8 +90,10 @@ pub async fn serve(
     let creds = identity::creds_of(&parts);
     let layer = Arc::clone(&app.identity);
     let gate_path = path.clone();
+    let gate_creds = creds.clone();
+    let now = identity::now_ms();
     let id = match tokio::task::spawn_blocking(move || {
-        layer.gate_blocking(&creds, &gate_path, identity::now_ms())
+        layer.gate_blocking(&gate_creds, &gate_path, now)
     })
     .await
     {
@@ -83,6 +103,15 @@ pub async fn serve(
     };
     if id.user.role != server_auth::Role::Admin {
         return error(403, "administrator required");
+    }
+    let Some(data_dir) = app.config.data_dir.as_ref() else {
+        return identity::Rejection::Unavailable.into_response();
+    };
+    if let Err(rejected) =
+        crate::project_routes::ensure_account(app, data_dir, &creds, &path, now, &id.user.id, true)
+            .await
+    {
+        return *rejected;
     }
     let bytes = match tokio::time::timeout(Duration::from_secs(30), async {
         let mut body = body;
@@ -151,13 +180,12 @@ async fn pull(app: &Arc<App>, raw: &str) -> Response<Body> {
         Ok(v) => v,
         Err(_) => return error(500, "Internal error"),
     };
-    if bridge(
+    if !bridge_ok(
         app,
         "download",
         json!({"ticket":activity.ticket(),"checkpoint":checkpoint,"state":"requested"}),
     )
     .await
-    .is_none()
     {
         return unavailable();
     }
@@ -166,13 +194,12 @@ async fn pull(app: &Arc<App>, raw: &str) -> Response<Body> {
     }
     let result = router.pull_exact(plan.request_body()).await;
     if result.as_ref().is_ok_and(|(ok, _, _)| !ok)
-        && bridge(
+        && !bridge_ok(
             app,
             "download",
             json!({"ticket":activity.ticket(),"checkpoint":checkpoint,"state":"rejected"}),
         )
         .await
-        .is_none()
     {
         return unavailable();
     }
@@ -370,9 +397,14 @@ async fn delete(app: &Arc<App>, raw: &str, user: &str) -> Response<Body> {
         }
     }
     if preset_busy && !removed.reply.ok {
-        return answer(
+        return ordered(
             409,
-            json!({"error":BUSY,"code":"maintenance_held","retryable":true,"unloaded":removed.unloaded}),
+            vec![
+                ("error", W::str(BUSY)),
+                ("code", W::str("maintenance_held")),
+                ("retryable", W::Bool(true)),
+                ("unloaded", W::Bool(removed.unloaded)),
+            ],
         );
     }
     if !(removed.reply.ok || (missing && preset_removed)) {
@@ -384,21 +416,42 @@ async fn delete(app: &Arc<App>, raw: &str, user: &str) -> Response<Body> {
             json!({"error":format!("delete failed: {}",removed.reply.status),"unloaded":removed.unloaded}),
         );
     }
-    let Some(data_dir) = app.config.data_dir.clone() else { return unavailable(); };
-    let role_app = Arc::clone(app); let role_user = user.to_owned(); let role_name = name.clone();
-    let cleared = match tokio::task::spawn_blocking(move || crate::auto_roles_routes::clear_all(&role_app.auto_roles, &data_dir, &role_user, &role_name)).await { Ok(Ok(v)) => v, _ => return unavailable() };
-    if bridge(app, "commit", json!({"name":name})).await.is_none() { return unavailable(); }
+    let Some(data_dir) = app.config.data_dir.clone() else {
+        return unavailable();
+    };
+    let role_app = Arc::clone(app);
+    let role_user = user.to_owned();
+    let role_name = name.clone();
+    let cleared = match tokio::task::spawn_blocking(move || {
+        crate::auto_roles_routes::clear_all(&role_app.auto_roles, &data_dir, &role_user, &role_name)
+    })
+    .await
+    {
+        Ok(Ok(v)) => v,
+        _ => return unavailable(),
+    };
+    if !bridge_ok(app, "commit", json!({"name":name})).await {
+        return unavailable();
+    }
     if let Ok(mut cache) = maint.identities.lock() {
         cache.retain(|(id, _, _)| id != &name);
     }
-    let mut result = json!({"ok":true,"unloaded":removed.unloaded,"rolesCleared":cleared,"presetRemoved":preset_removed});
+    let mut result = vec![
+        ("ok", W::Bool(true)),
+        ("unloaded", W::Bool(removed.unloaded)),
+        (
+            "rolesCleared",
+            W::Arr(cleared.iter().map(|role| W::str(role)).collect()),
+        ),
+        ("presetRemoved", W::Bool(preset_removed)),
+    ];
     if preset_busy {
-        result["presetBusy"] = true.into();
+        result.push(("presetBusy", W::Bool(true)));
     }
     if preset_removed {
-        result["presetsReloaded"] = reloaded.into();
+        result.push(("presetsReloaded", W::Bool(reloaded)));
     }
-    answer(200, result)
+    ordered(200, result)
 }
 async fn remove_section(app: &App, name: &str, hold: &super::Hold) -> bool {
     if matches!(name, "." | "..") {
@@ -434,17 +487,22 @@ async fn remove_section(app: &App, name: &str, hold: &super::Hold) -> bool {
         "/api/v1/sections/{}",
         crate::storage_integration_routes::encode_uri_component(name)
     );
-    if let Some(rev) = listing
-        .get("revision")
-        .filter(|v| !v.is_null())
-        .and_then(Value::as_str)
-    {
-        if !rev.is_empty() {
-            path.push_str("?baseRevision=");
-            path.push_str(&crate::storage_integration_routes::encode_uri_component(
-                rev,
-            ));
-        }
+    let revision = listing.get("revision").cloned().unwrap_or(Value::Null);
+    let revision_text = revision.to_string();
+    let Ok(revision) = v8_json::parse(&revision_text.encode_utf16().collect::<Vec<_>>()) else {
+        return false;
+    };
+    if revision.truthy() {
+        let Ok(units) = v8_json::to_js_string(&revision) else {
+            return false;
+        };
+        let Ok(revision) = String::from_utf16(&units) else {
+            return false;
+        };
+        path.push_str("?baseRevision=");
+        path.push_str(&crate::storage_integration_routes::encode_uri_component(
+            &revision,
+        ));
     }
     loader
         .mutation_request(
@@ -456,16 +514,19 @@ async fn remove_section(app: &App, name: &str, hold: &super::Hold) -> bool {
         .await
         .is_some_and(|(s, _)| (200..300).contains(&s))
 }
-fn refusal(r: &super::router::Reply, unloaded: bool) -> Option<Response<Body>> {
-    let body = r.body.as_ref()?;
-    let e = body.get("error")?;
-    let nested = e.get("type").and_then(Value::as_str) == Some("gate_error");
-    let code = if nested {
-        e.get("code")
-    } else {
-        body.get("code")
-    }?
-    .as_str()?;
+fn refusal(r: &super::router::ExactReply, unloaded: bool) -> Option<Response<Body>> {
+    let e = r.body.get("error");
+    let gate: Vec<u16> = "gate_error".encode_utf16().collect();
+    let nested = e.get("type").units() == Some(gate.as_slice());
+    let code = String::from_utf16(
+        if nested {
+            e.get("code")
+        } else {
+            r.body.get("code")
+        }
+        .units()?,
+    )
+    .ok()?;
     if !(400..600).contains(&r.status)
         || ![
             "model_in_use",
@@ -475,27 +536,44 @@ fn refusal(r: &super::router::Reply, unloaded: bool) -> Option<Response<Body>> {
             "admin_required",
             "maintenance_held",
         ]
-        .contains(&code)
+        .contains(&code.as_str())
     {
         return None;
     }
-    let message = if nested {
-        e.get("message")
-            .and_then(Value::as_str)
-            .unwrap_or("The model engine refused the request.")
+    let mut message = if nested {
+        let message = e.get("message");
+        if message.truthy() {
+            match v8_json::to_js_string(message) {
+                Ok(s) => s,
+                Err(_) => return Some(error(500, "Internal error")),
+            }
+        } else {
+            "The model engine refused the request."
+                .encode_utf16()
+                .collect()
+        }
     } else {
-        e.as_str()?
+        e.units()?.to_vec()
     };
-    let retryable = if nested {
-        e.get("retryable")
-    } else {
-        body.get("retryable")
-    }
-    .and_then(Value::as_bool)
-        == Some(true);
-    Some(answer(
-        r.status,
-        json!({"error":message.chars().take(300).collect::<String>(),"code":code,"retryable":retryable,"unloaded":unloaded}),
+    message.truncate(300); // JavaScript slice counts UTF-16 code units, including a dangling half.
+    let retryable = matches!(
+        if nested {
+            e.get("retryable")
+        } else {
+            r.body.get("retryable")
+        },
+        W::Bool(true)
+    );
+    let body = W::Obj(vec![
+        ("error".encode_utf16().collect(), W::Str(message)),
+        ("code".encode_utf16().collect(), W::str(&code)),
+        ("retryable".encode_utf16().collect(), W::Bool(retryable)),
+        ("unloaded".encode_utf16().collect(), W::Bool(unloaded)),
+    ]);
+    Some(reply::json_text(
+        StatusCode::from_u16(r.status).ok()?,
+        serialized(&body),
+        true,
     ))
 }
 

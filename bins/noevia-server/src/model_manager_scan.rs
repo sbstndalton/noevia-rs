@@ -255,31 +255,6 @@ pub async fn serve(
     }
 }
 
-#[cfg(test)]
-#[allow(clippy::expect_used)]
-mod tests {
-    use super::*;
-    #[test]
-    fn config_diagnostics_never_print_loader_url_or_credentials() {
-        let loader = Loader::from_lookup(|key| match key {
-            "MODEL_LOADER_URL" => Some(
-                "http://synthetic-user:synthetic-password@synthetic-loader.invalid/private-target"
-                    .into(),
-            ),
-            "MODEL_LOADER_TOKEN" => Some("must-stay-private".into()),
-            _ => None,
-        })
-        .expect("synthetic loader config");
-        let diagnostic = format!("{loader:?}");
-        assert!(diagnostic.contains("configured: true"));
-        assert!(!diagnostic.contains("synthetic-loader"));
-        assert!(!diagnostic.contains("synthetic-user"));
-        assert!(!diagnostic.contains("synthetic-password"));
-        assert!(!diagnostic.contains("private-target"));
-        assert!(!diagnostic.contains("must-stay-private"));
-    }
-}
-
 impl Loader {
     /// Native public mutation policy uses the existing manager owner; no Node executor.
     pub(crate) async fn mutation_request(
@@ -328,5 +303,30 @@ impl Loader {
                 }
             }),
         ))
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+    #[test]
+    fn config_diagnostics_never_print_loader_url_or_credentials() {
+        let loader = Loader::from_lookup(|key| match key {
+            "MODEL_LOADER_URL" => Some(
+                "http://synthetic-user:synthetic-password@synthetic-loader.invalid/private-target"
+                    .into(),
+            ),
+            "MODEL_LOADER_TOKEN" => Some("must-stay-private".into()),
+            _ => None,
+        })
+        .expect("synthetic loader config");
+        let diagnostic = format!("{loader:?}");
+        assert!(diagnostic.contains("configured: true"));
+        assert!(!diagnostic.contains("synthetic-loader"));
+        assert!(!diagnostic.contains("synthetic-user"));
+        assert!(!diagnostic.contains("synthetic-password"));
+        assert!(!diagnostic.contains("private-target"));
+        assert!(!diagnostic.contains("must-stay-private"));
     }
 }
