@@ -360,6 +360,11 @@ impl Store {
                 .mode(0o600)
                 .open(self.file())
                 .map_err(|_| StoreError::Io)?;
+            // Opening the store can itself stall after the mutex was acquired. Recheck the
+            // generation immediately before appending, so expiry during open cannot file it late.
+            if !allowed() {
+                return Err(StoreError::Io);
+            }
             f.write_all(format!("{line}\n").as_bytes())
                 .map_err(|_| StoreError::Io)?;
         }
