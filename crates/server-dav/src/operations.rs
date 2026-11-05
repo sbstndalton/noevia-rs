@@ -32,7 +32,25 @@ fn destination(raw: &str, origin: &str, username: &str) -> Result<(String, Url),
     {
         return Err(StatusCode::FORBIDDEN);
     }
-    let (user, path) = parse_path(url.path())?;
+    let (user, path) = parse_path(url.path()).map_err(|status| {
+        if status == StatusCode::BAD_REQUEST {
+            let bad_encoding = url.path().split('/').any(|part| {
+                let bytes = part.as_bytes();
+                bytes.iter().enumerate().any(|(i, b)| {
+                    *b == b'%'
+                        && (bytes.get(i + 1).is_none_or(|b| !b.is_ascii_hexdigit())
+                            || bytes.get(i + 2).is_none_or(|b| !b.is_ascii_hexdigit()))
+                }) || percent_decode_str(part).decode_utf8().is_err()
+            });
+            if bad_encoding {
+                status
+            } else {
+                StatusCode::FORBIDDEN
+            }
+        } else {
+            status
+        }
+    })?;
     if !user.eq_ignore_ascii_case(username) || path.is_empty() {
         return Err(StatusCode::FORBIDDEN);
     }
@@ -124,9 +142,17 @@ impl<B: Backend> DavService<B> {
                 "Encoded bodies are unsupported",
             ));
         }
-        let body =
-            tokio::time::timeout(self.config.deadline, to_bytes(req.into_body(), 8192)).await;
-        if !matches!(body, Ok(Ok(ref b)) if b.is_empty()) {
+        let body = match tokio::time::timeout(self.config.deadline, to_bytes(req.into_body(), 8192))
+            .await
+        {
+            Ok(Ok(bytes)) => bytes,
+            Ok(Err(_)) => return Err(bad(StatusCode::PAYLOAD_TOO_LARGE, "Request too large")),
+            Err(_) => return Err(bad(StatusCode::REQUEST_TIMEOUT, "Request timed out")),
+        };
+        if std::str::from_utf8(&body).is_err() {
+            return Err(bad(StatusCode::BAD_REQUEST, "UTF-8 text required"));
+        }
+        if !body.is_empty() {
             return Err(bad(
                 StatusCode::UNSUPPORTED_MEDIA_TYPE,
                 "Request bodies are unsupported",

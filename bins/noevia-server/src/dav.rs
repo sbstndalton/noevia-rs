@@ -155,7 +155,7 @@ impl Backend for NativeBackend {
                     &username,
                     &password,
                     scope.as_str(),
-                    now(),
+                    now,
                 )
                 .map(|v| {
                     v.map(|i| Identity {
@@ -466,7 +466,7 @@ pub async fn start(
         router,
         serve::Limits {
             header_read: Duration::from_secs(15),
-            keep_alive_idle: Duration::from_secs(60),
+            keep_alive_idle: Duration::from_secs(5),
             max_connections: 4096,
         },
         Some(Duration::from_secs(60)),
