@@ -214,27 +214,45 @@ impl Store {
     }
 
     /// `commit(candidate, { backup })`.
+    ///
+    /// The web writer reads the revision and renames the new file in one blocking section under a process
+    /// wide lock, so two commits of this front on the same base cannot both pass the check (D2 review P1);
+    /// what no lock here can order is another process that writes without the model-loader, which is why a
+    /// writer that lost its maintenance exclusion must not start a write at all (preset_edit.rs).
     pub async fn commit(&self, c: &Candidate, backup: bool) -> Result<(), IniError> {
         let store = self.clone();
-        let base = c.base_revision.clone();
-        let current = tokio::task::spawn_blocking(move || store.read())
-            .await
-            .map_err(|_| IniError::new(500, "Internal error"))??;
-        if current.revision != base {
-            return Err(IniError::new(
-                409,
-                "Presets changed while applying. Reload before retrying.",
-            ));
-        }
-        if let Some(w) = &self.writer {
-            return w.write(c, backup).await;
-        }
-        let store = self.clone();
         let c = c.clone();
-        let before = current.text;
-        tokio::task::spawn_blocking(move || store.web_write(&c, backup, &before))
-            .await
-            .map_err(|_| IniError::new(500, "Internal error"))?
+        if self.writer.is_some() {
+            let reader = store.clone();
+            let current = tokio::task::spawn_blocking(move || reader.read())
+                .await
+                .map_err(|_| IniError::new(500, "Internal error"))??;
+            if current.revision != c.base_revision {
+                return Err(IniError::new(
+                    409,
+                    "Presets changed while applying. Reload before retrying.",
+                ));
+            }
+            if let Some(w) = &self.writer {
+                return w.write(&c, backup).await;
+            }
+        }
+        tokio::task::spawn_blocking(move || {
+            static WEB_WRITE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+            let _one_at_a_time = WEB_WRITE
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let current = store.read()?;
+            if current.revision != c.base_revision {
+                return Err(IniError::new(
+                    409,
+                    "Presets changed while applying. Reload before retrying.",
+                ));
+            }
+            store.web_write(&c, backup, &current.text)
+        })
+        .await
+        .map_err(|_| IniError::new(500, "Internal error"))?
     }
 
     /// The web writer: backup, temp file, rename, directory fsync, prune.
@@ -496,6 +514,34 @@ mod tests {
         assert!(removed.contains(&format!("models.ini.noevia-backup-{:064x}", 0)));
         assert!(d.path().join("models.ini.noevia-backup-nothex").exists());
         assert!(file.exists());
+    }
+
+    /// D2 review P1: the revision check and the rename are one critical section, so two commits on the same
+    /// base never both pass the check (the restore and the first commit share this path).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn two_web_commits_on_one_base_never_both_win() {
+        for round in 0..40 {
+            let d = tempfile::tempdir().unwrap();
+            let (s, file) = store(d.path(), "[a]\nmodel = /models/a.gguf\n");
+            let snap = s.snapshot().unwrap();
+            let make = |n: u32| Candidate {
+                base_revision: snap.revision.clone(),
+                text: format!("[a]\nmodel = /models/a.gguf\nctx-size = {n}\n"),
+                before: snap.text.clone(),
+            };
+            let (a, b) = (make(1024 + round), make(2048 + round));
+            let (s1, s2) = (s.clone(), s.clone());
+            let t1 = tokio::spawn(async move { s1.commit(&a, true).await });
+            let t2 = tokio::spawn(async move { s2.commit(&b, true).await });
+            let (r1, r2) = (t1.await.unwrap(), t2.await.unwrap());
+            assert!(
+                r1.is_ok() != r2.is_ok(),
+                "exactly one wins in round {round}: {r1:?} {r2:?}"
+            );
+            let loser = if r1.is_ok() { r2 } else { r1 };
+            assert_eq!(loser.unwrap_err().status, 409);
+            assert!(std::fs::read_to_string(&file).unwrap().contains("ctx-size"));
+        }
     }
 
     #[test]

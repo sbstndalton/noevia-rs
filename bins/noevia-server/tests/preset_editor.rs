@@ -297,6 +297,15 @@ struct Rig {
 }
 
 async fn rig(case: &Value, node_mode: Arc<Mutex<&'static str>>) -> Rig {
+    rig_with(case, node_mode, None).await
+}
+
+/// `wrap` puts a handler in front of the scripted engine (a gate that forgets its hold, say).
+async fn rig_with(
+    case: &Value,
+    node_mode: Arc<Mutex<&'static str>>,
+    wrap: Option<Box<dyn Fn(Handler) -> Handler>>,
+) -> Rig {
     let d = tempfile::tempdir().unwrap();
     let _db = seed_database(d.path());
     let ini = d.path().join("models.ini");
@@ -308,7 +317,12 @@ async fn rig(case: &Value, node_mode: Arc<Mutex<&'static str>>) -> Rig {
         std::fs::write(d.path().join("models.roles.json"), roles).unwrap();
     }
     let counts = Arc::new(Counts::default());
-    let (port, seen) = engine(scripted(case, ini.clone(), counts)).await;
+    let scripted_handler = scripted(case, ini.clone(), counts);
+    let handler = match wrap {
+        Some(w) => w(scripted_handler),
+        None => scripted_handler,
+    };
+    let (port, seen) = engine(handler).await;
     let base = format!("http://127.0.0.1:{port}/v1");
     let state = d
         .path()
@@ -774,4 +788,347 @@ fn exact_method_dispatch() {
     assert_eq!(dispatch("PUT", "/api/models/preset/"), None);
     assert_eq!(dispatch("PUT", "/api/models/preset/suggest"), None);
     assert!(noevia_server::FEATURES.contains(&"rust-preset-editor-d2-v1"));
+}
+
+// ── D2 review: exclusion that is lost stops every later destructive step ────────────────────────────
+
+/// A gate that grants `idle_ttl_ms` 3000 holds (renewed every second) and answers the renewals as `renew`:
+/// "forgotten" (404), "dropped" (no answer) or "ok". After a forgotten renewal the next hold is a new token.
+fn lossy_gate(renew: &'static str) -> Box<dyn Fn(Handler) -> Handler> {
+    Box::new(move |inner: Handler| {
+        let grants = Arc::new(AtomicUsize::new(0));
+        Arc::new(move |req: &Req| {
+            let t = req.target.as_str();
+            if req.method == "POST" && t == "/gate/v1/maintenance" {
+                let n = grants.fetch_add(1, Ordering::SeqCst);
+                let token = format!("{n:032x}");
+                return Answer::Reply(201, json!({"hold": token, "idle_ttl_ms": 3000}).to_string());
+            }
+            if req.method == "POST" && t.ends_with("/renew") {
+                return match renew {
+                    "forgotten" if t.contains(&format!("{:032x}", 0)) => {
+                        Answer::Reply(404, "{}".into())
+                    }
+                    "dropped" => Answer::Drop,
+                    _ => Answer::Reply(200, r#"{"idle_ttl_ms":3000}"#.into()),
+                };
+            }
+            if t.starts_with("/gate/v1/") {
+                return Answer::Reply(
+                    if req.method == "DELETE" { 204 } else { 200 },
+                    String::new(),
+                );
+            }
+            inner(req)
+        })
+    })
+}
+
+fn gate_case(listing_ms: u64, reload_ms: u64, reload_status: u64) -> Value {
+    let mut case = base_case();
+    case["gate"] = json!("grant");
+    case["router"]["delay"] = json!({"listing": listing_ms, "reload": reload_ms});
+    if reload_status != 200 {
+        case["router"]["reload"] = json!([{"status": reload_status, "text": "no"}]);
+    }
+    case
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_gate_that_forgot_the_hold_during_preparation_stops_the_commit_and_the_reload() {
+    // The first listing takes 2.5 s; the renewal at 1 s learns that the gate forgot the hold.
+    let case = gate_case(2500, 0, 200);
+    let r = rig_with(
+        &case,
+        Arc::new(Mutex::new("ok")),
+        Some(lossy_gate("forgotten")),
+    )
+    .await;
+    let (status, _, text) = put(r.addr, ADMIN, &good_body(&case)).await;
+    assert_eq!(status, 503, "{text}");
+    assert!(text.contains("nothing was changed"), "{text}");
+    assert_eq!(
+        std::fs::read_to_string(&r.ini).unwrap(),
+        case["ini"].as_str().unwrap()
+    );
+    let (router, gate, _) = lines(&r.seen.lock().unwrap());
+    assert!(!router.iter().any(|l| l.contains("reload=1")), "{router:?}");
+    // The grant the renewer took again to keep others out is given back with the job.
+    assert!(
+        gate.iter().filter(|l| l.starts_with("DELETE")).count() >= 1,
+        "{gate:?}"
+    );
+    assert!(
+        gate.iter()
+            .filter(|l| l.starts_with("POST /gate/v1/maintenance {"))
+            .count()
+            == 2,
+        "taken once, taken again by the renewer, never used to go on: {gate:?}"
+    );
+    assert_eq!(
+        files_of(r.dir.path()).len(),
+        1,
+        "no recovery copy: no write started"
+    );
+    let _ = r.stop.send(());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn renewals_that_stop_being_confirmed_stop_the_commit_and_the_reload() {
+    let case = gate_case(2600, 0, 200);
+    let r = rig_with(
+        &case,
+        Arc::new(Mutex::new("ok")),
+        Some(lossy_gate("dropped")),
+    )
+    .await;
+    let (status, _, text) = put(r.addr, ADMIN, &good_body(&case)).await;
+    assert_eq!(status, 503, "{text}");
+    assert_eq!(
+        std::fs::read_to_string(&r.ini).unwrap(),
+        case["ini"].as_str().unwrap()
+    );
+    let (router, _, _) = lines(&r.seen.lock().unwrap());
+    assert!(!router.iter().any(|l| l.contains("reload=1")), "{router:?}");
+    let _ = r.stop.send(());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_hold_the_gate_keeps_renewing_does_not_get_in_the_way() {
+    let case = gate_case(1500, 0, 200);
+    let r = rig_with(&case, Arc::new(Mutex::new("ok")), Some(lossy_gate("ok"))).await;
+    let (status, _, text) = put(r.addr, ADMIN, &good_body(&case)).await;
+    assert_eq!(status, 200, "{text}");
+    let _ = r.stop.send(());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_failed_reload_after_the_gate_forgot_the_hold_does_not_restore_unfenced() {
+    // The reload takes 2.5 s and fails; the renewal at 1 s learns that the exclusion is gone. The restore is a
+    // write, so it does not start: the new settings stay, the answer says so, no second recovery copy.
+    let case = gate_case(0, 2500, 500);
+    let r = rig_with(
+        &case,
+        Arc::new(Mutex::new("ok")),
+        Some(lossy_gate("forgotten")),
+    )
+    .await;
+    let (status, _, text) = put(r.addr, ADMIN, &good_body(&case)).await;
+    assert_eq!(status, 503, "{text}");
+    assert!(text.contains("was not put back"), "{text}");
+    assert!(std::fs::read_to_string(&r.ini)
+        .unwrap()
+        .contains("ctx-size = 8192"));
+    let (router, _, _) = lines(&r.seen.lock().unwrap());
+    assert_eq!(
+        router.iter().filter(|l| l.contains("reload=1")).count(),
+        1,
+        "{router:?}"
+    );
+    assert_eq!(
+        files_of(r.dir.path()).len(),
+        2,
+        "one recovery copy, taken by the first write"
+    );
+    let _ = r.stop.send(());
+}
+
+/// Node's lease is sure to cover the commit but not the reload: the file stays as saved, nothing restores it
+/// and the engine is not asked, for the web writer and for the model-loader alike.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_lease_lost_after_the_commit_neither_reloads_nor_restores() {
+    for writer in ["web", "loader"] {
+        let mut case = base_case();
+        case["gate"] = json!("absent");
+        case["writer"] = json!(writer);
+        let d = tempfile::tempdir().unwrap();
+        let _db = seed_database(d.path());
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, case["ini"].as_str().unwrap()).unwrap();
+        let counts = Arc::new(Counts::default());
+        let (port, seen) = engine(scripted(&case, ini.clone(), counts)).await;
+        let (node_port, _) = engine(Arc::new(|req: &Req| {
+            if req.method == "POST" && req.target == "/internal/model-maintenance/lease" {
+                Answer::Reply(
+                    201,
+                    json!({"lease": TOKEN, "ttlMs": 100_000, "renewMs": 50_000, "hardMs": 100_000})
+                        .to_string(),
+                )
+            } else {
+                Answer::Reply(200, "{}".into())
+            }
+        }))
+        .await;
+        let mut env = vec![
+            ("MODEL_MANAGER_KIND".to_owned(), "llamacpp".to_owned()),
+            (
+                "MODEL_MANAGER_BASE_URL".to_owned(),
+                format!("http://127.0.0.1:{port}/v1"),
+            ),
+            ("LLAMACPP_PRESET_PATH".to_owned(), ini.display().to_string()),
+            (
+                "NOEVIA_LEGACY_UPSTREAM".to_owned(),
+                format!("http://127.0.0.1:{node_port}"),
+            ),
+            ("NOEVIA_PROJECT_STORE_TOKEN".to_owned(), STORE.to_owned()),
+        ];
+        if writer == "loader" {
+            env.push(("MODELS_INI_WRITER".into(), "model-loader".into()));
+            env.push((
+                "MODEL_LOADER_URL".into(),
+                format!("http://127.0.0.1:{port}"),
+            ));
+        }
+        let (addr, stop) = start(d.path(), &env).await;
+        let (status, _, text) = put(addr, ADMIN, &good_body(&case)).await;
+        assert_eq!(status, 503, "{writer}: {text}");
+        assert!(text.contains("was not put back"), "{writer}: {text}");
+        let now = std::fs::read_to_string(&ini).unwrap();
+        assert!(
+            now.contains("ctx-size = 8192"),
+            "{writer}: the new settings stay\n{now}"
+        );
+        let (router, _, loader) = lines(&seen.lock().unwrap());
+        assert!(
+            !router.iter().any(|l| l.contains("reload=1")),
+            "{writer}: {router:?}"
+        );
+        if writer == "loader" {
+            assert_eq!(loader.len(), 1, "no second (restoring) write: {loader:?}");
+        } else {
+            assert_eq!(files_of(d.path()).len(), 2, "web: one recovery copy only");
+        }
+        let _ = stop.send(());
+    }
+}
+
+// ── D2 review: the acquisition is cancellation-safe ──────────────────────────────────────────────────
+
+fn maint_with(port: u16, node_port: Option<u16>, dir: &Path) -> noevia_server::model_maint::Maint {
+    let mut env: std::collections::HashMap<String, String> = [
+        ("MODEL_MANAGER_KIND", "llamacpp".to_string()),
+        (
+            "MODEL_MANAGER_BASE_URL",
+            format!("http://127.0.0.1:{port}/v1"),
+        ),
+        (
+            "INFERENCE_GATE_ADMIN_TOKEN",
+            "synthetic-admin-token".to_string(),
+        ),
+        ("UI_DATA_DIR", dir.display().to_string()),
+        ("NOEVIA_PROJECT_STORE_TOKEN", STORE.to_string()),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_owned(), v))
+    .collect();
+    if let Some(n) = node_port {
+        env.insert(
+            "NOEVIA_LEGACY_UPSTREAM".into(),
+            format!("http://127.0.0.1:{n}"),
+        );
+    }
+    let get = |k: &str| env.get(k).cloned();
+    let engine = Arc::new(server_stats::Engine::from_lookup(&get).unwrap());
+    let sizing = Arc::new(noevia_server::model_sizing::Sizing::from_lookup(
+        engine.kind(),
+        Arc::clone(&engine),
+        &get,
+    ));
+    noevia_server::model_maint::Maint::from_lookup(engine.kind(), &engine, sizing, &get).unwrap()
+}
+
+async fn until(what: &str, mut ok: impl FnMut() -> bool) {
+    for _ in 0..200 {
+        if ok() {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("{what}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_cancelled_gate_acquisition_frees_the_reservation_and_gives_the_grant_back() {
+    let d = tempfile::tempdir().unwrap();
+    let (port, seen) = engine(Arc::new(|req: &Req| {
+        match (req.method.as_str(), req.target.as_str()) {
+            ("POST", "/gate/v1/maintenance") => Answer::After(
+                Duration::from_millis(600),
+                201,
+                json!({"hold": TOKEN, "idle_ttl_ms": 60_000}).to_string(),
+            ),
+            ("DELETE", _) => Answer::Reply(204, String::new()),
+            _ => Answer::Reply(404, "{}".into()),
+        }
+    }))
+    .await;
+    let m = Arc::new(maint_with(port, None, d.path()));
+    let task = {
+        let m = Arc::clone(&m);
+        tokio::spawn(async move {
+            m.acquire("", Duration::from_secs(60), false)
+                .await
+                .map(|_| ())
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    task.abort();
+    let _ = task.await;
+    // The grant arrives for nobody: it is given back, and the local flag is free again.
+    until("the late grant is given back", || {
+        seen.lock().unwrap().iter().any(|r| r.method == "DELETE")
+    })
+    .await;
+    until("the local reservation is free", || !m.local_held()).await;
+    let again = m.acquire("", Duration::from_secs(60), false).await;
+    assert!(
+        again.is_ok(),
+        "a later job is not Busy for ever: {:?}",
+        again.err()
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_cancelled_node_lease_acquisition_frees_the_reservation_and_gives_the_lease_back() {
+    let d = tempfile::tempdir().unwrap();
+    let (port, _) = engine(Arc::new(|req: &Req| {
+        if req.target == "/gate/v1/maintenance" && req.method == "POST" {
+            Answer::Reply(404, r#"{"error":"not found"}"#.into())
+        } else {
+            Answer::Reply(404, "{}".into())
+        }
+    }))
+    .await;
+    let (node_port, node_seen) = engine(Arc::new(|req: &Req| {
+        if req.method == "POST" && req.target == "/internal/model-maintenance/lease" {
+            Answer::After(
+                Duration::from_millis(600),
+                201,
+                json!({"lease": TOKEN, "ttlMs": 60_000, "renewMs": 20_000, "hardMs": 600_000})
+                    .to_string(),
+            )
+        } else {
+            Answer::Reply(200, "{}".into())
+        }
+    }))
+    .await;
+    let m = Arc::new(maint_with(port, Some(node_port), d.path()));
+    let task = {
+        let m = Arc::clone(&m);
+        tokio::spawn(async move {
+            m.acquire("", Duration::from_secs(60), false)
+                .await
+                .map(|_| ())
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    task.abort();
+    let _ = task.await;
+    until("the late lease is given back", || {
+        node_seen.lock().unwrap().iter().any(|r| {
+            r.method == "DELETE" && r.target.starts_with("/internal/model-maintenance/lease/")
+        })
+    })
+    .await;
+    until("the local reservation is free", || !m.local_held()).await;
 }

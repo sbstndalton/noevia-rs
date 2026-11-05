@@ -49,6 +49,7 @@ use std::time::Duration;
 pub const PATH: &str = "/api/models/preset";
 /// Node's side of the cache drop after a write (core rust-preset-write-effects.cjs).
 const EFFECTS: &str = "/internal/preset-editor/effects";
+const CACHE_DROP_TRIES: u32 = 3;
 const FACTS: &str = "/internal/models/facts";
 
 /// How long the hold may last: a listing, the write, a reload (120 s), then the restore and a second
@@ -67,7 +68,7 @@ const STALE: &str = "Presets changed. Reload the profile before saving; your dra
 const QUALIFICATION: &str =
     "unqualified; load and test this profile before relying on its capacity";
 const LEASE_LOST_BEFORE: &str = "The model service stopped confirming that chat is held back, so the preset was not applied and nothing was changed. Try again shortly.";
-const LEASE_LOST_RESTORED: &str = "The model service stopped confirming that chat is held back after the preset file was saved, so the engine was not asked to reload and the previous preset file was restored. Try again shortly.";
+const LEASE_LOST_UNRESTORED: &str = "The model service stopped confirming that chat is held back after the preset file was saved, so the engine was not asked to reload and the previous preset file was not put back: models.ini holds the new settings. Check the native presets, then reload them once chat is idle.";
 const LEASE_LOST_RELOAD_ONLY: &str = "Reload failed or timed out. The previous preset file was restored, but the model service stopped confirming that chat is held back, so the engine was not asked to reload again. Reload the presets once chat is idle.";
 const RESTORE_UNCERTAIN: &str = "Reload outcome is uncertain and the file changed again. Stop inference and inspect native presets before retrying.";
 const RESTORE_RETRYABLE: &str = "Reload failed or timed out, and the previous preset file could not be restored: models.ini still holds the new settings. Check router and Model Loader health before retrying.";
@@ -937,6 +938,12 @@ impl Maint {
         candidate: &Candidate,
         lease_lost: bool,
     ) -> Outcome {
+        // Compensation is a write like any other: without exclusion that is still confirmed it does not
+        // start, and the state is reported as uncertain for a separately fenced recovery (D2 review P1).
+        // A restore the hold covers is a compare-and-swap against the revision this job committed.
+        if lease_lost || !hold.may_start(WRITE_LIMIT) {
+            return error(503, LEASE_LOST_UNRESTORED);
+        }
         let revision = super::ini::sha(&candidate.text);
         let back = Candidate {
             base_revision: revision,
@@ -952,9 +959,6 @@ impl Maint {
                 RESTORE_UNCONFIRMED
             };
             return error(503, message);
-        }
-        if lease_lost {
-            return error(503, LEASE_LOST_RESTORED);
         }
         if !hold.may_start(RELOAD_LIMIT) {
             return error(503, LEASE_LOST_RELOAD_ONLY);
@@ -1088,16 +1092,40 @@ pub async fn serve(app: &Arc<App>, req: Request<Body>, path: String) -> Response
     let job_app = Arc::clone(app);
     let job = tokio::spawn(async move {
         let outcome = job_app.config.maint.apply_preset(&job_app, parsed).await;
-        // Core dropped its cached model reads around every write under /api/models/.
-        let _ = job_app
-            .config
-            .research
-            .node_call(EFFECTS, &json!({ "op": "applied" }), Duration::from_secs(3))
-            .await;
-        outcome
+        // Core dropped its cached model reads around every write under /api/models/. Node is told once
+        // the write ended, with a bounded retry; a notification that never arrived is not hidden: the
+        // answer says so in a header (the cached reads expire on their own within seconds).
+        let mut dropped = false;
+        for attempt in 0..CACHE_DROP_TRIES {
+            let call = job_app
+                .config
+                .research
+                .node_call(EFFECTS, &json!({ "op": "applied" }), Duration::from_secs(3))
+                .await;
+            if matches!(call, Some((200, _))) {
+                dropped = true;
+                break;
+            }
+            if attempt + 1 < CACHE_DROP_TRIES {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+        }
+        if !dropped {
+            eprintln!("[models] the preset editor could not tell Node to drop its cached model reads; they expire on their own");
+        }
+        (outcome, dropped)
     });
     match job.await {
-        Ok(o) => text(o.status, o.body),
+        Ok((o, dropped)) => {
+            let mut response = text(o.status, o.body);
+            if !dropped {
+                response.headers_mut().insert(
+                    "x-noevia-cache-drop",
+                    axum::http::HeaderValue::from_static("failed"),
+                );
+            }
+            response
+        }
         Err(_) => reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true),
     }
 }

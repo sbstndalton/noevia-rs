@@ -263,52 +263,27 @@ impl Maint {
         {
             return Err(HoldError::Busy);
         }
-        let taken = self.acquire_locally_held(reason, max, need_gate).await;
-        if taken.is_err() {
-            self.local.store(false, Ordering::Release);
-        }
-        taken
-    }
-
-    async fn acquire_locally_held(
-        &self,
-        reason: &str,
-        max: Duration,
-        need_gate: bool,
-    ) -> Result<Hold, HoldError> {
-        let Some(gate) = self.gate.as_ref() else {
-            return Err(HoldError::NeedsGate);
-        };
-        match gate.hold(reason, Duration::ZERO).await {
-            Ok(Some(grant)) => Ok(Hold::gated(
-                Arc::clone(&self.local),
-                Arc::clone(gate),
-                grant,
-                reason,
-                Instant::now() + max,
-            )),
-            Ok(None) => {
-                if need_gate && !gate.has_admin() && gate.held().await.is_some() {
-                    return Err(HoldError::NeedsGate);
-                }
-                match self.node.acquire().await {
-                    Ok(grant) => Ok(Hold::leased(
-                        Arc::clone(&self.local),
-                        Arc::clone(&self.node),
-                        grant,
-                        reason,
-                        Instant::now() + max,
-                    )),
-                    Err(node_lease::LeaseFault::Busy) => Err(HoldError::Busy),
-                    Err(node_lease::LeaseFault::Unavailable) => Err(HoldError::NodeUnavailable),
-                }
+        // From here the local reservation is owned by a guard: whatever ends the acquisition (an error,
+        // a panic, the caller going away at an await) clears it, and a hold granted to nobody is given
+        // back. The acquisition runs on its own task for that reason: dropping this future cannot leave a
+        // remote grant half taken (D2 review P2).
+        let reservation = Reservation(Arc::clone(&self.local), true);
+        let gate = self.gate.clone();
+        let node = Arc::clone(&self.node);
+        let local = Arc::clone(&self.local);
+        let reason = reason.to_owned();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            let mut reservation = reservation;
+            let taken = acquire_locally_held(gate, node, local, &reason, max, need_gate).await;
+            if taken.is_ok() {
+                // The hold owns the flag now (Hold::drop / release clear it).
+                reservation.1 = false;
             }
-            Err(f) if f.busy() => Err(HoldError::Busy),
-            Err(f) => Err(HoldError::Gate {
-                status: f.status(),
-                message: f.message(),
-            }),
-        }
+            // A caller that left drops the result here: Hold::drop gives the grant back.
+            let _ = tx.send(taken);
+        });
+        rx.await.unwrap_or(Err(HoldError::NodeUnavailable))
     }
 
     /// Node's boot warning, when a gate fronts the engine and this process has no admin token for it.
@@ -325,6 +300,61 @@ impl Maint {
     /// Whether a job of this process holds the engine (the local flag).
     pub fn local_held(&self) -> bool {
         self.local.load(Ordering::Acquire)
+    }
+}
+
+/// The local "a job of this process is running" flag, owned from the moment it is taken until a [`Hold`]
+/// takes over (`.1` false) or the guard is dropped.
+struct Reservation(Arc<AtomicBool>, bool);
+
+impl Drop for Reservation {
+    fn drop(&mut self) {
+        if self.1 {
+            self.0.store(false, Ordering::Release);
+        }
+    }
+}
+
+async fn acquire_locally_held(
+    gate: Option<Arc<gate::Gate>>,
+    node: Arc<node_lease::NodeLeases>,
+    local: Arc<AtomicBool>,
+    reason: &str,
+    max: Duration,
+    need_gate: bool,
+) -> Result<Hold, HoldError> {
+    let Some(gate) = gate else {
+        return Err(HoldError::NeedsGate);
+    };
+    match gate.hold(reason, Duration::ZERO).await {
+        Ok(Some(grant)) => Ok(Hold::gated(
+            local,
+            Arc::clone(&gate),
+            grant,
+            reason,
+            Instant::now() + max,
+        )),
+        Ok(None) => {
+            if need_gate && !gate.has_admin() && gate.held().await.is_some() {
+                return Err(HoldError::NeedsGate);
+            }
+            match node.acquire().await {
+                Ok(grant) => Ok(Hold::leased(
+                    local,
+                    Arc::clone(&node),
+                    grant,
+                    reason,
+                    Instant::now() + max,
+                )),
+                Err(node_lease::LeaseFault::Busy) => Err(HoldError::Busy),
+                Err(node_lease::LeaseFault::Unavailable) => Err(HoldError::NodeUnavailable),
+            }
+        }
+        Err(f) if f.busy() => Err(HoldError::Busy),
+        Err(f) => Err(HoldError::Gate {
+            status: f.status(),
+            message: f.message(),
+        }),
     }
 }
 

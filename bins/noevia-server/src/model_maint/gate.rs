@@ -316,6 +316,12 @@ struct Shared {
     lease_ttl: Option<Duration>,
     /// When Node ends the lease whatever happens.
     lease_end: Option<Instant>,
+    /// The gate's idle limit of a gate-backed hold. It is kept alive by renewals: the hold counts as
+    /// covered only while a renewal confirmed it recently (the last confirmation is in `confirmed`).
+    gate_ttl: Option<Duration>,
+    /// Exclusion was lost for good: Node ended the lease, or the gate had forgotten the hold. A hold that
+    /// was lost never covers a step again, even if the renewer takes a new grant to keep others out
+    /// (D2 review P1: work that lost its exclusion must not resume under a later one).
     lost: AtomicBool,
 }
 
@@ -334,6 +340,21 @@ impl Shared {
             confirmed: Mutex::new(Instant::now()),
             lease_ttl,
             lease_end,
+            gate_ttl: None,
+            lost: AtomicBool::new(false),
+        })
+    }
+
+    fn gated(token: String, deadline: Instant, idle_ttl: Duration) -> Arc<Shared> {
+        Arc::new(Shared {
+            token: Mutex::new(Some(token)),
+            released: AtomicBool::new(false),
+            wake: tokio::sync::Notify::new(),
+            deadline: Mutex::new(deadline),
+            confirmed: Mutex::new(Instant::now()),
+            lease_ttl: None,
+            lease_end: None,
+            gate_ttl: Some(idle_ttl),
             lost: AtomicBool::new(false),
         })
     }
@@ -411,7 +432,7 @@ impl Hold {
         reason: &str,
         deadline: Instant,
     ) -> Hold {
-        let shared = Shared::new(Some(grant.token), deadline, None, None);
+        let shared = Shared::gated(grant.token, deadline, grant.idle_ttl);
         let every = (grant.idle_ttl / 3).max(Duration::from_secs(1));
         tokio::spawn(renew_loop(
             Arc::clone(&shared),
@@ -442,16 +463,29 @@ impl Hold {
     /// end under a call in flight, even if Node stops hearing renewals now. Always true for the gate's
     /// hold, which goes on as it always did.
     pub fn may_start(&self, limit: Duration) -> bool {
+        if self.shared.lost.load(Ordering::Acquire) {
+            return false;
+        }
         let Some(ttl) = self.shared.lease_ttl else {
-            return true;
-        };
-        let covered = |until: Instant| Instant::now() + limit + STEP_MARGIN < until;
-        !self.shared.lost.load(Ordering::Acquire)
-            && self
+            // The gate's hold: covered only while a renewal confirmed it recently and the token is still
+            // ours. One missed renewal is enough to refuse (fail closed); the gate keeps the hold a
+            // little longer, so refusing costs nothing.
+            let Some(idle) = self.shared.gate_ttl else {
+                return true;
+            };
+            let held = self.shared.token.lock().is_ok_and(|t| t.is_some());
+            let fresh = self
                 .shared
                 .confirmed
                 .lock()
-                .is_ok_and(|at| covered(*at + ttl))
+                .is_ok_and(|at| at.elapsed() < idle.saturating_sub(idle / 3));
+            return held && fresh;
+        };
+        let covered = |until: Instant| Instant::now() + limit + STEP_MARGIN < until;
+        self.shared
+            .confirmed
+            .lock()
+            .is_ok_and(|at| covered(*at + ttl))
             && self.shared.lease_end.is_none_or(covered)
     }
 
@@ -526,8 +560,19 @@ async fn renew_loop(shared: Arc<Shared>, gate: Arc<Gate>, every: Duration, reaso
         let Some(token) = shared.token.lock().ok().and_then(|t| t.clone()) else {
             return;
         };
-        if gate.renew(&token, None).await == Some(false) {
-            // The gate has forgotten the hold: take it again, briefly waiting for the engine.
+        let asked = Instant::now();
+        let renewed = gate.renew(&token, None).await;
+        if renewed == Some(true) {
+            if let Ok(mut at) = shared.confirmed.lock() {
+                *at = asked;
+            }
+        }
+        if renewed == Some(false) {
+            // The gate has forgotten the hold: whatever was running under it is no longer excluded from
+            // other clients, so the work that held it is fenced for good. The hold is still taken again
+            // (briefly waiting for the engine) so that others stay out until the work ends, but that
+            // grant never covers a step of the work that lost the first one.
+            shared.lost.store(true, Ordering::Release);
             match gate.hold(&reason, RETAKE_WAIT).await {
                 Ok(Some(g)) => {
                     if shared.released.load(Ordering::Acquire) {
