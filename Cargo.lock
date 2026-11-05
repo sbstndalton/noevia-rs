@@ -106,8 +106,10 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 name = "autotune-plan"
 version = "0.1.0"
 dependencies = [
+ "js-json",
  "proptest",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -660,12 +662,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "deranged"
+version = "0.5.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e9de72ce2ad1f90dc62fa25f0f430ef85eb4b0d8fa0be4f30373bc40a21d28e"
+
+[[package]]
 name = "diary-backup-format"
 version = "0.1.0"
 dependencies = [
  "ryu",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "diary-backup-run"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "diary-backup-format",
+ "rusqlite",
+ "serde_json",
 ]
 
 [[package]]
@@ -923,6 +941,30 @@ dependencies = [
  "rand_core 0.6.4",
  "sec1",
  "subtle",
+ "zeroize",
+]
+
+[[package]]
+name = "embedding-worker"
+version = "0.1.0"
+dependencies = [
+ "engine-admission",
+ "model-stream",
+ "proc-macro2",
+ "prompt-framing",
+ "quote",
+ "reqwest",
+ "rusqlite",
+ "rustix",
+ "serde_json",
+ "server-projects",
+ "server-store",
+ "sha2",
+ "sqlite-vec-loader",
+ "ssrf-policy",
+ "syn 2.0.119",
+ "tempfile",
+ "tokio",
  "zeroize",
 ]
 
@@ -1819,6 +1861,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "noevia-diary"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "diary-corpus-parse",
+ "diary-workspace-export",
+ "http-body-util",
+ "regex",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "subtle",
+ "tempfile",
+ "tenant-assertion",
+ "tokio",
+]
+
+[[package]]
 name = "noevia-docling"
 version = "0.1.0"
 dependencies = [
@@ -1917,6 +1980,7 @@ dependencies = [
 name = "noevia-server"
 version = "0.1.0"
 dependencies = [
+ "autotune-plan",
  "axum",
  "base64 0.22.1",
  "brotli",
@@ -1924,6 +1988,7 @@ dependencies = [
  "code-net-guard",
  "context-fit",
  "dav-parse",
+ "embedding-worker",
  "engine-admission",
  "flate2",
  "gguf",
@@ -1934,6 +1999,7 @@ dependencies = [
  "hyper-util",
  "js-json",
  "llamacpp-autoconfig",
+ "llamacpp-presets",
  "long-profile",
  "mcp-frame",
  "model-stream",
@@ -1943,6 +2009,7 @@ dependencies = [
  "prompt-framing",
  "provider-egress",
  "rand_core 0.6.4",
+ "regex",
  "reqwest",
  "research-core",
  "rustls",
@@ -1994,6 +2061,12 @@ dependencies = [
  "smallvec",
  "zeroize",
 ]
+
+[[package]]
+name = "num-conv"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "521739c6d2bac4aa25192232afe6841231376b2b26d4d9fae5ecf8ca5772e441"
 
 [[package]]
 name = "num-integer"
@@ -2112,6 +2185,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pem"
+version = "3.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d30c53c26bc5b31a98cd02d20f25a7c8567146caf63ed593a9d87b2775291be"
+dependencies = [
+ "base64 0.22.1",
+ "serde_core",
+]
+
+[[package]]
 name = "pem-rfc7468"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2209,6 +2292,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "powerfmt"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a6394b9e965e73d0a289ee54f589087e2c676aedf60885baf52c76b771e4958"
+
+[[package]]
 name = "ppv-lite86"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2268,6 +2357,7 @@ dependencies = [
  "idna",
  "mcp-frame",
  "proptest",
+ "serde_json",
  "url",
 ]
 
@@ -2367,7 +2457,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2482,6 +2572,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "513962919efc330f829edb2535844d1b912b0fbe2ca165d613e4e8788bb05a5a"
 dependencies = [
  "rand_core 0.9.5",
+]
+
+[[package]]
+name = "rcgen"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75e669e5202259b5314d1ea5397316ad400819437857b90861765f24c4cf80a2"
+dependencies = [
+ "pem",
+ "ring",
+ "rustls-pki-types",
+ "time",
+ "yasna",
 ]
 
 [[package]]
@@ -3045,8 +3148,11 @@ dependencies = [
  "js-json",
  "policy-leaves",
  "rand_core 0.6.4",
+ "rcgen",
  "reqwest",
+ "rustls",
  "secret-envelope",
+ "serde_json",
  "server-auth",
  "server-storage-reads",
  "server-store",
@@ -3054,6 +3160,7 @@ dependencies = [
  "tempfile",
  "tenant-assertion",
  "tokio",
+ "tokio-rustls",
  "url",
  "zeroize",
 ]
@@ -3098,6 +3205,7 @@ dependencies = [
  "review-verdict",
  "rusqlite",
  "rustix",
+ "ryu-js",
  "serde_json",
  "server-store",
  "sha2",
@@ -3325,6 +3433,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "sqlite-vec"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0ba424237a9a5db2f6071f193319e2b6a32f7f3961debb2fbbfe67067abce3f"
+dependencies = [
+ "cc",
+]
+
+[[package]]
+name = "sqlite-vec-loader"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "sqlite-vec",
+]
+
+[[package]]
 name = "sqlite-wasm-rs"
 version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3478,6 +3603,25 @@ dependencies = [
  "quote",
  "syn 3.0.6",
 ]
+
+[[package]]
+name = "time"
+version = "0.3.55"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cdb87b95ec50ddfa440816d227a17b2ccbdda963a316a727fda0fc4334f7d134"
+dependencies = [
+ "deranged",
+ "num-conv",
+ "powerfmt",
+ "serde_core",
+ "time-core",
+]
+
+[[package]]
+name = "time-core"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e1c906769ad99c88eaa54e728060edef082f8e358ff32030cb7c7d315e81109"
 
 [[package]]
 name = "tinystr"
@@ -4134,6 +4278,15 @@ name = "writeable"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
+
+[[package]]
+name = "yasna"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e17bb3549cc1321ae1296b9cdc2698e2b6cb1992adfa19a8c72e5b7a738f44cd"
+dependencies = [
+ "time",
+]
 
 [[package]]
 name = "yoke"

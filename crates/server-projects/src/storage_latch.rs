@@ -320,6 +320,25 @@ pub fn blocked(
     })
 }
 
+/// Return an unused automatic probe without clearing its login strikes.
+pub fn give_back_probe(
+    data_dir: &Path,
+    user: &str,
+    fingerprint: &str,
+    now: i64,
+) -> Result<(), Error> {
+    transaction(data_dir, |conn| {
+        if let Some(mut row) = read(conn, user)? {
+            if row.kind == "login" && row.probing && row.fingerprint == fingerprint {
+                row.until = now;
+                row.probing = false;
+                write(conn, user, &row)?;
+            }
+        }
+        Ok(())
+    })
+}
+
 /// What a status view shows about a held account (core `status`): the kind and when the next
 /// automatic attempt is due (epoch ms).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -404,6 +423,23 @@ mod tests {
         blocked(d, "u1", fp, now)
             .unwrap()
             .map(|h| (h.kind, h.retry_after))
+    }
+
+    #[test]
+    fn returning_a_probe_preserves_the_hold_and_its_strikes() {
+        let (d, fp) = fixture();
+        note(d.path(), "u1", &fp, LOGIN, 0).unwrap();
+        assert!(blocked(d.path(), "u1", &fp, LOGIN_PROBE_BASE_MS)
+            .unwrap()
+            .is_none());
+        give_back_probe(d.path(), "u1", &fp, LOGIN_PROBE_BASE_MS).unwrap();
+        assert!(blocked(d.path(), "u1", &fp, LOGIN_PROBE_BASE_MS)
+            .unwrap()
+            .is_none());
+        note(d.path(), "u1", &fp, LOGIN, LOGIN_PROBE_BASE_MS).unwrap();
+        assert!(blocked(d.path(), "u1", &fp, LOGIN_PROBE_BASE_MS * 3 - 1)
+            .unwrap()
+            .is_some());
     }
 
     #[test]

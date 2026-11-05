@@ -4,7 +4,9 @@
 //! tests/fixtures/framing-suggest-oracle.core-ref) must be Node's answer byte for byte: status, content
 //! type, cache control and body. The front's bridge to Node is a loopback stand-in that checks the
 //! per-start secret and the signed-in user and applies the oracle's fake decision (no model runs), so
-//! the body shows the message and chat id the front sent on. Synthetic data only.
+//! the body shows the message and chat id the front sent on. It refuses a body longer than the front
+//! core's bridge limit (the fixture's `bridgeBodyLimit`, read from that core) with that core's 400, so a
+//! public body the bridge could not take is caught. Synthetic data only.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -18,6 +20,7 @@ use noevia_server::config::Config;
 use noevia_server::serve::{serve, Limits};
 use serde_json::Value;
 use server_store::rusqlite::Connection;
+use sha2::Digest as _;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -59,7 +62,7 @@ struct Node {
     seen: Arc<Mutex<Vec<(String, String, String)>>>,
 }
 
-async fn node() -> Node {
+async fn node(limit: usize) -> Node {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let mode = Arc::new(Mutex::new(Mode::Decide));
@@ -109,6 +112,10 @@ async fn node() -> Node {
                         r#"{"error":"The suggestion could not be made."}"#.to_owned(),
                     ),
                     Mode::Garbage => (200, "[]".to_owned()),
+                    // Core's bridge: readJson(req, BRIDGE_BODY_LIMIT) throws 413, answered as its 400.
+                    Mode::Decide if body.len() > limit => {
+                        (400, r#"{"error":"invalid JSON"}"#.to_owned())
+                    }
                     Mode::Decide => {
                         // The oracle's fake decision, over the body as JSON.parse reads it.
                         let Some(raw::Top::Object(fields)) = raw::read(&body) else {
@@ -149,7 +156,12 @@ struct Front {
 }
 
 async fn front() -> Front {
-    let node = node().await;
+    front_with(noevia_server::chat_framing_suggest::BRIDGE_BODY_LIMIT).await
+}
+
+/// A front whose bridge takes bodies of at most `limit` bytes.
+async fn front_with(limit: usize) -> Front {
+    let node = node(limit).await;
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().to_path_buf();
     let c = Connection::open(server_store::db_path(&data)).unwrap();
@@ -248,6 +260,10 @@ fn header<'a>(head: &'a str, name: &str) -> Option<&'a str> {
     })
 }
 
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
 fn body_of(spec: &Value) -> Vec<u8> {
     if spec.is_null() {
         return Vec::new();
@@ -261,6 +277,13 @@ fn body_of(spec: &Value) -> Vec<u8> {
             .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
             .collect();
     }
+    if let Some(n) = spec.get("chatId").and_then(Value::as_u64) {
+        let byte = u8::from_str_radix(spec["byte"].as_str().unwrap(), 16).unwrap();
+        let mut out = br#"{"message":"m","chatId":""#.to_vec();
+        out.extend(std::iter::repeat_n(byte, n as usize));
+        out.extend_from_slice(br#""}"#);
+        return out;
+    }
     let n = spec["big"].as_u64().unwrap() as usize;
     format!("{{\"message\":\"{}\"}}", "a".repeat(n)).into_bytes()
 }
@@ -270,20 +293,42 @@ async fn every_oracle_case_is_nodes_answer_through_the_front() {
     let fx = fixture();
     assert_eq!(fx["v"], 1);
     let cases = fx["cases"].as_array().unwrap();
-    assert!(cases.len() >= 49, "{}", cases.len());
+    assert!(cases.len() >= 53, "{}", cases.len());
+    // The front core's own bridge limit: the one this front is built for.
+    let limit = usize::try_from(fx["bridgeBodyLimit"].as_u64().unwrap()).unwrap();
+    assert_eq!(
+        limit,
+        noevia_server::chat_framing_suggest::BRIDGE_BODY_LIMIT,
+        "the front core's bridge limit"
+    );
     let mut failures = Vec::new();
     for c in cases {
         // A fresh front per case: the budget is per process, as Node's was.
-        let f = front().await;
+        let f = front_with(limit).await;
         let id = c["id"].as_str().unwrap();
         for (i, step) in c["steps"].as_array().unwrap().iter().enumerate() {
             let method = step["method"].as_str().unwrap();
             let body = body_of(&step["body"]);
             let (status, head, got) = call(&f, method, PATH, &body, true, true).await;
             let node = &step["node"];
-            let want = base64::engine::general_purpose::STANDARD
-                .decode(node["body"].as_str().unwrap())
-                .unwrap();
+            // A long reply is recorded as its SHA-256 and length.
+            let (got, want) = match node["body"].as_str() {
+                Some(b64) => (
+                    got,
+                    base64::engine::general_purpose::STANDARD
+                        .decode(b64)
+                        .unwrap(),
+                ),
+                None => (
+                    format!("{} {}", got.len(), hex(&sha2::Sha256::digest(&got))).into_bytes(),
+                    format!(
+                        "{} {}",
+                        node["bodyLength"],
+                        node["bodySha256"].as_str().unwrap()
+                    )
+                    .into_bytes(),
+                ),
+            };
             let mut wrong = Vec::new();
             if u64::from(status) != node["status"].as_u64().unwrap() {
                 wrong.push(format!("status {status} != {}", node["status"]));

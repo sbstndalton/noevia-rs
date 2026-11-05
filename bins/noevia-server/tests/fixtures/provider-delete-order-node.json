@@ -1,0 +1,47 @@
+[
+  {
+    "failure": "none",
+    "status": 200,
+    "body": {
+      "ok": true,
+      "state": "disconnected"
+    },
+    "tokens": false,
+    "row": false,
+    "fallback": false,
+    "events": [
+      "tokens",
+      "row",
+      "fallback"
+    ]
+  },
+  {
+    "failure": "row",
+    "status": 502,
+    "body": {
+      "error": "ChatGPT sign-in failed."
+    },
+    "tokens": false,
+    "row": true,
+    "fallback": true,
+    "events": [
+      "tokens",
+      "row"
+    ]
+  },
+  {
+    "failure": "fallback",
+    "status": 502,
+    "body": {
+      "error": "ChatGPT sign-in failed."
+    },
+    "tokens": false,
+    "row": false,
+    "fallback": true,
+    "events": [
+      "tokens",
+      "row",
+      "fallback"
+    ]
+  }
+]
