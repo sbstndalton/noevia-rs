@@ -1839,3 +1839,61 @@ async fn the_front_advertises_the_reseal_beside_the_registry() {
     assert!(features.contains(&"rust-providers"));
     assert!(features.contains(&"rust-providers-reseal"));
 }
+
+#[tokio::test]
+async fn disconnect_order_and_partial_failures_match_real_core_handler() {
+    let cases: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/provider-delete-order-node.json")).unwrap();
+    for case in cases.as_array().unwrap() {
+        let root = tempfile::tempdir().unwrap();
+        let db = seed(root.path());
+        let f = front(root.path(), "1").await;
+        write_rows(
+            &private_path(&f, A),
+            &serde_json::json!([
+                {"id":"chatgpt-oauth","shared":false}
+            ]),
+        );
+        let projects = f.dir.join("users").join(A).join("projects.json");
+        std::fs::write(
+            &projects,
+            r#"{"projects":[{"id":"p","provider":"chatgpt-oauth","model":"synthetic"}]}"#,
+        )
+        .unwrap();
+        store_tokens(&db, A, "connected");
+        let failure = case["failure"].as_str().unwrap();
+        // A directory in place of the lock file refuses the precise writer immediately,
+        // preserving its input bytes. Synthetic I/O failures only; no engine or upstream.
+        let lock = match failure {
+            "row" => Some(private_path(&f, A).with_extension("json.lock")),
+            "fallback" => Some(projects.with_extension("json.lock")),
+            _ => None,
+        };
+        if let Some(lock) = &lock {
+            std::fs::create_dir(lock).unwrap();
+        }
+        let (status, body) = call(f.addr, "DELETE", "/api/providers/chatgpt", ADMIN, "").await;
+        assert_eq!(
+            u64::from(status),
+            case["status"].as_u64().unwrap(),
+            "{failure}"
+        );
+        assert_eq!(body, case["body"], "{failure}");
+        assert_eq!(
+            token_row(&db, A).is_some(),
+            case["tokens"].as_bool().unwrap(),
+            "{failure}"
+        );
+        assert_eq!(
+            !read_rows(&private_path(&f, A)).is_empty(),
+            case["row"].as_bool().unwrap(),
+            "{failure}"
+        );
+        let saved = j(&std::fs::read_to_string(&projects).unwrap());
+        assert_eq!(
+            saved["projects"][0].get("provider").is_some(),
+            case["fallback"].as_bool().unwrap(),
+            "{failure}"
+        );
+    }
+}

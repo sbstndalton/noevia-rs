@@ -48,6 +48,39 @@ fn normalise(text: &str) -> String {
     }
 }
 
+/// Keep every legacy byte of the Core oracle comparison. New native records additionally
+/// require explicit run attribution; only the random run id is normalised, like the record id.
+/// These cases admit no calibration, so their exact expected generation is zero.
+fn normalise_log(text: &str, native: bool) -> String {
+    text.lines()
+        .map(|line| {
+            let prefix = if native {
+                let row: Value = serde_json::from_str(line).unwrap();
+                let run = row["runId"]
+                    .as_str()
+                    .filter(|s| !s.is_empty())
+                    .expect("run attribution");
+                assert_eq!(row["runGeneration"], "0");
+                let suffix = format!(
+                    ",\"runId\":{},\"runGeneration\":\"0\"}}",
+                    serde_json::to_string(run).unwrap()
+                );
+                assert!(
+                    line.ends_with(&suffix),
+                    "run attribution is the required record suffix: {line}"
+                );
+                &line[..line.len() - suffix.len()]
+            } else {
+                line.strip_suffix('}').unwrap()
+            };
+            format!(
+                "{},\"runId\":\"run_X\",\"runGeneration\":\"0\"}}\n",
+                normalise(prefix)
+            )
+        })
+        .collect()
+}
+
 /// The text around the first place `a` differs from `b` (all of it when they are equal), so a failure
 /// shows the difference and not two whole answers.
 fn around_first_difference(a: &str, b: &str) -> String {
@@ -330,11 +363,14 @@ async fn every_recorded_core_answer_and_evidence_log_is_the_fronts() {
         }
         let log = std::fs::read_to_string(evidence_dir.join("evidence.jsonl")).ok();
         assert_eq!(
-            log.as_deref().map(|l| normalise(&l.replace(
-                &format!("http://127.0.0.1:{hf_port}"),
-                "https://huggingface.co"
-            ))),
-            expect["log"].as_str().map(normalise),
+            log.as_deref().map(|l| normalise_log(
+                &l.replace(
+                    &format!("http://127.0.0.1:{hf_port}"),
+                    "https://huggingface.co"
+                ),
+                true
+            )),
+            expect["log"].as_str().map(|l| normalise_log(l, false)),
             "{name}: the evidence log"
         );
         // The scripted router saw only the reads the work needs.
@@ -465,7 +501,7 @@ async fn the_front_is_the_only_writer_and_a_bad_inbox_entry_is_dropped_without_h
 }
 
 #[tokio::test]
-async fn signed_out_other_methods_and_the_recheck_are_not_the_fronts() {
+async fn signed_out_requests_are_refused_and_only_the_owned_methods_are_native() {
     let d = tempfile::tempdir().unwrap();
     let _db = seed_database(d.path());
     let (addr, stop) = start(
@@ -483,11 +519,24 @@ async fn signed_out_other_methods_and_the_recheck_are_not_the_fronts() {
     assert_eq!(s, 401);
     let (s, ..) = call(addr, "POST", "/api/models/evidence/import", None, b"{}").await;
     assert_eq!(s, 401);
-    // Node's: the other methods of both paths, and the recheck (an image probe that may load the model).
+    let (s, ..) = call(addr, "POST", "/api/models/evidence/recheck", None, b"{}").await;
+    assert_eq!(s, 401);
+    let (s, ..) = call(
+        addr,
+        "POST",
+        "/api/models/evidence/recheck",
+        Some(ADMIN),
+        b"{}",
+    )
+    .await;
+    assert_eq!(
+        s, 400,
+        "native recheck validates its body before reaching the dead engine"
+    );
+    // Node keeps the methods not owned by the evidence routes.
     for (m, p) in [
         ("POST", "/api/models/evidence"),
         ("GET", "/api/models/evidence/import"),
-        ("POST", "/api/models/evidence/recheck"),
         ("GET", "/api/models/evidence/recheck"),
     ] {
         let (s, ..) = call(addr, m, p, Some(ADMIN), b"{}").await;

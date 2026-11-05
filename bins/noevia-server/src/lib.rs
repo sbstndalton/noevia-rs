@@ -10,6 +10,7 @@ pub mod autotune_clear_routes;
 pub mod autotune_read_routes;
 pub mod autotune_resume_routes;
 pub mod autotune_settings_routes;
+pub mod autotune_untuned_routes;
 pub mod calibration_cancel_routes;
 pub mod calibration_routes;
 pub mod chat_activity;
@@ -23,7 +24,9 @@ pub mod code_net;
 pub mod config;
 pub mod connector_routes;
 pub mod decision_settings_routes;
+pub mod diary_backup;
 pub mod diary_routes;
+pub mod embedding_background;
 pub mod export_routes;
 pub mod extraction;
 pub mod feature_context;
@@ -47,6 +50,7 @@ pub mod mcp_egress;
 pub mod mcp_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_tools;
+pub mod model_assignments;
 pub mod model_downloads_read;
 pub mod model_kind;
 pub mod model_maint;
@@ -147,6 +151,12 @@ use std::sync::Arc;
 /// `/api/profile/diary-connectors[/{id}]`. It is the only writer of `diary_connectors` and reads the
 /// running-exchange set Node publishes (`diary-conversations/active.json`). Node refuses them (core
 /// rust-diary-routes.cjs `RUST_DIARY_ROUTES_OWNED`), so the web supervisor pairs them.
+///
+/// `rust-diary-local-exchange`: this build answers `/api/diary/local-exchange` (every method; a POST
+/// relays the companion exchange, streamed or not). The model throttle chat shares and the inference
+/// maintenance gate it holds stay Node's: the front takes them with an inference-admission lease
+/// (`{ diaryExchange: { user } }`) that only a Core with that ask grants. Node refuses the route (core
+/// rust-diary-local-exchange.cjs `RUST_DIARY_LOCAL_EXCHANGE_OWNED`), so the web supervisor pairs them.
 ///
 /// `rust-model-reads`: this build answers `GET /api/models/capabilities` and `GET
 /// /api/models/hardware` (sbstndalton/noevia#2187), permanently and with no switch. Node refuses
@@ -272,6 +282,22 @@ use std::sync::Arc;
 /// the same lock file, so the web supervisor and the release assembly pair this capability with that
 /// Core in both directions.
 ///
+/// `rust-calibration-worker-v2`: this build runs the calibration job itself (sbstndalton/noevia#2303,
+/// src/model_maint/calibration_worker.rs): its launch under the maintenance hold, the run, its
+/// cancellation and evidence, `native-calibration-<hash>.json` and the boot recovery of a job a
+/// restart interrupted. Core then builds no public calibrator and does not recover the job at boot
+/// (core rust-calibration-routes.cjs `CALIBRATION_WORKER_OWNER`), so the web supervisor and the
+/// release assembly pair them in both directions. Generation 2: every load the job asks for is first
+/// decided by Core's own load refusal (`POST /internal/model-maintenance/load-refusal`, core
+/// model-load-refusal.cjs), so it pairs only with `noevia-calibration-worker-rust/2`.
+///
+/// `rust-preset-baseline`: this build is the preset reload baseline's one in-memory authority
+/// (port contract 2026-11-04 RS-1, model_maint/reload.rs `Guard`) and answers `POST
+/// /v1/preset-baseline/{session,begin,settle,invalidate,verdict,router-text}` on the project-store
+/// listener. A Core that opens a protocol-1 `session` writes the baseline only through it; until one
+/// does (an older Core), that Core writes the state file itself under the same lock, which this
+/// build re-reads on every use (shared mode), so no pairing is required in either direction.
+///
 /// `rust-project-storage`: this build writes to a user's connected storage for a project's
 /// lifecycle (sbstndalton/noevia#2191 round 3): a create stores its text files in the project's
 /// folder (#687) and the front runs the `sweep` jobs of its index outbox itself. Core then claims
@@ -334,6 +360,13 @@ use std::sync::Arc;
 /// file carries the start that runs it, so a restart's leftovers read as interrupted).
 ///
 /// `legacy-root-claim`: this binary exposes the filesystem-only legacy claim helper before server startup.
+/// `rust-budget-watch-v3`: this build runs the #697 memory watchdog (src/model_maint/budget_watch.rs, Core's
+/// `inference-budget-watch.cjs` moved): the sampling, the strikes, the idle baseline, the cooldown and the
+/// emergency unload through the inference gate. Core then does not start its own and answers only the
+/// maintenance state and the quarantine on `/internal/budget-watch` (core rust-budget-watch.cjs
+/// `BUDGET_WATCH_OWNER`), so the web supervisor and the release assembly pair them in both directions: a
+/// mixed pair would run two watchdogs, or none.
+///
 /// `rust-task-reads`: this build answers `/api/code/active` and the GETs of a project's Code and Browser
 /// state and task (task_routes.rs); Core refuses them (rust-task-reads.cjs) and offers the facts only it
 /// holds on the loopback bridge (rust-task-facts.cjs). The supervisor pairs them.
@@ -365,6 +398,8 @@ use std::sync::Arc;
 /// (NOEVIA_FRONT_CLIENT_IP=1), and Node believes that header only then, so a core release paired
 /// with a front that predates the strip cannot be handed a client-chosen address (#1578).
 pub const FEATURES: &[&str] = &[
+    "rust-diary-backup-worker",
+    "rust-embedding-background-v1",
     "client-address-header",
     "code-net-guard",
     "header-read-timeout",
@@ -378,7 +413,9 @@ pub const FEATURES: &[&str] = &[
     "rust-auth",
     "rust-diary",
     "rust-diary-routes",
+    "rust-diary-local-exchange",
     "rust-model-reads",
+    "rust-autotune-untuned",
     "rust-model-state-reads",
     "rust-autotune-settings",
     "rust-project-reads",
@@ -400,10 +437,13 @@ pub const FEATURES: &[&str] = &[
     "rust-offsite-backup",
     "rust-model-sizing",
     "rust-model-maintenance",
+    "rust-preset-baseline",
     "rust-autotune-cancel",
     "rust-calibration-cancel",
     "rust-calibration-routes",
+    "rust-calibration-worker-v2",
     "rust-model-manager-scan",
+    "rust-model-evidence-recheck",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",
@@ -446,8 +486,10 @@ pub const FEATURES: &[&str] = &[
     "rust-autotune-read",
     "rust-preset-read",
     "rust-idle-unload-read",
+    "rust-model-assignments",
     "rust-model-downloads-read",
     "rust-autotune-resume",
+    "rust-budget-watch-v3",
     #[cfg(feature = "rust-storage-reads")]
     "rust-connectors",
     // An account's deletion forgets the MCP sign-ins (rust-storage-reads) and the ChatGPT tokens
@@ -462,6 +504,10 @@ pub const FEATURES: &[&str] = &[
     "rust-chat-framing-suggest",
     "rust-chat-turn",
     "chat-activity",
+    // GET /api/chats/search (#1450) and GET /api/chats/{chatId}/export (#1471): core rust-chat-search.cjs
+    // `RUST_CHAT_SEARCH_OWNED` and rust-chat-export.cjs `RUST_CHAT_EXPORT_OWNED` refuse them.
+    "rust-chat-search",
+    "rust-chat-export",
     #[cfg(feature = "rust-reasoning-settings")]
     "rust-reasoning-settings",
     #[cfg(feature = "rust-routing-mode")]

@@ -21,10 +21,11 @@
 //! sidecar. The sidecar stays the single writer of the Diary: the front passes on the request the
 //! signed-in person made, signed for that person, and nothing else.
 //!
-//! Not moved: `POST /api/diary/local-exchange`. It takes the 60 per minute model throttle that chat
-//! shares and, from index.cjs `handleRequest`, the inference maintenance gate for the whole life of
-//! its response, so that a preset apply or a tune waits for it; both live in Node's memory
-//! (llamacpp-manager `maintenance`, `llmRateLimited`) beside the chat turn that takes them.
+//! * `/api/diary/local-exchange`: the companion exchange (crates/server-diary `local_exchange`). What
+//!   it holds while it runs, the 60 per minute model throttle chat shares and the inference
+//!   maintenance gate (so that a preset apply or a tune waits for it), stays Node's memory: the front
+//!   takes it with an inference-admission lease (crates/engine-admission `Ask::DiaryExchange`) after
+//!   the add-on gate and the method and before the body, and gives it back when the response ends.
 
 use crate::{identity, reply, App};
 use axum::body::Body;
@@ -87,6 +88,27 @@ fn into_response(answer: server_diary::Reply) -> Response<Body> {
             }
             res
         }
+        ReplyBody::Events(stream) => {
+            // diary-stream.cjs's head. `Connection: keep-alive` is the connection's (HTTP/1.1), not
+            // a header this front repeats.
+            let mut res = Response::new(Body::new(stream));
+            *res.status_mut() = status;
+            let h = res.headers_mut();
+            reply::security_headers(h, true);
+            h.insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("text/event-stream"),
+            );
+            h.insert(
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("no-cache, no-transform"),
+            );
+            h.insert(
+                header::HeaderName::from_static("x-accel-buffering"),
+                HeaderValue::from_static("no"),
+            );
+            res
+        }
         ReplyBody::Zip(stream) => {
             let mut res = Response::new(Body::new(stream));
             *res.status_mut() = status;
@@ -113,6 +135,9 @@ pub struct NativeLatch {
 }
 
 impl StorageLatch for NativeLatch {
+    fn clear(&self, user_id: &str) {
+        let _ = server_projects::storage_latch::clear(&self.data_dir, user_id);
+    }
     fn held(&self, user_id: &str, storage: &StorageIdentity<'_>) -> Option<Held> {
         let fingerprint = server_projects::storage_latch::fingerprint(
             storage.kind,
@@ -192,6 +217,7 @@ pub async fn serve(
         CONNECTORS => return connectors(app, conn, req, path, None).await,
         "/api/diary" => return bare(app, req, path).await,
         "/api/diary/context" => return context(app, conn, req, path).await,
+        "/api/diary/local-exchange" => return local_exchange(app, req, path).await,
         _ => {}
     }
     if let Some(id) = path
@@ -217,30 +243,30 @@ async fn bare(app: &Arc<App>, req: Request<Body>, path: String) -> Response<Body
     }
 }
 
-/// The routes crates/server-diary answers from the sidecar and the person's files.
-async fn proxied(app: &Arc<App>, req: Request<Body>, path: String, route: Route) -> Response<Body> {
-    let (parts, body) = req.into_parts();
-    let (id, data_dir, _now) = match gate(app, &parts, &path).await {
-        Ok(g) => g,
-        Err(rejection) => return *rejection,
-    };
+/// The request's [`Ctx`] after the gate and the legacy claim, or the answer to send.
+async fn diary_ctx(
+    app: &Arc<App>,
+    parts: &Parts,
+    path: &str,
+) -> Result<(Arc<server_diary::Diary>, Ctx, server_diary::Request), Box<Response<Body>>> {
+    let (id, data_dir, _now) = gate(app, parts, path).await?;
     if let Some(refused) = claim_pending(&data_dir, &id.user.id).await {
-        return refused;
+        return Err(Box::new(refused));
     }
     let Some(diary) = app.diary.clone() else {
-        return unavailable();
+        return Err(Box::new(unavailable()));
     };
     let layer = Arc::clone(&app.identity);
     let store = match tokio::task::spawn_blocking(move || layer.store_blocking()).await {
         Ok(Ok(store)) => store,
-        _ => return unavailable(),
+        _ => return Err(Box::new(unavailable())),
     };
     let request = server_diary::Request {
         method: parts.method.as_str().to_owned(),
         target: parts
             .uri
             .path_and_query()
-            .map_or_else(|| path.clone(), |pq| pq.as_str().to_owned()),
+            .map_or_else(|| path.to_owned(), |pq| pq.as_str().to_owned()),
         content_length: parts
             .headers
             .get(header::CONTENT_LENGTH)
@@ -256,7 +282,76 @@ async fn proxied(app: &Arc<App>, req: Request<Body>, path: String, route: Route)
         start_id: app.config.start_id.clone(),
         data_dir,
     };
-    into_response(diary.serve(route, ctx, request, body).await)
+    Ok((diary, ctx, request))
+}
+
+/// `/api/diary/local-exchange`, every method (core answered its own 405 after the add-on gate).
+/// Core took the inference gate before authentication for any non-GET; here nothing is held for a
+/// request that is not signed in, has no add-on, or is not a POST.
+async fn local_exchange(app: &Arc<App>, req: Request<Body>, path: String) -> Response<Body> {
+    let (parts, body) = req.into_parts();
+    let (diary, ctx, request) = match diary_ctx(app, &parts, &path).await {
+        Ok(found) => found,
+        Err(answer) => return *answer,
+    };
+    let admission = app.config.research.admission();
+    let user = ctx.identity.user.id.clone();
+    let admit = async move {
+        // A browser that goes away while this waits drops the request to Node, which holds nothing then.
+        match admission
+            .enter(
+                engine_admission::Ask::DiaryExchange { user: &user },
+                &model_stream::Cancel::new(),
+            )
+            .await
+        {
+            Ok(lease) => {
+                let lost = lease.lost().clone();
+                Ok(server_diary::ExchangeHold {
+                    keep: Box::new(lease),
+                    lost: Box::pin(async move { lost.cancelled().await }),
+                })
+            }
+            Err(refused) => Err(server_diary::ExchangeRefusal {
+                status: refused.status,
+                message: refused.message,
+            }),
+        }
+    };
+    into_response(diary.local_exchange(ctx, request, body, admit).await)
+}
+
+/// The routes crates/server-diary answers from the sidecar and the person's files.
+async fn proxied(app: &Arc<App>, req: Request<Body>, path: String, route: Route) -> Response<Body> {
+    let (parts, body) = req.into_parts();
+    let (diary, ctx, request) = match diary_ctx(app, &parts, &path).await {
+        Ok(found) => found,
+        Err(answer) => return *answer,
+    };
+    let retry = parts
+        .headers
+        .get_all("x-cowork-storage-retry")
+        .iter()
+        .count()
+        == 1
+        && parts
+            .headers
+            .get("x-cowork-storage-retry")
+            .is_some_and(|v| v == "1");
+    if matches!(
+        route,
+        Route::Files
+            | Route::File
+            | Route::WorkspaceTrash
+            | Route::History
+            | Route::ExternalSources
+            | Route::ExternalImport
+            | Route::Edit
+    ) {
+        into_response(diary.serve_proxy(route, ctx, request, body, retry).await)
+    } else {
+        into_response(diary.serve(route, ctx, request, body).await)
+    }
 }
 
 /// `GET` and `POST /api/diary/context`.

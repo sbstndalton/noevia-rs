@@ -76,8 +76,8 @@ pub enum Native {
     Export,
     /// GET /api/providers/chatgpt (M6, NOEVIA_RUST_CHATGPT_STATUS): crates/server-chatgpt-status.
     ChatgptStatus,
-    /// The Diary routes that are only a proxy and a policy (sbstndalton/noevia#2185):
-    /// crates/server-diary. The others stay Node's (contracts/http/README.md).
+    /// The Diary routes the web client names (sbstndalton/noevia#2185, #2206, and the local
+    /// exchange): crates/server-diary. The others stay Node's (contracts/http/README.md).
     Diary,
     /// GET /api/models/capabilities and GET /api/models/hardware (sbstndalton/noevia#2187), and GET
     /// /api/models/estimate and GET /api/models/preset/suggest (#2189): model_routes.rs and
@@ -185,11 +185,18 @@ const CHATGPT_OAUTH: &[&str] = &[
 
 /// The routes [`Native::Diary`] implements (diary_routes.rs). `/api/diary/history`, which core's
 /// handler shares with `today`, is not a route the web client names and stays Node's, as do `files`,
-/// `file`, `workspace-trash`, `external-sources` and `entries/edit`, and
-/// `POST /api/diary/local-exchange` (contracts/http/README.md says why). Paths marked `methods` in
+/// `file`, `workspace-trash`, `external-sources` and `entries/edit`. `/api/diary/local-exchange` is
+/// the front's; the throttle and gate it holds are Node's, by lease (contracts/http/README.md). Paths marked `methods` in
 /// routes.toml answer only those; the rest answer every method and give their own 405 after the
 /// add-on gate, as core does.
 pub(crate) const DIARY_ROUTES: &[&str] = &[
+    "/api/diary/files",
+    "/api/diary/file",
+    "/api/diary/workspace-trash",
+    "/api/diary/history",
+    "/api/diary/external-sources",
+    "/api/diary/external-sources/import",
+    "/api/diary/entries/edit",
     "/api/diary/source",
     "/api/diary/today",
     "/api/diary/storage-import",
@@ -203,6 +210,8 @@ pub(crate) const DIARY_ROUTES: &[&str] = &[
     "/api/diary/storage-status",
     "/api/profile/diary-connectors",
     "/api/profile/diary-connectors/{*}",
+    // The local exchange (capability rust-diary-local-exchange):
+    "/api/diary/local-exchange",
 ];
 
 /// The route [`Native::RoutingDefault`] implements (GET only; routes.toml).
@@ -266,6 +275,8 @@ const PROJECT_ROUTES: &[&str] = &[
     PROJECT_BROWSER_TASK,
     server_projects::import::ROUTE,
     WORKSPACE,
+    CHAT_SEARCH,
+    CHAT_EXPORT,
 ];
 
 /// Deep research (every method; routes.toml), the front's under `rust-research` (sbstndalton/noevia#2218);
@@ -288,6 +299,12 @@ pub(crate) const PROJECT_BROWSER_TASK: &str = "/api/projects/{projectId}/browser
 /// (sbstndalton/noevia#2191 close-out); Node refuses the GET (core rust-workspace.cjs
 /// `RUST_WORKSPACE_OWNED`). It runs the delete-old-chats sweep and the orphan-context cleanup too.
 pub(crate) const WORKSPACE: &str = "/api/workspace";
+
+/// The transcript search (#1450) and one chat's Markdown download (#1471), GET only (routes.toml), the
+/// front's under `rust-chat-search` and `rust-chat-export`; Node refuses both GETs (core
+/// rust-chat-search.cjs, rust-chat-export.cjs). Other methods and spellings stay Node's (its 404).
+pub(crate) const CHAT_SEARCH: &str = "/api/chats/search";
+pub(crate) const CHAT_EXPORT: &str = "/api/chats/{chatId}/export";
 
 /// A project upload, folder sync and folder-import plan (POST only; routes.toml), the front's under
 /// `rust-project-source-work` (sbstndalton/noevia#2191 round 8), and a source job's status (GET only),
@@ -338,8 +355,8 @@ pub(crate) const PROJECT_DOCUMENT_PAGES: &str = "/api/projects/{id}/documents/pa
 pub(crate) const PROJECT_ORIGINAL: &str = "/api/projects/{id}/{*}/original";
 
 /// Settings → Data → Delete old chats, its preview (GET only; routes.toml): a read of the chat
-/// lists, answered by crates/server-projects `retention` (sbstndalton/noevia#1071). `PUT`, which
-/// deletes chats, is Node's.
+/// lists, answered by crates/server-projects `retention`. PUT persists the setting and awaits
+/// bounded tombstoned deletion under the same retention lock as the hourly sweep.
 const ACCOUNT_RETENTION: &str = "/api/account/retention";
 
 /// A chat's last context meter (GET only; routes.toml): a read, always answered here
@@ -466,6 +483,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
                 || crate::model_maint::ROUTES.contains(&p)
                 || p == crate::autotune_resume_routes::PATH
                 || p == crate::autotune_cancel_routes::PATH
+                || p == crate::autotune_untuned_routes::PATH
                 || p == crate::autotune_clear_routes::PATH
                 || p == crate::calibration_cancel_routes::PATH
                 || p == crate::calibration_routes::PATH) =>
@@ -1032,7 +1050,6 @@ mod tests {
         for (m, p) in [
             ("HEAD", "/api/admin/web-address"),
             ("POST", "/api/profile/sharing"),
-            ("PUT", "/api/account/retention"),
             ("HEAD", "/api/auth/session"),
             ("GET", "/api/auth/login/password"),
             ("GET", "/api/profile/features"),
@@ -1206,13 +1223,18 @@ mod tests {
     }
 
     #[test]
-    fn the_retention_preview_is_rusts_for_get_only() {
+    fn the_retention_setting_is_rusts_for_get_and_put() {
         let off = Switches::default();
-        assert_eq!(
-            dispatch_under("GET", "/api/account/retention", off),
-            Some(Native::Projects)
-        );
-        for m in ["PUT", "POST", "DELETE"] {
+        // GET previews and PUT persists the setting natively (the settings-writers move); Node keeps
+        // every other method.
+        for m in ["GET", "PUT"] {
+            assert_eq!(
+                dispatch_under(m, "/api/account/retention", off),
+                Some(Native::Projects),
+                "{m}"
+            );
+        }
+        for m in ["POST", "DELETE"] {
             assert_eq!(
                 dispatch_under(m, "/api/account/retention", off),
                 None,
@@ -1277,6 +1299,11 @@ mod tests {
         // Every method: the proxies, `/api/diary` itself, the storage status and the connector
         // endpoint (which answers its own 405 before authentication).
         for p in [
+            "/api/diary/files",
+            "/api/diary/file",
+            "/api/diary/workspace-trash",
+            "/api/diary/history",
+            "/api/diary/external-sources",
             "/api/diary/source",
             "/api/diary/today",
             "/api/diary/storage-import",
@@ -1285,6 +1312,7 @@ mod tests {
             "/api/diary",
             "/api/diary-connector",
             "/api/diary/storage-status",
+            "/api/diary/local-exchange",
         ] {
             assert!(DIARY_ROUTES.contains(&p), "{p}");
             for m in EVERY {
@@ -1293,6 +1321,8 @@ mod tests {
         }
         // The methods core mounted and no more: another method is Node's (its unknown-path answer).
         for (p, methods) in [
+            ("/api/diary/entries/edit", &["POST"][..]),
+            ("/api/diary/external-sources/import", &["POST"][..]),
             ("/api/diary/context", &["GET", "POST"][..]),
             ("/api/diary/exchanges", &["GET", "POST"][..]),
             ("/api/profile/diary-connectors", &["GET", "POST"][..]),
@@ -1308,16 +1338,10 @@ mod tests {
         }
         assert!(crate::FEATURES.contains(&"rust-diary"));
         assert!(crate::FEATURES.contains(&"rust-diary-routes"));
-        // Node keeps the local exchange (the model throttle chat shares and the inference gate, both
-        // Node memory), and what the web client never names is not in the route table at all.
+        assert!(crate::FEATURES.contains(&"rust-diary-local-exchange"));
+        // What the web client never names is not in the route table at all.
         for p in [
-            "/api/diary/local-exchange",
-            "/api/diary/history",
-            "/api/diary/files",
-            "/api/diary/file",
-            "/api/diary/workspace-trash",
-            "/api/diary/entries/edit",
-            "/api/diary/external-sources",
+            "/api/diary/local-exchangex",
             "/api/diary/sourcex",
             "/api/diary/source/x",
         ] {
@@ -1349,6 +1373,13 @@ mod tests {
             );
         }
         assert!(crate::FEATURES.contains(&"rust-autotune-clear"));
+        for method in ["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"] {
+            assert_eq!(
+                dispatch_under(method, crate::autotune_untuned_routes::PATH, on),
+                Some(Native::Models)
+            );
+        }
+        assert!(crate::FEATURES.contains(&"rust-autotune-untuned"));
         assert!(crate::FEATURES.contains(&"rust-model-reads"));
         assert!(crate::FEATURES.contains(&"rust-model-sizing"));
         assert!(crate::FEATURES.contains(&"rust-model-state-reads"));
@@ -1387,9 +1418,7 @@ mod tests {
         }
         for p in [
             "/api/model-manager",
-            "/api/models/autotune/untuned",
             "/api/models/delete",
-            "/api/models/evidence/recheck",
             "/api/models/load",
             "/api/models/machines",
             "/api/models/preset/",
@@ -1406,7 +1435,7 @@ mod tests {
         }
         assert!(crate::FEATURES.contains(&"rust-model-downloads-read"));
         assert!(crate::FEATURES.contains(&"rust-preset-read"));
-        // Native model routes and methods listed in the contract.
+        // All native model routes appear in the contract with exactly their owned methods.
         let rust: Vec<_> = ROUTES
             .iter()
             .filter(|r| {
@@ -1419,11 +1448,13 @@ mod tests {
             rust,
             vec![
                 (crate::model_manager_scan::PATH, &["GET"][..]),
+                (crate::model_assignments::PATH, &["GET"][..]),
                 (crate::autotune_read_routes::PATH, &["GET"][..]),
                 (crate::autotune_cancel_routes::PATH, &[][..]),
                 (crate::autotune_clear_routes::PATH, &[][..]),
                 (crate::autotune_resume_routes::PATH, &[][..]),
                 (crate::autotune_settings_routes::PATH, &[][..]),
+                (crate::autotune_untuned_routes::PATH, &[][..]),
                 (crate::calibration_routes::PATH, &[][..]),
                 (crate::calibration_cancel_routes::PATH, &[][..]),
                 (crate::model_routes::CAPABILITIES, &["GET"][..]),
@@ -1431,6 +1462,7 @@ mod tests {
                 (crate::model_sizing::ESTIMATE, &["GET"][..]),
                 (crate::model_maint::EVIDENCE, &["GET"][..]),
                 (crate::model_maint::EVIDENCE_IMPORT, &["POST"][..]),
+                (crate::model_maint::evidence_recheck::PATH, &["POST"][..]),
                 (crate::model_routes::HARDWARE, &["GET"][..]),
                 (crate::model_state_routes::BUDGET, &["GET"][..]),
                 (crate::idle_unload_read::PATH, &["GET"][..]),
@@ -1523,6 +1555,21 @@ mod tests {
             assert_eq!(dispatch_under(m, &p, on), None, "{m} {p}");
         }
         assert!(crate::FEATURES.contains(&"rust-task-reads"));
+    }
+
+    #[test]
+    fn evidence_recheck_is_native_only_for_post() {
+        assert_eq!(
+            dispatch("POST", crate::model_maint::evidence_recheck::PATH),
+            Some(Native::Models)
+        );
+        for m in ["GET", "HEAD", "PUT", "DELETE", "OPTIONS"] {
+            assert_eq!(
+                dispatch(m, crate::model_maint::evidence_recheck::PATH),
+                None
+            );
+        }
+        assert!(crate::FEATURES.contains(&"rust-model-evidence-recheck"));
     }
 
     #[test]

@@ -19,6 +19,8 @@ js-json = { path = "../js-json" }
 policy-leaves = { path = "../policy-leaves" }
 rand_core = { version = "0.6", features = ["getrandom"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+rustls = { version = "=0.23.45", default-features = false, features = ["std", "ring", "tls12"] }
+serde_json = { version = "1", features = ["raw_value"] }
 server-auth = { path = "../server-auth" }
 server-storage-reads = { path = "../server-storage-reads" }
 server-store = { path = "../server-store" }
@@ -29,6 +31,8 @@ url = "2.5"
 zeroize = { version = "1.9", default-features = false, features = ["alloc"] }
 
 [dev-dependencies]
+rcgen = "0.13"
+tokio-rustls = { version = "=0.26.6", default-features = false, features = ["ring", "tls12"] }
 hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
 http-body-util = { version = "0.1", features = ["channel"] }
