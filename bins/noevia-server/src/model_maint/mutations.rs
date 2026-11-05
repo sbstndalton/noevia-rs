@@ -499,7 +499,7 @@ async fn remove_section(app: &App, name: &str, hold: &super::Hold) -> bool {
     }
     let mut path = format!(
         "/api/v1/sections/{}",
-        crate::storage_integration_routes::encode_uri_component(name)
+        crate::gdrive::encode_uri_component(name)
     );
     let revision = listing.get("revision").cloned().unwrap_or(Value::Null);
     let revision_text = revision.to_string();
@@ -514,9 +514,7 @@ async fn remove_section(app: &App, name: &str, hold: &super::Hold) -> bool {
             return false;
         };
         path.push_str("?baseRevision=");
-        path.push_str(&crate::storage_integration_routes::encode_uri_component(
-            &revision,
-        ));
+        path.push_str(&crate::gdrive::encode_uri_component(&revision));
     }
     loader
         .mutation_request(

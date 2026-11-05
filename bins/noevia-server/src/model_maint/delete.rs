@@ -4,7 +4,7 @@
 //! interpreted here: the existing native router remains the file/deletion authority.
 
 use super::router::{Fault, Reply, Router};
-use crate::storage_integration_routes::encode_uri_component;
+use crate::gdrive::encode_uri_component;
 use std::time::Duration;
 
 /// Core's removeModel result: the last delete reply and whether either unload succeeded.

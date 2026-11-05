@@ -1312,7 +1312,7 @@ mod tests {
     /// sbstndalton/noevia#2187: the two configuration-only model reads are the front's, GET only, and
     /// (#2189) the two sizing reads; every other method and every other model route stays Node's.
     #[test]
-    fn model_reads_are_rusts_for_get_only_and_the_other_model_routes_stay_nodes() {
+    fn model_reads_and_mutations_use_their_native_methods() {
         let on = Switches::default();
         for p in crate::model_routes::ROUTES {
             assert_eq!(
@@ -1390,6 +1390,18 @@ mod tests {
                 assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
             }
         }
+        for path in [
+            crate::model_maint::mutations::PULL,
+            crate::model_maint::mutations::DELETE,
+        ] {
+            for method in ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] {
+                assert_eq!(
+                    dispatch_under(method, path, on),
+                    (method == "POST").then_some(Native::Models)
+                );
+                assert_eq!(dispatch_under(method, &format!("{path}/"), on), None);
+            }
+        }
         assert!(crate::FEATURES.contains(&"rust-model-downloads-read"));
         assert!(crate::FEATURES.contains(&"rust-preset-read"));
         // All native model routes appear in the contract with exactly their owned methods.
@@ -1415,6 +1427,8 @@ mod tests {
                 (crate::calibration_routes::PATH, &[][..]),
                 (crate::calibration_cancel_routes::PATH, &[][..]),
                 (crate::model_routes::CAPABILITIES, &["GET"][..]),
+                (crate::model_maint::mutations::DELETE, &["POST"][..]),
+                (crate::model_maint::mutations::PULL, &["POST"][..]),
                 (crate::model_downloads_read::PATH, &["GET"][..]),
                 (crate::model_sizing::ESTIMATE, &["GET"][..]),
                 (crate::model_maint::EVIDENCE, &["GET"][..]),
