@@ -937,6 +937,76 @@ mod tests {
         assert!(!local.load(Ordering::Acquire));
     }
 
+    #[tokio::test]
+    async fn review_background_renewal_loss_never_reacquires_even_if_a_new_grant_would_succeed() {
+        use axum::{
+            body::Body,
+            http::{Request, Response},
+        };
+        use std::sync::atomic::AtomicUsize;
+        for status in [404u16, 503u16] {
+            let acquires = Arc::new(AtomicUsize::new(0));
+            let renews = Arc::new(AtomicUsize::new(0));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let (a, r) = (Arc::clone(&acquires), Arc::clone(&renews));
+            let app = axum::Router::new().fallback(move |request: Request<Body>| {
+                let (a, r) = (Arc::clone(&a), Arc::clone(&r));
+                async move {
+                    let (code, body) = if request.uri().path().ends_with("/renew") {
+                        r.fetch_add(1, Ordering::SeqCst);
+                        (status, "{}".to_owned())
+                    } else if request.method() == "POST" {
+                        a.fetch_add(1, Ordering::SeqCst);
+                        (
+                            201,
+                            serde_json::json!({"hold":"b".repeat(32),"idle_ttl_ms":3000})
+                                .to_string(),
+                        )
+                    } else {
+                        (204, String::new())
+                    };
+                    Response::builder()
+                        .status(code)
+                        .body(Body::from(body))
+                        .unwrap()
+                }
+            });
+            tokio::spawn(async move {
+                let _ = axum::serve(listener, app).await;
+            });
+            let local = Arc::new(AtomicBool::new(true));
+            let hold = Hold::gated(
+                Arc::clone(&local),
+                Arc::new(Gate::new(&format!("http://{addr}"), Some("synthetic")).unwrap()),
+                Grant {
+                    token: "a".repeat(32),
+                    idle_ttl: Duration::from_secs(3),
+                    asked: Instant::now(),
+                },
+                "synthetic",
+                Instant::now() + Duration::from_secs(30),
+            );
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while !hold.lost() {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .unwrap();
+            assert_eq!(renews.load(Ordering::SeqCst), 1);
+            assert_eq!(
+                acquires.load(Ordering::SeqCst),
+                0,
+                "a fresh grant cannot resume old work"
+            );
+            assert!(!hold.excluded());
+            assert!(!hold.confirm(Duration::ZERO).await);
+            hold.release().await;
+            assert!(!local.load(Ordering::SeqCst));
+        }
+    }
+
     #[test]
     fn tokens_are_32_lowercase_hex() {
         assert!(is_token("0123456789abcdef0123456789abcdef"));
