@@ -13,6 +13,28 @@ use std::{
 use support::*;
 const PULL: &str = "/api/models/pull";
 const DELETE: &str = "/api/models/delete";
+
+#[tokio::test]
+async fn retired_lemonade_kind_refuses_startup_before_any_mutation_owner_call() {
+    let up = upstream().await;
+    up.set(|_| panic!("retired compatibility must never execute a mutation"));
+    let d = tempfile::tempdir().unwrap();
+    seed(d.path());
+    let env = std::collections::HashMap::from([
+        ("NOEVIA_LEGACY_UPSTREAM", up.base()),
+        ("UI_DATA_DIR", d.path().display().to_string()),
+        ("PUBLIC_ORIGIN", "http://synthetic.invalid".into()),
+        ("MODEL_MANAGER_KIND", "Lemonade".into()),
+        ("MODEL_MANAGER_BASE_URL", up.base()),
+    ]);
+    let refusal = match noevia_server::config::Config::from_lookup(|key| env.get(key).cloned()) {
+        Err(message) => message,
+        Ok(_) => panic!("retired kind must refuse the native front"),
+    };
+    assert!(refusal.contains("not available with the Lemonade model manager"));
+    assert!(up.seen().is_empty());
+}
+
 fn state(r: &Seen) -> Option<(Duration, String)> {
     if r.path.starts_with("/internal/model-mutations/") {
         return Some(match r.path.as_str() {
