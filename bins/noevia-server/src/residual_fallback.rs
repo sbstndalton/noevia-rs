@@ -62,6 +62,14 @@ pub(crate) fn classify(method: &str, path: &str) -> Option<Kind> {
     {
         return Some(Kind::Missing);
     }
+    // The single-segment model wildcard also covers two substantive Node handlers.
+    // All other paths and methods that land on it reach the static fallback.
+    if routes::route_for(path).is_some_and(|r| r.path == "/api/models/{*}")
+        && !((path == "/api/models/pull" && method == "POST")
+            || (path == "/api/models/mtp-artifact" && method == "GET"))
+    {
+        return Some(Kind::Missing);
+    }
     if path.starts_with("/api/models/") && routes::route_for(path).is_none() {
         return Some(Kind::Missing);
     }
