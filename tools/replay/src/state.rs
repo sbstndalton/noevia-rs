@@ -19,7 +19,12 @@ pub fn compare(expected: &Value, actual: &Value) -> Vec<crate::diff::Diff> {
         &mut Bindings::new("<origin>"),
         &mut diffs,
     );
-    // A length mismatch in the file tree says nothing about which path differs; name them.
+    // A length mismatch in the file tree says nothing about which path differs; name them. Only a
+    // comparison that already failed gets this note, so it never changes the verdict (placeholders
+    // such as `<id:1>` match by binding, not literally).
+    if diffs.is_empty() {
+        return diffs;
+    }
     if let (Some(Value::Array(want)), Some(Value::Array(got))) =
         (expected.get("files"), actual.get("files"))
     {
@@ -40,6 +45,26 @@ pub fn compare(expected: &Value, actual: &Value) -> Vec<crate::diff::Diff> {
         }
     }
     diffs
+}
+
+/// Applies the directory-entry-only ignores (patterns ending in `/`) to a snapshot read from a file,
+/// so an `--expect-state` reference recorded without them is projected the same way as the live
+/// snapshot. Only directory entries are dropped; every path inside them stays.
+pub fn drop_dir_entries(snapshot: &mut Value, ignore: &[String]) {
+    let entry_only: Vec<&String> = ignore.iter().filter(|i| i.ends_with('/')).collect();
+    if entry_only.is_empty() {
+        return;
+    }
+    if let Some(Value::Array(files)) = snapshot.get_mut("files") {
+        files.retain(|f| {
+            let Some(path) = f.as_str() else { return true };
+            !(path.ends_with('/')
+                && entry_only.iter().any(|i| {
+                    path == i.as_str()
+                        || (i.starts_with('*') && path.ends_with(i.trim_start_matches('*')))
+                }))
+        });
+    }
 }
 
 pub fn snapshot(dir: &Path, db_name: &str, ignore: &[String], b: &Bindings) -> Value {
@@ -287,6 +312,30 @@ mod tests {
         );
         assert_eq!(at(&s, "db"), &Value::Null);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_path_note_never_fails_a_matching_comparison() {
+        let expected = json!({"files": ["users/<id:1>/"]});
+        assert!(compare(&expected, &json!({"files": ["users/alice/"]})).is_empty());
+        let diffs = compare(&expected, &json!({"files": ["users/alice/", "extra.json"]}));
+        assert!(diffs.iter().any(|d| d.at == "state/files (paths)"));
+    }
+
+    #[test]
+    fn a_reference_without_the_directory_ignore_is_projected_the_same_way() {
+        let ignore = vec!["*/rag/".to_string()];
+        let mut expected = json!({"files": ["users/", "users/<id:1>/", "users/<id:1>/rag/"]});
+        drop_dir_entries(&mut expected, &ignore);
+        assert!(compare(&expected, &json!({"files": ["users/", "users/alice/"]})).is_empty());
+        // A database inside the directory is still compared: missing it on either side fails.
+        let mut with_db = json!({"files": ["users/", "users/<id:1>/", "users/<id:1>/rag/", "users/<id:1>/rag/p.db"]});
+        drop_dir_entries(&mut with_db, &ignore);
+        assert_eq!(
+            with_db,
+            json!({"files": ["users/", "users/<id:1>/", "users/<id:1>/rag/p.db"]})
+        );
+        assert!(!compare(&with_db, &json!({"files": ["users/", "users/alice/"]})).is_empty());
     }
 
     #[test]
