@@ -1693,7 +1693,13 @@ async fn a_lease_lost_while_the_client_stalls_its_upload_is_the_gates_503_at_onc
     let head = String::from_utf8_lossy(&got);
     assert!(head.starts_with("HTTP/1.1 503"), "{head}");
     assert!(
-        !f.core.seen.lock().unwrap().hits.iter().any(|h| h.contains("/internal/chat/")),
+        !f.core
+            .seen
+            .lock()
+            .unwrap()
+            .hits
+            .iter()
+            .any(|h| h.contains("/internal/chat/")),
         "a turn reached Core"
     );
 }
