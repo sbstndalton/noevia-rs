@@ -318,7 +318,7 @@ impl Authority {
         self.take(origin, requested, reason, false)
     }
 
-    pub(super) fn try_recovery(
+    pub(crate) fn try_recovery(
         &self,
         requested: Option<Duration>,
         reason: &str,
@@ -326,10 +326,10 @@ impl Authority {
         self.take(Origin::Front, requested, reason, true)
     }
 
-    pub(super) fn recovery_pending(&self) -> bool {
+    pub(crate) fn recovery_pending(&self) -> bool {
         self.lock().recovery_required
     }
-    pub(super) fn recovery_ticket(&self) -> Option<String> {
+    pub(crate) fn recovery_ticket(&self) -> Option<String> {
         self.lock().recovery_ticket.clone()
     }
     pub(crate) fn require_recovery(&self) -> String {
@@ -345,7 +345,7 @@ impl Authority {
         }
         state.recovery_ticket.clone().unwrap_or_default()
     }
-    pub(super) fn complete_recovery(&self, ticket: &str) -> bool {
+    pub(crate) fn complete_recovery(&self, ticket: &str) -> bool {
         let mut state = self.lock();
         if state.recovery_ticket.as_deref() != Some(ticket) {
             return false;

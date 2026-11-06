@@ -180,7 +180,7 @@ pub struct Maint {
     pub(crate) card_base: String,
     pub(crate) source_client: reqwest::Client,
     /// Node's own maintenance gate: the arbiter when the inference gate gives no hold.
-    node: Arc<node_lease::NodeLeases>,
+    pub(crate) node: Arc<node_lease::NodeLeases>,
     /// The maintenance lease authority (row J): the one table of who holds the engine.
     pub authority: lease::Authority,
     /// The inbox entries that failed or could not be removed, by file name.
@@ -415,7 +415,7 @@ impl Maint {
     /// Delta review P1: a fresh hold for a recovery after a lost one, taken while the caller keeps this
     /// process's local admission closed itself (its admission fence): no new reservation, and the hold
     /// never clears local admission when it ends. The lost hold is never reused.
-    pub(super) async fn acquire_recovery(
+    pub(crate) async fn acquire_recovery(
         &self,
         reason: &str,
         lease_for: Duration,
