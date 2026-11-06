@@ -795,8 +795,25 @@ async fn unknown_launch_retains_running_owner_and_shared_incident() {
     r.commit(w, 1, &interrupted(), &json!({})).await;
     r.actor.lock().unwrap().launch = Mode::Down;
     assert_eq!(r.post(RESUME, r#"{"confirmPause":true}"#).await.0, 503);
-    assert_eq!(r.disk()["job"]["status"], "running", "unknown is not refusal");
-    assert_eq!(store_at(r.f.store, "attach", &json!({"base":BASE,"available":true}).to_string()).await.0, 409);
+    assert_eq!(
+        r.disk()["job"]["status"],
+        "running",
+        "unknown is not refusal"
+    );
+    assert!(
+        r.f.app.config.maint.authority.held_by_front(),
+        "shared incident must exclude ordinary admission"
+    );
+    assert_eq!(
+        store_at(
+            r.f.store,
+            "attach",
+            &json!({"base":BASE,"available":true}).to_string()
+        )
+        .await
+        .0,
+        409
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -815,12 +832,101 @@ async fn cancelled_preparation_keeps_exclusion_until_remote_terminal_receipt() {
             } else { (Duration::from_millis(500), reply("200 OK", "{}").1) }
         });
         let worker = Arc::clone(&auto);
-        let caller = tokio::spawn(async move { worker.call("resume/prepare", &json!({"token":token,"stage":stage,"selectors":[]})).await });
-        r.up.wait_for(&format!("/internal/autotune-actor/{stage}"), 1).await;
-        caller.abort(); let _ = caller.await;
+        let caller = tokio::spawn(async move {
+            worker
+                .call(
+                    "resume/prepare",
+                    &json!({"token":token,"stage":stage,"selectors":[]}),
+                )
+                .await
+        });
+        r.up.wait_for(&format!("/internal/autotune-actor/{stage}"), 1)
+            .await;
+        caller.abort();
+        let _ = caller.await;
         tokio::time::sleep(Duration::from_millis(50)).await;
-        assert_eq!(store_at(r.f.store, "start", &json!({"writer":w,"op":"begin"}).to_string()).await.0, 409, "caller drop released unsettled effect");
+        assert_eq!(
+            store_at(
+                r.f.store,
+                "start",
+                &json!({"writer":w,"op":"begin"}).to_string()
+            )
+            .await
+            .0,
+            409,
+            "caller drop released unsettled effect"
+        );
         tokio::time::sleep(Duration::from_millis(600)).await;
-        assert_eq!(store_at(r.f.store, "start", &json!({"writer":w,"op":"begin"}).to_string()).await.0, 200, "terminal receipt did not settle");
+        assert_eq!(
+            store_at(
+                r.f.store,
+                "start",
+                &json!({"writer":w,"op":"begin"}).to_string()
+            )
+            .await
+            .0,
+            200,
+            "terminal receipt did not settle"
+        );
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn accepted_launch_with_response_past_deadline_keeps_incident_and_owner() {
+    let r = rig(None).await;
+    let a = r.attach().await;
+    let w = a["writer"].as_str().unwrap();
+    r.commit(w, 1, &interrupted(), &json!({})).await;
+    // Acceptance is observed before the response; the remote effect remains outstanding across
+    // the front's 15s launch deadline. No real engine or model is involved.
+    let accepted = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let observed = Arc::clone(&accepted);
+    r.up.set(move |req| {
+        if req.path.ends_with("/launch") {
+            observed.store(true, std::sync::atomic::Ordering::SeqCst);
+            (Duration::from_secs(16), reply("200 OK", r#"{"launched":true}"#).1)
+        } else if req.path.ends_with("/outside") {
+            reply("200 OK", r#"{"revision":"r1","allowBelowQ5Kv":false,"models":{"m":{"configured":true,"system":false}}}"#)
+        } else if req.path.ends_with("/listing") {
+            reply("200 OK", r#"{"models":[{"index":0,"system":false,"modelListed":true,"baseListed":false}]}"#)
+        } else { reply("200 OK", r#"{"identities":[]}"#) }
+    });
+    let auto = Arc::clone(&r.f.app.config.autotune);
+    let facts = auto.call("resume/facts", &json!({})).await.unwrap();
+    let token = facts.1.get("token").as_str().unwrap();
+    assert!(auto
+        .call(
+            "resume/commit",
+            &json!({"token":token,"plan":{"kind":"launch","reset":[]}})
+        )
+        .await
+        .is_none());
+    assert!(accepted.load(std::sync::atomic::Ordering::SeqCst));
+    assert_eq!(r.disk()["job"]["status"], "running");
+    assert!(r.f.app.config.maint.authority.held_by_front());
+    assert_eq!(
+        store_at(
+            r.f.store,
+            "start",
+            &json!({"writer":w,"op":"begin"}).to_string()
+        )
+        .await
+        .0,
+        409
+    );
+    assert_eq!(
+        store_at(
+            r.f.store,
+            "attach",
+            &json!({"base":BASE,"available":true}).to_string()
+        )
+        .await
+        .0,
+        409
+    );
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    assert!(
+        r.f.app.config.maint.authority.held_by_front(),
+        "late response is not reconciliation"
+    );
 }

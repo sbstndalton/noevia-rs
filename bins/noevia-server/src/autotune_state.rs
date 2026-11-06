@@ -11,8 +11,8 @@
 //!
 //! No lock is held across an await: the owner is a synchronous state machine, called from the
 //! blocking pool (it writes the state file), and every call to the actor is made between owner calls.
-//! A hold the owner takes for an operation (a preparation) is released by a guard if the caller's
-//! future is dropped at any await.
+//! A detached task retains preparation custody when its public caller disappears. Only a terminal
+//! actor receipt releases exclusion; unknown delivery keeps the hold and the shared recovery incident.
 use crate::research_routes::Research;
 use js_json::{wtf16, JValue};
 use server_projects::autotune_state::{Answer, Outside, Owner, Stage};
@@ -59,7 +59,8 @@ fn text(v: &JValue) -> String {
     wtf16::stringify(v).unwrap_or_else(|| "null".into())
 }
 
-/// Releases a preparation's hold if its future is dropped before it settles.
+/// Custody before dispatch and during terminal settlement. Unknown delivery disarms release while
+/// retaining the owner's hold under the shared recovery incident.
 struct PrepGuard {
     auto: Arc<Autotune>,
     id: u64,
@@ -79,7 +80,11 @@ impl Drop for PrepGuard {
 }
 
 impl Autotune {
-    pub fn new(dir: &Path, research: Arc<Research>, authority: crate::model_maint::lease::Authority) -> Self {
+    pub fn new(
+        dir: &Path,
+        research: Arc<Research>,
+        authority: crate::model_maint::lease::Authority,
+    ) -> Self {
         Self {
             owner: Owner::new(dir),
             research,
@@ -260,7 +265,11 @@ impl Autotune {
         let ask = ask.clone();
         // Dropping the public caller never drops custody of an issued actor effect.
         let task = tokio::spawn(async move { me.resume_prepare_owned(&ask).await });
-        tokio::time::timeout(PREPARE, task).await.ok().and_then(Result::ok).unwrap_or_else(unavailable)
+        tokio::time::timeout(PREPARE, task)
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .unwrap_or_else(unavailable)
     }
 
     async fn resume_prepare_owned(self: &Arc<Self>, ask: &JValue) -> Answer {
@@ -338,7 +347,8 @@ impl Autotune {
         .await;
         // No authenticated terminal receipt: preserve the preparation hold and J's incident.
         // A request deadline is not evidence that the remote reload stopped.
-        if !matches!(&gathered, Ok(Some((200, r))) if r.get("recoveryRequired").as_bool() != Some(true)) {
+        if !matches!(&gathered, Ok(Some((200, r))) if r.get("recoveryRequired").as_bool() != Some(true))
+        {
             self.authority.require_recovery();
             guard.disarm();
             return unavailable();
@@ -413,9 +423,11 @@ impl Autotune {
                 ("history", launch.history.clone()),
             ]);
             match self.actor("launch", body, LAUNCH).await {
-                Some((200, r)) if r.get("launched").as_bool() == Some(true) => {},
+                Some((200, r)) if r.get("launched").as_bool() == Some(true) => {}
                 Some((200, r)) if r.get("launched").as_bool() == Some(false) => {
-                    let _ = self.blocking(move |me| me.owner.launch_failed(&launch)).await;
+                    let _ = self
+                        .blocking(move |me| me.owner.launch_failed(&launch))
+                        .await;
                     return unavailable();
                 }
                 _ => {
@@ -561,7 +573,11 @@ mod cancellation_tests {
                 ..Default::default()
             })
             .unwrap();
-            let auto = Arc::new(Autotune::new(d.path(), Arc::new(research), crate::model_maint::lease::Authority::new()));
+            let auto = Arc::new(Autotune::new(
+                d.path(),
+                Arc::new(research),
+                crate::model_maint::lease::Authority::new(),
+            ));
             let attached = auto
                 .owner
                 .attach("native-autotune-0123456789abcdef.json", true)

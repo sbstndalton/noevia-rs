@@ -1122,8 +1122,14 @@ fn racing_attach_and_start_never_both_admit() {
     for _ in 0..2000 {
         let d = tempfile::tempdir().unwrap();
         let o = Owner::new(d.path());
-        let req = |a: &str, open: bool, n: u64| parse(&format!(r#"{{"actor":"{a}","open":{open},"incarnation":{n},"base":"{}","available":true}}"#, base()));
-        let a = "a".repeat(32); let b = "b".repeat(32);
+        let req = |a: &str, open: bool, n: u64| {
+            parse(&format!(
+                r#"{{"actor":"{a}","open":{open},"incarnation":{n},"base":"{}","available":true}}"#,
+                base()
+            ))
+        };
+        let a = "a".repeat(32);
+        let b = "b".repeat(32);
         o.attach_actor(&req(&a, true, 0));
         let first = o.attach_actor(&req(&a, false, 1));
         let start = JValue::obj([("writer", first.1.get("writer").clone())]);
@@ -1131,7 +1137,10 @@ fn racing_attach_and_start_never_both_admit() {
         let attach = req(&b, false, 2);
         let barrier = std::sync::Barrier::new(2);
         std::thread::scope(|s| {
-            let task = s.spawn(|| { barrier.wait(); o.start_hold(&start, true).0 });
+            let task = s.spawn(|| {
+                barrier.wait();
+                o.start_hold(&start, true).0
+            });
             barrier.wait();
             let attached = o.attach_actor(&attach).0;
             assert_ne!((attached, task.join().unwrap()), (200, 200));

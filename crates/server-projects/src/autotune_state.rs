@@ -362,8 +362,15 @@ impl Owner {
         self.attach_locked(&mut guard, base, available)
     }
 
-    fn attach_locked(&self, guard: &mut Option<Bound>, base: &str, available: bool) -> Result<JValue, Fault> {
-        if !is_base(base) { return Err(Fault::State); }
+    fn attach_locked(
+        &self,
+        guard: &mut Option<Bound>,
+        base: &str,
+        available: bool,
+    ) -> Result<JValue, Fault> {
+        if !is_base(base) {
+            return Err(Fault::State);
+        }
         let path = self.dir.join(base);
         let rebinding = guard.as_ref().is_some_and(|b| b.path != path);
         if rebinding {
