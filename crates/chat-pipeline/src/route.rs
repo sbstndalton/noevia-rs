@@ -476,8 +476,8 @@ async fn decide_inner(
         Some("lemonade") => Some(def),
         other => other,
     });
-    let wants_auto = project.map_or(true, |p| p.routing.as_deref() == Some("auto"))
-        && project_provider.map_or(true, |p| p.is_empty() || p == def)
+    let wants_auto = project.is_none_or(|p| p.routing.as_deref() == Some("auto"))
+        && project_provider.is_none_or(|p| p.is_empty() || p == def)
         && t.roles_first.is_some();
     let mut route_target: Option<(Route, Option<ProviderRow>, Settings)> = None;
     if wants_auto {
