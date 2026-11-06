@@ -737,7 +737,17 @@ pub fn router_with_app(
             }),
         );
     }
-<<<<<<< HEAD
+    // Deep research's sibling: the chat's tool runtime (Node) runs its MCP tool calls here (mcp_exec.rs).
+    {
+        let (store, app) = (store.clone(), app.clone());
+        router = router.route(
+            "/v1/mcp/call",
+            post(move |headers: HeaderMap, raw: Bytes| {
+                let (store, app) = (store.clone(), app.clone());
+                async move { mcp_call(store, app, headers, raw).await }
+            }),
+        );
+    }
     // Port contract S9 (re-review 1ed3a14): Node's store move and delete revoke the chat's grant
     // and advance its revocation epoch before the change and again after it, whatever the outcome,
     // so every grant redeem orders strictly before or after them.
@@ -749,18 +759,6 @@ pub fn router_with_app(
                 async move { revoking_chat_change(app, store, request, next).await }
             },
         ));
-=======
-    // Deep research's sibling: the chat's tool runtime (Node) runs its MCP tool calls here (mcp_exec.rs).
-    {
-        let (store, app) = (store.clone(), app.clone());
-        router = router.route(
-            "/v1/mcp/call",
-            post(move |headers: HeaderMap, raw: Bytes| {
-                let (store, app) = (store.clone(), app.clone());
-                async move { mcp_call(store, app, headers, raw).await }
-            }),
-        );
->>>>>>> origin/move/research-execution-l
     }
     router
 }
