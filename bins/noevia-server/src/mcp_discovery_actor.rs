@@ -280,8 +280,6 @@ struct State {
     inflight: Option<watch::Receiver<Done>>,
     generation: u64,
     epoch: u64,
-    preparation: u64,
-    observed: u64,
 }
 
 /// The discovery actor. Hold it in an `Arc`.
@@ -290,6 +288,11 @@ pub struct Actor<B: Backend> {
     timing: Timing,
     incarnation: String,
     state: Mutex<State>,
+    /// One preparation at a time: the configuration read, the credential read, the final signal read and the
+    /// acceptance of what they saw. Ordering by request start is not ordering by observation, so a later
+    /// starter could read an older table and still be accepted after a newer observation published; here the
+    /// observation order IS the acceptance order. Never held across a listing or a wait.
+    prepare: tokio::sync::Mutex<()>,
     /// This actor's own `Arc` (a run is a spawned task that owns one).
     pub(crate) me: std::sync::Weak<Actor<B>>,
 }
@@ -348,9 +351,8 @@ impl<B: Backend> Actor<B> {
                 inflight: None,
                 generation: 0,
                 epoch: 0,
-                preparation: 0,
-                observed: 0,
             }),
+            prepare: tokio::sync::Mutex::new(()),
         })
     }
 
@@ -397,12 +399,9 @@ impl<B: Backend> Actor<B> {
     /// `discoverMcpTools(force)`.
     pub async fn discover(self: &Arc<Self>, mut force: bool) -> Result<Arc<Snapshot>, Unavailable> {
         loop {
-            // Fence preparation before its first await, independently of the listing epoch.
-            let preparation = {
-                let mut st = self.lock();
-                st.preparation += 1;
-                st.preparation
-            };
+            // Preparation and acceptance are one critical section (see `prepare`): what is read is accepted before
+            // anyone else reads, so no observation can be accepted after a newer one.
+            let preparing = self.prepare.lock().await;
             let (signal, servers) = self.backend.configuration().await.ok_or(Unavailable)?;
             let credentials = self.credential_key(&servers).await;
             if self.backend.directory_signal().await != signal {
@@ -416,10 +415,6 @@ impl<B: Backend> Actor<B> {
             };
             let (waiting, start) = {
                 let mut st = self.lock();
-                if preparation < st.observed {
-                    return Err(Unavailable);
-                }
-                st.observed = preparation;
                 let changed = st.synced_with.as_ref().is_some_and(|seen| *seen != signal)
                     || st
                         .discovered_with
@@ -470,6 +465,7 @@ impl<B: Backend> Actor<B> {
                     (None, Some((tx, rx, st.epoch)))
                 }
             };
+            drop(preparing);
             if let Some(rx) = waiting {
                 let outcome = wait(rx).await;
                 if force {

@@ -85,6 +85,11 @@ struct Script {
     no_token: bool,
     diary_write: bool,
     preparation: Mutex<Option<PreparationPause>>,
+    /// Pauses a configuration read before it reads (a request reserved its place and has not looked yet).
+    config_pause: Mutex<Option<PreparationPause>>,
+    /// Pauses the actor's final signal read after it captured its result (its continuation has not resumed).
+    signal_pause: Mutex<Option<PreparationPause>>,
+    config_reads: std::sync::atomic::AtomicUsize,
     gate: tokio::sync::watch::Sender<bool>,
 }
 
@@ -178,8 +183,25 @@ impl Backend for Script {
         }
         out
     }
+    async fn configuration(&self) -> Option<(String, Vec<ServerSpec>)> {
+        self.config_reads.fetch_add(1, Ordering::SeqCst);
+        let pause = self.config_pause.lock().unwrap().take();
+        if let Some((entered, resume)) = pause {
+            entered.notify_one();
+            resume.notified().await;
+        }
+        // One read of the table: its identity and the servers in it.
+        let signal = serde_json::to_string(&self.world.lock().unwrap().dir).unwrap();
+        Some((signal, self.servers().await))
+    }
     async fn directory_signal(&self) -> String {
-        serde_json::to_string(&self.world.lock().unwrap().dir).unwrap()
+        let signal = serde_json::to_string(&self.world.lock().unwrap().dir).unwrap();
+        let pause = self.signal_pause.lock().unwrap().take();
+        if let Some((entered, resume)) = pause {
+            entered.notify_one();
+            resume.notified().await;
+        }
+        signal
     }
     async fn account_ready(&self, user: &str) -> Ready {
         let w = self.world.lock().unwrap();
@@ -497,6 +519,9 @@ async fn every_scenario_core_ran_is_replayed_by_the_actor() {
             no_token: sc["noToken"].as_bool().unwrap(),
             diary_write: sc["diaryMcpWrite"].as_bool().unwrap(),
             preparation: Mutex::new(None),
+            config_pause: Mutex::new(None),
+            signal_pause: Mutex::new(None),
+            config_reads: std::sync::atomic::AtomicUsize::new(0),
             gate,
         });
         let actor = Actor::new(Arc::clone(&backend), Timing::default());
@@ -661,6 +686,9 @@ async fn a_caller_that_goes_away_neither_cancels_nor_duplicates_the_run() {
         no_token: false,
         diary_write: false,
         preparation: Mutex::new(None),
+        config_pause: Mutex::new(None),
+        signal_pause: Mutex::new(None),
+        config_reads: std::sync::atomic::AtomicUsize::new(0),
         gate,
     });
     let actor = Actor::new(Arc::clone(&backend), Timing::default());
@@ -762,6 +790,9 @@ async fn a_server_whose_listing_panics_is_a_failed_server_not_a_missing_run() {
         no_token: false,
         diary_write: false,
         preparation: Mutex::new(None),
+        config_pause: Mutex::new(None),
+        signal_pause: Mutex::new(None),
+        config_reads: std::sync::atomic::AtomicUsize::new(0),
         gate,
     }));
     let actor = Actor::new(backend, Timing::default());
@@ -795,6 +826,9 @@ fn directory_backend(open: bool) -> Arc<Script> {
         no_token: false,
         diary_write: false,
         preparation: Mutex::new(None),
+        config_pause: Mutex::new(None),
+        signal_pause: Mutex::new(None),
+        config_reads: std::sync::atomic::AtomicUsize::new(0),
         gate,
     })
 }
@@ -889,25 +923,57 @@ async fn front_restart_scopes_equal_generations_to_distinct_incarnations() {
     assert!(a.get("incarnation").as_str().is_some_and(|s| !s.is_empty()));
 }
 
+/// A request that reserved its place first but has not read the table yet, and a later request: the later one
+/// must not read (and be accepted on) an older table than the earlier one publishes. The reads are serialized with
+/// the acceptance of what they saw, so observation order is acceptance order.
 #[tokio::test]
-async fn preparation_before_epoch_cannot_resurrect_removed_last_server() {
+async fn a_later_starter_cannot_be_accepted_on_an_older_table_than_an_earlier_one_publishes() {
     let backend = directory_backend(true);
     let actor = Actor::new(backend.clone(), Timing::default());
     let entered = Arc::new(tokio::sync::Notify::new());
     let resume = Arc::new(tokio::sync::Notify::new());
-    *backend.preparation.lock().unwrap() = Some((entered.clone(), resume.clone()));
-    let old = tokio::spawn({
+    *backend.config_pause.lock().unwrap() = Some((entered.clone(), resume.clone()));
+    // A reserves its place and pauses before its configuration read executes.
+    let a = tokio::spawn({
         let actor = actor.clone();
         async move { actor.discover(false).await }
     });
-    entered.notified().await; // no-auth server list captured, before actor state lock
+    entered.notified().await;
+    // B starts second and arms the pause at the end of its own final signal read.
+    let b_entered = Arc::new(tokio::sync::Notify::new());
+    let b_resume = Arc::new(tokio::sync::Notify::new());
+    *backend.signal_pause.lock().unwrap() = Some((b_entered.clone(), b_resume.clone()));
+    let b = tokio::spawn({
+        let actor = actor.clone();
+        async move { actor.discover(false).await }
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+    assert_eq!(
+        backend.config_reads.load(Ordering::SeqCst),
+        1,
+        "B read the table while A, which reserved first, had not: its observation could be older than A's"
+    );
+    // The last directory server is removed; A resumes and sees the new, empty table.
     backend.world.lock().unwrap().dir.clear();
-    let empty = actor.discover(false).await.unwrap();
-    assert!(empty.offers.is_empty());
     resume.notify_one();
-    let late = old.await.unwrap();
-    assert!(late.is_err() || late.unwrap().offers.is_empty());
+    // B's final signal read is paused after it captured its result (the table is empty by now: it read after A).
+    tokio::time::timeout(std::time::Duration::from_secs(2), b_entered.notified())
+        .await
+        .unwrap();
+    b_resume.notify_one();
+    let a_out = a.await.unwrap().unwrap();
+    let b_out = b.await.unwrap().unwrap();
+    assert!(a_out.offers.is_empty() && b_out.offers.is_empty());
+    assert!(
+        b_out.generation >= a_out.generation,
+        "a later observation never carries an older generation"
+    );
     assert!(actor.current().offers.is_empty());
+    assert!(
+        backend.world.lock().unwrap().calls.is_empty(),
+        "nothing was listed for the removed server"
+    );
+    assert_eq!(backend.config_reads.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
