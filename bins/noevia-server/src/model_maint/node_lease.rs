@@ -26,6 +26,8 @@ pub const MAX_LEASE: Duration = Duration::from_secs(24 * 3600);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LeaseGrant {
     pub id: String,
+    /// Node latch generation, required to complete its captured recovery obligations.
+    pub generation: u64,
     pub ttl: Duration,
     pub renew_every: Duration,
     /// Node ends the lease this long after granting it, however often it is renewed.
@@ -175,6 +177,7 @@ impl NodeLeases {
                 };
                 Ok(LeaseGrant {
                     id: id.to_owned(),
+                    generation: body.get("generation").and_then(Value::as_u64).unwrap_or(0),
                     ttl: Duration::from_millis(ttl),
                     renew_every: ms("renewMs")?,
                     hard: ms("hardMs")?,
@@ -230,17 +233,36 @@ impl NodeLeases {
         }
     }
 
-    /// Transfer exclusion to/from the recovery-required Node barrier, with acknowledgement.
+    /// Establish the recovery-required Node barrier, with acknowledgement.
     pub(super) async fn recovery_barrier(&self, required: bool, ticket: &str) -> bool {
-        let method = if required {
-            reqwest::Method::POST
-        } else {
-            reqwest::Method::DELETE
-        };
-        let Some(req) = self.request(method, &format!("{PATH}/recovery/{ticket}")) else {
+        // Completion requires a fresh repair proof; never send the old unscoped DELETE.
+        if !required {
+            return false;
+        }
+        let Some(req) = self.request(reqwest::Method::POST, &format!("{PATH}/recovery/{ticket}"))
+        else {
             return false;
         };
         req.send().await.is_ok_and(|r| r.status().as_u16() == 204)
+    }
+
+    pub(super) async fn complete_recovery(
+        &self,
+        ticket: &str,
+        lease: &str,
+        generation: u64,
+    ) -> bool {
+        let Some(req) = self.request(
+            reqwest::Method::DELETE,
+            &format!("{PATH}/recovery/{ticket}"),
+        ) else {
+            return false;
+        };
+        req.header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(serde_json::json!({"lease":lease,"generation":generation}).to_string())
+            .send()
+            .await
+            .is_ok_and(|r| r.status().as_u16() == 204)
     }
 
     /// Core's idempotent DELETE acknowledges that its local admission is clear.
