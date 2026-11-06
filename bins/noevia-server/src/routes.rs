@@ -1618,6 +1618,7 @@ mod tests {
         assert!(crate::FEATURES.contains(&"rust-tool-approvals"));
         assert!(crate::FEATURES.contains(&"rust-approval-registry"));
         assert!(crate::FEATURES.contains(&crate::approval_registry::PROTOCOL));
+        assert!(crate::FEATURES.contains(&"rust-mcp-exec"));
     }
 
     /// sbstndalton/noevia#2191 round 9: a project's configuration, its instruction skills and a

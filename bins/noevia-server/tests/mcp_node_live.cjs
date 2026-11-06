@@ -35,7 +35,7 @@ const mcpUrl = env('MCP_URL');
 
 const broker = core('project-store-client.cjs').createClient({ port: Number(env('STORE_PORT')), token: env('STORE_TOKEN') });
 const credentials = core('rust-mcp-credentials.cjs').createMcpCredentials({ broker, dataDir: env('DATA_DIR') });
-const { createMcpWiring, createCredentialOriginCheck } = core('mcp-wiring.cjs');
+const { createMcpWiring } = core('mcp-wiring.cjs');
 
 const scope = new AsyncLocalStorage();
 const wiring = createMcpWiring({
@@ -47,13 +47,12 @@ const wiring = createMcpWiring({
   mcpOAuth: credentials.oauth,
   mcpKeys: credentials.keys,
   directoryUrlAllowed: async () => true,
-  credentialOriginAllowed: createCredentialOriginCheck(''),
   scope,
-  storageFor: () => ({ kind: 'local' }),
   isWriteTool: () => false,
   internal: { mintToken: () => 'unused' },
   internalKey: 'unused',
-  reduceToolResult: (text) => ({ text, reduced: false }),
+  // Running the tool is the front's (sbstndalton/noevia#2218): the real chat-time client of its executor.
+  mcpExec: (request, opts) => broker.mcpCall(request, opts),
   env: {},
   logger: { log() {}, warn() {} },
 });
@@ -94,8 +93,8 @@ async function directoryPhase() {
   const w = createMcpWiring({
     servers: [], manifest: [], mcp: core('mcp.cjs'), bindBoxes: ({ manifest }) => manifest.map((m) => m), directoryMcp,
     mcpOAuth: credentials.oauth, mcpKeys: credentials.keys, directoryUrlAllowed: async () => true,
-    credentialOriginAllowed: createCredentialOriginCheck(''), scope, storageFor: () => ({ kind: 'local' }), isWriteTool: () => false,
-    internal: { mintToken: () => 'unused' }, internalKey: 'unused', reduceToolResult: (text) => ({ text, reduced: false }), env: {},
+    scope, isWriteTool: () => false, mcpExec: (request, opts) => broker.mcpCall(request, opts),
+    internal: { mintToken: () => 'unused' }, internalKey: 'unused', env: {},
     logger: { log() {}, warn() {} },
   });
   const emit = (o) => process.stdout.write(`${JSON.stringify(o)}\n`);

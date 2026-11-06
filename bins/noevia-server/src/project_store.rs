@@ -737,6 +737,7 @@ pub fn router_with_app(
             }),
         );
     }
+<<<<<<< HEAD
     // Port contract S9 (re-review 1ed3a14): Node's store move and delete revoke the chat's grant
     // and advance its revocation epoch before the change and again after it, whatever the outcome,
     // so every grant redeem orders strictly before or after them.
@@ -748,6 +749,18 @@ pub fn router_with_app(
                 async move { revoking_chat_change(app, store, request, next).await }
             },
         ));
+=======
+    // Deep research's sibling: the chat's tool runtime (Node) runs its MCP tool calls here (mcp_exec.rs).
+    {
+        let (store, app) = (store.clone(), app.clone());
+        router = router.route(
+            "/v1/mcp/call",
+            post(move |headers: HeaderMap, raw: Bytes| {
+                let (store, app) = (store.clone(), app.clone());
+                async move { mcp_call(store, app, headers, raw).await }
+            }),
+        );
+>>>>>>> origin/move/research-execution-l
     }
     router
 }
@@ -1060,6 +1073,27 @@ async fn mcp_op(
     #[cfg(not(feature = "rust-storage-reads"))]
     {
         let _ = (app, raw, op);
+        error(StatusCode::NOT_FOUND, "not found")
+    }
+}
+
+/// `POST /v1/mcp/call` (mcp_exec.rs `internal_call`), behind the store secret.
+async fn mcp_call(
+    store: Store,
+    app: Option<Arc<crate::App>>,
+    headers: HeaderMap,
+    raw: Bytes,
+) -> Response<Body> {
+    if !authorised(&store, &headers) {
+        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+    }
+    #[cfg(feature = "rust-storage-reads")]
+    {
+        crate::mcp_exec::internal_call(app, &raw).await
+    }
+    #[cfg(not(feature = "rust-storage-reads"))]
+    {
+        let _ = (app, raw);
         error(StatusCode::NOT_FOUND, "not found")
     }
 }

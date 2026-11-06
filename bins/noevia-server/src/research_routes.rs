@@ -42,18 +42,32 @@ use std::time::Duration;
 const BODY_LIMIT: usize = 1024 * 1024;
 /// core research-model.cjs: `AbortSignal.timeout(120000)` per model step.
 const STEP_DEADLINE: Duration = Duration::from_secs(120);
+#[cfg(feature = "rust-storage-reads")]
 const TOOL_DEADLINE: Duration = Duration::from_secs(120);
 const RETRIEVE_DEADLINE: Duration = Duration::from_secs(60);
-const AVAILABILITY_DEADLINE: Duration = Duration::from_secs(5);
+const FACTS_DEADLINE: Duration = Duration::from_secs(5);
 const MAX_BRIDGE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_STAGE_BYTES: usize = 4096;
 const FEATURE_SETTING: &str = "feature:deepResearch";
 const MACHINES_KEY: &str = "inference:machines";
 const PICK_MODEL: &str =
     "Pick a Smart model for Auto routing, or load a model, before starting research.";
-/// Node's loopback bridge did not answer, or refused the front (its 404 for a wrong secret too): not the same as
-/// "no search tools here", which Node says in its own words.
+/// Node's loopback bridge did not answer, or refused the front (its 404 for a wrong secret too): the project's
+/// sources (and the last loaded model) are still read there.
 const NODE_UNREACHABLE: &str = "Research could not reach this server's search tools (the bridge to the web process did not answer). Try again shortly; if it keeps happening, ask an administrator to check the server.";
+/// core index.cjs's reasons the search tools are not offered, in its words.
+const NO_WEB_SEARCH_TOOLBOX: &str =
+    "Deep research needs the web-search toolbox (tavily_search and tavily_extract) on this server.";
+#[cfg(feature = "rust-storage-reads")]
+const WEB_SEARCH_NOT_CONFIGURED: &str = "Web search is not configured on this server.";
+/// The published catalogue (Node's discovery) is not current: the same "try again" the toolbox pages give.
+#[cfg(feature = "rust-storage-reads")]
+const TOOLS_PREPARING: &str = "Research's search tools are being prepared. Try again in a moment.";
+#[cfg(feature = "rust-storage-reads")]
+const TOOLS_TIMEOUT: &str = "Research's search tool did not answer in time.";
+const ONLY_SEARCH_TOOLS: &str = "Research asks only for its two search tools.";
+/// core rust-research-bridge.cjs `TEXT_CAP`.
+const TOOL_TEXT_CAP: usize = 8192;
 const STREAM_FAILED: &str = "The model stream failed. Check the backend before retrying.";
 
 /// What the process's environment says, as core index.cjs reads it.
@@ -499,11 +513,7 @@ impl Account {
     }
 
     /// The Smart role's model, `project_model` and Node's last loaded one, in core's order.
-    async fn local_model(
-        &self,
-        project_model: Option<&str>,
-        last_loaded: Option<&str>,
-    ) -> Option<String> {
+    async fn local_model(&self, project_model: Option<&str>) -> Option<String> {
         let dir = server_projects::store::user_dir(&self.data_dir, &self.user).ok()?;
         let roles = blocking(move || crate::auto_roles_routes::read_roles(&dir))
             .await
@@ -513,9 +523,11 @@ impl Account {
             .as_str()
             .filter(|s| !s.is_empty())
             .map(str::to_owned);
-        smart
-            .or_else(|| project_model.map(str::to_owned))
-            .or_else(|| last_loaded.map(str::to_owned))
+        match smart.or_else(|| project_model.map(str::to_owned)) {
+            Some(model) => Some(model),
+            // Only now does the model Node last loaded matter.
+            None => self.last_loaded().await,
+        }
     }
 
     /// core inference-machines.cjs `chatTarget('smart')`, from the row Node owns. Unreadable: this machine.
@@ -539,43 +551,80 @@ impl Account {
         machines::chat_target(row.as_deref(), "smart")
     }
 
-    /// What only Node knows: whether its search tools are offered, and the model it last loaded.
-    async fn node_facts(&self) -> (Option<String>, Option<String>) {
+    /// What only Node knows: the model it last loaded (a fallback when no Smart role or project model is set).
+    async fn last_loaded(&self) -> Option<String> {
         let body = json!({ "user": self.user });
         let r = self
             .research()
             .bridge_call(
-                "/internal/research/availability",
+                "/internal/research/facts",
                 &body,
-                AVAILABILITY_DEADLINE,
+                FACTS_DEADLINE,
                 &Cancel::new(),
             )
             .await;
         match r {
-            Some((200, v)) => (
-                v.get("reason").and_then(Value::as_str).map(str::to_owned),
-                v.get("lastLoaded")
-                    .and_then(Value::as_str)
-                    .map(str::to_owned),
-            ),
-            _ => (Some(NODE_UNREACHABLE.to_owned()), None),
+            Some((200, v)) => v
+                .get("lastLoaded")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            _ => None,
         }
+    }
+
+    /// The tool half of core's old `available()`: the web-search toolbox is offered, both tools are
+    /// discovered, and the operator's own server (one) offers each. `None`: research may use them.
+    async fn tools_unavailable(&self) -> Option<String> {
+        if let Err(reason) = self.search_route("tavily_search").await {
+            return Some(reason);
+        }
+        self.search_route("tavily_extract").await.err()
+    }
+
+    /// The operator's one server offering `name` and every server that offers it, or the reason there is none.
+    #[cfg(feature = "rust-storage-reads")]
+    async fn search_route(&self, name: &str) -> Result<(String, Vec<String>), String> {
+        let exec = self
+            .app
+            .mcp_exec
+            .as_ref()
+            .ok_or_else(|| NO_WEB_SEARCH_TOOLBOX.to_owned())?;
+        let catalogue = crate::mcp_discovery::read(&self.app)
+            .await
+            .ok_or_else(|| TOOLS_PREPARING.to_owned())?;
+        // core: the toolbox is offered, and both tools were discovered.
+        let both = ["tavily_search", "tavily_extract"].iter().all(|t| {
+            catalogue
+                .offers
+                .get(*t)
+                .is_some_and(|servers| !servers.is_empty())
+        });
+        if !exec.toolbox_offered("web-search") || !both {
+            return Err(NO_WEB_SEARCH_TOOLBOX.to_owned());
+        }
+        let offers = catalogue.offers.get(name).cloned().unwrap_or_default();
+        // core `operatorServerFor`: a directory server offering the same name neither takes the call nor
+        // makes it ambiguous (#865, #891); with no single operator server there is no search.
+        match exec.operator_server_for(&offers) {
+            Some(server) => Ok((server, offers)),
+            None => Err(WEB_SEARCH_NOT_CONFIGURED.to_owned()),
+        }
+    }
+
+    #[cfg(not(feature = "rust-storage-reads"))]
+    async fn search_route(&self, _name: &str) -> Result<(String, Vec<String>), String> {
+        Err(NO_WEB_SEARCH_TOOLBOX.to_owned())
     }
 
     /// core's `available()`: the reason research cannot run, or `None`.
     async fn unavailable(&self) -> Option<String> {
-        let (tools, last_loaded) = self.node_facts().await;
-        if tools.is_some() {
-            return tools;
+        if let Some(reason) = self.tools_unavailable().await {
+            return Some(reason);
         }
         if self.smart_machine().await.is_some() {
             return None;
         }
-        if self
-            .local_model(None, last_loaded.as_deref())
-            .await
-            .is_none()
-        {
+        if self.local_model(None).await.is_none() {
             return Some(PICK_MODEL.to_owned());
         }
         None
@@ -627,11 +676,7 @@ impl Account {
                 Stop::Words(w) => Failure(w),
             });
         }
-        let (_, last_loaded) = self.node_facts().await;
-        let Some(model) = self
-            .local_model(project_model, last_loaded.as_deref())
-            .await
-        else {
+        let Some(model) = self.local_model(project_model).await else {
             return Err(Failure(PICK_MODEL.to_owned()));
         };
         let lease = research
@@ -780,29 +825,65 @@ impl JobTools {
         }
     }
 
+    /// core rust-research-bridge.cjs `validTool`: research asks for its two search tools, in the shapes it
+    /// sends, nothing else. The call runs as the account on the operator's own search server (never a
+    /// directory server's, #865, #891) through the one native executor; a caller that goes away
+    /// (the job's cancel) drops it, which closes the session it opened.
     async fn tool(&self, name: &str, args: Value, cancel: &Cancel) -> Result<String, Failure> {
-        let body = json!({ "user": self.account.user, "name": name, "args": args });
-        let research = self.account.research();
-        match research
-            .bridge_call("/internal/research/tool", &body, TOOL_DEADLINE, cancel)
-            .await
-        {
-            Some((200, v)) => Ok(v
-                .get("text")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_owned()),
-            // The bridge's own refusal (404 for a wrong or missing secret, 401, 403) says nothing about the tool.
-            Some((401 | 403 | 404, _)) => Err(Failure(NODE_UNREACHABLE.to_owned())),
-            Some((_, v)) => Err(Failure(
-                v.get("error")
-                    .and_then(Value::as_str)
-                    .unwrap_or(NODE_UNREACHABLE)
-                    .to_owned(),
-            )),
-            None if cancel.is_cancelled() => Err(Failure("Research was cancelled.".to_owned())),
-            None => Err(Failure(NODE_UNREACHABLE.to_owned())),
+        let text = |v: Option<&Value>| {
+            v.and_then(Value::as_str)
+                .filter(|t| !t.is_empty() && t.encode_utf16().count() <= TOOL_TEXT_CAP)
+                .map(str::to_owned)
+        };
+        let shaped = match name {
+            "tavily_search" => {
+                text(args.get("query")).map(|q| json!({ "query": q, "max_results": 5 }))
+            }
+            "tavily_extract" => match args.get("urls").and_then(Value::as_array) {
+                Some(urls) if urls.len() == 1 => text(urls.first()).map(|u| json!({ "urls": [u] })),
+                _ => None,
+            },
+            _ => None,
+        };
+        let Some(shaped) = shaped else {
+            return Err(Failure(ONLY_SEARCH_TOOLS.to_owned()));
+        };
+        self.run_tool(name, shaped, cancel).await
+    }
+
+    #[cfg(feature = "rust-storage-reads")]
+    async fn run_tool(&self, name: &str, args: Value, cancel: &Cancel) -> Result<String, Failure> {
+        let (server, offers) = self.account.search_route(name).await.map_err(Failure)?;
+        let Some(exec) = self.account.app.mcp_exec.as_ref().map(Arc::clone) else {
+            return Err(Failure(NO_WEB_SEARCH_TOOLBOX.to_owned()));
+        };
+        let call = crate::mcp_exec::Call {
+            caller: Some(self.account.user.clone()),
+            workspace: Some(self.account.user.clone()),
+            name: name.to_owned(),
+            args: js_json::parse(&args.to_string()).ok(),
+            server: Some(server),
+            offers,
+            ..Default::default()
+        };
+        let work = exec.execute(&self.account.app, call);
+        tokio::select! {
+            () = cancel.cancelled() => Err(Failure("Research was cancelled.".to_owned())),
+            r = tokio::time::timeout(TOOL_DEADLINE, work) => match r {
+                Ok(text) => Ok(text),
+                Err(_) => Err(Failure(TOOLS_TIMEOUT.to_owned())),
+            },
         }
+    }
+
+    #[cfg(not(feature = "rust-storage-reads"))]
+    async fn run_tool(
+        &self,
+        _name: &str,
+        _args: Value,
+        _cancel: &Cancel,
+    ) -> Result<String, Failure> {
+        Err(Failure(NO_WEB_SEARCH_TOOLBOX.to_owned()))
     }
 }
 

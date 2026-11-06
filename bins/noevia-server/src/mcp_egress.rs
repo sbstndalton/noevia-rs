@@ -156,6 +156,12 @@ impl Egress {
         self.qa_loopback
     }
 
+    /// The guarded client (no proxy, no redirect, a connect-time public-address resolver), for a
+    /// caller that sends its own requests after [`Egress::url_allowed`].
+    pub(crate) fn client(&self) -> &reqwest::Client {
+        &self.client
+    }
+
     /// `hostedUrlOk(url) && directoryUrlAllowed(url)`: an https public address (or the QA
     /// loopback stand-in). A name that does not resolve, or resolves to anything not public, is
     /// refused.
@@ -337,7 +343,7 @@ fn reserved(name: &str) -> bool {
 /// The one MCP session a person's key is proven with before it is stored (core `discoverOneServer`
 /// for a directory server with `pendingHeaders`): `initialize`, the `initialized` notification and
 /// `tools/list` to its end, then the session is closed. `Ok(tool count)`, or the failure in core's
-/// words (`MCP 401: …`, `MCP error -32000: …`, `its address no longer resolves to a public host`).
+/// words (`MCP 401: …`, `MCP error -32000`, `its address no longer resolves to a public host`).
 pub async fn check_key(
     egress: &Egress,
     url: &str,
@@ -363,7 +369,7 @@ const LIST_MAX_BYTES: usize = 16 * 1024 * 1024;
 /// `initialize`, the `initialized` notification, `tools/list` following `nextCursor` (at most
 /// [`MAX_PAGES`] pages and [`LIST_MAX_BYTES`] of definitions, keeping what was gathered), then the
 /// session is closed whatever happened. `headers` are the server's key headers (never the reserved
-/// ones). The failure is in core's words (`MCP 401: ...`, `MCP error -32000: ...`, `fetch failed`,
+/// ones). The failure is in core's words (`MCP 401: ...`, `MCP error -32000`, `fetch failed`,
 /// `its address no longer resolves to a public host`). Every request is checked against the public
 /// address rules first, and again at connect time by the client's own resolver.
 pub async fn list_tools(
@@ -530,6 +536,8 @@ async fn rpc(
         *session = Some(sid);
     }
     if !reply.ok() {
+        // The listing/key-check path keeps core's `MCP <status>: <body>` (the typed key is shown back to the
+        // account that typed it; the executor's call path, mcp_exec, never keeps a body).
         let detail = reply.text.as_deref().unwrap_or("");
         let snippet: String = detail.chars().take(200).collect();
         return Err(format!("MCP {}: {snippet}", reply.status));
@@ -538,14 +546,42 @@ async fn rpc(
     let text = reply
         .text
         .ok_or_else(|| "MCP: response body exceeded the 8 MB limit".to_string())?;
+    rpc_result(id, reply.content_type.contains("text/event-stream"), &text)
+}
+
+/// A JSON-RPC error code that is safe to show: a number with no fraction and no exponent.
+fn rpc_error_code(code: &JValue) -> Option<String> {
+    let JValue::Num(n) = code else { return None };
+    if !n.is_finite() || n.fract() != 0.0 || n.abs() >= 1e15 {
+        return None;
+    }
+    Some(js_json::number_to_string(*n))
+}
+
+/// The `result` of one JSON-RPC reply body (core mcp.cjs `rpc` after the status and size checks): the
+/// frame is judged by `mcp-frame`, a JSON-RPC `error` becomes `MCP error <code>` (the server's message is
+/// dropped: it is third-party text that can echo a credential).
+pub(crate) fn rpc_result(id: i64, sse: bool, text: &str) -> Result<Option<JValue>, String> {
     let units: Vec<u16> = text.encode_utf16().collect();
-    let sse = reply.content_type.contains("text/event-stream");
     let outcome = mcp_frame::parse_rpc_body(sse, &units, &mcp_frame::Expected::Number(id as f64))
         .map_err(|_| "MCP: response body exceeded the 8 MB limit".to_string())?;
     let span = match outcome {
         mcp_frame::Outcome::Reply(r) => r,
-        mcp_frame::Outcome::Mismatch(_) => {
-            return Err(format!("MCP: reply id does not match request {id}"))
+        mcp_frame::Outcome::Mismatch(span) => {
+            // core: `MCP: reply id ${msg.id} does not match request ${expectedId}`.
+            // Shown only when it is a plain number: a server's own text never reaches the caller.
+            let seen = units
+                .get(span)
+                .and_then(|s| js_json::parse(&String::from_utf16_lossy(s)).ok())
+                .and_then(|m| js_json::to_js_string(m.get("id")).ok())
+                .filter(|v| {
+                    let digits = v.strip_prefix('-').unwrap_or(v);
+                    (1..=15).contains(&digits.len()) && digits.bytes().all(|b| b.is_ascii_digit())
+                })
+                .unwrap_or_else(|| "(not a number)".to_owned());
+            return Err(format!(
+                "MCP: reply id {seen} does not match request {id}"
+            ));
         }
         mcp_frame::Outcome::NoMessage => {
             return Err("MCP: no JSON-RPC message in event stream".into())
@@ -560,9 +596,12 @@ async fn rpc(
         .map_err(|_| "MCP response could not be checked".to_string())?;
     if message.get("error").truthy() {
         let e = message.get("error");
-        let code = js_json::to_js_string(e.get("code")).unwrap_or_default();
-        let text = js_json::to_js_string(e.get("message")).unwrap_or_default();
-        return Err(format!("MCP error {code}: {text}"));
+        // A fixed classification: the code when it is a plain integer, never the server's message
+        // (which can echo the credential the request carried).
+        return Err(match rpc_error_code(e.get("code")) {
+            Some(code) => format!("MCP error {code}"),
+            None => "MCP error".to_owned(),
+        });
     }
     Ok(Some(message.get("result").clone()))
 }

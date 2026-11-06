@@ -1709,8 +1709,10 @@ holding its report, which can still be saved), exactly as Node's recovery did.
 **What Node still does for a job, over loopback with the store token** (trust: loopback address, no proxied-client
 header, the token; anything else is an unknown path's 404): `/internal/inference-admission/lease` (the one-model rule,
 budget and maintenance gate stay in the one process that runs chat and tuning; TTL 30 s, renewed, ends itself if the
-front dies, and a lost lease stops the step), `/internal/research/{availability,tool,retrieve}` (the MCP wiring and
-rag.cjs; only the two search tools, in research's own shape, as the asking user). They go with those modules.
+front dies, and a lost lease stops the step), `/internal/research/{facts,retrieve}` (the model Node last loaded, and
+rag.cjs's project search; as the asking user). They go with those modules. The two search tools are not Node's any more: research
+runs them through the front's own MCP tool executor (below), and whether they are offered is read from the catalogue Node
+publishes (`mcp-discovery.json`, whose `offers` say which servers offer each name).
 
 **Behaviour changes, each a Node bug or a deliberate step.** The plan route answered 500 on every call
 (`AbortSignal.any([undefined, ...])`) and now works; search, extract and retrieve obey cancel; a search that answers
@@ -1719,6 +1721,21 @@ ran out; a progress stage over 4096 bytes is clipped instead of killing the job;
 rather than a new job; a `.sources.json` retry now matches its first hash after the journal's key sort. Steps stream
 (`stream: true`) with one 120 s deadline for the whole step and no separate idle limit (Node's step had only that deadline; a stream that goes quiet runs to it), a local step takes the gate's lease when a gate exists, and
 deadline and connect failures have their own words, and so does a bridge to Node that does not answer or refuses the front ("unreachable", not "Web search is not configured"). Availability still ignores `project.model`, as Node's did.
+
+## The MCP tool executor (rust-mcp-exec, sbstndalton/noevia#2218)
+
+One native executor runs every MCP tool call (`bins/noevia-server/src/mcp_exec/`): routing by (server, name), the approved
+project-file-edit binding, the account's own credential (Nextcloud connection, key, sign-in, static token, noevia's own
+capability token), the 429 wait, one short MCP session per call (closed even when the call is dropped), the one retry after a
+refused sign-in, the reduction of the result, and failures returned as text. Deep research calls it in process; the chat's tool
+runtime (still Node) calls `POST /v1/mcp/call` on the store listener (store token; body `{ name, args, server?, offers[],
+caller?, workspace?, editTarget?, internalAuth? }`, answer `{ text }`) and **fails closed**: a front that cannot be asked is a
+refused call, never one Node runs. Discovery stays Node's, so the call carries what only Node knows (`offers`, the approval, the
+account, noevia's capability token, which only the process holding the key can mint). `tests/fixtures/mcp-exec.v1.json` is core's
+frozen executor over the real transport (tools/gen-mcp-exec-fixtures.cjs), replayed step for step by `tests/mcp_exec.rs`.
+Differences from Node, all in failure text: a reply that is not JSON is "MCP response could not be checked" (Node: the runtime's
+SyntaxError text), and a `Retry-After` HTTP date is read in the IMF-fixdate form only. Core and the front must move together
+(assemble-release.sh refuses either mixed pair; the marker is `noevia-mcp-exec-client/1` in project-store-client.cjs).
 
 ## Code and Browser task reads (rust-task-reads, sbstndalton/noevia#2257)
 
