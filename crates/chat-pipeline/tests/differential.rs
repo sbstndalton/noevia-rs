@@ -1310,6 +1310,18 @@ mod gate_stage {
         revoked: Cell<usize>,
         fences: Cell<usize>,
         started: std::rc::Rc<Cell<usize>>,
+        /// The await that never completes ("" for none), and whether it was reached.
+        stop: &'static str,
+        reached: Cell<bool>,
+    }
+
+    impl Io<'_> {
+        async fn at(&self, name: &str) {
+            if name == self.stop {
+                self.reached.set(true);
+                std::future::pending::<()>().await;
+            }
+        }
     }
 
     impl gate::GateIo for Io<'_> {
@@ -1351,6 +1363,7 @@ mod gate_stage {
             matches!(self.sc.get("target"), JValue::Obj(_))
         }
         async fn write_target(&self, _: &str, _: &str) -> Result<Option<WriteTarget>, ()> {
+            self.at("write_target").await;
             let t = self.sc.get("target");
             let n = self.targets.get();
             self.targets.set(n + 1);
@@ -1376,6 +1389,7 @@ mod gate_stage {
             false
         }
         async fn permission_context(&self) -> Result<Option<usize>, ()> {
+            self.at("permission_context").await;
             if self.chat_id().is_none() {
                 return Ok(None);
             }
@@ -1391,6 +1405,7 @@ mod gate_stage {
             a.is_some() && a == b
         }
         async fn chat_wide_approved(&self, _: &Option<usize>) -> bool {
+            self.at("chat_wide_approved").await;
             self.sc.get("chatWide") == &JValue::Bool(true)
         }
         fn repeat(&self, fp: &str) -> bool {
@@ -1407,10 +1422,12 @@ mod gate_stage {
             "ap-00000000-0000-0000-0000-000000000000".into()
         }
         async fn open_approval(&self, _: &str, _: &Option<usize>) -> bool {
+            self.at("open_approval").await;
             self.opened.set(self.opened.get() + 1);
             self.sc.get("open") == &JValue::Bool(true)
         }
         async fn await_approval(&self, _: &str, _: &Option<usize>) -> Decision {
+            self.at("await_approval").await;
             let n = self.decisions.get();
             self.decisions.set(n + 1);
             Decision::from_js(
@@ -1427,12 +1444,14 @@ mod gate_stage {
             true
         }
         async fn revoke_grant(&self) {
+            self.at("revoke_grant").await;
             self.revoked.set(self.revoked.get() + 1);
         }
         fn has_redeem(&self) -> bool {
             self.sc.get("redeemWired") == &JValue::Bool(true)
         }
         async fn redeem(&self, _: &Option<usize>) -> Redeemed<Fence> {
+            self.at("redeem").await;
             match self.sc.get("redeem").as_str() {
                 Some("unavailable") => Redeemed::Unavailable,
                 Some("invalid") => Redeemed::Invalid,
@@ -1452,6 +1471,7 @@ mod gate_stage {
             fence: Option<&Fence>,
             _: Option<&(String, Option<String>)>,
         ) -> Result<Executed, String> {
+            self.at("execute").await;
             let n = self.results.get();
             self.results.set(n + 1);
             self.exec
@@ -1553,6 +1573,8 @@ mod gate_stage {
                 revoked: Cell::new(0),
                 fences: Cell::new(0),
                 started: std::rc::Rc::new(Cell::new(0)),
+                stop: "",
+                reached: Cell::new(false),
             };
             let mut st = TurnTools::new(true);
             let mut events = Vec::new();
@@ -1688,5 +1710,62 @@ mod gate_stage {
             }
         }
         assert!(paused > 50, "{paused}");
+    }
+
+    #[test]
+    fn dropping_a_call_at_each_await_closes_its_fence_and_runs_nothing_after() {
+        let sc = |grant_wide: bool, target: bool| {
+            let text = format!(
+                r#"{{"calls":[],"modes":{{"write_file":"ask"}},"flip":null,"open":true,"decisions":["approve"],"chatWide":{grant_wide},"redeem":"fence-open","redeemWired":true,"results":["ok: done"],"target":{},"grant":"ok","chatId":"c"}}"#,
+                if target { r#"{"first":{"target":"/d","kind":"file"},"again":"same"}"# } else { "null" }
+            );
+            wtf16::parse(&text).unwrap()
+        };
+        for (stop, wide, target) in [
+            ("write_target", false, true),
+            ("permission_context", false, false),
+            ("chat_wide_approved", false, false),
+            ("open_approval", false, false),
+            ("await_approval", false, false),
+            ("redeem", true, false),
+            ("execute", true, false),
+            ("execute", false, false),
+        ] {
+            let k = sc(wide, target);
+            let io = Io {
+                sc: &k,
+                writes: vec!["write_file".into()],
+                toolboxes: JValue::Arr(Vec::new()),
+                decisions: Cell::new(0),
+                results: Cell::new(0),
+                targets: Cell::new(0),
+                grants: Cell::new(0),
+                applied: RefCell::new(Vec::new()),
+                exec: RefCell::new(Vec::new()),
+                audit: RefCell::new(Vec::new()),
+                opened: Cell::new(0),
+                revoked: Cell::new(0),
+                fences: Cell::new(0),
+                started: std::rc::Rc::new(Cell::new(0)),
+                stop,
+                reached: Cell::new(false),
+            };
+            let mut st = TurnTools::new(true);
+            let call = Call { index: 0, id: "id-0".into(), name: "write_file".into(), args: "{}".into(), too_large: false };
+            let reduce = |t: &str| t.to_owned();
+            let mut sent = Vec::new();
+            {
+                let mut send = |e| sent.push(e);
+                let mut f = std::pin::pin!(gate::run_call(&io, &mut st, &call, true, &reduce, &mut send));
+                let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+                assert!(std::future::Future::poll(f.as_mut(), &mut cx).is_pending(), "{stop}");
+            }
+            assert!(io.reached.get(), "never reached {stop}");
+            // Every fence redeemed was closed by the drop; nothing ran after the await that was dropped.
+            assert_eq!(io.started.get(), io.fences.get(), "{stop}: fence left open");
+            let ran = io.exec.borrow().len();
+            assert_eq!(ran, usize::from(stop == "execute"), "{stop}");
+            assert!(io.applied.borrow().is_empty() && st.applied.is_empty(), "{stop}");
+        }
     }
 }
