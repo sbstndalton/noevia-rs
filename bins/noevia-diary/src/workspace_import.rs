@@ -27,6 +27,8 @@ struct Preview {
     duplicates: Vec<String>,
     mode: &'static str,
     already_applied: bool,
+    #[serde(skip)]
+    generation_supported: bool,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -114,6 +116,22 @@ pub fn perform(
         let hashes = stmt
             .query_map([], |r| r.get::<_, String>(0))?
             .collect::<Result<BTreeSet<_>, _>>()?;
+        // Read-only, under the caller's tenant writer exclusion. A default Python apply may
+        // raise ValueError with runtime-specific text for either int() or str(int + 1).
+        // Let that actual handler own every unsupported conversion before applying anything.
+        // Receipts and conflicts precede generation conversion in both implementations.
+        let generation_supported = action != "apply"
+            || native_errors
+            || already_applied
+            || !conflicts.is_empty()
+            || tx
+                .query_row("SELECT value FROM meta WHERE key='generation'", [], |row| {
+                    row.get::<_, String>(0)
+                })
+                .optional()
+                .is_ok_and(|value| {
+                    apply::increment_generation(value.as_deref().unwrap_or("0")).is_ok()
+                });
         Ok(Preview {
             fingerprint: fingerprint.clone(),
             destination: destination.clone(),
@@ -130,6 +148,7 @@ pub fn perform(
                 .collect(),
             mode: "new-folder-only",
             already_applied,
+            generation_supported,
         })
     })();
     let preview = match preview {
@@ -144,6 +163,9 @@ pub fn perform(
             409,
             "Archive or destination changed. Review a fresh preview.",
         );
+    }
+    if !preview.generation_supported {
+        return Reply::Decline;
     }
     let request = apply::Request {
         version: 1,

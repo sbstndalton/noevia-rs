@@ -912,3 +912,58 @@ fn import_failed_dirty_transfer_leaves_durable_outbox() {
     );
     assert!(dirty(dir.path()).is_empty());
 }
+
+#[test]
+fn import_default_generation_refusal_declines_before_apply_attempt() {
+    use noevia_diary::{
+        workspace::Reply,
+        workspace_import::{perform, Options},
+    };
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[]);
+    let root = tenant_root(dir.path());
+    let body = import_archive();
+    use sha2::Digest;
+    let mut hash = sha2::Sha256::new();
+    hash.update(b"Imports/Copy\0");
+    hash.update(&body);
+    let fingerprint = format!("{:x}", hash.finalize());
+    let db = rusqlite::Connection::open(root.join("managed-diary.db")).unwrap();
+    // An apply attempt would hit this trigger and return a database error instead of decline.
+    db.execute_batch("CREATE TRIGGER synthetic_no_apply BEFORE INSERT ON files BEGIN SELECT RAISE(ABORT, 'apply attempted'); END;").unwrap();
+    for generation in ["bad".into(), "1".repeat(4301), "9".repeat(4300)] {
+        db.execute(
+            "UPDATE meta SET value=? WHERE key='generation'",
+            [&generation],
+        )
+        .unwrap();
+        let response = perform(
+            &root.join("managed-diary.db"),
+            &root.join("managed-index.db"),
+            UID,
+            &body,
+            Options {
+                action: "apply",
+                name: "Copy",
+                reviewed: &fingerprint,
+                native_errors: false,
+            },
+        );
+        assert!(matches!(response, Reply::Decline));
+        for table in [
+            "files",
+            "directories",
+            "workspace_imports",
+            "workspace_index_outbox",
+        ] {
+            assert_eq!(
+                db.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                0
+            );
+        }
+        assert_eq!(meta(dir.path(), "generation"), generation);
+        assert!(dirty(dir.path()).is_empty());
+    }
+}

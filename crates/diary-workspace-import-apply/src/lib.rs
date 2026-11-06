@@ -87,6 +87,12 @@ impl From<rusqlite::Error> for Error {
     }
 }
 
+/// Increment using the shipped runtime's decimal grammar and input/output conversion limits.
+/// Native orchestration can preflight a stored generation without beginning an apply attempt.
+pub fn increment_generation(raw: &str) -> Result<String, Error> {
+    generation::increment(raw)
+}
+
 /// CLI frame parser; EOF is required before opening the managed database.
 pub fn read_request(mut input: impl Read) -> Result<(Request, Vec<u8>), Error> {
     let mut magic = vec![0; MAGIC.len()];
@@ -237,7 +243,7 @@ pub fn apply_guarded(
     let now = clock()?;
     let now_text = float::python_float(now).ok_or(Error::Clock)?;
     let due_text = float::python_float(now + request.debounce).ok_or(Error::Clock)?;
-    let generation = generation::increment(meta(&tx, "generation")?.as_deref().unwrap_or("0"))?;
+    let generation = increment_generation(meta(&tx, "generation")?.as_deref().unwrap_or("0"))?;
     let mut dirs = BTreeSet::from(["Imports".to_owned(), request.destination.clone()]);
     for dir in &archive.listing().directories {
         dirs.insert(format!("{}/{dir}", request.destination));
