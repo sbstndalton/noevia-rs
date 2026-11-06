@@ -17,6 +17,7 @@ pub enum Kind {
     Seq(Vec<Value>),
     Map(Vec<(Value, Value)>),
     Unsupported(&'static str),
+    EmptyUnsupported(&'static str),
 }
 impl Value {
     pub fn new(kind: Kind) -> Self {
@@ -43,12 +44,12 @@ impl Value {
             Kind::Str(_) | Kind::Surrogate(_) => "str",
             Kind::Seq(_) => "list",
             Kind::Map(_) => "dict",
-            Kind::Unsupported(s) => s,
+            Kind::Unsupported(s) | Kind::EmptyUnsupported(s) => s,
         }
     }
     pub fn truthy(&self) -> bool {
         match self.kind() {
-            Kind::Null => false,
+            Kind::Null | Kind::EmptyUnsupported(_) => false,
             Kind::Bool(b) => b,
             Kind::Int(s) => s != "0",
             Kind::Float(n) => n != 0.0,
@@ -216,7 +217,7 @@ impl Value {
                 seen.pop();
                 Ok(format!("{{\n{}\n{padding}}}", result?.join(",\n")))
             }
-            Kind::Unsupported(s) => Err(format!(
+            Kind::Unsupported(s) | Kind::EmptyUnsupported(s) => Err(format!(
                 "TypeError: Object of type {s} is not JSON serializable"
             )),
         }

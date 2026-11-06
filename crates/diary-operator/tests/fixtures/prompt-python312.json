@@ -156,5 +156,72 @@
     "exit": 1,
     "stdout": "",
     "stderr": "UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 3: invalid start byte\n"
+  },
+  {
+    "case": "empty-binary",
+    "config": {
+      "prompts": {
+        "system_path": {
+          "python_type": "bytes",
+          "repr": "b''"
+        }
+      }
+    },
+    "exit": 0,
+    "stdout": "\"synthetic default\\nprompt\"\n",
+    "stderr": ""
+  },
+  {
+    "case": "binary",
+    "config": {
+      "prompts": {
+        "system_path": {
+          "python_type": "bytes",
+          "repr": "b'x'"
+        }
+      }
+    },
+    "exit": 1,
+    "stdout": "",
+    "stderr": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'bytes'\n"
+  },
+  {
+    "case": "empty-set",
+    "config": {
+      "prompts": {
+        "system_path": {
+          "python_type": "set",
+          "repr": "set()"
+        }
+      }
+    },
+    "exit": 0,
+    "stdout": "\"synthetic default\\nprompt\"\n",
+    "stderr": ""
+  },
+  {
+    "case": "set",
+    "config": {
+      "prompts": {
+        "system_path": {
+          "python_type": "set",
+          "repr": "{'x'}"
+        }
+      }
+    },
+    "exit": 1,
+    "stdout": "",
+    "stderr": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'set'\n"
+  },
+  {
+    "case": "empty-map",
+    "config": {
+      "prompts": {
+        "system_path": {}
+      }
+    },
+    "exit": 0,
+    "stdout": "\"synthetic default\\nprompt\"\n",
+    "stderr": ""
   }
 ]

@@ -137,7 +137,15 @@ fn scalar(s: &str, tag: &str) -> Result<Value> {
             };
             Value::new(Kind::Float(n))
         }
-        "binary" => Value::new(Kind::Unsupported("bytes")),
+        "binary" => Value::new(
+            if s.bytes()
+                .any(|c| c.is_ascii_alphanumeric() || b"+/".contains(&c))
+            {
+                Kind::Unsupported("bytes")
+            } else {
+                Kind::EmptyUnsupported("bytes")
+            },
+        ),
         "timestamp" => timestamp(s)?,
         _ => return Err(format!("unknown tag {tag}")),
     })
@@ -469,11 +477,17 @@ impl Reader<'_> {
                             return Err("yaml.constructor.ConstructorError: expected a mapping or list of mappings for merging".into());
                         }
                     } else {
-                        if matches!(key.kind(), Kind::Seq(_) | Kind::Map(_)) {
+                        if matches!(
+                            key.kind(),
+                            Kind::Seq(_)
+                                | Kind::Map(_)
+                                | Kind::Unsupported("set")
+                                | Kind::EmptyUnsupported("set")
+                        ) {
                             return Err(format!(
                                 "yaml.constructor.ConstructorError: while constructing a mapping{}\nfound unhashable key{}",
                                 self.mark(mark),
-                                self.mark(key_mark)
+                                self.tag_mark(key_mark)
                             ));
                         }
                         rows.push((key, value));
@@ -484,7 +498,12 @@ impl Reader<'_> {
                     node.insert(k, v)?;
                 }
                 if tag == "set" {
-                    *node.0.borrow_mut() = Kind::Unsupported("set");
+                    let empty = node.entries().is_some_and(|rows| rows.is_empty());
+                    *node.0.borrow_mut() = if empty {
+                        Kind::EmptyUnsupported("set")
+                    } else {
+                        Kind::Unsupported("set")
+                    };
                 }
                 (id, node)
             }

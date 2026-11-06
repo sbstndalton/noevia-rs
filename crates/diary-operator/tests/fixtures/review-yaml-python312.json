@@ -1,5 +1,12 @@
 [
   {
+    "case": "set-key",
+    "input_hex": "3f202121736574207b7d0a3a2076616c75650a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.constructor.ConstructorError: while constructing a mapping\n  in \"<unicode string>\", line 1, column 1:\n    ? !!set {}\n    ^\nfound unhashable key\n  in \"<unicode string>\", line 1, column 3:\n    ? !!set {}\n      ^\n"
+  },
+  {
     "case": "binary-map-padding",
     "input_hex": "783a20212162696e617279207b3d3a206162637d0a",
     "exit": 1,

@@ -3,7 +3,7 @@ import ast,json,os,pathlib,subprocess,sys,traceback
 P=pathlib.Path
 mode,binary,evidence=sys.argv[1:];evidence=P(evidence).resolve();root=evidence/'review';root.mkdir(exist_ok=True)
 sys.path.insert(0,str(evidence/'python'));from agent.config import Config,load_config
-Y=[('binary-map-padding','x: !!binary {=: abc}\n'),('timezone-plus','x: !!timestamp 2026-01-02T03:04:05+24:00\n'),('timezone-minus','x: !!timestamp 2026-01-02T03:04:05-25:00\n'),('timestamp-trailing','x: 2026-01-02T03:04:05garbage\n'),('binary-stray-padding','x: !!binary Y=WJj\n'),('int-part-invalid','x: !!int 1:oops\n'),('float-part-invalid','x: !!float 1:oops\n'),('int-part-spaces','x: !!int "1: 2"\n'),('float-part-spaces','x: !!float "1: 2.5"\n'),('bool-bad','x: !!bool garbage\n'),('scalar-map-value','x: !!str {=: true}\n'),('bool-case','x: !!bool tRuE\n'),('str-map','corpus: !!str {index_enabled: true}\n'),('bool-seq','x: !!bool [true]\n'),('int-map','x: !!int {a: 1}\n'),('seq-map','x: !!seq {a: 1}\n'),('map-seq','x: !!map [a]\n'),('map-scalar','x: !!map text\n'),('set-seq','x: !!set [a]\n'),('int-invalid','x: !!int garbage\n'),('int-empty','x: !!int ""\n'),('float-invalid','x: !!float garbage\n'),('binary-padding','x: !!binary abc\n'),('binary-unicode','x: !!binary é\n'),('timestamp-text','x: !!timestamp garbage\n'),('timestamp-month','x: !!timestamp 2026-13-01\n'),('timestamp-day','x: !!timestamp 2026-02-30\n'),('timestamp-hour','x: !!timestamp 2026-01-02T25:00:00Z\n'),('flow-eof','x: [1, 2\n'),('quote-eof','x: "unterminated\n'),('bad-flow','x: [1 2,}\n'),('unknown-alias','x: *absent\n')]
+Y=[('set-key','? !!set {}\n: value\n'),('binary-map-padding','x: !!binary {=: abc}\n'),('timezone-plus','x: !!timestamp 2026-01-02T03:04:05+24:00\n'),('timezone-minus','x: !!timestamp 2026-01-02T03:04:05-25:00\n'),('timestamp-trailing','x: 2026-01-02T03:04:05garbage\n'),('binary-stray-padding','x: !!binary Y=WJj\n'),('int-part-invalid','x: !!int 1:oops\n'),('float-part-invalid','x: !!float 1:oops\n'),('int-part-spaces','x: !!int "1: 2"\n'),('float-part-spaces','x: !!float "1: 2.5"\n'),('bool-bad','x: !!bool garbage\n'),('scalar-map-value','x: !!str {=: true}\n'),('bool-case','x: !!bool tRuE\n'),('str-map','corpus: !!str {index_enabled: true}\n'),('bool-seq','x: !!bool [true]\n'),('int-map','x: !!int {a: 1}\n'),('seq-map','x: !!seq {a: 1}\n'),('map-seq','x: !!map [a]\n'),('map-scalar','x: !!map text\n'),('set-seq','x: !!set [a]\n'),('int-invalid','x: !!int garbage\n'),('int-empty','x: !!int ""\n'),('float-invalid','x: !!float garbage\n'),('binary-padding','x: !!binary abc\n'),('binary-unicode','x: !!binary é\n'),('timestamp-text','x: !!timestamp garbage\n'),('timestamp-month','x: !!timestamp 2026-13-01\n'),('timestamp-day','x: !!timestamp 2026-02-30\n'),('timestamp-hour','x: !!timestamp 2026-01-02T25:00:00Z\n'),('flow-eof','x: [1, 2\n'),('quote-eof','x: "unterminated\n'),('bad-flow','x: [1 2,}\n'),('unknown-alias','x: *absent\n')]
 results=[]
 for name,text in Y:
  path=root/(name+'.yaml');path.write_text(text)
@@ -22,10 +22,11 @@ prompt=root/'prompt';(prompt/'agent').mkdir(parents=True,exist_ok=True);(prompt/
 (prompt/'custom.txt').write_bytes(b'synthetic custom\r\nprompt');(prompt/'invalid.txt').write_bytes(b'bad\xff');(prompt/'denied.txt').write_text('synthetic');(prompt/'denied.txt').chmod(0);(prompt/'directory').mkdir(exist_ok=True)
 namespace={'__file__':str(prompt/'agent/context.py')};exec(compile(ast.Module(body=[fn],type_ignores=[]),'<original-context>','exec'),namespace)
 values=[('custom','custom.txt'),('missing','absent.txt'),('empty',''),('zero',0),('false',False),('null',None),('empty-list',[]),('int',42),('bool',True),('list',['custom.txt']),('map',{'a':1}),('directory','directory'),('denied','denied.txt'),('invalid-utf8','invalid.txt')]
+values.extend([('empty-binary',b''),('binary',b'x'),('empty-set',set()),('set',{'x'}),('empty-map',{})])
 rows=[]
 try:
  for name,value in values:
-  data={'prompts':{'system_path':value}};path=prompt/(name+'.yaml');path.write_text(json.dumps(data))
+  data={'prompts':{'system_path':value}};path=prompt/(name+'.yaml');path.write_text("prompts: {system_path: !!binary '"+__import__('base64').b64encode(value).decode()+"'}" if isinstance(value,bytes) else "prompts: {system_path: !!set {"+(','.join(str(v)+': null' for v in sorted(value)))+"}}" if isinstance(value,set) else json.dumps(data))
   if mode=='record':
    old=P.cwd();os.chdir(prompt)
    try:out=json.dumps(namespace['_system_prompt'](type('Self',(),{'cfg':Config(data)})()))+'\n';rc=0;err=''
@@ -33,7 +34,7 @@ try:
    finally:os.chdir(old)
   else:
    p=subprocess.run([binary,'prompt',str(path),str(prompt/'config')],cwd=prompt,env={},capture_output=True,text=True);rc,out,err=p.returncode,p.stdout,p.stderr
-  rows.append({'case':name,'config':data,'exit':rc,'stdout':out,'stderr':err})
+  rows.append({'case':name,'config':json.loads(json.dumps(data,default=lambda obj:{'python_type':type(obj).__name__,'repr':repr(obj)})),'exit':rc,'stdout':out,'stderr':err})
 finally:(prompt/'denied.txt').chmod(0o600)
 if mode=='record':(evidence/'prompt-python312.json').write_text(json.dumps(rows,indent=2)+'\n');print('recorded',len(results),'YAML and',len(rows),'prompt cases')
 else:
