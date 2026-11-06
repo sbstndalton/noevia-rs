@@ -306,7 +306,22 @@ impl Research {
         body: &Value,
         timeout: Duration,
     ) -> Option<(u16, Vec<u8>)> {
-        let mut res = self.bridge_post(path, body, timeout)?.send().await.ok()?;
+        self.node_call_text(path, body.to_string(), timeout).await
+    }
+
+    /// [`Self::node_call`] with the JSON body already written, for a body serde_json cannot hold
+    /// (a JS string with a lone surrogate, js_json `wtf16`; chat_framing_suggest.rs).
+    pub(crate) async fn node_call_text(
+        &self,
+        path: &str,
+        body: String,
+        timeout: Duration,
+    ) -> Option<(u16, Vec<u8>)> {
+        let mut res = self
+            .bridge_post_text(path, body, timeout)?
+            .send()
+            .await
+            .ok()?;
         let status = res.status().as_u16();
         let mut bytes = Vec::new();
         while let Some(chunk) = res.chunk().await.ok()? {

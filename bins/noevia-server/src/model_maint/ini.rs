@@ -24,6 +24,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+pub(super) type WriteAllowed = std::sync::Arc<dyn Fn() -> bool + Send + Sync>;
+
 /// llamacpp-presets.cjs `BACKUP_KEEP`.
 pub const BACKUP_KEEP: usize = 20;
 
@@ -215,6 +217,16 @@ impl Store {
 
     /// `commit(candidate, { backup })`.
     pub async fn commit(&self, c: &Candidate, backup: bool) -> Result<(), IniError> {
+        self.commit_if(c, backup, std::sync::Arc::new(|| true))
+            .await
+    }
+
+    pub(super) async fn commit_if(
+        &self,
+        c: &Candidate,
+        backup: bool,
+        allowed: WriteAllowed,
+    ) -> Result<(), IniError> {
         let store = self.clone();
         let base = c.base_revision.clone();
         let current = tokio::task::spawn_blocking(move || store.read())
@@ -226,19 +238,28 @@ impl Store {
                 "Presets changed while applying. Reload before retrying.",
             ));
         }
+        if !allowed() {
+            return Err(IniError::new(409, "Calibration finalization failed."));
+        }
         if let Some(w) = &self.writer {
             return w.write(c, backup).await;
         }
         let store = self.clone();
         let c = c.clone();
         let before = current.text;
-        tokio::task::spawn_blocking(move || store.web_write(&c, backup, &before))
+        tokio::task::spawn_blocking(move || store.web_write(&c, backup, &before, &*allowed))
             .await
             .map_err(|_| IniError::new(500, "Internal error"))?
     }
 
     /// The web writer: backup, temp file, rename, directory fsync, prune.
-    fn web_write(&self, c: &Candidate, backup: bool, before: &str) -> Result<(), IniError> {
+    fn web_write(
+        &self,
+        c: &Candidate,
+        backup: bool,
+        before: &str,
+        allowed: &dyn Fn() -> bool,
+    ) -> Result<(), IniError> {
         let dir = self
             .file
             .parent()
@@ -301,6 +322,9 @@ impl Store {
                 .and_then(|()| f.sync_all())
                 .map_err(|_| IniError::new(500, "Internal error"))?;
             drop(f);
+            if !allowed() {
+                return Err(IniError::new(409, "Calibration finalization failed."));
+            }
             std::fs::rename(&temp, &self.file).map_err(|_| IniError::new(500, "Internal error"))?;
             if let Ok(d) = std::fs::File::open(dir) {
                 let _ = d.sync_all();
@@ -312,6 +336,48 @@ impl Store {
         // Only after the new file is in place; best-effort, never fails the write.
         prune_backups(&self.file, self.backup_keep);
         Ok(())
+    }
+
+    /// Settle the original-profile CAS, including a lost reply. An uncertain attempt remains
+    /// owned until the desired content is visible or the CAS base no longer applies. Local
+    /// blocking I/O that never returns is outside this protocol, as in the original worker.
+    pub(super) async fn settle_restore(
+        &self,
+        c: &Candidate,
+        initial: Duration,
+        allowed: WriteAllowed,
+    ) -> bool {
+        let mut wait = initial
+            .max(Duration::from_millis(1))
+            .min(Duration::from_secs(60));
+        loop {
+            if !allowed() {
+                return false;
+            }
+            let store = self.clone();
+            if let Ok(Ok(current)) = tokio::task::spawn_blocking(move || store.snapshot()).await {
+                if !allowed() {
+                    return false;
+                }
+                if current.text == c.text {
+                    return true;
+                }
+                if current.revision != c.base_revision {
+                    return false;
+                }
+                match self
+                    .commit_if(c, true, std::sync::Arc::clone(&allowed))
+                    .await
+                {
+                    Ok(()) => return true,
+                    Err(e) if e.status == 409 => return false,
+                    // Transport, lost body and service failures all retain an owned resolver.
+                    Err(_) => {}
+                }
+            }
+            tokio::time::sleep(wait).await;
+            wait = (wait * 2).min(Duration::from_secs(60));
+        }
     }
 
     /// `commitReconciled`: settles an uncertain model-loader write by reading the file back (#339).
@@ -354,6 +420,242 @@ impl Store {
 /// EROFS (30) or EACCES: the directory cannot be written.
 fn read_only(e: &std::io::Error) -> bool {
     e.kind() == std::io::ErrorKind::PermissionDenied || e.raw_os_error() == Some(30)
+}
+
+// ── prepare (llamacpp-presets.cjs `prepare`) ───────────────────────────────────
+
+fn units(s: &str) -> Vec<u16> {
+    s.encode_utf16().collect()
+}
+
+fn thrown(status: u16, message: impl Into<String>) -> Thrown {
+    Thrown {
+        status: Some(status),
+        message: message.into(),
+    }
+}
+
+/// `hardMaxOf(limits)` as the port takes it: a safe non-negative integer, else none (the port then
+/// refuses a cache-ram value, stricter than the JS).
+fn hard_max_of(n: f64) -> Option<u64> {
+    (n.is_finite()
+        && n >= 0.0
+        && n.fract() == 0.0
+        && n <= llamacpp_presets::MAX_SAFE_INTEGER as f64)
+        .then_some(n as u64)
+}
+
+/// `optionValue(key, value, limits)`: the value as written, or `None` (refused).
+fn option_value(key: &str, value: &str, hard_max: f64) -> Option<String> {
+    let v = llamacpp_presets::checked_value(&units(key), &units(value), hard_max_of(hard_max))?;
+    String::from_utf16(&v).ok()
+}
+
+/// `String(n)` for the cap (a whole number of MiB in every configuration).
+fn js_string(n: f64) -> String {
+    js_json::wtf16::stringify(&js_json::JValue::Num(n)).unwrap_or_else(|| "null".into())
+}
+
+fn js_trim(s: &str) -> &str {
+    s.trim_matches(|c: char| u16::try_from(u32::from(c)).is_ok_and(server_stats::js::is_space))
+}
+
+/// `new RegExp(`^\\s*-{0,2}${k}\\s*=\\s*(true|1|on)\\s*$`, 'i')`: a mode flag line.
+fn flag_line(line: &str, k: &str) -> bool {
+    let mut rest = js_trim(line);
+    for _ in 0..2 {
+        if let Some(r) = rest.strip_prefix('-') {
+            rest = r;
+        }
+    }
+    let Some(head) = rest.get(..k.len()) else {
+        return false;
+    };
+    if !head.eq_ignore_ascii_case(k) {
+        return false;
+    }
+    let after = js_trim(&rest[k.len()..]);
+    let Some(value) = after.strip_prefix('=') else {
+        return false;
+    };
+    let value = js_trim(value);
+    ["true", "1", "on"]
+        .iter()
+        .any(|v| value.eq_ignore_ascii_case(v))
+}
+
+/// `/^\s*([^=\s]+)\s*=/`: the key of an option line (any key, editable or not).
+fn line_key(line: &str) -> Option<&str> {
+    let js_space = |c: char| u16::try_from(u32::from(c)).is_ok_and(server_stats::js::is_space);
+    let rest = line.trim_start_matches(js_space);
+    let end = rest.find(|c: char| c == '=' || js_space(c))?;
+    if end == 0 {
+        return None;
+    }
+    rest[end..]
+        .trim_start_matches(js_space)
+        .starts_with('=')
+        .then(|| &rest[..end])
+}
+
+fn put(list: &mut Vec<(String, String)>, key: &str, value: String) {
+    match list.iter_mut().find(|(k, _)| k == key) {
+        Some(slot) => slot.1 = value,
+        None => list.push((key.to_owned(), value)),
+    }
+}
+
+/// `presets.prepare({ model, baseRevision, options })` over the file as it is now: the candidate
+/// whole-file text, with the same errors in the same order. `options` in insertion order; `None` is
+/// a value that is not a string. `limits` is `cacheRamLimits()`: `(capMib, hardMaxMib)`.
+///
+/// #697: every write leaves the model with an explicit, bounded prompt cache (an unset value would
+/// mean llama-server's 8 GiB default); embedding and reranking profiles get an explicit 0.
+pub fn prepare(
+    file: &Path,
+    model: &str,
+    base_revision: &str,
+    options: &[(String, Option<String>)],
+    limits: (f64, f64),
+) -> Result<Candidate, Thrown> {
+    let (cap_mib, hard_max) = limits;
+    if !llamacpp_presets::model_name_ok(&units(model)) {
+        return Err(thrown(400, "Invalid preset model name"));
+    }
+    let mut updates: Vec<(String, String)> = Vec::new();
+    for (key, raw) in options {
+        let value = raw
+            .as_deref()
+            .and_then(|raw| option_value(key, raw, hard_max))
+            .ok_or_else(|| thrown(400, format!("Invalid preset option: {key}")))?;
+        put(&mut updates, key, value);
+    }
+    if updates.is_empty() {
+        return Err(thrown(400, "No preset changes supplied"));
+    }
+    let data = read_presets(file)?;
+    if base_revision != data.revision {
+        return Err(thrown(
+            409,
+            "Presets changed. Reload the profile before saving; your draft is retained.",
+        ));
+    }
+    let section = data.span(model);
+    let defaults: &[(&'static str, String)] = data.span("*").map_or(&[], |(_, _, o)| o);
+    let mut lines: Vec<String> = data.lines().to_vec();
+    {
+        let own = updates
+            .iter()
+            .find(|(k, _)| k == "cache-ram")
+            .map(|(_, v)| v.clone())
+            .or_else(|| {
+                section.and_then(|(_, _, o)| {
+                    o.iter()
+                        .find(|(k, _)| *k == "cache-ram")
+                        .map(|(_, v)| v.clone())
+                })
+            });
+        let inherited = defaults
+            .iter()
+            .find(|(k, _)| *k == "cache-ram")
+            .map(|(_, v)| v.clone());
+        let flag = |k: &str| {
+            section.is_some_and(|(start, end, _)| {
+                lines
+                    .get(start + 1..end)
+                    .into_iter()
+                    .flatten()
+                    .any(|l| flag_line(l, k))
+            })
+        };
+        let lower = model.to_ascii_lowercase();
+        let no_cache = flag("embedding")
+            || flag("embeddings")
+            || flag("reranking")
+            || flag("rerank")
+            || lower.contains("embed")
+            || lower.contains("rerank");
+        let unset = |v: &Option<String>| v.as_deref().is_none_or(str::is_empty);
+        let effective = if unset(&own) { inherited } else { own.clone() };
+        let checked = |value: &str| {
+            option_value("cache-ram", value, hard_max)
+                .ok_or_else(|| thrown(400, "Invalid preset option: cache-ram"))
+        };
+        if no_cache && unset(&own) {
+            put(&mut updates, "cache-ram", checked("0")?);
+        } else if unset(&effective) {
+            put(&mut updates, "cache-ram", checked(&js_string(cap_mib))?);
+        } else if let Some(effective) = effective {
+            let c = checked(&effective)?;
+            if c != js_trim(&effective) {
+                put(&mut updates, "cache-ram", c);
+            }
+        }
+    }
+    let additions: Vec<String> = updates
+        .iter()
+        .filter(|(_, v)| !v.is_empty())
+        .map(|(k, v)| format!("{k} = {v}"))
+        .collect();
+    if let Some((start, end, _)) = section {
+        let content: Vec<String> = lines
+            .get(start + 1..end)
+            .into_iter()
+            .flatten()
+            .filter(|line| {
+                line_key(line)
+                    .and_then(crate::model_sizing::canonical)
+                    .is_none_or(|k| !updates.iter().any(|(u, _)| u == k))
+            })
+            .cloned()
+            .collect();
+        lines.splice(start + 1..end, content.into_iter().chain(additions));
+    } else {
+        lines.push(String::new());
+        lines.push(format!("[{model}]"));
+        lines.extend(additions);
+    }
+    let text = format!("{}\n", lines.join("\n").trim_end_matches('\n'));
+    let mut effective: Vec<(String, String)> = defaults
+        .iter()
+        .map(|(k, v)| ((*k).to_owned(), v.clone()))
+        .collect();
+    let mut local: Vec<(String, String)> = section
+        .map(|(_, _, o)| {
+            o.iter()
+                .map(|(k, v)| ((*k).to_owned(), v.clone()))
+                .collect()
+        })
+        .unwrap_or_default();
+    for (k, v) in &updates {
+        if v.is_empty() {
+            local.retain(|(l, _)| l != k);
+        } else {
+            put(&mut local, k, v.clone());
+        }
+    }
+    for (k, v) in local {
+        put(&mut effective, &k, v);
+    }
+    let get = |k: &str| {
+        effective
+            .iter()
+            .find(|(e, _)| e == k)
+            .map(|(_, v)| units(v))
+    };
+    let batch = get("batch-size")
+        .filter(|b| !b.is_empty())
+        .unwrap_or_else(|| units("2048"));
+    match llamacpp_presets::micro_batch_exceeds(get("ubatch-size").as_deref(), Some(&batch)) {
+        Some(false) => {}
+        Some(true) => return Err(thrown(400, "Micro batch cannot exceed batch size")),
+        None => return Err(thrown(400, "Invalid preset option: ubatch-size")),
+    }
+    Ok(Candidate {
+        base_revision: data.revision.clone(),
+        text,
+        before: data.text.clone(),
+    })
 }
 
 /// llamacpp-presets.cjs `pruneBackups`: keeps the newest `keep` `<file>.noevia-backup-<64 hex>`.
@@ -509,5 +811,58 @@ mod tests {
             .snapshot()
             .unwrap_err();
         assert_eq!(e.status, Some(409));
+    }
+
+    /// Core's actual `presets.prepare` over synthetic files (tests/fixtures/preset-prepare-node.json):
+    /// the same text, or the same status and message, for every case.
+    #[test]
+    fn prepare_matches_the_actual_node_store() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/preset-prepare-node.json"
+        ))
+        .unwrap();
+        let cases = fixture["cases"].as_array().unwrap();
+        assert!(cases.len() >= 18);
+        for case in cases {
+            let d = tempfile::tempdir().unwrap();
+            let file = d.path().join("models.ini");
+            let ini = case["ini"].as_str().unwrap();
+            std::fs::write(&file, ini).unwrap();
+            let revision = if case["stale"] == Value::Bool(true) {
+                "0".repeat(64)
+            } else {
+                sha(ini)
+            };
+            let options: Vec<(String, Option<String>)> = case["options"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|o| {
+                    (
+                        o[0].as_str().unwrap().to_owned(),
+                        o[1].as_str().map(str::to_owned),
+                    )
+                })
+                .collect();
+            let model = case["model"].as_str().unwrap();
+            let got = prepare(&file, model, &revision, &options, (1024.0, 2048.0));
+            let want = &case["result"];
+            let name = case["name"].as_str().unwrap();
+            match got {
+                Ok(c) => {
+                    assert_eq!(Some(c.text.as_str()), want["text"].as_str(), "{name}");
+                    assert_eq!(
+                        Some(c.base_revision.as_str()),
+                        want["baseRevision"].as_str(),
+                        "{name}"
+                    );
+                    assert_eq!(c.before, ini, "{name}");
+                }
+                Err(t) => {
+                    assert_eq!(Some(t.message.as_str()), want["error"].as_str(), "{name}");
+                    assert_eq!(t.status.map(u64::from), want["status"].as_u64(), "{name}");
+                }
+            }
+        }
     }
 }

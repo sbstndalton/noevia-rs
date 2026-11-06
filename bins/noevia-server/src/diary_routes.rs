@@ -135,6 +135,9 @@ pub struct NativeLatch {
 }
 
 impl StorageLatch for NativeLatch {
+    fn clear(&self, user_id: &str) {
+        let _ = server_projects::storage_latch::clear(&self.data_dir, user_id);
+    }
     fn held(&self, user_id: &str, storage: &StorageIdentity<'_>) -> Option<Held> {
         let fingerprint = server_projects::storage_latch::fingerprint(
             storage.kind,
@@ -325,7 +328,30 @@ async fn proxied(app: &Arc<App>, req: Request<Body>, path: String, route: Route)
         Ok(found) => found,
         Err(answer) => return *answer,
     };
-    into_response(diary.serve(route, ctx, request, body).await)
+    let retry = parts
+        .headers
+        .get_all("x-cowork-storage-retry")
+        .iter()
+        .count()
+        == 1
+        && parts
+            .headers
+            .get("x-cowork-storage-retry")
+            .is_some_and(|v| v == "1");
+    if matches!(
+        route,
+        Route::Files
+            | Route::File
+            | Route::WorkspaceTrash
+            | Route::History
+            | Route::ExternalSources
+            | Route::ExternalImport
+            | Route::Edit
+    ) {
+        into_response(diary.serve_proxy(route, ctx, request, body, retry).await)
+    } else {
+        into_response(diary.serve(route, ctx, request, body).await)
+    }
 }
 
 /// `GET` and `POST /api/diary/context`.
