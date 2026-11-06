@@ -211,7 +211,18 @@ async fn server_main() -> ExitCode {
     // #2303: a calibration interrupted by a restart restores the preset it was testing (Core's boot
     // `modelManager.calibration?.recover()`, which is off now that the worker is native).
     // The recovery takes the launch slot before the routes serve, so no launch races it.
-    let _ = app.config.spawn_calibration_recovery();
+    let calibration_recovery = app.config.spawn_calibration_recovery();
+    let preset_maint = std::sync::Arc::clone(&app.config.maint);
+    tokio::spawn(async move {
+        // Calibration owns any saved trial-profile repair before generic preset reconciliation.
+        let may_reconcile = match calibration_recovery {
+            Some(job) => matches!(job.await, Ok(Some(None) | Some(Some(true)))),
+            None => true,
+        };
+        if may_reconcile {
+            let _ = preset_maint.spawn_preset_recovery();
+        }
+    });
     {
         let maint = std::sync::Arc::clone(&app.config.maint);
         tokio::spawn(async move {
@@ -223,7 +234,16 @@ async fn server_main() -> ExitCode {
     // #1071: permanent; NOEVIA_RUST_PROJECTS is retired (a leftover value is reported above).
     println!("noevia-server: Rust owns the project routes, projects.json and free-chats.json");
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+    // #697: the memory watchdog (Core's inference-budget-watch.cjs, which Core no longer starts:
+    // rust-budget-watch). Its first reading is one interval from now; it stops with the server.
+    let budget_watch = noevia_server::model_maint::budget_watch::spawn(
+        &app.config.maint,
+        &|k: &str| std::env::var(k).ok(),
+        stop_rx.clone(),
+    );
     let mut stop_wait = stop_rx.clone();
+    let backup_stop = stop_tx.clone();
+    let diary_backup = noevia_server::diary_backup::spawn(&app, stop_rx.clone());
     // sbstndalton/noevia#1264: Node's projects.json / free-chats.json writes, loopback only.
     let switch = app.config.rust_projects;
     if let (Some(cfg), Some(data_dir)) = (
@@ -272,6 +292,7 @@ async fn server_main() -> ExitCode {
         let mut rx = stop_rx;
         let _ = rx.wait_for(|s| *s).await;
     });
+    let worker_stop = stop_tx.clone();
     tokio::spawn(async move {
         terminated().await;
         let _ = stop_tx.send(true);
@@ -284,11 +305,23 @@ async fn server_main() -> ExitCode {
         () = server => ExitCode::SUCCESS,
         _ = drained => ExitCode::SUCCESS,
     };
+    let _ = worker_stop.send(true);
+    if let Some(mut watch) = budget_watch {
+        if tokio::time::timeout(Duration::from_secs(2), &mut watch)
+            .await
+            .is_err()
+        {
+            watch.abort();
+            let _ = watch.await;
+        }
+    }
     if let Some(worker) = embedding_background {
         worker.shutdown().await;
     }
     #[cfg(feature = "rust-storage-reads")]
     let _ = storage_metadata.shutdown().await;
+    let _ = backup_stop.send(true);
+    let _ = diary_backup.await;
     exit
 }
 

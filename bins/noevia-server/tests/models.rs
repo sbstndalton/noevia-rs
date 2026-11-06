@@ -294,7 +294,6 @@ async fn other_methods_trailing_slashes_and_the_other_model_routes_go_to_node() 
         ("POST", "/api/models/estimate?model=m"),
         ("HEAD", "/api/models/preset/suggest?model=m"),
         ("GET", "/api/models/estimate/"),
-        ("PUT", "/api/models/preset"),
         ("HEAD", "/api/models/preset"),
         ("GET", "/api/models/preset/"),
         ("PUT", "/api/models/inference-budget"),

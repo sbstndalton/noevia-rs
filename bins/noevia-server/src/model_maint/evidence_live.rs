@@ -245,8 +245,12 @@ impl Maint {
         model: &str,
         record: &JValue,
     ) -> Result<Option<JValue>, Failure> {
-        self.record_evidence_if(model, record, std::sync::Arc::new(|| true))
-            .await
+        self.record_evidence_if(
+            model,
+            record,
+            super::ini::WriteAllowed::legacy(std::sync::Arc::new(|| true)),
+        )
+        .await
     }
 
     pub(super) async fn record_evidence_if(
@@ -274,8 +278,14 @@ impl Maint {
         live: &Live,
         at: i64,
     ) -> Result<Option<JValue>, Failure> {
-        self.file_record_if(model, record, live, at, std::sync::Arc::new(|| true))
-            .await
+        self.file_record_if(
+            model,
+            record,
+            live,
+            at,
+            super::ini::WriteAllowed::legacy(std::sync::Arc::new(|| true)),
+        )
+        .await
     }
 
     async fn file_record_if(

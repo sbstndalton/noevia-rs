@@ -16,6 +16,7 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_millis(8000);
 /// What a request settles to (a rejection is `Err(Fault)`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Reply {
+    pub uncertain: bool,
     pub ok: bool,
     pub status: u16,
     /// `None`: the response was too large to read (fetchJson answers `{ok:false, error}` with no body).
@@ -29,9 +30,13 @@ pub struct Fault;
 
 #[derive(Clone)]
 pub struct Router {
+    operation: Option<model_publication::Fence>,
     client: reqwest::Client,
     base: String,
     authorization: Option<HeaderValue>,
+    budget_fence: Option<std::path::PathBuf>,
+    budget_preset: Option<std::path::PathBuf>,
+    budget_node: Option<super::budget_watch::NodeBridge>,
 }
 
 impl std::fmt::Debug for Router {
@@ -55,10 +60,32 @@ impl Router {
             .filter(|k| !k.is_empty() && *k != "local")
             .and_then(|k| HeaderValue::from_str(&format!("Bearer {k}")).ok());
         Ok(Router {
+            operation: None,
             client,
             base: base.to_owned(),
             authorization,
+            budget_fence: None,
+            budget_preset: None,
+            budget_node: None,
         })
+    }
+
+    pub fn with_budget_fence(
+        mut self,
+        dir: Option<std::path::PathBuf>,
+        preset: Option<std::path::PathBuf>,
+        node: super::budget_watch::NodeBridge,
+    ) -> Self {
+        self.budget_fence = dir;
+        self.budget_preset = preset;
+        self.budget_node = Some(node);
+        self
+    }
+
+    pub(crate) fn with_operation(&self, fence: &model_publication::Fence) -> Self {
+        let mut router = self.clone();
+        router.operation = Some(fence.clone());
+        router
     }
 
     pub fn base(&self) -> &str {
@@ -95,6 +122,59 @@ impl Router {
         hold: Option<&str>,
         timeout: Duration,
     ) -> Result<Reply, Fault> {
+        self.request_with(method, path, body, hold, &[], timeout)
+            .await
+    }
+
+    /// [`Router::request`] with headers of the caller's own on top (the gate's admin header on the
+    /// memory watchdog's forced unload, the model-loader token on its backend read).
+    pub async fn request_with(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&Value>,
+        hold: Option<&str>,
+        extra: &[(HeaderName, HeaderValue)],
+        timeout: Duration,
+    ) -> Result<Reply, Fault> {
+        // All native maintenance loaders (including calibration) use this shared router.
+        // A pending or recorded watchdog obligation fences admission even while Core is unavailable.
+        if method == reqwest::Method::POST && path.split('?').next() == Some("/models/load") {
+            if let (Some(dir), Some(model)) = (
+                &self.budget_fence,
+                body.and_then(|b| b.get("model")).and_then(Value::as_str),
+            ) {
+                let fenced = if super::budget_watch::journal::fenced(dir, model) {
+                    let revision = match &self.budget_preset {
+                        Some(file) => crate::model_sizing::read_presets(file)
+                            .ok()
+                            .map(|p| Some(p.revision)),
+                        None => Some(None),
+                    };
+                    let budget = match &self.budget_node {
+                        Some(node) => node.budget().await,
+                        None => None,
+                    };
+                    super::budget_watch::journal::admission(
+                        dir,
+                        model,
+                        &super::budget_watch::journal::Context::current(revision, budget),
+                    )
+                } else {
+                    false
+                };
+                if fenced {
+                    return Ok(Reply {
+                        uncertain: false,
+                        ok: false,
+                        status: 409,
+                        body: Some(
+                            serde_json::json!({ "error": "This model stays unloaded until its settings or inference budget change.", "code": "inference_budget_unloaded" }),
+                        ),
+                    });
+                }
+            }
+        }
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         if let Some(a) = &self.authorization {
@@ -102,6 +182,9 @@ impl Router {
         }
         if let Some(h) = hold.and_then(|h| HeaderValue::from_str(h).ok()) {
             headers.insert(HeaderName::from_static("x-noevia-maintenance"), h);
+        }
+        for (name, value) in extra {
+            headers.insert(name.clone(), value.clone());
         }
         let mut req = self
             .client
@@ -111,13 +194,24 @@ impl Router {
         if let Some(b) = body {
             req = req.body(b.to_string());
         }
+        if let Some(fence) = &self.operation {
+            req = req.header(
+                "x-noevia-maintenance-fence",
+                serde_json::to_string(fence).map_err(|_| Fault)?,
+            );
+        }
         let res = req.send().await.map_err(|_| Fault)?;
+        let uncertain = res
+            .headers()
+            .get("x-noevia-maintenance-uncertain")
+            .is_some_and(|v| v == "1");
         let status = res.status().as_u16();
         let ok = res.status().is_success();
         let bytes = match read_capped(res).await {
             Ok(Some(b)) => b,
             Ok(None) => {
                 return Ok(Reply {
+                    uncertain,
                     ok: false,
                     status,
                     body: None,
@@ -130,6 +224,7 @@ impl Router {
             Err(_) => Value::String(String::from_utf8_lossy(&bytes).into_owned()),
         };
         Ok(Reply {
+            uncertain,
             ok,
             status,
             body: Some(body),

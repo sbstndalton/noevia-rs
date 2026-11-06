@@ -464,7 +464,7 @@ async fn remove_section(app: &App, name: &str, hold: &super::Hold) -> Option<boo
         return None;
     }
     let loader = &app.config.model_manager_scan;
-    if !hold.confirm(Duration::from_secs(15)).await {
+    if !hold.may_start(Duration::from_secs(15)) {
         return None;
     }
     let Some((200, listing)) = loader
@@ -478,7 +478,7 @@ async fn remove_section(app: &App, name: &str, hold: &super::Hold) -> Option<boo
     else {
         return None;
     };
-    if !hold.confirm(Duration::from_secs(15)).await {
+    if !hold.may_start(Duration::from_secs(15)) {
         return None;
     }
     let sections = listing.get("sections")?.as_array()?;

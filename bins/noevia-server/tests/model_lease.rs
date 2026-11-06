@@ -201,9 +201,20 @@ async fn node_unreachable_or_refusing_fails_closed_with_nothing_changed() {
     .await;
     let s = front(r, n, &[]).await;
     assert_eq!(reload(s.addr, b"{}").await.0, 503);
+    // Row J review P2: a failed latch call is followed by giving back its ticket (the answer may
+    // have been lost after Node granted it); nothing else reaches Node or the router.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let seen = order.lock().unwrap().clone();
     assert_eq!(
-        order.lock().unwrap().clone(),
-        vec![format!("node POST {LEASE}")]
+        seen.first(),
+        Some(&format!("node POST {LEASE}")),
+        "{seen:?}"
+    );
+    assert!(
+        seen[1..]
+            .iter()
+            .all(|e| e.starts_with(&format!("node DELETE {LEASE}/ticket/"))),
+        "{seen:?}"
     );
     // And with no secret at all, Node is not asked.
     order.lock().unwrap().clear();
@@ -238,7 +249,7 @@ async fn a_step_the_lease_cannot_outlast_is_not_started() {
 }
 
 #[tokio::test]
-async fn a_lease_node_ended_is_confirmed_before_the_first_destructive_step() {
+async fn a_lease_node_ended_stops_the_work_before_its_next_step() {
     let order: Order = Arc::default();
     let (r, _) = engine(router(Arc::clone(&order), &["A", "B"], 500)).await;
     let (n, _) = engine(node(Arc::clone(&order), short_grant, || {
@@ -255,7 +266,7 @@ async fn a_lease_node_ended_is_confirmed_before_the_first_destructive_step() {
     );
     assert_eq!(
         seen.iter().filter(|l| l.contains("/models/unload")).count(),
-        0,
+        1,
         "{seen:?}"
     );
 }
@@ -329,7 +340,6 @@ async fn a_gate_that_grants_is_the_arbiter_and_node_is_not_asked() {
             ("POST", "/gate/v1/maintenance") => {
                 Answer::Reply(201, json!({"hold": ID, "idle_ttl_ms": 600_000}).to_string())
             }
-            ("POST", t) if t.ends_with("/renew") => Answer::Reply(200, "{}".into()),
             ("GET", "/models") => Answer::Reply(200, r#"{"data":[]}"#.into()),
             ("GET", "/models?reload=1") => Answer::Reply(200, "{}".into()),
             _ => Answer::Reply(204, String::new()),
@@ -405,12 +415,24 @@ async fn a_dropped_lease_is_given_back_and_the_next_job_may_run() {
 }
 
 #[tokio::test]
-async fn lost_coverage_does_not_retake_a_grant() {
+async fn a_finish_during_a_retake_leaves_no_unowned_grant() {
+    // L4: the renewal finds the hold gone, and the retake is slow; the job ends meanwhile.
     let d = tempfile::tempdir().unwrap();
-    let (r, seen) = engine(Arc::new(|req: &Req| {
+    let asked = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&asked);
+    const SECOND: &str = "ffffffffffffffffffffffffffffffff";
+    let (r, seen) = engine(Arc::new(move |req: &Req| {
         match (req.method.as_str(), req.target.as_str()) {
             ("POST", "/gate/v1/maintenance") => {
-                Answer::Reply(201, json!({"hold":ID,"idle_ttl_ms":600000}).to_string())
+                if count.fetch_add(1, Ordering::SeqCst) == 0 {
+                    Answer::Reply(201, json!({"hold": ID, "idle_ttl_ms": 300}).to_string())
+                } else {
+                    Answer::After(
+                        Duration::from_millis(500),
+                        201,
+                        json!({"hold": SECOND, "idle_ttl_ms": 60_000}).to_string(),
+                    )
+                }
             }
             ("POST", _) => Answer::Reply(404, "{}".into()),
             _ => Answer::Reply(204, String::new()),
@@ -423,17 +445,20 @@ async fn lost_coverage_does_not_retake_a_grant() {
         &[("INFERENCE_GATE_ADMIN_TOKEN", "synthetic-admin".into())],
     );
     let hold = m.acquire("", Duration::from_secs(60), false).await.unwrap();
-    assert!(!hold.confirm(Duration::ZERO).await);
-    assert!(!hold.may_start(Duration::ZERO));
-    assert_eq!(
-        seen.lock()
+    let count = Arc::clone(&asked);
+    until("the retake is under way", move || {
+        count.load(Ordering::SeqCst) == 2
+    })
+    .await;
+    hold.release().await;
+    let log = Arc::clone(&seen);
+    until("the late grant was given back", move || {
+        log.lock()
             .unwrap()
             .iter()
-            .filter(|r| r.method == "POST" && r.target == "/gate/v1/maintenance")
-            .count(),
-        1
-    );
-    hold.release().await;
+            .any(|q| q.method == "DELETE" && q.target.ends_with(SECOND))
+    })
+    .await;
 }
 
 #[tokio::test]

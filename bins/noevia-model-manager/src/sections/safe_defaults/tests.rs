@@ -98,6 +98,9 @@ fn listing(root: &Path, prefix: &str, out: &mut Vec<String>) {
     for entry in std::fs::read_dir(root).unwrap() {
         let entry = entry.unwrap();
         let name = entry.file_name().to_string_lossy().into_owned();
+        if name == ".models.ini.noevia-publication.sqlite" {
+            continue;
+        }
         let rel = if prefix.is_empty() {
             name
         } else {
