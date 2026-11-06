@@ -594,3 +594,28 @@ async fn restored_file_waits_for_scan_invalidation_acknowledgement() {
         200
     );
 }
+
+#[tokio::test]
+async fn a_fake_gate_health_or_token_is_not_a_settlement_capability() {
+    use noevia_server::{model_load_capability::verified, model_maint::router::Router};
+    let (port, seen) = engine(Arc::new(|_| {
+        Answer::Reply(200, json!({"ok":true}).to_string())
+    }))
+    .await;
+    let router = Router::new(&format!("http://127.0.0.1:{port}"), None).unwrap();
+    let admin = || {
+        Some((
+            reqwest::header::HeaderName::from_static("x-noevia-gate-admin"),
+            reqwest::header::HeaderValue::from_static("synthetic-token"),
+        ))
+    };
+    assert!(!verified(&router, None).await);
+    assert!(!verified(&router, admin()).await);
+    assert_eq!(
+        seen.lock().unwrap().last().unwrap().target,
+        "/gate/v1/capabilities"
+    );
+    let (port, _) = engine(Arc::new(|_| Answer::Reply(200, json!({"protocol":"noevia-gate-capabilities/1", "capabilities":["noevia-model-load-settlement/1"]}).to_string()))).await;
+    let router = Router::new(&format!("http://127.0.0.1:{port}"), None).unwrap();
+    assert!(verified(&router, admin()).await);
+}

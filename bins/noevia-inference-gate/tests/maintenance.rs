@@ -606,3 +606,24 @@ async fn acknowledged_load_keeps_exclusion_until_engine_settles() {
     .await;
     assert_eq!(code, 201, "settled engine should release exclusion: {body}");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn settlement_capability_requires_authenticated_exact_handshake() {
+    let (_router, gate) = setup().await;
+    for token in [None, Some("wrong-admin-token-000"), Some(ADMIN)] {
+        let mut req = client().get(gate.url("/gate/v1/capabilities"));
+        if let Some(token) = token {
+            req = req.header("x-noevia-gate-admin", token);
+        }
+        let res = req.send().await.unwrap();
+        if token == Some(ADMIN) {
+            assert_eq!(res.status(), 200);
+            assert_eq!(
+                json_of(res).await,
+                serde_json::json!({"protocol":"noevia-gate-capabilities/1", "capabilities":["noevia-model-load-settlement/1"]})
+            );
+        } else {
+            assert_eq!(res.status(), 403);
+        }
+    }
+}

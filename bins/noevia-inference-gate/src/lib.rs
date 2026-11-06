@@ -49,6 +49,9 @@
 //! logged).
 
 pub mod env;
+/// Authenticated capability protocol implemented by this gate.
+pub const FEATURES: &[&str] = &["noevia-model-load-settlement/1"];
+
 mod forward;
 mod leases;
 mod respond;

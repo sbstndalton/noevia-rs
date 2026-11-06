@@ -23,6 +23,18 @@ pub(crate) async fn gate_endpoint(gate: Arc<Gate>, request: Request) -> Response
     let method = request.method().clone();
     let path = request.uri().path().to_owned();
     match (method, path.as_str()) {
+        (Method::GET, "/gate/v1/capabilities") => {
+            if !gate.admin(request.headers()) {
+                return respond::refusal(inference_admission::Refusal::AdminRequired);
+            }
+            respond::json(
+                200,
+                &serde_json::json!({
+                    "protocol": "noevia-gate-capabilities/1",
+                    "capabilities": crate::FEATURES,
+                }),
+            )
+        }
         (Method::GET, "/gate/v1/health") => {
             let router_up = !gate.lock().sched.router_down();
             respond::json(

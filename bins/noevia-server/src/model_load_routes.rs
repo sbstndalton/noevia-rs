@@ -481,6 +481,7 @@ async fn load_steps(router: &router::Router, model: &str, lease: &Lease) -> Resp
             reqwest::Method::POST,
             "/models/load",
             Some(&json!({ "model": model })),
+            None,
             &header_pairs(lease),
             LOAD_TIMEOUT,
         )
@@ -556,6 +557,7 @@ pub(crate) async fn unload(
                 reqwest::Method::POST,
                 "/models/unload",
                 Some(&body),
+                None,
                 &extra,
                 if forced { FORCED_TIMEOUT } else { LOAD_TIMEOUT },
             )

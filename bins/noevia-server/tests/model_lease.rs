@@ -201,9 +201,20 @@ async fn node_unreachable_or_refusing_fails_closed_with_nothing_changed() {
     .await;
     let s = front(r, n, &[]).await;
     assert_eq!(reload(s.addr, b"{}").await.0, 503);
+    // Row J review P2: a failed latch call is followed by giving back its ticket (the answer may
+    // have been lost after Node granted it); nothing else reaches Node or the router.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let seen = order.lock().unwrap().clone();
     assert_eq!(
-        order.lock().unwrap().clone(),
-        vec![format!("node POST {LEASE}")]
+        seen.first(),
+        Some(&format!("node POST {LEASE}")),
+        "{seen:?}"
+    );
+    assert!(
+        seen[1..]
+            .iter()
+            .all(|e| e.starts_with(&format!("node DELETE {LEASE}/ticket/"))),
+        "{seen:?}"
     );
     // And with no secret at all, Node is not asked.
     order.lock().unwrap().clear();

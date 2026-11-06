@@ -647,6 +647,11 @@ pub fn router_with_app(
     ));
     // Port contract row H: Node's session with the inference admission lease authority.
     router = router.merge(inference_admission_routes(store.clone()));
+    // Port contract row J: the maintenance lease authority, for Node's maintenance gate.
+    router = router.merge(maintenance_lease_routes(
+        store.clone(),
+        app.as_ref().map(|a| a.config.maint.authority.clone()),
+    ));
     // sbstndalton/noevia#2190 round 6: the provider keys' re-seal (provider_reseal.rs).
     let reseal_store = store.clone();
     router = router.route(
@@ -732,6 +737,46 @@ pub fn inference_admission_routes(store: Store) -> Router {
             }),
         )
         .layer(DefaultBodyLimit::max(authority::BODY_LIMIT))
+}
+
+/// `POST /v1/maintenance-lease/{op}` (model_maint/lease.rs), answered by `authority` (`None`: 503,
+/// so Node's holds fail closed).
+pub fn maintenance_lease_routes(
+    store: Store,
+    authority: Option<crate::model_maint::lease::Authority>,
+) -> Router {
+    use crate::model_maint::lease;
+    let mut router = Router::new();
+    for op in lease::OPS {
+        let (store, authority) = (store.clone(), authority.clone());
+        router = router.route(
+            &format!("{}/{op}", lease::ROUTE_PREFIX),
+            post(move |headers: HeaderMap, raw: Bytes| {
+                let (store, authority) = (store.clone(), authority.clone());
+                async move {
+                    if !authorised(&store, &headers) {
+                        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+                    }
+                    let Some(authority) = authority else {
+                        return error(
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            "The maintenance lease authority is unavailable.",
+                        );
+                    };
+                    let body = if raw.iter().all(u8::is_ascii_whitespace) {
+                        json!({})
+                    } else {
+                        match serde_json::from_slice::<Value>(&raw) {
+                            Ok(b @ Value::Object(_)) => b,
+                            _ => return error(StatusCode::BAD_REQUEST, "invalid JSON"),
+                        }
+                    };
+                    lease::answer_node(&authority, op, &body).await
+                }
+            }),
+        );
+    }
+    router.layer(DefaultBodyLimit::max(lease::BODY_LIMIT))
 }
 
 /// `POST /v1/preset-baseline/{op}` (see the header), answered by `guard` (`None`: 503).

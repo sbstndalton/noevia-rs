@@ -3,8 +3,9 @@
 //!
 //! - [`gate`]: the inference gate's maintenance hold, the one exclusion every client of the router
 //!   (Node's chat, Diary, this front) respects. A hold has a deadline and is given back on failure.
-//! - [`node_lease`]: with no gate, a lease on Node's own maintenance gate, so the reload is still
-//!   exclusive with Node's chat and tune.
+//! - [`lease`]: with no gate, the maintenance lease authority: one exclusive, fenced, expiring lease
+//!   shared by this front's reload and calibration and Node's chat, tune, delete and prune.
+//! - [`node_lease`]: the hold of Node's local chat admission that backs a lease this front holds.
 //! - [`router`]: the router's HTTP API as the maintenance work uses it.
 //! - [`ini`]: the models.ini store (read, parse, commit through the model-loader or the web writer).
 //! - [`evidence_recheck`]: one image-input request under normal inference admission, with carried identity.
@@ -27,9 +28,13 @@ pub mod evidence_live;
 pub mod evidence_recheck;
 pub mod gate;
 pub mod ini;
+// Port contract row J: the one maintenance lease authority (replaces core model-maintenance-lease.cjs).
+pub mod lease;
 pub mod node_lease;
 pub mod reload;
 pub mod router;
+// #697 the memory watchdog (Core inference-budget-watch.cjs; `rust-budget-watch`).
+pub mod budget_watch;
 
 use crate::{identity, reply, App};
 use axum::body::Body;
@@ -96,6 +101,66 @@ pub enum HoldRefusal {
     ShortLease,
 }
 
+/// The local job flag, owned by the acquisition until [`Self::transfer`] hands it to a Hold.
+struct Reservation {
+    flag: Arc<AtomicBool>,
+    armed: bool,
+}
+
+impl Reservation {
+    fn take(flag: &Arc<AtomicBool>) -> Option<Self> {
+        flag.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .ok()?;
+        Some(Reservation {
+            flag: Arc::clone(flag),
+            armed: true,
+        })
+    }
+    fn transfer(mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for Reservation {
+    fn drop(&mut self) {
+        if self.armed {
+            self.flag.store(false, Ordering::Release);
+        }
+    }
+}
+
+/// An authority grant and the Node latch asked for it, before the Hold exists.
+struct PendingLease {
+    authority: lease::Authority,
+    grant: Option<lease::Grant>,
+    node: Arc<node_lease::NodeLeases>,
+    ticket: Option<String>,
+}
+
+impl PendingLease {
+    /// The Hold takes over both.
+    fn complete(mut self) -> Option<lease::Grant> {
+        self.ticket = None;
+        self.grant.take()
+    }
+}
+
+impl Drop for PendingLease {
+    fn drop(&mut self) {
+        if let Some(g) = self.grant.take() {
+            self.authority.release(&g.id, Some(g.generation));
+        }
+        if let Some(ticket) = self.ticket.take() {
+            if let Ok(rt) = tokio::runtime::Handle::try_current() {
+                let node = Arc::clone(&self.node);
+                rt.spawn(async move {
+                    let _ = node.release_ticket(&ticket).await;
+                });
+            }
+        }
+    }
+}
+
 /// What the maintenance routes need from the environment, as Core's index.cjs reads it.
 pub struct Maint {
     pub kind: server_stats::Kind,
@@ -116,6 +181,8 @@ pub struct Maint {
     pub(crate) source_client: reqwest::Client,
     /// Node's own maintenance gate: the arbiter when the inference gate gives no hold.
     node: Arc<node_lease::NodeLeases>,
+    /// The maintenance lease authority (row J): the one table of who holds the engine.
+    pub authority: lease::Authority,
     /// The inbox entries that failed or could not be removed, by file name.
     pub(crate) drain: std::sync::Mutex<evidence_live::DrainState>,
     /// A job of this process is running: one at a time.
@@ -186,7 +253,18 @@ impl Maint {
         );
         let llama = kind == server_stats::Kind::LlamaCpp;
         let router = if llama {
-            Some(router::Router::new(engine.base(), key.as_deref())?)
+            Some(
+                router::Router::new(engine.base(), key.as_deref())?.with_budget_fence(
+                    data_dir
+                        .as_ref()
+                        .map(|d| d.join(format!("budget-watch-{suffix}"))),
+                    first(get, &["LLAMACPP_PRESET_PATH"]).map(PathBuf::from),
+                    budget_watch::NodeBridge::new(
+                        first(get, &["NOEVIA_LEGACY_UPSTREAM"]).as_deref(),
+                        get("NOEVIA_PROJECT_STORE_TOKEN").as_deref(),
+                    )?,
+                ),
+            )
         } else {
             None
         };
@@ -263,6 +341,7 @@ impl Maint {
             card_base,
             source_client,
             node,
+            authority: lease::Authority::new(),
             drain: std::sync::Mutex::new(evidence_live::DrainState::default()),
             local: Arc::new(AtomicBool::new(false)),
             data_dir,
@@ -284,18 +363,14 @@ impl Maint {
         max: Duration,
         need_gate: bool,
     ) -> Result<Hold, HoldError> {
-        if self
-            .local
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
+        // Review P2: the reservation is owned from the moment it is taken, so a dropped acquisition
+        // (or any error) clears it; only a completed Hold takes it over.
+        let Some(reserved) = Reservation::take(&self.local) else {
             return Err(HoldError::Busy);
-        }
-        let taken = self.acquire_locally_held(reason, max, need_gate).await;
-        if taken.is_err() {
-            self.local.store(false, Ordering::Release);
-        }
-        taken
+        };
+        let hold = self.acquire_locally_held(reason, max, need_gate).await?;
+        reserved.transfer();
+        Ok(hold)
     }
 
     async fn acquire_locally_held(
@@ -304,7 +379,7 @@ impl Maint {
         max: Duration,
         need_gate: bool,
     ) -> Result<Hold, HoldError> {
-        self.acquire_inner(reason, max, need_gate, None)
+        self.acquire_inner(reason, max, need_gate, None, false)
             .await
             .map_err(|r| match r {
                 HoldRefusal::Busy => HoldError::Busy,
@@ -327,20 +402,29 @@ impl Maint {
         reason: &str,
         lease_for: Duration,
     ) -> Result<Hold, HoldRefusal> {
-        if self
-            .local
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
+        let Some(reserved) = Reservation::take(&self.local) else {
             return Err(HoldRefusal::Busy);
-        }
-        let taken = self
-            .acquire_inner(reason, Duration::MAX, false, Some(lease_for))
-            .await;
-        if taken.is_err() {
-            self.local.store(false, Ordering::Release);
-        }
-        taken
+        };
+        let hold = self
+            .acquire_inner(reason, Duration::MAX, false, Some(lease_for), false)
+            .await?;
+        reserved.transfer();
+        Ok(hold)
+    }
+
+    /// Delta review P1: a fresh hold for a recovery after a lost one, taken while the caller keeps this
+    /// process's local admission closed itself (its admission fence): no new reservation, and the hold
+    /// never clears local admission when it ends. The lost hold is never reused.
+    pub(super) async fn acquire_recovery(
+        &self,
+        reason: &str,
+        lease_for: Duration,
+    ) -> Result<Hold, HoldRefusal> {
+        let mut hold = self
+            .acquire_inner(reason, Duration::MAX, false, Some(lease_for), true)
+            .await?;
+        drop(hold.defer_local_release());
+        Ok(hold)
     }
 
     async fn acquire_inner(
@@ -349,6 +433,7 @@ impl Maint {
         max: Duration,
         need_gate: bool,
         lease_for: Option<Duration>,
+        recovery: bool,
     ) -> Result<Hold, HoldRefusal> {
         let Some(gate) = self.gate.as_ref() else {
             return Err(HoldRefusal::NeedsGate);
@@ -368,18 +453,56 @@ impl Maint {
                 if lease_for.is_some_and(|d| d > node_lease::MAX_LEASE) {
                     return Err(HoldRefusal::OverLimit);
                 }
-                match self.node.acquire_capped(lease_for).await {
+                // The authority first: a lease Node's gate or another job of this front holds is a 409
+                // before Node is asked anything.
+                if recovery {
+                    let ticket = self.authority.require_recovery();
+                    if !self.node.recovery_barrier(true, &ticket).await {
+                        return Err(HoldRefusal::NodeUnavailable);
+                    }
+                }
+                let grant = if recovery {
+                    self.authority.try_recovery(lease_for, reason)
+                } else {
+                    self.authority
+                        .try_acquire(lease::Origin::Front, lease_for, reason)
+                };
+                let Ok(own) = grant else {
+                    return Err(HoldRefusal::Busy);
+                };
+                // Review P2: the authority grant and the latch it asks Node for are owned from here; a
+                // drop before the Hold exists gives both back (the latch by its ticket, in case Node
+                // granted it but the answer was lost).
+                let mut pending = PendingLease {
+                    authority: self.authority.clone(),
+                    grant: Some(own),
+                    node: Arc::clone(&self.node),
+                    ticket: None,
+                };
+                let ticket = pending.grant.as_ref().map(|g| g.id.clone());
+                pending.ticket.clone_from(&ticket);
+                match self
+                    .node
+                    .acquire_kind(lease_for, ticket.as_deref(), recovery)
+                    .await
+                {
                     Ok(grant) if lease_for.is_some_and(|d| grant.hard < d) => {
+                        drop(pending);
                         self.node.release(&grant.id).await;
                         Err(HoldRefusal::ShortLease)
                     }
-                    Ok(grant) => Ok(Hold::leased(
-                        Arc::clone(&self.local),
-                        Arc::clone(&self.node),
-                        grant,
-                        reason,
-                        deadline_after(max),
-                    )),
+                    Ok(grant) => {
+                        let own = pending.complete();
+                        Ok(Hold::leased(
+                            Arc::clone(&self.local),
+                            Arc::clone(&self.node),
+                            grant,
+                            own.map(|g| (self.authority.clone(), g)),
+                            reason,
+                            deadline_after(max),
+                        ))
+                    }
+                    // Refused: Node holds no latch for it, but the guard's ticket release is harmless.
                     Err(node_lease::LeaseFault::Busy) => Err(HoldRefusal::Busy),
                     Err(node_lease::LeaseFault::Unavailable) => Err(HoldRefusal::NodeUnavailable),
                 }

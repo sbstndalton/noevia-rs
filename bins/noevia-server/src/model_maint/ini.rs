@@ -341,20 +341,34 @@ impl Store {
     /// Settle the original-profile CAS, including a lost reply. An uncertain attempt remains
     /// owned until the desired content is visible or the CAS base no longer applies. Local
     /// blocking I/O that never returns is outside this protocol, as in the original worker.
-    pub(super) async fn settle_restore(&self, c: &Candidate, initial: Duration) -> bool {
+    pub(super) async fn settle_restore(
+        &self,
+        c: &Candidate,
+        initial: Duration,
+        allowed: WriteAllowed,
+    ) -> bool {
         let mut wait = initial
             .max(Duration::from_millis(1))
             .min(Duration::from_secs(60));
         loop {
+            if !allowed() {
+                return false;
+            }
             let store = self.clone();
             if let Ok(Ok(current)) = tokio::task::spawn_blocking(move || store.snapshot()).await {
+                if !allowed() {
+                    return false;
+                }
                 if current.text == c.text {
                     return true;
                 }
                 if current.revision != c.base_revision {
                     return false;
                 }
-                match self.commit(c, true).await {
+                match self
+                    .commit_if(c, true, std::sync::Arc::clone(&allowed))
+                    .await
+                {
                     Ok(()) => return true,
                     Err(e) if e.status == 409 => return false,
                     // Transport, lost body and service failures all retain an owned resolver.
