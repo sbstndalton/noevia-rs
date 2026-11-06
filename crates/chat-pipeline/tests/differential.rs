@@ -1801,6 +1801,14 @@ mod finish_stage {
         }
     }
 
+    fn same<T: PartialEq + std::fmt::Debug>(got: &T, want: &T, what: &str) {
+        if got != want {
+            let text = format!("{what}\n got: {got:?}\nwant: {want:?}\n");
+            let _ = std::fs::write(std::env::temp_dir().join("gate-diff.txt"), &text);
+            panic!("{text}");
+        }
+    }
+
     #[test]
     fn turn_endings_and_titles_match_node() {
         let c = wtf16::parse(include_str!("fixtures/finish-cases.json")).unwrap();
@@ -1808,13 +1816,24 @@ mod finish_stage {
         for k in arr(c.get("cases")) {
             let mut attempts = AttemptCounter::new(3, 2000);
             let project = k.get("project") == &JValue::Bool(true);
-            let provider = if project { k.get("provider").as_str().unwrap() } else { "default" };
-            for (t, got) in arr(k.get("turns")).iter().zip(arr(k.get("out").get("turns"))) {
+            let provider = if project {
+                k.get("provider").as_str().unwrap()
+            } else {
+                "default"
+            };
+            for (t, got) in arr(k.get("turns"))
+                .iter()
+                .zip(arr(k.get("out").get("turns")))
+            {
                 let tail = arr(got.get("tail"));
                 if tail.first().and_then(|e| e.get("type").as_str()) != Some("telemetry") {
                     continue; // refused or failed before the end (earlier stages)
                 }
-                let what = format!("{} turn {}", wtf16::stringify(k).unwrap(), wtf16::stringify(t).unwrap());
+                let what = format!(
+                    "{} turn {}",
+                    wtf16::stringify(k).unwrap(),
+                    wtf16::stringify(t).unwrap()
+                );
                 let answer = t.get("answer").as_str().unwrap();
                 let turn = TitleTurn {
                     titles: k.get("titles") == &JValue::Bool(true),
@@ -1843,18 +1862,29 @@ mod finish_stage {
                 };
                 let mut busy = || t.get("busy") == &JValue::Bool(true);
                 let ask = title::title_ask(&turn, &mut attempts, &mut auto_named, &mut busy);
-                assert_eq!(ask.is_some(), matches!(got.get("titleAsked"), JValue::Obj(_)), "asked {what}");
-                assert_eq!(named_asked, matches!(got.get("autoNamedAsked"), JValue::Arr(_)), "autoNamed {what}");
+                same(&ask.is_some(), &matches!(got.get("titleAsked"), JValue::Obj(_)), &format!("asked {what} got {}", wtf16::stringify(got).unwrap()));
+                same(&named_asked, &matches!(got.get("autoNamedAsked"), JValue::Arr(_)), &format!("autoNamed {what} got {}", wtf16::stringify(got).unwrap()));
                 let made = ask.as_ref().and_then(|_| match t.get("title") {
                     JValue::Str(e) if e == "error" => None,
                     v => title::clean_title(v),
                 });
                 asked += usize::from(ask.is_some());
                 titled += usize::from(made.is_some());
-                let events = title::finish_events("answer-model", made.as_deref().zip(ask.as_ref()).map(|(m, a)| (a.chat_id.as_str(), m)));
-                let want: Vec<String> = tail[1..].iter().map(|e| wtf16::stringify(e).unwrap()).collect();
-                let events: Vec<String> = events.iter().map(|e| wtf16::stringify(e).unwrap()).collect();
-                assert_eq!(events, want, "tail {what}");
+                let events = title::finish_events(
+                    "answer-model",
+                    made.as_deref()
+                        .zip(ask.as_ref())
+                        .map(|(m, a)| (a.chat_id.as_str(), m)),
+                );
+                let want: Vec<String> = tail[1..]
+                    .iter()
+                    .map(|e| wtf16::stringify(e).unwrap())
+                    .collect();
+                let events: Vec<String> = events
+                    .iter()
+                    .map(|e| wtf16::stringify(e).unwrap())
+                    .collect();
+                same(&events, &want, &format!("tail {what}"));
                 match (made.as_deref(), got.get("saved")) {
                     (Some(m), JValue::Arr(s)) => {
                         let a = ask.as_ref().unwrap();

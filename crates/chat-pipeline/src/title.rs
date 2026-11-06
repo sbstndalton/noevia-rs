@@ -327,6 +327,9 @@ mod tests {
     }
 }
 
+/// `chatTitles.autoNamed(list, chat, first)`.
+pub type AutoNamed<'a> = dyn FnMut(Option<&str>, &str, &str) -> Result<bool, ()> + 'a;
+
 /// What chat.cjs:2643-2656 reads at a turn's end to decide on a title (#1785).
 pub struct TitleTurn<'a> {
     /// `chatTitles` is wired.
@@ -366,7 +369,7 @@ pub struct TitleAsk {
 pub fn title_ask(
     t: &TitleTurn<'_>,
     attempts: &mut AttemptCounter,
-    auto_named: &mut dyn FnMut(Option<&str>, &str, &str) -> Result<bool, ()>,
+    auto_named: &mut AutoNamed<'_>,
     busy: &mut dyn FnMut() -> bool,
 ) -> Option<TitleAsk> {
     let chat_id = match t.chat_id {
