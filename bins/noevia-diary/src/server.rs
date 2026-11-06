@@ -177,6 +177,8 @@ pub enum Route {
     StorageStatus,
     WorkspaceExport,
     /// D5: PUT /api/file, POST /api/directory, POST /api/entries/append, POST /api/entries/edit.
+    WorkspaceOps,
+    WorkspaceTrash,
     PutFile,
     Directory,
     Append,
@@ -188,7 +190,9 @@ impl Route {
     fn d4b(self) -> bool {
         matches!(
             self,
-            Route::Files
+            Route::WorkspaceOps
+                | Route::WorkspaceTrash
+                | Route::Files
                 | Route::StorageStatus
                 | Route::WorkspaceExport
                 | Route::PutFile
@@ -199,7 +203,12 @@ impl Route {
     pub fn write(self) -> bool {
         matches!(
             self,
-            Route::PutFile | Route::Directory | Route::Append | Route::Edit
+            Route::WorkspaceOps
+                | Route::WorkspaceTrash
+                | Route::PutFile
+                | Route::Directory
+                | Route::Append
+                | Route::Edit
         )
     }
 }
@@ -212,6 +221,8 @@ pub fn route(method: &Method, path: &str) -> Option<Route> {
         ("GET", "/api/files") => Some(Route::Files),
         ("GET", "/api/storage-status") => Some(Route::StorageStatus),
         ("GET", "/api/workspace-export") => Some(Route::WorkspaceExport),
+        ("POST", "/api/workspace-ops") => Some(Route::WorkspaceOps),
+        ("POST", "/api/workspace-trash") => Some(Route::WorkspaceTrash),
         ("PUT", "/api/file") => Some(Route::PutFile),
         ("POST", "/api/directory") => Some(Route::Directory),
         ("POST", "/api/entries/append") => Some(Route::Append),
@@ -324,6 +335,8 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
         | Route::Files
         | Route::StorageStatus
         | Route::WorkspaceExport
+        | Route::WorkspaceOps
+        | Route::WorkspaceTrash
         | Route::PutFile
         | Route::Directory
         | Route::Append
@@ -525,9 +538,12 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
             let task = tokio::task::spawn_blocking(move || serve_corpus(&app2, r, &query, &tenant));
             task.await.unwrap_or_else(|_| internal_error())
         }
-        Route::PutFile | Route::Directory | Route::Append | Route::Edit => {
-            serve_write(app, r, &header_uid, asserted, &headers, tenant, write).await
-        }
+        Route::WorkspaceOps
+        | Route::WorkspaceTrash
+        | Route::PutFile
+        | Route::Directory
+        | Route::Append
+        | Route::Edit => serve_write(app, r, &header_uid, asserted, &headers, tenant, write).await,
     }
 }
 
@@ -590,12 +606,15 @@ async fn serve_write(
         return decline();
     };
     enum Op {
+        Ops(bool),
         File,
         Dir,
         Append(writes::AppendReq),
         Edit(writes::EditReq),
     }
     let op = match r {
+        Route::WorkspaceOps => Op::Ops(false),
+        Route::WorkspaceTrash => Op::Ops(true),
         Route::PutFile => Op::File,
         Route::Directory => Op::Dir,
         Route::Append => match writes::append_validate(&json) {
@@ -639,6 +658,13 @@ async fn serve_write(
                     layout: &tenant.layout,
                 };
                 match &op {
+                    Op::Ops(trash) => crate::ops::run(
+                        tenant.store.db_path(),
+                        &root.join("managed-index.db"),
+                        &tenant.layout,
+                        &json,
+                        *trash,
+                    ),
                     Op::File => writes::file_write(&ctx, &json),
                     Op::Dir => writes::directory_create(&ctx, &json),
                     Op::Append(req) => writes::append(&ctx, req),
@@ -648,7 +674,18 @@ async fn serve_write(
             .unwrap_or(Reply::Decline)
     });
     match task.await {
-        Ok(r) => reply(r),
+        Ok(result) => {
+            let mut response = reply(result);
+            if matches!(r, Route::WorkspaceOps | Route::WorkspaceTrash)
+                && response.status() == StatusCode::OK
+            {
+                response.headers_mut().insert(
+                    "cache-control",
+                    axum::http::HeaderValue::from_static("no-store"),
+                );
+            }
+            response
+        }
         Err(_) => internal_error(),
     }
 }

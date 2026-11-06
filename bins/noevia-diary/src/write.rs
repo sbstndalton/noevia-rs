@@ -158,7 +158,7 @@ pub fn py_json(pairs: &[(&str, PyVal<'_>)]) -> String {
 
 // ------------------------------------------------------------------ connections
 
-fn open_rw(path: &Path) -> Result<Connection, Error> {
+pub(crate) fn open_rw(path: &Path) -> Result<Connection, Error> {
     let conn = Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -189,7 +189,7 @@ fn next_generation(text: Option<String>) -> Result<String, Error> {
 
 /// The bookkeeping every managed save commits with its data (managed_storage.py put /
 /// create_directory): generation + 1, `due = now + 3 s`, `snapshot_time = now`.
-fn bump(tx: &Connection, now: f64) -> Result<(), Error> {
+pub(crate) fn bump(tx: &Connection, now: f64) -> Result<(), Error> {
     let generation: Option<String> = tx
         .query_row("SELECT value FROM meta WHERE key='generation'", [], |r| {
             r.get(0)

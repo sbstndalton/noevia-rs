@@ -788,3 +788,134 @@ async fn body_shape_refusals_precede_auth_on_every_write_route() {
     }
     assert!(file_row(dir.path(), "a.md").is_none());
 }
+
+#[tokio::test]
+async fn workspace_ops_commit_and_outbox_transfer_are_native() {
+    let temp = tempfile::tempdir().unwrap();
+    managed_tenant(temp.path(), &[("Notes/a.md", "hello")]);
+    let addr = start(temp.path(), "rust").await;
+    let version = sha256(b"hello");
+    let body = serde_json::json!({"op":"move","path":"Notes/a.md","destination":"Notes/b.md","version":version});
+    let (status, declined, text) = send(addr, "POST", "/api/workspace-ops", &writer(), &body).await;
+    assert_eq!((status, declined), (200, false), "{text}");
+    assert_eq!(
+        text,
+        r#"{"path":"Notes/a.md","destination":"Notes/b.md","replaced":false}"#
+    );
+    assert!(file_row(temp.path(), "Notes/a.md").is_none());
+    assert_eq!(file_row(temp.path(), "Notes/b.md").unwrap().0, b"hello");
+    let dirty: i64 = index(temp.path())
+        .query_row("SELECT count(*) FROM dirty_documents", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(dirty, 2);
+    let db = rusqlite::Connection::open(tenant_root(temp.path()).join("managed-diary.db")).unwrap();
+    let pending: i64 = db
+        .query_row("SELECT count(*) FROM workspace_index_outbox", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(pending, 0);
+}
+
+#[tokio::test]
+async fn workspace_trash_round_trip_and_decline_fences() {
+    let temp = tempfile::tempdir().unwrap();
+    managed_tenant(temp.path(), &[("a.md", "hello")]);
+    let addr = start(temp.path(), "rust").await;
+    let id = "00000000-0000-4000-8000-000000000123";
+    let body =
+        serde_json::json!({"action":"trash","id":id,"path":"a.md","version":sha256(b"hello")});
+    assert_eq!(
+        send(addr, "POST", "/api/workspace-trash", &writer(), &body)
+            .await
+            .0,
+        200
+    );
+    assert!(file_row(temp.path(), "a.md").is_none());
+    let restore = serde_json::json!({"action":"restore","id":id});
+    assert_eq!(
+        send(addr, "POST", "/api/workspace-trash", &writer(), &restore)
+            .await
+            .0,
+        200
+    );
+    assert_eq!(file_row(temp.path(), "a.md").unwrap().0, b"hello");
+    let (_, _, text) = send(addr, "POST", "/api/workspace-trash", &writer(), &restore).await;
+    assert!(text.contains("\"alreadyApplied\":true"));
+    let no_writer = without(writer(), "x-noevia-diary-writer");
+    assert!(
+        send(addr, "POST", "/api/workspace-trash", &no_writer, &body)
+            .await
+            .1
+    );
+    let ctl = vec![("x-noevia-diary-control", "ctl".to_string())];
+    send(
+        addr,
+        "POST",
+        &format!("/internal/fence?tenant={UID}"),
+        &ctl,
+        &serde_json::json!({}),
+    )
+    .await;
+    assert!(
+        send(addr, "POST", "/api/workspace-trash", &writer(), &body)
+            .await
+            .1
+    );
+}
+
+#[tokio::test]
+async fn workspace_ops_recovery_retains_outbox_when_index_transfer_fails() {
+    let temp = tempfile::tempdir().unwrap();
+    managed_tenant(temp.path(), &[("a.md", "hello")]);
+    index(temp.path()).execute_batch("CREATE TRIGGER offline BEFORE INSERT ON dirty_documents BEGIN SELECT RAISE(ABORT,'synthetic index failure'); END;").unwrap();
+    let addr = start(temp.path(), "rust").await;
+    let body = serde_json::json!({"op":"move","path":"a.md","destination":"b.md","version":sha256(b"hello")});
+    assert_eq!(
+        send(addr, "POST", "/api/workspace-ops", &writer(), &body)
+            .await
+            .0,
+        200
+    );
+    assert!(file_row(temp.path(), "a.md").is_none());
+    let db = rusqlite::Connection::open(tenant_root(temp.path()).join("managed-diary.db")).unwrap();
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM workspace_index_outbox", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        2
+    );
+    // The next operation declines before effects: Python must recover the durable outbox.
+    assert!(
+        send(addr, "POST", "/api/workspace-ops", &writer(), &body)
+            .await
+            .1
+    );
+}
+
+#[tokio::test]
+async fn workspace_ops_transaction_failure_rolls_back_and_concurrent_writers_serialize() {
+    let temp = tempfile::tempdir().unwrap();
+    managed_tenant(temp.path(), &[("a.md", "hello")]);
+    let addr = start(temp.path(), "rust").await;
+    let db = rusqlite::Connection::open(tenant_root(temp.path()).join("managed-diary.db")).unwrap();
+    db.execute_batch("CREATE TRIGGER stop BEFORE INSERT ON workspace_index_outbox BEGIN SELECT RAISE(ABORT,'synthetic crash before outbox'); END;").unwrap();
+    let body = serde_json::json!({"op":"move","path":"a.md","destination":"b.md","version":sha256(b"hello")});
+    assert_eq!(
+        send(addr, "POST", "/api/workspace-ops", &writer(), &body)
+            .await
+            .0,
+        500
+    );
+    assert!(file_row(temp.path(), "a.md").is_some());
+    assert!(file_row(temp.path(), "b.md").is_none());
+    db.execute_batch("DROP TRIGGER stop").unwrap();
+    let h = writer();
+    let (a, b) = tokio::join!(
+        send(addr, "POST", "/api/workspace-ops", &h, &body),
+        send(addr, "POST", "/api/workspace-ops", &h, &body)
+    );
+    let mut statuses = [a.0, b.0];
+    statuses.sort();
+    assert_eq!(statuses, [200, 404]);
+}

@@ -27,6 +27,9 @@ diary-corpus-parse = { path = "../../crates/diary-corpus-parse" }
 diary-workspace-export = { path = "../../crates/diary-workspace-export" }
 diary-corpus-write = { path = "../../crates/diary-corpus-write" }
 
+diary-workspace-rules = { path = "../../crates/diary-workspace-rules" }
+base64 = "0.22"
+
 [dev-dependencies]
 tempfile = "3"
 reqwest = { version = "0.12", default-features = false }
