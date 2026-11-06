@@ -1,7 +1,7 @@
 //! Managed workspace mutations. The caller owns the D5 writer until this synchronous
 //! operation settles. File effects and recovery outbox are one FULL SQLite transaction;
 //! dirty transfer is durable-before-delete, so a crash never loses invalidation.
-use crate::{corpus::Layout, trash, workspace::Reply, write, writes};
+use crate::{capsule_json::Json, corpus::Layout, trash, workspace::Reply, write, writes};
 use diary_workspace_rules as rules;
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde_json::{Map, Value};
@@ -467,22 +467,35 @@ fn allowed(l: &Layout, p: &str) -> Result<()> {
     }
     Ok(())
 }
-fn decode(data: &[u8], id: &str) -> Result<rules::LegacyCapsule> {
+struct Capsule {
+    record: Json,
+    raw: Vec<u8>,
+}
+fn decode(data: &[u8], id: &str) -> Result<Capsule> {
     match trash::decode(data, id) {
         trash::Decoded::Decline => return Err(Failure::Decline),
         trash::Decoded::Invalid => return fail(409, INVALID),
         _ => {}
     }
-    rules::decode_legacy(data, id).map_err(|_| Failure::Decline)
+    let decoded = rules::decode_legacy(data, id).map_err(|_| Failure::Decline)?;
+    Ok(Capsule {
+        record: Json::parse(data).map_err(|_| Failure::Decline)?,
+        raw: decoded.raw,
+    })
 }
-fn summary(r: &Map<String, Value>, already: bool) -> Result<Reply> {
+fn summary(r: &Json, already: bool) -> Result<Reply> {
     let mut fields = Vec::new();
     for k in ["id", "path", "version", "state", "trashedAt"] {
         fields.push((k, r.get(k).cloned().ok_or(Failure::Decline)?));
     }
-    fields.push(("alreadyApplied", already.into()));
-    fields.push(("indexPending", true.into()));
-    Ok(reply(&fields))
+    fields.push(("alreadyApplied", Json::bool(already)));
+    fields.push(("indexPending", Json::bool(true)));
+    Ok(Reply::Json(
+        200,
+        Json::object(fields)
+            .encode(false, false)
+            .map_err(|_| Failure::Decline)?,
+    ))
 }
 fn change(db: &Connection, l: &Layout, b: &Map<String, Value>, now: f64) -> Result<Reply> {
     let id = string(b, "id")
@@ -505,7 +518,9 @@ fn change(db: &Connection, l: &Layout, b: &Map<String, Value>, now: f64) -> Resu
         allowed(l, p)?;
         if let Some(data) = existing {
             let rec = decode(&data, &id)?.record;
-            if rec.get("path") != b.get("path") || rec.get("version") != b.get("version") {
+            if rec.get("path").and_then(Json::as_str) != string(b, "path")
+                || rec.get("version").and_then(Json::as_str) != string(b, "version")
+            {
                 return fail(
                     409,
                     "Operation ID was already used for a different file version",
@@ -536,7 +551,7 @@ fn change(db: &Connection, l: &Layout, b: &Map<String, Value>, now: f64) -> Resu
         }
         let rec = serde_json::json!({"format":"noevia-trash-v1","id":id,"path":p,"version":version,"data":base64::Engine::encode(&base64::engine::general_purpose::STANDARD,&raw),"state":"trashed","trashedAt":now});
         (
-            rec.as_object().cloned().ok_or(Failure::Infra)?,
+            Json::from_value(&rec).map_err(|_| Failure::Decline)?,
             raw,
             p.to_string(),
         )
@@ -547,11 +562,11 @@ fn change(db: &Connection, l: &Layout, b: &Map<String, Value>, now: f64) -> Resu
         let p = decoded
             .record
             .get("path")
-            .and_then(Value::as_str)
+            .and_then(Json::as_str)
             .ok_or(Failure::Decline)?
             .to_string();
         allowed(l, &p)?;
-        if decoded.record.get("state").and_then(Value::as_str) == Some("restored") {
+        if decoded.record.get("state").and_then(Json::as_str) == Some("restored") {
             return summary(&decoded.record, true);
         }
         if all_paths(db)?.iter().any(|(path, file)| {
@@ -568,11 +583,18 @@ fn change(db: &Connection, l: &Layout, b: &Map<String, Value>, now: f64) -> Resu
     };
     // Preflight serialization and response before the first effect (decline must be safe).
     if action == "restore" {
-        record.insert("state".into(), "restored".into());
-        record.insert("restoredAt".into(), now.into());
+        record
+            .set("state", Json::String("restored".into()))
+            .map_err(|_| Failure::Decline)?;
+        record
+            .set(
+                "restoredAt",
+                Json::from_value(&now.into()).map_err(|_| Failure::Decline)?,
+            )
+            .map_err(|_| Failure::Decline)?;
     }
     let response = summary(&record, false)?;
-    let encoded = encode(&Value::Object(record))?;
+    let encoded = record.encode(true, true).map_err(|_| Failure::Decline)?;
     if action == "trash" {
         db.execute("DELETE FROM files WHERE path=?", [&full])?;
     } else {

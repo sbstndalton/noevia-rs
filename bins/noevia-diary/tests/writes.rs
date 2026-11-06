@@ -919,3 +919,91 @@ async fn workspace_ops_transaction_failure_rolls_back_and_concurrent_writers_ser
     statuses.sort();
     assert_eq!(statuses, [200, 404]);
 }
+
+#[tokio::test]
+async fn legacy_capsule_summaries_preserve_nested_values_and_order() {
+    for at in [
+        r#"{"z":1,"a":2}"#,
+        r#"[{"z":1e-7,"a":1e20},-0.0]"#,
+        r#"{"n":18446744073709551617,"s":"\u00e9\n"}"#,
+    ] {
+        let temp = tempfile::tempdir().unwrap();
+        managed_tenant(temp.path(), &[]);
+        let addr = start(temp.path(), "rust").await;
+        let id = "00000000-0000-4000-8000-000000000123";
+        let record = format!(
+            r#"{{"format":"noevia-trash-v1","id":"{id}","path":"a.md","data":"aGVsbG8=","version":"{}","state":"trashed","trashedAt":{at}}}"#,
+            sha256(b"hello")
+        );
+        let db =
+            rusqlite::Connection::open(tenant_root(temp.path()).join("managed-diary.db")).unwrap();
+        db.execute(
+            "INSERT INTO files VALUES (?,?,?,1.0)",
+            rusqlite::params![
+                format!(".noevia-trash/{id}.json"),
+                record.as_bytes(),
+                sha256(record.as_bytes())
+            ],
+        )
+        .unwrap();
+        let (_, declined, text) = send(
+            addr,
+            "POST",
+            "/api/workspace-trash",
+            &writer(),
+            &serde_json::json!({"action":"restore","id":id}),
+        )
+        .await;
+        assert!(!declined, "{text}");
+        // Expected JSONResponse serialization from Python, not the original lexical tokens.
+        let expected = match at {
+            r#"{"z":1,"a":2}"# => r#"{"z":1,"a":2}"#,
+            r#"[{"z":1e-7,"a":1e20},-0.0]"# => r#"[{"z":1e-07,"a":1e+20},-0.0]"#,
+            _ => "{\"n\":18446744073709551617,\"s\":\"é\\n\"}",
+        };
+        assert!(
+            text.contains(&format!("\"trashedAt\":{expected},")),
+            "{text}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn unsupported_legacy_capsule_declines_before_any_effect() {
+    let temp = tempfile::tempdir().unwrap();
+    managed_tenant(temp.path(), &[]);
+    let addr = start(temp.path(), "rust").await;
+    let id = "00000000-0000-4000-8000-000000000123";
+    let record = format!(
+        r#"{{"format":"noevia-trash-v1","id":"{id}","path":"a.md","data":"aGVsbG8=","version":"{}","state":"trashed","trashedAt":{{"unknown":"\ud800"}}}}"#,
+        sha256(b"hello")
+    );
+    let capsule = format!(".noevia-trash/{id}.json");
+    let db = rusqlite::Connection::open(tenant_root(temp.path()).join("managed-diary.db")).unwrap();
+    db.execute(
+        "INSERT INTO files VALUES (?,?,?,1.0)",
+        rusqlite::params![capsule, record.as_bytes(), sha256(record.as_bytes())],
+    )
+    .unwrap();
+    let (_, declined, _) = send(
+        addr,
+        "POST",
+        "/api/workspace-trash",
+        &writer(),
+        &serde_json::json!({"action":"restore","id":id}),
+    )
+    .await;
+    assert!(declined);
+    assert!(file_row(temp.path(), "a.md").is_none());
+    assert_eq!(
+        file_row(temp.path(), &capsule).unwrap().0,
+        record.as_bytes()
+    );
+    assert_eq!(meta(temp.path(), "generation"), "1");
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM workspace_index_outbox", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+}

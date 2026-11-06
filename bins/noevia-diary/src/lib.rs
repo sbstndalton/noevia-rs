@@ -3,6 +3,7 @@
 //! and every request this side declines, stays with Python.
 
 pub mod assertion;
+mod capsule_json;
 pub mod config;
 pub mod corpus;
 pub mod health;

@@ -16,7 +16,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync",
 http-body-util = "0.1"
 rusqlite = { version = "0.40", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["raw_value"] }
 sha2 = "=0.10.9"
 subtle = { version = "=2.6.1", default-features = false }
 chrono = { version = "=0.4.45", default-features = false, features = ["std", "clock"] }
@@ -27,6 +27,7 @@ diary-corpus-parse = { path = "../../crates/diary-corpus-parse" }
 diary-workspace-export = { path = "../../crates/diary-workspace-export" }
 diary-corpus-write = { path = "../../crates/diary-corpus-write" }
 
+diary-backup-format = { path = "../../crates/diary-backup-format" }
 diary-workspace-rules = { path = "../../crates/diary-workspace-rules" }
 base64 = "0.22"
 

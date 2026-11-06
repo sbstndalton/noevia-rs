@@ -1861,6 +1861,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "chrono",
+ "diary-backup-format",
  "diary-corpus-parse",
  "diary-corpus-write",
  "diary-workspace-export",
