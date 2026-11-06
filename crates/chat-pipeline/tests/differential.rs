@@ -1717,7 +1717,11 @@ mod gate_stage {
         let sc = |grant_wide: bool, target: bool| {
             let text = format!(
                 r#"{{"calls":[],"modes":{{"write_file":"ask"}},"flip":null,"open":true,"decisions":["approve"],"chatWide":{grant_wide},"redeem":"fence-open","redeemWired":true,"results":["ok: done"],"target":{},"grant":"ok","chatId":"c"}}"#,
-                if target { r#"{"first":{"target":"/d","kind":"file"},"again":"same"}"# } else { "null" }
+                if target {
+                    r#"{"first":{"target":"/d","kind":"file"},"again":"same"}"#
+                } else {
+                    "null"
+                }
             );
             wtf16::parse(&text).unwrap()
         };
@@ -1751,21 +1755,35 @@ mod gate_stage {
                 reached: Cell::new(false),
             };
             let mut st = TurnTools::new(true);
-            let call = Call { index: 0, id: "id-0".into(), name: "write_file".into(), args: "{}".into(), too_large: false };
+            let call = Call {
+                index: 0,
+                id: "id-0".into(),
+                name: "write_file".into(),
+                args: "{}".into(),
+                too_large: false,
+            };
             let reduce = |t: &str| t.to_owned();
             let mut sent = Vec::new();
             {
                 let mut send = |e| sent.push(e);
-                let mut f = std::pin::pin!(gate::run_call(&io, &mut st, &call, true, &reduce, &mut send));
+                let mut f = std::pin::pin!(gate::run_call(
+                    &io, &mut st, &call, true, &reduce, &mut send
+                ));
                 let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
-                assert!(std::future::Future::poll(f.as_mut(), &mut cx).is_pending(), "{stop}");
+                assert!(
+                    std::future::Future::poll(f.as_mut(), &mut cx).is_pending(),
+                    "{stop}"
+                );
             }
             assert!(io.reached.get(), "never reached {stop}");
             // Every fence redeemed was closed by the drop; nothing ran after the await that was dropped.
             assert_eq!(io.started.get(), io.fences.get(), "{stop}: fence left open");
-            let ran = io.exec.borrow().len();
-            assert_eq!(ran, usize::from(stop == "execute"), "{stop}");
-            assert!(io.applied.borrow().is_empty() && st.applied.is_empty(), "{stop}");
+            // Dropped at (or before) the executor's await: the executor never answered.
+            assert!(io.exec.borrow().is_empty(), "{stop}");
+            assert!(
+                io.applied.borrow().is_empty() && st.applied.is_empty(),
+                "{stop}"
+            );
         }
     }
 }
