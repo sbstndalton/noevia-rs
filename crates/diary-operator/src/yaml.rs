@@ -46,16 +46,27 @@ fn scalar(s: &str, tag: &str) -> Result<Value> {
     Ok(match tag {
         "str" | "value" => Value::string(s),
         "null" => Value::null(),
-        "bool" => Value::new(Kind::Bool(
-            ["yes", "true", "on"].contains(&s.to_lowercase().as_str()),
-        )),
+        "bool" => {
+            let value = s.to_lowercase();
+            Value::new(Kind::Bool(match value.as_str() {
+                "yes" | "true" | "on" => true,
+                "no" | "false" | "off" => false,
+                _ => return Err(format!("KeyError: {}", repr(&value))),
+            }))
+        }
         "int" => {
             let s = s.replace('_', "");
+            if s.is_empty() {
+                return Err("IndexError: string index out of range".into());
+            }
             let (sign, digits) = if let Some(s) = s.strip_prefix('-') {
                 ("-", s)
             } else {
                 ("", s.strip_prefix('+').unwrap_or(&s))
             };
+            if digits.is_empty() {
+                return Err("IndexError: string index out of range".into());
+            }
             if digits.contains(':') {
                 let mut total = BigInt::from(0);
                 for part in digits.split(':') {
@@ -111,13 +122,56 @@ fn scalar(s: &str, tag: &str) -> Result<Value> {
             Value::new(Kind::Float(n))
         }
         "binary" => Value::new(Kind::Unsupported("bytes")),
-        "timestamp" => Value::new(Kind::Unsupported(if s.len() == 10 {
-            "date"
-        } else {
-            "datetime"
-        })),
+        "timestamp" => timestamp(s)?,
         _ => return Err(format!("unknown tag {tag}")),
     })
+}
+fn timestamp(s: &str) -> Result<Value> {
+    let regex=Regex::new(r"^(?P<year>[0-9]{4})-(?P<month>[0-9]{1,2})-(?P<day>[0-9]{1,2})(?:(?:[Tt]|[ \t]+)(?P<hour>[0-9]{1,2}):(?P<minute>[0-9]{2}):(?P<second>[0-9]{2})(?:\.[0-9]*)?(?:[ \t]*(?:Z|[-+][0-9]{1,2}(?::[0-9]{2})?))?)?$").map_err(|_|"timestamp schema")?;
+    let parts = regex
+        .captures(s)
+        .ok_or("AttributeError: 'NoneType' object has no attribute 'groupdict'")?;
+    let n = |key: &str| {
+        parts
+            .name(key)
+            .and_then(|m| m.as_str().parse::<u32>().ok())
+            .unwrap_or(0)
+    };
+    let year = n("year");
+    let month = n("month");
+    let day = n("day");
+    if year == 0 {
+        return Err("ValueError: year 0 is out of range".into());
+    }
+    if !(1..=12).contains(&month) {
+        return Err("ValueError: month must be in 1..12".into());
+    }
+    let max = match month {
+        2 => {
+            if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) {
+                29
+            } else {
+                28
+            }
+        }
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    };
+    if day == 0 || day > max {
+        return Err("ValueError: day is out of range for month".into());
+    }
+    for (key, max) in [("hour", 23), ("minute", 59), ("second", 59)] {
+        if n(key) > max {
+            return Err(format!("ValueError: {key} must be in 0..{max}"));
+        }
+    }
+    Ok(Value::new(Kind::Unsupported(
+        if parts.name("hour").is_some() {
+            "datetime"
+        } else {
+            "date"
+        },
+    )))
 }
 struct Reader<'a> {
     text: &'a str,
@@ -162,7 +216,63 @@ impl Reader<'_> {
             .rfind('!')
             .map(|byte| line.get(..byte).unwrap_or("").chars().count())
             .unwrap_or(mark.col());
+        let mut col = col;
+        let chars = line.chars().collect::<Vec<_>>();
+        while col > 0 && chars.get(col - 1) == Some(&'!') {
+            col -= 1;
+        }
         self.mark_at(mark.line(), col)
+    }
+    fn shape(&self, tag: &str, actual: &str, mark: Marker) -> Result<()> {
+        let expected = match tag {
+            "seq" | "omap" | "pairs" => "sequence",
+            "map" | "set" => "mapping",
+            _ => "scalar",
+        };
+        if actual != expected {
+            return Err(format!("yaml.constructor.ConstructorError: expected a {expected} node, but found {actual}{}",self.tag_mark(mark)));
+        }
+        Ok(())
+    }
+    fn binary(&self, s: &str, mark: Marker) -> Result<()> {
+        let chars = s.chars().collect::<Vec<_>>();
+        if let Some(at) = chars.iter().position(|c| !c.is_ascii()) {
+            let len = chars.iter().skip(at).take_while(|c| !c.is_ascii()).count();
+            let detail = if len == 1 {
+                let c = chars.get(at).copied().unwrap_or('\0') as u32;
+                let escaped = if c < 256 {
+                    format!("\\x{c:02x}")
+                } else if c < 65536 {
+                    format!("\\u{c:04x}")
+                } else {
+                    format!("\\U{c:08x}")
+                };
+                format!("character '{escaped}' in position {at}")
+            } else {
+                format!("characters in position {at}-{}", at + len - 1)
+            };
+            return Err(format!("yaml.constructor.ConstructorError: failed to convert base64 data into ascii: 'ascii' codec can't encode {detail}: ordinal not in range(128){}",self.tag_mark(mark)));
+        }
+        let data = s
+            .bytes()
+            .filter(|c| c.is_ascii_alphanumeric() || b"+/=".contains(c))
+            .collect::<Vec<_>>();
+        let n = data.iter().take_while(|c| **c != b'=').count();
+        let pads = data.iter().skip(n).take_while(|c| **c == b'=').count();
+        let error = if n % 4 == 1 {
+            Some(format!("Invalid base64-encoded string: number of data characters ({n}) cannot be 1 more than a multiple of 4"))
+        } else if (n % 4 == 2 && pads < 2) || (n % 4 == 3 && pads < 1) {
+            Some("Incorrect padding".into())
+        } else {
+            None
+        };
+        if let Some(e) = error {
+            return Err(format!(
+                "yaml.constructor.ConstructorError: failed to decode base64 data: {e}{}",
+                self.tag_mark(mark)
+            ));
+        }
+        Ok(())
     }
     fn tag(&self, tag: Option<Tag>, default: &str, mark: Marker) -> Result<String> {
         let Some(tag) = tag else {
@@ -223,10 +333,15 @@ impl Reader<'_> {
                     "str"
                 };
                 let tag = self.tag(tag, default, mark)?;
+                self.shape(&tag, "scalar", mark)?;
+                if tag == "binary" {
+                    self.binary(&s, mark)?;
+                }
                 (id, scalar(&s, &tag)?)
             }
             Event::SequenceStart(id, tag) => {
                 let tag = self.tag(tag, "seq", mark)?;
+                self.shape(&tag, "sequence", mark)?;
                 let node = Value::new(Kind::Seq(Vec::new()));
                 if id > 0 {
                     self.anchors.insert(id, node.clone());
@@ -250,6 +365,31 @@ impl Reader<'_> {
             }
             Event::MappingStart(id, tag) => {
                 let tag = self.tag(tag, "map", mark)?;
+                // SafeConstructor's scalar exception: an unquoted '=' entry in
+                // a mapping supplies its raw scalar value (for !!str, !!int, ...).
+                let scalar_value = match (
+                    self.events.get(self.at),
+                    self.events.get(self.at + 1),
+                    self.events.get(self.at + 2),
+                ) {
+                    (
+                        Some((Event::Scalar(k, TScalarStyle::Plain, _, None), _)),
+                        Some((Event::Scalar(v, _, _, _), _)),
+                        Some((Event::MappingEnd, _)),
+                    ) if k == "=" => Some(v.clone()),
+                    _ => None,
+                };
+                if !["map", "set", "seq", "omap", "pairs"].contains(&tag.as_str()) {
+                    if let Some(value) = scalar_value {
+                        self.at += 3;
+                        let node = scalar(&value, &tag)?;
+                        if id > 0 {
+                            self.anchors.insert(id, node.clone());
+                        }
+                        return Ok(node);
+                    }
+                }
+                self.shape(&tag, "mapping", mark)?;
                 let node = Value::map();
                 if id > 0 {
                     self.anchors.insert(id, node.clone());
@@ -303,6 +443,74 @@ impl Reader<'_> {
         Ok(node)
     }
 }
+fn source_mark(text: &str, line: usize, col: usize) -> String {
+    let snippet = text.split('\n').nth(line.saturating_sub(1)).unwrap_or("");
+    format!(
+        "\n  in \"<unicode string>\", line {line}, column {}:\n    {snippet}\n    {}^",
+        col + 1,
+        " ".repeat(col)
+    )
+}
+fn syntax_error(
+    text: &str,
+    events: &[(Event, Marker)],
+    error: yaml_rust2::scanner::ScanError,
+) -> String {
+    let info = error.info();
+    let m = error.marker();
+    let at = source_mark(text, m.line(), m.col());
+    if info.contains("found unknown anchor") {
+        let line = text
+            .split('\n')
+            .nth(m.line().saturating_sub(1))
+            .unwrap_or("");
+        let name = line
+            .chars()
+            .skip(m.col() + 1)
+            .take_while(|c| !c.is_whitespace() && !",]}{".contains(*c))
+            .collect::<String>();
+        return format!(
+            "yaml.composer.ComposerError: found undefined alias {}{at}",
+            repr(&name)
+        );
+    }
+    if info.contains("while scanning a quoted scalar") && info.contains("unexpected end of stream")
+    {
+        let line = text.split('\n').count();
+        let col = text.rsplit('\n').next().unwrap_or("").chars().count();
+        return format!("yaml.scanner.ScannerError: while scanning a quoted scalar{at}\nfound unexpected end of stream{}",source_mark(text,line,col));
+    }
+    if info.contains("while parsing a flow sequence") {
+        let context = events
+            .iter()
+            .rev()
+            .find_map(|(e, m)| {
+                matches!(e, Event::SequenceStart(..)).then_some(source_mark(
+                    text,
+                    m.line(),
+                    m.col(),
+                ))
+            })
+            .unwrap_or_default();
+        let token = text
+            .split('\n')
+            .nth(m.line().saturating_sub(1))
+            .and_then(|s| s.chars().nth(m.col()))
+            .map(|c| c.to_string())
+            .unwrap_or("<stream end>".into());
+        return format!("yaml.parser.ParserError: while parsing a flow sequence{context}\nexpected ',' or ']', but got '{token}'{at}");
+    }
+    if info.contains("did not find expected node content") {
+        let token = text
+            .split('\n')
+            .nth(m.line().saturating_sub(1))
+            .and_then(|s| s.chars().nth(m.col()))
+            .map(|c| c.to_string())
+            .unwrap_or("<stream end>".into());
+        return format!("yaml.parser.ParserError: while parsing a flow node\nexpected the node content, but found '{token}'{at}");
+    }
+    format!("yaml.scanner.ScannerError: {error}")
+}
 pub fn load(bytes: &[u8]) -> Result<Value> {
     let text = decode_utf8(bytes)?
         .replace("\r\n", "\n")
@@ -313,7 +521,7 @@ pub fn load(bytes: &[u8]) -> Result<Value> {
     loop {
         let event = parser
             .next_token()
-            .map_err(|e| format!("yaml.scanner.ScannerError: {e}"))?;
+            .map_err(|e| syntax_error(text, &events, e))?;
         let end = matches!(event.0, Event::StreamEnd);
         events.push(event);
         if end {

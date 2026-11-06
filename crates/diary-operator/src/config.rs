@@ -203,7 +203,10 @@ pub fn enforce_open_mode_policy(
     Err("Refusing to start: DIARY_AUTH_TOKEN and DIARY_TENANT_KEY are both empty. Set them, or set DIARY_ALLOW_OPEN=1 to run the LAN-only open mode deliberately.".into())
 }
 pub fn system_prompt(data: &Value, config_dir: &Path) -> Result<String> {
-    let custom = get(data, "prompts.system_path").and_then(|v| v.as_str());
+    let custom=match get(data,"prompts.system_path").filter(Value::truthy){
+        Some(value)=>Some(value.as_str().ok_or_else(||format!("TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not '{}'",value.type_name()))?),
+        None=>None,
+    };
     let custom = custom.as_deref().map(Path::new);
     let default = config_dir.join("prompts/system.md");
     let path = match custom {

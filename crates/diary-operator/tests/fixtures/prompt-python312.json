@@ -1,0 +1,160 @@
+[
+  {
+    "case": "custom",
+    "config": {
+      "prompts": {
+        "system_path": "custom.txt"
+      }
+    },
+    "exit": 0,
+    "stdout": "\"synthetic custom\\nprompt\"\n",
+    "stderr": ""
+  },
+  {
+    "case": "missing",
+    "config": {
+      "prompts": {
+        "system_path": "absent.txt"
+      }
+    },
+    "exit": 0,
+    "stdout": "\"synthetic default\\nprompt\"\n",
+    "stderr": ""
+  },
+  {
+    "case": "empty",
+    "config": {
+      "prompts": {
+        "system_path": ""
+      }
+    },
+    "exit": 0,
+    "stdout": "\"synthetic default\\nprompt\"\n",
+    "stderr": ""
+  },
+  {
+    "case": "zero",
+    "config": {
+      "prompts": {
+        "system_path": 0
+      }
+    },
+    "exit": 0,
+    "stdout": "\"synthetic default\\nprompt\"\n",
+    "stderr": ""
+  },
+  {
+    "case": "false",
+    "config": {
+      "prompts": {
+        "system_path": false
+      }
+    },
+    "exit": 0,
+    "stdout": "\"synthetic default\\nprompt\"\n",
+    "stderr": ""
+  },
+  {
+    "case": "null",
+    "config": {
+      "prompts": {
+        "system_path": null
+      }
+    },
+    "exit": 0,
+    "stdout": "\"synthetic default\\nprompt\"\n",
+    "stderr": ""
+  },
+  {
+    "case": "empty-list",
+    "config": {
+      "prompts": {
+        "system_path": []
+      }
+    },
+    "exit": 0,
+    "stdout": "\"synthetic default\\nprompt\"\n",
+    "stderr": ""
+  },
+  {
+    "case": "int",
+    "config": {
+      "prompts": {
+        "system_path": 42
+      }
+    },
+    "exit": 1,
+    "stdout": "",
+    "stderr": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'int'\n"
+  },
+  {
+    "case": "bool",
+    "config": {
+      "prompts": {
+        "system_path": true
+      }
+    },
+    "exit": 1,
+    "stdout": "",
+    "stderr": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'bool'\n"
+  },
+  {
+    "case": "list",
+    "config": {
+      "prompts": {
+        "system_path": [
+          "custom.txt"
+        ]
+      }
+    },
+    "exit": 1,
+    "stdout": "",
+    "stderr": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'\n"
+  },
+  {
+    "case": "map",
+    "config": {
+      "prompts": {
+        "system_path": {
+          "a": 1
+        }
+      }
+    },
+    "exit": 1,
+    "stdout": "",
+    "stderr": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'\n"
+  },
+  {
+    "case": "directory",
+    "config": {
+      "prompts": {
+        "system_path": "directory"
+      }
+    },
+    "exit": 1,
+    "stdout": "",
+    "stderr": "IsADirectoryError: [Errno 21] Is a directory: 'directory'\n"
+  },
+  {
+    "case": "denied",
+    "config": {
+      "prompts": {
+        "system_path": "denied.txt"
+      }
+    },
+    "exit": 1,
+    "stdout": "",
+    "stderr": "PermissionError: [Errno 13] Permission denied: 'denied.txt'\n"
+  },
+  {
+    "case": "invalid-utf8",
+    "config": {
+      "prompts": {
+        "system_path": "invalid.txt"
+      }
+    },
+    "exit": 1,
+    "stdout": "",
+    "stderr": "UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 3: invalid start byte\n"
+  }
+]

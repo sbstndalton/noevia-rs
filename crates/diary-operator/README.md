@@ -8,12 +8,14 @@ fsynced. Like the original operator, a filesystem failure during materialization
 can leave a partial new destination; there is no staging rename or parent-directory
 fsync. The argument parser preserves the original Python 3.12 help/error text.
 
-`diary-config [CONFIG_YAML]` prints the resolved configuration for offline diagnosis.
-It applies environment overrides in their original order, including the legacy
-CORPUS_REMOTE_ROOT alias. Output can contain credentials; treat it like the source
-configuration. `DIARY_CONFIG` selects the file; `DIARY_CONFIG_DIR` selects the installed
-default config directory (`/app/config`). The library also provides open-mode policy,
-YAML logging-template loading and system-prompt file loading. It starts no server.
+`diary-config [CONFIG_YAML]` validates loading and prints only `{"configured":true}`.
+It never exports config values, field names, loader warnings or source excerpts.
+All failures use one fixed message, including invalid OS-string arguments/environment.
+The library retains full values and original exception diagnostics for its consumers.
+`DIARY_CONFIG` selects the file; `DIARY_CONFIG_DIR` selects the installed default config
+directory (`/app/config`). The library also provides open-mode policy, YAML logging
+and system-prompt loading. Truthy non-path prompt settings raise Python's TypeError;
+falsy values and nonexistent custom files retain Python's default-prompt fallback.
 
 The native YAML event parser retains SafeLoader's YAML 1.1 scalar resolution,
 duplicate-key ordering, merge precedence and shared aliases during environment
@@ -51,7 +53,9 @@ error cases. Frozen edge fixtures include their exact input bytes and are replay
 by `cargo test -p diary-operator` without requiring Python. Scalar/namespace validation
 and filesystem side effects remain covered by the separate restore oracle.
 
-Argument errors and warnings are compared byte-for-byte. Only interpreter frames
+Raw library projections use the test-only `examples/config-oracle.rs`, which is never
+installed in the image. The public config command has no raw-output flag. Raw argument
+errors and loader warnings are compared byte-for-byte in the oracle tooling. Only interpreter frames
 from the legacy CLI/loader's **uncaught exceptions** are omitted: config decoding,
 construction, integer-conversion, type/cycle/JSON-projection failures, backup JSON
 parsing, restore validation, and filesystem exceptions. Their complete exception

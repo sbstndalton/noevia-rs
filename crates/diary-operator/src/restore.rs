@@ -1,5 +1,6 @@
 use crate::value::{Kind, Value};
 use diary_backup_format::{sha256, tenant_uuid};
+use std::collections::HashSet;
 use std::os::unix::fs::DirBuilderExt;
 use std::{
     fs::{self, OpenOptions},
@@ -139,6 +140,7 @@ pub fn restore(root: &Path, manifest_path: &Path, destination: &Path) -> Result<
         .ok_or_else(|| invalid("Invalid backup file list"))?;
     let mut verified: Vec<(String, Vec<u8>)> = Vec::new();
     let mut total = 0usize;
+    let mut verified_paths = HashSet::new();
     for row in files {
         let relative = safe_key(&field(&row, "path")?)?;
         let object = safe_key(&field(&row, "object")?)?;
@@ -146,10 +148,7 @@ pub fn restore(root: &Path, manifest_path: &Path, destination: &Path) -> Result<
             return Err(invalid("Backup object has the wrong tenant"));
         }
         let source = resolve(&root.join(&object))?;
-        if source == root
-            || !source.starts_with(&root)
-            || verified.iter().any(|(p, _)| p == &relative)
-        {
+        if source == root || !source.starts_with(&root) || verified_paths.contains(&relative) {
             return Err(invalid("Backup escaped its root or duplicated a path"));
         }
         let data = fs::read(&source).map_err(|e| io(e, &source))?;
@@ -161,6 +160,7 @@ pub fn restore(root: &Path, manifest_path: &Path, destination: &Path) -> Result<
                 "Backup object checksum mismatch or restore exceeds 1 GiB",
             ));
         }
+        verified_paths.insert(relative.clone());
         verified.push((relative, data));
     }
     let dirs = match manifest.get("directories").map(|v| v.kind()) {
@@ -179,6 +179,8 @@ pub fn restore(root: &Path, manifest_path: &Path, destination: &Path) -> Result<
         }
     };
     let directories = dirs.iter().map(safe_key).collect::<Result<Vec<_>>>()?;
+    // Match Python dictionary membership: index once, then check each ancestor
+    // and each directory collision once. No file×directory cross-product.
     for path in verified
         .iter()
         .map(|(p, _)| p.as_str())
@@ -187,13 +189,13 @@ pub fn restore(root: &Path, manifest_path: &Path, destination: &Path) -> Result<
         if Path::new(path)
             .ancestors()
             .skip(1)
-            .any(|parent| verified.iter().any(|(p, _)| Path::new(p) == parent))
-            || directories
-                .iter()
-                .any(|d| verified.iter().any(|(p, _)| p == d))
+            .any(|parent| parent.to_str().is_some_and(|p| verified_paths.contains(p)))
         {
             return Err(invalid("Backup has overlapping file and directory paths"));
         }
+    }
+    if directories.iter().any(|path| verified_paths.contains(path)) {
+        return Err(invalid("Backup has overlapping file and directory paths"));
     }
     mkdir(destination, false, false)?;
     for directory in directories {
