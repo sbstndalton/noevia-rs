@@ -96,6 +96,7 @@ struct Entry {
     /// A front lease whose Node restarted: it still excludes (until released or expired) but covers
     /// nothing, so no further step starts on it.
     fenced: bool,
+    recovery_ticket: Option<String>,
 }
 
 /// The active Node process start: its incarnation and the (start time, boot) it registered with.
@@ -351,7 +352,7 @@ impl Authority {
         Ok(self)
     }
 
-    pub(super) fn begin_operation(
+    pub(crate) fn begin_operation(
         &self,
         grant: &Grant,
         kind: &str,
@@ -380,7 +381,7 @@ impl Authority {
         Some(fence)
     }
 
-    pub(super) fn unknown_operation(&self, fence: &model_publication::Fence) {
+    pub(crate) fn unknown_operation(&self, fence: &model_publication::Fence) {
         let mut state = self.lock();
         if !state.valid
             || !state
@@ -403,7 +404,7 @@ impl Authority {
             }
         }
     }
-    pub(super) fn fence_grant(&self, grant: &Grant) {
+    pub(crate) fn fence_grant(&self, grant: &Grant) {
         let mut state = self.lock();
         if !state.valid || !Self::matches(&state, &grant.id, Some(grant.generation)) {
             return;
@@ -417,13 +418,70 @@ impl Authority {
         }
     }
 
-    pub(super) fn settle_operation(&self, fence: &model_publication::Fence) -> bool {
+    pub(crate) fn settle_operation(&self, fence: &model_publication::Fence) -> bool {
         let state = self.lock();
         state.valid
             && state
                 .journal
                 .as_ref()
                 .is_some_and(|j| j.settle(fence).is_ok())
+    }
+
+    pub(crate) fn pending_operation_kinds(&self) -> std::io::Result<Vec<String>> {
+        let state = self.lock();
+        match &state.journal {
+            Some(j) => j.pending_kinds(),
+            None => Ok(Vec::new()),
+        }
+    }
+    #[allow(dead_code)]
+    pub(crate) fn operation_status(
+        &self,
+        fence: &model_publication::Fence,
+    ) -> std::io::Result<Option<model_publication::Receipt>> {
+        let path = self
+            .inner
+            .journal
+            .as_ref()
+            .ok_or_else(|| std::io::Error::other("Maintenance authority unavailable."))?;
+        model_publication::read_receipt(path, fence)
+    }
+
+    /// Wait for the original destination receipt; never repeat the effect or acquire a new permit.
+    /// None is unknown/recovery-required, including reconciliation that cannot prove original success.
+    #[allow(dead_code)]
+    pub(crate) async fn wait_for_settlement(
+        &self,
+        fence: &model_publication::Fence,
+        limit: Duration,
+    ) -> Option<model_publication::Receipt> {
+        let deadline = Instant::now() + limit;
+        loop {
+            let (authority, proof) = (self.clone(), fence.clone());
+            let receipt =
+                tokio::task::spawn_blocking(move || authority.operation_status(&proof)).await;
+            match receipt {
+                Ok(Ok(Some(receipt)))
+                    if matches!(receipt.state.as_str(), "settled" | "conflict") =>
+                {
+                    return Some(receipt)
+                }
+                Ok(Ok(Some(receipt))) if matches!(receipt.state.as_str(), "issued" | "running") => {
+                }
+                _ => {
+                    self.unknown_operation(fence);
+                    return None;
+                }
+            }
+            if Instant::now() >= deadline {
+                self.unknown_operation(fence);
+                return None;
+            }
+            tokio::time::sleep(
+                Duration::from_millis(25).min(deadline.saturating_duration_since(Instant::now())),
+            )
+            .await;
+        }
     }
 
     /// Ends the current lease if it has expired. True when it did.
@@ -621,6 +679,7 @@ impl Authority {
             reason: reason.chars().take(300).collect(),
             bound_node: (origin == Origin::Front).then_some(bound_node).flatten(),
             fenced: false,
+            recovery_ticket: recovery.then(|| state.recovery_ticket.clone()).flatten(),
         };
         let grant = Grant {
             id: entry.id.clone(),
@@ -922,19 +981,12 @@ pub async fn answer_node(
                 .get("kind")
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or("");
-            if !matches!(
-                kind,
-                "preset-write"
-                    | "restore"
-                    | "reload"
-                    | "register"
-                    | "pull"
-                    | "delete"
-                    | "prune"
-                    | "reread"
-                    | "acquire"
-                    | "control"
-            ) {
+            if kind.is_empty()
+                || kind.len() > 64
+                || !kind
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+            {
                 return bad("invalid operation kind");
             }
             let expected = body
@@ -1012,6 +1064,7 @@ pub async fn answer_node(
                         "lease": g.id,
                         "generation": g.generation,
                         "epoch": g.epoch,
+                        "incident": authority.recovery_ticket(),
                         "ttlMs": u64::try_from(g.ttl.as_millis()).unwrap_or(u64::MAX),
                         "renewMs": u64::try_from(g.renew_every.as_millis()).unwrap_or(u64::MAX),
                         "hardMs": u64::try_from(g.hard.as_millis()).unwrap_or(u64::MAX),
@@ -1032,17 +1085,24 @@ pub async fn answer_node(
             let Some(id) = id() else {
                 return bad("lease required");
             };
-            let covered = {
-                let state = authority.lock();
-                Authority::owned_by(&state, &origin, id, None)
-                    && state.holder.as_ref().is_some_and(|e| {
-                        !e.fenced && Instant::now() < e.renewed_until && Instant::now() < e.hard_at
-                    })
+            let Some(generation) = body.get("generation").and_then(serde_json::Value::as_u64)
+            else {
+                return bad("generation required");
             };
-            if !covered {
+            let incident = body.get("incident").and_then(serde_json::Value::as_str);
+            let mut state = authority.lock();
+            let covered = Authority::owned_by(&state, &origin, id, Some(generation))
+                && state.holder.as_ref().is_some_and(|e| {
+                    !e.fenced
+                        && e.recovery_ticket.as_deref() == incident
+                        && Instant::now() < e.renewed_until
+                        && Instant::now() < e.hard_at
+                });
+            if !covered || state.recovery_ticket.as_deref() != incident {
                 return answer(409, &json!({"error":"Stale maintenance operation."}));
             }
-            authority.complete_recovery();
+            state.recovery_required = false;
+            state.recovery_ticket = None;
             answer(200, &json!({}))
         }
         "renew" => {
@@ -1085,6 +1145,53 @@ mod tests {
         Origin::Node {
             incarnation: a.node_session(boot, started).unwrap().incarnation,
         }
+    }
+
+    #[tokio::test]
+    async fn publication_receipt_waits_for_the_same_operation_after_a_caller_timeout() {
+        let d = tempfile::tempdir().unwrap();
+        let path = d.path().join("authority.sqlite");
+        let a = Authority::new().with_publication(path.clone()).unwrap();
+        let g = a.try_acquire(Origin::Front, None, "publish").unwrap();
+        let proof = a.begin_operation(&g, "reload", None).unwrap();
+        let (file, p) = (path.clone(), proof.clone());
+        let destination = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            let guard = model_publication::Guard::at(&file).unwrap();
+            guard.finish(&p, "settled", None).unwrap();
+            guard.commit().unwrap();
+        });
+        let receipt = a
+            .wait_for_settlement(&proof, Duration::from_secs(2))
+            .await
+            .unwrap();
+        assert_eq!(receipt.state, "settled");
+        destination.await.unwrap();
+        assert_eq!(
+            a.operation_status(&proof).unwrap().unwrap().state,
+            "settled"
+        );
+        assert!(a.covers(&g.id, g.generation, Duration::ZERO));
+    }
+    #[tokio::test]
+    async fn publication_unknown_timeout_fences_its_holder_and_survives_a_fresh_authority() {
+        let d = tempfile::tempdir().unwrap();
+        let path = d.path().join("authority.sqlite");
+        let a = Authority::new().with_publication(path.clone()).unwrap();
+        let g = a.try_acquire(Origin::Front, None, "publish").unwrap();
+        let proof = a.begin_operation(&g, "reload", None).unwrap();
+        assert!(a
+            .wait_for_settlement(&proof, Duration::from_millis(5))
+            .await
+            .is_none());
+        assert!(!a.covers(&g.id, g.generation, Duration::ZERO));
+        assert!(a.recovery_pending());
+        let restarted = Authority::new().with_publication(path).unwrap();
+        assert!(restarted.node_session("node", 1).unwrap().front_held);
+        assert_eq!(
+            restarted.try_acquire(Origin::Front, None, "new work"),
+            Err(Refusal::Busy)
+        );
     }
 
     #[test]

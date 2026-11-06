@@ -1842,6 +1842,7 @@ version = "0.1.0"
 dependencies = [
  "rusqlite",
  "serde",
+ "tempfile",
 ]
 
 [[package]]
@@ -1904,7 +1905,6 @@ dependencies = [
 name = "noevia-inference-gate"
 version = "0.1.0"
 dependencies = [
- "model-publication",
  "axum",
  "bytes",
  "futures-util",
@@ -1914,6 +1914,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "inference-admission",
+ "model-publication",
  "reqwest",
  "serde_json",
  "sha2",

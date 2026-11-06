@@ -51,6 +51,9 @@ pub mod search;
 pub mod section_autoconfig;
 #[cfg(feature = "native-section-writes")]
 pub mod section_writes;
+/// Source capability paired with the native-section-writes build in Services.
+pub const FEATURES: &[&str] = &["noevia-preset-publication-authority/2"];
+
 pub mod sections;
 #[cfg(feature = "native-routing")]
 pub mod service;
@@ -788,6 +791,18 @@ async fn handler(State(state): State<Arc<StateData>>, mut req: Request) -> Respo
     let auth_path = decoded_auth.as_deref().unwrap_or(path);
     #[cfg(not(feature = "native-routing"))]
     let auth_path = path;
+    #[cfg(feature = "native-section-writes")]
+    if req.method() == Method::POST
+        && matches!(
+            auth_path,
+            "/api/v1/maintenance-operation/status" | "/api/v1/maintenance-operation/settle"
+        )
+    {
+        // This narrow capability endpoint never receives the loader's broader Docker credential.
+        // The random exact-operation proof can only read/settle its already issued receipt.
+        let settle = auth_path.ends_with("/settle");
+        return maintenance_receipt(&state, req, settle).await;
+    }
     if auth_path != "/api/v1/health" && !state.token.is_empty() {
         let supplied = req
             .headers()
@@ -1817,6 +1832,75 @@ fn bench_run_response(outcome: bench_runs::Outcome) -> Response {
 /// the handlers' 400s), then everything else under the one write lock; the store work runs on a
 /// blocking thread that owns the lock guard, so a dropped request still finishes before the next.
 #[cfg(feature = "native-section-writes")]
+async fn maintenance_receipt(state: &StateData, req: Request, settle: bool) -> Response {
+    let denied = || {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error":"unauthorized"})),
+        )
+            .into_response()
+    };
+    let Some(writes) = state.section_writes.as_ref() else {
+        return denied();
+    };
+    let Ok(Ok(bytes)) = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        to_bytes(req.into_body(), 8192),
+    )
+    .await
+    else {
+        return denied();
+    };
+    let Ok(body) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+        return denied();
+    };
+    let Some(value) = body.get("maintenance") else {
+        return denied();
+    };
+    let Ok(fence) = serde_json::from_value::<model_publication::Fence>(value.clone()) else {
+        return denied();
+    };
+    let terminal = body
+        .get("state")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("recovery")
+        .to_owned();
+    if settle && !matches!(terminal.as_str(), "settled" | "conflict" | "recovery") {
+        return denied();
+    }
+    let path = writes.publication_path().to_owned();
+    let result = tokio::task::spawn_blocking(
+        move || -> std::io::Result<Option<model_publication::Receipt>> {
+            let guard = model_publication::Guard::at(&path)?;
+            guard.authority()?;
+            if guard.status(&fence)?.is_none() {
+                return Ok(None);
+            }
+            if settle {
+                guard.finish(&fence, &terminal, None)?;
+            }
+            let receipt = guard.status(&fence)?;
+            guard.commit()?;
+            Ok(receipt)
+        },
+    )
+    .await;
+    match result {
+        Ok(Ok(Some(receipt))) => (
+            StatusCode::OK,
+            Json(json!({"state":receipt.state,"revision":receipt.revision})),
+        )
+            .into_response(),
+        Ok(Ok(None)) => denied(),
+        _ => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error":"Maintenance authority unavailable."})),
+        )
+            .into_response(),
+    }
+}
+
+#[cfg(feature = "native-section-writes")]
 async fn native_section_write(
     state: &StateData,
     writes: Arc<section_writes::SectionWrites>,
@@ -1829,6 +1913,17 @@ async fn native_section_write(
             StatusCode::SERVICE_UNAVAILABLE,
             "Native models.ini writes are unavailable",
         )
+    };
+    let writes = match req.headers().get("x-noevia-maintenance-fence") {
+        Some(value) => match value
+            .to_str()
+            .ok()
+            .and_then(|v| serde_json::from_str::<model_publication::Fence>(v).ok())
+        {
+            Some(fence) => Arc::new(writes.for_operation(fence)),
+            None => return detail(StatusCode::CONFLICT, "Stale maintenance operation."),
+        },
+        None => writes,
     };
     let query = req.uri().query().unwrap_or_default().to_owned();
     // Python reads the body only where the handler has one.

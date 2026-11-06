@@ -82,7 +82,7 @@ impl Router {
         self
     }
 
-    pub(super) fn with_operation(&self, fence: &model_publication::Fence) -> Self {
+    pub(crate) fn with_operation(&self, fence: &model_publication::Fence) -> Self {
         let mut router = self.clone();
         router.operation = Some(fence.clone());
         router

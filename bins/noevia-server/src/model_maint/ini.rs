@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 #[derive(Clone)]
-pub(super) struct WriteAllowed {
+pub(crate) struct WriteAllowed {
     check: std::sync::Arc<dyn Fn() -> bool + Send + Sync>,
     local: std::sync::Arc<dyn Fn() -> bool + Send + Sync>,
     pub authority: Option<(super::lease::Authority, super::lease::Grant)>,
@@ -72,7 +72,7 @@ impl std::ops::Deref for WriteAllowed {
     }
 }
 
-pub(super) struct PublicationOperation {
+pub(crate) struct PublicationOperation {
     pub authority: super::lease::Authority,
     pub fence: model_publication::Fence,
     pub settled: bool,
@@ -174,8 +174,13 @@ impl LoaderWriter {
             serde_json::json!({ "baseRevision": c.base_revision, "text": c.text, "backup": false })
         };
         if let Some(fence) = fence {
-            body["maintenance"] =
-                serde_json::to_value(fence).map_err(|_| IniError::new(500, "Internal error"))?;
+            if let Some(fields) = body.as_object_mut() {
+                fields.insert(
+                    "maintenance".into(),
+                    serde_json::to_value(fence)
+                        .map_err(|_| IniError::new(500, "Internal error"))?,
+                );
+            }
         }
         let mut req = self
             .client
@@ -296,7 +301,7 @@ impl Store {
         })
     }
 
-    pub(super) async fn snapshot_covered(
+    pub(crate) async fn snapshot_covered(
         &self,
         allowed: WriteAllowed,
     ) -> Result<Snapshot, IniError> {
@@ -351,7 +356,7 @@ impl Store {
         .await
     }
 
-    pub(super) async fn commit_if(
+    pub(crate) async fn commit_if(
         &self,
         c: &Candidate,
         backup: bool,
@@ -583,7 +588,7 @@ impl Store {
         )
         .await
     }
-    pub(super) async fn commit_reconciled_if(
+    pub(crate) async fn commit_reconciled_if(
         &self,
         c: &Candidate,
         backup: bool,

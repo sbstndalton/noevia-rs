@@ -1080,6 +1080,30 @@ impl Maint {
     }
 
     async fn reconcile_preset_incident(&self) {
+        // Other operation owners (managed services, etc.) owe their own covered readback.
+        if self
+            .authority
+            .pending_operation_kinds()
+            .map_or(true, |kinds| {
+                kinds.iter().any(|k| {
+                    !matches!(
+                        k.as_str(),
+                        "preset-write"
+                            | "restore"
+                            | "reload"
+                            | "reread"
+                            | "control"
+                            | "acquire"
+                            | "pull"
+                            | "register"
+                            | "delete"
+                            | "prune"
+                    )
+                })
+            })
+        {
+            return;
+        }
         let mut delay = Duration::from_millis(100);
         loop {
             let ticket = self.authority.require_recovery();
@@ -1093,6 +1117,16 @@ impl Maint {
                     if let Ok(listing) = router.models(token.as_deref()).await {
                         let mut empty = listing.ok && super::router::rows(&listing.body).is_some();
                         if let Some(rows) = super::router::rows(&listing.body) {
+                            if rows.iter().any(|row| {
+                                matches!(
+                                    row.get("status")
+                                        .and_then(|s| s.get("value"))
+                                        .and_then(Value::as_str),
+                                    Some("downloading" | "loading" | "unloading")
+                                )
+                            }) {
+                                empty = false;
+                            }
                             for model in super::reload::live_ids(rows) {
                                 if !hold.may_start(Duration::from_secs(60)) {
                                     empty = false;
@@ -1124,9 +1158,18 @@ impl Maint {
                         }
                     }
                 }
-                if reconciled && self.node.recovery_barrier(false, &ticket).await && hold.excluded()
+                let node_completed = hold.gated_now()
+                    || match hold.recovery_proof() {
+                        Some((id, generation)) if reconciled && hold.excluded() => {
+                            self.node.complete_recovery(&ticket, id, generation).await
+                        }
+                        _ => false,
+                    };
+                if reconciled
+                    && node_completed
+                    && hold.excluded()
+                    && self.authority.complete_recovery(&ticket)
                 {
-                    self.authority.complete_recovery();
                     hold.release().await;
                     return;
                 }

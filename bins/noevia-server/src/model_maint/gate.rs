@@ -416,6 +416,7 @@ impl Shared {
             gate_ttl: Some(idle_ttl),
             lost: AtomicBool::new(false),
             lease_id: None,
+            node_generation: 0,
             expires_by: None,
             release: Mutex::new(ReleaseState::Idle),
             release_wake: tokio::sync::Notify::new(),
@@ -728,7 +729,7 @@ impl Hold {
     pub(super) fn operation(&self) -> Option<super::ini::PublicationOperation> {
         self.begin_operation("control", None)
     }
-    pub(super) fn begin_operation(
+    pub(crate) fn begin_operation(
         &self,
         kind: &str,
         expected_revision: Option<&str>,
@@ -857,7 +858,7 @@ impl Drop for Hold {
     }
 }
 
-async fn renew_loop(shared: Arc<Shared>, gate: Arc<Gate>, every: Duration, reason: String) {
+async fn renew_loop(shared: Arc<Shared>, gate: Arc<Gate>, every: Duration, _reason: String) {
     loop {
         if Instant::now() >= shared.deadline() {
             break;

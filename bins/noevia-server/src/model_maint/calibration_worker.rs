@@ -564,7 +564,7 @@ impl RestoreResolver {
                 .settle_restore(
                     &resolver.candidate,
                     resolver.retry,
-                    Arc::clone(&resolver.allowed),
+                    resolver.allowed.clone(),
                 )
                 .await;
             if restored {
@@ -3279,7 +3279,7 @@ mod tests {
                         let (code, answer) = node.as_ref().map_or((200, json!({"refusal": null})), |f| f(n, &body));
                         json(code, answer)
                     }
-                    ("POST", "/gate/v1/maintenance") => json(201, json!({"hold": "0123456789abcdef0123456789abcdef", "idle_ttl_ms": 60000})),
+                    ("POST", "/gate/v1/maintenance") => json(201, json!({"hold": "0123456789abcdef0123456789abcdef", "idle_ttl_ms": 600000})),
                     ("GET", "/gate/v1/status") => json(200, json!({"maintenance": {"held": false}})),
                     (_, p) if p.starts_with("/gate/") => json(200, json!({})),
                     ("GET", "/models") => {
@@ -3482,7 +3482,8 @@ mod tests {
         (d, w, backup)
     }
 
-    fn review_failed(w: &Worker, job: &JValue) {
+    async fn review_failed(w: &Worker, job: &JValue) {
+        delta_wait(|| !w.maint.local_held()).await;
         assert_eq!(job.get("status").as_str(), Some("failed"), "{job:?}");
         assert_eq!(
             job.get("error").as_str(),
@@ -3513,7 +3514,7 @@ mod tests {
         let job = tokio::time::timeout(Duration::from_secs(3), settled(&w))
             .await
             .unwrap();
-        review_failed(&w, &job);
+        review_failed(&w, &job).await;
         assert_eq!(w.file.load().job().get("status").as_str(), Some("failed"));
     }
 
@@ -3530,7 +3531,7 @@ mod tests {
         let job = tokio::time::timeout(Duration::from_secs(3), settled(&w))
             .await
             .unwrap();
-        review_failed(&w, &job);
+        review_failed(&w, &job).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -3542,7 +3543,7 @@ mod tests {
         let job = tokio::time::timeout(Duration::from_secs(3), settled(&w))
             .await
             .unwrap();
-        review_failed(&w, &job);
+        review_failed(&w, &job).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -3564,7 +3565,7 @@ mod tests {
         let job = tokio::time::timeout(Duration::from_secs(2), settled(&w))
             .await
             .expect("panic reconciled");
-        review_failed(&w, &job);
+        review_failed(&w, &job).await;
         tokio::time::timeout(Duration::from_secs(3), async {
             while w.unsaved() {
                 tokio::time::sleep(Duration::from_millis(10)).await;
@@ -3615,7 +3616,7 @@ mod tests {
         let job = tokio::time::timeout(Duration::from_secs(2), settled(&w))
             .await
             .expect("bounded DELETE");
-        review_failed(&w, &job);
+        review_failed(&w, &job).await;
         tokio::time::timeout(Duration::from_secs(3), async {
             while w.unsaved() {
                 tokio::time::sleep(Duration::from_millis(5)).await;
@@ -3650,7 +3651,7 @@ mod tests {
         // Evidence is waiting on the actual store mutex after the successful search.
         let result = tokio::time::timeout(Duration::from_secs(2), settled(&w)).await;
         if let Ok(job) = &result {
-            review_failed(&w, job);
+            review_failed(&w, job).await;
             assert!(!w.with(|i| i.active));
             let h = w
                 .maint
@@ -3710,7 +3711,15 @@ mod tests {
         let revision = super::super::ini::sha(&trial);
         let task = {
             let w = Arc::clone(&w);
-            tokio::spawn(async move { w.restore(&hold, &revision, INI, Arc::new(|| true)).await })
+            tokio::spawn(async move {
+                w.restore(
+                    &hold,
+                    &revision,
+                    INI,
+                    super::super::ini::WriteAllowed::legacy(Arc::new(|| true)),
+                )
+                .await
+            })
         };
         tokio::time::timeout(Duration::from_secs(2), async {
             while calls.load(Ordering::Acquire) == 0 {
@@ -3783,7 +3792,15 @@ mod tests {
         let (ready, release, _) = pause_commit(&w);
         let task = {
             let w = Arc::clone(&w);
-            tokio::spawn(async move { w.restore(&hold, &revision, INI, Arc::new(|| true)).await })
+            tokio::spawn(async move {
+                w.restore(
+                    &hold,
+                    &revision,
+                    INI,
+                    super::super::ini::WriteAllowed::legacy(Arc::new(|| true)),
+                )
+                .await
+            })
         };
         delta_wait(|| ready.try_recv().is_ok()).await;
         w.maint.authority.node_session("b", 2).unwrap();
@@ -3811,7 +3828,13 @@ mod tests {
         std::fs::write(d.path().join("models.ini"), &trial).unwrap();
         let revision = super::super::ini::sha(&trial);
         assert!(
-            !w.restore(&hold, &revision, INI, Arc::new(|| true)).await,
+            !w.restore(
+                &hold,
+                &revision,
+                INI,
+                super::super::ini::WriteAllowed::legacy(Arc::new(|| true))
+            )
+            .await,
             "file CAS alone is not restoration settlement"
         );
     }
@@ -4083,7 +4106,7 @@ mod tests {
         // Public finalization can precede the fresh covered repair. Observe its actual
         // exclusion settlement before expecting admission to reopen (also true on r4).
         delta_wait(|| !w.maint.local_held()).await;
-        review_failed(&w, &job);
+        review_failed(&w, &job).await;
         let withdrawn_before_next = !store.visible("synthetic", &record);
         let reopened =
             super::super::evidence::Store::new(store.file().parent().unwrap().to_owned());
@@ -4218,7 +4241,7 @@ mod tests {
         let job = tokio::time::timeout(Duration::from_secs(4), settled(&w))
             .await
             .unwrap();
-        review_failed(&w, &job);
+        review_failed(&w, &job).await;
         tokio::time::timeout(Duration::from_secs(3), async {
             while w.unsaved() {
                 tokio::time::sleep(Duration::from_millis(5)).await;
@@ -4316,7 +4339,7 @@ mod tests {
         let job = tokio::time::timeout(Duration::from_secs(3), settled(&w))
             .await
             .unwrap();
-        review_failed(&w, &job);
+        review_failed(&w, &job).await;
     }
 
     // SETTLEMENT_DELTA_REGRESSIONS_BEGIN

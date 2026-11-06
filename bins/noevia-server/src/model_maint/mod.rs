@@ -329,10 +329,13 @@ impl Maint {
             first(get, &["NOEVIA_LEGACY_UPSTREAM"]).as_deref(),
             get("NOEVIA_PROJECT_STORE_TOKEN").as_deref(),
         )?);
-        let authority = if let Some(ini) = &ini {
-            lease::Authority::new().with_publication(ini.publication_path().to_owned())?
-        } else {
-            lease::Authority::new()
+        let journal = get("NOEVIA_PRESET_AUTHORITY_FILE")
+            .filter(|p| !p.is_empty())
+            .map(PathBuf::from)
+            .or_else(|| ini.as_ref().map(|i| i.publication_path().to_owned()));
+        let authority = match journal {
+            Some(path) => lease::Authority::new().with_publication(path)?,
+            None => lease::Authority::new(),
         };
         Ok(Maint {
             kind,
@@ -486,10 +489,7 @@ impl Acquirer {
             return Err(HoldRefusal::OverLimit);
         }
         if recovery {
-            let ticket = self.authority.require_recovery();
-            if !self.node.recovery_barrier(true, &ticket).await {
-                return Err(HoldRefusal::NodeUnavailable);
-            }
+            self.authority.require_recovery();
         }
         let own = if recovery {
             self.authority.try_recovery(lease_for, reason)
@@ -508,7 +508,7 @@ impl Acquirer {
             authority: self.authority.clone(),
             fence: self
                 .authority
-                .operation(&own)
+                .begin_operation(&own, "acquire", None)
                 .ok_or(HoldRefusal::NodeUnavailable)?,
             settled: false,
         };
@@ -531,6 +531,15 @@ impl Acquirer {
                 ))
             }
             Ok(None) => {
+                // Without Gate, transfer Node's subordinate latch to its acknowledged barrier.
+                // A paired Gate uses the durable native journal for Node admission instead.
+                if recovery {
+                    let ticket = self.authority.recovery_ticket().unwrap_or_default();
+                    if !self.node.recovery_barrier(true, &ticket).await {
+                        return Err(HoldRefusal::NodeUnavailable);
+                    }
+                }
+
                 if need_gate && !gate.has_admin() && gate.held().await.is_some() {
                     return Err(HoldRefusal::NeedsGate);
                 }

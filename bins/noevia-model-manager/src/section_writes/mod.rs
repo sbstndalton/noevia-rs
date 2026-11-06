@@ -55,7 +55,9 @@ pub enum Plan {
 
 pub type Clock = Arc<dyn Fn() -> std::time::SystemTime + Send + Sync>;
 
+#[derive(Clone)]
 pub struct SectionWrites {
+    fence: Option<model_publication::Fence>,
     publication: PathBuf,
     pub ini: PathBuf,
     /// `settings.cache_ram_limits`: (cap, hard maximum) in MiB.
@@ -424,11 +426,20 @@ fn require_revision(base: Option<&Json>, current: &str) -> Result<(), Outcome> {
 }
 
 impl SectionWrites {
+    pub fn for_operation(&self, fence: model_publication::Fence) -> Self {
+        let mut scoped = self.clone();
+        scoped.fence = Some(fence);
+        scoped
+    }
+    pub fn publication_path(&self) -> &Path {
+        &self.publication
+    }
     pub fn new(ini: &Path, cache: (i64, i64)) -> Self {
         Self::with_clock(ini, cache, Arc::new(std::time::SystemTime::now))
     }
     pub fn with_clock(ini: &Path, cache: (i64, i64), clock: Clock) -> Self {
         Self {
+            fence: None,
             publication: std::env::var_os("NOEVIA_PRESET_AUTHORITY_FILE")
                 .map(PathBuf::from)
                 .or_else(|| model_publication::lock_path(ini))
@@ -520,6 +531,26 @@ impl SectionWrites {
         expected: Option<&str>,
         fence: Option<&model_publication::Fence>,
     ) -> std::io::Result<()> {
+        self.replace_file_checked_roles(text, base, backup, expected, fence, None)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn replace_file_checked_roles(
+        &self,
+        text: &str,
+        base: Option<&str>,
+        backup: bool,
+        expected: Option<&str>,
+        fence: Option<&model_publication::Fence>,
+        roles: Option<(&str, Option<&str>)>,
+    ) -> std::io::Result<()> {
+        if matches!((fence,self.fence.as_ref()),(Some(a),Some(b)) if a!=b) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                "conflicting maintenance operation",
+            ));
+        }
+        let fence = fence.or(self.fence.as_ref());
         let path = &self.ini;
         let dir = path
             .parent()
@@ -527,7 +558,14 @@ impl SectionWrites {
         std::fs::create_dir_all(dir)?;
         let _publication = model_publication::Guard::at(&self.publication)?;
         if let Some(fence) = fence {
+            if fence.expected_revision.is_none() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    "expected preset revision required",
+                ));
+            }
             _publication.running(fence)?;
+            _publication.no_other_publishers(fence)?;
         }
         if let Some(expected) = expected {
             let (_, actual) =
@@ -611,17 +649,27 @@ impl SectionWrites {
         })();
         let _ = std::fs::remove_file(&tmp);
         result?;
-        // Publish the terminal receipt and observed revision before exclusion can be released.
-        if _publication.authority()?.is_some() {
-            _publication.observe_revision(&hex(text.as_bytes()))?;
+        if let Some((old, new)) = roles {
+            forget_role(&self.ini, old, new)?;
         }
-        if let Some(fence) = fence {
-            _publication.finish(fence, "settled", Some(&hex(text.as_bytes())))?;
-        }
-        _publication.commit()?;
         for old in prune {
+            if let Some(fence) = fence {
+                _publication.validate(fence)?;
+            }
             let _ = std::fs::remove_file(old);
         }
+        // Publish the terminal receipt and observed revision before exclusion can be released.
+        if _publication.authority()?.is_some() {
+            _publication.observe_revision(&format!("{:x}", Sha256::digest(text.as_bytes())))?;
+        }
+        if let Some(fence) = fence {
+            _publication.finish(
+                fence,
+                "settled",
+                Some(&format!("{:x}", Sha256::digest(text.as_bytes()))),
+            )?;
+        }
+        _publication.commit()?;
         Ok(())
     }
 }
@@ -892,11 +940,15 @@ impl SectionWrites {
                 cfg::render(&cp)
             }
         };
-        if let Err(e) = self.replace_file_checked(&text, None, true, Some(&revision), None) {
+        if let Err(e) = self.replace_file_checked_roles(
+            &text,
+            None,
+            true,
+            Some(&revision),
+            None,
+            Some((old, Some(new))),
+        ) {
             return publication_error(&e);
-        }
-        if forget_role(&self.ini, old, Some(new)).is_err() {
-            return Outcome::Failed;
         }
         match after_write(&self.ini, None) {
             Ok((rev, _)) => Outcome::Json(200, ok_body(&rev, "")),
@@ -920,13 +972,15 @@ impl SectionWrites {
         if !cp.remove_section(name) {
             return detail(404, "section not found");
         }
-        if let Err(e) =
-            self.replace_file_checked(&cfg::render(&cp), None, true, Some(&revision), None)
-        {
+        if let Err(e) = self.replace_file_checked_roles(
+            &cfg::render(&cp),
+            None,
+            true,
+            Some(&revision),
+            None,
+            Some((name, None)),
+        ) {
             return publication_error(&e);
-        }
-        if forget_role(&self.ini, name, None).is_err() {
-            return Outcome::Failed;
         }
         match after_write(&self.ini, None) {
             Ok((rev, _)) => Outcome::Json(200, ok_body(&rev, "")),
@@ -1167,7 +1221,7 @@ fn publication_error(e: &std::io::Error) -> Outcome {
 pub fn publication_fence(
     value: Option<&Json>,
 ) -> Result<Option<model_publication::Fence>, Outcome> {
-    let Some(value) = value else {
+    let Some(value) = value.filter(|v| !matches!(v, Json::Null)) else {
         return Ok(None);
     };
     let string = |key| match value.get(key) {

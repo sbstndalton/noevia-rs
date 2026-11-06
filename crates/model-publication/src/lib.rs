@@ -49,7 +49,7 @@ fn legacy_kind() -> String {
     "legacy".into()
 }
 
-#[derive(Clone, Debug, serde::Serialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Receipt {
     pub state: String,
     pub revision: Option<String>,
@@ -64,18 +64,30 @@ pub fn now_ms() -> u64 {
 impl Guard {
     pub fn at(path: &Path) -> std::io::Result<Self> {
         let connection = rusqlite::Connection::open(path).map_err(io_error)?;
+        share_reader_files(path)?;
         connection
             .busy_timeout(Duration::from_secs(5))
             .map_err(io_error)?;
-        connection
-            .pragma_update(None, "journal_mode", "WAL")
-            .map_err(io_error)?;
-        connection
-            .pragma_update(None, "synchronous", "FULL")
-            .map_err(io_error)?;
-        connection
-            .execute_batch("BEGIN EXCLUSIVE")
-            .map_err(io_error)?;
+        let until = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let opened = connection
+                .pragma_update(None, "journal_mode", "WAL")
+                .and_then(|()| connection.pragma_update(None, "synchronous", "FULL"))
+                .and_then(|()| connection.execute_batch("BEGIN EXCLUSIVE"));
+            match opened {
+                Ok(()) => break,
+                Err(rusqlite::Error::SqliteFailure(code, _))
+                    if matches!(
+                        code.code,
+                        rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
+                    ) && std::time::Instant::now() < until =>
+                {
+                    std::thread::sleep(Duration::from_millis(2))
+                }
+                Err(e) => return Err(io_error(e)),
+            }
+        }
+        share_reader_files(path)?;
         Ok(Self {
             _connection: connection,
         })
@@ -157,6 +169,19 @@ impl Guard {
         }
     }
 
+    pub fn no_other_publishers(&self, f: &Fence) -> std::io::Result<()> {
+        let pending:bool=self._connection.query_row("SELECT EXISTS(SELECT 1 FROM preset_operations WHERE id<>?1 AND kind IN ('pull','register') AND state IN ('issued','running','recovery'))",[&f.operation],|r|r.get(0)).map_err(io_error)?;
+        if pending {
+            Err(conflict())
+        } else {
+            Ok(())
+        }
+    }
+    pub fn pending_kinds(&self) -> std::io::Result<Vec<String>> {
+        let mut statement=self._connection.prepare("SELECT DISTINCT kind FROM preset_operations WHERE state IN ('issued','running','recovery')").map_err(io_error)?;
+        let rows = statement.query_map([], |r| r.get(0)).map_err(io_error)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(io_error)
+    }
     pub fn observe_revision(&self, revision: &str) -> std::io::Result<()> {
         self._connection.execute("INSERT INTO preset_revision VALUES(1,?1) ON CONFLICT(singleton) DO UPDATE SET revision=excluded.revision", [revision]).map_err(io_error)?;
         Ok(())
@@ -176,7 +201,7 @@ impl Guard {
         if !matches!(state, "settled" | "conflict" | "recovery") {
             return Err(conflict());
         }
-        self._connection.execute("UPDATE preset_operations SET state=?5,revision=?6 WHERE id=?1 AND incarnation=?2 AND lease=?3 AND generation=?4 AND state IN ('issued','running','recovery')", rusqlite::params![f.operation,f.incarnation,f.lease,f.generation.to_string(),state,revision]).map_err(io_error)?;
+        self._connection.execute("UPDATE preset_operations SET state=?5,revision=?6 WHERE id=?1 AND incarnation=?2 AND lease=?3 AND generation=?4 AND kind=?7 AND expected_revision IS ?8 AND state IN ('issued','running','recovery')", rusqlite::params![f.operation,f.incarnation,f.lease,f.generation.to_string(),state,revision,f.kind,f.expected_revision]).map_err(io_error)?;
         Ok(())
     }
     pub fn settle(&self, f: &Fence) -> std::io::Result<()> {
@@ -184,7 +209,7 @@ impl Guard {
     }
     pub fn status(&self, f: &Fence) -> std::io::Result<Option<Receipt>> {
         use rusqlite::OptionalExtension;
-        self._connection.query_row("SELECT state,revision FROM preset_operations WHERE id=?1 AND incarnation=?2 AND lease=?3 AND generation=?4", rusqlite::params![f.operation,f.incarnation,f.lease,f.generation.to_string()], |r| Ok(Receipt {state:r.get(0)?,revision:r.get(1)?})).optional().map_err(io_error)
+        self._connection.query_row("SELECT state,revision FROM preset_operations WHERE id=?1 AND incarnation=?2 AND lease=?3 AND generation=?4 AND kind=?5 AND expected_revision IS ?6", rusqlite::params![f.operation,f.incarnation,f.lease,f.generation.to_string(),f.kind,f.expected_revision], |r| Ok(Receipt {state:r.get(0)?,revision:r.get(1)?})).optional().map_err(io_error)
     }
     pub fn expected(&self, f: &Fence, actual: &str) -> std::io::Result<()> {
         self.validate(f)?;
@@ -211,6 +236,20 @@ impl Guard {
     pub fn commit(self) -> std::io::Result<()> {
         self._connection.execute_batch("COMMIT").map_err(io_error)
     }
+}
+
+fn share_reader_files(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    // The dedicated volume is RW only in web/loader; Gate's separate UID mounts it RO.
+    for suffix in ["", "-wal", "-shm"] {
+        let file = PathBuf::from(format!("{}{suffix}", path.display()));
+        match std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o644)) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
 }
 
 fn io_error(_: rusqlite::Error) -> std::io::Error {
@@ -264,6 +303,17 @@ pub fn allows(path: &Path, fence: Option<&Fence>) -> bool {
     read().unwrap_or(false)
 }
 
+/// A bounded, read-only WAL snapshot for a caller waiting on an already issued operation.
+pub fn read_receipt(path: &Path, f: &Fence) -> std::io::Result<Option<Receipt>> {
+    use rusqlite::OptionalExtension;
+    let db =
+        rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(io_error)?;
+    db.busy_timeout(Duration::from_millis(25))
+        .map_err(io_error)?;
+    db.query_row("SELECT state,revision FROM preset_operations WHERE id=?1 AND incarnation=?2 AND lease=?3 AND generation=?4 AND kind=?5 AND expected_revision IS ?6",rusqlite::params![f.operation,f.incarnation,f.lease,f.generation.to_string(),f.kind,f.expected_revision],|r|Ok(Receipt {state:r.get(0)?,revision:r.get(1)?})).optional().map_err(io_error)
+}
+
 /// Keeps WAL/shm available to a read-only gate while this authority is running.
 pub struct Anchor {
     _connection: rusqlite::Connection,
@@ -283,5 +333,142 @@ impl Anchor {
         Ok(Self {
             _connection: connection,
         })
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+    fn fence() -> Fence {
+        Fence {
+            incarnation: "front-a".into(),
+            lease: "hold-a".into(),
+            generation: 1,
+            operation: "op-a".into(),
+            kind: "preset-write".into(),
+            expected_revision: Some("revision-a".into()),
+        }
+    }
+    fn record(generation: u64) -> AuthorityRecord {
+        AuthorityRecord {
+            incarnation: "front-a".into(),
+            lease: "hold-a".into(),
+            generation,
+            active: true,
+            until_ms: now_ms() + 60_000,
+            recovery: false,
+        }
+    }
+    #[test]
+    fn publication_readonly_wal_snapshot_does_not_block_writer_and_exact_generation_is_required() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("authority.sqlite");
+        let f = fence();
+        let journal = Guard::at(&file).unwrap();
+        journal.authority().unwrap();
+        journal.save_authority(&record(1)).unwrap();
+        journal.observe_revision("revision-a").unwrap();
+        journal.begin(&f).unwrap();
+        journal.commit().unwrap();
+        let _anchor = Anchor::open(&file).unwrap();
+        let writer = Guard::at(&file).unwrap();
+        writer.save_authority(&record(2)).unwrap();
+        // Gate opens read-only and reads the last committed WAL snapshot while a writer owns it.
+        assert!(allows(&file, Some(&f)));
+        assert!(!allows(&file, None));
+        writer.commit().unwrap();
+        assert!(!allows(&file, Some(&f)));
+        let fresh = Fence {
+            generation: 2,
+            operation: "op-b".into(),
+            ..f.clone()
+        };
+        let journal = Guard::at(&file).unwrap();
+        journal.begin(&fresh).unwrap();
+        journal.commit().unwrap();
+        assert!(allows(&file, Some(&fresh)));
+    }
+    #[test]
+    fn publication_empty_and_old_journals_migrate_without_preventing_legacy_file_writes() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("authority.sqlite");
+        assert!(!allows(&file, None)); // absent during startup is tolerated without creating a file
+        assert!(!file.exists());
+        let connection = rusqlite::Connection::open(&file).unwrap();
+        connection.execute_batch("CREATE TABLE preset_operations(id TEXT PRIMARY KEY,incarnation TEXT NOT NULL,lease TEXT NOT NULL,generation TEXT NOT NULL); INSERT INTO preset_operations VALUES('old-op','old-front','old-hold','1')").unwrap();
+        drop(connection);
+        let journal = Guard::at(&file).unwrap();
+        assert!(journal.authority().unwrap().is_none());
+        assert!(journal.pending().unwrap());
+        journal.save_authority(&record(1)).unwrap();
+        journal.begin(&fence()).unwrap();
+        journal.commit().unwrap();
+        // An older image ignores the extra volume and request metadata. It can still write its file.
+        let ini = dir.path().join("models.ini");
+        std::fs::write(&ini, "legacy").unwrap();
+        let journal = Guard::at(&file).unwrap();
+        assert!(journal.validate(&fence()).is_ok());
+        journal
+            .finish(&fence(), "settled", Some("revision-b"))
+            .unwrap();
+        journal.commit().unwrap();
+        assert_eq!(std::fs::read_to_string(ini).unwrap(), "legacy");
+    }
+    #[test]
+    fn publication_pull_intent_blocks_cleanup_until_the_actual_publisher_settles() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("authority.sqlite");
+        let pull = Fence {
+            kind: "pull".into(),
+            operation: "pull-op".into(),
+            ..fence()
+        };
+        let cleanup = Fence {
+            kind: "delete".into(),
+            operation: "cleanup-op".into(),
+            ..fence()
+        };
+        let journal = Guard::at(&file).unwrap();
+        journal.authority().unwrap();
+        journal.save_authority(&record(1)).unwrap();
+        journal.begin(&pull).unwrap();
+        journal.running(&pull).unwrap();
+        journal.begin(&cleanup).unwrap();
+        assert!(
+            journal.no_other_publishers(&cleanup).is_err(),
+            "HTTP launch acknowledgement is not publication settlement"
+        );
+        journal.commit().unwrap();
+        let journal = Guard::at(&file).unwrap();
+        assert!(
+            journal.no_other_publishers(&cleanup).is_err(),
+            "intent survives a client/process boundary"
+        );
+        journal.finish(&pull, "settled", None).unwrap();
+        assert!(journal.no_other_publishers(&cleanup).is_ok());
+        journal.commit().unwrap();
+    }
+
+    #[test]
+    fn publication_terminal_receipt_cannot_authorize_another_effect_or_clear_a_later_operation() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("authority.sqlite");
+        let a = fence();
+        let b = Fence {
+            operation: "op-b".into(),
+            ..a.clone()
+        };
+        let journal = Guard::at(&file).unwrap();
+        journal.authority().unwrap();
+        journal.save_authority(&record(1)).unwrap();
+        journal.begin(&a).unwrap();
+        journal.finish(&a, "settled", Some("revision-b")).unwrap();
+        journal.begin(&b).unwrap();
+        journal.finish(&a, "settled", None).unwrap();
+        assert!(journal.validate(&a).is_err());
+        assert!(journal.validate(&b).is_ok());
+        assert!(journal.pending().unwrap());
+        journal.commit().unwrap();
     }
 }
