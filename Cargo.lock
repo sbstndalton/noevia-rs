@@ -3275,6 +3275,7 @@ dependencies = [
 name = "server-tasks"
 version = "0.1.0"
 dependencies = [
+ "browser-policy",
  "code-actions",
  "js-json",
  "libc",

@@ -1,0 +1,1382 @@
+[
+  {
+    "kind": "classify",
+    "action": {},
+    "page": {},
+    "result": {
+      "status": "needs_approval",
+      "reason": "Unrecognised action “none”."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {},
+    "page": {
+      "origin": "https://synthetic.invalid",
+      "allowedDomains": [
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "needs_approval",
+      "reason": "Unrecognised action “none”."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {},
+    "page": {
+      "origin": 42,
+      "allowedDomains": "bad"
+    },
+    "result": {
+      "status": "needs_approval",
+      "reason": "Unrecognised action “none”."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {},
+    "page": {
+      "origin": false,
+      "allowedDomains": [
+        null,
+        42,
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "needs_approval",
+      "reason": "Unrecognised action “none”."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "navigate",
+      "url": "https://synthetic.invalid/path"
+    },
+    "page": {},
+    "result": {
+      "status": "blocked",
+      "reason": "synthetic.invalid is not on this task’s allowed list."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "navigate",
+      "url": "https://synthetic.invalid/path"
+    },
+    "page": {
+      "origin": "https://synthetic.invalid",
+      "allowedDomains": [
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "allow",
+      "reason": ""
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "navigate",
+      "url": "https://synthetic.invalid/path"
+    },
+    "page": {
+      "origin": 42,
+      "allowedDomains": "bad"
+    },
+    "result": {
+      "status": "blocked",
+      "reason": "This address could not be double-checked, so it is not opened."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "navigate",
+      "url": "https://synthetic.invalid/path"
+    },
+    "page": {
+      "origin": false,
+      "allowedDomains": [
+        null,
+        42,
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "allow",
+      "reason": ""
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "navigate",
+      "url": "https://127.1/"
+    },
+    "page": {},
+    "result": {
+      "status": "blocked",
+      "reason": "Private network addresses are not opened."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "navigate",
+      "url": "https://127.1/"
+    },
+    "page": {
+      "origin": "https://synthetic.invalid",
+      "allowedDomains": [
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "blocked",
+      "reason": "Private network addresses are not opened."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "navigate",
+      "url": "https://127.1/"
+    },
+    "page": {
+      "origin": 42,
+      "allowedDomains": "bad"
+    },
+    "result": {
+      "status": "blocked",
+      "reason": "This address could not be double-checked, so it is not opened."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "navigate",
+      "url": "https://127.1/"
+    },
+    "page": {
+      "origin": false,
+      "allowedDomains": [
+        null,
+        42,
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "blocked",
+      "reason": "Private network addresses are not opened."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "navigate",
+      "url": "https://synthetic.invalid/",
+      "method": "POST"
+    },
+    "page": {},
+    "result": {
+      "status": "blocked",
+      "reason": "synthetic.invalid is not on this task’s allowed list."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "navigate",
+      "url": "https://synthetic.invalid/",
+      "method": "POST"
+    },
+    "page": {
+      "origin": "https://synthetic.invalid",
+      "allowedDomains": [
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "needs_approval",
+      "reason": "Sends data."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "navigate",
+      "url": "https://synthetic.invalid/",
+      "method": "POST"
+    },
+    "page": {
+      "origin": 42,
+      "allowedDomains": "bad"
+    },
+    "result": {
+      "status": "blocked",
+      "reason": "This address could not be double-checked, so it is not opened."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "navigate",
+      "url": "https://synthetic.invalid/",
+      "method": "POST"
+    },
+    "page": {
+      "origin": false,
+      "allowedDomains": [
+        null,
+        42,
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "needs_approval",
+      "reason": "Sends data."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "navigate"
+    },
+    "page": {},
+    "result": {
+      "status": "blocked",
+      "reason": "Not a web address."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "navigate"
+    },
+    "page": {
+      "origin": "https://synthetic.invalid",
+      "allowedDomains": [
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "blocked",
+      "reason": "Not a web address."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "navigate"
+    },
+    "page": {
+      "origin": 42,
+      "allowedDomains": "bad"
+    },
+    "result": {
+      "status": "blocked",
+      "reason": "This address could not be double-checked, so it is not opened."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "navigate"
+    },
+    "page": {
+      "origin": false,
+      "allowedDomains": [
+        null,
+        42,
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "blocked",
+      "reason": "Not a web address."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "press",
+      "key": "Enter"
+    },
+    "page": {},
+    "result": {
+      "status": "allow",
+      "reason": ""
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "press",
+      "key": "Enter"
+    },
+    "page": {
+      "origin": "https://synthetic.invalid",
+      "allowedDomains": [
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "allow",
+      "reason": ""
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "press",
+      "key": "Enter"
+    },
+    "page": {
+      "origin": 42,
+      "allowedDomains": "bad"
+    },
+    "result": {
+      "status": "allow",
+      "reason": ""
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "press",
+      "key": "Enter"
+    },
+    "page": {
+      "origin": false,
+      "allowedDomains": [
+        null,
+        42,
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "allow",
+      "reason": ""
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "press",
+      "key": 0
+    },
+    "page": {},
+    "result": {
+      "status": "allow",
+      "reason": ""
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "press",
+      "key": 0
+    },
+    "page": {
+      "origin": "https://synthetic.invalid",
+      "allowedDomains": [
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "allow",
+      "reason": ""
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "press",
+      "key": 0
+    },
+    "page": {
+      "origin": 42,
+      "allowedDomains": "bad"
+    },
+    "result": {
+      "status": "allow",
+      "reason": ""
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "press",
+      "key": 0
+    },
+    "page": {
+      "origin": false,
+      "allowedDomains": [
+        null,
+        42,
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "allow",
+      "reason": ""
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "click",
+      "element": {
+        "tag": "button",
+        "text": "Send",
+        "inForm": true
+      }
+    },
+    "page": {},
+    "result": {
+      "status": "needs_approval",
+      "reason": "Submits a form."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "click",
+      "element": {
+        "tag": "button",
+        "text": "Send",
+        "inForm": true
+      }
+    },
+    "page": {
+      "origin": "https://synthetic.invalid",
+      "allowedDomains": [
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "needs_approval",
+      "reason": "Submits a form."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "click",
+      "element": {
+        "tag": "button",
+        "text": "Send",
+        "inForm": true
+      }
+    },
+    "page": {
+      "origin": 42,
+      "allowedDomains": "bad"
+    },
+    "result": {
+      "status": "needs_approval",
+      "reason": "Submits a form."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "click",
+      "element": {
+        "tag": "button",
+        "text": "Send",
+        "inForm": true
+      }
+    },
+    "page": {
+      "origin": false,
+      "allowedDomains": [
+        null,
+        42,
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "needs_approval",
+      "reason": "Submits a form."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "click",
+      "element": {
+        "tag": "a",
+        "text": "Read more"
+      }
+    },
+    "page": {},
+    "result": {
+      "status": "allow",
+      "reason": ""
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "click",
+      "element": {
+        "tag": "a",
+        "text": "Read more"
+      }
+    },
+    "page": {
+      "origin": "https://synthetic.invalid",
+      "allowedDomains": [
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "allow",
+      "reason": ""
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "click",
+      "element": {
+        "tag": "a",
+        "text": "Read more"
+      }
+    },
+    "page": {
+      "origin": 42,
+      "allowedDomains": "bad"
+    },
+    "result": {
+      "status": "allow",
+      "reason": ""
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "click",
+      "element": {
+        "tag": "a",
+        "text": "Read more"
+      }
+    },
+    "page": {
+      "origin": false,
+      "allowedDomains": [
+        null,
+        42,
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "allow",
+      "reason": ""
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "click",
+      "element": {
+        "tag": 42,
+        "text": [
+          "Save",
+          null
+        ],
+        "inForm": []
+      }
+    },
+    "page": {},
+    "result": {
+      "status": "allow",
+      "reason": ""
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "click",
+      "element": {
+        "tag": 42,
+        "text": [
+          "Save",
+          null
+        ],
+        "inForm": []
+      }
+    },
+    "page": {
+      "origin": "https://synthetic.invalid",
+      "allowedDomains": [
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "allow",
+      "reason": ""
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "click",
+      "element": {
+        "tag": 42,
+        "text": [
+          "Save",
+          null
+        ],
+        "inForm": []
+      }
+    },
+    "page": {
+      "origin": 42,
+      "allowedDomains": "bad"
+    },
+    "result": {
+      "status": "allow",
+      "reason": ""
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "click",
+      "element": {
+        "tag": 42,
+        "text": [
+          "Save",
+          null
+        ],
+        "inForm": []
+      }
+    },
+    "page": {
+      "origin": false,
+      "allowedDomains": [
+        null,
+        42,
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "allow",
+      "reason": ""
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "click",
+      "element": {
+        "tag": "button",
+        "text": "𓀀"
+      }
+    },
+    "page": {},
+    "result": {
+      "status": "needs_approval",
+      "reason": "This action could not be double-checked, so it asks first."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "click",
+      "element": {
+        "tag": "button",
+        "text": "𓀀"
+      }
+    },
+    "page": {
+      "origin": "https://synthetic.invalid",
+      "allowedDomains": [
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "needs_approval",
+      "reason": "This action could not be double-checked, so it asks first."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "click",
+      "element": {
+        "tag": "button",
+        "text": "𓀀"
+      }
+    },
+    "page": {
+      "origin": 42,
+      "allowedDomains": "bad"
+    },
+    "result": {
+      "status": "needs_approval",
+      "reason": "This action could not be double-checked, so it asks first."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "click",
+      "element": {
+        "tag": "button",
+        "text": "𓀀"
+      }
+    },
+    "page": {
+      "origin": false,
+      "allowedDomains": [
+        null,
+        42,
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "needs_approval",
+      "reason": "This action could not be double-checked, so it asks first."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "type"
+    },
+    "page": {},
+    "result": {
+      "status": "allow",
+      "reason": "Nothing is sent until a submit, which asks."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "type"
+    },
+    "page": {
+      "origin": "https://synthetic.invalid",
+      "allowedDomains": [
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "allow",
+      "reason": "Nothing is sent until a submit, which asks."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "type"
+    },
+    "page": {
+      "origin": 42,
+      "allowedDomains": "bad"
+    },
+    "result": {
+      "status": "allow",
+      "reason": "Nothing is sent until a submit, which asks."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "type"
+    },
+    "page": {
+      "origin": false,
+      "allowedDomains": [
+        null,
+        42,
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "allow",
+      "reason": "Nothing is sent until a submit, which asks."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "extract"
+    },
+    "page": {},
+    "result": {
+      "status": "allow",
+      "reason": "Read-only."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "extract"
+    },
+    "page": {
+      "origin": "https://synthetic.invalid",
+      "allowedDomains": [
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "allow",
+      "reason": "Read-only."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "extract"
+    },
+    "page": {
+      "origin": 42,
+      "allowedDomains": "bad"
+    },
+    "result": {
+      "status": "allow",
+      "reason": "Read-only."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "extract"
+    },
+    "page": {
+      "origin": false,
+      "allowedDomains": [
+        null,
+        42,
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "allow",
+      "reason": "Read-only."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "screenshot"
+    },
+    "page": {},
+    "result": {
+      "status": "allow",
+      "reason": "Read-only."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "screenshot"
+    },
+    "page": {
+      "origin": "https://synthetic.invalid",
+      "allowedDomains": [
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "allow",
+      "reason": "Read-only."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "screenshot"
+    },
+    "page": {
+      "origin": 42,
+      "allowedDomains": "bad"
+    },
+    "result": {
+      "status": "allow",
+      "reason": "Read-only."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "screenshot"
+    },
+    "page": {
+      "origin": false,
+      "allowedDomains": [
+        null,
+        42,
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "allow",
+      "reason": "Read-only."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "unknown"
+    },
+    "page": {},
+    "result": {
+      "status": "needs_approval",
+      "reason": "Unrecognised action “unknown”."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "unknown"
+    },
+    "page": {
+      "origin": "https://synthetic.invalid",
+      "allowedDomains": [
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "needs_approval",
+      "reason": "Unrecognised action “unknown”."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "unknown"
+    },
+    "page": {
+      "origin": 42,
+      "allowedDomains": "bad"
+    },
+    "result": {
+      "status": "needs_approval",
+      "reason": "Unrecognised action “unknown”."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": "unknown"
+    },
+    "page": {
+      "origin": false,
+      "allowedDomains": [
+        null,
+        42,
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "needs_approval",
+      "reason": "Unrecognised action “unknown”."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": 17
+    },
+    "page": {},
+    "result": {
+      "status": "needs_approval",
+      "reason": "Unrecognised action “17”."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": 17
+    },
+    "page": {
+      "origin": "https://synthetic.invalid",
+      "allowedDomains": [
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "needs_approval",
+      "reason": "Unrecognised action “17”."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": 17
+    },
+    "page": {
+      "origin": 42,
+      "allowedDomains": "bad"
+    },
+    "result": {
+      "status": "needs_approval",
+      "reason": "Unrecognised action “17”."
+    }
+  },
+  {
+    "kind": "classify",
+    "action": {
+      "type": 17
+    },
+    "page": {
+      "origin": false,
+      "allowedDomains": [
+        null,
+        42,
+        "synthetic.invalid"
+      ]
+    },
+    "result": {
+      "status": "needs_approval",
+      "reason": "Unrecognised action “17”."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "https://synthetic.invalid/path",
+    "domains": [],
+    "result": {
+      "ok": false,
+      "reason": "synthetic.invalid is not on this task’s allowed list."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "https://synthetic.invalid/path",
+    "domains": [
+      "synthetic.invalid"
+    ],
+    "result": {
+      "ok": true,
+      "origin": "https://synthetic.invalid"
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "https://synthetic.invalid/path",
+    "domains": "bad",
+    "result": {
+      "ok": false,
+      "reason": "This address could not be double-checked, so it is not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "https://synthetic.invalid/path",
+    "domains": [
+      null,
+      42,
+      "synthetic.invalid"
+    ],
+    "result": {
+      "ok": true,
+      "origin": "https://synthetic.invalid"
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "https://localhost./",
+    "domains": [],
+    "result": {
+      "ok": false,
+      "reason": "Local addresses are not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "https://localhost./",
+    "domains": [
+      "synthetic.invalid"
+    ],
+    "result": {
+      "ok": false,
+      "reason": "Local addresses are not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "https://localhost./",
+    "domains": "bad",
+    "result": {
+      "ok": false,
+      "reason": "This address could not be double-checked, so it is not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "https://localhost./",
+    "domains": [
+      null,
+      42,
+      "synthetic.invalid"
+    ],
+    "result": {
+      "ok": false,
+      "reason": "Local addresses are not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "https://127.1/",
+    "domains": [],
+    "result": {
+      "ok": false,
+      "reason": "Private network addresses are not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "https://127.1/",
+    "domains": [
+      "synthetic.invalid"
+    ],
+    "result": {
+      "ok": false,
+      "reason": "Private network addresses are not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "https://127.1/",
+    "domains": "bad",
+    "result": {
+      "ok": false,
+      "reason": "This address could not be double-checked, so it is not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "https://127.1/",
+    "domains": [
+      null,
+      42,
+      "synthetic.invalid"
+    ],
+    "result": {
+      "ok": false,
+      "reason": "Private network addresses are not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "http://10.0.0.1/",
+    "domains": [],
+    "result": {
+      "ok": false,
+      "reason": "Private network addresses are not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "http://10.0.0.1/",
+    "domains": [
+      "synthetic.invalid"
+    ],
+    "result": {
+      "ok": false,
+      "reason": "Private network addresses are not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "http://10.0.0.1/",
+    "domains": "bad",
+    "result": {
+      "ok": false,
+      "reason": "This address could not be double-checked, so it is not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "http://10.0.0.1/",
+    "domains": [
+      null,
+      42,
+      "synthetic.invalid"
+    ],
+    "result": {
+      "ok": false,
+      "reason": "Private network addresses are not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "https://user:pass@synthetic.invalid/",
+    "domains": [],
+    "result": {
+      "ok": false,
+      "reason": "Addresses with embedded credentials are not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "https://user:pass@synthetic.invalid/",
+    "domains": [
+      "synthetic.invalid"
+    ],
+    "result": {
+      "ok": false,
+      "reason": "Addresses with embedded credentials are not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "https://user:pass@synthetic.invalid/",
+    "domains": "bad",
+    "result": {
+      "ok": false,
+      "reason": "This address could not be double-checked, so it is not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "https://user:pass@synthetic.invalid/",
+    "domains": [
+      null,
+      42,
+      "synthetic.invalid"
+    ],
+    "result": {
+      "ok": false,
+      "reason": "Addresses with embedded credentials are not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "data:text/plain,hello",
+    "domains": [],
+    "result": {
+      "ok": false,
+      "reason": "data: links are not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "data:text/plain,hello",
+    "domains": [
+      "synthetic.invalid"
+    ],
+    "result": {
+      "ok": false,
+      "reason": "data: links are not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "data:text/plain,hello",
+    "domains": "bad",
+    "result": {
+      "ok": false,
+      "reason": "This address could not be double-checked, so it is not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": "data:text/plain,hello",
+    "domains": [
+      null,
+      42,
+      "synthetic.invalid"
+    ],
+    "result": {
+      "ok": false,
+      "reason": "data: links are not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": null,
+    "domains": [],
+    "result": {
+      "ok": false,
+      "reason": "Not a web address."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": null,
+    "domains": [
+      "synthetic.invalid"
+    ],
+    "result": {
+      "ok": false,
+      "reason": "Not a web address."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": null,
+    "domains": "bad",
+    "result": {
+      "ok": false,
+      "reason": "This address could not be double-checked, so it is not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": null,
+    "domains": [
+      null,
+      42,
+      "synthetic.invalid"
+    ],
+    "result": {
+      "ok": false,
+      "reason": "Not a web address."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": 42,
+    "domains": [],
+    "result": {
+      "ok": false,
+      "reason": "Not a web address."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": 42,
+    "domains": [
+      "synthetic.invalid"
+    ],
+    "result": {
+      "ok": false,
+      "reason": "Not a web address."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": 42,
+    "domains": "bad",
+    "result": {
+      "ok": false,
+      "reason": "This address could not be double-checked, so it is not opened."
+    }
+  },
+  {
+    "kind": "navigation",
+    "url": 42,
+    "domains": [
+      null,
+      42,
+      "synthetic.invalid"
+    ],
+    "result": {
+      "ok": false,
+      "reason": "Not a web address."
+    }
+  }
+]

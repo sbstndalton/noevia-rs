@@ -11,6 +11,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+browser-policy = { path = "../browser-policy" }
 role-context = { path = "../role-context" }
 sha2 = "0.10"
 stream-guard = { path = "../stream-guard" }
