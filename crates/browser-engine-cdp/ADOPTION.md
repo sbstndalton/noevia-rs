@@ -22,8 +22,9 @@ Approval retains and rechecks the remote object, facts, origin and focus. Text i
 limited to 20,000 UTF-16 units and masked; screenshots are suppressed after secret
 substitution. Each session owns a fresh process/profile. Numbered downloads are
 saved without overwriting existing targets. Direct access is explicit for tests;
-a proxy grant remains mandatory otherwise. Credential-bearing proxy URLs are
-rejected before launch because proxy authentication is unimplemented.
+a proxy grant remains mandatory otherwise. Credential-bearing proxy URLs are rejected before launch. Structured
+`proxy_credentials` answer only a matching configured proxy challenge, once per
+request; origin challenges never receive proxy credentials.
 
 ## Launch parity
 
@@ -70,25 +71,49 @@ because the event can arrive on either side of an action response. Raw API
 responses are retained in the report. The server also counts denied fetch,
 WebSocket and popup requests, so a late refusal cannot look like enforcement.
 
-## Remaining gaps and evidence
+## Round 3 security qualification and remaining gates
 
-| Area | Qualification and exact remaining gap |
-| --- | --- |
-| Popup interception/fallback | Allowed popup selection and close fallback pass the original matrix. A denied popup's first request reaches the fixture once before policy is installed on the new target, then the action reports blocked. Pre-resume target interception is missing. The unchanged oracle's denied-popup probe separately crashes in `Request.frame()` before the popup frame exists; run it with `BROWSER_DENIED_POPUP_PROBE=1`. That reference fault is retained as evidence, not suppressed or patched. |
-| WebSockets | Allowed handshake passes. URLPattern blocking refuses denied fetches but does **not** block a denied WebSocket handshake: the server observes it and the page reports allowed. Native connection interception before the handshake is missing. The egress proxy remains required, but its presence is not accepted as proof of parity for this failed layer. |
-| Service workers | Secure-context registration resolves undefined without registering, matching the reference's async no-op. Bypass is also enabled. Subframe/worker-target and popup-before-attachment coverage is not qualified. |
-| Actionability | Delayed lookup, disabled hover, delayed enabled click, same-node replacement, basic click/hover and DOM effects pass. Full stable-animation checks, complete editable/fill/trusted-event semantics, option waiting, iframe targeting, and the reference locator language beyond CSS are unimplemented or unqualified. Fill currently uses DOM setters/events; no claim of trusted-event parity. |
-| Proxy auth | Embedded credentials fail closed before launch; unit tested. Authenticated grant fields/challenge responses are not implemented. Anonymous proxy forwarding and all redirect hops have not been integration-tested here. Proxy loopback bypass is disabled when a proxy is configured. |
-| Isolation | Two live sessions on the same origin have separate cookies/localStorage; both close with process confirmation. Cache/worker/download concurrency and per-context proxy tests remain. |
-| Cancellation | Dropping an action while approval is pending poisons admission; a further action is blocked, the consequential effect does not occur, and explicit close confirms cleanup. Automatic immediate browser/context close on cancellation, release of retained objects at every cancellation await, and exhaustive setup/action/download/close cancellation injection remain unqualified. Caller must close interrupted instances. |
-| Other | Request audit/state projection, concurrent download/error handling, wildcard/IDNA allowlist normalization, and full error-string parity remain. |
+The 54-action synthetic matrix passes. Server counters for denied popup first
+requests, fetches, and WebSocket handshakes are zero, including iframe and
+worker probes. The unmodified retained driver leaks a dedicated-worker WebSocket;
+the oracle preserves that raw result while the native safety assertion requires
+zero handshakes. Counters reset between engines. This explicit security improvement
+is the only normalized outcome difference allowed by the differential.
 
-These are adoption blockers even when the original action matrix passes.
+A dedicated browser connection enables browser-level Fetch before creating the
+first page. Auto-attachment pauses new page/worker targets before execution and
+recursively attaches descendants before resuming them. Loss of the policy
+connection closes the browser. Request interception judges the browser-policy
+crate's result. Chromium does not intercept WebSocket upgrades through Fetch;
+response fulfilment installs a native CSP connect-src header on documents and
+worker scripts. Original CSP headers are retained. Removing page JavaScript
+cannot remove this response policy. Scheme/host normalization uses the same policy
+verdict. Body framing/compression headers are removed when fulfilling decoded
+bodies. Documents and scripts over 8 MiB fail closed; this buffering/limit needs
+integration-owner acceptance before adoption. Streaming document parity is not
+claimed. Blob/data policy inheritance still needs adversarial qualification.
 
-Alternative considered: headless_chrome 1.0.22 (MIT), which exposes synchronous
-request interception and incognito APIs. Those APIs use the same protocol family;
-its primary documentation does not establish pre-handshake WebSocket or
-pre-resume popup enforcement. Switching libraries alone would not resolve the
-measured gaps. Retain this candidate without claiming qualification. Sources:
-<https://docs.rs/crate/headless_chrome/latest/source/>,
-<https://github.com/rust-headless-chrome/rust-headless-chrome/blob/main/tests/simple.rs>.
+On this Chromium build, continueResponse acknowledges modified CSP headers but
+still sends denied WebSocket handshakes. Reproduction probes retain that failure.
+Fulfilled synthetic documents need explicit local-network permissions to contact
+the fake .test loopback fixture. Both engines receive those permissions only in
+disposable fixture browsers; the helper refuses non-synthetic/non-.test use.
+No host permissions or production settings change. The identical fixture action
+timeout is 1200 ms for both engines to allow shared build-host scheduling.
+
+| # | Area | Current result / remaining gate |
+| --- | --- | --- |
+| 1 | Popup | First denied request blocked before network; allowed selection/fallback passes. |
+| 2 | WebSockets | Page/iframe/worker denied handshake counters zero; allowed socket passes. CSP buffering/inheritance acceptance remains above. |
+| 3 | Workers/subframes | Dedicated-worker and iframe network probes pass. Pre-resume service-worker-registration parity on popups/subframes remains unqualified. |
+| 4 | Actionability | Trusted text input/clear, delayed option selection, and sampled pointer stability pass. Full locator language, frame targeting and all fill input types remain unqualified. |
+| 5 | Proxy auth | Structured credentials, real 407 challenge, redirect forwarding and two identities pass. Wrong-password/origin-challenge/anonymous-proxy negatives remain unqualified. |
+| 6 | Isolation | Independent cookie/localStorage sessions and proxy identities pass. Cache, worker storage and concurrent-download qualification remains. |
+| 7 | Cancellation | Dropped approval automatically closes browser and destroys remote objects; explicit close reaps it. Exhaustive setup/action/download/close cancellation injection remains. |
+| 8 | Audit/errors | Bounded masked Fetch-denial state and fixed connection-failure class implemented. CSP-denial audit completeness and full public-error parity remain. |
+
+Do not adopt or retire the retained driver until every remaining gate is closed.
+The external differential remains ignored in ordinary package checks. The recorded
+explicit run used identical source with only the ignore attribute removed in the
+owned scratch checkout, through the canonical build wrapper; restore the attribute
+for ordinary checks. No adapter/runtime ownership wiring is part of this change.

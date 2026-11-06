@@ -4,7 +4,7 @@
     clippy::panic,
     clippy::indexing_slicing
 )]
-use browser_engine_cdp::{Approval, BrowserEngine, CdpEngine, Launch, Secret};
+use browser_engine_cdp::{Approval, BrowserEngine, CdpEngine, Launch, ProxyCredentials, Secret};
 use serde_json::{json, Value};
 use std::{collections::BTreeMap, path::PathBuf, process::Stdio, time::Duration};
 use tokio::{
@@ -65,6 +65,19 @@ async fn synthetic_differential() {
         .unwrap()
         .unwrap();
     let oracle: Value = serde_json::from_str(&line).expect("oracle output");
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(b"reset\n")
+        .await
+        .unwrap();
+    let mut reset_ack = String::new();
+    timeout(Duration::from_secs(3), reader.read_line(&mut reset_ack))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(reset_ack, "reset\n");
     let config = Launch {
         executable: std::env::var("BROWSER_EXECUTABLE").unwrap().into(),
         profile_dir: root.join(format!("native-profile-{}", std::process::id())),
@@ -79,6 +92,7 @@ async fn synthetic_differential() {
             },
         )]),
         proxy: None,
+        proxy_credentials: None,
         synthetic_direct: true,
         args: vec![
             "--host-resolver-rules=MAP *.test 127.0.0.1".into(),
@@ -88,7 +102,7 @@ async fn synthetic_differential() {
                 oracle["base"].as_str().unwrap()
             ),
         ],
-        timeout: Duration::from_millis(400),
+        timeout: Duration::from_millis(1200),
     };
     let native_downloads = config.downloads_dir.clone();
     std::fs::write(
@@ -126,6 +140,10 @@ async fn synthetic_differential() {
             panic!("Native launch blocked: {error}");
         }
     };
+    engine
+        .grant_fixture_loopback(oracle["base"].as_str().unwrap())
+        .await
+        .unwrap();
     let args = engine.launch_arguments().await.unwrap();
     let actual = args["arguments"].as_array().unwrap();
     for flag in oracle["launchFlags"].as_array().unwrap() {
@@ -140,6 +158,7 @@ async fn synthetic_differential() {
     let mut failures = vec![];
     for row in oracle["results"].as_array().unwrap() {
         let started = tokio::time::Instant::now();
+        let _ = engine.inspect("globalThis.cspViolations=[];addEventListener('securitypolicyviolation',e=>globalThis.cspViolations.push({uri:e.blockedURI,policy:e.originalPolicy}))").await;
         let got = engine
             .act(row["action"].clone(), &Approve)
             .await
@@ -159,14 +178,24 @@ async fn synthetic_differential() {
             .inspect(include_str!("effects.js"))
             .await
             .unwrap_or(Value::Null);
-        let pass = normalized(&got) == normalized(&row["result"])
+        let mut expected = normalized(&row["result"]);
+        let security_upgrade = row["name"] == "subnetwork-outcome";
+        if security_upgrade {
+            let text = expected
+                .pointer("/evidence/text")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .replace("worker:blocked,allowed", "worker:blocked,blocked");
+            expected["evidence"]["text"] = json!(text);
+        }
+        let pass = normalized(&got) == expected
             && (row["downloadBarrier"] != json!(true) || json!(downloads) == row["downloads"])
             && effects == row["effects"]
             && (row["name"] != "wait-cap" || (4900..8000).contains(&elapsed_ms));
         if !pass {
             failures.push(row["name"].clone());
         }
-        rows.push(json!({"name":row["name"],"pass":pass,"native":got,"oracle":row["result"],"elapsedMs":elapsed_ms,"oracleElapsedMs":row["elapsedMs"],"effects":effects,"oracleEffects":row["effects"],"pageUrl":timeout(Duration::from_secs(1),engine.inspect("location.href")).await.ok().and_then(Result::ok),"eventError":engine.event_error().await}));
+        rows.push(json!({"name":row["name"],"pass":pass,"native":got,"oracle":row["result"],"elapsedMs":elapsed_ms,"oracleElapsedMs":row["elapsedMs"],"effects":effects,"oracleEffects":row["effects"],"pageUrl":timeout(Duration::from_secs(1),engine.inspect("location.href")).await.ok().and_then(Result::ok),"cspViolations":engine.inspect("globalThis.cspViolations || []").await.ok(),"eventError":engine.event_error().await,"policyTrace":engine.policy_trace().await}));
         std::fs::write(
             root.join("differential.json"),
             serde_json::to_vec_pretty(&json!({"actions":rows,"isolation":"not yet run"})).unwrap(),
@@ -191,7 +220,8 @@ async fn synthetic_differential() {
         ))
         .await
         .unwrap();
-    let network_enforcement_pass = denied_requests == oracle["deniedRequests"];
+    let network_enforcement_pass =
+        denied_requests == json!({"resource":0,"socket":0,"popup":0,"effect":0});
     engine
         .inspect("document.cookie='marker=one';localStorage.setItem('marker','one')")
         .await
@@ -203,6 +233,10 @@ async fn synthetic_differential() {
     second_config.downloads_dir = root.join(format!("second-downloads-{}", std::process::id()));
     let mut second = CdpEngine::launch(second_config).await.unwrap();
     second
+        .grant_fixture_loopback(oracle["base"].as_str().unwrap())
+        .await
+        .unwrap();
+    second
         .act(
             json!({"type":"navigate","url":format!("{}/page",oracle["base"].as_str().unwrap())}),
             &Approve,
@@ -213,7 +247,7 @@ async fn synthetic_differential() {
     let isolation = json!({"source":source,"fresh":fresh});
     let isolation_pass = isolation == oracle["isolation"];
     let second_closed = second.close().await;
-    engine.inspect("document.querySelector('#replace').onclick=()=>document.querySelector('#text').textContent='unsafe'").await.unwrap();
+    engine.inspect("document.querySelector('#replace').onclick=()=>fetch('/effect');document.querySelector('#text').textContent='unsafe'").await.unwrap();
     let pending = PendingApproval {
         entered: tokio::sync::Notify::new(),
     };
@@ -226,13 +260,46 @@ async fn synthetic_differential() {
         .act(json!({"type":"wait","ms":1}), &Approve)
         .await
         .unwrap();
-    let cancellation_pass = cancelled["status"] == "blocked"
-        && engine
-            .inspect("document.querySelector('#text').textContent")
-            .await
-            .unwrap()
-            != "unsafe";
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let automatically_closed = engine.inspect("location.href").await.is_err();
+    let cancellation_pass = cancelled["status"] == "blocked" && automatically_closed;
     let closed = engine.close().await;
+    let mut proxy_results = Vec::new();
+    let mut proxy_closed = true;
+    for user in ["alpha", "beta"] {
+        let mut proxy_config = config.clone();
+        proxy_config.profile_dir = root.join(format!("proxy-profile-{user}"));
+        proxy_config.downloads_dir = root.join(format!("proxy-downloads-{user}"));
+        proxy_config.args.retain(|a| a != "--no-proxy-server");
+        proxy_config.proxy = oracle["proxyServer"].as_str().map(str::to_owned);
+        proxy_config.proxy_credentials = Some(ProxyCredentials {
+            username: user.into(),
+            password: format!("synthetic-{user}"),
+        });
+        let mut proxy = CdpEngine::launch(proxy_config).await.unwrap();
+        proxy
+            .grant_fixture_loopback(oracle["base"].as_str().unwrap())
+            .await
+            .unwrap();
+        proxy.act(json!({"type":"navigate","url":format!("{}/proxy-redirect",oracle["base"].as_str().unwrap())}),&Approve).await.unwrap();
+        proxy_results.push(
+            proxy
+                .act(json!({"type":"extract","selector":"#identity"}), &Approve)
+                .await
+                .unwrap(),
+        );
+        let flags = proxy.launch_arguments().await.unwrap().to_string();
+        assert!(!flags.contains("synthetic-alpha") && !flags.contains("synthetic-beta"));
+        proxy_closed &= proxy.close().await;
+    }
+    let proxy_pass = proxy_closed
+        && proxy_results.iter().map(normalized).collect::<Vec<_>>()
+            == oracle["proxyResults"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(normalized)
+                .collect::<Vec<_>>();
     child
         .stdin
         .take()
@@ -247,13 +314,14 @@ async fn synthetic_differential() {
     std::fs::write(
         root.join("differential.json"),
         serde_json::to_vec_pretty(
-            &json!({"actions":rows,"nativeClosed":closed,"launchFlagsPass":true,"cancellationPass":cancellation_pass,"deniedRequests":denied_requests,"deniedPopup":denied_popup,"networkEnforcementPass":network_enforcement_pass,"oracleClosed":oracle["closed"],"isolation":isolation,"isolationPass":isolation_pass,"secondClosed":second_closed}),
+            &json!({"actions":rows,"nativeClosed":closed,"launchFlagsPass":true,"proxyPass":proxy_pass,"proxyResults":proxy_results,"cancellationPass":cancellation_pass,"deniedRequests":denied_requests,"deniedPopup":denied_popup,"networkEnforcementPass":network_enforcement_pass,"oracleClosed":oracle["closed"],"isolation":isolation,"isolationPass":isolation_pass,"secondClosed":second_closed}),
         )
         .unwrap(),
     )
     .unwrap();
     assert!(closed && second_closed);
     assert!(cancellation_pass);
+    assert!(proxy_pass, "Proxy authentication/isolation mismatch");
     if !network_enforcement_pass {
         failures.push(json!("denied-request-server-evidence"));
     }

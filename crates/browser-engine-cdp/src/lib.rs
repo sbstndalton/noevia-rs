@@ -26,13 +26,26 @@ use tokio::{
     time::{timeout, Instant},
 };
 
+mod guard;
+
 const LIMIT: Duration = Duration::from_secs(15);
+const WORKER_SCRIPT: &str = "if(navigator.serviceWorker) navigator.serviceWorker.register=async()=>{console.warn('Service worker registration blocked');};";
 const SECRET_REASON: &str = "Screenshot omitted because this browser session has handled a secret.";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Secret {
     pub value: String,
     pub domains: Vec<String>,
+}
+#[derive(Clone)]
+pub struct ProxyCredentials {
+    pub username: String,
+    pub password: String,
+}
+impl std::fmt::Debug for ProxyCredentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ProxyCredentials(<redacted>)")
+    }
 }
 #[derive(Clone, Debug)]
 pub struct Launch {
@@ -44,6 +57,7 @@ pub struct Launch {
     pub secrets: BTreeMap<String, Secret>,
     /// Mandatory outside synthetic testing. The proxy enforces every redirect hop.
     pub proxy: Option<String>,
+    pub proxy_credentials: Option<ProxyCredentials>,
     pub synthetic_direct: bool,
     pub args: Vec<String>,
     pub timeout: Duration,
@@ -168,6 +182,7 @@ fn mask(text: &str, secrets: &BTreeMap<String, Secret>) -> String {
     out
 }
 struct ActionLease {
+    shutdown: tokio::sync::mpsc::UnboundedSender<()>,
     interrupted: Arc<AtomicBool>,
     complete: bool,
 }
@@ -175,6 +190,7 @@ impl Drop for ActionLease {
     fn drop(&mut self) {
         if !self.complete {
             self.interrupted.store(true, Ordering::SeqCst);
+            let _ = self.shutdown.send(());
         }
     }
 }
@@ -192,6 +208,7 @@ pub struct CdpEngine {
     download_task: JoinHandle<()>,
     targets: Arc<tokio::sync::Mutex<Vec<String>>>,
     page_watch: JoinHandle<()>,
+    guard: guard::Guard,
 }
 impl Drop for CdpEngine {
     fn drop(&mut self) {
@@ -210,6 +227,8 @@ impl CdpEngine {
         }
         if let Some(proxy) = &config.proxy {
             validate_proxy(proxy)?;
+        } else if config.proxy_credentials.is_some() {
+            bail!("Proxy credentials require a proxy grant");
         }
         // Exclusive profile creation prevents accidental session reuse.
         std::fs::create_dir(&config.profile_dir).context("Profile must be fresh")?;
@@ -263,20 +282,26 @@ impl CdpEngine {
         };
         let event_error = Arc::new(tokio::sync::Mutex::new(None));
         let errors = event_error.clone();
-        let pump_secrets = config.secrets.clone();
         let pump = tokio::spawn(async move {
             while let Some(event) = handler.next().await {
-                if let Err(error) = event {
-                    *errors.lock().await = Some(
-                        mask(&error.to_string(), &pump_secrets)
-                            .chars()
-                            .take(300)
-                            .collect(),
-                    );
+                if event.is_err() {
+                    *errors.lock().await = Some("Browser connection unavailable".into());
                     break;
                 }
             }
         });
+        let guard = guard::Guard::start(
+            browser.websocket_address(),
+            config.allowed_domains.clone(),
+            event_error.clone(),
+            config.secrets.clone(),
+            config
+                .proxy
+                .as_deref()
+                .map(origin)
+                .zip(config.proxy_credentials.clone()),
+        )
+        .await?;
         let page = bounded(LIMIT, async { Ok(browser.new_page("about:blank").await?) }).await?;
         use chromiumoxide::cdp::browser_protocol::browser::{
             EventDownloadProgress, EventDownloadWillBegin,
@@ -356,6 +381,7 @@ impl CdpEngine {
             download_task,
             targets,
             page_watch,
+            guard,
         };
         if let Err(e) = engine.prepare().await {
             engine.close().await;
@@ -372,31 +398,11 @@ impl CdpEngine {
         )
         .await?;
         // Registration is blocked too: bypass alone would allow persistent worker side effects.
-        let script="if(navigator.serviceWorker) navigator.serviceWorker.register=async()=>{console.warn('Service worker registration blocked');};";
+
         command(
             &self.page,
             "Page.addScriptToEvaluateOnNewDocument",
-            json!({"source":script}),
-        )
-        .await?;
-        // Ordered URLPattern rules cover all network transports, including WebSockets.
-        // This is an additional browser-side layer; the egress proxy remains mandatory.
-        let mut patterns = vec![];
-        for domain in &self.config.allowed_domains {
-            for scheme in ["http", "https", "ws", "wss"] {
-                for host in [domain.clone(), format!("*.{domain}")] {
-                    patterns
-                        .push(json!({"urlPattern":format!("{scheme}://{host}:*/*"),"block":false}));
-                    patterns
-                        .push(json!({"urlPattern":format!("{scheme}://{host}/*"),"block":false}));
-                }
-            }
-        }
-        patterns.push(json!({"urlPattern":"*://*:*/*","block":true}));
-        command(
-            &self.page,
-            "Network.setBlockedURLs",
-            json!({"urlPatterns":patterns}),
+            json!({"source":WORKER_SCRIPT}),
         )
         .await?;
         self.browser.execute(raw("Browser.setDownloadBehavior",json!({"behavior":"allowAndName","downloadPath":self.config.downloads_dir,"eventsEnabled":true}))).await?;
@@ -419,8 +425,26 @@ impl CdpEngine {
         }
         Ok(())
     }
+    pub async fn state(&self) -> Value {
+        json!({"origin":origin(&self.url().await.unwrap_or_default()),"blocked":self.guard.blocked.lock().await.clone(),"downloads":self.downloads.lock().await.clone(),"closed":self.closed || self.guard.finished()})
+    }
+    pub async fn policy_trace(&self) -> Vec<Value> {
+        self.guard.trace.lock().await.clone()
+    }
     pub async fn event_error(&self) -> Option<String> {
         self.event_error.lock().await.clone()
+    }
+    /// Disposable local fixture support only; never grants a runtime task permission.
+    pub async fn grant_fixture_loopback(&self, fixture: &str) -> Result<()> {
+        let url = url::Url::parse(fixture)?;
+        if !self.config.synthetic_direct
+            || !url.host_str().is_some_and(|h| h.ends_with(".test"))
+            || !navigation(fixture, &self.config.allowed_domains)
+        {
+            bail!("Fixture permission unavailable");
+        }
+        self.browser.execute(raw("Browser.grantPermissions",json!({"origin":url.origin().ascii_serialization(),"permissions":["localNetworkAccess","localNetwork","loopbackNetwork"]}))).await?;
+        Ok(())
     }
     pub async fn launch_arguments(&self) -> Result<Value> {
         Ok(self
@@ -556,9 +580,11 @@ impl CdpEngine {
     }
     async fn actionable(&self, id: &str, enabled: bool) -> Result<Value> {
         bounded(self.config.timeout,async {
+            let mut previous = Value::Null;
             loop {
                 let point=on_node(&self.page,id,"function(enabled){if(!this.isConnected)throw Error('Detached target');this.scrollIntoView({block:'center',inline:'center'});const r=this.getBoundingClientRect();if((enabled&&this.matches(':disabled'))||getComputedStyle(this).visibility==='hidden'||r.width===0||r.height===0)return null;const x=r.x+r.width/2,y=r.y+r.height/2;const hit=document.elementFromPoint(x,y);return hit&&(hit===this||this.contains(hit))?{x,y}:null;}".into(),vec![json!(enabled)]).await?;
-                if !point.is_null(){return Ok(point)}
+                if !point.is_null() && point == previous {return Ok(point)}
+                previous = point;
                 tokio::time::sleep(Duration::from_millis(25)).await;
             }
         }).await
@@ -624,10 +650,32 @@ impl CdpEngine {
                 on_node(&self.page,target,"function(){const f=this.form||this.closest('form')||this;f.requestSubmit?f.requestSubmit():f.submit()}".into(),vec![]).await?;
             }
             "select" => {
-                on_node(&self.page,target,"function(v){if(this.tagName!=='SELECT')throw Error('Not a select'); const opt=Array.from(this.options).find(o=>o.value===v||o.label===v);if(!opt)throw Error('Option missing');this.value=opt.value;this.dispatchEvent(new Event('input',{bubbles:true}));this.dispatchEvent(new Event('change',{bubbles:true}));}".into(),vec![json!(typed)]).await?;
+                bounded(self.config.timeout, async {
+                    loop {
+                        let done = on_node(&self.page,target,"function(v){if(this.tagName!=='SELECT')throw Error('Not a select');if(this.disabled)return false;const opt=Array.from(this.options).find(o=>o.value===v);if(!opt)return false;this.value=opt.value;this.dispatchEvent(new Event('input',{bubbles:true}));this.dispatchEvent(new Event('change',{bubbles:true}));return true}".into(),vec![json!(typed)]).await?;
+                        if done == json!(true) { return Ok(()); }
+                        tokio::time::sleep(Duration::from_millis(25)).await;
+                    }
+                }).await?;
             }
             "type" => {
-                on_node(&self.page,target,"function(v){if(this.disabled||this.readOnly)throw Error('Not editable');this.focus();if(this.isContentEditable)this.textContent=v;else {const p=this.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(p,'value').set.call(this,v);}this.dispatchEvent(new Event('input',{bubbles:true}));this.dispatchEvent(new Event('change',{bubbles:true}));}".into(),vec![json!(typed)]).await?;
+                self.actionable(target, true).await?;
+                bounded(self.config.timeout, async {
+                    loop {
+                        let editable = on_node(&self.page,target,"function(){return !this.disabled&&!this.readOnly&&(this.isContentEditable||this.tagName==='TEXTAREA'||this.tagName==='INPUT')}".into(),vec![]).await?;
+                        if editable == json!(true) { break; }
+                        tokio::time::sleep(Duration::from_millis(25)).await;
+                    }
+                    on_node(&self.page,target,"function(){this.focus();if(this.isContentEditable){const r=document.createRange();r.selectNodeContents(this);const s=getSelection();s.removeAllRanges();s.addRange(r)}else this.select()}".into(),vec![]).await?;
+                    if typed.as_deref() == Some("") {
+                        for kind in ["keyDown", "keyUp"] {
+                            command(&self.page,"Input.dispatchKeyEvent",json!({"type":kind,"key":"Backspace","code":"Backspace","windowsVirtualKeyCode":8})).await?;
+                        }
+                    } else {
+                        command(&self.page,"Input.insertText",json!({"text":typed})).await?;
+                    }
+                    Ok(())
+                }).await?;
             }
             "upload" => {
                 let file = std::fs::canonicalize(string(a, "file"))?;
@@ -834,6 +882,7 @@ impl CdpEngine {
             "navigate", "click", "type", "select", "press", "upload", "submit",
         ]
         .contains(&kind.as_str());
+        *self.guard.nav_blocked.lock().await = None;
         let dispatched_target = self.page.target_id().as_ref().to_owned();
         let mut output = bounded(
             if kind == "wait" {
@@ -858,6 +907,13 @@ impl CdpEngine {
                 if effect { "uncertain" } else { "blocked" },
                 &mask(&error.to_string(), &self.config.secrets),
             ));
+        }
+        let nav_blocked = self.guard.nav_blocked.lock().await.take();
+        if let Some(reason) = nav_blocked {
+            let _ = command(&self.page, "Page.getNavigationHistory", json!({})).await;
+            return Ok(
+                json!({"status":"blocked","origin":origin(&self.url().await.unwrap_or_default()),"reason":reason}),
+            );
         }
         let landed = self.url().await.unwrap_or_default();
         if landed.starts_with("http") && !navigation(&landed, &self.config.allowed_domains) {
@@ -901,13 +957,14 @@ impl CdpEngine {
 #[async_trait]
 impl BrowserEngine for CdpEngine {
     async fn act(&mut self, action: Value, approval: &dyn Approval) -> Result<Value> {
-        if self.interrupted.load(Ordering::SeqCst) {
+        if self.guard.finished() || self.interrupted.load(Ordering::SeqCst) {
             return Ok(
                 json!({"status":"blocked","origin":"","reason":"The browser session was interrupted; close it before starting another task."}),
             );
         }
         let mut lease = ActionLease {
             interrupted: self.interrupted.clone(),
+            shutdown: self.guard.shutdown.clone(),
             complete: false,
         };
         let result = self.act_once(action, approval).await;
@@ -917,7 +974,7 @@ impl BrowserEngine for CdpEngine {
     async fn close(&mut self) -> bool {
         self.closed = true;
         let result = bounded(LIMIT, async {
-            self.browser.close().await?;
+            let _ = self.guard.shutdown.send(());
             self.browser.wait().await?;
             Ok(())
         })

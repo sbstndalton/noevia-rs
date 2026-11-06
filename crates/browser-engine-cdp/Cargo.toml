@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 anyhow = "1"
+base64 = "0.22"
 async-trait = "0.1"
 browser-policy = { path = "../browser-policy" }
 chromiumoxide = "=0.9.1"
