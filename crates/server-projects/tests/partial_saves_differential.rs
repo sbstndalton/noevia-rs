@@ -23,10 +23,19 @@ fn file(dir: &std::path::Path, id: &str) -> JValue {
     match std::fs::read(partial::file_for(dir, id)) {
         Err(_) => JValue::Null,
         Ok(bytes) => {
-            let sha: String = Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
-            let mut o = vec![("sha256".to_owned(), JValue::Str(sha)), ("bytes".to_owned(), JValue::Num(bytes.len() as f64))];
+            let sha: String = Sha256::digest(&bytes)
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect();
+            let mut o = vec![
+                ("sha256".to_owned(), JValue::Str(sha)),
+                ("bytes".to_owned(), JValue::Num(bytes.len() as f64)),
+            ];
             if bytes.len() < 2000 {
-                o.push(("text".to_owned(), JValue::Str(String::from_utf8(bytes).unwrap())));
+                o.push((
+                    "text".to_owned(),
+                    JValue::Str(String::from_utf8(bytes).unwrap()),
+                ));
             }
             JValue::Obj(o)
         }
@@ -69,7 +78,10 @@ fn partial_saves_write_what_node_wrote() {
             match step.get("op").as_str().unwrap() {
                 "tick" => {
                     let entry = expand(step.get("entry"));
-                    saves.as_ref().unwrap().save((!entry.is_nullish()).then_some(&entry), num(step.get("now")));
+                    saves.as_ref().unwrap().save(
+                        (!entry.is_nullish()).then_some(&entry),
+                        num(step.get("now")),
+                    );
                     assert_eq!(file(dir, id), *step.get("file"), "tick {what}");
                 }
                 "finish" => {
@@ -77,11 +89,16 @@ fn partial_saves_write_what_node_wrote() {
                     let stuck = step.get("stuck") == &JValue::Bool(true);
                     let folder = partial::file_for(dir, id).parent().unwrap().to_owned();
                     if stuck {
-                        std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o500)).unwrap();
+                        std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o500))
+                            .unwrap();
                     }
-                    saves.take().unwrap().finish((!keep.is_nullish()).then_some(&keep), num(step.get("now")));
+                    saves
+                        .take()
+                        .unwrap()
+                        .finish((!keep.is_nullish()).then_some(&keep), num(step.get("now")));
                     if stuck {
-                        std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o700)).unwrap();
+                        std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o700))
+                            .unwrap();
                     }
                     assert_eq!(file(dir, id), *step.get("file"), "finish {what}");
                 }
@@ -102,5 +119,8 @@ fn a_reply_dropped_without_finish_leaves_no_running_marker() {
     let saved = partial::read_partial(tmp.path(), "c").unwrap();
     assert_eq!(partial::state(&saved, start), partial::State::Running);
     drop(saves);
-    assert!(partial::read_partial(tmp.path(), "c").is_none(), "a dropped reply's partial stays marked running");
+    assert!(
+        partial::read_partial(tmp.path(), "c").is_none(),
+        "a dropped reply's partial stays marked running"
+    );
 }

@@ -78,14 +78,23 @@ fn tail_units(s: &str, n: usize) -> String {
     let mut skip = len - n;
     let mut out = String::new();
     for c in s.chars() {
-        let w = if js_json::wtf16::lone_unit(c).is_some() { 1 } else { c.len_utf16() };
+        let w = if js_json::wtf16::lone_unit(c).is_some() {
+            1
+        } else {
+            c.len_utf16()
+        };
         if skip >= w {
             skip -= w;
             continue;
         }
         if skip > 0 {
             let mut buf = [0u16; 2];
-            if let Some(m) = c.encode_utf16(&mut buf).get(1).copied().and_then(js_json::wtf16::lone_char) {
+            if let Some(m) = c
+                .encode_utf16(&mut buf)
+                .get(1)
+                .copied()
+                .and_then(js_json::wtf16::lone_char)
+            {
                 out.push(m);
             }
             skip = 0;
@@ -103,7 +112,9 @@ pub fn bounded(entry: &JValue, now_ms: f64) -> JValue {
         _ => Vec::new(),
     };
     let trim = |v: &JValue| match v {
-        JValue::Str(t) if js_json::wtf16::len(t) > CAP_UNITS => JValue::Str(tail_units(t, CAP_UNITS)),
+        JValue::Str(t) if js_json::wtf16::len(t) > CAP_UNITS => {
+            JValue::Str(tail_units(t, CAP_UNITS))
+        }
         other => other.clone(),
     };
     let content = match entry.get("content") {
@@ -137,7 +148,13 @@ fn tmp_for(file: &Path) -> PathBuf {
 }
 
 /// chat-partial.cjs `writePartial`: the bounded entry, marked interrupted and running in `start`.
-pub fn write_partial(user_dir: &Path, chat_id: &str, entry: &JValue, start: &str, now_ms: f64) -> std::io::Result<()> {
+pub fn write_partial(
+    user_dir: &Path,
+    chat_id: &str,
+    entry: &JValue,
+    start: &str,
+    now_ms: f64,
+) -> std::io::Result<()> {
     let file = file_for(user_dir, chat_id);
     if let Some(parent) = file.parent() {
         std::fs::create_dir_all(parent)?;
@@ -146,7 +163,10 @@ pub fn write_partial(user_dir: &Path, chat_id: &str, entry: &JValue, start: &str
         bounded(entry, now_ms),
         vec![
             ("interrupted", JValue::Bool(true)),
-            ("running", JValue::Obj(vec![("start".into(), JValue::Str(start.into()))])),
+            (
+                "running",
+                JValue::Obj(vec![("start".into(), JValue::Str(start.into()))]),
+            ),
         ],
     );
     let tmp = tmp_for(&file);
@@ -208,7 +228,10 @@ pub fn end_partial(user_dir: &Path, chat_id: &str) -> &'static str {
         return "kept";
     }
     let ended = JValue::Obj(items.into_iter().filter(|(k, _)| k != "running").collect());
-    write_unmarked(&file, &js_json::wtf16::stringify(&ended).unwrap_or_default())
+    write_unmarked(
+        &file,
+        &js_json::wtf16::stringify(&ended).unwrap_or_default(),
+    )
 }
 
 /// chat-partial.cjs `startPartialSaves`: a running reply's partial. [`Saves::save`] is the timer's
@@ -225,7 +248,12 @@ impl Saves {
     /// Supersedes an earlier partial of the chat.
     pub fn start(user_dir: &Path, chat_id: &str, start: &str) -> std::io::Result<Saves> {
         clear_partial(user_dir, chat_id)?;
-        Ok(Saves { dir: user_dir.to_owned(), chat: chat_id.to_owned(), start: start.to_owned(), done: false })
+        Ok(Saves {
+            dir: user_dir.to_owned(),
+            chat: chat_id.to_owned(),
+            start: start.to_owned(),
+            done: false,
+        })
     }
 
     /// One tick: the record's `partialEntry()` (`None`: nothing to keep yet).
@@ -252,9 +280,16 @@ impl Saves {
         }
         self.done = true;
         if let Some(keep) = keep {
-            let value = with(bounded(keep, now_ms), vec![("interrupted", JValue::Bool(true))]);
+            let value = with(
+                bounded(keep, now_ms),
+                vec![("interrupted", JValue::Bool(true))],
+            );
             let file = file_for(&self.dir, &self.chat);
-            if write_unmarked(&file, &js_json::wtf16::stringify(&value).unwrap_or_default()) == "unmarked" {
+            if write_unmarked(
+                &file,
+                &js_json::wtf16::stringify(&value).unwrap_or_default(),
+            ) == "unmarked"
+            {
                 return;
             }
         }
