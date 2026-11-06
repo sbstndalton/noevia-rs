@@ -215,7 +215,10 @@ pub fn write_partial(
             ),
         ],
     );
-    replace_atomically(&file, &js_json::wtf16::stringify(&value).unwrap_or_default())
+    replace_atomically(
+        &file,
+        &js_json::wtf16::stringify(&value).unwrap_or_default(),
+    )
 }
 
 /// chat-partial.cjs `clearPartial` (`rmSync(..., {force: true})`).
@@ -355,8 +358,14 @@ impl Saves {
         }
         match write_partial(&self.dir, &self.chat, entry, &self.start, now_ms) {
             Ok(()) => {
-                let kept = with(bounded(entry, now_ms), vec![("interrupted", JValue::Bool(true))]);
-                *self.last.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(kept);
+                let kept = with(
+                    bounded(entry, now_ms),
+                    vec![("interrupted", JValue::Bool(true))],
+                );
+                *self
+                    .last
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(kept);
             }
             Err(e) => eprintln!("[chat] could not save the partial reply: {e}"),
         }
@@ -372,9 +381,14 @@ impl Saves {
         }
         owners.remove(&self.file);
         if let Some(keep) = keep {
-            let value = with(bounded(keep, now_ms), vec![("interrupted", JValue::Bool(true))]);
-            if write_unmarked(&self.file, &js_json::wtf16::stringify(&value).unwrap_or_default())
-                == "unmarked"
+            let value = with(
+                bounded(keep, now_ms),
+                vec![("interrupted", JValue::Bool(true))],
+            );
+            if write_unmarked(
+                &self.file,
+                &js_json::wtf16::stringify(&value).unwrap_or_default(),
+            ) == "unmarked"
             {
                 return;
             }
@@ -394,9 +408,16 @@ impl Drop for Saves {
             return;
         }
         owners.remove(&self.file);
-        let last = self.last.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
+        let last = self
+            .last
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
         if let Some(kept) = last {
-            write_unmarked(&self.file, &js_json::wtf16::stringify(&kept).unwrap_or_default());
+            write_unmarked(
+                &self.file,
+                &js_json::wtf16::stringify(&kept).unwrap_or_default(),
+            );
         }
     }
 }

@@ -284,6 +284,7 @@ pub trait RouteIo {
 
 /// How the section ended.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)] // one per turn, moved once
 pub enum Outcome {
     /// `json(res, status, {error})`: a plain answer, or (`streamed`) an `error` event on the stream
     /// the card opened (`{type:'error', text}`, then the end).

@@ -932,7 +932,9 @@ mod route_stage {
     /// Node's recorder leaves the card's random id out.
     fn without_id(e: &JValue) -> JValue {
         match e {
-            JValue::Obj(items) => JValue::Obj(items.iter().filter(|(k, _)| k != "id").cloned().collect()),
+            JValue::Obj(items) => {
+                JValue::Obj(items.iter().filter(|(k, _)| k != "id").cloned().collect())
+            }
             v => v.clone(),
         }
     }
@@ -1108,7 +1110,10 @@ mod route_stage {
                 if let JValue::Obj(_) = routing {
                     assert_eq!(
                         go.route,
-                        Some((s(routing.get("route")).unwrap(), s(routing.get("reason")).unwrap())),
+                        Some((
+                            s(routing.get("route")).unwrap(),
+                            s(routing.get("reason")).unwrap()
+                        )),
                         "{what}"
                     );
                     assert_eq!(go.detail, s(routing.get("detail")), "detail {what}");
@@ -1177,8 +1182,14 @@ mod route_stage {
         async fn await_choice(&self, id: &str) -> Option<Answer> {
             // The card is on the stream, with the id the answer is awaited under, before the wait.
             let card = self.published.borrow().last().cloned();
-            assert_eq!(card.as_ref().map(|c| c.get("type").clone()), Some(JValue::Str("route_pending".into())));
-            assert_eq!(card.map(|c| c.get("id").clone()), Some(JValue::Str(id.into())));
+            assert_eq!(
+                card.as_ref().map(|c| c.get("type").clone()),
+                Some(JValue::Str("route_pending".into()))
+            );
+            assert_eq!(
+                card.map(|c| c.get("id").clone()),
+                Some(JValue::Str(id.into()))
+            );
             self.at("await").await;
             Some(Answer {
                 choice: Some("cloud".into()),
@@ -1267,7 +1278,11 @@ mod route_stage {
             let closed = io.closed.borrow().clone();
             if stop == "await" {
                 assert_eq!(closed, vec!["card-1".to_owned()], "{stop}");
-                assert_eq!(io.published.borrow().len(), 1, "the card was on the stream before the wait");
+                assert_eq!(
+                    io.published.borrow().len(),
+                    1,
+                    "the card was on the stream before the wait"
+                );
             } else {
                 assert!(closed.is_empty(), "{stop}: {closed:?}");
             }
@@ -1298,8 +1313,15 @@ mod route_stage {
         };
         let got = block(route::decide(&hybrid_turn(), &io));
         assert_eq!(got.events.len(), 2);
-        assert_eq!(*io.published.borrow(), got.events, "each event was published as it was made");
-        assert!(io.closed.borrow().is_empty(), "an answered card is not closed");
+        assert_eq!(
+            *io.published.borrow(),
+            got.events,
+            "each event was published as it was made"
+        );
+        assert!(
+            io.closed.borrow().is_empty(),
+            "an answered card is not closed"
+        );
         assert!(
             matches!(&got.outcome, Outcome::Go(g) if g.model == "c-smart" && g.provider.external && !g.hybrid_ungranted)
         );
@@ -1881,10 +1903,23 @@ mod gate_stage {
             };
             let reduce = |t: &str| t.to_owned();
             let mut sent = Vec::new();
-            let done = block(gate::run_call(&io, &mut st, &call, true, &reduce, &mut |e| sent.push(e)));
-            assert!(io.fences.get() > 0, "the write was fenced (wide {wide})");
-            assert!(io.exec.borrow().is_empty(), "the executor was called (wide {wide})");
-            assert_eq!(io.started.get(), io.fences.get(), "fence left open (wide {wide})");
+            let done = block(gate::run_call(
+                &io,
+                &mut st,
+                &call,
+                true,
+                &reduce,
+                &mut |e| sent.push(e),
+            ));
+            if !wide {
+                // A card the person approved for this call carries no grant fence: it runs.
+                assert_eq!(io.fences.get(), 0);
+                assert_eq!(io.exec.borrow().len(), 1, "{:?}", done.result);
+                continue;
+            }
+            assert!(io.fences.get() > 0, "the write was fenced");
+            assert!(io.exec.borrow().is_empty(), "the executor was called");
+            assert_eq!(io.started.get(), io.fences.get(), "fence left open");
             assert!(
                 done.result.contains("could not be checked, so it was not run"),
                 "{:?}",

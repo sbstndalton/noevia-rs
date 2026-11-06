@@ -130,7 +130,11 @@ fn a_reply_dropped_without_finish_keeps_its_last_entry_as_interrupted() {
     let kept = partial::read_partial(tmp.path(), "c").expect("the only copy of the reply survives");
     assert_eq!(partial::state(&kept, START), partial::State::Interrupted);
     assert_eq!(kept.get("content").as_str(), Some("so far"));
-    assert_eq!(kept.get("tools"), entry("x").get("tools"), "the applied write is kept");
+    assert_eq!(
+        kept.get("tools"),
+        entry("x").get("tools"),
+        "the applied write is kept"
+    );
     assert_eq!(kept.get("interrupted"), &JValue::Bool(true));
     assert_eq!(kept.get("running"), &JValue::Undefined);
     // A turn that saved nothing leaves nothing behind.
@@ -144,16 +148,33 @@ fn a_superseded_turn_neither_publishes_nor_cleans_up() {
     let a = Saves::start(tmp.path(), "c", START).unwrap();
     a.save(Some(&entry("a1")), 1.0);
     let b = Saves::start(tmp.path(), "c", START).unwrap();
-    assert!(partial::read_partial(tmp.path(), "c").is_none(), "b supersedes a's partial");
+    assert!(
+        partial::read_partial(tmp.path(), "c").is_none(),
+        "b supersedes a's partial"
+    );
     b.save(Some(&entry("b1")), 2.0);
     a.save(Some(&entry("a2")), 3.0);
     let now = partial::read_partial(tmp.path(), "c").unwrap();
-    assert_eq!(now.get("content").as_str(), Some("b1"), "a late tick of a does not overwrite b");
+    assert_eq!(
+        now.get("content").as_str(),
+        Some("b1"),
+        "a late tick of a does not overwrite b"
+    );
     a.finish(None, 4.0);
-    assert_eq!(partial::read_partial(tmp.path(), "c").unwrap().get("content").as_str(), Some("b1"), "a's end leaves b's file");
+    assert_eq!(
+        partial::read_partial(tmp.path(), "c")
+            .unwrap()
+            .get("content")
+            .as_str(),
+        Some("b1"),
+        "a's end leaves b's file"
+    );
     let c = Saves::start(tmp.path(), "c", START).unwrap();
     drop(b);
-    assert!(partial::read_partial(tmp.path(), "c").is_none(), "b's drop does not keep its entry over c");
+    assert!(
+        partial::read_partial(tmp.path(), "c").is_none(),
+        "b's drop does not keep its entry over c"
+    );
     c.finish(None, 5.0);
 }
 
@@ -175,14 +196,23 @@ fn concurrent_ticks_of_one_turn_never_share_or_leave_a_temporary_file() {
         t.join().unwrap();
     }
     let saved = partial::read_partial(tmp.path(), "c").expect("a whole file");
-    assert!(saved.get("content").as_str().unwrap().starts_with('t'), "{saved:?}");
-    let folder = partial::file_for(tmp.path(), "c").parent().unwrap().to_owned();
+    assert!(
+        saved.get("content").as_str().unwrap().starts_with('t'),
+        "{saved:?}"
+    );
+    let folder = partial::file_for(tmp.path(), "c")
+        .parent()
+        .unwrap()
+        .to_owned();
     let names: Vec<String> = std::fs::read_dir(&folder)
         .unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
     assert_eq!(names.len(), 1, "no temporary file is left: {names:?}");
-    std::sync::Arc::try_unwrap(saves).ok().unwrap().finish(None, 50.0);
+    std::sync::Arc::try_unwrap(saves)
+        .ok()
+        .unwrap()
+        .finish(None, 50.0);
     assert!(partial::read_partial(tmp.path(), "c").is_none());
 }
 
@@ -195,9 +225,15 @@ fn a_chat_deleted_during_its_turn_gets_no_late_partial() {
     partial::supersede(tmp.path(), "c");
     std::fs::remove_file(partial::file_for(tmp.path(), "c")).unwrap();
     saves.save(Some(&entry("late")), 2.0);
-    assert!(partial::read_partial(tmp.path(), "c").is_none(), "a late tick re-created the deleted chat's partial");
+    assert!(
+        partial::read_partial(tmp.path(), "c").is_none(),
+        "a late tick re-created the deleted chat's partial"
+    );
     drop(saves);
-    assert!(partial::read_partial(tmp.path(), "c").is_none(), "a drop after the delete keeps nothing");
+    assert!(
+        partial::read_partial(tmp.path(), "c").is_none(),
+        "a drop after the delete keeps nothing"
+    );
 }
 
 #[test]

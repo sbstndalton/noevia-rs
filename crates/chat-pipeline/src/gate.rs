@@ -634,7 +634,10 @@ async fn gate<I: GateIo>(
         guard.started();
         return Ok("ERROR: permission changed before dispatch; tool was not run.".into());
     }
-    if fence.as_ref().is_some_and(|f| !f.open() || !io.executor_fences_dispatch()) {
+    if fence
+        .as_ref()
+        .is_some_and(|f| !f.open() || !io.executor_fences_dispatch())
+    {
         return Ok(not_checked(st, &mut guard));
     }
     // markWriteAttempt: a write drops the cached results of reads.
