@@ -257,6 +257,7 @@ pub struct Worker {
     /// has run, local admission stays closed (the run's admission fence is kept).
     recovery: Arc<AtomicBool>,
     local_fence: Mutex<Option<super::gate::AdmissionFence>>,
+    boot_incident: Mutex<Option<String>>,
     fence_wake: Mutex<Arc<Notify>>,
     fence_interrupted: AtomicBool,
     #[cfg(test)]
@@ -594,6 +595,7 @@ impl Worker {
             restoring: Arc::new(AtomicBool::new(false)),
             recovery: Arc::new(AtomicBool::new(false)),
             local_fence: Mutex::new(None),
+            boot_incident: Mutex::new(None),
             fence_wake: Mutex::new(Arc::new(Notify::new())),
             fence_interrupted: AtomicBool::new(false),
             #[cfg(test)]
@@ -947,11 +949,12 @@ impl Worker {
             if i.launching || i.active {
                 return false;
             }
-            // Reserve synchronously when the cached job already identifies recovery work,
-            // before the spawned recovery can yield to another maintenance request.
-            if i.state.job().get("status").as_str() == Some("running")
-                || i.state.job().get("pendingRestore").truthy()
-                || i.state.job().get("pendingTombstone").truthy()
+            // Unknown boot state is an obligation too. Register it synchronously before routes
+            // can admit Node, and keep it while durable inspection/preparation is pending.
+            let mut incident = self.boot_incident.lock().unwrap_or_else(|p| p.into_inner());
+            if incident.is_none() && !self.maint.authority.recovery_pending() {
+                *incident = Some(self.maint.authority.require_recovery());
+            }
             {
                 let mut fence = self.local_fence.lock().unwrap_or_else(|p| p.into_inner());
                 if fence.is_none() {
@@ -975,9 +978,12 @@ impl Worker {
     async fn recover_held(self: &Arc<Self>) -> Option<Option<bool>> {
         self.drain_writes().await;
         let file = self.file.clone();
-        let loaded = tokio::task::spawn_blocking(move || file.load()).await.ok();
+        let loaded = match tokio::task::spawn_blocking(move || file.load_checked()).await {
+            Ok(Ok(state)) => state,
+            _ => return None, // Unknown outcome retains both boot barriers for another inspection.
+        };
         let cached = self.with(|i| i.state.job().clone());
-        if let Some(state) = loaded.filter(|state| {
+        if let Some(state) = Some(loaded.clone()).filter(|state| {
             // An aborted recovery's last save may already have landed. Adopt that same job's
             // durable terminal record rather than retaining the stale pending marker in memory.
             (state.job().get("id") == cached.get("id")
@@ -1024,11 +1030,18 @@ impl Worker {
                 _ => None,
             };
             self.complete_decision(state, object).await;
+            if !self.recovery.load(Ordering::Acquire) {
+                self.complete_boot_inspection();
+            }
             return Some(restored);
         }
         let wake = Arc::clone(&self.fence_wake.lock().unwrap_or_else(|p| p.into_inner()));
         let object = self.with(|i| i.job_object);
-        let outcome = match self.maint.prepare_calibration_recovery(Some(wake)).await {
+        let outcome = match self
+            .maint
+            .prepare_calibration_recovery(loaded, Some(wake))
+            .await
+        {
             None => Recovery::Nothing,
             Some(prepared) => {
                 let saved = if prepared.decided {
@@ -1085,6 +1098,7 @@ impl Worker {
                 i.unsaved = unsaved;
             }
             if !repair {
+                self.complete_boot_inspection();
                 self.release_local_fence();
             }
             i.launching = repair;
@@ -1105,6 +1119,17 @@ impl Worker {
             self.spawn_save_retry();
         }
         restored
+    }
+
+    fn complete_boot_inspection(&self) {
+        if let Some(ticket) = self
+            .boot_incident
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .take()
+        {
+            self.maint.authority.complete_recovery(&ticket);
+        }
     }
 
     /// Whether memory holds a recovered job the state file does not have yet.
@@ -2714,10 +2739,18 @@ impl Worker {
                 if done {
                     done = hold.excluded()
                         && (hold.gated_now()
-                            || self.maint.node.recovery_barrier(false, &ticket).await)
+                            || match hold.recovery_proof() {
+                                Some((id, generation)) => {
+                                    self.maint
+                                        .node
+                                        .complete_recovery(&ticket, id, generation)
+                                        .await
+                                }
+                                None => false,
+                            })
                         && hold.excluded();
                     if done {
-                        self.maint.authority.complete_recovery();
+                        done = self.maint.authority.complete_recovery(&ticket);
                     }
                 }
                 if !done {
@@ -4045,6 +4078,9 @@ mod tests {
         let job = tokio::time::timeout(Duration::from_secs(2), settled(&w))
             .await
             .unwrap();
+        // Public finalization can precede the fresh covered repair. Observe its actual
+        // exclusion settlement before expecting admission to reopen (also true on r4).
+        delta_wait(|| !w.maint.local_held()).await;
         review_failed(&w, &job);
         let withdrawn_before_next = !store.visible("synthetic", &record);
         let reopened =
@@ -4291,6 +4327,81 @@ mod tests {
         .await
         .expect("synthetic transition completed");
     }
+    #[tokio::test(flavor = "current_thread")]
+    async fn r5_fresh_authority_boot_blocks_node_before_state_inspection() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("models.ini"), INI).unwrap();
+        let original = worker(d.path(), 9);
+        let mut state = State::empty();
+        state.set_job(JValue::obj([
+            ("id", JValue::Str("persisted-trial".into())),
+            ("status", JValue::Str("running".into())),
+            (
+                "pendingRestore",
+                JValue::obj([
+                    ("baseRevision", JValue::Str("trial".into())),
+                    ("text", JValue::Str(INI.into())),
+                ]),
+            ),
+        ]));
+        original.file.save(&state).unwrap();
+        drop(original);
+        let restarted = worker(d.path(), 9); // a fresh Maint and Authority, not with_limits
+        let pause = restarted.pending_write.lock().await;
+        let recovery = restarted.spawn_recover().unwrap();
+        // Node registers while recovery cannot reach even its first async state inspection.
+        let session = restarted
+            .maint
+            .authority
+            .node_session("fresh-node", 1)
+            .unwrap();
+        let incident = restarted.maint.authority.recovery_ticket();
+        recovery.abort();
+        let _ = recovery.await;
+        drop(pause);
+        assert!(
+            session.front_held,
+            "boot inspection must already exclude Node admission"
+        );
+        assert!(
+            incident.is_some(),
+            "the durable pending trial has an authority obligation before serving"
+        );
+        assert!(
+            restarted.maint.authority.recovery_pending(),
+            "cancellation cannot discharge boot recovery"
+        );
+        assert!(restarted.file.load().job().get("pendingRestore").truthy());
+    }
+
+    #[tokio::test]
+    async fn r5_unknown_boot_state_stays_closed_until_a_verified_no_work_inspection() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("models.ini"), INI).unwrap();
+        let w = worker(d.path(), 9);
+        let path = w.file.path.as_ref().unwrap();
+        std::fs::write(path, "{unreadable state").unwrap();
+        w.recover().await;
+        assert!(
+            w.maint
+                .authority
+                .node_session("node", 1)
+                .unwrap()
+                .front_held
+        );
+        assert!(w.maint.local_held());
+        w.file.save(&State::empty()).unwrap();
+        w.recover().await;
+        assert!(
+            !w.maint
+                .authority
+                .node_session("node", 1)
+                .unwrap()
+                .front_held
+        );
+        assert!(!w.maint.local_held());
+    }
+
     fn delta_pending(w: &Worker, id: &str) {
         let store = w.maint.evidence.as_ref().unwrap();
         store.admit_run("synthetic", "earlier").unwrap();
