@@ -13,6 +13,8 @@ pub mod autotune_settings_routes;
 pub mod autotune_untuned_routes;
 pub mod calibration_cancel_routes;
 pub mod calibration_routes;
+pub mod chat_activity;
+pub mod chat_framing_suggest;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_oauth_routes;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -21,6 +23,7 @@ pub mod code_net;
 pub mod config;
 pub mod connector_routes;
 pub mod decision_settings_routes;
+pub mod diary_backup;
 pub mod diary_routes;
 pub mod embedding_background;
 pub mod export_routes;
@@ -287,6 +290,12 @@ use std::sync::Arc;
 /// decided by Core's own load refusal (`POST /internal/model-maintenance/load-refusal`, core
 /// model-load-refusal.cjs), so it pairs only with `noevia-calibration-worker-rust/2`.
 ///
+/// `noevia-maintenance-lease-authority/1` (model_maint/lease.rs `AUTHORITY_MARKER`, port contract row J):
+/// this build is the one model-maintenance lease authority and answers `POST
+/// /v1/maintenance-lease/{acquire,renew,release,held,session}` on the project-store listener. Core's
+/// `noevia-maintenance-lease-client/1` takes every maintenance hold there; the release assembly pairs the
+/// two markers in both directions.
+///
 /// `rust-preset-baseline`: this build is the preset reload baseline's one in-memory authority
 /// (port contract 2026-11-04 RS-1, model_maint/reload.rs `Guard`) and answers `POST
 /// /v1/preset-baseline/{session,begin,settle,invalidate,verdict,router-text}` on the project-store
@@ -374,11 +383,22 @@ use std::sync::Arc;
 /// (model_state_routes.rs); Core refuses them (rust-model-state-reads.cjs) and offers the facts only it holds on the
 /// loopback bridge (rust-model-facts.cjs). The supervisor pairs them.
 ///
+/// `rust-chat-framing-suggest`: this build answers every method of `/api/chat-framing/suggest`
+/// (chat_framing_suggest.rs, chat port S4): the gate, 405, the 10-a-minute `chat-frame:` budget, the
+/// body and the cut to 4,000 UTF-16 units; Core refuses the POST (rust-chat-framing-suggest.cjs) and
+/// keeps only the user's lists and the decision behind `/internal/chat-framing/suggest`. The
+/// supervisor pairs them.
+///
+/// `chat-activity`: this build records each authenticated request's account in
+/// `UI_DATA_DIR/chat-activity.json` (chat_activity.rs, chat port S3), which core's change journal
+/// reader merges as request starts (chat-activity.cjs). Either side alone keeps today's behaviour.
+///
 /// `client-address-header`: the front drops any `X-Noevia-Client-Ip` a client sends and stamps its
 /// own value on what it forwards (#1245). The web supervisor confirms it to Node
 /// (NOEVIA_FRONT_CLIENT_IP=1), and Node believes that header only then, so a core release paired
 /// with a front that predates the strip cannot be handed a client-chosen address (#1578).
 pub const FEATURES: &[&str] = &[
+    "rust-diary-backup-worker",
     "rust-embedding-background-v1",
     "rust-index-outbox-v3",
     "client-address-header",
@@ -419,6 +439,9 @@ pub const FEATURES: &[&str] = &[
     "rust-model-sizing",
     "rust-model-maintenance",
     "rust-preset-baseline",
+    // Port contract row J: the maintenance lease authority (model_maint/lease.rs AUTHORITY_MARKER; the
+    // release assembly reads this exact literal and pairs it with core's lease client).
+    "noevia-maintenance-lease-authority/1",
     "rust-autotune-cancel",
     "rust-calibration-cancel",
     "rust-calibration-routes",
@@ -482,6 +505,8 @@ pub const FEATURES: &[&str] = &[
     "rust-health",
     "rust-auto-roles",
     "rust-workspace",
+    "rust-chat-framing-suggest",
+    "chat-activity",
     // GET /api/chats/search (#1450) and GET /api/chats/{chatId}/export (#1471): core rust-chat-search.cjs
     // `RUST_CHAT_SEARCH_OWNED` and rust-chat-export.cjs `RUST_CHAT_EXPORT_OWNED` refuse them.
     "rust-chat-search",
@@ -573,6 +598,11 @@ pub struct App {
     /// `connectorRate` of the Diary connector endpoint (core routes/diary.cjs): fixed windows, one
     /// per bucket key, in this process's memory like core's.
     diary_connector_rate: std::sync::Mutex<server_account::rate::RateLimiter>,
+    /// core index.cjs's `llmRateLimiter` for the `chat-frame:<user>` buckets only (chat port S4):
+    /// no other key shared them.
+    pub(crate) framing_suggest_rate: std::sync::Mutex<server_account::rate::RateLimiter>,
+    /// Who made an authenticated request, for Node's chat change journal reader (chat port S3).
+    pub activity: Arc<chat_activity::Activity>,
     pub reasoning_settings: Arc<tokio::sync::Semaphore>,
     pub sampling_settings: Arc<tokio::sync::Semaphore>,
     pub routing_mode: Arc<tokio::sync::Semaphore>,
@@ -670,6 +700,10 @@ impl App {
             diary_connector_rate: std::sync::Mutex::new(server_account::rate::RateLimiter::new(
                 identity::now_ms(),
             )),
+            framing_suggest_rate: std::sync::Mutex::new(server_account::rate::RateLimiter::new(
+                identity::now_ms(),
+            )),
+            activity: chat_activity::Activity::new(config.data_dir.clone()),
             reasoning_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             sampling_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             routing_mode: Arc::new(tokio::sync::Semaphore::new(4)),
@@ -756,6 +790,7 @@ async fn handle(
                     | routes::Native::ToolboxPicker
                     | routes::Native::ToolboxesPermitted
                     | routes::Native::ToolApprovals
+                    | routes::Native::ChatFramingSuggest
             )
         ) {
             native = on_whatwg;
@@ -798,7 +833,8 @@ async fn handle(
             | routes::Native::AutotuneSettings
             | routes::Native::ToolboxPicker
             | routes::Native::ToolboxesPermitted
-            | routes::Native::ToolApprovals,
+            | routes::Native::ToolApprovals
+            | routes::Native::ChatFramingSuggest,
         )
         | None => false,
     };
@@ -816,8 +852,15 @@ async fn handle(
         );
         let (identity, writes) = (Arc::clone(&app.identity), Arc::clone(&app.writes));
         let now = identity::now_ms();
+        // Chat port S3: the account of an authenticated /api/ request, as Node's request gate saw it,
+        // for its change journal reader (chat_activity.rs).
+        let api = whatwg.as_deref().unwrap_or(&path).starts_with("/api/");
+        let activity = Arc::clone(&app.activity);
         let _ = tokio::task::spawn_blocking(move || {
-            writes.upkeep_blocking(identity.authenticator(), &creds, now)
+            let user = writes.upkeep_blocking(identity.authenticator(), &creds, now);
+            if let Some(user) = user.filter(|_| api) {
+                activity.record(&user, now);
+            }
         })
         .await;
     }
@@ -983,6 +1026,12 @@ async fn handle(
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };
             tool_approval_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::ChatFramingSuggest) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            chat_framing_suggest::serve(&app, req, p).await
         }
         Some(routes::Native::ToolboxPicker) => {
             let Some(p) = whatwg else {
