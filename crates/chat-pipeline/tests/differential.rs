@@ -1221,7 +1221,7 @@ mod route_stage {
             {
                 let mut f = std::pin::pin!(route::decide(&turn, &io));
                 let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
-                assert!(f.as_mut().poll(&mut cx).is_pending(), "{stop}");
+                assert!(std::future::Future::poll(f.as_mut(), &mut cx).is_pending(), "{stop}");
             }
             assert!(io.reached.get(), "the decision never reached {stop}");
         }
