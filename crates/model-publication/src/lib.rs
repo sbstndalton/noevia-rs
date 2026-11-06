@@ -330,6 +330,7 @@ impl Anchor {
         let _: i64 = connection
             .query_row("SELECT count(*) FROM preset_authority", [], |r| r.get(0))
             .map_err(io_error)?;
+        share_reader_files(path)?;
         Ok(Self {
             _connection: connection,
         })

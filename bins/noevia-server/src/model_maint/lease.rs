@@ -427,6 +427,28 @@ impl Authority {
                 .is_some_and(|j| j.settle(fence).is_ok())
     }
 
+    /// Transfer an uncertain effect to the recovery incident while its original hold remains
+    /// continuously covered. That hold may still perform its conditional rollback; no new holder
+    /// is admitted, and the uncertain receipt remains pending until fresh covered reconciliation.
+    pub(crate) fn defer_operation_to_recovery(&self, fence: &model_publication::Fence) -> bool {
+        let mut state = self.lock();
+        if !state.valid
+            || !Self::matches(&state, &fence.lease, Some(fence.generation))
+            || state.holder.as_ref().is_none_or(|e| {
+                e.fenced || Instant::now() >= e.renewed_until || Instant::now() >= e.hard_at
+            })
+            || state.journal.as_ref().is_none_or(|j| {
+                j.status(fence).ok().flatten().is_none()
+                    || j.finish(fence, "recovery", None).is_err()
+            })
+        {
+            return false;
+        }
+        state.recovery_required = true;
+        state.recovery_ticket.get_or_insert_with(random_hex);
+        true
+    }
+
     pub(crate) fn pending_operation_kinds(&self) -> std::io::Result<Vec<String>> {
         let state = self.lock();
         match &state.journal {
@@ -1172,6 +1194,34 @@ mod tests {
             "settled"
         );
         assert!(a.covers(&g.id, g.generation, Duration::ZERO));
+    }
+    #[test]
+    fn an_uncertain_reload_keeps_only_its_original_hold_for_conditional_rollback() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = Authority::new()
+            .with_publication(dir.path().join("authority.sqlite"))
+            .unwrap();
+        let grant = a.try_acquire(Origin::Front, None, "preset").unwrap();
+        let reload = a.begin_operation(&grant, "reload", None).unwrap();
+        assert!(a.defer_operation_to_recovery(&reload));
+        assert_eq!(
+            a.operation_status(&reload).unwrap().unwrap().state,
+            "recovery"
+        );
+        assert!(a.recovery_pending());
+        assert!(a.covers(&grant.id, grant.generation, Duration::ZERO));
+        let rollback = a.begin_operation(&grant, "restore", None).unwrap();
+        assert!(a.settle_operation(&rollback));
+        assert!(a.release(&grant.id, Some(grant.generation)));
+        assert!(a.try_acquire(Origin::Front, None, "competitor").is_err());
+        assert!(
+            !a.defer_operation_to_recovery(&reload),
+            "never adopt a replacement hold"
+        );
+        assert_eq!(
+            a.operation_status(&reload).unwrap().unwrap().state,
+            "recovery"
+        );
     }
     #[tokio::test]
     async fn publication_unknown_timeout_fences_its_holder_and_survives_a_fresh_authority() {

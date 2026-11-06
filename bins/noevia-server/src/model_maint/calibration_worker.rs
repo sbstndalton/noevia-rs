@@ -1275,6 +1275,39 @@ impl Worker {
             self.lose_exclusion();
             return Err(Thrown::Cancelled);
         }
+        let effect = method != reqwest::Method::GET || path.contains("reload=");
+        let expected = if path.contains("reload=") {
+            match &self.maint.ini {
+                Some(ini) => Some(
+                    ini.snapshot_covered(hold.write_fence())
+                        .await
+                        .map_err(|_| Thrown::Other("fetch failed".into()))?
+                        .revision,
+                ),
+                None => None,
+            }
+        } else {
+            None
+        };
+        let mut operation = if effect {
+            Some(
+                hold.begin_operation(
+                    if path.contains("reload=") {
+                        "reload"
+                    } else {
+                        "control"
+                    },
+                    expected.as_deref(),
+                )
+                .ok_or(Thrown::Cancelled)?,
+            )
+        } else {
+            None
+        };
+        let router = operation
+            .as_ref()
+            .map(|o| router.with_operation(&o.fence))
+            .unwrap_or_else(|| router.clone());
         let token = hold.token();
         let poll = self.limits.exclusion_poll.min(Duration::from_millis(100));
         let lost = async {
@@ -1285,7 +1318,7 @@ impl Worker {
                 }
             }
         };
-        tokio::select! {
+        let outcome = tokio::select! {
             r = Self::race(abort, router.request(method, path, body, token.as_deref(), timeout)) => {
                 r?.map_err(|_| Thrown::Other("fetch failed".into()))
             }
@@ -1293,7 +1326,15 @@ impl Worker {
                 self.lose_exclusion();
                 Err(Thrown::Cancelled)
             }
+        };
+        if let Some(operation) = operation.as_mut() {
+            if outcome.as_ref().is_ok_and(|r| !r.uncertain) {
+                operation.settled = operation.authority.settle_operation(&operation.fence);
+            } else {
+                self.lose_exclusion();
+            }
         }
+        outcome
     }
 
     /// Node's decision on loading `model` now (core model-load-refusal.cjs, over the models.ini the
@@ -2009,8 +2050,20 @@ impl Worker {
     ) -> Result<Long, Thrown> {
         let started = now_ms();
         let allowance = Duration::from_secs_f64((budget_ms * 1.5 / 1000.0).max(0.0));
-        let read = self.stream_long_inner(hold, model, content, abort, index, budget_ms, started);
-        match tokio::time::timeout(allowance, read).await {
+        let mut operation = hold
+            .begin_operation("control", None)
+            .ok_or(Thrown::Cancelled)?;
+        let read = self.stream_long_inner(
+            hold,
+            model,
+            content,
+            abort,
+            index,
+            budget_ms,
+            started,
+            &mut operation,
+        );
+        let outcome = match tokio::time::timeout(allowance, read).await {
             Ok(read) => read,
             Err(_) => {
                 self.show_progress(index, &Progress::default());
@@ -2019,7 +2072,17 @@ impl Worker {
                     eta_ms: now_ms() - started,
                 }))
             }
+        };
+        // A local stream deadline/cancel is not lost exclusion. Retain the original hold and
+        // settle its engine effect (confirmed unloaded) before continuing or restoring.
+        if !operation.settled
+            && hold.excluded()
+            && self.unload_all_inner(hold).await.is_ok()
+            && hold.excluded()
+        {
+            operation.settled = operation.authority.settle_operation(&operation.fence);
         }
+        outcome
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -2032,10 +2095,12 @@ impl Worker {
         index: usize,
         budget_ms: f64,
         started: f64,
+        operation: &mut super::ini::PublicationOperation,
     ) -> Result<Long, Thrown> {
         let Some(router) = self.maint.router.as_ref() else {
             return Ok(Long::Failed("The long prompt could not be sent.".into()));
         };
+        let router = router.with_operation(&operation.fence);
         let body = json!({
             "model": model, "stream": true, "return_progress": true, "temperature": 0,
             "cache_prompt": false, "max_tokens": 64,
@@ -2058,6 +2123,8 @@ impl Worker {
             Err(_) => return Ok(Long::Failed("The long prompt could not be sent.".into())),
         };
         if !res.status().is_success() {
+            operation.settled = operation.authority.settle_operation(&operation.fence);
+
             return Ok(Long::Failed(format!(
                 "The engine rejected the long prompt (HTTP {}).",
                 res.status().as_u16()
@@ -2084,10 +2151,27 @@ impl Worker {
                 Feed::Stop(outcome) => {
                     progress.eta_seconds = None;
                     self.show_progress(index, &progress);
+                    // A parsed terminal event does not prove the upstream HTTP owner ended.
+                    // Keep its permit until EOF, or hand the unknown effect to recovery on drop.
+                    let settled = tokio::time::timeout(Duration::from_secs(5), async {
+                        loop {
+                            match res.chunk().await {
+                                Ok(Some(_)) => {}
+                                Ok(None) => return true,
+                                Err(_) => return false,
+                            }
+                        }
+                    })
+                    .await
+                    .unwrap_or(false);
+                    if settled {
+                        operation.settled = operation.authority.settle_operation(&operation.fence);
+                    }
                     return Ok(Long::Done(outcome));
                 }
             }
         }
+        operation.settled = operation.authority.settle_operation(&operation.fence);
         let outcome = reader.finish(now_ms(), &mut progress);
         self.show_progress(index, &progress);
         Ok(Long::Done(outcome))
@@ -3188,6 +3272,8 @@ mod tests {
     /// What the synthetic engine does besides passing loads to 16K and long prompts to 8K.
     #[derive(Default, Clone)]
     struct Synth {
+        /// Enforce the same journal admission predicate as the configured Gate ingress.
+        publication: bool,
         /// The long prompt answers only after 60 s (until the client goes away).
         stall: bool,
         /// The first `GET /props` sets it and answers late (a lease that ends after the pass).
@@ -3235,6 +3321,7 @@ mod tests {
         use axum::http::{Request, Response};
         use http_body_util::BodyExt;
         let Synth {
+            publication,
             stall,
             props,
             silent,
@@ -3245,6 +3332,7 @@ mod tests {
         let status = Arc::new(Mutex::new("unloaded".to_owned()));
         let seen = Arc::new(Mutex::new(Vec::new()));
         let log = Arc::clone(&seen);
+        let publication_path = model_publication::lock_path(&ini).unwrap();
         let ctx_of = move || -> f64 {
             std::fs::read_to_string(&ini)
                 .unwrap_or_default()
@@ -3255,6 +3343,7 @@ mod tests {
                 .unwrap_or(0.0)
         };
         let app = axum::Router::new().fallback(move |req: Request<Body>| {
+            let publication_path=publication_path.clone();
             let (status, log, ctx_of, props, live, node, asks) = (
                 Arc::clone(&status),
                 Arc::clone(&log),
@@ -3273,6 +3362,11 @@ mod tests {
                 let json = |code: u16, v: Value| {
                     Response::builder().status(code).header("content-type", "application/json").body(Body::from(v.to_string())).unwrap()
                 };
+                let effect=(parts.method==reqwest::Method::POST && !path.starts_with("/gate/") && !path.starts_with("/internal/")) || parts.uri.query().is_some_and(|q|q.contains("reload="));
+                if publication && effect {
+                    let proof=parts.headers.get("x-noevia-maintenance-fence").and_then(|v|v.to_str().ok()).and_then(|v|serde_json::from_str::<model_publication::Fence>(v).ok());
+                    if proof.is_none() || !model_publication::allows(&publication_path,proof.as_ref()) {return json(503,json!({"error":"uncovered synthetic operation"}));}
+                }
                 match (parts.method.as_str(), path.as_str()) {
                     ("POST", "/internal/model-maintenance/load-refusal") => {
                         let n = asks.fetch_add(1, Ordering::AcqRel) + 1;
@@ -4352,6 +4446,26 @@ mod tests {
         .await
         .expect("synthetic transition completed");
     }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn calibration_engine_effects_work_with_the_shared_gate_publication_fence() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("models.ini");
+        std::fs::write(&file, INI).unwrap();
+        let (port, _) = synthetic_engine_with(
+            file,
+            Synth {
+                publication: true,
+                ..Synth::default()
+            },
+        )
+        .await;
+        let w = worker(dir.path(), port);
+        w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        let job = settled(&w).await;
+        assert_eq!(job.get("status").as_str(),Some("passed"),"every destructive request, including streamed generations, carries a current exact permit: {job:?}");
+        delta_wait(|| !w.maint.local_held()).await;
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn r5_fresh_authority_boot_blocks_node_before_state_inspection() {
         let d = tempfile::tempdir().unwrap();

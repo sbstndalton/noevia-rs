@@ -238,13 +238,28 @@ fn lines(seen: &[Req]) -> (Vec<String>, Vec<String>, Vec<String>) {
             continue;
         }
         if r.target.starts_with("/gate/v1/") {
+            if r.method == "POST"
+                && r.target == "/gate/v1/maintenance"
+                && serde_json::from_str::<Value>(&r.body)
+                    .ok()
+                    .is_some_and(|v| v["reason"] == "Reconciling interrupted native preset editing")
+            {
+                continue;
+            }
             let mut norm = r.target.replace(TOKEN, "T");
             if r.method == "POST" && norm == "/gate/v1/maintenance" {
-                norm = format!("{norm} {}", r.body);
+                // Private additive protocol fields carry the exact hold and renewal budget.
+                // The Node oracle still compares the existing public reason/wait request.
+                let mut body: Value = serde_json::from_str(&r.body).unwrap();
+                body.as_object_mut().unwrap().remove("idle_ttl_ms");
+                body.as_object_mut().unwrap().remove("maintenance");
+                norm = format!("{norm} {body}");
             }
             gate.push(format!("{} {norm}", r.method));
         } else if r.target == "/api/v1/models-ini" {
-            loader.push(format!("PUT {} {}", r.target, r.body));
+            let mut body: Value = serde_json::from_str(&r.body).unwrap();
+            body.as_object_mut().unwrap().remove("maintenance");
+            loader.push(format!("PUT {} {body}", r.target));
         } else {
             let hold = if r.headers.contains_key("x-noevia-maintenance") {
                 "hold"
@@ -391,7 +406,29 @@ async fn every_recorded_core_answer_is_the_fronts_byte_for_byte() {
     for case in cases["cases"].as_array().unwrap() {
         let name = case["name"].as_str().unwrap();
         let mode = Arc::new(Mutex::new("ok"));
-        let r = rig(case, mode).await;
+        // This oracle compares the completed public transaction. Fresh recovery is a separate
+        // protocol obligation now, verified by the settlement tests; refuse its new hold here
+        // so its asynchronous reread cannot change the transaction's recorded file/state trace.
+        let r = rig_with(
+            case,
+            mode,
+            Some(Box::new(|inner: Handler| {
+                Arc::new(move |req: &Req| {
+                    if req.method == "POST"
+                        && req.target == "/gate/v1/maintenance"
+                        && serde_json::from_str::<Value>(&req.body)
+                            .ok()
+                            .is_some_and(|v| {
+                                v["reason"] == "Reconciling interrupted native preset editing"
+                            })
+                    {
+                        return Answer::Reply(409, "{}".into());
+                    }
+                    inner(req)
+                })
+            })),
+        )
+        .await;
         let who = if case["request"]["role"] == "admin" {
             ADMIN
         } else {
@@ -853,7 +890,7 @@ async fn a_gate_that_forgot_the_hold_during_preparation_stops_the_commit_and_the
     );
     let (router, gate, _) = lines(&r.seen.lock().unwrap());
     assert!(!router.iter().any(|l| l.contains("reload=1")), "{router:?}");
-    // The grant the renewer took again to keep others out is given back with the job.
+    // Release the original grant; never reacquire to continue work after coverage was lost.
     assert!(
         gate.iter().filter(|l| l.starts_with("DELETE")).count() >= 1,
         "{gate:?}"
@@ -862,8 +899,8 @@ async fn a_gate_that_forgot_the_hold_during_preparation_stops_the_commit_and_the
         gate.iter()
             .filter(|l| l.starts_with("POST /gate/v1/maintenance {"))
             .count()
-            == 2,
-        "taken once, taken again by the renewer, never used to go on: {gate:?}"
+            == 1,
+        "lost work must not reacquire a replacement grant: {gate:?}"
     );
     assert_eq!(
         files_of(r.dir.path()).len(),

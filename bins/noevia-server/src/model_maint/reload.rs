@@ -1289,11 +1289,20 @@ impl Maint {
             Ok(r) => r,
             Err(_) => {
                 self.settle(ticket, Settle::Forget).await;
+                if holding.excluded() {
+                    operation.settled = operation
+                        .authority
+                        .defer_operation_to_recovery(&operation.fence);
+                }
                 return Err(());
             }
         };
         if !reply.uncertain {
             operation.settled = operation.authority.settle_operation(&operation.fence);
+        } else if holding.excluded() {
+            operation.settled = operation
+                .authority
+                .defer_operation_to_recovery(&operation.fence);
         }
         if !reply.ok {
             self.settle(ticket, Settle::Forget).await;
@@ -1396,7 +1405,15 @@ impl Maint {
                 if !holding.may_start(UNLOAD_LIMIT) {
                     return message(503, LEASE_LOST);
                 }
-                let _ = router.unload(id, hold).await;
+                let Some(mut operation) = holding.begin_operation("control", None) else {
+                    return message(503, LEASE_LOST);
+                };
+                let scoped = router.with_operation(&operation.fence);
+                if let Ok(reply) = scoped.unload(id, hold).await {
+                    if !reply.uncertain {
+                        operation.settled = operation.authority.settle_operation(&operation.fence);
+                    }
+                }
             }
         }
         if !holding.may_start(RELOAD_LIMIT) {

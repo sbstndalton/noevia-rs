@@ -631,3 +631,157 @@ async fn reload_timeout_keeps_competing_execution_excluded_until_the_engine_sett
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
 }
+
+async fn durable_reload_settlement(cancel: bool, callback_available: bool) {
+    use model_publication::{AuthorityRecord, Fence, Guard};
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("authority.sqlite");
+    let proof = Fence {
+        incarnation: "front-a".into(),
+        lease: "grant-a".into(),
+        generation: 1,
+        operation: "reload-a".into(),
+        kind: "reload".into(),
+        expected_revision: Some("revision-a".into()),
+    };
+    let journal = Guard::at(&file).unwrap();
+    journal.authority().unwrap();
+    journal
+        .save_authority(&AuthorityRecord {
+            incarnation: proof.incarnation.clone(),
+            lease: proof.lease.clone(),
+            generation: 1,
+            active: true,
+            until_ms: model_publication::now_ms() + 60_000,
+            recovery: false,
+        })
+        .unwrap();
+    journal.observe_revision("revision-a").unwrap();
+    journal.begin(&proof).unwrap();
+    journal.commit().unwrap();
+    let _anchor = model_publication::Anchor::open(&file).unwrap();
+    let callback_file = file.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let callback_addr = listener.local_addr().unwrap();
+    let callback = tokio::spawn(async move {
+        let app = axum::Router::new().route(
+            "/api/v1/maintenance-operation/settle",
+            axum::routing::post(move |request: axum::extract::Request| {
+                let file = callback_file.clone();
+                async move {
+                    let body = axum::body::to_bytes(request.into_body(), 8192)
+                        .await
+                        .unwrap();
+                    let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                    let proof: Fence =
+                        serde_json::from_value(value["maintenance"].clone()).unwrap();
+                    assert_eq!(value["state"], "settled");
+                    let journal = Guard::at(&file).unwrap();
+                    assert!(journal.status(&proof).unwrap().is_some());
+                    journal.settle(&proof).unwrap();
+                    journal.commit().unwrap();
+                    axum::http::StatusCode::OK
+                }
+            }),
+        );
+        axum::serve(listener, app).await.unwrap();
+    });
+    if !callback_available {
+        callback.abort();
+    }
+    let router = FakeRouter::start(
+        &[(CODE, St::Loaded, false)],
+        FakeConfig {
+            reload_ms: 500,
+            ..Default::default()
+        },
+    )
+    .await;
+    let mut config = test_config(router.url());
+    config.reload_timeout = Duration::from_millis(50);
+    config.publication_authority = Some(file.clone());
+    config.publication_url = Some(format!("http://{callback_addr}"));
+    let gate = Arc::new(start_gate(config).await);
+    let (code, body) = hold(
+        &gate,
+        Some(ADMIN),
+        serde_json::json!({"reason":"preset", "maintenance": proof}),
+    )
+    .await;
+    assert_eq!(code, 201, "{body}");
+    let token = body["hold"].as_str().unwrap().to_owned();
+    let request_gate = gate.clone();
+    let request_token = token.clone();
+    let wire_proof = serde_json::to_string(&proof).unwrap();
+    let request = tokio::spawn(async move {
+        client()
+            .get(request_gate.url("/models?reload=1"))
+            .header("x-noevia-maintenance", request_token)
+            .header("x-noevia-maintenance-fence", wire_proof)
+            .send()
+            .await
+            .unwrap()
+    });
+    let deadline = Instant::now() + Duration::from_secs(4);
+    while !router.events().contains(&Event::Reload) {
+        assert!(Instant::now() < deadline);
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    if cancel {
+        request.abort();
+        let _ = request.await;
+    } else {
+        assert_eq!(request.await.unwrap().status(), 503);
+    }
+    assert_eq!(release(&gate, Some(ADMIN), &token).await, 204);
+    assert_ne!(hold(&gate, Some(ADMIN), serde_json::json!({})).await.0, 201);
+    assert_eq!(
+        model_publication::read_receipt(&file, &proof)
+            .unwrap()
+            .unwrap()
+            .state,
+        "issued"
+    );
+    while router.status(CODE) == St::Loaded
+        || (callback_available
+            && model_publication::read_receipt(&file, &proof)
+                .unwrap()
+                .unwrap()
+                .state
+                != "settled")
+    {
+        assert!(
+            Instant::now() < deadline,
+            "actual effect and receipt settle"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(
+        !model_publication::allows(&file, None),
+        "settlement alone must not retire the active native holder"
+    );
+    let journal = Guard::at(&file).unwrap();
+    let mut record = journal.authority().unwrap().unwrap();
+    record.active = false;
+    record.recovery = !callback_available;
+    journal.save_authority(&record).unwrap();
+    journal.commit().unwrap();
+    assert_eq!(
+        model_publication::allows(&file, None),
+        callback_available,
+        "unknown callback stays closed for fresh recovery"
+    );
+    callback.abort();
+    let _ = callback.await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn durable_reload_receipt_survives_http_timeout_and_caller_cancellation() {
+    durable_reload_settlement(false, true).await;
+    durable_reload_settlement(true, true).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_lost_settlement_callback_cannot_reopen_native_admission() {
+    durable_reload_settlement(false, false).await;
+}

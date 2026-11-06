@@ -393,7 +393,20 @@ impl Store {
                 if !allowed() {
                     return Err(IniError::new(409, "Calibration finalization failed."));
                 }
-                let result = w.write(&c, backup, fence.as_ref()).await;
+                let mut result = w.write(&c, backup, fence.as_ref()).await;
+                // Keep the original permit alive while reconciling a lost loader reply. Taking
+                // the publication lock waits for any actual fsync/rename owner before rereading;
+                // observing the requested bytes under this same covered hold proves the save.
+                // Fencing before this read would regress Node's accepted-but-unanswered save.
+                if result.as_ref().is_err_and(|e| e.uncertain)
+                    && store
+                        .snapshot_covered(allowed.clone())
+                        .await
+                        .is_ok_and(|snapshot| snapshot.text == c.text)
+                    && allowed()
+                {
+                    result = Ok(());
+                }
                 if result.as_ref().is_ok() || result.as_ref().is_err_and(|e| !e.uncertain) {
                     if let Some(op) = &mut operation {
                         op.settled = op.authority.settle_operation(&op.fence);

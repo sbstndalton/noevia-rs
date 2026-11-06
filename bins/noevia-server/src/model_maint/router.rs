@@ -258,14 +258,19 @@ impl Router {
         if let Some(h) = hold.and_then(|h| HeaderValue::from_str(h).ok()) {
             headers.insert(HeaderName::from_static("x-noevia-maintenance"), h);
         }
-        self.client
+        let mut req = self
+            .client
             .post(format!("{}{path}", self.base))
             .headers(headers)
             .timeout(timeout)
-            .body(body.to_string())
-            .send()
-            .await
-            .map_err(|_| Fault)
+            .body(body.to_string());
+        if let Some(fence) = &self.operation {
+            req = req.header(
+                "x-noevia-maintenance-fence",
+                serde_json::to_string(fence).map_err(|_| Fault)?,
+            );
+        }
+        req.send().await.map_err(|_| Fault)
     }
 
     /// `rawModels()`: the router's listing.

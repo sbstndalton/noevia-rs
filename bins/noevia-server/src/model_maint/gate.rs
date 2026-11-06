@@ -666,12 +666,16 @@ impl Hold {
 
     /// May a step of at most `limit` start? For Node's lease: only if it has not ended and is sure to
     /// outlast the step: Node's last confirmation and its hard limit both cover it, so the lease cannot
-    /// end under a call in flight, even if Node stops hearing renewals now. Always true for the gate's
-    /// hold, which goes on as it always did.
+    /// end under a call in flight, even if Node stops hearing renewals now. A renewable gate hold
+    /// instead confirms current exact-hold coverage; the destination permit and detached settlement
+    /// retain exclusion for the effect already dispatched.
     pub fn may_start(&self, limit: Duration) -> bool {
         if self.shared.lost.load(Ordering::Acquire) || self.shared.released.load(Ordering::Acquire)
         {
             return false;
+        }
+        if self.shared.gate_ttl.is_some() && self.shared.lease_ttl.is_none() {
+            return self.excluded();
         }
         let covered = |until: Instant| Instant::now() + limit + STEP_MARGIN < until;
         let ttl = self.shared.lease_ttl.or(self.shared.gate_ttl);
