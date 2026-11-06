@@ -1787,3 +1787,87 @@ mod gate_stage {
         }
     }
 }
+
+mod finish_stage {
+    //! A turn's end (`done`, the title decision, `title`) against core's handleChat, turn after turn on one
+    //! handler (fixtures/record-finish.cjs).
+    use chat_pipeline::title::{self, AttemptCounter, TitleTurn};
+    use js_json::{wtf16, JValue};
+
+    fn arr(v: &JValue) -> &[JValue] {
+        match v {
+            JValue::Arr(a) => a,
+            _ => &[],
+        }
+    }
+
+    #[test]
+    fn turn_endings_and_titles_match_node() {
+        let c = wtf16::parse(include_str!("fixtures/finish-cases.json")).unwrap();
+        let (mut asked, mut titled) = (0, 0);
+        for k in arr(c.get("cases")) {
+            let mut attempts = AttemptCounter::new(3, 2000);
+            let project = k.get("project") == &JValue::Bool(true);
+            let provider = if project { k.get("provider").as_str().unwrap() } else { "default" };
+            for (t, got) in arr(k.get("turns")).iter().zip(arr(k.get("out").get("turns"))) {
+                let tail = arr(got.get("tail"));
+                if tail.first().and_then(|e| e.get("type").as_str()) != Some("telemetry") {
+                    continue; // refused or failed before the end (earlier stages)
+                }
+                let what = format!("{} turn {}", wtf16::stringify(k).unwrap(), wtf16::stringify(t).unwrap());
+                let answer = t.get("answer").as_str().unwrap();
+                let turn = TitleTurn {
+                    titles: k.get("titles") == &JValue::Bool(true),
+                    paused: false,
+                    round_has_content: !answer.is_empty(),
+                    round_content: answer,
+                    chat_id: t.get("chatId"),
+                    list_id: project.then_some("fixture-project"),
+                    compact_only: k.get("compactOnly") == &JValue::Bool(true),
+                    diary: false,
+                    local: provider == "default",
+                    machine: false,
+                    off_box: provider != "default",
+                    history: t.get("history"),
+                    message: k.get("message"),
+                    workspace_user: Some("synthetic-user"),
+                };
+                let mut named_asked = false;
+                let mut auto_named = |_: Option<&str>, _: &str, _: &str| {
+                    named_asked = true;
+                    match t.get("autoNamed") {
+                        JValue::Bool(b) => Ok(*b),
+                        JValue::Str(_) => Err(()),
+                        _ => Ok(false),
+                    }
+                };
+                let mut busy = || t.get("busy") == &JValue::Bool(true);
+                let ask = title::title_ask(&turn, &mut attempts, &mut auto_named, &mut busy);
+                assert_eq!(ask.is_some(), matches!(got.get("titleAsked"), JValue::Obj(_)), "asked {what}");
+                assert_eq!(named_asked, matches!(got.get("autoNamedAsked"), JValue::Arr(_)), "autoNamed {what}");
+                let made = ask.as_ref().and_then(|_| match t.get("title") {
+                    JValue::Str(e) if e == "error" => None,
+                    v => title::clean_title(v),
+                });
+                asked += usize::from(ask.is_some());
+                titled += usize::from(made.is_some());
+                let events = title::finish_events("answer-model", made.as_deref().zip(ask.as_ref()).map(|(m, a)| (a.chat_id.as_str(), m)));
+                let want: Vec<String> = tail[1..].iter().map(|e| wtf16::stringify(e).unwrap()).collect();
+                let events: Vec<String> = events.iter().map(|e| wtf16::stringify(e).unwrap()).collect();
+                assert_eq!(events, want, "tail {what}");
+                match (made.as_deref(), got.get("saved")) {
+                    (Some(m), JValue::Arr(s)) => {
+                        let a = ask.as_ref().unwrap();
+                        assert_eq!(s[1].as_str(), Some(a.chat_id.as_str()), "{what}");
+                        assert_eq!(s[2].as_str(), Some(m), "{what}");
+                        assert_eq!(s[3].as_str(), Some(a.first_message.as_str()), "{what}");
+                        assert_eq!(s[0].as_str(), a.list_id.as_deref(), "{what}");
+                    }
+                    (None, JValue::Null) => {}
+                    (m, s) => panic!("saved {m:?} vs Node {s:?}: {what}"),
+                }
+            }
+        }
+        assert!(asked > 400 && titled > 40, "{asked} {titled}");
+    }
+}

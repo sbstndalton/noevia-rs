@@ -326,3 +326,98 @@ mod tests {
         assert!(c.allowed("a"), "a was the oldest and was forgotten");
     }
 }
+
+/// What chat.cjs:2643-2656 reads at a turn's end to decide on a title (#1785).
+pub struct TitleTurn<'a> {
+    /// `chatTitles` is wired.
+    pub titles: bool,
+    pub paused: bool,
+    pub round_has_content: bool,
+    pub round_content: &'a str,
+    /// `body.chatId`.
+    pub chat_id: &'a JValue,
+    /// `body.projectId && project ? project.id : null`.
+    pub list_id: Option<&'a str>,
+    pub compact_only: bool,
+    /// `spaceId` starts with `diary`, or the project is the Diary extras project.
+    pub diary: bool,
+    /// `provider.id === DEFAULT_PROVIDER_ID`, `provider.machine`, and `offBoxTurn(...)`.
+    pub local: bool,
+    pub machine: bool,
+    pub off_box: bool,
+    /// The request's own `history` and `message`.
+    pub history: &'a JValue,
+    pub message: &'a JValue,
+    /// `chatWorkspace?.userId`.
+    pub workspace_user: Option<&'a str>,
+}
+
+/// A title to ask for: the chat and the first message it is derived from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TitleAsk {
+    pub chat_id: String,
+    pub list_id: Option<String>,
+    pub first_message: String,
+}
+
+/// Whether to ask for this chat's title now, recording the attempt when so. `auto_named`:
+/// `chatTitles.autoNamed(list, chat, first) === true` (`Err`: it threw); asked only for a chat that
+/// already has an assistant turn. `busy`: `engineBusy()` (asked only off a machine).
+pub fn title_ask(
+    t: &TitleTurn<'_>,
+    attempts: &mut AttemptCounter,
+    auto_named: &mut dyn FnMut(Option<&str>, &str, &str) -> Result<bool, ()>,
+    busy: &mut dyn FnMut() -> bool,
+) -> Option<TitleAsk> {
+    let chat_id = match t.chat_id {
+        JValue::Str(c) => c.as_str(),
+        _ => "",
+    };
+    let first_message = first_user_message(t.history, t.message);
+    let key = format!(
+        "{}\u{0}{}\u{0}{chat_id}",
+        t.workspace_user.unwrap_or(""),
+        t.list_id.unwrap_or("")
+    );
+    let wanted = t.titles
+        && !t.paused
+        && t.round_has_content
+        && !trim(t.round_content).is_empty()
+        && !chat_id.is_empty()
+        && !t.compact_only
+        && !t.diary
+        && (t.local || t.machine)
+        && !t.off_box;
+    if !wanted {
+        return None;
+    }
+    let due = first_reply(t.history) || auto_named(t.list_id, chat_id, &first_message) == Ok(true);
+    if !due || !attempts.allowed(&key) || !(t.machine || !busy()) {
+        return None;
+    }
+    attempts.record(&key);
+    Some(TitleAsk {
+        chat_id: chat_id.to_owned(),
+        list_id: t.list_id.map(str::to_owned),
+        first_message,
+    })
+}
+
+/// The turn's last events: `done`, then (when one was made) the `title`.
+pub fn finish_events(model: &str, title: Option<(&str, &str)>) -> Vec<JValue> {
+    let obj = |pairs: Vec<(&str, JValue)>| {
+        JValue::Obj(pairs.into_iter().map(|(k, v)| (k.to_owned(), v)).collect())
+    };
+    let mut out = vec![obj(vec![
+        ("type", JValue::Str("done".into())),
+        ("model", JValue::Str(model.into())),
+    ])];
+    if let Some((chat, title)) = title {
+        out.push(obj(vec![
+            ("type", JValue::Str("title".into())),
+            ("chatId", JValue::Str(chat.into())),
+            ("title", JValue::Str(title.into())),
+        ]));
+    }
+    out
+}
