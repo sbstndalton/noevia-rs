@@ -1464,3 +1464,81 @@ fn collapsed_subtrees_coerce_exactly_like_built_ones() {
         }
     }
 }
+
+#[test]
+fn array_nesting_boundary_matches_the_nodes_that_save_through_the_native_route() {
+    isolated(
+        "array_nesting_boundary_matches_the_nodes_that_save_through_the_native_route",
+        || {
+            let fixture: Value =
+                serde_json::from_str(include_str!("fixtures/machines-coerce-node.json")).unwrap();
+            let limit = fixture["arrayLimit"].as_u64().unwrap() as usize;
+            let measured = &fixture["measuredLinuxX64"];
+            // The web image's Node saves 3141 (route), 3085 (behind HTTP) and 3142 (bare); all
+            // throw at 3143. Two levels a review saw the reference route save are included.
+            let saved = [
+                1,
+                2500,
+                2601,
+                2610,
+                measured["http"].as_u64().unwrap() as usize,
+                measured["route"].as_u64().unwrap() as usize,
+                limit,
+            ];
+            assert_eq!(limit as u64, measured["bare"].as_u64().unwrap());
+            let refused = [limit + 1, limit + 2, 5000, 100_000];
+            for depth in saved {
+                let value = parse_json(&nested(depth, "\"x\"")).unwrap();
+                assert_eq!(coerce(&value).unwrap(), "x", "coerce {depth}");
+                assert_eq!(name(&value).unwrap(), "x", "name {depth}");
+            }
+            for depth in refused {
+                let value = parse_json(&nested(depth, "\"x\"")).unwrap();
+                assert_eq!(coerce(&value).unwrap_err().0, 500, "coerce {depth}");
+                let value = parse_json(&nested(depth, "{\"toString\":1}")).unwrap();
+                assert_eq!(coerce(&value).unwrap_err().0, 500, "object leaf {depth}");
+            }
+            run(async move {
+                let dir = tempfile::tempdir().unwrap();
+                seed(dir.path());
+                let owner = upstream().await;
+                owner.set(|r| reply("200 OK", &j(&r.body)["view"].to_string()));
+                let front = front_env(
+                    dir.path(),
+                    true,
+                    &[
+                        ("NOEVIA_LEGACY_UPSTREAM", owner.base()),
+                        ("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()),
+                    ],
+                )
+                .await;
+                let mut count = 0;
+                for (i, depth) in saved.into_iter().enumerate() {
+                    let body = format!(
+                        r#"{{"action":"add","name":{},"address":"192.168.1.{}"}}"#,
+                        nested(depth, &format!("\"m{i}\"")),
+                        i + 2
+                    );
+                    let (status, added) = write(front.addr, "POST", PATH, ADMIN, &body).await;
+                    assert_eq!(status, 201, "depth {depth}: {added}");
+                    assert_eq!(added["machine"]["name"], format!("m{i}"));
+                    count += 1;
+                }
+                for depth in refused {
+                    let body = format!(
+                        r#"{{"action":"add","name":{},"address":"192.168.1.200"}}"#,
+                        nested(depth, "\"over\"")
+                    );
+                    let (status, error) = write(front.addr, "POST", PATH, ADMIN, &body).await;
+                    assert_eq!(status, 500, "depth {depth}");
+                    assert_eq!(
+                        error["error"],
+                        "The inference machines could not be changed."
+                    );
+                }
+                let (_, view) = get(front.addr, PATH, ADMIN).await;
+                assert_eq!(view["machines"].as_array().unwrap().len(), count + 1);
+            })
+        },
+    )
+}

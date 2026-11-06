@@ -1,5 +1,11 @@
 {
  "generatedBy": "v22.23.3",
+ "arrayLimit": 3142,
+ "measuredLinuxX64": {
+  "route": 3141,
+  "http": 3085,
+  "bare": 3142
+ },
  "grammar": [
   {
    "text": "0",
@@ -969,6 +975,98 @@
    "input": {
     "nest": [
      2500,
+     ""
+    ]
+   },
+   "coerce": {
+    "text": ""
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     2601,
+     "\"x\""
+    ]
+   },
+   "coerce": {
+    "text": "x"
+   },
+   "add": {
+    "ok": "x"
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     2601,
+     "null"
+    ]
+   },
+   "coerce": {
+    "text": ""
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     2601,
+     ""
+    ]
+   },
+   "coerce": {
+    "text": ""
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     2610,
+     "\"x\""
+    ]
+   },
+   "coerce": {
+    "text": "x"
+   },
+   "add": {
+    "ok": "x"
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     2610,
+     "null"
+    ]
+   },
+   "coerce": {
+    "text": ""
+   },
+   "add": {
+    "status": 400,
+    "code": "invalidName",
+    "writes": 0
+   }
+  },
+  {
+   "input": {
+    "nest": [
+     2610,
      ""
     ]
    },
