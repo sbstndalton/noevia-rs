@@ -1246,4 +1246,25 @@ mod tests {
             Some("released")
         );
     }
+    struct DelayedGate {gate:Gate,entered:Notify,proceed:Notify}
+    impl Admission for DelayedGate {
+        fn paused(&self)->Result<bool,Failure>{Ok(false)}
+        fn enter_for<'a>(&'a self,_context:Arc<JournalContext>)->Entering<'a>{Box::pin(async move{self.entered.notify_one();self.proceed.notified().await;self.gate.enter()})}
+    }
+    #[tokio::test]
+    async fn cancel_during_async_admission_does_not_lock_actor_or_start_executor(){
+        let (_root,account,repo)=setup();let work=Arc::new(Work::new(Mode::Complete));
+        let gate=Arc::new(DelayedGate{gate:Gate::new(),entered:Notify::new(),proceed:Notify::new()});
+        let code=Arc::new(Code::new(work.clone(),None,gate.clone(),None,Arc::new(SystemClock),Duration::from_secs(30)));
+        let start=tokio::spawn({let code=code.clone();let account=account.clone();let request=task(&repo);async move{code.start(account,"project".into(),request).await}});
+        tokio::time::timeout(Duration::from_secs(2),gate.entered.notified()).await.unwrap();
+        let jobs=account.list(Surface::Code,Some("project"),true).unwrap();let id=jobs.first().unwrap().id.as_str().unwrap();
+        // This synchronous call needs the state mutex. Admission must not hold it across await.
+        code.cancel(&account,"project",id).unwrap();
+        assert_eq!(code.start(account.clone(),"project".into(),task(&repo)).await.err().unwrap().status,Some(409));
+        gate.proceed.notify_one();start.await.unwrap().unwrap();finished(&code).await;
+        assert_eq!(work.executions.load(Ordering::SeqCst),0);assert_eq!(gate.gate.count.load(Ordering::SeqCst),0);
+        assert_eq!(job(&account,"project",id).status.as_str(),Some("cancelled"));
+    }
+
 }
