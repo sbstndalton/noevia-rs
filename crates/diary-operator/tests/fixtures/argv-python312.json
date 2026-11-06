@@ -1,0 +1,220 @@
+[
+  {
+    "args": [],
+    "exit": 2,
+    "stdout": "",
+    "stderr": "usage: backup_restore.py [-h] backup_root manifest new_directory\nbackup_restore.py: error: the following arguments are required: backup_root, manifest, new_directory\n"
+  },
+  {
+    "args": [
+      "a"
+    ],
+    "exit": 2,
+    "stdout": "",
+    "stderr": "usage: backup_restore.py [-h] backup_root manifest new_directory\nbackup_restore.py: error: the following arguments are required: manifest, new_directory\n"
+  },
+  {
+    "args": [
+      "a",
+      "b"
+    ],
+    "exit": 2,
+    "stdout": "",
+    "stderr": "usage: backup_restore.py [-h] backup_root manifest new_directory\nbackup_restore.py: error: the following arguments are required: new_directory\n"
+  },
+  {
+    "args": [
+      "a",
+      "b",
+      "c",
+      "extra"
+    ],
+    "exit": 2,
+    "stdout": "",
+    "stderr": "usage: backup_restore.py [-h] backup_root manifest new_directory\nbackup_restore.py: error: unrecognized arguments: extra\n"
+  },
+  {
+    "args": [
+      "--bad",
+      "a",
+      "b",
+      "c"
+    ],
+    "exit": 2,
+    "stdout": "",
+    "stderr": "usage: backup_restore.py [-h] backup_root manifest new_directory\nbackup_restore.py: error: unrecognized arguments: --bad\n"
+  },
+  {
+    "args": [
+      "a",
+      "b",
+      "c",
+      "extra",
+      "--bad"
+    ],
+    "exit": 2,
+    "stdout": "",
+    "stderr": "usage: backup_restore.py [-h] backup_root manifest new_directory\nbackup_restore.py: error: unrecognized arguments: extra --bad\n"
+  },
+  {
+    "args": [
+      "a",
+      "b",
+      "c",
+      "--bad",
+      "extra"
+    ],
+    "exit": 2,
+    "stdout": "",
+    "stderr": "usage: backup_restore.py [-h] backup_root manifest new_directory\nbackup_restore.py: error: unrecognized arguments: --bad extra\n"
+  },
+  {
+    "args": [
+      "-h"
+    ],
+    "exit": 0,
+    "stdout": "usage: backup_restore.py [-h] backup_root manifest new_directory\n\nVerify a downloaded immutable manifest and restore into a NEW directory only.\nRun: python -m agent.backup_restore BACKUP_ROOT MANIFEST_JSON NEW_DIRECTORY\nBACKUP_ROOT contains the downloaded WebDAV tree (including corpusRoot). Never\npoints at a live corpus, chooses a latest manifest, or overwrites files.\n\npositional arguments:\n  backup_root\n  manifest\n  new_directory\n\noptions:\n  -h, --help     show this help message and exit\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "--help"
+    ],
+    "exit": 0,
+    "stdout": "usage: backup_restore.py [-h] backup_root manifest new_directory\n\nVerify a downloaded immutable manifest and restore into a NEW directory only.\nRun: python -m agent.backup_restore BACKUP_ROOT MANIFEST_JSON NEW_DIRECTORY\nBACKUP_ROOT contains the downloaded WebDAV tree (including corpusRoot). Never\npoints at a live corpus, chooses a latest manifest, or overwrites files.\n\npositional arguments:\n  backup_root\n  manifest\n  new_directory\n\noptions:\n  -h, --help     show this help message and exit\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "--hel"
+    ],
+    "exit": 0,
+    "stdout": "usage: backup_restore.py [-h] backup_root manifest new_directory\n\nVerify a downloaded immutable manifest and restore into a NEW directory only.\nRun: python -m agent.backup_restore BACKUP_ROOT MANIFEST_JSON NEW_DIRECTORY\nBACKUP_ROOT contains the downloaded WebDAV tree (including corpusRoot). Never\npoints at a live corpus, chooses a latest manifest, or overwrites files.\n\npositional arguments:\n  backup_root\n  manifest\n  new_directory\n\noptions:\n  -h, --help     show this help message and exit\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "--he"
+    ],
+    "exit": 0,
+    "stdout": "usage: backup_restore.py [-h] backup_root manifest new_directory\n\nVerify a downloaded immutable manifest and restore into a NEW directory only.\nRun: python -m agent.backup_restore BACKUP_ROOT MANIFEST_JSON NEW_DIRECTORY\nBACKUP_ROOT contains the downloaded WebDAV tree (including corpusRoot). Never\npoints at a live corpus, chooses a latest manifest, or overwrites files.\n\npositional arguments:\n  backup_root\n  manifest\n  new_directory\n\noptions:\n  -h, --help     show this help message and exit\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "--h"
+    ],
+    "exit": 0,
+    "stdout": "usage: backup_restore.py [-h] backup_root manifest new_directory\n\nVerify a downloaded immutable manifest and restore into a NEW directory only.\nRun: python -m agent.backup_restore BACKUP_ROOT MANIFEST_JSON NEW_DIRECTORY\nBACKUP_ROOT contains the downloaded WebDAV tree (including corpusRoot). Never\npoints at a live corpus, chooses a latest manifest, or overwrites files.\n\npositional arguments:\n  backup_root\n  manifest\n  new_directory\n\noptions:\n  -h, --help     show this help message and exit\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "-hfoo"
+    ],
+    "exit": 0,
+    "stdout": "usage: backup_restore.py [-h] backup_root manifest new_directory\n\nVerify a downloaded immutable manifest and restore into a NEW directory only.\nRun: python -m agent.backup_restore BACKUP_ROOT MANIFEST_JSON NEW_DIRECTORY\nBACKUP_ROOT contains the downloaded WebDAV tree (including corpusRoot). Never\npoints at a live corpus, chooses a latest manifest, or overwrites files.\n\npositional arguments:\n  backup_root\n  manifest\n  new_directory\n\noptions:\n  -h, --help     show this help message and exit\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "-h=foo"
+    ],
+    "exit": 2,
+    "stdout": "",
+    "stderr": "usage: backup_restore.py [-h] backup_root manifest new_directory\nbackup_restore.py: error: argument -h/--help: ignored explicit argument 'foo'\n"
+  },
+  {
+    "args": [
+      "-hh"
+    ],
+    "exit": 0,
+    "stdout": "usage: backup_restore.py [-h] backup_root manifest new_directory\n\nVerify a downloaded immutable manifest and restore into a NEW directory only.\nRun: python -m agent.backup_restore BACKUP_ROOT MANIFEST_JSON NEW_DIRECTORY\nBACKUP_ROOT contains the downloaded WebDAV tree (including corpusRoot). Never\npoints at a live corpus, chooses a latest manifest, or overwrites files.\n\npositional arguments:\n  backup_root\n  manifest\n  new_directory\n\noptions:\n  -h, --help     show this help message and exit\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "--help=foo"
+    ],
+    "exit": 2,
+    "stdout": "",
+    "stderr": "usage: backup_restore.py [-h] backup_root manifest new_directory\nbackup_restore.py: error: argument -h/--help: ignored explicit argument 'foo'\n"
+  },
+  {
+    "args": [
+      "--hel=foo"
+    ],
+    "exit": 2,
+    "stdout": "",
+    "stderr": "usage: backup_restore.py [-h] backup_root manifest new_directory\nbackup_restore.py: error: argument -h/--help: ignored explicit argument 'foo'\n"
+  },
+  {
+    "args": [
+      "--help",
+      "--bad"
+    ],
+    "exit": 0,
+    "stdout": "usage: backup_restore.py [-h] backup_root manifest new_directory\n\nVerify a downloaded immutable manifest and restore into a NEW directory only.\nRun: python -m agent.backup_restore BACKUP_ROOT MANIFEST_JSON NEW_DIRECTORY\nBACKUP_ROOT contains the downloaded WebDAV tree (including corpusRoot). Never\npoints at a live corpus, chooses a latest manifest, or overwrites files.\n\npositional arguments:\n  backup_root\n  manifest\n  new_directory\n\noptions:\n  -h, --help     show this help message and exit\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "--bad",
+      "-h"
+    ],
+    "exit": 0,
+    "stdout": "usage: backup_restore.py [-h] backup_root manifest new_directory\n\nVerify a downloaded immutable manifest and restore into a NEW directory only.\nRun: python -m agent.backup_restore BACKUP_ROOT MANIFEST_JSON NEW_DIRECTORY\nBACKUP_ROOT contains the downloaded WebDAV tree (including corpusRoot). Never\npoints at a live corpus, chooses a latest manifest, or overwrites files.\n\npositional arguments:\n  backup_root\n  manifest\n  new_directory\n\noptions:\n  -h, --help     show this help message and exit\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "-1e3"
+    ],
+    "exit": 2,
+    "stdout": "",
+    "stderr": "usage: backup_restore.py [-h] backup_root manifest new_directory\nbackup_restore.py: error: the following arguments are required: backup_root, manifest, new_directory\n"
+  },
+  {
+    "args": [
+      "-1"
+    ],
+    "exit": 2,
+    "stdout": "",
+    "stderr": "usage: backup_restore.py [-h] backup_root manifest new_directory\nbackup_restore.py: error: the following arguments are required: manifest, new_directory\n"
+  },
+  {
+    "args": [
+      "-.5"
+    ],
+    "exit": 2,
+    "stdout": "",
+    "stderr": "usage: backup_restore.py [-h] backup_root manifest new_directory\nbackup_restore.py: error: the following arguments are required: manifest, new_directory\n"
+  },
+  {
+    "args": [
+      "--",
+      "--help"
+    ],
+    "exit": 2,
+    "stdout": "",
+    "stderr": "usage: backup_restore.py [-h] backup_root manifest new_directory\nbackup_restore.py: error: the following arguments are required: manifest, new_directory\n"
+  },
+  {
+    "args": [
+      "-"
+    ],
+    "exit": 2,
+    "stdout": "",
+    "stderr": "usage: backup_restore.py [-h] backup_root manifest new_directory\nbackup_restore.py: error: the following arguments are required: manifest, new_directory\n"
+  },
+  {
+    "args": [
+      "a",
+      "--bad",
+      "b"
+    ],
+    "exit": 2,
+    "stdout": "",
+    "stderr": "usage: backup_restore.py [-h] backup_root manifest new_directory\nbackup_restore.py: error: the following arguments are required: new_directory\n"
+  }
+]

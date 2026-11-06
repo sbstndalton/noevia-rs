@@ -1,5 +1,5 @@
-//! Standalone startup loader; the Python live service retains ownership until D8.
-use serde_json::{Map, Value};
+//! Standalone startup loader, including Python YAML and environment semantics.
+use crate::value::{integer, repr, strip, Kind, Value};
 use std::{collections::BTreeMap, path::Path};
 pub type Result<T> = std::result::Result<T, String>;
 #[derive(Debug)]
@@ -7,26 +7,33 @@ pub struct Config {
     pub data: Value,
     pub warnings: Vec<String>,
 }
-pub fn get<'a>(data: &'a Value, dotted: &str) -> Option<&'a Value> {
+pub fn get(data: &Value, dotted: &str) -> Option<Value> {
     dotted
         .split('.')
-        .try_fold(data, |node, key| node.as_object()?.get(key))
+        .try_fold(data.clone(), |node, key| node.get(key))
 }
-fn set(data: &mut Value, dotted: &str, value: Value) -> Result<()> {
-    let mut node = data;
+fn set(data: &Value, dotted: &str, value: Value) -> Result<()> {
+    let mut node = data.clone();
     let mut parts = dotted.split('.').peekable();
     while let Some(key) = parts.next() {
         if parts.peek().is_none() {
-            node.as_object_mut()
-                .ok_or("TypeError: config section does not support item assignment")?
-                .insert(key.into(), value);
-            return Ok(());
+            return node.set(key, value);
         }
-        node = node
-            .as_object_mut()
-            .ok_or("AttributeError: 'non-dict' object has no attribute 'setdefault'")?
-            .entry(key)
-            .or_insert_with(|| Value::Object(Map::new()));
+        if node.entries().is_none() {
+            return Err(format!(
+                "AttributeError: '{}' object has no attribute 'setdefault'",
+                node.type_name()
+            ));
+        }
+        let child = match node.get(key) {
+            Some(v) => v,
+            None => {
+                let v = Value::map();
+                node.set(key, v.clone())?;
+                v
+            }
+        };
+        node = child;
     }
     Ok(())
 }
@@ -70,6 +77,7 @@ pub const ENV: &[(&str, &str)] = &[
     ("DIARY_PORT", "ui.port"),
     ("DIARY_AUTH_TOKEN", "ui.auth_token"),
 ];
+
 /// `config_dir` is the installed config directory, independent of the current directory.
 pub fn load(
     path: Option<&Path>,
@@ -80,58 +88,101 @@ pub fn load(
     let path = path
         .or_else(|| env.get("DIARY_CONFIG").map(Path::new))
         .unwrap_or(&default);
-    let mut data = if path.exists() {
+    let path = if path.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        path
+    };
+    let mut data = if exists(path)? {
         load_yaml(path)?
     } else {
-        Value::Object(Map::new())
+        Value::map()
     };
-    if data.is_null()
-        || data == Value::Bool(false)
-        || data == Value::String(String::new())
-        || data == serde_json::json!([])
-    {
-        data = Value::Object(Map::new());
+    if !data.truthy() {
+        data = Value::map();
     }
     let mut warnings = Vec::new();
+    let decimal_pattern = regex::Regex::new(r"^[\p{Nd}_]+$").ok();
     for &(key, dotted) in ENV {
         if let Some(value) = env.get(key) {
             let converted = match key {
-                "DIARY_PORT" => serde_json::json!(value.trim().parse::<i64>().map_err(
-                    |_| format!("ValueError: invalid literal for int() with base 10: {value:?}")
-                )?),
-                "DIARY_INDEX_ENABLED" => Value::Bool(
+                "DIARY_PORT" => {
+                    let s = value.trim();
+                    let digits = s
+                        .strip_prefix('-')
+                        .or_else(|| s.strip_prefix('+'))
+                        .unwrap_or(s);
+                    if digits.is_empty()
+                        || digits.starts_with('_')
+                        || digits.ends_with('_')
+                        || digits.contains("__")
+                        || !decimal_pattern.as_ref().is_some_and(|r| r.is_match(digits))
+                    {
+                        return Err(format!(
+                            "ValueError: invalid literal for int() with base 10: {}",
+                            repr(value)
+                        ));
+                    }
+                    integer(s, 10)?
+                }
+                "DIARY_INDEX_ENABLED" => Value::new(Kind::Bool(
                     !["0", "false", "no", "off", ""]
-                        .contains(&value.trim().to_lowercase().as_str()),
-                ),
-                _ => Value::String(value.clone()),
+                        .contains(&strip(value).to_lowercase().as_str()),
+                )),
+                _ => Value::string(value),
             };
-            set(&mut data, dotted, converted)?;
+            set(&data, dotted, converted)?;
         }
     }
     if env.contains_key("CORPUS_REMOTE_ROOT") && !env.contains_key("CORPUS_ROOT") {
         warnings.push("CORPUS_REMOTE_ROOT is deprecated; use CORPUS_ROOT".into());
     }
-    let aux = get(&data, "llm.aux.model")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .trim();
-    let chat = get(&data, "llm.chat_model")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .trim()
-        .to_owned();
+    fn model(data: &Value, path: &str) -> Result<String> {
+        let v = get(data, path).unwrap_or_else(Value::null);
+        if !v.truthy() {
+            return Ok(String::new());
+        }
+        v.as_str().map(|s| strip(&s).to_owned()).ok_or_else(|| {
+            format!(
+                "AttributeError: '{}' object has no attribute 'strip'",
+                v.type_name()
+            )
+        })
+    }
+    let with_warnings = |error: String| {
+        format!(
+            "{}{error}",
+            warnings
+                .iter()
+                .map(|w| format!("{w}\n"))
+                .collect::<String>()
+        )
+    };
+    let aux = model(&data, "llm.aux.model").map_err(with_warnings)?;
+    let chat = model(&data, "llm.chat_model").map_err(with_warnings)?;
     if (aux.is_empty() || aux == "default") && !chat.is_empty() && chat != "default" {
-        set(&mut data, "llm.aux.model", Value::String(chat.clone()))?;
-        warnings.push(format!("DIARY_AUX_MODEL is unset (or 'default'); falling back to the chat model '{chat}'. Set DIARY_AUX_MODEL to a smaller model the endpoint serves to make summarising and skip-classification cheaper."));
+        set(&data, "llm.aux.model", Value::string(&chat)).map_err(with_warnings)?;
+        warnings.push(format!("DIARY_AUX_MODEL is unset (or 'default'); falling back to the chat model {}. Set DIARY_AUX_MODEL to a smaller model the endpoint serves to make summarising and skip-classification cheaper.",repr(&chat)));
     }
     Ok(Config { data, warnings })
 }
+fn exists(path: &Path) -> Result<bool> {
+    match std::fs::metadata(path) {
+        Ok(_) => Ok(true),
+        Err(e)
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+            ) || e.raw_os_error() == Some(40) =>
+        {
+            Ok(false)
+        }
+        Err(e) => Err(crate::restore::io(e, path)),
+    }
+}
 pub fn load_yaml(path: &Path) -> Result<Value> {
-    let text = std::fs::read_to_string(path)
-        .map_err(|e| e.to_string())?
-        .replace("\r\n", "\n")
-        .replace('\r', "\n");
-    serde_yaml::from_str(&text).map_err(|e| e.to_string())
+    let bytes = std::fs::read(path).map_err(|e| crate::restore::io(e, path))?;
+    crate::yaml::load(&bytes)
 }
 pub const OPEN_WARNING: &str =
     "DIARY_ALLOW_OPEN=1: serving without DIARY_AUTH_TOKEN or DIARY_TENANT_KEY (LAN-only mode)";
@@ -142,22 +193,23 @@ pub fn enforce_open_mode_policy(
     if !auth_token.is_empty()
         || env
             .get("DIARY_TENANT_KEY")
-            .is_some_and(|v| !v.trim().is_empty())
+            .is_some_and(|v| !strip(v).is_empty())
     {
         return Ok(None);
     }
-    if env.get("DIARY_ALLOW_OPEN").is_some_and(|v| v.trim() == "1") {
+    if env.get("DIARY_ALLOW_OPEN").is_some_and(|v| strip(v) == "1") {
         return Ok(Some(OPEN_WARNING));
     }
     Err("Refusing to start: DIARY_AUTH_TOKEN and DIARY_TENANT_KEY are both empty. Set them, or set DIARY_ALLOW_OPEN=1 to run the LAN-only open mode deliberately.".into())
 }
 pub fn system_prompt(data: &Value, config_dir: &Path) -> Result<String> {
-    let custom = get(data, "prompts.system_path")
-        .and_then(Value::as_str)
-        .map(Path::new);
+    let custom = get(data, "prompts.system_path").and_then(|v| v.as_str());
+    let custom = custom.as_deref().map(Path::new);
     let default = config_dir.join("prompts/system.md");
-    let path = custom.filter(|p| p.exists()).unwrap_or(&default);
-    std::fs::read_to_string(path)
+    let path = match custom {
+        Some(p) if exists(p)? => p,
+        _ => &default,
+    };
+    crate::value::decode_utf8(&std::fs::read(path).map_err(|e| crate::restore::io(e, path))?)
         .map(|s| s.replace("\r\n", "\n").replace('\r', "\n"))
-        .map_err(|e| e.to_string())
 }

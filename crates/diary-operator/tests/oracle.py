@@ -8,13 +8,20 @@ evidence = P(evidence); evidence.mkdir(parents=True, exist_ok=True)
 fixture = evidence / 'fixtures'; fixture.mkdir(exist_ok=True)
 if mode == 'record':
     source = P(target) / 'diary/agent'
-    tree = ast.parse((source/'managed_storage.py').read_text())
+    provenance=json.loads((P(__file__).parent/'fixtures/SOURCE.json').read_text())
+    def original(name):
+        result=subprocess.run(['git','-C',target,'show',provenance['commit']+':diary/agent/'+name],capture_output=True)
+        data=result.stdout if result.returncode==0 else (source/name).read_bytes()
+        assert hashlib.sha256(data).hexdigest()==provenance['sha256']['diary/agent/'+name], 'original source hash mismatch: '+name
+        return data
+    tree = ast.parse(original('managed_storage.py'))
     safe = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'safe_key')
     pkg = evidence/'python/agent'; pkg.mkdir(parents=True,exist_ok=True)
     (pkg/'__init__.py').write_text('')
     (pkg/'managed_storage.py').write_text(ast.unparse(safe)+'\n')
-    shutil.copyfile(source/'backup_restore.py',pkg/'backup_restore.py')
-    shutil.copyfile(source/'config.py',pkg/'config.py')
+    # Freeze the original public implementation even after its __main__ becomes native.
+    (pkg/'backup_restore.py').write_bytes(original('backup_restore.py'))
+    (pkg/'config.py').write_bytes(original('config.py'))
     command = [sys.executable,'-m','agent.backup_restore']
 else: command = [target]
 tenant='00000000-0000-4000-8000-000000000123'

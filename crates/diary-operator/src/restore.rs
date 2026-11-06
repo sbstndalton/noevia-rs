@@ -1,6 +1,5 @@
+use crate::value::{Kind, Value};
 use diary_backup_format::{sha256, tenant_uuid};
-use serde::Serialize;
-use serde_json::Value;
 use std::os::unix::fs::DirBuilderExt;
 use std::{
     fs::{self, OpenOptions},
@@ -11,7 +10,7 @@ type Result<T> = std::result::Result<T, String>;
 fn invalid(text: &str) -> String {
     format!("ValueError: {text}")
 }
-fn io(error: std::io::Error, path: &Path) -> String {
+pub(crate) fn io(error: std::io::Error, path: &Path) -> String {
     let kind = match error.kind() {
         std::io::ErrorKind::NotFound => "FileNotFoundError",
         std::io::ErrorKind::AlreadyExists => "FileExistsError",
@@ -28,14 +27,22 @@ fn io(error: std::io::Error, path: &Path) -> String {
         path.display()
     )
 }
-fn field<'a>(v: &'a Value, key: &str) -> Result<&'a Value> {
-    v.get(key).ok_or_else(|| format!("KeyError: '{key}'"))
+fn field(v: &Value, key: &str) -> Result<Value> {
+    match v.kind() {
+        Kind::Map(_) => v.get(key).ok_or_else(|| format!("KeyError: '{key}'")),
+        Kind::Seq(_) => Err("TypeError: list indices must be integers or slices, not str".into()),
+        Kind::Str(_) => Err("TypeError: string indices must be integers, not 'str'".into()),
+        _ => Err(format!(
+            "TypeError: '{}' object is not subscriptable",
+            v.type_name()
+        )),
+    }
 }
-fn text(v: &Value) -> Result<&str> {
+fn text(v: &Value) -> Result<String> {
     v.as_str()
         .ok_or_else(|| "TypeError: expected string".into())
 }
-fn safe_key(v: &Value) -> Result<&str> {
+fn safe_key(v: &Value) -> Result<String> {
     let s = v.as_str().ok_or_else(|| invalid("Invalid corpus path"))?;
     if s.starts_with('/')
         || s.contains(['\\', '\0'])
@@ -82,7 +89,7 @@ fn mkdir(path: &Path, parents: bool, exist_ok: bool) -> Result<()> {
         Err(e) => Err(io(e, path)),
     }
 }
-#[derive(Serialize, Debug)]
+#[derive(Debug)]
 pub struct Restored {
     pub files: usize,
     pub bytes: usize,
@@ -90,6 +97,14 @@ pub struct Restored {
     pub settings: Value,
 }
 pub fn restore(root: &Path, manifest_path: &Path, destination: &Path) -> Result<Restored> {
+    let destination = if destination.is_absolute() {
+        destination.to_owned()
+    } else {
+        std::env::current_dir()
+            .map_err(|e| io(e, destination))?
+            .join(destination)
+    };
+    let destination = destination.as_path();
     let root = resolve(root)?;
     let manifest_path = resolve(manifest_path)?;
     if destination.exists() {
@@ -105,12 +120,18 @@ pub fn restore(root: &Path, manifest_path: &Path, destination: &Path) -> Result<
             "Manifest checksum does not match its immutable filename",
         ));
     }
-    let manifest: Value =
-        serde_json::from_slice(&body).map_err(|e| format!("JSONDecodeError: {e}"))?;
-    if manifest.get("format").and_then(Value::as_str) != Some("noevia-diary-backup-v1") {
+    let manifest = crate::value::json(&body)?;
+    if manifest.entries().is_none() {
+        return Err(format!(
+            "AttributeError: '{}' object has no attribute 'get'",
+            manifest.type_name()
+        ));
+    }
+    if manifest.get("format").and_then(|v| v.as_str()).as_deref() != Some("noevia-diary-backup-v1")
+    {
         return Err(invalid("Unsupported backup manifest"));
     }
-    let tenant = tenant_uuid(text(field(&manifest, "tenant")?)?)
+    let tenant = tenant_uuid(&text(&field(&manifest, "tenant")?)?)
         .map_err(|_| invalid("badly formed hexadecimal UUID string"))?;
     let files = field(&manifest, "files")?
         .as_array()
@@ -119,41 +140,49 @@ pub fn restore(root: &Path, manifest_path: &Path, destination: &Path) -> Result<
     let mut verified: Vec<(String, Vec<u8>)> = Vec::new();
     let mut total = 0usize;
     for row in files {
-        let relative = safe_key(field(row, "path")?)?;
-        let object = safe_key(field(row, "object")?)?;
+        let relative = safe_key(&field(&row, "path")?)?;
+        let object = safe_key(&field(&row, "object")?)?;
         if !format!("/{object}").contains(&format!("/noevia-backups/{tenant}/objects/")) {
             return Err(invalid("Backup object has the wrong tenant"));
         }
-        let source = resolve(&root.join(object))?;
+        let source = resolve(&root.join(&object))?;
         if source == root
             || !source.starts_with(&root)
-            || verified.iter().any(|(p, _)| p == relative)
+            || verified.iter().any(|(p, _)| p == &relative)
         {
             return Err(invalid("Backup escaped its root or duplicated a path"));
         }
         let data = fs::read(&source).map_err(|e| io(e, &source))?;
         total = total.saturating_add(data.len());
         if total > 1024 * 1024 * 1024
-            || field(row, "sha256")?.as_str() != Some(sha256(&data).as_str())
+            || field(&row, "sha256")?.as_str().as_deref() != Some(sha256(&data).as_str())
         {
             return Err(invalid(
                 "Backup object checksum mismatch or restore exceeds 1 GiB",
             ));
         }
-        verified.push((relative.into(), data));
+        verified.push((relative, data));
     }
-    let empty = Vec::new();
-    let dirs = match manifest.get("directories") {
-        None => &empty,
-        Some(v) => v
-            .as_array()
-            .ok_or("TypeError: directories is not iterable")?,
+    let dirs = match manifest.get("directories").map(|v| v.kind()) {
+        None => Vec::new(),
+        Some(Kind::Seq(v)) => v,
+        Some(Kind::Map(v)) => v.into_iter().map(|(k, _)| k).collect(),
+        Some(Kind::Str(s)) => s.chars().map(|c| Value::string(c.to_string())).collect(),
+        Some(_) => {
+            return Err(format!(
+                "TypeError: '{}' object is not iterable",
+                manifest
+                    .get("directories")
+                    .unwrap_or_else(Value::null)
+                    .type_name()
+            ))
+        }
     };
     let directories = dirs.iter().map(safe_key).collect::<Result<Vec<_>>>()?;
     for path in verified
         .iter()
         .map(|(p, _)| p.as_str())
-        .chain(directories.iter().copied())
+        .chain(directories.iter().map(String::as_str))
     {
         if Path::new(path)
             .ancestors()
@@ -190,24 +219,15 @@ pub fn restore(root: &Path, manifest_path: &Path, destination: &Path) -> Result<
         files: verified.len(),
         bytes: total,
         tenant,
-        settings: manifest
-            .get("settings")
-            .cloned()
-            .unwrap_or_else(|| serde_json::json!({})),
+        settings: manifest.get("settings").unwrap_or_else(Value::map),
     })
 }
-/// Python json.dumps defaults to ensure_ascii, including supplementary-plane surrogate pairs.
-pub fn pretty(value: &impl Serialize) -> Result<String> {
-    let json = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
-    let mut out = String::new();
-    for c in json.chars() {
-        if c.is_ascii() && c != '\u{7f}' {
-            out.push(c);
-        } else {
-            for unit in c.encode_utf16(&mut [0; 2]) {
-                out.push_str(&format!("\\u{unit:04x}"));
-            }
-        }
-    }
-    Ok(out)
+/// The same insertion order and ensure_ascii/float rules as json.dumps(indent=2).
+pub fn pretty(restored: &Restored) -> Result<String> {
+    let map = Value::map();
+    map.set("files", Value::new(Kind::Int(restored.files.to_string())))?;
+    map.set("bytes", Value::new(Kind::Int(restored.bytes.to_string())))?;
+    map.set("tenant", Value::string(&restored.tenant))?;
+    map.set("settings", restored.settings.clone())?;
+    map.pretty()
 }

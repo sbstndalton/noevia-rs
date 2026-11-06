@@ -11,7 +11,7 @@ fn main() -> ExitCode {
             for warning in cfg.warnings {
                 eprintln!("{warning}");
             }
-            match diary_operator::restore::pretty(&cfg.data) {
+            match cfg.data.pretty() {
                 Ok(v) => {
                     println!("{v}");
                     ExitCode::SUCCESS

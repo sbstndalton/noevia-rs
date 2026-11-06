@@ -30,10 +30,34 @@ fn loader_and_prompt() {
         ("DIARY_INDEX_ENABLED".into(), " OFF ".into()),
     ]);
     let cfg = load(None, dir.path(), &env).unwrap();
-    assert_eq!(cfg.data["corpus"]["root"], "legacy");
-    assert_eq!(cfg.data["corpus"]["index_enabled"], false);
-    assert_eq!(cfg.data["ui"]["port"], 8123);
-    assert_eq!(cfg.data["llm"]["aux"]["model"], "synthetic-chat");
+    assert_eq!(
+        diary_operator::config::get(&cfg.data, "corpus.root")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+        "legacy"
+    );
+    assert_eq!(
+        diary_operator::config::get(&cfg.data, "corpus.index_enabled")
+            .unwrap()
+            .pretty()
+            .unwrap(),
+        "false"
+    );
+    assert_eq!(
+        diary_operator::config::get(&cfg.data, "ui.port")
+            .unwrap()
+            .pretty()
+            .unwrap(),
+        "8123"
+    );
+    assert_eq!(
+        diary_operator::config::get(&cfg.data, "llm.aux.model")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+        "synthetic-chat"
+    );
     assert_eq!(
         system_prompt(&cfg.data, dir.path()).unwrap(),
         "synthetic\nprompt"
