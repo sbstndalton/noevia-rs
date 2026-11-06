@@ -55,7 +55,10 @@ pub enum Plan {
 
 pub type Clock = Arc<dyn Fn() -> std::time::SystemTime + Send + Sync>;
 
+#[derive(Clone)]
 pub struct SectionWrites {
+    fence: Option<model_publication::Fence>,
+    publication: PathBuf,
     pub ini: PathBuf,
     /// `settings.cache_ram_limits`: (cap, hard maximum) in MiB.
     pub cache: (i64, i64),
@@ -423,11 +426,24 @@ fn require_revision(base: Option<&Json>, current: &str) -> Result<(), Outcome> {
 }
 
 impl SectionWrites {
+    pub fn for_operation(&self, fence: model_publication::Fence) -> Self {
+        let mut scoped = self.clone();
+        scoped.fence = Some(fence);
+        scoped
+    }
+    pub fn publication_path(&self) -> &Path {
+        &self.publication
+    }
     pub fn new(ini: &Path, cache: (i64, i64)) -> Self {
         Self::with_clock(ini, cache, Arc::new(std::time::SystemTime::now))
     }
     pub fn with_clock(ini: &Path, cache: (i64, i64), clock: Clock) -> Self {
         Self {
+            fence: None,
+            publication: std::env::var_os("NOEVIA_PRESET_AUTHORITY_FILE")
+                .map(PathBuf::from)
+                .or_else(|| model_publication::lock_path(ini))
+                .unwrap_or_else(|| ini.to_owned()),
             ini: ini.to_owned(),
             cache,
             clock,
@@ -504,10 +520,66 @@ impl SectionWrites {
         base: Option<&str>,
         backup: bool,
     ) -> std::io::Result<()> {
+        self.replace_file_checked(text, base, backup, base, None)
+    }
+
+    fn replace_file_checked(
+        &self,
+        text: &str,
+        base: Option<&str>,
+        backup: bool,
+        expected: Option<&str>,
+        fence: Option<&model_publication::Fence>,
+    ) -> std::io::Result<()> {
+        self.replace_file_checked_roles(text, base, backup, expected, fence, None)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn replace_file_checked_roles(
+        &self,
+        text: &str,
+        base: Option<&str>,
+        backup: bool,
+        expected: Option<&str>,
+        fence: Option<&model_publication::Fence>,
+        roles: Option<(&str, Option<&str>)>,
+    ) -> std::io::Result<()> {
+        if matches!((fence,self.fence.as_ref()),(Some(a),Some(b)) if a!=b) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                "conflicting maintenance operation",
+            ));
+        }
+        let fence = fence.or(self.fence.as_ref());
         let path = &self.ini;
         let dir = path
             .parent()
             .ok_or_else(|| std::io::Error::other("no parent"))?;
+        std::fs::create_dir_all(dir)?;
+        let _publication = model_publication::Guard::at(&self.publication)?;
+        if let Some(fence) = fence {
+            if fence.expected_revision.is_none() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    "expected preset revision required",
+                ));
+            }
+            _publication.running(fence)?;
+            _publication.no_other_publishers(fence)?;
+        }
+        if let Some(expected) = expected {
+            let (_, actual) =
+                current(path).map_err(|()| std::io::Error::other("preset read failed"))?;
+            if let Some(fence) = fence {
+                _publication.expected(fence, &actual)?;
+            }
+            if expected != actual {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    "preset revision conflict",
+                ));
+            }
+        }
         let name = path
             .file_name()
             .and_then(|n| n.to_str())
@@ -569,14 +641,35 @@ impl SectionWrites {
             file.write_all(text.as_bytes())?;
             file.flush()?;
             file.sync_all()?;
+            if let Some(fence) = fence {
+                _publication.validate(fence)?;
+            }
             std::fs::rename(&tmp, path)?;
             std::fs::File::open(dir)?.sync_all()
         })();
         let _ = std::fs::remove_file(&tmp);
         result?;
+        if let Some((old, new)) = roles {
+            forget_role(&self.ini, old, new)?;
+        }
         for old in prune {
+            if let Some(fence) = fence {
+                _publication.validate(fence)?;
+            }
             let _ = std::fs::remove_file(old);
         }
+        // Publish the terminal receipt and observed revision before exclusion can be released.
+        if _publication.authority()?.is_some() {
+            _publication.observe_revision(&format!("{:x}", Sha256::digest(text.as_bytes())))?;
+        }
+        if let Some(fence) = fence {
+            _publication.finish(
+                fence,
+                "settled",
+                Some(&format!("{:x}", Sha256::digest(text.as_bytes()))),
+            )?;
+        }
+        _publication.commit()?;
         Ok(())
     }
 }
@@ -748,8 +841,10 @@ impl SectionWrites {
         if !upsert(&mut cp, name, &parsed.values, &parsed.extras, self.cache) {
             return Outcome::Failed;
         }
-        if self.replace_file(&cfg::render(&cp), None, true).is_err() {
-            return Outcome::Failed;
+        if let Err(e) =
+            self.replace_file_checked(&cfg::render(&cp), None, true, Some(&revision), None)
+        {
+            return publication_error(&e);
         }
         match after_write(&self.ini, Some(name)) {
             Ok((rev, section)) => {
@@ -761,6 +856,16 @@ impl SectionWrites {
 
     /// `PUT /api/v1/models-ini`, after the text checks (the caller holds the lock).
     pub fn replace_models_ini(&self, text: &str, base: Option<&Json>, backup: bool) -> Outcome {
+        self.replace_models_ini_fenced(text, base, backup, None)
+    }
+
+    pub fn replace_models_ini_fenced(
+        &self,
+        text: &str,
+        base: Option<&Json>,
+        backup: bool,
+        fence: Option<&model_publication::Fence>,
+    ) -> Outcome {
         let Ok((_, revision)) = current(&self.ini) else {
             return Outcome::Failed;
         };
@@ -771,7 +876,16 @@ impl SectionWrites {
             Some(Json::Str(s)) => Some(s.as_str()),
             _ => None,
         };
-        if self.replace_file(text, base, backup).is_err() {
+        if let Err(e) = self.replace_file_checked(text, base, backup, base, fence) {
+            if e.kind() == std::io::ErrorKind::AlreadyExists {
+                if let Some(fence) = fence {
+                    if let Ok(guard) = model_publication::Guard::at(&self.publication) {
+                        let _ = guard.finish(fence, "conflict", None);
+                        let _ = guard.commit();
+                    }
+                }
+                return publication_error(&e);
+            }
             return detail(
                 500,
                 "models.ini could not be written safely; nothing was changed",
@@ -826,11 +940,15 @@ impl SectionWrites {
                 cfg::render(&cp)
             }
         };
-        if self.replace_file(&text, None, true).is_err() {
-            return Outcome::Failed;
-        }
-        if forget_role(&self.ini, old, Some(new)).is_err() {
-            return Outcome::Failed;
+        if let Err(e) = self.replace_file_checked_roles(
+            &text,
+            None,
+            true,
+            Some(&revision),
+            None,
+            Some((old, Some(new))),
+        ) {
+            return publication_error(&e);
         }
         match after_write(&self.ini, None) {
             Ok((rev, _)) => Outcome::Json(200, ok_body(&rev, "")),
@@ -854,11 +972,15 @@ impl SectionWrites {
         if !cp.remove_section(name) {
             return detail(404, "section not found");
         }
-        if self.replace_file(&cfg::render(&cp), None, true).is_err() {
-            return Outcome::Failed;
-        }
-        if forget_role(&self.ini, name, None).is_err() {
-            return Outcome::Failed;
+        if let Err(e) = self.replace_file_checked_roles(
+            &cfg::render(&cp),
+            None,
+            true,
+            Some(&revision),
+            None,
+            Some((name, None)),
+        ) {
+            return publication_error(&e);
         }
         match after_write(&self.ini, None) {
             Ok((rev, _)) => Outcome::Json(200, ok_body(&rev, "")),
@@ -873,7 +995,7 @@ impl SectionWrites {
             Plan::Refused(status, message) => return detail(status, &message),
             Plan::Values(values, mtp) => (values, mtp),
         };
-        let Ok((bytes, _)) = current(&self.ini) else {
+        let Ok((bytes, revision)) = current(&self.ini) else {
             return Outcome::Failed;
         };
         let mut cp = match read_ini(bytes.as_deref(), true) {
@@ -883,8 +1005,10 @@ impl SectionWrites {
         if !upsert(&mut cp, name, &values, "", self.cache) {
             return Outcome::Failed;
         }
-        if self.replace_file(&cfg::render(&cp), None, true).is_err() {
-            return Outcome::Failed;
+        if let Err(e) =
+            self.replace_file_checked(&cfg::render(&cp), None, true, Some(&revision), None)
+        {
+            return publication_error(&e);
         }
         match after_write(&self.ini, Some(name)) {
             Ok((rev, section)) => Outcome::Json(
@@ -958,7 +1082,7 @@ impl SectionWrites {
         if !self.ini.exists() {
             return Ok(Vec::new());
         }
-        let (bytes, _) = current(&self.ini).map_err(|()| "models.ini could not be read")?;
+        let (bytes, revision) = current(&self.ini).map_err(|()| "models.ini could not be read")?;
         let mut cp = read_ini(bytes.as_deref(), true).map_err(|o| match o {
             Outcome::Json(409, _) => "models.ini has repeated sections",
             _ => "models.ini could not be parsed",
@@ -979,7 +1103,7 @@ impl SectionWrites {
             }
         }
         if !changed.is_empty() {
-            self.replace_file(&cfg::render(&cp), None, true)
+            self.replace_file_checked(&cfg::render(&cp), None, true, Some(&revision), None)
                 .map_err(|_| "models.ini could not be written safely; nothing was changed")?;
         }
         Ok(changed)
@@ -1082,3 +1206,48 @@ pub fn parse_plan(bytes: &[u8]) -> Option<Plan> {
 
 #[cfg(test)]
 mod tests;
+
+fn publication_error(e: &std::io::Error) -> Outcome {
+    if e.kind() == std::io::ErrorKind::AlreadyExists {
+        detail(
+            409,
+            "models.ini changed since you loaded it. Reload, review, then save again.",
+        )
+    } else {
+        Outcome::Failed
+    }
+}
+
+pub fn publication_fence(
+    value: Option<&Json>,
+) -> Result<Option<model_publication::Fence>, Outcome> {
+    let Some(value) = value.filter(|v| !matches!(v, Json::Null)) else {
+        return Ok(None);
+    };
+    let string = |key| match value.get(key) {
+        Some(Json::Str(s)) if !s.is_empty() && s.len() <= 128 => Some(s.clone()),
+        _ => None,
+    };
+    let generation = match value.get("generation") {
+        Some(Json::Int(n)) => n.to_string().parse::<u64>().ok(),
+        _ => None,
+    };
+    match (
+        string("incarnation"),
+        string("lease"),
+        generation,
+        string("operation"),
+    ) {
+        (Some(incarnation), Some(lease), Some(generation), Some(operation)) => {
+            Ok(Some(model_publication::Fence {
+                incarnation,
+                lease,
+                generation,
+                operation,
+                kind: string("kind").unwrap_or_else(|| "legacy".into()),
+                expected_revision: string("expectedRevision"),
+            }))
+        }
+        _ => Err(detail(409, "Stale maintenance operation.")),
+    }
+}

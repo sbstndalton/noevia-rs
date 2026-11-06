@@ -16,6 +16,7 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_millis(8000);
 /// What a request settles to (a rejection is `Err(Fault)`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Reply {
+    pub uncertain: bool,
     pub ok: bool,
     pub status: u16,
     /// `None`: the response was too large to read (fetchJson answers `{ok:false, error}` with no body).
@@ -29,6 +30,7 @@ pub struct Fault;
 
 #[derive(Clone)]
 pub struct Router {
+    operation: Option<model_publication::Fence>,
     client: reqwest::Client,
     base: String,
     authorization: Option<HeaderValue>,
@@ -58,6 +60,7 @@ impl Router {
             .filter(|k| !k.is_empty() && *k != "local")
             .and_then(|k| HeaderValue::from_str(&format!("Bearer {k}")).ok());
         Ok(Router {
+            operation: None,
             client,
             base: base.to_owned(),
             authorization,
@@ -77,6 +80,12 @@ impl Router {
         self.budget_preset = preset;
         self.budget_node = Some(node);
         self
+    }
+
+    pub(crate) fn with_operation(&self, fence: &model_publication::Fence) -> Self {
+        let mut router = self.clone();
+        router.operation = Some(fence.clone());
+        router
     }
 
     pub fn base(&self) -> &str {
@@ -156,6 +165,7 @@ impl Router {
                 };
                 if fenced {
                     return Ok(Reply {
+                        uncertain: false,
                         ok: false,
                         status: 409,
                         body: Some(
@@ -184,13 +194,24 @@ impl Router {
         if let Some(b) = body {
             req = req.body(b.to_string());
         }
+        if let Some(fence) = &self.operation {
+            req = req.header(
+                "x-noevia-maintenance-fence",
+                serde_json::to_string(fence).map_err(|_| Fault)?,
+            );
+        }
         let res = req.send().await.map_err(|_| Fault)?;
+        let uncertain = res
+            .headers()
+            .get("x-noevia-maintenance-uncertain")
+            .is_some_and(|v| v == "1");
         let status = res.status().as_u16();
         let ok = res.status().is_success();
         let bytes = match read_capped(res).await {
             Ok(Some(b)) => b,
             Ok(None) => {
                 return Ok(Reply {
+                    uncertain,
                     ok: false,
                     status,
                     body: None,
@@ -203,6 +224,7 @@ impl Router {
             Err(_) => Value::String(String::from_utf8_lossy(&bytes).into_owned()),
         };
         Ok(Reply {
+            uncertain,
             ok,
             status,
             body: Some(body),

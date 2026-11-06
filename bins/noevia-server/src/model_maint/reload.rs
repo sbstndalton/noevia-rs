@@ -1256,7 +1256,16 @@ impl Maint {
         holding: &Hold,
         expect: Option<&str>,
     ) -> Result<Result<super::router::Reply, &'static str>, ()> {
-        let before = self.ini_text().await;
+        let before = if let Some(ini) = &self.ini {
+            Some(
+                ini.snapshot_covered(holding.write_fence())
+                    .await
+                    .map_err(|_| ())?
+                    .text,
+            )
+        } else {
+            self.ini_text().await
+        };
         if let Some(expect) = expect {
             if before.as_deref() != Some(expect) {
                 return Ok(Err("file_changed"));
@@ -1266,6 +1275,11 @@ impl Maint {
         if !holding.may_start(RELOAD_LIMIT) {
             return Ok(Err("lease_lost"));
         }
+        let expected_revision = before.as_deref().map(super::ini::sha);
+        let mut operation = holding
+            .begin_operation("reload", expected_revision.as_deref())
+            .ok_or(())?;
+        let router = router.with_operation(&operation.fence);
         let ticket = self.guard.begin(ORIGIN_RUST).ticket;
         let token = holding.token();
         let result = router
@@ -1278,6 +1292,9 @@ impl Maint {
                 return Err(());
             }
         };
+        if !reply.uncertain {
+            operation.settled = operation.authority.settle_operation(&operation.fence);
+        }
         if !reply.ok {
             self.settle(ticket, Settle::Forget).await;
             return Ok(Ok(reply));
@@ -1297,6 +1314,7 @@ impl Maint {
             _ => Settle::Forget,
         };
         self.settle(ticket, outcome).await;
+        operation.settled = operation.authority.settle_operation(&operation.fence);
         Ok(Ok(reply))
     }
 

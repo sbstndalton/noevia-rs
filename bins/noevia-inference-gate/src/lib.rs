@@ -74,6 +74,8 @@ use tokio::sync::{oneshot, Notify, Semaphore};
 /// The gate's configuration.
 #[derive(Clone)]
 pub struct GateConfig {
+    pub publication_authority: Option<std::path::PathBuf>,
+    pub publication_url: Option<String>,
     pub listen: SocketAddr,
     /// The router's base URL, `http://host:port` without a trailing slash.
     pub upstream: String,
@@ -128,6 +130,8 @@ impl GateConfig {
     /// Production defaults around a listen address and an upstream.
     pub fn defaults(listen: SocketAddr, upstream: String) -> Self {
         Self {
+            publication_authority: None,
+            publication_url: None,
             listen,
             upstream,
             admin_token: None,

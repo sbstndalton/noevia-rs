@@ -316,6 +316,11 @@ const FIELDS: &[(&str, &[&str])] = &[
     ("repeat-penalty", &[]),
 ];
 
+/// `Object.keys(fields)`: the editable options, in `fields` order.
+pub(crate) fn field_names() -> Vec<&'static str> {
+    FIELDS.iter().map(|(k, _)| *k).collect()
+}
+
 pub(crate) fn canonical(key: &str) -> Option<&'static str> {
     FIELDS
         .iter()
@@ -324,7 +329,7 @@ pub(crate) fn canonical(key: &str) -> Option<&'static str> {
 }
 
 /// ECMAScript `\s`.
-fn js_space(c: char) -> bool {
+pub(crate) fn js_space(c: char) -> bool {
     u16::try_from(u32::from(c)).is_ok_and(server_stats::js::is_space)
 }
 
@@ -400,12 +405,12 @@ impl Thrown {
     }
 }
 
-struct Section {
-    name: String,
-    start: usize,
-    end: usize,
+pub(crate) struct Section {
+    pub(crate) name: String,
+    pub(crate) start: usize,
+    pub(crate) end: usize,
     /// Canonical key and value, in the object's insertion order (a later line keeps the place).
-    options: Vec<(&'static str, String)>,
+    pub(crate) options: Vec<(&'static str, String)>,
 }
 
 /// A section's canonical options, in insertion order.
@@ -415,8 +420,8 @@ pub struct Presets {
     pub revision: String,
     /// The file's text as read (UTF-8, lossy), which `revision` hashes.
     pub text: String,
-    lines: Vec<String>,
-    sections: Vec<Section>,
+    pub(crate) lines: Vec<String>,
+    pub(crate) sections: Vec<Section>,
 }
 
 fn put(options: &mut Vec<(&'static str, String)>, key: &'static str, value: String) {
@@ -436,7 +441,11 @@ pub fn read_presets(file: &Path) -> Result<Presets, Thrown> {
         });
     }
     let bytes = std::fs::read(file).map_err(|e| Thrown::plain(e.to_string()))?;
-    let text = String::from_utf8_lossy(&bytes).into_owned();
+    parse_presets(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// llamacpp-presets.cjs `parse(text)` with the revision of `text`.
+pub(crate) fn parse_presets(text: String) -> Result<Presets, Thrown> {
     if text.len() > 1024 * 1024 {
         return Err(Thrown {
             status: Some(413),
@@ -488,7 +497,7 @@ fn hex(text: &str) -> String {
 }
 
 impl Presets {
-    fn section(&self, name: &str) -> Option<&Section> {
+    pub(crate) fn section(&self, name: &str) -> Option<&Section> {
         self.sections.iter().find(|s| s.name == name)
     }
 
@@ -1132,6 +1141,18 @@ impl Sizing {
     }
 }
 
+/// A model whose files and metadata were read.
+pub(crate) struct Readable(ModelRead);
+
+/// Why a footprint could not be told.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FootprintFault {
+    /// No presets or model mount, or the model's files or metadata cannot be read.
+    Unreadable,
+    /// The sizing port refused to confirm the estimate (core: `AutoconfigImplError`).
+    Refused,
+}
+
 impl Sizing {
     /// llamacpp-manager.cjs `footprint`: what loading `model` with its current preset would use, as the port's JSON
     /// text, or `None` when it cannot be told (no presets or model mount, unreadable metadata, a port refusal).
@@ -1141,20 +1162,62 @@ impl Sizing {
             return None;
         }
         let current = read_presets(file).ok()?.current(model);
-        let read = self.read_model(file, model, listing).ok()?;
+        self.footprint_with(model, listing, &current).ok()
+    }
+
+    /// The model's files and metadata, as the editor's dry run reads them (`readModel`): an
+    /// unreadable model is no estimate. `listing` is the router's listing `modelFiles` asked for.
+    pub(crate) fn readable(&self, model: &str, listing: &Read) -> Result<Readable, FootprintFault> {
+        let file = self.presets.as_deref().ok_or(FootprintFault::Unreadable)?;
+        if self.models_path.is_empty() {
+            return Err(FootprintFault::Unreadable);
+        }
+        self.read_model(file, model, listing)
+            .map(Readable)
+            .map_err(|_| FootprintFault::Unreadable)
+    }
+
+    /// `estimateFootprint` of a readable model over `options`. Only a port refusal fails.
+    pub(crate) fn footprint_of(
+        &self,
+        read: &Readable,
+        model: &str,
+        options: &[(&'static str, String)],
+    ) -> Result<String, FootprintFault> {
+        let read = &read.0;
         let args = format!(
             r#"{{"meta":{},"modelBytes":{},"mmprojBytes":{},"options":{},"model":{}}}"#,
             meta_json(&read.summary),
             num(read.model_bytes as f64),
             num(read.mmproj_bytes as f64),
-            current_json(&current),
+            current_json(options),
             js_string(model),
         );
-        port(3, &args)
+        port(3, &args).ok_or(FootprintFault::Refused)
+    }
+
+    /// `estimateFootprint` over `options` instead of the file's current ones.
+    pub(crate) fn footprint_with(
+        &self,
+        model: &str,
+        listing: &Read,
+        options: &[(&'static str, String)],
+    ) -> Result<String, FootprintFault> {
+        let read = self.readable(model, listing)?;
+        self.footprint_of(&read, model, options)
+    }
+
+    /// `cacheRamLimits(env)`: (`hardMaxMib`, `capMib`).
+    pub(crate) fn preset_cache_ram_limits(&self) -> (f64, f64) {
+        (self.cache_ram_hard_max_mib, self.cache_ram_max_mib)
+    }
+
+    /// Whether a models mount is configured (`autoconfig.modelsPath`).
+    pub(crate) fn has_models_mount(&self) -> bool {
+        !self.models_path.is_empty()
     }
 }
 
-/// `url.searchParams.get('model')` of the request target.
 pub fn model_param(uri: &axum::http::Uri) -> Option<String> {
     let target = uri
         .path_and_query()

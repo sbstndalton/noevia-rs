@@ -161,6 +161,7 @@ fn files(dir: &Path) -> Vec<(String, Vec<u8>)> {
                 std::fs::read(e.path()).unwrap(),
             )
         })
+        .filter(|(name, _)| name != ".models.ini.noevia-publication.sqlite")
         .collect();
     out.sort();
     out
@@ -400,4 +401,34 @@ fn system_routing_section_follows_the_roles_not_the_other_spelling() {
     // Another section's role does not carry over, and neither does the wildcard.
     assert!(!system_routing_section(&cp, "b", &roles("system-routing")));
     assert!(!system_routing_section(&cp, "*", &roles("system-routing")));
+}
+
+#[test]
+fn loader_publication_rechecks_revision_after_an_independent_publisher() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("models.ini");
+    std::fs::write(&file, "[m]\nmodel = /models/m.gguf\n").unwrap();
+    let (_, expected) = current(&file).unwrap();
+    // The client planned against expected, then a separate process published a new file.
+    let status = std::process::Command::new("python3")
+        .args(["-c", "import os,sys; p=sys.argv[1]; f=open(p+'.peer','w'); f.write('[other]\\nmodel = /models/o.gguf\\n'); f.flush(); os.fsync(f.fileno()); f.close(); os.replace(p+'.peer',p)"])
+        .arg(&file).status().unwrap();
+    assert!(status.success());
+    let writer = SectionWrites::new(&file, (1024, 2048));
+    let e = writer
+        .replace_file("[m]\nctx-size = 8192\n", Some(&expected), true)
+        .unwrap_err();
+    assert_eq!(e.kind(), std::io::ErrorKind::AlreadyExists);
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        "[other]\nmodel = /models/o.gguf\n"
+    );
+    // Legacy lower-level publications without a revision retain their API behavior.
+    writer
+        .replace_file("[legacy]\nmodel = /models/l.gguf\n", None, false)
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(file).unwrap(),
+        "[legacy]\nmodel = /models/l.gguf\n"
+    );
 }

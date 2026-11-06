@@ -16,6 +16,7 @@
 //! way, but a lease that ends is never taken again: [`Hold::may_start`] stops the work before any step
 //! the lease is not sure to outlast, because Node's work may run once it ends.
 
+use super::lease;
 use super::node_lease::{LeaseGrant, NodeLeases};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE};
 use serde_json::Value;
@@ -29,8 +30,6 @@ const CLIENT_HEADER: &str = "x-noevia-client";
 const CALL_TIMEOUT: Duration = Duration::from_secs(5);
 /// A gate found without the hold API is asked again after this.
 const REPROBE: Duration = Duration::from_secs(5 * 60);
-/// How long a renewal that finds the hold gone waits for the engine when it takes the hold again.
-const RETAKE_WAIT: Duration = Duration::from_secs(10);
 const MAX_WAIT: Duration = Duration::from_secs(600);
 
 /// A hold the gate granted.
@@ -38,6 +37,7 @@ const MAX_WAIT: Duration = Duration::from_secs(600);
 pub struct Grant {
     pub token: String,
     pub idle_ttl: Duration,
+    pub asked: Instant,
 }
 
 /// Why the gate gave no hold.
@@ -208,16 +208,25 @@ impl Gate {
     /// Takes the gate's maintenance hold, waiting up to `wait` for the engine to be idle.
     /// `Ok(None)`: no admin token, or nothing at the engine address knows the hold.
     pub async fn hold(&self, reason: &str, wait: Duration) -> Result<Option<Grant>, GateFault> {
+        self.hold_authorized(reason, wait, None).await
+    }
+    pub(super) async fn hold_authorized(
+        &self,
+        reason: &str,
+        wait: Duration,
+        fence: Option<&model_publication::Fence>,
+    ) -> Result<Option<Grant>, GateFault> {
         if self.token.is_none() || self.absent() {
             return Ok(None);
         }
         let wait = wait.min(MAX_WAIT);
         let wait_ms = u64::try_from(wait.as_millis()).unwrap_or(0);
+        let asked = Instant::now();
         let (status, body) = self
             .call(
                 reqwest::Method::POST,
                 "/gate/v1/maintenance",
-                Some(serde_json::json!({ "reason": clip(reason, 300), "wait_ms": wait_ms })),
+                Some(serde_json::json!({ "reason": clip(reason, 300), "wait_ms": wait_ms, "idle_ttl_ms": 600_000, "maintenance": fence })),
                 wait + Duration::from_secs(10),
             )
             .await?;
@@ -240,6 +249,7 @@ impl Gate {
                 return Ok(Some(Grant {
                     token: token.to_owned(),
                     idle_ttl: Duration::from_millis(ttl),
+                    asked,
                 }));
             }
         }
@@ -343,13 +353,22 @@ struct Shared {
     lease_ttl: Option<Duration>,
     /// When Node ends the lease whatever happens.
     lease_end: Option<Instant>,
+    /// The gate's idle limit of a gate-backed hold. It is kept alive by renewals: the hold counts as
+    /// covered only while a renewal confirmed it recently (the last confirmation is in `confirmed`).
+    gate_ttl: Option<Duration>,
+    /// Exclusion was lost for good: Node ended the lease, or the gate had forgotten the hold. A hold that
+    /// was lost never covers a step again, even if the renewer takes a new grant to keep others out
+    /// (D2 review P1: work that lost its exclusion must not resume under a later one).
     lost: AtomicBool,
     // Independent lease identity: taking the renewal token never proves DELETE completed.
     lease_id: Option<String>,
+    node_generation: u64,
     // Upper bound measured after the grant arrived, unlike confirmed/lease_end (lower bounds).
     expires_by: Option<Instant>,
     release: Mutex<ReleaseState>,
     release_wake: tokio::sync::Notify,
+    /// The authority's lease this hold is (row J): its fence. `None` for the gate's hold.
+    auth: Option<(lease::Authority, lease::Grant)>,
 }
 
 impl Shared {
@@ -362,6 +381,7 @@ impl Shared {
     ) -> Arc<Shared> {
         Arc::new(Shared {
             lease_id: lease_ttl.and(token.clone()),
+            node_generation: 0,
             expires_by,
             release: Mutex::new(ReleaseState::Idle),
             release_wake: tokio::sync::Notify::new(),
@@ -372,8 +392,50 @@ impl Shared {
             confirmed: Mutex::new(Instant::now()),
             lease_ttl,
             lease_end,
+            gate_ttl: None,
+            auth: None,
             lost: AtomicBool::new(false),
         })
+    }
+
+    fn gated(
+        token: String,
+        deadline: Instant,
+        idle_ttl: Duration,
+        asked: Instant,
+        auth: Option<(lease::Authority, lease::Grant)>,
+    ) -> Arc<Shared> {
+        Arc::new(Shared {
+            token: Mutex::new(Some(token)),
+            released: AtomicBool::new(false),
+            wake: tokio::sync::Notify::new(),
+            deadline: Mutex::new(deadline),
+            confirmed: Mutex::new(asked),
+            lease_ttl: None,
+            lease_end: None,
+            gate_ttl: Some(idle_ttl),
+            lost: AtomicBool::new(false),
+            lease_id: None,
+            node_generation: 0,
+            expires_by: None,
+            release: Mutex::new(ReleaseState::Idle),
+            release_wake: tokio::sync::Notify::new(),
+            auth,
+        })
+    }
+
+    /// Whether the authority still holds this lease, covering `step` from now (no authority: true).
+    fn fenced(&self, step: Duration) -> bool {
+        self.auth
+            .as_ref()
+            .is_none_or(|(a, g)| a.covers(&g.id, g.generation, step))
+    }
+
+    /// Gives the authority's lease back at once; idempotent, synchronous.
+    fn release_authority(&self) {
+        if let Some((a, g)) = self.auth.as_ref() {
+            a.release(&g.id, Some(g.generation));
+        }
     }
 
     fn deadline(&self) -> Instant {
@@ -409,6 +471,21 @@ impl Shared {
             }
             *state = ReleaseState::Pending;
         }
+        let needs_recovery = self.lost.load(Ordering::Acquire)
+            || !self.fenced(Duration::ZERO)
+            || self
+                .auth
+                .as_ref()
+                .is_some_and(|(a, _)| a.recovery_pending());
+        let recovery_ticket = if needs_recovery {
+            Some(self.auth.as_ref().map_or_else(
+                || self.lease_id.clone().unwrap_or_default(),
+                |(a, _)| a.require_recovery(),
+            ))
+        } else {
+            None
+        };
+        self.release_authority();
         self.released.store(true, Ordering::Release);
         self.wake.notify_one();
         let shared = Arc::clone(self);
@@ -417,6 +494,24 @@ impl Shared {
             let mut wait = Duration::from_millis(100);
             let outcome = loop {
                 let now = Instant::now();
+                // Acknowledged barrier precedes relinquishing the old latch. If Node is down,
+                // authority registration reconstructs exclusion; retry without opening admission.
+                let still_required = shared
+                    .auth
+                    .as_ref()
+                    .is_none_or(|(a, _)| a.recovery_pending());
+                if now >= until {
+                    break ReleaseState::Unconfirmed;
+                }
+                if needs_recovery
+                    && still_required
+                    && !node
+                        .recovery_barrier(true, recovery_ticket.as_deref().unwrap_or_default())
+                        .await
+                {
+                    tokio::time::sleep(wait).await;
+                    continue;
+                }
                 if shared.expires_by.is_some_and(|at| now >= at) {
                     break ReleaseState::Expired;
                 }
@@ -447,7 +542,7 @@ impl Shared {
 
 /// Local admission transferred to a durable finalization fence. Dropping a task must not
 /// clear it: only verified finalization/recovery explicitly releases this reservation.
-pub(super) struct AdmissionFence {
+pub(crate) struct AdmissionFence {
     local: Arc<AtomicBool>,
 }
 impl AdmissionFence {
@@ -457,7 +552,7 @@ impl AdmissionFence {
             .ok()?;
         Some(Self { local })
     }
-    pub(super) fn release(self) {
+    pub(crate) fn release(self) {
         self.local.store(false, Ordering::Release);
     }
 }
@@ -482,7 +577,14 @@ impl std::fmt::Debug for Hold {
 }
 
 impl Hold {
-    pub(super) fn defer_local_release(&mut self) -> AdmissionFence {
+    pub(crate) fn recovery_proof(&self) -> Option<(&str, u64)> {
+        self.shared
+            .lease_id
+            .as_deref()
+            .map(|id| (id, self.shared.node_generation))
+    }
+
+    pub(crate) fn defer_local_release(&mut self) -> AdmissionFence {
         self.local_finished = true;
         AdmissionFence {
             local: Arc::clone(&self.local),
@@ -494,16 +596,21 @@ impl Hold {
         local: Arc<AtomicBool>,
         node: Arc<NodeLeases>,
         grant: LeaseGrant,
+        auth: Option<(lease::Authority, lease::Grant)>,
         reason: &str,
         deadline: Instant,
     ) -> Hold {
-        let shared = Shared::new(
+        let mut shared = Shared::new(
             Some(grant.id),
             deadline,
             Some(grant.ttl),
             Some(grant.asked + grant.hard),
             Some(Instant::now() + grant.hard + EXPIRY_MARGIN),
         );
+        if let Some(inner) = Arc::get_mut(&mut shared) {
+            inner.auth = auth;
+            inner.node_generation = grant.generation;
+        }
         if let Ok(mut at) = shared.confirmed.lock() {
             *at = grant.asked;
         }
@@ -524,11 +631,14 @@ impl Hold {
         local: Arc<AtomicBool>,
         gate: Arc<Gate>,
         grant: Grant,
+        auth: Option<(lease::Authority, lease::Grant)>,
         reason: &str,
         deadline: Instant,
     ) -> Hold {
-        let shared = Shared::new(Some(grant.token), deadline, None, None, None);
-        let every = (grant.idle_ttl / 3).max(Duration::from_secs(1));
+        let shared = Shared::gated(grant.token, deadline, grant.idle_ttl, grant.asked, auth);
+        let every = (grant.idle_ttl / 3)
+            .max(Duration::from_secs(1))
+            .min(lease::RENEW);
         tokio::spawn(renew_loop(
             Arc::clone(&shared),
             Arc::clone(&gate),
@@ -559,16 +669,18 @@ impl Hold {
     /// end under a call in flight, even if Node stops hearing renewals now. Always true for the gate's
     /// hold, which goes on as it always did.
     pub fn may_start(&self, limit: Duration) -> bool {
-        let Some(ttl) = self.shared.lease_ttl else {
-            return true;
-        };
+        if self.shared.lost.load(Ordering::Acquire) || self.shared.released.load(Ordering::Acquire)
+        {
+            return false;
+        }
         let covered = |until: Instant| Instant::now() + limit + STEP_MARGIN < until;
-        !self.shared.lost.load(Ordering::Acquire)
-            && self
-                .shared
+        let ttl = self.shared.lease_ttl.or(self.shared.gate_ttl);
+        ttl.is_some_and(|ttl| {
+            self.shared
                 .confirmed
                 .lock()
                 .is_ok_and(|at| covered(*at + ttl))
+        }) && self.shared.fenced(limit + STEP_MARGIN)
             && self.shared.lease_end.is_none_or(covered)
     }
 
@@ -579,12 +691,32 @@ impl Hold {
         {
             return false;
         }
-        let Some(ttl) = self.shared.lease_ttl else {
-            return true;
+        let Some(ttl) = self.shared.lease_ttl.or(self.shared.gate_ttl) else {
+            return false;
         };
         let now = Instant::now();
-        self.shared.confirmed.lock().is_ok_and(|at| now < *at + ttl)
+        self.shared.fenced(Duration::ZERO)
+            && self.shared.confirmed.lock().is_ok_and(|at| now < *at + ttl)
             && self.shared.lease_end.is_none_or(|end| now < end)
+    }
+
+    /// Owned exact-hold fence for asynchronous CAS resolvers. It never follows a replacement lease.
+    pub(crate) fn write_fence(&self) -> super::ini::WriteAllowed {
+        let shared = Arc::clone(&self.shared);
+        super::ini::WriteAllowed::held(
+            Arc::new(move || {
+                !shared.lost.load(Ordering::Acquire)
+                    && !shared.released.load(Ordering::Acquire)
+                    && shared.lease_ttl.or(shared.gate_ttl).is_some_and(|ttl| {
+                        shared
+                            .confirmed
+                            .lock()
+                            .is_ok_and(|at| Instant::now() < *at + ttl)
+                    })
+                    && shared.lease_end.is_none_or(|end| Instant::now() < end)
+            }),
+            self.shared.auth.clone(),
+        )
     }
 
     /// Makes the deadline at least `needed` from now: the work has found out how long it may take.
@@ -592,6 +724,25 @@ impl Hold {
         if let Ok(mut d) = self.shared.deadline.lock() {
             *d = (*d).max(Instant::now() + needed);
         }
+    }
+
+    pub(super) fn operation(&self) -> Option<super::ini::PublicationOperation> {
+        self.begin_operation("control", None)
+    }
+    pub(crate) fn begin_operation(
+        &self,
+        kind: &str,
+        expected_revision: Option<&str>,
+    ) -> Option<super::ini::PublicationOperation> {
+        if !self.write_fence()() {
+            return None;
+        }
+        let (authority, grant) = self.shared.auth.as_ref()?;
+        Some(super::ini::PublicationOperation {
+            authority: authority.clone(),
+            fence: authority.begin_operation(grant, kind, expected_revision)?,
+            settled: false,
+        })
     }
 
     /// Whether the gate (not just this process) holds the engine.
@@ -670,6 +821,14 @@ impl Hold {
     }
 
     fn finish(&mut self) {
+        if self.gate.is_some() && !self.shared.released.load(Ordering::Acquire) {
+            if let Some((authority, _)) = &self.shared.auth {
+                if self.shared.lost.load(Ordering::Acquire) {
+                    authority.require_recovery();
+                }
+            }
+            self.shared.release_authority();
+        }
         self.shared.released.store(true, Ordering::Release);
         self.shared.wake.notify_one();
         if !self.local_finished {
@@ -699,7 +858,7 @@ impl Drop for Hold {
     }
 }
 
-async fn renew_loop(shared: Arc<Shared>, gate: Arc<Gate>, every: Duration, reason: String) {
+async fn renew_loop(shared: Arc<Shared>, gate: Arc<Gate>, every: Duration, _reason: String) {
     loop {
         if Instant::now() >= shared.deadline() {
             break;
@@ -714,32 +873,34 @@ async fn renew_loop(shared: Arc<Shared>, gate: Arc<Gate>, every: Duration, reaso
         let Some(token) = shared.token.lock().ok().and_then(|t| t.clone()) else {
             return;
         };
-        if gate.renew(&token, None).await == Some(false) {
-            // The gate has forgotten the hold: take it again, briefly waiting for the engine.
-            match gate.hold(&reason, RETAKE_WAIT).await {
-                Ok(Some(g)) => {
-                    if shared.released.load(Ordering::Acquire) {
-                        gate.release(&g.token).await;
-                        return;
-                    }
-                    if let Ok(mut t) = shared.token.lock() {
-                        *t = Some(g.token);
-                    }
-                    eprintln!("[inference-gate] the gate had lost this process's maintenance hold; it was taken again");
-                }
-                _ => {
-                    if let Ok(mut t) = shared.token.lock() {
-                        *t = None;
-                    }
-                    shared.lost.store(true, Ordering::Release);
-                    eprintln!("[inference-gate] the gate lost this process's maintenance hold and it could not be taken again; this work goes on without it, so other clients may use the engine until it ends");
-                    return;
-                }
+        let asked = Instant::now();
+        let renewed = gate.renew(&token, None).await;
+        if renewed == Some(true) {
+            if let Ok(mut at) = shared.confirmed.lock() {
+                *at = asked;
+            }
+        }
+        if renewed != Some(true) {
+            shared.lost.store(true, Ordering::Release);
+            if let Some((authority, grant)) = &shared.auth {
+                authority.fence_grant(grant);
+            }
+            return;
+        }
+        if let Some((authority, grant)) = &shared.auth {
+            if !authority.renew(&grant.id, Some(grant.generation)) {
+                shared.lost.store(true, Ordering::Release);
+                authority.require_recovery();
+                return;
             }
         }
     }
-    // The deadline: the work is overdue. The hold is given back so it cannot outlive its work.
+    // The deadline ends execution authority, not the recovery obligation or outstanding effects.
     shared.lost.store(true, Ordering::Release);
+    if let Some((authority, grant)) = &shared.auth {
+        authority.fence_grant(grant);
+    }
+    shared.release_authority();
     let token = shared.token.lock().ok().and_then(|mut t| t.take());
     if let Some(token) = token {
         eprintln!("[inference-gate] a maintenance hold passed its deadline and was given back");
@@ -758,6 +919,13 @@ async fn lease_loop(shared: Arc<Shared>, node: Arc<NodeLeases>, every: Duration)
         let Some(id) = shared.token.lock().ok().and_then(|t| t.clone()) else {
             return;
         };
+        if let Some((a, g)) = shared.auth.as_ref() {
+            if !a.renew(&g.id, Some(g.generation)) {
+                shared.lost.store(true, Ordering::Release);
+                eprintln!("[models] the maintenance lease authority ended this front's lease; the work stops before its next step");
+                break;
+            }
+        }
         let asked = Instant::now();
         match node.renew(&id).await {
             Some(true) => {
@@ -806,7 +974,9 @@ mod tests {
         let app = axum::Router::new().fallback(move |r: Request<Body>| {
             let (seen, proceed, ack) = (Arc::clone(&a), Arc::clone(&b), Arc::clone(&c));
             async move {
-                if r.method() == "DELETE" {
+                if r.uri().path().contains("/recovery/") {
+                    Response::builder().status(204).body(Body::empty()).unwrap()
+                } else if r.method() == "DELETE" {
                     seen.notify_one();
                     proceed.notified().await;
                     ack.store(true, Ordering::Release);
@@ -830,11 +1000,13 @@ mod tests {
             node,
             LeaseGrant {
                 id: "fedcba9876543210fedcba9876543210".into(),
+                generation: 1,
                 ttl: hard,
                 renew_every: Duration::from_millis(5),
                 hard,
                 asked: Instant::now(),
             },
+            None,
             "synthetic",
             Instant::now() + deadline,
         );

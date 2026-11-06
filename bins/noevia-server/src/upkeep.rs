@@ -55,12 +55,24 @@ impl WriterLayer {
         Ok(w)
     }
 
-    /// Node's per-request writes for `creds` (blocking).
-    pub fn upkeep_blocking(&self, auth: Option<&Authenticator>, creds: &Creds, now_ms: i64) {
-        let Some(auth) = auth else { return };
-        let result = self.writer().and_then(|w| auth.upkeep(&w, creds, now_ms));
-        if let Err(e) = result {
-            self.warn(&e);
+    /// Node's per-request writes for `creds` (blocking), and the account they authenticated as
+    /// (server-auth `upkeep_seen`; `None` when nothing did or the store failed).
+    pub fn upkeep_blocking(
+        &self,
+        auth: Option<&Authenticator>,
+        creds: &Creds,
+        now_ms: i64,
+    ) -> Option<String> {
+        let auth = auth?;
+        match self
+            .writer()
+            .and_then(|w| auth.upkeep_seen(&w, creds, now_ms))
+        {
+            Ok((_, user)) => user,
+            Err(e) => {
+                self.warn(&e);
+                None
+            }
         }
     }
 

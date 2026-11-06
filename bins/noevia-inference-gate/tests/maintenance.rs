@@ -568,3 +568,66 @@ async fn requests_and_leases_waiting_out_a_hold_count_against_the_waiter_limit()
     let lease = b.await.unwrap().unwrap();
     assert_eq!(release_lease(&gate, &lease).await, 204);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn reload_timeout_keeps_competing_execution_excluded_until_the_engine_settles() {
+    let router = FakeRouter::start(
+        &[(CODE, St::Loaded, false)],
+        FakeConfig {
+            reload_ms: 500,
+            ..Default::default()
+        },
+    )
+    .await;
+    let mut config = test_config(router.url());
+    config.reload_timeout = Duration::from_millis(50);
+    let gate = start_gate(config).await;
+    let token = take(&gate, "Applying preset").await;
+    let reply = client()
+        .get(gate.url("/models?reload=1"))
+        .header("x-noevia-maintenance", &token)
+        .send()
+        .await
+        .unwrap();
+    let status = reply.status().as_u16();
+    assert!(router.events().contains(&Event::Reload));
+    assert_eq!(
+        router.status(CODE),
+        St::Loaded,
+        "the engine effect is still executing"
+    );
+    assert_eq!(release(&gate, Some(ADMIN), &token).await, 204);
+    let (competing, _) = hold(
+        &gate,
+        Some(ADMIN),
+        serde_json::json!({"reason":"competitor"}),
+    )
+    .await;
+    assert_eq!(competing, 409, "an HTTP deadline is not engine settlement");
+    assert_eq!(status, 503);
+    let until = Instant::now() + Duration::from_secs(3);
+    while router.status(CODE) == St::Loaded {
+        assert!(Instant::now() < until, "synthetic reload settles");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    loop {
+        let (status, body) = hold(
+            &gate,
+            Some(ADMIN),
+            serde_json::json!({"reason":"after settlement"}),
+        )
+        .await;
+        if status == 201 {
+            assert_eq!(
+                release(&gate, Some(ADMIN), body["hold"].as_str().unwrap()).await,
+                204
+            );
+            break;
+        }
+        assert!(
+            Instant::now() < until,
+            "exclusion releases after the actual effect settles"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}

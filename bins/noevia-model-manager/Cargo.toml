@@ -58,6 +58,7 @@ native-routing = ["native-badges", "native-diagnose", "native-host", "native-sec
 [lints]
 workspace = true
 [dependencies]
+model-publication = { path = "../../crates/model-publication" }
 unicode-normalization = { version = "0.1", optional = true }
 bytes = "1"
 chrono = { version = "=0.4.45", default-features = false, features = ["std"], optional = true }

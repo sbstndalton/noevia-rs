@@ -12,9 +12,9 @@
 //! #339): committed is a success, still the base is a retryable 503, anything else a 409 that never
 //! overwrites it.
 //!
-//! The Rust front is the only process that writes models.ini for the routes it owns; Node's
-//! remaining writers (the preset editor, the folder sync, auto-tune) write through the model-loader
-//! too, whose compare-and-swap is the arbiter between them.
+//! The Rust front is the only process that writes models.ini for the routes it owns (the preset editor,
+//! [`preset_edit`](super::preset_edit)); Node's remaining writers (the folder sync, calibration,
+//! auto-tune) write through the model-loader too, whose compare-and-swap is the arbiter between them.
 
 use crate::model_sizing::{read_presets, Presets, Thrown};
 use reqwest::header::{HeaderName, HeaderValue};
@@ -24,7 +24,66 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-pub(super) type WriteAllowed = std::sync::Arc<dyn Fn() -> bool + Send + Sync>;
+#[derive(Clone)]
+pub(crate) struct WriteAllowed {
+    check: std::sync::Arc<dyn Fn() -> bool + Send + Sync>,
+    local: std::sync::Arc<dyn Fn() -> bool + Send + Sync>,
+    pub authority: Option<(super::lease::Authority, super::lease::Grant)>,
+}
+impl WriteAllowed {
+    pub fn legacy(check: std::sync::Arc<dyn Fn() -> bool + Send + Sync>) -> Self {
+        Self {
+            local: check.clone(),
+            check,
+            authority: None,
+        }
+    }
+    pub fn held(
+        local: std::sync::Arc<dyn Fn() -> bool + Send + Sync>,
+        authority: Option<(super::lease::Authority, super::lease::Grant)>,
+    ) -> Self {
+        let scoped = local.clone();
+        let auth = authority.clone();
+        Self {
+            local,
+            check: std::sync::Arc::new(move || {
+                scoped()
+                    && auth
+                        .as_ref()
+                        .is_none_or(|(a, g)| a.covers(&g.id, g.generation, Duration::ZERO))
+            }),
+            authority,
+        }
+    }
+    pub fn local_allowed(&self) -> bool {
+        (self.local)()
+    }
+    pub fn and(self, other: Self) -> Self {
+        let authority = self.authority.clone().or_else(|| other.authority.clone());
+        let first = self.local.clone();
+        let second = other.local.clone();
+        Self::held(std::sync::Arc::new(move || first() && second()), authority)
+    }
+}
+impl std::ops::Deref for WriteAllowed {
+    type Target = dyn Fn() -> bool + Send + Sync;
+    fn deref(&self) -> &Self::Target {
+        &*self.check
+    }
+}
+
+pub(crate) struct PublicationOperation {
+    pub authority: super::lease::Authority,
+    pub fence: model_publication::Fence,
+    pub settled: bool,
+}
+impl Drop for PublicationOperation {
+    fn drop(&mut self) {
+        if !self.settled {
+            self.authority.unknown_operation(&self.fence);
+        }
+    }
+}
 
 /// llamacpp-presets.cjs `BACKUP_KEEP`.
 pub const BACKUP_KEEP: usize = 20;
@@ -103,12 +162,26 @@ impl LoaderWriter {
         })
     }
 
-    async fn write(&self, c: &Candidate, backup: bool) -> Result<(), IniError> {
-        let body = if backup {
+    async fn write(
+        &self,
+        c: &Candidate,
+        backup: bool,
+        fence: Option<&model_publication::Fence>,
+    ) -> Result<(), IniError> {
+        let mut body = if backup {
             serde_json::json!({ "baseRevision": c.base_revision, "text": c.text })
         } else {
             serde_json::json!({ "baseRevision": c.base_revision, "text": c.text, "backup": false })
         };
+        if let Some(fence) = fence {
+            if let Some(fields) = body.as_object_mut() {
+                fields.insert(
+                    "maintenance".into(),
+                    serde_json::to_value(fence)
+                        .map_err(|_| IniError::new(500, "Internal error"))?,
+                );
+            }
+        }
         let mut req = self
             .client
             .put(&self.endpoint)
@@ -170,6 +243,7 @@ pub struct Store {
     file: PathBuf,
     writer: Option<LoaderWriter>,
     backup_keep: usize,
+    publication: PathBuf,
 }
 
 impl std::fmt::Debug for Store {
@@ -190,11 +264,23 @@ pub struct Snapshot {
 
 impl Store {
     pub fn new(file: PathBuf, writer: Option<LoaderWriter>) -> Store {
+        let publication = model_publication::lock_path(&file).unwrap_or_else(|| file.clone());
         Store {
+            publication,
             file,
             writer,
             backup_keep: BACKUP_KEEP,
         }
+    }
+
+    pub(super) fn with_publication(mut self, path: Option<PathBuf>) -> Self {
+        if let Some(path) = path {
+            self.publication = path;
+        }
+        self
+    }
+    pub(super) fn publication_path(&self) -> &Path {
+        &self.publication
     }
 
     pub fn file(&self) -> &Path {
@@ -215,41 +301,157 @@ impl Store {
         })
     }
 
-    /// `commit(candidate, { backup })`.
-    pub async fn commit(&self, c: &Candidate, backup: bool) -> Result<(), IniError> {
-        self.commit_if(c, backup, std::sync::Arc::new(|| true))
-            .await
+    pub(crate) async fn snapshot_covered(
+        &self,
+        allowed: WriteAllowed,
+    ) -> Result<Snapshot, IniError> {
+        if !allowed() {
+            return Err(IniError::new(409, "Maintenance coverage was lost."));
+        }
+        let store = self.clone();
+        tokio::task::spawn_blocking(move || {
+            let guard = model_publication::Guard::at(&store.publication)
+                .map_err(|_| IniError::new(503, "Preset authority unavailable."))?;
+            if !allowed.local_allowed() {
+                return Err(IniError::new(409, "Maintenance coverage was lost."));
+            }
+            if let Some((authority, grant)) = &allowed.authority {
+                let record = guard
+                    .authority()
+                    .map_err(|_| IniError::new(503, "Preset authority unavailable."))?;
+                if record.is_none_or(|r| {
+                    !r.active
+                        || r.incarnation != authority.epoch()
+                        || r.lease != grant.id
+                        || r.generation != grant.generation
+                        || model_publication::now_ms() >= r.until_ms
+                }) {
+                    return Err(IniError::new(409, "Maintenance coverage was lost."));
+                }
+            }
+            let snapshot = store.snapshot()?;
+            guard
+                .observe_revision(&snapshot.revision)
+                .map_err(|_| IniError::new(503, "Preset authority unavailable."))?;
+            guard
+                .commit()
+                .map_err(|_| IniError::new(503, "Preset authority unavailable."))?;
+            Ok(snapshot)
+        })
+        .await
+        .map_err(|_| IniError::new(500, "Internal error"))?
     }
 
-    pub(super) async fn commit_if(
+    /// `commit(candidate, { backup })`.
+    ///
+    /// The web writer checks the revision and publishes under the same cross-process transaction
+    /// lock as Core and the native loader. This serializes file publication; maintenance coverage
+    /// is a separate requirement of the caller.
+    pub async fn commit(&self, c: &Candidate, backup: bool) -> Result<(), IniError> {
+        self.commit_if(
+            c,
+            backup,
+            WriteAllowed::legacy(std::sync::Arc::new(|| true)),
+        )
+        .await
+    }
+
+    pub(crate) async fn commit_if(
         &self,
         c: &Candidate,
         backup: bool,
         allowed: WriteAllowed,
     ) -> Result<(), IniError> {
-        let store = self.clone();
-        let base = c.base_revision.clone();
-        let current = tokio::task::spawn_blocking(move || store.read())
-            .await
-            .map_err(|_| IniError::new(500, "Internal error"))??;
-        if current.revision != base {
-            return Err(IniError::new(
-                409,
-                "Presets changed while applying. Reload before retrying.",
-            ));
-        }
         if !allowed() {
-            return Err(IniError::new(409, "Calibration finalization failed."));
+            return Err(IniError::new(409, "Maintenance coverage was lost."));
         }
-        if let Some(w) = &self.writer {
-            return w.write(c, backup).await;
-        }
+        let mut operation = match &allowed.authority {
+            Some((authority, grant)) => Some(PublicationOperation {
+                authority: authority.clone(),
+                fence: authority
+                    .begin_operation(grant, "preset-write", Some(&c.base_revision))
+                    .ok_or_else(|| IniError::new(409, "Maintenance coverage was lost."))?,
+                settled: false,
+            }),
+            None => None,
+        };
+        let fence = operation.as_ref().map(|o| o.fence.clone());
         let store = self.clone();
         let c = c.clone();
-        let before = current.text;
-        tokio::task::spawn_blocking(move || store.web_write(&c, backup, &before, &*allowed))
-            .await
-            .map_err(|_| IniError::new(500, "Internal error"))?
+        if self.writer.is_some() {
+            let reader = store.clone();
+            let current = tokio::task::spawn_blocking(move || reader.read())
+                .await
+                .map_err(|_| IniError::new(500, "Internal error"))??;
+            if current.revision != c.base_revision {
+                return Err(IniError::new(
+                    409,
+                    "Presets changed while applying. Reload before retrying.",
+                ));
+            }
+            if let Some(w) = &self.writer {
+                if !allowed() {
+                    return Err(IniError::new(409, "Calibration finalization failed."));
+                }
+                let result = w.write(&c, backup, fence.as_ref()).await;
+                if result.as_ref().is_ok() || result.as_ref().is_err_and(|e| !e.uncertain) {
+                    if let Some(op) = &mut operation {
+                        op.settled = op.authority.settle_operation(&op.fence);
+                    }
+                }
+                return result;
+            }
+        }
+        tokio::task::spawn_blocking(move || {
+            let _publication = model_publication::Guard::at(&store.publication).map_err(|_| {
+                IniError::new(
+                    503,
+                    "Preset publication is busy or unavailable. Try again shortly.",
+                )
+            })?;
+            if let Some(fence) = &fence {
+                _publication
+                    .validate(fence)
+                    .map_err(|_| IniError::new(409, "Maintenance coverage was lost."))?;
+            }
+            let current = store.read()?;
+            if current.revision != c.base_revision {
+                return Err(IniError::new(
+                    409,
+                    "Presets changed while applying. Reload before retrying.",
+                ));
+            }
+            let result = store.web_write(&c, backup, &current.text, &|| {
+                allowed.local_allowed()
+                    && fence
+                        .as_ref()
+                        .is_none_or(|f| _publication.validate(f).is_ok())
+            });
+            // The blocking task owns the permit through fsync, rename and cleanup, even if its caller drops.
+            if result.is_ok() {
+                if fence.is_some() {
+                    _publication
+                        .observe_revision(&sha(&c.text))
+                        .map_err(|_| IniError::new(503, "Preset authority unavailable."))?;
+                }
+                if let Some(fence) = &fence {
+                    _publication
+                        .finish(fence, "settled", Some(&sha(&c.text)))
+                        .map_err(|_| IniError::new(503, "Preset authority unavailable."))?;
+                }
+                _publication
+                    .commit()
+                    .map_err(|_| IniError::new(503, "Preset authority unavailable."))?;
+            } else {
+                drop(_publication);
+            }
+            if let Some(op) = &mut operation {
+                op.settled = op.authority.settle_operation(&op.fence);
+            }
+            result
+        })
+        .await
+        .map_err(|_| IniError::new(500, "Internal error"))?
     }
 
     /// The web writer: backup, temp file, rename, directory fsync, prune.
@@ -341,20 +543,31 @@ impl Store {
     /// Settle the original-profile CAS, including a lost reply. An uncertain attempt remains
     /// owned until the desired content is visible or the CAS base no longer applies. Local
     /// blocking I/O that never returns is outside this protocol, as in the original worker.
-    pub(super) async fn settle_restore(&self, c: &Candidate, initial: Duration) -> bool {
+    pub(super) async fn settle_restore(
+        &self,
+        c: &Candidate,
+        initial: Duration,
+        allowed: WriteAllowed,
+    ) -> bool {
         let mut wait = initial
             .max(Duration::from_millis(1))
             .min(Duration::from_secs(60));
         loop {
+            if !allowed() {
+                return false;
+            }
             let store = self.clone();
             if let Ok(Ok(current)) = tokio::task::spawn_blocking(move || store.snapshot()).await {
+                if !allowed() {
+                    return false;
+                }
                 if current.text == c.text {
                     return true;
                 }
                 if current.revision != c.base_revision {
                     return false;
                 }
-                match self.commit(c, true).await {
+                match self.commit_if(c, true, allowed.clone()).await {
                     Ok(()) => return true,
                     Err(e) if e.status == 409 => return false,
                     // Transport, lost body and service failures all retain an owned resolver.
@@ -368,7 +581,20 @@ impl Store {
 
     /// `commitReconciled`: settles an uncertain model-loader write by reading the file back (#339).
     pub async fn commit_reconciled(&self, c: &Candidate, backup: bool) -> Result<(), IniError> {
-        let err = match self.commit(c, backup).await {
+        self.commit_reconciled_if(
+            c,
+            backup,
+            WriteAllowed::legacy(std::sync::Arc::new(|| true)),
+        )
+        .await
+    }
+    pub(crate) async fn commit_reconciled_if(
+        &self,
+        c: &Candidate,
+        backup: bool,
+        allowed: WriteAllowed,
+    ) -> Result<(), IniError> {
+        let err = match self.commit_if(c, backup, allowed).await {
             Ok(()) => return Ok(()),
             Err(e) => e,
         };
@@ -784,6 +1010,88 @@ mod tests {
         assert!(removed.contains(&format!("models.ini.noevia-backup-{:064x}", 0)));
         assert!(d.path().join("models.ini.noevia-backup-nothex").exists());
         assert!(file.exists());
+    }
+
+    /// D2 review P1: the revision check and the rename are one critical section, so two commits on the same
+    /// base never both pass the check (the restore and the first commit share this path).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn two_web_commits_on_one_base_never_both_win() {
+        for round in 0..40 {
+            let d = tempfile::tempdir().unwrap();
+            let (s, file) = store(d.path(), "[a]\nmodel = /models/a.gguf\n");
+            let snap = s.snapshot().unwrap();
+            let make = |n: u32| Candidate {
+                base_revision: snap.revision.clone(),
+                text: format!("[a]\nmodel = /models/a.gguf\nctx-size = {n}\n"),
+                before: snap.text.clone(),
+            };
+            let (a, b) = (make(1024 + round), make(2048 + round));
+            let (s1, s2) = (s.clone(), s.clone());
+            let t1 = tokio::spawn(async move { s1.commit(&a, true).await });
+            let t2 = tokio::spawn(async move { s2.commit(&b, true).await });
+            let (r1, r2) = (t1.await.unwrap(), t2.await.unwrap());
+            assert!(
+                r1.is_ok() != r2.is_ok(),
+                "exactly one wins in round {round}: {r1:?} {r2:?}"
+            );
+            let loser = if r1.is_ok() { r2 } else { r1 };
+            assert_eq!(loser.unwrap_err().status, 409);
+            assert!(std::fs::read_to_string(&file).unwrap().contains("ctx-size"));
+        }
+    }
+
+    #[tokio::test]
+    async fn a_foreign_publication_transaction_excludes_the_web_writer() {
+        use std::io::{BufRead, BufReader, Write};
+        use std::process::{Command, Stdio};
+        let d = tempfile::tempdir().unwrap();
+        let (s, file) = store(d.path(), "[a]\nmodel = /models/a.gguf\n");
+        let snap = s.snapshot().unwrap();
+        let c = Candidate {
+            base_revision: snap.revision,
+            text: "[a]\nctx-size = 8192\n".into(),
+            before: snap.text.clone(),
+        };
+        // A different process holds the very same authority as Node and the loader.
+        // This intentionally bypasses any Rust process-local mutex.
+        let mut peer = Command::new("python3")
+            .args(["-u", "-c", r#"
+import os, sqlite3, sys
+file = sys.argv[1]
+lock = os.path.join(os.path.dirname(file), '.' + os.path.basename(file) + '.noevia-publication.sqlite')
+db = sqlite3.connect(lock)
+db.execute('BEGIN EXCLUSIVE')
+print('held', flush=True)
+sys.stdin.readline()
+with open(file + '.peer', 'w') as f:
+    f.write('[other]\nmodel = /models/other.gguf\n')
+    f.flush()
+    os.fsync(f.fileno())
+os.replace(file + '.peer', file)
+db.close()
+"#])
+            .arg(&file)
+            .stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+        let mut ready = String::new();
+        BufReader::new(peer.stdout.take().unwrap())
+            .read_line(&mut ready)
+            .unwrap();
+        assert_eq!(ready.trim(), "held");
+        let result = s.commit(&c, true).await;
+        let during = std::fs::read_to_string(&file).unwrap();
+        peer.stdin.take().unwrap().write_all(b"settle\n").unwrap();
+        assert!(peer.wait().unwrap().success());
+        assert_eq!(
+            result.unwrap_err().status,
+            503,
+            "foreign publication excludes execution"
+        );
+        assert_eq!(during, snap.text, "no write before the authority releases");
+        assert_eq!(s.commit(&c, true).await.unwrap_err().status, 409);
+        assert_eq!(
+            std::fs::read_to_string(file).unwrap(),
+            "[other]\nmodel = /models/other.gguf\n"
+        );
     }
 
     #[test]
