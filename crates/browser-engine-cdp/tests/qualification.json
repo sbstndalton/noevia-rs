@@ -35,8 +35,8 @@
       "evidence": "Retained routeWebSocket blocks page/frame but misses one worker socket; session proxy proves refusal before upstream, zero native denied handshakes, allowed socket succeeds."
     },
     "3": {
-      "status": "PARTIAL",
-      "evidence": "Positive service-worker capability; first-script popup registration now matches blocked oracle. Dedicated-worker/frame HTTP and WS pass. Shared-worker/OOPIF matrix remains."
+      "status": "CLOSED-AT-PARITY",
+      "evidence": "First-inline OOPIF registration failed before (registered; worker script reached server) and passes after ordered pre-resume initialization of iframe targets. Real shared-worker and separate-renderer cross-origin iframe each complete allowed HTTP and WS. Both engines: 2 allowed requests, 2 allowed handshakes, 0 denied requests/handshakes, 0 worker script fetches. Retained shared-worker traffic relies on fixture egress; native filtering proxy independently refuses before upstream."
     },
     "7": {
       "status": "PARTIAL",

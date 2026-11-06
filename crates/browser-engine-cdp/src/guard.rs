@@ -105,7 +105,7 @@ impl Guard {
                             if session.is_empty() { bail!("Missing policy target session"); }
                             let session = Some(SessionId::from(session));
                             let mut steps = VecDeque::new();
-                            if e.params.pointer("/targetInfo/type").and_then(Value::as_str)==Some("page") {
+                            if matches!(e.params.pointer("/targetInfo/type").and_then(Value::as_str),Some("page" | "iframe")) {
                                 steps.extend([
                                     ("Page.enable",json!({})),
                                     ("Network.enable",json!({})),
