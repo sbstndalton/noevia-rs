@@ -360,3 +360,39 @@ impl Router {
         Ok((reply.ok, reply.status, reply.body))
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod operation_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn exact_mutations_forward_the_shared_operation_proof() {
+        use axum::{body::Body, http::Request};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let (sent, seen) = tokio::sync::oneshot::channel();
+        let sent = std::sync::Arc::new(std::sync::Mutex::new(Some(sent)));
+        let app = axum::Router::new().fallback(move |req: Request<Body>| {
+            let sent = sent.clone();
+            async move {
+                let proof = req.headers().get("x-noevia-maintenance-fence")
+                    .and_then(|v| v.to_str().ok()).map(str::to_owned);
+                if let Some(sent) = sent.lock().unwrap().take() { let _ = sent.send(proof); }
+                "{}"
+            }
+        });
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap(); });
+        let fence = model_publication::Fence {
+            incarnation: "synthetic-front".into(), lease: "synthetic-hold".into(),
+            generation: 7, operation: "synthetic-operation".into(), kind: "pull".into(),
+            expected_revision: None,
+        };
+        let router = Router::new(&base, None).unwrap().with_operation(&fence);
+        assert!(router.pull_exact("{}".into()).await.is_ok());
+        let actual = seen.await.unwrap();
+        server.abort();
+        let _ = server.await;
+        assert_eq!(actual, Some(serde_json::to_string(&fence).unwrap()));
+    }
+}
