@@ -347,6 +347,7 @@ struct Shared {
     lost: AtomicBool,
     // Independent lease identity: taking the renewal token never proves DELETE completed.
     lease_id: Option<String>,
+    node_generation: u64,
     // Upper bound measured after the grant arrived, unlike confirmed/lease_end (lower bounds).
     expires_by: Option<Instant>,
     release: Mutex<ReleaseState>,
@@ -365,6 +366,7 @@ impl Shared {
     ) -> Arc<Shared> {
         Arc::new(Shared {
             lease_id: lease_ttl.and(token.clone()),
+            node_generation: 0,
             expires_by,
             release: Mutex::new(ReleaseState::Idle),
             release_wake: tokio::sync::Notify::new(),
@@ -533,6 +535,13 @@ impl std::fmt::Debug for Hold {
 }
 
 impl Hold {
+    pub(super) fn recovery_proof(&self) -> Option<(&str, u64)> {
+        self.shared
+            .lease_id
+            .as_deref()
+            .map(|id| (id, self.shared.node_generation))
+    }
+
     pub(super) fn defer_local_release(&mut self) -> AdmissionFence {
         self.local_finished = true;
         AdmissionFence {
@@ -558,6 +567,7 @@ impl Hold {
         );
         if let Some(inner) = Arc::get_mut(&mut shared) {
             inner.auth = auth;
+            inner.node_generation = grant.generation;
         }
         if let Ok(mut at) = shared.confirmed.lock() {
             *at = grant.asked;
@@ -913,6 +923,7 @@ mod tests {
             node,
             LeaseGrant {
                 id: "fedcba9876543210fedcba9876543210".into(),
+                generation: 1,
                 ttl: hard,
                 renew_every: Duration::from_millis(5),
                 hard,
