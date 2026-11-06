@@ -1,7 +1,7 @@
 # Native embedding ownership switch
 
-Rust packet: concrete adapter/lifecycle candidate. A separate Core/Top packet
-implements the counterpart; this branch edits neither Core nor deployment code.
+Background orchestration and the request-time embedding route are native.
+Paired Core and Top branches carry the refusal and release capability checks.
 Core file references below identify b91b3f03, the behavior being ported.
 
 ## Native side after independent-review remediation
@@ -209,3 +209,32 @@ This requirement was forwarded to the separately owned Core/Top packet. Root mus
 verify its release-kit evidence before promotion. External config repair also
 requires Core's cached damaged/fallback configuration to refresh or stay explicitly
 refused; native repair recovery must not silently diverge from chat's active target.
+
+
+## Request-time ownership
+
+`noevia-embedding-routes-authority/1` owns every method of `/api/embedding`.
+The front authenticates the session and CSRF before enforcing administrator-only
+GET/POST, validation, project migration, service-wide Diary calls and audit.
+Other methods retain the historical 405. Core refuses direct bypasses and checks
+the paired capability before startup. The former route and migration executors
+exist only as frozen test oracles, outside the production module graph.
+
+Configuration publication uses the same version-1 file, target identities,
+publication flock and generation read by the background worker. Node retrieval
+consumers observe saved changes synchronously. Coverage, parity, served-model
+checks and orphan cleanup reuse this crate's existing fenced implementations.
+
+An asynchronous service actor owns accepted work after caller cancellation.
+Each loader mutation uses one shared `embedding-service` operation under J's exact
+maintenance hold. The loader claims only an issued receipt, refuses replay/stale
+identity, checks coverage at file publication and before/after Docker, and retains
+its effect owner beyond the HTTP deadline. Unknown effects remain recovery-required;
+neither a new lease nor a transport acknowledgement certifies settlement. The front
+waits for the destination receipt and never dispatches to an older loader lacking
+the private operation capability. That capability is removed from public status.
+
+Release requires the shared authority journal volume/callback topology and a
+Services loader image containing this native implementation. The source branch
+must not bypass those integration prerequisites. No real model run is part of the
+synthetic acceptance evidence.
