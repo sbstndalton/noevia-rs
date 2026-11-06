@@ -330,7 +330,7 @@ pub fn automatic_additions(
 /// `carriedPublicBoxes({ history, boxes })` (#1692, #1702).
 pub fn carried_public_boxes(history: &JValue, boxes: &JValue) -> Result<Vec<String>, Thrown> {
     let mut out: Vec<String> = Vec::new();
-    let mut add = |id: &str, out: &mut Vec<String>| {
+    let add = |id: &str, out: &mut Vec<String>| {
         if PUBLIC_BOXES.contains(&id) && !out.iter().any(|o| o == id) {
             out.push(id.to_owned());
         }
