@@ -46,32 +46,47 @@ fn gt(a: Option<f64>, b: f64) -> bool {
 impl Authenticator {
     /// Node's per-request writes for `creds` at `now_ms`, in one write transaction.
     pub fn upkeep(&self, w: &Writer, creds: &Creds, now_ms: i64) -> Result<Upkept, StoreError> {
+        self.upkeep_seen(w, creds, now_ms).map(|(upkept, _)| upkept)
+    }
+
+    /// [`Authenticator::upkeep`], and the account the credential authenticated as Node's
+    /// `requestAuth.authenticate` would: a live session's user, or the user of a device access token
+    /// that authenticates (whether or not its once-a-minute touch was due). `None` for no credential,
+    /// a refused one, the legacy bearer, or both a bearer and a session cookie. The front records it
+    /// as that user's latest request (chat port S3, bins/noevia-server chat_activity.rs).
+    pub fn upkeep_seen(
+        &self,
+        w: &Writer,
+        creds: &Creds,
+        now_ms: i64,
+    ) -> Result<(Upkept, Option<String>), StoreError> {
         w.write(|tx| {
             let r = tx.reader();
             let bearer = request::bearer_token(creds);
             if !bearer.is_empty() && self.native_client_auth(&r)? {
                 if request::has_session_cookie(creds) {
-                    return Ok(Upkept::Nothing);
+                    return Ok((Upkept::Nothing, None));
                 }
                 return device_upkeep(tx, bearer, now_ms);
             }
             let Some(raw) = creds.cookie("cowork_session").filter(|v| !v.is_empty()) else {
-                return Ok(Upkept::Nothing);
+                return Ok((Upkept::Nothing, None));
             };
             let id_hash = js::digest(&raw);
             let row = r.row(
-                "SELECT u.disabled_at, s.expires_at, s.last_seen_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id_hash=?1",
+                "SELECT u.disabled_at, s.expires_at, s.last_seen_at, s.user_id FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id_hash=?1",
                 [&id_hash],
                 |row| {
                     Ok((
                         row.get::<_, Value>(0)?,
                         row.get::<_, Value>(1)?,
                         row.get::<_, Value>(2)?,
+                        row.get::<_, Value>(3)?,
                     ))
                 },
             )?;
             let now = now_ms as f64;
-            if let Some((disabled_at, expires_at, last_seen_at)) = row {
+            if let Some((disabled_at, expires_at, last_seen_at, user_id)) = row {
                 let live = !js::truthy(&disabled_at)
                     && gt(js::number(&expires_at), now)
                     && gt(js::number(&last_seen_at).map(|l| l + IDLE_MS), now);
@@ -80,11 +95,11 @@ impl Authenticator {
                         "UPDATE sessions SET last_seen_at=?1 WHERE id_hash=?2",
                         (now_ms, &id_hash),
                     )?;
-                    return Ok(Upkept::Touched);
+                    return Ok((Upkept::Touched, js::text(&user_id).map(str::to_owned)));
                 }
             }
             tx.execute("DELETE FROM sessions WHERE id_hash=?1", [&id_hash])?;
-            Ok(Upkept::Deleted)
+            Ok((Upkept::Deleted, None))
         })
     }
 }
@@ -94,7 +109,7 @@ fn device_upkeep(
     tx: &server_store::WriteTx<'_>,
     raw: &str,
     now_ms: i64,
-) -> Result<Upkept, StoreError> {
+) -> Result<(Upkept, Option<String>), StoreError> {
     let r = tx.reader();
     let at = now_ms as f64;
     let row = r.row(
@@ -113,13 +128,13 @@ fn device_upkeep(
         },
     )?;
     let Some((kind, token_expires, grant_id, user_id, grant_expires, last_used)) = row else {
-        return Ok(Upkept::Nothing);
+        return Ok((Upkept::Nothing, None));
     };
     if js::text(&kind) != Some("access")
         || !gt(js::number(&token_expires), at)
         || !gt(js::number(&grant_expires), at)
     {
-        return Ok(Upkept::Nothing);
+        return Ok((Upkept::Nothing, None));
     }
     let disabled = r.row(
         "SELECT disabled_at FROM users WHERE id=?1",
@@ -128,18 +143,19 @@ fn device_upkeep(
     )?;
     match disabled {
         Some(d) if !js::truthy(&d) => {}
-        _ => return Ok(Upkept::Nothing),
+        _ => return Ok((Upkept::Nothing, None)),
     }
+    let user = js::text(&user_id).map(str::to_owned);
     // `at - row.last_used_at >= 60 * 1000`.
     let due = js::number(&last_used).is_some_and(|l| at - l >= GRANT_TOUCH_MS as f64);
     if !due {
-        return Ok(Upkept::Nothing);
+        return Ok((Upkept::Nothing, user));
     }
     tx.execute(
         "UPDATE device_grants SET last_used_at=?1 WHERE id=?2",
         (now_ms, &grant_id),
     )?;
-    Ok(Upkept::GrantTouched)
+    Ok((Upkept::GrantTouched, user))
 }
 
 #[cfg(test)]
@@ -266,5 +282,38 @@ mod tests {
             up(Some("cowork_session=live"), "Bearer legacy"),
             Upkept::Touched
         );
+    }
+
+    /// Chat port S3: the account a request authenticated as, for the front's activity record.
+    #[test]
+    fn upkeep_seen_names_the_authenticated_account_only() {
+        let (_d, node, w, a) = setup(true);
+        let seen_as = |c: Option<&str>, b: Option<&str>| {
+            a.upkeep_seen(&w, &creds(c, b), NOW)
+                .unwrap()
+                .1
+                .map(|u| u.to_string())
+        };
+        assert_eq!(
+            seen_as(Some("cowork_session=live"), None).as_deref(),
+            Some("u1")
+        );
+        // A device token that authenticates names its user, whether or not its touch was due.
+        assert_eq!(seen_as(None, Some("Bearer nva_one")).as_deref(), Some("u1"));
+        assert_eq!(seen_as(None, Some("Bearer nva_two")).as_deref(), Some("u1"));
+        assert_eq!(used(&node, "g2"), NOW - GRANT_TOUCH_MS + 1);
+        for (cookie, bearer) in [
+            (Some("cowork_session=idle"), None),
+            (Some("cowork_session=off"), None),
+            (Some("cowork_session=unknown"), None),
+            (Some("cowork_session="), None),
+            (None, None),
+            (None, Some("Bearer nva_unknown")),
+            (Some("cowork_session=live"), Some("Bearer nva_one")),
+        ] {
+            assert_eq!(seen_as(cookie, bearer), None, "{cookie:?} {bearer:?}");
+        }
+        // The writes are upkeep's own: the same rows changed as upkeep changes them.
+        assert_eq!(seen(&node, "idle"), None);
     }
 }
