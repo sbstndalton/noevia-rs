@@ -486,13 +486,16 @@ async fn load_steps(
     router: &router::Router,
     model: &str,
     lease: &Lease,
-    launched: &std::sync::atomic::AtomicBool,
+    dispatch: &settle::Dispatch,
     covered: &(dyn Fn() -> bool + Send + Sync),
 ) -> Response<Body> {
     // #1758: never ask the router to load a sleeping model; the next request wakes it.
     let Ok(before) = router.models(None).await else {
         return internal(500);
     };
+    if !before.ok {
+        return internal(500);
+    }
     if before.ok
         && rows(&before)
             .and_then(|r| state_of(r, model))
@@ -506,7 +509,8 @@ async fn load_steps(
     if !covered() {
         return error(503, LEASE_LOST);
     }
-    launched.store(true, std::sync::atomic::Ordering::SeqCst);
+    dispatch.baseline(&before, model);
+    dispatch.attempting();
     let Ok(started) = router
         .request_with(
             reqwest::Method::POST,
@@ -522,11 +526,12 @@ async fn load_steps(
     };
     if !started.ok && !already_running(&started) {
         if (400..500).contains(&started.status) || refusal_of(&started, "").is_some() {
-            launched.store(false, std::sync::atomic::Ordering::SeqCst);
+            dispatch.refused();
         }
         // A gate refusal goes through `failure()` first: its words default to the gate client's.
         return engine_failure("load", &started, "The inference gate refused the request.");
     }
+    dispatch.acknowledged();
     // Native load acknowledges launch; readiness must be observed separately.
     let deadline = Instant::now() + READY_WITHIN;
     while Instant::now() < deadline {
@@ -591,13 +596,21 @@ async fn unload_steps(
     model: &str,
     admin: Option<(HeaderName, HeaderValue)>,
     can_force: bool,
-    pending_unload: &std::sync::atomic::AtomicBool,
+    dispatch: &settle::Dispatch,
     covered: &(dyn Fn() -> bool + Send + Sync),
 ) -> Response<Body> {
+    // Capture the old state before dispatch; a later unchanged state cannot prove causality.
+    // A missing baseline never prevents a normal acknowledged unload, but keeps uncertain work
+    // conservative when its post-dispatch transition cannot be distinguished.
+    if let Ok(before) = router.models(None).await {
+        if before.ok {
+            dispatch.baseline(&before, model);
+        }
+    }
     if !covered() {
         return error(503, LEASE_LOST);
     }
-    pending_unload.store(true, std::sync::atomic::Ordering::SeqCst);
+    dispatch.attempting();
     let forced = admin.is_some();
     let mut body = json!({ "model": model });
     if forced {
@@ -620,9 +633,10 @@ async fn unload_steps(
         return internal(500);
     };
     if !r.ok && ((400..500).contains(&r.status) || refusal_of(&r, "").is_some()) {
-        pending_unload.store(false, std::sync::atomic::Ordering::SeqCst);
+        dispatch.refused();
     }
     if r.ok {
+        dispatch.acknowledged();
         return answer(
             200,
             if forced {

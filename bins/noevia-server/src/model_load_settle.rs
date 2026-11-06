@@ -19,6 +19,65 @@ pub(super) enum Operation {
     },
 }
 
+/// Sending a POST is not evidence that its handler has started. Only an acknowledged response
+/// or a post-dispatch transitional observation can establish causality for terminal reads.
+#[derive(Clone, Copy)]
+#[repr(u8)]
+enum Outcome {
+    NotDispatched,
+    Uncertain,
+    Acknowledged,
+    Refused,
+}
+
+#[derive(Default)]
+pub(super) struct Dispatch {
+    outcome: std::sync::atomic::AtomicU8,
+    transitioned: AtomicBool,
+    before: std::sync::Mutex<Option<String>>,
+}
+impl Dispatch {
+    pub(super) fn baseline(&self, reply: &Reply, model: &str) {
+        let value = rows(reply)
+            .and_then(|r| state_of(r, model))
+            .and_then(|m| m.get("status"))
+            .and_then(|s| s.get("value"))
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        *self.before.lock().unwrap_or_else(|p| p.into_inner()) = value;
+    }
+    pub(super) fn attempting(&self) {
+        self.outcome.store(
+            Outcome::Uncertain as u8,
+            std::sync::atomic::Ordering::SeqCst,
+        );
+    }
+    pub(super) fn acknowledged(&self) {
+        self.outcome.store(
+            Outcome::Acknowledged as u8,
+            std::sync::atomic::Ordering::SeqCst,
+        );
+    }
+    pub(super) fn refused(&self) {
+        self.outcome
+            .store(Outcome::Refused as u8, std::sync::atomic::Ordering::SeqCst);
+    }
+    fn state(&self) -> Outcome {
+        match self.outcome.load(std::sync::atomic::Ordering::SeqCst) {
+            0 => Outcome::NotDispatched,
+            2 => Outcome::Acknowledged,
+            3 => Outcome::Refused,
+            _ => Outcome::Uncertain,
+        }
+    }
+    fn needs_engine(&self) -> bool {
+        matches!(self.state(), Outcome::Uncertain | Outcome::Acknowledged)
+    }
+    fn uncertain(&self) -> bool {
+        matches!(self.state(), Outcome::Uncertain)
+    }
+}
+
 /// An owned J grant, not another lease authority. Its incident survives release, expiry and restart.
 struct Claim {
     maint: Arc<Maint>,
@@ -93,13 +152,13 @@ pub(super) async fn run(
         let claim = Claim::new(&maint, grant);
         let ticket = maint.authority.require_recovery();
         let armed = maint.node.recovery_barrier(true, &ticket).await;
-        let pending_unload = AtomicBool::new(false);
+        let dispatch = Dispatch::default();
         let mut send = Some(send);
         let outcome = if armed && lease.covered() && claim.covered() {
             let operation = async {
                 match &op {
                     Operation::Load => {
-                        load_steps(&router, &model, &lease, &pending_unload, &|| {
+                        load_steps(&router, &model, &lease, &dispatch, &|| {
                             lease.covered() && claim.covered()
                         })
                         .await
@@ -110,7 +169,7 @@ pub(super) async fn run(
                             &model,
                             admin.clone(),
                             *can_force,
-                            &pending_unload,
+                            &dispatch,
                             &|| lease.covered() && claim.covered(),
                         )
                         .await
@@ -138,15 +197,14 @@ pub(super) async fn run(
         lease.release().await;
         // Keep the original claim through a bounded settlement window. Unknown results retain the
         // incident; repair then uses fresh coverage instead of extending/reusing a lost grant.
-        if armed && !gate_verified {
+        if armed && !gate_verified && dispatch.needs_engine() {
             let until = Instant::now() + READY_WITHIN;
             while Instant::now() < until {
                 if terminal(
                     &router,
                     &model,
-                    matches!(op, Operation::Unload { .. })
-                        && pending_unload.load(std::sync::atomic::Ordering::SeqCst),
-                    !pending_unload.load(std::sync::atomic::Ordering::SeqCst),
+                    matches!(op, Operation::Unload { .. }),
+                    &dispatch,
                 )
                 .await
                 {
@@ -160,9 +218,8 @@ pub(super) async fn run(
             maint,
             router,
             model,
-            matches!(op, Operation::Unload { .. })
-                && pending_unload.load(std::sync::atomic::Ordering::SeqCst),
-            !pending_unload.load(std::sync::atomic::Ordering::SeqCst),
+            matches!(op, Operation::Unload { .. }),
+            dispatch,
             ticket,
         )
         .await;
@@ -173,7 +230,12 @@ pub(super) async fn run(
     }
 }
 
-async fn terminal(router: &router::Router, model: &str, unload: bool, absent_safe: bool) -> bool {
+async fn terminal(router: &router::Router, model: &str, unload: bool, dispatch: &Dispatch) -> bool {
+    // No POST, or a definitive refusal: fresh Node coverage suffices. Do not create an engine
+    // readability dependency for work that is proven not to exist.
+    if !dispatch.needs_engine() {
+        return true;
+    }
     let Ok(reply) = router.models(None).await else {
         return false;
     };
@@ -184,13 +246,36 @@ async fn terminal(router: &router::Router, model: &str, unload: bool, absent_saf
         return false;
     };
     let Some(entry) = state_of(list, model) else {
-        return absent_safe;
+        return false;
     };
     let status = entry.get("status");
     let value = status.and_then(|s| s.get("value")).and_then(Value::as_str);
+    if matches!(value, Some("loading" | "unloading")) {
+        let before = dispatch.before.lock().unwrap_or_else(|p| p.into_inner());
+        if before.as_deref().is_some_and(|old| Some(old) != value) {
+            dispatch
+                .transitioned
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        return false;
+    }
+    if dispatch.uncertain()
+        && !dispatch
+            .transitioned
+            .load(std::sync::atomic::Ordering::SeqCst)
+    {
+        // An unchanged old unloaded/loaded/failed state says nothing about a queued POST that
+        // lost its response. Keep custody until this operation's transition has been observed.
+        return false;
+    }
     truthy(status.and_then(|s| s.get("failed")))
-        || matches!(value, Some("failed" | "unloaded"))
+        || matches!(value, Some("failed"))
+        || (unload && value == Some("unloaded"))
         || (!unload && matches!(value, Some("loaded" | "sleeping")))
+        || (dispatch
+            .transitioned
+            .load(std::sync::atomic::Ordering::SeqCst)
+            && value == Some("unloaded"))
 }
 
 /// Use J's Node-backed renewable Hold even with a gate: clearing Node's incident requires the fresh
@@ -228,7 +313,7 @@ async fn reconcile(
     router: router::Router,
     model: String,
     unload: bool,
-    absent_safe: bool,
+    dispatch: Dispatch,
     ticket: String,
 ) {
     loop {
@@ -237,7 +322,7 @@ async fn reconcile(
                 let until = Instant::now() + READY_WITHIN;
                 while hold.excluded() && Instant::now() < until {
                     // Fresh covered reread, checked on BOTH sides of the await. No mutation retries.
-                    if terminal(&router, &model, unload, absent_safe).await && hold.excluded() {
+                    if terminal(&router, &model, unload, &dispatch).await && hold.excluded() {
                         if let Some((lease, generation)) = hold.recovery_proof() {
                             if maint
                                 .node

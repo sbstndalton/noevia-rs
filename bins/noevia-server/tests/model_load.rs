@@ -91,6 +91,10 @@ impl World {
         let lose_renewal = s.get("loseRenewal") == Some(&Value::Bool(true));
         let barrier = Arc::new(Mutex::new(false));
         let node_barrier = Arc::clone(&barrier);
+        let delayed_uncertain = s.get("delayedUncertain") == Some(&Value::Bool(true));
+        let reads_fail = s.get("engineReadsFail") == Some(&Value::Bool(true));
+        let ack_fails = s.get("barrierAckFails") == Some(&Value::Bool(true));
+        let barrier_calls = std::sync::atomic::AtomicUsize::new(0);
         let delay_load_ack = s.get("delayLoadAck") == Some(&Value::Bool(true));
         let verified_gate = s.get("verifiedGate") == Some(&Value::Bool(true));
         let long_unload = s.get("longUnload") == Some(&Value::Bool(true));
@@ -98,6 +102,22 @@ impl World {
         let launched = Mutex::new(None::<std::time::Instant>);
         let (port, router) = engine(Arc::new(move |req: &Req| {
             let key = format!("{} {}", req.method, req.target.split('?').next().unwrap());
+            if reads_fail && key == "GET /models" { return Answer::Reply(401, "{}".into()); }
+            if delayed_uncertain {
+                if key == "POST /models/load" {
+                    *launched.lock().unwrap() = Some(std::time::Instant::now());
+                    return Answer::Drop;
+                }
+                if key == "GET /models" {
+                    let state = match *launched.lock().unwrap() {
+                        None => "unloaded",
+                        Some(t) if t.elapsed() < Duration::from_millis(700) => "unloaded",
+                        Some(t) if t.elapsed() < Duration::from_millis(1500) => "loading",
+                        Some(_) => "loaded",
+                    };
+                    return Answer::Reply(200, json!({"data":[{"id":"m","status":{"value":state}}]}).to_string());
+                }
+            }
             if key == "GET /gate/v1/capabilities" && verified_gate {
                 return Answer::Reply(200, json!({"protocol":"noevia-gate-capabilities/1", "capabilities":["noevia-model-load-settlement/1"]}).to_string());
             }
@@ -170,7 +190,12 @@ impl World {
             }
             let recovery_prefix = "/internal/model-maintenance/lease/recovery/";
             if req.target.starts_with(recovery_prefix) {
-                if req.method == "POST" { *node_barrier.lock().unwrap() = true; }
+                if req.method == "POST" {
+                    *node_barrier.lock().unwrap() = true;
+                    if ack_fails && barrier_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+                        return Answer::Reply(503, "{}".into());
+                    }
+                }
                 if req.method == "DELETE" {
                     let proof: Value = serde_json::from_str(&req.body).unwrap();
                     assert!(proof["lease"].is_string());
@@ -287,9 +312,9 @@ impl World {
     }
 
     /// The router calls a load or unload made (the installed-list read before a load left out).
-    fn engine_calls(&self, skip_first_listing: bool) -> Vec<String> {
+    fn engine_calls(&self) -> Vec<String> {
         let mut out = Vec::new();
-        let mut skipped = !skip_first_listing;
+        let mut skipped = false;
         for r in self.router.lock().unwrap().iter() {
             let key = format!("{} {}", r.method, r.target.split('?').next().unwrap());
             if !skipped && key == "GET /models" {
@@ -387,7 +412,7 @@ async fn every_recorded_node_answer_is_the_fronts() {
                 )
             })
             .collect();
-        let calls = w.engine_calls(s["path"] == "/api/models/load");
+        let calls = w.engine_calls();
         if !calls.starts_with(&want_calls)
             || calls
                 .iter()
@@ -1001,4 +1026,81 @@ async fn verified_gate_renewal_loss_still_requires_covered_incident_completion()
         .unwrap()
         .iter()
         .any(|r| r.method == "DELETE" && r.target.contains("/recovery/")));
+}
+
+#[tokio::test]
+async fn uncertain_post_cannot_settle_on_old_unloaded_before_delayed_handler_starts() {
+    let w = World::new(&json!({"path":"/api/models/load", "delayedUncertain":true})).await;
+    assert_eq!(
+        w.post("/api/models/load", r#"{"name":"m"}"#, ADMIN).await.0,
+        500
+    );
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(
+        *w.barrier.lock().unwrap(),
+        "old unloaded state must not retire an uncertain POST"
+    );
+    assert_eq!(
+        w.post("/api/models/load", r#"{"name":"m"}"#, ADMIN).await.0,
+        503
+    );
+    assert_eq!(
+        w.router
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.method == "POST" && r.target == "/models/load")
+            .count(),
+        1
+    );
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(*w.barrier.lock().unwrap(), "loading still owns exclusion");
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while *w.barrier.lock().unwrap() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(w
+        .node
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|r| r.method == "DELETE" && r.target.contains("/recovery/")));
+}
+
+async fn undispatched_incident_retires_without_engine_reads(ack_fails: bool) {
+    let w = World::new(
+        &json!({"path":"/api/models/load", "engineReadsFail":true, "barrierAckFails":ack_fails}),
+    )
+    .await;
+    assert_eq!(
+        w.post("/api/models/load", r#"{"name":"m"}"#, ADMIN).await.0,
+        if ack_fails { 503 } else { 500 }
+    );
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while *w.barrier.lock().unwrap() || w.maint.authority.held() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("work never dispatched must retire with fresh Node proof even while engine reads fail");
+    assert!(w.router.lock().unwrap().iter().all(|r| r.method != "POST"));
+    assert!(w
+        .node
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|r| r.method == "DELETE" && r.target.contains("/recovery/")));
+}
+
+#[tokio::test]
+async fn initial_get_failure_with_no_post_retires_without_engine_evidence() {
+    undispatched_incident_retires_without_engine_reads(false).await;
+}
+
+#[tokio::test]
+async fn failed_barrier_ack_with_no_post_retires_without_engine_evidence() {
+    undispatched_incident_retires_without_engine_reads(true).await;
 }
