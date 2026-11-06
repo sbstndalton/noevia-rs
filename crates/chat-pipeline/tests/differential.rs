@@ -1133,7 +1133,8 @@ mod route_stage {
         }
         async fn catalogue(&self) -> Option<Vec<Entry>> {
             self.at("catalogue").await;
-            Some(Vec::new())
+            // Unreadable: no role is reported missing.
+            None
         }
         async fn check(&self) -> Option<Verdict> {
             self.at("check").await;
@@ -1221,7 +1222,10 @@ mod route_stage {
             {
                 let mut f = std::pin::pin!(route::decide(&turn, &io));
                 let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
-                assert!(std::future::Future::poll(f.as_mut(), &mut cx).is_pending(), "{stop}");
+                assert!(
+                    std::future::Future::poll(f.as_mut(), &mut cx).is_pending(),
+                    "{stop}"
+                );
             }
             assert!(io.reached.get(), "the decision never reached {stop}");
         }
