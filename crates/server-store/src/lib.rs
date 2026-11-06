@@ -1182,13 +1182,33 @@ impl WriteTx<'_> {
         )?)
     }
 
+    /// Advance the durable generation inside the writer's BEGIN IMMEDIATE transaction.
+    /// Even an identical save or an already-empty reset invalidates every front's consumers.
     pub fn set_reranker_configuration(
         &self,
         _owner: RustRerankerSettings,
         value: Option<&str>,
     ) -> Result<usize, StoreError> {
+        let current: Option<String> = self.reader().row(
+            "SELECT value FROM settings WHERE key='rerank:revision'",
+            [],
+            |r| r.get(0),
+        )?;
+        let generation = match current {
+            None => 0,
+            Some(value) => value
+                .parse::<u64>()
+                .map_err(|_| StoreError::NotOwned("invalid reranker revision".into()))?,
+        };
+        let next = generation
+            .checked_add(1)
+            .ok_or_else(|| StoreError::NotOwned("reranker revision exhausted".into()))?;
         self.settings_open.store(true, Ordering::SeqCst);
         let _close = SettingsWindow(self.settings_open);
+        self.conn.execute(
+            "INSERT OR REPLACE INTO settings(key,value) VALUES('rerank:revision',?1)",
+            [next.to_string()],
+        )?;
         Ok(match value {
             Some(value) => self.conn.execute(
                 "INSERT OR REPLACE INTO settings(key,value) VALUES('rerank:configuration',?1)",

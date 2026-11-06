@@ -550,7 +550,6 @@ pub struct App {
     pub accounts: Arc<account_routes::AccountLayer>,
     /// The ONE context controller for this native App and its existing private store.
     pub feature_context: Option<Arc<feature_context::Layer>>,
-    pub reranker: reranker_routes::State,
     pub usage: Arc<usage_routes::UsageLayer>,
     /// The Diary sidecar client (sbstndalton/noevia#2185); `None` only if its HTTP client could
     /// not be built, when its routes answer 503.
@@ -648,7 +647,6 @@ impl App {
             writes,
             accounts,
             feature_context,
-            reranker: reranker_routes::State::default(),
             usage: Arc::new(usage_routes::UsageLayer::default()),
             diary: server_diary::Diary::new(config.diary.clone())
                 .ok()

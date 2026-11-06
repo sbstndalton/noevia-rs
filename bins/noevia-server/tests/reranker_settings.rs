@@ -1,5 +1,5 @@
 //! Synthetic HTTP, persistence and authorization checks for the native reranker owner.
-#![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 #[path = "mcp_support/mod.rs"]
 mod support;
 use server_store::rusqlite;
@@ -299,4 +299,133 @@ async fn replay_original_node_http_oracle_with_unreachable_catalogue() {
             case["name"]
         );
     }
+}
+
+// Each worker is a separate OS process, with its own App, store readers and writer.
+#[test]
+fn independent_front_worker() {
+    let Ok(dir) = std::env::var("RERANK_TEST_DIR") else {
+        return;
+    };
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    runtime.block_on(async {
+        let front = front_env(
+            std::path::Path::new(&dir),
+            true,
+            &[("RERANK_BACKEND", "tei".into())],
+        )
+        .await;
+        std::fs::write(
+            std::env::var("RERANK_TEST_READY").unwrap(),
+            format!("{} {}", front.addr, front.store),
+        )
+        .unwrap();
+        std::future::pending::<()>().await;
+    });
+}
+struct Worker(std::process::Child);
+impl Drop for Worker {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+async fn worker(
+    dir: &std::path::Path,
+    name: &str,
+) -> (Worker, std::net::SocketAddr, std::net::SocketAddr) {
+    let ready = dir.join(name);
+    let child = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "independent_front_worker", "--nocapture"])
+        .env("RERANK_TEST_DIR", dir)
+        .env("RERANK_TEST_READY", &ready)
+        .spawn()
+        .unwrap();
+    let child = Worker(child);
+    for _ in 0..500 {
+        if let Ok(text) = std::fs::read_to_string(&ready) {
+            let mut addresses = text.split_whitespace();
+            return (
+                child,
+                addresses.next().unwrap().parse().unwrap(),
+                addresses.next().unwrap().parse().unwrap(),
+            );
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("independent front did not start");
+}
+async fn snapshot(store: std::net::SocketAddr) -> serde_json::Value {
+    let (status, _, body) = support::raw_text(
+        store,
+        "POST",
+        "/v1/reranker/settings",
+        "",
+        &format!("X-Noevia-Store-Token: {STORE_TOKEN}\r\n"),
+        b"{}",
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    j(&body)
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn independent_process_mutations_invalidate_consumer_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = seed(dir.path());
+    let (_a, a, store_a) = worker(dir.path(), "a-ready").await;
+    let (_b, b, store_b) = worker(dir.path(), "b-ready").await;
+    if let Ok(script) = std::env::var("RERANKER_CONSUMER_TEST") {
+        let status = std::process::Command::new("node")
+            .args(["--test", &script])
+            .env("RERANK_TEST_FRONT", format!("http://{b}"))
+            .env("RERANK_TEST_STORE_PORT", store_a.port().to_string())
+            .status()
+            .unwrap();
+        assert!(
+            status.success(),
+            "real Node consumer must invalidate after remote writes"
+        );
+    }
+    let audit_baseline = db
+        .query_row(
+            "SELECT count(*) FROM audit_events WHERE action LIKE 'rerank.%'",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap();
+    let x = br#"{"enabled":true,"choice":"tei"}"#;
+    assert_eq!(raw(a, "PUT", PATH, ADMIN, x).await.0, 200);
+    let mut cached = snapshot(store_a).await;
+    // Identical saves, ABA between reads, repeated resets, and the reverse writer direction.
+    for (writer, method, body) in [
+        (b, "PUT", x.as_slice()),
+        (b, "PUT", x.as_slice()),
+        (b, "PUT", br#"{"enabled":false,"choice":"tei"}"#.as_slice()),
+        (b, "PUT", x.as_slice()),
+        (b, "DELETE", b"".as_slice()),
+        (b, "DELETE", b"".as_slice()),
+        (a, "PUT", x.as_slice()),
+    ] {
+        assert_eq!(raw(writer, method, PATH, ADMIN, body).await.0, 200);
+        let next = snapshot(store_a).await;
+        assert_ne!(
+            cached["revision"], next["revision"],
+            "successful remote mutation must invalidate the consumer cache"
+        );
+        assert_eq!(next, snapshot(store_b).await);
+        cached = next;
+    }
+    let before = cached.clone();
+    assert_eq!(raw(b, "PUT", PATH, ADMIN, b"{}").await.0, 400);
+    assert_eq!(before, snapshot(store_a).await);
+    // Successful mutations, generation and audit all advance together.
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM audit_events WHERE action LIKE 'rerank.%'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        audit_baseline + 8
+    );
 }

@@ -1243,6 +1243,16 @@ fn reranker_configuration_requires_its_capability_and_rolls_back() {
         .unwrap(),
         "{\"enabled\":false,\"choice\":null}"
     );
+    assert_eq!(
+        node.query_row(
+            "SELECT value FROM settings WHERE key='rerank:revision'",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        "1",
+        "failed writes must roll back the generation too"
+    );
     writer
         .write(|tx| tx.set_reranker_configuration(RustRerankerSettings::owned(), None))
         .unwrap();
@@ -1254,5 +1264,14 @@ fn reranker_configuration_requires_its_capability_and_rolls_back() {
         )
         .unwrap(),
         0
+    );
+    assert_eq!(
+        node.query_row(
+            "SELECT value FROM settings WHERE key='rerank:revision'",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        "2"
     );
 }

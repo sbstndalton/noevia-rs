@@ -13,51 +13,6 @@ use axum::{
 use serde_json::{json, Value};
 use server_store::{Reader, RustRerankerSettings, StoreError};
 use std::{sync::Arc, time::Duration};
-/// A process incarnation and mutation sequence invalidate consumer engine caches even for
-/// identical saves/resets. This is a cache tag, never a model-operation grant.
-pub struct State {
-    boot: Option<String>,
-    sequence: std::sync::atomic::AtomicU64,
-    failed: std::sync::atomic::AtomicBool,
-}
-impl Default for State {
-    fn default() -> Self {
-        use rand_core::RngCore;
-        let mut bytes = [0u8; 16];
-        let boot = rand_core::OsRng
-            .try_fill_bytes(&mut bytes)
-            .ok()
-            .map(|()| bytes.iter().map(|b| format!("{b:02x}")).collect());
-        Self {
-            boot,
-            sequence: std::sync::atomic::AtomicU64::new(0),
-            failed: std::sync::atomic::AtomicBool::new(false),
-        }
-    }
-}
-impl State {
-    fn snapshot(&self) -> Option<String> {
-        use std::sync::atomic::Ordering;
-        if self.failed.load(Ordering::Acquire) {
-            return None;
-        }
-        self.boot
-            .as_ref()
-            .map(|boot| format!("{boot}:{}", self.sequence.load(Ordering::Acquire)))
-    }
-    fn changed(&self) -> Result<(), StoreError> {
-        use std::sync::atomic::Ordering;
-        if self
-            .sequence
-            .try_update(Ordering::AcqRel, Ordering::Acquire, |n| n.checked_add(1))
-            .is_err()
-        {
-            self.failed.store(true, Ordering::Release);
-            return Err(StoreError::NotOwned("reranker revision exhausted".into()));
-        }
-        Ok(())
-    }
-}
 pub const PATH: &str = "/api/models/reranker";
 fn unavailable() -> Response<Body> {
     reply::error(
@@ -134,10 +89,13 @@ pub async fn internal(app: Arc<App>, installed: Option<Vec<InstalledModel>>) -> 
     let result = tokio::task::spawn_blocking(move || {
         app.identity.store_blocking()?.read(|r| {
             let settings = load(r, app.config.reranker.0.clone())?;
-            let revision = app
-                .reranker
-                .snapshot()
-                .ok_or_else(|| StoreError::NotOwned("reranker state unavailable".into()))?;
+            // The reader transaction pins configuration and generation to one SQLite snapshot.
+            let generation = setting(r, "rerank:revision")?.unwrap_or_else(|| "0".into());
+            let generation = generation
+                .parse::<u64>()
+                .map_err(|_| StoreError::NotOwned("invalid reranker revision".into()))?;
+            // Retain the private client protocol shape; the generation is shared, never App-local.
+            let revision = format!("00000000000000000000000000000000:{generation}");
             Ok(format!(
                 "{{\"env\":{},\"view\":{},\"revision\":{}}}",
                 settings.effective_env_json(),
@@ -173,9 +131,6 @@ pub async fn serve(
     };
     if id.user.role != server_auth::Role::Admin {
         return reply::error(StatusCode::FORBIDDEN, "administrator required", true);
-    }
-    if app.reranker.snapshot().is_none() {
-        return unavailable();
     }
     let method = parts.method;
     if !matches!(method, Method::GET | Method::PUT | Method::DELETE) {
@@ -253,7 +208,6 @@ pub async fn serve(
             )?;
             Ok(Ok(settings.view_json(installed.as_deref())))
         })?;
-        if written.is_ok() { app.reranker.changed()?; }
         Ok(written)
     }).await;
     match result {
