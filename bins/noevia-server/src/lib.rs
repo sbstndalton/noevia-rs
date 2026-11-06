@@ -291,10 +291,10 @@ use std::sync::Arc;
 /// decided by Core's own load refusal (`POST /internal/model-maintenance/load-refusal`, core
 /// model-load-refusal.cjs), so it pairs only with `noevia-calibration-worker-rust/2`.
 ///
-/// `noevia-maintenance-lease-authority/1` (model_maint/lease.rs `AUTHORITY_MARKER`, port contract row J):
+/// `noevia-maintenance-lease-authority/2` (model_maint/lease.rs `AUTHORITY_MARKER`, port contract row J):
 /// this build is the one model-maintenance lease authority and answers `POST
 /// /v1/maintenance-lease/{acquire,renew,release,held,session}` on the project-store listener. Core's
-/// `noevia-maintenance-lease-client/1` takes every maintenance hold there; the release assembly pairs the
+/// `noevia-maintenance-lease-client/2` takes every maintenance hold there; the release assembly pairs the
 /// two markers in both directions.
 ///
 /// `rust-preset-baseline`: this build is the preset reload baseline's one in-memory authority
@@ -441,7 +441,7 @@ pub const FEATURES: &[&str] = &[
     "rust-preset-baseline",
     // Port contract row J: the maintenance lease authority (model_maint/lease.rs AUTHORITY_MARKER; the
     // release assembly reads this exact literal and pairs it with core's lease client).
-    "noevia-maintenance-lease-authority/1",
+    "noevia-maintenance-lease-authority/2",
     "rust-autotune-cancel",
     "rust-calibration-cancel",
     "rust-calibration-routes",

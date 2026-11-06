@@ -31,8 +31,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 use tokio::time::Instant;
 
-/// The release marker Noevia's release assembly pairs with core's client (`noevia-maintenance-lease-client/1`).
-pub const AUTHORITY_MARKER: &str = "noevia-maintenance-lease-authority/1";
+/// The release marker Noevia's release assembly pairs with core's client (`noevia-maintenance-lease-client/2`).
+pub const AUTHORITY_MARKER: &str = "noevia-maintenance-lease-authority/2";
 
 /// model-maintenance-lease.cjs `TTL_MS`.
 pub const TTL: Duration = Duration::from_millis(180_000);
@@ -345,12 +345,16 @@ impl Authority {
         }
         state.recovery_ticket.clone().unwrap_or_default()
     }
-    pub(super) fn complete_recovery(&self) {
+    pub(super) fn complete_recovery(&self, ticket: &str) -> bool {
         let mut state = self.lock();
+        if state.recovery_ticket.as_deref() != Some(ticket) {
+            return false;
+        }
         state.recovery_required = false;
         state.recovery_ticket = None;
         drop(state);
         self.inner.changed.notify_waiters();
+        true
     }
 
     fn take(
@@ -736,6 +740,19 @@ mod tests {
         }
     }
 
+    #[test]
+    fn r5_late_completion_cannot_clear_a_newer_authority_incident() {
+        let a = Authority::new();
+        let first = a.require_recovery();
+        assert!(a.complete_recovery(&first));
+        let second = a.require_recovery();
+        assert_ne!(first, second);
+        assert!(!a.complete_recovery(&first));
+        assert_eq!(a.recovery_ticket().as_deref(), Some(second.as_str()));
+        assert!(a.node_session("node", 1).unwrap().front_held);
+        assert!(a.complete_recovery(&second));
+    }
+
     #[tokio::test(start_paused = true)]
     async fn r4_node_restart_retains_barrier_between_lost_release_and_fresh_recovery() {
         let a = Authority::new();
@@ -816,7 +833,7 @@ mod tests {
             !a.renew(&g.id, Some(g.generation)),
             "an expired lease is not renewed"
         );
-        a.complete_recovery(); // synthetic settlement of the expired front work
+        a.complete_recovery(&a.recovery_ticket().unwrap()); // synthetic settlement of the expired front work
         assert!(a.try_acquire(n, None, "t").is_ok());
     }
 
@@ -844,7 +861,7 @@ mod tests {
         tokio::time::advance(TTL).await;
         assert!(!a.covers(&g.id, g.generation, Duration::ZERO));
         assert!(!a.held()); // observe expiry before synthetic recovery completion
-        a.complete_recovery();
+        a.complete_recovery(&a.recovery_ticket().unwrap());
         let g2 = a.try_acquire(Origin::Front, None, "r").unwrap();
         assert!(!a.covers(&g.id, g.generation, Duration::ZERO));
         assert!(!a.renew(&g.id, Some(g.generation)));
@@ -914,7 +931,7 @@ mod tests {
         // B starts, and gets the lease once the front releases.
         let new = node(&a, "boot-b", 20);
         a.release(&front.id, Some(front.generation));
-        a.complete_recovery();
+        a.complete_recovery(&a.recovery_ticket().unwrap());
         let b = a.try_acquire(new.clone(), None, "delete").unwrap();
         assert_eq!(
             waiting.await.unwrap(),
@@ -959,7 +976,7 @@ mod tests {
         assert_eq!(a.try_acquire(new.clone(), None, "t"), Err(Refusal::Busy));
         a.release(&f.id, Some(f.generation));
         assert!(a.node_session("boot-b", 20).unwrap().front_held);
-        a.complete_recovery();
+        a.complete_recovery(&a.recovery_ticket().unwrap());
         assert!(!a.node_session("boot-b", 20).unwrap().front_held);
         assert!(a.try_acquire(new, None, "t").is_ok());
         // A front lease taken under the current start is not fenced by the same start again.

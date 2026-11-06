@@ -70,7 +70,7 @@ async fn op(
 fn the_build_advertises_the_authority_marker_the_release_pairs_with_core() {
     assert_eq!(
         lease::AUTHORITY_MARKER,
-        "noevia-maintenance-lease-authority/1"
+        "noevia-maintenance-lease-authority/2"
     );
     assert!(noevia_server::FEATURES.contains(&lease::AUTHORITY_MARKER));
 }
