@@ -2,12 +2,11 @@
 //! process group. Policy, workspace access and approvals are native caller callbacks.
 use js_json::{wtf16, JValue};
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
+#[cfg(test)]
+use tokio::net::tcp::OwnedReadHalf;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-    net::{
-        tcp::{OwnedReadHalf, OwnedWriteHalf},
-        TcpStream,
-    },
+    net::{tcp::OwnedWriteHalf, TcpStream},
     sync::watch,
 };
 const MAX_UNITS: usize = 16 * 1024 * 1024;
@@ -50,12 +49,37 @@ pub struct Options {
     pub model: Option<String>,
     pub handshake_timeout: Duration,
 }
+enum Writer {
+    Tcp(OwnedWriteHalf),
+    Spawn(tokio::net::unix::OwnedWriteHalf),
+}
+impl Writer {
+    async fn write_all(&mut self, bytes: &[u8]) -> std::io::Result<()> {
+        match self {
+            Self::Tcp(w) => w.write_all(bytes).await,
+            Self::Spawn(w) => w.write_all(bytes).await,
+        }
+    }
+    async fn shutdown(&mut self) -> std::io::Result<()> {
+        match self {
+            Self::Tcp(w) => w.shutdown().await,
+            Self::Spawn(w) => w.shutdown().await,
+        }
+    }
+    fn try_write(&self, bytes: &[u8]) -> std::io::Result<usize> {
+        match self {
+            Self::Tcp(w) => w.try_write(bytes),
+            Self::Spawn(w) => w.try_write(bytes),
+        }
+    }
+}
 type CallbackReply = (JValue, Result<JValue, RpcError>);
 pub struct Client {
-    reader: BufReader<OwnedReadHalf>,
+    reader: BufReader<Box<dyn tokio::io::AsyncRead + Unpin + Send>>,
     line_bytes: Vec<u8>,
     callbacks: tokio::task::JoinSet<CallbackReply>,
-    writer: OwnedWriteHalf,
+    writer: Writer,
+    settled: Option<tokio::sync::oneshot::Receiver<()>>,
     handlers: Arc<dyn Handlers>,
     cancel: watch::Receiver<bool>,
     next: u64,
@@ -135,10 +159,11 @@ impl Client {
         };
         let (read, write) = stream.into_split();
         let mut client = Self {
-            reader: BufReader::new(read),
+            reader: BufReader::new(Box::new(read)),
             line_bytes: Vec::new(),
             callbacks: tokio::task::JoinSet::new(),
-            writer: write,
+            writer: Writer::Tcp(write),
+            settled: None,
             handlers,
             cancel,
             next: 1,
@@ -160,14 +185,64 @@ impl Client {
         }
         Ok(client)
     }
+    pub async fn spawn(
+        options: Options,
+        command: &str,
+        args: &[String],
+        handlers: Arc<dyn Handlers>,
+        cancel: watch::Receiver<bool>,
+        grace: Duration,
+    ) -> Result<Self, Error> {
+        if *cancel.borrow() {
+            return Err(Error::Cancelled);
+        }
+        let deadline = tokio::time::Instant::now()
+            .checked_add(options.handshake_timeout)
+            .ok_or(Error::Protocol)?;
+        let channel = crate::spawn_channel::open(
+            command,
+            args,
+            &options.cwd,
+            &options.env,
+            handlers.clone(),
+            grace,
+        )
+        .map_err(|_| Error::Unavailable)?;
+        let (read, write) = channel.stream.into_split();
+        let mut client = Self {
+            reader: BufReader::new(Box::new(read)),
+            line_bytes: Vec::new(),
+            callbacks: tokio::task::JoinSet::new(),
+            writer: Writer::Spawn(write),
+            settled: Some(channel.settled),
+            handlers,
+            cancel: cancel.clone(),
+            next: 1,
+            was_cancelled: false,
+            stopped: false,
+            session: JValue::Null,
+            model: options.model.clone(),
+            agent: JValue::Null,
+        };
+        let mut cancelled = cancel;
+        let result = tokio::select! {biased;_=cancelled.changed()=>Err(Error::Cancelled),_=tokio::time::sleep_until(deadline)=>Err(Error::HandshakeTimeout),result=client.handshake(options)=>result};
+        if let Err(error) = result {
+            client.was_cancelled = matches!(error, Error::Cancelled);
+            client.close().await;
+            return Err(error);
+        }
+        Ok(client)
+    }
     async fn handshake(&mut self, options: Options) -> Result<(), Error> {
         // Must precede initialize: this is the existing supervisor's launch contract.
-        self.send(obj(vec![
-            ("noevia", text("start")),
-            ("cwd", text(&options.cwd)),
-            ("env", options.env),
-        ]))
-        .await?;
+        if matches!(self.writer, Writer::Tcp(_)) {
+            self.send(obj(vec![
+                ("noevia", text("start")),
+                ("cwd", text(&options.cwd)),
+                ("env", options.env),
+            ]))
+            .await?;
+        }
         self.agent = self
             .request(
                 "initialize",
@@ -459,12 +534,15 @@ impl Client {
     /// Call from the actor's finally path, before its terminal journal event. Stop the sidecar
     /// first, then let every aborted approval callback finish recording its decision.
     pub async fn stop(&mut self) {
-        if self.stopped {
-            return;
+        if !self.stopped {
+            self.cancel_notice();
+            let _ = self.writer.shutdown().await;
+            self.stopped = true;
         }
-        self.cancel_notice();
-        let _ = self.writer.shutdown().await;
-        self.stopped = true;
+        if let Some(settled) = self.settled.as_mut() {
+            let _ = settled.await;
+        }
+        self.settled = None;
     }
     pub async fn close(&mut self) {
         self.stop().await;
@@ -965,5 +1043,129 @@ mod concurrency_tests {
         cancel.send_replace(true);
         assert!(matches!(running.await.unwrap(), Err(Error::Cancelled)));
         server.await.unwrap();
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
+mod spawn_tests {
+    use super::*;
+    struct Handler;
+    impl Handlers for Handler {
+        fn request(self: Arc<Self>, _: &str, _: JValue) -> HandlerFuture<'static> {
+            Box::pin(async { Ok(JValue::Null) })
+        }
+        fn update(&self, _: JValue) {}
+    }
+    async fn scenario(stall: Option<&str>, abort: bool, abandon: bool) {
+        let root = tempfile::tempdir().unwrap();
+        let script = root.path().join("engine.py");
+        std::fs::write(&script, include_str!("../tests/fixtures/acp-spawn.py")).unwrap();
+        let heartbeat = root.path().join("heartbeat");
+        let observed = root.path().join("env.json");
+        let entered = root.path().join("entered");
+        let env = obj(vec![
+            ("PATH", text("/usr/bin:/bin")),
+            ("HEARTBEAT", text(&heartbeat.to_string_lossy())),
+            ("OBSERVED_ENV", text(&observed.to_string_lossy())),
+            ("ENTERED", text(&entered.to_string_lossy())),
+            (
+                "CANCELLED",
+                text(&root.path().join("cancelled").to_string_lossy()),
+            ),
+            ("STALL_AT", text(stall.unwrap_or(""))),
+            ("IGNORE_TERM", text("1")),
+        ]);
+        let options = Options {
+            endpoint: String::new(),
+            cwd: root.path().to_string_lossy().into_owned(),
+            env,
+            session_meta: None,
+            model: None,
+            handshake_timeout: Duration::from_secs(5),
+        };
+        let (tx, rx) = watch::channel(false);
+        let args = vec![script.to_string_lossy().into_owned()];
+        let handler = Arc::new(Handler);
+        let retained = handler.clone();
+        let mut future = Box::pin(async move {
+            let mut client = Client::spawn(
+                options,
+                "/usr/bin/python3",
+                &args,
+                retained,
+                rx,
+                Duration::from_millis(40),
+            )
+            .await?;
+            let result = client.turn("synthetic prompt").await;
+            client.close().await;
+            result
+        });
+        if abort {
+            tokio::select! {result=&mut future=>panic!("engine ended before actual execution: {result:?}"),_=async{while !entered.exists(){tokio::time::sleep(Duration::from_millis(2)).await;}}=>{}}
+            if abandon {
+                drop(future);
+                assert!(
+                    Arc::strong_count(&handler) > 1,
+                    "cleanup owns callbacks until the child settles"
+                );
+                tokio::time::timeout(Duration::from_secs(5), async {
+                    while Arc::strong_count(&handler) > 1 {
+                        tokio::time::sleep(Duration::from_millis(2)).await;
+                    }
+                })
+                .await
+                .unwrap();
+            } else {
+                tx.send_replace(true);
+                assert!(matches!(
+                    tokio::time::timeout(Duration::from_secs(5), future)
+                        .await
+                        .unwrap(),
+                    Err(Error::Cancelled)
+                ));
+            }
+        } else {
+            assert!(tokio::time::timeout(Duration::from_secs(5), future)
+                .await
+                .unwrap()
+                .is_ok());
+        }
+        let observed = wtf16::parse(&std::fs::read_to_string(observed).unwrap()).unwrap();
+        assert_eq!(observed.get("HOME"), &JValue::Undefined);
+        assert_eq!(observed.get("CODE_ENGINE_API_KEY"), &JValue::Undefined);
+        let length = std::fs::metadata(&heartbeat).unwrap().len();
+        assert!(length > 0);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(
+            std::fs::metadata(&heartbeat).unwrap().len(),
+            length,
+            "owned process group must settle before return"
+        );
+    }
+    #[tokio::test]
+    async fn stdio_turn_has_no_supervisor_frame_and_settles_descendants() {
+        scenario(None, false, false).await;
+    }
+    #[tokio::test]
+    async fn abort_during_initialize_settles_descendants() {
+        scenario(Some("initialize"), true, false).await;
+    }
+    #[tokio::test]
+    async fn abort_during_session_new_settles_descendants() {
+        scenario(Some("session/new"), true, false).await;
+    }
+    #[tokio::test]
+    async fn abort_during_prompt_settles_descendants() {
+        scenario(Some("session/prompt"), true, false).await;
+    }
+    #[tokio::test]
+    async fn dropped_handshake_transfers_process_and_callback_ownership_until_settled() {
+        scenario(Some("initialize"), true, true).await;
+    }
+    #[tokio::test]
+    async fn dropped_prompt_transfers_process_and_callback_ownership_until_settled() {
+        scenario(Some("session/prompt"), true, true).await;
     }
 }

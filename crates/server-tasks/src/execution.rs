@@ -59,9 +59,14 @@ pub trait Review: Send + Sync {
         result: JValue,
     ) -> Run<'a>;
 }
+pub struct Spawn {
+    pub command: String,
+    pub args: Vec<String>,
+}
 pub struct Executor {
     pub engine: Arc<dyn Engine>,
     pub endpoint: String,
+    pub spawn: Option<Spawn>,
     pub owner: Option<(u32, u32)>,
     pub sandboxed: bool,
     pub path: Option<String>,
@@ -210,8 +215,8 @@ impl Executor {
                 crate::files::read(home,".claude/settings.json",crate::files::MAX_FILE_BYTES).ok().and_then(|s|wtf16::parse(&s).ok()).filter(JValue::is_object).ok_or_else(||Failure::public(409,"Claude Code’s pinned settings are missing or invalid."))?
             }else{JValue::Null};
             let meta=launch::metadata(&object(vec![("edit",text("ask")),("bash",text("ask")),("webfetch",text("ask"))]),Some(&invocation.harness),&settings).map_err(|_|Failure::public(409,"Claude Code needs noevia’s pinned session settings."))?;
-            if self.endpoint.is_empty(){return Err(Failure::public(409,"No coding harness is configured on this server."));}
-            client=Some(Client::connect(acp::Options{endpoint:self.endpoint.clone(),cwd:cwd.to_string_lossy().into_owned(),env,session_meta:if meta==JValue::Null{None}else{Some(meta)},model:chosen.map(str::to_owned),handshake_timeout:Duration::from_secs(30)},callbacks.clone(),context.cancellation()).await.map_err(acp_error)?);
+            let options=acp::Options{endpoint:self.endpoint.clone(),cwd:cwd.to_string_lossy().into_owned(),env,session_meta:if meta==JValue::Null{None}else{Some(meta)},model:chosen.map(str::to_owned),handshake_timeout:Duration::from_secs(30)};
+            client=Some(if !self.endpoint.is_empty(){Client::connect(options,callbacks.clone(),context.cancellation()).await}else if let Some(spawn)=&self.spawn{Client::spawn(options,&spawn.command,&spawn.args,callbacks.clone(),context.cancellation(),Duration::from_secs(5)).await}else{return Err(Failure::public(409,"No coding harness is configured on this server."));}.map_err(acp_error)?);
             if context.active().is_ok(){context.event("progress",object(vec![("stage",text("running"))])).map_err(internal)?;}
             let agent=client.as_mut().ok_or_else(Failure::unavailable)?;let agent_info=agent.agent.clone();let prompt=if invocation.context.is_empty(){invocation.prompt.clone()}else{format!("{}\n\nTask:\n{}",invocation.context,invocation.prompt)};
             let outcome=agent.turn(&prompt).await;callbacks.flush().map_err(internal)?;
@@ -658,6 +663,7 @@ mod tests {
             let endpoint = listener.local_addr().unwrap().to_string();
             let server = tokio::spawn(sidecar(listener, mode.into()));
             let executor = Executor {
+                spawn: None,
                 engine: Arc::new(Endpoint),
                 endpoint,
                 owner: None,
