@@ -483,11 +483,11 @@ async fn private_state_in_an_untrusted_directory_chain_is_refused_without_repair
     // The state directory is writable by group or other: refused, mode not repaired, nothing created.
     let writable = root.join("writable");
     std::fs::create_dir(&writable).unwrap();
-    for unsafe_mode in [0o770, 0o707, 0o777, 0o722] {
+    for unsafe_mode in [0o770, 0o707, 0o777, 0o722, 0o750, 0o710, 0o701, 0o755] {
         std::fs::set_permissions(&writable, std::fs::Permissions::from_mode(unsafe_mode)).unwrap();
         assert_eq!(
             open_at(&r, writable.join("issuer.json")).unwrap_err().0,
-            Reason::Publication,
+            Reason::StateDirMode,
             "{unsafe_mode:o}"
         );
         assert_eq!(
@@ -513,7 +513,12 @@ async fn private_state_in_an_untrusted_directory_chain_is_refused_without_repair
         link.join("issuer.json"),
         link.join("sub").join("issuer.json"),
     ] {
-        assert_eq!(open_at(&r, via.clone()).unwrap_err().0, Reason::Publication);
+        let want = if via.parent() == Some(&link) {
+            Reason::StateDirNotDirectory
+        } else {
+            Reason::Publication
+        };
+        assert_eq!(open_at(&r, via.clone()).unwrap_err().0, want);
         assert!(load_state(&via).is_err());
         assert!(names(&real).iter().all(|n| n == "sub"));
         assert!(names(&real.join("sub")).is_empty());
@@ -543,7 +548,7 @@ async fn private_state_in_an_untrusted_directory_chain_is_refused_without_repair
     // The trusted case still works and is 0600.
     let good = root.join("good");
     std::fs::create_dir(&good).unwrap();
-    std::fs::set_permissions(&good, std::fs::Permissions::from_mode(0o750)).unwrap();
+    std::fs::set_permissions(&good, std::fs::Permissions::from_mode(0o700)).unwrap();
     let (_, how) = open_at(&r, good.join("issuer.json")).unwrap();
     assert_eq!(how, Opened::Fresh);
     assert_eq!(mode(&good.join("issuer.json")), 0o600);

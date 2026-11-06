@@ -1868,12 +1868,12 @@ It is not a public route: Node asks it over the internal store listener (`POST /
 grant,activity,revoke,forget}`, header `x-noevia-store-token`). The shared proxy key keeps its
 published contract (`CODE_EGRESS_CONTROL_KEY_FILE`, mode 0440, owner `CODE_EGRESS_KEY_UID`/`_GID`,
 64 hex digits and LF, replaced by rename); new private issuer state is `code-egress-issuer.json` in an `issuer/` directory
-inside the key directory (mode 0700, created by the issuer; override `CODE_EGRESS_ISSUER_STATE_FILE`; never
+inside the key directory (a real directory of the issuer, mode exactly 0700 with no group or other bit, checked on every open and so also when it already existed or was loosened later: refused by name, never repaired; created by the issuer; override `CODE_EGRESS_ISSUER_STATE_FILE`; never
 `UI_DATA_DIR`, whose owner is whatever the host made it), mode 0600, and a restart keeps the key
 and replaces its own session. The private state is only read or published through a trusted
 directory chain, anchored to a held directory descriptor: no symlinked component, ancestors owned by
 root or the issuer and not group/other-writable (except root-owned sticky directories), the state
-directory itself owned by the issuer and not group/other-writable, the file a regular single-link
+directory itself owned by the issuer with mode exactly 0700, the file a regular single-link
 0600 file of the issuer. Anything else (including a destination swapped after start) is refused and
 never repaired. The first publication creates the proxy key exclusively and never replaces a key another issuer
 published. **Takeover of the retired Node issuer's key** (no operator step): Node kept no private

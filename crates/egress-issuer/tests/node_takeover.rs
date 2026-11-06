@@ -520,3 +520,130 @@ fn a_directory_published_by_the_real_node_code_during_this_run_is_taken_over() {
         before
     );
 }
+
+// ---- the private-state directory is held to its rule when it already exists ----
+
+/// An `issuer/` that was pre-created, restored from a backup, or loosened later is validated exactly as
+/// strictly as one the issuer creates: a real directory, the issuer's own, mode 0700 with no group or
+/// other bit at all (a process with the proxy's supplementary group must not be able to enter it).
+/// Anything else is refused by name, never repaired, and nothing in it or beside it changes.
+#[test]
+fn an_existing_issuer_directory_is_held_to_0700_and_never_repaired() {
+    let Some(r) = rig() else { return };
+    let node = node_fixture();
+    lay(&r, &node.file_bytes);
+    let issuer = r.keydir.join("issuer");
+    std::fs::create_dir(&issuer).unwrap();
+    for m in [
+        0o710, 0o750, 0o701, 0o755, 0o770, 0o777, 0o500, 0o600, 0o2700, 0o1700,
+    ] {
+        std::fs::set_permissions(&issuer, std::fs::Permissions::from_mode(m)).unwrap();
+        let before = snapshot(&r);
+        let err = open(&r).unwrap_err();
+        assert_eq!(err.0, Reason::StateDirMode, "{m:o}");
+        assert!(
+            err.0.as_str().starts_with("state_directory_"),
+            "named in the log"
+        );
+        assert_eq!(mode(&issuer), m, "the mode is never repaired ({m:o})");
+        assert!(
+            !r.state_file.exists(),
+            "no state written for a refused directory ({m:o})"
+        );
+        assert_eq!(snapshot(&r).bytes, before.bytes);
+        assert_eq!(
+            (snapshot(&r).ino, snapshot(&r).ctime),
+            (before.ino, before.ctime),
+            "Node's key file is untouched"
+        );
+        assert!(egress_issuer::files::load_state(&r.state_file).is_err());
+    }
+    // Exactly 0700 is accepted and the key is taken over.
+    std::fs::set_permissions(&issuer, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let (keeper, how) = open(&r).unwrap();
+    assert_eq!((how, keeper.key()), (Opened::Adopted, node.key));
+    assert_eq!(mode(&issuer), 0o700);
+}
+
+#[test]
+fn an_issuer_directory_loosened_after_start_is_refused_on_the_next_write_and_start() {
+    let Some(r) = rig() else { return };
+    lay(&r, &node_fixture().file_bytes);
+    let (mut keeper, how) = open(&r).unwrap();
+    assert_eq!(how, Opened::Adopted);
+    let issuer = r.keydir.join("issuer");
+    let state_before = std::fs::read(&r.state_file).unwrap();
+    for m in [0o750, 0o755, 0o710, 0o701] {
+        std::fs::set_permissions(&issuer, std::fs::Permissions::from_mode(m)).unwrap();
+        keeper.save_epoch(Some((support::BOOT.to_string(), "ab".repeat(16))));
+        assert!(
+            keeper.persisted_epoch().is_none(),
+            "a refused save is not remembered ({m:o})"
+        );
+        assert_eq!(open(&r).unwrap_err().0, Reason::StateDirMode, "{m:o}");
+        assert_eq!(mode(&issuer), m, "not repaired");
+        assert_eq!(std::fs::read(&r.state_file).unwrap(), state_before);
+    }
+    std::fs::set_permissions(&issuer, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(open(&r).unwrap().1, Opened::Kept);
+}
+
+#[test]
+fn an_issuer_directory_that_is_a_link_or_not_a_directory_is_refused() {
+    let Some(r) = rig() else { return };
+    lay(&r, &node_fixture().file_bytes);
+    let issuer = r.keydir.join("issuer");
+    // A symlink to a perfectly good 0700 directory: never followed.
+    let real = r.keydir.parent().unwrap().join("real-state");
+    std::fs::create_dir(&real).unwrap();
+    std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o700)).unwrap();
+    std::os::unix::fs::symlink(&real, &issuer).unwrap();
+    assert_eq!(open(&r).unwrap_err().0, Reason::StateDirNotDirectory);
+    assert!(std::fs::symlink_metadata(&issuer)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert!(
+        std::fs::read_dir(&real).unwrap().next().is_none(),
+        "nothing written through it"
+    );
+    // A dangling link and a regular file in its place: refused as well, left as they are.
+    std::fs::remove_file(&issuer).unwrap();
+    std::os::unix::fs::symlink(r.keydir.join("missing"), &issuer).unwrap();
+    assert_eq!(open(&r).unwrap_err().0, Reason::StateDirNotDirectory);
+    std::fs::remove_file(&issuer).unwrap();
+    std::fs::write(&issuer, b"x").unwrap();
+    assert_eq!(open(&r).unwrap_err().0, Reason::StateDirNotDirectory);
+    assert_eq!(std::fs::read(&issuer).unwrap(), b"x");
+    assert_eq!(read_legacy_key(&r.files).unwrap(), Some(node_fixture().key));
+}
+
+/// A state directory of another uid (here `/tmp`, root's, or any directory this user does not own):
+/// refused by name before anything is read or written.
+#[test]
+fn an_issuer_directory_owned_by_another_uid_is_refused() {
+    let Some(r) = rig() else { return };
+    if r.uid == 0 {
+        eprintln!("skipped: root owns /tmp");
+        return;
+    }
+    lay(&r, &node_fixture().file_bytes);
+    let snap = snapshot(&r);
+    for foreign in [
+        PathBuf::from("/tmp/egress-issuer-r3.json"),
+        PathBuf::from("/usr/egress-issuer-r3.json"),
+    ] {
+        let files = IssuerFiles {
+            state_file: foreign.clone(),
+            ..r.files.clone()
+        };
+        let err = KeyKeeper::open(files, master(), os_rng()).unwrap_err();
+        assert_eq!(err.0, Reason::StateDirOwner, "{foreign:?}");
+        assert!(!foreign.exists());
+    }
+    assert_eq!(
+        snapshot(&r),
+        snap,
+        "Node's files and directory are unchanged"
+    );
+}

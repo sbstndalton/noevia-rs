@@ -461,9 +461,20 @@ fn trusted_ancestor(m: &std::fs::Metadata, me: u32) -> bool {
         && (mode & 0o022 == 0 || (mode & 0o1000 != 0 && m.uid() == 0))
 }
 
-/// The directory holding the private state: the issuer's own, writable by no one else.
-fn trusted_state_dir(m: &std::fs::Metadata, me: u32) -> bool {
-    m.is_dir() && m.uid() == me && m.mode() & 0o022 == 0 && m.nlink() > 0
+/// Why the directory holding the private state is not acceptable, if it is not: it must be a real
+/// directory of the issuer's own, mode exactly 0700 (no group or other bit at all, so a process with
+/// the proxy's supplementary group cannot even enter it). Checked on every open, so an existing
+/// directory, a restored one and a later `chmod` are held to the same rule as one just created.
+fn state_dir_fault(m: &std::fs::Metadata, me: u32) -> Option<Reason> {
+    if !m.is_dir() {
+        Some(Reason::StateDirNotDirectory)
+    } else if m.uid() != me {
+        Some(Reason::StateDirOwner)
+    } else if m.mode() & 0o7777 != 0o700 {
+        Some(Reason::StateDirMode)
+    } else {
+        None
+    }
 }
 
 /// The state file itself: regular, one link, the issuer's, exactly 0600.
@@ -501,26 +512,31 @@ impl StateDir {
         let mut fd = rustix::fs::open("/", dir_flags(), rustix::fs::Mode::empty())
             .map_err(|_| ControlError(Reason::Publication))?;
         let mut meta = fd_meta(&fd).ok_or(ControlError(Reason::Publication))?;
-        let mut trusted = if parts.is_empty() {
-            trusted_state_dir(&meta, me)
-        } else {
-            trusted_ancestor(&meta, me)
-        };
+        if parts.is_empty() {
+            if let Some(fault) = state_dir_fault(&meta, me) {
+                return err(fault);
+            }
+        } else if !trusted_ancestor(&meta, me) {
+            return publication();
+        }
         for (i, part) in parts.iter().enumerate() {
-            if !trusted {
+            let last = i + 1 == parts.len();
+            fd = match rustix::fs::openat(&fd, *part, dir_flags(), rustix::fs::Mode::empty()) {
+                Ok(fd) => fd,
+                // The state directory itself is a link (or not a directory): named, never followed.
+                Err(rustix::io::Errno::LOOP | rustix::io::Errno::NOTDIR) if last => {
+                    return err(Reason::StateDirNotDirectory)
+                }
+                Err(_) => return publication(),
+            };
+            meta = fd_meta(&fd).ok_or(ControlError(Reason::Publication))?;
+            if last {
+                if let Some(fault) = state_dir_fault(&meta, me) {
+                    return err(fault);
+                }
+            } else if !trusted_ancestor(&meta, me) {
                 return publication();
             }
-            fd = rustix::fs::openat(&fd, *part, dir_flags(), rustix::fs::Mode::empty())
-                .map_err(|_| ControlError(Reason::Publication))?;
-            meta = fd_meta(&fd).ok_or(ControlError(Reason::Publication))?;
-            trusted = if i + 1 == parts.len() {
-                trusted_state_dir(&meta, me)
-            } else {
-                trusted_ancestor(&meta, me)
-            };
-        }
-        if !trusted {
-            return publication();
         }
         Ok(Self {
             fd,

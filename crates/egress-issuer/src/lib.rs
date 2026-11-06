@@ -71,6 +71,10 @@ pub enum Reason {
     LegacyKeyMode,
     LegacyKeyContent,
     LegacyKeyChanged,
+    /// The private-state directory itself failed its check (always mode 0700, the issuer's, a real directory).
+    StateDirNotDirectory,
+    StateDirOwner,
+    StateDirMode,
 }
 
 impl Reason {
@@ -118,6 +122,9 @@ impl Reason {
             Self::LegacyKeyMode => "legacy_key_file_mode_is_not_0440",
             Self::LegacyKeyContent => "legacy_key_content_is_not_64_hex_and_lf",
             Self::LegacyKeyChanged => "legacy_key_changed_while_it_was_checked",
+            Self::StateDirNotDirectory => "state_directory_is_not_a_real_directory",
+            Self::StateDirOwner => "state_directory_owner_is_not_the_issuer_uid",
+            Self::StateDirMode => "state_directory_mode_is_not_0700",
         }
     }
 }
