@@ -397,6 +397,8 @@ fn remove_files(
     }
     fault(Step::BrainRemoved)?;
     for id in &ids {
+        // A turn still saving this chat's partial stops first (review P2.17: a late tick re-created it).
+        partial::supersede(dir, id);
         gone(partial::file_for(dir, id));
     }
     fault(Step::PartialRemoved)?;

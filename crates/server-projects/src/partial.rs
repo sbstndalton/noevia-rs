@@ -141,10 +141,58 @@ fn with(mut v: JValue, extra: Vec<(&str, JValue)>) -> JValue {
     v
 }
 
+/// A fresh temporary name beside `file` (review P2.17: a shared `<pid>.tmp` let one writer truncate or
+/// rename another's), created new.
 fn tmp_for(file: &Path) -> PathBuf {
+    use rand_core::{OsRng, RngCore};
+    let mut random = [0u8; 12];
+    OsRng.fill_bytes(&mut random);
+    let nonce: String = random.iter().map(|b| format!("{b:02x}")).collect();
     let mut name = file.as_os_str().to_owned();
-    name.push(format!(".{}.tmp", std::process::id()));
+    name.push(format!(".{}-{nonce}.tmp", std::process::id()));
     PathBuf::from(name)
+}
+
+/// Writes `text` to a new temporary file, syncs it, and renames it over `file`; the temporary is
+/// removed when any step fails.
+fn replace_atomically(file: &Path, text: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let tmp = tmp_for(file);
+    let written = (|| {
+        let mut out = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)?;
+        out.write_all(text.as_bytes())?;
+        out.sync_all()?;
+        std::fs::rename(&tmp, file)
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    written?;
+    if let Some(parent) = file.parent() {
+        let _ = std::fs::File::open(parent).and_then(|d| d.sync_all());
+    }
+    Ok(())
+}
+
+/// The `chat-partials` folder under an existing user directory (a deleted account's directory is
+/// never re-created by a late save).
+fn partials_dir(file: &Path) -> std::io::Result<()> {
+    let Some(parent) = file.parent() else {
+        return Ok(());
+    };
+    match parent.parent() {
+        Some(user) if !user.is_dir() => Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "the user directory is gone",
+        )),
+        _ => match std::fs::create_dir(parent) {
+            Err(e) if e.kind() != std::io::ErrorKind::AlreadyExists => Err(e),
+            _ => Ok(()),
+        },
+    }
 }
 
 /// chat-partial.cjs `writePartial`: the bounded entry, marked interrupted and running in `start`.
@@ -156,9 +204,7 @@ pub fn write_partial(
     now_ms: f64,
 ) -> std::io::Result<()> {
     let file = file_for(user_dir, chat_id);
-    if let Some(parent) = file.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
+    partials_dir(&file)?;
     let value = with(
         bounded(entry, now_ms),
         vec![
@@ -169,9 +215,7 @@ pub fn write_partial(
             ),
         ],
     );
-    let tmp = tmp_for(&file);
-    std::fs::write(&tmp, js_json::wtf16::stringify(&value).unwrap_or_default())?;
-    std::fs::rename(&tmp, &file)
+    replace_atomically(&file, &js_json::wtf16::stringify(&value).unwrap_or_default())
 }
 
 /// chat-partial.cjs `clearPartial` (`rmSync(..., {force: true})`).
@@ -194,13 +238,8 @@ pub fn read_partial(user_dir: &Path, chat_id: &str) -> Option<JValue> {
 /// chat-partial.cjs `writeUnmarked`: atomically when the folder allows it, else in place.
 fn write_unmarked(file: &Path, text: &str) -> &'static str {
     let attempt = || -> std::io::Result<()> {
-        if let Some(parent) = file.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let tmp = tmp_for(file);
-        let atomic = std::fs::write(&tmp, text).and_then(|()| std::fs::rename(&tmp, file));
-        if atomic.is_err() {
-            let _ = std::fs::remove_file(&tmp);
+        partials_dir(file)?;
+        if replace_atomically(file, text).is_err() {
             std::fs::write(file, text)?;
         }
         Ok(())
@@ -234,61 +273,108 @@ pub fn end_partial(user_dir: &Path, chat_id: &str) -> &'static str {
     )
 }
 
+/// The turns whose partial saves may publish: one generation per chat partial file, in this process.
+/// Every write, rename and removal of a [`Saves`] happens under this lock after its generation is
+/// checked, so a superseded turn (a newer turn of the chat, or the chat's deletion: [`retire`]) can
+/// neither publish nor clean up, and two ticks never interleave.
+fn owners() -> std::sync::MutexGuard<'static, std::collections::HashMap<PathBuf, u64>> {
+    static OWNERS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<PathBuf, u64>>> =
+        std::sync::OnceLock::new();
+    OWNERS
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn next_generation() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Any running turn's saves of the chat are superseded: none of them writes or removes its partial
+/// again. The store's chat delete calls this before it removes the file (a save in progress finishes
+/// first, under the same lock, and its file is then removed with the chat).
+pub fn supersede(user_dir: &Path, chat_id: &str) {
+    owners().remove(&file_for(user_dir, chat_id));
+}
+
 /// chat-partial.cjs `startPartialSaves`: a running reply's partial. [`Saves::save`] is the timer's
-/// tick (every [`SAVE_MS`]); [`Saves::finish`] ends it. Dropped without `finish` (the turn's future
-/// was dropped), it ends as `finish(None)` would: the file never keeps this start's marker.
+/// tick (every [`SAVE_MS`]); [`Saves::finish`] ends it.
+///
+/// Dropped without `finish` (the turn's future was cancelled, or panicked, before its end ran), the
+/// last saved entry is kept, rewritten without this start's marker, so the history offers it as an
+/// interrupted turn with any write it records (review P2.17: it was deleted). Only an explicit
+/// `finish` clears it.
 pub struct Saves {
     dir: PathBuf,
     chat: String,
+    file: PathBuf,
     start: String,
+    generation: u64,
+    /// The bounded entry last written (without the marker), kept for a drop.
+    last: std::sync::Mutex<Option<JValue>>,
     done: bool,
 }
 
 impl Saves {
-    /// Supersedes an earlier partial of the chat.
+    /// Supersedes an earlier partial of the chat, and any turn of it still saving.
     pub fn start(user_dir: &Path, chat_id: &str, start: &str) -> std::io::Result<Saves> {
+        let file = file_for(user_dir, chat_id);
+        let generation = next_generation();
+        let mut owners = owners();
         clear_partial(user_dir, chat_id)?;
+        owners.insert(file.clone(), generation);
+        drop(owners);
         Ok(Saves {
             dir: user_dir.to_owned(),
             chat: chat_id.to_owned(),
+            file,
             start: start.to_owned(),
+            generation,
+            last: std::sync::Mutex::new(None),
             done: false,
         })
     }
 
-    /// One tick: the record's `partialEntry()` (`None`: nothing to keep yet).
+    fn current(&self, owners: &std::collections::HashMap<PathBuf, u64>) -> bool {
+        owners.get(&self.file) == Some(&self.generation)
+    }
+
+    /// One tick: the record's `partialEntry()` (`None`: nothing to keep yet). Nothing is written once
+    /// the turn is superseded or retired.
     pub fn save(&self, entry: Option<&JValue>, now_ms: f64) {
         if self.done {
             return;
         }
-        if let Some(entry) = entry {
-            if let Err(e) = write_partial(&self.dir, &self.chat, entry, &self.start, now_ms) {
-                eprintln!("[chat] could not save the partial reply: {e}");
+        let Some(entry) = entry else {
+            return;
+        };
+        let owners = owners();
+        if !self.current(&owners) {
+            return;
+        }
+        match write_partial(&self.dir, &self.chat, entry, &self.start, now_ms) {
+            Ok(()) => {
+                let kept = with(bounded(entry, now_ms), vec![("interrupted", JValue::Bool(true))]);
+                *self.last.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(kept);
             }
+            Err(e) => eprintln!("[chat] could not save the partial reply: {e}"),
         }
     }
 
     /// The reply has ended. `keep`: its final partial entry when the transcript did not take it;
     /// the file then keeps it without the marker, so the reply is offered as interrupted.
     pub fn finish(mut self, keep: Option<&JValue>, now_ms: f64) {
-        self.end(keep, now_ms);
-    }
-
-    fn end(&mut self, keep: Option<&JValue>, now_ms: f64) {
-        if self.done {
+        self.done = true;
+        let mut owners = owners();
+        if !self.current(&owners) {
             return;
         }
-        self.done = true;
+        owners.remove(&self.file);
         if let Some(keep) = keep {
-            let value = with(
-                bounded(keep, now_ms),
-                vec![("interrupted", JValue::Bool(true))],
-            );
-            let file = file_for(&self.dir, &self.chat);
-            if write_unmarked(
-                &file,
-                &js_json::wtf16::stringify(&value).unwrap_or_default(),
-            ) == "unmarked"
+            let value = with(bounded(keep, now_ms), vec![("interrupted", JValue::Bool(true))]);
+            if write_unmarked(&self.file, &js_json::wtf16::stringify(&value).unwrap_or_default())
+                == "unmarked"
             {
                 return;
             }
@@ -299,7 +385,19 @@ impl Saves {
 
 impl Drop for Saves {
     fn drop(&mut self) {
-        self.end(None, 0.0);
+        if self.done {
+            return;
+        }
+        self.done = true;
+        let mut owners = owners();
+        if !self.current(&owners) {
+            return;
+        }
+        owners.remove(&self.file);
+        let last = self.last.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
+        if let Some(kept) = last {
+            write_unmarked(&self.file, &js_json::wtf16::stringify(&kept).unwrap_or_default());
+        }
     }
 }
 

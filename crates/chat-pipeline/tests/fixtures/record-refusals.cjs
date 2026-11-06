@@ -32,7 +32,7 @@ const SETTINGS = [null, { mode: 'cloud', cloud: {} }, { mode: 'cloud', cloud: { 
   { mode: 'cloud', cloud: { providerId: 'ext', fast: 'c-fast' } }, { mode: 'local', cloud: { providerId: 'ext', smart: 'c-smart' } },
   { mode: 'hybrid', whenSensitive: 'ask', cloud: { providerId: 'ext', smart: 'c-smart' } }, { mode: 'hybrid', whenSensitive: 'local', cloud: { providerId: 'ext', smart: 'c-smart' } },
   { mode: 'cloud', cloud: { providerId: 'default', smart: 'c-smart' } }];
-const VERDICTS = [{ flagged: false }, { flagged: true, flag: 'health' }, { flagged: true, flag: 'unavailable', cause: 'timeout' }, null];
+const VERDICTS = [{ flagged: false }, { flagged: true, flag: 'health' }, { flagged: true, flag: 'unavailable', cause: 'timeout' }, { flagged: true, flag: 'unavailable', cause: '' }, { flagged: true, flag: 'unavailable' }, { flagged: true, cause: 'deadline' }, null];
 const ANSWERS = [{ choice: 'cloud' }, { choice: 'cloud', remember: true }, { choice: 'local' }, { choice: 'local', remember: true }, { choice: 'timeout' }];
 const scenarios = [];
 for (let i = 0; i < 2500; i++) {
@@ -92,7 +92,7 @@ async function run(sc) {
     try { await handleChat({ headers: {} }, res, body, authn); } catch (e) { if (e !== DONE) thrown = `${e.constructor.name}: ${e.message} @ ${(e.stack.split("\n")[1] || "").trim()}`; }
     const routeEvents = events.filter((e) => e.type === 'route_pending' || e.type === 'route_remembered').map(({ id: _id, ...e }) => e);
     if (answer) return { refused: answer, events: routeEvents };
-    if (upstream) return { upstream, events: routeEvents };
+    if (upstream) return { upstream, events: routeEvents, routing: events.find((e) => e.type === 'meta')?.routing ?? null };
     return { other: thrown || events.map((e) => e.type === 'error' ? `error:${e.code || ''}:${e.text}` : e.type).join(',') || 'none', events: routeEvents };
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }

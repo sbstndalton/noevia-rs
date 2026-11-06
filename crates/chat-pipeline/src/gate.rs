@@ -139,6 +139,13 @@ pub trait GateIo {
     async fn revoke_grant(&self);
     fn has_redeem(&self) -> bool;
     async fn redeem(&self, binding: &Option<Self::Binding>) -> Redeemed<Self::Fence>;
+    /// Whether [`GateIo::execute`] re-checks the grant `fence` at its own send boundary, after every
+    /// preparation await (server lookup, credentials, address checks, MCP initialization, a retry),
+    /// and answers `not_run` without sending when it closed (Node S9, chat.cjs:2456-2507). The gate
+    /// checks the fence before it calls the executor, but a grant can close while the executor
+    /// prepares; an executor that cannot carry the fence that far is never handed a fenced call
+    /// (review P2.14-17 P1: fail closed).
+    fn executor_fences_dispatch(&self) -> bool;
     /// The executor (the native MCP executor, mcp_exec.rs); `Err(message)`: it threw.
     async fn execute(
         &self,
@@ -627,7 +634,7 @@ async fn gate<I: GateIo>(
         guard.started();
         return Ok("ERROR: permission changed before dispatch; tool was not run.".into());
     }
-    if fence.as_ref().is_some_and(|f| !f.open()) {
+    if fence.as_ref().is_some_and(|f| !f.open() || !io.executor_fences_dispatch()) {
         return Ok(not_checked(st, &mut guard));
     }
     // markWriteAttempt: a write drops the cached results of reads.

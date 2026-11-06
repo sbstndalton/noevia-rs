@@ -916,14 +916,24 @@ mod route_stage {
         async fn check(&self) -> Option<Verdict> {
             self.verdict.clone()
         }
-        async fn open_choice(&self) -> bool {
-            true
+        async fn open_choice(&self) -> Option<String> {
+            Some("card-1".into())
         }
-        async fn await_choice(&self) -> Option<Answer> {
+        fn publish(&self, _event: &JValue) {}
+        async fn await_choice(&self, _id: &str) -> Option<Answer> {
             self.answer.clone()
         }
+        fn close_choice(&self, _id: &str) {}
         fn aborted(&self) -> bool {
             false
+        }
+    }
+
+    /// Node's recorder leaves the card's random id out.
+    fn without_id(e: &JValue) -> JValue {
+        match e {
+            JValue::Obj(items) => JValue::Obj(items.iter().filter(|(k, _)| k != "id").cloned().collect()),
+            v => v.clone(),
         }
     }
 
@@ -1055,7 +1065,7 @@ mod route_stage {
             let got_events: Vec<String> = got
                 .events
                 .iter()
-                .map(|e| wtf16::stringify(e).unwrap())
+                .map(|e| wtf16::stringify(&without_id(e)).unwrap())
                 .collect();
             assert_eq!(got_events, want_events, "events {what}");
             let kind = if let JValue::Obj(_) = out.get("refused") {
@@ -1094,6 +1104,17 @@ mod route_stage {
                 let Outcome::Go(go) = &got.outcome else {
                     panic!("got {:?}, Node went on: {what}", got.outcome)
                 };
+                let routing = out.get("routing");
+                if let JValue::Obj(_) = routing {
+                    assert_eq!(
+                        go.route,
+                        Some((s(routing.get("route")).unwrap(), s(routing.get("reason")).unwrap())),
+                        "{what}"
+                    );
+                    assert_eq!(go.detail, s(routing.get("detail")), "detail {what}");
+                } else {
+                    assert_eq!((&go.route, &go.detail), (&None, &None), "{what}");
+                }
                 if let Some(m) = s(up.get("load")) {
                     assert_eq!(go.model, m, "{what}");
                     assert_eq!(go.provider.id, "default", "{what}");
@@ -1121,6 +1142,8 @@ mod route_stage {
         stop: &'static str,
         abort: bool,
         reached: std::cell::Cell<bool>,
+        published: std::cell::RefCell<Vec<JValue>>,
+        closed: std::cell::RefCell<Vec<String>>,
     }
 
     impl route::RouteIo for Stuck {
@@ -1144,16 +1167,26 @@ mod route_stage {
                 cause: None,
             })
         }
-        async fn open_choice(&self) -> bool {
+        async fn open_choice(&self) -> Option<String> {
             self.at("open").await;
-            true
+            Some("card-1".into())
         }
-        async fn await_choice(&self) -> Option<Answer> {
+        fn publish(&self, event: &JValue) {
+            self.published.borrow_mut().push(event.clone());
+        }
+        async fn await_choice(&self, id: &str) -> Option<Answer> {
+            // The card is on the stream, with the id the answer is awaited under, before the wait.
+            let card = self.published.borrow().last().cloned();
+            assert_eq!(card.as_ref().map(|c| c.get("type").clone()), Some(JValue::Str("route_pending".into())));
+            assert_eq!(card.map(|c| c.get("id").clone()), Some(JValue::Str(id.into())));
             self.at("await").await;
             Some(Answer {
                 choice: Some("cloud".into()),
                 remember: true,
             })
+        }
+        fn close_choice(&self, id: &str) {
+            self.closed.borrow_mut().push(id.to_owned());
         }
         fn aborted(&self) -> bool {
             self.abort
@@ -1217,6 +1250,8 @@ mod route_stage {
                 stop,
                 abort: false,
                 reached: std::cell::Cell::new(false),
+                published: Default::default(),
+                closed: Default::default(),
             };
             let turn = hybrid_turn();
             {
@@ -1228,11 +1263,21 @@ mod route_stage {
                 );
             }
             assert!(io.reached.get(), "the decision never reached {stop}");
+            // A card dropped while its answer was awaited is closed at the registry; any other stop opens none.
+            let closed = io.closed.borrow().clone();
+            if stop == "await" {
+                assert_eq!(closed, vec!["card-1".to_owned()], "{stop}");
+                assert_eq!(io.published.borrow().len(), 1, "the card was on the stream before the wait");
+            } else {
+                assert!(closed.is_empty(), "{stop}: {closed:?}");
+            }
         }
         let io = Stuck {
             stop: "",
             abort: true,
             reached: std::cell::Cell::new(false),
+            published: Default::default(),
+            closed: Default::default(),
         };
         let got = block(route::decide(&hybrid_turn(), &io));
         assert_eq!(got.outcome, Outcome::Aborted);
@@ -1248,9 +1293,13 @@ mod route_stage {
             stop: "",
             abort: false,
             reached: std::cell::Cell::new(false),
+            published: Default::default(),
+            closed: Default::default(),
         };
         let got = block(route::decide(&hybrid_turn(), &io));
         assert_eq!(got.events.len(), 2);
+        assert_eq!(*io.published.borrow(), got.events, "each event was published as it was made");
+        assert!(io.closed.borrow().is_empty(), "an answered card is not closed");
         assert!(
             matches!(&got.outcome, Outcome::Go(g) if g.model == "c-smart" && g.provider.external && !g.hybrid_ungranted)
         );
@@ -1313,6 +1362,8 @@ mod gate_stage {
         /// The await that never completes ("" for none), and whether it was reached.
         stop: &'static str,
         reached: Cell<bool>,
+        /// The executor cannot re-check a grant fence at its send boundary.
+        unfenced: bool,
     }
 
     impl Io<'_> {
@@ -1464,6 +1515,9 @@ mod gate_stage {
                 }
             }
         }
+        fn executor_fences_dispatch(&self) -> bool {
+            !self.unfenced
+        }
         async fn execute(
             &self,
             name: &str,
@@ -1575,6 +1629,7 @@ mod gate_stage {
                 started: std::rc::Rc::new(Cell::new(0)),
                 stop: "",
                 reached: Cell::new(false),
+                unfenced: false,
             };
             let mut st = TurnTools::new(true);
             let mut events = Vec::new();
@@ -1753,6 +1808,7 @@ mod gate_stage {
                 started: std::rc::Rc::new(Cell::new(0)),
                 stop,
                 reached: Cell::new(false),
+                unfenced: false,
             };
             let mut st = TurnTools::new(true);
             let call = Call {
@@ -1784,6 +1840,57 @@ mod gate_stage {
                 io.applied.borrow().is_empty() && st.applied.is_empty(),
                 "{stop}"
             );
+        }
+    }
+
+    /// An executor that cannot carry the grant fence to its send boundary is never handed a fenced
+    /// write: the call answers "could not be checked", runs nothing, and closes its fence.
+    #[test]
+    fn a_fenced_write_never_reaches_an_executor_that_cannot_fence_its_dispatch() {
+        for wide in [true, false] {
+            let text = format!(
+                r#"{{"calls":[],"modes":{{"write_file":"ask"}},"flip":null,"open":true,"decisions":["approve"],"chatWide":{wide},"redeem":"fence-open","redeemWired":true,"results":["ok: done"],"target":null,"grant":"ok","chatId":"c"}}"#
+            );
+            let k = wtf16::parse(&text).unwrap();
+            let io = Io {
+                sc: &k,
+                writes: vec!["write_file".into()],
+                toolboxes: JValue::Arr(Vec::new()),
+                decisions: Cell::new(0),
+                results: Cell::new(0),
+                targets: Cell::new(0),
+                grants: Cell::new(0),
+                applied: RefCell::new(Vec::new()),
+                exec: RefCell::new(Vec::new()),
+                audit: RefCell::new(Vec::new()),
+                opened: Cell::new(0),
+                revoked: Cell::new(0),
+                fences: Cell::new(0),
+                started: std::rc::Rc::new(Cell::new(0)),
+                stop: "",
+                reached: Cell::new(false),
+                unfenced: true,
+            };
+            let mut st = TurnTools::new(true);
+            let call = Call {
+                index: 0,
+                id: "id-0".into(),
+                name: "write_file".into(),
+                args: "{}".into(),
+                too_large: false,
+            };
+            let reduce = |t: &str| t.to_owned();
+            let mut sent = Vec::new();
+            let done = block(gate::run_call(&io, &mut st, &call, true, &reduce, &mut |e| sent.push(e)));
+            assert!(io.fences.get() > 0, "the write was fenced (wide {wide})");
+            assert!(io.exec.borrow().is_empty(), "the executor was called (wide {wide})");
+            assert_eq!(io.started.get(), io.fences.get(), "fence left open (wide {wide})");
+            assert!(
+                done.result.contains("could not be checked, so it was not run"),
+                "{:?}",
+                done.result
+            );
+            assert!(st.applied.is_empty() && io.applied.borrow().is_empty());
         }
     }
 }

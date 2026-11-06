@@ -267,11 +267,17 @@ pub trait RouteIo {
     async fn catalogue(&self) -> Option<Vec<Entry>>;
     /// `routingModes.sensitivity(...)`.
     async fn check(&self) -> Option<Verdict>;
-    /// `routingModes.openChoice`: the card is registered at the front's registry (S9) before it is
-    /// shown; `false` when it could not be.
-    async fn open_choice(&self) -> bool;
-    /// `routingModes.awaitChoice`, after `route_pending` went out; `None`: no answer (it threw).
-    async fn await_choice(&self) -> Option<Answer>;
+    /// `routingModes.openChoice`: the card is registered at the front's registry (S9) under a fresh id
+    /// before it is shown; `None` when it could not be.
+    async fn open_choice(&self) -> Option<String>;
+    /// Writes one event on the turn's stream now (`send`): `route_pending` must reach the client before
+    /// the turn waits for its answer, and `route_remembered` goes out as Node sends it.
+    fn publish(&self, event: &JValue);
+    /// `routingModes.awaitChoice({ id })`, after `route_pending` went out; `None`: no answer (it threw).
+    async fn await_choice(&self, id: &str) -> Option<Answer>;
+    /// The turn stopped waiting for the card `id` (it was dropped mid-wait): the registry question is
+    /// closed so no later answer is taken for a turn that is gone.
+    fn close_choice(&self, id: &str);
     /// `chatSignal.signal.aborted` after the route was decided.
     fn aborted(&self) -> bool;
 }
@@ -303,6 +309,9 @@ pub struct Go {
     pub role: Option<String>,
     /// The routing decision (`routeTarget.route`, `.reason`), if routing modes decided one.
     pub route: Option<(String, String)>,
+    /// `routeTarget.detail`: a check-unavailable route's cause, shown on the routing badge and kept
+    /// with an interrupted turn.
+    pub detail: Option<String>,
     /// #1646: a hybrid cloud route the person did not grant.
     pub hybrid_ungranted: bool,
 }
@@ -310,8 +319,8 @@ pub struct Go {
 /// What [`decide`] sent and how it ended.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Decided {
-    /// The events sent on the stream the card opened (`route_pending`, `route_remembered`), in order.
-    /// `route_pending` carries no id here: the caller's registry names it.
+    /// The events sent on the stream the card opened (`route_pending` with its registry id,
+    /// `route_remembered`), in order; each was already [`RouteIo::publish`]ed when it was made.
     pub events: Vec<JValue>,
     /// The card opened the event stream (`earlyStream`).
     pub streamed: bool,
@@ -326,6 +335,28 @@ struct Route {
     route: Option<&'static str>,
     reason: String,
     remember: Option<&'static str>,
+    /// routing-modes.cjs `resolveRoute`'s `cause`: why a check could not answer (`check-unavailable`).
+    cause: Option<String>,
+}
+
+/// Closes an opened card's registry question unless its answer settled.
+struct ChoiceGuard<'a, I: RouteIo> {
+    io: &'a I,
+    id: Option<String>,
+}
+
+impl<I: RouteIo> ChoiceGuard<'_, I> {
+    fn settled(mut self) {
+        self.id = None;
+    }
+}
+
+impl<I: RouteIo> Drop for ChoiceGuard<'_, I> {
+    fn drop(&mut self) {
+        if let Some(id) = self.id.take() {
+            self.io.close_choice(&id);
+        }
+    }
 }
 
 /// routing-modes.cjs `resolveRoute(...)`.
@@ -339,6 +370,7 @@ async fn resolve_route(
         route: a.has_local.then_some("local"),
         reason: reason.to_owned(),
         remember: None,
+        cause: None,
     };
     if a.hard_local {
         return local("sensitive-rule");
@@ -353,11 +385,13 @@ async fn resolve_route(
         route: Some("cloud"),
         reason: reason.to_owned(),
         remember: None,
+        cause: None,
     };
     if a.mode == "cloud" {
         return cloud("mode");
     }
     let mut flag = a.pre_flag.map(str::to_owned);
+    let mut cause = None;
     if flag.is_none() {
         let verdict = io.check().await;
         match verdict {
@@ -370,7 +404,8 @@ async fn resolve_route(
                     v.flag
                         .filter(|f| !f.is_empty())
                         .unwrap_or_else(|| "unavailable".into()),
-                )
+                );
+                cause = v.cause.filter(|c| !c.is_empty());
             }
             None => flag = Some("unavailable".into()),
         }
@@ -382,7 +417,10 @@ async fn resolve_route(
         if a.allow_cloud {
             return cloud("remembered");
         }
-        return local("check-unavailable");
+        return Route {
+            cause,
+            ..local("check-unavailable")
+        };
     }
     if a.allow_cloud {
         return cloud("remembered");
@@ -396,12 +434,20 @@ async fn resolve_route(
             if !*streamed {
                 *streamed = true;
             }
-            if io.open_choice().await {
-                events.push(obj(vec![
+            if let Some(id) = io.open_choice().await {
+                // Closes the question if the turn is dropped before the answer settles.
+                let guard = ChoiceGuard { io, id: Some(id) };
+                let id = guard.id.clone().unwrap_or_default();
+                let ev = obj(vec![
                     ("type", JValue::Str("route_pending".into())),
+                    ("id", JValue::Str(id.clone())),
                     ("flag", JValue::Str(flag.clone())),
-                ]));
-                io.await_choice().await
+                ]);
+                io.publish(&ev);
+                events.push(ev);
+                let answer = io.await_choice(&id).await;
+                guard.settled();
+                answer
             } else {
                 Some(Answer {
                     choice: Some("timeout".into()),
@@ -415,6 +461,7 @@ async fn resolve_route(
             route: Some("cloud"),
             reason: "user-choice".into(),
             remember: answer.as_ref().filter(|a| a.remember).map(|_| "cloud"),
+            cause: None,
         },
         Some("local") => Route {
             remember: answer.as_ref().filter(|a| a.remember).map(|_| "local"),
@@ -542,7 +589,7 @@ async fn decide_inner(
                     decided.remember,
                     t.chat_id.as_deref().filter(|c| !c.is_empty()),
                 ) {
-                    events.push(if remember == "local" {
+                    let ev = if remember == "local" {
                         obj(vec![
                             ("type", JValue::Str("route_remembered".into())),
                             ("forceLocal", JValue::Bool(true)),
@@ -553,7 +600,9 @@ async fn decide_inner(
                             ("type", JValue::Str("route_remembered".into())),
                             ("allowCloud", JValue::Bool(true)),
                         ])
-                    });
+                    };
+                    io.publish(&ev);
+                    events.push(ev);
                 }
                 let row = if decided.route == Some("cloud") {
                     cloud_row
@@ -707,21 +756,23 @@ async fn decide_inner(
             );
         }
     }
-    let (route, hybrid_ungranted) = match route_target {
+    let (route, detail, hybrid_ungranted) = match route_target {
         Some((d, _, settings)) => {
             let route = d.route.unwrap_or("local");
             let ungranted = settings.mode.as_deref() == Some("hybrid")
                 && route == "cloud"
                 && !(t.allow_cloud || d.remember == Some("cloud") || d.reason == "user-choice");
-            (Some((route.to_owned(), d.reason)), ungranted)
+            let detail = d.cause.filter(|_| d.reason == "check-unavailable");
+            (Some((route.to_owned(), d.reason)), detail, ungranted)
         }
-        None => (None, false),
+        None => (None, None, false),
     };
     Outcome::Go(Go {
         provider,
         model,
         role: routed_role,
         route,
+        detail,
         hybrid_ungranted,
     })
 }
