@@ -1115,4 +1115,140 @@ mod route_stage {
             "{seen:?}"
         );
     }
+
+    /// An io whose `stop` await never completes (or, `abort`, whose client went away after the card).
+    struct Stuck {
+        stop: &'static str,
+        abort: bool,
+        reached: std::cell::Cell<bool>,
+    }
+
+    impl route::RouteIo for Stuck {
+        fn provider(&self, id: &str) -> Option<ProviderRow> {
+            Some(ProviderRow {
+                id: id.into(),
+                base_url: format!("http://{id}.invalid"),
+                ..ProviderRow::default()
+            })
+        }
+        async fn catalogue(&self) -> Option<Vec<Entry>> {
+            self.at("catalogue").await;
+            Some(Vec::new())
+        }
+        async fn check(&self) -> Option<Verdict> {
+            self.at("check").await;
+            Some(Verdict {
+                flagged: Some(true),
+                flag: Some("health".into()),
+                cause: None,
+            })
+        }
+        async fn open_choice(&self) -> bool {
+            self.at("open").await;
+            true
+        }
+        async fn await_choice(&self) -> Option<Answer> {
+            self.at("await").await;
+            Some(Answer {
+                choice: Some("cloud".into()),
+                remember: true,
+            })
+        }
+        fn aborted(&self) -> bool {
+            self.abort
+        }
+    }
+
+    impl Stuck {
+        async fn at(&self, name: &str) {
+            if name == self.stop {
+                self.reached.set(true);
+                std::future::pending::<()>().await;
+            }
+        }
+    }
+
+    fn hybrid_turn() -> Turn {
+        let roles = Roles {
+            fast: Some("fast-m".into()),
+            smart: Some("smart-m".into()),
+            ..Roles::default()
+        };
+        Turn {
+            project: None,
+            body_project: false,
+            chat_id: Some("c".into()),
+            space_id: JValue::Undefined,
+            compact_only: false,
+            default_provider: "default".into(),
+            diary_project_id: "diary".into(),
+            roles_first: Some(roles.clone()),
+            roles_later: Some(roles),
+            routing_modes: Some(Some(Settings {
+                mode: Some("hybrid".into()),
+                when_sensitive: None,
+                cloud: Cloud {
+                    provider_id: Some("ext".into()),
+                    smart: Some("c-smart".into()),
+                    ..Cloud::default()
+                },
+            })),
+            force_local: false,
+            allow_cloud: false,
+            pre_flag: None,
+            router_role: "fast".into(),
+            creative_for: Vec::new(),
+            manager_enabled: false,
+            last_loaded: None,
+            route_user: Some("u".into()),
+            owner: Some("u".into()),
+            workspace_user: Some("u".into()),
+            chatgpt: None,
+            system_model: laya,
+        }
+    }
+
+    #[test]
+    fn dropping_the_decision_at_each_await_leaves_nothing_and_a_client_gone_after_the_card_is_aborted(
+    ) {
+        for stop in ["check", "open", "await", "catalogue"] {
+            let io = Stuck {
+                stop,
+                abort: false,
+                reached: std::cell::Cell::new(false),
+            };
+            let turn = hybrid_turn();
+            {
+                let mut f = std::pin::pin!(route::decide(&turn, &io));
+                let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+                assert!(f.as_mut().poll(&mut cx).is_pending(), "{stop}");
+            }
+            assert!(io.reached.get(), "the decision never reached {stop}");
+        }
+        let io = Stuck {
+            stop: "",
+            abort: true,
+            reached: std::cell::Cell::new(false),
+        };
+        let got = block(route::decide(&hybrid_turn(), &io));
+        assert_eq!(got.outcome, Outcome::Aborted);
+        assert!(got.streamed);
+        assert_eq!(
+            got.events.len(),
+            1,
+            "only the card went out: {:?}",
+            got.events
+        );
+        // Not aborted: the person's remembered cloud choice is sent, the turn goes to the cloud row.
+        let io = Stuck {
+            stop: "",
+            abort: false,
+            reached: std::cell::Cell::new(false),
+        };
+        let got = block(route::decide(&hybrid_turn(), &io));
+        assert_eq!(got.events.len(), 2);
+        assert!(
+            matches!(&got.outcome, Outcome::Go(g) if g.model == "c-smart" && g.provider.external && !g.hybrid_ungranted)
+        );
+    }
 }
