@@ -1250,7 +1250,8 @@ async fn a_key_check_and_a_listing_that_fail_do_not_repeat_the_key() {
         "kc-user:kc-pass9",
     );
     // (headers sent, the values the server will repeat)
-    let rounds: Vec<(Vec<(String, String)>, Vec<String>)> = vec![
+    type Round = (Vec<(String, String)>, Vec<String>);
+    let rounds: Vec<Round> = vec![
         (
             vec![("X-Api-Key".into(), "SYNTH-api-secret-1234".into())],
             vec!["SYNTH-api-secret-1234".into()],

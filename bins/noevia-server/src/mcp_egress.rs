@@ -15,6 +15,7 @@
 //! - no redirect is ever followed (core passes `redirect: 'error'`), no environment proxy is used,
 //!   every exchange has a deadline, and every reply a size cap. Nothing here logs a header value
 //!   or a body.
+use crate::mcp_scrub::Secrets;
 use js_json::JValue;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -536,10 +537,11 @@ async fn rpc(
         *session = Some(sid);
     }
     if !reply.ok() {
-        // The listing/key-check path keeps core's `MCP <status>: <body>` (the typed key is shown back to the
-        // account that typed it; the executor's call path, mcp_exec, never keeps a body).
+        // The listing/key-check path keeps core's `MCP <status>: <200 characters of the body>`, but the body is the
+        // server's text and can repeat the key it was sent: the credential values are taken out first, and the
+        // clip comes after, so one that crosses the cutoff leaves no prefix.
         let detail = reply.text.as_deref().unwrap_or("");
-        let snippet: String = detail.chars().take(200).collect();
+        let snippet = Secrets::from_headers(headers).scrub_clip(detail, 200);
         return Err(format!("MCP {}: {snippet}", reply.status));
     }
     let Some(id) = id else { return Ok(None) };

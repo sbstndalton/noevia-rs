@@ -17,6 +17,7 @@ pub mod reduce;
 pub mod transport;
 
 use crate::mcp_broker::Fail;
+use crate::mcp_scrub::Secrets;
 use crate::App;
 use axum::body::Body;
 use axum::http::{Response, StatusCode};
@@ -348,65 +349,6 @@ impl std::fmt::Debug for Executor {
 /// `String(err.message).slice(0, 300)`.
 fn cut(message: &str) -> String {
     js_json::js_slice(message, 300)
-}
-
-/// Shortest credential value that is looked for in a server's text: below this a "value" would
-/// match ordinary words. Real keys and tokens are far longer.
-const MIN_SECRET: usize = 6;
-const REDACTED: &str = "[redacted]";
-
-/// The credential values a call carried, so that nothing the server sends back can repeat one to the
-/// model or a log: every header value, the part after an auth scheme, and (for `Basic`) the decoded
-/// `user:secret` and its two halves. Held for one call only.
-#[derive(Default)]
-struct Secrets(Vec<String>);
-
-impl Secrets {
-    fn add_headers(&mut self, headers: &[(String, String)]) {
-        for (name, value) in headers {
-            // The account id a Nextcloud server is told is an identifier, not a secret.
-            if !name.eq_ignore_ascii_case("x-cowork-user-id") {
-                self.add_value(value);
-            }
-        }
-    }
-
-    fn add_value(&mut self, value: &str) {
-        let mut add = |v: &str| {
-            if v.len() >= MIN_SECRET && !self.0.iter().any(|x| x == v) {
-                self.0.push(v.to_owned());
-            }
-        };
-        add(value);
-        if let Some((scheme, rest)) = value.split_once(' ') {
-            let rest = rest.trim();
-            add(rest);
-            if scheme.eq_ignore_ascii_case("basic") {
-                if let Ok(raw) = base64::engine::general_purpose::STANDARD.decode(rest) {
-                    let raw = String::from_utf8_lossy(&raw).into_owned();
-                    add(&raw);
-                    if let Some((user, secret)) = raw.split_once(':') {
-                        add(user);
-                        add(secret);
-                    }
-                }
-            }
-        }
-    }
-
-    /// `text` with every credential value replaced. Longest first, so a value that contains another
-    /// is replaced whole.
-    fn scrub(&self, text: &str) -> String {
-        let mut values: Vec<&String> = self.0.iter().collect();
-        values.sort_by_key(|v| std::cmp::Reverse(v.len()));
-        let mut out = text.to_owned();
-        for v in values {
-            if out.contains(v.as_str()) {
-                out = out.replace(v.as_str(), REDACTED);
-            }
-        }
-        out
-    }
 }
 
 impl Executor {

@@ -47,6 +47,8 @@ pub mod mcp_exec;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_routes;
 #[cfg(feature = "rust-storage-reads")]
+pub mod mcp_scrub;
+#[cfg(feature = "rust-storage-reads")]
 pub mod mcp_tools;
 pub mod model_assignments;
 pub mod model_downloads_read;
