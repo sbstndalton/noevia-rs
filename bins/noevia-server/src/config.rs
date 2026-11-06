@@ -393,7 +393,7 @@ impl Config {
         let autotune = std::sync::Arc::new(crate::autotune_state::Autotune::new(
             std::path::Path::new(&get("UI_DATA_DIR").unwrap_or_default()),
             std::sync::Arc::clone(&research),
-            maint.authority.clone(),
+            std::sync::Arc::clone(&maint),
         ));
         Ok(Config {
             host,

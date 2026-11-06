@@ -29,8 +29,8 @@ use std::sync::{Mutex, MutexGuard};
 
 /// Release pairing (noevia deploy/tools/assemble-release.sh `autotune_state_pairing`): a front that serves
 /// the auto-tune state store is paired only with a core whose actor is its client
-/// (`noevia-autotune-state-client/1`). Keep the quoted literal: the release check reads it from this file.
-pub const AUTOTUNE_STATE_STORE_MARKER: &str = "noevia-autotune-state-store/1";
+/// (`noevia-autotune-state-client/2`). Keep the quoted literal: the release check reads it from this file.
+pub const AUTOTUNE_STATE_STORE_MARKER: &str = "noevia-autotune-state-store/2";
 
 /// `(status, body)`: what a Node bridge answered.
 pub type Answer = (u16, JValue);
@@ -307,7 +307,7 @@ pub struct AbortTicket {
     serial: u64,
 }
 /// The actor effect a successful launching resume still owes.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Launch {
     pub epoch: u64,
     pub job_rev: u64,

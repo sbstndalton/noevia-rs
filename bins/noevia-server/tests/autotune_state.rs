@@ -930,3 +930,435 @@ async fn accepted_launch_with_response_past_deadline_keeps_incident_and_owner() 
         "late response is not reconciliation"
     );
 }
+
+// ---- K r3: unknown outcomes are owned by a reconciliation task that settles them -----------------------
+// A front with the model manager configured (so J's recovery hold can be taken), a scripted Node that
+// serves both its maintenance lease routes and the actor's private calls, and a scripted router.
+const LEASE: &str = "/internal/model-maintenance/lease";
+const LEASE_ID: &str = "0123456789abcdef0123456789abcdef";
+
+#[derive(Clone, PartialEq, Debug)]
+enum Settle {
+    Running,
+    Settled { launched: bool, needs_repair: bool },
+    Refused,
+}
+struct Script {
+    listing_lost: bool,
+    identities_reload_fault: bool,
+    launch_lost: bool,
+    settle: Settle,
+    barrier_ok: bool,
+    repaired: bool,
+}
+type Scripted = Arc<Mutex<Script>>;
+
+fn node_script(up: &Upstream, s: &Scripted) {
+    let s = Arc::clone(s);
+    up.set(move |r| {
+        let mut s = s.lock().unwrap();
+        let body = if r.body.is_empty() {
+            Value::Null
+        } else {
+            j(&r.body)
+        };
+        let path = r.path.as_str();
+        if path == LEASE && r.method == "POST" {
+            return reply(
+                "201 Created",
+                &json!({"lease":LEASE_ID,"ttlMs":180000,"renewMs":100,"hardMs":3600000,"generation":7})
+                    .to_string(),
+            );
+        }
+        if path.starts_with(&format!("{LEASE}/recovery/")) {
+            return if s.barrier_ok {
+                reply("204 No Content", "")
+            } else {
+                reply("500 Barrier", "{}")
+            };
+        }
+        if path.ends_with("/renew") {
+            return reply("200 OK", "{}");
+        }
+        if path.starts_with(LEASE) && r.method == "DELETE" {
+            return reply("204 No Content", "");
+        }
+        match path {
+            "/internal/autotune-actor/outside" => {
+                let mut models = serde_json::Map::new();
+                for n in body["models"].as_array().into_iter().flatten() {
+                    models.insert(
+                        n.as_str().unwrap().into(),
+                        json!({"configured": true, "system": false}),
+                    );
+                }
+                reply(
+                    "200 OK",
+                    &json!({"revision":"r1","allowBelowQ5Kv":false,"models":models}).to_string(),
+                )
+            }
+            "/internal/autotune-actor/listing" if s.listing_lost => reply("503 Lost", "{}"),
+            "/internal/autotune-actor/listing" => {
+                let rows: Vec<Value> = body["items"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| json!({"index": i, "system": false, "modelListed": true, "baseListed": false}))
+                    .collect();
+                reply("200 OK", &json!({"models": rows}).to_string())
+            }
+            "/internal/autotune-actor/identities" if s.identities_reload_fault => reply(
+                "200 OK",
+                r#"{"fault":"reload","recoveryRequired":true}"#,
+            ),
+            "/internal/autotune-actor/identities" => {
+                let ids: Vec<Value> = body["selectors"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|s| json!({"index": s["index"], "field": s["field"], "identity": "a".repeat(64)}))
+                    .collect();
+                reply("200 OK", &json!({"identities": ids}).to_string())
+            }
+            "/internal/autotune-actor/launch" if s.launch_lost => reply("503 Lost", "{}"),
+            "/internal/autotune-actor/launch" => reply("200 OK", r#"{"launched":true}"#),
+            "/internal/autotune-actor/settle" => {
+                let repair = body["repair"].as_bool() == Some(true);
+                match s.settle.clone() {
+                    Settle::Running => reply("200 OK", r#"{"state":"running"}"#),
+                    Settle::Refused => reply("200 OK", r#"{"state":"refused"}"#),
+                    Settle::Settled {
+                        launched,
+                        needs_repair,
+                    } => {
+                        if needs_repair && repair {
+                            s.repaired = true;
+                        }
+                        let owed = needs_repair && !s.repaired;
+                        reply(
+                            "200 OK",
+                            &json!({"state":"settled","outcome":{"launched":launched,"needsRepair":owed},"repaired":!owed})
+                                .to_string(),
+                        )
+                    }
+                }
+            }
+            _ => reply("200 OK", "{}"),
+        }
+    });
+}
+
+struct Rec {
+    r: Rig,
+    script: Scripted,
+    node: Upstream,
+    _router: Upstream,
+}
+async fn rec_rig() -> Rec {
+    let d = tempfile::tempdir().unwrap();
+    seed(d.path());
+    let ini = d.path().join("models.ini");
+    std::fs::write(&ini, "[m]\nmodel = /models/m.gguf\n").unwrap();
+    let router = upstream().await;
+    router.set(|r| {
+        if r.path.starts_with("/gate/v1/") {
+            reply("404 Not Found", r#"{"error":"not found"}"#)
+        } else {
+            reply("200 OK", r#"{"data":[],"success":true}"#)
+        }
+    });
+    let node = upstream().await;
+    let script: Scripted = Arc::new(Mutex::new(Script {
+        listing_lost: false,
+        identities_reload_fault: false,
+        launch_lost: false,
+        settle: Settle::Running,
+        barrier_ok: true,
+        repaired: false,
+    }));
+    node_script(&node, &script);
+    let f = front_env(
+        d.path(),
+        true,
+        &[
+            ("NOEVIA_LEGACY_UPSTREAM", node.base()),
+            ("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()),
+            ("MODEL_MANAGER_KIND", "llamacpp".into()),
+            ("MODEL_MANAGER_BASE_URL", format!("{}/v1", router.base())),
+            ("LLAMACPP_PRESET_PATH", ini.display().to_string()),
+        ],
+    )
+    .await;
+    let r = Rig {
+        d,
+        f,
+        up: node.clone(),
+        actor: actor(),
+    };
+    Rec {
+        r,
+        script,
+        node,
+        _router: router,
+    }
+}
+async fn until(what: &str, f: impl Fn() -> bool) {
+    let started = std::time::Instant::now();
+    while !f() {
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "timed out: {what}"
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+async fn start_free(r: &Rig, w: &str) -> bool {
+    let (s, _) = store_at(
+        r.f.store,
+        "start",
+        &json!({"writer": w, "op": "begin"}).to_string(),
+    )
+    .await;
+    if s == 200 {
+        store_at(
+            r.f.store,
+            "start",
+            &json!({"writer": w, "op": "end"}).to_string(),
+        )
+        .await;
+    }
+    s == 200
+}
+fn excluded(rec: &Rec) -> bool {
+    let a = &rec.r.f.app.config.maint.authority;
+    a.try_acquire(
+        noevia_server::model_maint::lease::Origin::Front,
+        None,
+        "competing",
+    )
+    .map(|g| {
+        a.release(&g.id, Some(g.generation));
+    })
+    .is_err()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_lost_listing_reply_keeps_admission_closed_until_the_actors_receipt_then_recovers() {
+    let rec = rec_rig().await;
+    let r = &rec.r;
+    let a = r.attach().await;
+    let w = a["writer"].as_str().unwrap().to_owned();
+    r.commit(&w, 1, &interrupted(), &json!({})).await;
+    rec.script.lock().unwrap().listing_lost = true;
+    assert_eq!(r.post(RESUME, r#"{"confirmPause":true}"#).await.0, 503);
+    let auto = Arc::clone(&r.f.app.config.autotune);
+    assert!(excluded(&rec), "the incident is open");
+    assert_eq!(auto.open_incidents(), 1);
+    // The Node admission barrier is installed before anything else is settled.
+    until("the Node barrier", || {
+        rec.node
+            .seen()
+            .iter()
+            .any(|s| s.method == "POST" && s.path.starts_with(&format!("{LEASE}/recovery/")))
+    })
+    .await;
+    // Unresolved (the actor says: still running): exclusion stays, the preparation stays.
+    tokio::time::sleep(Duration::from_millis(900)).await;
+    assert!(excluded(&rec), "competing admission is refused");
+    assert!(!start_free(r, &w).await, "the preparation is still held");
+    assert_eq!(auto.open_incidents(), 1);
+    // The actor reports the operation terminal: that exact preparation and the incident are released.
+    rec.script.lock().unwrap().settle = Settle::Settled {
+        launched: false,
+        needs_repair: false,
+    };
+    until("the incident to be settled", || auto.open_incidents() == 0).await;
+    until("recovery to complete", || !excluded(&rec)).await;
+    assert!(start_free(r, &w).await, "the preparation was released");
+    assert!(
+        !excluded(&rec),
+        "admission recovered without restarting the front"
+    );
+    let seen = rec.node.seen();
+    let recovery_lease = seen
+        .iter()
+        .find(|s| s.method == "POST" && s.path == LEASE)
+        .map(|s| j(&s.body));
+    assert_eq!(recovery_lease.unwrap()["recovery"], json!(true));
+    assert!(
+        seen.iter().any(|s| s.method == "DELETE"
+            && s.path.starts_with(&format!("{LEASE}/recovery/"))
+            && j(&s.body)["lease"] == json!(LEASE_ID)),
+        "the completion carries the repair proof of the hold"
+    );
+    assert!(seen
+        .iter()
+        .any(|s| s.method == "DELETE" && s.path == format!("{LEASE}/{LEASE_ID}")));
+    let ids: Vec<String> = seen
+        .iter()
+        .filter(|s| s.path.ends_with("/listing") || s.path.ends_with("/settle"))
+        .map(|s| j(&s.body)["op"].as_str().unwrap().to_owned())
+        .collect();
+    assert!(
+        ids.windows(2).all(|p| p[0] == p[1]),
+        "one operation id throughout: {ids:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_refused_receipt_fences_the_operation_and_releases_the_exact_preparation() {
+    let rec = rec_rig().await;
+    let r = &rec.r;
+    let a = r.attach().await;
+    let w = a["writer"].as_str().unwrap().to_owned();
+    r.commit(&w, 1, &interrupted(), &json!({})).await;
+    {
+        let mut s = rec.script.lock().unwrap();
+        s.listing_lost = true;
+        s.settle = Settle::Refused;
+    }
+    assert_eq!(r.post(RESUME, r#"{"confirmPause":true}"#).await.0, 503);
+    let auto = Arc::clone(&r.f.app.config.autotune);
+    until("settlement", || auto.open_incidents() == 0).await;
+    assert!(start_free(r, &w).await);
+    assert!(!excluded(&rec));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_lost_launch_reply_is_settled_by_the_receipt_either_way() {
+    for launched in [true, false] {
+        let rec = rec_rig().await;
+        let r = &rec.r;
+        let a = r.attach().await;
+        let w = a["writer"].as_str().unwrap().to_owned();
+        r.commit(&w, 1, &interrupted(), &json!({})).await;
+        {
+            let mut s = rec.script.lock().unwrap();
+            s.launch_lost = true;
+            s.settle = Settle::Running;
+        }
+        assert_eq!(r.post(RESUME, r#"{"confirmPause":true}"#).await.0, 503);
+        let auto = Arc::clone(&r.f.app.config.autotune);
+        assert_eq!(
+            r.disk()["job"]["status"],
+            "running",
+            "unknown is not refusal"
+        );
+        tokio::time::sleep(Duration::from_millis(600)).await;
+        assert!(excluded(&rec));
+        rec.script.lock().unwrap().settle = Settle::Settled {
+            launched,
+            needs_repair: false,
+        };
+        until("settlement", || auto.open_incidents() == 0).await;
+        until("recovery", || !excluded(&rec)).await;
+        // A launch the actor took stays running; one it refused or never ran stops as interrupted.
+        assert_eq!(
+            r.disk()["job"]["status"],
+            if launched { "running" } else { "interrupted" }
+        );
+        assert!(!excluded(&rec));
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_unacknowledged_node_barrier_keeps_exclusion_and_is_retried() {
+    let rec = rec_rig().await;
+    let r = &rec.r;
+    let a = r.attach().await;
+    let w = a["writer"].as_str().unwrap().to_owned();
+    r.commit(&w, 1, &interrupted(), &json!({})).await;
+    {
+        let mut s = rec.script.lock().unwrap();
+        s.listing_lost = true;
+        s.barrier_ok = false;
+        s.settle = Settle::Settled {
+            launched: false,
+            needs_repair: false,
+        };
+    }
+    assert_eq!(r.post(RESUME, r#"{"confirmPause":true}"#).await.0, 503);
+    let auto = Arc::clone(&r.f.app.config.autotune);
+    tokio::time::sleep(Duration::from_millis(1200)).await;
+    assert_eq!(
+        auto.open_incidents(),
+        1,
+        "no settlement without the barrier"
+    );
+    assert!(excluded(&rec));
+    assert!(
+        rec.node
+            .seen()
+            .iter()
+            .filter(|s| s.path.starts_with(&format!("{LEASE}/recovery/")))
+            .count()
+            >= 2,
+        "the barrier is retried"
+    );
+    rec.script.lock().unwrap().barrier_ok = true;
+    until("settlement", || auto.open_incidents() == 0).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_incident_the_front_did_not_open_is_never_completed_by_this_settlement() {
+    let rec = rec_rig().await;
+    let r = &rec.r;
+    let a = r.attach().await;
+    let w = a["writer"].as_str().unwrap().to_owned();
+    r.commit(&w, 1, &interrupted(), &json!({})).await;
+    // Some other work (a calibration repair) already holds the shared incident.
+    r.f.app.config.autotune.foreign_incident_for_tests();
+    {
+        let mut s = rec.script.lock().unwrap();
+        s.listing_lost = true;
+        s.settle = Settle::Settled {
+            launched: false,
+            needs_repair: false,
+        };
+    }
+    assert_eq!(r.post(RESUME, r#"{"confirmPause":true}"#).await.0, 503);
+    let auto = Arc::clone(&r.f.app.config.autotune);
+    until("settlement", || auto.open_incidents() == 0).await;
+    assert!(
+        start_free(r, &w).await,
+        "this operation's own hold is released"
+    );
+    assert!(
+        excluded(&rec),
+        "the other work's incident stays until its own repair completes it"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_acknowledged_reload_fault_is_the_retryable_refusal_and_the_owed_repair_is_owned() {
+    let rec = rec_rig().await;
+    let r = &rec.r;
+    let a = r.attach().await;
+    let w = a["writer"].as_str().unwrap().to_owned();
+    r.commit(&w, 1, &interrupted(), &json!({})).await;
+    {
+        let mut s = rec.script.lock().unwrap();
+        s.identities_reload_fault = true;
+        s.settle = Settle::Settled {
+            launched: false,
+            needs_repair: true,
+        };
+    }
+    let (status, body) = r.post(RESUME, r#"{"confirmPause":true}"#).await;
+    assert_eq!(status, 409, "{body}");
+    assert!(body["error"].as_str().unwrap().contains("re-read"));
+    assert!(
+        start_free(r, &w).await,
+        "the preparation is released at once"
+    );
+    let auto = Arc::clone(&r.f.app.config.autotune);
+    // The repair the actor still owes is settled under a recovery hold, then the incident ends.
+    until("the owed repair", || auto.open_incidents() == 0).await;
+    until("recovery", || !excluded(&rec)).await;
+    assert!(rec
+        .node
+        .seen()
+        .iter()
+        .any(|s| s.path.ends_with("/settle") && j(&s.body)["repair"] == json!(true)));
+}
