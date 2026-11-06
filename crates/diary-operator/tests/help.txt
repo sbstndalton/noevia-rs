@@ -1,0 +1,14 @@
+usage: backup_restore.py [-h] backup_root manifest new_directory
+
+Verify a downloaded immutable manifest and restore into a NEW directory only.
+Run: python -m agent.backup_restore BACKUP_ROOT MANIFEST_JSON NEW_DIRECTORY
+BACKUP_ROOT contains the downloaded WebDAV tree (including corpusRoot). Never
+points at a live corpus, chooses a latest manifest, or overwrites files.
+
+positional arguments:
+  backup_root
+  manifest
+  new_directory
+
+options:
+  -h, --help     show this help message and exit

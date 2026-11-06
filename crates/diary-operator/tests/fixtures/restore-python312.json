@@ -1,0 +1,250 @@
+[
+  {
+    "case": "valid",
+    "exit": 0,
+    "stdout": "{\n  \"files\": 1,\n  \"bytes\": 18,\n  \"tenant\": \"00000000-0000-4000-8000-000000000123\",\n  \"settings\": {\n    \"z\": \"caf\\u00e9 \\ud83d\\ude42\",\n    \"a\": [\n      1,\n      true,\n      null\n    ]\n  }\n}\n",
+    "exception": "",
+    "tree": {
+      ".": {
+        "mode": "0o700",
+        "data": null
+      },
+      "empty": {
+        "mode": "0o775",
+        "data": null
+      },
+      "empty/deep": {
+        "mode": "0o700",
+        "data": null
+      },
+      "nested": {
+        "mode": "0o700",
+        "data": null
+      },
+      "nested/note.bin": {
+        "mode": "0o664",
+        "data": "73796e74686574696320646961727900ff0a"
+      }
+    }
+  },
+  {
+    "case": "empty",
+    "exit": 0,
+    "stdout": "{\n  \"files\": 0,\n  \"bytes\": 0,\n  \"tenant\": \"00000000-0000-4000-8000-000000000123\",\n  \"settings\": {\n    \"z\": \"caf\\u00e9 \\ud83d\\ude42\",\n    \"a\": [\n      1,\n      true,\n      null\n    ]\n  }\n}\n",
+    "exception": "",
+    "tree": {
+      ".": {
+        "mode": "0o700",
+        "data": null
+      },
+      "empty": {
+        "mode": "0o775",
+        "data": null
+      },
+      "empty/deep": {
+        "mode": "0o700",
+        "data": null
+      }
+    }
+  },
+  {
+    "case": "unsupported",
+    "exit": 1,
+    "stdout": "",
+    "exception": "ValueError: Unsupported backup manifest",
+    "tree": null
+  },
+  {
+    "case": "bad-files",
+    "exit": 1,
+    "stdout": "",
+    "exception": "ValueError: Invalid backup file list",
+    "tree": null
+  },
+  {
+    "case": "tenant",
+    "exit": 1,
+    "stdout": "",
+    "exception": "ValueError: badly formed hexadecimal UUID string",
+    "tree": null
+  },
+  {
+    "case": "wrong-tenant",
+    "exit": 1,
+    "stdout": "",
+    "exception": "ValueError: Backup object has the wrong tenant",
+    "tree": null
+  },
+  {
+    "case": "duplicate",
+    "exit": 1,
+    "stdout": "",
+    "exception": "ValueError: Backup escaped its root or duplicated a path",
+    "tree": null
+  },
+  {
+    "case": "overlap",
+    "exit": 1,
+    "stdout": "",
+    "exception": "ValueError: Backup has overlapping file and directory paths",
+    "tree": null
+  },
+  {
+    "case": "same-path",
+    "exit": 1,
+    "stdout": "",
+    "exception": "ValueError: Backup has overlapping file and directory paths",
+    "tree": null
+  },
+  {
+    "case": "bad-hash",
+    "exit": 1,
+    "stdout": "",
+    "exception": "ValueError: Backup object checksum mismatch or restore exceeds 1 GiB",
+    "tree": null
+  },
+  {
+    "case": "escape",
+    "exit": 1,
+    "stdout": "",
+    "exception": "ValueError: Invalid corpus path",
+    "tree": null
+  },
+  {
+    "case": "empty-key",
+    "exit": 1,
+    "stdout": "",
+    "exception": "ValueError: Invalid corpus path",
+    "tree": null
+  },
+  {
+    "case": "backslash",
+    "exit": 1,
+    "stdout": "",
+    "exception": "ValueError: Invalid corpus path",
+    "tree": null
+  },
+  {
+    "case": "dot",
+    "exit": 1,
+    "stdout": "",
+    "exception": "ValueError: Invalid corpus path",
+    "tree": null
+  },
+  {
+    "case": "null-key",
+    "exit": 1,
+    "stdout": "",
+    "exception": "ValueError: Invalid corpus path",
+    "tree": null
+  },
+  {
+    "case": "existing",
+    "exit": 1,
+    "stdout": "",
+    "exception": "ValueError: Restore requires a new directory; existing data will not be overwritten",
+    "tree": {
+      ".": {
+        "mode": "0o775",
+        "data": null
+      }
+    }
+  },
+  {
+    "case": "checksum",
+    "exit": 1,
+    "stdout": "",
+    "exception": "ValueError: Manifest checksum does not match its immutable filename",
+    "tree": null
+  },
+  {
+    "case": "missing-object",
+    "exit": 1,
+    "stdout": "",
+    "exception": "FileNotFoundError: [Errno 2] No such file or directory: '$FIXTURE/backup/Notes/noevia-backups/00000000-0000-4000-8000-000000000123/objects/synthetic/payload-absent'",
+    "tree": null
+  },
+  {
+    "case": "symlink-escape",
+    "exit": 1,
+    "stdout": "",
+    "exception": "ValueError: Backup escaped its root or duplicated a path",
+    "tree": null
+  },
+  {
+    "case": "symlink-inside",
+    "exit": 0,
+    "stdout": "{\n  \"files\": 1,\n  \"bytes\": 18,\n  \"tenant\": \"00000000-0000-4000-8000-000000000123\",\n  \"settings\": {\n    \"z\": \"caf\\u00e9 \\ud83d\\ude42\",\n    \"a\": [\n      1,\n      true,\n      null\n    ]\n  }\n}\n",
+    "exception": "",
+    "tree": {
+      ".": {
+        "mode": "0o700",
+        "data": null
+      },
+      "empty": {
+        "mode": "0o775",
+        "data": null
+      },
+      "empty/deep": {
+        "mode": "0o700",
+        "data": null
+      },
+      "nested": {
+        "mode": "0o700",
+        "data": null
+      },
+      "nested/note.bin": {
+        "mode": "0o664",
+        "data": "73796e74686574696320646961727900ff0a"
+      }
+    }
+  },
+  {
+    "case": "argv-help",
+    "exit": 0,
+    "stdout": "usage: backup_restore.py [-h] backup_root manifest new_directory\n\nVerify a downloaded immutable manifest and restore into a NEW directory only.\nRun: python -m agent.backup_restore BACKUP_ROOT MANIFEST_JSON NEW_DIRECTORY\nBACKUP_ROOT contains the downloaded WebDAV tree (including corpusRoot). Never\npoints at a live corpus, chooses a latest manifest, or overwrites files.\n\npositional arguments:\n  backup_root\n  manifest\n  new_directory\n\noptions:\n  -h, --help     show this help message and exit\n",
+    "stderr": ""
+  },
+  {
+    "case": "argv-short-help",
+    "exit": 0,
+    "stdout": "usage: backup_restore.py [-h] backup_root manifest new_directory\n\nVerify a downloaded immutable manifest and restore into a NEW directory only.\nRun: python -m agent.backup_restore BACKUP_ROOT MANIFEST_JSON NEW_DIRECTORY\nBACKUP_ROOT contains the downloaded WebDAV tree (including corpusRoot). Never\npoints at a live corpus, chooses a latest manifest, or overwrites files.\n\npositional arguments:\n  backup_root\n  manifest\n  new_directory\n\noptions:\n  -h, --help     show this help message and exit\n",
+    "stderr": ""
+  },
+  {
+    "case": "argv-abbrev-help",
+    "exit": 0,
+    "stdout": "usage: backup_restore.py [-h] backup_root manifest new_directory\n\nVerify a downloaded immutable manifest and restore into a NEW directory only.\nRun: python -m agent.backup_restore BACKUP_ROOT MANIFEST_JSON NEW_DIRECTORY\nBACKUP_ROOT contains the downloaded WebDAV tree (including corpusRoot). Never\npoints at a live corpus, chooses a latest manifest, or overwrites files.\n\npositional arguments:\n  backup_root\n  manifest\n  new_directory\n\noptions:\n  -h, --help     show this help message and exit\n",
+    "stderr": ""
+  },
+  {
+    "case": "argv-missing",
+    "exit": 2,
+    "stdout": "",
+    "stderr": "usage: backup_restore.py [-h] backup_root manifest new_directory\nbackup_restore.py: error: the following arguments are required: backup_root, manifest, new_directory\n"
+  },
+  {
+    "case": "argv-one",
+    "exit": 2,
+    "stdout": "",
+    "stderr": "usage: backup_restore.py [-h] backup_root manifest new_directory\nbackup_restore.py: error: the following arguments are required: manifest, new_directory\n"
+  },
+  {
+    "case": "argv-two",
+    "exit": 2,
+    "stdout": "",
+    "stderr": "usage: backup_restore.py [-h] backup_root manifest new_directory\nbackup_restore.py: error: the following arguments are required: new_directory\n"
+  },
+  {
+    "case": "argv-extra",
+    "exit": 2,
+    "stdout": "",
+    "stderr": "usage: backup_restore.py [-h] backup_root manifest new_directory\nbackup_restore.py: error: unrecognized arguments: d\n"
+  },
+  {
+    "case": "argv-unknown",
+    "exit": 2,
+    "stdout": "",
+    "stderr": "usage: backup_restore.py [-h] backup_root manifest new_directory\nbackup_restore.py: error: unrecognized arguments: --bad\n"
+  }
+]
