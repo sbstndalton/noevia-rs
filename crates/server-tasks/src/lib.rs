@@ -20,6 +20,7 @@ pub mod pin;
 pub mod policy;
 pub mod resources;
 pub mod session;
+pub mod shared_context;
 pub mod start;
 pub mod workspace;
 
