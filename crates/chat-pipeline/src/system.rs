@@ -12,9 +12,11 @@ use js_json::{wtf16, JValue};
 /// chat.cjs `SKILL_INDEX_LEAD`.
 pub const SKILL_INDEX_LEAD: &str = "Available skills (load the full file with the read_project_file tool when a task matches; do not guess their contents):";
 /// chat.cjs `SKILL_INDEX_LEAD_NO_READER`.
-pub const SKILL_INDEX_LEAD_NO_READER: &str = "Available skills (their files cannot be loaded in this reply; do not guess their contents):";
+pub const SKILL_INDEX_LEAD_NO_READER: &str =
+    "Available skills (their files cannot be loaded in this reply; do not guess their contents):";
 /// source-coverage.cjs `READ_FILE_HINT`.
-pub const COVERAGE_READ_FILE_HINT: &str = " read_project_file with an offset can read more of a file.";
+pub const COVERAGE_READ_FILE_HINT: &str =
+    " read_project_file with an offset can read more of a file.";
 const MAX_BODY_CHARS: usize = 12000;
 
 fn js_string(v: &JValue) -> String {
@@ -26,7 +28,8 @@ pub fn quote_name(name: &str) -> String {
     let q = wtf16::stringify(&JValue::Str(name.to_owned())).unwrap_or_default();
     let mut out = String::with_capacity(q.len());
     for c in q.chars() {
-        if matches!(c, '\u{85}' | '\u{200e}' | '\u{200f}' | '\u{2028}' | '\u{2029}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}') {
+        if matches!(c, '\u{85}' | '\u{200e}' | '\u{200f}' | '\u{2028}' | '\u{2029}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+        {
             out.push_str(&format!("\\u{:04x}", c as u32));
         } else {
             out.push(c);
@@ -37,7 +40,11 @@ pub fn quote_name(name: &str) -> String {
 
 /// `quotedNames(names)`.
 pub fn quoted_names<S: AsRef<str>>(names: &[S]) -> String {
-    names.iter().map(|n| quote_name(n.as_ref())).collect::<Vec<_>>().join(", ")
+    names
+        .iter()
+        .map(|n| quote_name(n.as_ref()))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// skill-index.cjs `formatSkillIndex(skills)`: one JSON line per skill, at most 32 lines and 6144 units.
@@ -64,8 +71,14 @@ pub fn format_skill_index(skills: &[JValue]) -> String {
         let line = wtf16::stringify(&JValue::obj([
             ("file", JValue::Str(file)),
             ("name", JValue::Str(wtf16::slice(&name, 160))),
-            ("description", JValue::Str(wtf16::slice(&or_empty("description"), 500))),
-            ("version", JValue::Str(wtf16::slice(&or_empty("version"), 80))),
+            (
+                "description",
+                JValue::Str(wtf16::slice(&or_empty("description"), 500)),
+            ),
+            (
+                "version",
+                JValue::Str(wtf16::slice(&or_empty("version"), 80)),
+            ),
         ]))
         .unwrap_or_default();
         let len = wtf16::len(&line);
@@ -77,7 +90,9 @@ pub fn format_skill_index(skills: &[JValue]) -> String {
         lines.push(line);
     }
     if omitted > 0 {
-        lines.push(format!("({omitted} additional skill metadata entries omitted to fit the context limit.)"));
+        lines.push(format!(
+            "({omitted} additional skill metadata entries omitted to fit the context limit.)"
+        ));
     }
     lines.join("\n")
 }
@@ -103,12 +118,18 @@ pub fn is_unreadable(file: &JValue) -> bool {
     {
         return true;
     }
-    d.truthy() && matches!(as_str(get(d, "state")), Some("failed" | "queued")) && blank(get(file, "content"))
+    d.truthy()
+        && matches!(as_str(get(d, "state")), Some("failed" | "queued"))
+        && blank(get(file, "content"))
 }
 
 /// `isWaiting(file)` (#2237).
 fn is_waiting(file: &JValue) -> bool {
-    let d = if matches!(file, JValue::Obj(_) | JValue::Arr(_)) { get(file, "document") } else { &JValue::Undefined };
+    let d = if matches!(file, JValue::Obj(_) | JValue::Arr(_)) {
+        get(file, "document")
+    } else {
+        &JValue::Undefined
+    };
     d.truthy() && as_str(get(d, "state")) == Some("queued") && blank(get(file, "content"))
 }
 
@@ -126,16 +147,20 @@ pub fn readable(files: &JValue) -> Vec<&JValue> {
 
 /// `waitingNotice(files)` (#2237, #2245): `''` when no document waits.
 pub fn waiting_notice(files: &JValue) -> String {
-    let all: Vec<String> = list(files).iter().filter(|f| is_waiting(f)).map(|f| js_string(get(f, "name"))).collect();
+    let all: Vec<String> = list(files)
+        .iter()
+        .filter(|f| is_waiting(f))
+        .map(|f| js_string(get(f, "name")))
+        .collect();
     if all.is_empty() {
         return String::new();
     }
-    let names = &all[..all.len().min(10)];
+    let names: Vec<&String> = all.iter().take(10).collect();
     let more = all.len() - names.len();
     let one = all.len() == 1;
     format!(
         "{}{} {} waiting to be read (document reading is not available yet), so {} contents are not available to you. Say so if asked about {}; do not guess at the contents or call {} empty.",
-        quoted_names(names),
+        quoted_names(&names),
         if more > 0 { format!(" and {more} more") } else { String::new() },
         if one { "is" } else { "are" },
         if one { "its" } else { "their" },
@@ -189,11 +214,18 @@ pub fn coverage_note(partial: &[PartialRead]) -> String {
         .iter()
         .map(|p| {
             let read = if p.read != 0.0 {
-                format!("only {} characters of it (excerpts or the start)", en_gb(p.read))
+                format!(
+                    "only {} characters of it (excerpts or the start)",
+                    en_gb(p.read)
+                )
             } else {
                 "none of it (it was not included)".to_owned()
             };
-            format!("{} is {} characters long and this reply read {read}", quote_name(&p.name), en_gb(p.length))
+            format!(
+                "{} is {} characters long and this reply read {read}",
+                quote_name(&p.name),
+                en_gb(p.length)
+            )
         })
         .collect();
     format!(
@@ -206,10 +238,16 @@ pub fn coverage_note(partial: &[PartialRead]) -> String {
 /// `\n---` after the opening line (its optional `\r` is part of the lazy middle).
 fn skill_body(content: &str) -> String {
     let mut body = content;
-    if let Some(rest) = content.strip_prefix("---\r\n").or_else(|| content.strip_prefix("---\n")) {
+    if let Some(rest) = content
+        .strip_prefix("---\r\n")
+        .or_else(|| content.strip_prefix("---\n"))
+    {
         if let Some(k) = rest.find("\n---") {
             let tail = &rest[k + 4..];
-            body = tail.strip_prefix("\r\n").or_else(|| tail.strip_prefix('\n')).unwrap_or(tail);
+            body = tail
+                .strip_prefix("\r\n")
+                .or_else(|| tail.strip_prefix('\n'))
+                .unwrap_or(tail);
         }
     }
     crate::text::trim(body).to_owned()
@@ -217,7 +255,10 @@ fn skill_body(content: &str) -> String {
 
 fn cut_body(body: String, file: &str) -> String {
     if wtf16::len(&body) > MAX_BODY_CHARS {
-        format!("{}\n\n(Truncated; read {file} with read_project_file for the rest.)", wtf16::slice(&body, MAX_BODY_CHARS))
+        format!(
+            "{}\n\n(Truncated; read {file} with read_project_file for the rest.)",
+            wtf16::slice(&body, MAX_BODY_CHARS)
+        )
     } else {
         body
     }
@@ -230,7 +271,10 @@ pub fn skill_block(skills: &[JValue]) -> String {
         .map(|s| {
             let file = js_string(get(s, "file"));
             let body = cut_body(skill_body(&js_string(get(s, "content"))), &file);
-            format!("Skill \"{}\" ({file}) matches this message; follow it:\n{body}", js_string(get(s, "name")))
+            format!(
+                "Skill \"{}\" ({file}) matches this message; follow it:\n{body}",
+                js_string(get(s, "name"))
+            )
         })
         .collect::<Vec<_>>()
         .join("\n\n")
@@ -249,7 +293,17 @@ pub fn pinned_skill_block(record: &JValue, content: &str) -> String {
 
 /// JavaScript's `\s`.
 fn js_space(c: char) -> bool {
-    matches!(c, '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}')
+    matches!(
+        c,
+        '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
+    )
 }
 
 /// `.replace(/\s+/g, ' ').trim()`.
@@ -272,7 +326,11 @@ fn fold_space(s: &str) -> String {
 
 /// shared-context.cjs `clip(text, n)`: white space folded, at most `n` units with an ellipsis.
 fn clip(v: &JValue, n: usize) -> String {
-    let s = if v.truthy() { js_string(v) } else { String::new() };
+    let s = if v.truthy() {
+        js_string(v)
+    } else {
+        String::new()
+    };
     let folded = fold_space(&s);
     if wtf16::len(&folded) > n {
         format!("{}…", wtf16::slice(&folded, n - 1))
@@ -283,20 +341,31 @@ fn clip(v: &JValue, n: usize) -> String {
 
 /// `forChat(project, tasks)`: the recent Code tasks a project shares into chat; `''` when none.
 pub fn code_tasks_part(tasks: &[JValue]) -> String {
-    let mut recent: Vec<&JValue> = tasks.iter().filter(|t| t.truthy() && get(t, "task").truthy()).collect();
+    let mut recent: Vec<&JValue> = tasks
+        .iter()
+        .filter(|t| t.truthy() && get(t, "task").truthy())
+        .collect();
     let at = |t: &JValue| match get(t, "updatedAt") {
         v if v.truthy() => v.as_num().unwrap_or(f64::NAN),
         _ => 0.0,
     };
     // `sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))`: stable, a NaN difference keeps the order.
-    recent.sort_by(|a, b| at(b).partial_cmp(&at(a)).unwrap_or(std::cmp::Ordering::Equal));
+    recent.sort_by(|a, b| {
+        at(b)
+            .partial_cmp(&at(a))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     recent.truncate(6);
     if recent.is_empty() {
         return String::new();
     }
     let line = |t: &JValue| {
         let status = get(t, "status");
-        let mut bits = vec![if status.truthy() { js_string(status) } else { "unknown".to_owned() }];
+        let mut bits = vec![if status.truthy() {
+            js_string(status)
+        } else {
+            "unknown".to_owned()
+        }];
         if get(t, "branch").truthy() {
             bits.push(format!("branch {}", js_string(get(t, "branch"))));
         }
@@ -305,10 +374,18 @@ pub fn code_tasks_part(tasks: &[JValue]) -> String {
         }
         format!("- \"{}\" ({})", clip(get(t, "task"), 160), bits.join(", "))
     };
-    let body = recent.iter().map(|t| line(t)).collect::<Vec<_>>().join("\n");
+    let body = recent
+        .iter()
+        .map(|t| line(t))
+        .collect::<Vec<_>>()
+        .join("\n");
     let (kind, label) = ("recent Code tasks", "diffs not visible");
     let max = 6000 - wtf16::len(&frame(kind, label, ""));
-    let capped = if wtf16::len(&body) > max { format!("{}…", wtf16::slice(&body, max - 1)) } else { body };
+    let capped = if wtf16::len(&body) > max {
+        format!("{}…", wtf16::slice(&body, max - 1))
+    } else {
+        body
+    };
     frame(kind, label, &capped)
 }
 
@@ -373,13 +450,19 @@ pub fn assemble(i: &Inputs<'_>) -> System {
         }
     } else {
         if get(p, "name").truthy() && !i.chat_attachments {
-            parts.push(format!("You are working inside the user's project {}.", quote_name(&js_string(get(p, "name")))));
+            parts.push(format!(
+                "You are working inside the user's project {}.",
+                quote_name(&js_string(get(p, "name")))
+            ));
         }
         if get(p, "goal").truthy() {
             parts.push(format!("Project goal: {}", js_string(get(p, "goal"))));
         }
         if get(p, "instructions").truthy() {
-            parts.push(format!("Project instructions (follow closely):\n{}", js_string(get(p, "instructions"))));
+            parts.push(format!(
+                "Project instructions (follow closely):\n{}",
+                js_string(get(p, "instructions"))
+            ));
         }
         if let Some(m) = some(i.memory_part) {
             parts.push(m.to_owned());
@@ -392,13 +475,22 @@ pub fn assemble(i: &Inputs<'_>) -> System {
         }
         if let Some(fb) = some(i.files_block) {
             if !i.chat_attachments || i.compact_only {
-                parts.push(format!("Relevant knowledge-file excerpts for this message:\n{fb}"));
+                parts.push(format!(
+                    "Relevant knowledge-file excerpts for this message:\n{fb}"
+                ));
             }
         }
         if !i.sources_not_ready.is_empty() {
             let n = i.sources_not_ready.len();
-            let names: Vec<String> = i.sources_not_ready.iter().map(|f| js_string(get(f, "name"))).collect();
-            let all_failed = i.sources_not_ready.iter().all(|f| as_str(get(f, "reason")) == Some("failed"));
+            let names: Vec<String> = i
+                .sources_not_ready
+                .iter()
+                .map(|f| js_string(get(f, "name")))
+                .collect();
+            let all_failed = i
+                .sources_not_ready
+                .iter()
+                .all(|f| as_str(get(f, "reason")) == Some("failed"));
             parts.push(format!(
                 "The user just attached {}, but {} not {} in time, so {} contents are not available to you for this message. Say so if asked about {}; do not guess at the contents.",
                 quoted_names(&names),
@@ -417,7 +509,10 @@ pub fn assemble(i: &Inputs<'_>) -> System {
             parts.push(coverage);
         }
         if !i.skills.is_empty() {
-            parts.push(format!("{SKILL_INDEX_LEAD}\n{}", format_skill_index(i.skills)));
+            parts.push(format!(
+                "{SKILL_INDEX_LEAD}\n{}",
+                format_skill_index(i.skills)
+            ));
             if i.pinned.is_none() && !i.auto_skills.is_empty() {
                 auto_skill_block = skill_block(i.auto_skills);
                 parts.push(auto_skill_block.clone());
@@ -445,7 +540,12 @@ pub fn assemble(i: &Inputs<'_>) -> System {
     if let Some(b) = &brain {
         parts.push(b.clone());
     }
-    System { parts, auto_skill_block, brain, time: i.time_part.to_owned() }
+    System {
+        parts,
+        auto_skill_block,
+        brain,
+        time: i.time_part.to_owned(),
+    }
 }
 
 impl System {
@@ -457,7 +557,13 @@ impl System {
     /// `sysWithoutBrain` (#815): what the routing check reads and an off-box provider gets.
     pub fn without_brain(&self) -> String {
         match &self.brain {
-            Some(b) => self.parts.iter().filter(|p| *p != b).cloned().collect::<Vec<_>>().join("\n\n"),
+            Some(b) => self
+                .parts
+                .iter()
+                .filter(|p| *p != b)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n\n"),
             None => self.text(),
         }
     }
@@ -477,7 +583,9 @@ impl System {
     pub fn off_box(&self, zoneless: &str) -> String {
         let sys = self.without_brain();
         match sys.find(&self.time) {
-            Some(at) if !self.time.is_empty() => format!("{}{zoneless}{}", &sys[..at], &sys[at + self.time.len()..]),
+            Some(at) if !self.time.is_empty() => {
+                format!("{}{zoneless}{}", &sys[..at], &sys[at + self.time.len()..])
+            }
             _ => sys,
         }
     }
@@ -488,13 +596,24 @@ pub fn with_attached_files(msgs: &mut [JValue], message: &str, files_block: &str
     let Some(JValue::Obj(items)) = msgs.last_mut() else {
         return;
     };
-    if !items.iter().any(|(k, v)| k == "role" && as_str(v) == Some("user")) {
+    if !items
+        .iter()
+        .any(|(k, v)| k == "role" && as_str(v) == Some("user"))
+    {
         return;
     }
-    let Some(JValue::Str(content)) = items.iter().find(|(k, _)| k == "content").map(|(_, v)| v.clone()) else {
+    let Some(JValue::Str(content)) = items
+        .iter()
+        .find(|(k, _)| k == "content")
+        .map(|(_, v)| v.clone())
+    else {
         return;
     };
-    let at = if content.ends_with(message) { content.len() - message.len() } else { 0 };
+    let at = if content.ends_with(message) {
+        content.len() - message.len()
+    } else {
+        0
+    };
     let updated = format!("{}{files_block}\n\n{}", &content[..at], &content[at..]);
     wtf16::set(items, "content", JValue::Str(updated));
 }
