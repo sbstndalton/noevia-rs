@@ -168,6 +168,13 @@ pub struct TurnTools {
     pub decline_ends_reply: bool,
 }
 
+impl TurnTools {
+    /// A turn's tool state; `decline_ends_reply`: `!spaceId?.startsWith('diary')` (#666).
+    pub fn new(decline_ends_reply: bool) -> TurnTools {
+        TurnTools { decline_ends_reply, ..TurnTools::default() }
+    }
+}
+
 /// What one call left: the event, the model's message, and the write that succeeded (if any).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Done {
@@ -237,11 +244,23 @@ pub async fn run_call<I: GateIo>(
     let mut ran = false;
     let mut card_target: Option<String> = None;
     let mut write_print: Option<String> = None;
-    let result = exchange(io, st, call, allowed, send, &mut ran, &mut card_target, &mut write_print).await;
+    let result = exchange(
+        io,
+        st,
+        call,
+        allowed,
+        send,
+        &mut ran,
+        &mut card_target,
+        &mut write_print,
+    )
+    .await;
     let for_model = reduce(&result);
     let framed = frame("tool result", &call.name, &for_model);
     let not_error = !result.starts_with("ERROR")
-        || result.get(5..).is_some_and(|r| r.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_'));
+        || result
+            .get(5..)
+            .is_some_and(|r| r.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_'));
     let mut applied = None;
     if ran && not_error {
         if let Some(fp) = write_print.clone() {
@@ -276,7 +295,12 @@ pub async fn run_call<I: GateIo>(
         ("tool_call_id", s(&call.id)),
         ("content", s(&framed)),
     ]);
-    Done { result, tool_result, message, applied }
+    Done {
+        result,
+        tool_result,
+        message,
+        applied,
+    }
 }
 
 /// tool-exchange.cjs `run(call, execute)` around the gate.
@@ -306,7 +330,10 @@ async fn exchange<I: GateIo>(
     let result = match gate(io, st, call, write, send, ran, card_target, write_print).await {
         Ok(r) => r,
         Err(message) => tool_exchange::call_error(&units(&call.name), &units(&message))
-            .map_or_else(|_| "ERROR: the tool failed and its error could not be read.".to_owned(), |u| String::from_utf16_lossy(&u)),
+            .map_or_else(
+                |_| "ERROR: the tool failed and its error could not be read.".to_owned(),
+                |u| String::from_utf16_lossy(&u),
+            ),
     };
     st.results.push((key, result.clone(), write));
     result
@@ -356,7 +383,10 @@ async fn gate<I: GateIo>(
         let resolved = io.resolve_edit(args);
         if let Some(e) = resolved.error {
             io.audit("tool.denied", name, Some("edit-target"));
-            return Ok(format!("ERROR: {} {name} was not run and nothing was changed.", with_period(&e)));
+            return Ok(format!(
+                "ERROR: {} {name} was not run and nothing was changed.",
+                with_period(&e)
+            ));
         }
         let path = resolved.path.unwrap_or_default();
         *card_target = Some(path.clone());
@@ -364,13 +394,23 @@ async fn gate<I: GateIo>(
     } else if io.has_write_targets() && write {
         let resolved = match io.write_target(name, args).await {
             Ok(t) => t,
-            Err(()) => Some(WriteTarget { error: Some("The file this would change could not be looked up".into()), ..WriteTarget::default() }),
+            Err(()) => Some(WriteTarget {
+                error: Some("The file this would change could not be looked up".into()),
+                ..WriteTarget::default()
+            }),
         };
         if let Some(e) = resolved.as_ref().and_then(|t| t.error.as_ref()) {
             io.audit("tool.denied", name, Some("write-target"));
-            return Ok(format!("ERROR: {} {name} was not run and nothing was changed.", with_period(e)));
+            return Ok(format!(
+                "ERROR: {} {name} was not run and nothing was changed.",
+                with_period(e)
+            ));
         }
-        if let Some(t) = resolved.as_ref().and_then(|t| t.target.clone()).filter(|t| !t.is_empty()) {
+        if let Some(t) = resolved
+            .as_ref()
+            .and_then(|t| t.target.clone())
+            .filter(|t| !t.is_empty())
+        {
             *card_target = Some(t);
             target_kind = resolved.and_then(|t| t.kind);
         }
@@ -409,7 +449,8 @@ async fn gate<I: GateIo>(
         }
         used_grant = io.chat_wide_approved(&binding).await;
     }
-    let asked_per_call = permission == Mode::Ask && (!used_grant || !provenance.is_empty() || io.automatic_only(name));
+    let asked_per_call = permission == Mode::Ask
+        && (!used_grant || !provenance.is_empty() || io.automatic_only(name));
     if asked_per_call {
         let id = io.new_approval_id();
         let repeat = write_print.as_deref().is_some_and(|fp| io.repeat(fp));
@@ -491,7 +532,10 @@ async fn gate<I: GateIo>(
             let what = if again.error.is_some() {
                 "can no longer be edited".to_owned()
             } else {
-                format!("is no longer the file this name refers to (it now means {})", again.path.as_deref().map_or("undefined".to_owned(), quoted))
+                format!(
+                    "is no longer the file this name refers to (it now means {})",
+                    again.path.as_deref().map_or("undefined".to_owned(), quoted)
+                )
             };
             return Ok(format!("ERROR: the project's files changed after approval, so {} {what}. {name} was not run and nothing was changed. Ask again if the edit is still wanted.", quoted(path)));
         }
@@ -499,13 +543,20 @@ async fn gate<I: GateIo>(
     if io.has_write_targets() && write && edit.is_none() {
         let now = io.write_target(name, args).await;
         let (target, kind, error) = match now {
-            Ok(Some(t)) => (t.target.filter(|x| !x.is_empty()), t.kind, t.error.is_some()),
+            Ok(Some(t)) => (
+                t.target.filter(|x| !x.is_empty()),
+                t.kind,
+                t.error.is_some(),
+            ),
             Ok(None) => (None, None, false),
             Err(()) => (None, None, true),
         };
         if error || target != *card_target || kind != target_kind {
             io.revoke_grant().await;
-            return Ok("ERROR: the write target changed after approval; the tool was not run. Ask again.".into());
+            return Ok(
+                "ERROR: the write target changed after approval; the tool was not run. Ask again."
+                    .into(),
+            );
         }
     }
     let mut redeem_unavailable = false;
@@ -513,7 +564,8 @@ async fn gate<I: GateIo>(
     if permission == Mode::Ask {
         let checked: Result<(), ()> = async {
             let final_binding = io.permission_context().await?;
-            if (chat.as_deref().is_some_and(|c| !c.is_empty()) && !io.binding_matches(&binding, &final_binding))
+            if (chat.as_deref().is_some_and(|c| !c.is_empty())
+                && !io.binding_matches(&binding, &final_binding))
                 || (io.user(), io.chat_id(), io.route(name)) != shown
                 || !io.workspace_ok(&user)
             {
@@ -554,7 +606,10 @@ async fn gate<I: GateIo>(
         if now.path.as_deref() != Some(path.as_str()) || now.account != *account {
             guard.started();
             io.revoke_grant().await;
-            return Ok("ERROR: the project target changed before dispatch; tool was not run. Ask again.".into());
+            return Ok(
+                "ERROR: the project target changed before dispatch; tool was not run. Ask again."
+                    .into(),
+            );
         }
     }
     if io.aborted() {
@@ -562,7 +617,10 @@ async fn gate<I: GateIo>(
         return Ok("ERROR: exchange cancelled; tool was not run.".into());
     }
     let now = io.mode(name, write);
-    if now == Mode::Block || (permission != Mode::Ask && io.mode(name, write) == Mode::Ask) || io.revoked_skill_refusal(name).is_some() {
+    if now == Mode::Block
+        || (permission != Mode::Ask && io.mode(name, write) == Mode::Ask)
+        || io.revoked_skill_refusal(name).is_some()
+    {
         guard.started();
         return Ok("ERROR: permission changed before dispatch; tool was not run.".into());
     }
